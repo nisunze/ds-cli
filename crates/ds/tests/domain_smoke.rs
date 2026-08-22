@@ -7,7 +7,7 @@
 //!
 //! * `ds pls reference-closure` defaulted `--limit` to 50 against a task that
 //!   bounds it at 32, so every call refused;
-//! * `ds network convert inspect` filtered capabilities by comparing a
+//! * `ds dsgrid-exchange inspect` filtered capabilities by comparing a
 //!   `Debug` spelling against `"Available"` — a variant that does not exist —
 //!   so a source set with ten ready conversions reported none.
 //!
@@ -63,8 +63,21 @@ fn workspace() -> String {
     path.display().to_string()
 }
 
+/// Join a leaf onto the fixture workspace with the platform's own separator.
+///
+/// Not `format!("{}/{leaf}")`. `workspace()` canonicalizes, and on Windows
+/// that returns an extended-length `\\?\C:\…` path — a form the OS passes to
+/// the filesystem *without* normalization, so a forward slash in it is an
+/// ordinary character rather than a separator. The interpolated version
+/// therefore asked for a file whose name literally contained
+/// `workspace/structures/…`, and every PLS test failed `source_not_found`
+/// against a fixture that was sitting right there.
 fn workspace_file(leaf: &str) -> String {
-    format!("{}/{leaf}", workspace())
+    let mut path = PathBuf::from(workspace());
+    for part in leaf.split('/') {
+        path.push(part);
+    }
+    path.display().to_string()
 }
 
 fn ok(args: &[&str]) -> Value {
@@ -82,13 +95,13 @@ fn ok(args: &[&str]) -> Value {
 }
 
 // ---------------------------------------------------------------------------
-// network
+// dsgrid
 // ---------------------------------------------------------------------------
 
 #[test]
-fn network_validate_finds_the_fixture_sound() {
+fn dsgrid_validate_finds_the_fixture_sound() {
     let model = common::fixture();
-    let data = ok(&["network", "validate", "--model", &model, "--output", "json"]);
+    let data = ok(&["dsgrid", "validate", "--model", &model, "--output", "json"]);
 
     assert_eq!(
         data["container"]["verified"], true,
@@ -104,13 +117,13 @@ fn network_validate_finds_the_fixture_sound() {
 }
 
 #[test]
-fn network_describe_returns_a_real_engine_catalog() {
+fn dsgrid_describe_returns_a_real_engine_catalog() {
     for (kind, expect) in [
         ("operations", "create_alignment"),
         ("commands", "create_alignment"),
         ("projections", "project_plan"),
     ] {
-        let data = ok(&["network", "describe", "--kind", kind, "--output", "json"]);
+        let data = ok(&["dsgrid", "describe", "--kind", kind, "--output", "json"]);
         let entries = data["entries"].as_array().expect("entries");
         assert!(
             entries.len() > 5,
@@ -134,7 +147,7 @@ fn network_describe_returns_a_real_engine_catalog() {
 
     // And one full descriptor, by id.
     let data = ok(&[
-        "network",
+        "dsgrid",
         "describe",
         "--id",
         "create_alignment",
@@ -146,10 +159,15 @@ fn network_describe_returns_a_real_engine_catalog() {
 }
 
 #[test]
-fn network_convert_inspect_classifies_and_offers_real_capabilities() {
+fn dsgrid_exchange_inspect_classifies_and_offers_real_capabilities() {
     let workspace = workspace();
     let data = ok(&[
-        "network", "convert", "inspect", "--source", &workspace, "--output", "json",
+        "dsgrid-exchange",
+        "inspect",
+        "--source",
+        &workspace,
+        "--output",
+        "json",
     ]);
 
     let sources = data["sources"].as_array().expect("sources");
@@ -197,12 +215,17 @@ fn network_convert_inspect_classifies_and_offers_real_capabilities() {
 }
 
 #[test]
-fn network_convert_inspect_is_deterministic_over_a_directory() {
+fn dsgrid_exchange_inspect_is_deterministic_over_a_directory() {
     // The engine digests the member list, so directory iteration order must
     // not reach it. Two runs over the same tree must agree byte for byte.
     let workspace = workspace();
     let args = [
-        "network", "convert", "inspect", "--source", &workspace, "--output", "json",
+        "dsgrid-exchange",
+        "inspect",
+        "--source",
+        &workspace,
+        "--output",
+        "json",
     ];
     let first = ds(&args);
     let second = ds(&args);
@@ -392,7 +415,7 @@ fn pls_section_orientation_publishes_the_task_schema() {
 
 #[test]
 fn every_offline_command_is_available_without_any_engine_binary() {
-    // The `network` and `pls` domains link their engine, so they must work on
+    // The `dsgrid`, `dsgrid-exchange` and `pls` domains link their engine, so they must work on
     // a machine with no sidecar installed at all — that is the difference
     // between a linked crate and a called binary, and it should be visible in
     // `doctor`.
@@ -408,7 +431,7 @@ fn every_offline_command_is_available_without_any_engine_binary() {
 
     for command in envelope["data"]["commands"].as_array().expect("commands") {
         let id = command["id"].as_str().unwrap_or("");
-        if id.starts_with("network.") || id.starts_with("pls.") {
+        if id.starts_with("dsgrid.") || id.starts_with("pls.") {
             assert_eq!(
                 command["availability"], "available",
                 "`{id}` links its engine and must not depend on an installed binary"

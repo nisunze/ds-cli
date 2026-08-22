@@ -1,4 +1,4 @@
-//! `ds network inspect` — read a `.dsgrid` package's identity and inventory.
+//! `ds dsgrid inspect` — read a `.dsgrid` package's identity and inventory.
 //!
 //! This is the reference implementation of the CLI's bounded-output rule, and
 //! it is deliberately the first command in the product.
@@ -28,8 +28,8 @@ use serde_json::{Map, Value, json};
 const INCLUDE_CHOICES: &[&str] = &["tables", "members", "library", "extent"];
 
 pub static COMMAND: Command = Command {
-    id: "network.inspect",
-    path: &["network", "inspect"],
+    id: "dsgrid.inspect",
+    path: &["dsgrid", "inspect"],
     contract: 1,
     summary: "Identify a .dsgrid model and inventory what is in it.",
     purpose: "\
@@ -57,17 +57,17 @@ whether the model's tables had to be decoded to answer. `more` lists the \
 projections not requested and any collection that was truncated.",
     examples: &[
         Example {
-            command: "ds network inspect --model ./model.dsgrid",
+            command: "ds dsgrid inspect --model ./model.dsgrid",
             note: "Identity only. No tables are decoded.",
             runnable: false,
         },
         Example {
-            command: "ds network inspect --model ./model.dsgrid --include tables --output json",
+            command: "ds dsgrid inspect --model ./model.dsgrid --include tables --output json",
             note: "Row counts per canonical table, from the manifest.",
             runnable: false,
         },
         Example {
-            command: "ds network inspect --model ./model.dsgrid --include library --limit 10",
+            command: "ds dsgrid inspect --model ./model.dsgrid --include library --limit 10",
             note: "Structure types, cables and resources. Decodes the model.",
             runnable: false,
         },
@@ -109,7 +109,7 @@ projections not requested and any collection that was truncated.",
             remedy: "the package is damaged or predates this schema; re-export it",
         },
     ],
-    reference: Some("docs/reference/network.inspect.md"),
+    reference: Some("docs/reference/dsgrid.inspect.md"),
     availability: available,
 };
 

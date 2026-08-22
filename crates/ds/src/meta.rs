@@ -2,12 +2,12 @@
 //!
 //! `ds capabilities` is the machine face of the same tiered discovery `--help`
 //! gives a person, and it is deliberately *not* one catalog. A caller asking
-//! about Solar must not receive the network, PLS, QGIS and reporting
+//! about Solar must not receive the dsgrid, PLS, QGIS and reporting
 //! contracts as the price of the question. So the selector decides the tier:
 //!
 //!   ds capabilities                  the domain index — a few hundred bytes
-//!   ds capabilities network          one domain's command index
-//!   ds capabilities network.inspect  one complete descriptor
+//!   ds capabilities dsgrid          one domain's command index
+//!   ds capabilities dsgrid.inspect  one complete descriptor
 //!   ds capabilities --search "…"     ids and one-liners, nothing more
 //!
 //! Search returns identifiers and summaries only. The agent then asks for the
@@ -88,12 +88,12 @@ availability, inputs, refusals and examples.",
             runnable: true,
         },
         Example {
-            command: "ds capabilities network --output json",
+            command: "ds capabilities dsgrid --output json",
             note: "One domain's commands.",
             runnable: true,
         },
         Example {
-            command: "ds capabilities network.inspect --output json",
+            command: "ds capabilities dsgrid.inspect --output json",
             note: "One complete contract.",
             runnable: true,
         },

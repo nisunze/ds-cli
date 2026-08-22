@@ -1,4 +1,4 @@
-//! `ds network validate` — is this package sound, and is the model inside it
+//! `ds dsgrid validate` — is this package sound, and is the model inside it
 //! sound?
 //!
 //! Those are two questions and this command answers them separately, because
@@ -28,8 +28,8 @@ use serde_json::{Value, json};
 use crate::package;
 
 pub static COMMAND: Command = Command {
-    id: "network.validate",
-    path: &["network", "validate"],
+    id: "dsgrid.validate",
+    path: &["dsgrid", "validate"],
     contract: 1,
     summary: "Verify a .dsgrid package and validate the model inside it.",
     purpose: "\
@@ -51,7 +51,7 @@ are reported apart.",
 code, the table and entity concerned, and a message. `more.truncated` reports \
 any issues withheld by --limit.",
     examples: &[Example {
-        command: "ds network validate --model ./model.dsgrid --output json",
+        command: "ds dsgrid validate --model ./model.dsgrid --output json",
         note: "Exit 0 whether or not issues were found; read .data.model.valid.",
         runnable: false,
     }],
@@ -87,7 +87,7 @@ any issues withheld by --limit.",
             remedy: "pass a limit inside the range, or omit it for the default of 50",
         },
     ],
-    reference: Some("docs/reference/network.md"),
+    reference: Some("docs/reference/dsgrid.md"),
     availability: available,
 };
 

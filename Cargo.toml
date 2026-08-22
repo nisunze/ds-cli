@@ -15,8 +15,15 @@
 #                    executable and calling one named subcommand under
 #                    bounds. Separate so there is exactly one place a
 #                    process can be spawned from, and it can be audited.
-#   ds-cli-network   the network domain adapter. Links the authoritative
+#   ds-cli-dsgrid    the canonical-model domain. Links the authoritative
 #                    ds-network crates directly; owns no engineering logic.
+#   ds-cli-dsgrid-exchange
+#                    the exchange domain: classify, plan, convert. Split from
+#                    ds-cli-dsgrid because reading a model someone already has
+#                    and manufacturing a new one are different questions with
+#                    different blast radii — one is Discovery, the other
+#                    writes files — and because a caller who only wants model
+#                    identity must not link the conversion engine to get it.
 #   ds-cli-report    the reporter domain, over the `ds-report` process
 #                    contract its workspace deliberately published.
 #   ds-cli-solar     the solar domain, over the `ds-solar` process contract.
@@ -57,7 +64,8 @@ sha2 = "0.10"
 ds-cli-contract = { path = "crates/ds-cli-contract" }
 ds-cli-desktop = { path = "crates/ds-cli-desktop" }
 ds-cli-exec = { path = "crates/ds-cli-exec" }
-ds-cli-network = { path = "crates/ds-cli-network" }
+ds-cli-dsgrid = { path = "crates/ds-cli-dsgrid" }
+ds-cli-dsgrid-exchange = { path = "crates/ds-cli-dsgrid-exchange" }
 ds-cli-pls = { path = "crates/ds-cli-pls" }
 ds-cli-report = { path = "crates/ds-cli-report" }
 ds-cli-solar = { path = "crates/ds-cli-solar" }

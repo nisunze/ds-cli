@@ -132,7 +132,7 @@ fn root_help_names_no_command() {
     // "inspect" are ordinary English verbs, and a domain summary that says
     // "run them offline" would fail a test that is supposed to be about
     // *listing commands*. What must not appear at the root is a caller's next
-    // invocation — `solar run`, `network inspect` — because that is what
+    // invocation — `solar run`, `dsgrid inspect` — because that is what
     // listing a command actually looks like.
     let (root, _, _) = ds(&["--help"]);
     for command in every_command() {
@@ -292,7 +292,7 @@ fn errors_are_short() {
     // there. An agent that has to read a paragraph to learn a file was
     // missing has lost more context than the failure was worth.
     let (stdout, _, _) = ds(&[
-        "network",
+        "dsgrid",
         "inspect",
         "--model",
         "/definitely/not/here.dsgrid",
@@ -311,7 +311,7 @@ fn default_results_are_bounded() {
     // The default projection of a command over a real model must stay small.
     // Everything larger is opt-in through an explicit projection.
     let model = common::fixture();
-    let (stdout, stderr, code) = ds(&["network", "inspect", "--model", &model, "--output", "json"]);
+    let (stdout, stderr, code) = ds(&["dsgrid", "inspect", "--model", &model, "--output", "json"]);
     assert_eq!(code, 0, "inspect failed: {stdout}{stderr}");
     assert!(
         stdout.len() <= 1_500,

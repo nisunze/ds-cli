@@ -348,7 +348,8 @@ version = "0.1.0"
 dependencies = [
  "ds-cli-contract",
  "ds-cli-desktop",
- "ds-cli-network",
+ "ds-cli-dsgrid",
+ "ds-cli-dsgrid-exchange",
  "ds-cli-pls",
  "ds-cli-report",
  "ds-cli-solar",
@@ -374,21 +375,32 @@ dependencies = [
 ]
 
 [[package]]
-name = "ds-cli-exec"
-version = "0.1.0"
-dependencies = [
- "ds-cli-contract",
- "serde_json",
-]
-
-[[package]]
-name = "ds-cli-network"
+name = "ds-cli-dsgrid"
 version = "0.1.0"
 dependencies = [
  "ds-cli-contract",
  "ds-grid-engine",
  "ds-grid-exchange",
  "ds-grid-model",
+ "serde_json",
+]
+
+[[package]]
+name = "ds-cli-dsgrid-exchange"
+version = "0.1.0"
+dependencies = [
+ "ds-cli-contract",
+ "ds-grid-exchange",
+ "serde",
+ "serde_json",
+ "sha2",
+]
+
+[[package]]
+name = "ds-cli-exec"
+version = "0.1.0"
+dependencies = [
+ "ds-cli-contract",
  "serde_json",
 ]
 

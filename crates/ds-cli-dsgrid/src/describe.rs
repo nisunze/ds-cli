@@ -1,4 +1,4 @@
-//! `ds network describe` — the engine's own catalog of what it can do.
+//! `ds dsgrid describe` — the engine's own catalog of what it can do.
 //!
 //! `ds-grid-engine` describes itself: every journaled command, every
 //! operation, every projection, each with its parameters and effect class.
@@ -27,8 +27,8 @@ use serde_json::{Value, json};
 const KINDS: &[&str] = &["commands", "operations", "projections"];
 
 pub static COMMAND: Command = Command {
-    id: "network.describe",
-    path: &["network", "describe"],
+    id: "dsgrid.describe",
+    path: &["dsgrid", "describe"],
     contract: 1,
     summary: "List the grid engine's commands, operations and projections.",
     purpose: "\
@@ -52,12 +52,12 @@ effect class. With --id, that entry's complete descriptor including its \
 parameter list.",
     examples: &[
         Example {
-            command: "ds network describe --output json",
+            command: "ds dsgrid describe --output json",
             note: "The operation index.",
             runnable: true,
         },
         Example {
-            command: "ds network describe --kind commands --output json",
+            command: "ds dsgrid describe --kind commands --output json",
             note: "Journaled mutations only.",
             runnable: true,
         },
@@ -65,9 +65,9 @@ parameter list.",
     refusals: &[Refusal {
         code: "unknown_descriptor",
         when: "--id names an entry this engine does not publish",
-        remedy: "run `ds network describe --kind <kind>` for the ids it does",
+        remedy: "run `ds dsgrid describe --kind <kind>` for the ids it does",
     }],
-    reference: Some("docs/reference/network.md"),
+    reference: Some("docs/reference/dsgrid.md"),
     availability: available,
 };
 
@@ -115,7 +115,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
                 "journaled": entry["journaled"],
                 "summary": entry["summary"],
             })).collect::<Vec<_>>(),
-            "more": { "next": "ds network describe --kind <kind> --id <id>" },
+            "more": { "next": "ds dsgrid describe --kind <kind> --id <id>" },
         }));
     };
 
@@ -132,7 +132,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             Some(suggestion) => failure = failure.remedy(format!("did you mean `{suggestion}`?")),
             None => {
                 failure = failure.remedy(format!(
-                    "run `ds network describe --kind {kind}` for the ids it publishes"
+                    "run `ds dsgrid describe --kind {kind}` for the ids it publishes"
                 ))
             }
         }
@@ -140,7 +140,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         // largest response in the domain.
         let (shown, withheld) = crate::package::take(known, 40);
         return Err(failure
-            .next(format!("ds network describe --kind {kind}"))
+            .next(format!("ds dsgrid describe --kind {kind}"))
             .detail(json!({ "ids": shown, "withheld": withheld })));
     };
 
@@ -201,6 +201,6 @@ pub fn render(data: &Value) -> String {
             },
         ));
     }
-    out.push_str("\nnext: ds network describe --kind <kind> --id <id>\n");
+    out.push_str("\nnext: ds dsgrid describe --kind <kind> --id <id>\n");
     out
 }

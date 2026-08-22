@@ -6,7 +6,7 @@ asserted as a fact.
 
 **Status of the migration:** Go is gone from the desktop package and from the
 local development launcher. `ds` ships as a core bundled component of the
-Linux `.deb`. Five domains and sixteen domain commands are real. The
+Linux `.deb`. Six domains and nineteen domain commands are real. The
 hosted-`ds-mcp` release gate is removed. The old repository is retained only as
 historical source material; no shipping, development, or hosted runtime path
 depends on it.
@@ -98,7 +98,7 @@ Classification of the whole `ds-mcp` registry is in progress. What is settled:
 
 ### `ds-cli`
 
-Five domains, sixteen domain commands plus three root metadata commands.
+Six domains, nineteen domain commands plus three root metadata commands.
 `solar` and `report` reach their owners through the typed process contracts
 those workspaces published; see
 [`../contracts/process-boundary-contract.md`](../contracts/process-boundary-contract.md).
@@ -223,13 +223,62 @@ entirely, and the `roles/run.invoker` grant at
 *This is the slice that must not be attempted before the preflight rewrite is
 understood* — see above.
 
+### Slice 5 — the `dsgrid` / `dsgrid-exchange` split *(done)*
+
+The domain `network` is renamed `dsgrid`, and conversion is lifted out of it
+into a new `dsgrid-exchange` domain carrying `inspect`, `plan` and `convert`.
+
+*Why the rename:* the domain was never about networking. It reads and writes
+`.dsgrid` packages, and one of its commands classified foreign source files —
+a different question with a different blast radius. `network` named neither.
+
+*Why the split is by effect, not subject:* every command left in `dsgrid` is
+`discovery` or `read_only`. `dsgrid-exchange convert` is the only command in
+either domain that writes a file. Folding them together would put "tell me
+what this package is" and "manufacture a new one" behind one help screen.
+
+*What this closed:* `docs/reference/network.md` recorded `convert plan` and
+`convert run` as deliberately withheld, because a JSON request document for
+`ConversionRequest` would be a hand-authored adapter shape the engine could
+not check. That objection was about a *process* boundary and does not apply
+to a linked crate: `request.rs` builds a `ConversionRequest` out of the
+engine's own types, so the compiler is the check that was missing.
+
+*Proved:*
+
+| Claim | Evidence |
+|---|---|
+| The whole suite still passes | `cargo test --workspace --all-features` → 52 tests, 0 failures |
+| Root help still fits its budget | `context_budget.rs` at 6 domains; the two new summaries were shortened to pay for the wider name column, rather than the budget being raised |
+| Refusal coverage still holds | `refusal_coverage.rs`; the three closed-set guards were collapsed into one `unmapped_choice` registered as caller-unreachable, alongside its precedent `unmapped_task` |
+| `plan` reaches the real engine | `ds dsgrid-exchange plan` over `ds-network/fixtures/pls-public/humble-pole/workspace` → blocked, naming the engine's own missing-CRS reason; with `--crs EPSG:32735` → executable, 1 stage, 1 artifact |
+| `convert` writes and round-trips | same source `--target dsgrid --out …` → `workspace.dsgrid` (71 653 B) + `exchange-report.json`; `ds dsgrid validate` on the result → container verified, 60 members, model valid, 0 issues |
+| It never overwrites | re-running the same conversion into the same directory → `output_exists`, class `conflict`, exit 5 |
+
+*Also fixed, pre-existing:* `domain_smoke.rs` built fixture paths as
+`format!("{}/{leaf}", workspace())`. `workspace()` canonicalizes, which on
+Windows yields an extended-length `\\?\C:\…` path — a form the OS passes to
+the filesystem without normalization, so the forward slash was an ordinary
+character. All four PLS tests failed `source_not_found` against fixtures that
+were present. Now joined with `PathBuf::push`.
+
+*Not proved:* any `--mode combine` or `--mode compose` conversion, any GIS
+target end to end, and the Windows packaging build.
+
 ## Open questions for the operator
 
-1. **`ds-grid` in the end state.** It is a 5 253-line argv surface with 45
-   subcommands. `ds` can call it as a typed process boundary, or its
-   capabilities can migrate into `ds` domains over time. The second is more
-   work and is the better end state; the first is available immediately. No
-   decision is needed to continue — slices 2 and 3 touch neither.
+1. **`ds-grid` in the end state.** *Settled: migrate, do not call.* It is a
+   5 253-line argv surface with 45 subcommands. The operator chose the second
+   option — its capabilities migrate into `ds` domains over time rather than
+   `ds` shelling out to it as a typed process boundary. `ds-grid` is a pure
+   library surface behind an argv front end, so calling it would have added a
+   process boundary its owner never asked for, and would have made the CLI's
+   own `--help` a second description of an interface it does not control.
+
+   The first tranche is done: see *Slice 5* below. What remains of `ds-grid`
+   is recorded as contract-1 gaps in
+   [`../reference/dsgrid-exchange.md`](../reference/dsgrid-exchange.md) rather
+   than left implicit.
 2. **Hosted `ds-mcp`.** There is no Terraform for it, but the release preflight
    demands a live canary revision. Was the service created out of band, and is
    it still serving anything?

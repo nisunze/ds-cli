@@ -3,8 +3,8 @@
 //! Every command in this domain starts by turning a path into bytes and then
 //! into either a manifest or a decoded snapshot. Doing that in one place is
 //! not only less code — it is the only way the domain's refusals stay
-//! identical. A caller who learns `model_not_found` from `ds network inspect`
-//! must get the same code, with the same remedy, from `ds network validate`.
+//! identical. A caller who learns `model_not_found` from `ds dsgrid inspect`
+//! must get the same code, with the same remedy, from `ds dsgrid validate`.
 
 use std::path::Path;
 
@@ -116,7 +116,7 @@ pub fn read_manifest(raw_path: &str, bytes: &[u8]) -> Result<PackageManifest, Fa
 ///
 /// `unpack` verifies every member against the manifest's attestations before
 /// returning, so a package that decodes here has already proved its bytes
-/// match what it claims. That is why `ds network validate` can report the
+/// match what it claims. That is why `ds dsgrid validate` can report the
 /// container and the model as two separate answers.
 pub fn decode(raw_path: &str, bytes: &[u8]) -> Result<GridPackage, Failure> {
     unpack(bytes).map_err(|error| {

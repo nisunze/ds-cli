@@ -33,26 +33,43 @@ pub struct Registered {
 /// Every domain, in root-help order. Static because the table is the
 /// interface: it is walked by dispatch, by help and by the contract tests,
 /// and all three must be looking at the same thing.
-static NETWORK_ENTRIES: &[Entry] = &[
+static DSGRID_ENTRIES: &[Entry] = &[
     Entry {
-        command: &ds_cli_network::inspect::COMMAND,
-        handler: ds_cli_network::inspect::run,
-        render: ds_cli_network::inspect::render,
+        command: &ds_cli_dsgrid::inspect::COMMAND,
+        handler: ds_cli_dsgrid::inspect::run,
+        render: ds_cli_dsgrid::inspect::render,
     },
     Entry {
-        command: &ds_cli_network::validate::COMMAND,
-        handler: ds_cli_network::validate::run,
-        render: ds_cli_network::validate::render,
+        command: &ds_cli_dsgrid::validate::COMMAND,
+        handler: ds_cli_dsgrid::validate::run,
+        render: ds_cli_dsgrid::validate::render,
     },
     Entry {
-        command: &ds_cli_network::convert::COMMAND,
-        handler: ds_cli_network::convert::run,
-        render: ds_cli_network::convert::render,
+        command: &ds_cli_dsgrid::describe::COMMAND,
+        handler: ds_cli_dsgrid::describe::run,
+        render: ds_cli_dsgrid::describe::render,
+    },
+];
+
+/// The exchange domain lists its commands in the order they are meant to be
+/// called: classify, then plan, then convert. Domain help prints this order
+/// verbatim, so the index doubles as the procedure — a reader who works down
+/// the list is following the safe sequence rather than reconstructing it.
+static DSGRID_EXCHANGE_ENTRIES: &[Entry] = &[
+    Entry {
+        command: &ds_cli_dsgrid_exchange::inspect::COMMAND,
+        handler: ds_cli_dsgrid_exchange::inspect::run,
+        render: ds_cli_dsgrid_exchange::inspect::render,
     },
     Entry {
-        command: &ds_cli_network::describe::COMMAND,
-        handler: ds_cli_network::describe::run,
-        render: ds_cli_network::describe::render,
+        command: &ds_cli_dsgrid_exchange::plan::COMMAND,
+        handler: ds_cli_dsgrid_exchange::plan::run,
+        render: ds_cli_dsgrid_exchange::plan::render,
+    },
+    Entry {
+        command: &ds_cli_dsgrid_exchange::convert::COMMAND,
+        handler: ds_cli_dsgrid_exchange::convert::run,
+        render: ds_cli_dsgrid_exchange::convert::render,
     },
 ];
 
@@ -133,8 +150,12 @@ static DESKTOP_ENTRIES: &[Entry] = &[Entry {
 
 static DOMAINS: &[Registered] = &[
     Registered {
-        domain: &ds_cli_network::DOMAIN,
-        entries: NETWORK_ENTRIES,
+        domain: &ds_cli_dsgrid::DOMAIN,
+        entries: DSGRID_ENTRIES,
+    },
+    Registered {
+        domain: &ds_cli_dsgrid_exchange::DOMAIN,
+        entries: DSGRID_EXCHANGE_ENTRIES,
     },
     Registered {
         domain: &ds_cli_pls::DOMAIN,
@@ -196,7 +217,7 @@ pub fn find_by_path(tokens: &[String]) -> Option<(&'static Entry, usize)> {
     best
 }
 
-/// Resolve a dotted command id such as `network.inspect`.
+/// Resolve a dotted command id such as `dsgrid.inspect`.
 pub fn find_by_id(id: &str) -> Option<&'static Entry> {
     DOMAINS
         .iter()

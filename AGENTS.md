@@ -51,7 +51,7 @@ the problem at the wrong tier.
 Two routes, and the choice is not stylistic.
 
 **Link the crate** when it is a pure library with a clean boundary — as
-`ds-cli-network` links `ds-grid-model` and `ds-grid-exchange`, the same crates
+`ds-cli-dsgrid` links `ds-grid-model` and `ds-grid-exchange`, the same crates
 the Tauri desktop links. Use a path dependency to the sibling repository,
 declared in the workspace `Cargo.toml`.
 

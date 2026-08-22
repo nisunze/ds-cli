@@ -1,6 +1,6 @@
 [package]
-name = "ds-cli-network"
-description = "The `ds network` domain: the canonical grid model surface, over the authoritative ds-network crates."
+name = "ds-cli-dsgrid"
+description = "The `ds dsgrid` domain: canonical `.dsgrid` model identity, inventory and validation, over the authoritative ds-network crates."
 version.workspace = true
 edition.workspace = true
 license.workspace = true

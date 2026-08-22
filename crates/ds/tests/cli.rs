@@ -42,28 +42,21 @@ fn ds(args: &[&str]) -> Run {
 fn exit_codes_map_to_their_classes() {
     let model = common::fixture();
     let cases: &[(&str, i32, &[&str])] = &[
-        ("success", 0, &["network", "inspect", "--model", "MODEL"]),
+        ("success", 0, &["dsgrid", "inspect", "--model", "MODEL"]),
         ("unknown domain", 2, &["nosuchdomain"]),
-        ("unknown command", 2, &["network", "nosuchcommand"]),
-        ("unknown flag", 2, &["network", "inspect", "--nope", "x"]),
-        ("missing required input", 2, &["network", "inspect"]),
-        ("missing value", 2, &["network", "inspect", "--model"]),
+        ("unknown command", 2, &["dsgrid", "nosuchcommand"]),
+        ("unknown flag", 2, &["dsgrid", "inspect", "--nope", "x"]),
+        ("missing required input", 2, &["dsgrid", "inspect"]),
+        ("missing value", 2, &["dsgrid", "inspect", "--model"]),
         (
             "invalid choice",
             2,
-            &[
-                "network",
-                "inspect",
-                "--model",
-                "MODEL",
-                "--include",
-                "nope",
-            ],
+            &["dsgrid", "inspect", "--model", "MODEL", "--include", "nope"],
         ),
         (
             "file not found",
             2,
-            &["network", "inspect", "--model", "/no/such/file.dsgrid"],
+            &["dsgrid", "inspect", "--model", "/no/such/file.dsgrid"],
         ),
     ];
 
@@ -95,8 +88,8 @@ fn exit_code_and_envelope_class_always_agree() {
     // `error.class` must never reach different conclusions.
     let cases: &[&[&str]] = &[
         &["nosuchdomain"],
-        &["network", "inspect"],
-        &["network", "inspect", "--model", "/no/such/file.dsgrid"],
+        &["dsgrid", "inspect"],
+        &["dsgrid", "inspect", "--model", "/no/such/file.dsgrid"],
         &["capabilities", "nosuchselector"],
     ];
     let expected = [
@@ -134,12 +127,12 @@ fn exit_code_and_envelope_class_always_agree() {
 #[test]
 fn success_envelope_is_stable() {
     let model = common::fixture();
-    let run = ds(&["network", "inspect", "--model", &model, "--output", "json"]);
+    let run = ds(&["dsgrid", "inspect", "--model", &model, "--output", "json"]);
     assert_eq!(run.code, 0, "{}{}", run.stdout, run.stderr);
 
     assert_eq!(run.envelope["v"], 1, "envelope version changed");
     assert_eq!(run.envelope["status"], "ok");
-    assert_eq!(run.envelope["command"], "network.inspect");
+    assert_eq!(run.envelope["command"], "dsgrid.inspect");
     assert_eq!(run.envelope["contract"], 1);
     assert!(run.envelope["data"].is_object());
     // `more` is absent when there is nothing more to say. Absence is the
@@ -150,7 +143,7 @@ fn success_envelope_is_stable() {
 #[test]
 fn error_envelope_is_stable() {
     let run = ds(&[
-        "network",
+        "dsgrid",
         "inspect",
         "--model",
         "/no/such/file.dsgrid",
@@ -159,7 +152,7 @@ fn error_envelope_is_stable() {
     ]);
     assert_eq!(run.envelope["v"], 1);
     assert_eq!(run.envelope["status"], "error");
-    assert_eq!(run.envelope["command"], "network.inspect");
+    assert_eq!(run.envelope["command"], "dsgrid.inspect");
     let error = &run.envelope["error"];
     assert_eq!(error["class"], "invalid_input");
     assert_eq!(error["code"], "model_not_found");
@@ -173,7 +166,7 @@ fn error_envelope_is_stable() {
 #[test]
 fn machine_output_is_stdout_and_diagnostics_are_stderr() {
     let model = common::fixture();
-    let run = ds(&["network", "inspect", "--model", &model, "--output", "json"]);
+    let run = ds(&["dsgrid", "inspect", "--model", &model, "--output", "json"]);
     assert!(
         run.stderr.is_empty(),
         "success wrote to stderr: {}",
@@ -183,12 +176,12 @@ fn machine_output_is_stdout_and_diagnostics_are_stderr() {
 
     // A refusal in JSON mode is a result a caller must parse, so it goes to
     // stdout too — stdout stays parseable in every outcome.
-    let failed = ds(&["network", "inspect", "--model", "/nope", "--output", "json"]);
+    let failed = ds(&["dsgrid", "inspect", "--model", "/nope", "--output", "json"]);
     serde_json::from_str::<Value>(&failed.stdout).expect("refusal is on stdout as JSON");
 
     // In human mode the same refusal goes to stderr, so a person piping
     // stdout gets only answers.
-    let human = ds(&["network", "inspect", "--model", "/nope"]);
+    let human = ds(&["dsgrid", "inspect", "--model", "/nope"]);
     assert!(
         human.stdout.is_empty(),
         "human-mode refusal polluted stdout"
@@ -238,7 +231,7 @@ fn build_identity_is_verifiable() {
 #[test]
 fn inspect_reports_the_engine_s_own_identity() {
     let model = common::fixture();
-    let run = ds(&["network", "inspect", "--model", &model, "--output", "json"]);
+    let run = ds(&["dsgrid", "inspect", "--model", &model, "--output", "json"]);
     assert_eq!(run.code, 0, "{}{}", run.stdout, run.stderr);
     let data = &run.envelope["data"];
 
@@ -270,7 +263,7 @@ fn projections_are_opt_in_and_report_their_cost() {
     let model = common::fixture();
 
     let manifest_only = ds(&[
-        "network",
+        "dsgrid",
         "inspect",
         "--model",
         &model,
@@ -287,7 +280,7 @@ fn projections_are_opt_in_and_report_their_cost() {
     assert!(manifest_only.envelope["data"]["tables"].is_object());
 
     let decoded = ds(&[
-        "network",
+        "dsgrid",
         "inspect",
         "--model",
         &model,
@@ -317,7 +310,7 @@ fn truncation_is_always_visible() {
     // below the real count and the response must say what it withheld.
     let model = common::fixture();
     let run = ds(&[
-        "network",
+        "dsgrid",
         "inspect",
         "--model",
         &model,
@@ -345,7 +338,7 @@ fn continuation_names_what_else_exists() {
     // The response tells a caller what it did not ask for, so discovering the
     // rest never costs another round-trip through help.
     let model = common::fixture();
-    let run = ds(&["network", "inspect", "--model", &model, "--output", "json"]);
+    let run = ds(&["dsgrid", "inspect", "--model", &model, "--output", "json"]);
     let available = run.envelope["data"]["more"]["available_projections"]
         .as_array()
         .expect("unrequested projections are named");
@@ -359,7 +352,7 @@ fn bounds_are_enforced_not_merely_documented() {
     let model = common::fixture();
     for (limit, code) in [("0", 2), ("abc", 2), ("999999", 2)] {
         let run = ds(&[
-            "network", "inspect", "--model", &model, "--limit", limit, "--output", "json",
+            "dsgrid", "inspect", "--model", &model, "--limit", limit, "--output", "json",
         ]);
         assert_eq!(
             run.code, code,
@@ -454,17 +447,17 @@ fn an_explicit_stale_descriptor_never_leaks_its_secret() {
 fn near_misses_are_suggested() {
     // An agent that guessed a name should be corrected, not sent back to
     // help. This is the cheapest possible recovery.
-    let run = ds(&["netwrk", "--output", "json"]);
+    let run = ds(&["dsgrd", "--output", "json"]);
     assert_eq!(run.envelope["error"]["code"], "unknown_domain");
     assert!(
         run.envelope["error"]["remedy"]
             .as_str()
             .expect("remedy")
-            .contains("network"),
+            .contains("dsgrid"),
         "no suggestion offered for a one-character typo"
     );
 
-    let run = ds(&["network", "inspct", "--output", "json"]);
+    let run = ds(&["dsgrid", "inspct", "--output", "json"]);
     assert_eq!(run.envelope["error"]["code"], "unknown_command");
     assert!(
         run.envelope["error"]["remedy"]
@@ -483,11 +476,11 @@ fn help_is_reachable_by_every_spelling_an_agent_will_try() {
     let spellings: &[&[&str]] = &[
         &["--help"],
         &["help"],
-        &["network", "--help"],
-        &["help", "network"],
-        &["network", "inspect", "--help"],
-        &["help", "network", "inspect"],
-        &["network"],
+        &["dsgrid", "--help"],
+        &["help", "dsgrid"],
+        &["dsgrid", "inspect", "--help"],
+        &["help", "dsgrid", "inspect"],
+        &["dsgrid"],
         &[],
     ];
     for args in spellings {
@@ -510,17 +503,17 @@ fn help_is_reachable_by_every_spelling_an_agent_will_try() {
 #[test]
 fn command_help_in_json_is_the_machine_descriptor() {
     // A caller wanting a schema must never have to parse a help screen.
-    let run = ds(&["network", "inspect", "--help", "--output", "json"]);
+    let run = ds(&["dsgrid", "inspect", "--help", "--output", "json"]);
     assert_eq!(run.code, 0);
     assert_eq!(run.envelope["status"], "ok");
-    assert_eq!(run.envelope["data"]["id"], "network.inspect");
+    assert_eq!(run.envelope["data"]["id"], "dsgrid.inspect");
     assert!(run.envelope["data"]["inputs"].is_array());
     assert!(run.envelope["data"]["refusals"].is_array());
 }
 
 #[test]
 fn output_format_is_validated() {
-    let run = ds(&["--output", "yaml", "network", "inspect"]);
+    let run = ds(&["--output", "yaml", "dsgrid", "inspect"]);
     assert_eq!(run.code, 2);
     assert!(run.stderr.contains("human") && run.stderr.contains("json"));
 }
@@ -533,7 +526,7 @@ fn output_is_byte_identical_across_runs() {
     // CLI emits is either in the domain's canonical order or lexical.
     let model = common::fixture();
     let args = [
-        "network",
+        "dsgrid",
         "inspect",
         "--model",
         &model,

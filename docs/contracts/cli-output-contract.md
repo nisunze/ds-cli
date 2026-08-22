@@ -23,7 +23,7 @@ Success:
 ```json
 {
   "v": 1,
-  "command": "network.inspect",
+  "command": "dsgrid.inspect",
   "contract": 1,
   "status": "ok",
   "data": { }
@@ -35,7 +35,7 @@ Failure:
 ```json
 {
   "v": 1,
-  "command": "network.inspect",
+  "command": "dsgrid.inspect",
   "contract": 1,
   "status": "error",
   "error": {
@@ -44,7 +44,7 @@ Failure:
     "message": "cannot read `/no/such/file.dsgrid`",
     "retryable": false,
     "remedy": "check the path; --model takes a .dsgrid file",
-    "next": ["ds network inspect --help"],
+    "next": ["ds dsgrid inspect --help"],
     "detail": { "detail": "entity not found" }
   }
 }
@@ -151,7 +151,7 @@ missing required input is an error naming what is missing. Every one is exit
 2 with a stable code.
 
 Operands are used only where the operand *is* the subject —
-`ds capabilities network`. Commands taking engineering inputs use named flags,
+`ds capabilities dsgrid`. Commands taking engineering inputs use named flags,
 so position never has to be guessed.
 
 ## Determinism

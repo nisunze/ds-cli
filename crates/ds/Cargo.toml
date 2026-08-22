@@ -15,7 +15,8 @@ path = "src/main.rs"
 [dependencies]
 ds-cli-contract = { workspace = true }
 ds-cli-desktop = { workspace = true }
-ds-cli-network = { workspace = true }
+ds-cli-dsgrid = { workspace = true }
+ds-cli-dsgrid-exchange = { workspace = true }
 ds-cli-pls = { workspace = true }
 ds-cli-report = { workspace = true }
 ds-cli-solar = { workspace = true }

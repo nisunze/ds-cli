@@ -12,11 +12,12 @@ USAGE
   ds <domain> <command> [--flags]
 
 DOMAINS
-  network  Canonical grid models: identity, inventory and validation.
-  pls      PLS-CADD workspaces: structures, capacity, references, DONs.
-  solar    Solar batches: prepare inputs, run them offline, verify weather.
-  report   Deliverables: transformer and combined report artifacts.
-  desktop  The paired DS GridDesign session: pairing, sign-in, project.
+  dsgrid           Canonical .dsgrid models: identity, inventory, validation.
+  dsgrid-exchange  Import, export, compose: classify, plan, convert.
+  pls              PLS-CADD workspaces: structures, capacity, references, DONs.
+  solar            Solar batches: prepare inputs, run them offline, verify weather.
+  report           Deliverables: transformer and combined report artifacts.
+  desktop          The paired DS GridDesign session: pairing, sign-in, project.
 
 DISCOVERY
   ds <domain> --help             commands in one domain
@@ -74,18 +75,18 @@ Start here. Three calls and you have a complete contract:
 
 ```bash
 ds capabilities --output json                    # which domains exist
-ds capabilities network --output json            # which commands, and can they run
-ds capabilities network.inspect --output json    # inputs, effects, refusals, examples
+ds capabilities dsgrid --output json            # which commands, and can they run
+ds capabilities dsgrid.inspect --output json    # inputs, effects, refusals, examples
 ```
 
 Then invoke, and branch on the envelope:
 
 ```bash
-ds network inspect --model ./model.dsgrid --output json
+ds dsgrid inspect --model ./model.dsgrid --output json
 ```
 
 ```json
-{"v":1,"command":"network.inspect","contract":1,"status":"ok","data":{ }}
+{"v":1,"command":"dsgrid.inspect","contract":1,"status":"ok","data":{ }}
 ```
 
 Rules you can rely on:
@@ -135,7 +136,12 @@ crates/
                     can be spawned, and the only way to reach a sibling
                     DS executable.
   ds-cli-desktop    the paired-desktop authority surface.
-  ds-cli-network    the network domain, linking ds-network's crates.
+  ds-cli-dsgrid     the canonical-model domain, linking ds-network's
+                    crates. Discovery and read-only throughout.
+  ds-cli-dsgrid-exchange
+                    classify, plan, convert. Split from ds-cli-dsgrid by
+                    effect: it holds the only command in either that
+                    writes a file.
   ds-cli-pls        the PLS-CADD domain, over ds-grid-tasks' typed tasks.
   ds-cli-solar      the solar domain, over the ds-solar contract.
   ds-cli-report     the reporter domain, over the ds-report contract.
@@ -151,7 +157,7 @@ implementation would be a second answer to a question that must have one.
 `ds` reaches an owner one of two ways, and the choice is not stylistic:
 
 - **Link the crate** where it is a pure library with a clean boundary.
-  `ds network inspect` calls `ds_grid_exchange` and `ds_grid_model` — the same
+  `ds dsgrid inspect` calls `ds_grid_exchange` and `ds_grid_model` — the same
   functions the desktop application links.
 - **Call the typed process contract** where the owning workspace deliberately
   chose process separation and wrote down why. `ds-report` and `ds-solar` are
@@ -170,11 +176,11 @@ unrelated engines" is a structural property rather than a promise.
 
 ## Status
 
-Five domains, nineteen commands.
+Six domains, nineteen domain commands plus three root metadata commands.
 
-`network` and `pls` **link** the authoritative `ds-network` crates, so they
-work on a machine with no sidecar installed and an empty `PATH` — asserted by
-`domain_smoke.rs`. `solar` and `report` **call** the typed process contracts
+`dsgrid`, `dsgrid-exchange` and `pls` **link** the authoritative
+`ds-network` crates, so they work on a machine with no sidecar installed and
+an empty `PATH` — asserted by `domain_smoke.rs`. `solar` and `report` **call** the typed process contracts
 their workspaces published, and report `unavailable` with a remedy when those
 binaries are absent. `desktop` reaches the paired application session.
 
@@ -195,8 +201,9 @@ fallback.
 | [`docs/contracts/discovery-contract.md`](docs/contracts/discovery-contract.md) | tiers, byte budgets, availability |
 | [`docs/contracts/cli-output-contract.md`](docs/contracts/cli-output-contract.md) | envelope, exit codes, effects, authority |
 | [`docs/contracts/process-boundary-contract.md`](docs/contracts/process-boundary-contract.md) | when to link, when to call, and the rules for calling |
-| [`docs/reference/network.md`](docs/reference/network.md) | validate's two questions, the engine catalog, convert inspect |
-| [`docs/reference/network.inspect.md`](docs/reference/network.inspect.md) | the `.dsgrid` read, and its cost model |
+| [`docs/reference/dsgrid.md`](docs/reference/dsgrid.md) | validate's two questions, and the engine catalog |
+| [`docs/reference/dsgrid-exchange.md`](docs/reference/dsgrid-exchange.md) | why the sequence is the contract, the write rules, contract-1 gaps |
+| [`docs/reference/dsgrid.inspect.md`](docs/reference/dsgrid.inspect.md) | the `.dsgrid` read, and its cost model |
 | [`docs/reference/pls.md`](docs/reference/pls.md) | digest pinning, task bounds, why a task's code stays in `detail` |
 | [`docs/reference/report.md`](docs/reference/report.md) | why it calls a binary; the must-not-exist and blockers rules |
 | [`docs/reference/solar.md`](docs/reference/solar.md) | the two-phase split, and why the token is never a flag |

@@ -1,6 +1,6 @@
-# `ds network inspect` — reference
+# `ds dsgrid inspect` — reference
 
-Tier-4 reference. `ds network inspect --help` is the contract; this document
+Tier-4 reference. `ds dsgrid inspect --help` is the contract; this document
 explains the parts a contract cannot.
 
 ## What it is for
@@ -124,6 +124,6 @@ caller receives a different answer rather than a disagreement.
 
 ## Related
 
-- `ds network inspect --help` — the contract
+- `ds dsgrid inspect --help` — the contract
 - `docs/contracts/cli-output-contract.md` — envelope and exit codes
 - `ds-network/docs/contracts/` — the `.dsgrid` format's own contracts

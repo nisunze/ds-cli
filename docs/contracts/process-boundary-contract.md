@@ -8,7 +8,7 @@
 
 | Route | When | Example |
 |---|---|---|
-| **Link the crate** | the owner is a pure library with a clean boundary | `ds network` links `ds-grid-model`, `ds-grid-exchange` — the same crates `ds-web/src-tauri` links |
+| **Link the crate** | the owner is a pure library with a clean boundary | `ds dsgrid` links `ds-grid-model`, `ds-grid-exchange` — the same crates `ds-web/src-tauri` links |
 | **Call the binary** | the owning workspace deliberately chose process separation and wrote down why | `ds report` → `ds-report`; `ds solar` → `ds-solar` |
 
 The choice belongs to the owning workspace, not to convenience. Three typed

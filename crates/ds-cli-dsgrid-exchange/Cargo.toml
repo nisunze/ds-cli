@@ -1,0 +1,19 @@
+[package]
+name = "ds-cli-dsgrid-exchange"
+description = "The `ds dsgrid-exchange` domain: classify sources, plan a conversion, and execute it into durable artifacts."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[dependencies]
+ds-cli-contract = { workspace = true }
+# `ds-grid-exchange` owns classification, the capability matrix, planning and
+# execution. This crate loads bytes, maps refusals and shapes a bounded
+# projection; it decides nothing about what a conversion means.
+ds-grid-exchange = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+sha2 = { workspace = true }

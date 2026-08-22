@@ -24,8 +24,8 @@ The machine face is the same tiers under one command:
 
 ```bash
 ds capabilities                    # tier 1 — domain index
-ds capabilities network            # tier 2 — one domain's commands
-ds capabilities network.inspect    # tier 3 — one full descriptor
+ds capabilities dsgrid            # tier 2 — one domain's commands
+ds capabilities dsgrid.inspect    # tier 3 — one full descriptor
 ds capabilities --search "text"    # ids and one-liners, nothing more
 ```
 
@@ -72,7 +72,7 @@ command's full contract in three calls totalling ~3.1 KB of JSON (336 + 315 +
 ## Domain discovery must not probe other domains
 
 Resolving one domain's availability may not initialize, spawn, or reach into
-another domain's engine. `ds network --help` performs no desktop lookup;
+another domain's engine. `ds dsgrid --help` performs no desktop lookup;
 `ds desktop --help` links no grid engine at runtime.
 
 Structurally: each domain is its own crate, and `availability` is a plain
@@ -110,7 +110,7 @@ useful projection and names the rest:
 Truncation is always visible. A silently shortened list reads as a complete
 one, which is worse than refusing.
 
-Where a projection is expensive, the response says so — `network inspect`
+Where a projection is expensive, the response says so — `dsgrid inspect`
 reports `decoded: true` only when it had to decode the model's tables.
 
 ## Help and machine descriptors come from one declaration
