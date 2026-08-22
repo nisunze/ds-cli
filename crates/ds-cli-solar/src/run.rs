@@ -1,8 +1,9 @@
-//! `ds solar run` — run prepared cities, offline.
+//! `ds solar run` — run caller-supplied prepared cities, offline.
 //!
 //! The engine guarantees this performs no intake and no network call of any
-//! kind. That guarantee is the reason `prepare` and `run` are separate
-//! commands here rather than phases of one: a caller reading
+//! kind. Its artifact preparation and run phases are deliberately separate:
+//! this adapter exposes the offline run phase only, while product preparation
+//! remains at the paired desktop/cache boundary. A caller reading
 //! `authority: none` and `network: no` on this contract is reading something
 //! the engine actually enforces.
 
@@ -22,12 +23,12 @@ pub static COMMAND: Command = Command {
     id: "solar.run",
     path: &["solar", "run"],
     contract: 1,
-    summary: "Run prepared solar cities. Never touches the network.",
+    summary: "Run externally prepared Solar artifacts offline.",
     purpose: "\
-Executes a prepared solar batch and writes results, the batch document and any \
-charts into an output directory. It performs no intake and no network call of \
-any kind — it accepts only inputs `ds solar prepare` already committed. A long \
-run is compute, never a stalled request.",
+Executes a caller-supplied prepared Solar batch and writes results, the batch \
+document and any charts into an output directory. It performs no intake and no \
+network call of any kind. This is the headless artifact route; for the paired \
+desktop product lifecycle use `ds solar run start` after `ds solar prepare`.",
     effect: Effect::LocalFileWrite,
     authority: Authority::None,
     execution: Execution::Sync,
@@ -35,7 +36,7 @@ run is compute, never a stalled request.",
         Arg::value(
             "prepared",
             "<dir>",
-            "Directory of prepared inputs, as written by prepare.",
+            "Directory of prepared inputs from the ds-solar artifact contract.",
         )
         .required(),
         Arg::value(
@@ -70,7 +71,7 @@ run is compute, never a stalled request.",
             runnable: false,
         },
         Example {
-            command: "ds solar run --prepared ./prepared --city kigali --concurrency 1 --output json",
+            command: "ds solar run --prepared ./prepared --out ./results --city kigali --concurrency 1 --output json",
             note: "One city, strictly serial.",
             runnable: false,
         },
@@ -84,7 +85,7 @@ run is compute, never a stalled request.",
         Refusal {
             code: "prepared_not_found",
             when: "--prepared does not name a directory",
-            remedy: "run `ds solar prepare --out <dir>` first",
+            remedy: "supply a prepared artifact directory produced by ds-solar",
         },
         Refusal {
             code: "invalid_concurrency",
@@ -122,8 +123,8 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             "prepared_not_found",
             format!("`{prepared}` is not a directory of prepared inputs"),
         )
-        .remedy("run `ds solar prepare --out <dir>` first")
-        .next("ds solar prepare --help"));
+        .remedy("supply a prepared artifact directory produced by ds-solar")
+        .next("ds solar run --help"));
     }
 
     let concurrency = inputs.value("concurrency").unwrap_or("10");

@@ -1,22 +1,20 @@
-//! `ds solar` — solar batches, over the `ds-solar` process contract.
+//! `ds solar` — paired product lifecycle plus headless artifact runner.
 //!
-//! The `ds-solar` binary is one of three adapters over the same solar
-//! runtime, and it models the same two-phase flow the product does. That
-//! split is the domain's central rule, and this domain preserves it rather
-//! than smoothing it over:
+//! The paired product route keeps the cache boundary in DS GridDesign:
+//! `prepare` captures selected city input cache-first, and `run start` plus
+//! its lifecycle commands execute and observe native local Solar. The CLI
+//! sends closed semantic operations only; it never reads IndexedDB or carries
+//! cache paths, URLs, or credentials.
 //!
-//! * **`prepare` may reach the network.** It resolves weather cache-first and
-//!   commits prepared inputs.
-//! * **`run` may not.** It performs no intake and no network call of any
-//!   kind, and receives only prepared inputs.
-//!
-//! Those are different effects and different failure modes, so they are
-//! different commands with different declared contracts. Collapsing them into
-//! one `ds solar batch` would hide exactly the property the desktop and cloud
-//! paths depend on — and would make an offline run indistinguishable, from
-//! the outside, from one that quietly fetched.
+//! `run` remains the separately useful headless artifact runner over an
+//! already prepared directory and the external `ds-solar` process contract.
+//! Longest-path dispatch makes `ds solar run start` the paired product launch
+//! while preserving `ds solar run --prepared ... --out ...` for reproducible
+//! offline artifact work.
 
 pub mod engine;
+pub mod paired;
+pub mod paired_run;
 pub mod prepare;
 pub mod run;
 pub mod weather;
@@ -57,7 +55,7 @@ pub static DS_SOLAR: External = External {
 
 pub const DISCOVERY_TIMEOUT: Duration = Duration::from_secs(20);
 
-/// Preparation resolves weather, possibly over the network, for many cities.
+/// Paired preparation may capture or refresh city input for many cities.
 pub const PREPARE_TIMEOUT: Duration = Duration::from_secs(30 * 60);
 
 /// A batch run is pure compute over prepared inputs and can legitimately take
@@ -66,11 +64,16 @@ pub const RUN_TIMEOUT: Duration = Duration::from_secs(4 * 60 * 60);
 
 pub static DOMAIN: Domain = Domain {
     id: "solar",
-    summary: "Solar batches: prepare inputs, run them offline, verify weather.",
+    summary: "Solar preparation, local run lifecycle and artifact execution.",
     commands: &[
         &engine::COMMAND,
         &prepare::COMMAND,
         &run::COMMAND,
+        &paired_run::START_COMMAND,
+        &paired_run::PROGRESS_COMMAND,
+        &paired_run::RESULT_COMMAND,
+        &paired_run::CANCEL_COMMAND,
+        &paired_run::READ_COMMAND,
         &weather::COMMAND,
     ],
 };

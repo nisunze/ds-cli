@@ -169,17 +169,18 @@ fn report_export_writes_only_fields_the_engine_declares() {
 /// Whether the solar engine is reachable, using `ds`'s own resolution rules
 /// rather than a second copy of them.
 fn solar_available() -> bool {
-    let (descriptor, code) = ds(&["capabilities", "solar.prepare", "--output", "json"]);
+    let (descriptor, code) = ds(&["capabilities", "solar.engine", "--output", "json"]);
     code == 0 && descriptor["data"]["command"]["availability"] == "available"
 }
 
 #[test]
 fn solar_engine_flags_are_real() {
-    // `ds solar` translates its own flags into `ds-solar`'s. Those names are a
-    // hand copy, and a hand copy nobody checks drifts silently: the flag keeps
-    // working, the engine stops receiving it, and the failure surfaces months
-    // later as a confusing refusal. The first version of `ds solar
-    // verify-weather` sent `--dataset` to an engine that only accepts `--file`.
+    // The headless artifact commands translate their own flags into
+    // `ds-solar`'s. Those names are a hand copy, and a hand copy nobody checks
+    // drifts silently: the flag keeps working, the engine stops receiving it,
+    // and the failure surfaces months later as a confusing refusal. The first
+    // version of `ds solar verify-weather` sent `--dataset` to an engine that
+    // only accepts `--file`.
     //
     // So every flag `ds` forwards is checked against the engine's own help, at
     // the version actually installed.
@@ -193,10 +194,6 @@ fn solar_engine_flags_are_real() {
     // names and the engine's are allowed to differ, and this is the table that
     // records which pairs are intended.
     let forwarded: &[(&str, &[&str])] = &[
-        (
-            "prepare",
-            &["--out", "--project-id", "--root", "--cache", "--city"],
-        ),
         (
             "run",
             &[
