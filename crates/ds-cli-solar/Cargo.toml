@@ -10,9 +10,9 @@ publish.workspace = true
 
 [dependencies]
 ds-cli-contract = { workspace = true }
-# The paired session answers two questions preparation needs: which project is
-# selected, and — when the bundles have to be downloaded — who is asking. The
-# JWT never crosses back; the application performs the authenticated fetch.
+# The paired desktop owns selected-project state, cache-first city capture and
+# any authenticated refresh. The CLI invokes only fixed semantic operations;
+# a JWT never crosses back.
 ds-cli-desktop = { workspace = true }
 ds-cli-exec = { workspace = true }
 serde_json = { workspace = true }

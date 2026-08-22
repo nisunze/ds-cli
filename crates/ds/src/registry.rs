@@ -119,6 +119,31 @@ static SOLAR_ENTRIES: &[Entry] = &[
         render: ds_cli_solar::run::render,
     },
     Entry {
+        command: &ds_cli_solar::paired_run::START_COMMAND,
+        handler: ds_cli_solar::paired_run::start,
+        render: ds_cli_solar::paired_run::render_start,
+    },
+    Entry {
+        command: &ds_cli_solar::paired_run::PROGRESS_COMMAND,
+        handler: ds_cli_solar::paired_run::progress,
+        render: ds_cli_solar::paired_run::render_receipt,
+    },
+    Entry {
+        command: &ds_cli_solar::paired_run::RESULT_COMMAND,
+        handler: ds_cli_solar::paired_run::result,
+        render: ds_cli_solar::paired_run::render_receipt,
+    },
+    Entry {
+        command: &ds_cli_solar::paired_run::CANCEL_COMMAND,
+        handler: ds_cli_solar::paired_run::cancel,
+        render: ds_cli_solar::paired_run::render_receipt,
+    },
+    Entry {
+        command: &ds_cli_solar::paired_run::READ_COMMAND,
+        handler: ds_cli_solar::paired_run::read,
+        render: ds_cli_solar::paired_run::render_receipt,
+    },
+    Entry {
         command: &ds_cli_solar::weather::COMMAND,
         handler: ds_cli_solar::weather::run,
         render: ds_cli_solar::weather::render,
