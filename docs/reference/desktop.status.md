@@ -45,6 +45,13 @@ The descriptor is `cli-bridge.json` in that identifier's app-data directory:
 | Windows | `%APPDATA%\<identifier>\` |
 | macOS | `~/Library/Application Support/<identifier>/` |
 
+The source-backed XRDP launcher deliberately uses its own
+`rw.datasolutions.desktop.local-dev` identity. It is **not** a fourth
+auto-discovery profile: it is a developer harness and must be named with
+`--desktop-descriptor <path>` when a test deliberately pairs to it. That keeps
+an ordinary `ds` invocation from silently mixing source-run state with an
+installed Stable, Canary, or dev desktop.
+
 **Ambiguity is refused, never resolved by preference.** Two profiles running at
 once produces `desktop_ambiguous` listing both descriptor paths. Silently
 picking whichever sorted first is the class of mistake that stays invisible
