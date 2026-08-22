@@ -16,7 +16,6 @@ path = "src/main.rs"
 ds-cli-contract = { workspace = true }
 ds-cli-desktop = { workspace = true }
 ds-cli-map = { workspace = true }
-ds-cli-tiler = { workspace = true }
 ds-cli-dsgrid = { workspace = true }
 ds-cli-dsgrid-exchange = { workspace = true }
 ds-cli-pls = { workspace = true }

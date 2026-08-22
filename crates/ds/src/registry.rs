@@ -245,12 +245,6 @@ static MAP_ENTRIES: &[Entry] = &[
     },
 ];
 
-static TILER_ENTRIES: &[Entry] = &[Entry {
-    command: &ds_cli_tiler::workspace::COMMAND,
-    handler: ds_cli_tiler::workspace::run,
-    render: ds_cli_tiler::workspace::render,
-}];
-
 static DESKTOP_ENTRIES: &[Entry] = &[Entry {
     command: &ds_cli_desktop::status::COMMAND,
     handler: ds_cli_desktop::status::run,
@@ -277,10 +271,6 @@ static DOMAINS: &[Registered] = &[
     Registered {
         domain: &ds_cli_report::DOMAIN,
         entries: REPORT_ENTRIES,
-    },
-    Registered {
-        domain: &ds_cli_tiler::DOMAIN,
-        entries: TILER_ENTRIES,
     },
     Registered {
         domain: &ds_cli_map::DOMAIN,

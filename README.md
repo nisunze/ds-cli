@@ -17,7 +17,6 @@ DOMAINS
   pls              PLS-CADD workspaces: structures, capacity, references, DONs.
   solar            Solar batches: prepare inputs, run them offline, verify weather.
   report           Deliverables: transformer and combined report artifacts.
-  tiler            Sealed local PMTiles.
   map              The paired map: local layers, vector tools, design-layer edits.
   desktop          The paired DS GridDesign session: pairing, sign-in, project.
 
@@ -170,8 +169,6 @@ crates/
   ds-cli-pls        the PLS-CADD domain, over ds-grid-tasks' typed tasks.
   ds-cli-solar      the solar domain, over the ds-solar contract.
   ds-cli-report     the reporter domain, over the ds-report contract.
-  ds-cli-tiler      the sealed local PMTiles domain, over ds-vector-tiler's
-                    one-workspace process contract.
   ds                the binary: registers domains, dispatches, renders.
 ```
 
@@ -203,15 +200,13 @@ unrelated engines" is a structural property rather than a promise.
 
 ## Status
 
-Eight domains, forty domain commands plus three root metadata commands.
+Seven domains, thirty-nine domain commands plus three root metadata commands.
 
 `dsgrid`, `dsgrid-exchange` and `pls` **link** the authoritative
 `ds-network` crates, so they work on a machine with no sidecar installed and
-an empty `PATH` — asserted by `domain_smoke.rs`. `solar`, `report`, and
-`tiler` **call** typed process contracts their workspaces published, and
-report `unavailable` with a remedy when those binaries are absent. `tiler`
-accepts only a sealed workspace root and verifies a local-only PMTiles result;
-it never calls Cloud Run. `desktop` reaches the paired application session.
+an empty `PATH` — asserted by `domain_smoke.rs`. `solar` and `report` **call** the typed process contracts
+their workspaces published, and report `unavailable` with a remedy when those
+binaries are absent. `desktop` reaches the paired application session.
 
 `ds` is a **core bundled component of the desktop application**. The Linux
 `.deb` installs it into `/usr/bin` alongside `ds-report`, which is how
@@ -236,7 +231,6 @@ fallback.
 | [`docs/reference/pls.md`](docs/reference/pls.md) | digest pinning, task bounds, why a task's code stays in `detail` |
 | [`docs/reference/report.md`](docs/reference/report.md) | why it calls a binary; the must-not-exist and blockers rules |
 | [`docs/reference/solar.md`](docs/reference/solar.md) | the two-phase split, and why the token is never a flag |
-| [`docs/reference/tiler.md`](docs/reference/tiler.md) | sealed workspace tiling, sibling tools, and the local-only receipt |
 | [`docs/reference/map.md`](docs/reference/map.md) | local map layers, vector tools, and staged design-layer edits |
 | [`docs/reference/desktop.status.md`](docs/reference/desktop.status.md) | pairing, discovery, what is never printed |
 | [`docs/migration/matrix.md`](docs/migration/matrix.md) | what moves, what is deleted, in what order |

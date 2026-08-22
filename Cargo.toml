@@ -22,10 +22,6 @@
 #                    ds-cli-desktop because that crate is the authority
 #                    surface every domain borrows, and a map command must not
 #                    become reachable from a domain that never asked for one.
-#   ds-cli-tiler     the sealed local PMTiles domain. Calls the native
-#                    ds-vector-tiler process contract with one workspace
-#                    root; it does not operate the paired map or link a
-#                    second tiling engine.
 #   ds-cli-dsgrid    the canonical-model domain. Links the authoritative
 #                    ds-network crates directly; owns no engineering logic.
 #   ds-cli-dsgrid-exchange
@@ -76,7 +72,6 @@ ds-cli-contract = { path = "crates/ds-cli-contract" }
 ds-cli-desktop = { path = "crates/ds-cli-desktop" }
 ds-cli-exec = { path = "crates/ds-cli-exec" }
 ds-cli-map = { path = "crates/ds-cli-map" }
-ds-cli-tiler = { path = "crates/ds-cli-tiler" }
 ds-cli-dsgrid = { path = "crates/ds-cli-dsgrid" }
 ds-cli-dsgrid-exchange = { path = "crates/ds-cli-dsgrid-exchange" }
 ds-cli-pls = { path = "crates/ds-cli-pls" }

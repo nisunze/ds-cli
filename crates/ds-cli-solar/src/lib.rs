@@ -52,7 +52,6 @@ pub static DS_SOLAR: External = External {
     owner: "ds-solar",
     remedy: "set DS_SOLAR_BIN to a built ds-solar (cargo build --release --package ds-solar-cli)",
     missing_code: "solar_engine_missing",
-    environment: None,
 };
 
 pub const DISCOVERY_TIMEOUT: Duration = Duration::from_secs(20);
