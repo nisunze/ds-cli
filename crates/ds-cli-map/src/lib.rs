@@ -220,7 +220,7 @@ pub const MAX_FEATURE_SAMPLE: u64 = 200;
 
 /// What `map view` reads out of the application's published map snapshot.
 ///
-/// These are hand copies of `mapSnapshot` in the application, and they are
+/// These are hand copies of the CLI map session projection in the application, and they are
 /// the quietest kind of hand copy there is: a renamed field does not fail, it
 /// reports `null`, and a caller sees a map with no layers on it rather than
 /// an error. So they are declared here, read from here, and proved against
@@ -238,7 +238,7 @@ pub const SNAPSHOT_LAYER_FIELDS: &[(&str, &str)] = &[
     ("features", "featureCount"),
     ("visible", "visible"),
     ("source", "source"),
-    ("this_session", "agentOwned"),
+    ("this_session", "cliOwned"),
 ];
 
 /// The layer's own identifier, from which both reported ids are made.
