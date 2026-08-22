@@ -40,6 +40,7 @@ pub static DS_REPORT: External = External {
     owner: "ds-network-reporter",
     remedy: "install the DS GridDesign desktop, or set DS_REPORT_BIN to a built ds-report",
     missing_code: "reporter_engine_missing",
+    environment: None,
 };
 
 /// Discovery calls answer immediately or something is wrong.

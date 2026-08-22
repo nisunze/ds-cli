@@ -56,7 +56,25 @@ pub struct External {
     /// own, so a caller branching on `error.code` learns *which* engine is
     /// absent, not merely that one is.
     pub missing_code: &'static str,
+    /// A fixed resolver for child-only environment values the owning process
+    /// contract requires. It receives the resolved executable, not caller
+    /// argv, so a domain can bind app-owned sibling additions without opening
+    /// a general environment or command escape hatch.
+    pub environment: Option<EnvironmentResolver>,
 }
+
+/// One environment value an [`External`] contract has declared in source.
+///
+/// This is deliberately not an invocation argument. The resolver is fixed in
+/// the domain's `External` declaration; callers never supply its name or
+/// value through CLI flags.
+pub struct EnvironmentVariable {
+    pub name: &'static str,
+    pub value: OsString,
+}
+
+/// Resolve app-owned child environment from the selected executable path.
+pub type EnvironmentResolver = fn(&Path) -> Result<Vec<EnvironmentVariable>, Failure>;
 
 /// A completed call.
 pub struct Completed {
@@ -143,6 +161,10 @@ impl External {
                 json!({ "binary": self.name, "owner": self.owner, "override": self.env_override }),
             )
         })?;
+        let environment = match self.environment {
+            Some(resolve) => resolve(&executable)?,
+            None => Vec::new(),
+        };
 
         let mut command = Command::new(&executable);
         command
@@ -151,6 +173,9 @@ impl External {
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
+        for variable in environment {
+            command.env(variable.name, variable.value);
+        }
 
         let mut child = command.spawn().map_err(|error| {
             Failure::unavailable(
