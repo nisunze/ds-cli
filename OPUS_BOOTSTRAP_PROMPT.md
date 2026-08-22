@@ -157,7 +157,7 @@ The default interactive architecture is **paired desktop reuse**, not a second
 CLI login.
 
 When DS GridDesign is running, `ds` should discover its private
-`agent-bridge.json`, authenticate to the random-loopback bridge with the
+`cli-bridge.json`, authenticate to the random-loopback bridge with the
 descriptor's short-lived pairing secret, and use the desktop's current signed-in
 session and selected project. The bridge must never return the Firebase JWT or
 refresh token. Authenticated API operations remain inside the existing frontend

@@ -161,6 +161,16 @@ static SOLAR_ENTRIES: &[Entry] = &[
         render: ds_cli_solar::paired_run::render_receipt,
     },
     Entry {
+        command: &ds_cli_solar::exports::REPORT_EXPORT_COMMAND,
+        handler: ds_cli_solar::exports::export_report,
+        render: ds_cli_solar::exports::render,
+    },
+    Entry {
+        command: &ds_cli_solar::exports::PORTFOLIO_EXPORT_COMMAND,
+        handler: ds_cli_solar::exports::export_portfolio,
+        render: ds_cli_solar::exports::render,
+    },
+    Entry {
         command: &ds_cli_solar::weather::COMMAND,
         handler: ds_cli_solar::weather::run,
         render: ds_cli_solar::weather::render,

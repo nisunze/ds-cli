@@ -37,7 +37,7 @@ own descriptor:
 | canary | `rw.datasolutions.desktop.canary` |
 | dev | `rw.datasolutions.desktop.dev` |
 
-The descriptor is `agent-bridge.json` in that identifier's app-data directory:
+The descriptor is `cli-bridge.json` in that identifier's app-data directory:
 
 | Platform | Location |
 |---|---|
@@ -53,8 +53,8 @@ until it has written to the wrong project.
 ```
 $ ds desktop status --output json
 {"…","error":{"code":"desktop_ambiguous","detail":{"candidates":[
-  {"profile":"canary","descriptor":"/home/…/rw.datasolutions.desktop.canary/agent-bridge.json"},
-  {"profile":"dev","descriptor":"/home/…/rw.datasolutions.desktop.dev/agent-bridge.json"}]}}}
+  {"profile":"canary","descriptor":"/home/…/rw.datasolutions.desktop.canary/cli-bridge.json"},
+  {"profile":"dev","descriptor":"/home/…/rw.datasolutions.desktop.dev/cli-bridge.json"}]}}}
 ```
 
 Settle it with `--desktop-descriptor <path>`. An explicit path is used verbatim
@@ -96,9 +96,9 @@ The pairing token. Any bearer credential. The Firebase JWT or refresh token.
 `Descriptor` deliberately has no `Debug` derive, so the secret cannot be
 formatted into a result by accident, and `cli.rs` asserts the absence.
 
-The bridge also publishes map context, frontend capabilities and folder grants.
-`status` reports none of them: a status check that dumped the whole session
-would be the largest response in the product.
+The bridge publishes only the paired session view and the fixed typed CLI
+operations. `status` reports only the pairing/session fields, never a browser
+cache, workspace path, token, or generic application state.
 
 ## Refusals
 
@@ -112,5 +112,5 @@ would be the largest response in the product.
 
 ## Related
 
-- `ds-web/src-tauri/src/agent_bridge.rs` — the bridge, and the closed operation list
-- `ds-web/src/lib/desktop/agent-bridge.ts` — the semantic operations themselves
+- `ds-web/src-tauri/src/cli_bridge.rs` — the bridge, and the closed operation list
+- `ds-web/src/lib/desktop/cli-bridge.ts` — the typed CLI operations themselves

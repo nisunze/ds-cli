@@ -283,6 +283,121 @@ fn solar_run_lifecycle_uses_closed_operations_and_preserves_arguments() {
 }
 
 #[test]
+fn paired_solar_exports_page_sealed_reports_and_portfolios_to_new_files() {
+    let bridge = bridge(vec![
+        (
+            "solar.document.read",
+            json!({
+                "status": "ok",
+                "run_id": "solar-run-123",
+                "context": "rw-kigali",
+                "document": "draft",
+                "content": "draft",
+                "next_offset": 5,
+                "complete": false,
+            }),
+        ),
+        (
+            "solar.document.read",
+            json!({
+                "status": "ok",
+                "run_id": "solar-run-123",
+                "context": "rw-kigali",
+                "document": "draft",
+                "content": " report",
+                "next_offset": 12,
+                "complete": true,
+            }),
+        ),
+        (
+            "solar.portfolio.read",
+            json!({
+                "status": "ok",
+                "run_id": "solar-run-123",
+                "artifact": "result",
+                "content": "{\"total\":1}",
+                "next_offset": 11,
+                "complete": true,
+            }),
+        ),
+    ]);
+    let descriptor = bridge.descriptor.to_string_lossy().into_owned();
+    let unique = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("clock after epoch")
+        .as_nanos();
+    let report_out = std::env::temp_dir().join(format!("ds-solar-report-{unique}.md"));
+    let portfolio_out = std::env::temp_dir().join(format!("ds-solar-portfolio-{unique}.json"));
+    let report_out_string = report_out.to_string_lossy().into_owned();
+    let portfolio_out_string = portfolio_out.to_string_lossy().into_owned();
+
+    let (report, code, stdout, stderr) = ds(&[
+        "solar",
+        "report",
+        "export",
+        "--run-id",
+        "solar-run-123",
+        "--city",
+        "rw-kigali",
+        "--variant",
+        "draft",
+        "--out",
+        &report_out_string,
+        "--desktop-descriptor",
+        &descriptor,
+        "--output",
+        "json",
+    ]);
+    assert_eq!(code, 0, "{stdout}{stderr}");
+    assert_eq!(report["command"], "solar.report.export");
+    assert_eq!(
+        std::fs::read_to_string(&report_out).unwrap(),
+        "draft report"
+    );
+
+    let (portfolio, code, stdout, stderr) = ds(&[
+        "solar",
+        "portfolio",
+        "export",
+        "--run-id",
+        "solar-run-123",
+        "--artifact",
+        "result",
+        "--out",
+        &portfolio_out_string,
+        "--desktop-descriptor",
+        &descriptor,
+        "--output",
+        "json",
+    ]);
+    assert_eq!(code, 0, "{stdout}{stderr}");
+    assert_eq!(portfolio["command"], "solar.portfolio.export");
+    assert_eq!(
+        std::fs::read_to_string(&portfolio_out).unwrap(),
+        "{\"total\":1}"
+    );
+
+    let requests = finish(bridge);
+    assert_eq!(requests.len(), 3);
+    assert_eq!(
+        requests[0]["arguments"],
+        json!({
+            "run_id": "solar-run-123",
+            "context": "rw-kigali",
+            "document": "draft",
+            "offset": 0,
+        })
+    );
+    assert_eq!(requests[1]["arguments"]["offset"], 5);
+    assert_eq!(
+        requests[2]["arguments"],
+        json!({ "run_id": "solar-run-123", "artifact": "result", "offset": 0 })
+    );
+    let _ = std::fs::remove_file(report_out);
+    let _ = std::fs::remove_file(portfolio_out);
+}
+
+#[test]
 fn paired_solar_rejects_a_reply_without_a_receipt_status() {
     let bridge = bridge(vec![("solar.prepare", json!({}))]);
     let descriptor = bridge.descriptor.to_string_lossy().into_owned();

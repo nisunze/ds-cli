@@ -23,7 +23,10 @@ pub const PROFILES: &[(&str, &str)] = &[
     ("dev", "rw.datasolutions.desktop.dev"),
 ];
 
-pub const DESCRIPTOR_FILE: &str = "agent-bridge.json";
+/// Published by DS GridDesign's narrow CLI bridge.  This replaces the retired
+/// assistant bridge; it carries only the loopback endpoint and pairing secret
+/// needed by typed `ds` commands.
+pub const DESCRIPTOR_FILE: &str = "cli-bridge.json";
 
 /// Bound the descriptor read. The real file is a few hundred bytes.
 pub const MAX_DESCRIPTOR_BYTES: u64 = 16 * 1024;

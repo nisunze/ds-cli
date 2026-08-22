@@ -13,6 +13,7 @@
 //! offline artifact work.
 
 pub mod engine;
+pub mod exports;
 pub mod paired;
 pub mod paired_run;
 pub mod prepare;
@@ -74,6 +75,8 @@ pub static DOMAIN: Domain = Domain {
         &paired_run::RESULT_COMMAND,
         &paired_run::CANCEL_COMMAND,
         &paired_run::READ_COMMAND,
+        &exports::REPORT_EXPORT_COMMAND,
+        &exports::PORTFOLIO_EXPORT_COMMAND,
         &weather::COMMAND,
     ],
 };

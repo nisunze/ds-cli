@@ -13,6 +13,8 @@ ds solar run start --city <context> ...
 ds solar run progress --run-id <id>
 ds solar run result --run-id <id>
 ds solar result read --run-id <id> --city <context>
+ds solar report export --run-id <id> --city <context> --variant draft --out <file>
+ds solar portfolio export --run-id <id> --artifact result --out <file>
 ds solar run cancel --run-id <id>
 ```
 
@@ -47,6 +49,14 @@ commands call the paired lifecycle operations `solar.run.progress`,
 use `--city` as the user-facing spelling for the operation's `context` field;
 repeated `--path` values are semantic result fields, never filesystem paths.
 
+`solar run result` includes the committed city document inventory and the
+root-level portfolio inventory. `solar report export` pages either the clean
+APD or the frozen parity draft through the named `solar.document.read` bridge
+operation. `solar portfolio export` pages the aggregate result JSON or draft
+Markdown through `solar.portfolio.read`. Both commands create `--out` with
+`create_new`: they never overwrite an existing file, and neither command ever
+receives the native workspace path.
+
 This is deliberately not an IndexedDB protocol. The CLI never lists, reads or
 scrapes browser storage, never accepts a cache directory or project root, and
 never receives a JWT, source URL or raw cached input. The desktop validates
@@ -66,6 +76,11 @@ than falling back to an untyped request or a storage scrape.
 offline adapter over the external `ds-solar` process contract. It accepts an
 already prepared artifact directory, performs no intake and no network call,
 and writes its result artifacts under `--out`.
+
+The closed `batch.json` inventory includes every committed city result, APD,
+draft, optional Word document, chart, and the root-level `portfolio-result.json`
+and `portfolio-draft-fr.md` when the engine produced them. The portfolio is a
+first-class batch deliverable, not a client-side reconstruction.
 
 This route is intentionally distinct from the paired product lifecycle:
 
@@ -94,6 +109,8 @@ protocols. Use the paired lifecycle for product city contexts; use the
 | `solar run result` | `solar.run.result` | read only | bounded public result receipt |
 | `solar run cancel` | `solar.run.cancel` | local UI | cancellation receipt |
 | `solar result read` | `solar.result.read` | read only | bounded city result projection |
+| `solar report export` | `solar.document.read` | local file write | one new APD or parity-draft Markdown file |
+| `solar portfolio export` | `solar.portfolio.read` | local file write | one new aggregate result JSON or draft Markdown file |
 
 The operation name is fixed in source for each command. It is never an
 argument, so possession of the pairing descriptor authorizes only this narrow
@@ -127,5 +144,6 @@ from this CLI.
 
 - `crates/ds-cli-solar/src/prepare.rs` — paired preparation adapter
 - `crates/ds-cli-solar/src/paired_run.rs` — paired run lifecycle adapter
+- `crates/ds-cli-solar/src/exports.rs` — paired APD/draft and portfolio exporter
 - `crates/ds-cli-solar/src/run.rs` — headless artifact adapter
 - [`../contracts/cli-output-contract.md`](../contracts/cli-output-contract.md)
