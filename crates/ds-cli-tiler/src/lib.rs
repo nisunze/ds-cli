@@ -34,7 +34,7 @@ pub static DS_VECTOR_TILER: External = External {
     environment: Some(tiler_environment),
 };
 
-/// Local tiling can process a large sealed snapshot and run two native tools.
+/// Local tiling can process a large sealed snapshot and run its native engine.
 /// The bound is deliberately finite: a hung native addition must not leave an
 /// automation caller waiting indefinitely.
 pub const WORKSPACE_TIMEOUT: Duration = Duration::from_secs(4 * 60 * 60);
@@ -45,7 +45,7 @@ pub static DOMAIN: Domain = Domain {
     commands: &[&workspace::COMMAND],
 };
 
-/// Availability includes the two required native additions as well as the
+/// Availability includes the required native addition as well as the
 /// engine itself. This remains filesystem-only: help and `ds doctor` never
 /// execute a version probe, but they should not promise a runnable local
 /// tiler when the packaged tool set is incomplete.
@@ -65,24 +65,18 @@ pub(crate) fn tiler_availability() -> Availability {
     }
 }
 
-/// Bind the two native additions to the tiler child only. The packaged form
-/// is three adjacent executables; source/developer use may override each
-/// addition explicitly, but only with an absolute app-owned path. Deliberately
-/// do not search PATH: a stale system tool must not silently outrank the
-/// packaged addition that the sealed manifest pins.
+/// Bind the one native addition to the tiler child only. The packaged form is
+/// two adjacent executables; source/developer use may override Tippecanoe
+/// explicitly, but only with an absolute app-owned path. PMTiles conversion is
+/// linked Rust code inside `ds-vector-tiler`, not an executable addition.
+/// Deliberately do not search PATH: a stale system tool must not silently
+/// outrank the packaged addition that the sealed manifest pins.
 fn tiler_environment(binary: &Path) -> Result<Vec<EnvironmentVariable>, Failure> {
-    Ok(vec![
-        EnvironmentVariable {
-            name: "DS_VECTOR_TILER_TIPPECANOE_BIN",
-            value: addition_path(binary, "DS_VECTOR_TILER_TIPPECANOE_BIN", "tippecanoe")?
-                .into_os_string(),
-        },
-        EnvironmentVariable {
-            name: "DS_VECTOR_TILER_PMTILES_BIN",
-            value: addition_path(binary, "DS_VECTOR_TILER_PMTILES_BIN", "pmtiles")?
-                .into_os_string(),
-        },
-    ])
+    Ok(vec![EnvironmentVariable {
+        name: "DS_VECTOR_TILER_TIPPECANOE_BIN",
+        value: addition_path(binary, "DS_VECTOR_TILER_TIPPECANOE_BIN", "tippecanoe")?
+            .into_os_string(),
+    }])
 }
 
 fn addition_path(binary: &Path, env_name: &'static str, name: &str) -> Result<PathBuf, Failure> {

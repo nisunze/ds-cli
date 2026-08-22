@@ -4,9 +4,9 @@
 //! runner: exactly `ds-vector-tiler workspace-tile <workspace-root>`, with a
 //! single absolute root that the caller supplied. No source, artifact,
 //! tippecanoe, PMTiles, credential, URL, or Cloud Run argument crosses this
-//! boundary. The fixed `ds` process contract binds the two pinned addition
-//! paths through its child environment; they are not user-controlled CLI
-//! flags.
+//! boundary. The fixed `ds` process contract binds its one pinned Tippecanoe
+//! addition through the child environment; the PMTiles writer is linked Rust
+//! code inside the owner, not a user-controlled tool or CLI flag.
 
 use std::path::PathBuf;
 
@@ -15,12 +15,12 @@ use ds_cli_contract::spec::{
     Arg, Authority, Availability, Command, Effect, Example, Execution, Refusal,
 };
 use ds_cli_contract::{Context, Inputs};
-use serde_json::{Map, Value, json};
+use serde_json::{Value, json};
 
 use crate::{DS_VECTOR_TILER, WORKSPACE_TIMEOUT, tiler_availability};
 
-const RESULT_SCHEMA: &str = "ds-vector-tiler.workspace-tile-result/v1";
-const INPUT_SCHEMA: &str = "ds-vector-tiler.workspace-tile/v1";
+const RESULT_SCHEMA: &str = "ds-vector-tiler.workspace-tile-result/v2";
+const INPUT_SCHEMA: &str = "ds-vector-tiler.workspace-tile/v2";
 const OPERATION: &str = "workspace-tile";
 const ARTIFACT_ROOT: &str = "artifacts/tiles";
 const PMTILES_CONTENT_TYPE: &str = "application/vnd.pmtiles";
@@ -33,7 +33,8 @@ pub static COMMAND: Command = Command {
     purpose: "\
 Runs the native `ds-vector-tiler workspace-tile` contract over exactly one \
 absolute workspace root. The engine reads its sealed `snapshot/tiles.json`, \
-hash-pins inputs and its Tippecanoe/PMTiles additions, and writes no-clobber \
+hash-pins inputs and its Tippecanoe addition, uses its linked Rust PMTiles \
+writer, and writes no-clobber \
 local artifacts below that workspace. This command never starts an HTTP \
 service, calls Cloud Run, uploads bytes, or accepts a source/output/tool/URL \
 argument. It rejects an engine response unless it attests local-only execution \
@@ -48,8 +49,8 @@ and returns only bounded workspace-relative artifact selectors.",
     )
     .required()],
     output: "\
-The verified local execution receipt: status, engine identity, pinned tool \
-identity, feature/tile counts, and workspace-relative result/artifact \
+The verified local execution receipt: status, engine/tool identity, feature/tile \
+counts, and workspace-relative result/artifact \
 selectors. No absolute output path, source bytes, credential, URL, or remote \
 location is returned.",
     examples: &[Example {
@@ -65,8 +66,8 @@ location is returned.",
         },
         Refusal {
             code: "tiler_addition_missing",
-            when: "the required pinned Tippecanoe or PMTiles desktop addition is absent or not absolute",
-            remedy: "install tippecanoe and pmtiles beside ds-vector-tiler, or set their exact DS_VECTOR_TILER_*_BIN paths",
+            when: "the required pinned Tippecanoe desktop addition is absent or not absolute",
+            remedy: "install tippecanoe beside ds-vector-tiler, or set DS_VECTOR_TILER_TIPPECANOE_BIN to its exact absolute path",
         },
         Refusal {
             code: "workspace_not_absolute",
@@ -127,7 +128,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let result: Value = serde_json::from_str(&completed.stdout).map_err(|_| {
         contract_failure(
             "stdout",
-            "one ds-vector-tiler.workspace-tile-result/v1 JSON document",
+            "one ds-vector-tiler.workspace-tile-result/v2 JSON document",
         )
     })?;
     validate_result(result)
@@ -202,6 +203,7 @@ fn validate_result(result: Value) -> Result<Value, Failure> {
     }
 
     let tools = validate_tools(&result)?;
+    let pmtiles_writer = validate_pmtiles_writer(&result)?;
     let status = string_at(&result, "/status")?;
     let artifacts = array_at(&result, "/artifacts")?;
     let normalized_artifacts = match status {
@@ -264,33 +266,49 @@ fn validate_result(result: Value) -> Result<Value, Failure> {
         "total_features": total_features,
         "tile_count": tile_count,
         "tools": tools,
+        "pmtiles_writer": pmtiles_writer,
         "artifacts": normalized_artifacts,
     }))
 }
 
 fn validate_tools(result: &Value) -> Result<Value, Failure> {
-    let mut tools = Map::new();
-    for name in ["tippecanoe", "pmtiles"] {
-        let version = string_at(result, &format!("/tools/{name}/version"))?;
-        if version.trim().is_empty() {
-            return Err(contract_failure(
-                &format!("/tools/{name}/version"),
-                "a non-empty pinned addition version",
-            ));
-        }
-        let sha256 = string_at(result, &format!("/tools/{name}/sha256"))?;
-        if !is_sha256(sha256) {
-            return Err(contract_failure(
-                &format!("/tools/{name}/sha256"),
-                "sha256:<64 lowercase hexadecimal characters>",
-            ));
-        }
-        tools.insert(
-            name.to_string(),
-            json!({ "version": version, "sha256": sha256 }),
-        );
+    let version = string_at(result, "/tools/tippecanoe/version")?;
+    if version.trim().is_empty() {
+        return Err(contract_failure(
+            "/tools/tippecanoe/version",
+            "a non-empty pinned addition version",
+        ));
     }
-    Ok(Value::Object(tools))
+    let sha256 = string_at(result, "/tools/tippecanoe/sha256")?;
+    if !is_sha256(sha256) {
+        return Err(contract_failure(
+            "/tools/tippecanoe/sha256",
+            "sha256:<64 lowercase hexadecimal characters>",
+        ));
+    }
+    Ok(json!({
+        "tippecanoe": { "version": version, "sha256": sha256 },
+    }))
+}
+
+/// `pmtiles` is linked Rust implementation, rather than an executable
+/// addition. Accept only the precise v2 provenance shape so a returned
+/// receipt cannot quietly re-introduce a Go/sidecar tool into local execution.
+fn validate_pmtiles_writer(result: &Value) -> Result<Value, Failure> {
+    expect_string(result, "/pmtiles_writer/implementation", "linked-rust")?;
+    expect_string(result, "/pmtiles_writer/crate", "pmtiles")?;
+    let version = string_at(result, "/pmtiles_writer/version")?;
+    if version.trim().is_empty() {
+        return Err(contract_failure(
+            "/pmtiles_writer/version",
+            "a non-empty linked Rust crate version",
+        ));
+    }
+    Ok(json!({
+        "implementation": "linked-rust",
+        "crate": "pmtiles",
+        "version": version,
+    }))
 }
 
 fn validate_artifact(artifact: &Value, output_name: &str) -> Result<Value, Failure> {
@@ -475,8 +493,8 @@ mod tests {
             "result_manifest": "artifacts/tiles/network.result.json",
             "tools": {
                 "tippecanoe": { "version": "2.0", "sha256": format!("sha256:{}", "a".repeat(64)) },
-                "pmtiles": { "version": "3.0", "sha256": format!("sha256:{}", "b".repeat(64)) },
             },
+            "pmtiles_writer": { "implementation": "linked-rust", "crate": "pmtiles", "version": "0.24.0" },
             "total_features": 2,
             "tile_count": 3,
             "artifacts": [{
