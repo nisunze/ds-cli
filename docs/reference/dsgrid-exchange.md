@@ -177,6 +177,7 @@ Stated rather than left to be discovered:
 | `--pair-don` / `--pair-num` / `--subtree` | multi-project PLS selection is available only through `--select-project <don-leaf>`, which resolves the pair and subtree from the loaded members |
 | `--version` | every native output is authored as PLS-CADD 16.81. `ds-grid` accepts the flag and then rejects every other value, so it is stated in help instead of being a flag whose only job is to fail |
 | `compose` | `ds-grid`'s `compose-inspect` / `compose-plan` / `compose` are not yet `ds` commands, though `--mode compose` composes several sources into one `.dsgrid` during a conversion |
+| adapter output path validation | `convert.rs` currently joins the engine-provided `output.relative_path` under `--out` without rejecting absolute or `..`-bearing values. `ds-grid-cli` already has the required `validated_relative_output_path` guard (`unsafe_output_path`); port that guard and add plan/convert smoke assertions in a dedicated follow-up. |
 
 ## Ownership
 
