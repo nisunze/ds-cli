@@ -23,32 +23,29 @@ different subject from `ds map` (the paired application's live MapLibre state)
 and from `ds dsgrid` (a canonical `.dsgrid` model).
 
 The native engine reads only `snapshot/tiles.json` below the supplied root,
-hash-verifies every declared snapshot input, runs its one pinned local
-Tippecanoe addition, uses a linked Rust PMTiles writer, and writes no-clobber
-PMTiles/result artifacts below `artifacts/tiles/`.
+hash-verifies every declared snapshot input, runs the two pinned local tools,
+and writes no-clobber PMTiles/result artifacts below `artifacts/tiles/`.
 It does not start its HTTP listener, upload, or call Cloud Run.
 
 ## Desktop additions
 
-The tiler process requires one external addition, Tippecanoe. `ds` resolves it
-only for the tiler child:
+The tiler process requires Tippecanoe and PMTiles. `ds` resolves them only for
+the tiler child, in this order:
 
 | Addition | Explicit developer override | Packaged location |
 |---|---|---|
 | Tippecanoe | `DS_VECTOR_TILER_TIPPECANOE_BIN` | `tippecanoe` beside `ds-vector-tiler` |
+| PMTiles | `DS_VECTOR_TILER_PMTILES_BIN` | `pmtiles` beside `ds-vector-tiler` |
 
-The PMTiles writer is the pure-Rust `pmtiles` crate linked into
-`ds-vector-tiler`; there is no `pmtiles` executable, Go toolchain, or Go
-runtime in the local desktop/CLI path. Tippecanoe overrides must be absolute
-paths. `ds` does not search `PATH` for additions, so an unrelated system
-binary cannot silently outrank the packaged one. On Windows the packaged name
-has the normal `.exe` suffix.
+Overrides must be absolute paths. `ds` does not search `PATH` for additions,
+so an unrelated system binary cannot silently outrank the packaged one. On
+Windows the packaged names have the normal `.exe` suffix.
 
-The sealed `snapshot/tiles.json` manifest carries Tippecanoe's exact version
-output and SHA-256 pin. The engine itself verifies those bytes and runs
-`tippecanoe --version` before it stages any source input. Its result identifies
-the linked PMTiles writer explicitly; `ds` does not copy the pins or perform a
-second tiling implementation.
+The sealed `snapshot/tiles.json` manifest carries each addition's exact version
+output and SHA-256 pin. The engine itself verifies the bytes, runs
+`tippecanoe --version` and `pmtiles version`, and compares those outputs before
+it stages any source input. `ds` does not copy the pins or perform a second
+tiling implementation.
 
 `DS_VECTOR_TILER_BIN` is the normal explicit development override for the
 engine. Otherwise `ds` finds a bundled sibling of its executable, then `PATH`;
@@ -57,7 +54,7 @@ the additions remain sibling-only or explicit even if the engine was found on
 
 ## Result boundary
 
-The engine must emit a `ds-vector-tiler.workspace-tile-result/v2` JSON
+The engine must emit a `ds-vector-tiler.workspace-tile-result/v1` JSON
 document. `ds` refuses any result unless all of these are true:
 
 - `operation` is `workspace-tile` and the input schema is the sealed workspace

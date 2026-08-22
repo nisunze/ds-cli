@@ -59,8 +59,8 @@ fn valid_result() -> Value {
         "content_type": "application/vnd.pmtiles",
     });
     json!({
-        "schema": "ds-vector-tiler.workspace-tile-result/v2",
-        "input_schema": "ds-vector-tiler.workspace-tile/v2",
+        "schema": "ds-vector-tiler.workspace-tile-result/v1",
+        "input_schema": "ds-vector-tiler.workspace-tile/v1",
         "operation": "workspace-tile",
         "status": "success",
         "execution": {
@@ -79,8 +79,8 @@ fn valid_result() -> Value {
         "result_manifest": "artifacts/tiles/network.result.json",
         "tools": {
             "tippecanoe": { "version": "2.0", "sha256": format!("sha256:{}", "a".repeat(64)) },
+            "pmtiles": { "version": "3.0", "sha256": format!("sha256:{}", "b".repeat(64)) },
         },
-        "pmtiles_writer": { "implementation": "linked-rust", "crate": "pmtiles", "version": "0.24.0" },
         "total_features": 3,
         "tile_count": 4,
         "artifacts": [artifact.clone()],
@@ -117,13 +117,14 @@ impl FakeTiler {
         let engine = tree.path.join("ds-vector-tiler");
         write_executable(
             &engine,
-            "#!/bin/sh\nset -eu\ntest \"$#\" -eq 2\ntest \"$1\" = \"workspace-tile\"\nprintf '%s\\n%s\\n%s\\n' \"$1\" \"$2\" \"$DS_VECTOR_TILER_TIPPECANOE_BIN\" > \"$DS_TILER_TRACE\"\ncat \"$DS_TILER_RESULT\"\n",
+            "#!/bin/sh\nset -eu\ntest \"$#\" -eq 2\ntest \"$1\" = \"workspace-tile\"\nprintf '%s\\n%s\\n%s\\n%s\\n' \"$1\" \"$2\" \"$DS_VECTOR_TILER_TIPPECANOE_BIN\" \"$DS_VECTOR_TILER_PMTILES_BIN\" > \"$DS_TILER_TRACE\"\ncat \"$DS_TILER_RESULT\"\n",
         );
         // `ds` must discover additions beside the engine when their explicit
         // overrides are absent. The fake engine does not execute them; their
         // existence proves the typed child environment was resolved first.
         if additions {
             write_executable(&tree.path.join("tippecanoe"), "#!/bin/sh\nexit 0\n");
+            write_executable(&tree.path.join("pmtiles"), "#!/bin/sh\nexit 0\n");
         }
 
         Self {
@@ -140,6 +141,7 @@ impl FakeTiler {
             .env("NO_COLOR", "1")
             .env("DS_VECTOR_TILER_BIN", &self.engine)
             .env_remove("DS_VECTOR_TILER_TIPPECANOE_BIN")
+            .env_remove("DS_VECTOR_TILER_PMTILES_BIN")
             .env("DS_TILER_RESULT", &self.result)
             .env("DS_TILER_TRACE", &self.trace)
             .output()
@@ -195,8 +197,14 @@ fn workspace_adapter_invokes_only_the_closed_local_binary_contract() {
                 .expect("tippecanoe is installed")
                 .to_string_lossy()
                 .into_owned(),
+            tool_directory
+                .join("pmtiles")
+                .canonicalize()
+                .expect("pmtiles is installed")
+                .to_string_lossy()
+                .into_owned(),
         ],
-        "the adapter must provide only the static subcommand/canonical root and the one pinned sibling addition"
+        "the adapter must provide only the static subcommand/canonical root and the two pinned sibling additions"
     );
 }
 
