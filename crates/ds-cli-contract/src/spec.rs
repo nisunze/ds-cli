@@ -314,11 +314,11 @@ pub struct Refusal {
 
 /// One command's complete contract.
 pub struct Command {
-    /// Stable dotted id: `network.inspect`. Used by `ds capabilities <id>`,
+    /// Stable dotted id: `dsgrid.inspect`. Used by `ds capabilities <id>`,
     /// by audit records, and as the envelope's `command` field. It never
     /// changes meaning; an incompatible change takes a new id.
     pub id: &'static str,
-    /// The invocation path: `["network", "inspect"]`.
+    /// The invocation path: `["dsgrid", "inspect"]`.
     pub path: &'static [&'static str],
     /// This command's own input/output contract version, independent of the
     /// envelope version and of the binary's release version.
