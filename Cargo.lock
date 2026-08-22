@@ -417,6 +417,7 @@ name = "ds-cli-solar"
 version = "0.1.0"
 dependencies = [
  "ds-cli-contract",
+ "ds-cli-desktop",
  "ds-cli-exec",
  "serde_json",
 ]

@@ -208,13 +208,19 @@ fn every_constructible_refusal_code_is_documented() {
     let domain_crates = [
         ("ds-cli-network", Some("network")),
         ("ds-cli-pls", Some("pls")),
-        ("ds-cli-desktop", Some("desktop")),
         ("ds-cli-report", Some("report")),
         ("ds-cli-solar", Some("solar")),
         // Shared across every calling domain; declaring it in any one of them
         // is enough for this check, and the per-command help of each caller
         // is what the domain checks above enforce.
         ("ds-cli-exec", None),
+        // Also shared, and it became so: `ds-cli-desktop` is the paired-session
+        // authority surface, and `ds solar prepare` borrows it to have the
+        // application perform an authenticated fetch. Its pairing refusals are
+        // therefore reachable from more than the `desktop` domain, and each
+        // caller declares them in its own REFUSALS — which is what a reader of
+        // one command's help actually needs.
+        ("ds-cli-desktop", None),
     ];
 
     // A domain crate missing from the list above is silently unchecked, which

@@ -7,7 +7,7 @@
 //! the engine actually enforces.
 
 use std::ffi::OsString;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
@@ -42,7 +42,8 @@ run is compute, never a stalled request.",
             "out",
             "<dir>",
             "Directory to write results, the batch and charts into.",
-        ),
+        )
+        .required(),
         Arg::repeated(
             "city",
             "<id>",
@@ -61,9 +62,7 @@ run is compute, never a stalled request.",
         ),
         Arg::switch("charts", "Render chart artifacts."),
     ],
-    output: "\
-The output directory, the cities selected, and the engine's own summary lines. \
-The results themselves are documents in --out; they are not inlined.",
+    output: "The verified batch identity and bounded artifact inventory, including city APDs and the portfolio result and draft.",
     examples: &[
         Example {
             command: "ds solar run --prepared ./prepared --out ./results --output json",
@@ -96,6 +95,11 @@ The results themselves are documents in --out; they are not inlined.",
             code: "engine_refused",
             when: "the engine ran and failed",
             remedy: "read detail.engine for the engine's own message",
+        },
+        Refusal {
+            code: "batch_receipt_missing",
+            when: "the engine succeeds without a readable batch.json",
+            remedy: "keep --out on a writable local filesystem and retry",
         },
         Refusal {
             code: "callee_timed_out",
@@ -139,10 +143,9 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         OsString::from("--concurrency"),
         OsString::from(concurrency),
     ];
-    if let Some(out) = inputs.value("out") {
-        args.push(OsString::from("--out"));
-        args.push(OsString::from(out));
-    }
+    let out = inputs.require("out")?;
+    args.push(OsString::from("--out"));
+    args.push(OsString::from(out));
     if let Some(run_id) = inputs.value("run-id") {
         args.push(OsString::from("--run-id"));
         args.push(OsString::from(run_id));
@@ -160,12 +163,35 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         return Err(DS_SOLAR.failure_from(&completed, "run"));
     }
 
+    let batch_path = PathBuf::from(out).join("batch.json");
+    let batch: Value = std::fs::read(&batch_path)
+        .ok()
+        .and_then(|body| serde_json::from_slice(&body).ok())
+        .ok_or_else(|| {
+            Failure::failed(
+                "batch_receipt_missing",
+                format!(
+                    "solar completed without a readable `{}`",
+                    batch_path.display()
+                ),
+            )
+        })?;
+    let artifacts = batch["artifacts"]
+        .as_array()
+        .map(|items| items.iter().take(500).cloned().collect::<Vec<_>>())
+        .unwrap_or_default();
+    let artifact_count = batch["artifacts"].as_array().map_or(0, Vec::len);
     Ok(json!({
         "prepared": prepared,
-        "out": inputs.value("out"),
+        "out": out,
         "cities": if cities.is_empty() { json!("all") } else { json!(cities) },
         "concurrency": concurrency,
         "charts": inputs.switch("charts"),
+        "batch_id": batch["batch_id"],
+        "batch_digest": batch["batch_digest"],
+        "artifact_count": artifact_count,
+        "artifacts": artifacts,
+        "artifacts_truncated": artifact_count > 500,
         "engine": summarize(&completed.stdout),
     }))
 }
@@ -193,6 +219,16 @@ pub fn render(data: &Value) -> String {
     );
     if let Some(dir) = data["out"].as_str() {
         out.push_str(&format!("out      {dir}\n"));
+    }
+    out.push_str(&format!(
+        "batch    {}\n",
+        data["batch_id"].as_str().unwrap_or("")
+    ));
+    if let Some(artifacts) = data["artifacts"].as_array() {
+        out.push_str(&format!("artifacts {}\n", artifacts.len()));
+        for artifact in artifacts {
+            out.push_str(&format!("  {}\n", artifact["name"].as_str().unwrap_or("")));
+        }
     }
     out.push('\n');
     for line in data["engine"].as_array().into_iter().flatten() {

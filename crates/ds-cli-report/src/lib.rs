@@ -22,6 +22,7 @@
 //!   [`export`], which reads the document either way and returns typed
 //!   blockers instead of an exit code and a path.
 
+pub mod bundle;
 pub mod engine;
 pub mod export;
 pub mod tasks;
@@ -52,5 +53,10 @@ pub const EXPORT_TIMEOUT: Duration = Duration::from_secs(30 * 60);
 pub static DOMAIN: Domain = Domain {
     id: "report",
     summary: "Deliverables: transformer and combined report artifacts.",
-    commands: &[&engine::COMMAND, &tasks::COMMAND, &export::COMMAND],
+    commands: &[
+        &engine::COMMAND,
+        &tasks::COMMAND,
+        &export::COMMAND,
+        &bundle::COMMAND,
+    ],
 };

@@ -83,6 +83,25 @@ One deliberate asymmetry: the engine's `transformer` (singular, one report)
 and `transformers` (plural, combined) are both reached through a repeated
 `--transformer`, so a caller does not have to know which task pluralizes.
 
+For combined export, repeat `--transformer-document` in the same order; `ds`
+builds the engine's required `{transformer, layers}` pairs. There is no
+reporter-side `all`: a paired desktop/cache command must first resolve the
+selection, refresh missing or stale IndexedDB rooms, and pass the exact local
+documents. The reporter performs no download.
+
+## Compounded desktop reports
+
+`ds report bundle --request <file>` invokes the reporter-owned
+`export_compounded_report` task. The request lists transformer and combined
+artifacts with their SHA-256 digests and safe archive paths, supplies the
+manifest, and names a new output ZIP. The task streams local files, verifies
+each digest, embeds `manifest.json`, and never contacts ds-brain or cloud
+storage. Discover its exact schema with:
+
+```bash
+ds report tasks --task export_compounded_report
+```
+
 ## Finding the engine
 
 | Order | Location | Why |

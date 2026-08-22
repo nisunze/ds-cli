@@ -72,6 +72,12 @@ fn report_export_flags_cover_every_required_engine_field() {
 
     for task in index["data"]["tasks"].as_array().expect("tasks") {
         let name = task["name"].as_str().expect("task name");
+        if name == "export_compounded_report" {
+            // `report bundle` accepts the reporter's complete typed request;
+            // unlike report.export it intentionally has no convenience-field
+            // translation to keep archive layout and digests one document.
+            continue;
+        }
         let required: Vec<&str> = task["required"]
             .as_array()
             .into_iter()
@@ -158,4 +164,77 @@ fn report_export_writes_only_fields_the_engine_declares() {
              it worked."
         );
     }
+}
+
+/// Whether the solar engine is reachable, using `ds`'s own resolution rules
+/// rather than a second copy of them.
+fn solar_available() -> bool {
+    let (descriptor, code) = ds(&["capabilities", "solar.prepare", "--output", "json"]);
+    code == 0 && descriptor["data"]["command"]["availability"] == "available"
+}
+
+#[test]
+fn solar_engine_flags_are_real() {
+    // `ds solar` translates its own flags into `ds-solar`'s. Those names are a
+    // hand copy, and a hand copy nobody checks drifts silently: the flag keeps
+    // working, the engine stops receiving it, and the failure surfaces months
+    // later as a confusing refusal. The first version of `ds solar
+    // verify-weather` sent `--dataset` to an engine that only accepts `--file`.
+    //
+    // So every flag `ds` forwards is checked against the engine's own help, at
+    // the version actually installed.
+    if !solar_available() {
+        skip("the ds-solar engine is not installed on this machine");
+        return;
+    }
+
+    // The flag names `ds` actually forwards, per subcommand. Deliberately a
+    // hand list rather than derived from the Command spec: `ds`'s own flag
+    // names and the engine's are allowed to differ, and this is the table that
+    // records which pairs are intended.
+    let forwarded: &[(&str, &[&str])] = &[
+        (
+            "prepare",
+            &["--out", "--project-id", "--root", "--cache", "--city"],
+        ),
+        (
+            "run",
+            &[
+                "--prepared",
+                "--out",
+                "--city",
+                "--concurrency",
+                "--run-id",
+                "--charts",
+            ],
+        ),
+        ("verify-weather", &["--file"]),
+    ];
+
+    for (subcommand, flags) in forwarded {
+        let help = engine_help(subcommand);
+        for flag in *flags {
+            assert!(
+                help.contains(flag),
+                "`ds solar` forwards `{flag}` to `ds-solar {subcommand}`, but the \
+                 installed engine's help does not mention it.\n\
+                 Either the engine renamed it, or the mapping was a guess.\n\
+                 Engine help:\n{help}"
+            );
+        }
+    }
+}
+
+/// One `ds-solar` subcommand's help, from the engine `ds` itself resolves.
+fn engine_help(subcommand: &str) -> String {
+    let binary = std::env::var("DS_SOLAR_BIN").unwrap_or_else(|_| "ds-solar".to_string());
+    let output = Command::new(binary)
+        .args([subcommand, "--help"])
+        .output()
+        .expect("the solar engine runs");
+    format!(
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    )
 }

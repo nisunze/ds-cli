@@ -12,7 +12,10 @@
 //!
 //!   * the bridge never returns the Firebase JWT or a refresh token, so no
 //!     credential can become a CLI argument, a log line or an agent's
-//!     context;
+//!     context. Where `ds` needs authenticated work done, it asks the
+//!     application to *do* it — `bridge::invoke` returns an outcome, never a
+//!     credential — so the call that needs the JWT is made by the process
+//!     that already holds it;
 //!   * the bridge accepts only a closed set of named semantic operations, so
 //!     possession of the descriptor buys the ability to ask the application
 //!     to do a known thing — never the ability to run arbitrary code inside
@@ -22,6 +25,7 @@
 //! more. It says a process on this machine may talk to the app. It does not
 //! say who is asking, and it can never authorize a project write on its own.
 
+pub mod bridge;
 pub mod discover;
 pub mod status;
 

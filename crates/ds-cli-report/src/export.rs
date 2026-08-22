@@ -72,10 +72,10 @@ its schema.",
             "Canonical transformer name. Once for --task transformer; repeat for combined.",
         ),
         Arg::value("network-config", "<path>", "Project configuration input."),
-        Arg::value(
+        Arg::repeated(
             "transformer-document",
             "<path>",
-            "Transformer input document. Required for --task transformer.",
+            "Transformer input document. Repeat in --transformer order for combined.",
         ),
         Arg::value(
             "input-shape",
@@ -154,6 +154,11 @@ blockers. `result_path` is present only when --result was given.",
             code: "too_many_transformers",
             when: "--task transformer was given more than one --transformer",
             remedy: "pass --transformer once, or use --task combined for several",
+        },
+        Refusal {
+            code: "transformer_document_mismatch",
+            when: "combined transformer names and documents have different counts",
+            remedy: "pair each --transformer with one --transformer-document in the same order",
         },
         Refusal {
             code: "request_not_found",
@@ -344,6 +349,7 @@ fn build_request(task: &str, inputs: &Inputs) -> Result<Value, Failure> {
     request.insert("network_config".into(), json!(network_config));
 
     let transformers = inputs.repeated("transformer");
+    let documents = inputs.repeated("transformer-document");
     match task {
         "transformer" => {
             let name = match transformers {
@@ -361,19 +367,47 @@ fn build_request(task: &str, inputs: &Inputs) -> Result<Value, Failure> {
                 }
             };
             request.insert("transformer".into(), json!(name));
-            let document = required(inputs, "transformer-document", "transformer_document")?;
+            let document = match documents {
+                [one] => one,
+                [] => return Err(missing("transformer-document", "transformer_document")),
+                many => {
+                    return Err(Failure::invalid(
+                        "transformer_document_mismatch",
+                        "--task transformer accepts one --transformer-document",
+                    )
+                    .detail(json!({ "given": many.len() })));
+                }
+            };
             request.insert("transformer_document".into(), json!(document));
         }
         _ => {
             if transformers.is_empty() {
                 return Err(missing("transformer", "transformers"));
             }
-            request.insert("transformers".into(), json!(transformers));
+            if transformers.len() != documents.len() {
+                return Err(Failure::invalid(
+                    "transformer_document_mismatch",
+                    "combined export needs one document for each transformer",
+                )
+                .remedy("pair each --transformer with one --transformer-document in the same order")
+                .detail(
+                    json!({ "transformers": transformers.len(), "documents": documents.len() }),
+                ));
+            }
+            request.insert(
+                "transformers".into(),
+                Value::Array(
+                    transformers
+                        .iter()
+                        .zip(documents.iter())
+                        .map(|(transformer, layers)| json!({ "transformer": transformer, "layers": layers }))
+                        .collect(),
+                ),
+            );
         }
     }
 
     for (flag, field) in [
-        ("input-shape", "input_shape"),
         ("country", "country"),
         ("admin-bounds", "admin_bounds_asset"),
         ("admin-bounds-sha256", "admin_bounds_sha256"),
@@ -383,8 +417,14 @@ fn build_request(task: &str, inputs: &Inputs) -> Result<Value, Failure> {
         }
     }
 
+    if task == "transformer"
+        && let Some(value) = inputs.value("input-shape")
+    {
+        request.insert("input_shape".into(), json!(value));
+    }
+
     let formats = inputs.repeated("format");
-    if !formats.is_empty() {
+    if task == "transformer" && !formats.is_empty() {
         request.insert("formats".into(), json!(formats));
     }
 
