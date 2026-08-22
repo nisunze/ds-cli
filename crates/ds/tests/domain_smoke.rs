@@ -439,3 +439,353 @@ fn every_offline_command_is_available_without_any_engine_binary() {
         }
     }
 }
+
+// ---------------------------------------------------------------------------
+// map
+// ---------------------------------------------------------------------------
+//
+// The map lives inside a running application, so there is no fixture that can
+// stand in for it: an assertion about what a layer looks like on screen needs
+// the desktop, and the desktop is not present on CI.
+//
+// What *is* assertable everywhere, and is where this domain's real bugs would
+// live, is the input contract. Every handler here validates its own flags
+// before it opens the bridge, so a malformed invocation must refuse with the
+// same typed code whether or not an application is running. That is not a
+// shape test: it is the ordering claim the whole domain rests on, and it is
+// exactly what would break if a handler were rewritten to resolve the paired
+// session first — after which none of these codes would ever be seen by
+// anyone without the desktop installed.
+
+/// A features file holding one line, for the geometry checks.
+fn line_geojson() -> String {
+    let path = std::env::temp_dir().join("ds-map-smoke-line.geojson");
+    std::fs::write(
+        &path,
+        r#"{"type":"FeatureCollection","features":[
+            {"type":"Feature","properties":{"name":"a"},
+             "geometry":{"type":"LineString","coordinates":[[30.0,-1.9],[30.1,-1.95]]}}]}"#,
+    )
+    .expect("temp geojson is writable");
+    path.display().to_string()
+}
+
+/// The refusal code a call came back with, or "" if it succeeded.
+fn refusal(args: &[&str]) -> String {
+    let run = ds(args);
+    if run.envelope["status"] == "ok" {
+        return String::new();
+    }
+    run.envelope["error"]["code"]
+        .as_str()
+        .unwrap_or_default()
+        .to_string()
+}
+
+/// The pairing states a well-formed map call may legitimately end in. Which
+/// one depends on the machine; that it is one of these does not.
+const PAIRING_CODES: &[&str] = &[
+    "desktop_not_paired",
+    "desktop_ambiguous",
+    "desktop_unreachable",
+    "desktop_unreadable",
+    "desktop_refused",
+    "desktop_operation_unsupported",
+    "desktop_signed_out",
+    "pairing_rejected",
+];
+
+#[test]
+fn map_validates_its_own_inputs_before_it_opens_the_bridge() {
+    // Each of these is malformed in exactly one way, and the expected code is
+    // the one that names that way — never a pairing code. A handler that
+    // resolved the desktop first would return `desktop_not_paired` for every
+    // row here on any machine without the application.
+    let cases: &[(&[&str], &str)] = &[
+        // A transposed box is the commonest way `zoom` goes wrong, and the
+        // application would refuse it too — one round trip later.
+        (
+            &["map", "zoom", "--bbox", "30.2,-1.85,29.9,-2.1"],
+            "invalid_bbox",
+        ),
+        (&["map", "zoom", "--bbox", "29.9,-2.1,30.2"], "invalid_bbox"),
+        (
+            &[
+                "map",
+                "zoom",
+                "--bbox",
+                "29.9,-2.1,30.2,-1.85",
+                "--padding",
+                "900",
+            ],
+            "invalid_number",
+        ),
+        (&["map", "view", "--limit", "0"], "invalid_number"),
+        (
+            &[
+                "map",
+                "points-along",
+                "--layer",
+                "sketch:x",
+                "--interval-m",
+                "0",
+            ],
+            "invalid_number",
+        ),
+        (
+            &[
+                "map",
+                "outliers",
+                "--layer",
+                "sketch:x",
+                "--threshold",
+                "40",
+            ],
+            "invalid_number",
+        ),
+        (
+            &["map", "outliers", "--layer", "sketch:x", "--limit", "500"],
+            "invalid_number",
+        ),
+        (
+            &[
+                "map",
+                "random-points",
+                "--layer",
+                "sketch:x",
+                "--min-spacing-m",
+                "0",
+            ],
+            "invalid_number",
+        ),
+        (
+            &[
+                "map",
+                "draw",
+                "--name",
+                "n",
+                "--geometry",
+                "Point",
+                "--features",
+                "/definitely/not/here.geojson",
+            ],
+            "features_not_found",
+        ),
+        (
+            &[
+                "map",
+                "design",
+                "select",
+                "--transformer",
+                "T",
+                "--where",
+                "nope",
+            ],
+            "invalid_pair",
+        ),
+        (
+            &[
+                "map",
+                "design",
+                "select",
+                "--transformer",
+                "T",
+                "--bbox",
+                "1,2,3",
+            ],
+            "invalid_bbox",
+        ),
+        (
+            &[
+                "map",
+                "design",
+                "process",
+                "--transformer",
+                "T",
+                "--differential-where",
+                "nope",
+            ],
+            "invalid_pair",
+        ),
+    ];
+
+    for (args, expected) in cases {
+        let mut argv: Vec<&str> = args.to_vec();
+        argv.extend(["--output", "json"]);
+        let code = refusal(&argv);
+        assert_eq!(
+            &code,
+            expected,
+            "`ds {}` refused with `{code}`, not `{expected}`. Either the \
+             validation moved after the bridge call, or the code changed.",
+            args.join(" ")
+        );
+    }
+
+    // The geometry check reads the caller's own file and names the feature
+    // that is wrong — the answer the application cannot give, because by the
+    // time it looks the file is a payload.
+    let line = line_geojson();
+    let code = refusal(&[
+        "map",
+        "draw",
+        "--name",
+        "n",
+        "--geometry",
+        "Polygon",
+        "--features",
+        &line,
+        "--output",
+        "json",
+    ]);
+    assert_eq!(
+        code, "geometry_mismatch",
+        "a LineString file declared as a Polygon layer must be refused locally"
+    );
+}
+
+#[test]
+fn map_draw_names_the_feature_whose_geometry_is_wrong() {
+    // "The response parses" is not a test. This asserts the refusal carries
+    // the index of the offending feature and the types actually found, which
+    // is the difference between fixing a file and re-exporting it blind.
+    let line = line_geojson();
+    let run = ds(&[
+        "map",
+        "draw",
+        "--name",
+        "n",
+        "--geometry",
+        "Point",
+        "--features",
+        &line,
+        "--output",
+        "json",
+    ]);
+    assert_eq!(run.envelope["error"]["code"], "geometry_mismatch");
+    let detail = &run.envelope["error"]["detail"];
+    assert_eq!(detail["index"], 0, "the refusal must name which feature");
+    assert_eq!(detail["declared"], "Point");
+    assert_eq!(
+        detail["found"],
+        serde_json::json!(["LineString"]),
+        "the refusal must report the geometry the file actually holds"
+    );
+    assert_eq!(run.code, 2, "a malformed input is exit class 2");
+}
+
+#[test]
+fn map_design_set_refuses_an_edit_with_nothing_to_write() {
+    // `--set` is declared required, so the parser catches an absent one; this
+    // is the other way to arrive with nothing, and it must not reach the
+    // bridge and stage an empty change.
+    assert_eq!(
+        refusal(&[
+            "map",
+            "design",
+            "set",
+            "--transformer",
+            "T",
+            "--set",
+            "=value",
+            "--output",
+            "json",
+        ]),
+        "invalid_pair"
+    );
+    assert_eq!(
+        refusal(&[
+            "map",
+            "design",
+            "set",
+            "--transformer",
+            "T",
+            "--output",
+            "json"
+        ]),
+        "missing_input",
+        "--set is required and the parser must say so by name"
+    );
+}
+
+#[test]
+fn map_design_save_cannot_run_without_confirmation() {
+    // The only command in the domain that writes to the project. The gate is
+    // in dispatch, before the handler, so this holds no matter what the
+    // handler does — and it must hold on a machine with no desktop at all.
+    let run = ds(&[
+        "map",
+        "design",
+        "save",
+        "--transformer",
+        "T-1042",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(
+        run.envelope["error"]["code"], "confirmation_required",
+        "`ds map design save` reached past the confirmation gate"
+    );
+    assert_ne!(run.code, 0);
+}
+
+#[test]
+fn every_map_command_is_reachable_without_the_desktop_installed() {
+    // Availability here is deliberately unconditional: dispatch checks it
+    // before parsing, so a gate would make `--desktop-descriptor` — the flag
+    // that names a descriptor discovery did not find — unreachable, and would
+    // put every input refusal above out of reach on a machine with no app.
+    let index = ok(&["capabilities", "map", "--output", "json"]);
+    let commands = index["commands"].as_array().expect("commands");
+    assert_eq!(
+        commands.len(),
+        13,
+        "the map domain should register thirteen commands"
+    );
+    for command in commands {
+        assert_eq!(
+            command["availability"], "available",
+            "`{}` gates on discovery, which puts --desktop-descriptor out of reach",
+            command["id"]
+        );
+    }
+}
+
+#[test]
+fn a_well_formed_map_call_only_ever_fails_on_the_pairing_state() {
+    // Whatever this machine's desktop situation, a correct invocation must
+    // end in a pairing outcome — never an input refusal, and never an
+    // internal error. `undeclared_bridge_argument` in particular would mean a
+    // handler built an argument key its own BridgeOp does not declare, which
+    // no other suite can see.
+    for args in [
+        vec!["map", "view"],
+        vec!["map", "zoom", "--bbox", "29.9,-2.1,30.2,-1.85"],
+        vec!["map", "remove", "--layer", "sketch-does-not-exist"],
+        vec![
+            "map",
+            "points-along",
+            "--layer",
+            "sketch:x",
+            "--interval-m",
+            "25",
+        ],
+        vec!["map", "random-points", "--layer", "sketch:x"],
+        vec!["map", "outliers", "--layer", "sketch:x"],
+        vec!["map", "design", "read", "--transformer", "T-1042"],
+        vec!["map", "design", "select", "--transformer", "T-1042"],
+        vec!["map", "design", "set", "--transformer", "T", "--set", "a=b"],
+        vec!["map", "design", "process", "--transformer", "T-1042"],
+        vec!["map", "design", "save", "--transformer", "T-1042", "--yes"],
+    ] {
+        let mut argv = args.clone();
+        argv.extend(["--output", "json"]);
+        let code = refusal(&argv);
+        assert!(
+            code.is_empty() || PAIRING_CODES.contains(&code.as_str()),
+            "`ds {}` failed with `{code}`, which is not a pairing outcome. \
+             A well-formed call must reach the bridge and stop there.",
+            args.join(" ")
+        );
+    }
+}

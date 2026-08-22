@@ -43,6 +43,12 @@ const NOT_A_REFUSAL: &[(&str, &str)] = &[
         "callee_wait_failed",
         "raised only if the OS cannot report on a child ds itself spawned",
     ),
+    (
+        "undeclared_bridge_argument",
+        "raised only if a ds map handler builds an argument key its own \
+         BridgeOp does not declare — a defect in ds caught at the boundary, \
+         and one tests/bridge_parity.rs proves cannot be a schema drift",
+    ),
 ];
 
 fn ds(args: &[&str]) -> Value {
@@ -210,6 +216,7 @@ fn every_constructible_refusal_code_is_documented() {
     // command equally, so they are documented once in the output contract
     // rather than repeated in every REFUSALS section.
     let domain_crates = [
+        ("ds-cli-map", Some("map")),
         ("ds-cli-dsgrid", Some("dsgrid")),
         ("ds-cli-dsgrid-exchange", Some("dsgrid-exchange")),
         ("ds-cli-pls", Some("pls")),

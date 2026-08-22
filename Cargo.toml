@@ -15,6 +15,13 @@
 #                    executable and calling one named subcommand under
 #                    bounds. Separate so there is exactly one place a
 #                    process can be spawned from, and it can be audited.
+#   ds-cli-map       the map domain: the paired desktop's map, its local
+#                    layers and its design layers. Links no engine — the map
+#                    lives inside the running application, so every command
+#                    is one named bridge operation. Separate from
+#                    ds-cli-desktop because that crate is the authority
+#                    surface every domain borrows, and a map command must not
+#                    become reachable from a domain that never asked for one.
 #   ds-cli-dsgrid    the canonical-model domain. Links the authoritative
 #                    ds-network crates directly; owns no engineering logic.
 #   ds-cli-dsgrid-exchange
@@ -64,6 +71,7 @@ sha2 = "0.10"
 ds-cli-contract = { path = "crates/ds-cli-contract" }
 ds-cli-desktop = { path = "crates/ds-cli-desktop" }
 ds-cli-exec = { path = "crates/ds-cli-exec" }
+ds-cli-map = { path = "crates/ds-cli-map" }
 ds-cli-dsgrid = { path = "crates/ds-cli-dsgrid" }
 ds-cli-dsgrid-exchange = { path = "crates/ds-cli-dsgrid-exchange" }
 ds-cli-pls = { path = "crates/ds-cli-pls" }

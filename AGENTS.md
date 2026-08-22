@@ -48,7 +48,7 @@ the problem at the wrong tier.
 
 ## Reaching an owner
 
-Two routes, and the choice is not stylistic.
+Three routes, and the choice is not stylistic.
 
 **Link the crate** when it is a pure library with a clean boundary — as
 `ds-cli-dsgrid` links `ds-grid-model` and `ds-grid-exchange`, the same crates
@@ -72,6 +72,17 @@ subcommand no command registers must stay unreachable.
 Every process spawn goes through `ds-cli-exec`, which takes a `&'static str`
 subcommand. There is no `run(binary, argv)` and there must not be one — see
 [`docs/contracts/process-boundary-contract.md`](docs/contracts/process-boundary-contract.md).
+
+**Ask the paired application** when the owner is the running desktop itself —
+its map, its local layers, its signed-in session, its transformer rooms. None
+of that is reachable from a file or a sidecar, so `ds map` is entirely this
+route. The same rule shape applies: `ds-cli-desktop::bridge` sends one named
+semantic operation from a closed set, the application performs it under the
+identity it already holds, and what comes back is an outcome — never a
+credential and never the ability to run code inside the app. A generic
+`invoke(operation, args)` reachable from anywhere would be the same mistake as
+a generic argv, so `ds map` declares every operation and argument key it can
+send in `BRIDGE_OPS` and refuses to send anything else.
 
 Where a command translates its own flags into an owner's typed request, those
 field names are a hand copy and must be **checked against the installed
@@ -129,6 +140,7 @@ will refuse to let you do:
 | `contract.rs` | a command that is not fully described, or whose help and descriptor disagree |
 | `refusal_coverage.rs` | an error code a handler can emit that no command documents |
 | `engine_parity.rs` | a hand-copied schema field that the installed engine does not actually have |
+| `bridge_parity.rs` | the same, for the paired application: an operation it does not implement, an argument key it does not accept, a bound or snapshot field that moved |
 | `domain_smoke.rs` | a command that compiles, helps correctly — and returns the wrong answer on real data |
 
 `domain_smoke.rs` is the one that catches what the others cannot. Two bugs got
@@ -143,6 +155,13 @@ not a test, "a real PLS workspace offers at least one conversion" is.
 `engine_parity.rs` and any command over a process contract need the engine
 present. Set `DS_REPORT_BIN` / `DS_SOLAR_BIN` to run them locally; they say so
 loudly rather than passing quietly when the engine is absent.
+
+`bridge_parity.rs` needs the `ds-web` checkout. It defaults to the sibling
+directory and takes `DS_WEB_DIR` when that is not the layout — a git worktree
+of this repository is two levels deeper, and the first run of that suite from
+one skipped every check and reported green. A skipped parity suite is worse
+than no parity suite, so the skip names the path it looked in and CI fails if
+it appears.
 
 ## Budgets
 

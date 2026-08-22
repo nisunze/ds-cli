@@ -2,8 +2,10 @@ name: ci
 
 # `ds` links the authoritative engine crates from the sibling `ds-network`
 # workspace by path, and its test suite binds to that repository's real
-# `.dsgrid` fixture rather than a vendored copy. So CI checks out both
-# repositories side by side, in the same layout an operator has locally.
+# `.dsgrid` fixture rather than a vendored copy. `ds map` additionally checks
+# every operation and argument key it sends against the paired application's
+# own source in `ds-web`. So CI checks out all three repositories side by
+# side, in the same layout an operator has locally.
 on:
   push:
     branches: [master]
@@ -28,6 +30,15 @@ jobs:
           path: data-solutions/ds-network
           token: ${{ secrets.WORKSPACE_TOKEN }}
 
+      # Source only — `tests/bridge_parity.rs` reads the bridge's allow-list,
+      # the operation schemas and the map snapshot. Nothing here is built.
+      - name: Check out ds-web
+        uses: actions/checkout@v4
+        with:
+          repository: nisunze/ds-web
+          path: data-solutions/ds-web
+          token: ${{ secrets.WORKSPACE_TOKEN }}
+
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy, rustfmt
@@ -49,6 +60,19 @@ jobs:
       - name: Test
         working-directory: data-solutions/ds-cli
         run: cargo test --locked --workspace --all-features
+
+      # A parity suite that skips reports green, which is worse than no test:
+      # it claims a hand-copied field name was checked when nothing looked at
+      # it. Prove here that it actually ran.
+      - name: Prove bridge parity did not skip
+        working-directory: data-solutions/ds-cli
+        run: |
+          cargo test --locked -p ds --test bridge_parity -- --nocapture 2>&1 \
+            | tee bridge-parity.log
+          if grep -q "SKIPPED" bridge-parity.log; then
+            echo "::error::bridge_parity skipped; the ds-web checkout was not found"
+            exit 1
+          fi
 
       - name: Release build
         working-directory: data-solutions/ds-cli

@@ -1,0 +1,17 @@
+[package]
+name = "ds-cli-map"
+description = "The `ds map` domain: local layers, vector tools and design-layer edits on the paired desktop's map."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[dependencies]
+ds-cli-contract = { workspace = true }
+# The map lives inside the running application. Every command here is one
+# named semantic operation over the paired loopback bridge — there is no
+# second route to a map here, and no engine to link.
+ds-cli-desktop = { workspace = true }
+serde_json = { workspace = true }

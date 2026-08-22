@@ -17,6 +17,7 @@ DOMAINS
   pls              PLS-CADD workspaces: structures, capacity, references, DONs.
   solar            Solar batches: prepare inputs, run them offline, verify weather.
   report           Deliverables: transformer and combined report artifacts.
+  map              The paired map: local layers, vector tools, design-layer edits.
   desktop          The paired DS GridDesign session: pairing, sign-in, project.
 
 DISCOVERY
@@ -48,12 +49,15 @@ See [`docs/contracts/discovery-contract.md`](docs/contracts/discovery-contract.m
 ## Build and run
 
 `ds` links the authoritative engine crates from the sibling `ds-network`
-workspace by path, so both repositories must be checked out side by side:
+workspace by path, so both repositories must be checked out side by side.
+`ds-web` is not built, but `tests/bridge_parity.rs` reads its source to prove
+`ds map` sends operations the paired application actually implements:
 
 ```
 data-solutions/
   ds-cli/       ← here
-  ds-network/
+  ds-network/   linked by path; required to build
+  ds-web/       read by the bridge parity suite; DS_WEB_DIR overrides
 ```
 
 ```bash
@@ -124,6 +128,23 @@ ds desktop status          # paired? signed in? which project?
 "Not paired" is an answer, not a failure. See
 [`docs/reference/desktop.status.md`](docs/reference/desktop.status.md).
 
+That same borrowed session is what `ds map` acts through. The map is a
+MapLibre instance inside the running application, so there is no file to open
+instead — drawing a local layer, running a vector tool over one, or staging a
+property change on a transformer's design layers is one named bridge
+operation each, performed by the application under the identity it holds.
+
+```bash
+ds map view                                                   # what is on the map
+ds map draw --name AOI --geometry Polygon --features aoi.geojson --zoom
+ds map points-along --layer sketch:abc --interval-m 25
+```
+
+Local layers need only that the application is running. Design-layer commands
+need a signed-in project session, they stage locally, and the one command that
+pushes to the project — `ds map design save` — requires `--yes`. See
+[`docs/reference/map.md`](docs/reference/map.md).
+
 ## Architecture
 
 ```
@@ -136,6 +157,9 @@ crates/
                     can be spawned, and the only way to reach a sibling
                     DS executable.
   ds-cli-desktop    the paired-desktop authority surface.
+  ds-cli-map        the map domain: local layers, vector tools and
+                    design-layer edits, entirely over the paired bridge.
+                    Links no engine — the map is inside the application.
   ds-cli-dsgrid     the canonical-model domain, linking ds-network's
                     crates. Discovery and read-only throughout.
   ds-cli-dsgrid-exchange
@@ -176,7 +200,7 @@ unrelated engines" is a structural property rather than a promise.
 
 ## Status
 
-Six domains, nineteen domain commands plus three root metadata commands.
+Seven domains, thirty-nine domain commands plus three root metadata commands.
 
 `dsgrid`, `dsgrid-exchange` and `pls` **link** the authoritative
 `ds-network` crates, so they work on a machine with no sidecar installed and
@@ -207,5 +231,6 @@ fallback.
 | [`docs/reference/pls.md`](docs/reference/pls.md) | digest pinning, task bounds, why a task's code stays in `detail` |
 | [`docs/reference/report.md`](docs/reference/report.md) | why it calls a binary; the must-not-exist and blockers rules |
 | [`docs/reference/solar.md`](docs/reference/solar.md) | the two-phase split, and why the token is never a flag |
+| [`docs/reference/map.md`](docs/reference/map.md) | local map layers, vector tools, and staged design-layer edits |
 | [`docs/reference/desktop.status.md`](docs/reference/desktop.status.md) | pairing, discovery, what is never printed |
 | [`docs/migration/matrix.md`](docs/migration/matrix.md) | what moves, what is deleted, in what order |

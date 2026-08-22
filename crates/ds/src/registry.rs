@@ -177,6 +177,74 @@ static SOLAR_ENTRIES: &[Entry] = &[
     },
 ];
 
+static MAP_ENTRIES: &[Entry] = &[
+    Entry {
+        command: &ds_cli_map::view::COMMAND,
+        handler: ds_cli_map::view::run,
+        render: ds_cli_map::view::render,
+    },
+    Entry {
+        command: &ds_cli_map::draw::COMMAND,
+        handler: ds_cli_map::draw::run,
+        render: ds_cli_map::draw::render,
+    },
+    Entry {
+        command: &ds_cli_map::remove::COMMAND,
+        handler: ds_cli_map::remove::run,
+        render: ds_cli_map::remove::render,
+    },
+    Entry {
+        command: &ds_cli_map::zoom::COMMAND,
+        handler: ds_cli_map::zoom::run,
+        render: ds_cli_map::zoom::render,
+    },
+    Entry {
+        command: &ds_cli_map::points_along::COMMAND,
+        handler: ds_cli_map::points_along::run,
+        render: ds_cli_map::points_along::render,
+    },
+    Entry {
+        command: &ds_cli_map::random_points::COMMAND,
+        handler: ds_cli_map::random_points::run,
+        render: ds_cli_map::random_points::render,
+    },
+    Entry {
+        command: &ds_cli_map::outliers::COMMAND,
+        handler: ds_cli_map::outliers::run,
+        render: ds_cli_map::outliers::render,
+    },
+    Entry {
+        command: &ds_cli_map::design::read::COMMAND,
+        handler: ds_cli_map::design::read::run,
+        render: ds_cli_map::design::read::render,
+    },
+    Entry {
+        command: &ds_cli_map::design::select::COMMAND,
+        handler: ds_cli_map::design::select::run,
+        render: ds_cli_map::design::select::render,
+    },
+    Entry {
+        command: &ds_cli_map::design::set::COMMAND,
+        handler: ds_cli_map::design::set::run,
+        render: ds_cli_map::design::set::render,
+    },
+    Entry {
+        command: &ds_cli_map::design::create::COMMAND,
+        handler: ds_cli_map::design::create::run,
+        render: ds_cli_map::design::create::render,
+    },
+    Entry {
+        command: &ds_cli_map::design::process::COMMAND,
+        handler: ds_cli_map::design::process::run,
+        render: ds_cli_map::design::process::render,
+    },
+    Entry {
+        command: &ds_cli_map::design::save::COMMAND,
+        handler: ds_cli_map::design::save::run,
+        render: ds_cli_map::design::save::render,
+    },
+];
+
 static DESKTOP_ENTRIES: &[Entry] = &[Entry {
     command: &ds_cli_desktop::status::COMMAND,
     handler: ds_cli_desktop::status::run,
@@ -203,6 +271,10 @@ static DOMAINS: &[Registered] = &[
     Registered {
         domain: &ds_cli_report::DOMAIN,
         entries: REPORT_ENTRIES,
+    },
+    Registered {
+        domain: &ds_cli_map::DOMAIN,
+        entries: MAP_ENTRIES,
     },
     Registered {
         domain: &ds_cli_desktop::DOMAIN,

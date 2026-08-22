@@ -589,12 +589,17 @@ fn confirmation_policy_is_enforced_for_every_effectful_command() {
         }
     }
 
-    // Today every command is read-only, so nothing is checked. That is a fact
-    // worth stating rather than a reason to delete the test: it starts
-    // protecting the invariant the moment the first effectful command lands.
-    assert_eq!(
-        checked, 0,
-        "an effectful command now exists; confirm this test exercised it"
+    // This assertion used to read `checked == 0`, with a note that it would
+    // start protecting the invariant the moment the first effectful command
+    // landed. `ds map design save` is that command — it pushes a
+    // transformer's staged edits to the project — so the tripwire has been
+    // turned around: the claim now is that the gate was actually exercised,
+    // and a surface that loses its last effectful command fails here rather
+    // than passing vacuously.
+    assert!(
+        checked > 0,
+        "no command declares an effect that needs confirmation, so the \
+         dispatch gate went untested"
     );
 }
 
