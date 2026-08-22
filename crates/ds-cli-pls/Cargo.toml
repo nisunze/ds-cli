@@ -1,0 +1,20 @@
+[package]
+name = "ds-cli-pls"
+description = "The `ds pls` domain: PLS-CADD workspaces and structures, over ds-network's typed file tasks."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[dependencies]
+ds-cli-contract = { workspace = true }
+serde = { workspace = true }
+# The typed task crate is the whole domain surface. It owns orchestration —
+# loading exact bytes, checking identity, calling an application operation,
+# shaping a bounded result — and every engineering interpretation behind it
+# stays in the engine and exchange crates it calls.
+ds-grid-tasks = { workspace = true }
+serde_json = { workspace = true }
+sha2 = { workspace = true }

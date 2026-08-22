@@ -1,0 +1,14 @@
+[package]
+name = "ds-cli-solar"
+description = "The `ds solar` domain, over the `ds-solar` process contract owned by the ds-solar workspace."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[dependencies]
+ds-cli-contract = { workspace = true }
+ds-cli-exec = { workspace = true }
+serde_json = { workspace = true }

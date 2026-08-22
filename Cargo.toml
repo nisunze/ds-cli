@@ -1,0 +1,77 @@
+# The `ds` command line: one Rust executable that is the supported door into
+# the Data Solutions stack for a person in a terminal and for a coding agent.
+#
+# Workspace shape follows real dependency boundaries, not tidiness:
+#
+#   ds-cli-contract  the CLI's own contract — command metadata, output
+#                    envelope, error classes, exit codes, help rendering,
+#                    argument parsing. Depends on no domain crate, so the
+#                    contract can be tested without building an engine.
+#   ds-cli-desktop   the paired-desktop authority surface. Separate because
+#                    every future domain that needs a signed-in principal
+#                    routes through it, and because nothing in it may be
+#                    reachable from a domain that does not ask for it.
+#   ds-cli-exec      the typed process boundary: locating a sibling DS
+#                    executable and calling one named subcommand under
+#                    bounds. Separate so there is exactly one place a
+#                    process can be spawned from, and it can be audited.
+#   ds-cli-network   the network domain adapter. Links the authoritative
+#                    ds-network crates directly; owns no engineering logic.
+#   ds-cli-report    the reporter domain, over the `ds-report` process
+#                    contract its workspace deliberately published.
+#   ds-cli-solar     the solar domain, over the `ds-solar` process contract.
+#   ds               the binary. Registers domains, dispatches, renders.
+#
+# Domains are separate crates so "domain discovery must not initialize or
+# probe unrelated engines" is a structural property rather than a promise.
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "Proprietary"
+repository = "https://github.com/nisunze/ds-cli"
+authors = ["Data Solutions Engineering"]
+publish = false
+
+[workspace.dependencies]
+# The whole third-party surface. Every entry is already load-bearing in a
+# sibling workspace, so this repository introduces no new dependency class.
+#
+# There is deliberately no argument-parsing dependency. `ds` renders tiered
+# help and typed refusals from its own command metadata; a general parser
+# would own the bytes of every error and help screen, and those bytes are
+# the interface this CLI exists to keep small. See
+# docs/contracts/cli-output-contract.md.
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# Loopback transport to the paired desktop bridge. Same crate and major the
+# ds-network workspace already builds.
+ureq = { version = "3.3.0", features = ["json"] }
+# Content digests, for the digest-pinned PLS tasks. Same crate and major the
+# ds-network workspace already builds.
+sha2 = "0.10"
+
+ds-cli-contract = { path = "crates/ds-cli-contract" }
+ds-cli-desktop = { path = "crates/ds-cli-desktop" }
+ds-cli-exec = { path = "crates/ds-cli-exec" }
+ds-cli-network = { path = "crates/ds-cli-network" }
+ds-cli-pls = { path = "crates/ds-cli-pls" }
+ds-cli-report = { path = "crates/ds-cli-report" }
+ds-cli-solar = { path = "crates/ds-cli-solar" }
+
+# The authoritative engine crates, by path, exactly as ds-web/src-tauri
+# reaches them. `ds` links the same code the desktop links; it does not
+# reimplement or shell out to a second copy.
+ds-grid-model = { path = "../ds-network/crates/ds-grid-model", features = ["arrow"] }
+ds-grid-engine = { path = "../ds-network/crates/ds-grid-engine" }
+ds-grid-exchange = { path = "../ds-network/crates/ds-grid-exchange" }
+ds-grid-tasks = { path = "../ds-network/crates/ds-grid-tasks" }
+
+[profile.release]
+opt-level = "s"
+lto = true
+strip = true
+codegen-units = 1

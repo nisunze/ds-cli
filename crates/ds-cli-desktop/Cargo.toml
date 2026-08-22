@@ -1,0 +1,15 @@
+[package]
+name = "ds-cli-desktop"
+description = "The paired-desktop authority surface: deterministic bridge-descriptor discovery and the bounded loopback client."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[dependencies]
+ds-cli-contract = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+ureq = { workspace = true }

@@ -1,0 +1,25 @@
+[package]
+name = "ds"
+description = "The Data Solutions command line: one door into the stack for a person in a terminal and for a coding agent."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "ds"
+path = "src/main.rs"
+
+[dependencies]
+ds-cli-contract = { workspace = true }
+ds-cli-desktop = { workspace = true }
+ds-cli-network = { workspace = true }
+ds-cli-pls = { workspace = true }
+ds-cli-report = { workspace = true }
+ds-cli-solar = { workspace = true }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }

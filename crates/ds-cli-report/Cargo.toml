@@ -1,0 +1,14 @@
+[package]
+name = "ds-cli-report"
+description = "The `ds report` domain, over the `ds-report` typed process contract owned by ds-network-reporter."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[dependencies]
+ds-cli-contract = { workspace = true }
+ds-cli-exec = { workspace = true }
+serde_json = { workspace = true }

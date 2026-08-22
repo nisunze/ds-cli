@@ -1,0 +1,116 @@
+# `ds desktop status` — reference
+
+Tier-4 reference. `ds desktop status --help` is the contract.
+
+## Why pairing rather than a second login
+
+When DS GridDesign is running it already holds a signed-in Firebase session, a
+selected project, and a live map context. A second CLI login would mean a
+second identity to manage, a second token to store, and a second thing that
+can be signed in while the other is signed out.
+
+So `ds` borrows the application's authority instead. The application publishes
+a private descriptor; `ds` finds it, authenticates to a random-loopback bridge
+with the short-lived pairing secret inside it, and asks the application to
+perform named semantic operations using the session it already has.
+
+Two invariants make this safe, and both belong to the application:
+
+- the bridge **never returns the Firebase JWT or a refresh token**, so no
+  credential can become a CLI argument, a log line, or an agent's context;
+- the bridge accepts only a **closed set of named operations**, so possession
+  of the descriptor buys the ability to ask for a known thing — never the
+  ability to run arbitrary code inside the application.
+
+Possession of the descriptor is therefore a *transport* proof. It says a
+process on this machine may talk to the app. It does not say who is asking,
+and it can never authorize a project write on its own.
+
+## Descriptor discovery
+
+Each install profile is a distinct Tauri bundle identifier, and each writes its
+own descriptor:
+
+| Profile | Identifier |
+|---|---|
+| stable | `rw.datasolutions.desktop` |
+| canary | `rw.datasolutions.desktop.canary` |
+| dev | `rw.datasolutions.desktop.dev` |
+
+The descriptor is `agent-bridge.json` in that identifier's app-data directory:
+
+| Platform | Location |
+|---|---|
+| Linux | `$XDG_DATA_HOME/<identifier>/` or `~/.local/share/<identifier>/` |
+| Windows | `%APPDATA%\<identifier>\` |
+| macOS | `~/Library/Application Support/<identifier>/` |
+
+**Ambiguity is refused, never resolved by preference.** Two profiles running at
+once produces `desktop_ambiguous` listing both descriptor paths. Silently
+picking whichever sorted first is the class of mistake that stays invisible
+until it has written to the wrong project.
+
+```
+$ ds desktop status --output json
+{"…","error":{"code":"desktop_ambiguous","detail":{"candidates":[
+  {"profile":"canary","descriptor":"/home/…/rw.datasolutions.desktop.canary/agent-bridge.json"},
+  {"profile":"dev","descriptor":"/home/…/rw.datasolutions.desktop.dev/agent-bridge.json"}]}}}
+```
+
+Settle it with `--desktop-descriptor <path>`. An explicit path is used verbatim
+and never second-guessed.
+
+A descriptor is rejected if it is oversized, unparseable, declares a version
+this build does not speak, or **does not point at loopback**. The bridge is
+loopback by construction; a descriptor naming anything else is not one to hand
+a pairing secret to.
+
+## Why this command is always available
+
+It is tempting to make `status` report `unavailable` when no desktop is
+running, so `doctor` says something about the environment. It would also be
+circular: this is the command whose job is to report whether a desktop is
+running. Gating it on a desktop running means the one call that could explain
+the situation is the one call that refuses to.
+
+So "not paired" is a **success**:
+
+```json
+{
+  "paired": false,
+  "signed_in": false,
+  "project": null,
+  "reason": "no_session",
+  "remedy": "start DS GridDesign, then run `ds desktop status`",
+  "searched": ["stable", "canary", "dev"]
+}
+```
+
+Commands that genuinely need the session declare `Authority::DesktopUser` and
+report unavailable through their own check. Those are what make `doctor`
+informative, without making the diagnostic itself undiagnosable.
+
+## What is never in the output
+
+The pairing token. Any bearer credential. The Firebase JWT or refresh token.
+`Descriptor` deliberately has no `Debug` derive, so the secret cannot be
+formatted into a result by accident, and `cli.rs` asserts the absence.
+
+The bridge also publishes map context, frontend capabilities and folder grants.
+`status` reports none of them: a status check that dumped the whole session
+would be the largest response in the product.
+
+## Refusals
+
+| Code | Class | Meaning |
+|---|---|---|
+| `desktop_ambiguous` | unavailable | more than one profile running |
+| `descriptor_unusable` | unavailable | descriptor unreadable, stale, or not loopback |
+| `desktop_unreachable` | unavailable | descriptor names a port nothing answers on |
+| `pairing_rejected` | unauthorized | the app refused the secret; descriptor is stale |
+| `desktop_contract_mismatch` | unavailable | the app's reply does not match this build |
+
+## Related
+
+- `ds-web/src-tauri/src/agent_bridge.rs` — the bridge, and the closed operation list
+- `ds-web/src/lib/desktop/agent-bridge.ts` — the semantic operations themselves

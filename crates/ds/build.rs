@@ -1,0 +1,72 @@
+//! Stamp verifiable build identity into the binary.
+//!
+//! Release provenance is mandatory: a packaged `ds` must be able to say
+//! exactly which source it was built from, for which target, at what
+//! optimization, and whether the tree was clean. Packaging supplies the pin
+//! through the environment so the answer comes from the release process
+//! rather than from whatever `git` happened to be on PATH; a developer build
+//! falls back to reading the working tree and says so.
+//!
+//! Nothing here fails the build. A binary that cannot determine its source is
+//! honest about that — `unknown` is a truthful answer and a broken build is
+//! not an improvement.
+
+use std::process::Command;
+
+fn main() {
+    println!("cargo:rerun-if-env-changed=DS_CLI_SOURCE_SHA");
+    println!("cargo:rerun-if-env-changed=DS_CLI_SOURCE_DIRTY");
+    println!("cargo:rerun-if-changed=../../.git/HEAD");
+
+    let pinned = std::env::var("DS_CLI_SOURCE_SHA")
+        .ok()
+        .filter(|sha| !sha.is_empty());
+
+    let (sha, dirty) = match pinned {
+        // A packaging pin is authoritative. Its dirty state is declared, not
+        // inferred: the release process already refused a dirty tree, or
+        // deliberately allowed one for a development lane.
+        Some(sha) => {
+            let dirty = std::env::var("DS_CLI_SOURCE_DIRTY").as_deref() == Ok("1");
+            (sha, dirty)
+        }
+        None => (git_sha().unwrap_or_else(|| "unknown".into()), git_dirty()),
+    };
+
+    println!("cargo:rustc-env=DS_BUILD_SHA={sha}");
+    println!("cargo:rustc-env=DS_BUILD_DIRTY={}", u8::from(dirty));
+    println!(
+        "cargo:rustc-env=DS_BUILD_TARGET={}",
+        std::env::var("TARGET").unwrap_or_else(|_| "unknown".into())
+    );
+    println!(
+        "cargo:rustc-env=DS_BUILD_PROFILE={}",
+        std::env::var("PROFILE").unwrap_or_else(|_| "unknown".into())
+    );
+}
+
+fn git_sha() -> Option<String> {
+    let output = Command::new("git")
+        .args(["rev-parse", "HEAD"])
+        .output()
+        .ok()?;
+    output
+        .status
+        .success()
+        .then(|| String::from_utf8_lossy(&output.stdout).trim().to_string())
+        .filter(|sha| !sha.is_empty())
+}
+
+/// Untracked files count as dirty.
+///
+/// A binary built from a tree with new, uncommitted sources was not built
+/// from the commit its SHA names. `ds-web`'s release helper closes over
+/// untracked inputs for the same reason; this agrees with it rather than
+/// reporting a cleaner tree than exists.
+fn git_dirty() -> bool {
+    Command::new("git")
+        .args(["status", "--porcelain", "--untracked-files=normal"])
+        .output()
+        .map(|output| output.status.success() && !output.stdout.is_empty())
+        .unwrap_or(false)
+}

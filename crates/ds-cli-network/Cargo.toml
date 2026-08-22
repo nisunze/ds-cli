@@ -1,0 +1,19 @@
+[package]
+name = "ds-cli-network"
+description = "The `ds network` domain: the canonical grid model surface, over the authoritative ds-network crates."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[dependencies]
+ds-cli-contract = { workspace = true }
+# The authoritative owners. This crate holds argument handling, projection
+# and refusal mapping — and no engineering logic of its own. Every number it
+# reports was computed by one of these two crates.
+ds-grid-model = { workspace = true }
+ds-grid-engine = { workspace = true }
+ds-grid-exchange = { workspace = true }
+serde_json = { workspace = true }

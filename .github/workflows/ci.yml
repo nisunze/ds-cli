@@ -1,0 +1,66 @@
+name: ci
+
+# `ds` links the authoritative engine crates from the sibling `ds-network`
+# workspace by path, and its test suite binds to that repository's real
+# `.dsgrid` fixture rather than a vendored copy. So CI checks out both
+# repositories side by side, in the same layout an operator has locally.
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out ds-cli
+        uses: actions/checkout@v4
+        with:
+          path: data-solutions/ds-cli
+
+      - name: Check out ds-network
+        uses: actions/checkout@v4
+        with:
+          repository: nisunze/ds-network
+          path: data-solutions/ds-network
+          token: ${{ secrets.WORKSPACE_TOKEN }}
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: data-solutions/ds-cli
+
+      - name: Format
+        working-directory: data-solutions/ds-cli
+        run: cargo fmt --all --check
+
+      - name: Lint
+        working-directory: data-solutions/ds-cli
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+
+      # --locked so a dependency cannot drift in without the lockfile change
+      # being part of the reviewed diff.
+      - name: Test
+        working-directory: data-solutions/ds-cli
+        run: cargo test --locked --workspace --all-features
+
+      - name: Release build
+        working-directory: data-solutions/ds-cli
+        run: cargo build --locked --release
+
+      # Packaging verifies a staged executable exactly this way. Running it
+      # here means a break in build identity surfaces on the PR, not in the
+      # release pipeline.
+      - name: Verify build identity
+        working-directory: data-solutions/ds-cli
+        run: |
+          ./target/release/ds version --output json
+          ./target/release/ds version --output json \
+            | grep -q '"product":"ds"'
+          ./target/release/ds doctor --output json > /dev/null
