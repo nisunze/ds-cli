@@ -305,6 +305,57 @@ static MAP_ENTRIES: &[Entry] = &[
     },
 ];
 
+/// The Project Work domain lists its commands in the order a session uses
+/// them: look at the plan, find the item, read it, then act on it. Domain
+/// help prints this order verbatim, so the index doubles as the procedure.
+static WORK_ENTRIES: &[Entry] = &[
+    Entry {
+        command: &ds_cli_work::plan::COMMAND,
+        handler: ds_cli_work::plan::run,
+        render: ds_cli_work::plan::render,
+    },
+    Entry {
+        command: &ds_cli_work::task::list::COMMAND,
+        handler: ds_cli_work::task::list::run,
+        render: ds_cli_work::task::list::render,
+    },
+    Entry {
+        command: &ds_cli_work::task::read::COMMAND,
+        handler: ds_cli_work::task::read::run,
+        render: ds_cli_work::task::read::render,
+    },
+    Entry {
+        command: &ds_cli_work::task::create::COMMAND,
+        handler: ds_cli_work::task::create::run,
+        render: ds_cli_work::task::create::render,
+    },
+    Entry {
+        command: &ds_cli_work::task::update::COMMAND,
+        handler: ds_cli_work::task::update::run,
+        render: ds_cli_work::task::update::render,
+    },
+    Entry {
+        command: &ds_cli_work::task::assign::COMMAND,
+        handler: ds_cli_work::task::assign::run,
+        render: ds_cli_work::task::assign::render,
+    },
+    Entry {
+        command: &ds_cli_work::task::respond::COMMAND,
+        handler: ds_cli_work::task::respond::run,
+        render: ds_cli_work::task::respond::render,
+    },
+    Entry {
+        command: &ds_cli_work::record::list::COMMAND,
+        handler: ds_cli_work::record::list::run,
+        render: ds_cli_work::record::list::render,
+    },
+    Entry {
+        command: &ds_cli_work::record::read::COMMAND,
+        handler: ds_cli_work::record::read::run,
+        render: ds_cli_work::record::read::render,
+    },
+];
+
 static DESKTOP_ENTRIES: &[Entry] = &[Entry {
     command: &ds_cli_desktop::status::COMMAND,
     handler: ds_cli_desktop::status::run,
@@ -335,6 +386,10 @@ static DOMAINS: &[Registered] = &[
     Registered {
         domain: &ds_cli_map::DOMAIN,
         entries: MAP_ENTRIES,
+    },
+    Registered {
+        domain: &ds_cli_work::DOMAIN,
+        entries: WORK_ENTRIES,
     },
     Registered {
         domain: &ds_cli_desktop::DOMAIN,

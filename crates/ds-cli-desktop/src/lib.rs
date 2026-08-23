@@ -27,6 +27,7 @@
 
 pub mod bridge;
 pub mod discover;
+pub mod ops;
 pub mod status;
 
 use ds_cli_contract::spec::Domain;

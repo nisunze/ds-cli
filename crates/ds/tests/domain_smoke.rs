@@ -907,3 +907,307 @@ fn a_well_formed_map_call_only_ever_fails_on_the_pairing_state() {
         );
     }
 }
+
+// ---------------------------------------------------------------------------
+// work
+// ---------------------------------------------------------------------------
+
+#[test]
+fn work_validates_its_own_inputs_before_it_opens_the_bridge() {
+    // Every refusal below must be reachable on a machine with no application
+    // running, because that is every CI machine — and because a caller that
+    // transposed a date should hear which flag was wrong, not that no session
+    // was found.
+    assert_eq!(
+        refusal(&[
+            "work", "task", "update", "--task", "T-1", "--output", "json", "--yes"
+        ]),
+        "nothing_to_update",
+        "an update with no change must be refused before a project round trip"
+    );
+    assert_eq!(
+        refusal(&[
+            "work",
+            "task",
+            "create",
+            "--title",
+            "Stake the route",
+            "--start",
+            "01-09-2026",
+            "--output",
+            "json",
+            "--yes",
+        ]),
+        "invalid_date",
+        "a transposed day and month must be refused locally; the engine would accept it"
+    );
+    assert_eq!(
+        refusal(&[
+            "work", "task", "create", "--title", "Orphan", "--kind", "child", "--output", "json",
+            "--yes",
+        ]),
+        "invalid_task_shape",
+        "a child with no parent must be refused before the bridge opens"
+    );
+    assert_eq!(
+        refusal(&[
+            "work",
+            "task",
+            "update",
+            "--task",
+            "T-1",
+            "--progress",
+            "140",
+            "--output",
+            "json",
+            "--yes",
+        ]),
+        "invalid_number",
+        "progress is a percent and must be held to 0..100"
+    );
+    assert_eq!(
+        refusal(&[
+            "work", "task", "assign", "--task", "T-1", "--output", "json", "--yes"
+        ]),
+        "invalid_assignment",
+        "an assign that names nobody has no intent to send"
+    );
+    assert_eq!(
+        refusal(&[
+            "work",
+            "task",
+            "assign",
+            "--task",
+            "T-1",
+            "--owner",
+            "a@example.com",
+            "--request",
+            "b@example.com",
+            "--output",
+            "json",
+            "--yes",
+        ]),
+        "invalid_assignment",
+        "asking and transferring are two different intents"
+    );
+    assert_eq!(
+        refusal(&[
+            "work",
+            "task",
+            "assign",
+            "--task",
+            "T-1",
+            "--request",
+            "not-an-address",
+            "--output",
+            "json",
+            "--yes",
+        ]),
+        "invalid_email",
+        "a person flag that is not an address must be refused locally"
+    );
+    assert_eq!(
+        refusal(&["work", "task", "list", "--limit", "500", "--output", "json"]),
+        "invalid_number",
+        "a page larger than the application returns must be refused by the bound it names"
+    );
+    assert_eq!(
+        refusal(&[
+            "work",
+            "task",
+            "respond",
+            "--task",
+            "T-1",
+            "--response",
+            "maybe",
+            "--output",
+            "json",
+            "--yes",
+        ]),
+        "invalid_choice",
+        "the assignment loop has two answers, and `maybe` is not one of them"
+    );
+}
+
+#[test]
+fn every_work_write_refuses_without_confirmation() {
+    // Project Work is shared state governed by ds-brain. Every write here is
+    // `global_write`, so dispatch must stop it before the bridge opens —
+    // including `respond`, which is the one a person is most likely to script.
+    for args in [
+        vec!["work", "task", "create", "--title", "Stake the route"],
+        vec![
+            "work",
+            "task",
+            "update",
+            "--task",
+            "T-1",
+            "--delivery",
+            "in_progress",
+        ],
+        vec![
+            "work",
+            "task",
+            "assign",
+            "--task",
+            "T-1",
+            "--request",
+            "pilot@example.com",
+        ],
+        vec![
+            "work",
+            "task",
+            "respond",
+            "--task",
+            "T-1",
+            "--response",
+            "accept",
+        ],
+    ] {
+        let mut argv = args.clone();
+        argv.extend(["--output", "json"]);
+        assert_eq!(
+            refusal(&argv),
+            "confirmation_required",
+            "`ds {}` reached past the confirmation gate",
+            args.join(" ")
+        );
+    }
+}
+
+#[test]
+fn every_work_command_is_reachable_without_the_desktop_installed() {
+    // Same reasoning as the map domain: dispatch checks availability before
+    // parsing, so a discovery gate would put `--desktop-descriptor` and every
+    // input refusal above out of reach on a machine with no application.
+    let index = ok(&["capabilities", "work", "--output", "json"]);
+    let commands = index["commands"].as_array().expect("commands");
+    assert_eq!(
+        commands.len(),
+        9,
+        "the work domain should register nine commands"
+    );
+    for command in commands {
+        assert_eq!(
+            command["availability"], "available",
+            "`{}` gates on discovery, which puts --desktop-descriptor out of reach",
+            command["id"]
+        );
+    }
+    // Reads must never be behind the confirmation gate, and writes must never
+    // be outside it. Getting this backwards is silent until an operator runs
+    // an unattended session.
+    for command in commands {
+        let effect = command["effect"].as_str().expect("effect");
+        let id = command["id"].as_str().expect("id");
+        let write = matches!(
+            id,
+            "work.task.create" | "work.task.update" | "work.task.assign" | "work.task.respond"
+        );
+        assert_eq!(
+            effect,
+            if write { "global_write" } else { "read_only" },
+            "`{id}` declares the wrong effect class for its blast radius"
+        );
+    }
+}
+
+#[test]
+fn a_well_formed_work_call_only_ever_fails_on_the_pairing_state() {
+    // Whatever this machine's desktop situation, a correct invocation must end
+    // in a pairing outcome — never an input refusal, and never an internal
+    // error. `undeclared_bridge_argument` in particular would mean a handler
+    // built an argument key its own BridgeOp does not declare, which no other
+    // suite can see.
+    for args in [
+        vec!["work", "plan"],
+        vec!["work", "task", "list"],
+        vec![
+            "work",
+            "task",
+            "list",
+            "--state",
+            "blocked",
+            "--assignee",
+            "pilot@example.com",
+            "--placement",
+            "inbox",
+            "--limit",
+            "25",
+            "--page",
+            "1",
+        ],
+        vec!["work", "task", "read", "--task", "T-1"],
+        vec![
+            "work",
+            "task",
+            "create",
+            "--title",
+            "Stake the route",
+            "--kind",
+            "milestone",
+            "--start",
+            "2026-09-01",
+            "--yes",
+        ],
+        vec![
+            "work",
+            "task",
+            "update",
+            "--task",
+            "T-1",
+            "--title",
+            "Stake the MV route",
+            "--priority",
+            "high",
+            "--delivery",
+            "in_progress",
+            "--progress",
+            "40",
+            "--finish",
+            "2026-09-20",
+            "--yes",
+        ],
+        vec![
+            "work",
+            "task",
+            "assign",
+            "--task",
+            "T-1",
+            "--request",
+            "pilot@example.com",
+            "--yes",
+        ],
+        vec![
+            "work",
+            "task",
+            "assign",
+            "--task",
+            "T-1",
+            "--withdraw",
+            "--yes",
+        ],
+        vec![
+            "work",
+            "task",
+            "respond",
+            "--task",
+            "T-1",
+            "--response",
+            "accept",
+            "--yes",
+        ],
+        vec!["work", "record", "list", "--category", "review"],
+        vec!["work", "record", "read", "--record", "R-1"],
+    ] {
+        let mut argv = args.clone();
+        argv.extend(["--output", "json"]);
+        let code = refusal(&argv);
+        assert!(
+            code.is_empty() || PAIRING_CODES.contains(&code.as_str()),
+            "`ds {}` failed with `{code}`, which is not a pairing outcome. \
+             A well-formed call must reach the bridge and stop there.",
+            args.join(" ")
+        );
+    }
+}

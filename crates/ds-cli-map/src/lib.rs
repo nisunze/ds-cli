@@ -57,10 +57,18 @@ use std::collections::BTreeSet;
 use std::time::Duration;
 
 use ds_cli_contract::outcome::Failure;
-use ds_cli_contract::spec::{Availability, Domain, Refusal};
-use ds_cli_desktop::bridge;
-use ds_cli_desktop::discover::Descriptor;
+use ds_cli_contract::spec::{Domain, Refusal};
 use serde_json::{Map, Value, json};
+
+// The paired-application primitives every bridge domain shares, declared once
+// in `ds-cli-desktop` and re-exported here so a caller of this domain — and
+// every command in it — keeps naming them as `crate::…`.
+pub use ds_cli_desktop::ops::{
+    AMBIGUOUS, BridgeOp, DESCRIPTOR_ARG, INVALID_NUMBER, NOT_PAIRED, PAIRING_REJECTED, REFUSED,
+    SIGNED_OUT, SIGNED_OUT_MARKERS, UNREACHABLE, UNREADABLE, UNSUPPORTED,
+    classify_signed_out as classify_design_failure, integer, invoke, paired, paired_availability,
+    plural,
+};
 
 pub static DOMAIN: Domain = Domain {
     id: "map",
@@ -93,17 +101,6 @@ pub static DOMAIN: Domain = Domain {
 // ---------------------------------------------------------------------------
 // The declared wire contract
 // ---------------------------------------------------------------------------
-
-/// One bridge operation and the exact argument keys this domain may send it.
-///
-/// A key written as `settings.intervalM` declares a nested key inside the
-/// `settings` object — which is where the dangerous hand copies live, because
-/// the application's vector-tool settings are camelCase and every flag here
-/// is not.
-pub struct BridgeOp {
-    pub operation: &'static str,
-    pub arguments: &'static [&'static str],
-}
 
 pub const LAYER_ADD: BridgeOp = BridgeOp {
     operation: "map.temporary_layer.add",
@@ -326,184 +323,6 @@ pub const DESIGN_STAGE_TIMEOUT: Duration = Duration::from_secs(10 * 60);
 pub const DESIGN_PROCESS_TIMEOUT: Duration = Duration::from_secs(30 * 60);
 
 // ---------------------------------------------------------------------------
-// Availability and the shared refusals
-// ---------------------------------------------------------------------------
-
-/// Always available, and the reasoning is the same one `ds desktop status`
-/// gives — with one addition that settles it.
-///
-/// It is tempting to gate this on a descriptor existing, so `ds doctor` says
-/// something about the map. Two things make that wrong:
-///
-/// * **It would make `--desktop-descriptor` unreachable.** Dispatch checks
-///   availability *before* it has parsed a single flag. Every command here
-///   accepts an explicit descriptor path — that is how a caller settles
-///   ambiguity between profiles, and how a developer running a build with a
-///   nonstandard app-data directory is reachable at all. A gate that refused
-///   because discovery found nothing would refuse the one invocation that
-///   was about to name where to look.
-/// * **It would make the input contract untestable.** Every handler here
-///   validates its own flags before it touches the bridge, so a transposed
-///   `--bbox` is a typed refusal naming the box whether or not an
-///   application is running. Under a gate, none of that is reachable on a
-///   machine without the desktop — which is every CI machine.
-///
-/// So `ds doctor` reports these as available and the diagnostic belongs where
-/// it already lives: `ds desktop status` answers whether there is a session,
-/// and every command here documents `desktop_not_paired` with the same code
-/// and the same remedy the gate would have used.
-pub fn paired_availability() -> Availability {
-    Availability::Available
-}
-
-pub const NOT_PAIRED: Refusal = Refusal {
-    code: "desktop_not_paired",
-    when: "no DS GridDesign session is running on this machine",
-    remedy: "start DS GridDesign, then run `ds desktop status`",
-};
-pub const AMBIGUOUS: Refusal = Refusal {
-    code: "desktop_ambiguous",
-    when: "Stable, Canary or a dev build are running together",
-    remedy: "pass --desktop-descriptor <path> to name which one",
-};
-pub const UNREACHABLE: Refusal = Refusal {
-    code: "desktop_unreachable",
-    when: "the descriptor is stale, or the application did not answer in time",
-    remedy: "DS GridDesign may have exited; restart it and retry",
-};
-pub const PAIRING_REJECTED: Refusal = Refusal {
-    code: "pairing_rejected",
-    when: "the application refused the descriptor's pairing secret",
-    remedy: "the descriptor is stale; restart DS GridDesign",
-};
-pub const REFUSED: Refusal = Refusal {
-    code: "desktop_refused",
-    when: "the application answered and refused the operation",
-    remedy: "read detail.detail for the application's own message",
-};
-pub const UNSUPPORTED: Refusal = Refusal {
-    code: "desktop_operation_unsupported",
-    when: "this DS GridDesign build does not offer the operation",
-    remedy: "update DS GridDesign; `ds desktop status` reports the profile",
-};
-pub const UNREADABLE: Refusal = Refusal {
-    code: "desktop_unreadable",
-    when: "the application's reply could not be read within its bound",
-    remedy: "restart DS GridDesign and retry",
-};
-
-pub const SIGNED_OUT: Refusal = Refusal {
-    code: "desktop_signed_out",
-    when: "the application is running but signed out, or has no project selected",
-    remedy: "sign in and select a project in DS GridDesign",
-};
-
-// ---------------------------------------------------------------------------
-// Calling the application
-// ---------------------------------------------------------------------------
-
-/// Resolve the paired application from `--desktop-descriptor`, or discover it.
-pub fn paired(explicit: Option<&str>) -> Result<Descriptor, Failure> {
-    Ok(bridge::paired(explicit)?.descriptor)
-}
-
-/// Send one declared operation.
-///
-/// The guard is the point: an argument key that [`BRIDGE_OPS`] does not
-/// declare never leaves this process. Combined with the parity test — which
-/// proves the declaration matches the application's own input schema — a
-/// misspelled field is caught by `ds`, at the boundary, instead of arriving
-/// as a validation error from a webview.
-pub fn invoke(
-    descriptor: &Descriptor,
-    op: &BridgeOp,
-    arguments: Value,
-    timeout: Duration,
-) -> Result<Value, Failure> {
-    if let Some(undeclared) = undeclared_key(op, &arguments) {
-        return Err(Failure::internal(
-            "undeclared_bridge_argument",
-            format!(
-                "`{}` does not declare the argument `{undeclared}`",
-                op.operation
-            ),
-        )
-        .remedy("this is a defect in ds; report it with the command you ran"));
-    }
-    bridge::invoke(descriptor, op.operation, arguments, timeout)
-}
-
-/// The first key in `arguments` the operation does not declare, if any.
-fn undeclared_key(op: &BridgeOp, arguments: &Value) -> Option<String> {
-    let object = arguments.as_object()?;
-    for (key, value) in object {
-        let nested_prefix = format!("{key}.");
-        let has_nested = op
-            .arguments
-            .iter()
-            .any(|declared| declared.starts_with(&nested_prefix));
-        if has_nested {
-            let Some(inner) = value.as_object() else {
-                return Some(key.clone());
-            };
-            for inner_key in inner.keys() {
-                let qualified = format!("{key}.{inner_key}");
-                if !op.arguments.contains(&qualified.as_str()) {
-                    return Some(qualified);
-                }
-            }
-        } else if !op.arguments.contains(&key.as_str()) {
-            return Some(key.clone());
-        }
-    }
-    None
-}
-
-/// What the application says when a design operation is asked for without a
-/// project session. Matched case-insensitively against its own message.
-///
-/// This is a hand copy of the application's prose, which is the least stable
-/// thing to key on in the whole domain — so `tests/bridge_parity.rs` requires
-/// each marker to still appear in the application's source, and the fallback
-/// when none match is the untranslated refusal rather than a wrong one.
-pub const SIGNED_OUT_MARKERS: &[&str] = &[
-    "no active project",
-    "open a project",
-    "sign in",
-    "signed out",
-];
-
-/// Turn the application's own refusal into this domain's signed-out refusal
-/// when that is what it actually is.
-///
-/// The design operations require a signed-in project session, and the
-/// application reports that as an ordinary operation refusal. Letting it
-/// through as `desktop_refused` would send a caller to read `detail` for a
-/// condition that has a name, a remedy and a `ds` command that diagnoses it.
-pub fn classify_design_failure(failure: Failure) -> Failure {
-    if failure.code() != "desktop_refused" {
-        return failure;
-    }
-    let detail = failure
-        .detail_value()
-        .and_then(|detail| detail["detail"].as_str())
-        .unwrap_or_default()
-        .to_ascii_lowercase();
-    let signed_out = SIGNED_OUT_MARKERS
-        .iter()
-        .any(|marker| detail.contains(marker));
-    if !signed_out {
-        return failure;
-    }
-    Failure::unauthorized(
-        "desktop_signed_out",
-        "the paired session is signed out, or has no project selected",
-    )
-    .remedy(SIGNED_OUT.remedy)
-    .next("ds desktop status")
-}
-
-// ---------------------------------------------------------------------------
 // Reading GeoJSON a caller supplies
 // ---------------------------------------------------------------------------
 
@@ -718,11 +537,6 @@ pub const INVALID_BBOX: Refusal = Refusal {
     when: "--bbox is not four finite degrees, or west/south are not below east/north",
     remedy: "pass --bbox west,south,east,north in degrees",
 };
-pub const INVALID_NUMBER: Refusal = Refusal {
-    code: "invalid_number",
-    when: "a numeric flag is not a number, or falls outside the bound in its summary",
-    remedy: "the refusal carries the accepted range",
-};
 pub const INVALID_PAIR: Refusal = Refusal {
     code: "invalid_pair",
     when: "a key=value flag has no `=`, or an empty key",
@@ -782,25 +596,6 @@ pub fn number(raw: &str, flag: &str, min: f64, max: f64) -> Result<f64, Failure>
     Ok(parsed)
 }
 
-/// A whole-number flag.
-pub fn integer(raw: &str, flag: &str, min: i64, max: i64) -> Result<i64, Failure> {
-    let parsed = raw.parse::<i64>().map_err(|_| {
-        Failure::invalid(
-            "invalid_number",
-            format!("`--{flag}` must be a whole number"),
-        )
-        .remedy(format!("pass {min}..{max}"))
-    })?;
-    if parsed < min || parsed > max {
-        return Err(
-            Failure::invalid("invalid_number", format!("`--{flag}` is outside its bound"))
-                .remedy(format!("pass {min}..{max}"))
-                .detail(json!({ "given": parsed, "min": min, "max": max })),
-        );
-    }
-    Ok(parsed)
-}
-
 /// A `true|false` flag. Declared as a value rather than a switch wherever the
 /// application's own default is on: a switch can only ever mean "turn this
 /// on", so a switch for a setting that starts on cannot express the caller's
@@ -850,27 +645,6 @@ pub fn pairs(raw: &[String], flag: &str) -> Result<Map<String, Value>, Failure> 
         );
     }
     Ok(object)
-}
-
-/// The `--desktop-descriptor` flag, declared identically by every command
-/// here so a caller who learned it once has learned it everywhere.
-pub const DESCRIPTOR_ARG: ds_cli_contract::spec::Arg = ds_cli_contract::spec::Arg {
-    name: "desktop-descriptor",
-    kind: ds_cli_contract::spec::ArgKind::Value,
-    value: "<path>",
-    required: false,
-    default: None,
-    choices: &[],
-    summary: "Use this bridge descriptor instead of discovering one.",
-};
-
-/// Render a count with its noun, so a human line reads as English.
-pub fn plural(count: u64, noun: &str) -> String {
-    if count == 1 {
-        format!("1 {noun}")
-    } else {
-        format!("{count} {noun}s")
-    }
 }
 
 #[cfg(test)]
@@ -1042,45 +816,6 @@ mod tests {
                 .expect_err("no key")
                 .code(),
             "invalid_pair"
-        );
-    }
-
-    #[test]
-    fn an_argument_key_the_operation_does_not_declare_never_leaves_this_process() {
-        // The guard behind `invoke`. It is what makes the declared wire
-        // contract load-bearing rather than documentation: a handler cannot
-        // send a key the parity test has not proved.
-        assert_eq!(
-            undeclared_key(&ZOOM_TO, &json!({ "bbox": [1, 2, 3, 4], "padding": 8 })),
-            None
-        );
-        assert_eq!(
-            undeclared_key(&ZOOM_TO, &json!({ "bbox": [1, 2, 3, 4], "zoom": 8 })),
-            Some("zoom".to_string())
-        );
-
-        // Nested keys are checked one level in, because that is where the
-        // application's camelCase settings live.
-        assert_eq!(
-            undeclared_key(
-                &POINTS_ALONG,
-                &json!({ "layerId": "sketch:x", "settings": { "intervalM": 25 } })
-            ),
-            None
-        );
-        assert_eq!(
-            undeclared_key(
-                &POINTS_ALONG,
-                &json!({ "layerId": "sketch:x", "settings": { "interval_m": 25 } })
-            ),
-            Some("settings.interval_m".to_string()),
-            "a settings key that drifts case must be caught here"
-        );
-        // A declared object that arrives as a scalar is undeclared too: the
-        // application would reject the whole payload rather than one field.
-        assert_eq!(
-            undeclared_key(&POINTS_ALONG, &json!({ "settings": 25 })),
-            Some("settings".to_string())
         );
     }
 

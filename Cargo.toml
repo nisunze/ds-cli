@@ -34,6 +34,11 @@
 #   ds-cli-report    the reporter domain, over the `ds-report` process
 #                    contract its workspace deliberately published.
 #   ds-cli-solar     the solar domain, over the `ds-solar` process contract.
+#   ds-cli-work      the Project Work domain: the plan, its tasks, the
+#                    assignment loop and the record of what happened. Like
+#                    ds-cli-map it links no engine — the graph is governed by
+#                    ds-brain and reached only through the paired application,
+#                    so every command is one named bridge operation.
 #   ds               the binary. Registers domains, dispatches, renders.
 #
 # Domains are separate crates so "domain discovery must not initialize or
@@ -77,6 +82,7 @@ ds-cli-dsgrid-exchange = { path = "crates/ds-cli-dsgrid-exchange" }
 ds-cli-pls = { path = "crates/ds-cli-pls" }
 ds-cli-report = { path = "crates/ds-cli-report" }
 ds-cli-solar = { path = "crates/ds-cli-solar" }
+ds-cli-work = { path = "crates/ds-cli-work" }
 
 # The authoritative engine crates, by path, exactly as ds-web/src-tauri
 # reaches them. `ds` links the same code the desktop links; it does not

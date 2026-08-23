@@ -1,0 +1,18 @@
+[package]
+name = "ds-cli-work"
+description = "The `ds work` domain: Project Work — the plan, its tasks, the assignment loop and the record of what happened."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[dependencies]
+ds-cli-contract = { workspace = true }
+# Project Work lives inside the running application: its signed-in session is
+# the authority, its Project Work surface is the owner, and its canonical
+# graph is the model. Every command here is one named bridge operation, and
+# there is no engine to link.
+ds-cli-desktop = { workspace = true }
+serde_json = { workspace = true }
