@@ -25,6 +25,8 @@
 //! Every result therefore reports `staged` and `persisted` separately, and
 //! `persisted` is false everywhere except `save`.
 
+pub mod batch_process;
+pub mod batch_save;
 pub mod create;
 pub mod delete;
 pub mod geometry;
@@ -35,6 +37,8 @@ pub mod report;
 pub mod save;
 pub mod select;
 pub mod set;
+pub mod upload;
+pub mod upload_stage;
 
 use ds_cli_contract::Inputs;
 use ds_cli_contract::outcome::Failure;

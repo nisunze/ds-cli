@@ -81,7 +81,7 @@ pub static REPORT_EXPORT_COMMAND: Command = Command {
     id: "solar.report.export",
     path: &["solar", "report", "export"],
     contract: 1,
-    summary: "Export a sealed native Solar APD or parity draft.",
+    summary: "Export the prompting draft (default) or machine-composed APD.",
     purpose: "Reads the selected text report in bounded slices from a completed paired native Solar batch and creates one new local file at --out. The desktop validates the run, city, document name and approved workspace on every slice. No workspace path, cache location or credential crosses the CLI boundary.",
     effect: Effect::LocalFileWrite,
     authority: Authority::DesktopUser,
@@ -92,9 +92,9 @@ pub static REPORT_EXPORT_COMMAND: Command = Command {
         Arg::value(
             "variant",
             "apd|draft",
-            "APD or frozen parity draft to export.",
+            "draft = pre-LLM prompting Markdown; apd = machine-composed product without operator interpretation.",
         )
-        .default("apd")
+        .default("draft")
         .choices(REPORT_VARIANTS),
         Arg::value(
             "out",
@@ -170,7 +170,7 @@ pub static PORTFOLIO_EXPORT_COMMAND: Command = Command {
 pub fn export_report(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let run_id = inputs.require("run-id")?;
     let city = inputs.require("city")?;
-    let variant = inputs.value("variant").unwrap_or("apd");
+    let variant = inputs.value("variant").unwrap_or("draft");
     let bytes = read_all(inputs, DOCUMENT_READ_OPERATION, |offset| {
         let mut arguments = Map::new();
         arguments.insert("run_id".into(), json!(run_id));

@@ -283,6 +283,113 @@ fn solar_run_lifecycle_uses_closed_operations_and_preserves_arguments() {
 }
 
 #[test]
+fn solar_workflow_reads_import_and_portfolio_batches_use_closed_operations() {
+    let bridge = bridge(vec![
+        (
+            "solar.results.read",
+            json!({ "status": "ok", "run_id": "solar-run-123", "section": "finance" }),
+        ),
+        (
+            "solar.sync.status",
+            json!({ "status": "ok", "rows": [], "counts": { "synced": 0 } }),
+        ),
+        (
+            "solar.portfolio.list",
+            json!({ "status": "ok", "portfolios": [{ "id": "pf-1", "city_count": 2 }] }),
+        ),
+        (
+            "solar.run.start",
+            json!({ "status": "started", "run_id": "solar-run-portfolio", "contexts": ["a", "b"] }),
+        ),
+        (
+            "solar.final.import",
+            json!({ "status": "imported", "run_id": "solar-run-123", "context": "rw-kigali" }),
+        ),
+    ]);
+    let descriptor = bridge.descriptor.to_string_lossy().into_owned();
+    let final_path = std::env::temp_dir().join(format!(
+        "ds-cli-solar-final-{}-{}.md",
+        std::process::id(),
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock")
+            .as_nanos()
+    ));
+    std::fs::write(&final_path, "# Interpreted final\n").expect("write final fixture");
+    let final_path_text = final_path.to_string_lossy().into_owned();
+
+    let calls: Vec<Vec<&str>> = vec![
+        vec![
+            "solar",
+            "results",
+            "read",
+            "--run-id",
+            "solar-run-123",
+            "--city",
+            "rw-kigali",
+            "--section",
+            "finance",
+            "--path",
+            "financial_summary",
+        ],
+        vec!["solar", "sync", "status", "--run-id", "solar-run-123"],
+        vec!["solar", "portfolio", "list"],
+        vec![
+            "solar",
+            "run",
+            "start",
+            "--portfolio",
+            "pf-1",
+            "--concurrency",
+            "4",
+        ],
+        vec![
+            "solar",
+            "final",
+            "import",
+            "--run-id",
+            "solar-run-123",
+            "--city",
+            "rw-kigali",
+            "--file",
+            &final_path_text,
+            "--yes",
+        ],
+    ];
+    for base in calls {
+        let mut args = base;
+        args.extend(["--desktop-descriptor", &descriptor, "--output", "json"]);
+        let (_envelope, code, stdout, stderr) = ds(&args);
+        assert_eq!(code, 0, "{stdout}{stderr}");
+    }
+
+    let requests = finish(bridge);
+    assert_eq!(
+        requests[0]["arguments"],
+        json!({
+            "run_id": "solar-run-123",
+            "context": "rw-kigali",
+            "section": "finance",
+            "path": ["financial_summary"],
+        })
+    );
+    assert_eq!(
+        requests[1]["arguments"],
+        json!({ "run_id": "solar-run-123" })
+    );
+    assert_eq!(requests[2]["arguments"], json!({}));
+    assert_eq!(
+        requests[3]["arguments"],
+        json!({ "portfolio": "pf-1", "concurrency": 4 })
+    );
+    assert_eq!(requests[4]["arguments"]["run_id"], "solar-run-123");
+    assert_eq!(requests[4]["arguments"]["context"], "rw-kigali");
+    assert_eq!(requests[4]["arguments"]["source_path"], final_path_text);
+
+    let _ = std::fs::remove_file(final_path);
+}
+
+#[test]
 fn paired_solar_exports_page_sealed_reports_and_portfolios_to_new_files() {
     let bridge = bridge(vec![
         (

@@ -39,8 +39,12 @@ pub static START_COMMAND: Command = Command {
             "city",
             "<id>",
             "Canonical prepared city context id. Repeat to run several cities.",
-        )
-        .required(),
+        ),
+        Arg::value(
+            "portfolio",
+            "<id>",
+            "Run the exact cached/governed membership of one Solar portfolio instead of --city.",
+        ),
         Arg::switch("no-charts", "Do not render chart artifacts for this run."),
         Arg::value(
             "concurrency",
@@ -192,7 +196,12 @@ pub static READ_COMMAND: Command = Command {
 
 pub fn start(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let mut arguments = Map::new();
-    arguments.insert("contexts".into(), json!(inputs.repeated("city")));
+    if !inputs.repeated("city").is_empty() {
+        arguments.insert("contexts".into(), json!(inputs.repeated("city")));
+    }
+    if let Some(portfolio) = inputs.value("portfolio") {
+        arguments.insert("portfolio".into(), json!(portfolio));
+    }
     if inputs.switch("no-charts") {
         arguments.insert("render_charts".into(), Value::Bool(false));
     }

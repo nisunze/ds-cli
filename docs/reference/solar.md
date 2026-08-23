@@ -13,7 +13,12 @@ ds solar run start --city <context> ...
 ds solar run progress --run-id <id>
 ds solar run result --run-id <id>
 ds solar result read --run-id <id> --city <context>
+ds solar results read --run-id <id> --city <context> --section <name>
 ds solar report export --run-id <id> --city <context> --variant draft --out <file>
+ds solar final import --run-id <id> --city <context> --file <final.md> --yes
+ds solar sync status --run-id <id>
+ds solar portfolio list
+ds solar run start --portfolio <id> ...
 ds solar portfolio export --run-id <id> --artifact result --out <file>
 ds solar run cancel --run-id <id>
 ```
@@ -31,8 +36,9 @@ That input includes the weather/PV reference material needed by the native Rust
 Solar pipeline. A cache miss may cause the application to acquire source data;
 the calculation and report generation remain local once preparation completes.
 
-`ds solar run start` calls exactly `solar.run.start` with selected contexts and
-only the optional fields the caller supplied:
+`ds solar run start` calls exactly `solar.run.start` with either repeated city
+contexts or one portfolio id (never both) and only the optional fields the
+caller supplied:
 
 ```json
 {
@@ -43,11 +49,29 @@ only the optional fields the caller supplied:
 }
 ```
 
+Portfolio launch resolves the same refreshed/cache-retained membership used by
+the Pipeline page:
+
+```json
+{ "portfolio": "portfolio-id", "concurrency": 4 }
+```
+
 It returns a run receipt rather than waiting for calculation. The remaining
 commands call the paired lifecycle operations `solar.run.progress`,
 `solar.run.result`, `solar.run.cancel`, and `solar.result.read`. Result reads
 use `--city` as the user-facing spelling for the operation's `context` field;
 repeated `--path` values are semantic result fields, never filesystem paths.
+`solar results read` is the full-dashboard counterpart: it reads one named
+section from canonical `report_input.json` through the same verified
+ProjectResultReceipt store used by Site, Plant, BOQ, Finance and unified views.
+
+`solar final import` accepts the explicit operator/LLM-produced Markdown path,
+but the native shell performs the bounded UTF-8 read, commits it into the
+selected run/city final slot, optionally renders DOCX with Pandoc, and queues
+the final report variant. DS GridDesign does not call a model. `solar sync
+status` exposes the Sync Center's durable publication states without starting
+or retrying work. `solar portfolio list` returns exact membership and refreshes
+the shared offline cache when connected.
 
 `solar run result` includes the committed city document inventory and the
 root-level portfolio inventory. `solar report export` pages either the clean
@@ -109,6 +133,10 @@ protocols. Use the paired lifecycle for product city contexts; use the
 | `solar run result` | `solar.run.result` | read only | bounded public result receipt |
 | `solar run cancel` | `solar.run.cancel` | local UI | cancellation receipt |
 | `solar result read` | `solar.result.read` | read only | bounded city result projection |
+| `solar results read` | `solar.results.read` | read only | bounded canonical dashboard-section projection |
+| `solar sync status` | `solar.sync.status` | read only | durable publication rows and state counts |
+| `solar portfolio list` | `solar.portfolio.list` | read only | governed ids and city membership |
+| `solar final import` | `solar.final.import` | artifact write | committed interpreted final and queued publication |
 | `solar report export` | `solar.document.read` | local file write | one new APD or parity-draft Markdown file |
 | `solar portfolio export` | `solar.portfolio.read` | local file write | one new aggregate result JSON or draft Markdown file |
 
@@ -123,10 +151,13 @@ set of product actions and never a generic desktop RPC.
 | `solar prepare` | 30 min | cache capture or authenticated refresh across selected cities |
 | `solar run start` | 30 s | creates a local run receipt; compute continues as a job |
 | lifecycle reads / cancel | 30 s | bounded local bridge replies |
+| results/sync/portfolio reads | 30 s | bounded local receipt/cache projections |
+| final import | 10 min | bounded source validation plus optional local Pandoc render |
 | headless `solar run` | 4 h | offline compute over a caller-supplied prepared batch |
 | `solar engine`, `solar verify-weather` | 20 s | external engine discovery or verification |
 
-`--concurrency` on `solar run start` is constrained to 1 through 32. `--serial`
+`--concurrency` on `solar run start` is constrained to 1 through 32. This is a
+bounded native worker pool, not one WASM instance per city. `--serial`
 asks the desktop to calculate strictly serially. `--no-charts` maps to
 `render_charts: false`; charts are otherwise left to the desktop's product
 default.
@@ -145,5 +176,6 @@ from this CLI.
 - `crates/ds-cli-solar/src/prepare.rs` — paired preparation adapter
 - `crates/ds-cli-solar/src/paired_run.rs` — paired run lifecycle adapter
 - `crates/ds-cli-solar/src/exports.rs` — paired APD/draft and portfolio exporter
+- `crates/ds-cli-solar/src/workflow.rs` — canonical result, sync, portfolio and final-import operations
 - `crates/ds-cli-solar/src/run.rs` — headless artifact adapter
 - [`../contracts/cli-output-contract.md`](../contracts/cli-output-contract.md)

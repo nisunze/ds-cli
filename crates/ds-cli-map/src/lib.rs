@@ -80,9 +80,13 @@ pub static DOMAIN: Domain = Domain {
         &design::delete::COMMAND,
         &design::geometry::COMMAND,
         &design::process::COMMAND,
+        &design::batch_process::COMMAND,
+        &design::batch_save::COMMAND,
         &design::save::COMMAND,
         &design::list::COMMAND,
         &design::report::COMMAND,
+        &design::upload::COMMAND,
+        &design::upload_stage::COMMAND,
     ],
 };
 
@@ -182,9 +186,17 @@ pub const DESIGN_PROCESS: BridgeOp = BridgeOp {
         "differential.bbox",
     ],
 };
+pub const DESIGN_PROCESS_BATCH: BridgeOp = BridgeOp {
+    operation: "design.process.batch",
+    arguments: &["transformers", "settings", "parallel"],
+};
 pub const DESIGN_SAVE: BridgeOp = BridgeOp {
     operation: "design.transformer.save",
     arguments: &["transformer"],
+};
+pub const DESIGN_SAVE_BATCH: BridgeOp = BridgeOp {
+    operation: "design.transformer.save_batch",
+    arguments: &["transformers", "parallel"],
 };
 pub const DESIGN_DELETE: BridgeOp = BridgeOp {
     operation: "design.features.delete",
@@ -201,6 +213,19 @@ pub const DESIGN_LIST: BridgeOp = BridgeOp {
 pub const DESIGN_REPORT: BridgeOp = BridgeOp {
     operation: "design.report.export",
     arguments: &["transformer"],
+};
+pub const DESIGN_UPLOAD_INSPECT: BridgeOp = BridgeOp {
+    operation: "design.upload.inspect",
+    arguments: &["paths", "network", "parallel"],
+};
+pub const DESIGN_UPLOAD_STAGE_BATCH: BridgeOp = BridgeOp {
+    operation: "design.upload.stage_batch",
+    arguments: &[
+        "items.transformer",
+        "items.path",
+        "parallel",
+        "replaceLocal",
+    ],
 };
 
 /// Every operation this domain can send, for the parity test to walk. A new
@@ -221,9 +246,13 @@ pub const BRIDGE_OPS: &[&BridgeOp] = &[
     &DESIGN_DELETE,
     &DESIGN_GEOMETRY,
     &DESIGN_PROCESS,
+    &DESIGN_PROCESS_BATCH,
     &DESIGN_SAVE,
+    &DESIGN_SAVE_BATCH,
     &DESIGN_LIST,
     &DESIGN_REPORT,
+    &DESIGN_UPLOAD_INSPECT,
+    &DESIGN_UPLOAD_STAGE_BATCH,
 ];
 
 /// The application's bound on one temporary layer. Hand-copied from

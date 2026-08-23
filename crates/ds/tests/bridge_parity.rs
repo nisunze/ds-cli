@@ -136,6 +136,36 @@ fn every_map_command_has_one_closed_operation_owner() {
 }
 
 #[test]
+fn solar_workflow_gaps_have_one_closed_desktop_owner() {
+    let Some(app) = app() else {
+        skip("the ds-web sibling repository is not on disk");
+        return;
+    };
+    let allowlist = between(
+        &app.transport,
+        "pub const CLI_OPERATIONS: &[&str] = &[",
+        "];",
+    );
+    for operation in [
+        "solar.results.read",
+        "solar.sync.status",
+        "solar.portfolio.list",
+        "solar.final.import",
+    ] {
+        assert_eq!(
+            count(allowlist, &format!("\"{operation}\"")),
+            1,
+            "{operation} must appear exactly once in the native allowlist"
+        );
+        assert_eq!(
+            count(&app.frontend, &format!("case '{operation}':")),
+            1,
+            "{operation} must have exactly one frontend executor"
+        );
+    }
+}
+
+#[test]
 fn map_bounds_and_session_projection_match_the_desktop_owner() {
     let Some(app) = app() else {
         skip("the ds-web sibling repository is not on disk");

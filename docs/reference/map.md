@@ -41,6 +41,30 @@ installed transformer. Marking an as-built network approved is the most
 consequential property write in the product; one sentence from a model must
 not be able to reach the project.
 
+## Explicit upload, cleaning, process and save batches
+
+The status-page bulk workflow is available through four closed CLI operations:
+
+```bash
+ds map design upload inspect --path ./tx1.zip --path ./tx2.xlsx --parallel 4
+ds map design upload stage --source TX-1=./tx1.zip --source TX-2=./tx2.xlsx --parallel 4
+ds map design batch process --transformer TX-1 --transformer TX-2 --parallel 4
+ds map design batch save --transformer TX-1 --transformer TX-2 --parallel 4 --yes
+```
+
+`--parallel` is bounded to 1 through 32 and defaults to the application's batch
+setting. It controls the desktop-owned worker pool; it does not launch browser
+tabs, processes, containers, or one manually managed WASM instance per item.
+Each task gets isolated WASM/kernel state, results are returned in requested
+order, and one failed transformer does not cancel unrelated items.
+
+Inspection is read-only. Upload staging performs parsing, canonical header
+mapping and Rust cleaning, but leaves successful rooms local and dirty. Process
+reuses the Design Status Fast Process scheduler and also remains staged. Only
+the separate batch save persists, with optimistic versions and mandatory
+`--yes`. Per-item rows always distinguish `staged` from `persisted` and carry
+their own warning/error so a script can retry a strict subset.
+
 ## The two identifiers
 
 `ds map view` reports each layer twice:

@@ -802,8 +802,8 @@ fn every_map_command_is_reachable_without_the_desktop_installed() {
     let commands = index["commands"].as_array().expect("commands");
     assert_eq!(
         commands.len(),
-        17,
-        "the map domain should register seventeen commands"
+        21,
+        "the map domain should register twenty-one commands"
     );
     for command in commands {
         assert_eq!(
@@ -860,6 +860,32 @@ fn a_well_formed_map_call_only_ever_fails_on_the_pairing_state() {
             r#"{"type":"Point","coordinates":[30.06,-1.95]}"#,
         ],
         vec!["map", "design", "list"],
+        vec![
+            "map",
+            "design",
+            "batch",
+            "process",
+            "--transformer",
+            "T-1042",
+        ],
+        vec![
+            "map",
+            "design",
+            "batch",
+            "save",
+            "--transformer",
+            "T-1042",
+            "--yes",
+        ],
+        vec!["map", "design", "upload", "inspect", "--path", "survey.zip"],
+        vec![
+            "map",
+            "design",
+            "upload",
+            "stage",
+            "--source",
+            "T-1042=survey.zip",
+        ],
         vec!["map", "design", "save", "--transformer", "T-1042", "--yes"],
         vec![
             "map",

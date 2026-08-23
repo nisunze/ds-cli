@@ -161,6 +161,26 @@ static SOLAR_ENTRIES: &[Entry] = &[
         render: ds_cli_solar::paired_run::render_receipt,
     },
     Entry {
+        command: &ds_cli_solar::workflow::RESULTS_READ_COMMAND,
+        handler: ds_cli_solar::workflow::results_read,
+        render: ds_cli_solar::workflow::render,
+    },
+    Entry {
+        command: &ds_cli_solar::workflow::SYNC_STATUS_COMMAND,
+        handler: ds_cli_solar::workflow::sync_status,
+        render: ds_cli_solar::workflow::render,
+    },
+    Entry {
+        command: &ds_cli_solar::workflow::PORTFOLIO_LIST_COMMAND,
+        handler: ds_cli_solar::workflow::portfolio_list,
+        render: ds_cli_solar::workflow::render,
+    },
+    Entry {
+        command: &ds_cli_solar::workflow::FINAL_IMPORT_COMMAND,
+        handler: ds_cli_solar::workflow::final_import,
+        render: ds_cli_solar::workflow::render,
+    },
+    Entry {
         command: &ds_cli_solar::exports::REPORT_EXPORT_COMMAND,
         handler: ds_cli_solar::exports::export_report,
         render: ds_cli_solar::exports::render,
@@ -249,6 +269,16 @@ static MAP_ENTRIES: &[Entry] = &[
         render: ds_cli_map::design::process::render,
     },
     Entry {
+        command: &ds_cli_map::design::batch_process::COMMAND,
+        handler: ds_cli_map::design::batch_process::run,
+        render: ds_cli_map::design::batch_process::render,
+    },
+    Entry {
+        command: &ds_cli_map::design::batch_save::COMMAND,
+        handler: ds_cli_map::design::batch_save::run,
+        render: ds_cli_map::design::batch_save::render,
+    },
+    Entry {
         command: &ds_cli_map::design::save::COMMAND,
         handler: ds_cli_map::design::save::run,
         render: ds_cli_map::design::save::render,
@@ -262,6 +292,16 @@ static MAP_ENTRIES: &[Entry] = &[
         command: &ds_cli_map::design::report::COMMAND,
         handler: ds_cli_map::design::report::run,
         render: ds_cli_map::design::report::render,
+    },
+    Entry {
+        command: &ds_cli_map::design::upload::COMMAND,
+        handler: ds_cli_map::design::upload::run,
+        render: ds_cli_map::design::upload::render,
+    },
+    Entry {
+        command: &ds_cli_map::design::upload_stage::COMMAND,
+        handler: ds_cli_map::design::upload_stage::run,
+        render: ds_cli_map::design::upload_stage::render,
     },
 ];
 

@@ -19,6 +19,7 @@ pub mod paired_run;
 pub mod prepare;
 pub mod run;
 pub mod weather;
+pub mod workflow;
 
 use std::time::Duration;
 
@@ -75,6 +76,10 @@ pub static DOMAIN: Domain = Domain {
         &paired_run::RESULT_COMMAND,
         &paired_run::CANCEL_COMMAND,
         &paired_run::READ_COMMAND,
+        &workflow::RESULTS_READ_COMMAND,
+        &workflow::SYNC_STATUS_COMMAND,
+        &workflow::PORTFOLIO_LIST_COMMAND,
+        &workflow::FINAL_IMPORT_COMMAND,
         &exports::REPORT_EXPORT_COMMAND,
         &exports::PORTFOLIO_EXPORT_COMMAND,
         &weather::COMMAND,
