@@ -77,8 +77,12 @@ pub static DOMAIN: Domain = Domain {
         &design::select::COMMAND,
         &design::set::COMMAND,
         &design::create::COMMAND,
+        &design::delete::COMMAND,
+        &design::geometry::COMMAND,
         &design::process::COMMAND,
         &design::save::COMMAND,
+        &design::list::COMMAND,
+        &design::report::COMMAND,
     ],
 };
 
@@ -182,6 +186,22 @@ pub const DESIGN_SAVE: BridgeOp = BridgeOp {
     operation: "design.transformer.save",
     arguments: &["transformer"],
 };
+pub const DESIGN_DELETE: BridgeOp = BridgeOp {
+    operation: "design.features.delete",
+    arguments: &["transformer", "layers", "where", "bbox", "ids", "dryRun"],
+};
+pub const DESIGN_GEOMETRY: BridgeOp = BridgeOp {
+    operation: "design.features.set_geometry",
+    arguments: &["transformer", "ids", "geometry", "dryRun"],
+};
+pub const DESIGN_LIST: BridgeOp = BridgeOp {
+    operation: "design.transformer.list",
+    arguments: &["limit"],
+};
+pub const DESIGN_REPORT: BridgeOp = BridgeOp {
+    operation: "design.report.export",
+    arguments: &["transformer"],
+};
 
 /// Every operation this domain can send, for the parity test to walk. A new
 /// operation that is not listed here cannot be sent: [`invoke`] takes a
@@ -198,8 +218,12 @@ pub const BRIDGE_OPS: &[&BridgeOp] = &[
     &DESIGN_SELECT,
     &DESIGN_SET,
     &DESIGN_CREATE,
+    &DESIGN_DELETE,
+    &DESIGN_GEOMETRY,
     &DESIGN_PROCESS,
     &DESIGN_SAVE,
+    &DESIGN_LIST,
+    &DESIGN_REPORT,
 ];
 
 /// The application's bound on one temporary layer. Hand-copied from

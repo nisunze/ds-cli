@@ -730,6 +730,69 @@ fn map_design_save_cannot_run_without_confirmation() {
 }
 
 #[test]
+fn map_design_delete_requires_an_explicit_selector() {
+    // An empty selector would match the whole room; "delete everything" must
+    // never be the accident default of forgetting a flag — refused locally,
+    // by name, before the bridge is even opened.
+    assert_eq!(
+        refusal(&[
+            "map",
+            "design",
+            "delete",
+            "--transformer",
+            "T-1042",
+            "--output",
+            "json",
+        ]),
+        "selector_required",
+        "an unselected delete must be refused before it reaches the bridge"
+    );
+}
+
+#[test]
+fn map_design_geometry_rejects_a_non_object_geometry_locally() {
+    // The geometry contract is validated on this side too: a string that is
+    // not JSON must fail by name without a desktop present.
+    assert_eq!(
+        refusal(&[
+            "map",
+            "design",
+            "geometry",
+            "--transformer",
+            "T-1042",
+            "--id",
+            "lv_poles#1",
+            "--geometry",
+            "not-json",
+            "--output",
+            "json",
+        ]),
+        "invalid_geometry",
+        "a malformed --geometry must be refused before the bridge is opened"
+    );
+}
+
+#[test]
+fn map_design_report_cannot_run_without_confirmation() {
+    // Report export writes durable artifacts, so dispatch requires --yes
+    // exactly like save — and the gate must hold with no desktop at all.
+    let run = ds(&[
+        "map",
+        "design",
+        "report",
+        "--transformer",
+        "T-1042",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(
+        run.envelope["error"]["code"], "confirmation_required",
+        "`ds map design report` reached past the confirmation gate"
+    );
+    assert_ne!(run.code, 0);
+}
+
+#[test]
 fn every_map_command_is_reachable_without_the_desktop_installed() {
     // Availability here is deliberately unconditional: dispatch checks it
     // before parsing, so a gate would make `--desktop-descriptor` — the flag
@@ -739,8 +802,8 @@ fn every_map_command_is_reachable_without_the_desktop_installed() {
     let commands = index["commands"].as_array().expect("commands");
     assert_eq!(
         commands.len(),
-        13,
-        "the map domain should register thirteen commands"
+        17,
+        "the map domain should register seventeen commands"
     );
     for command in commands {
         assert_eq!(
@@ -776,7 +839,36 @@ fn a_well_formed_map_call_only_ever_fails_on_the_pairing_state() {
         vec!["map", "design", "select", "--transformer", "T-1042"],
         vec!["map", "design", "set", "--transformer", "T", "--set", "a=b"],
         vec!["map", "design", "process", "--transformer", "T-1042"],
+        vec![
+            "map",
+            "design",
+            "delete",
+            "--transformer",
+            "T-1042",
+            "--where",
+            "pole_status=duplicate",
+        ],
+        vec![
+            "map",
+            "design",
+            "geometry",
+            "--transformer",
+            "T-1042",
+            "--id",
+            "lv_poles#1",
+            "--geometry",
+            r#"{"type":"Point","coordinates":[30.06,-1.95]}"#,
+        ],
+        vec!["map", "design", "list"],
         vec!["map", "design", "save", "--transformer", "T-1042", "--yes"],
+        vec![
+            "map",
+            "design",
+            "report",
+            "--transformer",
+            "T-1042",
+            "--yes",
+        ],
     ] {
         let mut argv = args.clone();
         argv.extend(["--output", "json"]);

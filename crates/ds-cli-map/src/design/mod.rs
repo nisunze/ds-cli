@@ -26,8 +26,12 @@
 //! `persisted` is false everywhere except `save`.
 
 pub mod create;
+pub mod delete;
+pub mod geometry;
+pub mod list;
 pub mod process;
 pub mod read;
+pub mod report;
 pub mod save;
 pub mod select;
 pub mod set;
@@ -184,6 +188,30 @@ pub fn describe(selector: &Map<String, Value>) -> String {
         parts.push(format!("{} id(s)", ids.len()));
     }
     parts.join(", ")
+}
+
+/// Geometry addressing is exactly-one by contract; the application's own
+/// refusal message is folded into the named `ambiguous_feature` condition so
+/// a caller gets a remedy instead of a raw sentence.
+pub fn classify_geometry_failure(
+    failure: ds_cli_contract::outcome::Failure,
+) -> ds_cli_contract::outcome::Failure {
+    if failure.code() != "desktop_refused" {
+        return failure;
+    }
+    let detail = failure
+        .detail_value()
+        .and_then(|detail| detail["detail"].as_str())
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    if !detail.contains("must address exactly one") {
+        return failure;
+    }
+    ds_cli_contract::outcome::Failure::invalid(
+        "ambiguous_feature",
+        "the id matched zero features, or more than one",
+    )
+    .remedy("read ids from `ds map design select`; a geometry write addresses exactly one")
 }
 
 /// The closing line that keeps staging and saving distinguishable.

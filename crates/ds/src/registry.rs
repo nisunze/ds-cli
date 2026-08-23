@@ -234,6 +234,16 @@ static MAP_ENTRIES: &[Entry] = &[
         render: ds_cli_map::design::create::render,
     },
     Entry {
+        command: &ds_cli_map::design::delete::COMMAND,
+        handler: ds_cli_map::design::delete::run,
+        render: ds_cli_map::design::delete::render,
+    },
+    Entry {
+        command: &ds_cli_map::design::geometry::COMMAND,
+        handler: ds_cli_map::design::geometry::run,
+        render: ds_cli_map::design::geometry::render,
+    },
+    Entry {
         command: &ds_cli_map::design::process::COMMAND,
         handler: ds_cli_map::design::process::run,
         render: ds_cli_map::design::process::render,
@@ -242,6 +252,16 @@ static MAP_ENTRIES: &[Entry] = &[
         command: &ds_cli_map::design::save::COMMAND,
         handler: ds_cli_map::design::save::run,
         render: ds_cli_map::design::save::render,
+    },
+    Entry {
+        command: &ds_cli_map::design::list::COMMAND,
+        handler: ds_cli_map::design::list::run,
+        render: ds_cli_map::design::list::render,
+    },
+    Entry {
+        command: &ds_cli_map::design::report::COMMAND,
+        handler: ds_cli_map::design::report::run,
+        render: ds_cli_map::design::report::render,
     },
 ];
 
