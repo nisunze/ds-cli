@@ -225,6 +225,7 @@ fallback.
 | [`docs/contracts/discovery-contract.md`](docs/contracts/discovery-contract.md) | tiers, byte budgets, availability |
 | [`docs/contracts/cli-output-contract.md`](docs/contracts/cli-output-contract.md) | envelope, exit codes, effects, authority |
 | [`docs/contracts/process-boundary-contract.md`](docs/contracts/process-boundary-contract.md) | when to link, when to call, and the rules for calling |
+| [`docs/recommendations/cli-ergonomics-2026-08-24.md`](docs/recommendations/cli-ergonomics-2026-08-24.md) | prioritized discovery and convenience improvements that preserve the active contracts |
 | [`docs/reference/dsgrid.md`](docs/reference/dsgrid.md) | validate's two questions, and the engine catalog |
 | [`docs/reference/dsgrid-exchange.md`](docs/reference/dsgrid-exchange.md) | why the sequence is the contract, the write rules, contract-1 gaps |
 | [`docs/reference/dsgrid.inspect.md`](docs/reference/dsgrid.inspect.md) | the `.dsgrid` read, and its cost model |
