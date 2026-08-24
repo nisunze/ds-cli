@@ -78,6 +78,11 @@ pub fn invoke(
         .header("authorization", &format!("Bearer {}", descriptor.token))
         .config()
         .timeout_global(Some(timeout))
+        // Operation refusals are protocol responses whose JSON body carries
+        // the actionable application error. If ureq promotes 4xx to a
+        // transport error here, the CLI mislabels a real 422 refusal as an
+        // unreachable desktop and discards that body.
+        .http_status_as_error(false)
         .build()
         .send_json(json!({ "operation": operation, "arguments": arguments }));
 

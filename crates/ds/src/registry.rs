@@ -234,6 +234,16 @@ static MAP_ENTRIES: &[Entry] = &[
         render: ds_cli_map::outliers::render,
     },
     Entry {
+        command: &ds_cli_map::survey::plan::COMMAND,
+        handler: ds_cli_map::survey::plan::run,
+        render: ds_cli_map::survey::plan::render,
+    },
+    Entry {
+        command: &ds_cli_map::survey::apply::COMMAND,
+        handler: ds_cli_map::survey::apply::run,
+        render: ds_cli_map::survey::apply::render,
+    },
+    Entry {
         command: &ds_cli_map::design::read::COMMAND,
         handler: ds_cli_map::design::read::run,
         render: ds_cli_map::design::read::render,
@@ -272,6 +282,11 @@ static MAP_ENTRIES: &[Entry] = &[
         command: &ds_cli_map::design::batch_process::COMMAND,
         handler: ds_cli_map::design::batch_process::run,
         render: ds_cli_map::design::batch_process::render,
+    },
+    Entry {
+        command: &ds_cli_map::design::batch_report::COMMAND,
+        handler: ds_cli_map::design::batch_report::run,
+        render: ds_cli_map::design::batch_report::render,
     },
     Entry {
         command: &ds_cli_map::design::batch_save::COMMAND,
@@ -356,11 +371,23 @@ static WORK_ENTRIES: &[Entry] = &[
     },
 ];
 
-static DESKTOP_ENTRIES: &[Entry] = &[Entry {
-    command: &ds_cli_desktop::status::COMMAND,
-    handler: ds_cli_desktop::status::run,
-    render: ds_cli_desktop::status::render,
-}];
+static DESKTOP_ENTRIES: &[Entry] = &[
+    Entry {
+        command: &ds_cli_desktop::status::COMMAND,
+        handler: ds_cli_desktop::status::run,
+        render: ds_cli_desktop::status::render,
+    },
+    Entry {
+        command: &ds_cli_desktop::project::LIST_COMMAND,
+        handler: ds_cli_desktop::project::list,
+        render: ds_cli_desktop::project::render_list,
+    },
+    Entry {
+        command: &ds_cli_desktop::project::SWITCH_COMMAND,
+        handler: ds_cli_desktop::project::switch,
+        render: ds_cli_desktop::project::render_switch,
+    },
+];
 
 static DOMAINS: &[Registered] = &[
     Registered {

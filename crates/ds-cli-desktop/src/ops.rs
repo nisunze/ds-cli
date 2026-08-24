@@ -70,13 +70,25 @@ pub fn undeclared_key(op: &BridgeOp, arguments: &Value) -> Option<String> {
             .iter()
             .any(|declared| declared.starts_with(&nested_prefix));
         if has_nested {
-            let Some(inner) = value.as_object() else {
-                return Some(key.clone());
-            };
-            for inner_key in inner.keys() {
-                let qualified = format!("{key}.{inner_key}");
-                if !op.arguments.contains(&qualified.as_str()) {
-                    return Some(qualified);
+            let mut objects = Vec::new();
+            match value {
+                Value::Object(inner) => objects.push(inner),
+                Value::Array(items) => {
+                    for item in items {
+                        let Some(inner) = item.as_object() else {
+                            return Some(key.clone());
+                        };
+                        objects.push(inner);
+                    }
+                }
+                _ => return Some(key.clone()),
+            }
+            for inner in objects {
+                for inner_key in inner.keys() {
+                    let qualified = format!("{key}.{inner_key}");
+                    if !op.arguments.contains(&qualified.as_str()) {
+                        return Some(qualified);
+                    }
                 }
             }
         } else if !op.arguments.contains(&key.as_str()) {
@@ -260,6 +272,10 @@ mod tests {
         operation: "gis.points_along",
         arguments: &["layerId", "settings.intervalM", "settings.includeEnds"],
     };
+    const STAGE_BATCH: BridgeOp = BridgeOp {
+        operation: "design.upload.stage_batch",
+        arguments: &["items.transformer", "items.path", "parallel"],
+    };
 
     #[test]
     fn an_argument_key_the_operation_does_not_declare_never_leaves_this_process() {
@@ -297,6 +313,33 @@ mod tests {
         assert_eq!(
             undeclared_key(&POINTS_ALONG, &json!({ "settings": 25 })),
             Some("settings".to_string())
+        );
+
+        // Repeated typed objects use the same dotted declaration. Every item
+        // is validated; accepting the array must not create an open payload.
+        assert_eq!(
+            undeclared_key(
+                &STAGE_BATCH,
+                &json!({
+                    "items": [
+                        { "transformer": "A", "path": "a.zip" },
+                        { "transformer": "B", "path": "b.zip" }
+                    ],
+                    "parallel": 2
+                })
+            ),
+            None
+        );
+        assert_eq!(
+            undeclared_key(
+                &STAGE_BATCH,
+                &json!({ "items": [{ "transformer": "A", "path": "a.zip", "overwrite": true }] })
+            ),
+            Some("items.overwrite".to_string())
+        );
+        assert_eq!(
+            undeclared_key(&STAGE_BATCH, &json!({ "items": ["a.zip"] })),
+            Some("items".to_string())
         );
     }
 

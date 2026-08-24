@@ -28,6 +28,7 @@
 pub mod bridge;
 pub mod discover;
 pub mod ops;
+pub mod project;
 pub mod status;
 
 use ds_cli_contract::spec::Domain;
@@ -35,5 +36,9 @@ use ds_cli_contract::spec::Domain;
 pub static DOMAIN: Domain = Domain {
     id: "desktop",
     summary: "Paired DS GridDesign: pairing, project, active context.",
-    commands: &[&status::COMMAND],
+    commands: &[
+        &status::COMMAND,
+        &project::LIST_COMMAND,
+        &project::SWITCH_COMMAND,
+    ],
 };

@@ -37,7 +37,9 @@ fn skip(reason: &str) {
 struct App {
     transport: String,
     frontend: String,
+    project: String,
     map: String,
+    survey: String,
     design: String,
     analysis: String,
     work: String,
@@ -49,7 +51,9 @@ fn app() -> Option<App> {
     Some(App {
         transport: read("src-tauri/src/cli_bridge.rs")?,
         frontend: read("src/lib/desktop/cli-bridge.ts")?,
+        project: read("src/lib/desktop/cli-project.ts")?,
         map: read("src/lib/desktop/cli-map.ts")?,
+        survey: read("src/lib/desktop/cli-survey.ts")?,
         design: read("src/lib/desktop/cli-map-design.ts")?,
         analysis: read("src/lib/analysis/outliers.ts")?,
         work: read("src/lib/desktop/cli-work.ts")?,
@@ -75,6 +79,46 @@ fn operation_contract<'a>(source: &'a str, operation: &str) -> &'a str {
     };
     let rest = &source[start + marker.len()..];
     &rest[..rest.find("],").unwrap_or(rest.len())]
+}
+
+#[test]
+fn every_project_context_command_has_one_closed_operation_owner() {
+    let Some(app) = app() else {
+        skip("the ds-web sibling repository is not on disk");
+        return;
+    };
+    let allowlist = between(
+        &app.transport,
+        "pub const CLI_OPERATIONS: &[&str] = &[",
+        "];",
+    );
+    for operation in ds_cli_desktop::project::BRIDGE_OPS {
+        assert_eq!(
+            count(allowlist, &format!("\"{}\"", operation.operation)),
+            1,
+            "`{}` must appear exactly once in the desktop allowlist",
+            operation.operation
+        );
+        assert_eq!(
+            count(&app.frontend, &format!("case '{}':", operation.operation)),
+            1,
+            "`{}` must have exactly one frontend handler",
+            operation.operation
+        );
+        let contract = operation_contract(&app.project, operation.operation);
+        assert!(
+            !contract.is_empty(),
+            "`{}` has no typed project-adapter argument contract",
+            operation.operation
+        );
+        for argument in operation.arguments {
+            assert!(
+                contract.contains(&format!("'{argument}'")),
+                "desktop project sends `{argument}` to `{}`, but the adapter does not accept it",
+                operation.operation
+            );
+        }
+    }
 }
 
 #[test]
@@ -113,7 +157,12 @@ fn every_map_command_has_one_closed_operation_owner() {
             operation.operation
         );
 
-        let contract = operation_contract(&app.map, operation.operation);
+        let map_contract = operation_contract(&app.map, operation.operation);
+        let contract = if map_contract.is_empty() {
+            operation_contract(&app.survey, operation.operation)
+        } else {
+            map_contract
+        };
         assert!(
             !contract.is_empty(),
             "`{}` has no typed map-adapter argument contract",
@@ -129,7 +178,8 @@ fn every_map_command_has_one_closed_operation_owner() {
             );
             for nested in parts {
                 assert!(
-                    app.map.contains(&format!("'{nested}'")),
+                    app.map.contains(&format!("'{nested}'"))
+                        || app.survey.contains(&format!("'{nested}'")),
                     "ds map sends `{argument}` to `{}`, but the adapter does not validate `{nested}`",
                     operation.operation
                 );
@@ -423,6 +473,7 @@ fn retired_automation_bridge_is_not_a_map_fallback() {
         &app.transport,
         &app.frontend,
         &app.map,
+        &app.survey,
         &app.design,
         &app.work,
     ] {

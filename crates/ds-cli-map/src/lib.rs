@@ -50,6 +50,7 @@ pub mod outliers;
 pub mod points_along;
 pub mod random_points;
 pub mod remove;
+pub mod survey;
 pub mod view;
 pub mod zoom;
 
@@ -81,6 +82,8 @@ pub static DOMAIN: Domain = Domain {
         &points_along::COMMAND,
         &random_points::COMMAND,
         &outliers::COMMAND,
+        &survey::plan::COMMAND,
+        &survey::apply::COMMAND,
         &design::read::COMMAND,
         &design::select::COMMAND,
         &design::set::COMMAND,
@@ -89,6 +92,7 @@ pub static DOMAIN: Domain = Domain {
         &design::geometry::COMMAND,
         &design::process::COMMAND,
         &design::batch_process::COMMAND,
+        &design::batch_report::COMMAND,
         &design::batch_save::COMMAND,
         &design::save::COMMAND,
         &design::list::COMMAND,
@@ -211,6 +215,10 @@ pub const DESIGN_REPORT: BridgeOp = BridgeOp {
     operation: "design.report.export",
     arguments: &["transformer"],
 };
+pub const DESIGN_REPORT_BATCH: BridgeOp = BridgeOp {
+    operation: "design.report.export_batch",
+    arguments: &["transformers", "fileLevel", "combinePerDistrict"],
+};
 pub const DESIGN_UPLOAD_INSPECT: BridgeOp = BridgeOp {
     operation: "design.upload.inspect",
     arguments: &["paths", "network", "parallel"],
@@ -223,6 +231,14 @@ pub const DESIGN_UPLOAD_STAGE_BATCH: BridgeOp = BridgeOp {
         "parallel",
         "replaceLocal",
     ],
+};
+pub const SURVEY_MIGRATE_PLAN: BridgeOp = BridgeOp {
+    operation: "survey.migrate.plan",
+    arguments: &["sourceProject"],
+};
+pub const SURVEY_MIGRATE_APPLY: BridgeOp = BridgeOp {
+    operation: "survey.migrate.apply",
+    arguments: &["sourceProject"],
 };
 
 /// Every operation this domain can send, for the parity test to walk. A new
@@ -250,6 +266,8 @@ pub const BRIDGE_OPS: &[&BridgeOp] = &[
     &DESIGN_REPORT,
     &DESIGN_UPLOAD_INSPECT,
     &DESIGN_UPLOAD_STAGE_BATCH,
+    &SURVEY_MIGRATE_PLAN,
+    &SURVEY_MIGRATE_APPLY,
 ];
 
 /// The application's bound on one temporary layer. Hand-copied from
@@ -321,6 +339,9 @@ pub const DESIGN_STAGE_TIMEOUT: Duration = Duration::from_secs(10 * 60);
 /// purpose: `ds` gives up first, with a typed refusal naming the operation,
 /// rather than waiting for the bridge's bare gateway timeout.
 pub const DESIGN_PROCESS_TIMEOUT: Duration = Duration::from_secs(30 * 60);
+/// The survey migration API has a ten-minute server timeout. Give the
+/// frontend enough time to invalidate affected local caches before answering.
+pub const SURVEY_MIGRATION_TIMEOUT: Duration = Duration::from_secs(11 * 60);
 
 // ---------------------------------------------------------------------------
 // Reading GeoJSON a caller supplies

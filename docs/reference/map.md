@@ -41,6 +41,26 @@ installed transformer. Marking an as-built network approved is the most
 consequential property write in the product; one sentence from a model must
 not be able to reach the project.
 
+## Survey migration is an API operation
+
+Survey migration does not manipulate the map or drive the UI. It calls the
+same governed `domains.network.report` migration API the application uses,
+under the signed-in desktop session:
+
+```bash
+ds map survey migrate plan --source-project arjgpydw_huye2 --output json
+ds map survey migrate apply --source-project arjgpydw_huye2 --yes --output json
+```
+
+The target is always the active project, never a caller-provided id. `plan`
+uses the API's real dry run. `apply` is `global_write` and is stopped by
+dispatch unless `--yes` is present. Both commands have one fixed policy: copy
+all survey data, preserve the source, and skip ids already present in the
+target. Form-template materialization, project settings and network
+relationships remain the migration API's responsibility. There are no
+caller-controlled delete/move, overwrite, filter, form, or alternate-target
+flags. The receipt returns only bounded counts, never survey rows.
+
 ## Explicit upload, cleaning, process and save batches
 
 The status-page bulk workflow is available through four closed CLI operations:

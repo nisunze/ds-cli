@@ -26,6 +26,7 @@
 //! `persisted` is false everywhere except `save`.
 
 pub mod batch_process;
+pub mod batch_report;
 pub mod batch_save;
 pub mod create;
 pub mod delete;
