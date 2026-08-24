@@ -5,7 +5,7 @@ Tier-4 reference. `ds desktop status --help` is the contract.
 ## Why pairing rather than a second login
 
 When DS GridDesign is running it already holds a signed-in Firebase session, a
-selected project, and a live map context. A second CLI login would mean a
+selected project, and live map/design context. A second CLI login would mean a
 second identity to manage, a second token to store, and a second thing that
 can be signed in while the other is signed out.
 
@@ -87,6 +87,7 @@ So "not paired" is a **success**:
   "paired": false,
   "signed_in": false,
   "project": null,
+  "design_context": null,
   "reason": "no_session",
   "remedy": "start DS GridDesign, then run `ds desktop status`",
   "searched": ["stable", "canary", "dev"]
@@ -105,7 +106,21 @@ formatted into a result by accident, and `cli.rs` asserts the absence.
 
 The bridge publishes only the paired session view and the fixed typed CLI
 operations. `status` reports only the pairing/session fields, never a browser
-cache, workspace path, token, or generic application state.
+cache, workspace path, token, or generic application state. When a transformer
+is open in the project design editor, the bounded context is explicit:
+
+```json
+{
+  "project": "arjgpydw_survey_test",
+  "design_context": {
+    "mode": "edit",
+    "transformer": "agasharu"
+  }
+}
+```
+
+`design_context` is otherwise `null`. It contains no layers, geometry,
+selection, undo history, or local cache state.
 
 ## Refusals
 

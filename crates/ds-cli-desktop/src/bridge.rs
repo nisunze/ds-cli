@@ -3,8 +3,9 @@
 //!
 //! Two calls, and the shape of each is the whole security argument:
 //!
-//! * [`session`] reads the application's own view of itself — paired,
-//!   signed in, which project. It returns no credential and never has.
+//! * [`session`] reads the application's own bounded view of itself — paired,
+//!   signed in, which project and active design context. It returns no
+//!   credential and never has.
 //! * [`invoke`] asks the application to *do* one named semantic operation.
 //!   The operation runs inside the application, under the application's
 //!   identity, and what comes back is its result.
@@ -145,7 +146,7 @@ pub fn bounded(detail: &str) -> String {
         .collect()
 }
 
-/// The application's own view of itself: paired, signed in, which project.
+/// The application's own bounded view: pairing, identity, project and context.
 ///
 /// Returns no credential and never has — the fields are exactly what the
 /// application already displays in its own window.

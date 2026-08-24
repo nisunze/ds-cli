@@ -2,7 +2,7 @@
 //!
 //! The interactive architecture is *paired desktop reuse*, not a second
 //! login. When the application is running it already holds a signed-in
-//! Firebase session, a selected project and a live map context. `ds` borrows
+//! Firebase session, a selected project and a live map/design context. `ds` borrows
 //! that authority over a random-loopback bridge the application publishes,
 //! authenticating with the short-lived pairing secret in its private
 //! descriptor file.
@@ -34,6 +34,6 @@ use ds_cli_contract::spec::Domain;
 
 pub static DOMAIN: Domain = Domain {
     id: "desktop",
-    summary: "The paired DS GridDesign session: pairing, sign-in, project.",
+    summary: "Paired DS GridDesign: pairing, project, active context.",
     commands: &[&status::COMMAND],
 };

@@ -1,5 +1,5 @@
-//! `ds desktop status` — is there a paired session, is it signed in, and
-//! which project is selected.
+//! `ds desktop status` — is there a paired session, is it signed in, which
+//! project is selected, and whether a transformer is open for design editing.
 //!
 //! This is the command an agent runs first when anything fails with an
 //! authority error, so it has to answer without ever being the thing that
@@ -30,12 +30,13 @@ pub static COMMAND: Command = Command {
     id: "desktop.status",
     path: &["desktop", "status"],
     contract: 1,
-    summary: "Report pairing, sign-in and selected project.",
+    summary: "Report pairing, project and active design context.",
     purpose: "\
 Answers whether a DS GridDesign session is running on this machine, whether it \
-is signed in, and which project is selected. Run this first when a command \
-refuses with an authority error. Not being paired is an answer, not a failure: \
-the command succeeds and says what is missing.",
+is signed in, which project is selected, and whether a transformer is open in \
+the design editor. Run this first when a command refuses with an authority \
+error. Not being paired is an answer, not a failure: the command succeeds and \
+says what is missing.",
     effect: Effect::Discovery,
     authority: Authority::None,
     execution: Execution::Sync,
@@ -45,8 +46,10 @@ the command succeeds and says what is missing.",
         "Use this bridge descriptor instead of discovering one.",
     )],
     output: "\
-`paired`, `signed_in` and `project` always present. When paired, the install \
-profile and the application's process id. Never a token, JWT or credential.",
+`paired`, `signed_in`, `project` and `design_context` always present. When \
+paired, the install profile and the application's process id. `design_context` \
+is null unless a project transformer is open for editing. Never a token, JWT \
+or credential.",
     examples: &[
         Example {
             command: "ds desktop status",
@@ -132,6 +135,20 @@ struct SessionView {
     email: Option<String>,
     #[serde(default)]
     project: Option<String>,
+    #[serde(default)]
+    design_context: Option<DesignContextView>,
+}
+
+#[derive(Deserialize)]
+struct DesignContextView {
+    mode: DesignContextMode,
+    transformer: String,
+}
+
+#[derive(Deserialize, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+enum DesignContextMode {
+    Edit,
 }
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
@@ -144,6 +161,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
                 "paired": false,
                 "signed_in": false,
                 "project": Value::Null,
+                "design_context": Value::Null,
                 "reason": "no_session",
                 "remedy": "start DS GridDesign, then run `ds desktop status`",
                 "searched": PROFILES.iter().map(|(profile, _)| *profile).collect::<Vec<_>>(),
@@ -177,16 +195,29 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
 
     let session = fetch_session(&found.descriptor)?;
 
-    Ok(json!({
+    Ok(paired_data(
+        found.profile,
+        found.descriptor.pid,
+        found.path.display().to_string(),
+        session,
+    ))
+}
+
+fn paired_data(profile: &str, pid: u32, descriptor: String, session: SessionView) -> Value {
+    json!({
         "paired": true,
-        "profile": found.profile,
-        "pid": found.descriptor.pid,
-        "descriptor": found.path.display().to_string(),
+        "profile": profile,
+        "pid": pid,
+        "descriptor": descriptor,
         "signed_in": session.signed_in,
         "uid": session.uid,
         "email": session.email,
         "project": session.project,
-    }))
+        "design_context": session.design_context.map(|context| json!({
+            "mode": context.mode,
+            "transformer": context.transformer,
+        })),
+    })
 }
 
 fn fetch_session(descriptor: &discover::Descriptor) -> Result<SessionView, Failure> {
@@ -281,8 +312,53 @@ pub fn render(data: &Value) -> String {
             Some(project) => out.push_str(&format!("project  {project}\n")),
             None => out.push_str("project  none selected\n  → select a project in DS GridDesign\n"),
         }
+        if let Some(context) = data["design_context"].as_object() {
+            out.push_str(&format!(
+                "design  {} {}\n",
+                context["mode"].as_str().unwrap_or("?"),
+                context["transformer"].as_str().unwrap_or("?"),
+            ));
+        }
     } else {
         out.push_str("signed out\n  → sign in to DS GridDesign\n");
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn paired_status_projects_the_active_design_edit_context() {
+        let session: SessionView = serde_json::from_value(json!({
+            "signed_in": true,
+            "uid": "uid-1",
+            "email": "operator@example.test",
+            "project": "arjgpydw_survey_test",
+            "design_context": {
+                "mode": "edit",
+                "transformer": "agasharu"
+            }
+        }))
+        .expect("session view parses");
+        let data = paired_data("dev", 42, "descriptor.json".into(), session);
+
+        assert_eq!(data["design_context"]["mode"], "edit");
+        assert_eq!(data["design_context"]["transformer"], "agasharu");
+        assert!(render(&data).contains("design  edit agasharu"));
+    }
+
+    #[test]
+    fn older_desktop_sessions_have_no_design_context() {
+        let session: SessionView = serde_json::from_value(json!({
+            "signed_in": true,
+            "project": "arjgpydw_survey_test"
+        }))
+        .expect("backward-compatible session view parses");
+        let data = paired_data("canary", 42, "descriptor.json".into(), session);
+
+        assert!(data["design_context"].is_null());
+        assert!(!render(&data).contains("design  "));
+    }
 }
