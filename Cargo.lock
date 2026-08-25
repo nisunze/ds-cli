@@ -350,12 +350,14 @@ dependencies = [
  "ds-cli-desktop",
  "ds-cli-dsgrid",
  "ds-cli-dsgrid-exchange",
+ "ds-cli-feedback",
  "ds-cli-map",
  "ds-cli-pls",
  "ds-cli-report",
  "ds-cli-solar",
  "ds-cli-work",
  "serde_json",
+ "sha2",
 ]
 
 [[package]]
@@ -403,6 +405,15 @@ name = "ds-cli-exec"
 version = "0.1.0"
 dependencies = [
  "ds-cli-contract",
+ "serde_json",
+]
+
+[[package]]
+name = "ds-cli-feedback"
+version = "0.1.0"
+dependencies = [
+ "ds-cli-contract",
+ "ds-cli-desktop",
  "serde_json",
 ]
 

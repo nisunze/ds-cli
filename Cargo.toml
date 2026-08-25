@@ -39,6 +39,9 @@
 #                    ds-cli-map it links no engine — the graph is governed by
 #                    ds-brain and reached only through the paired application,
 #                    so every command is one named bridge operation.
+#   ds-cli-feedback  the shared product-feedback domain. It reaches the same
+#                    authenticated backlog as the desktop's `fb` shortcut and
+#                    pins reports from this surface as agent observations.
 #   ds               the binary. Registers domains, dispatches, renders.
 #
 # Domains are separate crates so "domain discovery must not initialize or
@@ -83,6 +86,7 @@ ds-cli-pls = { path = "crates/ds-cli-pls" }
 ds-cli-report = { path = "crates/ds-cli-report" }
 ds-cli-solar = { path = "crates/ds-cli-solar" }
 ds-cli-work = { path = "crates/ds-cli-work" }
+ds-cli-feedback = { path = "crates/ds-cli-feedback" }
 
 # The authoritative engine crates, by path, exactly as ds-web/src-tauri
 # reaches them. `ds` links the same code the desktop links; it does not

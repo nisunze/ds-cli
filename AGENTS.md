@@ -8,6 +8,10 @@ The `ds` executable: one door into the Data Solutions stack, for a person in a
 terminal and for a coding agent. It replaces `ds-mcp` (Go + MCP) as the
 supported local agent surface.
 
+This repository also owns the canonical native Agent Skills under `skills/`
+and their ownership-safe installers under `scripts/`. Those documents teach
+agents when to use the executable; they never implement or duplicate a command.
+
 It is **not** an engine. No engineering, geometry, electrical, solar, routing,
 reporting or conversion logic lives here, and none may be added. The CLI parses
 arguments, calls an owner, and shapes the answer.
@@ -24,6 +28,13 @@ by `crates/ds/tests/context_budget.rs`, and the load-bearing assertion is
 
 If you find yourself adding text to root help, you are almost certainly solving
 the problem at the wrong tier.
+
+The same rule applies to skills. Native agent discovery sees only each skill's
+short frontmatter description; a full `SKILL.md` is loaded only after it is
+selected. Keep command flags, schemas, enums, output contracts and refusals in
+the live `Command` declaration and discover them with `ds capabilities`.
+Compact discovery never replaces root, domain, or command help. Both are
+first-class projections of the same declaration and both must remain complete.
 
 ## Before you add a command
 
@@ -125,6 +136,8 @@ All three must pass, and CI runs all three:
 cargo fmt --all --check
 cargo clippy --workspace --all-targets --all-features -- -D warnings
 cargo test --workspace --all-features
+python3 scripts/check.py
+bash scripts/test-install-skills.sh
 ```
 
 The suite links `ds-network` by path and binds to its real `.dsgrid` fixture.
@@ -181,4 +194,8 @@ only ever gets relaxed is not protecting anything.
 - A flag whose engine mapping was never run against the real binary.
 - MCP: a server, a transport, a handshake, a manifest, or the concepts under
   new names. `ds` is an ordinary executable and stays one.
+- A skill-local executable, copied CLI contract, or direct API route.
+- A local gap Markdown ledger. Agents report verified gaps through
+  `ds feedback submit`, which reaches the same backlog as the app's `fb`
+  shortcut.
 - Go, anywhere in the shipping or local-development path.

@@ -23,6 +23,7 @@ use serde_json::{Value, json};
 
 use crate::build;
 use crate::registry::{self, Entry};
+use crate::skills;
 
 pub static ENTRIES: &[Entry] = &[
     Entry {
@@ -291,14 +292,16 @@ fn render_capabilities(data: &Value) -> String {
 pub static DOCTOR: Command = Command {
     id: "doctor",
     path: &["doctor"],
-    contract: 1,
+    contract: 2,
     summary: "Report what works on this machine, and why not.",
     purpose: "\
 Resolves every registered command's availability and reports the ones that \
 cannot run here, each with the concrete thing that would fix it. Availability \
-checks are domain-local and cheap: doctor starts no engine and probes no \
-network. It is the right first call on an unfamiliar machine, and the right \
-call after any `unavailable` refusal.",
+checks are domain-local and cheap. Doctor also verifies the packaged agent \
+skill bundle and reports whether each supported user skill directory has the \
+matching install. It starts no engine and probes no network. It is the right \
+first call on an unfamiliar machine, and the right call after any \
+`unavailable` refusal.",
     effect: Effect::Discovery,
     authority: Authority::None,
     execution: Execution::Sync,
@@ -307,8 +310,9 @@ call after any `unavailable` refusal.",
         "List available commands too, not just blocked ones.",
     )],
     output: "\
-Counts of available and unavailable commands, and one entry per unavailable \
-command with its reason and remedy. With --all, every command.",
+Counts of available and unavailable commands, one entry per unavailable \
+command with its reason and remedy, build identity, and agent skill bundle and \
+install status. With --all, every command.",
     examples: &[
         Example {
             command: "ds doctor",
@@ -364,6 +368,7 @@ fn doctor(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         "available": available,
         "unavailable": blocked,
         "build": build::identity(),
+        "skills": skills::doctor_report(),
     });
     if all {
         report["commands"] = Value::Array(listed);
@@ -384,6 +389,27 @@ fn render_doctor(data: &Value) -> String {
             entry["reason"].as_str().unwrap_or(""),
             entry["remedy"].as_str().unwrap_or(""),
         ));
+    }
+    let skills = &data["skills"];
+    out.push_str(&format!(
+        "\nagent skills: {}\n",
+        skills["status"].as_str().unwrap_or("unknown")
+    ));
+    if let Some(path) = skills["bundle_path"].as_str() {
+        out.push_str(&format!("  bundle: {path}\n"));
+    }
+    for agent in skills["agents"].as_array().into_iter().flatten() {
+        out.push_str(&format!(
+            "  {:<7} {}\n",
+            agent["agent"].as_str().unwrap_or("agent"),
+            agent["status"].as_str().unwrap_or("unknown"),
+        ));
+    }
+    if let Some(reason) = skills["reason"].as_str() {
+        out.push_str(&format!("  {reason}\n"));
+    }
+    if let Some(remedy) = skills["remedy"].as_str() {
+        out.push_str(&format!("  remedy: {remedy}\n"));
     }
     out
 }

@@ -18,6 +18,8 @@ DOMAINS
   solar            Solar batches: prepare inputs, run them offline, verify weather.
   report           Deliverables: transformer and combined report artifacts.
   map              The paired map: local layers, vector tools, design-layer edits.
+  work             Project Work: the plan, its tasks, assignments and records.
+  feedback         Product feedback: report a CLI gap to the shared backlog.
   desktop          The paired DS GridDesign session: pairing, sign-in, project.
 
 DISCOVERY
@@ -39,6 +41,10 @@ Root help names domains. Domain help names commands. Command help is one
 complete contract. Nothing prints the tier below it. A caller interested in
 one domain never loads the rest, and adding a domain costs root help exactly
 one line.
+
+`ds capabilities` is the bounded machine-readable companion to those help
+tiers. It never replaces `--help`; both remain first-class views generated from
+the same command declarations.
 
 That is enforced, in bytes, by `crates/ds/tests/context_budget.rs`. An agent
 that has never seen `ds` reaches a specific command's full contract in **three
@@ -110,6 +116,32 @@ Rules you can rely on:
 
 Full rules: [`docs/contracts/cli-output-contract.md`](docs/contracts/cli-output-contract.md).
 
+## Native agent skills
+
+The canonical Codex, Claude Code and GitHub Copilot skills live under
+`skills/`. They contain workflow guidance only: both people and agents operate
+the stack through the same `ds` executable, and every command contract is
+discovered from the installed binary at run time.
+
+DS GridDesign ships a receipt-bound copy of this skill tree beside `ds`. Its
+`pt` shortcut copies a short setup prompt for any chatbot on that machine. The
+chatbot runs `ds doctor --output json`, follows the exact installer path under
+`.data.skills.installers`, and verifies its native skill directory is current.
+Nothing is injected into a conversation, and no MCP is installed.
+
+For a source checkout, the same ownership-safe installers are:
+
+```bash
+scripts/install-skills.sh install
+scripts\install-skills.ps1 install
+```
+
+They install owned copies into `${CODEX_HOME:-~/.codex}/skills`,
+`~/.claude/skills`, and `~/.copilot/skills`, refuse same-name skills they do
+not own, and require the literal `uninstall` action for removal. Verified
+product gaps go through `ds feedback submit` to the same shared, deduplicated
+backlog as the app's `fb` shortcut. There is no Markdown gap ledger.
+
 ## Authority
 
 The default interactive architecture is **paired desktop reuse**, not a second
@@ -169,6 +201,9 @@ crates/
   ds-cli-pls        the PLS-CADD domain, over ds-grid-tasks' typed tasks.
   ds-cli-solar      the solar domain, over the ds-solar contract.
   ds-cli-report     the reporter domain, over the ds-report contract.
+  ds-cli-work       governed Project Work through the paired application.
+  ds-cli-feedback   agent observations through the app's existing feedback
+                    client and signed-in session.
   ds                the binary: registers domains, dispatches, renders.
 ```
 
@@ -200,7 +235,8 @@ unrelated engines" is a structural property rather than a promise.
 
 ## Status
 
-Seven domains, thirty-nine domain commands plus three root metadata commands.
+Nine domains, including Project Work and shared feedback, plus three root
+metadata commands.
 
 `dsgrid`, `dsgrid-exchange` and `pls` **link** the authoritative
 `ds-network` crates, so they work on a machine with no sidecar installed and

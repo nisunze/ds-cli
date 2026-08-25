@@ -424,6 +424,12 @@ static DESKTOP_ENTRIES: &[Entry] = &[
     },
 ];
 
+static FEEDBACK_ENTRIES: &[Entry] = &[Entry {
+    command: &ds_cli_feedback::submit::COMMAND,
+    handler: ds_cli_feedback::submit::run,
+    render: ds_cli_feedback::submit::render,
+}];
+
 static DOMAINS: &[Registered] = &[
     Registered {
         domain: &ds_cli_dsgrid::DOMAIN,
@@ -452,6 +458,10 @@ static DOMAINS: &[Registered] = &[
     Registered {
         domain: &ds_cli_work::DOMAIN,
         entries: WORK_ENTRIES,
+    },
+    Registered {
+        domain: &ds_cli_feedback::DOMAIN,
+        entries: FEEDBACK_ENTRIES,
     },
     Registered {
         domain: &ds_cli_desktop::DOMAIN,

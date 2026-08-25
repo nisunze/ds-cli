@@ -114,8 +114,7 @@ ds solar prepare --city rw-kigali --output json
 ds solar run start --city rw-kigali --output json
 
 # Headless, caller-supplied prepared artifacts
-DS_SOLAR_BIN=/path/to/ds-solar \
-  ds solar run --prepared ./prepared --out ./out --output json
+ds solar run --prepared ./prepared --out ./out --output json
 ```
 
 The product `prepare` command does not write a caller-addressable `--prepared`
@@ -165,11 +164,16 @@ default.
 ## Engine identity
 
 `ds solar engine`, the headless artifact runner and `solar verify-weather`
-resolve `ds-solar` through `DS_SOLAR_BIN` or the executable path. The paired
-product lifecycle does not require that external binary: it uses the native
-Solar runtime linked into DS GridDesign. `ds-solar` publishes no source-SHA
-identity, so a headless artifact result cannot claim an exact commit solely
-from this CLI.
+resolve the `ds-solar` sibling packaged with `ds`. `DS_SOLAR_BIN` is an
+explicit development override and wins when set. The paired product lifecycle
+uses the same release-pinned Solar source linked into DS GridDesign rather than
+starting the sidecar.
+
+`ds-solar build-info` publishes the immutable `ds.engine-build/v1` identity:
+engine name and version, exact source SHA, Cargo.lock digest, features, target,
+profile, supported schemas and a canonical manifest digest. `ds solar engine`
+returns that document with the resolved executable path, so headless results
+can be tied to the same exact Solar source revision as the desktop release.
 
 ## Related
 

@@ -1,0 +1,19 @@
+{
+  "name": "ds-cli-skills",
+  "version": "0.1.0",
+  "description": "Work the Data Solutions stack through the deployed `ds` CLI on the DS GridDesign desktop. Start with /ds; every skill acts only through ds.",
+  "author": {
+    "name": "Nixon Magese",
+    "url": "https://github.com/nisunze"
+  },
+  "repository": "https://github.com/nisunze/ds-cli",
+  "keywords": [
+    "data-solutions",
+    "ds",
+    "cli",
+    "dsgrid",
+    "pls-cadd",
+    "solar",
+    "gis"
+  ]
+}

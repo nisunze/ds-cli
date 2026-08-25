@@ -28,30 +28,16 @@ use ds_cli_exec::External;
 
 /// The solar binary.
 ///
-/// Unlike `ds-report`, `ds-solar` is **not** a bundled desktop sidecar, and
-/// the remedy says so precisely rather than pointing at a component that will
-/// not install.
-///
-/// The solar *engine* is already shipped: `ds-solar-engine` and
-/// `ds-solar-contracts` are linked into the desktop application, and
-/// `ds-web`'s own packaging contract records why — "the native Rust Solar
-/// runtime is ordinary linked source, not an installed component, so a
-/// `solar` component row may only linger in a dormant, pin-free state until
-/// it is deleted from the catalog entirely"
-/// (`desktop-build-windows.sh`). The `solar` component in
-/// `desktop-components.json` is that dormant row: `planned`, pin-free, and on
-/// its way out.
-///
-/// So "install the solar component" would be a remedy a caller cannot follow.
-/// What they can do is point at a built `ds-solar`. See
-/// `docs/reference/solar.md` for the two ways this becomes available on a
-/// stock install, and why neither is a 27 MB sidecar duplicate of an engine
-/// the application already carries.
+/// The desktop links the Solar runtime for paired product work and packages
+/// this sibling process for the deliberately separate headless artifact
+/// route. Both are built from the same release-pinned `ds-solar` checkout.
+/// `DS_SOLAR_BIN` remains an explicit developer override; an installed build
+/// resolves its packaged sibling first and needs no configuration.
 pub static DS_SOLAR: External = External {
     name: "ds-solar",
     env_override: "DS_SOLAR_BIN",
     owner: "ds-solar",
-    remedy: "set DS_SOLAR_BIN to a built ds-solar (cargo build --release --package ds-solar-cli)",
+    remedy: "reinstall DS GridDesign, or for development set DS_SOLAR_BIN to an exact compatible ds-solar",
     missing_code: "solar_engine_missing",
 };
 

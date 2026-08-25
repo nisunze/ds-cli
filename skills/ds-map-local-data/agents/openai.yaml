@@ -1,0 +1,4 @@
+interface:
+  display_name: "DS Local Map Data"
+  short_description: "Manage temporary DS map layers safely"
+  default_prompt: "Use $ds-map-local-data to add, focus, or remove temporary map data with minimal viewport movement."

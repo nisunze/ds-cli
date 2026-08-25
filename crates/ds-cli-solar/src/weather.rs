@@ -35,8 +35,8 @@ the same weather. It reads the file and writes nothing.",
     refusals: &[
         Refusal {
             code: "solar_engine_missing",
-            when: "`ds-solar` cannot be found; it is not a bundled sidecar",
-            remedy: "set DS_SOLAR_BIN to a built ds-solar; see docs/reference/solar.md",
+            when: "the packaged `ds-solar` sidecar cannot be found",
+            remedy: "reinstall DS GridDesign, or set DS_SOLAR_BIN for development",
         },
         Refusal {
             code: "dataset_not_found",

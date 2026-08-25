@@ -65,7 +65,7 @@ impl Effect {
             Self::LocalFileWrite => "writes a file in your workspace",
             Self::LocalUi => "changes the paired desktop's visible state",
             Self::ArtifactWrite => "produces a durable artifact of record",
-            Self::GlobalWrite => "mutates shared project state",
+            Self::GlobalWrite => "mutates governed shared state",
         }
     }
 }

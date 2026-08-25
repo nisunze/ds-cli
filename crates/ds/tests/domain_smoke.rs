@@ -1200,6 +1200,66 @@ fn every_work_command_is_reachable_without_the_desktop_installed() {
 }
 
 #[test]
+fn feedback_is_one_confirmed_shared_write() {
+    let index = ok(&["capabilities", "feedback", "--output", "json"]);
+    let commands = index["commands"].as_array().expect("commands");
+    assert_eq!(commands.len(), 1, "feedback has one narrow operation");
+    assert_eq!(commands[0]["id"], "feedback.submit");
+    assert_eq!(commands[0]["effect"], "global_write");
+    assert_eq!(commands[0]["availability"], "available");
+
+    let base = [
+        "feedback",
+        "submit",
+        "--title",
+        "Missing export",
+        "--detail",
+        "Live discovery found no export. Acceptance: expose one typed export.",
+        "--component",
+        "ds-cli",
+        "--agent",
+        "test-agent",
+    ];
+    let mut unconfirmed = base.to_vec();
+    unconfirmed.extend(["--output", "json"]);
+    assert_eq!(
+        refusal(&unconfirmed),
+        "confirmation_required",
+        "feedback reached the shared backlog without explicit confirmation"
+    );
+
+    let mut confirmed = base.to_vec();
+    confirmed.extend(["--yes", "--output", "json"]);
+    let code = refusal(&confirmed);
+    assert!(
+        PAIRING_CODES.contains(&code.as_str()),
+        "a valid feedback report ended in `{code}`, not a pairing outcome"
+    );
+}
+
+#[test]
+fn feedback_validates_context_before_pairing() {
+    let code = refusal(&[
+        "feedback",
+        "submit",
+        "--title",
+        "Missing export",
+        "--detail",
+        "Live discovery found no export.",
+        "--component",
+        "ds-cli",
+        "--agent",
+        "test-agent",
+        "--context",
+        "not-a-pair",
+        "--yes",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(code, "invalid_context");
+}
+
+#[test]
 fn a_well_formed_work_call_only_ever_fails_on_the_pairing_state() {
     // Whatever this machine's desktop situation, a correct invocation must end
     // in a pairing outcome — never an input refusal, and never an internal

@@ -20,7 +20,7 @@ them in bytes.
 
 Each tier is reached by an explicit call. No tier prints the tier below it.
 
-The machine face is the same tiers under one command:
+The machine-readable companion uses the same declarations:
 
 ```bash
 ds capabilities                    # tier 1 — domain index
@@ -31,6 +31,11 @@ ds capabilities --search "text"    # ids and one-liners, nothing more
 
 Search deliberately returns identifiers and summaries only. The caller then
 asks for the one descriptor it chose. Two cheap calls beat one expensive one.
+
+**Compact discovery never replaces help.** Root, domain and command help are
+permanent first-class interfaces for people and remain complete at their own
+tier. `capabilities` exists so a machine can select and parse a bounded slice;
+it is a projection of the same declaration, not a successor to `--help`.
 
 ## The rule that makes one binary viable
 
@@ -119,6 +124,10 @@ Every fact about a command lives once, in its `Command` value
 (`crates/ds-cli-contract/src/spec.rs`). Help text, the JSON descriptor,
 argument validation and dispatch all read that same value, so they cannot
 drift. `command_help_matches_its_descriptor` proves it by comparison.
+
+That shared source prevents divergence; it does not make either presentation
+optional. A change that preserves JSON while removing or hollowing out help
+violates this contract.
 
 A command that gains a flag without declaring it there cannot receive it.
 

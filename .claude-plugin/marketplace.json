@@ -1,0 +1,14 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "ds-cli-skills",
+  "description": "Skills for the Data Solutions `ds` command line.",
+  "owner": { "name": "Nixon Magese", "url": "https://github.com/nisunze" },
+  "plugins": [
+    {
+      "name": "ds-cli-skills",
+      "description": "Work the Data Solutions stack through the deployed `ds` CLI. Start with /ds.",
+      "source": "./",
+      "keywords": ["data-solutions", "ds", "cli"]
+    }
+  ]
+}

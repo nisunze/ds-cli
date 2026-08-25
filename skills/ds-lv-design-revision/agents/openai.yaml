@@ -1,0 +1,4 @@
+interface:
+  display_name: "DS LV Design Revision"
+  short_description: "Revise staged LV designs through the DS CLI"
+  default_prompt: "Use $ds-lv-design-revision to preserve installed LV assets, review incoming linework semantically, and stage a version-safe transformer revision through the deployed DS CLI."

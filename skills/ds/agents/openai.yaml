@@ -1,0 +1,4 @@
+interface:
+  display_name: "DS"
+  short_description: "Work the Data Solutions stack through the ds CLI"
+  default_prompt: "Use $ds to discover what this DS install can do, find the one command for my intent, read its contract, and act through ds only."

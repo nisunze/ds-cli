@@ -51,6 +51,12 @@ jobs:
         working-directory: data-solutions/ds-cli
         run: cargo fmt --all --check
 
+      - name: Validate native agent skills
+        working-directory: data-solutions/ds-cli
+        run: |
+          python3 scripts/check.py
+          bash scripts/test-install-skills.sh
+
       - name: Lint
         working-directory: data-solutions/ds-cli
         run: cargo clippy --workspace --all-targets --all-features -- -D warnings

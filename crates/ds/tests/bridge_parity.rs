@@ -43,6 +43,8 @@ struct App {
     design: String,
     analysis: String,
     work: String,
+    feedback: String,
+    feedback_submit: String,
 }
 
 fn app() -> Option<App> {
@@ -57,6 +59,8 @@ fn app() -> Option<App> {
         design: read("src/lib/desktop/cli-map-design.ts")?,
         analysis: read("src/lib/analysis/outliers.ts")?,
         work: read("src/lib/desktop/cli-work.ts")?,
+        feedback: read("src/lib/desktop/cli-feedback.ts")?,
+        feedback_submit: read("src/lib/feedback/submit.ts")?,
     })
 }
 
@@ -277,6 +281,54 @@ fn every_work_command_has_one_closed_operation_owner() {
             }
         }
     }
+}
+
+#[test]
+fn every_feedback_command_has_one_closed_operation_owner() {
+    let Some(app) = app() else {
+        skip("the ds-web sibling repository is not on disk");
+        return;
+    };
+    let allowlist = between(
+        &app.transport,
+        "pub const CLI_OPERATIONS: &[&str] = &[",
+        "];",
+    );
+    for operation in ds_cli_feedback::BRIDGE_OPS {
+        assert_eq!(
+            count(allowlist, &format!("\"{}\"", operation.operation)),
+            1,
+            "`{}` must appear exactly once in the desktop allowlist",
+            operation.operation
+        );
+        assert_eq!(
+            count(&app.frontend, &format!("case '{}':", operation.operation)),
+            1,
+            "`{}` must have exactly one frontend handler",
+            operation.operation
+        );
+        let contract = operation_contract(&app.feedback, operation.operation);
+        assert!(
+            !contract.is_empty(),
+            "`{}` has no typed feedback-adapter argument contract",
+            operation.operation
+        );
+        for argument in operation.arguments {
+            assert!(
+                contract.contains(&format!("'{argument}'")),
+                "ds feedback sends `{argument}` to `{}`, but the adapter does not accept it",
+                operation.operation
+            );
+        }
+    }
+    assert!(
+        app.feedback_submit.contains("reporter_kind: 'agent'"),
+        "the desktop must pin CLI reports as agent sightings"
+    );
+    assert!(
+        app.feedback.contains("brain('/api/v1/feedback', payload)"),
+        "the CLI adapter must reuse the existing feedback endpoint"
+    );
 }
 
 #[test]
