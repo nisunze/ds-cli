@@ -223,6 +223,7 @@ fn every_constructible_refusal_code_is_documented() {
         ("ds-cli-report", Some("report")),
         ("ds-cli-solar", Some("solar")),
         ("ds-cli-work", Some("work")),
+        ("ds-cli-survey", Some("survey")),
         ("ds-cli-feedback", Some("feedback")),
         // Shared across every calling domain; declaring it in any one of them
         // is enough for this check, and the per-command help of each caller

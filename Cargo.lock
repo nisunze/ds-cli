@@ -355,6 +355,7 @@ dependencies = [
  "ds-cli-pls",
  "ds-cli-report",
  "ds-cli-solar",
+ "ds-cli-survey",
  "ds-cli-work",
  "serde_json",
  "sha2",
@@ -453,6 +454,15 @@ dependencies = [
  "ds-cli-contract",
  "ds-cli-desktop",
  "ds-cli-exec",
+ "serde_json",
+]
+
+[[package]]
+name = "ds-cli-survey"
+version = "0.1.0"
+dependencies = [
+ "ds-cli-contract",
+ "ds-cli-desktop",
  "serde_json",
 ]
 

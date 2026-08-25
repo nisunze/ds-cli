@@ -57,7 +57,7 @@ not to leave a year of room for drift.
 
 | Surface | Budget | Today |
 |---|---|---|
-| `ds --help` | 800 + 80/domain | 949 (2 domains) |
+| `ds --help` | 800 + 80/domain | 1 586 (10 domains) |
 | `ds <domain> --help` | 900 | 263–270 |
 | `ds <cmd> --help` | 3 200 | 1 344–2 308 |
 | `ds capabilities` (JSON) | 900 | 336 |

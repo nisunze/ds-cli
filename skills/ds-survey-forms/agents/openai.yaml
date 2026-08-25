@@ -1,0 +1,4 @@
+interface:
+  display_name: "DS Survey Forms"
+  short_description: "Inspect, change and export DS survey forms through ds"
+  default_prompt: "Use $ds-survey-forms to list a project's survey forms, read a form's fields, change one field with the version guard, export survey data, or check the Working Area cache."

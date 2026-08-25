@@ -355,6 +355,46 @@ static MAP_ENTRIES: &[Entry] = &[
     },
 ];
 
+/// Survey forms and data. Ordered as a session uses them: list the forms,
+/// read one, change a field; then export or inspect the Working Area.
+static SURVEY_ENTRIES: &[Entry] = &[
+    Entry {
+        command: &ds_cli_survey::form::list::COMMAND,
+        handler: ds_cli_survey::form::list::run,
+        render: ds_cli_survey::form::list::render,
+    },
+    Entry {
+        command: &ds_cli_survey::form::read::COMMAND,
+        handler: ds_cli_survey::form::read::run,
+        render: ds_cli_survey::form::read::render,
+    },
+    Entry {
+        command: &ds_cli_survey::field::add::COMMAND,
+        handler: ds_cli_survey::field::add::run,
+        render: ds_cli_survey::field::add::render,
+    },
+    Entry {
+        command: &ds_cli_survey::field::set::COMMAND,
+        handler: ds_cli_survey::field::set::run,
+        render: ds_cli_survey::field::set::render,
+    },
+    Entry {
+        command: &ds_cli_survey::field::remove::COMMAND,
+        handler: ds_cli_survey::field::remove::run,
+        render: ds_cli_survey::field::remove::render,
+    },
+    Entry {
+        command: &ds_cli_survey::export::COMMAND,
+        handler: ds_cli_survey::export::run,
+        render: ds_cli_survey::export::render,
+    },
+    Entry {
+        command: &ds_cli_survey::working_area::read::COMMAND,
+        handler: ds_cli_survey::working_area::read::run,
+        render: ds_cli_survey::working_area::read::render,
+    },
+];
+
 /// The Project Work domain lists its commands in the order a session uses
 /// them: look at the plan, find the item, read it, then act on it. Domain
 /// help prints this order verbatim, so the index doubles as the procedure.
@@ -454,6 +494,10 @@ static DOMAINS: &[Registered] = &[
     Registered {
         domain: &ds_cli_map::DOMAIN,
         entries: MAP_ENTRIES,
+    },
+    Registered {
+        domain: &ds_cli_survey::DOMAIN,
+        entries: SURVEY_ENTRIES,
     },
     Registered {
         domain: &ds_cli_work::DOMAIN,

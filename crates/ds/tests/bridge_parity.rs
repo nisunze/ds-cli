@@ -40,6 +40,7 @@ struct App {
     project: String,
     map: String,
     survey: String,
+    survey_forms: String,
     design: String,
     analysis: String,
     work: String,
@@ -56,6 +57,7 @@ fn app() -> Option<App> {
         project: read("src/lib/desktop/cli-project.ts")?,
         map: read("src/lib/desktop/cli-map.ts")?,
         survey: read("src/lib/desktop/cli-survey.ts")?,
+        survey_forms: read("src/lib/desktop/cli-survey-forms.ts")?,
         design: read("src/lib/desktop/cli-map-design.ts")?,
         analysis: read("src/lib/analysis/outliers.ts")?,
         work: read("src/lib/desktop/cli-work.ts")?,
@@ -533,5 +535,57 @@ fn retired_automation_bridge_is_not_a_map_fallback() {
             !source.contains("agent_bridge") && !source.contains("agent-bridge"),
             "paired-domain CLI support must not restore a retired automation bridge"
         );
+    }
+}
+
+#[test]
+fn every_survey_command_has_one_closed_operation_owner() {
+    let Some(app) = app() else {
+        skip("the ds-web sibling repository is not on disk");
+        return;
+    };
+    let mut seen = BTreeSet::new();
+    let allowlist = between(
+        &app.transport,
+        "pub const CLI_OPERATIONS: &[&str] = &[",
+        "];",
+    );
+    assert!(
+        !allowlist.is_empty(),
+        "the desktop CLI operation allowlist is absent"
+    );
+    for operation in ds_cli_survey::BRIDGE_OPS {
+        assert!(
+            seen.insert(operation.operation),
+            "`{}` is declared twice by ds survey; one semantic operation has one owner",
+            operation.operation
+        );
+        assert_eq!(
+            count(allowlist, &format!("\"{}\"", operation.operation)),
+            1,
+            "`{}` must appear exactly once in the desktop allowlist",
+            operation.operation
+        );
+        assert_eq!(
+            count(&app.frontend, &format!("case '{}':", operation.operation)),
+            1,
+            "`{}` must have exactly one frontend handler",
+            operation.operation
+        );
+        // A zero-argument operation still declares an (empty) contract.
+        assert!(
+            app.survey_forms
+                .contains(&format!("'{}': [", operation.operation)),
+            "`{}` has no typed survey-adapter argument contract",
+            operation.operation
+        );
+        let contract = operation_contract(&app.survey_forms, operation.operation);
+        for argument in operation.arguments {
+            assert!(
+                contract.contains(&format!("'{argument}'")),
+                "ds survey sends `{argument}` to `{}`, but the adapter does not accept it",
+                operation.operation
+            );
+        }
     }
 }

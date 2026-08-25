@@ -39,6 +39,9 @@
 #                    ds-cli-map it links no engine — the graph is governed by
 #                    ds-brain and reached only through the paired application,
 #                    so every command is one named bridge operation.
+#   ds-cli-survey    the survey domain: forms, their fields, export and the
+#                    Working Area. A bridge domain like ds-cli-work — forms
+#                    are governed Form Factory documents behind ds-brain.
 #   ds-cli-feedback  the shared product-feedback domain. It reaches the same
 #                    authenticated backlog as the desktop's `fb` shortcut and
 #                    pins reports from this surface as agent observations.
@@ -86,6 +89,7 @@ ds-cli-pls = { path = "crates/ds-cli-pls" }
 ds-cli-report = { path = "crates/ds-cli-report" }
 ds-cli-solar = { path = "crates/ds-cli-solar" }
 ds-cli-work = { path = "crates/ds-cli-work" }
+ds-cli-survey = { path = "crates/ds-cli-survey" }
 ds-cli-feedback = { path = "crates/ds-cli-feedback" }
 
 # The authoritative engine crates, by path, exactly as ds-web/src-tauri
