@@ -11,9 +11,10 @@
 //!   read → select → set | create | process → save
 //! ```
 //!
-//! Everything before `save` writes only into the local room and marks it
-//! dirty. `save` is the separate, explicit push to the project, and it is the
-//! only command here with an effect that dispatch requires `--yes` for.
+//! Feature editing and processing write only into the local room and mark it
+//! dirty. `save` is the separate, explicit push to the project. A deliberate
+//! `version begin` is another confirmed effect, owned by ds-brain and never
+//! implied by save or report.
 //!
 //! That split is the application's, and the reason is worth restating: the
 //! most consequential property write in this product is marking an as-built
@@ -23,7 +24,8 @@
 //! reversible, and committing is a second command a human confirms.
 //!
 //! Every result therefore reports `staged` and `persisted` separately, and
-//! `persisted` is false everywhere except `save`.
+//! `persisted` is false for staging commands; save and version begin report
+//! their own distinct durable results.
 
 pub mod batch_process;
 pub mod batch_report;
@@ -44,7 +46,6 @@ pub mod set;
 pub mod upload;
 pub mod upload_stage;
 pub mod upload_to_local;
-pub mod version_audit;
 pub mod version_create;
 
 use ds_cli_contract::Inputs;

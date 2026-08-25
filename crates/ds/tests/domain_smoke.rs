@@ -835,8 +835,8 @@ fn every_map_command_is_reachable_without_the_desktop_installed() {
     let commands = index["commands"].as_array().expect("commands");
     assert_eq!(
         commands.len(),
-        32,
-        "the map domain should register thirty-two commands"
+        31,
+        "the map domain should register thirty-one commands"
     );
     for command in commands {
         assert_eq!(

@@ -97,7 +97,6 @@ pub static DOMAIN: Domain = Domain {
         &design::delete::COMMAND,
         &design::geometry::COMMAND,
         &design::process_setup::COMMAND,
-        &design::version_audit::COMMAND,
         &design::version_create::COMMAND,
         &design::process::COMMAND,
         &design::batch_process::COMMAND,
@@ -231,10 +230,6 @@ pub const DESIGN_PROCESS_CONFIGURE: BridgeOp = BridgeOp {
         "dryRun",
     ],
 };
-pub const DESIGN_VERSION_AUDIT: BridgeOp = BridgeOp {
-    operation: "design.version.audit",
-    arguments: &["transformer"],
-};
 pub const DESIGN_VERSION_BEGIN: BridgeOp = BridgeOp {
     operation: "design.version.begin",
     arguments: &["transformers", "reason"],
@@ -319,7 +314,6 @@ pub const BRIDGE_OPS: &[&BridgeOp] = &[
     &DESIGN_DELETE,
     &DESIGN_GEOMETRY,
     &DESIGN_PROCESS_CONFIGURE,
-    &DESIGN_VERSION_AUDIT,
     &DESIGN_VERSION_BEGIN,
     &DESIGN_PROCESS,
     &DESIGN_PROCESS_BATCH,

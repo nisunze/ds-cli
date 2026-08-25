@@ -142,26 +142,26 @@ the separate batch save persists, with optimistic versions and mandatory
 `--yes`. Per-item rows always distinguish `staged` from `persisted` and carry
 their own warning/error so a script can retry a strict subset.
 
-## Design version is not the save revision
+## Design version is not the save generation
 
-Feature lineage follows the deliberate version shown by Design Status. It is
-independent of the cloud room's save revision, which exists only for
-optimistic concurrency. In particular, deliberate `v0` is a real initial
-design version and may stamp baseline features as `v_first=0` and `v_last=0`.
+`design save` only persists the working copy and advances its optimistic
+concurrency generation. It never creates a design version and never changes
+`v_first` or `v_last`.
 
-Before a governed save, inspect the prospective feature stamps without
-persisting anything:
+Begin a deliberate engineering version separately, with a required reason:
 
 ```bash
-ds map design version audit --transformer agasharu --output json
+ds map design version begin \
+  --transformer agasharu \
+  --reason "Extend surveyed LV network" \
+  --yes
 ```
 
-The receipt reports `design_version`, `current_concurrency_generation`,
-`would_concurrency_generation`, bounded stamp histograms, and `persisted=false`. At
-versions after v0, unchanged features preserve both lineage values, changed
-features preserve `v_first` and advance `v_last`, and new features receive the
-deliberate version in both fields. An optimistic save revision must never be
-copied into either feature property.
+ds-brain assigns the next `v<number>`; callers never supply that number.
+The version operation writes metadata only. Editing/WASM authors feature
+lineage under the already-assigned version; Save transports that room without
+restamping it. Reporting is not part of either operation. Deliberate `v0`
+means no explicit version has yet been created.
 
 ## The two identifiers
 

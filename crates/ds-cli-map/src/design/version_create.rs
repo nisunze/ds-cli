@@ -1,4 +1,4 @@
-//! Create one deliberate, visible transformer version.
+//! Begin one deliberate, visible transformer version.
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
@@ -34,12 +34,12 @@ pub static COMMAND: Command = Command {
     path: &["map", "design", "version", "begin"],
     contract: 1,
     summary: "Create a deliberate visible transformer version.",
-    purpose: "Creates one recoverable Design Status version for each named transformer from its current saved state. This is the explicit version gesture: ordinary design saves do not create versions. A required reason makes the retained history readable. Dirty local rooms are refused because a server snapshot must not silently omit staged edits.",
+    purpose: "Asks ds-brain to assign the next Design Status version for each named transformer. Only transformer names and one required reason cross the bridge; no transformer or report data is sent. Ordinary design saves do not create versions. Dirty local rooms are refused because version intent must precede the engineering edits it governs.",
     effect: Effect::ArtifactWrite,
     authority: Authority::Project,
     execution: Execution::Sync,
     args: &[TRANSFORMERS_ARG, REASON_ARG, DESCRIPTOR_ARG],
-    output: "The project, reason, created and failed counts, and one bounded result per transformer with its visible version and immutable version id. persisted is true only for a created version.",
+    output: "The project, reason, created and failed counts, and one bounded metadata result per transformer with its assigned v<number>. persisted is true only for an accepted ds-brain version bump.",
     examples: &[Example {
         command: "ds map design version begin --transformer agasharu --reason \"Drafting baseline approved\" --yes --output json",
         note: "Advances the visible version once; later saves remain in that version until another explicit create.",
@@ -58,7 +58,7 @@ pub static COMMAND: Command = Command {
         Refusal {
             code: "dirty_room",
             when: "a named transformer has unsaved local edits",
-            remedy: "save or discard that exact transformer room, then create the version",
+            remedy: "save or discard that exact transformer room, then begin the version before further engineering edits",
         },
         crate::UNSUPPORTED,
         crate::UNREADABLE,
@@ -131,9 +131,9 @@ fn classify_dirty_room(failure: Failure) -> Failure {
     }
     Failure::conflict(
         "dirty_room",
-        "a transformer has unsaved local edits that are not in the saved snapshot",
+        "a transformer already has unsaved local edits",
     )
-    .remedy("save or discard that exact transformer room, then create the version")
+    .remedy("save or discard that exact transformer room, then begin the version before further engineering edits")
 }
 
 pub fn render(data: &Value) -> String {

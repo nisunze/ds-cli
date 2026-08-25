@@ -304,11 +304,6 @@ static MAP_ENTRIES: &[Entry] = &[
         render: ds_cli_map::design::process_setup::render,
     },
     Entry {
-        command: &ds_cli_map::design::version_audit::COMMAND,
-        handler: ds_cli_map::design::version_audit::run,
-        render: ds_cli_map::design::version_audit::render,
-    },
-    Entry {
         command: &ds_cli_map::design::version_create::COMMAND,
         handler: ds_cli_map::design::version_create::run,
         render: ds_cli_map::design::version_create::render,
