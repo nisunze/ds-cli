@@ -97,6 +97,8 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         "project": result["project"],
         "saved": saved,
         "reason": result["reason"],
+        "design_version": result["designVersion"],
+        "concurrency_generation": result["concurrencyGeneration"],
         "staged": false,
         "persisted": saved,
     }))
@@ -132,8 +134,10 @@ pub fn render(data: &Value) -> String {
     let transformer = data["transformer"].as_str().unwrap_or("");
     if data["saved"].as_bool().unwrap_or(false) {
         return format!(
-            "saved  {transformer}  to {}\n",
-            data["project"].as_str().unwrap_or("?")
+            "saved  {transformer}  to {}\n  design v{}  -  concurrency generation {}\n",
+            data["project"].as_str().unwrap_or("?"),
+            data["design_version"].as_u64().unwrap_or(0),
+            data["concurrency_generation"].as_u64().unwrap_or(0),
         );
     }
     format!(

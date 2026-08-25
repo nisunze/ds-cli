@@ -22,13 +22,15 @@ pairing argument in full.
 
 | | Local layers | Design layers |
 |---|---|---|
-| Commands | `view` `draw` `remove` `zoom` `points-along` `random-points` `outliers` | `design read` `select` `set` `create` `process` `save` |
+| Commands | `view` `draw` `remove` `zoom` `points-along` `random-points` `outliers` `line-difference` | `design read` `layer-to-local` `upload-to-local` `select` `set` `create` `setup` `process` `save` |
 | Authority | `desktop_pairing` — the app is running | `project` — signed in, project selected |
 | Reaches | what the operator can see | project data |
 | Survives the session | no | only through `design save` |
 
 A local layer is never project data. `persisted` is reported on every command
-that makes one, and it is always false.
+that makes one, and it is always false. `map zoom --layer <id>` asks the
+application to fit a CLI-owned local layer; its geometry stays in the
+application and only the computed bounding box is returned.
 
 A design command stages into the operator's local room and marks it dirty.
 `design save` is the separate push, it is `artifact_write`, and dispatch
@@ -40,6 +42,61 @@ That split is the application's, and it exists because
 installed transformer. Marking an as-built network approved is the most
 consequential property write in the product; one sentence from a model must
 not be able to reach the project.
+
+## Design/local transfer and line extension difference
+
+The comparison workflow stays inside the application and uses one shared
+`ds-web` local-layer API. The CLI only declares names and tolerances:
+
+```bash
+ds map design layer-to-local \
+  --transformer agasharu --layer lv_lines --name "agasharu approved base"
+
+ds map design upload-to-local \
+  --path 'C:\Designs\agasharu.shp.zip' \
+  --source-layer lv_lines --name "agasharu incoming lv lines"
+
+ds map line-difference \
+  --source-layer <incoming-layer-id> --base-layer <base-layer-id> \
+  --name "agasharu extension difference" \
+  --coverage-tolerance-m 0.5 --heal-tolerance-m 1
+
+ds map design create \
+  --transformer agasharu --source-layer <difference-layer-id> \
+  --target-layer lv_lines --set drafting_status=draft --dry-run
+```
+
+`layer-to-local` makes a local copy of the current project design layer;
+`upload-to-local` asks the desktop parser for exactly one named archive layer.
+Neither operation sends feature rows through `ds`. `line-difference` asks the
+Rust/WASM kernel to remove directionally aligned source portions already
+covered by the authoritative base and to heal remaining extension endpoints
+within the given metric tolerance. Its output is another local layer.
+
+Only `design create` crosses back into the design room, and it stages rather
+than saves. It accepts exactly one source: `--features <geojson>` or
+`--source-layer <id>`. The local-layer path keeps geometry inside ds-web and
+returns only counts and a staging receipt to the CLI.
+
+## Project-scoped Fast LV setup
+
+The application owns one project-scoped Fast LV setup. The CLI does not keep a
+second copy: it discovers and updates the same local preference used by the UI.
+It names survey layer keys, while ds-web owns IndexedDB addresses and processor
+wiring:
+
+```bash
+ds map design setup --output json
+ds map design setup \
+  --survey-layer edcl_customers_survey --preset drafting \
+  --dry-run --output json
+```
+
+Survey layers are additional to current design customers unless
+`--survey-only` is explicit. Omit `--dry-run` only after the exact semantic
+source has been confirmed. Available source inventories are bounded by
+`--limit` (20 by default) and report omitted counts; selected sources and
+effective settings are never truncated.
 
 ## Survey migration is an API operation
 
@@ -84,6 +141,27 @@ reuses the Design Status Fast Process scheduler and also remains staged. Only
 the separate batch save persists, with optimistic versions and mandatory
 `--yes`. Per-item rows always distinguish `staged` from `persisted` and carry
 their own warning/error so a script can retry a strict subset.
+
+## Design version is not the save revision
+
+Feature lineage follows the deliberate version shown by Design Status. It is
+independent of the cloud room's save revision, which exists only for
+optimistic concurrency. In particular, deliberate `v0` is a real initial
+design version and may stamp baseline features as `v_first=0` and `v_last=0`.
+
+Before a governed save, inspect the prospective feature stamps without
+persisting anything:
+
+```bash
+ds map design version audit --transformer agasharu --output json
+```
+
+The receipt reports `design_version`, `current_concurrency_generation`,
+`would_concurrency_generation`, bounded stamp histograms, and `persisted=false`. At
+versions after v0, unchanged features preserve both lineage values, changed
+features preserve `v_first` and advance `v_last`, and new features receive the
+deliberate version in both fields. An optimistic save revision must never be
+copied into either feature property.
 
 ## The two identifiers
 
@@ -224,3 +302,8 @@ malformed invocation refuses the same way whether or not an application is
 running. `tests/domain_smoke.rs` asserts that ordering command by command;
 without it, the input contract would be untestable everywhere the desktop is
 not installed, which is every CI machine.
+# Survey Working Area materialization
+
+`ds map survey download --entire-project` applies the paired desktop's full-project Working Area and waits for its existing sequential survey loader to materialize every configured survey form. The application owns authentication, Working Area state, API calls, IndexedDB and feature rows. The CLI sends only `{ entireProject: true }` and returns bounded cache counts; it never receives raw rows.
+
+This is distinct from `map survey migrate`: migration copies governed survey records between projects, while download materializes the active project's records into its local desktop cache for map and WASM processing.

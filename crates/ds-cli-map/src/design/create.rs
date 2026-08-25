@@ -47,10 +47,12 @@ pub static COMMAND: Command = Command {
     id: "map.design.create",
     path: &["map", "design", "create"],
     contract: 1,
-    summary: "Turn GeoJSON into staged features on a design layer.",
+    summary: "Turn GeoJSON or a local layer into staged design features.",
     purpose: "\
-Creates design features from a GeoJSON file — the machine-facing half of the \
-operator's create-from-selection gesture, with the same filtering. Without \
+Creates design features from either a GeoJSON file or an application-owned \
+local layer — the machine-facing half of the operator's create-from-selection \
+gesture, with the same filtering. Give exactly one of --features or \
+--source-layer. Without \
 --target-layer it answers which design layers the supplied geometry could \
 become and how many each would accept, so the catalogue can be discovered \
 rather than guessed. With one, it stages the features into the local room.",
@@ -59,7 +61,12 @@ rather than guessed. With one, it stages the features into the local room.",
     execution: Execution::Sync,
     args: &[
         TRANSFORMER_ARG,
-        Arg::value("features", "<path>", "GeoJSON file to create from.").required(),
+        Arg::value("features", "<path>", "GeoJSON file to create from."),
+        Arg::value(
+            "source-layer",
+            "<id>",
+            "Local layer id from `ds map view`; rows stay inside the application.",
+        ),
         Arg::value(
             "target-layer",
             "<name>",
@@ -86,6 +93,11 @@ and `persisted` separately.",
             note: "Stage them onto a named layer.",
             runnable: false,
         },
+        Example {
+            command: "ds map design create --transformer agasharu --source-layer sketch-difference --target-layer lv_lines --set drafting_status=draft --dry-run",
+            note: "Preview promotion of a computed local difference into design.",
+            runnable: false,
+        },
     ],
     refusals: &[
         crate::NOT_PAIRED,
@@ -103,6 +115,11 @@ and `persisted` separately.",
         crate::FEATURES_NOT_FOUND,
         crate::FEATURES_NOT_GEOJSON,
         crate::FEATURES_EMPTY,
+        Refusal {
+            code: "source_choice",
+            when: "neither --features nor --source-layer was given, or both were",
+            remedy: "give exactly one of --features or --source-layer",
+        },
         crate::FEATURES_OVER_BOUND,
         crate::INVALID_PAIR,
     ],
@@ -112,19 +129,30 @@ and `persisted` separately.",
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let transformer = inputs.require("transformer")?;
-    let path = inputs.require("features")?;
     let dry_run = inputs.switch("dry-run");
+    let features_path = inputs.value("features");
+    let source_layer = inputs.value("source-layer");
+    if features_path.is_some() == source_layer.is_some() {
+        return Err(Failure::invalid(
+            "source_choice",
+            "give exactly one of --features or --source-layer",
+        ));
+    }
 
     // No geometry-type check here, deliberately: which types are acceptable
     // is the target layer's business, and with no target named the whole
     // point of the call is to be told.
-    let supplied = crate::load_features(path, "features", MAX_CREATE_FEATURES)?;
+    let supplied = features_path
+        .map(|path| crate::load_features(path, "features", MAX_CREATE_FEATURES))
+        .transpose()?;
 
-    let mut arguments = json!({
-        "transformer": transformer,
-        "features": supplied.features,
-        "dryRun": dry_run,
-    });
+    let mut arguments = json!({ "transformer": transformer, "dryRun": dry_run });
+    if let Some(supplied) = &supplied {
+        arguments["features"] = json!(supplied.features);
+    }
+    if let Some(layer) = source_layer {
+        arguments["sourceLayer"] = json!(layer);
+    }
     if let Some(target) = inputs.value("target-layer") {
         arguments["targetLayer"] = json!(target);
     }
@@ -151,7 +179,10 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         return Ok(json!({
             "transformer": transformer,
             "supplied": result["supplied"].as_u64().unwrap_or(0),
-            "geometry": crate::kinds_of(&supplied),
+            "geometry": supplied.as_ref().map(crate::kinds_of).unwrap_or_else(|| vec![
+                result["sourceGeometry"].as_str().unwrap_or("Unknown").to_string()
+            ]),
+            "source_layer": source_layer,
             "targets": result["targets"],
             "created": 0,
             "staged": false,
@@ -165,6 +196,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         "target_layer": result["targetLayer"],
         "dry_run": result["dryRun"].as_bool().unwrap_or(dry_run),
         "supplied": result["supplied"].as_u64().unwrap_or(0),
+        "source_layer": source_layer,
         "accepted": result["acceptedSources"].as_u64().unwrap_or(0),
         "created": result["created"].as_u64().unwrap_or(0),
         "rejected": result["rejected"],

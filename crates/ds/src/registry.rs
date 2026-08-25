@@ -234,6 +234,16 @@ static MAP_ENTRIES: &[Entry] = &[
         render: ds_cli_map::outliers::render,
     },
     Entry {
+        command: &ds_cli_map::line_difference::COMMAND,
+        handler: ds_cli_map::line_difference::run,
+        render: ds_cli_map::line_difference::render,
+    },
+    Entry {
+        command: &ds_cli_map::survey::download::COMMAND,
+        handler: ds_cli_map::survey::download::run,
+        render: ds_cli_map::survey::download::render,
+    },
+    Entry {
         command: &ds_cli_map::survey::plan::COMMAND,
         handler: ds_cli_map::survey::plan::run,
         render: ds_cli_map::survey::plan::render,
@@ -247,6 +257,21 @@ static MAP_ENTRIES: &[Entry] = &[
         command: &ds_cli_map::design::read::COMMAND,
         handler: ds_cli_map::design::read::run,
         render: ds_cli_map::design::read::render,
+    },
+    Entry {
+        command: &ds_cli_map::design::discard::COMMAND,
+        handler: ds_cli_map::design::discard::run,
+        render: ds_cli_map::design::discard::render,
+    },
+    Entry {
+        command: &ds_cli_map::design::layer_to_local::COMMAND,
+        handler: ds_cli_map::design::layer_to_local::run,
+        render: ds_cli_map::design::layer_to_local::render,
+    },
+    Entry {
+        command: &ds_cli_map::design::upload_to_local::COMMAND,
+        handler: ds_cli_map::design::upload_to_local::run,
+        render: ds_cli_map::design::upload_to_local::render,
     },
     Entry {
         command: &ds_cli_map::design::select::COMMAND,
@@ -272,6 +297,21 @@ static MAP_ENTRIES: &[Entry] = &[
         command: &ds_cli_map::design::geometry::COMMAND,
         handler: ds_cli_map::design::geometry::run,
         render: ds_cli_map::design::geometry::render,
+    },
+    Entry {
+        command: &ds_cli_map::design::process_setup::COMMAND,
+        handler: ds_cli_map::design::process_setup::run,
+        render: ds_cli_map::design::process_setup::render,
+    },
+    Entry {
+        command: &ds_cli_map::design::version_audit::COMMAND,
+        handler: ds_cli_map::design::version_audit::run,
+        render: ds_cli_map::design::version_audit::render,
+    },
+    Entry {
+        command: &ds_cli_map::design::version_create::COMMAND,
+        handler: ds_cli_map::design::version_create::run,
+        render: ds_cli_map::design::version_create::render,
     },
     Entry {
         command: &ds_cli_map::design::process::COMMAND,

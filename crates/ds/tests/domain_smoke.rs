@@ -509,6 +509,18 @@ fn map_validates_its_own_inputs_before_it_opens_the_bridge() {
             "invalid_bbox",
         ),
         (&["map", "zoom", "--bbox", "29.9,-2.1,30.2"], "invalid_bbox"),
+        (&["map", "zoom"], "zoom_target"),
+        (
+            &[
+                "map",
+                "zoom",
+                "--bbox",
+                "29.9,-2.1,30.2,-1.85",
+                "--layer",
+                "sketch:x",
+            ],
+            "zoom_target",
+        ),
         (
             &[
                 "map",
@@ -730,6 +742,27 @@ fn map_design_save_cannot_run_without_confirmation() {
 }
 
 #[test]
+fn map_design_version_begin_cannot_run_without_confirmation() {
+    let run = ds(&[
+        "map",
+        "design",
+        "version",
+        "begin",
+        "--transformer",
+        "agasharu",
+        "--reason",
+        "Approved drafting baseline",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(
+        run.envelope["error"]["code"], "confirmation_required",
+        "design version creation reached past the confirmation gate"
+    );
+    assert_ne!(run.code, 0);
+}
+
+#[test]
 fn map_design_delete_requires_an_explicit_selector() {
     // An empty selector would match the whole room; "delete everything" must
     // never be the accident default of forgetting a flag — refused locally,
@@ -802,8 +835,8 @@ fn every_map_command_is_reachable_without_the_desktop_installed() {
     let commands = index["commands"].as_array().expect("commands");
     assert_eq!(
         commands.len(),
-        24,
-        "the map domain should register twenty-four commands"
+        32,
+        "the map domain should register thirty-two commands"
     );
     for command in commands {
         assert_eq!(
@@ -824,6 +857,7 @@ fn a_well_formed_map_call_only_ever_fails_on_the_pairing_state() {
     for args in [
         vec!["map", "view"],
         vec!["map", "zoom", "--bbox", "29.9,-2.1,30.2,-1.85"],
+        vec!["map", "zoom", "--layer", "sketch-does-not-exist"],
         vec!["map", "remove", "--layer", "sketch-does-not-exist"],
         vec![
             "map",
@@ -835,10 +869,63 @@ fn a_well_formed_map_call_only_ever_fails_on_the_pairing_state() {
         ],
         vec!["map", "random-points", "--layer", "sketch:x"],
         vec!["map", "outliers", "--layer", "sketch:x"],
+        vec![
+            "map",
+            "line-difference",
+            "--source-layer",
+            "sketch:incoming",
+            "--base-layer",
+            "sketch:base",
+            "--name",
+            "difference",
+        ],
         vec!["map", "design", "read", "--transformer", "T-1042"],
+        vec![
+            "map",
+            "design",
+            "layer-to-local",
+            "--transformer",
+            "T-1042",
+            "--layer",
+            "lv_lines",
+            "--name",
+            "base",
+        ],
+        vec![
+            "map",
+            "design",
+            "upload-to-local",
+            "--path",
+            "survey.zip",
+            "--source-layer",
+            "lv_lines",
+            "--name",
+            "incoming",
+        ],
         vec!["map", "design", "select", "--transformer", "T-1042"],
         vec!["map", "design", "set", "--transformer", "T", "--set", "a=b"],
+        vec![
+            "map",
+            "design",
+            "create",
+            "--transformer",
+            "T",
+            "--source-layer",
+            "sketch:difference",
+            "--target-layer",
+            "lv_lines",
+        ],
         vec!["map", "design", "process", "--transformer", "T-1042"],
+        vec![
+            "map",
+            "design",
+            "setup",
+            "--survey-layer",
+            "edcl_customers_survey",
+            "--preset",
+            "drafting",
+            "--dry-run",
+        ],
         vec![
             "map",
             "design",

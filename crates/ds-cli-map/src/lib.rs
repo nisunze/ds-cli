@@ -46,6 +46,7 @@
 
 pub mod design;
 pub mod draw;
+pub mod line_difference;
 pub mod outliers;
 pub mod points_along;
 pub mod random_points;
@@ -82,14 +83,22 @@ pub static DOMAIN: Domain = Domain {
         &points_along::COMMAND,
         &random_points::COMMAND,
         &outliers::COMMAND,
+        &line_difference::COMMAND,
+        &survey::download::COMMAND,
         &survey::plan::COMMAND,
         &survey::apply::COMMAND,
         &design::read::COMMAND,
+        &design::discard::COMMAND,
+        &design::layer_to_local::COMMAND,
+        &design::upload_to_local::COMMAND,
         &design::select::COMMAND,
         &design::set::COMMAND,
         &design::create::COMMAND,
         &design::delete::COMMAND,
         &design::geometry::COMMAND,
+        &design::process_setup::COMMAND,
+        &design::version_audit::COMMAND,
+        &design::version_create::COMMAND,
         &design::process::COMMAND,
         &design::batch_process::COMMAND,
         &design::batch_report::COMMAND,
@@ -116,7 +125,7 @@ pub const LAYER_REMOVE: BridgeOp = BridgeOp {
 };
 pub const ZOOM_TO: BridgeOp = BridgeOp {
     operation: "map.zoom_to",
-    arguments: &["bbox", "padding"],
+    arguments: &["bbox", "layerId", "padding"],
 };
 pub const POINTS_ALONG: BridgeOp = BridgeOp {
     operation: "gis.points_along",
@@ -144,9 +153,31 @@ pub const DETECT_OUTLIERS: BridgeOp = BridgeOp {
         "settings.extentOutliers",
     ],
 };
+pub const LINE_EXTENSION_DIFFERENCE: BridgeOp = BridgeOp {
+    operation: "gis.line_extension_difference",
+    arguments: &[
+        "sourceLayer",
+        "baseLayer",
+        "name",
+        "coverageToleranceM",
+        "healToleranceM",
+    ],
+};
 pub const DESIGN_READ: BridgeOp = BridgeOp {
     operation: "design.transformer.read",
     arguments: &["transformer", "layers", "property"],
+};
+pub const DESIGN_DISCARD: BridgeOp = BridgeOp {
+    operation: "design.transformer.discard",
+    arguments: &["transformer"],
+};
+pub const DESIGN_LAYER_TO_LOCAL: BridgeOp = BridgeOp {
+    operation: "design.layer.copy_to_local",
+    arguments: &["transformer", "layer", "name"],
+};
+pub const DESIGN_UPLOAD_TO_LOCAL: BridgeOp = BridgeOp {
+    operation: "design.upload.layer_to_local",
+    arguments: &["path", "sourceLayer", "name"],
 };
 pub const DESIGN_SELECT: BridgeOp = BridgeOp {
     operation: "design.features.select",
@@ -170,6 +201,7 @@ pub const DESIGN_CREATE: BridgeOp = BridgeOp {
         "transformer",
         "targetLayer",
         "features",
+        "sourceLayer",
         "carryProperties",
         "properties",
         "dryRun",
@@ -186,6 +218,26 @@ pub const DESIGN_PROCESS: BridgeOp = BridgeOp {
         "differential.ids",
         "differential.bbox",
     ],
+};
+pub const DESIGN_PROCESS_CONFIGURE: BridgeOp = BridgeOp {
+    operation: "design.process.configure",
+    arguments: &[
+        "surveyLayers",
+        "temporaryLayers",
+        "includeDesignCustomers",
+        "preset",
+        "settings",
+        "resetSettings",
+        "dryRun",
+    ],
+};
+pub const DESIGN_VERSION_AUDIT: BridgeOp = BridgeOp {
+    operation: "design.version.audit",
+    arguments: &["transformer"],
+};
+pub const DESIGN_VERSION_BEGIN: BridgeOp = BridgeOp {
+    operation: "design.version.begin",
+    arguments: &["transformers", "reason"],
 };
 pub const DESIGN_PROCESS_BATCH: BridgeOp = BridgeOp {
     operation: "design.process.batch",
@@ -240,6 +292,10 @@ pub const SURVEY_MIGRATE_APPLY: BridgeOp = BridgeOp {
     operation: "survey.migrate.apply",
     arguments: &["sourceProject"],
 };
+pub const SURVEY_WORKING_AREA_DOWNLOAD: BridgeOp = BridgeOp {
+    operation: "survey.working_area.download",
+    arguments: &["entireProject"],
+};
 
 /// Every operation this domain can send, for the parity test to walk. A new
 /// operation that is not listed here cannot be sent: [`invoke`] takes a
@@ -252,12 +308,19 @@ pub const BRIDGE_OPS: &[&BridgeOp] = &[
     &POINTS_ALONG,
     &RANDOM_POINTS,
     &DETECT_OUTLIERS,
+    &LINE_EXTENSION_DIFFERENCE,
     &DESIGN_READ,
+    &DESIGN_DISCARD,
+    &DESIGN_LAYER_TO_LOCAL,
+    &DESIGN_UPLOAD_TO_LOCAL,
     &DESIGN_SELECT,
     &DESIGN_SET,
     &DESIGN_CREATE,
     &DESIGN_DELETE,
     &DESIGN_GEOMETRY,
+    &DESIGN_PROCESS_CONFIGURE,
+    &DESIGN_VERSION_AUDIT,
+    &DESIGN_VERSION_BEGIN,
     &DESIGN_PROCESS,
     &DESIGN_PROCESS_BATCH,
     &DESIGN_SAVE,
@@ -268,6 +331,7 @@ pub const BRIDGE_OPS: &[&BridgeOp] = &[
     &DESIGN_UPLOAD_STAGE_BATCH,
     &SURVEY_MIGRATE_PLAN,
     &SURVEY_MIGRATE_APPLY,
+    &SURVEY_WORKING_AREA_DOWNLOAD,
 ];
 
 /// The application's bound on one temporary layer. Hand-copied from
@@ -342,6 +406,8 @@ pub const DESIGN_PROCESS_TIMEOUT: Duration = Duration::from_secs(30 * 60);
 /// The survey migration API has a ten-minute server timeout. Give the
 /// frontend enough time to invalidate affected local caches before answering.
 pub const SURVEY_MIGRATION_TIMEOUT: Duration = Duration::from_secs(11 * 60);
+/// A full-project Working Area refresh walks every survey form sequentially.
+pub const SURVEY_DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(30 * 60);
 
 // ---------------------------------------------------------------------------
 // Reading GeoJSON a caller supplies

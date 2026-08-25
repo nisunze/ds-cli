@@ -20,17 +20,22 @@ pub static COMMAND: Command = Command {
     id: "map.zoom",
     path: &["map", "zoom"],
     contract: 1,
-    summary: "Move the paired map to a bounding box.",
+    summary: "Move the paired map to a bounding box or local layer.",
     purpose: "\
-Fits the running map to a geographic bounding box, the way a person dragging \
-a box would. Degrees, west,south,east,north. The box is checked here before \
-it is sent, so a transposed or out-of-range box is a typed refusal naming the \
-problem rather than an operation the application declines.",
+Fits the running map to either an explicit geographic bounding box or a local \
+layer already named by `ds map view`. With --layer the application reads its \
+own local-layer geometry and computes the extent; no coordinates or features \
+cross the CLI boundary. Give exactly one target.",
     effect: Effect::LocalUi,
     authority: Authority::DesktopPairing,
     execution: Execution::Sync,
     args: &[
-        Arg::value("bbox", "<w,s,e,n>", "Degrees: west,south,east,north.").required(),
+        Arg::value("bbox", "<w,s,e,n>", "Degrees: west,south,east,north."),
+        Arg::value(
+            "layer",
+            "<id>",
+            "CLI-owned local layer id from `ds map view`; the application computes its extent.",
+        ),
         Arg::value(
             "padding",
             "<px>",
@@ -39,12 +44,19 @@ problem rather than an operation the application declines.",
         .default(DEFAULT_PADDING),
         DESCRIPTOR_ARG,
     ],
-    output: "The bounding box the map was moved to, and the padding applied.",
-    examples: &[Example {
-        command: "ds map zoom --bbox 29.9,-2.1,30.2,-1.85",
-        note: "Kigali, roughly.",
-        runnable: false,
-    }],
+    output: "The bounding box the map was moved to, the optional local layer id, and the padding applied.",
+    examples: &[
+        Example {
+            command: "ds map zoom --bbox 29.9,-2.1,30.2,-1.85",
+            note: "Kigali, roughly.",
+            runnable: false,
+        },
+        Example {
+            command: "ds map zoom --layer sketch-1f3a",
+            note: "Focus a CLI-owned review layer without returning its geometry.",
+            runnable: false,
+        },
+    ],
     refusals: &[
         crate::NOT_PAIRED,
         crate::AMBIGUOUS,
@@ -57,6 +69,11 @@ problem rather than an operation the application declines.",
         },
         crate::UNSUPPORTED,
         crate::UNREADABLE,
+        Refusal {
+            code: "zoom_target",
+            when: "neither --bbox nor --layer was given, or both were",
+            remedy: "give exactly one of --bbox or --layer",
+        },
         crate::INVALID_BBOX,
         crate::INVALID_NUMBER,
     ],
@@ -65,21 +82,29 @@ problem rather than an operation the application declines.",
 };
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
-    let bbox = crate::bbox(inputs.require("bbox")?)?;
+    let bbox = inputs.value("bbox").map(crate::bbox).transpose()?;
+    let layer = inputs.value("layer");
+    if bbox.is_some() == layer.is_some() {
+        return Err(Failure::invalid(
+            "zoom_target",
+            "give exactly one of --bbox or --layer",
+        ));
+    }
     let padding = crate::number(inputs.require("padding")?, "padding", 0.0, 240.0)?;
 
     let descriptor = crate::paired(inputs.value("desktop-descriptor"))?;
-    let moved = crate::invoke(
-        &descriptor,
-        &crate::ZOOM_TO,
-        json!({ "bbox": bbox, "padding": padding }),
-        crate::UI_TIMEOUT,
-    )?;
+    let mut arguments = json!({ "padding": padding });
+    if let Some(bbox) = bbox {
+        arguments["bbox"] = json!(bbox);
+    }
+    if let Some(layer) = layer {
+        arguments["layerId"] = json!(layer);
+    }
+    let moved = crate::invoke(&descriptor, &crate::ZOOM_TO, arguments, crate::UI_TIMEOUT)?;
 
     Ok(json!({
-        "bbox": moved["bbox"].as_array().cloned().unwrap_or_else(|| {
-            bbox.iter().map(|value| json!(value)).collect()
-        }),
+        "bbox": moved["bbox"],
+        "layer": moved["layerId"],
         "padding": moved["padding"].as_f64().unwrap_or(padding),
     }))
 }

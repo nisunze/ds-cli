@@ -35,15 +35,15 @@ pub static COMMAND: Command = Command {
     contract: 1,
     summary: "Save an explicit batch of staged transformer rooms.",
     purpose: "\
-Persists each named dirty desktop room with optimistic version checks and \
-automatic v_first/v_last stamping. Items are isolated so one conflict does not \
+Persists each named dirty desktop room with optimistic concurrency checks and \
+v_first/v_last stamping from the deliberate Design Status version. Items are isolated so one conflict does not \
 cancel unrelated saves. This durable project write always requires --yes.",
     effect: Effect::ArtifactWrite,
     authority: Authority::Project,
     execution: Execution::Sync,
     args: &[TRANSFORMER_ARG, PARALLEL_ARG, DESCRIPTOR_ARG],
     output: "\
-Per-transformer saved/persisted state, version, or error, plus total, succeeded, \
+Per-transformer saved/persisted state, design version, concurrency generation, or error, plus total, succeeded, \
 failed, and requested parallelism.",
     examples: &[Example {
         command: "ds map design batch save --transformer TX-1 --transformer TX-2 --parallel 4 --yes --output json",
