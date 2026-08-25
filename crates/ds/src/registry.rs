@@ -360,6 +360,36 @@ static MAP_ENTRIES: &[Entry] = &[
     },
 ];
 
+/// Map styling. Ordered as a session uses it: list the refs, read one, plan
+/// the second dimension, publish it or clear it.
+static STYLE_ENTRIES: &[Entry] = &[
+    Entry {
+        command: &ds_cli_style::list::COMMAND,
+        handler: ds_cli_style::list::run,
+        render: ds_cli_style::list::render,
+    },
+    Entry {
+        command: &ds_cli_style::read::COMMAND,
+        handler: ds_cli_style::read::run,
+        render: ds_cli_style::read::render,
+    },
+    Entry {
+        command: &ds_cli_style::dimension::plan::COMMAND,
+        handler: ds_cli_style::dimension::plan::run,
+        render: ds_cli_style::dimension::plan::render,
+    },
+    Entry {
+        command: &ds_cli_style::dimension::set::COMMAND,
+        handler: ds_cli_style::dimension::set::run,
+        render: ds_cli_style::dimension::set::render,
+    },
+    Entry {
+        command: &ds_cli_style::dimension::clear::COMMAND,
+        handler: ds_cli_style::dimension::clear::run,
+        render: ds_cli_style::dimension::clear::render,
+    },
+];
+
 /// The Project Work domain lists its commands in the order a session uses
 /// them: look at the plan, find the item, read it, then act on it. Domain
 /// help prints this order verbatim, so the index doubles as the procedure.
@@ -463,6 +493,10 @@ static DOMAINS: &[Registered] = &[
     Registered {
         domain: &ds_cli_work::DOMAIN,
         entries: WORK_ENTRIES,
+    },
+    Registered {
+        domain: &ds_cli_style::DOMAIN,
+        entries: STYLE_ENTRIES,
     },
     Registered {
         domain: &ds_cli_feedback::DOMAIN,

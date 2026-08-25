@@ -19,6 +19,7 @@ DOMAINS
   report           Deliverables: transformer and combined report artifacts.
   map              The paired map: local layers, vector tools, design-layer edits.
   work             Project Work: the plan, its tasks, assignments and records.
+  style            Map styling: style documents and a second halo/opacity/size dimension.
   feedback         Product feedback: report a CLI gap to the shared backlog.
   desktop          The paired DS GridDesign session: pairing, sign-in, project.
 

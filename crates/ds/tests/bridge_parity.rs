@@ -43,6 +43,7 @@ struct App {
     design: String,
     analysis: String,
     work: String,
+    style: String,
     feedback: String,
     feedback_submit: String,
 }
@@ -59,6 +60,7 @@ fn app() -> Option<App> {
         design: read("src/lib/desktop/cli-map-design.ts")?,
         analysis: read("src/lib/analysis/outliers.ts")?,
         work: read("src/lib/desktop/cli-work.ts")?,
+        style: read("src/lib/desktop/cli-style.ts")?,
         feedback: read("src/lib/desktop/cli-feedback.ts")?,
         feedback_submit: read("src/lib/feedback/submit.ts")?,
     })
@@ -281,6 +283,62 @@ fn every_work_command_has_one_closed_operation_owner() {
             }
         }
     }
+}
+
+#[test]
+fn every_style_command_has_one_closed_operation_owner() {
+    let Some(app) = app() else {
+        skip("the ds-web sibling repository is not on disk");
+        return;
+    };
+    let mut seen = BTreeSet::new();
+    let allowlist = between(
+        &app.transport,
+        "pub const CLI_OPERATIONS: &[&str] = &[",
+        "];",
+    );
+    assert!(
+        !allowlist.is_empty(),
+        "the desktop CLI operation allowlist is absent"
+    );
+    for operation in ds_cli_style::BRIDGE_OPS {
+        assert!(
+            seen.insert(operation.operation),
+            "`{}` is declared twice by ds style; one semantic operation has one owner",
+            operation.operation
+        );
+        assert_eq!(
+            count(allowlist, &format!("\"{}\"", operation.operation)),
+            1,
+            "`{}` must appear exactly once in the desktop allowlist",
+            operation.operation
+        );
+        assert_eq!(
+            count(&app.frontend, &format!("case '{}':", operation.operation)),
+            1,
+            "`{}` must have exactly one frontend handler",
+            operation.operation
+        );
+        let contract = operation_contract(&app.style, operation.operation);
+        assert!(
+            !contract.is_empty(),
+            "`{}` has no typed style adapter argument contract",
+            operation.operation
+        );
+        for argument in operation.arguments {
+            assert!(
+                contract.contains(&format!("'{argument}'")),
+                "ds style sends `{argument}` to `{}`, but its typed adapter does not accept it",
+                operation.operation
+            );
+        }
+    }
+    // The value bound is one number on both sides of the bridge.
+    assert!(
+        app.style
+            .contains(&format!("const MAX_VALUES = {};", ds_cli_style::MAX_VALUES)),
+        "ds style's MAX_VALUES must equal the adapter's MAX_VALUES"
+    );
 }
 
 #[test]
