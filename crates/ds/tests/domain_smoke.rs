@@ -24,6 +24,8 @@
 use std::path::PathBuf;
 use std::process::Command;
 
+use ds_grid_engine::{CommandEnvelope, GridCommand, GridSession};
+use ds_grid_exchange::unpack;
 use serde_json::Value;
 
 mod common;
@@ -156,6 +158,99 @@ fn dsgrid_describe_returns_a_real_engine_catalog() {
     ]);
     assert_eq!(data["descriptor"]["operation_id"], "create_alignment");
     assert!(data["descriptor"]["params"].is_array());
+}
+
+#[test]
+fn dsgrid_apply_dry_runs_then_writes_one_revision_without_overwriting_source() {
+    let model = common::fixture();
+    let bytes = std::fs::read(&model).expect("read fixture package");
+    let package = unpack(&bytes).expect("decode fixture package");
+    let alignment = package
+        .snapshot
+        .alignments
+        .first()
+        .expect("fixture has an alignment")
+        .id
+        .clone();
+    let session = GridSession::open(package.snapshot);
+    let expected_revision = session.current_revision().revision_id.clone();
+    let envelope = CommandEnvelope::new(
+        "ds-cli-domain-smoke-survey-facts",
+        expected_revision,
+        GridCommand::SetAlignmentSurveyFacts {
+            alignment_id: alignment,
+            terrain_corridor_half_width_m: None,
+            route_buffer_half_width_m: None,
+            terrain_gap_tolerance_m: None,
+            survey_note: Some("ds-cli domain smoke".to_string()),
+        },
+    );
+
+    let root = std::env::temp_dir().join(format!(
+        "ds-cli-apply-smoke-{}-{}",
+        std::process::id(),
+        std::thread::current().name().unwrap_or("worker")
+    ));
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&root).expect("create smoke dir");
+    let envelope_path = root.join("command.json");
+    let out_path = root.join("revised.dsgrid");
+    std::fs::write(
+        &envelope_path,
+        serde_json::to_vec_pretty(&envelope).expect("encode envelope"),
+    )
+    .expect("write envelope");
+
+    let envelope_text = envelope_path.display().to_string();
+    let out_text = out_path.display().to_string();
+    let preview = ok(&[
+        "dsgrid",
+        "apply",
+        "--model",
+        &model,
+        "--envelope",
+        &envelope_text,
+        "--dry-run",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(preview["dry_run"], true);
+    assert_eq!(preview["would_apply"], true);
+    assert_eq!(preview["persisted"], false);
+    assert!(!out_path.exists(), "dry-run must not create the output");
+
+    let applied = ok(&[
+        "dsgrid",
+        "apply",
+        "--model",
+        &model,
+        "--envelope",
+        &envelope_text,
+        "--out",
+        &out_text,
+        "--output",
+        "json",
+    ]);
+    assert_eq!(applied["persisted"], true);
+    assert_eq!(applied["command_kind"], "set_alignment_survey_facts");
+    assert!(
+        out_path.is_file(),
+        "apply must write the requested new package"
+    );
+    assert!(
+        applied["artifact"]["sha256"]
+            .as_str()
+            .unwrap_or("")
+            .starts_with("sha256:")
+    );
+
+    let validation = ok(&[
+        "dsgrid", "validate", "--model", &out_text, "--output", "json",
+    ]);
+    assert_eq!(validation["container"]["verified"], true);
+    assert_eq!(validation["model"]["valid"], true);
+
+    std::fs::remove_dir_all(&root).expect("remove smoke dir");
 }
 
 #[test]

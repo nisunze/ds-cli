@@ -84,5 +84,6 @@ directly, or use a workaround that bypasses `ds`.
   boundary between CLI, desktop and project.
 - `ds-map-local-data` — temporary map layers, focus and restore.
 - `ds-lv-design-revision` — revise one transformer's LV design safely.
+- `ds-pls-cadd-terrain-roundtrip` — revise PLS-CADD route PIs and terrain through a canonical `.dsgrid` round trip.
 
 Those skills assume this one. Do not load them for ordinary discovery.

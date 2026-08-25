@@ -12,11 +12,11 @@
 //! Manufacturing a `.dsgrid` — classifying foreign sources, planning a
 //! conversion, executing one — is deliberately *not* here. It lives in
 //! `ds-cli-dsgrid-exchange`. The split is not tidiness: every command in this
-//! domain is `Discovery` or `ReadOnly` and can run against a file the caller
-//! did not author, while the exchange domain writes. Keeping them in one
-//! domain would put "tell me what this is" and "make me a new one" behind the
-//! same help screen and the same blast radius.
+//! domain reads or revision-gates one canonical package the caller already
+//! has. `apply` writes a new package, never the source; manufacturing from a
+//! foreign format remains in the exchange domain.
 
+pub mod apply;
 pub mod describe;
 pub mod inspect;
 pub mod package;
@@ -26,6 +26,11 @@ use ds_cli_contract::spec::Domain;
 
 pub static DOMAIN: Domain = Domain {
     id: "dsgrid",
-    summary: "Canonical .dsgrid models: identity, inventory, validation.",
-    commands: &[&inspect::COMMAND, &validate::COMMAND, &describe::COMMAND],
+    summary: "Canonical .dsgrid models: inspect, validate, describe, revise.",
+    commands: &[
+        &inspect::COMMAND,
+        &validate::COMMAND,
+        &describe::COMMAND,
+        &apply::COMMAND,
+    ],
 };

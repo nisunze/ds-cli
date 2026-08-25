@@ -49,6 +49,11 @@ static DSGRID_ENTRIES: &[Entry] = &[
         handler: ds_cli_dsgrid::describe::run,
         render: ds_cli_dsgrid::describe::render,
     },
+    Entry {
+        command: &ds_cli_dsgrid::apply::COMMAND,
+        handler: ds_cli_dsgrid::apply::run,
+        render: ds_cli_dsgrid::apply::render,
+    },
 ];
 
 /// The exchange domain lists its commands in the order they are meant to be

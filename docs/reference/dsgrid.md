@@ -55,17 +55,41 @@ the same idea everywhere else and a caller should not learn a second one at a
 single command. And the three catalogs do not agree on how to spell an id
 (`operation_id`, `command_id`, `projection_id`), so `ds` normalizes to `id`.
 
+## Applying one canonical revision
+
+`dsgrid apply` is the one file-writing command in this domain. It consumes the
+engine's own `CommandEnvelope`, evaluates its expected authored revision and
+model invariants, and writes a new package. It never edits the source and
+never overwrites an existing output. Assets and PLS exchange bindings survive
+unchanged unless the engine command itself deliberately changes canonical
+model state.
+
+Use `--dry-run` first for engineering edits. A successful dry run proves the
+envelope addresses the current revision and introduces no new validation
+errors; it does not prove that a later PLS-CADD export opens natively.
+
+Read the live command catalog before constructing an envelope:
+
+```bash
+ds dsgrid describe --kind commands
+ds dsgrid describe --kind commands --id insert_terrain_point_at_station
+```
+
+The expected revision is the authored revision returned by the package's
+engine session, not the package's monotonic `model_revision`. They are
+reported separately in the apply receipt and must never be substituted.
+
 ## Making a `.dsgrid`, and exporting one
 
 Classification, planning and conversion are not in this domain. They are
 `ds dsgrid-exchange` — see
 [`dsgrid-exchange.md`](dsgrid-exchange.md).
 
-The split is by effect, not by subject. Every command here is `discovery` or
-`read_only` and answers a question about a model that already exists. The
-exchange domain manufactures one, and holds the only file-writing command in
-either. A reader who wants to know what a package *is* should not have to page
-past the rules for producing one.
+The split is by source boundary, not just file extension. The exchange domain
+manufactures a canonical package from foreign sources or exports it to a
+foreign format. `dsgrid apply` revises one already-canonical package through
+the engine's journaled command contract. A reader who only wants model
+identity still reaches it without loading exchange planning.
 
 ## Ownership
 
@@ -76,6 +100,7 @@ past the rules for producing one.
 | `inspect` | `ds_grid_exchange::dsgrid::inspect`, `package::unpack`, `ds_grid_model::GridModelSummary` |
 | `validate` | `ds_grid_exchange::package::unpack`, `ds_grid_model::validate_snapshot` |
 | `describe` | `ds_grid_engine::{describe_commands, describe_operations, describe_projections}` |
+| `apply` | `ds_grid_engine::GridSession`, `ds_grid_exchange::dsgrid::emit` |
 
 There is no second implementation of the `.dsgrid` format, of model
 validation, or of source classification in this repository, and there must not

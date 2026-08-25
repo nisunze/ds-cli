@@ -356,6 +356,8 @@ dependencies = [
  "ds-cli-report",
  "ds-cli-solar",
  "ds-cli-work",
+ "ds-grid-engine",
+ "ds-grid-exchange",
  "serde_json",
  "sha2",
 ]
@@ -387,6 +389,7 @@ dependencies = [
  "ds-grid-exchange",
  "ds-grid-model",
  "serde_json",
+ "sha2",
 ]
 
 [[package]]

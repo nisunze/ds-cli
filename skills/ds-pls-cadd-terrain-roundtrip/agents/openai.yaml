@@ -1,0 +1,4 @@
+interface:
+  display_name: "DS PLS-CADD Terrain Round Trip"
+  short_description: "Revise PLS-CADD route PIs and terrain safely"
+  default_prompt: "Use $ds-pls-cadd-terrain-roundtrip to import a PLS-CADD backup, revise route PIs and terrain through DS Grid, and return a validated native handoff."
