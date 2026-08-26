@@ -1,0 +1,4 @@
+interface:
+  display_name: "DS Solar Portfolio"
+  short_description: "Run and inspect exact Solar portfolios"
+  default_prompt: "Use $ds-solar-portfolio to run, inspect, or export an exact governed multi-city Solar portfolio."

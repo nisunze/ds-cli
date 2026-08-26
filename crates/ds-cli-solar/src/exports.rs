@@ -13,6 +13,7 @@ use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{Arg, Authority, Command, Effect, Example, Execution, Refusal};
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
+use sha2::{Digest, Sha256};
 
 use crate::paired;
 
@@ -21,8 +22,28 @@ const PORTFOLIO_READ_OPERATION: &str = "solar.portfolio.read";
 const READ_TIMEOUT: Duration = Duration::from_secs(30);
 const MAX_EXPORT_BYTES: usize = 32 * 1024 * 1024;
 const MAX_EXPORT_PAGES: usize = 1_024;
-const REPORT_VARIANTS: &[&str] = &["apd", "draft"];
-const PORTFOLIO_ARTIFACTS: &[&str] = &["result", "draft"];
+const REPORT_VARIANTS: &[&str] = &["apd", "draft", "network", "plant", "financial"];
+const PORTFOLIO_ARTIFACTS: &[&str] = &["result", "apd", "network", "plant", "financial"];
+const MAX_ARTIFACT_NAME_BYTES: usize = 1_024;
+const MAX_BATCH_ID_BYTES: usize = 256;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct PageMetadata {
+    name: String,
+    bytes_total: u64,
+    content_digest: String,
+    batch_id: String,
+    batch_digest: String,
+}
+
+/// One completely read and cryptographically pinned native artifact.
+pub(crate) struct PagedArtifact {
+    pub(crate) bytes: Vec<u8>,
+    pub(crate) name: String,
+    pub(crate) content_digest: String,
+    pub(crate) batch_id: String,
+    pub(crate) batch_digest: String,
+}
 
 static EXPORT_REFUSALS: &[Refusal] = &[
     Refusal {
@@ -80,9 +101,9 @@ static EXPORT_REFUSALS: &[Refusal] = &[
 pub static REPORT_EXPORT_COMMAND: Command = Command {
     id: "solar.report.export",
     path: &["solar", "report", "export"],
-    contract: 1,
-    summary: "Export the prompting draft (default) or machine-composed APD.",
-    purpose: "Reads the selected text report in bounded slices from a completed paired native Solar batch and creates one new local file at --out. The desktop validates the run, city, document name and approved workspace on every slice. No workspace path, cache location or credential crosses the CLI boundary.",
+    contract: 2,
+    summary: "Export one sealed native Solar city report.",
+    purpose: "Reads the selected APD/draft, network, plant or financial Markdown in bounded slices from a completed paired native Solar batch and creates one new local file at --out. The desktop validates the run, city, document name, content digest, batch identity and approved workspace on every slice. No workspace path, cache location or credential crosses the CLI boundary.",
     effect: Effect::LocalFileWrite,
     authority: Authority::DesktopUser,
     execution: Execution::Sync,
@@ -91,8 +112,8 @@ pub static REPORT_EXPORT_COMMAND: Command = Command {
         Arg::value("city", "<id>", "Canonical city context in that run.").required(),
         Arg::value(
             "variant",
-            "apd|draft",
-            "draft = pre-LLM prompting Markdown; apd = machine-composed product without operator interpretation.",
+            "apd|draft|network|plant|financial",
+            "Exact native city-report selector. draft is the default APD prompting document; apd is its compatibility alias.",
         )
         .default("draft")
         .choices(REPORT_VARIANTS),
@@ -108,12 +129,19 @@ pub static REPORT_EXPORT_COMMAND: Command = Command {
             "Use this bridge descriptor instead of discovering one.",
         ),
     ],
-    output: "The created Markdown destination, exact byte count and source run/city/variant.",
-    examples: &[Example {
-        command: "ds solar report export --run-id run-123 --city kigali --variant draft --out ./kigali-draft.md --output json",
-        note: "Exports the frozen native draft without exposing its workspace path.",
-        runnable: false,
-    }],
+    output: "The created Markdown destination, native name, exact byte count/content digest, batch id/digest and source run/city/variant.",
+    examples: &[
+        Example {
+            command: "ds solar report export --run-id run-123 --city kigali --variant draft --out ./kigali-draft.md --output json",
+            note: "Exports the frozen native APD draft without exposing its workspace path.",
+            runnable: false,
+        },
+        Example {
+            command: "ds solar report export --run-id run-123 --city kigali --variant network --out ./kigali-network.md --output json",
+            note: "Exports the exact committed network report from the same city batch.",
+            runnable: false,
+        },
+    ],
     refusals: EXPORT_REFUSALS,
     reference: Some("docs/reference/solar.md"),
     availability: paired::available,
@@ -122,9 +150,9 @@ pub static REPORT_EXPORT_COMMAND: Command = Command {
 pub static PORTFOLIO_EXPORT_COMMAND: Command = Command {
     id: "solar.portfolio.export",
     path: &["solar", "portfolio", "export"],
-    contract: 1,
-    summary: "Export a sealed native Solar portfolio result or draft.",
-    purpose: "Reads the root-level portfolio artifact from one completed paired native Solar batch and creates one new local file at --out. Portfolio output is first-class: it is validated against the same closed batch as the city reports, never reconstructed by the CLI.",
+    contract: 3,
+    summary: "Export one sealed native Solar portfolio artifact.",
+    purpose: "Reads the exact root-level result or requested portfolio report from one completed paired native Solar batch and creates one new local file at --out. Portfolio output is first-class: it is validated against the same closed batch as the city reports, never reconstructed by the CLI.",
     effect: Effect::LocalFileWrite,
     authority: Authority::DesktopUser,
     execution: Execution::Sync,
@@ -132,15 +160,15 @@ pub static PORTFOLIO_EXPORT_COMMAND: Command = Command {
         Arg::value("run-id", "<id>", "Completed native Solar run id.").required(),
         Arg::value(
             "artifact",
-            "result|draft",
-            "Portfolio result JSON or frozen draft Markdown.",
+            "result|apd|network|plant|financial",
+            "Exact native portfolio result JSON or requested report Markdown.",
         )
         .default("result")
         .choices(PORTFOLIO_ARTIFACTS),
         Arg::value(
             "out",
             "<file>",
-            "New JSON or Markdown file to create; never overwritten.",
+            "New JSON (result) or Markdown (report) file to create; never overwritten.",
         )
         .required(),
         Arg::value(
@@ -149,7 +177,7 @@ pub static PORTFOLIO_EXPORT_COMMAND: Command = Command {
             "Use this bridge descriptor instead of discovering one.",
         ),
     ],
-    output: "The created portfolio destination, exact byte count and source run/artifact.",
+    output: "The created portfolio destination, native name, exact byte count/content digest, batch id/digest and source run/artifact.",
     examples: &[
         Example {
             command: "ds solar portfolio export --run-id run-123 --artifact result --out ./portfolio.json --output json",
@@ -157,8 +185,23 @@ pub static PORTFOLIO_EXPORT_COMMAND: Command = Command {
             runnable: false,
         },
         Example {
-            command: "ds solar portfolio export --run-id run-123 --artifact draft --out ./portfolio-draft.md --output json",
-            note: "Exports the aggregate frozen parity draft.",
+            command: "ds solar portfolio export --run-id run-123 --artifact apd --out ./portfolio-apd.md --output json",
+            note: "Exports the requested aggregate APD report unchanged.",
+            runnable: false,
+        },
+        Example {
+            command: "ds solar portfolio export --run-id run-123 --artifact network --out ./portfolio-network.md --output json",
+            note: "Exports the requested aggregate network report unchanged.",
+            runnable: false,
+        },
+        Example {
+            command: "ds solar portfolio export --run-id run-123 --artifact plant --out ./portfolio-plant.md --output json",
+            note: "Exports the requested aggregate plant report unchanged.",
+            runnable: false,
+        },
+        Example {
+            command: "ds solar portfolio export --run-id run-123 --artifact financial --out ./portfolio-financial.md --output json",
+            note: "Exports the requested aggregate financial report unchanged.",
             runnable: false,
         },
     ],
@@ -171,7 +214,7 @@ pub fn export_report(inputs: &Inputs, _context: &Context) -> Result<Value, Failu
     let run_id = inputs.require("run-id")?;
     let city = inputs.require("city")?;
     let variant = inputs.value("variant").unwrap_or("draft");
-    let bytes = read_all(inputs, DOCUMENT_READ_OPERATION, |offset| {
+    let artifact = read_all(inputs, DOCUMENT_READ_OPERATION, |offset| {
         let mut arguments = Map::new();
         arguments.insert("run_id".into(), json!(run_id));
         arguments.insert("context".into(), json!(city));
@@ -180,21 +223,25 @@ pub fn export_report(inputs: &Inputs, _context: &Context) -> Result<Value, Failu
         Value::Object(arguments)
     })?;
     let out = inputs.require("out")?;
-    write_new(out, &bytes)?;
+    write_new(out, &artifact.bytes)?;
     Ok(json!({
         "status": "exported",
         "run_id": run_id,
         "context": city,
         "variant": variant,
+        "name": artifact.name,
         "out": out,
-        "bytes": bytes.len(),
+        "bytes": artifact.bytes.len(),
+        "content_digest": artifact.content_digest,
+        "batch_id": artifact.batch_id,
+        "batch_digest": artifact.batch_digest,
     }))
 }
 
 pub fn export_portfolio(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let run_id = inputs.require("run-id")?;
     let artifact = inputs.value("artifact").unwrap_or("result");
-    let bytes = read_all(inputs, PORTFOLIO_READ_OPERATION, |offset| {
+    let sealed = read_all(inputs, PORTFOLIO_READ_OPERATION, |offset| {
         json!({
             "run_id": run_id,
             "artifact": artifact,
@@ -202,14 +249,34 @@ pub fn export_portfolio(inputs: &Inputs, _context: &Context) -> Result<Value, Fa
         })
     })?;
     let out = inputs.require("out")?;
-    write_new(out, &bytes)?;
+    write_new(out, &sealed.bytes)?;
     Ok(json!({
         "status": "exported",
         "run_id": run_id,
         "artifact": artifact,
+        "name": sealed.name,
         "out": out,
-        "bytes": bytes.len(),
+        "bytes": sealed.bytes.len(),
+        "content_digest": sealed.content_digest,
+        "batch_id": sealed.batch_id,
+        "batch_digest": sealed.batch_digest,
     }))
+}
+
+/// Read the sealed aggregate result bytes for a bounded semantic projection.
+///
+/// The portfolio read command and full-file export deliberately share this
+/// pager so page ordering, byte ceilings and desktop-contract failures cannot
+/// drift between the two surfaces.
+pub(crate) fn read_portfolio_result(inputs: &Inputs) -> Result<PagedArtifact, Failure> {
+    let run_id = inputs.require("run-id")?;
+    read_all(inputs, PORTFOLIO_READ_OPERATION, |offset| {
+        json!({
+            "run_id": run_id,
+            "artifact": "result",
+            "offset": offset,
+        })
+    })
 }
 
 /// Page a UTF-8 text artifact without ever treating the desktop's workspace as
@@ -220,13 +287,54 @@ fn read_all(
     inputs: &Inputs,
     operation: &'static str,
     arguments: impl Fn(u64) -> Value,
-) -> Result<Vec<u8>, Failure> {
+) -> Result<PagedArtifact, Failure> {
     let mut offset = 0_u64;
     let mut bytes = Vec::new();
+    let mut expected_metadata: Option<PageMetadata> = None;
     for _ in 0..MAX_EXPORT_PAGES {
-        let page = paired::invoke(inputs, operation, arguments(offset), READ_TIMEOUT)?;
+        let request = arguments(offset);
+        let page = paired::invoke(inputs, operation, request.clone(), READ_TIMEOUT)?;
+        for identity_key in ["run_id", "context", "document", "artifact"] {
+            if let Some(expected) = request[identity_key].as_str()
+                && page[identity_key].as_str() != Some(expected)
+            {
+                return Err(contract_failure(operation));
+            }
+        }
         let content = page["content"]
             .as_str()
+            .ok_or_else(|| contract_failure(operation))?;
+        let name = page["name"]
+            .as_str()
+            .filter(|name| {
+                !name.is_empty() && name.trim() == *name && name.len() <= MAX_ARTIFACT_NAME_BYTES
+            })
+            .ok_or_else(|| contract_failure(operation))?;
+        let page_offset = page["offset"]
+            .as_u64()
+            .ok_or_else(|| contract_failure(operation))?;
+        let bytes_returned = page["bytes_returned"]
+            .as_u64()
+            .ok_or_else(|| contract_failure(operation))?;
+        let bytes_total = page["bytes_total"]
+            .as_u64()
+            .filter(|total| *total > 0 && *total <= MAX_EXPORT_BYTES as u64)
+            .ok_or_else(|| contract_failure(operation))?;
+        let content_digest = page["content_digest"]
+            .as_str()
+            .filter(|digest| valid_sha256_digest(digest))
+            .ok_or_else(|| contract_failure(operation))?;
+        let batch_id = page["batch_id"]
+            .as_str()
+            .filter(|batch_id| {
+                !batch_id.is_empty()
+                    && batch_id.trim() == *batch_id
+                    && batch_id.len() <= MAX_BATCH_ID_BYTES
+            })
+            .ok_or_else(|| contract_failure(operation))?;
+        let batch_digest = page["batch_digest"]
+            .as_str()
+            .filter(|digest| valid_sha256_digest(digest))
             .ok_or_else(|| contract_failure(operation))?;
         let next = page["next_offset"]
             .as_u64()
@@ -235,6 +343,27 @@ fn read_all(
             .as_bool()
             .ok_or_else(|| contract_failure(operation))?;
         let page_bytes = content.as_bytes();
+        let metadata = PageMetadata {
+            name: name.to_string(),
+            bytes_total,
+            content_digest: content_digest.to_string(),
+            batch_id: batch_id.to_string(),
+            batch_digest: batch_digest.to_string(),
+        };
+        if page_offset != offset
+            || bytes_returned != page_bytes.len() as u64
+            || next != offset.saturating_add(bytes_returned)
+            || next > bytes_total
+            || complete != (next == bytes_total)
+            || expected_metadata
+                .as_ref()
+                .is_some_and(|expected| expected != &metadata)
+        {
+            return Err(contract_failure(operation));
+        }
+        if expected_metadata.is_none() {
+            expected_metadata = Some(metadata);
+        }
         if bytes.len().saturating_add(page_bytes.len()) > MAX_EXPORT_BYTES {
             return Err(Failure::failed(
                 "desktop_contract_mismatch",
@@ -244,10 +373,22 @@ fn read_all(
         }
         bytes.extend_from_slice(page_bytes);
         if complete {
-            if next < offset || next != bytes.len() as u64 {
+            if next != bytes.len() as u64 {
                 return Err(contract_failure(operation));
             }
-            return Ok(bytes);
+            let metadata = expected_metadata
+                .take()
+                .ok_or_else(|| contract_failure(operation))?;
+            if sha256_digest(&bytes) != metadata.content_digest {
+                return Err(contract_failure(operation));
+            }
+            return Ok(PagedArtifact {
+                bytes,
+                name: metadata.name,
+                content_digest: metadata.content_digest,
+                batch_id: metadata.batch_id,
+                batch_digest: metadata.batch_digest,
+            });
         }
         if next <= offset || next != bytes.len() as u64 {
             return Err(contract_failure(operation));
@@ -259,6 +400,18 @@ fn read_all(
         "the paired artifact did not complete within its page bound",
     )
     .remedy("update DS GridDesign and ds to matching releases"))
+}
+
+pub(crate) fn valid_sha256_digest(value: &str) -> bool {
+    value.len() == 71
+        && value.starts_with("sha256:")
+        && value[7..]
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+}
+
+fn sha256_digest(bytes: &[u8]) -> String {
+    format!("sha256:{:x}", Sha256::digest(bytes))
 }
 
 fn contract_failure(operation: &str) -> Failure {

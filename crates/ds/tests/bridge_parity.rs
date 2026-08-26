@@ -68,6 +68,23 @@ fn count(source: &str, needle: &str) -> usize {
     source.match_indices(needle).count()
 }
 
+/// Count an exact TypeScript switch case independent of formatter quote style.
+///
+/// Both spellings retain the closing quote and colon, so `solar.run` cannot
+/// accidentally match `solar.run.start`.
+fn switch_case_count(source: &str, operation: &str) -> usize {
+    count(source, &format!("case '{operation}':"))
+        + count(source, &format!("case \"{operation}\":"))
+}
+
+#[test]
+fn switch_case_matcher_accepts_both_quotes_without_prefix_matches() {
+    let source = "case 'solar.run':\ncase \"solar.run\":\ncase 'solar.run.start':";
+    assert_eq!(switch_case_count(source, "solar.run"), 2);
+    assert_eq!(switch_case_count(source, "solar.run.start"), 1);
+    assert_eq!(switch_case_count(source, "solar"), 0);
+}
+
 fn between<'a>(source: &'a str, open: &str, close: &str) -> &'a str {
     let Some(start) = source.find(open) else {
         return "";
@@ -83,6 +100,19 @@ fn operation_contract<'a>(source: &'a str, operation: &str) -> &'a str {
     };
     let rest = &source[start + marker.len()..];
     &rest[..rest.find("],").unwrap_or(rest.len())]
+}
+
+fn dotted_arguments(source: &str) -> BTreeSet<&str> {
+    source
+        .split("args.")
+        .skip(1)
+        .filter_map(|tail| {
+            let end = tail
+                .find(|character: char| !(character.is_ascii_alphanumeric() || character == '_'))
+                .unwrap_or(tail.len());
+            (end > 0).then_some(&tail[..end])
+        })
+        .collect()
 }
 
 #[test]
@@ -104,7 +134,7 @@ fn every_project_context_command_has_one_closed_operation_owner() {
             operation.operation
         );
         assert_eq!(
-            count(&app.frontend, &format!("case '{}':", operation.operation)),
+            switch_case_count(&app.frontend, operation.operation),
             1,
             "`{}` must have exactly one frontend handler",
             operation.operation
@@ -155,7 +185,7 @@ fn every_map_command_has_one_closed_operation_owner() {
             operation.operation
         );
         assert_eq!(
-            count(&app.frontend, &format!("case '{}':", operation.operation)),
+            switch_case_count(&app.frontend, operation.operation),
             1,
             "`{}` must have exactly one frontend handler",
             operation.operation
@@ -193,7 +223,7 @@ fn every_map_command_has_one_closed_operation_owner() {
 }
 
 #[test]
-fn solar_workflow_gaps_have_one_closed_desktop_owner() {
+fn every_solar_command_has_one_closed_operation_owner_and_exact_arguments() {
     let Some(app) = app() else {
         skip("the ds-web sibling repository is not on disk");
         return;
@@ -203,22 +233,40 @@ fn solar_workflow_gaps_have_one_closed_desktop_owner() {
         "pub const CLI_OPERATIONS: &[&str] = &[",
         "];",
     );
-    for operation in [
-        "solar.results.read",
-        "solar.sync.status",
-        "solar.portfolio.list",
-        "solar.final.import",
-    ] {
+    for operation in ds_cli_solar::paired::BRIDGE_OPS {
         assert_eq!(
-            count(allowlist, &format!("\"{operation}\"")),
+            count(allowlist, &format!("\"{}\"", operation.operation)),
             1,
-            "{operation} must appear exactly once in the native allowlist"
+            "{} must appear exactly once in the native allowlist",
+            operation.operation,
         );
         assert_eq!(
-            count(&app.frontend, &format!("case '{operation}':")),
+            switch_case_count(&app.frontend, operation.operation),
             1,
-            "{operation} must have exactly one frontend executor"
+            "{} must have exactly one frontend executor",
+            operation.operation,
         );
+        for argument in operation.arguments {
+            assert!(
+                app.frontend.contains(&format!("args.{argument}")),
+                "ds solar sends `{argument}` to `{}`, but the paired adapter does not read that exact key",
+                operation.operation,
+            );
+        }
+        if operation.operation == "solar.run.start" {
+            let start = between(
+                &app.frontend,
+                "async function start(",
+                "\nasync function portfoliosForProject",
+            );
+            assert!(!start.is_empty(), "the Solar start adapter is absent");
+            let consumed = dotted_arguments(start);
+            let declared = operation.arguments.iter().copied().collect();
+            assert_eq!(
+                consumed, declared,
+                "solar.run.start must consume exactly the keys declared by ds; conditional portfolio inputs cannot be hidden in another handler",
+            );
+        }
     }
 }
 
@@ -252,7 +300,7 @@ fn every_work_command_has_one_closed_operation_owner() {
             operation.operation
         );
         assert_eq!(
-            count(&app.frontend, &format!("case '{}':", operation.operation)),
+            switch_case_count(&app.frontend, operation.operation),
             1,
             "`{}` must have exactly one frontend handler",
             operation.operation
@@ -302,7 +350,7 @@ fn every_feedback_command_has_one_closed_operation_owner() {
             operation.operation
         );
         assert_eq!(
-            count(&app.frontend, &format!("case '{}':", operation.operation)),
+            switch_case_count(&app.frontend, operation.operation),
             1,
             "`{}` must have exactly one frontend handler",
             operation.operation

@@ -16,3 +16,4 @@ ds-cli-contract = { workspace = true }
 ds-cli-desktop = { workspace = true }
 ds-cli-exec = { workspace = true }
 serde_json = { workspace = true }
+sha2 = { workspace = true }

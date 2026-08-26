@@ -1,0 +1,4 @@
+interface:
+  display_name: "DS Solar Workflow"
+  short_description: "Run and inspect native Solar city work"
+  default_prompt: "Use $ds-solar-workflow to prepare, run, inspect, or deliver an exact native Solar city calculation."

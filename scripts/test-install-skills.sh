@@ -13,7 +13,11 @@ mkdir -p "$HOME"
 "$INSTALLER" install >/dev/null
 for target in "$HOME/.codex/skills" "$HOME/.claude/skills" "$HOME/.copilot/skills"; do
 	[[ -f "$target/ds/SKILL.md" ]]
+	[[ -f "$target/ds-solar-portfolio/SKILL.md" ]]
+	[[ -f "$target/ds-solar-workflow/SKILL.md" ]]
 	[[ "$(cat "$target/ds/.ds-cli-skills-owner")" == 'nisunze/ds-cli' ]]
+	[[ "$(cat "$target/ds-solar-portfolio/.ds-cli-skills-owner")" == 'nisunze/ds-cli' ]]
+	[[ "$(cat "$target/ds-solar-workflow/.ds-cli-skills-owner")" == 'nisunze/ds-cli' ]]
 	[[ "$(head -n 1 "$target/.ds-cli-skills-owned")" == 'ds-cli-skills-install/v1' ]]
 	[[ ! -e "$HOME/.agents/skills/ds/SKILL.md" ]]
 done
@@ -64,6 +68,8 @@ fi
 "$INSTALLER" uninstall >/dev/null
 for target in "$HOME/.codex/skills" "$HOME/.claude/skills" "$HOME/.copilot/skills"; do
 	[[ ! -e "$target/ds" ]]
+	[[ ! -e "$target/ds-solar-portfolio" ]]
+	[[ ! -e "$target/ds-solar-workflow" ]]
 	[[ ! -e "$target/.ds-cli-skills-owned" ]]
 done
 [[ -f "$HOME/.codex/skills/unrelated/SKILL.md" ]]

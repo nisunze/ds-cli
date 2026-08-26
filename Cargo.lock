@@ -457,6 +457,7 @@ dependencies = [
  "ds-cli-desktop",
  "ds-cli-exec",
  "serde_json",
+ "sha2",
 ]
 
 [[package]]
