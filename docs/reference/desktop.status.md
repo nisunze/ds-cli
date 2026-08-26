@@ -67,6 +67,12 @@ $ ds desktop status --output json
 Settle it with `--desktop-descriptor <path>`. An explicit path is used verbatim
 and never second-guessed.
 
+`DS_DESKTOP_DESCRIPTOR` names the same thing for a whole session. The
+desktop's `cl` command line sets it in every terminal it opens, so that
+terminal stays pinned to the window that opened it however many profiles are
+running. Precedence is fixed: the flag, then the variable, then automatic
+discovery — the variable is a default for the flag, never an override of it.
+
 A descriptor is rejected if it is oversized, unparseable, declares a version
 this build does not speak, or **does not point at loopback**. The bridge is
 loopback by construction; a descriptor naming anything else is not one to hand

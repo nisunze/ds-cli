@@ -43,7 +43,7 @@ says what is missing.",
     args: &[Arg::value(
         "desktop-descriptor",
         "<path>",
-        "Use this bridge descriptor instead of discovering one.",
+        "Use this bridge descriptor instead of discovering one; DS_DESKTOP_DESCRIPTOR sets the same default.",
     )],
     output: "\
 `paired`, `signed_in`, `project` and `design_context` always present. When \

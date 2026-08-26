@@ -223,7 +223,7 @@ pub const DESCRIPTOR_ARG: Arg = Arg {
     required: false,
     default: None,
     choices: &[],
-    summary: "Use this bridge descriptor instead of discovering one.",
+    summary: "Use this bridge descriptor instead of discovering one; DS_DESKTOP_DESCRIPTOR sets the same default.",
 };
 
 pub const INVALID_NUMBER: Refusal = Refusal {

@@ -465,6 +465,26 @@ static FEEDBACK_ENTRIES: &[Entry] = &[Entry {
     render: ds_cli_feedback::submit::render,
 }];
 
+/// The shell domain lists its commands in the order a person needs them:
+/// look, register, and — rarely — undo.
+static SHELL_ENTRIES: &[Entry] = &[
+    Entry {
+        command: &ds_cli_shell::status::COMMAND,
+        handler: ds_cli_shell::status::run,
+        render: ds_cli_shell::status::render,
+    },
+    Entry {
+        command: &ds_cli_shell::register::COMMAND,
+        handler: ds_cli_shell::register::run,
+        render: ds_cli_shell::register::render,
+    },
+    Entry {
+        command: &ds_cli_shell::unregister::COMMAND,
+        handler: ds_cli_shell::unregister::run,
+        render: ds_cli_shell::unregister::render,
+    },
+];
+
 static DOMAINS: &[Registered] = &[
     Registered {
         domain: &ds_cli_dsgrid::DOMAIN,
@@ -505,6 +525,10 @@ static DOMAINS: &[Registered] = &[
     Registered {
         domain: &ds_cli_desktop::DOMAIN,
         entries: DESKTOP_ENTRIES,
+    },
+    Registered {
+        domain: &ds_cli_shell::DOMAIN,
+        entries: SHELL_ENTRIES,
     },
 ];
 

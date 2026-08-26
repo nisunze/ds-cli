@@ -299,7 +299,7 @@ Resolves every registered command's availability and reports the ones that \
 cannot run here, each with the concrete thing that would fix it. Availability \
 checks are domain-local and cheap. Doctor also verifies the packaged agent \
 skill bundle and reports whether each supported user skill directory has the \
-matching install. It starts no engine and probes no network. It is the right \
+matching install, and whether `ds` is reachable from this shell and from a \nnew one. It starts no engine and probes no network. It is the right \
 first call on an unfamiliar machine, and the right call after any \
 `unavailable` refusal.",
     effect: Effect::Discovery,
@@ -312,7 +312,7 @@ first call on an unfamiliar machine, and the right call after any \
     output: "\
 Counts of available and unavailable commands, one entry per unavailable \
 command with its reason and remedy, build identity, and agent skill bundle and \
-install status. With --all, every command.",
+install status, and shell reach. With --all, every command.",
     examples: &[
         Example {
             command: "ds doctor",
@@ -368,6 +368,7 @@ fn doctor(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         "available": available,
         "unavailable": blocked,
         "build": build::identity(),
+        "shell": ds_cli_shell::report(),
         "skills": skills::doctor_report(),
     });
     if all {
@@ -409,6 +410,21 @@ fn render_doctor(data: &Value) -> String {
         out.push_str(&format!("  {reason}\n"));
     }
     if let Some(remedy) = skills["remedy"].as_str() {
+        out.push_str(&format!("  remedy: {remedy}\n"));
+    }
+    let shell = &data["shell"];
+    out.push_str(&format!(
+        "\nshell: {}",
+        shell["status"].as_str().unwrap_or("unknown")
+    ));
+    if let Some(executable) = shell["executable"].as_str() {
+        out.push_str(&format!("  {executable}"));
+    }
+    out.push('\n');
+    if let Some(reason) = shell["reason"].as_str() {
+        out.push_str(&format!("  {reason}\n"));
+    }
+    if let Some(remedy) = shell["remedy"].as_str() {
         out.push_str(&format!("  remedy: {remedy}\n"));
     }
     out

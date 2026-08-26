@@ -354,6 +354,7 @@ dependencies = [
  "ds-cli-map",
  "ds-cli-pls",
  "ds-cli-report",
+ "ds-cli-shell",
  "ds-cli-solar",
  "ds-cli-style",
  "ds-cli-work",
@@ -448,6 +449,15 @@ dependencies = [
  "ds-cli-contract",
  "ds-cli-exec",
  "serde_json",
+]
+
+[[package]]
+name = "ds-cli-shell"
+version = "0.1.0"
+dependencies = [
+ "ds-cli-contract",
+ "serde_json",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

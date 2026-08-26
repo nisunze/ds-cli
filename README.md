@@ -22,6 +22,7 @@ DOMAINS
   style            Map styling: style documents and a second halo/opacity/size dimension.
   feedback         Product feedback: report a CLI gap to the shared backlog.
   desktop          The paired DS GridDesign session: pairing, sign-in, project.
+  shell            Reach `ds` from any shell: status, register, unregister.
 
 DISCOVERY
   ds <domain> --help             commands in one domain
@@ -143,6 +144,27 @@ not own, and require the literal `uninstall` action for removal. Verified
 product gaps go through `ds feedback submit` to the same shared, deduplicated
 backlog as the app's `fb` shortcut. There is no Markdown gap ledger.
 
+## Reaching `ds` from your shells
+
+The Linux package installs `ds` into `/usr/bin`, which every shell already
+searches. The Windows installer puts it beside the app, in a directory no
+shell searches — so the installer's post-install hook runs `ds shell register`,
+which appends that directory to the user's own `HKCU\Environment\Path` and
+broadcasts the change. PowerShell, cmd and Git Bash windows opened afterwards
+resolve `ds`; windows already open keep the PATH they started with.
+
+```bash
+ds shell status        # this shell, and a new one: where does `ds` resolve from?
+ds shell register      # after a source build or a copied binary; idempotent
+ds doctor              # folds the two answers into one word: reachable · registered · unreachable
+```
+
+The desktop's `cl` shortcut opens a terminal the other way round: this
+install's directory *leads* that session's PATH and `DS_DESKTOP_DESCRIPTOR`
+pins it to the window that opened it, so it always runs the build that opened
+it and never has to guess between Stable and Canary. See
+[`docs/reference/shell.md`](docs/reference/shell.md).
+
 ## Authority
 
 The default interactive architecture is **paired desktop reuse**, not a second
@@ -236,8 +258,8 @@ unrelated engines" is a structural property rather than a promise.
 
 ## Status
 
-Nine domains, including Project Work and shared feedback, plus three root
-metadata commands.
+Ten domains, including Project Work, shared feedback and the shell domain
+that registers `ds` on a user's PATH, plus three root metadata commands.
 
 `dsgrid`, `dsgrid-exchange` and `pls` **link** the authoritative
 `ds-network` crates, so they work on a machine with no sidecar installed and
@@ -271,4 +293,5 @@ fallback.
 | [`docs/reference/solar.md`](docs/reference/solar.md) | the two-phase split, and why the token is never a flag |
 | [`docs/reference/map.md`](docs/reference/map.md) | local map layers, vector tools, and staged design-layer edits |
 | [`docs/reference/desktop.status.md`](docs/reference/desktop.status.md) | pairing, discovery, what is never printed |
+| [`docs/reference/shell.md`](docs/reference/shell.md) | this shell versus a new one, what `register` writes, who runs it |
 | [`docs/migration/matrix.md`](docs/migration/matrix.md) | what moves, what is deleted, in what order |
