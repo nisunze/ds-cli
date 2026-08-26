@@ -1,0 +1,18 @@
+[package]
+name = "ds-cli-sre"
+description = "The `ds sre` domain: bounded platform reliability overview and request-event reads through the paired desktop."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[dependencies]
+ds-cli-contract = { workspace = true }
+# Reliability is an authenticated, platform-global surface already owned by
+# DS GridDesign and ds-brain. The paired application performs each read under
+# its signed-in user; this crate never receives a credential or opens a second
+# API route.
+ds-cli-desktop = { workspace = true }
+serde_json = { workspace = true }

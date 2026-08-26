@@ -39,6 +39,9 @@
 #                    ds-cli-map it links no engine — the graph is governed by
 #                    ds-brain and reached only through the paired application,
 #                    so every command is one named bridge operation.
+#   ds-cli-sre       platform reliability reads through the paired app:
+#                    fleet overview and bounded request events. Global to the
+#                    signed-in user; no active project or credential in ds.
 #   ds-cli-feedback  the shared product-feedback domain. It reaches the same
 #                    authenticated backlog as the desktop's `fb` shortcut and
 #                    pins reports from this surface as agent observations.
@@ -93,6 +96,7 @@ ds-cli-pls = { path = "crates/ds-cli-pls" }
 ds-cli-report = { path = "crates/ds-cli-report" }
 ds-cli-solar = { path = "crates/ds-cli-solar" }
 ds-cli-work = { path = "crates/ds-cli-work" }
+ds-cli-sre = { path = "crates/ds-cli-sre" }
 #   ds-cli-style     the styling domain: Style Center documents and the second
 #                    categorical dimension (halo / opacity / size by a second
 #                    field). A bridge domain like ds-cli-work.

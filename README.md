@@ -19,6 +19,7 @@ DOMAINS
   report           Deliverables: transformer and combined report artifacts.
   map              The paired map: local layers, vector tools, design-layer edits.
   work             Project Work: the plan, its tasks, assignments and records.
+  sre              Platform reliability: fleet health and bounded request events.
   style            Map styling: style documents and a second halo/opacity/size dimension.
   tile             Vector tiles: status, plan, generate, and the catalogue.
   feedback         Product feedback: report a CLI gap to the shared backlog.
@@ -226,6 +227,8 @@ crates/
   ds-cli-solar      the solar domain, over the ds-solar contract.
   ds-cli-report     the reporter domain, over the ds-report contract.
   ds-cli-work       governed Project Work through the paired application.
+  ds-cli-sre        platform-global Reliability reads through the signed-in
+                    paired application; no active project or credential in ds.
   ds-cli-feedback   agent observations through the app's existing feedback
                     client and signed-in session.
   ds                the binary: registers domains, dispatches, renders.
@@ -259,9 +262,9 @@ unrelated engines" is a structural property rather than a promise.
 
 ## Status
 
-Eleven domains, including Project Work, shared feedback, the tile domain that
-rebuilds a project's vector tiles, and the shell domain that registers `ds` on
-a user's PATH, plus three root metadata commands.
+Thirteen domains, including Project Work, platform Reliability, shared
+feedback, the tile domain that rebuilds a project's vector tiles, and the shell
+domain that registers `ds` on a user's PATH, plus three root metadata commands.
 
 `dsgrid`, `dsgrid-exchange` and `pls` **link** the authoritative
 `ds-network` crates, so they work on a machine with no sidecar installed and
@@ -286,6 +289,7 @@ fallback.
 | [`docs/contracts/discovery-contract.md`](docs/contracts/discovery-contract.md) | tiers, byte budgets, availability |
 | [`docs/contracts/cli-output-contract.md`](docs/contracts/cli-output-contract.md) | envelope, exit codes, effects, authority |
 | [`docs/contracts/process-boundary-contract.md`](docs/contracts/process-boundary-contract.md) | when to link, when to call, and the rules for calling |
+| [`docs/reference/sre.md`](docs/reference/sre.md) | global Reliability authority, bounds, projections, and refusals |
 | [`docs/recommendations/cli-ergonomics-2026-08-24.md`](docs/recommendations/cli-ergonomics-2026-08-24.md) | prioritized discovery and convenience improvements that preserve the active contracts |
 | [`docs/reference/dsgrid.md`](docs/reference/dsgrid.md) | validate's two questions, and the engine catalog |
 | [`docs/reference/dsgrid-exchange.md`](docs/reference/dsgrid-exchange.md) | why the sequence is the contract, the write rules, contract-1 gaps |

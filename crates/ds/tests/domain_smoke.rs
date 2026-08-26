@@ -1455,6 +1455,127 @@ fn a_well_formed_work_call_only_ever_fails_on_the_pairing_state() {
 }
 
 // ---------------------------------------------------------------------------
+// sre
+// ---------------------------------------------------------------------------
+
+#[test]
+fn sre_is_two_global_read_only_commands_with_stable_defaults() {
+    let index = ok(&["capabilities", "sre", "--output", "json"]);
+    let commands = index["commands"].as_array().expect("commands");
+    assert_eq!(commands.len(), 2, "the SRE domain has two bounded reads");
+    for command in commands {
+        assert_eq!(command["effect"], "read_only");
+        assert_eq!(
+            command["authority"], "desktop_user",
+            "SRE is global to the signed-in user, not project authority"
+        );
+        assert_eq!(command["availability"], "available");
+    }
+
+    let events = ok(&["capabilities", "sre.events", "--output", "json"]);
+    let inputs = events["command"]["inputs"].as_array().expect("inputs");
+    let input = |name: &str| {
+        inputs
+            .iter()
+            .find(|input| input["name"] == name)
+            .unwrap_or_else(|| panic!("missing --{name}"))
+    };
+    assert_eq!(input("days")["default"], "3");
+    assert_eq!(input("limit")["default"], "50");
+    assert_eq!(input("scan-limit")["default"], "1000");
+    assert_eq!(input("outcome")["default"], "failure");
+    assert_eq!(
+        input("outcome")["choices"],
+        serde_json::json!(["failure", "success", "all"])
+    );
+    assert_eq!(input("project")["required"], false);
+}
+
+#[test]
+fn capability_search_finds_sre_by_operator_vocabulary() {
+    for query in ["recent errors", "diagnostic logs", "reliability events"] {
+        let data = ok(&["capabilities", "--search", query, "--output", "json"]);
+        let results = data["results"].as_array().expect("search results");
+        assert!(
+            results.iter().any(|row| row["id"] == "sre.events"),
+            "`{query}` did not find sre.events: {results:?}"
+        );
+    }
+}
+
+#[test]
+fn sre_validates_bounds_and_filters_before_pairing() {
+    for (flag, value, expected) in [
+        ("days", "0", "invalid_number"),
+        ("days", "366", "invalid_number"),
+        ("limit", "0", "invalid_number"),
+        ("limit", "251", "invalid_number"),
+        ("scan-limit", "0", "invalid_number"),
+        ("scan-limit", "5001", "invalid_number"),
+        ("service", " ds-brain", "invalid_text"),
+    ] {
+        assert_eq!(
+            refusal(&[
+                "sre",
+                "events",
+                &format!("--{flag}"),
+                value,
+                "--output",
+                "json"
+            ]),
+            expected,
+            "--{flag} {value} reached the bridge"
+        );
+    }
+    assert_eq!(
+        refusal(&["sre", "events", "--outcome", "unknown", "--output", "json"]),
+        "invalid_choice"
+    );
+}
+
+#[test]
+fn well_formed_sre_reads_reach_only_the_global_runtime_boundary() {
+    for args in [
+        vec!["sre", "overview"],
+        vec![
+            "sre",
+            "events",
+            "--days",
+            "7",
+            "--limit",
+            "25",
+            "--scan-limit",
+            "500",
+            "--service",
+            "ds-brain",
+            "--outcome",
+            "all",
+            "--category",
+            "timeout",
+            "--lane",
+            "stable",
+            "--action",
+            "query_table",
+            "--project",
+            "project-1",
+            "--source",
+            "forwarded_compute",
+        ],
+    ] {
+        let mut argv = args.clone();
+        argv.extend(["--output", "json"]);
+        let code = refusal(&argv);
+        assert!(
+            code.is_empty()
+                || PAIRING_CODES.contains(&code.as_str())
+                || code == "sre_not_permitted",
+            "`ds {}` failed with `{code}` before or beyond its paired read boundary",
+            args.join(" ")
+        );
+    }
+}
+
+// ---------------------------------------------------------------------------
 // shell
 // ---------------------------------------------------------------------------
 

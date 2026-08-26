@@ -99,9 +99,10 @@ fn root_help_is_cheap() {
     // `style` domain landed, from 1,600 when the `shell` and `tile` domains
     // landed together (2026-08-26): a domain costs root help one line forever,
     // which is the trade `root_help_scales_with_domains_not_commands` exists
-    // to price. The flat ceiling stays at that scaled one (800 + 80 × 12
-    // domains) so it still catches prose creeping into the frame.
-    assert_within("root help", &["--help"], 1_760);
+    // to price. Raised to 1,840 when the SRE domain added one bounded
+    // platform-health line (800 + 80 × 13 domains); the per-domain price
+    // remains unchanged.
+    assert_within("root help", &["--help"], 1_840);
 }
 
 #[test]

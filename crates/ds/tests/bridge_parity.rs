@@ -43,6 +43,7 @@ struct App {
     design: String,
     analysis: String,
     work: String,
+    sre: String,
     style: String,
     tile: String,
     feedback: String,
@@ -61,6 +62,7 @@ fn app() -> Option<App> {
         design: read("src/lib/desktop/cli-map-design.ts")?,
         analysis: read("src/lib/analysis/outliers.ts")?,
         work: read("src/lib/desktop/cli-work.ts")?,
+        sre: read("src/lib/desktop/cli-sre.ts")?,
         style: read("src/lib/desktop/cli-style.ts")?,
         tile: read("src/lib/desktop/cli-tile.ts")?,
         feedback: read("src/lib/desktop/cli-feedback.ts")?,
@@ -98,12 +100,39 @@ fn between<'a>(source: &'a str, open: &str, close: &str) -> &'a str {
 }
 
 fn operation_contract<'a>(source: &'a str, operation: &str) -> &'a str {
-    let marker = format!("'{operation}': [");
-    let Some(start) = source.find(&marker) else {
+    let single = format!("'{operation}': [");
+    let double = format!("\"{operation}\": [");
+    let marker = if source.contains(&single) {
+        single
+    } else if source.contains(&double) {
+        double
+    } else {
         return "";
     };
+    let start = source.find(&marker).expect("marker checked above");
     let rest = &source[start + marker.len()..];
     &rest[..rest.find("],").unwrap_or(rest.len())]
+}
+
+fn has_operation_contract(source: &str, operation: &str) -> bool {
+    source.contains(&format!("'{operation}': [")) || source.contains(&format!("\"{operation}\": ["))
+}
+
+fn quoted_contract_items(contract: &str) -> BTreeSet<String> {
+    let mut values = BTreeSet::new();
+    let mut rest = contract;
+    while let Some((start, quote)) = rest
+        .char_indices()
+        .find(|(_, character)| *character == '\'' || *character == '"')
+    {
+        let after = &rest[start + quote.len_utf8()..];
+        let Some(end) = after.find(quote) else {
+            break;
+        };
+        values.insert(after[..end].to_string());
+        rest = &after[end + quote.len_utf8()..];
+    }
+    values
 }
 
 fn dotted_arguments(source: &str) -> BTreeSet<&str> {
@@ -333,6 +362,126 @@ fn every_work_command_has_one_closed_operation_owner() {
             }
         }
     }
+}
+
+#[test]
+fn every_sre_command_has_one_closed_operation_owner_and_exact_arguments() {
+    let Some(app) = app() else {
+        skip("the ds-web sibling repository is not on disk");
+        return;
+    };
+    let allowlist = between(
+        &app.transport,
+        "pub const CLI_OPERATIONS: &[&str] = &[",
+        "];",
+    );
+    let mut seen = BTreeSet::new();
+    for operation in ds_cli_sre::BRIDGE_OPS {
+        assert!(
+            seen.insert(operation.operation),
+            "`{}` is declared twice by ds sre",
+            operation.operation
+        );
+        assert_eq!(
+            count(allowlist, &format!("\"{}\"", operation.operation)),
+            1,
+            "`{}` must appear exactly once in the desktop allowlist",
+            operation.operation
+        );
+        assert_eq!(
+            switch_case_count(&app.frontend, operation.operation),
+            1,
+            "`{}` must have exactly one frontend handler",
+            operation.operation
+        );
+        assert!(
+            has_operation_contract(&app.sre, operation.operation),
+            "`{}` has no typed SRE adapter argument contract",
+            operation.operation
+        );
+        let accepted = quoted_contract_items(operation_contract(&app.sre, operation.operation));
+        let declared = operation
+            .arguments
+            .iter()
+            .map(|argument| (*argument).to_string())
+            .collect::<BTreeSet<_>>();
+        assert_eq!(
+            accepted, declared,
+            "`{}` arguments drifted between ds and the desktop",
+            operation.operation
+        );
+    }
+}
+
+#[test]
+fn sre_bounds_outputs_and_typed_refusals_match_the_desktop_owner() {
+    let Some(app) = app() else {
+        skip("the ds-web sibling repository is not on disk");
+        return;
+    };
+    for (name, value) in [
+        ("CLI_SRE_MAX_DAYS", ds_cli_sre::MAX_DAYS),
+        ("CLI_SRE_MAX_EVENTS", ds_cli_sre::MAX_EVENTS),
+        ("CLI_SRE_MAX_SCAN_EVENTS", ds_cli_sre::MAX_SCAN_EVENTS),
+        (
+            "CLI_SRE_MAX_EVENT_TEXT_CHARS",
+            ds_cli_sre::MAX_EVENT_TEXT_CHARS as i64,
+        ),
+        (
+            "CLI_SRE_MAX_ERROR_MESSAGE_CHARS",
+            ds_cli_sre::MAX_ERROR_MESSAGE_CHARS as i64,
+        ),
+    ] {
+        let plain = format!("export const {name} = {value};");
+        let grouped = format!("export const {name} = {};", grouped(value as usize));
+        assert!(
+            app.sre.contains(&plain) || app.sre.contains(&grouped),
+            "the desktop's {name} must match ds sre"
+        );
+    }
+
+    for field in [
+        "generated_at",
+        "fleet",
+        "combined_reports",
+        "services",
+        "service_ops",
+        "stale",
+        "incidents",
+        "error_catalog",
+        "totals",
+        "more",
+        "window_days",
+        "scan_limit",
+        "filters",
+        "scanned",
+        "matching",
+        "returned",
+        "events",
+    ] {
+        assert!(
+            app.sre.contains(field),
+            "the desktop SRE owner no longer projects `{field}`"
+        );
+    }
+
+    let lowered = app.sre.to_ascii_lowercase();
+    for marker in ds_cli_sre::NOT_PERMITTED_MARKERS {
+        assert!(
+            lowered.contains(marker),
+            "the SRE permission marker `{marker}` no longer appears in the owner"
+        );
+    }
+    assert!(
+        ds_cli_sre::SRE_SIGNED_OUT_MARKERS
+            .iter()
+            .any(|marker| lowered.contains(marker)),
+        "no SRE sign-in marker remains in the owner"
+    );
+    assert!(
+        !app.sre.contains("activeProject") && !app.sre.contains("getActiveProject"),
+        "platform-global SRE reads must not require an active project"
+    );
 }
 
 #[test]

@@ -491,6 +491,19 @@ static WORK_ENTRIES: &[Entry] = &[
     },
 ];
 
+static SRE_ENTRIES: &[Entry] = &[
+    Entry {
+        command: &ds_cli_sre::overview::COMMAND,
+        handler: ds_cli_sre::overview::run,
+        render: ds_cli_sre::overview::render,
+    },
+    Entry {
+        command: &ds_cli_sre::events::COMMAND,
+        handler: ds_cli_sre::events::run,
+        render: ds_cli_sre::events::render,
+    },
+];
+
 static DESKTOP_ENTRIES: &[Entry] = &[
     Entry {
         command: &ds_cli_desktop::status::COMMAND,
@@ -563,6 +576,10 @@ static DOMAINS: &[Registered] = &[
     Registered {
         domain: &ds_cli_work::DOMAIN,
         entries: WORK_ENTRIES,
+    },
+    Registered {
+        domain: &ds_cli_sre::DOMAIN,
+        entries: SRE_ENTRIES,
     },
     Registered {
         domain: &ds_cli_style::DOMAIN,

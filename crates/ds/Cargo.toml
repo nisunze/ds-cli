@@ -24,6 +24,7 @@ ds-cli-report = { workspace = true }
 ds-cli-shell = { workspace = true }
 ds-cli-solar = { workspace = true }
 ds-cli-work = { workspace = true }
+ds-cli-sre = { workspace = true }
 ds-cli-style = { workspace = true }
 ds-cli-tile = { workspace = true }
 serde_json = { workspace = true }
