@@ -280,6 +280,10 @@ fn discovery_indexes_are_cheap_in_json() {
         );
     }
 
+    // Raised from 1,200 when `tile` made this representative query fill the
+    // existing default ten-result cap. Search remains bounded by that cap;
+    // this prices the tenth compact id/summary row without relaxing a command
+    // descriptor or help tier.
     assert_within(
         "capabilities search",
         &[
@@ -289,7 +293,7 @@ fn discovery_indexes_are_cheap_in_json() {
             "--output",
             "json",
         ],
-        1_200,
+        1_320,
     );
 }
 
