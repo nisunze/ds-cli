@@ -29,6 +29,17 @@ $ClaudeSkills = if ($env:CLAUDE_SKILLS_DIR) { $env:CLAUDE_SKILLS_DIR } else { Jo
 $CopilotSkills = if ($env:COPILOT_SKILLS_DIR) { $env:COPILOT_SKILLS_DIR } else { Join-Path (Join-Path $HOME ".copilot") "skills" }
 $Targets = @($CodexSkills, $ClaudeSkills, $CopilotSkills) | Select-Object -Unique
 
+# UTF-8 without BOM, LF-terminated, on every PowerShell edition. `Set-Content
+# -Encoding utf8NoBOM` exists only from PowerShell 6; Windows PowerShell 5.1 — the
+# default `powershell.exe` on every Windows install — rejects the name and the
+# installer dies before it writes its first owner marker. LF (not CRLF) keeps the
+# marker and inventory byte-identical to what install-skills.sh writes, so either
+# installer recognises the other's ownership.
+$Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+function Write-Utf8Lines([string]$Path, [string[]]$Lines) {
+    [IO.File]::WriteAllText($Path, (($Lines -join "`n") + "`n"), $Utf8NoBom)
+}
+
 $SourceSkills = @(Get-ChildItem -LiteralPath $SourceRoot -Directory | Sort-Object Name)
 if ($SourceSkills.Count -eq 0) { throw "no skills found under $SourceRoot" }
 foreach ($Skill in $SourceSkills) {
@@ -100,7 +111,7 @@ function Install-Target([string]$Target) {
         foreach ($Skill in $SourceSkills) {
             $Staged = Join-Path $Stage $Skill.Name
             Copy-Item -LiteralPath $Skill.FullName -Destination $Staged -Recurse
-            Set-Content -LiteralPath (Join-Path $Staged $OwnerMarker) -Value $Owner -Encoding utf8NoBOM
+            Write-Utf8Lines (Join-Path $Staged $OwnerMarker) @($Owner)
         }
         $BundleReceipt = Join-Path $Here "receipt.json"
         if (Test-Path -LiteralPath $BundleReceipt) {
@@ -132,7 +143,7 @@ function Install-Target([string]$Target) {
             Move-Item -Force -LiteralPath $ReceiptTemp -Destination $ReceiptPath
         }
         $InventoryTemp = Join-Path $Target ("$Inventory.tmp." + [guid]::NewGuid().ToString("N"))
-        Set-Content -LiteralPath $InventoryTemp -Value (@($InventoryContract) + @($NewNames)) -Encoding utf8NoBOM
+        Write-Utf8Lines $InventoryTemp (@($InventoryContract) + @($NewNames))
         Move-Item -Force -LiteralPath $InventoryTemp -Destination $InventoryPath
     } catch {
         foreach ($Name in $NewNames) {

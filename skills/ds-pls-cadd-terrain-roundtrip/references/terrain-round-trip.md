@@ -55,13 +55,19 @@ descriptor. Typical owner operations are:
 
 The engine command envelope must carry a stable command id, the current
 authored revision, the installed command schema version, and the typed command
-payload. Run `ds dsgrid apply --dry-run` first. Apply only when the preview
-introduces no validation errors, and write a new `.dsgrid` for every accepted
-revision. Re-inspect and validate each output before using it as the next
-parent.
+payload, and the payload names its command kind as a tagged field. Run
+`ds dsgrid apply --dry-run` first. Apply only when the preview introduces no
+validation errors, and write a new `.dsgrid` for every accepted revision.
+Re-inspect and validate each output before using it as the next parent.
 
 Never confuse the manifest's monotonic package revision with the engine's
-content-derived authored revision. The apply receipt reports both.
+content-derived authored revision. The apply receipt reports both. No
+read-only command prints the authored revision of a freshly converted package:
+take it from the previous apply receipt, or let one dry run refuse with a
+revision conflict and read the actual revision from that refusal. The
+descriptor names row and enum types without their fields; when a dry run
+refuses the envelope, read its detail and rebuild rather than guessing twice —
+and report the missing shape through `ds feedback`.
 
 ## 4. Add terrain and elevation evidence
 
@@ -84,6 +90,25 @@ not permission to linearly invent a value.
 Validate DEM or other external terrain against surveyed ties. Refuse a
 constant-offset or smoothing repair when residuals vary materially or change
 sign; that shape indicates datum/surface disagreement rather than one offset.
+
+Test whether a "survey" feed is really a survey before choosing its source
+kind. Elevations that are all multiples of 1/256 (`1655.671875`,
+`1672.023438`) are float32 raster samples, and evenly spaced `Gp` rows along a
+digitised line are generated, not walked. Compare the feed against the
+project's own surveyed terrain at every coincident point (or a bounded-edge TIN
+over the existing corridor) before authoring: on one MV deviation set the feed
+sat a median +12.4 m above the project ground with a p10–p90 spread of
++8.3 to +17.8 m. Author such rows under a `dem_raw` source with an `unknown`
+vertical datum, keep their heights exact, say so in each description, and put
+the datum ruling to the operator; never shift them by the median.
+
+The engine's own derived observations (`insert_terrain_point_at_station`)
+carry no source id; rows you derive from a DEM feed (gap fills between its
+own samples) belong to that feed's source, not to a surveyed one.
+
+Provenance does not survive the native round trip: a re-imported backup shows
+one `pls_cadd_import` terrain source however many you authored. Descriptions
+do survive, so the provenance word has to be in the description too.
 
 For points intended to guide manual PLS-CADD PI movement:
 
@@ -112,6 +137,12 @@ Independently read back the emitted backup through `dsgrid-exchange` and
 compare canonical counts, route vertices, terrain content, structure plan
 positions and digests. This is deterministic exchange evidence, not native
 acceptance.
+
+A review overlay for the operator — a corridor buffer around each deviation,
+a centreline the operator can attach in PLS-CADD — is not a `ds` capability
+today and is not model state: build it beside the handoff as SHP and DXF in
+the project CRS, hand the operator the attach step, and keep the buffer width
+and source digests in the delivery note.
 
 ## 6. Native operator loop
 

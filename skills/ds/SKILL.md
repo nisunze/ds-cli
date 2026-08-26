@@ -57,7 +57,10 @@ refusal information, then invoke the narrowest command. Pass `--yes` only when
 the user's actual intent authorizes that exact effect and scope.
 
 Interpret the returned JSON according to the live result itself. Follow its
-remedy and next action when it refuses. Do not repeat a non-retryable call
+remedy and next action when it refuses. When Stable, Canary and a dev build
+run together, a paired-desktop command refuses as ambiguous and lists the
+candidate descriptors; pass the one whose profile matches the `ds` install
+you established, and keep using it for the rest of the session. Do not repeat a non-retryable call
 unchanged, switch identity or project merely to force success, or reconstruct
 the answer through another surface. Return only the bounded evidence the CLI
 actually supplied.

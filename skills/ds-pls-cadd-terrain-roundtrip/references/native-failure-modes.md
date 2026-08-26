@@ -16,7 +16,21 @@ members share a leaf.
 Some historical DS candidates were ZIP wrappers whose inner member began with
 `TYPE='***PLSBACKUPFILE***'`. DS exchange could read through that wrapper, but
 native Restore could not. Classify the outer container before native handoff;
-never assume “DS can read it” means “PLS can restore it.”
+never assume “DS can read it” means “PLS can restore it.” A backup that
+PLS-CADD 16.81 itself wrote can also arrive as a `PK` ZIP holding one
+same-named member, and the 16.81 export mirrors that form; compare the
+emitted container against the operator's own input container and still
+require the native Restore gate.
+
+### Editing terrain retags every uncoded native point
+
+Import maps an empty native feature code to the derived category token
+`other`, and export writes the feature class back verbatim as the native
+record code. One terrain edit therefore re-emits every formerly uncoded
+`.xyz` record with the literal code `other` (1,997 records on one MV
+project); the DS readback cannot see it, PLS-CADD lists a new feature code.
+Count the affected rows before the edit and state them as a known loss in the
+delivery note until the exchange preserves the empty code.
 
 ### Never guess CRS or vertical datum
 
