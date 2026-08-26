@@ -29,6 +29,36 @@ const TEMPORARY_LAYER_ARG: Arg = Arg {
     summary: "Local Point layer to use as an additional customer source. Repeat.",
 };
 
+const POLE_SURVEY_LAYER_ARG: Arg = Arg {
+    name: "pole-survey-layer",
+    kind: ArgKind::Repeated,
+    value: "<key>",
+    required: false,
+    default: None,
+    choices: &[],
+    summary: "Point survey layer to borrow as LV-pole evidence: only poles the drafted LV lines touch are used, as existing poles (tapping when at the source node). Repeat; pass none with --clear-pole-sources to clear.",
+};
+
+const POLE_TEMPORARY_LAYER_ARG: Arg = Arg {
+    name: "pole-temporary-layer",
+    kind: ArgKind::Repeated,
+    value: "<id-or-name>",
+    required: false,
+    default: None,
+    choices: &[],
+    summary: "Local Point layer to borrow as LV-pole evidence. Repeat.",
+};
+
+const CLEAR_POLE_SOURCES_ARG: Arg = Arg {
+    name: "clear-pole-sources",
+    kind: ArgKind::Switch,
+    value: "",
+    required: false,
+    default: None,
+    choices: &[],
+    summary: "Remove every configured pole source; drafted lv_poles alone are used.",
+};
+
 const SURVEY_ONLY_ARG: Arg = Arg {
     name: "survey-only",
     kind: ArgKind::Switch,
@@ -98,6 +128,9 @@ inside DS GridDesign. No design features or cloud data are changed.",
     args: &[
         SURVEY_LAYER_ARG,
         TEMPORARY_LAYER_ARG,
+        POLE_SURVEY_LAYER_ARG,
+        POLE_TEMPORARY_LAYER_ARG,
+        CLEAR_POLE_SOURCES_ARG,
         SURVEY_ONLY_ARG,
         PRESET_ARG,
         SETTING_ARG,
@@ -121,6 +154,11 @@ inside DS GridDesign. No design features or cloud data are changed.",
         Example {
             command: "ds map design setup --survey-layer edcl_customers_survey --preset drafting --dry-run --output json",
             note: "Validate the mixed design + survey source before applying it.",
+            runnable: false,
+        },
+        Example {
+            command: "ds map design setup --pole-survey-layer edcl_poles_survey --dry-run --output json",
+            note: "Borrow a surveyed pole layer: the model keeps only poles the drafted LV lines touch, as existing poles.",
             runnable: false,
         },
         Example {
@@ -175,6 +213,15 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         arguments.insert("temporaryLayers".into(), json!(temporary_layers));
         arguments.insert("includeDesignCustomers".into(), json!(!survey_only));
     }
+    let pole_survey_layers = inputs.repeated("pole-survey-layer");
+    let pole_temporary_layers = inputs.repeated("pole-temporary-layer");
+    if !pole_survey_layers.is_empty()
+        || !pole_temporary_layers.is_empty()
+        || inputs.switch("clear-pole-sources")
+    {
+        arguments.insert("poleSurveyLayers".into(), json!(pole_survey_layers));
+        arguments.insert("poleTemporaryLayers".into(), json!(pole_temporary_layers));
+    }
     if let Some(preset) = inputs.value("preset") {
         arguments.insert("preset".into(), json!(preset));
     }
@@ -217,6 +264,8 @@ fn project_result(result: &Value, limit: usize) -> Value {
         "include_design_customers": result["includeDesignCustomers"],
         "temporary_layers": result["temporaryLayers"],
         "survey_layers": result["surveyLayers"],
+        "pole_temporary_layers": result["poleTemporaryLayers"],
+        "pole_survey_layers": result["poleSurveyLayers"],
         "effective_settings": result["effectiveSettings"],
         "available_temporary_layer_count": temporary.len(),
         "available_temporary_layers": temporary_shown,

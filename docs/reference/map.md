@@ -93,7 +93,11 @@ ds map design setup \
 ```
 
 Survey layers are additional to current design customers unless
-`--survey-only` is explicit. Omit `--dry-run` only after the exact semantic
+`--survey-only` is explicit. `--pole-survey-layer` / `--pole-temporary-layer`
+configure the same kind of Point layer as **pole** evidence: the model keeps
+only poles the drafted LV lines touch, as existing poles (a pole at the source
+node becomes a tapping pole); untouched rows stay in the source.
+`--clear-pole-sources` removes them all. Omit `--dry-run` only after the exact semantic
 source has been confirmed. Available source inventories are bounded by
 `--limit` (20 by default) and report omitted counts; selected sources and
 effective settings are never truncated.

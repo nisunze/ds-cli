@@ -224,6 +224,8 @@ pub const DESIGN_PROCESS_CONFIGURE: BridgeOp = BridgeOp {
         "surveyLayers",
         "temporaryLayers",
         "includeDesignCustomers",
+        "poleSurveyLayers",
+        "poleTemporaryLayers",
         "preset",
         "settings",
         "resetSettings",
