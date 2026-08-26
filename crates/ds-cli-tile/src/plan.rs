@@ -79,10 +79,10 @@ pub fn render_decision(data: &Value) -> String {
         (false, false) => "no run needed",
     };
     let mut out = format!("{kind} tiles · {verdict}\n");
-    if let Some(reason) = data["reason"].as_str() {
-        if !reason.is_empty() {
-            out.push_str(&format!("  {}\n", crate::truncate(reason, 110)));
-        }
+    if let Some(reason) = data["reason"].as_str()
+        && !reason.is_empty()
+    {
+        out.push_str(&format!("  {}\n", crate::truncate(reason, 110)));
     }
     if !data["preflight"].is_null() {
         out.push_str(&format!(
@@ -90,10 +90,10 @@ pub fn render_decision(data: &Value) -> String {
             crate::preflight_line(&data["preflight"])
         ));
     }
-    if let Some(message) = data["result"]["message"].as_str() {
-        if !message.is_empty() {
-            out.push_str(&format!("  {}\n", crate::truncate(message, 110)));
-        }
+    if let Some(message) = data["result"]["message"].as_str()
+        && !message.is_empty()
+    {
+        out.push_str(&format!("  {}\n", crate::truncate(message, 110)));
     }
     out
 }

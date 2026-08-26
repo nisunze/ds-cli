@@ -420,7 +420,7 @@ fn every_tile_command_has_one_closed_operation_owner() {
             operation.operation
         );
         assert_eq!(
-            count(&app.frontend, &format!("case '{}':", operation.operation)),
+            switch_case_count(&app.frontend, operation.operation),
             1,
             "`{}` must have exactly one frontend handler",
             operation.operation

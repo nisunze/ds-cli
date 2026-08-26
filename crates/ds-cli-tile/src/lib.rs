@@ -186,10 +186,10 @@ pub fn status_line(status: &Value) -> String {
     if status["in_progress"].as_bool() == Some(true) {
         parts.push("running".to_string());
     }
-    if let Some(error) = status["last_error"].as_str() {
-        if !error.is_empty() {
-            parts.push(format!("last error: {}", truncate(error, 80)));
-        }
+    if let Some(error) = status["last_error"].as_str()
+        && !error.is_empty()
+    {
+        parts.push(format!("last error: {}", truncate(error, 80)));
     }
     parts.join(" · ")
 }
@@ -214,11 +214,11 @@ pub fn preflight_line(preflight: &Value) -> String {
     if let Some(rows) = preflight["total_rows"].as_u64() {
         parts.push(plural(rows, "row"));
     }
-    if let Some(empty) = preflight["empty_layers"].as_array() {
-        if !empty.is_empty() {
-            let names: Vec<&str> = empty.iter().filter_map(Value::as_str).collect();
-            parts.push(format!("empty: {}", truncate(&names.join(", "), 60)));
-        }
+    if let Some(empty) = preflight["empty_layers"].as_array()
+        && !empty.is_empty()
+    {
+        let names: Vec<&str> = empty.iter().filter_map(Value::as_str).collect();
+        parts.push(format!("empty: {}", truncate(&names.join(", "), 60)));
     }
     if preflight["repair_required"].as_bool() == Some(true) {
         parts.push("projection repair required".to_string());
@@ -234,10 +234,10 @@ pub fn preflight_line(preflight: &Value) -> String {
             }
         }
     }
-    if let Some(message) = preflight["message"].as_str() {
-        if !message.is_empty() {
-            parts.push(truncate(message, 80));
-        }
+    if let Some(message) = preflight["message"].as_str()
+        && !message.is_empty()
+    {
+        parts.push(truncate(message, 80));
     }
     parts.join(" · ")
 }

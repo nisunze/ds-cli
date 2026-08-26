@@ -1,6 +1,6 @@
 ---
 name: ds-tiling
-description: Inspect or regenerate a DS project's survey/design vector tiles through `ds tile` — status, preflight, plan, generate, and the archive catalogue. Use after a restyle or a Data-cleaning catalog change (the legend lists only values the tiles hold), when a map shows stale design data, or when asked whether tiles are current. Assumes the `ds` skill.
+description: Inspect or regenerate project tiles through `ds` when survey/design maps are stale.
 ---
 
 # Tile a project's outputs
