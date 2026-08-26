@@ -9,7 +9,10 @@
 //!
 //! So: exactly one live descriptor is a pairing. More than one is a refusal
 //! naming the choices. None is a refusal naming how to start the app. The
-//! caller can always settle it with `--desktop-descriptor <path>`.
+//! caller can always settle it with `--desktop-descriptor <path>`, or for a
+//! whole session with `DS_DESKTOP_DESCRIPTOR` — which is what the desktop's own
+//! `cl` command line sets, so a terminal it opened stays pinned to the window
+//! that opened it.
 
 use std::path::{Path, PathBuf};
 
@@ -27,6 +30,12 @@ pub const PROFILES: &[(&str, &str)] = &[
 /// assistant bridge; it carries only the loopback endpoint and pairing secret
 /// needed by typed `ds` commands.
 pub const DESCRIPTOR_FILE: &str = "cli-bridge.json";
+
+/// The environment variable naming a descriptor for every command in a
+/// session. `--desktop-descriptor` still wins when both are present, and
+/// automatic discovery runs only when neither is: the variable is a default
+/// for the flag, never an override of it.
+pub const DESCRIPTOR_ENV: &str = "DS_DESKTOP_DESCRIPTOR";
 
 /// Bound the descriptor read. The real file is a few hundred bytes.
 pub const MAX_DESCRIPTOR_BYTES: u64 = 16 * 1024;
@@ -115,11 +124,17 @@ pub fn read(path: &Path) -> Result<Descriptor, String> {
 /// Discover the descriptor. An explicit path is used verbatim and is never
 /// second-guessed; automatic discovery scans the known profiles.
 pub fn discover(explicit: Option<&str>) -> Discovery {
-    if let Some(path) = explicit {
-        let path = PathBuf::from(path);
+    let environment = std::env::var(DESCRIPTOR_ENV)
+        .ok()
+        .filter(|value| !value.trim().is_empty());
+    let named = match explicit {
+        Some(path) => Some((PathBuf::from(path), "explicit")),
+        None => environment.map(|value| (PathBuf::from(value), "environment")),
+    };
+    if let Some((path, profile)) = named {
         return match read(&path) {
             Ok(descriptor) => Discovery::Paired(Box::new(Found {
-                profile: "explicit",
+                profile,
                 path,
                 descriptor,
             })),

@@ -607,3 +607,58 @@ fn ds_json(args: &[&str]) -> (Value, i32) {
     let run = ds(args);
     (run.envelope, run.code)
 }
+
+#[test]
+fn an_environment_descriptor_is_used_and_the_flag_still_wins() {
+    // `DS_DESKTOP_DESCRIPTOR` is how a terminal opened by the desktop's own
+    // `cl` launcher stays pinned to the window that opened it. It is a
+    // default, not an override: the flag names a descriptor verbatim.
+    let stale = std::env::temp_dir().join("ds-cli-test-env-bridge.json");
+    std::fs::write(
+        &stale,
+        br#"{"version":1,"url":"http://127.0.0.1:1","token":"env-s3cr3t-value","pid":1}"#,
+    )
+    .expect("write descriptor");
+    let missing = std::env::temp_dir().join("ds-cli-test-env-missing.json");
+    let _ = std::fs::remove_file(&missing);
+
+    let run = |args: &[&str]| {
+        let output = Command::new(env!("CARGO_BIN_EXE_ds"))
+            .args(["desktop", "status", "--output", "json"])
+            .args(args)
+            .env("NO_COLOR", "1")
+            .env("DS_DESKTOP_DESCRIPTOR", &stale)
+            .output()
+            .expect("ds runs");
+        let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
+        Run {
+            envelope: serde_json::from_str(&stdout).unwrap_or(Value::Null),
+            stdout,
+            stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
+            code: output.status.code().unwrap_or(-1),
+        }
+    };
+
+    let by_environment = run(&[]);
+    assert_eq!(
+        by_environment.code, 3,
+        "the environment descriptor was used: {}",
+        by_environment.stdout
+    );
+    assert_eq!(
+        by_environment.envelope["error"]["code"],
+        "desktop_unreachable"
+    );
+    assert!(
+        !by_environment.stdout.contains("env-s3cr3t-value")
+            && !by_environment.stderr.contains("env-s3cr3t-value"),
+        "the pairing secret reached the output"
+    );
+
+    let by_flag = run(&["--desktop-descriptor", missing.to_str().expect("path")]);
+    assert_eq!(
+        by_flag.envelope["error"]["code"], "descriptor_unusable",
+        "the flag names a descriptor verbatim, even over a usable environment one"
+    );
+    let _ = std::fs::remove_file(&stale);
+}

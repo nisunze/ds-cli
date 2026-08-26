@@ -1453,3 +1453,78 @@ fn a_well_formed_work_call_only_ever_fails_on_the_pairing_state() {
         );
     }
 }
+
+// ---------------------------------------------------------------------------
+// shell
+// ---------------------------------------------------------------------------
+
+#[test]
+fn shell_status_tells_this_shell_from_a_new_one() {
+    // The PATH is the fixture here. With the built binary's own directory
+    // first, `ds` resolves to this executable; with nothing on it, the answer
+    // is a remedy — never a guess.
+    let executable = PathBuf::from(env!("CARGO_BIN_EXE_ds"));
+    let directory = executable.parent().expect("binary directory");
+    let leading = std::env::join_paths([directory.to_path_buf()]).expect("path");
+
+    let status = |path: &std::ffi::OsStr| {
+        let output = Command::new(&executable)
+            .args(["shell", "status", "--output", "json"])
+            .env("NO_COLOR", "1")
+            .env("PATH", path)
+            .output()
+            .expect("ds runs");
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let envelope: Value =
+            serde_json::from_slice(&output.stdout).expect("shell status emits JSON");
+        envelope["data"].clone()
+    };
+
+    let data = status(leading.as_os_str());
+    assert_eq!(
+        data["reachable"], true,
+        "the binary's own directory leads the PATH: {data}"
+    );
+    assert!(
+        data["executable"]
+            .as_str()
+            .is_some_and(|path| PathBuf::from(path).is_file()),
+        "the executable is a real file: {data}"
+    );
+    assert!(data["resolves_to"].as_str().is_some());
+    assert_eq!(data["others"].as_array().map_or(0, Vec::len), 0);
+    assert!(
+        data["remedy"].is_null(),
+        "nothing to fix when this shell already finds it: {data}"
+    );
+    assert!(
+        data["registration"]["kind"]
+            .as_str()
+            .is_some_and(|kind| kind == "windows_user_path" || kind == "unix_local_bin"),
+        "the registration names its platform: {data}"
+    );
+
+    let data = status(std::ffi::OsStr::new("/nonexistent"));
+    assert_eq!(data["reachable"], false);
+    assert!(data["resolves_to"].is_null());
+    assert!(
+        data["remedy"].as_str().is_some_and(
+            |remedy| remedy.contains("ds shell register") || remedy.contains("new terminal")
+        ),
+        "an unreachable ds names the fix: {data}"
+    );
+
+    // Doctor folds the two answers into one word, and never fails on them.
+    let output = Command::new(&executable)
+        .args(["doctor", "--output", "json"])
+        .env("NO_COLOR", "1")
+        .env("PATH", &leading)
+        .output()
+        .expect("ds runs");
+    let envelope: Value = serde_json::from_slice(&output.stdout).expect("doctor emits JSON");
+    assert_eq!(envelope["data"]["shell"]["status"], "reachable");
+}

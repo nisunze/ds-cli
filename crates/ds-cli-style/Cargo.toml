@@ -1,0 +1,18 @@
+[package]
+name = "ds-cli-style"
+description = "The `ds style` domain: Style Center documents — read them, and author a second categorical dimension (halo, opacity, size) by a second field."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[dependencies]
+ds-cli-contract = { workspace = true }
+# Styles are governed shared documents behind ds-brain, rendered and edited by
+# the paired application's Style Center. Every command here is one named
+# bridge operation the application performs under its own session with the
+# same pure module and the same save payload its human UI uses.
+ds-cli-desktop = { workspace = true }
+serde_json = { workspace = true }

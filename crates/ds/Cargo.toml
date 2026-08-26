@@ -21,8 +21,10 @@ ds-cli-dsgrid = { workspace = true }
 ds-cli-dsgrid-exchange = { workspace = true }
 ds-cli-pls = { workspace = true }
 ds-cli-report = { workspace = true }
+ds-cli-shell = { workspace = true }
 ds-cli-solar = { workspace = true }
 ds-cli-work = { workspace = true }
+ds-cli-style = { workspace = true }
 serde_json = { workspace = true }
 sha2 = { workspace = true }
 

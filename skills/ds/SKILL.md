@@ -85,5 +85,7 @@ directly, or use a workaround that bypasses `ds`.
 - `ds-map-local-data` — temporary map layers, focus and restore.
 - `ds-lv-design-revision` — revise one transformer's LV design safely.
 - `ds-pls-cadd-terrain-roundtrip` — revise PLS-CADD route PIs and terrain through a canonical `.dsgrid` round trip.
+- `ds-style-composite` — style a layer by two fields: colour plus a halo,
+  opacity or size dimension.
 
 Those skills assume this one. Do not load them for ordinary discovery.

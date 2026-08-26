@@ -1,0 +1,4 @@
+interface:
+  display_name: "DS Composite Styling"
+  short_description: "Colour a DS layer by one field and halo/opacity/size by another"
+  default_prompt: "Use $ds-style-composite to style a map layer by two fields through ds style."

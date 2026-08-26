@@ -42,6 +42,9 @@
 #   ds-cli-feedback  the shared product-feedback domain. It reaches the same
 #                    authenticated backlog as the desktop's `fb` shortcut and
 #                    pins reports from this surface as agent observations.
+#   ds-cli-shell     reaching `ds` from the shells on this machine: where
+#                    it resolves from, and the per-user PATH registration
+#                    a new terminal reads. Links no engine, asks no session.
 #   ds               the binary. Registers domains, dispatches, renders.
 #
 # Domains are separate crates so "domain discovery must not initialize or
@@ -75,6 +78,10 @@ ureq = { version = "3.3.0", features = ["json"] }
 # Content digests, for the digest-pinned PLS tasks. Same crate and major the
 # ds-network workspace already builds.
 sha2 = "0.10"
+# Per-user PATH registration on Windows reads and writes HKCU\Environment
+# through the raw Win32 registry API. Same crate and major this workspace's
+# own lockfile already resolves transitively.
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_Registry", "Win32_UI_WindowsAndMessaging"] }
 
 ds-cli-contract = { path = "crates/ds-cli-contract" }
 ds-cli-desktop = { path = "crates/ds-cli-desktop" }
@@ -86,7 +93,12 @@ ds-cli-pls = { path = "crates/ds-cli-pls" }
 ds-cli-report = { path = "crates/ds-cli-report" }
 ds-cli-solar = { path = "crates/ds-cli-solar" }
 ds-cli-work = { path = "crates/ds-cli-work" }
+#   ds-cli-style     the styling domain: Style Center documents and the second
+#                    categorical dimension (halo / opacity / size by a second
+#                    field). A bridge domain like ds-cli-work.
+ds-cli-style = { path = "crates/ds-cli-style" }
 ds-cli-feedback = { path = "crates/ds-cli-feedback" }
+ds-cli-shell = { path = "crates/ds-cli-shell" }
 
 # The authoritative engine crates, by path, exactly as ds-web/src-tauri
 # reaches them. `ds` links the same code the desktop links; it does not

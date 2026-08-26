@@ -354,7 +354,9 @@ dependencies = [
  "ds-cli-map",
  "ds-cli-pls",
  "ds-cli-report",
+ "ds-cli-shell",
  "ds-cli-solar",
+ "ds-cli-style",
  "ds-cli-work",
  "ds-grid-engine",
  "ds-grid-exchange",
@@ -450,6 +452,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "ds-cli-shell"
+version = "0.1.0"
+dependencies = [
+ "ds-cli-contract",
+ "serde_json",
+ "windows-sys 0.61.2",
+]
+
+[[package]]
 name = "ds-cli-solar"
 version = "0.1.0"
 dependencies = [
@@ -458,6 +469,15 @@ dependencies = [
  "ds-cli-exec",
  "serde_json",
  "sha2",
+]
+
+[[package]]
+name = "ds-cli-style"
+version = "0.1.0"
+dependencies = [
+ "ds-cli-contract",
+ "ds-cli-desktop",
+ "serde_json",
 ]
 
 [[package]]
