@@ -1,6 +1,6 @@
 ---
 name: ds-pls-cadd-terrain-roundtrip
-description: Round-trip a native PLS-CADD backup through DS Grid to revise deviation-route PIs and terrain/elevation evidence, return a fresh PLS-CADD handoff, and analyze the operator-adjusted result. Use for PLS-CADD alignment and terrain work, not LV transformer-room design or structure-library repair.
+description: Round-trip a native PLS-CADD backup through DS Grid to revise deviation-route PIs and terrain evidence and return a fresh PLS-CADD handoff. For PLS-CADD alignment and terrain work, not LV design or structure repair.
 ---
 
 # Revise PLS-CADD route and terrain without losing native identity

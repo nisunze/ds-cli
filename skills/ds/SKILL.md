@@ -1,6 +1,6 @@
 ---
 name: ds
-description: Use the deployed `ds` CLI as the sole Data Solutions interface. Discover one live command and its current contract, invoke it exactly as declared, and submit a bounded feedback report only when live discovery confirms a real gap. Use before any DS task; other ds-* skills assume it.
+description: Use the deployed `ds` CLI as the sole Data Solutions interface — discover one live command and its contract, invoke it as declared, report a feedback gap only when live discovery confirms one. Use before any DS task; other ds-* skills assume it.
 ---
 
 # Work through `ds`
@@ -87,5 +87,10 @@ directly, or use a workaround that bypasses `ds`.
 - `ds-pls-cadd-terrain-roundtrip` — revise PLS-CADD route PIs and terrain through a canonical `.dsgrid` round trip.
 - `ds-style-composite` — style a layer by two fields: colour plus a halo,
   opacity or size dimension.
+- `ds-report-consumption` — obtain a delivered report workbook and read it
+  with your own tools; consuming a document is not a `ds` gap.
+- `ds-boq-staking-table` — LV `poles` sheet and MV structure names as
+  staking tables against a BOQ.
+- `ds-boq-combined-report` — the combined workbook against a project BOQ.
 
 Those skills assume this one. Do not load them for ordinary discovery.

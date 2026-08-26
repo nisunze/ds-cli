@@ -1,0 +1,4 @@
+interface:
+  display_name: "DS BOQ Staking Table"
+  short_description: "Staking tables against an EPC BOQ"
+  default_prompt: "Use $ds-boq-staking-table to read the LV poles sheet and MV structure names as staking tables and reconcile poles, stays and earthing with my BOQ."

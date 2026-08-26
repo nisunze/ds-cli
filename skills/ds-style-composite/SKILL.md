@@ -1,6 +1,6 @@
 ---
 name: ds-style-composite
-description: Style one DS map layer by two fields through `ds style` — its colour by one field and a halo, opacity or size by a second field (approved vs draft, existing vs new). Use when a user wants features told apart by a status on top of their category, or wants to read what a layer's style currently encodes. Assumes the `ds` skill.
+description: Style one DS map layer by two fields through `ds style` — colour by one field, a halo, opacity or size by a second (existing vs new). Use to tell features apart by status on top of category, or read what a style encodes.
 ---
 
 # Style a layer by two fields

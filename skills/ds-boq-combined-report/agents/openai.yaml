@@ -1,0 +1,4 @@
+interface:
+  display_name: "DS BOQ Combined Report"
+  short_description: "Combined report against a project BOQ"
+  default_prompt: "Use $ds-boq-combined-report to align the combined workbook with my project BOQ, convert units and explain every delta."

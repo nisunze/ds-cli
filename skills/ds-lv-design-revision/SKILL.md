@@ -1,6 +1,6 @@
 ---
 name: ds-lv-design-revision
-description: Revise one project transformer’s LV design through the deployed DS CLI while preserving constructed infrastructure, semantically reviewing incoming linework, configuring customer sources, and separating local staging from project save. Use for transformer LV extensions and drafting reruns, not ordinary map display or bulk archive delivery.
+description: Revise one transformer's LV design through `ds` — preserve built infrastructure, review incoming linework, configure customer sources, stage before save. For LV extensions and drafting reruns, not map display or bulk delivery.
 ---
 
 # Revise an LV transformer without redesigning installed work

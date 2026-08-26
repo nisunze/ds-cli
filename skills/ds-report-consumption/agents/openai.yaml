@@ -1,0 +1,4 @@
+interface:
+  display_name: "DS Report Consumption"
+  short_description: "Obtain and read DS report workbooks"
+  default_prompt: "Use $ds-report-consumption to obtain a transformer or combined report workbook through ds and read its sheets, units and existing-versus-new rows correctly."
