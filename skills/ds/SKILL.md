@@ -19,9 +19,9 @@ ds --version
 ds doctor --output json
 ```
 
-Treat these live results as the identity and availability of this installation.
-A remembered catalog or a skill written against another build is not evidence
-that a command exists here.
+These live results are this installation's identity and availability; a
+remembered catalog or a skill written against another build proves nothing
+here.
 
 ## Find one command
 
