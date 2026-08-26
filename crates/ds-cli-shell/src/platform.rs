@@ -16,7 +16,7 @@ use std::path::Path;
 use ds_cli_contract::outcome::Failure;
 use serde_json::{Value, json};
 
-use crate::reach::{self, Reach};
+use crate::reach::Reach;
 
 /// The registration as it stands, in the platform's own terms.
 pub struct Registration {
@@ -77,8 +77,9 @@ fn unwritable(detail: String) -> Failure {
     .remedy(crate::REGISTRATION_UNWRITABLE.remedy)
 }
 
+#[cfg(windows)]
 fn directory_entry(reach: &Reach) -> String {
-    reach::display(&reach.directory)
+    crate::reach::display(&reach.directory)
 }
 
 #[allow(dead_code)]
