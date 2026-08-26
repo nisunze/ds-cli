@@ -400,6 +400,46 @@ static STYLE_ENTRIES: &[Entry] = &[
     },
 ];
 
+/// Tiling. Ordered as a session uses it: read the state, look at the
+/// sources, decide, run; then the catalogue.
+static TILE_ENTRIES: &[Entry] = &[
+    Entry {
+        command: &ds_cli_tile::status::COMMAND,
+        handler: ds_cli_tile::status::run,
+        render: ds_cli_tile::status::render,
+    },
+    Entry {
+        command: &ds_cli_tile::preflight::COMMAND,
+        handler: ds_cli_tile::preflight::run,
+        render: ds_cli_tile::preflight::render,
+    },
+    Entry {
+        command: &ds_cli_tile::plan::COMMAND,
+        handler: ds_cli_tile::plan::run,
+        render: ds_cli_tile::plan::render,
+    },
+    Entry {
+        command: &ds_cli_tile::generate::COMMAND,
+        handler: ds_cli_tile::generate::run,
+        render: ds_cli_tile::generate::render,
+    },
+    Entry {
+        command: &ds_cli_tile::list::COMMAND,
+        handler: ds_cli_tile::list::run,
+        render: ds_cli_tile::list::render,
+    },
+    Entry {
+        command: &ds_cli_tile::add::COMMAND,
+        handler: ds_cli_tile::add::run,
+        render: ds_cli_tile::add::render,
+    },
+    Entry {
+        command: &ds_cli_tile::remove::COMMAND,
+        handler: ds_cli_tile::remove::run,
+        render: ds_cli_tile::remove::render,
+    },
+];
+
 /// The Project Work domain lists its commands in the order a session uses
 /// them: look at the plan, find the item, read it, then act on it. Domain
 /// help prints this order verbatim, so the index doubles as the procedure.
@@ -527,6 +567,10 @@ static DOMAINS: &[Registered] = &[
     Registered {
         domain: &ds_cli_style::DOMAIN,
         entries: STYLE_ENTRIES,
+    },
+    Registered {
+        domain: &ds_cli_tile::DOMAIN,
+        entries: TILE_ENTRIES,
     },
     Registered {
         domain: &ds_cli_feedback::DOMAIN,

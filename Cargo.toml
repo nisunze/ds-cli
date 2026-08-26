@@ -97,6 +97,10 @@ ds-cli-work = { path = "crates/ds-cli-work" }
 #                    categorical dimension (halo / opacity / size by a second
 #                    field). A bridge domain like ds-cli-work.
 ds-cli-style = { path = "crates/ds-cli-style" }
+#   ds-cli-tile      the tiling domain: a project's survey and design vector
+#                    tile outputs — status, preflight, plan, generate, and the
+#                    catalogue. A bridge domain like ds-cli-style.
+ds-cli-tile = { path = "crates/ds-cli-tile" }
 ds-cli-feedback = { path = "crates/ds-cli-feedback" }
 ds-cli-shell = { path = "crates/ds-cli-shell" }
 

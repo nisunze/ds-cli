@@ -1,0 +1,4 @@
+interface:
+  display_name: "DS Tiling"
+  short_description: "Inspect, plan and regenerate a DS project's vector tiles"
+  default_prompt: "Use $ds-tiling to check or regenerate a project's survey or design tiles through ds tile."
