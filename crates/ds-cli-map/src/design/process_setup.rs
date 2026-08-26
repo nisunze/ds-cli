@@ -59,6 +59,16 @@ const CLEAR_POLE_SOURCES_ARG: Arg = Arg {
     summary: "Remove every configured pole source; drafted lv_poles alone are used.",
 };
 
+const SCOPE_ARG: Arg = Arg {
+    name: "scope",
+    kind: ArgKind::Value,
+    value: "<user|project>",
+    required: false,
+    default: Some("user"),
+    choices: &["user", "project"],
+    summary: "Where the configuration is written: this browser's overlay (user) or the project network template's transformer_settings rows, applying to every browser and surface (project; needs network.template.propagate).",
+};
+
 const SURVEY_ONLY_ARG: Arg = Arg {
     name: "survey-only",
     kind: ArgKind::Switch,
@@ -131,6 +141,7 @@ inside DS GridDesign. No design features or cloud data are changed.",
         POLE_SURVEY_LAYER_ARG,
         POLE_TEMPORARY_LAYER_ARG,
         CLEAR_POLE_SOURCES_ARG,
+        SCOPE_ARG,
         SURVEY_ONLY_ARG,
         PRESET_ARG,
         SETTING_ARG,
@@ -225,6 +236,9 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     if let Some(preset) = inputs.value("preset") {
         arguments.insert("preset".into(), json!(preset));
     }
+    if let Some(scope) = inputs.value("scope") {
+        arguments.insert("scope".into(), json!(scope));
+    }
     let settings = parse_settings(inputs.repeated("setting"))?;
     if !settings.is_empty() {
         arguments.insert("settings".into(), Value::Object(settings));
@@ -266,6 +280,8 @@ fn project_result(result: &Value, limit: usize) -> Value {
         "survey_layers": result["surveyLayers"],
         "pole_temporary_layers": result["poleTemporaryLayers"],
         "pole_survey_layers": result["poleSurveyLayers"],
+        "scope": result["scope"],
+        "project_rows_written": result["projectRowsWritten"],
         "effective_settings": result["effectiveSettings"],
         "available_temporary_layer_count": temporary.len(),
         "available_temporary_layers": temporary_shown,

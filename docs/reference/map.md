@@ -97,7 +97,10 @@ Survey layers are additional to current design customers unless
 configure the same kind of Point layer as **pole** evidence: the model keeps
 only poles the drafted LV lines touch, as existing poles (a pole at the source
 node becomes a tapping pole); untouched rows stay in the source.
-`--clear-pole-sources` removes them all. Omit `--dry-run` only after the exact semantic
+`--clear-pole-sources` removes them all. `--scope project` writes the same
+values into the project network template (`transformer_settings` preset and
+source rows) so they apply to every browser and every surface; the default
+`--scope user` writes this browser's overlay only. Omit `--dry-run` only after the exact semantic
 source has been confirmed. Available source inventories are bounded by
 `--limit` (20 by default) and report omitted counts; selected sources and
 effective settings are never truncated.

@@ -229,6 +229,7 @@ pub const DESIGN_PROCESS_CONFIGURE: BridgeOp = BridgeOp {
         "preset",
         "settings",
         "resetSettings",
+        "scope",
         "dryRun",
     ],
 };
