@@ -95,12 +95,13 @@ fn root_help_is_cheap() {
     // Root help is the only screen that answers no specific question, and
     // every agent reads it. It is the most expensive text in the product.
     //
-    // Raised from 1,400 when the `work` domain landed and from 1,520 when the
-    // `style` domain landed: a domain costs root help one line forever, which
-    // is the trade `root_help_scales_with_domains_not_commands` exists to
-    // price. The flat ceiling stays at that scaled one (800 + 80 × 10 domains)
-    // so it still catches prose creeping into the frame.
-    assert_within("root help", &["--help"], 1_600);
+    // Raised from 1,400 when the `work` domain landed, from 1,520 when the
+    // `style` domain landed and from 1,600 when `tile` landed: a domain costs
+    // root help one line forever, which is the trade
+    // `root_help_scales_with_domains_not_commands` exists to price. The flat
+    // ceiling stays at that scaled one (800 + 80 × 11 domains) so it still
+    // catches prose creeping into the frame.
+    assert_within("root help", &["--help"], 1_680);
 }
 
 #[test]
