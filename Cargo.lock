@@ -357,6 +357,7 @@ dependencies = [
  "ds-cli-shell",
  "ds-cli-solar",
  "ds-cli-style",
+ "ds-cli-tile",
  "ds-cli-work",
  "ds-grid-engine",
  "ds-grid-exchange",
@@ -472,6 +473,15 @@ dependencies = [
 
 [[package]]
 name = "ds-cli-style"
+version = "0.1.0"
+dependencies = [
+ "ds-cli-contract",
+ "ds-cli-desktop",
+ "serde_json",
+]
+
+[[package]]
+name = "ds-cli-tile"
 version = "0.1.0"
 dependencies = [
  "ds-cli-contract",

@@ -224,6 +224,7 @@ fn every_constructible_refusal_code_is_documented() {
         ("ds-cli-solar", Some("solar")),
         ("ds-cli-work", Some("work")),
         ("ds-cli-style", Some("style")),
+        ("ds-cli-tile", Some("tile")),
         ("ds-cli-feedback", Some("feedback")),
         ("ds-cli-shell", Some("shell")),
         // Shared across every calling domain; declaring it in any one of them

@@ -20,6 +20,7 @@ DOMAINS
   map              The paired map: local layers, vector tools, design-layer edits.
   work             Project Work: the plan, its tasks, assignments and records.
   style            Map styling: style documents and a second halo/opacity/size dimension.
+  tile             Vector tiles: status, plan, generate, and the catalogue.
   feedback         Product feedback: report a CLI gap to the shared backlog.
   desktop          The paired DS GridDesign session: pairing, sign-in, project.
   shell            Reach `ds` from any shell: status, register, unregister.
@@ -258,8 +259,9 @@ unrelated engines" is a structural property rather than a promise.
 
 ## Status
 
-Ten domains, including Project Work, shared feedback and the shell domain
-that registers `ds` on a user's PATH, plus three root metadata commands.
+Eleven domains, including Project Work, shared feedback, the tile domain that
+rebuilds a project's vector tiles, and the shell domain that registers `ds` on
+a user's PATH, plus three root metadata commands.
 
 `dsgrid`, `dsgrid-exchange` and `pls` **link** the authoritative
 `ds-network` crates, so they work on a machine with no sidecar installed and
