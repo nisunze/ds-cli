@@ -1,6 +1,6 @@
 ---
 name: ds-solar-portfolio
-description: Run, observe, inspect, and export one governed multi-city Solar portfolio through the deployed DS CLI. Use for exact portfolio membership and aggregate artifacts, not an arbitrary city batch or single-city Solar work.
+description: Run and inspect one exact governed Solar portfolio through deployed `ds`. Use for membership-pinned aggregate results and reports, not city batches.
 ---
 
 # Work with one exact Solar portfolio

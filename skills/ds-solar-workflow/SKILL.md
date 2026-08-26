@@ -1,6 +1,6 @@
 ---
 name: ds-solar-workflow
-description: Prepare, run, observe, inspect, export, finalize, and check publication for single-city or explicit multi-city Solar work through the deployed DS CLI. Use for city calculations and reports, not governed portfolio aggregation.
+description: Run and deliver single-city or explicit city-batch Solar work through deployed `ds`. Use for city results and reports, not governed portfolio aggregation.
 ---
 
 # Run the native Solar city lifecycle
