@@ -5,11 +5,10 @@ description: Use the deployed `ds` CLI as the sole Data Solutions interface — 
 
 # Work through `ds`
 
-Humans and agents use the same executable contract. Everything you learn about
-the stack, and everything you do to it, passes through `ds`. Never substitute
-an API, desktop bridge, store, file parser, implementation repository, or
-skill-local program. If live CLI discovery proves `ds` cannot do the task,
-report the observation through `ds` itself.
+Humans and agents share one executable contract: everything you learn about
+the stack or do to it passes through `ds`. Never substitute an API, desktop
+bridge, store, file parser, implementation repository, or skill-local program.
+If live discovery proves `ds` cannot do the task, report that through `ds`.
 
 Use `--output json` for agent calls.
 
@@ -34,16 +33,15 @@ ds capabilities <domain> --output json
 ds capabilities --search '<words>' --output json
 ```
 
-Search is lexical, not semantic. A zero-match search proves only that those
-words did not match. Inspect the most likely live domain, try the product's own
-vocabulary, and read summaries before concluding that the capability is
-absent. Broad or noisy matches also require narrowing; never choose a command
-from rank alone.
+Search is lexical: a zero-match proves only that those words did not match.
+Inspect the likely live domain, try the product's own vocabulary and read
+summaries before concluding a capability is absent; narrow broad matches and
+never choose a command from rank alone.
 
-Compact discovery is not a replacement for help. `ds --help`,
-`ds <domain> --help`, and `ds <domain> <command> --help` remain the complete
-human-readable tiers. Use them whenever the user asks for help or the readable
-contract; use `capabilities` when bounded machine-readable selection is useful.
+Compact discovery never replaces help: `ds --help`, `ds <domain> --help` and
+`ds <domain> <command> --help` are the complete human-readable tiers — use
+them when the user asks for help or the readable contract; use `capabilities`
+for bounded machine-readable selection.
 
 ## Read, then invoke, the live contract
 
@@ -56,14 +54,14 @@ shape, inspect its current availability, authority, effect, confirmation, and
 refusal information, then invoke the narrowest command. Pass `--yes` only when
 the user's actual intent authorizes that exact effect and scope.
 
-Interpret the returned JSON according to the live result itself. Follow its
-remedy and next action when it refuses. When Stable, Canary and a dev build
-run together, a paired-desktop command refuses as ambiguous and lists the
-candidate descriptors; pass the one whose profile matches the `ds` install
-you established, and keep using it for the rest of the session. Do not repeat a non-retryable call
-unchanged, switch identity or project merely to force success, or reconstruct
-the answer through another surface. Return only the bounded evidence the CLI
-actually supplied.
+Interpret the returned JSON by the live result itself; follow its remedy and
+next action when it refuses. When Stable, Canary and a dev build run together,
+a paired-desktop command refuses as ambiguous and lists the candidate
+descriptors: pass the one whose profile matches the `ds` install you
+established and keep it for the session. Never repeat a non-retryable call
+unchanged, switch identity or project to force success, or reconstruct the
+answer through another surface. Return only the bounded evidence the CLI
+supplied.
 
 ## When `ds` cannot
 
