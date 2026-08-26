@@ -137,7 +137,7 @@ pub const REF_ARG: Arg = Arg {
     required: true,
     default: None,
     choices: &[],
-    summary: "The style ref, as `ds style list` reports it (e.g. master/lv_poles_vt).",
+    summary: "The style ref, as `ds style list` reports it (e.g. bare Design GeoJSON master/lv_poles or tiled master/lv_poles_vt).",
 };
 
 /// A hex colour, held to the one representation the Style Center persists.

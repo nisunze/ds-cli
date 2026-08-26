@@ -163,8 +163,8 @@ saving. Read it, then `ds style dimension set` with the same flags.",
 `expressions` (property → match expression), `second`, `onMap` counts per \
 value, `dryRun: true`, `published: false` and the full `document`.",
         examples: &[Example {
-            command: "ds style dimension plan --ref master/lv_poles_vt --field drafting_status --value approved=2.5:#00FF00 --value draft=0 --output json",
-            note: "approved poles get a 2.5px green ring; draft and every other value none.",
+            command: "ds style dimension plan --ref master/lv_poles --field drafting_status --channel halo --value draft=3:#FFFFFF --other 0 --output json",
+            note: "Draft poles in the bare Design GeoJSON layer get a 3px white ring; every other value gets none.",
             runnable: false,
         }],
         refusals: &[
@@ -230,7 +230,7 @@ second dimension on the ref is replaced; the colour dimension is untouched.",
 The plan receipt with `published: true`, ds-brain `warnings`, and the \
 `document` as persisted.",
         examples: &[Example {
-            command: "ds style dimension set --ref master/lv_poles_vt --field drafting_status --value approved=2.5:#00FF00 --value draft=0 --yes",
+            command: "ds style dimension set --ref master/lv_poles --field drafting_status --channel halo --value draft=3:#FFFFFF --other 0 --yes",
             note: "Symbol layers: the ring is baked into the raster icon by ds-brain.",
             runnable: false,
         }],
@@ -286,7 +286,7 @@ defaults apply again, and publishes. The colour dimension is untouched.",
         args: &[REF_ARG, DESCRIPTOR_ARG],
         output: "`ref`, `cleared` (what was removed), `properties`, `published: true`, `warnings`, `document`.",
         examples: &[Example {
-            command: "ds style dimension clear --ref master/lv_poles_vt --yes",
+            command: "ds style dimension clear --ref master/lv_poles --yes",
             note: "Refused with desktop_refused when no second dimension is authored.",
             runnable: false,
         }],

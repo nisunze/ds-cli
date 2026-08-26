@@ -27,7 +27,7 @@ The `ds style list` row plus `document`, `fields`, `fieldValues`, `onMap` \
 (channel, numberProperty, colorProperty, min, max, on, off), `second` and \
 `warnings` from ds-brain's expression validator.",
     examples: &[Example {
-        command: "ds style read --ref master/lv_poles_vt --output json",
+        command: "ds style read --ref master/lv_poles --output json",
         note: "Read .data.channels and .data.onMap.types before `ds style dimension plan`.",
         runnable: false,
     }],

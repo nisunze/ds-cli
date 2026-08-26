@@ -32,17 +32,22 @@ summary and `ds style read` all read the expression shape back.
 ## The shape of a session
 
 ```bash
-ds style list --query lv_poles                      # which refs; design_vt is the tiled one
-ds style read --ref master/lv_poles_vt              # fields, on-map value types, channels
-ds style dimension plan --ref master/lv_poles_vt \
-  --field drafting_status --value approved=2.5:#00FF00 --value draft=0
-ds style dimension set   --ref master/lv_poles_vt \
-  --field drafting_status --value approved=2.5:#00FF00 --value draft=0 --yes
-ds style dimension clear --ref master/lv_poles_vt --yes
+ds style list --query lv_poles                      # choose the ref the visible layer uses
+ds style read --ref master/lv_poles                 # bare ref = Design GeoJSON
+ds style dimension plan --ref master/lv_poles \
+  --field drafting_status --channel halo --value draft=3:#FFFFFF --other 0
+ds style dimension set   --ref master/lv_poles \
+  --field drafting_status --channel halo --value draft=3:#FFFFFF --other 0 --yes
+ds style dimension clear --ref master/lv_poles --yes
 ```
 
 `plan` and `set` are one operation with `apply` false or true — what you
 reviewed is what is published.
+
+`master/lv_poles` and `master/customers` are the bare Design GeoJSON refs.
+Their tiled counterparts end in `_vt` and use target `design_vt`. Pick the ref
+reported for the layer the operator is actually viewing; changing a bare ref
+does not require or justify a retile.
 
 ## What the application enforces for you
 
