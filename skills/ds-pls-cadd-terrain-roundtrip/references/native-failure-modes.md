@@ -102,6 +102,19 @@ is mandatory after any emitted candidate.
 Never edit into a workspace PLS-CADD has open. It caches structure resources
 at project open, so later reports can remain byte-identical after a disk edit.
 
+### Stringing and attachments are coupled native writes
+
+A circuit-section append updates the section count, local-set occupancy,
+detail/display rows, support arrays, and circuit-section links together. Use
+the characterized surgical composer and re-read the support chain and phase
+slots. Preserve opaque display/token evidence from a matching project section;
+do not derive native cache fields from horizontal tension.
+
+Copying a DXF into the folder does not attach it. Merge its record through the
+typed `DXF ATTACHMENTS` block and validate local closure. These bounded writes
+are automatic workspace operations; reserve Windows UI for native calculations
+or explicitly requested acceptance, and never drive it through `ds`.
+
 ### Exact leaves and opaque resources are identity
 
 Structure, cable, criteria and parts filenames—including case, `.012`, `.014`,

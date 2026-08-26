@@ -146,17 +146,22 @@ Prove the folder with the reference-closure command (every reference bound
 inside the folder, none unresolved) and a readback before handing it over;
 reserve a `.bak` for archival or for a machine that cannot see the folder.
 
-A review overlay for the operator — a corridor buffer around each deviation,
-a centreline the operator can attach in PLS-CADD — is not a `ds` capability
-today and is not model state: build it beside the handoff as SHP and DXF in
-the project CRS, hand the operator the attach step, and keep the buffer width
-and source digests in the delivery note.
+A review overlay—a corridor buffer and centreline—is not engineering model
+state. For a bounded near-as-built delivery, keep the DXF/SHP in the project
+CRS, register the DXF through the characterized native attachment block, prove
+local closure, and record buffer width and source digests. If deployed `ds`
+does not expose attachment registration, use established `ds-network` glue
+only under explicit delivery/coding authority; do not turn the gap into a
+manual attachment step.
 
-## 6. Native operator loop
+## 6. Native calculation or operator loop
 
-Restore the candidate into a fresh directory in the declared PLS-CADD version
-and reopen it. Require zero project-moved, missing-file, problem-reading, and
-same-name file/directory errors. The operator then:
+Minimal route, placement, stringing, attachment, section-table, and report work
+is complete after deterministic native readback and closure. When a calculation
+or explicit native acceptance requires PLS-CADD, drive Windows UI directly,
+restore/open the candidate in a fresh directory, and require zero project-moved,
+missing-file, problem-reading, and same-name file/directory errors. The
+operator can then:
 
 1. moves the intended native alignment PIs;
 2. readjusts structure positions and orientation as engineering judgment
