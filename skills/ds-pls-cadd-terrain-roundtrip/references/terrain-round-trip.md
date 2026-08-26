@@ -138,6 +138,14 @@ compare canonical counts, route vertices, terrain content, structure plan
 positions and digests. This is deterministic exchange evidence, not native
 acceptance.
 
+The owner's ruled flow is backup → canonical workspace → deviations and
+interpolated points → a PLS-CADD **workspace folder** the operator edits in
+place. Export with the folder container, not a new `.bak`: the operator opens
+the emitted `.don` directly, and the return trip re-imports the same folder.
+Prove the folder with the reference-closure command (every reference bound
+inside the folder, none unresolved) and a readback before handing it over;
+reserve a `.bak` for archival or for a machine that cannot see the folder.
+
 A review overlay for the operator — a corridor buffer around each deviation,
 a centreline the operator can attach in PLS-CADD — is not a `ds` capability
 today and is not model state: build it beside the handoff as SHP and DXF in
