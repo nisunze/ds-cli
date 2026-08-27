@@ -330,6 +330,7 @@ pub enum Chapter {
     Solar,
     Reports,
     Operations,
+    Workstation,
 }
 
 impl Chapter {
@@ -345,6 +346,7 @@ impl Chapter {
         Self::Solar,
         Self::Reports,
         Self::Operations,
+        Self::Workstation,
     ];
 
     pub const fn token(self) -> &'static str {
@@ -360,6 +362,7 @@ impl Chapter {
             Self::Solar => "solar",
             Self::Reports => "reports",
             Self::Operations => "operations",
+            Self::Workstation => "workstation",
         }
     }
 
@@ -442,7 +445,7 @@ mod tests {
 
     #[test]
     fn chapter_tokens_are_unique_stable_and_round_trip() {
-        assert_eq!(Chapter::ALL.len(), 11);
+        assert_eq!(Chapter::ALL.len(), 12);
         for (index, chapter) in Chapter::ALL.iter().enumerate() {
             let token = chapter.token();
             assert_eq!(Chapter::from_token(token), Some(*chapter));

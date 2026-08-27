@@ -606,6 +606,32 @@ static SHELL_ENTRIES: &[Entry] = &[
     },
 ];
 
+/// Workstation bootstrap is intentionally read/plan/verify only until the
+/// local Windows lifecycle has been proven. Keep these together so the root
+/// index presents one setup door rather than a package-by-package catalogue.
+static WORKSTATION_ENTRIES: &[Entry] = &[
+    Entry {
+        command: &ds_cli_workstation::status::COMMAND,
+        handler: ds_cli_workstation::status::run,
+        render: ds_cli_workstation::status::render,
+    },
+    Entry {
+        command: &ds_cli_workstation::plan::COMMAND,
+        handler: ds_cli_workstation::plan::run,
+        render: ds_cli_workstation::plan::render,
+    },
+    Entry {
+        command: &ds_cli_workstation::verify::COMMAND,
+        handler: ds_cli_workstation::verify::run,
+        render: ds_cli_workstation::verify::render,
+    },
+    Entry {
+        command: &ds_cli_workstation::components::COMMAND,
+        handler: ds_cli_workstation::components::run,
+        render: ds_cli_workstation::components::render,
+    },
+];
+
 static MCP_ENTRIES: &[Entry] = &[
     Entry {
         command: &ds_cli_mcp::serve::COMMAND,
@@ -675,6 +701,10 @@ static DOMAINS: &[Registered] = &[
     Registered {
         domain: &ds_cli_shell::DOMAIN,
         entries: SHELL_ENTRIES,
+    },
+    Registered {
+        domain: &ds_cli_workstation::DOMAIN,
+        entries: WORKSTATION_ENTRIES,
     },
     Registered {
         domain: &ds_cli_mcp::DOMAIN,

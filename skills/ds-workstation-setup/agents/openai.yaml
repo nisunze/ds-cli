@@ -1,0 +1,4 @@
+interface:
+  display_name: "DS Workstation Setup"
+  short_description: "Inspect and plan governed DS prerequisites"
+  default_prompt: "Use $ds-workstation-setup to inspect this workstation, explain missing DS prerequisites, and produce a safe no-side-effect setup plan."

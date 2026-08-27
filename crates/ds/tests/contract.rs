@@ -82,6 +82,7 @@ const CHAPTERS: &[&str] = &[
     "solar",
     "reports",
     "operations",
+    "workstation",
 ];
 
 #[test]

@@ -105,7 +105,9 @@ fn root_help_is_cheap() {
     // which makes immutable seeding discoverable without listing commands.
     // 2026-08-27: raised from 1_920 for the `mcp` domain — one more line in
     // the domain table, no new prose. The next domain must earn its own line.
-    assert_within("root help", &["--help"], 2_000);
+    // Skill Zero adds one real top-level concern. Its single summary costs 48
+    // bytes while command growth remains isolated below this tier.
+    assert_within("root help", &["--help"], 2_050);
 }
 
 #[test]

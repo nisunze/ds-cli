@@ -59,7 +59,7 @@ calls answered, and why the loop ended.",
     examples: &[
         Example {
             command: "ds mcp serve --exposure chapters",
-            note: "Default broad server: eleven stable chapter tools.",
+            note: "Default broad server: twelve stable chapter tools.",
             runnable: false,
         },
         Example {
@@ -275,7 +275,7 @@ mod tests {
             &mut calls,
         )
         .expect("response");
-        assert_eq!(list["result"]["tools"].as_array().unwrap().len(), 11);
+        assert_eq!(list["result"]["tools"].as_array().unwrap().len(), 12);
         assert_eq!(list["result"]["tools"][0]["name"], "ds_catalog");
         assert_eq!(
             list["result"]["tools"][0]["annotations"]["readOnlyHint"],

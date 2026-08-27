@@ -23,6 +23,7 @@ ds-cli-library = { workspace = true }
 ds-cli-pls = { workspace = true }
 ds-cli-report = { workspace = true }
 ds-cli-shell = { workspace = true }
+ds-cli-workstation = { workspace = true }
 ds-cli-mcp = { workspace = true }
 ds-cli-solar = { workspace = true }
 ds-cli-work = { workspace = true }

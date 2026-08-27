@@ -101,6 +101,35 @@ fn temp_root(label: &str) -> PathBuf {
 }
 
 // ---------------------------------------------------------------------------
+// workstation
+// ---------------------------------------------------------------------------
+
+#[test]
+fn workstation_windows_libreoffice_plan_is_explicitly_mutation_free() {
+    let data = ok(&[
+        "workstation",
+        "plan",
+        "--component",
+        "libreoffice",
+        "--platform",
+        "windows",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(data["mutated"], false);
+    assert_eq!(data["authorized"], false);
+    assert_eq!(data["implementation"], "deferred_pending_lifecycle_proof");
+    assert_eq!(data["constraints"]["libreoffice_details_provisional"], true);
+    assert!(
+        data["steps"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|step| step.as_str().unwrap_or("").contains("SHA-256"))
+    );
+}
+
+// ---------------------------------------------------------------------------
 // dsgrid
 // ---------------------------------------------------------------------------
 

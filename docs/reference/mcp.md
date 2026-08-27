@@ -90,6 +90,6 @@ bundle SHA reported by `ds doctor`.
 ## Verifying
 
 `ds doctor` reports the executable and skills. In the broad server, confirm
-`tools/list` returns 11 tools, use `ds_catalog` to route `shell.status`, then
+`tools/list` returns 12 tools, use `ds_catalog` to route `shell.status`, then
 describe and invoke it through `ds_operations`. A paired-desktop command can
 then prove pairing. In a typed profile, call an advertised read-only leaf.

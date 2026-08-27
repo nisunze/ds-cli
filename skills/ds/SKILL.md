@@ -90,5 +90,6 @@ bypass `ds`.
 - `ds-boq-staking-table` — LV/MV staking tables against a BOQ.
 - `ds-boq-combined-report` — the combined workbook against a project BOQ.
 - `ds-mcp-host` — compact chapters and typed MCP profiles.
+- `ds-workstation-setup` — prerequisites, component provenance, and safe setup planning.
 
 Those skills assume this one. Do not load them for ordinary discovery.

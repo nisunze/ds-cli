@@ -12,7 +12,7 @@ no identity, project state, command schema, or authority.
 ## Choose one installation shape
 
 For a general agent, install the broad default. It advertises `ds_catalog` and
-ten operator-intent chapter routers (11 tools total), even as commands grow:
+eleven operator-intent chapter routers (12 tools total), even as commands grow:
 
 ```text
 ds mcp install --host vscode --output json
