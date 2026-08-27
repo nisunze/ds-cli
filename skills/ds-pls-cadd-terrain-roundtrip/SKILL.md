@@ -1,6 +1,6 @@
 ---
 name: ds-pls-cadd-terrain-roundtrip
-description: Round-trip PLS-CADD construction deviations through DS Grid — route PIs, near-as-built structures/stringing, terrain evidence and review attachments. Not LV design or structure repair.
+description: Handle PLS-CADD deviation terrain waterfalls, operator-owned PI/alignment moves, corridor attachments and near-as-built phase/OPGW stringing through ds. Not LV design or structure repair.
 ---
 
 # Revise PLS-CADD route and terrain without losing native identity
@@ -14,6 +14,11 @@ Read [references/terrain-round-trip.md](references/terrain-round-trip.md) for
 the staged import/revision/export/operator-return workflow. When a PLS import,
 export, restore, terrain interpolation, or report behaves unexpectedly, also
 read [references/native-failure-modes.md](references/native-failure-modes.md).
+
+Resolve model resources through the exact seeded library id, immutable version,
+digest and invariant PLS leaf. PLS-CADD assets may be ingested into DS Grid;
+DS Grid asset bytes must never be generated or copied back into PLS-CADD. Use
+`ds-library-seeding` when the request is to seed or verify the library itself.
 
 ## Keep three identities separate
 
@@ -33,6 +38,13 @@ only the meaning the evidence establishes. To make points manually movable as
 PLS-CADD angle points, the canonical route must contain those vertices; merely
 labelling terrain points `PI` is insufficient.
 
+When the operator reserves alignment adjustment, reject every existing-route
+move/replace/restation action. Preserve existing structure placements, attach
+the requested review corridors, and add only separately authorized new
+alignments and their named structures/stringing. Code intersections as `PI`,
+blank ordinary `Gp` codes/comments, and preserve other survey labels when that
+project convention is stated.
+
 ## Automate bounded near-as-built changes
 
 When a construction change is minimal and almost as built, author route PIs,
@@ -49,6 +61,9 @@ and leave CLI exposure for its own coding session.
 Use Windows UI only when a calculation/check needs the native PLS-CADD solver
 or the user explicitly requests native acceptance. Drive that UI directly with
 the Windows controller, never through `ds`.
+
+A launch-only request runs the established PowerShell launcher once after CLI
+gates; it performs no UI editing.
 
 ## Non-negotiable gates
 

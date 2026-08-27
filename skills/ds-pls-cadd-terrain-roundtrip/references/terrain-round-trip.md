@@ -69,6 +69,12 @@ descriptor names row and enum types without their fields; when a dry run
 refuses the envelope, read its detail and rebuild rather than guessing twice —
 and report the missing shape through `ds feedback`.
 
+If alignment adjustment belongs to the operator, use an empty existing-route
+action plan, prove the original alignment/structure prefix unchanged, and
+register centreline/corridor attachments for manual PLS-CADD adjustment. A
+separately authorized new branch does not grant permission to restation the old
+network.
+
 ## 4. Add terrain and elevation evidence
 
 There are three distinct operations:
@@ -98,9 +104,11 @@ digitised line are generated, not walked. Compare the feed against the
 project's own surveyed terrain at every coincident point (or a bounded-edge TIN
 over the existing corridor) before authoring: on one MV deviation set the feed
 sat a median +12.4 m above the project ground with a p10–p90 spread of
-+8.3 to +17.8 m. Author such rows under a `dem_raw` source with an `unknown`
-vertical datum, keep their heights exact, say so in each description, and put
-the datum ruling to the operator; never shift them by the median.
++8.3 to +17.8 m. Retain the raw batch and statistics. When the operator approves
+project-datum reconciliation, create a new batch using
+`-median(incoming - surveyed TIN)`, taper each real junction residual over a
+bounded seam, and verify every tie-in at zero. Never apply the median alone;
+free ends remain unseamed.
 
 The engine's own derived observations (`insert_terrain_point_at_station`)
 carry no source id; rows you derive from a DEM feed (gap fills between its
@@ -108,7 +116,8 @@ own samples) belong to that feed's source, not to a surveyed one.
 
 Provenance does not survive the native round trip: a re-imported backup shows
 one `pls_cadd_import` terrain source however many you authored. Descriptions
-do survive, so the provenance word has to be in the description too.
+normally carry provenance. When clean native survey comments are required,
+leave them blank and keep source/datum evidence in the external receipt.
 
 For points intended to guide manual PLS-CADD PI movement:
 
@@ -119,6 +128,9 @@ For points intended to guide manual PLS-CADD PI movement:
   `PI`;
 - do not derive PLS line angle from a report column that is zero away from
   structure-coincident PIs.
+
+When stated by the operator, code intersection/angle observations as `PI`,
+blank ordinary `Gp` code/comment, and preserve all other survey labels.
 
 ## 5. Export the DS revision back to PLS-CADD
 
@@ -154,6 +166,8 @@ does not expose attachment registration, use established `ds-network` glue
 only under explicit delivery/coding authority; do not turn the gap into a
 manual attachment step.
 
+A "6 m buffer / 12 m corridor" means 6 m on each side; report both widths.
+
 ## 6. Native calculation or operator loop
 
 Minimal route, placement, stringing, attachment, section-table, and report work
@@ -171,6 +185,11 @@ operator can then:
 
 Do not edit underneath the running PLS-CADD instance; it caches resources and
 can report against stale bytes.
+
+CLI/native patcher owns terrain correction, inserts, phase/OPGW stringing,
+attachments, closure and receipts. PLS-CADD owns operator PI movement and
+native solver judgment. Launch-only means one PowerShell launch after CLI
+verification, not UI authoring.
 
 ## 7. Re-import, analyze and deliver
 
