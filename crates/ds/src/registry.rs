@@ -580,11 +580,25 @@ static DESKTOP_ENTRIES: &[Entry] = &[
     },
 ];
 
-static FEEDBACK_ENTRIES: &[Entry] = &[Entry {
-    command: &ds_cli_feedback::submit::COMMAND,
-    handler: ds_cli_feedback::submit::run,
-    render: ds_cli_feedback::submit::render,
-}];
+/// Feedback is a loop: report a gap, find it again once a session has fixed
+/// it, and close it with what changed. The order is the loop.
+static FEEDBACK_ENTRIES: &[Entry] = &[
+    Entry {
+        command: &ds_cli_feedback::submit::COMMAND,
+        handler: ds_cli_feedback::submit::run,
+        render: ds_cli_feedback::submit::render,
+    },
+    Entry {
+        command: &ds_cli_feedback::list::COMMAND,
+        handler: ds_cli_feedback::list::run,
+        render: ds_cli_feedback::list::render,
+    },
+    Entry {
+        command: &ds_cli_feedback::close::COMMAND,
+        handler: ds_cli_feedback::close::run,
+        render: ds_cli_feedback::close::render,
+    },
+];
 
 /// The shell domain lists its commands in the order a person needs them:
 /// look, register, and — rarely — undo.

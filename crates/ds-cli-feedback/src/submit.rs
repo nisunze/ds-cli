@@ -9,6 +9,8 @@ use ds_cli_contract::spec::{
 };
 use ds_cli_contract::{Context, Inputs};
 use ds_cli_desktop::ops;
+
+use crate::{INVALID_TEXT, NOT_SIGNED_IN, bounded_text};
 use serde_json::{Map, Value, json};
 
 const TIMEOUT: Duration = Duration::from_secs(30);
@@ -22,11 +24,6 @@ const MAX_CONTEXT: usize = 24;
 const MAX_CONTEXT_KEY_CHARS: usize = 500;
 const MAX_CONTEXT_VALUE_CHARS: usize = 1_000;
 
-const INVALID_TEXT: Refusal = Refusal {
-    code: "invalid_text",
-    when: "a required report field is empty, untrimmed, or exceeds its bound",
-    remedy: "send a concise title, detail, component and agent name without secrets or customer data",
-};
 const INVALID_EVIDENCE: Refusal = Refusal {
     code: "invalid_evidence",
     when: "evidence has too many entries or an entry exceeds its bound",
@@ -36,11 +33,6 @@ const INVALID_CONTEXT: Refusal = Refusal {
     code: "invalid_context",
     when: "context is not a unique bounded key=value pair",
     remedy: "repeat --context with at most 24 unique, non-secret key=value pairs",
-};
-const NOT_SIGNED_IN: Refusal = Refusal {
-    code: "desktop_signed_out",
-    when: "DS GridDesign is running but has no signed-in user",
-    remedy: "sign in to DS GridDesign, then submit the report again",
 };
 
 pub static COMMAND: Command = Command {
@@ -187,18 +179,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         Value::Object(arguments),
         TIMEOUT,
     )
-    .map_err(ops::classify_signed_out)
-}
-
-fn bounded_text<'a>(value: &'a str, flag: &str, max: usize) -> Result<&'a str, Failure> {
-    if value.is_empty() || value.trim() != value || value.chars().count() > max {
-        return Err(Failure::invalid(
-            "invalid_text",
-            format!("`--{flag}` must be non-empty, trimmed, and at most {max} characters"),
-        )
-        .remedy(INVALID_TEXT.remedy));
-    }
-    Ok(value)
+    .map_err(crate::classify_feedback_failure)
 }
 
 fn optional_text<'a>(

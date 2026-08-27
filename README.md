@@ -22,7 +22,7 @@ DOMAINS
   sre              Platform reliability: fleet health and bounded request events.
   style            Map styling: style documents and a second halo/opacity/size dimension.
   tile             Vector tiles: status, plan, generate, and the catalogue.
-  feedback         Product feedback: report a CLI gap to the shared backlog.
+  feedback         Product feedback: report a gap, and close it once it is fixed.
   desktop          The paired DS GridDesign session: pairing, sign-in, project.
   shell            Reach `ds` from any shell: status, register, unregister.
 
@@ -147,7 +147,9 @@ They install owned copies into `${CODEX_HOME:-~/.codex}/skills`,
 `~/.claude/skills`, and `~/.copilot/skills`, refuse same-name skills they do
 not own, and require the literal `uninstall` action for removal. Verified
 product gaps go through `ds feedback submit` to the same shared, deduplicated
-backlog as the app's `fb` shortcut. There is no Markdown gap ledger.
+backlog as the app's `fb` shortcut, and a session that fixes one closes it
+there with `ds feedback list` and `ds feedback close`. There is no Markdown gap
+ledger.
 
 ## Reaching `ds` from your shells
 
@@ -232,8 +234,9 @@ crates/
   ds-cli-work       governed Project Work through the paired application.
   ds-cli-sre        platform-global Reliability reads through the signed-in
                     paired application; no active project or credential in ds.
-  ds-cli-feedback   agent observations through the app's existing feedback
-                    client and signed-in session.
+  ds-cli-feedback   agent observations, the shared backlog, and its governed
+                    triage close, through the app's existing feedback client
+                    and signed-in session.
   ds                the binary: registers domains, dispatches, renders.
 ```
 

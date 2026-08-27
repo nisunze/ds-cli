@@ -91,5 +91,6 @@ bypass `ds`.
 - `ds-boq-combined-report` — the combined workbook against a project BOQ.
 - `ds-mcp-host` — compact chapters and typed MCP profiles.
 - `ds-workstation-setup` — prerequisites, component provenance, and safe setup planning.
+- `ds-feedback-close` — close backlog reports this session has fixed.
 
 Those skills assume this one. Do not load them for ordinary discovery.
