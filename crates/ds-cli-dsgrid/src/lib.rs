@@ -19,7 +19,9 @@
 pub mod apply;
 pub mod describe;
 pub mod inspect;
+pub mod output;
 pub mod package;
+pub mod project;
 pub mod validate;
 
 use ds_cli_contract::spec::Domain;
@@ -31,6 +33,7 @@ pub static DOMAIN: Domain = Domain {
         &inspect::COMMAND,
         &validate::COMMAND,
         &describe::COMMAND,
+        &project::COMMAND,
         &apply::COMMAND,
     ],
 };

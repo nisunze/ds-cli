@@ -50,6 +50,11 @@ static DSGRID_ENTRIES: &[Entry] = &[
         render: ds_cli_dsgrid::describe::render,
     },
     Entry {
+        command: &ds_cli_dsgrid::project::COMMAND,
+        handler: ds_cli_dsgrid::project::run,
+        render: ds_cli_dsgrid::project::render,
+    },
+    Entry {
         command: &ds_cli_dsgrid::apply::COMMAND,
         handler: ds_cli_dsgrid::apply::run,
         render: ds_cli_dsgrid::apply::render,

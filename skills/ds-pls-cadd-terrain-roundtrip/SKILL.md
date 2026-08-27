@@ -94,6 +94,35 @@ unchanged alignment/structure prefixes, exact terrain counts/deltas, complete
 attachment closure, and phase/OPGW support-chain readback. These are
 deterministic evidence; they are not native solver or engineering approval.
 
+## Clearance evidence for the affected spans
+
+DS Grid is the clearance authority. Import the workspace, then project the
+alignment you changed; the engine returns the solved conductor curve and its
+clearance evidence for every tension section on it.
+
+```bash
+ds dsgrid-exchange convert --source "$LABELLED" --target dsgrid \
+  --crs "$HORIZONTAL_CRS" --out "$PWD/model" --output json
+
+MODEL="$PWD/model/PLS-CADD WORKSPACE.dsgrid"
+ds dsgrid validate --model "$MODEL" --output json
+ds dsgrid project --model "$MODEL" --id project_table \
+  --param table_kind=alignments --limit 5000 --output json
+
+ds dsgrid project --model "$MODEL" --id project_profile \
+  --param alignment_id=<alignment-id> \
+  --out "$PWD/profile-<alignment-id>.json" --output json
+```
+
+Read each `element: "tension_section"` row's `curve`: `basis` names the sag
+mode, criterion set, catenary constant, tensions and ruling span; `spans`
+carries per-span sag, low point and its `clearance`; the section-level
+`clearance` aggregates them. A `curve_unavailable` code is a real answer —
+report it as an engineering blocker rather than approximating a chord.
+
+`source.authored_revision` in the same receipt is the `rev:` an `apply`
+envelope must pin. Do not obtain it by provoking a `revision_conflict`.
+
 ## Typed refusals
 
 - `workspace_open`: close PLS-CADD; never edit underneath it.
