@@ -2,7 +2,7 @@
 //! else. Same operation with `apply: false`.
 
 use ds_cli_contract::outcome::Failure;
-use ds_cli_contract::spec::{Authority, Command, Effect, Example, Execution};
+use ds_cli_contract::spec::{Authority, Chapter, Command, Effect, Example, Execution};
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
 
@@ -18,6 +18,7 @@ Applies the Pipeline panel's own rule — never built, sources changed \
 (dirty), or --force → a run; current and clean → no run — and, when a run \
 would start, performs the preflight so the decision is complete. Nothing is \
 dispatched. `ds tile generate --yes` does exactly what this reports.",
+    chapter: Chapter::VectorTiles,
     effect: Effect::ReadOnly,
     authority: Authority::Project,
     execution: Execution::Sync,

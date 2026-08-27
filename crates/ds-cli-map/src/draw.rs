@@ -13,7 +13,9 @@
 //! fixing a file and reading an error inside an error.
 
 use ds_cli_contract::outcome::Failure;
-use ds_cli_contract::spec::{Arg, Authority, Command, Effect, Example, Execution, Refusal};
+use ds_cli_contract::spec::{
+    Arg, Authority, Chapter, Command, Effect, Example, Execution, Refusal,
+};
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
 
@@ -34,6 +36,7 @@ the same kind a person draws by hand. Takes a FeatureCollection, a bare array \
 of features, or a single feature. The layer is session-only: it is never \
 written to the project, and `persisted` says so on every call. Pass --zoom to \
 move the map to what was just drawn.",
+    chapter: Chapter::Survey,
     effect: Effect::LocalUi,
     authority: Authority::DesktopPairing,
     execution: Execution::Sync,

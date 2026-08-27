@@ -14,7 +14,7 @@ use std::path::{Path, PathBuf};
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
-    Arg, Authority, Availability, Command, Effect, Example, Execution, Refusal,
+    Arg, Authority, Availability, Chapter, Command, Effect, Example, Execution, Refusal,
 };
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
@@ -50,6 +50,7 @@ city batch document and any charts into an output directory. It performs no \
 intake, portfolio aggregation or network call of any kind. This is the \
 headless city-artifact route; for the paired desktop product lifecycle use \
 `ds solar run start` after `ds solar prepare`.",
+    chapter: Chapter::Solar,
     effect: Effect::LocalFileWrite,
     authority: Authority::None,
     execution: Execution::Sync,

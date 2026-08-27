@@ -1,6 +1,9 @@
 ---
 name: ds-map-local-data
 description: Add and remove session-only GeoJSON map layers through `ds`, and focus or restore the viewport. Not survey or design editing.
+metadata:
+  ds-chapters: survey
+  ds-mcp-profile: survey
 ---
 
 # Manage local map data

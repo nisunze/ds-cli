@@ -1,7 +1,7 @@
 //! `ds tile preflight` — what a run would read, before it reads it.
 
 use ds_cli_contract::outcome::Failure;
-use ds_cli_contract::spec::{Authority, Command, Effect, Example, Execution};
+use ds_cli_contract::spec::{Authority, Chapter, Command, Effect, Example, Execution};
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
 
@@ -18,6 +18,7 @@ layer with its row and geometry counts, the empty ones, invalid tables, and \
 any blocker — without starting anything. `ready` means a run would proceed; \
 `empty` means the sources hold nothing and a run would retire the output; \
 `blocked` names what must be fixed first.",
+    chapter: Chapter::VectorTiles,
     effect: Effect::ReadOnly,
     authority: Authority::Project,
     execution: Execution::Sync,

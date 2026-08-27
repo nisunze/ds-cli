@@ -1,6 +1,6 @@
 use crate::{engine_failure, read, write_new};
 use ds_cli_contract::spec::{
-    Arg, Authority, Availability, Command, Effect, Example, Execution, Refusal,
+    Arg, Authority, Availability, Chapter, Command, Effect, Example, Execution, Refusal,
 };
 use ds_cli_contract::{Context, Failure, Inputs};
 use ds_grid_exchange::{
@@ -16,6 +16,7 @@ pub static COMMAND: Command = Command {
     contract: 1,
     summary: "Pack one verified .dsgrid snapshot into an immutable library release.",
     purpose: "Uses the linked authoritative package/library codecs. The source must be an embedded-only .dsgrid; this command does not resolve or flatten another pinned library and never emits PLS-CADD assets.",
+    chapter: Chapter::PlsCadd,
     effect: Effect::LocalFileWrite,
     authority: Authority::None,
     execution: Execution::Sync,

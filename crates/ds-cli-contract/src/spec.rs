@@ -312,7 +312,71 @@ pub struct Refusal {
     pub remedy: &'static str,
 }
 
-/// One command's complete contract.
+/// The one operator concern a command serves.
+///
+/// This is a discovery classification, not authority. It is declared beside
+/// the canonical command contract so a new command cannot omit it or belong to
+/// multiple chapters.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum Chapter {
+    Catalog,
+    Project,
+    GridModel,
+    PlsCadd,
+    Survey,
+    Design,
+    MapPresentation,
+    VectorTiles,
+    Solar,
+    Reports,
+    Operations,
+}
+
+impl Chapter {
+    pub const ALL: &[Self] = &[
+        Self::Catalog,
+        Self::Project,
+        Self::GridModel,
+        Self::PlsCadd,
+        Self::Survey,
+        Self::Design,
+        Self::MapPresentation,
+        Self::VectorTiles,
+        Self::Solar,
+        Self::Reports,
+        Self::Operations,
+    ];
+
+    pub const fn token(self) -> &'static str {
+        match self {
+            Self::Catalog => "catalog",
+            Self::Project => "project",
+            Self::GridModel => "grid-model",
+            Self::PlsCadd => "pls-cadd",
+            Self::Survey => "survey",
+            Self::Design => "design",
+            Self::MapPresentation => "map-presentation",
+            Self::VectorTiles => "vector-tiles",
+            Self::Solar => "solar",
+            Self::Reports => "reports",
+            Self::Operations => "operations",
+        }
+    }
+
+    pub fn from_token(token: &str) -> Option<Self> {
+        Self::ALL
+            .iter()
+            .copied()
+            .find(|chapter| chapter.token() == token)
+    }
+}
+
+impl fmt::Display for Chapter {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.token())
+    }
+}
+
 pub struct Command {
     /// Stable dotted id: `dsgrid.inspect`. Used by `ds capabilities <id>`,
     /// by audit records, and as the envelope's `command` field. It never
@@ -323,6 +387,9 @@ pub struct Command {
     /// This command's own input/output contract version, independent of the
     /// envelope version and of the binary's release version.
     pub contract: u32,
+    /// Stable operator-intent classification used to compress MCP discovery.
+    /// Every command declares exactly one chapter; profiles only filter it.
+    pub chapter: Chapter,
     /// One line. Appears in domain help and in search results. Keep under 70
     /// characters — every domain index pays for it.
     pub summary: &'static str,
@@ -366,5 +433,41 @@ impl Domain {
             .iter()
             .copied()
             .find(|command| command.path.last() == Some(&name))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Chapter;
+
+    #[test]
+    fn chapter_tokens_are_unique_stable_and_round_trip() {
+        assert_eq!(Chapter::ALL.len(), 11);
+        for (index, chapter) in Chapter::ALL.iter().enumerate() {
+            let token = chapter.token();
+            assert_eq!(Chapter::from_token(token), Some(*chapter));
+            assert_eq!(chapter.to_string(), token);
+            assert!(
+                !token.is_empty()
+                    && token
+                        .chars()
+                        .all(|value| value.is_ascii_lowercase() || value == '-')
+                    && !token.starts_with('-')
+                    && !token.ends_with('-')
+            );
+            assert!(
+                Chapter::ALL[..index]
+                    .iter()
+                    .all(|previous| previous.token() != token),
+                "duplicate chapter token `{token}`"
+            );
+        }
+    }
+
+    #[test]
+    fn unknown_chapter_tokens_are_not_guessed() {
+        assert_eq!(Chapter::from_token("grid_model"), None);
+        assert_eq!(Chapter::from_token("Catalog"), None);
+        assert_eq!(Chapter::from_token(""), None);
     }
 }

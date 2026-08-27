@@ -10,50 +10,91 @@
 use std::io::{self, BufRead, Write};
 
 use ds_cli_contract::outcome::Failure;
-use ds_cli_contract::spec::{Authority, Command, Effect, Example, Execution};
+use ds_cli_contract::spec::{Arg, ArgKind, Authority, Command, Effect, Example, Execution};
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
 
-use crate::tools::{self, Tool};
+use crate::surface::{Exposure, Profile, Surface};
+use crate::tools;
 
 pub const PROTOCOL_VERSION: &str = "2025-06-18";
 
 pub static COMMAND: Command = Command {
     id: "mcp.serve",
     path: &["mcp", "serve"],
-    contract: 1,
-    summary: "Serve every `ds` command to an MCP host over stdio.",
+    contract: 2,
+    chapter: ds_cli_contract::spec::Chapter::Catalog,
+    summary: "Serve chapter or typed `ds` tools to an MCP host.",
     purpose: "\
-Runs a Model Context Protocol server on stdio for the host that launched it \
-(VS Code, Copilot, Claude, Cursor, Codex). The tool list is built at startup \
-from this executable's own `ds capabilities`, one descriptor per command, so \
-it cannot differ from the CLI. Each tool call runs `ds … --output json` and \
-returns the envelope verbatim; a refusal stays a refusal. Effectful tools \
-take `confirm: true`, which maps onto `--yes`. No credential, listener or \
-cache is added; pairing stays the only authority. Exits when stdin closes.",
+Serves generated chapter routers or typed command tools over MCP stdio. Every \
+view comes from this executable's live descriptors and dispatches the same \
+`ds … --output json` command. It adds no credential, listener, cache, project \
+state, or authority.",
     effect: Effect::ReadOnly,
     authority: Authority::None,
     execution: Execution::Sync,
-    args: &[],
+    args: &[
+        Arg {
+            name: "exposure",
+            kind: ArgKind::Value,
+            value: "<chapters|commands>",
+            required: false,
+            default: Some("chapters"),
+            choices: crate::surface::EXPOSURES,
+            summary: "Publish compact chapter routers or typed command tools.",
+        },
+        Arg {
+            name: "profile",
+            kind: ArgKind::Value,
+            value: "<name>",
+            required: false,
+            default: None,
+            choices: crate::surface::PROFILE_IDS,
+            summary: "Filter typed tools to one operator workflow.",
+        },
+    ],
     output: "\
 Nothing on stdout but MCP responses. On exit, a JSON summary: tools served, \
 calls answered, and why the loop ended.",
-    examples: &[Example {
-        command: "ds mcp serve",
-        note: "Only ever launched by an MCP host as a stdio server; see `ds mcp install` for the host entry.",
-        runnable: false,
-    }],
-    refusals: &[crate::CAPABILITIES_UNAVAILABLE, crate::STDIO_UNAVAILABLE],
+    examples: &[
+        Example {
+            command: "ds mcp serve --exposure chapters",
+            note: "Default broad server: eleven stable chapter tools.",
+            runnable: false,
+        },
+        Example {
+            command: "ds mcp serve --exposure commands --profile pls",
+            note: "Typed PLS-CADD and native-library profile plus bounded catalogue.",
+            runnable: false,
+        },
+    ],
+    refusals: &[
+        crate::CAPABILITIES_UNAVAILABLE,
+        crate::STDIO_UNAVAILABLE,
+        crate::PROFILE_EXPOSURE_INVALID,
+        crate::PROFILE_TOO_BROAD,
+    ],
     reference: Some("docs/reference/mcp.md"),
     availability: crate::always,
 };
 
-pub fn run(_inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
+pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let executable = tools::cli_executable()?;
-    let tools = tools::discover_tools(&executable)?;
+    let build = tools::build_identity(&executable)?;
+    let exposure = Exposure::from_token(inputs.value("exposure").unwrap_or("chapters"))
+        .expect("the command parser enforces exposure choices");
+    let profile = inputs.value("profile").map(|value| {
+        Profile::from_token(value).expect("the command parser enforces profile choices")
+    });
+    let surface = Surface::new(exposure, profile, tools::discover_tools(&executable)?)?;
     eprintln!(
-        "ds mcp: serving {} tools from {}",
-        tools.len(),
+        "ds mcp: serving {} {} tools{} from {}",
+        surface.published_count(),
+        surface.exposure().token(),
+        surface
+            .profile()
+            .map(|profile| format!(" for profile {}", profile.token()))
+            .unwrap_or_default(),
         executable.display()
     );
     let stdin = io::stdin();
@@ -82,7 +123,7 @@ pub fn run(_inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
                 continue;
             }
         };
-        let Some(response) = handle(&request, &executable, &tools, &mut calls) else {
+        let Some(response) = handle(&request, &executable, &surface, &build, &mut calls) else {
             continue; // a notification
         };
         write_line(&stdout, &response)?;
@@ -94,7 +135,13 @@ pub fn run(_inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     // stdout belongs to the protocol until the process ends: no envelope, no
     // human summary may follow the last response. Log the summary where the
     // host's own log goes and leave.
-    let summary = json!({ "tools": tools.len(), "calls": calls, "ended": reason });
+    let summary = json!({
+        "tools": surface.published_count(),
+        "exposure": surface.exposure().token(),
+        "profile": surface.profile().map(Profile::token),
+        "calls": calls,
+        "ended": reason,
+    });
     eprintln!("ds mcp: {}", render(&summary).trim_end());
     std::process::exit(0);
 }
@@ -130,7 +177,8 @@ fn write_line(stdout: &io::Stdout, value: &Value) -> Result<(), Failure> {
 pub fn handle(
     request: &Value,
     executable: &std::path::PathBuf,
-    tools: &[Tool],
+    surface: &Surface,
+    build: &Value,
     calls: &mut usize,
 ) -> Option<Value> {
     let id = request.get("id").cloned();
@@ -141,14 +189,20 @@ pub fn handle(
         "initialize" => Ok(json!({
             "protocolVersion": negotiated_version(&params),
             "capabilities": { "tools": { "listChanged": false } },
-            "serverInfo": { "name": "ds", "title": "DS command line", "version": env!("CARGO_PKG_VERSION") },
-            "instructions": "Every tool is one `ds` command; read its description for effect, authority and refusals. Effectful tools need `confirm: true`, which maps to `--yes`. Results are the CLI's JSON envelope: branch on `status`, and follow `error.remedy` when it refuses.",
+            "serverInfo": {
+                "name": "ds",
+                "title": "DS command line",
+                "version": env!("CARGO_PKG_VERSION"),
+                "sourceSha": build["source_sha"],
+                "dirty": build["dirty"],
+            },
+            "instructions": surface.instructions(),
         })),
         "ping" => Ok(json!({})),
-        "tools/list" => Ok(json!({ "tools": tools.iter().map(tool_json).collect::<Vec<_>>() })),
+        "tools/list" => Ok(json!({ "tools": surface.tool_list() })),
         "tools/call" => {
             *calls += 1;
-            call(&params, executable, tools)
+            call(&params, executable, surface)
         }
         "shutdown" => Ok(Value::Null),
         _ if is_notification => return None,
@@ -176,83 +230,53 @@ fn error_response(id: Value, code: i64, message: &str) -> Value {
     json!({ "jsonrpc": "2.0", "id": id, "error": { "code": code, "message": message } })
 }
 
-pub fn tool_json(tool: &Tool) -> Value {
-    json!({
-        "name": tool.name,
-        "title": tool.id,
-        "description": tool.description,
-        "inputSchema": tool.input_schema,
-        "annotations": {
-            "title": tool.id,
-            "readOnlyHint": !tool.confirmation_required,
-            "openWorldHint": false,
-        },
-    })
-}
-
 fn call(
     params: &Value,
     executable: &std::path::PathBuf,
-    tools: &[Tool],
+    surface: &Surface,
 ) -> Result<Value, (i64, String)> {
     let name = params.get("name").and_then(Value::as_str).unwrap_or("");
-    let Some(tool) = tools.iter().find(|tool| tool.name == name) else {
-        return Err((-32602, format!("unknown tool: {name}")));
-    };
     let arguments = params.get("arguments").cloned().unwrap_or(Value::Null);
-    let argv = tools::argv_for_call(tool, &arguments).map_err(|message| (-32602, message))?;
-    let (code, stdout, stderr) =
-        tools::run_cli(executable, &argv).map_err(|message| (-32000, message))?;
-    let envelope: Option<Value> = serde_json::from_str(stdout.trim()).ok();
-    let is_error = code != 0
-        || envelope
-            .as_ref()
-            .and_then(|e| e.get("status"))
-            .and_then(Value::as_str)
-            != Some("ok");
-    let text = if stdout.trim().is_empty() {
-        stderr.trim().to_string()
-    } else {
-        stdout.trim().to_string()
-    };
-    let mut result = json!({
-        "content": [{ "type": "text", "text": text }],
-        "isError": is_error,
-    });
-    if let Some(envelope) = envelope {
-        result["structuredContent"] = envelope;
-    }
-    Ok(result)
+    surface.call(name, &arguments, executable)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn tool() -> Tool {
+    fn surface(exposure: Exposure) -> Surface {
+        let tool =
         tools::tool_from_descriptor(&json!({
             "id": "shell.status", "path": ["shell", "status"], "summary": "Where ds resolves from.",
             "purpose": "Reports which executable ds resolves to on this PATH.", "output": "paths",
-            "effect": "discovery", "authority": "none", "confirmation_required": false, "inputs": [], "refusals": []
+            "chapter": "operations", "effect": "discovery", "authority": "none", "confirmation_required": false, "inputs": [], "refusals": []
         }))
-        .expect("tool")
+        .expect("tool");
+        Surface::new(exposure, None, vec![tool]).expect("surface")
+    }
+
+    fn build() -> Value {
+        json!({ "source_sha": "0123456789012345678901234567890123456789", "dirty": false })
     }
 
     #[test]
     fn initialize_lists_tools_and_negotiates_a_known_version() {
         let mut calls = 0;
         let exe = std::path::PathBuf::from("ds");
-        let init = handle(&json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26"}}), &exe, &[tool()], &mut calls).expect("response");
+        let surface = surface(Exposure::Chapters);
+        let init = handle(&json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26"}}), &exe, &surface, &build(), &mut calls).expect("response");
         assert_eq!(init["result"]["protocolVersion"], "2025-03-26");
         assert_eq!(init["result"]["serverInfo"]["name"], "ds");
         let list = handle(
             &json!({"jsonrpc":"2.0","id":2,"method":"tools/list"}),
             &exe,
-            &[tool()],
+            &surface,
+            &build(),
             &mut calls,
         )
         .expect("response");
-        assert_eq!(list["result"]["tools"][0]["name"], "shell_status");
+        assert_eq!(list["result"]["tools"].as_array().unwrap().len(), 11);
+        assert_eq!(list["result"]["tools"][0]["name"], "ds_catalog");
         assert_eq!(
             list["result"]["tools"][0]["annotations"]["readOnlyHint"],
             true
@@ -264,11 +288,13 @@ mod tests {
     fn notifications_get_no_response_and_unknown_methods_are_named() {
         let mut calls = 0;
         let exe = std::path::PathBuf::from("ds");
+        let surface = surface(Exposure::Chapters);
         assert!(
             handle(
                 &json!({"jsonrpc":"2.0","method":"notifications/initialized"}),
                 &exe,
-                &[],
+                &surface,
+                &build(),
                 &mut calls
             )
             .is_none()
@@ -276,7 +302,8 @@ mod tests {
         let unknown = handle(
             &json!({"jsonrpc":"2.0","id":3,"method":"resources/list"}),
             &exe,
-            &[],
+            &surface,
+            &build(),
             &mut calls,
         )
         .expect("response");
@@ -284,7 +311,8 @@ mod tests {
         let missing = handle(
             &json!({"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"nope"}}),
             &exe,
-            &[],
+            &surface,
+            &build(),
             &mut calls,
         )
         .expect("response");

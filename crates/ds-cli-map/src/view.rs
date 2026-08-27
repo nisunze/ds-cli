@@ -11,7 +11,9 @@
 //! should not pay for the application's whole self-description.
 
 use ds_cli_contract::outcome::Failure;
-use ds_cli_contract::spec::{Arg, Authority, Command, Effect, Example, Execution, Refusal};
+use ds_cli_contract::spec::{
+    Arg, Authority, Chapter, Command, Effect, Example, Execution, Refusal,
+};
 use ds_cli_contract::{Context, Inputs};
 use ds_cli_desktop::bridge;
 use serde_json::{Value, json};
@@ -35,6 +37,7 @@ visible bounding box — and the local layers on it. Each layer is reported with
 both identifiers a caller needs: `layer`, which `ds map remove` takes, and \
 `analysis_id`, which the vector tools take. Start here: every other command in \
 this domain acts on something this one names.",
+    chapter: Chapter::Survey,
     effect: Effect::ReadOnly,
     authority: Authority::DesktopPairing,
     execution: Execution::Sync,

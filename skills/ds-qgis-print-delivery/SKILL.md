@@ -1,6 +1,8 @@
 ---
 name: ds-qgis-print-delivery
 description: Run operator-approved multi-layout QGIS/PyQGIS printing from governed DS report data, attach PDF/PNG/JPEG pages, and package report deliveries. Not report calculation.
+metadata:
+  ds-chapters: project, design, reports
 ---
 
 # Deliver print reports through QGIS

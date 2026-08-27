@@ -18,15 +18,13 @@ pub const HOSTS: &[&str] = &["vscode", "claude-code", "codex", "cursor", "generi
 pub static COMMAND: Command = Command {
     id: "mcp.install",
     path: &["mcp", "install"],
-    contract: 1,
+    contract: 2,
+    chapter: ds_cli_contract::spec::Chapter::Catalog,
     summary: "Print or write the MCP host entry that launches this `ds`.",
     purpose: "\
-Produces the stdio server entry an MCP host needs to launch `ds mcp serve` \
-from this exact executable, and names the user-level file it belongs in. \
-Without --write it only prints; with --write and --yes it merges the `ds` \
-server into that file, creating it when absent and leaving other servers \
-untouched. Always a user profile, never a workspace file: the server must run \
-on the PC where DS GridDesign is installed and paired.",
+Prints this executable's stdio server entry and its user-level host file. With \
+`--write --yes`, merges only the `ds` entry and preserves other servers. It \
+never writes workspace configuration.",
     effect: Effect::LocalFileWrite,
     authority: Authority::None,
     execution: Execution::Sync,
@@ -49,6 +47,24 @@ on the PC where DS GridDesign is installed and paired.",
             choices: &[],
             summary: "Merge the entry into the host's user-level file instead of only printing it.",
         },
+        Arg {
+            name: "exposure",
+            kind: ArgKind::Value,
+            value: "<chapters|commands>",
+            required: false,
+            default: Some("chapters"),
+            choices: crate::surface::EXPOSURES,
+            summary: "Publish compact chapter routers or typed command tools.",
+        },
+        Arg {
+            name: "profile",
+            kind: ArgKind::Value,
+            value: "<name>",
+            required: false,
+            default: None,
+            choices: crate::surface::PROFILE_IDS,
+            summary: "Install one typed operator-workflow profile.",
+        },
     ],
     output: "\
 The host, the server entry as JSON, the file it belongs in, and whether it \
@@ -65,7 +81,11 @@ was written.",
             runnable: false,
         },
     ],
-    refusals: &[crate::HOST_UNKNOWN, crate::CONFIG_UNWRITABLE],
+    refusals: &[
+        crate::HOST_UNKNOWN,
+        crate::CONFIG_UNWRITABLE,
+        crate::PROFILE_EXPOSURE_INVALID,
+    ],
     reference: Some("docs/reference/mcp.md"),
     availability: crate::always,
 };
@@ -81,7 +101,22 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         Failure::failed("mcp_config_unwritable", format!("could not resolve this executable's path: {error}"))
             .remedy("read the reported path; fix or remove a malformed file, then re-run, or copy the printed entry by hand")
     })?;
-    let entry = server_entry(host, &executable);
+    let build = crate::tools::build_identity(&executable)?;
+    let exposure =
+        crate::surface::Exposure::from_token(inputs.value("exposure").unwrap_or("chapters"))
+            .expect("the command parser enforces exposure choices");
+    let profile = inputs.value("profile").map(|value| {
+        crate::surface::Profile::from_token(value)
+            .expect("the command parser enforces profile choices")
+    });
+    if profile.is_some() && exposure != crate::surface::Exposure::Commands {
+        return Err(Failure::invalid(
+            "mcp_profile_exposure_invalid",
+            "specialized profiles publish typed command tools and require `--exposure commands`",
+        )
+        .remedy("pass `--exposure commands --profile <name>`, or omit `--profile`"));
+    }
+    let entry = server_entry(host, &executable, exposure, profile);
     let file = config_file(host);
     let written = if inputs.switch("write") {
         let Some(path) = file.as_ref() else {
@@ -100,6 +135,10 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         "file": file.map(|path| path.display().to_string()),
         "written": written,
         "executable": executable.display().to_string(),
+        "source_sha": build["source_sha"],
+        "dirty": build["dirty"],
+        "exposure": exposure.token(),
+        "profile": profile.map(crate::surface::Profile::token),
     }))
 }
 
@@ -123,22 +162,31 @@ pub fn render(data: &Value) -> String {
 }
 
 /// The entry in the host's own dialect. Every host launches the same thing.
-pub fn server_entry(host: &str, executable: &std::path::Path) -> Value {
+pub fn server_entry(
+    host: &str,
+    executable: &std::path::Path,
+    exposure: crate::surface::Exposure,
+    profile: Option<crate::surface::Profile>,
+) -> Value {
     let command = executable.display().to_string();
+    let mut args = vec!["mcp", "serve", "--exposure", exposure.token()];
+    if let Some(profile) = profile {
+        args.extend(["--profile", profile.token()]);
+    }
     match host {
         // VS Code: `servers` map with an explicit `type`.
         "vscode" => {
-            json!({ "servers": { "ds": { "type": "stdio", "command": command, "args": ["mcp", "serve"] } } })
+            json!({ "servers": { "ds": { "type": "stdio", "command": command, "args": args } } })
         }
         // Claude Code, Cursor: `mcpServers` map.
         "claude-code" | "cursor" | "generic" => {
-            json!({ "mcpServers": { "ds": { "command": command, "args": ["mcp", "serve"] } } })
+            json!({ "mcpServers": { "ds": { "command": command, "args": args } } })
         }
         // Codex: TOML on disk; the JSON here is the same data for the caller to translate.
         "codex" => {
-            json!({ "mcp_servers": { "ds": { "command": command, "args": ["mcp", "serve"] } } })
+            json!({ "mcp_servers": { "ds": { "command": command, "args": args } } })
         }
-        _ => json!({ "mcpServers": { "ds": { "command": command, "args": ["mcp", "serve"] } } }),
+        _ => json!({ "mcpServers": { "ds": { "command": command, "args": args } } }),
     }
 }
 
@@ -235,18 +283,39 @@ pub fn merge(document: &Value, entry: &Value) -> Option<Value> {
 mod tests {
     use super::*;
 
+    fn default_entry(host: &str, executable: &std::path::Path) -> Value {
+        server_entry(host, executable, crate::surface::Exposure::Chapters, None)
+    }
+
     #[test]
     fn vscode_entry_is_a_stdio_server_pointing_at_this_executable() {
-        let entry = server_entry("vscode", std::path::Path::new("/usr/bin/ds"));
+        let entry = default_entry("vscode", std::path::Path::new("/usr/bin/ds"));
         assert_eq!(entry["servers"]["ds"]["type"], "stdio");
         assert_eq!(entry["servers"]["ds"]["command"], "/usr/bin/ds");
-        assert_eq!(entry["servers"]["ds"]["args"], json!(["mcp", "serve"]));
+        assert_eq!(
+            entry["servers"]["ds"]["args"],
+            json!(["mcp", "serve", "--exposure", "chapters"])
+        );
+    }
+
+    #[test]
+    fn typed_profile_entry_names_both_exposure_and_profile() {
+        let entry = server_entry(
+            "claude-code",
+            std::path::Path::new("/usr/bin/ds"),
+            crate::surface::Exposure::Commands,
+            Some(crate::surface::Profile::Pls),
+        );
+        assert_eq!(
+            entry["mcpServers"]["ds"]["args"],
+            json!(["mcp", "serve", "--exposure", "commands", "--profile", "pls"])
+        );
     }
 
     #[test]
     fn merge_keeps_other_servers_and_keys() {
         let existing = json!({ "inputs": [], "servers": { "other": { "type": "stdio", "command": "x" }, "ds": { "command": "old" } } });
-        let entry = server_entry("vscode", std::path::Path::new("/new/ds"));
+        let entry = default_entry("vscode", std::path::Path::new("/new/ds"));
         let merged = merge(&existing, &entry).expect("merged");
         assert_eq!(merged["inputs"], json!([]));
         assert_eq!(merged["servers"]["other"]["command"], "x");
@@ -258,7 +327,7 @@ mod tests {
         assert!(
             merge(
                 &json!([1, 2]),
-                &server_entry("vscode", std::path::Path::new("ds"))
+                &default_entry("vscode", std::path::Path::new("ds"))
             )
             .is_none()
         );
@@ -275,10 +344,13 @@ mod tests {
                 .as_nanos()
         ));
         let path = dir.join("User").join("mcp.json");
-        let entry = server_entry("vscode", std::path::Path::new("/usr/bin/ds"));
+        let entry = default_entry("vscode", std::path::Path::new("/usr/bin/ds"));
         merge_into_file(&path, "vscode", &entry).expect("write");
         let written: Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
-        assert_eq!(written["servers"]["ds"]["args"], json!(["mcp", "serve"]));
+        assert_eq!(
+            written["servers"]["ds"]["args"],
+            json!(["mcp", "serve", "--exposure", "chapters"])
+        );
         std::fs::write(&path, b"{ not json").unwrap();
         let refused = merge_into_file(&path, "vscode", &entry).unwrap_err();
         assert_eq!(refused.code(), "mcp_config_unwritable");

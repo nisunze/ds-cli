@@ -2,7 +2,7 @@
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
-    Arg, ArgKind, Authority, Command, Effect, Example, Execution, Refusal,
+    Arg, ArgKind, Authority, Chapter, Command, Effect, Example, Execution, Refusal,
 };
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
@@ -49,6 +49,7 @@ Runs the same local-WASM replay scheduler as the Design Status bulk Process \
 action. Each transformer is isolated, the bounded worker pool continues after \
 an item failure, and successful outputs are staged in the desktop room. Nothing \
 is uploaded until a separate save command is confirmed.",
+    chapter: Chapter::Design,
     effect: Effect::LocalUi,
     authority: Authority::Project,
     execution: Execution::Sync,

@@ -11,7 +11,7 @@
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
-    Arg, ArgKind, Authority, Command, Effect, Example, Execution, Refusal,
+    Arg, ArgKind, Authority, Chapter, Command, Effect, Example, Execution, Refusal,
 };
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
@@ -71,6 +71,7 @@ place until somebody accepts — the engine, not this CLI, decides who wins when
 two people answer at once. Use --owner instead to transfer accountability \
 directly, or --withdraw to cancel an open request. Every person named must be \
 an active member of the project.",
+    chapter: Chapter::Project,
     effect: Effect::GlobalWrite,
     authority: Authority::Project,
     execution: Execution::Sync,

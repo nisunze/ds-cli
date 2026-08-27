@@ -12,7 +12,9 @@
 //! this CLI — decides what they are.
 
 use ds_cli_contract::outcome::Failure;
-use ds_cli_contract::spec::{Arg, ArgKind, Authority, Command, Effect, Example, Execution};
+use ds_cli_contract::spec::{
+    Arg, ArgKind, Authority, Chapter, Command, Effect, Example, Execution,
+};
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
 
@@ -39,6 +41,7 @@ overall progress, what is in progress, blocked, late, under review, and how \
 many open residuals block acceptance or closeout — plus progress by \
 discipline, the items that have earned attention, and the field-model \
 vocabulary the write commands take their state values from.",
+    chapter: Chapter::Project,
     effect: Effect::ReadOnly,
     authority: Authority::Project,
     execution: Execution::Sync,

@@ -1,6 +1,8 @@
 ---
 name: ds-solar-portfolio
 description: Run and inspect one membership-pinned governed Solar portfolio through deployed `ds`, not city batches.
+metadata:
+  ds-chapters: project, solar
 ---
 
 # Work with one exact Solar portfolio

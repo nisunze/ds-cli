@@ -7,7 +7,9 @@
 //! than sending and having refused.
 
 use ds_cli_contract::outcome::Failure;
-use ds_cli_contract::spec::{Arg, Authority, Command, Effect, Example, Execution, Refusal};
+use ds_cli_contract::spec::{
+    Arg, Authority, Chapter, Command, Effect, Example, Execution, Refusal,
+};
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
 
@@ -26,6 +28,7 @@ Fits the running map to either an explicit geographic bounding box or a local \
 layer already named by `ds map view`. With --layer the application reads its \
 own local-layer geometry and computes the extent; no coordinates or features \
 cross the CLI boundary. Give exactly one target.",
+    chapter: Chapter::Survey,
     effect: Effect::LocalUi,
     authority: Authority::DesktopPairing,
     execution: Execution::Sync,

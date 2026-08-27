@@ -10,7 +10,9 @@ use std::path::Path;
 use std::time::Duration;
 
 use ds_cli_contract::outcome::Failure;
-use ds_cli_contract::spec::{Arg, Authority, Command, Effect, Example, Execution, Refusal};
+use ds_cli_contract::spec::{
+    Arg, Authority, Chapter, Command, Effect, Example, Execution, Refusal,
+};
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
 use sha2::{Digest, Sha256};
@@ -104,6 +106,7 @@ pub static REPORT_EXPORT_COMMAND: Command = Command {
     contract: 2,
     summary: "Export one sealed native Solar city report.",
     purpose: "Reads the selected APD/draft, network, plant or financial Markdown in bounded slices from a completed paired native Solar batch and creates one new local file at --out. The desktop validates the run, city, document name, content digest, batch identity and approved workspace on every slice. No workspace path, cache location or credential crosses the CLI boundary.",
+    chapter: Chapter::Solar,
     effect: Effect::LocalFileWrite,
     authority: Authority::DesktopUser,
     execution: Execution::Sync,
@@ -153,6 +156,7 @@ pub static PORTFOLIO_EXPORT_COMMAND: Command = Command {
     contract: 3,
     summary: "Export one sealed native Solar portfolio artifact.",
     purpose: "Reads the exact root-level result or requested portfolio report from one completed paired native Solar batch and creates one new local file at --out. Portfolio output is first-class: it is validated against the same closed batch as the city reports, never reconstructed by the CLI.",
+    chapter: Chapter::Solar,
     effect: Effect::LocalFileWrite,
     authority: Authority::DesktopUser,
     execution: Execution::Sync,

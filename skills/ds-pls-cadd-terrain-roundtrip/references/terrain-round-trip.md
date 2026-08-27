@@ -69,6 +69,10 @@ route/terrain, placement/stringing, attachment, method/criteria and report
 gates independent. A copied DXF is not attached until the typed native
 attachment record and closure both verify.
 
+When a request names both a side buffer and a total corridor, keep the units
+explicit: a 6 m buffer is 6 m on each side and therefore a 12 m corridor;
+report both widths in the delivery evidence.
+
 ## Operator/native loop
 
 Use PLS-CADD only for operator-owned PI movement, native solver work or an

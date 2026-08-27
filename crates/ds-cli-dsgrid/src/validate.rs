@@ -19,7 +19,7 @@
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
-    Arg, Authority, Availability, Command, Effect, Example, Execution, Refusal,
+    Arg, Authority, Availability, Chapter, Command, Effect, Example, Execution, Refusal,
 };
 use ds_cli_contract::{Context, Inputs};
 use ds_grid_model::validate_snapshot;
@@ -39,6 +39,7 @@ the manifest attests to? Second, is the authored model sound by its own rules \
 — no duplicate ids, no dangling references? A package can pass the first and \
 fail the second, and the two are fixed in completely different ways, so they \
 are reported apart.",
+    chapter: Chapter::GridModel,
     effect: Effect::Discovery,
     authority: Authority::None,
     execution: Execution::Sync,

@@ -17,7 +17,7 @@
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
-    Arg, Authority, Availability, Command, Effect, Example, Execution, Refusal,
+    Arg, Authority, Availability, Chapter, Command, Effect, Example, Execution, Refusal,
 };
 use ds_cli_contract::{Context, Inputs};
 use ds_grid_model::GridModelSummary;
@@ -38,6 +38,7 @@ coordinate system, schema version and content fingerprint. By default it does \
 not decode the model's tables, so it is fast on a large package and cheap to \
 call before deciding what to do next. Ask for more with --include; each \
 projection is named, bounded by --limit, and reports what it withheld.",
+    chapter: Chapter::GridModel,
     effect: Effect::Discovery,
     authority: Authority::None,
     execution: Execution::Sync,

@@ -2,7 +2,7 @@
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
-    Arg, ArgKind, Authority, Command, Effect, Example, Execution, Refusal,
+    Arg, ArgKind, Authority, Chapter, Command, Effect, Example, Execution, Refusal,
 };
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
@@ -105,6 +105,7 @@ Creates one work item through the same governed command the Plan sheet uses, \
 so it lands with the sort key, schedule state and duration the surface would \
 have given it. A retry that passes the same --id is refused rather than \
 duplicated, which is what makes this safe to run again after a lost answer.",
+    chapter: Chapter::Project,
     effect: Effect::GlobalWrite,
     authority: Authority::Project,
     execution: Execution::Sync,

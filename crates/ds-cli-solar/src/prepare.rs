@@ -8,7 +8,7 @@
 //! application's bounded receipt.
 
 use ds_cli_contract::outcome::Failure;
-use ds_cli_contract::spec::{Arg, Authority, Command, Effect, Example, Execution};
+use ds_cli_contract::spec::{Arg, Authority, Chapter, Command, Effect, Example, Execution};
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
 
@@ -32,6 +32,7 @@ cache-first. The application owns the project, cached weather and PV reference \
 inputs, and any authenticated refresh on a cache miss; `ds` receives only the \
 bounded preparation receipt. It never reads or scrapes IndexedDB and never \
 accepts a URL, credential, cache path, project id, or filesystem root.",
+    chapter: Chapter::Solar,
     effect: Effect::LocalFileWrite,
     authority: Authority::DesktopUser,
     execution: Execution::Sync,

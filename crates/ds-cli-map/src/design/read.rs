@@ -13,7 +13,7 @@
 //! count them here.
 
 use ds_cli_contract::outcome::Failure;
-use ds_cli_contract::spec::{Arg, Authority, Command, Effect, Example, Execution};
+use ds_cli_contract::spec::{Arg, Authority, Chapter, Command, Effect, Example, Execution};
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
 
@@ -35,6 +35,7 @@ room is the operator's local one with unsaved edits or a fresh read from the \
 project, and which project it belongs to. Pass --property for a value \
 histogram across the room — the cheap way to ask what governance state the \
 rows are actually in before staging a change to them.",
+    chapter: Chapter::Design,
     effect: Effect::ReadOnly,
     authority: Authority::Project,
     execution: Execution::Sync,

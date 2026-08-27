@@ -1,0 +1,836 @@
+//! MCP publication shapes generated from the live command descriptors.
+
+use std::path::PathBuf;
+
+use ds_cli_contract::outcome::Failure;
+use ds_cli_contract::spec::Chapter;
+use serde_json::{Map, Value, json};
+
+use crate::tools::{self, CONFIRM_PROPERTY, Tool};
+
+pub const EXPOSURES: &[&str] = &["chapters", "commands"];
+pub const PROFILE_IDS: &[&str] = &[
+    "grid",
+    "pls",
+    "survey",
+    "design-edit",
+    "design-run",
+    "map",
+    "project",
+    "solar-run",
+    "solar-delivery",
+    "operations",
+];
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Exposure {
+    Chapters,
+    Commands,
+}
+
+impl Exposure {
+    pub fn from_token(token: &str) -> Option<Self> {
+        match token {
+            "chapters" => Some(Self::Chapters),
+            "commands" => Some(Self::Commands),
+            _ => None,
+        }
+    }
+
+    pub const fn token(self) -> &'static str {
+        match self {
+            Self::Chapters => "chapters",
+            Self::Commands => "commands",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Profile {
+    Grid,
+    Pls,
+    Survey,
+    DesignEdit,
+    DesignRun,
+    Map,
+    Project,
+    SolarRun,
+    SolarDelivery,
+    Operations,
+}
+
+impl Profile {
+    pub fn from_token(token: &str) -> Option<Self> {
+        match token {
+            "grid" => Some(Self::Grid),
+            "pls" => Some(Self::Pls),
+            "survey" => Some(Self::Survey),
+            "design-edit" => Some(Self::DesignEdit),
+            "design-run" => Some(Self::DesignRun),
+            "map" => Some(Self::Map),
+            "project" => Some(Self::Project),
+            "solar-run" => Some(Self::SolarRun),
+            "solar-delivery" => Some(Self::SolarDelivery),
+            "operations" => Some(Self::Operations),
+            _ => None,
+        }
+    }
+
+    pub const fn token(self) -> &'static str {
+        match self {
+            Self::Grid => "grid",
+            Self::Pls => "pls",
+            Self::Survey => "survey",
+            Self::DesignEdit => "design-edit",
+            Self::DesignRun => "design-run",
+            Self::Map => "map",
+            Self::Project => "project",
+            Self::SolarRun => "solar-run",
+            Self::SolarDelivery => "solar-delivery",
+            Self::Operations => "operations",
+        }
+    }
+
+    pub fn includes(self, tool: &Tool) -> bool {
+        match self {
+            Self::Grid => matches!(tool.chapter, Chapter::GridModel | Chapter::Reports),
+            Self::Pls => tool.chapter == Chapter::PlsCadd,
+            Self::Survey => tool.chapter == Chapter::Survey,
+            Self::Map => matches!(
+                tool.chapter,
+                Chapter::MapPresentation | Chapter::VectorTiles
+            ),
+            Self::Project => tool.chapter == Chapter::Project,
+            Self::Operations => tool.chapter == Chapter::Operations,
+            Self::DesignEdit => DESIGN_EDIT_COMMANDS.contains(&tool.id.as_str()),
+            Self::DesignRun => DESIGN_RUN_COMMANDS.contains(&tool.id.as_str()),
+            Self::SolarRun => SOLAR_RUN_COMMANDS.contains(&tool.id.as_str()),
+            Self::SolarDelivery => SOLAR_DELIVERY_COMMANDS.contains(&tool.id.as_str()),
+        }
+    }
+
+    pub fn includes_chapter(self, chapter: Chapter) -> bool {
+        match self {
+            Self::Grid => matches!(chapter, Chapter::GridModel | Chapter::Reports),
+            Self::Pls => chapter == Chapter::PlsCadd,
+            Self::Survey => chapter == Chapter::Survey,
+            Self::DesignEdit | Self::DesignRun => chapter == Chapter::Design,
+            Self::Map => matches!(chapter, Chapter::MapPresentation | Chapter::VectorTiles),
+            Self::Project => chapter == Chapter::Project,
+            Self::SolarRun | Self::SolarDelivery => chapter == Chapter::Solar,
+            Self::Operations => chapter == Chapter::Operations,
+        }
+    }
+}
+
+const DESIGN_EDIT_COMMANDS: &[&str] = &[
+    "map.design.read",
+    "map.design.discard",
+    "map.design.layer-to-local",
+    "map.design.upload-to-local",
+    "map.design.select",
+    "map.design.set",
+    "map.design.create",
+    "map.design.delete",
+    "map.design.geometry",
+    "map.design.setup",
+    "map.design.version.begin",
+    "map.design.upload.inspect",
+    "map.design.upload.stage",
+];
+
+const DESIGN_RUN_COMMANDS: &[&str] = &[
+    "map.design.process",
+    "map.design.batch.process",
+    "map.design.batch.report",
+    "map.design.batch.save",
+    "map.design.save",
+    "map.design.list",
+    "map.design.report",
+    "map.design.attach-print",
+];
+
+const SOLAR_RUN_COMMANDS: &[&str] = &[
+    "solar.engine",
+    "solar.prepare",
+    "solar.run",
+    "solar.run.start",
+    "solar.run.progress",
+    "solar.run.result",
+    "solar.run.cancel",
+    "solar.result.read",
+    "solar.results.read",
+    "solar.sync.status",
+    "solar.verify-weather",
+];
+
+const SOLAR_DELIVERY_COMMANDS: &[&str] = &[
+    "solar.portfolio.list",
+    "solar.portfolio.read",
+    "solar.final.import",
+    "solar.final.submit",
+    "solar.report.export",
+    "solar.portfolio.export",
+];
+
+const ROUTED_CHAPTERS: &[Chapter] = &[
+    Chapter::Project,
+    Chapter::GridModel,
+    Chapter::PlsCadd,
+    Chapter::Survey,
+    Chapter::Design,
+    Chapter::MapPresentation,
+    Chapter::VectorTiles,
+    Chapter::Solar,
+    Chapter::Reports,
+    Chapter::Operations,
+];
+
+#[derive(Debug)]
+pub struct Surface {
+    exposure: Exposure,
+    profile: Option<Profile>,
+    commands: Vec<Tool>,
+}
+
+impl Surface {
+    pub fn new(
+        exposure: Exposure,
+        profile: Option<Profile>,
+        mut commands: Vec<Tool>,
+    ) -> Result<Self, Failure> {
+        if profile.is_some() && exposure != Exposure::Commands {
+            return Err(Failure::invalid(
+                "mcp_profile_exposure_invalid",
+                "specialized profiles publish typed command tools and require `--exposure commands`",
+            )
+            .remedy("pass `--exposure commands --profile <name>`, or omit `--profile`"));
+        }
+        if let Some(profile) = profile {
+            commands.retain(|tool| profile.includes(tool));
+            if commands.len() + 1 > 15 {
+                return Err(Failure::failed(
+                    "mcp_profile_too_broad",
+                    format!(
+                        "profile `{}` would publish {} tools including `ds_catalog`",
+                        profile.token(),
+                        commands.len() + 1
+                    ),
+                )
+                .remedy("split the profile by operator workflow before publishing it"));
+            }
+        }
+        commands.sort_by(|left, right| left.name.cmp(&right.name));
+        Ok(Self {
+            exposure,
+            profile,
+            commands,
+        })
+    }
+
+    pub fn exposure(&self) -> Exposure {
+        self.exposure
+    }
+
+    pub fn profile(&self) -> Option<Profile> {
+        self.profile
+    }
+
+    pub fn published_count(&self) -> usize {
+        match (self.exposure, self.profile) {
+            (Exposure::Chapters, None) => ROUTED_CHAPTERS.len() + 1,
+            (Exposure::Commands, Some(_)) => self.commands.len() + 1,
+            (Exposure::Commands, None) => self.commands.len(),
+            (Exposure::Chapters, Some(_)) => 0,
+        }
+    }
+
+    pub fn instructions(&self) -> String {
+        match (self.exposure, self.profile) {
+            (Exposure::Chapters, None) => "Use ds_catalog for bounded discovery, call the selected chapter with operation=describe, then operation=invoke. The canonical command descriptor governs arguments, authority, effect, confirmation and refusals; branch on the returned DS envelope.".to_string(),
+            (Exposure::Commands, Some(profile)) => format!(
+                "This is the typed `{}` profile. Use ds_catalog for bounded discovery, then call the advertised command tool directly. Pass confirm=true only when the command declares it and the user's intent authorizes that exact effect and scope. Branch on the returned DS envelope.",
+                profile.token()
+            ),
+            (Exposure::Commands, None) => "Compatibility command exposure: every advertised tool is one canonical ds command generated from its live descriptor. Pass confirm=true only when declared, branch on the returned DS envelope, and follow typed remedies.".to_string(),
+            (Exposure::Chapters, Some(_)) => unreachable!("invalid surface is refused"),
+        }
+    }
+
+    pub fn tool_list(&self) -> Vec<Value> {
+        match (self.exposure, self.profile) {
+            (Exposure::Chapters, None) => std::iter::once(catalog_tool_json())
+                .chain(ROUTED_CHAPTERS.iter().copied().map(chapter_tool_json))
+                .collect(),
+            (Exposure::Commands, Some(_)) => std::iter::once(catalog_tool_json())
+                .chain(self.commands.iter().map(leaf_tool_json))
+                .collect(),
+            (Exposure::Commands, None) => self.commands.iter().map(leaf_tool_json).collect(),
+            (Exposure::Chapters, Some(_)) => Vec::new(),
+        }
+    }
+
+    pub fn call(
+        &self,
+        name: &str,
+        arguments: &Value,
+        executable: &PathBuf,
+    ) -> Result<Value, (i64, String)> {
+        if name == "ds_catalog" && (self.exposure == Exposure::Chapters || self.profile.is_some()) {
+            return self.call_catalog(arguments);
+        }
+        match self.exposure {
+            Exposure::Commands => {
+                let Some(tool) = self.commands.iter().find(|tool| tool.name == name) else {
+                    return Err((-32602, format!("unknown tool: {name}")));
+                };
+                invoke_leaf(tool, arguments, executable)
+            }
+            Exposure::Chapters => {
+                let Some(chapter) = ROUTED_CHAPTERS
+                    .iter()
+                    .copied()
+                    .find(|chapter| chapter_tool_name(*chapter) == name)
+                else {
+                    return Err((-32602, format!("unknown tool: {name}")));
+                };
+                self.call_chapter(chapter, arguments, executable)
+            }
+        }
+    }
+
+    fn call_chapter(
+        &self,
+        chapter: Chapter,
+        arguments: &Value,
+        executable: &PathBuf,
+    ) -> Result<Value, (i64, String)> {
+        let object = object_with_known_keys(
+            arguments,
+            &["operation", "command", "arguments", CONFIRM_PROPERTY],
+        )?;
+        let operation = required_string(&object, "operation")?;
+        let command = required_string(&object, "command")?;
+        let Some(tool) = self.commands.iter().find(|tool| tool.id == command) else {
+            return Err((
+                -32602,
+                format!("unknown command `{command}`; call `ds_catalog` with a bounded query"),
+            ));
+        };
+        if tool.chapter != chapter {
+            return Err((
+                -32602,
+                format!(
+                    "`{command}` belongs to `{}`; call `{}` instead",
+                    tool.chapter.token(),
+                    chapter_tool_name(tool.chapter)
+                ),
+            ));
+        }
+        let nested = object
+            .get("arguments")
+            .cloned()
+            .unwrap_or_else(|| json!({}));
+        let confirm = optional_bool(&object, CONFIRM_PROPERTY)?.unwrap_or(false);
+        match operation.as_str() {
+            "describe" => {
+                if confirm || nested.as_object().is_some_and(|values| !values.is_empty()) {
+                    return Err((
+                        -32602,
+                        "`describe` accepts only `operation` and `command`".to_string(),
+                    ));
+                }
+                let argv = vec![
+                    "capabilities".to_string(),
+                    tool.id.clone(),
+                    "--output".to_string(),
+                    "json".to_string(),
+                ];
+                invoke_argv(&argv, executable)
+            }
+            "invoke" => {
+                let mut nested = nested
+                    .as_object()
+                    .cloned()
+                    .ok_or_else(|| (-32602, "`arguments` must be an object".to_string()))?;
+                if nested.contains_key(CONFIRM_PROPERTY) {
+                    return Err((
+                        -32602,
+                        format!(
+                            "put `{CONFIRM_PROPERTY}` in the chapter envelope, not inside `arguments`"
+                        ),
+                    ));
+                }
+                if confirm {
+                    if !tool.confirmation_required {
+                        return Err((-32602, format!("`{command}` does not accept confirmation")));
+                    }
+                    nested.insert(CONFIRM_PROPERTY.to_string(), Value::Bool(true));
+                }
+                invoke_leaf(tool, &Value::Object(nested), executable)
+            }
+            _ => Err((
+                -32602,
+                "`operation` must be `describe` or `invoke`".to_string(),
+            )),
+        }
+    }
+
+    fn call_catalog(&self, arguments: &Value) -> Result<Value, (i64, String)> {
+        let object = object_with_known_keys(arguments, &["query", "chapter", "command"])?;
+        let query = optional_string(&object, "query")?;
+        let chapter = optional_string(&object, "chapter")?;
+        let command = optional_string(&object, "command")?;
+        if query.is_some() && command.is_some() {
+            return Err((
+                -32602,
+                "pass either `query` or `command`, not both".to_string(),
+            ));
+        }
+        let chapter = chapter
+            .map(|token| {
+                let parsed = Chapter::from_token(&token).filter(|value| *value != Chapter::Catalog);
+                parsed.ok_or_else(|| {
+                    (
+                        -32602,
+                        format!(
+                            "unknown routable chapter `{token}`; call `ds_catalog` without filters"
+                        ),
+                    )
+                })
+            })
+            .transpose()?;
+        let visible = self
+            .commands
+            .iter()
+            .filter(|tool| chapter.is_none_or(|value| tool.chapter == value));
+
+        let data = if let Some(command) = command {
+            let Some(tool) = visible.into_iter().find(|tool| tool.id == command) else {
+                if let Some(tool) = self.commands.iter().find(|tool| tool.id == command) {
+                    return Err((
+                        -32602,
+                        format!(
+                            "`{command}` belongs to chapter `{}`; describe it with `{}`",
+                            tool.chapter.token(),
+                            chapter_tool_name(tool.chapter)
+                        ),
+                    ));
+                }
+                return Err((-32602, format!("unknown command `{command}`")));
+            };
+            json!({
+                "command": command_summary(tool),
+                "next": { "tool": chapter_tool_name(tool.chapter), "arguments": { "operation": "describe", "command": tool.id } },
+            })
+        } else if let Some(query) = query {
+            let terms: Vec<String> = query
+                .split_whitespace()
+                .map(str::to_lowercase)
+                .filter(|term| term.len() > 1)
+                .collect();
+            if terms.is_empty() {
+                return Err((-32602, "`query` needs at least one word".to_string()));
+            }
+            let mut matches: Vec<(usize, &Tool)> = visible
+                .filter_map(|tool| {
+                    let haystack = format!("{} {}", tool.id, tool.description).to_lowercase();
+                    let score = terms
+                        .iter()
+                        .filter(|term| haystack.contains(term.as_str()))
+                        .count();
+                    (score > 0).then_some((score, tool))
+                })
+                .collect();
+            matches.sort_by(|left, right| {
+                right
+                    .0
+                    .cmp(&left.0)
+                    .then_with(|| left.1.id.cmp(&right.1.id))
+            });
+            let matched = matches.len();
+            matches.truncate(10);
+            json!({
+                "query": query,
+                "matched": matched,
+                "results": matches.into_iter().map(|(_, tool)| command_summary(tool)).collect::<Vec<_>>(),
+                "next": "call the matching chapter with operation=describe and the exact command id",
+            })
+        } else if let Some(chapter) = chapter {
+            let commands = visible.map(command_summary).collect::<Vec<_>>();
+            json!({
+                "chapter": chapter.token(),
+                "tool": chapter_tool_name(chapter),
+                "commands": commands,
+                "next": { "tool": chapter_tool_name(chapter), "arguments": { "operation": "describe", "command": "<exact-id>" } },
+            })
+        } else {
+            json!({
+                "chapters": ROUTED_CHAPTERS.iter().copied().filter_map(|chapter| {
+                    let count = self.commands.iter().filter(|tool| tool.chapter == chapter).count();
+                    (count > 0).then(|| json!({
+                        "chapter": chapter.token(),
+                        "tool": chapter_tool_name(chapter),
+                        "commands": count,
+                        "summary": chapter_description(chapter),
+                    }))
+                }).collect::<Vec<_>>(),
+                "next": "call ds_catalog with one chapter or a bounded query",
+            })
+        };
+        Ok(value_result(data, false))
+    }
+}
+
+fn object_with_known_keys(
+    arguments: &Value,
+    keys: &[&str],
+) -> Result<Map<String, Value>, (i64, String)> {
+    let object = match arguments {
+        Value::Null => Map::new(),
+        Value::Object(object) => object.clone(),
+        _ => return Err((-32602, "arguments must be an object".to_string())),
+    };
+    if let Some(key) = object.keys().find(|key| !keys.contains(&key.as_str())) {
+        return Err((-32602, format!("unknown property `{key}`")));
+    }
+    Ok(object)
+}
+
+fn required_string(object: &Map<String, Value>, key: &str) -> Result<String, (i64, String)> {
+    optional_string(object, key)?.ok_or_else(|| (-32602, format!("`{key}` is required")))
+}
+
+fn optional_string(
+    object: &Map<String, Value>,
+    key: &str,
+) -> Result<Option<String>, (i64, String)> {
+    match object.get(key) {
+        None | Some(Value::Null) => Ok(None),
+        Some(Value::String(value)) => Ok(Some(value.clone())),
+        Some(_) => Err((-32602, format!("`{key}` must be a string or null"))),
+    }
+}
+
+fn optional_bool(object: &Map<String, Value>, key: &str) -> Result<Option<bool>, (i64, String)> {
+    match object.get(key) {
+        None | Some(Value::Null) => Ok(None),
+        Some(Value::Bool(value)) => Ok(Some(*value)),
+        Some(_) => Err((-32602, format!("`{key}` must be a boolean"))),
+    }
+}
+
+fn command_summary(tool: &Tool) -> Value {
+    json!({
+        "id": tool.id,
+        "chapter": tool.chapter.token(),
+        "summary": tool.descriptor["summary"],
+        "availability": tool.descriptor["availability"],
+        "next": { "tool": chapter_tool_name(tool.chapter), "operation": "describe" },
+    })
+}
+
+fn invoke_leaf(
+    tool: &Tool,
+    arguments: &Value,
+    executable: &PathBuf,
+) -> Result<Value, (i64, String)> {
+    let argv = tools::argv_for_call(tool, arguments).map_err(|message| (-32602, message))?;
+    invoke_argv(&argv, executable)
+}
+
+fn invoke_argv(argv: &[String], executable: &PathBuf) -> Result<Value, (i64, String)> {
+    let (code, stdout, stderr) =
+        tools::run_cli(executable, argv).map_err(|message| (-32000, message))?;
+    let envelope: Option<Value> = serde_json::from_str(stdout.trim()).ok();
+    let is_error = code != 0
+        || envelope
+            .as_ref()
+            .and_then(|value| value.get("status"))
+            .and_then(Value::as_str)
+            != Some("ok");
+    let text = if stdout.trim().is_empty() {
+        stderr.trim().to_string()
+    } else {
+        stdout.trim().to_string()
+    };
+    let mut result = json!({
+        "content": [{ "type": "text", "text": text }],
+        "isError": is_error,
+    });
+    if let Some(envelope) = envelope {
+        result["structuredContent"] = envelope;
+    }
+    Ok(result)
+}
+
+fn value_result(value: Value, is_error: bool) -> Value {
+    let text = serde_json::to_string(&value).unwrap_or_else(|_| "{}".to_string());
+    json!({
+        "content": [{ "type": "text", "text": text }],
+        "structuredContent": value,
+        "isError": is_error,
+    })
+}
+
+pub fn leaf_tool_json(tool: &Tool) -> Value {
+    json!({
+        "name": tool.name,
+        "title": tool.id,
+        "description": tool.description,
+        "inputSchema": tool.input_schema,
+        "annotations": {
+            "title": tool.id,
+            "readOnlyHint": !tool.confirmation_required,
+            "openWorldHint": false,
+        },
+    })
+}
+
+fn catalog_tool_json() -> Value {
+    json!({
+        "name": "ds_catalog",
+        "title": "DS catalogue",
+        "description": "Discover DS chapters, search bounded command summaries, and route one exact command to its live descriptor. Returns no bulk schemas.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "query": { "type": ["string", "null"], "description": "Words to match against command ids and descriptions; at most ten summaries return." },
+                "chapter": { "type": ["string", "null"], "enum": ["project", "grid-model", "pls-cadd", "survey", "design", "map-presentation", "vector-tiles", "solar", "reports", "operations", null], "description": "Restrict discovery to one operator-intent chapter." },
+                "command": { "type": ["string", "null"], "description": "Route one exact canonical command id to its chapter describe call." }
+            },
+            "additionalProperties": false
+        },
+        "annotations": { "title": "DS catalogue", "readOnlyHint": true, "openWorldHint": false }
+    })
+}
+
+fn chapter_tool_json(chapter: Chapter) -> Value {
+    let name = chapter_tool_name(chapter);
+    json!({
+        "name": name,
+        "title": chapter.token(),
+        "description": chapter_description(chapter),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "operation": { "type": "string", "enum": ["describe", "invoke"], "description": "Describe the live command contract before invoking it." },
+                "command": { "type": "string", "description": "Exact canonical ds command id in this chapter." },
+                "arguments": { "type": "object", "description": "Command arguments validated against the live descriptor before dispatch." },
+                "confirm": { "type": "boolean", "default": false, "description": "Maps to --yes only when this exact command contract requires confirmation and user intent authorizes it." }
+            },
+            "required": ["operation", "command"],
+            "additionalProperties": false
+        },
+        "annotations": { "title": chapter.token(), "readOnlyHint": false, "openWorldHint": false }
+    })
+}
+
+pub const fn chapter_tool_name(chapter: Chapter) -> &'static str {
+    match chapter {
+        Chapter::Catalog => "ds_catalog",
+        Chapter::Project => "ds_project",
+        Chapter::GridModel => "ds_grid_model",
+        Chapter::PlsCadd => "ds_pls_cadd",
+        Chapter::Survey => "ds_survey",
+        Chapter::Design => "ds_design",
+        Chapter::MapPresentation => "ds_map_presentation",
+        Chapter::VectorTiles => "ds_vector_tiles",
+        Chapter::Solar => "ds_solar",
+        Chapter::Reports => "ds_reports",
+        Chapter::Operations => "ds_operations",
+    }
+}
+
+pub const fn chapter_description(chapter: Chapter) -> &'static str {
+    match chapter {
+        Chapter::Catalog => "Discover DS chapters, commands, and one exact live contract.",
+        Chapter::Project => {
+            "Establish project context and manage project plans, tasks, assignments, and records. Describe a command before invoking it."
+        }
+        Chapter::GridModel => {
+            "Inspect, validate, project, revise, import, and export canonical grid models. Describe a command before invoking it."
+        }
+        Chapter::PlsCadd => {
+            "Work with native PLS-CADD deliveries and pinned engineering libraries: inspect capacity and references, reconcile terrain, label deviations, verify delivery, and resolve exact native assets. Describe a command before invoking it."
+        }
+        Chapter::Survey => {
+            "Obtain project survey data and work with temporary local geospatial layers: view, draw, remove, focus, sample points, detect outliers, compare lines, and plan or apply survey migration. Describe a command before invoking it."
+        }
+        Chapter::Design => {
+            "Read, stage, process, report, save, or discard transformer and LV design work. Describe a command before invoking it."
+        }
+        Chapter::MapPresentation => {
+            "Read or change project map styling and its secondary visual dimension. Describe a command before invoking it."
+        }
+        Chapter::VectorTiles => {
+            "Inspect and manage project vector-tile outputs: status, source preflight, generation planning, confirmed generation, and catalogue membership. Describe a command before invoking it."
+        }
+        Chapter::Solar => {
+            "Prepare, run, inspect, publish, and export Solar work. Describe a command before invoking it."
+        }
+        Chapter::Reports => {
+            "Discover report tasks and export or bundle verified report artifacts. Describe a command before invoking it."
+        }
+        Chapter::Operations => {
+            "Inspect platform health, manage shell reachability, and report product gaps. Describe a command before invoking it."
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn tool(id: &str, chapter: Chapter, confirmation_required: bool) -> Tool {
+        Tool {
+            name: tools::tool_name(id),
+            id: id.to_string(),
+            chapter,
+            path: id.split('.').map(str::to_string).collect(),
+            description: format!("{id} purpose"),
+            input_schema: json!({ "type": "object" }),
+            confirmation_required,
+            inputs: Vec::new(),
+            descriptor: json!({ "id": id, "summary": format!("{id} summary"), "availability": "available" }),
+        }
+    }
+
+    #[test]
+    fn broad_surface_is_exactly_the_eleven_stable_chapter_tools() {
+        let surface = Surface::new(
+            Exposure::Chapters,
+            None,
+            vec![tool("pls.reference-closure", Chapter::PlsCadd, false)],
+        )
+        .expect("surface");
+        let names = surface
+            .tool_list()
+            .into_iter()
+            .map(|value| value["name"].as_str().unwrap().to_string())
+            .collect::<Vec<_>>();
+        assert_eq!(names.len(), 11);
+        assert_eq!(names[0], "ds_catalog");
+        assert!(names.contains(&"ds_pls_cadd".to_string()));
+    }
+
+    #[test]
+    fn profiles_are_typed_filtered_views_and_require_command_exposure() {
+        let tools = vec![
+            tool("pls.reference-closure", Chapter::PlsCadd, false),
+            tool("library.resolve-native", Chapter::PlsCadd, false),
+            tool("tile.generate", Chapter::VectorTiles, true),
+        ];
+        let profile =
+            Surface::new(Exposure::Commands, Some(Profile::Pls), tools.clone()).expect("profile");
+        let names = profile
+            .tool_list()
+            .into_iter()
+            .map(|value| value["name"].as_str().unwrap().to_string())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            names,
+            [
+                "ds_catalog",
+                "library_resolve-native",
+                "pls_reference-closure"
+            ]
+        );
+        let error = Surface::new(Exposure::Chapters, Some(Profile::Pls), tools).unwrap_err();
+        assert_eq!(error.code(), "mcp_profile_exposure_invalid");
+    }
+
+    #[test]
+    fn wrong_chapter_and_nested_confirmation_fail_closed() {
+        let surface = Surface::new(
+            Exposure::Chapters,
+            None,
+            vec![tool("tile.generate", Chapter::VectorTiles, true)],
+        )
+        .expect("surface");
+        let executable = PathBuf::from("not-called");
+        let wrong = surface
+            .call_chapter(
+                Chapter::Survey,
+                &json!({ "operation": "invoke", "command": "tile.generate", "arguments": {} }),
+                &executable,
+            )
+            .unwrap_err();
+        assert!(wrong.1.contains("ds_vector_tiles"), "{}", wrong.1);
+        let nested = surface
+            .call_chapter(
+                Chapter::VectorTiles,
+                &json!({ "operation": "invoke", "command": "tile.generate", "arguments": { "confirm": true } }),
+                &executable,
+            )
+            .unwrap_err();
+        assert!(nested.1.contains("chapter envelope"), "{}", nested.1);
+    }
+
+    #[test]
+    fn every_declared_profile_token_round_trips() {
+        for token in PROFILE_IDS {
+            let profile = Profile::from_token(token).expect("known profile");
+            assert_eq!(profile.token(), *token);
+        }
+        assert!(Profile::from_token("all").is_none());
+    }
+
+    #[test]
+    fn bundled_skills_name_only_known_chapters_and_compatible_profiles() {
+        let skills = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../skills");
+        let mut declared = 0usize;
+        for entry in std::fs::read_dir(skills).expect("skills directory") {
+            let path = entry.expect("skill entry").path().join("SKILL.md");
+            if !path.is_file() {
+                continue;
+            }
+            let text = std::fs::read_to_string(&path).expect("skill text");
+            let chapters = text.lines().find_map(|line| {
+                line.trim_start().strip_prefix("ds-chapters:").map(|value| {
+                    value
+                        .split(',')
+                        .map(str::trim)
+                        .map(|token| {
+                            Chapter::from_token(token).unwrap_or_else(|| {
+                                panic!("{} names unknown chapter `{token}`", path.display())
+                            })
+                        })
+                        .collect::<Vec<_>>()
+                })
+            });
+            let profile = text.lines().find_map(|line| {
+                line.trim_start()
+                    .strip_prefix("ds-mcp-profile:")
+                    .map(|value| {
+                        let token = value.trim();
+                        Profile::from_token(token).unwrap_or_else(|| {
+                            panic!("{} names unknown profile `{token}`", path.display())
+                        })
+                    })
+            });
+            if let Some(chapters) = chapters {
+                declared += 1;
+                assert!(!chapters.is_empty(), "{} has no chapters", path.display());
+                if let Some(profile) = profile {
+                    for chapter in chapters {
+                        assert!(
+                            profile.includes_chapter(chapter),
+                            "{} requires `{}` but profile `{}` omits it",
+                            path.display(),
+                            chapter.token(),
+                            profile.token()
+                        );
+                    }
+                }
+            } else {
+                assert!(
+                    profile.is_none(),
+                    "{} names a profile without declaring chapters",
+                    path.display()
+                );
+            }
+        }
+        assert!(declared >= 10, "workflow skills must declare chapters");
+    }
+}

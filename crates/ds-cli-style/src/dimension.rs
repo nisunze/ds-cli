@@ -8,7 +8,9 @@
 //! map carries the field.
 
 use ds_cli_contract::outcome::Failure;
-use ds_cli_contract::spec::{Arg, ArgKind, Authority, Command, Effect, Example, Execution};
+use ds_cli_contract::spec::{
+    Arg, ArgKind, Authority, Chapter, Command, Effect, Example, Execution,
+};
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
 
@@ -146,6 +148,7 @@ pub mod plan {
 Runs the exact authoring the Style Center's Second-dimension panel performs \
 and returns the match expressions and the whole resulting document, without \
 saving. Read it, then `ds style dimension set` with the same flags.",
+        chapter: Chapter::MapPresentation,
         effect: Effect::ReadOnly,
         authority: Authority::Project,
         execution: Execution::Sync,
@@ -214,6 +217,7 @@ Authors the same expressions `ds style dimension plan` shows and publishes \
 the document through the application's own governed save: ds-brain \
 validates it, the local map renders it, the legend reads it. Any other \
 second dimension on the ref is replaced; the colour dimension is untouched.",
+        chapter: Chapter::MapPresentation,
         effect: Effect::GlobalWrite,
         authority: Authority::Project,
         execution: Execution::Sync,
@@ -280,6 +284,7 @@ pub mod clear {
         purpose: "\
 Deletes the channel properties the second dimension wrote so the schema \
 defaults apply again, and publishes. The colour dimension is untouched.",
+        chapter: Chapter::MapPresentation,
         effect: Effect::GlobalWrite,
         authority: Authority::Project,
         execution: Execution::Sync,

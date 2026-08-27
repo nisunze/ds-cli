@@ -1,7 +1,7 @@
 //! `ds pls deviation-labels` — visible native terrain labels from ordered routes.
 
 use ds_cli_contract::spec::{
-    Arg, Authority, Availability, Command, Effect, Example, Execution, Refusal,
+    Arg, Authority, Availability, Chapter, Command, Effect, Example, Execution, Refusal,
 };
 use ds_cli_contract::{Context, Failure, Inputs};
 use ds_grid_tasks::{LabelPlsDeviationsRequest, label_pls_deviations};
@@ -15,6 +15,7 @@ pub static COMMAND: Command = Command {
     contract: 1,
     summary: "Label ordered deviation vertices, keeping surveyed endpoints intact.",
     purpose: "Derives first, internal and last vertices from uniquely named ordered LineStrings, matches them to the reconciled point-batch suffix, and changes only feature-code bytes. With endpoint preservation, an occupied T-Off, tap, transformer or other non-angle survey row remains untouched and the coincident batch row becomes the visible marker. Feature text is not alignment topology. Dry-run writes nothing; commit creates one new workspace.",
+    chapter: Chapter::PlsCadd,
     effect: Effect::LocalFileWrite,
     authority: Authority::None,
     execution: Execution::Sync,

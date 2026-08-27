@@ -1,6 +1,6 @@
 use crate::engine_failure;
 use ds_cli_contract::spec::{
-    Arg, Authority, Availability, Command, Effect, Example, Execution, Refusal,
+    Arg, Authority, Availability, Chapter, Command, Effect, Example, Execution, Refusal,
 };
 use ds_cli_contract::{Context, Failure, Inputs};
 use ds_grid_exchange::open_release;
@@ -14,6 +14,7 @@ pub static COMMAND: Command = Command {
     contract: 1,
     summary: "Open one exact verified release from a local library store.",
     purpose: "Reads artifact id plus immutable version from the verified local store. Missing versions refuse; there is no latest-release fallback.",
+    chapter: Chapter::PlsCadd,
     effect: Effect::ReadOnly,
     authority: Authority::None,
     execution: Execution::Sync,

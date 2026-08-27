@@ -10,7 +10,7 @@
 //! flag — the application refuses it too.
 
 use ds_cli_contract::outcome::Failure;
-use ds_cli_contract::spec::{Authority, Command, Effect, Example, Execution, Refusal};
+use ds_cli_contract::spec::{Authority, Chapter, Command, Effect, Example, Execution, Refusal};
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
 
@@ -27,6 +27,7 @@ Removes every design feature a selector matches from the transformer's local \
 room and marks it dirty; the project is untouched until `ds map design save`. \
 The selector is required — deletion is always an explicit selection, never a \
 default sweep. Use --dry-run to count what would go first.",
+    chapter: Chapter::Design,
     effect: Effect::LocalUi,
     authority: Authority::Project,
     execution: Execution::Sync,

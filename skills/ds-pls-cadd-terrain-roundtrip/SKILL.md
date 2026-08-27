@@ -1,6 +1,8 @@
 ---
 name: ds-pls-cadd-terrain-roundtrip
 description: Repair PLS-CADD terrain waterfalls, derive visible deviation labels, preserve operator-owned alignments, verify closure, and hand off native solver decisions.
+metadata:
+  ds-chapters: grid-model, pls-cadd
 ---
 
 # Revise PLS-CADD route and terrain without losing native identity

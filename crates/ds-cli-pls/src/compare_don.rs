@@ -15,7 +15,7 @@ use std::collections::BTreeMap;
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
-    Arg, Authority, Availability, Command, Effect, Example, Execution, Refusal,
+    Arg, Authority, Availability, Chapter, Command, Effect, Example, Execution, Refusal,
 };
 use ds_cli_contract::{Context, Inputs};
 use ds_grid_tasks::{CompareDonAssignmentRequest, compare_don_assignment};
@@ -39,6 +39,7 @@ positions that agree, positions reconciled by a declared name equivalence, and \
 positions that genuinely disagree. Positions are matched by station within a \
 tolerance, so a resurveyed alignment does not read as a wholesale \
 substitution. Read-only.",
+    chapter: Chapter::PlsCadd,
     effect: Effect::Discovery,
     authority: Authority::None,
     execution: Execution::Sync,

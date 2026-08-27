@@ -11,7 +11,7 @@ use std::path::PathBuf;
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
-    Arg, Authority, Availability, Command, Effect, Example, Execution, Refusal,
+    Arg, Authority, Availability, Chapter, Command, Effect, Example, Execution, Refusal,
 };
 use ds_cli_contract::{Context, Inputs};
 use ds_grid_tasks::{
@@ -33,6 +33,7 @@ translated from the absolute runtime binding to a canonical asset-class and \
 leaf identity. Run it before moving or reissuing a workspace: it names the \
 references that will not survive the move while there is still time to fix \
 them. It reads the workspace and writes nothing.",
+    chapter: Chapter::PlsCadd,
     effect: Effect::Discovery,
     authority: Authority::None,
     execution: Execution::Sync,

@@ -8,6 +8,7 @@ use std::path::PathBuf;
 use std::process::Command;
 
 use ds_cli_contract::outcome::Failure;
+use ds_cli_contract::spec::Chapter;
 use serde_json::{Map, Value, json};
 
 /// One `ds` command as an MCP tool, plus what is needed to call it back.
@@ -19,11 +20,14 @@ pub struct Tool {
     /// The dotted command id, kept as the tool title so a host shows the
     /// same word the skills use.
     pub id: String,
+    pub chapter: Chapter,
     pub path: Vec<String>,
     pub description: String,
     pub input_schema: Value,
     pub confirmation_required: bool,
     pub inputs: Vec<Input>,
+    /// The authoritative tier-3 descriptor this tool was generated from.
+    pub descriptor: Value,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -53,6 +57,7 @@ pub fn tool_name(id: &str) -> String {
 /// Build one tool from a tier-3 `ds capabilities <id>` descriptor.
 pub fn tool_from_descriptor(command: &Value) -> Option<Tool> {
     let id = command.get("id")?.as_str()?.to_string();
+    let chapter = Chapter::from_token(command.get("chapter")?.as_str()?)?;
     let path: Vec<String> = command
         .get("path")?
         .as_array()?
@@ -162,6 +167,7 @@ pub fn tool_from_descriptor(command: &Value) -> Option<Tool> {
     Some(Tool {
         name: tool_name(&id),
         id,
+        chapter,
         path,
         description,
         input_schema: json!({
@@ -172,6 +178,7 @@ pub fn tool_from_descriptor(command: &Value) -> Option<Tool> {
         }),
         confirmation_required,
         inputs,
+        descriptor: command.clone(),
     })
 }
 
@@ -189,6 +196,12 @@ pub fn argv_for_call(tool: &Tool, arguments: &Value) -> Result<Vec<String>, Stri
     // Unknown properties first, so the host's mistake is named before any
     // mapping happens.
     for key in object.keys() {
+        if key == CONFIRM_PROPERTY && !tool.confirmation_required {
+            return Err(format!(
+                "`{}` does not declare `{CONFIRM_PROPERTY}`",
+                tool.id
+            ));
+        }
         if key != CONFIRM_PROPERTY && !tool.inputs.iter().any(|input| &input.name == key) {
             return Err(format!("`{key}` is not an input of `{}`", tool.id));
         }
@@ -283,6 +296,35 @@ pub fn run_cli(executable: &PathBuf, argv: &[String]) -> Result<(i32, String, St
     ))
 }
 
+/// Read this exact executable's build identity for MCP and skill provenance.
+pub fn build_identity(executable: &PathBuf) -> Result<Value, Failure> {
+    let argv = [
+        "version".to_string(),
+        "--output".to_string(),
+        "json".to_string(),
+    ];
+    let (code, stdout, stderr) = run_cli(executable, &argv).map_err(|message| {
+        Failure::failed("mcp_capabilities_unavailable", message)
+            .remedy("run `ds version --output json` and repair this executable")
+    })?;
+    let envelope: Value = serde_json::from_str(&stdout).map_err(|error| {
+        Failure::failed(
+            "mcp_capabilities_unavailable",
+            format!("`ds version` emitted no envelope ({error}): {stderr}"),
+        )
+        .remedy("run `ds version --output json` and repair this executable")
+    })?;
+    if code != 0 || envelope.get("status").and_then(Value::as_str) != Some("ok") {
+        return Err(Failure::failed(
+            "mcp_capabilities_unavailable",
+            "`ds version --output json` refused",
+        )
+        .remedy("run `ds version --output json` and repair this executable")
+        .detail(envelope));
+    }
+    Ok(envelope.get("data").cloned().unwrap_or(Value::Null))
+}
+
 /// Read one `ds capabilities …` envelope and return its `data`.
 fn capabilities(executable: &PathBuf, selector: Option<&str>) -> Result<Value, Failure> {
     let mut argv = vec!["capabilities".to_string()];
@@ -354,9 +396,22 @@ pub fn discover_tools(executable: &PathBuf) -> Result<Vec<Tool>, Failure> {
                 continue;
             };
             let descriptor = capabilities(executable, Some(id))?;
-            if let Some(tool) = descriptor.get("command").and_then(tool_from_descriptor) {
-                tools.push(tool);
-            }
+            let command = descriptor.get("command").ok_or_else(|| {
+                Failure::failed(
+                    "mcp_capabilities_unavailable",
+                    format!("`ds capabilities {id}` omitted its command descriptor"),
+                )
+                .remedy("repair the command registry and rebuild this exact `ds` executable")
+            })?;
+            let tool = tool_from_descriptor(command).ok_or_else(|| {
+                Failure::failed(
+                    "mcp_capabilities_unavailable",
+                    format!("`ds capabilities {id}` has no valid MCP chapter or schema"),
+                )
+                .remedy("assign the command exactly one valid chapter and rebuild `ds`")
+                .detail(command.clone())
+            })?;
+            tools.push(tool);
         }
     }
     tools.sort_by(|a, b| a.name.cmp(&b.name));
@@ -370,6 +425,7 @@ mod tests {
     fn descriptor() -> Value {
         json!({
             "id": "map.design.report",
+            "chapter": "design",
             "path": ["map", "design", "report"],
             "summary": "Export one transformer's report locally.",
             "purpose": "Runs the local Network Reporter export for one transformer and reports each artifact.",
@@ -456,6 +512,15 @@ mod tests {
         assert!(!argv.iter().any(|token| token == "--yes"));
         let argv = argv_for_call(&tool, &json!({ "transformer": "T-1" })).expect("argv");
         assert!(!argv.iter().any(|token| token == "--yes"));
+    }
+
+    #[test]
+    fn confirm_is_rejected_for_a_command_that_does_not_declare_it() {
+        let mut descriptor = descriptor();
+        descriptor["confirmation_required"] = json!(false);
+        let tool = tool_from_descriptor(&descriptor).expect("tool");
+        let error = argv_for_call(&tool, &json!({ "confirm": true })).unwrap_err();
+        assert!(error.contains("does not declare `confirm`"), "{error}");
     }
 
     #[test]

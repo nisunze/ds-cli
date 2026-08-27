@@ -13,7 +13,7 @@ use std::path::{Path, PathBuf};
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
-    Arg, Authority, Availability, Command, Effect, Example, Execution, Refusal,
+    Arg, Authority, Availability, Chapter, Command, Effect, Example, Execution, Refusal,
 };
 use ds_cli_contract::{Context, Inputs};
 use ds_grid_tasks::pole_capacity::MAX_DESCRIBE_LIMIT;
@@ -33,6 +33,7 @@ file and returns it with the source's exact digest, its declared units, and \
 the provenance the engine recorded. The result is paged: it reports the total, \
 what it returned, and the next offset, so a large block is walked rather than \
 inlined.",
+    chapter: Chapter::PlsCadd,
     effect: Effect::Discovery,
     authority: Authority::None,
     execution: Execution::Sync,

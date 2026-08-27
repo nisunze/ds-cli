@@ -2,7 +2,7 @@
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
-    Authority, Availability, Command, Effect, Example, Execution, Refusal,
+    Authority, Availability, Chapter, Command, Effect, Example, Execution, Refusal,
 };
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
@@ -18,6 +18,7 @@ pub static COMMAND: Command = Command {
 Returns the immutable build identity of the `ds-solar` engine this machine \
 will use and where it was found. Run it to confirm the packaged sidecar before \
 starting a batch, and to record which exact engine produced a result.",
+    chapter: Chapter::Solar,
     effect: Effect::Discovery,
     authority: Authority::None,
     execution: Execution::Sync,

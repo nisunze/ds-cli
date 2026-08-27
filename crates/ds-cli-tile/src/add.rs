@@ -1,7 +1,9 @@
 //! `ds tile add` — mount another project's published output here.
 
 use ds_cli_contract::outcome::Failure;
-use ds_cli_contract::spec::{Arg, ArgKind, Authority, Command, Effect, Example, Execution};
+use ds_cli_contract::spec::{
+    Arg, ArgKind, Authority, Chapter, Command, Effect, Example, Execution,
+};
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
 
@@ -27,6 +29,7 @@ References another project's published output of the given type from this \
 project's catalogue, through the same governed action the Pipeline panel \
 uses. ds-brain checks membership on both projects. Nothing is copied or \
 re-tiled.",
+    chapter: Chapter::VectorTiles,
     effect: Effect::GlobalWrite,
     authority: Authority::Project,
     execution: Execution::Sync,

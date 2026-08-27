@@ -1,6 +1,9 @@
 ---
 name: ds-boq-combined-report
 description: Reconcile combined report InfoTable, LV Summary, and Transformer Sizing sheets with a project BOQ.
+metadata:
+  ds-chapters: reports
+  ds-mcp-profile: grid
 ---
 
 # The combined report against a project BOQ

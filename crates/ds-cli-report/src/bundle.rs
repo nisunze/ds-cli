@@ -6,7 +6,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
-    Arg, Authority, Availability, Command, Effect, Example, Execution, Refusal,
+    Arg, Authority, Availability, Chapter, Command, Effect, Example, Execution, Refusal,
 };
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
@@ -19,6 +19,7 @@ pub static COMMAND: Command = Command {
     contract: 1,
     summary: "Package transformer and combined reports into one verified ZIP.",
     purpose: "Calls the reporter's closed local bundle task. Every source is digest-pinned, manifest.json is embedded, no network call is made, and an existing output is never overwritten.",
+    chapter: Chapter::Reports,
     effect: Effect::LocalFileWrite,
     authority: Authority::None,
     execution: Execution::Sync,

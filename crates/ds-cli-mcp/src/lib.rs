@@ -19,6 +19,7 @@
 
 pub mod install;
 pub mod serve;
+pub mod surface;
 pub mod tools;
 
 use ds_cli_contract::spec::{Availability, Domain, Refusal};
@@ -43,6 +44,18 @@ pub(crate) const STDIO_UNAVAILABLE: Refusal = Refusal {
     code: "mcp_stdio_unavailable",
     when: "standard input closed or failed before the host finished the session",
     remedy: "start the server from an MCP host as a stdio server; it is not an interactive command",
+};
+
+pub(crate) const PROFILE_EXPOSURE_INVALID: Refusal = Refusal {
+    code: "mcp_profile_exposure_invalid",
+    when: "a specialized profile was requested without typed command exposure",
+    remedy: "pass `--exposure commands --profile <name>`, or omit `--profile`",
+};
+
+pub(crate) const PROFILE_TOO_BROAD: Refusal = Refusal {
+    code: "mcp_profile_too_broad",
+    when: "a specialized profile would publish more than 15 tools including `ds_catalog`",
+    remedy: "split the profile by operator workflow before publishing it",
 };
 
 pub(crate) const HOST_UNKNOWN: Refusal = Refusal {

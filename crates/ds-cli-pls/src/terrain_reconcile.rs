@@ -1,7 +1,7 @@
 //! `ds pls terrain-reconcile` — reconcile a terrain batch to surveyed ground.
 
 use ds_cli_contract::spec::{
-    Arg, Authority, Availability, Command, Effect, Example, Execution, Refusal,
+    Arg, Authority, Availability, Chapter, Command, Effect, Example, Execution, Refusal,
 };
 use ds_cli_contract::{Context, Failure, Inputs};
 use ds_grid_tasks::{ReconcilePlsTerrainRequest, reconcile_pls_terrain};
@@ -15,6 +15,7 @@ pub static COMMAND: Command = Command {
     contract: 1,
     summary: "Correct a terrain-datum waterfall and taper surveyed route seams.",
     purpose: "Reads one closed baseline workspace, an explicit JSON/GeoJSON XYZ point batch, and ordered LineString routes. It derives bounded surveyed-TIN pairs, a robust median delta, and only those endpoint seams supported by nearby surveyed ground. XY, the source workspace, and free ends without authority remain unchanged. Dry-run writes nothing; commit creates one new workspace.",
+    chapter: Chapter::PlsCadd,
     effect: Effect::LocalFileWrite,
     authority: Authority::None,
     execution: Execution::Sync,

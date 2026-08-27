@@ -1,6 +1,9 @@
 ---
 name: ds-project-context
 description: "Identify or switch the active DS project, discover one narrow command, and return a bounded asset or operation receipt."
+metadata:
+  ds-chapters: project
+  ds-mcp-profile: project
 ---
 
 # Select and work in the active DS project

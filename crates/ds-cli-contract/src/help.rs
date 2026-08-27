@@ -212,6 +212,8 @@ pub fn command_json(command: &Command) -> Value {
         "id": command.id,
         "path": command.path,
         "contract": command.contract,
+        // Tier 3 only: chapter selection stays out of the cheap indexes.
+        "chapter": command.chapter.token(),
         "summary": command.summary,
         "purpose": command.purpose,
         "effect": command.effect.token(),

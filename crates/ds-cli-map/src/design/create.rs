@@ -15,7 +15,7 @@
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
-    Arg, ArgKind, Authority, Command, Effect, Example, Execution, Refusal,
+    Arg, ArgKind, Authority, Chapter, Command, Effect, Example, Execution, Refusal,
 };
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
@@ -56,6 +56,7 @@ gesture, with the same filtering. Give exactly one of --features or \
 --target-layer it answers which design layers the supplied geometry could \
 become and how many each would accept, so the catalogue can be discovered \
 rather than guessed. With one, it stages the features into the local room.",
+    chapter: Chapter::Design,
     effect: Effect::LocalUi,
     authority: Authority::Project,
     execution: Execution::Sync,

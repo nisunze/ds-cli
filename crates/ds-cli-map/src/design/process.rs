@@ -23,7 +23,7 @@
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
-    Arg, ArgKind, Authority, Command, Effect, Example, Execution, Refusal,
+    Arg, ArgKind, Authority, Chapter, Command, Effect, Example, Execution, Refusal,
 };
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
@@ -77,6 +77,7 @@ operator's own run uses. With no differential flags it runs FULL, \
 recalculating everything. Any differential flag narrows it to the matching \
 lv_lines and freezes the rest for that run only. It stages; nothing reaches \
 the project until `ds map design save`.",
+    chapter: Chapter::Design,
     effect: Effect::LocalUi,
     authority: Authority::Project,
     execution: Execution::Sync,

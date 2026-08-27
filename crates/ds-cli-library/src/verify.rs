@@ -1,5 +1,5 @@
 use ds_cli_contract::spec::{
-    Arg, Authority, Availability, Command, Effect, Example, Execution, Refusal,
+    Arg, Authority, Availability, Chapter, Command, Effect, Example, Execution, Refusal,
 };
 use ds_cli_contract::{Context, Failure, Inputs};
 use ds_grid_exchange::{bundle_digest, verify_release};
@@ -13,6 +13,7 @@ pub static COMMAND: Command = Command {
     contract: 1,
     summary: "Verify an immutable library release and its optional transport digest.",
     purpose: "Authenticates every declared release member, schema fingerprint and content root. If --digest is omitted, the exact supplied bytes define the transport digest; no catalogue or newest-version fallback is consulted.",
+    chapter: Chapter::PlsCadd,
     effect: Effect::ReadOnly,
     authority: Authority::None,
     execution: Execution::Sync,

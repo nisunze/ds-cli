@@ -1,6 +1,8 @@
 ---
 name: ds-solar-workflow
 description: Run and deliver single-city or explicit city-batch Solar results through deployed `ds`, not governed portfolios.
+metadata:
+  ds-chapters: project, solar
 ---
 
 # Run the native Solar city lifecycle

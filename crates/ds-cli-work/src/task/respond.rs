@@ -7,7 +7,9 @@
 //! that names you is not editing the plan.
 
 use ds_cli_contract::outcome::Failure;
-use ds_cli_contract::spec::{Arg, ArgKind, Authority, Command, Effect, Example, Execution};
+use ds_cli_contract::spec::{
+    Arg, ArgKind, Authority, Chapter, Command, Effect, Example, Execution,
+};
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
 
@@ -34,6 +36,7 @@ answering, because answering for somebody else is the one thing this must not \
 allow. Accepting makes you responsible and closes the request for everyone \
 else; declining removes only you and leaves it open, and carries no reason, \
 because a justification is how declining stops being real.",
+    chapter: Chapter::Project,
     effect: Effect::GlobalWrite,
     authority: Authority::Project,
     execution: Execution::Sync,

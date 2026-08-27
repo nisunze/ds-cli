@@ -3,7 +3,9 @@
 use std::time::Duration;
 
 use ds_cli_contract::outcome::Failure;
-use ds_cli_contract::spec::{Arg, Authority, Command, Effect, Example, Execution, Refusal};
+use ds_cli_contract::spec::{
+    Arg, Authority, Chapter, Command, Effect, Example, Execution, Refusal,
+};
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
 
@@ -58,6 +60,7 @@ pub static LIST_COMMAND: Command = Command {
 Returns a bounded project picker projection from the paired application's own \
 signed-in repository. Use its exact `project` ids with `desktop project switch`; \
 the CLI never invents an id from a display name.",
+    chapter: Chapter::Project,
     effect: Effect::ReadOnly,
     authority: Authority::DesktopUser,
     execution: Execution::Sync,
@@ -101,6 +104,7 @@ pub static SWITCH_COMMAND: Command = Command {
 Requests one exact active-project context change through the paired application. \
 The app verifies that the signed-in user can see the project, performs its normal \
 project switch, and keeps project-scoped local rooms under their own project keys.",
+    chapter: Chapter::Project,
     effect: Effect::LocalUi,
     authority: Authority::DesktopUser,
     execution: Execution::Sync,

@@ -2,7 +2,7 @@
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
-    Arg, ArgKind, Authority, Command, Effect, Example, Execution, Refusal,
+    Arg, ArgKind, Authority, Chapter, Command, Effect, Example, Execution, Refusal,
 };
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
@@ -38,6 +38,7 @@ pub static COMMAND: Command = Command {
 Persists each named dirty desktop room with optimistic concurrency checks and \
 v_first/v_last stamping from the deliberate Design Status version. Items are isolated so one conflict does not \
 cancel unrelated saves. This durable project write always requires --yes.",
+    chapter: Chapter::Design,
     effect: Effect::ArtifactWrite,
     authority: Authority::Project,
     execution: Execution::Sync,

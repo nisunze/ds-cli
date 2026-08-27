@@ -1,7 +1,7 @@
 //! `ds shell unregister` — the exact inverse of `register`.
 
 use ds_cli_contract::outcome::Failure;
-use ds_cli_contract::spec::{Authority, Command, Effect, Example, Execution};
+use ds_cli_contract::spec::{Authority, Chapter, Command, Effect, Example, Execution};
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
 
@@ -19,6 +19,7 @@ Removes the directory holding this executable from the user's durable PATH \
 registration, and nothing else: every other entry keeps its place and its \
 spelling, and a `~/.local/bin/ds` link is removed only when it points here. \
 Idempotent. The desktop uninstaller runs this before removing files.",
+    chapter: Chapter::Operations,
     effect: Effect::LocalFileWrite,
     authority: Authority::None,
     execution: Execution::Sync,

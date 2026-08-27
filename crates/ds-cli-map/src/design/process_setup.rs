@@ -2,7 +2,7 @@
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
-    Arg, ArgKind, Authority, Command, Effect, Example, Execution, Refusal,
+    Arg, ArgKind, Authority, Chapter, Command, Effect, Example, Execution, Refusal,
 };
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
@@ -132,6 +132,7 @@ sources, available Point layers, and effective processor parameters. Source \
 layers, --preset, and typed --setting overrides store the same project-scoped setup the application uses. The CLI \
 names semantic layer keys only; IndexedDB addresses and processor wiring stay \
 inside DS GridDesign. No design features or cloud data are changed.",
+    chapter: Chapter::Design,
     effect: Effect::LocalUi,
     authority: Authority::Project,
     execution: Execution::Sync,

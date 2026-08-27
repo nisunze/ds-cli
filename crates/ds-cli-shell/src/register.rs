@@ -1,7 +1,7 @@
 //! `ds shell register` — make new shells find this executable.
 
 use ds_cli_contract::outcome::Failure;
-use ds_cli_contract::spec::{Authority, Command, Effect, Example, Execution};
+use ds_cli_contract::spec::{Authority, Chapter, Command, Effect, Example, Execution};
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
 
@@ -23,6 +23,7 @@ and a package install into a system directory needs nothing and changes \
 nothing. Windows already open keep the PATH they started with. The desktop \
 installer runs this after copying files; run it by hand after a source build \
 or a copied binary.",
+    chapter: Chapter::Operations,
     effect: Effect::LocalFileWrite,
     authority: Authority::None,
     execution: Execution::Sync,

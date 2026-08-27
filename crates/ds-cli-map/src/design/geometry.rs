@@ -8,7 +8,7 @@
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
-    Arg, ArgKind, Authority, Command, Effect, Example, Execution, Refusal,
+    Arg, ArgKind, Authority, Chapter, Command, Effect, Example, Execution, Refusal,
 };
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
@@ -47,6 +47,7 @@ line — in the transformer's local room and marks it dirty; the project is \
 untouched until `ds map design save`. One feature per call, always: an id \
 that matches more than one feature is refused, never guessed. Coordinates are \
 [lon, lat] degrees.",
+    chapter: Chapter::Design,
     effect: Effect::LocalUi,
     authority: Authority::Project,
     execution: Execution::Sync,

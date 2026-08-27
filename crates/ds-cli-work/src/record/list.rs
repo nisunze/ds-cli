@@ -1,7 +1,9 @@
 //! `ds work record list` — what has been said, sent, asked and decided.
 
 use ds_cli_contract::outcome::Failure;
-use ds_cli_contract::spec::{Arg, ArgKind, Authority, Command, Effect, Example, Execution};
+use ds_cli_contract::spec::{
+    Arg, ArgKind, Authority, Chapter, Command, Effect, Example, Execution,
+};
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
 
@@ -37,6 +39,7 @@ The correspondence layer of Project Work: instructions, requests for \
 information, submissions, reviews, decisions and field records, newest first, \
 with what each one is waiting on. Bodies are not returned here — one row is a \
 subject line, and `ds work record read` opens the one you chose.",
+    chapter: Chapter::Project,
     effect: Effect::ReadOnly,
     authority: Authority::Project,
     execution: Execution::Sync,

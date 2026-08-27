@@ -1,7 +1,9 @@
 //! `ds work record read` — one record, with its body.
 
 use ds_cli_contract::outcome::Failure;
-use ds_cli_contract::spec::{Arg, ArgKind, Authority, Command, Effect, Example, Execution};
+use ds_cli_contract::spec::{
+    Arg, ArgKind, Authority, Chapter, Command, Effect, Example, Execution,
+};
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
 
@@ -28,6 +30,7 @@ in, whether a response is owed and by when, what it affects — scope, schedule,
 quality, cost — and which tasks, residuals and other records it references. \
 The body is bounded, and a body that was cut says so rather than ending \
 quietly.",
+    chapter: Chapter::Project,
     effect: Effect::ReadOnly,
     authority: Authority::Project,
     execution: Execution::Sync,

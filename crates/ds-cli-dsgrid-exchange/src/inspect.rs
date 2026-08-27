@@ -23,7 +23,9 @@
 //! reads bytes, hands them over, and shapes the answer.
 
 use ds_cli_contract::outcome::Failure;
-use ds_cli_contract::spec::{Arg, Authority, Availability, Command, Effect, Example, Execution};
+use ds_cli_contract::spec::{
+    Arg, Authority, Availability, Chapter, Command, Effect, Example, Execution,
+};
 use ds_cli_contract::{Context, Inputs};
 use ds_grid_exchange::conversion::{CapabilityState, conversion_capabilities, inspect_sources};
 use serde_json::{Value, json};
@@ -41,6 +43,7 @@ do with it. Each source is classified and digested; the result carries the \
 capability matrix — every conversion this set supports, every one it does not, \
 and the reason. Nothing is converted and nothing is written: this is the call \
 that decides whether a conversion is worth attempting.",
+    chapter: Chapter::GridModel,
     effect: Effect::Discovery,
     authority: Authority::None,
     execution: Execution::Sync,

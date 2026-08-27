@@ -9,7 +9,9 @@
 //! same layer is the same sample, so a run can be reproduced.
 
 use ds_cli_contract::outcome::Failure;
-use ds_cli_contract::spec::{Arg, Authority, Command, Effect, Example, Execution, Refusal};
+use ds_cli_contract::spec::{
+    Arg, Authority, Chapter, Command, Effect, Example, Execution, Refusal,
+};
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
 
@@ -30,6 +32,7 @@ Samples random points inside the areas a layer defines, no closer together \
 than --min-spacing-m and no further than --max-spacing-m, and adds them to the \
 map as a new layer. Polygons are their own area; point and line layers need \
 --buffer-m to make one. Pass --seed to make the sample reproducible.",
+    chapter: Chapter::Survey,
     effect: Effect::LocalUi,
     authority: Authority::DesktopPairing,
     execution: Execution::Sync,

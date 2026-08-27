@@ -1,7 +1,9 @@
 //! `ds map design attach-print` — attach one completed QGIS page.
 
 use ds_cli_contract::outcome::Failure;
-use ds_cli_contract::spec::{Arg, Authority, Command, Effect, Example, Execution, Refusal};
+use ds_cli_contract::spec::{
+    Arg, Authority, Chapter, Command, Effect, Example, Execution, Refusal,
+};
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
 
@@ -24,6 +26,7 @@ transformer or the combined report. Repeat the command for multiple paper \
 sizes or image variants. It never renders a page and never enters report \
 compute. A later compounded report includes individual pages beside each \
 transformer's files and combined atlas/joined pages at archive root.",
+    chapter: Chapter::Design,
     effect: Effect::ArtifactWrite,
     authority: Authority::Project,
     execution: Execution::Sync,

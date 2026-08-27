@@ -5,7 +5,9 @@
 //! Table could supply one.
 
 use ds_cli_contract::outcome::Failure;
-use ds_cli_contract::spec::{Arg, ArgKind, Authority, Command, Effect, Example, Execution};
+use ds_cli_contract::spec::{
+    Arg, ArgKind, Authority, Chapter, Command, Effect, Example, Execution,
+};
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
 
@@ -72,6 +74,7 @@ with its delivery state, progress and responsible person. This is where a \
 Project Work session starts: every other `ds work task` command needs an id \
 from here. Reads the same canonical graph the Plan and Table surfaces render \
 and changes nothing.",
+    chapter: Chapter::Project,
     effect: Effect::ReadOnly,
     authority: Authority::Project,
     execution: Execution::Sync,

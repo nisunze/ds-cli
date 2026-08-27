@@ -67,6 +67,22 @@ const EFFECTS: &[&str] = &[
     "global_write",
 ];
 const AUTHORITIES: &[&str] = &["none", "desktop_pairing", "desktop_user", "project"];
+/// The closed chapter catalog, spelled the way a caller receives it. Written
+/// out rather than read from the binary on purpose: a test that asks the
+/// surface what its own vocabulary is proves nothing.
+const CHAPTERS: &[&str] = &[
+    "catalog",
+    "project",
+    "grid-model",
+    "pls-cadd",
+    "survey",
+    "design",
+    "map-presentation",
+    "vector-tiles",
+    "solar",
+    "reports",
+    "operations",
+];
 
 #[test]
 fn one_line_summaries_stay_one_line() {
@@ -298,6 +314,102 @@ fn every_command_reachable_by_id_and_by_path() {
         assert_eq!(code, 0, "`{id}` is not reachable by id");
         assert_eq!(by_id["data"]["command"]["id"], id);
     }
+}
+
+#[test]
+fn every_command_is_in_exactly_one_chapter() {
+    // Exactly one is structural: `chapter` is a single required field of the
+    // declaration, so a command cannot be registered without one and cannot
+    // carry two. What is left to check is that the value is in the closed set
+    // and that the chapters between them still account for the whole surface
+    // — no command stranded, and no chapter that has quietly emptied out and
+    // would be advertised to a caller with nothing behind it.
+    let descriptors = descriptors();
+    let mut counts: Vec<(&str, usize)> = CHAPTERS.iter().map(|name| (*name, 0)).collect();
+
+    for command in &descriptors {
+        let id = command["id"].as_str().expect("id");
+        let chapter = command["chapter"].as_str().unwrap_or_else(|| {
+            panic!(
+                "`{id}` declares no chapter. Every command belongs to one \
+                 operator concern; a command in none of them is unreachable \
+                 by concern and invisible to anything that routes by chapter."
+            )
+        });
+        let entry = counts
+            .iter_mut()
+            .find(|(name, _)| *name == chapter)
+            .unwrap_or_else(|| {
+                panic!(
+                    "`{id}` declares the chapter `{chapter}`, which is outside \
+                     the closed catalog {CHAPTERS:?}. The catalog is what a \
+                     caller reads before it knows what it wants, so it does \
+                     not grow when a command does."
+                )
+            });
+        entry.1 += 1;
+    }
+
+    let total: usize = counts.iter().map(|(_, count)| count).sum();
+    assert_eq!(
+        total,
+        descriptors.len(),
+        "the chapters account for {total} of {} commands",
+        descriptors.len()
+    );
+    for (chapter, count) in &counts {
+        assert!(
+            *count > 0,
+            "the chapter `{chapter}` has no commands. An advertised concern \
+             with nothing behind it costs a caller a choice it cannot use."
+        );
+    }
+}
+
+#[test]
+fn chapters_follow_intent_where_it_parts_from_the_domain() {
+    // A chapter is an operator-intent boundary, and three places it
+    // deliberately disagrees with the repository layout are worth holding.
+    // Everywhere else the domain is the chapter and needs no assertion here.
+    let descriptors = descriptors();
+    let chapter_of = |id: &str| -> String {
+        descriptors
+            .iter()
+            .find(|command| command["id"].as_str() == Some(id))
+            .and_then(|command| command["chapter"].as_str())
+            .unwrap_or_else(|| panic!("`{id}` has no descriptor with a chapter"))
+            .to_string()
+    };
+
+    // 1. The `map` domain splits: staging and saving an LV design is not the
+    //    concern that acquiring survey data and reviewing geometry is.
+    for command in &descriptors {
+        let id = command["id"].as_str().expect("id");
+        let Some(rest) = id.strip_prefix("map.") else {
+            continue;
+        };
+        let expected = if rest.starts_with("design.") {
+            "design"
+        } else {
+            "survey"
+        };
+        assert_eq!(
+            command["chapter"].as_str(),
+            Some(expected),
+            "`{id}` is in chapter {:?}; every `map.design.*` command is \
+             `design` and every other `map.*` command is `survey`",
+            command["chapter"]
+        );
+    }
+
+    // 2. `library` joins `pls`: resolving a pinned native asset is part of one
+    //    PLS-CADD delivery workflow, not a chapter of its own.
+    assert_eq!(chapter_of("library.resolve-native"), "pls-cadd");
+    assert_eq!(chapter_of("pls.reference-closure"), "pls-cadd");
+
+    // 3. Styling a layer is not regenerating the tile archive under it, so
+    //    presentation and tiles stay separate concerns.
+    assert_ne!(chapter_of("style.read"), chapter_of("tile.generate"));
 }
 
 #[test]

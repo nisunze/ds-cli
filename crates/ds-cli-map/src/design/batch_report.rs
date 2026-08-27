@@ -2,7 +2,7 @@
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
-    Arg, ArgKind, Authority, Command, Effect, Example, Execution, Refusal,
+    Arg, ArgKind, Authority, Chapter, Command, Effect, Example, Execution, Refusal,
 };
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
@@ -52,6 +52,7 @@ service. The service owns freshness and composition: fresh individual report \
 artifacts are reused, missing or stale ones are regenerated, and the one \
 scope-correct combined set is packaged with them. The CLI does not expose or \
 replay those internal API phases.",
+    chapter: Chapter::Design,
     effect: Effect::ArtifactWrite,
     authority: Authority::Project,
     execution: Execution::Sync,

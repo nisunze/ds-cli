@@ -1,7 +1,7 @@
 //! `ds work task read` — one work item, with everything hanging off it.
 
 use ds_cli_contract::outcome::Failure;
-use ds_cli_contract::spec::{Authority, Command, Effect, Example, Execution};
+use ds_cli_contract::spec::{Authority, Chapter, Command, Effect, Example, Execution};
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
 
@@ -17,6 +17,7 @@ The whole canonical task: schedule, delivery, review and closeout state, who \
 holds it, who has been asked to take it, what it depends on, what is still \
 outstanding against it, and the records that reference it. Read this before \
 any write — the update, assign and respond commands all act on what is here.",
+    chapter: Chapter::Project,
     effect: Effect::ReadOnly,
     authority: Authority::Project,
     execution: Execution::Sync,

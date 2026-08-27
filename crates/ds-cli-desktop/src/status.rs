@@ -15,7 +15,7 @@ use std::time::Duration;
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
-    Arg, Authority, Availability, Command, Effect, Example, Execution, Refusal,
+    Arg, Authority, Availability, Chapter, Command, Effect, Example, Execution, Refusal,
 };
 use ds_cli_contract::{Context, Inputs};
 use serde::Deserialize;
@@ -37,6 +37,7 @@ is signed in, which project is selected, and whether a transformer is open in \
 the design editor. Run this first when a command refuses with an authority \
 error. Not being paired is an answer, not a failure: the command succeeds and \
 says what is missing.",
+    chapter: Chapter::Project,
     effect: Effect::Discovery,
     authority: Authority::None,
     execution: Execution::Sync,

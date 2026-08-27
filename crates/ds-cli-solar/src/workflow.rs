@@ -4,7 +4,9 @@ use std::time::Duration;
 use std::{collections::BTreeSet, path::PathBuf};
 
 use ds_cli_contract::outcome::Failure;
-use ds_cli_contract::spec::{Arg, Authority, Command, Effect, Example, Execution, Refusal};
+use ds_cli_contract::spec::{
+    Arg, Authority, Chapter, Command, Effect, Example, Execution, Refusal,
+};
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
 
@@ -104,6 +106,7 @@ pub static RESULTS_READ_COMMAND: Command = Command {
     contract: 1,
     summary: "Read one dashboard section from a native Solar result.",
     purpose: "Reads a bounded semantic projection from the canonical report_input receipt used by the Solar dashboards. It does not read result.json, a workspace path, or a cloud-specific cache.",
+    chapter: Chapter::Solar,
     effect: Effect::ReadOnly,
     authority: Authority::DesktopUser,
     execution: Execution::Sync,
@@ -133,6 +136,7 @@ pub static SYNC_STATUS_COMMAND: Command = Command {
     contract: 1,
     summary: "Read Solar publication state from the desktop Sync Center.",
     purpose: "Projects the active project's durable Solar outbox rows and their pending, syncing, conflict, failed, or synced states. An optional batch run id narrows the view without starting or retrying publication.",
+    chapter: Chapter::Solar,
     effect: Effect::ReadOnly,
     authority: Authority::DesktopUser,
     execution: Execution::Sync,
@@ -157,6 +161,7 @@ pub static PORTFOLIO_LIST_COMMAND: Command = Command {
     contract: 1,
     summary: "List Solar portfolios and their city membership.",
     purpose: "Reads the active project's governed portfolio catalog through the desktop, refreshing it once when online and retaining the same offline cache used by the Pipeline page.",
+    chapter: Chapter::Solar,
     effect: Effect::ReadOnly,
     authority: Authority::DesktopUser,
     execution: Execution::Sync,
@@ -178,6 +183,7 @@ pub static PORTFOLIO_READ_COMMAND: Command = Command {
     contract: 2,
     summary: "Read a bounded projection of one sealed portfolio result.",
     purpose: "Pages the committed aggregate result from one completed paired native Solar run, verifies its native name, content digest and batch identity, validates the v2 trace envelope, then returns only a bounded semantic projection. Repeated --path values descend through object keys; they are never filesystem paths. The CLI performs no Solar calculation and never reconstructs a portfolio from city rows.",
+    chapter: Chapter::Solar,
     effect: Effect::ReadOnly,
     authority: Authority::DesktopUser,
     execution: Execution::Sync,
@@ -214,6 +220,7 @@ pub static FINAL_IMPORT_COMMAND: Command = Command {
     contract: 1,
     summary: "Import an externally interpreted Markdown final.",
     purpose: "Hands one explicit Markdown source path to the paired native shell, which validates and stores it in the selected run/city final slot and optionally renders DOCX with the installed Pandoc. Import is local review state only; `solar final submit` is the separate publication authority. The app calls no model.",
+    chapter: Chapter::Solar,
     effect: Effect::ArtifactWrite,
     authority: Authority::DesktopUser,
     execution: Execution::Sync,
@@ -245,6 +252,7 @@ pub static FINAL_SUBMIT_COMMAND: Command = Command {
     contract: 1,
     summary: "Submit one imported interpreted final for publication.",
     purpose: "Explicitly queues the already-imported final for one completed native run and city. It never imports a file, chooses another run, or treats a calculation draft as final; use `solar final import` first and inspect Sync Center separately.",
+    chapter: Chapter::Solar,
     effect: Effect::ArtifactWrite,
     authority: Authority::DesktopUser,
     execution: Execution::Sync,

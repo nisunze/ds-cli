@@ -1,6 +1,6 @@
 ---
 name: ds
-description: Use deployed `ds` as the sole DS interface: discover one live command, follow its contract, and report confirmed gaps. Required before every DS task.
+description: "Use deployed `ds` as the sole DS interface: discover one live command, follow its contract, and report confirmed gaps. Required before every DS task."
 ---
 
 # Work through `ds`
@@ -18,9 +18,8 @@ ds --version
 ds doctor --output json
 ```
 
-These live results are this installation's identity and availability; a
-remembered catalog or a skill written against another build proves nothing
-here.
+These live results are the installation's identity and availability; memory or
+a skill from another build is not evidence.
 
 ## Find one command
 
@@ -32,10 +31,8 @@ ds capabilities <domain> --output json
 ds capabilities --search '<words>' --output json
 ```
 
-Search is lexical: a zero-match proves only that those words did not match.
-Inspect the likely live domain, try the product's own vocabulary and read
-summaries before concluding a capability is absent; narrow broad matches and
-never choose a command from rank alone.
+Search is lexical. Try the likely domain and product vocabulary before deciding
+a capability is absent; narrow broad matches and never choose by rank alone.
 
 Compact discovery never replaces `ds --help`, `ds <domain> --help`, or
 `ds <domain> <command> --help`. Use help for the readable contract and
@@ -47,52 +44,51 @@ Compact discovery never replaces `ds --help`, `ds <domain> --help`, or
 ds capabilities <command-id> --output json
 ```
 
-The descriptor is authoritative. Use only its declared inputs and example
-shape, inspect its current availability, authority, effect, confirmation, and
-refusal information, then invoke the narrowest command. Pass `--yes` only when
-the user's actual intent authorizes that exact effect and scope.
+The descriptor is authoritative. Inspect availability, authority, effect,
+confirmation and refusals; use only declared inputs. Pass `--yes` only when the
+user authorizes that exact effect and scope.
 
-Interpret the returned JSON by the live result itself; follow its remedy and
-next action when it refuses. When Stable, Canary and a dev build run together,
-a paired-desktop command refuses as ambiguous and lists the candidate
-descriptors: pass the one whose profile matches the `ds` install you
-established and keep it for the session. Never repeat a non-retryable call
-unchanged, switch identity or project to force success, or reconstruct the
-answer through another surface. Return only the bounded evidence the CLI
-supplied.
+Follow the returned remedy and next action. If multiple desktop builds make
+pairing ambiguous, select the candidate whose profile matches the established
+`ds` and retain it for the session. Never repeat a non-retryable call unchanged,
+switch identity/project to force success, or reconstruct a refused answer.
+
+## Through MCP
+
+The broad server exposes `ds_catalog` plus chapter routers. Use the catalogue,
+call the selected chapter with `operation: "describe"`, then invoke through the
+same chapter with descriptor-conforming `arguments`. Put `confirm: true` only
+at the chapter envelope and only when the exact contract requires it.
+
+A typed role profile instead advertises its leaf tools directly. In either
+shape, branch on the unchanged DS envelope and follow typed remedies. Read
+`ds-mcp-host` for installation and profile selection; never invent a generated
+tool name or use an omitted profile command.
 
 ## When `ds` cannot
 
-Stop after checking the likely live domain and alternate product vocabulary.
-Discover the current feedback contract rather than relying on this prose:
+After checking the likely domain and alternate vocabulary, discover feedback:
 
 ```
 ds capabilities --search feedback --output json
 ds capabilities feedback.submit --output json
 ```
 
-Use `ds feedback submit` to send one bounded, non-secret agent sighting to the
-same shared backlog as DS GridDesign's `fb` shortcut. Include what was
-expected, what live discovery or invocation showed, the impact, and observable
-acceptance behavior. Never create a gap Markdown file, call the feedback API
-directly, or use a workaround that bypasses `ds`.
+Submit one bounded, non-secret sighting: expected behavior, live evidence,
+impact and observable acceptance. Never create a gap file, call the API, or
+bypass `ds`.
 
 ## Route to a narrower skill when one fits
 
-- `ds-project-context` — establish or switch the active project; the state
-  boundary between CLI, desktop and project.
+- `ds-project-context` — active project and state boundary.
 - `ds-map-local-data` — temporary map layers, focus and restore.
 - `ds-lv-design-revision` — revise one transformer's LV design safely.
-- `ds-pls-cadd-terrain-roundtrip` — revise PLS-CADD route PIs and terrain through a canonical `.dsgrid` round trip.
-- `ds-style-composite` — style a layer by two fields: colour plus a halo,
-  opacity or size dimension.
-- `ds-report-consumption` — obtain a delivered report workbook and read it
-  with your own tools; consuming a document is not a `ds` gap.
-- `ds-qgis-print-delivery` — export governed report data, run an approved
-  multi-layout QGIS/PyQGIS print workflow, attach pages and package delivery.
-- `ds-boq-staking-table` — LV `poles` sheet and MV structure names as
-  staking tables against a BOQ.
+- `ds-pls-cadd-terrain-roundtrip` — PLS-CADD route and terrain delivery.
+- `ds-style-composite` — colour plus a second style dimension.
+- `ds-report-consumption` — obtain and read delivered workbooks.
+- `ds-qgis-print-delivery` — governed multi-layout print delivery.
+- `ds-boq-staking-table` — LV/MV staking tables against a BOQ.
 - `ds-boq-combined-report` — the combined workbook against a project BOQ.
-- `ds-mcp-host` — MCP-only hosts (VS Code, Copilot, Claude, Cursor, Codex).
+- `ds-mcp-host` — compact chapters and typed MCP profiles.
 
 Those skills assume this one. Do not load them for ordinary discovery.

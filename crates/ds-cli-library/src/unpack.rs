@@ -1,6 +1,6 @@
 use crate::{engine_failure, read, sha256};
 use ds_cli_contract::spec::{
-    Arg, Authority, Availability, Command, Effect, Example, Execution, Refusal,
+    Arg, Authority, Availability, Chapter, Command, Effect, Example, Execution, Refusal,
 };
 use ds_cli_contract::{Context, Failure, Inputs};
 use ds_grid_exchange::unpack_library;
@@ -16,6 +16,7 @@ pub static COMMAND: Command = Command {
     contract: 1,
     summary: "Verify and unpack one library release into a new local directory.",
     purpose: "Authenticates the complete release first, then materializes only its declared safe relative members. Existing paths are never overwritten.",
+    chapter: Chapter::PlsCadd,
     effect: Effect::LocalFileWrite,
     authority: Authority::None,
     execution: Execution::Sync,

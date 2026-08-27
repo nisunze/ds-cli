@@ -1,7 +1,7 @@
 //! `ds pls delivery-verify` — one bounded native delivery receipt.
 
 use ds_cli_contract::spec::{
-    Arg, Authority, Availability, Command, Effect, Example, Execution, Refusal,
+    Arg, Authority, Availability, Chapter, Command, Effect, Example, Execution, Refusal,
 };
 use ds_cli_contract::{Context, Failure, Inputs};
 use ds_grid_tasks::{VerifyPlsDeliveryRequest, verify_pls_delivery};
@@ -15,6 +15,7 @@ pub static COMMAND: Command = Command {
     contract: 1,
     summary: "Verify one terrain and label delivery against its baseline.",
     purpose: "Reads an untouched baseline, the delivered closed workspace, and the exact terrain point batch. One receipt proves terrain counts and elevation deltas, unchanged baseline terrain/NUM/DON prefixes, attachment closure, and native phase/OPGW support-chain readback. It writes nothing and refuses instead of repairing a failed delivery.",
+    chapter: Chapter::PlsCadd,
     effect: Effect::Discovery,
     authority: Authority::None,
     execution: Execution::Sync,

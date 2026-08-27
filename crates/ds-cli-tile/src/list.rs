@@ -1,7 +1,9 @@
 //! `ds tile list` — the project's tile catalogue.
 
 use ds_cli_contract::outcome::Failure;
-use ds_cli_contract::spec::{Arg, ArgKind, Authority, Command, Effect, Example, Execution};
+use ds_cli_contract::spec::{
+    Arg, ArgKind, Authority, Chapter, Command, Effect, Example, Execution,
+};
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
 
@@ -35,6 +37,7 @@ pub static COMMAND: Command = Command {
 One row per tile archive the project's map can mount: its own outputs, \
 outputs added from other projects, and (with --global) the platform's \
 reference tiles. This is the catalogue `ds tile remove` takes ids from.",
+    chapter: Chapter::VectorTiles,
     effect: Effect::ReadOnly,
     authority: Authority::Project,
     execution: Execution::Sync,

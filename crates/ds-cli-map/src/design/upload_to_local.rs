@@ -1,7 +1,9 @@
 //! `ds map design upload-to-local` — parse one archive layer into local state.
 
 use ds_cli_contract::outcome::Failure;
-use ds_cli_contract::spec::{Arg, Authority, Command, Effect, Example, Execution, Refusal};
+use ds_cli_contract::spec::{
+    Arg, Authority, Chapter, Command, Effect, Example, Execution, Refusal,
+};
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
 
@@ -17,6 +19,7 @@ Names a desktop file and one exact layer inside it. The running application \
 uses its native parser and bounded upload workspace, then adds that layer to \
 the shared local-layer store. The CLI receives only a receipt and never \
 transports feature rows. Nothing is staged into transformer design data.",
+    chapter: Chapter::Design,
     effect: Effect::LocalUi,
     authority: Authority::Project,
     execution: Execution::Sync,

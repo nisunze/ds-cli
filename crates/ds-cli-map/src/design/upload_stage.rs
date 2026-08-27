@@ -2,7 +2,7 @@
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
-    Arg, ArgKind, Authority, Command, Effect, Example, Execution, Refusal,
+    Arg, ArgKind, Authority, Chapter, Command, Effect, Example, Execution, Refusal,
 };
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
@@ -48,6 +48,7 @@ pub static COMMAND: Command = Command {
 Runs the desktop upload parser, LV target inference, header normalization, and \
 Rust cleaning pipeline for each transformer/source pair. Successful rooms are \
 staged locally and remain dirty; nothing is uploaded until a separate save is confirmed.",
+    chapter: Chapter::Design,
     effect: Effect::LocalUi,
     authority: Authority::Project,
     execution: Execution::Sync,

@@ -16,7 +16,7 @@
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
-    Arg, Authority, Availability, Command, Effect, Example, Execution, Refusal,
+    Arg, Authority, Availability, Chapter, Command, Effect, Example, Execution, Refusal,
 };
 use ds_cli_contract::{Context, Inputs};
 use ds_grid_engine::{
@@ -37,6 +37,7 @@ Reads the descriptor catalog published by the engine compiled into this binary \
 parameters and effect class. By default it lists identifiers and effects only; \
 name one with --id for its complete descriptor. The full catalog is large, \
 which is why it is never printed whole.",
+    chapter: Chapter::GridModel,
     effect: Effect::Discovery,
     authority: Authority::None,
     execution: Execution::Sync,

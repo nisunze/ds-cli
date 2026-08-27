@@ -2,7 +2,7 @@
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
-    Authority, Availability, Command, Effect, Example, Execution, Refusal,
+    Authority, Availability, Chapter, Command, Effect, Example, Execution, Refusal,
 };
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
@@ -19,6 +19,7 @@ Returns the release identity of the `ds-report` engine this machine will use: \
 its package version and the exact source it was built from. Artifacts are \
 bound to that identity, so it is the field to record alongside a deliverable \
 and the first thing to compare when two machines disagree.",
+    chapter: Chapter::Reports,
     effect: Effect::Discovery,
     authority: Authority::None,
     execution: Execution::Sync,

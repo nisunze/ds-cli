@@ -8,7 +8,7 @@
 use std::{collections::BTreeSet, time::Duration};
 
 use ds_cli_contract::outcome::Failure;
-use ds_cli_contract::spec::{Arg, Authority, Command, Effect, Example, Execution};
+use ds_cli_contract::spec::{Arg, Authority, Chapter, Command, Effect, Example, Execution};
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
 
@@ -31,6 +31,7 @@ pub static START_COMMAND: Command = Command {
     contract: 3,
     summary: "Start an explicit paired city or Solar portfolio run.",
     purpose: "Starts the paired application's local native Solar lifecycle after city inputs have been prepared. A city run names one or more prepared contexts. A portfolio run names one governed portfolio, pins the membership revision returned by portfolio list, and explicitly supplies its currency, project years, discount rate, representative member, language and report intents; none are inferred by the CLI. It returns a run id immediately, while the desktop retains ownership of the selected project, cached inputs and output workspace.",
+    chapter: Chapter::Solar,
     effect: Effect::LocalFileWrite,
     authority: Authority::DesktopUser,
     execution: Execution::Job,
@@ -124,6 +125,7 @@ pub static PROGRESS_COMMAND: Command = Command {
     contract: 1,
     summary: "Read progress for one paired local Solar run.",
     purpose: "Reads the paired application's bounded progress receipt for a run returned by `solar run start`. It performs no calculation, writes no result, and does not inspect browser storage; the desktop remains the owner of local run state.",
+    chapter: Chapter::Solar,
     effect: Effect::ReadOnly,
     authority: Authority::DesktopUser,
     execution: Execution::Sync,
@@ -152,6 +154,7 @@ pub static RESULT_COMMAND: Command = Command {
     contract: 1,
     summary: "Read the result receipt for one paired local Solar run.",
     purpose: "Reads the paired application's public result receipt for a run returned by `solar run start`. The receipt says whether the local run finished and where to continue; use `solar result read` for one bounded city/result projection.",
+    chapter: Chapter::Solar,
     effect: Effect::ReadOnly,
     authority: Authority::DesktopUser,
     execution: Execution::Sync,
@@ -180,6 +183,7 @@ pub static CANCEL_COMMAND: Command = Command {
     contract: 1,
     summary: "Request cancellation of one paired local Solar run.",
     purpose: "Requests that the paired application cancel a local Solar run. Cancellation is an application-visible lifecycle transition, not a filesystem shortcut; the desktop reports the resulting receipt and owns safe cleanup of its workspace.",
+    chapter: Chapter::Solar,
     effect: Effect::LocalUi,
     authority: Authority::DesktopUser,
     execution: Execution::Sync,
@@ -208,6 +212,7 @@ pub static READ_COMMAND: Command = Command {
     contract: 1,
     summary: "Read one bounded city result from a paired local Solar run.",
     purpose: "Reads one selected city's result projection from the paired application's local Solar run store. Optional paths narrow the projection; they are semantic paths inside the result document, never filesystem paths. The application bounds the reply before it crosses the bridge.",
+    chapter: Chapter::Solar,
     effect: Effect::ReadOnly,
     authority: Authority::DesktopUser,
     execution: Execution::Sync,

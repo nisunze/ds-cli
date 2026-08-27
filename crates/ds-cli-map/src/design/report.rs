@@ -12,7 +12,7 @@
 //! stale report says so in its result.
 
 use ds_cli_contract::outcome::Failure;
-use ds_cli_contract::spec::{Authority, Command, Effect, Example, Execution, Refusal};
+use ds_cli_contract::spec::{Authority, Chapter, Command, Effect, Example, Execution, Refusal};
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
 
@@ -31,6 +31,7 @@ id, filename, content type, size and SHA-256. Compute is local; publication \
 to the project continues through the application's ordinary artifact sync. \
 There is no --force: a report the freshness gate holds back reports that \
 instead of silently regenerating.",
+    chapter: Chapter::Design,
     effect: Effect::ArtifactWrite,
     authority: Authority::Project,
     execution: Execution::Sync,

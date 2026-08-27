@@ -1,7 +1,7 @@
 //! `ds shell status` — this shell, and the next one.
 
 use ds_cli_contract::outcome::Failure;
-use ds_cli_contract::spec::{Authority, Command, Effect, Example, Execution};
+use ds_cli_contract::spec::{Authority, Chapter, Command, Effect, Example, Execution};
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
 
@@ -20,6 +20,7 @@ where a freshly opened PowerShell, cmd, Bash or Git Bash window will find it. \
 The two answers differ more often than one would think: a terminal opened \
 before an install keeps its old PATH. Reads nothing but the environment and \
 the user's own PATH registration.",
+    chapter: Chapter::Operations,
     effect: Effect::Discovery,
     authority: Authority::None,
     execution: Execution::Sync,

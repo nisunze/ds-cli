@@ -1,6 +1,9 @@
 ---
 name: ds-boq-staking-table
 description: Reconcile LV pole sheets and PLS-CADD MV structure staking tables with an EPC BOQ.
+metadata:
+  ds-chapters: reports
+  ds-mcp-profile: grid
 ---
 
 # Staking tables against the BOQ

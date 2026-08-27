@@ -12,7 +12,7 @@
 //! one.
 
 use ds_cli_contract::outcome::Failure;
-use ds_cli_contract::spec::{Arg, Authority, Command, Effect, Example, Execution};
+use ds_cli_contract::spec::{Arg, Authority, Chapter, Command, Effect, Example, Execution};
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
 
@@ -30,6 +30,7 @@ by layer. It takes the same selector `ds map design set` takes, so running it \
 first is how a caller learns what a staged change would touch before staging \
 it. Ids and sampled properties are explicit projections: by default this \
 returns counts only.",
+    chapter: Chapter::Design,
     effect: Effect::ReadOnly,
     authority: Authority::Project,
     execution: Execution::Sync,

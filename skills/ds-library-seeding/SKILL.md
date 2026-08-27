@@ -1,6 +1,9 @@
 ---
 name: ds-library-seeding
 description: Seed and verify one immutable parallel DS Grid/PLS-CADD library version, then resolve an exact digest-pinned native member.
+metadata:
+  ds-chapters: pls-cadd
+  ds-mcp-profile: pls
 ---
 
 # Seed one immutable engineering library

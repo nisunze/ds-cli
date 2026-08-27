@@ -131,7 +131,10 @@ DS GridDesign ships a receipt-bound copy of this skill tree beside `ds`. Its
 `pt` shortcut copies a short setup prompt for any chatbot on that machine. The
 chatbot runs `ds doctor --output json`, follows the exact installer path under
 `.data.skills.installers`, and verifies its native skill directory is current.
-Nothing is injected into a conversation. For hosts that only discover tools through the Model Context Protocol, `ds mcp install` writes the host entry that launches `ds mcp serve` — the same executable serving its own `ds capabilities` as tools, never a separate binary.
+Nothing is injected into a conversation. For MCP-only hosts, `ds mcp install`
+writes an entry for the same executable. Its compact default publishes stable
+chapter routers; optional role profiles publish bounded typed command views.
+Both are generated from live `ds capabilities`, never a separate surface.
 
 For a source checkout, the same ownership-safe installers are:
 

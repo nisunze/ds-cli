@@ -15,7 +15,7 @@ use std::ffi::OsString;
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
-    Arg, Authority, Availability, Command, Effect, Example, Execution, Refusal,
+    Arg, Authority, Availability, Chapter, Command, Effect, Example, Execution, Refusal,
 };
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
@@ -33,6 +33,7 @@ copy kept here, so what you see is what this machine will accept. By default \
 it lists the tasks with their effect and network class. Name one with --task \
 to get its complete request schema — that document is large, which is why it \
 is never printed unless asked for.",
+    chapter: Chapter::Reports,
     effect: Effect::Discovery,
     authority: Authority::None,
     execution: Execution::Sync,

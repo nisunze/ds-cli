@@ -1,6 +1,9 @@
 ---
 name: ds-style-composite
 description: Style one DS map layer by two fields through `ds style`, combining colour with halo, opacity, or size for category-plus-status maps.
+metadata:
+  ds-chapters: map-presentation
+  ds-mcp-profile: map
 ---
 
 # Style a layer by two fields

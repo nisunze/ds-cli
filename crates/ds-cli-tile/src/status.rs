@@ -1,7 +1,7 @@
 //! `ds tile status` — the published state of the project's tile outputs.
 
 use ds_cli_contract::outcome::Failure;
-use ds_cli_contract::spec::{Authority, Command, Effect, Example, Execution};
+use ds_cli_contract::spec::{Authority, Chapter, Command, Effect, Example, Execution};
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
 
@@ -17,6 +17,7 @@ Start here. For each output (survey, design): whether it is published, \
 running, failed or never built; when it was tiled; how many features it \
 holds; and whether the project's sources changed since (dirty). Reads the \
 same status the Pipeline panel shows.",
+    chapter: Chapter::VectorTiles,
     effect: Effect::ReadOnly,
     authority: Authority::Project,
     execution: Execution::Sync,

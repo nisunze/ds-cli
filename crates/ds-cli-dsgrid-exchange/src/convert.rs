@@ -25,7 +25,7 @@ use std::path::{Path, PathBuf};
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
-    Arg, Authority, Availability, Command, Effect, Example, Execution, Refusal,
+    Arg, Authority, Availability, Chapter, Command, Effect, Example, Execution, Refusal,
 };
 use ds_cli_contract::{Context, Inputs};
 use ds_grid_exchange::conversion::{
@@ -52,6 +52,7 @@ and writes every artifact under --out together with an exchange-report.json. \
 Source bytes are re-digested against the plan's pins before anything is \
 written, so a source that changed since planning stops the run. Existing \
 output paths are never overwritten.",
+    chapter: Chapter::GridModel,
     effect: Effect::LocalFileWrite,
     authority: Authority::None,
     execution: Execution::Sync,

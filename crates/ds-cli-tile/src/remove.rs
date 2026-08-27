@@ -1,7 +1,9 @@
 //! `ds tile remove` — drop one archive from the project's catalogue.
 
 use ds_cli_contract::outcome::Failure;
-use ds_cli_contract::spec::{Arg, ArgKind, Authority, Command, Effect, Example, Execution};
+use ds_cli_contract::spec::{
+    Arg, ArgKind, Authority, Chapter, Command, Effect, Example, Execution,
+};
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
 
@@ -36,6 +38,7 @@ Removes one archive — an added reference or the project's own output — \
 through the same governed action the Pipeline panel uses. ds-brain \
 reclaims the storage of an owned output; an added reference is only \
 unlinked.",
+    chapter: Chapter::VectorTiles,
     effect: Effect::GlobalWrite,
     authority: Authority::Project,
     execution: Execution::Sync,

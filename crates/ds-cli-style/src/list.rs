@@ -1,7 +1,9 @@
 //! `ds style list` — the style refs the paired application has open.
 
 use ds_cli_contract::outcome::Failure;
-use ds_cli_contract::spec::{Arg, ArgKind, Authority, Command, Effect, Example, Execution};
+use ds_cli_contract::spec::{
+    Arg, ArgKind, Authority, Chapter, Command, Effect, Example, Execution,
+};
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
 
@@ -35,6 +37,7 @@ pub static COMMAND: Command = Command {
 Start here. One row per style document the application has loaded for the \
 active project: the ref, MapLibre type, save target, layer, the field its \
 colour is categorical on, and every categorical dimension the legend reads.",
+    chapter: Chapter::MapPresentation,
     effect: Effect::ReadOnly,
     authority: Authority::Project,
     execution: Execution::Sync,

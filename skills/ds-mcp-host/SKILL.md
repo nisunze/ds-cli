@@ -1,40 +1,61 @@
 ---
 name: ds-mcp-host
-description: Reach `ds` from a host that discovers tools only through the Model Context Protocol — install the host entry that launches `ds mcp serve`, then use the generated tools as `ds` commands.
+description: Install the same `ds` executable as a compact chapter-based MCP server or one bounded typed workflow profile, then route through live command contracts.
 ---
 
 # `ds` through an MCP host
 
-Some hosts (VS Code agent mode, GitHub Copilot, Claude Desktop, Cursor,
-Codex) learn tools only through MCP. `ds mcp serve` is that transport, from
-the same executable, and nothing exists there that `ds` lacks: every tool is
-one command built at startup from `ds capabilities`.
+Use this when the host discovers tools only through MCP. The server is the same
+`ds` executable and reports the same source SHA as its packaged skills. It adds
+no identity, project state, command schema, or authority.
 
-## Install the host entry
+## Choose one installation shape
 
+For a general agent, install the broad default. It advertises `ds_catalog` and
+ten operator-intent chapter routers (11 tools total), even as commands grow:
+
+```text
+ds mcp install --host vscode --output json
+ds mcp install --host vscode --write --yes
 ```
-ds mcp install --output json                 # print the VS Code entry + its file
-ds mcp install --host vscode --write --yes   # merge it into the user profile
-ds mcp install --host claude-code            # claude-code, cursor, codex, generic
+
+For a narrow role, explicitly install one typed profile:
+
+```text
+ds mcp install --host claude-code --exposure commands --profile pls
 ```
 
-The entry belongs in the **user** profile on the PC where DS GridDesign is
-installed and paired — never a workspace file, which travels to machines
-that have neither. With Stable and Canary both installed, run it from the
-`ds` of the app you use and keep one entry.
+Profiles are `grid`, `pls`, `survey`, `design-edit`, `design-run`, `map`,
+`project`, `solar-run`, `solar-delivery`, and `operations`. Each publishes
+`ds_catalog` plus at most 14 fully typed command tools. Do not install every
+profile: that duplicates discovery and recreates selection ambiguity.
 
-## Use the tools
+The entry belongs in the user profile on the PC where DS GridDesign is
+installed and paired, never a travelling workspace file. Run installation
+from the exact Stable, Canary, or development `ds` you intend the host to use.
+The receipt's `source_sha` must match `ds doctor`'s skill-bundle SHA.
 
-- Tool names are command ids with `.` → `_` (`map_design_report`); the
-  title is the id, and the description carries effect, authority and
-  refusals.
-- Effectful tools require `confirm: true`, which maps onto `--yes`. Pass it
-  only when the user's intent authorizes exactly that effect and scope.
-- Every result is the CLI envelope: branch on `status`; on a refusal follow
-  `error.remedy` and `error.next` — do not retry unchanged.
-- Discovery still happens through the `ds` skill: read a tool's description
-  as you would `ds capabilities <id>`, and prefer the narrowest command.
+## Broad-server routing
 
-`ds doctor` reports the executable; a read-only tool such as `shell_status`
-answers without a paired desktop, and a paired one such as
-`map_design_list` proves the pairing.
+1. Call `ds_catalog` with a bounded query or chapter.
+2. Call the returned chapter tool with `operation: "describe"` and the exact
+   canonical command id.
+3. Call that same chapter with `operation: "invoke"`, descriptor-conforming
+   `arguments`, and top-level `confirm: true` only when user intent authorizes
+   the exact effect and the descriptor requires confirmation.
+4. Branch on the returned DS envelope. Follow `error.remedy` and `error.next`;
+   never retry unchanged or reconstruct a refusal through another surface.
+
+A wrong-chapter command returns the matching router. Unknown properties and
+arbitrary argv are refused before dispatch. Project and desktop identity remain
+owned by the selected command, not by the MCP session.
+
+## Typed-profile routing
+
+Use the advertised leaf tool directly after reading its schema and description.
+Its title is the canonical command id; its result is the same CLI envelope.
+Omitted commands are unavailable through that profile, not forwarded through a
+generic call. Use `ds_catalog` only for bounded discovery inside the profile.
+
+Keep `--exposure commands` without a profile only for temporary compatibility
+with hosts configured for the previous command-per-tool surface.

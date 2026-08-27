@@ -16,7 +16,7 @@
 
 use ds_cli_contract::help;
 use ds_cli_contract::spec::{
-    Arg, Authority, Availability, Command, Effect, Example, Execution, Refusal,
+    Arg, Authority, Availability, Chapter, Command, Effect, Example, Execution, Refusal,
 };
 use ds_cli_contract::{Context, Failure, Inputs};
 use serde_json::{Value, json};
@@ -62,6 +62,7 @@ lists that domain's commands. With a command id it returns that one command's \
 complete descriptor. Use --search to find a command by words, then ask for the \
 descriptor of the one you chose — search returns ids and summaries only, so \
 finding a command costs almost nothing.",
+    chapter: Chapter::Catalog,
     effect: Effect::Discovery,
     authority: Authority::None,
     execution: Execution::Sync,
@@ -302,6 +303,7 @@ skill bundle and reports whether each supported user skill directory has the \
 matching install, and whether `ds` is reachable from this shell and from a \nnew one. It starts no engine and probes no network. It is the right \
 first call on an unfamiliar machine, and the right call after any \
 `unavailable` refusal.",
+    chapter: Chapter::Catalog,
     effect: Effect::Discovery,
     authority: Authority::None,
     execution: Execution::Sync,
@@ -444,6 +446,7 @@ Reports the exact source this binary was built from, its target triple, \
 profile and whether the tree was dirty, alongside the contract versions it \
 speaks. Packaging verifies a staged executable by running this, so the answer \
 has to come from the build rather than from a string someone maintains.",
+    chapter: Chapter::Catalog,
     effect: Effect::Discovery,
     authority: Authority::None,
     execution: Execution::Sync,

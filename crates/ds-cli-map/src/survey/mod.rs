@@ -7,7 +7,9 @@
 //! contract rather than another loosely interpreted flag.
 
 use ds_cli_contract::outcome::Failure;
-use ds_cli_contract::spec::{Arg, Authority, Command, Effect, Example, Execution, Refusal};
+use ds_cli_contract::spec::{
+    Arg, Authority, Chapter, Command, Effect, Example, Execution, Refusal,
+};
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
 
@@ -151,6 +153,7 @@ pub mod download {
         contract: 1,
         summary: "Materialize survey data through the active Working Area.",
         purpose: "Asks the paired desktop to apply its existing full-project Working Area and sequentially materialize every survey form into the desktop-owned IndexedDB cache. Rust sends only explicit intent and receives bounded counts; it never queries or interprets survey rows.",
+        chapter: Chapter::Survey,
         effect: Effect::LocalUi,
         authority: Authority::Project,
         execution: Execution::Sync,
@@ -221,6 +224,7 @@ pub mod plan {
         contract: 1,
         summary: "Preview copying all survey data into the active project.",
         purpose: "Calls the governed survey migration API in dry-run mode. It previews copying every survey entry from --source-project into the signed-in desktop's active project. The source is preserved and existing target ids are skipped; it cannot overwrite, delete, filter, or choose another target.",
+        chapter: Chapter::Survey,
         effect: Effect::ReadOnly,
         authority: Authority::Project,
         execution: Execution::Sync,
@@ -265,6 +269,7 @@ pub mod apply {
         contract: 1,
         summary: "Copy all survey data into the active project.",
         purpose: "Calls the governed survey migration API to copy every survey entry from --source-project into the signed-in desktop's active project. The source is preserved and existing target ids are skipped. Dispatch requires --yes, and this command cannot overwrite, delete, filter, or choose another target.",
+        chapter: Chapter::Survey,
         effect: Effect::GlobalWrite,
         authority: Authority::Project,
         execution: Execution::Sync,

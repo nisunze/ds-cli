@@ -1,7 +1,7 @@
 use std::path::Path;
 
 use ds_cli_contract::spec::{
-    Arg, Authority, Availability, Command, Effect, Example, Execution, Refusal,
+    Arg, Authority, Availability, Chapter, Command, Effect, Example, Execution, Refusal,
 };
 use ds_cli_contract::{Context, Failure, Inputs};
 use ds_grid_exchange::{
@@ -19,6 +19,7 @@ pub static COMMAND: Command = Command {
     contract: 1,
     summary: "Resolve one exact pinned native asset for a differential PLS handoff.",
     purpose: "Opens library/<id>/<version>/manifest.json, requires the expected content-root digest, selects by canonical typed name/invariant leaf and expected native kind, then verifies the exact PLS-CADD bytes. It never chooses latest, basename, master or a repaired substitute and never generates a PLS asset from DS Grid bytes.",
+    chapter: Chapter::PlsCadd,
     effect: Effect::ReadOnly,
     authority: Authority::None,
     execution: Execution::Sync,

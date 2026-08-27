@@ -15,7 +15,9 @@
 //! truncation is reported in `more`.
 
 use ds_cli_contract::outcome::Failure;
-use ds_cli_contract::spec::{Arg, Authority, Command, Effect, Example, Execution, Refusal};
+use ds_cli_contract::spec::{
+    Arg, Authority, Chapter, Command, Effect, Example, Execution, Refusal,
+};
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
 
@@ -39,6 +41,7 @@ do not belong: isolated in space, out of scale in size, or out of scale in \
 extent. Flagged features are added to the map as a new layer. The default \
 answer is counts and the score summary; --limit adds individual findings, and \
 the full scored collection is never returned — it is on the map instead.",
+    chapter: Chapter::Survey,
     effect: Effect::LocalUi,
     authority: Authority::DesktopPairing,
     execution: Execution::Sync,

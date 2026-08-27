@@ -7,7 +7,9 @@
 //! save has, and it is why this is one command rather than six.
 
 use ds_cli_contract::outcome::Failure;
-use ds_cli_contract::spec::{Arg, Authority, Command, Effect, Example, Execution, Refusal};
+use ds_cli_contract::spec::{
+    Arg, Authority, Chapter, Command, Effect, Example, Execution, Refusal,
+};
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
 
@@ -58,6 +60,7 @@ revision, exactly as the Plan sheet's own save does. Nothing given, nothing \
 sent: a flag you omit is untouched, never reset. The engine owns the schedule \
 consequences — moving a date may move dependants, and the warnings it returns \
 are reported rather than swallowed.",
+    chapter: Chapter::Project,
     effect: Effect::GlobalWrite,
     authority: Authority::Project,
     execution: Execution::Sync,

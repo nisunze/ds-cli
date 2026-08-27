@@ -1,5 +1,5 @@
 use ds_cli_contract::spec::{
-    Arg, Authority, Availability, Command, Effect, Example, Execution, Refusal,
+    Arg, Authority, Availability, Chapter, Command, Effect, Example, Execution, Refusal,
 };
 use ds_cli_contract::{Context, Failure, Inputs};
 use ds_grid_exchange::parse_catalog;
@@ -13,6 +13,7 @@ pub static COMMAND: Command = Command {
     contract: 1,
     summary: "Read and validate a library catalogue without downloading releases.",
     purpose: "Parses one explicit catalogue and returns its exact immutable release coordinates. It never chooses latest or performs network access.",
+    chapter: Chapter::PlsCadd,
     effect: Effect::ReadOnly,
     authority: Authority::None,
     execution: Execution::Sync,

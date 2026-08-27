@@ -5,7 +5,9 @@
 //! local-layer reads and writes stay in the running application.
 
 use ds_cli_contract::outcome::Failure;
-use ds_cli_contract::spec::{Arg, Authority, Command, Effect, Example, Execution, Refusal};
+use ds_cli_contract::spec::{
+    Arg, Authority, Chapter, Command, Effect, Example, Execution, Refusal,
+};
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
 
@@ -22,6 +24,7 @@ covered by directionally aligned --base-layer geometry are removed; remaining \
 extension endpoints are healed onto the base within --heal-tolerance-m. The \
 Rust/WASM geometry kernel computes the result and the application adds it as \
 one new local layer. No project design data is changed.",
+    chapter: Chapter::Survey,
     effect: Effect::LocalUi,
     authority: Authority::DesktopPairing,
     execution: Execution::Sync,

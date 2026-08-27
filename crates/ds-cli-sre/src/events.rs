@@ -1,7 +1,7 @@
 //! `ds sre events` — bounded request-event investigation.
 
 use ds_cli_contract::outcome::Failure;
-use ds_cli_contract::spec::{Arg, Authority, Command, Effect, Example, Execution};
+use ds_cli_contract::spec::{Arg, Authority, Chapter, Command, Effect, Example, Execution};
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
 
@@ -42,6 +42,7 @@ successful requests when needed. The owner scans a bounded newest-first \
 Reliability event window, applies exact case-insensitive filters, and returns \
 a bounded projection. This is a global read: --project filters event metadata \
 and never selects a project.",
+    chapter: Chapter::Operations,
     effect: Effect::ReadOnly,
     authority: Authority::DesktopUser,
     execution: Execution::Sync,

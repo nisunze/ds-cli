@@ -14,7 +14,7 @@
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
-    Arg, ArgKind, Authority, Command, Effect, Example, Execution, Refusal,
+    Arg, ArgKind, Authority, Chapter, Command, Effect, Example, Execution, Refusal,
 };
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
@@ -43,6 +43,7 @@ the application has no other way to make, and the one that marks an as-built \
 network approved so the kernel stops redesigning it. It stages into the \
 operator's local room and marks it dirty; nothing reaches the project until \
 `ds map design save`. Use --dry-run to count first.",
+    chapter: Chapter::Design,
     effect: Effect::LocalUi,
     authority: Authority::Project,
     execution: Execution::Sync,

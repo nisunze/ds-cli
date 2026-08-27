@@ -5,7 +5,7 @@ use std::path::Path;
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
-    Arg, Authority, Availability, Command, Effect, Example, Execution, Refusal,
+    Arg, Authority, Availability, Chapter, Command, Effect, Example, Execution, Refusal,
 };
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
@@ -22,6 +22,7 @@ Recomputes a weather dataset's canonical content digest and checks it against \
 the one the dataset carries. Run it when a prepared batch is about to be \
 trusted, or when two machines produce different results from what should be \
 the same weather. It reads the file and writes nothing.",
+    chapter: Chapter::Solar,
     effect: Effect::ReadOnly,
     authority: Authority::None,
     execution: Execution::Sync,

@@ -1,4 +1,4 @@
 interface:
   display_name: "DS through MCP"
-  short_description: "Install and use ds from an MCP host"
-  default_prompt: "Use $ds-mcp-host to install the ds MCP host entry and call ds commands as MCP tools with confirm only when intended."
+  short_description: "Install compact or typed ds MCP views"
+  default_prompt: "Use $ds-mcp-host to install the broad chapter server or one typed workflow profile, then route through live ds contracts."

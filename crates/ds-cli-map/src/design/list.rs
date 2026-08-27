@@ -7,7 +7,9 @@
 //! nothing.
 
 use ds_cli_contract::outcome::Failure;
-use ds_cli_contract::spec::{Arg, ArgKind, Authority, Command, Effect, Example, Execution};
+use ds_cli_contract::spec::{
+    Arg, ArgKind, Authority, Chapter, Command, Effect, Example, Execution,
+};
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
 
@@ -33,6 +35,7 @@ Names every transformer in the active project with its last process and \
 report status, from the same cached status list the design Status surface \
 renders. This is where a drafting session starts: every other `ds map design` \
 command needs a transformer name from here.",
+    chapter: Chapter::Design,
     effect: Effect::ReadOnly,
     authority: Authority::Project,
     execution: Execution::Sync,

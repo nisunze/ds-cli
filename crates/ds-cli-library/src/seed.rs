@@ -1,6 +1,6 @@
 use crate::{engine_failure, read, sha256};
 use ds_cli_contract::spec::{
-    Arg, Authority, Availability, Command, Effect, Example, Execution, Refusal,
+    Arg, Authority, Availability, Chapter, Command, Effect, Example, Execution, Refusal,
 };
 use ds_cli_contract::{Context, Failure, Inputs};
 use ds_grid_exchange::{
@@ -17,6 +17,7 @@ pub static COMMAND: Command = Command {
     contract: 1,
     summary: "Seed an immutable as-built, new-design or custom parallel library.",
     purpose: "Discovers explicit local roots or backups, classifies members by native headers, keeps exact pinned PLS-CADD assets in pls-cadd/, ingests only the characterized PLS-CADD-to-DS-Grid projection into dsgrid/, and atomically promotes library/<id>/<version>. It never publishes, overwrites, opens PLS-CADD or converts DS Grid assets to PLS-CADD.",
+    chapter: Chapter::PlsCadd,
     effect: Effect::ArtifactWrite,
     authority: Authority::None,
     execution: Execution::Sync,

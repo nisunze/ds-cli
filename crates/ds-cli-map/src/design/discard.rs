@@ -1,7 +1,7 @@
 //! `ds map design discard` — restore one transformer room from the cloud.
 
 use ds_cli_contract::outcome::Failure;
-use ds_cli_contract::spec::{Authority, Command, Effect, Example, Execution, Refusal};
+use ds_cli_contract::spec::{Authority, Chapter, Command, Effect, Example, Execution, Refusal};
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
 
@@ -14,6 +14,7 @@ pub static COMMAND: Command = Command {
     contract: 1,
     summary: "Discard a transformer's unsaved local room.",
     purpose: "Replace one transformer's unsaved local room with the exact current cloud baseline. This never saves or changes project data; retained local map layers are untouched so a reviewed workflow can be replayed.",
+    chapter: Chapter::Design,
     effect: Effect::LocalUi,
     authority: Authority::Project,
     execution: Execution::Sync,

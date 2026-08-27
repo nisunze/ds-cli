@@ -7,7 +7,9 @@
 //! documents it as a named refusal rather than discovering it at runtime.
 
 use ds_cli_contract::outcome::Failure;
-use ds_cli_contract::spec::{Arg, Authority, Command, Effect, Example, Execution, Refusal};
+use ds_cli_contract::spec::{
+    Arg, Authority, Chapter, Command, Effect, Example, Execution, Refusal,
+};
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
 
@@ -24,6 +26,7 @@ session created can be removed: a layer the operator drew, and a layer a \
 vector tool produced, are refused by the application, so an agent tidying up \
 cannot erase someone else's work. Takes the `layer` id that `ds map view` and \
 `ds map draw` report — not the `analysis_id`.",
+    chapter: Chapter::Survey,
     effect: Effect::LocalUi,
     authority: Authority::DesktopPairing,
     execution: Execution::Sync,

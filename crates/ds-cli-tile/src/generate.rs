@@ -2,7 +2,7 @@
 //! `apply: true`; the confirmation is the CLI's `--yes`.
 
 use ds_cli_contract::outcome::Failure;
-use ds_cli_contract::spec::{Authority, Command, Effect, Example, Execution};
+use ds_cli_contract::spec::{Authority, Chapter, Command, Effect, Example, Execution};
 use ds_cli_contract::{Context, Inputs};
 use serde_json::Value;
 
@@ -20,6 +20,7 @@ governed request. Returns as soon as ds-brain accepts the job; follow it \
 with `ds tile status`. Use --force after a restyle or a Data-cleaning \
 catalog change — the output is not dirty then, but the tiles must be \
 rebuilt for the legend to reflect the project's vocabulary.",
+    chapter: Chapter::VectorTiles,
     effect: Effect::GlobalWrite,
     authority: Authority::Project,
     execution: Execution::Sync,

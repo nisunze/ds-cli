@@ -4,7 +4,9 @@ use std::collections::BTreeMap;
 use std::time::Duration;
 
 use ds_cli_contract::outcome::Failure;
-use ds_cli_contract::spec::{Arg, Authority, Command, Effect, Example, Execution, Refusal};
+use ds_cli_contract::spec::{
+    Arg, Authority, Chapter, Command, Effect, Example, Execution, Refusal,
+};
 use ds_cli_contract::{Context, Inputs};
 use ds_cli_desktop::ops;
 use serde_json::{Map, Value, json};
@@ -51,6 +53,7 @@ Submits one agent-authored sighting through the paired application's existing \
 feedback client. It reaches the same deduplicated backlog as the `fb` shortcut; \
 it does not create a local gap file or a second issue channel. Use only after \
 live capability discovery confirms the task is unsupported or materially broken.",
+    chapter: Chapter::Operations,
     effect: Effect::GlobalWrite,
     authority: Authority::DesktopUser,
     execution: Execution::Sync,

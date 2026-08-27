@@ -11,7 +11,7 @@ use std::path::Path;
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
-    Arg, Authority, Availability, Command, Effect, Example, Execution, Refusal,
+    Arg, Authority, Availability, Chapter, Command, Effect, Example, Execution, Refusal,
 };
 use ds_cli_contract::{Context, Inputs};
 use ds_grid_engine::{CommandEnvelope, CommandError, GridSession};
@@ -34,6 +34,7 @@ the compiled ds-grid engine. A dry run evaluates the exact revision gate and \
 model invariants without writing. An apply preserves the source package, its \
 assets and exchange bindings, advances the package revision, and writes one \
 new package at --out. Existing output paths are never overwritten.",
+    chapter: Chapter::GridModel,
     effect: Effect::LocalFileWrite,
     authority: Authority::None,
     execution: Execution::Sync,

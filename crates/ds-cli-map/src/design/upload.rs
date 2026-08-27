@@ -1,7 +1,9 @@
 //! `ds map design upload inspect` — preview a native source before upload.
 
 use ds_cli_contract::outcome::Failure;
-use ds_cli_contract::spec::{Arg, ArgKind, Authority, Command, Effect, Example, Execution};
+use ds_cli_contract::spec::{
+    Arg, ArgKind, Authority, Chapter, Command, Effect, Example, Execution,
+};
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
 
@@ -46,6 +48,7 @@ pub static COMMAND: Command = Command {
 Parses one or many would-be design uploads inside the paired desktop and returns a bounded \
 inventory of layers, columns, suggested design targets, header mappings, and \
 cleaning counts. It never applies, stages, copies, or uploads the source.",
+    chapter: Chapter::Design,
     effect: Effect::ReadOnly,
     authority: Authority::Project,
     execution: Execution::Sync,

@@ -14,7 +14,7 @@
 //!   knows the fix is to reload and re-apply rather than to retry.
 
 use ds_cli_contract::outcome::Failure;
-use ds_cli_contract::spec::{Authority, Command, Effect, Example, Execution, Refusal};
+use ds_cli_contract::spec::{Authority, Chapter, Command, Effect, Example, Execution, Refusal};
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
 
@@ -38,6 +38,7 @@ requires --yes. A room with nothing staged is a success reporting `saved: \
 false`, not a failure. If the transformer changed in the project since the \
 room was loaded the save is refused as a conflict, and the fix is to reload \
 and re-apply rather than retry.",
+    chapter: Chapter::Design,
     effect: Effect::ArtifactWrite,
     authority: Authority::Project,
     execution: Execution::Sync,

@@ -1,7 +1,9 @@
 //! `ds map design layer-to-local` — copy project design data to a local layer.
 
 use ds_cli_contract::outcome::Failure;
-use ds_cli_contract::spec::{Arg, Authority, Command, Effect, Example, Execution, Refusal};
+use ds_cli_contract::spec::{
+    Arg, Authority, Chapter, Command, Effect, Example, Execution, Refusal,
+};
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
 
@@ -18,6 +20,7 @@ Asks the running application to copy one current transformer design layer into \
 its shared local-layer store. The application reads IndexedDB/cloud-backed \
 design state and writes the local layer; the CLI receives only a bounded \
 receipt, never raw design features. The project design is not changed.",
+    chapter: Chapter::Design,
     effect: Effect::LocalUi,
     authority: Authority::Project,
     execution: Execution::Sync,

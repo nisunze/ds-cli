@@ -1,7 +1,7 @@
 //! `ds style read` — one style document, its fields, and what the map shows.
 
 use ds_cli_contract::outcome::Failure;
-use ds_cli_contract::spec::{Authority, Command, Effect, Example, Execution};
+use ds_cli_contract::spec::{Authority, Chapter, Command, Effect, Example, Execution};
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
 
@@ -17,6 +17,7 @@ Reads the authored MapLibre document for one ref, the fields and values the \
 backend publishes for it, the fields and value TYPES the map currently \
 renders (so a numeric tile property gets numeric match labels), the second \
 dimension if one is authored, and the channels this layer type offers.",
+    chapter: Chapter::MapPresentation,
     effect: Effect::ReadOnly,
     authority: Authority::Project,
     execution: Execution::Sync,

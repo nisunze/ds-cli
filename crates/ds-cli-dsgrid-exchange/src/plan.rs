@@ -15,7 +15,7 @@
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
-    Authority, Availability, Command, Effect, Example, Execution, Refusal,
+    Authority, Availability, Chapter, Command, Effect, Example, Execution, Refusal,
 };
 use ds_cli_contract::{Context, Inputs};
 use ds_grid_exchange::conversion::{ConversionPlan, plan_conversion};
@@ -40,6 +40,7 @@ it. The plan names every stage, every artifact the conversion would write, \
 what it would lose, and anything blocking it. `convert` re-checks these pins \
 and refuses if the source bytes have changed since — so a plan that reads \
 correctly is the plan that runs.",
+    chapter: Chapter::GridModel,
     effect: Effect::Discovery,
     authority: Authority::None,
     execution: Execution::Sync,

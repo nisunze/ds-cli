@@ -2,7 +2,7 @@
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
-    Arg, ArgKind, Authority, Command, Effect, Example, Execution, Refusal,
+    Arg, ArgKind, Authority, Chapter, Command, Effect, Example, Execution, Refusal,
 };
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
@@ -35,6 +35,7 @@ pub static COMMAND: Command = Command {
     contract: 1,
     summary: "Create a deliberate visible transformer version.",
     purpose: "Asks ds-brain to assign the next Design Status version for each named transformer. Only transformer names and one required reason cross the bridge; no transformer or report data is sent. Ordinary design saves do not create versions. Dirty local rooms are refused because version intent must precede the engineering edits it governs.",
+    chapter: Chapter::Design,
     effect: Effect::ArtifactWrite,
     authority: Authority::Project,
     execution: Execution::Sync,

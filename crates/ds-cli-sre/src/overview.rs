@@ -1,7 +1,7 @@
 //! `ds sre overview` — the bounded platform reliability top line.
 
 use ds_cli_contract::outcome::Failure;
-use ds_cli_contract::spec::{Authority, Command, Effect, Example, Execution};
+use ds_cli_contract::spec::{Authority, Chapter, Command, Effect, Example, Execution};
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
 
@@ -16,6 +16,7 @@ fleet and service projection as DS GridDesign's Reliability page. The paired \
 application performs the governed read under its signed-in user; an active \
 project is not required. `incidents` is the owner's currently unpopulated feed; \
 an empty list is not proof that external incident systems have no incidents.",
+    chapter: Chapter::Operations,
     effect: Effect::ReadOnly,
     authority: Authority::DesktopUser,
     execution: Execution::Sync,
