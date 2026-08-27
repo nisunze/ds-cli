@@ -45,19 +45,31 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         .filter(|component| selected.is_none_or(|id| component.id == id))
         .map(|component| {
             let local = detect::snapshot(component, platform, false);
+            let acquisition_implemented = (component.id == "libreoffice"
+                && platform == Platform::Windows)
+                || component.id == "rwanda-reference";
             json!({
                 "id": component.id,
                 "required": component.required,
                 "purpose": component.purpose,
                 "provenance": component.provenance,
+                "declared_version": component.version,
+                "license": component.license,
+                "source": component.source,
                 "state": local["state"],
                 "path": local["path"],
                 "receipt": local.get("receipt").cloned().unwrap_or(Value::Null),
                 "acquisition": {
-                    "implemented": false,
+                    "implemented": acquisition_implemented,
+                    "availability": if acquisition_implemented { "available" } else { "unavailable" },
                     "explicit_intent_required": true,
-                    "reason": "installation and dataset acquisition are outside Skill Zero's proven lifecycle scope",
-                }
+                    "reason": if component.id == "rwanda-reference" { "fixed official NISR source with governed version/license/hash receipt" } else if acquisition_implemented { "native Windows package-manager lifecycle is proven" } else { "this exact acquisition lifecycle remains unproven and fails closed" },
+                },
+                "integrations": {
+                    "libreoffice_mcp": false,
+                    "third_party_qgis_mcp_allowed": false,
+                    "vscode_git_bash_configuration": component.id == "git-bash" && platform == Platform::Windows,
+                },
             })
         })
         .collect::<Vec<_>>();

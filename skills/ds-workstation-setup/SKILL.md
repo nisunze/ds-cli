@@ -1,6 +1,6 @@
 ---
 name: ds-workstation-setup
-description: "Inspect and plan DS workstation prerequisites: LibreOffice, QGIS, Git Bash/default terminals, and governed Rwanda reference components."
+description: "Inspect, plan, verify, and safely install proven DS workstation prerequisites and governed Rwanda reference components."
 metadata:
   ds-chapters: workstation
 ---
@@ -27,17 +27,37 @@ Read the exact live descriptor before the next call. Use
 a no-side-effect plan, and `ds workstation verify --component <id> --output
 json` only on the host that owns the component.
 
-## Keep interim proof boundaries visible
+## Apply only the proven exact actions
 
-The current surface inspects, plans, and verifies bounded evidence. It does not
-install packages, acquire reference data, or change terminal settings. Treat
-LibreOffice installer/fallback details and headless document conversion as
-provisional until the dedicated Windows install/uninstall/reinstall proof is
-landed. An executable/version result is not that lifecycle proof.
+The native Windows LibreOffice lifecycle is proven. After explicit user intent,
+review the live install descriptor and use its fixed package identity:
 
-QGIS installation and Rwanda reference-data acquisition each require a new,
-explicit user request. Discovery or planning is not permission. Detect a
-suitable Git Bash before planning installation and never reinstall or remove a
+```text
+ds capabilities workstation.install --output json
+ds workstation install --component libreoffice --approval interactive --yes --output json
+```
+
+Keep the user present for UAC; never bypass it. The command is idempotent,
+verifies registration/version/headless conversion, and records task ownership
+only when it installed the package. LibreOffice needs no separate MCP.
+
+When a task needs Rwanda village boundaries, the explicit acquisition command
+uses the fixed official NISR 2022 Open Data layer and writes a
+provenance/version/license/SHA-256 receipt:
+
+```text
+ds workstation install --component rwanda-reference --yes --output json
+```
+
+To select an already-defined suitable Git Bash profile in VS Code:
+
+```text
+ds workstation configure --component git-bash --target vscode --yes --output json
+```
+
+QGIS and Git Bash acquisition remain unimplemented and fail closed; do not
+install a third-party QGIS MCP. Discovery or planning is not permission.
+Detect a suitable Git Bash before configuration and never reinstall or remove a
 pre-existing copy. Cleanup may name only files recorded as task-owned by the
 same governed run.
 

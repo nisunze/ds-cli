@@ -7,9 +7,9 @@
     "linux_executables": ["libreoffice", "soffice"],
     "macos_executables": ["libreoffice", "soffice"],
     "windows_executables": ["soffice.exe", "libreoffice.exe"],
-    "linux_plan": ["Use the distribution package manager and its signed repository metadata.", "Verify the executable version; defer document-conversion lifecycle proof until the dedicated proof session."],
-    "macos_plan": ["Use the conventional trusted package mechanism or The Document Foundation official distribution.", "Verify the executable version; defer document-conversion lifecycle proof until the dedicated proof session."],
-    "windows_plan": ["Prefer the platform package manager and The Document Foundation package identity.", "Only after a verified package-manager transport failure, resolve an installer through the official Metalink response.", "Require the selected URL to be listed by that Metalink and require the published SHA-256 to match before execution.", "Defer install, uninstall, reinstall, registration, headless-conversion, and cleanup proof to the dedicated Windows lifecycle session."]
+    "linux_plan": ["Use the distribution package manager and its signed repository metadata.", "Verify the executable version and a harmless task-owned headless conversion."],
+    "macos_plan": ["Use the conventional trusted package mechanism or The Document Foundation official distribution.", "Verify the executable version and a harmless task-owned headless conversion."],
+    "windows_plan": ["Prefer the platform package manager and The Document Foundation package identity.", "Only after a verified package-manager transport failure, resolve an installer through the official Metalink response.", "Require the selected URL to be listed by that Metalink and require the published SHA-256 to match before execution.", "Verify package registration, executable version, a harmless task-owned headless conversion, and exact cleanup; record task ownership only for installations made by this command."]
   },
   {
     "id": "qgis",
@@ -19,9 +19,9 @@
     "linux_executables": ["qgis"],
     "macos_executables": ["qgis"],
     "windows_executables": ["qgis.exe", "qgis-bin.exe"],
-    "linux_plan": ["Use the distribution package manager or the QGIS project's documented repository after an explicit install request."],
-    "macos_plan": ["Use the conventional trusted package mechanism or the QGIS project's official distribution after an explicit install request."],
-    "windows_plan": ["Use the platform package manager or the QGIS project's official installer after an explicit install request."]
+    "linux_plan": ["Planning only: prove the distribution package-manager or QGIS documented-repository lifecycle before implementing an explicit install request."],
+    "macos_plan": ["Planning only: prove the trusted package or official QGIS distribution lifecycle before implementing an explicit install request."],
+    "windows_plan": ["Planning only: prove the platform package-manager or official QGIS installer lifecycle before implementing an explicit install request."]
   },
   {
     "id": "git-bash",
@@ -33,18 +33,21 @@
     "windows_executables": ["bash.exe"],
     "linux_plan": ["Use the native Bash or selected login shell; Git Bash is a Windows product and is not emulated here."],
     "macos_plan": ["Use the native shell and conventional package manager; Git Bash is a Windows product and is not emulated here."],
-    "windows_plan": ["Detect a suitable existing Git for Windows Bash first and leave it untouched when present.", "Only an explicit future install request may authorize acquisition when it is absent."]
+    "windows_plan": ["Detect a suitable existing Git for Windows Bash first and leave it untouched when present.", "Acquisition is planning-only until its exact lifecycle is proven; VS Code configuration is a separate implemented intent."]
   },
   {
     "id": "rwanda-reference",
     "required": false,
     "purpose": "Provide versioned Rwanda villages and related reference data with provenance and content receipts.",
     "provenance": "A DS-governed component receipt naming the upstream source, version, and file SHA-256 values",
+    "version": "NISR-village-boundary-2022",
+    "license": "NISR Open Data designation; attribution: Village boundary data produced by NISR in 2022",
+    "source": "https://gis-server.statistics.gov.rw/server/rest/services/Hosted/Village_Boundary_2022/FeatureServer/3",
     "linux_executables": [],
     "macos_executables": [],
     "windows_executables": [],
-    "linux_plan": ["Require explicit acquisition intent and a DS-governed source/version receipt before any download."],
-    "macos_plan": ["Require explicit acquisition intent and a DS-governed source/version receipt before any download."],
-    "windows_plan": ["Require explicit acquisition intent and a DS-governed source/version receipt before any download."]
+    "linux_plan": ["After explicit confirmation, acquire the fixed official NISR Village Boundary 2022 Open Data layer in bounded, low-bandwidth-tolerant pages without geometry simplification.", "Persist source-precision GeoJSON plus provenance, version, license, ownership, and SHA-256 receipt; re-verify before returning."],
+    "macos_plan": ["After explicit confirmation, acquire the fixed official NISR Village Boundary 2022 Open Data layer in bounded, low-bandwidth-tolerant pages without geometry simplification.", "Persist source-precision GeoJSON plus provenance, version, license, ownership, and SHA-256 receipt; re-verify before returning."],
+    "windows_plan": ["After explicit confirmation, acquire the fixed official NISR Village Boundary 2022 Open Data layer in bounded, low-bandwidth-tolerant pages without geometry simplification.", "Persist source-precision GeoJSON plus provenance, version, license, ownership, and SHA-256 receipt; re-verify before returning."]
   }
 ]

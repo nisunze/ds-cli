@@ -65,6 +65,8 @@ fn shell_snapshot(platform: Platform) -> Value {
     };
     json!({
         "path_bash": bash.as_deref().map(|path| path.to_string_lossy().into_owned()),
+        "git": executable_snapshot(&[if platform == Platform::Windows { "git.exe" } else { "git" }], "git"),
+        "git_bash": detect::component("git-bash").map(|component| detect::snapshot(&component, platform, true)),
         "active": std::env::var("SHELL").ok().or_else(|| std::env::var("COMSPEC").ok()),
         "vscode_default_profile_windows": vscode,
         "windows_terminal_default_profile": terminal,
@@ -74,6 +76,23 @@ fn shell_snapshot(platform: Platform) -> Value {
             "note": "ds does not select a general-purpose subprocess shell",
         },
         "remote_ssh": "the remote platform's native shell remains independent of local Windows defaults",
+    })
+}
+
+fn executable_snapshot(names: &[&str], component: &str) -> Value {
+    let names = names
+        .iter()
+        .map(|name| (*name).to_string())
+        .collect::<Vec<_>>();
+    let path =
+        detect::find_in_directories(&names, &detect::path_directories(std::env::var_os("PATH")));
+    let version = path
+        .as_deref()
+        .and_then(|path| detect::version(path, component).ok());
+    json!({
+        "state": if path.is_some() { "installed" } else { "absent" },
+        "path": path.as_deref().map(|path| path.to_string_lossy().into_owned()),
+        "version": version,
     })
 }
 
@@ -106,11 +125,19 @@ fn windows_vscode_default() -> Value {
 fn windows_terminal_default() -> Value {
     let path = std::env::var_os("LOCALAPPDATA")
         .map(PathBuf::from)
-        .map(|root| {
-            root.join("Packages")
-                .join("Microsoft.WindowsTerminal_8wekyb3d8bbwe")
-                .join("LocalState")
-                .join("settings.json")
+        .and_then(|root| {
+            [
+                "Microsoft.WindowsTerminal_8wekyb3d8bbwe",
+                "Microsoft.WindowsTerminalPreview_8wekyb3d8bbwe",
+            ]
+            .into_iter()
+            .map(|package| {
+                root.join("Packages")
+                    .join(package)
+                    .join("LocalState")
+                    .join("settings.json")
+            })
+            .find(|path| path.is_file())
         });
     read_setting(path, "defaultProfile")
 }

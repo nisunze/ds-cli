@@ -45,7 +45,7 @@ pub static COMMAND: Command = Command {
     examples: &[
         Example {
             command: "ds workstation plan --component libreoffice --platform windows --output json",
-            note: "Provisional official-Metalink/hash policy; no download.",
+            note: "Proven package-manager path and official-Metalink/hash fallback policy; no download.",
             runnable: true,
         },
         Example {
@@ -129,6 +129,10 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     } else {
         component.plan(platform).to_vec()
     };
+    let implemented = (intent == "install"
+        && ((component_id == "libreoffice" && platform == Platform::Windows)
+            || component_id == "rwanda-reference"))
+        || (intent == "configure" && target == Some("vscode"));
     Ok(json!({
         "component": component.id,
         "platform": platform.token(),
@@ -138,7 +142,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         "already_satisfied": already_satisfied,
         "mutated": false,
         "authorized": false,
-        "implementation": "deferred_pending_lifecycle_proof",
+        "implementation": if implemented { "available" } else { "planning_only" },
         "steps": steps,
         "constraints": {
             "explicit_future_authorization_required": true,
@@ -147,13 +151,19 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             "task_owned_cleanup_only": true,
             "qgis_install_requires_explicit_request": component_id == "qgis",
             "rwanda_download_requires_explicit_request_and_receipt": component_id == "rwanda-reference",
-            "libreoffice_details_provisional": component_id == "libreoffice",
+            "windows_libreoffice_lifecycle_proven": component_id == "libreoffice" && platform == Platform::Windows,
+            "libreoffice_mcp_required": false,
+            "third_party_qgis_mcp_allowed": false,
         },
-        "remaining_gap": {
+        "evidence": if component_id == "libreoffice" && platform == Platform::Windows { json!({
+            "state": "proven",
+            "feedback_report": "368cdd5a-eb52-4f30-982a-97c5d1dd2e65"
+        }) } else { Value::Null },
+        "remaining_gap": if implemented { Value::Null } else { json!({
             "route": FEEDBACK_ROUTE,
-            "title": "Prove and implement workstation install/configure lifecycle",
-            "acceptance": "Lifecycle-tested install, idempotence, verification, task-owned cleanup, and uninstall/reinstall evidence on the owning local host.",
-        }
+            "title": "Prove and implement this exact workstation lifecycle",
+            "acceptance": "Lifecycle-tested idempotence, verification, task-owned cleanup, and exact settings or acquisition evidence on the owning local host."
+        }) }
     }))
 }
 

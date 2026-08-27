@@ -33,6 +33,8 @@ pub enum Effect {
     LocalUi,
     /// Produces a durable artifact of record.
     ArtifactWrite,
+    /// Changes software or user integration settings on this machine.
+    MachineWrite,
     /// Mutates shared state through a governed ds-brain contract.
     GlobalWrite,
 }
@@ -46,6 +48,7 @@ impl Effect {
             Self::LocalFileWrite => "local_file_write",
             Self::LocalUi => "local_ui",
             Self::ArtifactWrite => "artifact_write",
+            Self::MachineWrite => "machine_write",
             Self::GlobalWrite => "global_write",
         }
     }
@@ -53,7 +56,10 @@ impl Effect {
     /// Whether invoking this without an explicit human decision would be
     /// wrong. Gates the `--yes` requirement in exactly one place.
     pub const fn needs_confirmation(self) -> bool {
-        matches!(self, Self::ArtifactWrite | Self::GlobalWrite)
+        matches!(
+            self,
+            Self::ArtifactWrite | Self::MachineWrite | Self::GlobalWrite
+        )
     }
 
     /// One line explaining the class, for command-level help only.
@@ -65,6 +71,7 @@ impl Effect {
             Self::LocalFileWrite => "writes a file in your workspace",
             Self::LocalUi => "changes the paired desktop's visible state",
             Self::ArtifactWrite => "produces a durable artifact of record",
+            Self::MachineWrite => "changes software or settings on this machine",
             Self::GlobalWrite => "mutates governed shared state",
         }
     }

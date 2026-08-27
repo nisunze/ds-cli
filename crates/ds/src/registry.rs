@@ -620,9 +620,7 @@ static SHELL_ENTRIES: &[Entry] = &[
     },
 ];
 
-/// Workstation bootstrap is intentionally read/plan/verify only until the
-/// local Windows lifecycle has been proven. Keep these together so the root
-/// index presents one setup door rather than a package-by-package catalogue.
+/// One setup door: inspect and plan before either proven machine mutation.
 static WORKSTATION_ENTRIES: &[Entry] = &[
     Entry {
         command: &ds_cli_workstation::status::COMMAND,
@@ -633,6 +631,16 @@ static WORKSTATION_ENTRIES: &[Entry] = &[
         command: &ds_cli_workstation::plan::COMMAND,
         handler: ds_cli_workstation::plan::run,
         render: ds_cli_workstation::plan::render,
+    },
+    Entry {
+        command: &ds_cli_workstation::install::COMMAND,
+        handler: ds_cli_workstation::install::run,
+        render: ds_cli_workstation::install::render,
+    },
+    Entry {
+        command: &ds_cli_workstation::configure::COMMAND,
+        handler: ds_cli_workstation::configure::run,
+        render: ds_cli_workstation::configure::render,
     },
     Entry {
         command: &ds_cli_workstation::verify::COMMAND,

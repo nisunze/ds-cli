@@ -1,6 +1,6 @@
 [package]
 name = "ds-cli-workstation"
-description = "Safe discovery and dry-run planning for DS workstation prerequisites."
+description = "Governed discovery, planning, verification, and setup for DS workstation prerequisites."
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -13,3 +13,4 @@ ds-cli-contract = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 sha2 = { workspace = true }
+ureq = { workspace = true }

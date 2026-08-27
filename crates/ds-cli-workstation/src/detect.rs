@@ -39,6 +39,12 @@ pub struct Component {
     pub required: bool,
     pub purpose: String,
     pub provenance: String,
+    #[serde(default)]
+    pub version: Option<String>,
+    #[serde(default)]
+    pub license: Option<String>,
+    #[serde(default)]
+    pub source: Option<String>,
     pub linux_executables: Vec<String>,
     pub macos_executables: Vec<String>,
     pub windows_executables: Vec<String>,
@@ -166,7 +172,7 @@ fn conventional_locations(component: &str, platform: Platform) -> Vec<PathBuf> {
 pub fn version(path: &Path, component: &str) -> Result<String, String> {
     let args: &[&str] = match component {
         "libreoffice" => &["--headless", "--version"],
-        "qgis" | "git-bash" => &["--version"],
+        "qgis" | "git-bash" | "git" => &["--version"],
         _ => return Err("this component has no executable version probe".to_string()),
     };
     let mut child = ProcessCommand::new(path)
@@ -255,10 +261,11 @@ pub fn snapshot(component: &Component, platform: Platform, probe_version: bool) 
         "version": version,
         "probe_error": probe_error,
         "suitable": found.as_ref().map(|_| suitable),
+        "ownership": crate::policy::install_ownership(platform, &component.id),
     })
 }
 
-fn git_bash_is_suitable(path: &Path) -> bool {
+pub(crate) fn git_bash_is_suitable(path: &Path) -> bool {
     if !path
         .file_name()
         .is_some_and(|name| name.to_string_lossy().eq_ignore_ascii_case("bash.exe"))

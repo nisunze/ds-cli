@@ -64,6 +64,7 @@ const EFFECTS: &[&str] = &[
     "local_file_write",
     "local_ui",
     "artifact_write",
+    "machine_write",
     "global_write",
 ];
 const AUTHORITIES: &[&str] = &["none", "desktop_pairing", "desktop_user", "project"];

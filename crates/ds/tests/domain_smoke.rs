@@ -118,14 +118,75 @@ fn workstation_windows_libreoffice_plan_is_explicitly_mutation_free() {
     ]);
     assert_eq!(data["mutated"], false);
     assert_eq!(data["authorized"], false);
-    assert_eq!(data["implementation"], "deferred_pending_lifecycle_proof");
-    assert_eq!(data["constraints"]["libreoffice_details_provisional"], true);
+    assert_eq!(data["implementation"], "available");
+    assert_eq!(
+        data["constraints"]["windows_libreoffice_lifecycle_proven"],
+        true
+    );
+    assert_eq!(data["evidence"]["state"], "proven");
     assert!(
         data["steps"]
             .as_array()
             .unwrap()
             .iter()
             .any(|step| step.as_str().unwrap_or("").contains("SHA-256"))
+    );
+}
+
+#[test]
+fn workstation_rwanda_acquisition_plan_names_the_receipt_proof() {
+    let data = ok(&[
+        "workstation",
+        "plan",
+        "--component",
+        "rwanda-reference",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(data["implementation"], "available");
+    assert!(data["steps"].as_array().unwrap().iter().any(|step| {
+        let step = step.as_str().unwrap_or("");
+        step.contains("license") && step.contains("SHA-256")
+    }));
+}
+
+#[cfg(not(windows))]
+#[test]
+fn workstation_install_refuses_an_unproven_platform_component() {
+    let run = ds(&[
+        "workstation",
+        "install",
+        "--component",
+        "git-bash",
+        "--yes",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(run.code, 3, "{}{}", run.stdout, run.stderr);
+    assert_eq!(
+        run.envelope["error"]["code"],
+        "workstation_mutation_unsupported"
+    );
+}
+
+#[cfg(not(windows))]
+#[test]
+fn workstation_configure_refuses_outside_native_windows() {
+    let run = ds(&[
+        "workstation",
+        "configure",
+        "--component",
+        "git-bash",
+        "--target",
+        "vscode",
+        "--yes",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(run.code, 3, "{}{}", run.stdout, run.stderr);
+    assert_eq!(
+        run.envelope["error"]["code"],
+        "workstation_mutation_unsupported"
     );
 }
 
