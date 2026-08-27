@@ -79,6 +79,59 @@ The expected revision is the authored revision returned by the package's
 engine session, not the package's monotonic `model_revision`. They are
 reported separately in the apply receipt and must never be substituted.
 
+## `project` runs what `describe` lists
+
+`describe --kind projections` published eight projections that nothing outside
+the desktop application could invoke. `project` closes that: it opens a
+verified package, pins the authored revision, and calls one of them.
+
+```bash
+ds dsgrid describe --kind projections --id project_profile --output json
+ds dsgrid project --model ./model.dsgrid --id project_profile \
+  --param alignment_id=<id> --out ./profile.json --output json
+```
+
+The descriptor is the contract in both directions. A `--param` the descriptor
+does not declare refuses with `unknown_param`; a required one that is absent
+refuses with `missing_param` and names its value type. Neither is a courtesy —
+an ignored parameter is a different answer that looks like the one asked for.
+
+**`project_profile` is the clearance answer.** For one alignment it returns the
+route nodes, the structures with station/offset/ground/embedment, the terrain
+observations, the effective ground segments, and — for every tension section on
+that alignment — the solved conductor curve: catenary constant, horizontal and
+maximum support tension with their RTS percentages, ruling span, the governing
+criterion rule, per-span sag and low point, and the clearance evidence with its
+required value, calculated minimum and where the minimum occurs. All of it is
+`ds-grid-engine`'s; `ds` adds no number.
+
+### Two bounds, because there are two shapes of result
+
+A projection over a real network is far larger than a terminal or an agent's
+context, so stdout is always bounded and `--out` always is not:
+
+| Result | stdout | `--out` |
+|---|---|---|
+| `Vec<ProjectionRow>` | `--limit` rows (default 50, max 5000) plus `more.withheld` | every row |
+| a scene or catalogue | inline when under 256 KiB, otherwise withheld with its byte length | the whole document |
+
+A withheld result is reported, never silently dropped: `more.result_withheld`
+with the bytes it would have cost and the flag that would fetch it. The file
+`--out` writes carries the same identity block as stdout — model id, package
+revision, authored revision, projection, params — so a document found later
+says what it is a projection *of*.
+
+`--out` never overwrites. It is the same no-overwrite policy `apply` uses,
+from the same module.
+
+### The authored revision, without provoking a conflict
+
+`project` reports `source.authored_revision` — the `rev:<sha256>` an `apply`
+envelope must pin. Before this command the only ways to learn it were the
+previous apply receipt or a deliberately stale dry run that refused with
+`revision_conflict`. Reading a model to find out how to edit it should not
+require failing first.
+
 ## Making a `.dsgrid`, and exporting one
 
 Classification, planning and conversion are not in this domain. They are
@@ -100,6 +153,7 @@ identity still reaches it without loading exchange planning.
 | `inspect` | `ds_grid_exchange::dsgrid::inspect`, `package::unpack`, `ds_grid_model::GridModelSummary` |
 | `validate` | `ds_grid_exchange::package::unpack`, `ds_grid_model::validate_snapshot` |
 | `describe` | `ds_grid_engine::{describe_commands, describe_operations, describe_projections}` |
+| `project` | `ds_grid_engine::GridSession` projection methods |
 | `apply` | `ds_grid_engine::GridSession`, `ds_grid_exchange::dsgrid::emit` |
 
 There is no second implementation of the `.dsgrid` format, of model

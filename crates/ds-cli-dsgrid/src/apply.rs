@@ -5,8 +5,6 @@
 //! only the CLI boundary: bounded file reads, typed refusal mapping, a
 //! no-overwrite output policy, and a compact receipt.
 
-use std::fs::OpenOptions;
-use std::io::Write;
 use std::path::Path;
 
 use ds_cli_contract::outcome::Failure;
@@ -17,8 +15,8 @@ use ds_cli_contract::{Context, Inputs};
 use ds_grid_engine::{CommandEnvelope, CommandError, GridSession};
 use ds_grid_exchange::{PackOptions, dsgrid};
 use serde_json::{Value, json};
-use sha2::{Digest, Sha256};
 
+use crate::output::{sha256, validate_output_path, write_new};
 use crate::package;
 
 const MAX_ENVELOPE_BYTES: u64 = 16 * 1024 * 1024;
@@ -364,59 +362,6 @@ fn map_command_error(error: CommandError) -> Failure {
         .remedy("refresh the model and submit one fresh intent")
         .detail(json!({ "already_applied": already_applied, "fresh": fresh })),
     }
-}
-
-fn validate_output_path(raw_path: &str) -> Result<(), Failure> {
-    let path = Path::new(raw_path);
-    if path.exists() {
-        return Err(
-            Failure::conflict("output_exists", format!("`{raw_path}` already exists"))
-                .remedy("choose a new output path; apply never overwrites"),
-        );
-    }
-    let parent = path
-        .parent()
-        .filter(|parent| !parent.as_os_str().is_empty());
-    if parent.is_some_and(|parent| !parent.is_dir()) {
-        return Err(Failure::invalid(
-            "output_parent_missing",
-            format!("the parent of `{raw_path}` does not exist"),
-        )
-        .remedy("create the intended output directory, then retry"));
-    }
-    Ok(())
-}
-
-fn write_new(raw_path: &str, bytes: &[u8]) -> Result<(), Failure> {
-    let mut file = OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(raw_path)
-        .map_err(|error| {
-            if error.kind() == std::io::ErrorKind::AlreadyExists {
-                Failure::conflict("output_exists", format!("`{raw_path}` already exists"))
-                    .remedy("choose a new output path; apply never overwrites")
-            } else {
-                Failure::failed("output_unwritable", format!("cannot create `{raw_path}`"))
-                    .remedy("choose a new writable output path")
-                    .detail(json!({ "detail": error.kind().to_string() }))
-            }
-        })?;
-    if let Err(error) = file.write_all(bytes).and_then(|_| file.sync_all()) {
-        drop(file);
-        let _ = std::fs::remove_file(raw_path);
-        return Err(Failure::failed(
-            "output_unwritable",
-            format!("could not finish writing `{raw_path}`"),
-        )
-        .remedy("check free space and permissions; the partial file was removed")
-        .detail(json!({ "detail": error.kind().to_string() })));
-    }
-    Ok(())
-}
-
-fn sha256(bytes: &[u8]) -> String {
-    format!("sha256:{:x}", Sha256::digest(bytes))
 }
 
 pub fn render(data: &Value) -> String {

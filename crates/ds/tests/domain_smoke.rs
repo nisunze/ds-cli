@@ -383,6 +383,301 @@ fn dsgrid_apply_dry_runs_then_writes_one_revision_without_overwriting_source() {
 }
 
 #[test]
+fn dsgrid_project_profile_carries_the_engineering_profile_of_one_alignment() {
+    // The reason this command exists: a profile projection is where station,
+    // ground, placement and — where a section is strung — the solved curve
+    // and its clearance evidence come from. Asserting only that rows came
+    // back would pass for an empty list of the wrong shape.
+    let model = common::fixture();
+    let bytes = std::fs::read(&model).expect("read fixture package");
+    let package = unpack(&bytes).expect("decode fixture package");
+    let alignment = package
+        .snapshot
+        .alignments
+        .first()
+        .expect("fixture has an alignment")
+        .id
+        .clone();
+    let session = GridSession::open(package.snapshot);
+    let authored = session.current_revision().revision_id.as_str().to_string();
+    let param = format!("alignment_id={}", alignment.as_str());
+
+    let data = ok(&[
+        "dsgrid",
+        "project",
+        "--model",
+        &model,
+        "--id",
+        "project_profile",
+        "--param",
+        &param,
+        "--limit",
+        "5000",
+        "--output",
+        "json",
+    ]);
+
+    assert_eq!(data["projection"], "project_profile");
+    assert_eq!(data["result_type"], "Vec<ProjectionRow>");
+    assert_eq!(
+        data["source"]["authored_revision"], authored,
+        "the projection must be pinned to the model's authored revision"
+    );
+    assert_eq!(data["params"]["alignment_id"], alignment.as_str());
+
+    let rows = data["rows"].as_array().expect("rows");
+    assert!(
+        !rows.is_empty(),
+        "the fixture alignment projects no profile rows"
+    );
+    assert_eq!(
+        data["row_count"].as_u64().unwrap_or(0) as usize,
+        rows.len(),
+        "row_count must agree with the rows returned under a 5000 limit"
+    );
+
+    let elements: Vec<&str> = rows
+        .iter()
+        .filter_map(|row| row["payload"]["element"].as_str())
+        .collect();
+    assert!(
+        elements.contains(&"route_node"),
+        "a profile without its route nodes is not a profile: {elements:?}"
+    );
+    assert!(
+        elements.contains(&"structure"),
+        "the fixture's structures must appear on its profile: {elements:?}"
+    );
+    for row in rows {
+        assert_eq!(
+            row["projection_kind"], "profile",
+            "every row of a profile projection is a profile row"
+        );
+        assert_eq!(
+            row["model_revision"], authored,
+            "every row carries the revision it was projected from"
+        );
+    }
+}
+
+#[test]
+fn dsgrid_project_table_bounds_rows_and_says_what_it_withheld() {
+    // The bound is the whole reason stdout is usable against a real network.
+    // Silent truncation would read as a complete table.
+    let model = common::fixture();
+    let one = ok(&[
+        "dsgrid",
+        "project",
+        "--model",
+        &model,
+        "--id",
+        "project_table",
+        "--param",
+        "table_kind=structures",
+        "--limit",
+        "1",
+        "--output",
+        "json",
+    ]);
+    let rows = one["rows"].as_array().expect("rows");
+    assert_eq!(rows.len(), 1, "--limit 1 must return exactly one row");
+    let total = one["row_count"].as_u64().expect("row_count");
+    assert!(total > 1, "the fixture has more than one structure");
+    assert_eq!(
+        one["more"]["withheld"].as_u64().expect("withheld"),
+        total - 1,
+        "the withheld count must account for every row not shown"
+    );
+    assert_eq!(one["more"]["limit"], 1);
+}
+
+#[test]
+fn dsgrid_project_writes_the_complete_document_and_never_overwrites_it() {
+    let model = common::fixture();
+    let root = temp_root("project-out");
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&root).expect("create smoke dir");
+    let out_path = root.join("structures.json");
+    let out_text = out_path.display().to_string();
+
+    let written = ok(&[
+        "dsgrid",
+        "project",
+        "--model",
+        &model,
+        "--id",
+        "project_table",
+        "--param",
+        "table_kind=structures",
+        "--limit",
+        "1",
+        "--out",
+        &out_text,
+        "--output",
+        "json",
+    ]);
+    assert!(
+        written["artifact"]["sha256"]
+            .as_str()
+            .unwrap_or("")
+            .starts_with("sha256:")
+    );
+
+    // The bound applies to stdout only: the file carries every row.
+    let document: Value =
+        serde_json::from_slice(&std::fs::read(&out_path).expect("read written document"))
+            .expect("the written document is JSON");
+    assert_eq!(
+        document["rows"].as_array().expect("rows").len() as u64,
+        written["row_count"].as_u64().expect("row_count"),
+        "--out must write the complete row set, not the bounded view"
+    );
+    assert_eq!(document["projection"], "project_table");
+    assert_eq!(
+        document["source"]["authored_revision"],
+        written["source"]["authored_revision"]
+    );
+
+    let again = ds(&[
+        "dsgrid",
+        "project",
+        "--model",
+        &model,
+        "--id",
+        "project_table",
+        "--param",
+        "table_kind=structures",
+        "--out",
+        &out_text,
+        "--output",
+        "json",
+    ]);
+    assert_eq!(again.code, 5, "an existing output is a conflict");
+    assert_eq!(again.envelope["error"]["code"], "output_exists");
+
+    std::fs::remove_dir_all(&root).expect("remove smoke dir");
+}
+
+#[test]
+fn dsgrid_project_refuses_what_the_descriptor_does_not_declare() {
+    let model = common::fixture();
+
+    let unknown = ds(&[
+        "dsgrid",
+        "project",
+        "--model",
+        &model,
+        "--id",
+        "project_profil",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(unknown.code, 2);
+    assert_eq!(unknown.envelope["error"]["code"], "unknown_projection");
+    assert!(
+        unknown.envelope["error"]["remedy"]
+            .as_str()
+            .unwrap_or("")
+            .contains("project_profile"),
+        "a near miss must name the projection meant: {}",
+        unknown.stdout
+    );
+
+    let missing = ds(&[
+        "dsgrid",
+        "project",
+        "--model",
+        &model,
+        "--id",
+        "project_profile",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(missing.code, 2);
+    assert_eq!(missing.envelope["error"]["code"], "missing_param");
+
+    let undeclared = ds(&[
+        "dsgrid",
+        "project",
+        "--model",
+        &model,
+        "--id",
+        "project_model_library",
+        "--param",
+        "alignment_id=whatever",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(undeclared.code, 2);
+    assert_eq!(undeclared.envelope["error"]["code"], "unknown_param");
+
+    let malformed = ds(&[
+        "dsgrid",
+        "project",
+        "--model",
+        &model,
+        "--id",
+        "project_table",
+        "--param",
+        "table_kind",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(malformed.code, 2);
+    assert_eq!(malformed.envelope["error"]["code"], "invalid_param");
+
+    let wrong_type = ds(&[
+        "dsgrid",
+        "project",
+        "--model",
+        &model,
+        "--id",
+        "project_table",
+        "--param",
+        "table_kind=poles",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(wrong_type.code, 2);
+    assert_eq!(wrong_type.envelope["error"]["code"], "invalid_param_value");
+    assert!(
+        wrong_type.envelope["error"]["detail"]["tokens"]
+            .as_array()
+            .is_some_and(|tokens| tokens.iter().any(|token| token == "structures")),
+        "the refusal must list the tokens the model crate accepts: {}",
+        wrong_type.stdout
+    );
+}
+
+#[test]
+fn dsgrid_project_returns_the_model_library_as_a_document() {
+    // Not every projection is a row list. A document result is bounded by
+    // size rather than count, and must still carry the same identity.
+    let model = common::fixture();
+    let data = ok(&[
+        "dsgrid",
+        "project",
+        "--model",
+        &model,
+        "--id",
+        "project_model_library",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(data["projection"], "project_model_library");
+    assert!(data["rows"].is_null(), "a document result has no rows");
+    assert!(
+        data["result"].is_object(),
+        "the fixture library fits the inline bound: {}",
+        data
+    );
+    assert!(
+        data["more"]["result_byte_len"].as_u64().unwrap_or(0) > 0,
+        "an inline document reports the bytes it cost"
+    );
+}
+
+#[test]
 fn dsgrid_exchange_inspect_classifies_and_offers_real_capabilities() {
     let workspace = workspace();
     let data = ok(&[
