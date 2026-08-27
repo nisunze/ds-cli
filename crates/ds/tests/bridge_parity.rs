@@ -636,6 +636,30 @@ fn every_feedback_command_has_one_closed_operation_owner() {
         app.feedback.contains("brain('/api/v1/feedback', payload)"),
         "the CLI adapter must reuse the existing feedback endpoint"
     );
+    // Closing is the `fb` tab's own triage call, so it inherits that tab's
+    // platform capability gate rather than opening a second one.
+    assert!(
+        app.feedback.contains("updateFeedbackStatus("),
+        "ds feedback close must reuse the application's governed triage call"
+    );
+
+    // Three triage conditions reach `ds feedback` as the adapter's prose and
+    // leave it as codes. Each needs at least one marker still present, or the
+    // command reports `desktop_refused` for something that has a name, a
+    // remedy and a different next step.
+    let lowered = app.feedback.to_ascii_lowercase();
+    for (condition, markers) in [
+        ("not found", ds_cli_feedback::NOT_FOUND_MARKERS),
+        ("version conflict", ds_cli_feedback::CONFLICT_MARKERS),
+        ("not permitted", ds_cli_feedback::NOT_PERMITTED_MARKERS),
+    ] {
+        assert!(
+            markers.iter().any(|marker| lowered.contains(marker)),
+            "no `{condition}` marker remains in the desktop feedback adapter; \
+             `ds feedback close` would report desktop_refused instead of its \
+             named refusal"
+        );
+    }
 }
 
 #[test]

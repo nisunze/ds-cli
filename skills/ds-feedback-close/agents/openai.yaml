@@ -1,0 +1,4 @@
+interface:
+  display_name: "DS Feedback Closure"
+  short_description: "Retire the DS backlog reports a coding session actually fixed"
+  default_prompt: "Use $ds-feedback-close to verify and close the feedback reports this session fixed through ds feedback."

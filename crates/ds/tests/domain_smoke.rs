@@ -1647,10 +1647,34 @@ fn every_work_command_is_reachable_without_the_desktop_installed() {
 fn feedback_is_one_confirmed_shared_write() {
     let index = ok(&["capabilities", "feedback", "--output", "json"]);
     let commands = index["commands"].as_array().expect("commands");
-    assert_eq!(commands.len(), 1, "feedback has one narrow operation");
-    assert_eq!(commands[0]["id"], "feedback.submit");
-    assert_eq!(commands[0]["effect"], "global_write");
-    assert_eq!(commands[0]["availability"], "available");
+    // The domain is the loop: report a gap, find it again, close it. Reading
+    // the backlog must stay outside the confirmation gate and both writes
+    // inside it — getting that backwards is silent until an unattended
+    // session either cannot read or closes something without being asked.
+    let effects: Vec<(&str, &str)> = commands
+        .iter()
+        .map(|command| {
+            (
+                command["id"].as_str().expect("id"),
+                command["effect"].as_str().expect("effect"),
+            )
+        })
+        .collect();
+    assert_eq!(
+        effects,
+        [
+            ("feedback.submit", "global_write"),
+            ("feedback.list", "read_only"),
+            ("feedback.close", "global_write"),
+        ]
+    );
+    for command in commands {
+        assert_eq!(
+            command["availability"], "available",
+            "`{}` gates on discovery, which puts --desktop-descriptor out of reach",
+            command["id"]
+        );
+    }
 
     let base = [
         "feedback",
@@ -2036,4 +2060,103 @@ fn shell_status_tells_this_shell_from_a_new_one() {
         .expect("ds runs");
     let envelope: Value = serde_json::from_slice(&output.stdout).expect("doctor emits JSON");
     assert_eq!(envelope["data"]["shell"]["status"], "reachable");
+}
+
+/// `ds feedback` is a paired domain, so a machine without DS GridDesign
+/// cannot prove what a close does to the backlog. What it *can* prove — and
+/// what a caller depends on — is that every bound is enforced here, before the
+/// bridge is touched, so a malformed triage call costs one local refusal
+/// rather than a round trip and an application error.
+#[test]
+fn feedback_triage_bounds_are_enforced_before_the_bridge() {
+    let over_limit = ds(&["feedback", "list", "--limit", "999", "--output", "json"]);
+    assert_ne!(over_limit.code, 0);
+    assert_eq!(over_limit.envelope["error"]["code"], "invalid_number");
+    assert_eq!(over_limit.envelope["error"]["detail"]["max"], 50);
+
+    // The resolution is the record a reader sees instead of reopening the
+    // investigation; the bound is ds-brain's own, held here by hand.
+    let long_resolution = "x".repeat(1_001);
+    let over_resolution = ds(&[
+        "feedback",
+        "close",
+        "--id",
+        "feedback-1",
+        "--resolution",
+        &long_resolution,
+        "--yes",
+        "--output",
+        "json",
+    ]);
+    assert_ne!(over_resolution.code, 0);
+    assert_eq!(over_resolution.envelope["error"]["code"], "invalid_text");
+
+    // Closing names the two addressed statuses only. Reopening a report stays
+    // a human triage decision in the application.
+    let reopen = ds(&[
+        "feedback",
+        "close",
+        "--id",
+        "feedback-1",
+        "--resolution",
+        "Reopening.",
+        "--status",
+        "open",
+        "--yes",
+        "--output",
+        "json",
+    ]);
+    assert_ne!(reopen.code, 0);
+    assert_eq!(reopen.envelope["error"]["code"], "invalid_choice");
+
+    // A triage decision on shared state is never taken from an unconfirmed
+    // invocation, whatever else is right about it.
+    let unconfirmed = ds(&[
+        "feedback",
+        "close",
+        "--id",
+        "feedback-1",
+        "--resolution",
+        "Fixed by this session.",
+        "--output",
+        "json",
+    ]);
+    assert_ne!(unconfirmed.code, 0);
+    assert_eq!(
+        unconfirmed.envelope["error"]["code"],
+        "confirmation_required"
+    );
+
+    // Whatever this machine's desktop situation, a well-formed triage call
+    // must reach the bridge and stop there — never an input refusal, and
+    // never `undeclared_bridge_argument`, which would mean a handler built an
+    // argument key its own BridgeOp does not declare. The id below belongs to
+    // no report, so a paired machine refuses it rather than closing anything.
+    for args in [
+        vec!["feedback", "list", "--view", "all", "--output", "json"],
+        vec![
+            "feedback",
+            "close",
+            "--id",
+            "ds-cli-smoke-no-such-report",
+            "--resolution",
+            "Verified against the acceptance condition.",
+            "--yes",
+            "--output",
+            "json",
+        ],
+    ] {
+        let code = refusal(&args);
+        assert!(
+            code.is_empty()
+                || PAIRING_CODES.contains(&code.as_str())
+                || matches!(
+                    code.as_str(),
+                    "feedback_not_found" | "feedback_not_permitted" | "feedback_conflict"
+                ),
+            "`ds {}` failed with `{code}`, which is neither a pairing outcome \
+             nor a named triage refusal",
+            args.join(" ")
+        );
+    }
 }

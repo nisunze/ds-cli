@@ -197,5 +197,6 @@ only ever gets relaxed is not protecting anything.
 - A skill-local executable, copied CLI contract, or direct API route.
 - A local gap Markdown ledger. Agents report verified gaps through
   `ds feedback submit`, which reaches the same backlog as the app's `fb`
-  shortcut.
+  shortcut, and close what they have fixed with `ds feedback close` — the
+  same governed triage call, needing the same platform capability.
 - Go, anywhere in the shipping or local-development path.
