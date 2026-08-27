@@ -921,6 +921,56 @@ fn map_design_report_cannot_run_without_confirmation() {
 }
 
 #[test]
+fn map_design_attach_print_validates_before_pairing() {
+    let unconfirmed = ds(&[
+        "map",
+        "design",
+        "attach-print",
+        "--path",
+        "/deliverables/T-1042-A3.pdf",
+        "--transformer",
+        "T-1042",
+        "--map-family",
+        "lv-atlas",
+        "--layout",
+        "LV A3",
+        "--paper-size",
+        "A3",
+        "--orientation",
+        "landscape",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(
+        unconfirmed.envelope["error"]["code"], "confirmation_required",
+        "a durable QGIS attachment must require --yes"
+    );
+
+    assert_eq!(
+        refusal(&[
+            "map",
+            "design",
+            "attach-print",
+            "--path",
+            "/deliverables/project-A1.pdf",
+            "--layout",
+            "Project A1",
+            "--map-family",
+            "mv-map",
+            "--paper-size",
+            "A1",
+            "--orientation",
+            "landscape",
+            "--yes",
+            "--output",
+            "json",
+        ]),
+        "transformer_required",
+        "transformer scope must name its transformer before bridge discovery"
+    );
+}
+
+#[test]
 fn every_map_command_is_reachable_without_the_desktop_installed() {
     // Availability here is deliberately unconditional: dispatch checks it
     // before parsing, so a gate would make `--desktop-descriptor` — the flag
@@ -930,8 +980,8 @@ fn every_map_command_is_reachable_without_the_desktop_installed() {
     let commands = index["commands"].as_array().expect("commands");
     assert_eq!(
         commands.len(),
-        31,
-        "the map domain should register thirty-one commands"
+        32,
+        "the map domain should register thirty-two commands"
     );
     for command in commands {
         assert_eq!(
@@ -1075,6 +1125,24 @@ fn a_well_formed_map_call_only_ever_fails_on_the_pairing_state() {
             "report",
             "--transformer",
             "T-1042",
+            "--yes",
+        ],
+        vec![
+            "map",
+            "design",
+            "attach-print",
+            "--path",
+            "/deliverables/T-1042-A3.pdf",
+            "--transformer",
+            "T-1042",
+            "--map-family",
+            "lv-atlas",
+            "--layout",
+            "LV A3",
+            "--paper-size",
+            "A3",
+            "--orientation",
+            "landscape",
             "--yes",
         ],
     ] {

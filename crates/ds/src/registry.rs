@@ -359,6 +359,11 @@ static MAP_ENTRIES: &[Entry] = &[
         render: ds_cli_map::design::report::render,
     },
     Entry {
+        command: &ds_cli_map::design::attach_print::COMMAND,
+        handler: ds_cli_map::design::attach_print::run,
+        render: ds_cli_map::design::attach_print::render,
+    },
+    Entry {
         command: &ds_cli_map::design::upload::COMMAND,
         handler: ds_cli_map::design::upload::run,
         render: ds_cli_map::design::upload::render,

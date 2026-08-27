@@ -1,0 +1,4 @@
+interface:
+  display_name: "DS QGIS Print Delivery"
+  short_description: "Render and package QGIS print deliverables"
+  default_prompt: "Use $ds-qgis-print-delivery to export governed DS report data, guide approved LV-atlas, MV-map, or custom-map QGIS/PyQGIS layouts, attach PDF or image pages, and package the delivery."

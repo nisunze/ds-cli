@@ -170,6 +170,28 @@ lineage under the already-assigned version; Save transports that room without
 restamping it. Reporting is not part of either operation. Deliberate `v0`
 means no explicit version has yet been created.
 
+## QGIS pages are attachments, not report compute
+
+`design report` exports governed data through the Network Reporter. It does
+not compose paper. After the operator renders an approved QGIS layout, attach
+each PDF/PNG/JPEG variant explicitly:
+
+```bash
+ds map design attach-print \
+  --path ./TX-1-A3.pdf --transformer TX-1 \
+  --map-family lv-atlas \
+  --layout "LV A3" --paper-size A3 --orientation landscape \
+  --page-role atlas --yes
+```
+
+Repeat for every required map family, layout and paper size. Families are
+`lv-atlas`, `mv-map` (single- or multi-page), and `custom-map`.
+`--scope combined` targets the combined report; `--page-role atlas|joined`
+marks a QGIS-produced atlas or top-level joined PDF. A later `design batch
+report` includes the attached variants in the new compounded archive. It never
+modifies an existing archive. The full doctrine is in
+`docs/contracts/qgis-print-delivery.md`.
+
 ## The two identifiers
 
 `ds map view` reports each layer twice:

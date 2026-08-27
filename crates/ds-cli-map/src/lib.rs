@@ -102,6 +102,7 @@ pub static DOMAIN: Domain = Domain {
         &design::batch_process::COMMAND,
         &design::batch_report::COMMAND,
         &design::batch_save::COMMAND,
+        &design::attach_print::COMMAND,
         &design::save::COMMAND,
         &design::list::COMMAND,
         &design::report::COMMAND,
@@ -269,6 +270,20 @@ pub const DESIGN_REPORT_BATCH: BridgeOp = BridgeOp {
     operation: "design.report.export_batch",
     arguments: &["transformers", "fileLevel", "combinePerDistrict"],
 };
+pub const DESIGN_ATTACH_PRINT: BridgeOp = BridgeOp {
+    operation: "design.report.attach_print",
+    arguments: &[
+        "path",
+        "scope",
+        "transformer",
+        "mapFamily",
+        "layoutName",
+        "paperSize",
+        "orientation",
+        "pageRole",
+        "sourceReceiptSha256",
+    ],
+};
 pub const DESIGN_UPLOAD_INSPECT: BridgeOp = BridgeOp {
     operation: "design.upload.inspect",
     arguments: &["paths", "network", "parallel"],
@@ -324,6 +339,8 @@ pub const BRIDGE_OPS: &[&BridgeOp] = &[
     &DESIGN_SAVE_BATCH,
     &DESIGN_LIST,
     &DESIGN_REPORT,
+    &DESIGN_REPORT_BATCH,
+    &DESIGN_ATTACH_PRINT,
     &DESIGN_UPLOAD_INSPECT,
     &DESIGN_UPLOAD_STAGE_BATCH,
     &SURVEY_MIGRATE_PLAN,

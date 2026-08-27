@@ -90,6 +90,8 @@ directly, or use a workaround that bypasses `ds`.
   opacity or size dimension.
 - `ds-report-consumption` — obtain a delivered report workbook and read it
   with your own tools; consuming a document is not a `ds` gap.
+- `ds-qgis-print-delivery` — export governed report data, run an approved
+  multi-layout QGIS/PyQGIS print workflow, attach pages and package delivery.
 - `ds-boq-staking-table` — LV `poles` sheet and MV structure names as
   staking tables against a BOQ.
 - `ds-boq-combined-report` — the combined workbook against a project BOQ.

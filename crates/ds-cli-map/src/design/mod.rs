@@ -27,6 +27,7 @@
 //! `persisted` is false for staging commands; save and version begin report
 //! their own distinct durable results.
 
+pub mod attach_print;
 pub mod batch_process;
 pub mod batch_report;
 pub mod batch_save;
