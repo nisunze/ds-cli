@@ -1,6 +1,6 @@
 ---
 name: ds-report-consumption
-description: Obtain DS report workbooks through `ds`, read them with your own tools — sheets, units, existing-vs-new rows, dirty categories.
+description: Obtain DS report workbooks through `ds` and read sheets, units, existing/new rows, and dirty categories.
 ---
 
 # Consume a delivered report workbook

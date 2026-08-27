@@ -25,7 +25,7 @@ use std::path::PathBuf;
 use std::process::Command;
 
 use ds_grid_engine::{CommandEnvelope, GridCommand, GridSession};
-use ds_grid_exchange::unpack;
+use ds_grid_exchange::{parse_standards_library_manifest, unpack, unpack_library};
 use serde_json::Value;
 
 mod common;
@@ -96,6 +96,10 @@ fn ok(args: &[&str]) -> Value {
     run.envelope["data"].clone()
 }
 
+fn temp_root(label: &str) -> PathBuf {
+    std::env::temp_dir().join(format!("ds-cli-{label}-{}", std::process::id()))
+}
+
 // ---------------------------------------------------------------------------
 // dsgrid
 // ---------------------------------------------------------------------------
@@ -116,6 +120,131 @@ fn dsgrid_validate_finds_the_fixture_sound() {
     assert_eq!(data["model"]["issue_count"], 0);
     // The container's member count is the manifest's, not a guess.
     assert!(data["container"]["members"].as_u64().unwrap_or(0) > 1);
+}
+
+// ---------------------------------------------------------------------------
+// library
+// ---------------------------------------------------------------------------
+
+#[test]
+fn library_seed_materializes_two_native_families_idempotently() {
+    let root = temp_root("library-seed");
+    let _ = std::fs::remove_dir_all(&root);
+    let source = root.join("source");
+    let out = root.join("out");
+    std::fs::create_dir_all(&source).unwrap();
+    std::fs::write(
+        source.join("pole.012"),
+        b"TYPE='STRUCT FILE' VERSION='13' UNITS='SI' SOURCE='PLS-CADD Version 16.81'\n\
+          SYNTHETIC POLE\n\
+          10.2 1.8 0\n\
+          1\n\
+          'gw' 'C' 'N' 'N' 0 1\n\
+          0 0.2 0 'GW' 'GW' 0 0 0 0\n",
+    )
+    .unwrap();
+    let source_text = source.display().to_string();
+    let out_text = out.display().to_string();
+    let args = [
+        "library",
+        "seed",
+        "--source",
+        &source_text,
+        "--out",
+        &out_text,
+        "--library-id",
+        "new-design",
+        "--library-version",
+        "2026-08-27-v1",
+        "--role",
+        "new_design",
+        "--provenance",
+        "synthetic-test",
+        "--yes",
+        "--output",
+        "json",
+    ];
+    let first = ok(&args);
+    assert_eq!(first["cloud_write"], false);
+    assert_eq!(first["idempotent"], false);
+    assert_eq!(first["execution_owner"], "ds");
+    let version = out.join("library/new-design/2026-08-27-v1");
+    assert!(version.join("manifest.json").is_file());
+    assert!(version.join("pls-cadd/pole.012").is_file());
+    let release =
+        unpack_library(&std::fs::read(version.join("dsgrid/library.dsgrid-library")).unwrap())
+            .unwrap();
+    assert!(
+        release.assets.is_empty(),
+        "DS Grid seed must not embed PLS bytes"
+    );
+
+    let second = ok(&args);
+    assert_eq!(second["idempotent"], true);
+
+    let manifest =
+        parse_standards_library_manifest(&std::fs::read(version.join("manifest.json")).unwrap())
+            .unwrap();
+    let expected_root = format!("sha256:{}", manifest.content_root_sha256);
+    let native_kind = manifest.members[0].native_kind.as_str();
+    let resolved = ok(&[
+        "library",
+        "resolve-native",
+        "--store",
+        &out_text,
+        "--library-id",
+        "new-design",
+        "--library-version",
+        "2026-08-27-v1",
+        "--expect-digest",
+        &expected_root,
+        "--native-name",
+        "pole.012",
+        "--native-kind",
+        native_kind,
+        "--output",
+        "json",
+    ]);
+    assert_eq!(resolved["canonical_typed_name"], "pole.012");
+    assert_eq!(resolved["execution_owner"], "ds");
+    assert!(resolved["sha256"].as_str().unwrap().starts_with("sha256:"));
+
+    let misrouted = out.join("library/new-design/wrong-version");
+    std::fs::create_dir_all(misrouted.join("pls-cadd")).unwrap();
+    std::fs::copy(
+        version.join("manifest.json"),
+        misrouted.join("manifest.json"),
+    )
+    .unwrap();
+    std::fs::copy(
+        version.join("pls-cadd/pole.012"),
+        misrouted.join("pls-cadd/pole.012"),
+    )
+    .unwrap();
+    let wrong_version = ds(&[
+        "library",
+        "resolve-native",
+        "--store",
+        &out_text,
+        "--library-id",
+        "new-design",
+        "--library-version",
+        "wrong-version",
+        "--expect-digest",
+        &expected_root,
+        "--native-name",
+        "pole.012",
+        "--native-kind",
+        native_kind,
+        "--output",
+        "json",
+    ]);
+    assert_ne!(wrong_version.code, 0);
+    assert_eq!(
+        wrong_version.envelope["error"]["code"],
+        "library_version_mismatch"
+    );
+    std::fs::remove_dir_all(&root).unwrap();
 }
 
 #[test]
@@ -502,6 +631,158 @@ fn pls_section_orientation_publishes_the_task_schema() {
             "the published schema is missing `{required}`"
         );
     }
+}
+
+fn terrain_xyz(points: &[(f64, f64, f64, &str)]) -> Vec<u8> {
+    let mut bytes = b"TYPE='XYZ FILE' VERSION='5' UNITS='INTERNAL' SOURCE='ds smoke'\n\0".to_vec();
+    for (x, y, z, code) in points {
+        bytes.extend_from_slice(&x.to_le_bytes());
+        bytes.extend_from_slice(&y.to_le_bytes());
+        bytes.extend_from_slice(&z.to_le_bytes());
+        bytes.extend_from_slice(&0f64.to_le_bytes());
+        bytes.push(0xc8);
+        bytes.extend_from_slice(&0i32.to_le_bytes());
+        bytes.extend_from_slice(code.as_bytes());
+        bytes.push(0);
+        bytes.push(0);
+    }
+    bytes
+}
+
+#[test]
+fn pls_terrain_reconcile_then_deviation_labels_is_dry_run_first_and_code_only() {
+    let root = temp_root("pls-terrain-reconcile");
+    let _ = std::fs::remove_dir_all(&root);
+    let baseline = root.join("baseline");
+    std::fs::create_dir_all(&baseline).unwrap();
+    let survey = (0..9)
+        .flat_map(|row| {
+            (0..9).map(move |column| {
+                (
+                    500_000.0 + column as f64 * 20.0,
+                    5_000_000.0 + row as f64 * 20.0,
+                    1_500.0 + column as f64 + row as f64,
+                    "GP",
+                )
+            })
+        })
+        .collect::<Vec<_>>();
+    std::fs::write(baseline.join("A Project.xyz"), terrain_xyz(&survey)).unwrap();
+
+    let points = root.join("points.json");
+    let rows = (0..17)
+        .map(|index| {
+            serde_json::json!({
+                "x_m": 500_000.0 + index as f64 * 10.0,
+                "y_m": 5_000_000.0 + index as f64 * 10.0,
+                "z_m": 1_512.5 + index as f64,
+                "code": "GP"
+            })
+        })
+        .collect::<Vec<_>>();
+    std::fs::write(&points, serde_json::to_vec(&rows).unwrap()).unwrap();
+    let routes = root.join("routes.geojson");
+    std::fs::write(
+        &routes,
+        serde_json::to_vec(&serde_json::json!({
+            "type":"FeatureCollection",
+            "features":[{
+                "type":"Feature",
+                "properties":{"id":"route-a"},
+                "geometry":{"type":"LineString","coordinates":[[500000.0,5000000.0],[500160.0,5000160.0]]}
+            }]
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+    let reconciled = root.join("reconciled");
+    let strings = [
+        baseline.display().to_string(),
+        points.display().to_string(),
+        routes.display().to_string(),
+        reconciled.display().to_string(),
+    ];
+    let preview = ok(&[
+        "pls",
+        "terrain-reconcile",
+        "--workspace",
+        &strings[0],
+        "--points",
+        &strings[1],
+        "--routes",
+        &strings[2],
+        "--horizontal-crs",
+        "EDCL Rwanda TM",
+        "--vertical-datum",
+        "project surveyed TIN",
+        "--out",
+        &strings[3],
+        "--dry-run",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(preview["persisted"], false);
+    assert_eq!(preview["residual_distribution"]["pair_count"], 17);
+    assert_eq!(preview["coordinate_change_count"], 0);
+    assert!(!reconciled.exists());
+
+    let committed = ok(&[
+        "pls",
+        "terrain-reconcile",
+        "--workspace",
+        &strings[0],
+        "--points",
+        &strings[1],
+        "--routes",
+        &strings[2],
+        "--horizontal-crs",
+        "EDCL Rwanda TM",
+        "--vertical-datum",
+        "project surveyed TIN",
+        "--out",
+        &strings[3],
+        "--yes",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(committed["persisted"], true);
+    assert_eq!(committed["output_point_count"], 98);
+
+    let labelled = root.join("labelled");
+    let labelled_text = labelled.display().to_string();
+    let labels = ok(&[
+        "pls",
+        "deviation-labels",
+        "--workspace",
+        &strings[3],
+        "--points",
+        &strings[1],
+        "--routes",
+        &strings[2],
+        "--internal-code",
+        "angle-point-new",
+        "--start-code",
+        "deviation-start",
+        "--end-code",
+        "deviation-end",
+        "--preserve-occupied-endpoints",
+        "--out",
+        &labelled_text,
+        "--dry-run",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(labels["labels"]["start_count"], 1);
+    assert_eq!(labels["labels"]["end_count"], 1);
+    assert_eq!(
+        labels["labels"]["changed_fields"],
+        serde_json::json!(["code"])
+    );
+    assert_eq!(labels["labels"]["unchanged_xyz"], true);
+    assert_eq!(labels["labels"]["unchanged_flags"], true);
+    assert_eq!(labels["point_count_before"], labels["point_count_after"]);
+    assert!(!labelled.exists());
+    let _ = std::fs::remove_dir_all(&root);
 }
 
 // ---------------------------------------------------------------------------
@@ -1567,6 +1848,45 @@ fn capability_search_finds_sre_by_operator_vocabulary() {
         assert!(
             results.iter().any(|row| row["id"] == "sre.events"),
             "`{query}` did not find sre.events: {results:?}"
+        );
+    }
+}
+
+#[test]
+fn capability_search_finds_library_seeding_and_native_resolution() {
+    for (query, expected) in [
+        ("seed library", "library.seed"),
+        ("as-built library", "library.seed"),
+        ("new-design library", "library.seed"),
+        ("pinned native assets", "library.resolve-native"),
+        ("differential handoff", "library.resolve-native"),
+    ] {
+        let data = ok(&["capabilities", "--search", query, "--output", "json"]);
+        let results = data["results"].as_array().expect("search results");
+        assert!(
+            results.iter().any(|row| row["id"] == expected),
+            "`{query}` did not find {expected}: {results:?}"
+        );
+    }
+}
+
+#[test]
+fn capability_search_finds_terrain_waterfall_and_visible_deviation_labels() {
+    for (query, expected) in [
+        ("terrain waterfall", "pls.terrain-reconcile"),
+        ("terrain datum", "pls.terrain-reconcile"),
+        ("surveyed route seams", "pls.terrain-reconcile"),
+        ("deviation labels", "pls.deviation-labels"),
+        ("occupied endpoints", "pls.deviation-labels"),
+        ("feature-code vertices", "pls.deviation-labels"),
+        ("delivery verification", "pls.delivery-verify"),
+        ("OPGW support-chain readback", "pls.delivery-verify"),
+    ] {
+        let data = ok(&["capabilities", "--search", query, "--output", "json"]);
+        let results = data["results"].as_array().expect("search results");
+        assert!(
+            results.iter().any(|row| row["id"] == expected),
+            "`{query}` did not find {expected}: {results:?}"
         );
     }
 }

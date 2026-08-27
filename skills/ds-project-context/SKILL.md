@@ -1,6 +1,6 @@
 ---
 name: ds-project-context
-description: "Use the deployed DS CLI for project-scoped work: identify or switch the active project, discover the narrow command for an intent, and return a bounded asset or operation receipt."
+description: "Identify or switch the active DS project, discover one narrow command, and return a bounded asset or operation receipt."
 ---
 
 # Select and work in the active DS project

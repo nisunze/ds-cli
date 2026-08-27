@@ -78,6 +78,44 @@ static DSGRID_EXCHANGE_ENTRIES: &[Entry] = &[
     },
 ];
 
+static LIBRARY_ENTRIES: &[Entry] = &[
+    Entry {
+        command: &ds_cli_library::verify::COMMAND,
+        handler: ds_cli_library::verify::run,
+        render: ds_cli_library::verify::render,
+    },
+    Entry {
+        command: &ds_cli_library::open::COMMAND,
+        handler: ds_cli_library::open::run,
+        render: ds_cli_library::open::render,
+    },
+    Entry {
+        command: &ds_cli_library::catalog::COMMAND,
+        handler: ds_cli_library::catalog::run,
+        render: ds_cli_library::catalog::render,
+    },
+    Entry {
+        command: &ds_cli_library::pack::COMMAND,
+        handler: ds_cli_library::pack::run,
+        render: ds_cli_library::pack::render,
+    },
+    Entry {
+        command: &ds_cli_library::unpack::COMMAND,
+        handler: ds_cli_library::unpack::run,
+        render: ds_cli_library::unpack::render,
+    },
+    Entry {
+        command: &ds_cli_library::seed::COMMAND,
+        handler: ds_cli_library::seed::run,
+        render: ds_cli_library::seed::render,
+    },
+    Entry {
+        command: &ds_cli_library::resolve_native::COMMAND,
+        handler: ds_cli_library::resolve_native::run,
+        render: ds_cli_library::resolve_native::render,
+    },
+];
+
 static PLS_ENTRIES: &[Entry] = &[
     Entry {
         command: &ds_cli_pls::pole_capacity::COMMAND,
@@ -98,6 +136,21 @@ static PLS_ENTRIES: &[Entry] = &[
         command: &ds_cli_pls::compare_don::COMMAND,
         handler: ds_cli_pls::compare_don::run,
         render: ds_cli_pls::compare_don::render,
+    },
+    Entry {
+        command: &ds_cli_pls::terrain_reconcile::COMMAND,
+        handler: ds_cli_pls::terrain_reconcile::run,
+        render: ds_cli_pls::terrain_reconcile::render,
+    },
+    Entry {
+        command: &ds_cli_pls::deviation_labels::COMMAND,
+        handler: ds_cli_pls::deviation_labels::run,
+        render: ds_cli_pls::deviation_labels::render,
+    },
+    Entry {
+        command: &ds_cli_pls::delivery_verify::COMMAND,
+        handler: ds_cli_pls::delivery_verify::run,
+        render: ds_cli_pls::delivery_verify::render,
     },
 ];
 
@@ -561,6 +614,10 @@ static DOMAINS: &[Registered] = &[
     Registered {
         domain: &ds_cli_dsgrid_exchange::DOMAIN,
         entries: DSGRID_EXCHANGE_ENTRIES,
+    },
+    Registered {
+        domain: &ds_cli_library::DOMAIN,
+        entries: LIBRARY_ENTRIES,
     },
     Registered {
         domain: &ds_cli_pls::DOMAIN,

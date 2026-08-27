@@ -4,7 +4,7 @@ Tier-4 reference. `ds pls <command> --help` is the contract.
 
 ## What this domain is
 
-Four of `ds-grid-tasks`' typed file tasks, exposed as commands. That crate
+Seven of `ds-grid-tasks`' typed file tasks, exposed as commands. That crate
 exists so a host does not have to know how a `.don`, a `.012` or a workspace's
 reference closure is read: it takes a typed request, loads the exact bytes,
 checks identity, calls the owning operation, and returns a bounded typed
@@ -84,6 +84,100 @@ grow without notice. A caller branches on `task_refused` and reads
 `detail.code` for the specific reason — and in human mode both are printed, so
 a remedy that says "read detail" has something on screen to read.
 
+`terrain-reconcile`, `deviation-labels`, and `delivery-verify` are the bounded
+exception: each
+maps the owner task's larger diagnostic vocabulary into the short, declared
+operator codes visible in its live command contract. The original owner code
+remains in `detail["task-code"]`. This keeps common repairs branchable without
+letting every low-level parser condition become a permanent CLI contract.
+
+## Terrain waterfall and visible deviation labels
+
+Both commands take one closed workspace, a JSON/GeoJSON point batch, ordered
+routes, and an absent output path. Point input may be an array,
+`{"points":[...]}`, a DS `command.rows` envelope, or a Point
+FeatureCollection. Rows carry native projected `x_m`, `y_m`, `z_m` (or XYZ
+geometry), with optional `code`/`feature_class`, `flag`, and `description`.
+Routes may be `{"routes":[{"id":...,"coordinates":[...]}]}` or a
+LineString FeatureCollection. Multipart geometry refuses.
+
+Run the exact same evidence twice, changing only the mode:
+
+```bash
+ds pls terrain-reconcile \
+  --workspace ./baseline \
+  --points ./points.json \
+  --routes ./routes.geojson \
+  --horizontal-crs 'EDCL Rwanda TM' \
+  --vertical-datum 'project surveyed TIN' \
+  --out ./reconciled \
+  --dry-run --output json
+
+ds pls terrain-reconcile \
+  --workspace ./baseline \
+  --points ./points.json \
+  --routes ./routes.geojson \
+  --horizontal-crs 'EDCL Rwanda TM' \
+  --vertical-datum 'project surveyed TIN' \
+  --out ./reconciled \
+  --yes --output json
+```
+
+The terrain task appends the corrected batch as distinct evidence, including
+coincident rows. Baseline active records and the inactive block remain exact.
+Only surveyed route endpoints receive seams; free ends remain listed in the
+receipt. A global delta alone is never treated as complete repair.
+
+Then derive visible feature text from route order:
+
+```bash
+ds pls deviation-labels \
+  --workspace ./reconciled \
+  --points ./points.json \
+  --routes ./routes.geojson \
+  --internal-code angle-point-new \
+  --start-code deviation-start \
+  --end-code deviation-end \
+  --preserve-occupied-endpoints \
+  --out ./labelled \
+  --dry-run --output json
+
+ds pls deviation-labels \
+  --workspace ./reconciled \
+  --points ./points.json \
+  --routes ./routes.geojson \
+  --internal-code angle-point-new \
+  --start-code deviation-start \
+  --end-code deviation-end \
+  --preserve-occupied-endpoints \
+  --out ./labelled \
+  --yes --output json
+```
+
+The label writer replaces only selected feature-code byte ranges. XYZ, flags,
+descriptions, unrelated rows, reserved bytes, headers, and inactive content
+remain unchanged. These labels are terrain text, not alignment PIs.
+
+Finish with the one-receipt native readback, using the untouched baseline and
+the exact point batch again:
+
+```bash
+ds pls delivery-verify \
+  --baseline ./baseline \
+  --workspace ./labelled \
+  --points ./points.json \
+  --output json
+```
+
+The verifier requires the delivered count to equal baseline plus supplied
+points, preserves the complete baseline terrain prefix and supplied XY/flags/
+descriptions, reports the elevation-delta range and median, proves exact NUM
+alignment and DON structure bytes, runs attachment closure, and re-reads every
+phase/OPGW section support chain. `verified: false` is a real receipt when a
+native model has sections but no complete support-chain surface; it is not an
+instruction to invent one. Solver completion and engineering approval remain
+outside this command.
+
 ## `section-orientation` takes a document, not flags
 
 Its request needs the alignment's ordered structure numbers and the boundary
@@ -108,9 +202,8 @@ PLS post-processing. Those sit behind `ds-grid-exchange`'s PLS adapter and the
 Oracle spool rather than behind `ds-grid-tasks`, so each needs its own request
 translation rather than a typed task to call.
 
-The four here were chosen because they are the ones `ds-grid-tasks` already
-publishes as typed tasks with their own schemas — no adapter to hand-author,
-and nothing to drift.
+These commands are exposed only where `ds-grid-tasks` publishes a typed task;
+there is no generic native-patch adapter or argument-vector escape hatch.
 
 ## Ownership
 
@@ -122,3 +215,6 @@ Every command calls one function in `ds-grid-tasks`:
 | `reference-closure` | `inspect_pls_reference_closure` |
 | `section-orientation` | `diagnose_pls_section_orientation` |
 | `compare-don` | `compare_don_assignment` |
+| `terrain-reconcile` | `reconcile_pls_terrain` |
+| `deviation-labels` | `label_pls_deviations` |
+| `delivery-verify` | `verify_pls_delivery` |

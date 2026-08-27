@@ -1,6 +1,6 @@
 ---
 name: ds-boq-staking-table
-description: Read the LV `poles` sheet and PLS-CADD MV structure names as staking tables; reconcile poles, stays and earthing with an EPC BOQ.
+description: Reconcile LV pole sheets and PLS-CADD MV structure staking tables with an EPC BOQ.
 ---
 
 # Staking tables against the BOQ

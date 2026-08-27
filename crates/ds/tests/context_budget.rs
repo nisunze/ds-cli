@@ -101,8 +101,9 @@ fn root_help_is_cheap() {
     // which is the trade `root_help_scales_with_domains_not_commands` exists
     // to price. Raised to 1,840 when the SRE domain added one bounded
     // platform-health line (800 + 80 × 13 domains); the per-domain price
-    // remains unchanged.
-    assert_within("root help", &["--help"], 1_840);
+    // remains unchanged. Raised to 1,920 for the library domain (14 domains),
+    // which makes immutable seeding discoverable without listing commands.
+    assert_within("root help", &["--help"], 1_920);
 }
 
 #[test]

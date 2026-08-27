@@ -232,6 +232,8 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         model_id: source_model_id.clone(),
         model_revision: source_package_revision + checkpoint.sequence,
         coordinate_system,
+        library_pins: Vec::new(),
+        library_needs: Vec::new(),
         assets,
         exchange_bindings,
     };

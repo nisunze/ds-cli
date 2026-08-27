@@ -219,6 +219,7 @@ fn every_constructible_refusal_code_is_documented() {
         ("ds-cli-map", Some("map")),
         ("ds-cli-dsgrid", Some("dsgrid")),
         ("ds-cli-dsgrid-exchange", Some("dsgrid-exchange")),
+        ("ds-cli-library", Some("library")),
         ("ds-cli-pls", Some("pls")),
         ("ds-cli-report", Some("report")),
         ("ds-cli-solar", Some("solar")),

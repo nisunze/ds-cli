@@ -19,6 +19,7 @@ ds-cli-feedback = { workspace = true }
 ds-cli-map = { workspace = true }
 ds-cli-dsgrid = { workspace = true }
 ds-cli-dsgrid-exchange = { workspace = true }
+ds-cli-library = { workspace = true }
 ds-cli-pls = { workspace = true }
 ds-cli-report = { workspace = true }
 ds-cli-shell = { workspace = true }

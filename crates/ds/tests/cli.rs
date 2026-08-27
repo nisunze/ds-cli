@@ -242,8 +242,8 @@ fn inspect_reports_the_engine_s_own_identity() {
     assert_eq!(data["model"]["crs"], "EPSG:32735");
     assert_eq!(data["model"]["schema_version"], 1);
     assert_eq!(data["model"]["format_version"], 1);
-    assert_eq!(data["model"]["fingerprint"], "fnv1a64:f091cb7021191169");
-    assert_eq!(data["model"]["id"], "pls-import-fnv1a64:f091cb70");
+    assert_eq!(data["model"]["fingerprint"], "fnv1a64:6f9e4a421fccf238");
+    assert_eq!(data["model"]["id"], "pls-import-fnv1a64:6f9e4a42");
 
     // The default answer decodes nothing. This is the cost contract, not a
     // detail: it is why calling inspect first is cheap.

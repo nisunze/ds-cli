@@ -1,0 +1,4 @@
+interface:
+  display_name: "DS Library Seeding"
+  short_description: "Manage versioned parallel engineering libraries"
+  default_prompt: "Use $ds-library-seeding to manage or verify one immutable parallel DS Grid and PLS-CADD library version."

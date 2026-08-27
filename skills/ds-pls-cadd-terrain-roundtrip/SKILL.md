@@ -1,81 +1,135 @@
 ---
 name: ds-pls-cadd-terrain-roundtrip
-description: Round-trip PLS-CADD construction deviations through DS Grid — route PIs, near-as-built structures/stringing, terrain evidence and review attachments. Not LV design or structure repair.
+description: Repair PLS-CADD terrain waterfalls, derive visible deviation labels, preserve operator-owned alignments, verify closure, and hand off native solver decisions.
 ---
 
 # Revise PLS-CADD route and terrain without losing native identity
 
-Use the deployed `ds` CLI as the only DS interface. Start with the `ds` skill,
-then discover the installed command contracts. The `.bak`, deviation routes,
-survey points, CRS, vertical datum, and operator rulings are evidence; never
-replace one with an inferred value merely to make a conversion run.
+Use the `ds` skill first. The workspace, point batch, ordered routes,
+horizontal CRS and vertical datum are evidence. Never infer one to make a
+repair run. Read
+[references/terrain-round-trip.md](references/terrain-round-trip.md) only for
+the longer import/operator-return workflow.
 
-Read [references/terrain-round-trip.md](references/terrain-round-trip.md) for
-the staged import/revision/export/operator-return workflow. When a PLS import,
-export, restore, terrain interpolation, or report behaves unexpectedly, also
-read [references/native-failure-modes.md](references/native-failure-modes.md).
+## Five-minute fast path
 
-## Keep three identities separate
+Set these once to the actual closed workspace and evidence files:
 
-- A PLS-CADD alignment PI is a vertex in the ordered alignment route and is
-  emitted into native PI geometry. It is not automatically a terrain feature
-  code and is not a placed structure.
-- Terrain observations carry plan coordinates, elevation, classification and
-  provenance. A point whose elevation is interpolated from the effective
-  surface is derived evidence, not a surveyed observation.
-- A placed structure has independent plan position, derived station/offset,
-  orientation and library identity. A route revision must not silently move a
-  structure or rename its exact resource leaf.
+```bash
+BASELINE="$PWD/baseline-workspace"
+POINTS="$PWD/incoming-points.json"
+ROUTES="$PWD/ordered-routes.geojson"
+RECONCILED="$PWD/reconciled-workspace"
+LABELLED="$PWD/labelled-workspace"
+HORIZONTAL_CRS="EDCL Rwanda TM"
+VERTICAL_DATUM="project surveyed TIN"
+```
 
-If the operator says “code the angle points as PI,” determine whether `PI`
-means native alignment vertices, a project feature-code token, or both. Author
-only the meaning the evidence establishes. To make points manually movable as
-PLS-CADD angle points, the canonical route must contain those vertices; merely
-labelling terrain points `PI` is insufficient.
+Discover, dry-run, then repeat unchanged with `--yes`:
 
-## Automate bounded near-as-built changes
+```bash
+ds capabilities pls.terrain-reconcile --output json
 
-When a construction change is minimal and almost as built, author route PIs,
-placements, native section-table stringing, local review attachments, and
-report/table setup automatically. These deterministic workspace operations do
-not require a PLS-CADD UI step.
+ds pls terrain-reconcile \
+  --workspace "$BASELINE" \
+  --points "$POINTS" \
+  --routes "$ROUTES" \
+  --horizontal-crs "$HORIZONTAL_CRS" \
+  --vertical-datum "$VERTICAL_DATUM" \
+  --out "$RECONCILED" \
+  --dry-run --output json
 
-Use deployed `ds` contracts for DS model changes. At a native boundary, reuse
-the characterized `ds-network` whole-snapshot or surgical composer; never
-hand-edit coupled DON rows. If the installed CLI has not exposed that composer,
-use bounded Rust glue only in an explicitly authorized delivery/coding session
-and leave CLI exposure for its own coding session.
+ds pls terrain-reconcile \
+  --workspace "$BASELINE" \
+  --points "$POINTS" \
+  --routes "$ROUTES" \
+  --horizontal-crs "$HORIZONTAL_CRS" \
+  --vertical-datum "$VERTICAL_DATUM" \
+  --out "$RECONCILED" \
+  --yes --output json
 
-Use Windows UI only when a calculation/check needs the native PLS-CADD solver
-or the user explicitly requests native acceptance. Drive that UI directly with
-the Windows controller, never through `ds`.
+ds capabilities pls.deviation-labels --output json
 
-## Non-negotiable gates
+ds pls deviation-labels \
+  --workspace "$RECONCILED" \
+  --points "$POINTS" \
+  --routes "$ROUTES" \
+  --internal-code angle-point-new \
+  --start-code deviation-start \
+  --end-code deviation-end \
+  --preserve-occupied-endpoints \
+  --out "$LABELLED" \
+  --dry-run --output json
 
-1. Preserve every supplied file and record its digest before conversion.
-2. Import from the `.bak` container, not a hand-unpacked approximation.
-3. Require an explicit horizontal CRS and declared vertical datum. For
-   non-standard EDCL coordinates use the project-approved Custom/EDCL
-   definition, never a guessed EPSG code.
-4. Inspect, plan, then convert into a new directory. Validate the resulting
-   `.dsgrid` before editing.
-5. Apply one typed, revision-pinned engine command at a time. Dry-run first;
-   every committed step writes a new `.dsgrid` and never overwrites its parent.
-6. Refuse elevation interpolation when the engine reports missing effective
-   ground coverage. Acquire or author verified terrain evidence instead.
-7. Export through a digest-pinned `dsgrid-exchange` plan to a new self-contained
-   PLS-CADD workspace. DS Grid validation does not prove native closure.
-8. For a minimal near-as-built delivery, require native parser readback,
-   reference closure, route/structure counts, attachment closure, and
-   section-table readback. Require Windows UI only for a native calculation or
-   explicitly requested native acceptance.
-9. When engineering judgment requires the operator to move PIs or readjust
-   structures, treat the returned saved workspace as a new authority candidate;
-   re-import and compare it rather than assuming which rows PLS changed.
-10. Report native acceptance, reference closure, terrain/route changes, structure
-    movement, analysis coverage, checks, and engineering approval separately.
+ds pls deviation-labels \
+  --workspace "$RECONCILED" \
+  --points "$POINTS" \
+  --routes "$ROUTES" \
+  --internal-code angle-point-new \
+  --start-code deviation-start \
+  --end-code deviation-end \
+  --preserve-occupied-endpoints \
+  --out "$LABELLED" \
+  --yes --output json
 
-Do not repair a missing live command with direct store access, a skill-local
-parser, hand-edited PLS bytes, or PLS-CADD UI authoring. Use the established
-native composer only under explicit task authority, and use the `ds` skill's
-bounded feedback procedure for missing CLI exposure.
+ds pls reference-closure \
+  --workspace "$LABELLED" \
+  --findings-only --output json
+
+ds capabilities pls.delivery-verify --output json
+
+ds pls delivery-verify \
+  --baseline "$BASELINE" \
+  --workspace "$LABELLED" \
+  --points "$POINTS" \
+  --output json
+```
+
+Require the terrain receipt to name the pair count/distribution, global delta,
+every seam, zero XY changes, all raw/output digests and unresolved free ends.
+Require the label receipt to name internal/start/end counts, preserved occupied
+rows, added markers, `changed_fields: ["code"]`, unchanged XYZ/flags and
+before/after digests. Require the delivery receipt to report `verified: true`,
+unchanged alignment/structure prefixes, exact terrain counts/deltas, complete
+attachment closure, and phase/OPGW support-chain readback. These are
+deterministic evidence; they are not native solver or engineering approval.
+
+## Typed refusals
+
+- `workspace_open`: close PLS-CADD; never edit underneath it.
+- `ground_evidence_insufficient`: obtain surveyed ground or correct route
+  evidence; never force a median-only repair.
+- `datum_authority_ambiguous`: obtain the authoritative CRS/datum.
+- `unordered_route_ambiguity` or `unmatched_route_vertex`: supply one ordered
+  LineString and one batch identity per vertex.
+- `conflicting_start_end_identity`: split/reorder the evidence.
+- `occupied_endpoint_overwrite`: use `--preserve-occupied-endpoints`; never
+  replace a T-Off, tap, transformer or other non-angle survey code.
+- `point_batch_not_reconciled_suffix`: label the output made from that exact
+  batch, not a similar workspace.
+- `delivery_verification_failed`: read `detail["task-code"]`; retain both
+  immutable workspaces and repair from the baseline.
+
+## Deterministic boundary and UI handoff
+
+Terrain correction and visible labels complete in the CLI. A feature-code
+label is not a native alignment PI. When the operator owns PI movement, do not
+move, replace or restation existing alignments; provide the verified workspace
+and review evidence. Native calculation, operator PI movement, visual
+acceptance and engineering approval remain PLS-CADD/engineer decisions.
+
+For an authorized launch-only handoff, after PLS-CADD is closed:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\open-pls-workspace.ps1 `
+  -Project ".\PLS-CADD WORKSPACE\A Project.don" `
+  -Receipt ".\native-open-receipt.json"
+```
+
+The launcher must refuse an existing PLS-CADD process unless the operator
+explicitly authorizes closing it. After any UI save, re-import the saved
+workspace as a new authority candidate and compare it with `$LABELLED`.
+
+Resolve every native resource through an exact library id, immutable version,
+content-root digest, typed name, native kind and member digest. Never choose
+latest/basename or generate PLS-CADD assets from DS Grid bytes.

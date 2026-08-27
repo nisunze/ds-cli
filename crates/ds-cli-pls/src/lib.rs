@@ -18,9 +18,12 @@
 //! flag per nested field.
 
 pub mod compare_don;
+pub mod delivery_verify;
+pub mod deviation_labels;
 pub mod pole_capacity;
 pub mod reference_closure;
 pub mod section_orientation;
+pub mod terrain_reconcile;
 
 use ds_cli_contract::spec::Domain;
 
@@ -32,6 +35,9 @@ pub static DOMAIN: Domain = Domain {
         &reference_closure::COMMAND,
         &section_orientation::COMMAND,
         &compare_don::COMMAND,
+        &terrain_reconcile::COMMAND,
+        &deviation_labels::COMMAND,
+        &delivery_verify::COMMAND,
     ],
 };
 
@@ -66,6 +72,43 @@ pub fn source_path(raw: &str, flag: &str) -> Result<PathBuf, Failure> {
         .remedy(format!("check the path passed to --{flag}"))
         .detail(json!({ "detail": error.kind().to_string() }))
     })
+}
+
+/// Resolve a workspace directory without weakening the task's absolute-path
+/// contract.
+pub fn workspace_path(raw: &str) -> Result<PathBuf, Failure> {
+    let path = PathBuf::from(raw);
+    if !path.is_dir() {
+        return Err(
+            Failure::invalid("workspace_not_found", format!("`{raw}` is not a directory"))
+                .remedy("pass the closed PLS-CADD workspace root"),
+        );
+    }
+    path.canonicalize().map_err(|error| {
+        Failure::invalid(
+            "workspace_not_found",
+            format!("`{raw}` could not be resolved: {error}"),
+        )
+    })
+}
+
+/// Resolve an absent output to an absolute path while preserving its new leaf.
+pub fn output_path(raw: &str) -> Result<PathBuf, Failure> {
+    let path = PathBuf::from(raw);
+    if path.exists() {
+        return Err(
+            Failure::conflict("output_exists", format!("`{raw}` already exists"))
+                .remedy("choose a new immutable workspace path"),
+        );
+    }
+    let absolute = if path.is_absolute() {
+        path
+    } else {
+        std::env::current_dir()
+            .map_err(|error| Failure::failed("output_write_failed", error.to_string()))?
+            .join(path)
+    };
+    Ok(absolute)
 }
 
 /// The documented refusal for a result that will not encode.

@@ -1,6 +1,6 @@
 ---
 name: ds-boq-combined-report
-description: Reconcile the combined workbook (InfoTable, LV Summary, Transformer Sizing) with a project BOQ — align items, explain deltas.
+description: Reconcile combined report InfoTable, LV Summary, and Transformer Sizing sheets with a project BOQ.
 ---
 
 # The combined report against a project BOQ

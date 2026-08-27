@@ -1,6 +1,6 @@
 ---
 name: ds-solar-portfolio
-description: Run and inspect one exact governed Solar portfolio through deployed `ds`. Use for membership-pinned aggregate results and reports, not city batches.
+description: Run and inspect one membership-pinned governed Solar portfolio through deployed `ds`, not city batches.
 ---
 
 # Work with one exact Solar portfolio

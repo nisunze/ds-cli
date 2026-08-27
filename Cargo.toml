@@ -81,6 +81,7 @@ ureq = { version = "3.3.0", features = ["json"] }
 # Content digests, for the digest-pinned PLS tasks. Same crate and major the
 # ds-network workspace already builds.
 sha2 = "0.10"
+zip = "2.4.2"
 # Per-user PATH registration on Windows reads and writes HKCU\Environment
 # through the raw Win32 registry API. Same crate and major this workspace's
 # own lockfile already resolves transitively.
@@ -92,6 +93,7 @@ ds-cli-exec = { path = "crates/ds-cli-exec" }
 ds-cli-map = { path = "crates/ds-cli-map" }
 ds-cli-dsgrid = { path = "crates/ds-cli-dsgrid" }
 ds-cli-dsgrid-exchange = { path = "crates/ds-cli-dsgrid-exchange" }
+ds-cli-library = { path = "crates/ds-cli-library" }
 ds-cli-pls = { path = "crates/ds-cli-pls" }
 ds-cli-report = { path = "crates/ds-cli-report" }
 ds-cli-solar = { path = "crates/ds-cli-solar" }

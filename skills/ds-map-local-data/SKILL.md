@@ -1,6 +1,6 @@
 ---
 name: ds-map-local-data
-description: Add session-only GeoJSON layers to the DS map, remove only layers this CLI session created, and focus or restore the viewport. For temporary local map data, not survey or design edits.
+description: Add and remove session-only GeoJSON map layers through `ds`, and focus or restore the viewport. Not survey or design editing.
 ---
 
 # Manage local map data

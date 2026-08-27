@@ -1,14 +1,13 @@
 ---
 name: ds
-description: Use the deployed `ds` CLI as the sole Data Solutions interface — discover one live command and its contract, invoke it as declared, report a feedback gap only when live discovery confirms one. Use before any DS task; other ds-* skills assume it.
+description: Use deployed `ds` as the sole DS interface: discover one live command, follow its contract, and report confirmed gaps. Required before every DS task.
 ---
 
 # Work through `ds`
 
-Humans and agents share one executable contract: everything you learn about
-the stack or do to it passes through `ds`. Never substitute an API, desktop
-bridge, store, file parser, implementation repository, or skill-local program.
-If live discovery proves `ds` cannot do the task, report that through `ds`.
+Everything you learn about or do to the stack passes through `ds`. Never
+substitute an API, desktop bridge, store, parser, repository, or skill-local
+program. If live discovery proves the task absent, report that through `ds`.
 
 Use `--output json` for agent calls.
 
@@ -38,10 +37,9 @@ Inspect the likely live domain, try the product's own vocabulary and read
 summaries before concluding a capability is absent; narrow broad matches and
 never choose a command from rank alone.
 
-Compact discovery never replaces help: `ds --help`, `ds <domain> --help` and
-`ds <domain> <command> --help` are the complete human-readable tiers — use
-them when the user asks for help or the readable contract; use `capabilities`
-for bounded machine-readable selection.
+Compact discovery never replaces `ds --help`, `ds <domain> --help`, or
+`ds <domain> <command> --help`. Use help for the readable contract and
+`capabilities` for bounded machine-readable selection.
 
 ## Read, then invoke, the live contract
 
