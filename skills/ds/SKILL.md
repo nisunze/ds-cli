@@ -93,5 +93,6 @@ directly, or use a workaround that bypasses `ds`.
 - `ds-boq-staking-table` — LV `poles` sheet and MV structure names as
   staking tables against a BOQ.
 - `ds-boq-combined-report` — the combined workbook against a project BOQ.
+- `ds-mcp-host` — MCP-only hosts (VS Code, Copilot, Claude, Cursor, Codex).
 
 Those skills assume this one. Do not load them for ordinary discovery.

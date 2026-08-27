@@ -1,0 +1,13 @@
+[package]
+name = "ds-cli-mcp"
+description = "Model Context Protocol server that exposes `ds` commands to MCP hosts by calling the CLI."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[dependencies]
+ds-cli-contract = { workspace = true }
+serde_json = { workspace = true }

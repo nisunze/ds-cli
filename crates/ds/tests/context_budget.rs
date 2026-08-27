@@ -103,7 +103,9 @@ fn root_help_is_cheap() {
     // platform-health line (800 + 80 × 13 domains); the per-domain price
     // remains unchanged. Raised to 1,920 for the library domain (14 domains),
     // which makes immutable seeding discoverable without listing commands.
-    assert_within("root help", &["--help"], 1_920);
+    // 2026-08-27: raised from 1_920 for the `mcp` domain — one more line in
+    // the domain table, no new prose. The next domain must earn its own line.
+    assert_within("root help", &["--help"], 2_000);
 }
 
 #[test]

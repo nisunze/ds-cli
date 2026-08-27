@@ -16,6 +16,10 @@ WASM/Rust provides deterministic geometry evidence, and the model/operator
 decides what that evidence means. Never drive the UI as a puppet or rebuild
 raw API/IndexedDB steps in the CLI.
 
+Driving or proving the application — opening a transformer, selecting,
+exporting, evidence — is `ds map …` against the running desktop, never a
+scripted browser or a hand-built request.
+
 ## Preserve the constructed network first
 
 1. Confirm the exact active project and transformer, then read the current

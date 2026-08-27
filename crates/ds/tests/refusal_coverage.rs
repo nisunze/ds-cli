@@ -229,6 +229,7 @@ fn every_constructible_refusal_code_is_documented() {
         ("ds-cli-tile", Some("tile")),
         ("ds-cli-feedback", Some("feedback")),
         ("ds-cli-shell", Some("shell")),
+        ("ds-cli-mcp", Some("mcp")),
         // Shared across every calling domain; declaring it in any one of them
         // is enough for this check, and the per-command help of each caller
         // is what the domain checks above enforce.

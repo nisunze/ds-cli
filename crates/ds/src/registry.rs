@@ -606,6 +606,19 @@ static SHELL_ENTRIES: &[Entry] = &[
     },
 ];
 
+static MCP_ENTRIES: &[Entry] = &[
+    Entry {
+        command: &ds_cli_mcp::serve::COMMAND,
+        handler: ds_cli_mcp::serve::run,
+        render: ds_cli_mcp::serve::render,
+    },
+    Entry {
+        command: &ds_cli_mcp::install::COMMAND,
+        handler: ds_cli_mcp::install::run,
+        render: ds_cli_mcp::install::render,
+    },
+];
+
 static DOMAINS: &[Registered] = &[
     Registered {
         domain: &ds_cli_dsgrid::DOMAIN,
@@ -662,6 +675,10 @@ static DOMAINS: &[Registered] = &[
     Registered {
         domain: &ds_cli_shell::DOMAIN,
         entries: SHELL_ENTRIES,
+    },
+    Registered {
+        domain: &ds_cli_mcp::DOMAIN,
+        entries: MCP_ENTRIES,
     },
 ];
 

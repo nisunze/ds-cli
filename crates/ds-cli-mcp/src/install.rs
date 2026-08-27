@@ -1,0 +1,288 @@
+//! `ds mcp install` — the host entry that launches `ds mcp serve`.
+//!
+//! Every MCP host reads the same shape: a named stdio server with a command
+//! and arguments. What differs is the file it lives in. This command prints
+//! the entry for this executable and, with `--write --yes`, merges it into
+//! the host's user-level file (never a workspace file: the server must run
+//! on the machine that has DS GridDesign, and a workspace file travels).
+
+use std::path::PathBuf;
+
+use ds_cli_contract::outcome::Failure;
+use ds_cli_contract::spec::{Arg, ArgKind, Authority, Command, Effect, Example, Execution};
+use ds_cli_contract::{Context, Inputs};
+use serde_json::{Map, Value, json};
+
+pub const HOSTS: &[&str] = &["vscode", "claude-code", "codex", "cursor", "generic"];
+
+pub static COMMAND: Command = Command {
+    id: "mcp.install",
+    path: &["mcp", "install"],
+    contract: 1,
+    summary: "Print or write the MCP host entry that launches this `ds`.",
+    purpose: "\
+Produces the stdio server entry an MCP host needs to launch `ds mcp serve` \
+from this exact executable, and names the user-level file it belongs in. \
+Without --write it only prints; with --write and --yes it merges the `ds` \
+server into that file, creating it when absent and leaving other servers \
+untouched. Always a user profile, never a workspace file: the server must run \
+on the PC where DS GridDesign is installed and paired.",
+    effect: Effect::LocalFileWrite,
+    authority: Authority::None,
+    execution: Execution::Sync,
+    args: &[
+        Arg {
+            name: "host",
+            kind: ArgKind::Value,
+            value: "<vscode|claude-code|codex|cursor|generic>",
+            required: false,
+            default: Some("vscode"),
+            choices: &["vscode", "claude-code", "codex", "cursor", "generic"],
+            summary: "Which host's configuration shape and file to target.",
+        },
+        Arg {
+            name: "write",
+            kind: ArgKind::Switch,
+            value: "",
+            required: false,
+            default: None,
+            choices: &[],
+            summary: "Merge the entry into the host's user-level file instead of only printing it.",
+        },
+    ],
+    output: "\
+The host, the server entry as JSON, the file it belongs in, and whether it \
+was written.",
+    examples: &[
+        Example {
+            command: "ds mcp install --output json",
+            note: "Print the VS Code entry and its file path; nothing is written.",
+            runnable: true,
+        },
+        Example {
+            command: "ds mcp install --host vscode --write --yes",
+            note: "Merge the `ds` server into the VS Code user profile's mcp.json.",
+            runnable: false,
+        },
+    ],
+    refusals: &[crate::HOST_UNKNOWN, crate::CONFIG_UNWRITABLE],
+    reference: Some("docs/reference/mcp.md"),
+    availability: crate::always,
+};
+
+pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
+    let host = inputs.value("host").unwrap_or("vscode");
+    if !HOSTS.contains(&host) {
+        return Err(Failure::invalid("mcp_host_unknown", format!("no configuration recipe for host `{host}`"))
+            .remedy("pass one of the hosts listed in `ds mcp install --help`, or omit --host to print the generic entry")
+            .detail(json!({ "hosts": HOSTS })));
+    }
+    let executable = std::env::current_exe().map_err(|error| {
+        Failure::failed("mcp_config_unwritable", format!("could not resolve this executable's path: {error}"))
+            .remedy("read the reported path; fix or remove a malformed file, then re-run, or copy the printed entry by hand")
+    })?;
+    let entry = server_entry(host, &executable);
+    let file = config_file(host);
+    let written = if inputs.switch("write") {
+        let Some(path) = file.as_ref() else {
+            return Err(Failure::invalid("mcp_host_unknown", format!("host `{host}` has no user-level file to write; copy the printed entry into your host's MCP settings"))
+                .remedy("pass one of the hosts listed in `ds mcp install --help`, or omit --host to print the generic entry"));
+        };
+        merge_into_file(path, host, &entry)?;
+        true
+    } else {
+        false
+    };
+    Ok(json!({
+        "host": host,
+        "server_name": "ds",
+        "entry": entry,
+        "file": file.map(|path| path.display().to_string()),
+        "written": written,
+        "executable": executable.display().to_string(),
+    }))
+}
+
+pub fn render(data: &Value) -> String {
+    let mut out = String::new();
+    out.push_str(&format!("host: {}\n", data["host"].as_str().unwrap_or("?")));
+    if let Some(file) = data["file"].as_str() {
+        out.push_str(&format!(
+            "file: {file}{}\n",
+            if data["written"].as_bool().unwrap_or(false) {
+                "  (written)"
+            } else {
+                ""
+            }
+        ));
+    }
+    out.push_str("entry:\n");
+    out.push_str(&serde_json::to_string_pretty(&data["entry"]).unwrap_or_default());
+    out.push('\n');
+    out
+}
+
+/// The entry in the host's own dialect. Every host launches the same thing.
+pub fn server_entry(host: &str, executable: &std::path::Path) -> Value {
+    let command = executable.display().to_string();
+    match host {
+        // VS Code: `servers` map with an explicit `type`.
+        "vscode" => {
+            json!({ "servers": { "ds": { "type": "stdio", "command": command, "args": ["mcp", "serve"] } } })
+        }
+        // Claude Code, Cursor: `mcpServers` map.
+        "claude-code" | "cursor" | "generic" => {
+            json!({ "mcpServers": { "ds": { "command": command, "args": ["mcp", "serve"] } } })
+        }
+        // Codex: TOML on disk; the JSON here is the same data for the caller to translate.
+        "codex" => {
+            json!({ "mcp_servers": { "ds": { "command": command, "args": ["mcp", "serve"] } } })
+        }
+        _ => json!({ "mcpServers": { "ds": { "command": command, "args": ["mcp", "serve"] } } }),
+    }
+}
+
+/// The user-level file for the host on this platform; `None` when the host
+/// keeps no JSON file this command should touch (Codex uses TOML).
+pub fn config_file(host: &str) -> Option<PathBuf> {
+    let home = std::env::var_os("HOME")
+        .or_else(|| std::env::var_os("USERPROFILE"))
+        .map(PathBuf::from)?;
+    match host {
+        "vscode" => Some(if cfg!(target_os = "windows") {
+            PathBuf::from(std::env::var_os("APPDATA")?)
+                .join("Code")
+                .join("User")
+                .join("mcp.json")
+        } else if cfg!(target_os = "macos") {
+            home.join("Library")
+                .join("Application Support")
+                .join("Code")
+                .join("User")
+                .join("mcp.json")
+        } else {
+            home.join(".config")
+                .join("Code")
+                .join("User")
+                .join("mcp.json")
+        }),
+        "claude-code" => Some(home.join(".claude.json")),
+        "cursor" => Some(home.join(".cursor").join("mcp.json")),
+        _ => None,
+    }
+}
+
+/// Merge `entry` (one top-level map with one server) into the JSON at `path`,
+/// keeping every other key and server. A malformed file is refused, never
+/// overwritten.
+pub fn merge_into_file(path: &std::path::Path, host: &str, entry: &Value) -> Result<(), Failure> {
+    let unwritable = |message: String| {
+        Failure::failed("mcp_config_unwritable", message)
+            .remedy("read the reported path; fix or remove a malformed file, then re-run, or copy the printed entry by hand")
+            .detail(json!({ "file": path.display().to_string(), "host": host }))
+    };
+    let mut document: Value = match std::fs::read(path) {
+        Ok(bytes) if bytes.iter().all(u8::is_ascii_whitespace) => json!({}),
+        Ok(bytes) => serde_json::from_slice(&bytes).map_err(|error| {
+            unwritable(format!("{} is not valid JSON: {error}", path.display()))
+        })?,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => json!({}),
+        Err(error) => {
+            return Err(unwritable(format!(
+                "could not read {}: {error}",
+                path.display()
+            )));
+        }
+    };
+    let merged = merge(&document, entry).ok_or_else(|| {
+        unwritable(format!(
+            "{} does not hold an object at its root",
+            path.display()
+        ))
+    })?;
+    document = merged;
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|error| {
+            unwritable(format!("could not create {}: {error}", parent.display()))
+        })?;
+    }
+    let mut bytes =
+        serde_json::to_vec_pretty(&document).map_err(|error| unwritable(error.to_string()))?;
+    bytes.push(b'\n');
+    std::fs::write(path, bytes)
+        .map_err(|error| unwritable(format!("could not write {}: {error}", path.display())))
+}
+
+/// Pure merge: the entry's single top-level map key is merged into the
+/// document's map of the same name, replacing only the `ds` server.
+pub fn merge(document: &Value, entry: &Value) -> Option<Value> {
+    let mut root = document.as_object()?.clone();
+    for (section, servers) in entry.as_object()? {
+        let mut existing = root
+            .get(section)
+            .and_then(Value::as_object)
+            .cloned()
+            .unwrap_or_else(Map::new);
+        for (name, server) in servers.as_object()? {
+            existing.insert(name.clone(), server.clone());
+        }
+        root.insert(section.clone(), Value::Object(existing));
+    }
+    Some(Value::Object(root))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn vscode_entry_is_a_stdio_server_pointing_at_this_executable() {
+        let entry = server_entry("vscode", std::path::Path::new("/usr/bin/ds"));
+        assert_eq!(entry["servers"]["ds"]["type"], "stdio");
+        assert_eq!(entry["servers"]["ds"]["command"], "/usr/bin/ds");
+        assert_eq!(entry["servers"]["ds"]["args"], json!(["mcp", "serve"]));
+    }
+
+    #[test]
+    fn merge_keeps_other_servers_and_keys() {
+        let existing = json!({ "inputs": [], "servers": { "other": { "type": "stdio", "command": "x" }, "ds": { "command": "old" } } });
+        let entry = server_entry("vscode", std::path::Path::new("/new/ds"));
+        let merged = merge(&existing, &entry).expect("merged");
+        assert_eq!(merged["inputs"], json!([]));
+        assert_eq!(merged["servers"]["other"]["command"], "x");
+        assert_eq!(merged["servers"]["ds"]["command"], "/new/ds");
+    }
+
+    #[test]
+    fn a_non_object_root_is_refused_not_replaced() {
+        assert!(
+            merge(
+                &json!([1, 2]),
+                &server_entry("vscode", std::path::Path::new("ds"))
+            )
+            .is_none()
+        );
+    }
+
+    #[test]
+    fn writing_creates_the_file_and_a_malformed_one_is_left_alone() {
+        let dir = std::env::temp_dir().join(format!(
+            "ds-mcp-install-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let path = dir.join("User").join("mcp.json");
+        let entry = server_entry("vscode", std::path::Path::new("/usr/bin/ds"));
+        merge_into_file(&path, "vscode", &entry).expect("write");
+        let written: Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        assert_eq!(written["servers"]["ds"]["args"], json!(["mcp", "serve"]));
+        std::fs::write(&path, b"{ not json").unwrap();
+        let refused = merge_into_file(&path, "vscode", &entry).unwrap_err();
+        assert_eq!(refused.code(), "mcp_config_unwritable");
+        assert_eq!(std::fs::read(&path).unwrap(), b"{ not json");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}
