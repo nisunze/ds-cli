@@ -39,6 +39,7 @@ struct App {
     frontend: String,
     project: String,
     map: String,
+    map_layers: String,
     survey: String,
     survey_forms: String,
     survey_project_forms: String,
@@ -63,6 +64,7 @@ fn app() -> Option<App> {
         frontend: read("src/lib/desktop/cli-bridge.ts")?,
         project: read("src/lib/desktop/cli-project.ts")?,
         map: read("src/lib/desktop/cli-map.ts")?,
+        map_layers: read("src/lib/desktop/cli-map-layers.ts")?,
         survey: read("src/lib/desktop/cli-survey.ts")?,
         survey_forms: read("src/lib/desktop/cli-survey-forms.ts")?,
         survey_project_forms: read("src/lib/desktop/cli-survey-project-forms.ts")?,
@@ -252,12 +254,17 @@ fn every_map_command_has_one_closed_operation_owner() {
             operation.operation
         );
 
-        let map_contract = operation_contract(&app.map, operation.operation);
-        let contract = if map_contract.is_empty() {
-            operation_contract(&app.survey, operation.operation)
-        } else {
-            map_contract
-        };
+        let owners = [&app.map, &app.map_layers, &app.survey]
+            .into_iter()
+            .filter(|source| has_operation_contract(source, operation.operation))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            owners.len(),
+            1,
+            "`{}` must have exactly one typed map adapter owner",
+            operation.operation
+        );
+        let contract = operation_contract(owners[0], operation.operation);
         assert!(
             !contract.is_empty(),
             "`{}` has no typed map-adapter argument contract",
@@ -274,6 +281,7 @@ fn every_map_command_has_one_closed_operation_owner() {
             for nested in parts {
                 assert!(
                     app.map.contains(&format!("'{nested}'"))
+                        || app.map_layers.contains(&format!("'{nested}'"))
                         || app.survey.contains(&format!("'{nested}'")),
                     "ds map sends `{argument}` to `{}`, but the adapter does not validate `{nested}`",
                     operation.operation

@@ -1,4 +1,4 @@
-//! `ds map` — the paired desktop's map, its local layers and its design layers.
+//! `ds map` — map-local work, project-layer ordering, and design layers.
 //!
 //! Everything here happens *inside the running application*. The map is a
 //! MapLibre instance owned by a Tauri webview; its temporary layers are the
@@ -18,12 +18,16 @@
 //! draw, look, measure, edit, and — for design layers — stage and commit,
 //! with the same tiering and the same typed refusals as the rest of the CLI.
 //!
-//! ## Two tiers of consequence, deliberately not merged
+//! ## Three boundaries, deliberately not merged
 //!
 //! * **Local layers** (`view`, `draw`, `remove`, `zoom`, and the vector
 //!   tools) touch nothing but what the operator can see. They need the
 //!   application running and nothing else: no sign-in, no project, no
 //!   credential. `Effect::LocalUi`, `Authority::DesktopPairing`.
+//! * **Layer management** (`layer …`) reads canonical project ordering or
+//!   manages validated desktop-local XYZ/raster PMTiles references. Neither
+//!   needs the map page open; the former uses project authority, while the
+//!   latter remains desktop-local and works signed out.
 //! * **Design layers** (`design …`) read and stage project data, and one
 //!   command — `design save` — pushes it. They need a signed-in session with
 //!   a project selected, and the push is `Effect::ArtifactWrite`, so dispatch
@@ -47,6 +51,7 @@
 pub mod design;
 pub mod draw;
 pub mod evidence;
+pub mod layer;
 pub mod line_difference;
 pub mod outliers;
 pub mod points_along;
@@ -76,12 +81,18 @@ pub use ds_cli_desktop::ops::{
 
 pub static DOMAIN: Domain = Domain {
     id: "map",
-    summary: "The paired map: local layers, vector tools, design-layer edits.",
+    summary: "Local data, layer ordering, remote overlays, and design edits.",
     commands: &[
         &view::COMMAND,
         &draw::COMMAND,
         &remove::COMMAND,
         &zoom::COMMAND,
+        &layer::list::COMMAND,
+        &layer::reorder::COMMAND,
+        &layer::remote_list::COMMAND,
+        &layer::add::COMMAND,
+        &layer::remove::COMMAND,
+        &layer::visibility::COMMAND,
         &ui::open::COMMAND,
         &evidence::capture::COMMAND,
         &points_along::COMMAND,
@@ -126,6 +137,26 @@ pub const LAYER_ADD: BridgeOp = BridgeOp {
 pub const LAYER_REMOVE: BridgeOp = BridgeOp {
     operation: "map.temporary_layer.remove",
     arguments: &["layerId"],
+};
+pub const LAYERS_LIST: BridgeOp = BridgeOp {
+    operation: "map.layers.list",
+    arguments: &["scope", "refresh", "limit"],
+};
+pub const LAYERS_REORDER: BridgeOp = BridgeOp {
+    operation: "map.layers.reorder",
+    arguments: &["orders", "apply"],
+};
+pub const REMOTE_LAYER_ADD: BridgeOp = BridgeOp {
+    operation: "map.remote_layer.add",
+    arguments: &["name", "kind", "url", "tileSize", "attribution", "visible"],
+};
+pub const REMOTE_LAYER_REMOVE: BridgeOp = BridgeOp {
+    operation: "map.remote_layer.remove",
+    arguments: &["layerId"],
+};
+pub const REMOTE_LAYER_VISIBILITY: BridgeOp = BridgeOp {
+    operation: "map.remote_layer.visibility",
+    arguments: &["layerId", "visible"],
 };
 pub const ZOOM_TO: BridgeOp = BridgeOp {
     operation: "map.zoom_to",
@@ -329,6 +360,11 @@ pub const SURVEY_WORKING_AREA_DOWNLOAD: BridgeOp = BridgeOp {
 pub const BRIDGE_OPS: &[&BridgeOp] = &[
     &LAYER_ADD,
     &LAYER_REMOVE,
+    &LAYERS_LIST,
+    &LAYERS_REORDER,
+    &REMOTE_LAYER_ADD,
+    &REMOTE_LAYER_REMOVE,
+    &REMOTE_LAYER_VISIBILITY,
     &ZOOM_TO,
     &UI_OPEN,
     &EVIDENCE_CAPTURE,
@@ -472,6 +508,7 @@ pub const EVIDENCE_RECEIPT_KEYS: &[&str] = &[
 
 /// Adding, removing or moving is a redraw. Anything slower is a hung webview.
 pub const UI_TIMEOUT: Duration = Duration::from_secs(60);
+pub const API_TIMEOUT: Duration = Duration::from_secs(2 * 60);
 /// A capture has to wait for tiles, labels and the panel to settle before the
 /// frame is worth keeping, then write and digest a PNG. Longer than a redraw,
 /// far shorter than a vector tool.

@@ -68,7 +68,7 @@ fn response(responses: &[Value], id: i64) -> &Value {
 }
 
 #[test]
-fn broad_server_has_twelve_stable_tools_and_reports_build_identity() {
+fn broad_server_has_declared_stable_tools_and_reports_build_identity() {
     let (responses, stderr) = mcp(
         &["--exposure", "chapters"],
         &[
@@ -80,8 +80,8 @@ fn broad_server_has_twelve_stable_tools_and_reports_build_identity() {
         .as_array()
         .expect("tools");
     // One router per chapter, with the catalogue standing in for its own.
-    // Derived from the declaration so a thirteenth chapter cannot ship
-    // unreachable while this still reads twelve.
+    // Derived from the declaration so a new chapter cannot ship unreachable
+    // while this test still reads an old literal count.
     assert_eq!(tools.len(), Chapter::ALL.len());
     assert_eq!(tools[0]["name"], "ds_catalog");
     for chapter in Chapter::ALL {
@@ -213,6 +213,7 @@ fn by_command_profiles_still_partition_the_live_registry() {
         Profile::Survey,
         Profile::FormFactory,
         Profile::SurveyProjects,
+        Profile::Layers,
     ] {
         for id in profile.command_ids() {
             assert!(
@@ -223,7 +224,7 @@ fn by_command_profiles_still_partition_the_live_registry() {
     }
     assert_eq!(
         listed_survey, expected_survey,
-        "survey, form-factory, and survey-projects must partition the live Survey chapter"
+        "survey, form-factory, survey-projects, and layers must partition the live Survey chapter"
     );
 }
 

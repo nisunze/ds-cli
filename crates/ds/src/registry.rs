@@ -287,6 +287,36 @@ static MAP_ENTRIES: &[Entry] = &[
         render: ds_cli_map::zoom::render,
     },
     Entry {
+        command: &ds_cli_map::layer::list::COMMAND,
+        handler: ds_cli_map::layer::list::run,
+        render: ds_cli_map::layer::list::render,
+    },
+    Entry {
+        command: &ds_cli_map::layer::reorder::COMMAND,
+        handler: ds_cli_map::layer::reorder::run,
+        render: ds_cli_map::layer::reorder::render,
+    },
+    Entry {
+        command: &ds_cli_map::layer::remote_list::COMMAND,
+        handler: ds_cli_map::layer::remote_list::run,
+        render: ds_cli_map::layer::remote_list::render,
+    },
+    Entry {
+        command: &ds_cli_map::layer::add::COMMAND,
+        handler: ds_cli_map::layer::add::run,
+        render: ds_cli_map::layer::add::render,
+    },
+    Entry {
+        command: &ds_cli_map::layer::remove::COMMAND,
+        handler: ds_cli_map::layer::remove::run,
+        render: ds_cli_map::layer::remove::render,
+    },
+    Entry {
+        command: &ds_cli_map::layer::visibility::COMMAND,
+        handler: ds_cli_map::layer::visibility::run,
+        render: ds_cli_map::layer::visibility::render,
+    },
+    Entry {
         command: &ds_cli_map::ui::open::COMMAND,
         handler: ds_cli_map::ui::open::run,
         render: ds_cli_map::ui::open::render,

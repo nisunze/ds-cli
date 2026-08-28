@@ -43,6 +43,35 @@ installed transformer. Marking an as-built network approved is the most
 consequential property write in the product; one sentence from a model must
 not be able to reach the project.
 
+## Layer management without an open map
+
+Layer configuration, remote tile references, session GeoJSON, and governed
+tile outputs have separate owners:
+
+| Operation | Persistence | Needs an open map |
+|---|---|---|
+| `map layer list/reorder` | project layer-order document | no |
+| `map layer add/remote-list/visibility/remove` | this desktop's IndexedDB | no; reconciles immediately if open |
+| `map draw/remove` | current map session | yes |
+| `tile add/remove` | governed project tile catalogue | no |
+
+`map layer list` reports both canonical config ids and runtime MapLibre ids.
+Only the canonical `id` is accepted by `map layer reorder`; runtime ids may be
+suffixed to avoid collisions and are never stable ordering keys. Reordering is
+a confirmed project write and the renderer continues to preserve its global
+context and geometry safety bands.
+
+Third-party overlays accept HTTP(S) XYZ templates with `{z}`, `{x}`, and `{y}`
+or raster PMTiles archives. They are local references, not uploads and not
+project data. Embedded URL credentials and malformed templates are refused.
+Vector PMTiles are not silently treated as raster: they need a governed source
+and style contract.
+
+`map draw` validates bounded, homogeneous GeoJSON but is not a data-cleaning
+pipeline. Contractor/network archives that need parsing, canonical header
+mapping, domains, or Rust cleaning belong to `map design upload inspect` then
+`map design upload stage`; neither operation needs the map open.
+
 ## Still evidence and semantic UI staging
 
 The CLI can stage and capture a deterministic still frame of the installed

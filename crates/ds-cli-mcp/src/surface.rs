@@ -18,6 +18,7 @@ pub const PROFILE_IDS: &[&str] = &[
     "design-edit",
     "design-run",
     "map",
+    "layers",
     "tiling",
     "project",
     "solar-run",
@@ -58,6 +59,7 @@ pub enum Profile {
     DesignEdit,
     DesignRun,
     Map,
+    Layers,
     Tiling,
     Project,
     SolarRun,
@@ -76,6 +78,7 @@ impl Profile {
             "design-edit" => Some(Self::DesignEdit),
             "design-run" => Some(Self::DesignRun),
             "map" => Some(Self::Map),
+            "layers" => Some(Self::Layers),
             "tiling" => Some(Self::Tiling),
             "project" => Some(Self::Project),
             "solar-run" => Some(Self::SolarRun),
@@ -95,6 +98,7 @@ impl Profile {
             Self::DesignEdit => "design-edit",
             Self::DesignRun => "design-run",
             Self::Map => "map",
+            Self::Layers => "layers",
             Self::Tiling => "tiling",
             Self::Project => "project",
             Self::SolarRun => "solar-run",
@@ -111,6 +115,7 @@ impl Profile {
             Self::FormFactory => FORM_FACTORY_COMMANDS.contains(&tool.id.as_str()),
             Self::SurveyProjects => SURVEY_PROJECT_COMMANDS.contains(&tool.id.as_str()),
             Self::Map => tool.chapter == Chapter::MapPresentation,
+            Self::Layers => LAYER_COMMANDS.contains(&tool.id.as_str()),
             Self::Tiling => tool.chapter == Chapter::VectorTiles,
             Self::Project => tool.chapter == Chapter::Project,
             Self::Operations => tool.chapter == Chapter::Operations,
@@ -134,6 +139,7 @@ impl Profile {
             Self::Survey => SURVEY_MAP_COMMANDS,
             Self::FormFactory => FORM_FACTORY_COMMANDS,
             Self::SurveyProjects => SURVEY_PROJECT_COMMANDS,
+            Self::Layers => LAYER_COMMANDS,
             Self::DesignEdit => DESIGN_EDIT_COMMANDS,
             Self::DesignRun => DESIGN_RUN_COMMANDS,
             Self::SolarRun => SOLAR_RUN_COMMANDS,
@@ -151,7 +157,9 @@ impl Profile {
         match self {
             Self::Grid => matches!(chapter, Chapter::GridModel | Chapter::Reports),
             Self::Pls => chapter == Chapter::PlsCadd,
-            Self::Survey | Self::FormFactory | Self::SurveyProjects => chapter == Chapter::Survey,
+            Self::Survey | Self::FormFactory | Self::SurveyProjects | Self::Layers => {
+                chapter == Chapter::Survey
+            }
             Self::DesignEdit | Self::DesignRun => chapter == Chapter::Design,
             Self::Map => chapter == Chapter::MapPresentation,
             Self::Tiling => chapter == Chapter::VectorTiles,
@@ -176,6 +184,15 @@ const SURVEY_MAP_COMMANDS: &[&str] = &[
     "map.survey.download",
     "map.survey.migrate.plan",
     "map.survey.migrate.apply",
+];
+
+const LAYER_COMMANDS: &[&str] = &[
+    "map.layer.list",
+    "map.layer.reorder",
+    "map.layer.remote-list",
+    "map.layer.add",
+    "map.layer.remove",
+    "map.layer.visibility",
 ];
 
 const FORM_FACTORY_COMMANDS: &[&str] = &[
@@ -253,8 +270,8 @@ const SOLAR_DELIVERY_COMMANDS: &[&str] = &[
 /// Every chapter except `Catalog`, which is the index rather than a routed
 /// destination. Held to `Chapter::ALL` by
 /// `every_declared_chapter_except_the_catalog_is_routed`: without that, a
-/// thirteenth chapter would leave its commands unreachable through MCP while
-/// every assertion here still passed at the literal twelve.
+/// new chapter would leave its commands unreachable through MCP while every
+/// assertion here still passed at the old literal count.
 const ROUTED_CHAPTERS: &[Chapter] = &[
     Chapter::Project,
     Chapter::GridModel,
@@ -812,7 +829,7 @@ mod tests {
     }
 
     #[test]
-    fn broad_surface_is_exactly_the_twelve_stable_chapter_tools() {
+    fn broad_surface_is_exactly_the_declared_stable_chapter_tools() {
         let surface = Surface::new(
             Exposure::Chapters,
             None,
@@ -825,8 +842,8 @@ mod tests {
             .map(|value| value["name"].as_str().unwrap().to_string())
             .collect::<Vec<_>>();
         // Derived, not the literal 12: the catalogue plus one router per
-        // routed chapter. A thirteenth chapter that nobody routed fails here
-        // instead of quietly publishing the same twelve.
+        // routed chapter. A new chapter that nobody routed fails here instead
+        // of quietly publishing the old count.
         assert_eq!(names.len(), Chapter::ALL.len());
         assert_eq!(names[0], "ds_catalog");
         for chapter in Chapter::ALL {

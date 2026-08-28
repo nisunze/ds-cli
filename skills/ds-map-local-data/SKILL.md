@@ -29,6 +29,12 @@ for a layer created by this paired CLI session.
 Local layers are temporary map-session data. Do not describe them as saved,
 synced, or project data.
 
+This skill owns session GeoJSON and evidence only. For canonical project-layer
+ordering or desktop-local XYZ/PMTiles references, use `ds-layer-management`;
+those operations do not require the map to be open. For archive parsing,
+canonical column mapping, and Rust cleaning, use the design upload inspect /
+stage contracts rather than `map draw`.
+
 ## Capture one reproducible still frame
 
 Use the map commands as a sequence; none is a generic UI driver.

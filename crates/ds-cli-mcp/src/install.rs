@@ -79,7 +79,7 @@ sessions start on this machine, so every invocation needs `--yes`.",
             required: false,
             default: None,
             choices: crate::surface::PROFILE_IDS,
-            summary: "Choose one typed workflow profile.",
+            summary: "Choose a typed workflow profile.",
         },
     ],
     output: "\

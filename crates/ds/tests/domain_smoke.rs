@@ -1610,6 +1610,43 @@ fn map_ui_open_offers_three_panels_and_no_way_to_address_the_interface() {
 }
 
 #[test]
+fn map_layer_management_keeps_project_and_desktop_local_effects_separate() {
+    let add = ok(&["capabilities", "map.layer.add", "--output", "json"])["command"].clone();
+    assert_eq!(add["authority"], "desktop_pairing");
+    assert_eq!(add["effect"], "local_ui");
+    let list = ok(&["capabilities", "map.layer.list", "--output", "json"])["command"].clone();
+    assert_eq!(list["authority"], "project");
+    assert_eq!(list["effect"], "read_only");
+    let reorder = ok(&["capabilities", "map.layer.reorder", "--output", "json"])["command"].clone();
+    assert_eq!(reorder["authority"], "project");
+    assert_eq!(reorder["effect"], "global_write");
+
+    let confirmation = refusal(&[
+        "map",
+        "layer",
+        "reorder",
+        "--order",
+        "roads=100",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(confirmation, "confirmation_required");
+
+    let bad_visibility = refusal(&[
+        "map",
+        "layer",
+        "visibility",
+        "--layer",
+        "tile-1",
+        "--visible",
+        "toggle",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(bad_visibility, "invalid_choice");
+}
+
+#[test]
 fn every_map_command_is_reachable_without_the_desktop_installed() {
     // Availability here is deliberately unconditional: dispatch checks it
     // before parsing, so a gate would make `--desktop-descriptor` — the flag
@@ -1626,6 +1663,12 @@ fn every_map_command_is_reachable_without_the_desktop_installed() {
         "map.draw",
         "map.remove",
         "map.zoom",
+        "map.layer.list",
+        "map.layer.reorder",
+        "map.layer.remote-list",
+        "map.layer.add",
+        "map.layer.remove",
+        "map.layer.visibility",
         "map.ui.open",
         "map.evidence.capture",
         "map.points-along",

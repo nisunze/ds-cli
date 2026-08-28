@@ -59,7 +59,7 @@ calls answered, and why the loop ended.",
     examples: &[
         Example {
             command: "ds mcp serve --exposure chapters",
-            note: "Default broad server: twelve stable chapter tools.",
+            note: "Default: 12 stable chapter tools.",
             runnable: false,
         },
         Example {

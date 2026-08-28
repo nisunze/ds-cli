@@ -1,0 +1,4 @@
+interface:
+  display_name: "DS Layer Management"
+  short_description: "Order project layers and manage local remote overlays"
+  default_prompt: "Use $ds-layer-management to inspect or order project layers, manage third-party XYZ/raster PMTiles overlays, and route local or cleaned data to the correct DS CLI lifecycle."

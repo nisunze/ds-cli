@@ -48,10 +48,12 @@ ds mcp serve --exposure commands --profile pls
 ```
 
 Profiles are `grid`, `pls`, `survey`, `form-factory`, `survey-projects`,
-`design-edit`, `design-run`, `map`, `project`, `solar-run`, `solar-delivery`,
-and `operations`. `survey` retains map/local-data survey work;
+`design-edit`, `design-run`, `map`, `layers`, `tiling`, `project`, `solar-run`,
+`solar-delivery`, and `operations`. `survey` retains map/local-data survey work;
 `form-factory` owns global schemas, while `survey-projects` owns project-form
-settings, reusable templates, and create-from-template. Each includes
+settings, reusable templates, and create-from-template. `layers` isolates
+project ordering and desktop-local remote overlays; `tiling` owns governed
+tile generation and catalogue membership. Each includes
 `ds_catalog` and at most 14 leaf tools. A profile is only an allowlist: omitted
 commands are unavailable and authority, effects, confirmation, output, and
 refusals are unchanged. Plain `--exposure commands` retains the previous
