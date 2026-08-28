@@ -118,12 +118,19 @@ fi
 # pointed at any file whose first line happens to read `nisunze/ds-cli`.
 printf '%s\n' 'nisunze/ds-cli' > "$TEMP/unowned/borrowed-marker"
 ln -s "$TEMP/unowned/borrowed-marker" "$unowned/ds/.ds-cli-skills-owner.link"
-mv -- "$unowned/ds/.ds-cli-skills-owner.link" "$unowned/ds/.ds-cli-skills-owner"
-if scratch_install "$unowned" install >/dev/null 2>&1; then
-	echo "ERROR: a symlinked owner marker was accepted as proof of ownership" >&2
-	exit 1
+if [[ -L "$unowned/ds/.ds-cli-skills-owner.link" ]]; then
+	mv -- "$unowned/ds/.ds-cli-skills-owner.link" "$unowned/ds/.ds-cli-skills-owner"
+	if scratch_install "$unowned" install >/dev/null 2>&1; then
+		echo "ERROR: a symlinked owner marker was accepted as proof of ownership" >&2
+		exit 1
+	fi
+	[[ -L "$unowned/ds/.ds-cli-skills-owner" ]]
+else
+	# MSYS without Create Symbolic Links privilege materializes a regular file;
+	# that is not a symlink test. Native reparse refusal remains source-guarded
+	# above and is exercised by the Windows PowerShell acceptance lane.
+	rm -f -- "$unowned/ds/.ds-cli-skills-owner.link"
 fi
-[[ -L "$unowned/ds/.ds-cli-skills-owner" ]]
 
 # A first line that is not this installer's contract means the file belongs to
 # something else. Both actions must refuse rather than read a list of
@@ -174,12 +181,16 @@ mkdir -p "$linked" "$TEMP/linked/elsewhere"
 printf 'not ours\n' > "$TEMP/linked/elsewhere/SKILL.md"
 printf '%s\n' 'nisunze/ds-cli' > "$TEMP/linked/elsewhere/.ds-cli-skills-owner"
 ln -s "$TEMP/linked/elsewhere" "$linked/ds"
-if scratch_install "$linked" install >/dev/null 2>&1; then
-	echo "ERROR: a symlinked skill destination was replaced" >&2
-	exit 1
+if [[ -L "$linked/ds" ]]; then
+	if scratch_install "$linked" install >/dev/null 2>&1; then
+		echo "ERROR: a symlinked skill destination was replaced" >&2
+		exit 1
+	fi
+	[[ -L "$linked/ds" ]]
+	[[ "$(cat "$TEMP/linked/elsewhere/SKILL.md")" == 'not ours' ]]
+else
+	rm -rf -- "$linked/ds"
 fi
-[[ -L "$linked/ds" ]]
-[[ "$(cat "$TEMP/linked/elsewhere/SKILL.md")" == 'not ours' ]]
 
 # The rollback path cannot be reached by any input: every refusal fires in
 # preflight, before the first rename. A bug in it loses the installation the
