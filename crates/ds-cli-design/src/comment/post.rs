@@ -7,7 +7,32 @@ use ds_cli_contract::spec::{
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
 
-use crate::{DESCRIPTOR_ARG, KIND_ARG, OBJECT_ARG, VERSION_ARG};
+use crate::{DESCRIPTOR_ARG, VERSION_ARG};
+
+// The anchor is CONDITIONAL here, and only here: it is required to open a
+// thread and meaningless when appending to one. Reusing the domain's required
+// anchor flags would make `--thread <id>` alone a parser error naming a missing
+// key, when the honest answer is that the caller must choose one of two shapes —
+// which is what `missing_comment_target` says.
+const KIND_ARG: Arg = Arg {
+    name: "kind",
+    kind: ArgKind::Value,
+    value: "<object-kind>",
+    required: false,
+    default: None,
+    choices: &["lv_transformer", "mv_model"],
+    summary: "Which design object family a NEW thread anchors to.",
+};
+
+const OBJECT_ARG: Arg = Arg {
+    name: "object",
+    kind: ArgKind::Value,
+    value: "<id>",
+    required: false,
+    default: None,
+    choices: &[],
+    summary: "The transformer or model a NEW thread anchors to.",
+};
 
 const THREAD_ARG: Arg = Arg {
     name: "thread",

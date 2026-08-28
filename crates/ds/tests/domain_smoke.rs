@@ -1942,6 +1942,229 @@ fn a_well_formed_map_call_stops_at_confirmation_or_pairing() {
 }
 
 // ---------------------------------------------------------------------------
+// design
+// ---------------------------------------------------------------------------
+//
+// Design collaboration lives behind ds-brain and is reached through the paired
+// application, so no fixture can stand in for a saved selection or a comment
+// thread. What IS assertable on every machine, and where this domain's real
+// bugs would live, is the ordering claim: every handler validates its own
+// inputs and stops at the confirmation gate BEFORE it opens the bridge. If a
+// handler were rewritten to resolve the paired session first, none of these
+// codes would ever be seen by anyone without the desktop installed.
+
+#[test]
+fn design_validates_its_own_inputs_before_it_opens_the_bridge() {
+    assert_eq!(
+        refusal(&[
+            "design",
+            "tag",
+            "define",
+            "--definition",
+            "scope",
+            "--name",
+            "Scope",
+            "--values",
+            " , ,",
+            "--output",
+            "json",
+            "--yes",
+        ]),
+        "invalid_value_list",
+        "a list flag with nothing in it must be refused before a project round trip"
+    );
+    let many = (0..600)
+        .map(|index| format!("t{index}"))
+        .collect::<Vec<_>>()
+        .join(",");
+    assert_eq!(
+        refusal(&[
+            "design",
+            "selection",
+            "save",
+            "--name",
+            "Everything",
+            "--transformers",
+            &many,
+            "--output",
+            "json",
+            "--yes",
+        ]),
+        "too_many_values",
+        "a selection over the member bound must be refused locally, not by a rejected write"
+    );
+    assert_eq!(
+        refusal(&[
+            "design",
+            "comment",
+            "post",
+            "--body",
+            "Looks short.",
+            "--output",
+            "json",
+            "--yes",
+        ]),
+        "missing_comment_target",
+        "posting with neither a thread nor a complete anchor must name the choice, not a key"
+    );
+    assert_eq!(
+        refusal(&[
+            "design",
+            "attachment",
+            "list",
+            "--kind",
+            "survey_entry",
+            "--object",
+            "x",
+            "--output",
+            "json",
+        ]),
+        "invalid_choice",
+        "an object kind outside the closed set must be refused by the parser"
+    );
+}
+
+#[test]
+fn every_design_write_refuses_without_confirmation() {
+    // Every write in this domain mutates governed project state, so dispatch
+    // must stop it before the bridge opens.
+    for args in [
+        vec![
+            "design",
+            "selection",
+            "save",
+            "--name",
+            "Week 32",
+            "--transformers",
+            "kigali_a",
+        ],
+        vec!["design", "selection", "archive", "--selection", "sel-1"],
+        vec![
+            "design",
+            "selection",
+            "assign",
+            "--selection",
+            "sel-1",
+            "--title",
+            "Review",
+        ],
+        vec![
+            "design",
+            "attachment",
+            "publish",
+            "--kind",
+            "lv_transformer",
+            "--object",
+            "kigali_a",
+            "--path",
+            "/tmp/a.bak",
+        ],
+        vec!["design", "attachment", "retire", "--attachment", "att-1"],
+        vec![
+            "design",
+            "tag",
+            "define",
+            "--definition",
+            "scope",
+            "--name",
+            "Scope",
+            "--values",
+            "a,b",
+        ],
+        vec![
+            "design",
+            "tag",
+            "set",
+            "--kind",
+            "lv_transformer",
+            "--object",
+            "kigali_a",
+            "--definition",
+            "scope",
+            "--values",
+            "a",
+        ],
+        vec![
+            "design", "comment", "post", "--thread", "thread-1", "--body", "Agreed.",
+        ],
+        vec!["design", "comment", "resolve", "--thread", "thread-1"],
+        vec!["design", "comment", "promote", "--thread", "thread-1"],
+    ] {
+        let mut argv = args.clone();
+        argv.extend(["--output", "json"]);
+        assert_eq!(
+            refusal(&argv),
+            "confirmation_required",
+            "`ds {}` reached past the confirmation gate",
+            args.join(" ")
+        );
+    }
+}
+
+#[test]
+fn every_design_read_is_reachable_without_the_desktop_installed() {
+    // Same reasoning as map and work: dispatch checks availability before
+    // parsing, so a discovery gate would put every input refusal above out of
+    // reach on a machine with no application.
+    let index = ok(&["capabilities", "design", "--output", "json"]);
+    let commands = index["commands"].as_array().expect("commands");
+    assert_eq!(
+        commands.len(),
+        17,
+        "the design domain should expose its whole family: {commands:?}"
+    );
+    for command in commands {
+        assert_eq!(
+            command["availability"],
+            "available",
+            "`{}` is gated on the desktop being installed",
+            command["id"].as_str().unwrap_or("?")
+        );
+    }
+    // A well-formed read gets as far as pairing and no further.
+    let code = refusal(&["design", "selection", "list", "--output", "json"]);
+    assert!(
+        PAIRING_CODES.contains(&code.as_str()),
+        "a well-formed design read ended in `{code}`, not a pairing state"
+    );
+}
+
+#[test]
+fn design_reads_are_reads_and_design_writes_are_governed_writes() {
+    // The effect classification is what a caller plans around, and it is the
+    // one thing a reviewer cannot infer from a command's name: `retire` sounds
+    // destructive and is a soft, reversible governed write, while `download`
+    // sounds like it moves bytes and changes nothing shared.
+    for (id, effect) in [
+        ("design.selection.list", "read_only"),
+        ("design.selection.read", "read_only"),
+        ("design.attachment.list", "read_only"),
+        ("design.attachment.download", "read_only"),
+        ("design.tag.list", "read_only"),
+        ("design.comment.list", "read_only"),
+        ("design.comment.read", "read_only"),
+        ("design.selection.save", "global_write"),
+        ("design.selection.assign", "global_write"),
+        ("design.attachment.publish", "global_write"),
+        ("design.attachment.retire", "global_write"),
+        ("design.tag.define", "global_write"),
+        ("design.tag.set", "global_write"),
+        ("design.comment.post", "global_write"),
+        ("design.comment.promote", "global_write"),
+    ] {
+        let descriptor = ok(&["capabilities", id, "--output", "json"]);
+        assert_eq!(
+            descriptor["command"]["effect"], effect,
+            "`{id}` declares the wrong blast radius"
+        );
+        assert_eq!(
+            descriptor["command"]["authority"], "project",
+            "`{id}` must require a verified principal bound to a project"
+        );
+    }
+}
+
+// ---------------------------------------------------------------------------
 // work
 // ---------------------------------------------------------------------------
 

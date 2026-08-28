@@ -492,13 +492,13 @@ fn every_design_collaboration_command_has_one_closed_operation_owner_and_exact_a
     for operation in ds_cli_design::BRIDGE_OPS {
         assert!(
             seen.insert(operation.operation),
-            "`{}` is declared twice by ds design",
+            "`{}` is declared twice by ds design; one semantic operation has one owner",
             operation.operation
         );
         assert_eq!(
             count(allowlist, &format!("\"{}\"", operation.operation)),
             1,
-            "`{}` must appear exactly once in the desktop allowlist",
+            "`{}` must appear exactly once in the native allowlist",
             operation.operation
         );
         assert_eq!(
@@ -510,21 +510,75 @@ fn every_design_collaboration_command_has_one_closed_operation_owner_and_exact_a
         let contract = operation_contract(&app.design_collaboration, operation.operation);
         assert!(
             !contract.is_empty(),
-            "`{}` has no typed design-collaboration adapter argument contract",
+            "`{}` has no typed design-collaboration adapter contract",
             operation.operation
         );
+        // Exact, not a subset: an argument the adapter accepts but `ds design`
+        // never sends is a key nothing validates, and one `ds design` sends
+        // that the adapter rejects is a command that cannot work.
         let accepted = quoted_contract_items(contract);
-        let declared = operation
+        let declared: BTreeSet<String> = operation
             .arguments
             .iter()
-            .map(|argument| argument.split('.').next().unwrap().to_string())
-            .collect::<BTreeSet<_>>();
+            .map(|argument| (*argument).to_string())
+            .collect();
         assert_eq!(
             accepted, declared,
             "`{}` must accept exactly the keys ds design declares",
             operation.operation
         );
     }
+}
+
+#[test]
+fn design_collaboration_stays_metadata_only_and_owns_no_map_state() {
+    // The roadmap requires metadata workflows to be headless. `ds design` lives
+    // beside `ds work` rather than under `ds map` precisely because none of its
+    // operations needs a map instance, an edit session or a design room — and
+    // the adapter that serves them must not acquire one.
+    let Some(app) = app() else {
+        skip("the ds-web sibling repository is not on disk");
+        return;
+    };
+    for map_owned in [
+        "$lib/stores/map",
+        "maplibre-gl",
+        "$lib/design/edit-context",
+        "mapInstance",
+        "editSession",
+    ] {
+        assert!(
+            !app.design_collaboration.contains(map_owned),
+            "the design-collaboration adapter reaches map-owned state (`{map_owned}`); \
+             these operations must work with no map open"
+        );
+    }
+    // One client, shared with the dialogs, so the CLI and the UI exercise the
+    // same server contract and the same refusal vocabulary.
+    assert!(
+        app.design_collaboration
+            .contains("from '$lib/api/design-collab'"),
+        "the design-collaboration adapter must reach ds-brain through the same \
+         client the dialogs use, not a second one"
+    );
+}
+
+#[test]
+fn design_collaboration_bounds_match_the_desktop_owner() {
+    let Some(app) = app() else {
+        skip("the ds-web sibling repository is not on disk");
+        return;
+    };
+    // `ds design` refuses an over-large --limit locally so it is refused once,
+    // not twice. That is only true while both sides agree on the number.
+    assert!(
+        app.design_collaboration.contains(&format!(
+            "const MAX_PAGE = {};",
+            ds_cli_design::MAX_PAGE_SIZE
+        )),
+        "ds design bounds a page at {} but the desktop adapter does not",
+        ds_cli_design::MAX_PAGE_SIZE
+    );
 }
 
 #[test]

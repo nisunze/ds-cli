@@ -288,6 +288,15 @@ pub const INVALID_ANCHOR: Refusal = Refusal {
     when: "the object anchor names a reserved document or a kind that does not exist",
     remedy: "anchor to an ordinary LV transformer or a project DS Grid model",
 };
+/// The paired desktop reads a named path through a BOUNDED reader. Publishing a
+/// larger file from `ds` would need a streaming reader the shell does not have,
+/// so the refusal names the surface that does rather than truncating the file to
+/// a preview and registering a revision against the wrong bytes.
+pub const TOO_LARGE: Refusal = Refusal {
+    code: "attachment_too_large",
+    when: "the file is larger than the paired desktop's bounded path reader",
+    remedy: "publish it from the application's Attachments dialog, which streams from the file picker",
+};
 pub const TOO_MANY: Refusal = Refusal {
     code: "too_many_values",
     when: "a list flag carries more entries than the record accepts",
@@ -315,6 +324,9 @@ pub const CONFLICT_MARKERS: &[&str] = &["not ", "changed since", "already exists
 /// What the application says when the project accepts no changes at all.
 pub const READ_ONLY_MARKERS: &[&str] = &["archived", "expired", "read-only"];
 
+/// What the application says when a file exceeds its bounded path reader.
+pub const TOO_LARGE_MARKERS: &[&str] = &["path reader is bounded"];
+
 /// Give this domain's three named conditions their own codes.
 ///
 /// All three arrive as ordinary operation refusals — the application answered,
@@ -335,7 +347,22 @@ pub fn classify_design_failure(failure: Failure) -> Failure {
         .unwrap_or_default()
         .to_ascii_lowercase();
 
-    // Read-only is checked FIRST: an archived project also refuses for want of
+    // Size is checked FIRST and on its own: it is a fact about the file, not
+    // about authority, and it is the one refusal here whose remedy is another
+    // surface rather than another permission.
+    if TOO_LARGE_MARKERS
+        .iter()
+        .any(|marker| detail.contains(marker))
+    {
+        return Failure::invalid(
+            "attachment_too_large",
+            "the file is larger than the paired desktop's bounded path reader",
+        )
+        .remedy(TOO_LARGE.remedy)
+        .next("open the Attachments dialog in DS GridDesign");
+    }
+    // Among the authority answers, read-only is checked first: an archived
+    // project also refuses for want of
     // a capability, and "unarchive it" is the actionable half of that answer.
     if READ_ONLY_MARKERS
         .iter()
