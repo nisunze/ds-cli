@@ -16,7 +16,7 @@ const TRANSFORMER_ARG: Arg = Arg {
     required: true,
     default: None,
     choices: &[],
-    summary: "Transformer in the explicit report scope. Repeat 2..=200 times.",
+    summary: "Transformer in the explicit report scope. Repeat at least twice.",
 };
 
 const FILE_LEVEL_CHOICES: &[&str] = &["transformer", "sector", "district", "root"];
@@ -81,8 +81,8 @@ artifact coverage, missing artifacts, report errors, and registry status.",
         crate::SIGNED_OUT,
         Refusal {
             code: "invalid_transformer_scope",
-            when: "the explicit report scope contains fewer than 2 or more than 200 transformers",
-            remedy: "repeat --transformer for every transformer in a 2..=200 item deliverable",
+            when: "the explicit report scope contains fewer than 2 transformers",
+            remedy: "repeat --transformer for every transformer in the intended deliverable",
         },
         Refusal {
             code: "confirmation_required",
@@ -96,13 +96,13 @@ artifact coverage, missing artifacts, report errors, and registry status.",
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let transformers = inputs.repeated("transformer");
-    if transformers.len() < 2 || transformers.len() > 200 {
+    if transformers.len() < 2 {
         return Err(Failure::invalid(
             "invalid_transformer_scope",
-            "a report batch requires 2..=200 explicit transformers",
+            "a report batch requires at least 2 explicit transformers",
         )
         .remedy("repeat --transformer for every transformer in the intended deliverable")
-        .detail(json!({ "given": transformers.len(), "min": 2, "max": 200 })));
+        .detail(json!({ "given": transformers.len(), "min": 2 })));
     }
 
     let mut arguments = Map::new();
@@ -151,4 +151,27 @@ pub fn render(data: &Value) -> String {
         }
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ds_cli_contract::args::parse;
+    use ds_cli_contract::output::{Format, Output};
+
+    #[test]
+    fn report_scope_larger_than_two_hundred_reaches_the_desktop_boundary() {
+        let mut tokens = Vec::new();
+        for index in 0..202 {
+            tokens.push("--transformer".to_string());
+            tokens.push(format!("tx_{index:03}"));
+        }
+        let inputs = parse(&COMMAND, &tokens).expect("parse 202-transformer scope");
+        let context = Context {
+            confirmed: true,
+            output: Output::resolve(Format::Json, false, true),
+        };
+        let error = run(&inputs, &context).expect_err("unpaired test has no desktop");
+        assert_ne!(error.code(), "invalid_transformer_scope");
+    }
 }
