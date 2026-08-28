@@ -1371,12 +1371,10 @@ fn every_map_command_is_reachable_without_the_desktop_installed() {
 }
 
 #[test]
-fn a_well_formed_map_call_only_ever_fails_on_the_pairing_state() {
-    // Whatever this machine's desktop situation, a correct invocation must
-    // end in a pairing outcome — never an input refusal, and never an
-    // internal error. `undeclared_bridge_argument` in particular would mean a
-    // handler built an argument key its own BridgeOp does not declare, which
-    // no other suite can see.
+fn a_well_formed_map_call_stops_at_confirmation_or_pairing() {
+    // This test intentionally never passes --yes. A real paired desktop could
+    // otherwise execute a shared write while running a smoke suite. Reads
+    // reach the pairing boundary; writes must stop at confirmation first.
     for args in [
         vec!["map", "view"],
         vec!["map", "zoom", "--bbox", "29.9,-2.1,30.2,-1.85"],
@@ -1478,15 +1476,7 @@ fn a_well_formed_map_call_only_ever_fails_on_the_pairing_state() {
             "--transformer",
             "T-1042",
         ],
-        vec![
-            "map",
-            "design",
-            "batch",
-            "save",
-            "--transformer",
-            "T-1042",
-            "--yes",
-        ],
+        vec!["map", "design", "batch", "save", "--transformer", "T-1042"],
         vec!["map", "design", "upload", "inspect", "--path", "survey.zip"],
         vec![
             "map",
@@ -1496,15 +1486,8 @@ fn a_well_formed_map_call_only_ever_fails_on_the_pairing_state() {
             "--source",
             "T-1042=survey.zip",
         ],
-        vec!["map", "design", "save", "--transformer", "T-1042", "--yes"],
-        vec![
-            "map",
-            "design",
-            "report",
-            "--transformer",
-            "T-1042",
-            "--yes",
-        ],
+        vec!["map", "design", "save", "--transformer", "T-1042"],
+        vec!["map", "design", "report", "--transformer", "T-1042"],
         vec![
             "map",
             "design",
@@ -1521,16 +1504,15 @@ fn a_well_formed_map_call_only_ever_fails_on_the_pairing_state() {
             "A3",
             "--orientation",
             "landscape",
-            "--yes",
         ],
     ] {
         let mut argv = args.clone();
         argv.extend(["--output", "json"]);
         let code = refusal(&argv);
         assert!(
-            code.is_empty() || PAIRING_CODES.contains(&code.as_str()),
-            "`ds {}` failed with `{code}`, which is not a pairing outcome. \
-             A well-formed call must reach the bridge and stop there.",
+            code == "confirmation_required" || PAIRING_CODES.contains(&code.as_str()),
+            "`ds {}` failed with `{code}`, which is neither the confirmation \
+             gate for a write nor a pairing outcome for a read.",
             args.join(" ")
         );
     }
