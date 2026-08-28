@@ -73,6 +73,49 @@ When a request names both a side buffer and a total corridor, keep the units
 explicit: a 6 m buffer is 6 m on each side and therefore a 12 m corridor;
 report both widths in the delivery evidence.
 
+## Proven bounded new-branch pattern
+
+This is full project-state delivery, not a map styling operation. DS Grid owns
+the canonical route/terrain/placement/stringing intent. The characterized
+native composer owns the coupled PLS-CADD alignment, structure, section,
+support, circuit and attachment records. PLS-CADD owns reopen, solver behavior
+and native acceptance. Native resources remain PLS-CADD library assets chosen
+by exact leaf; never turn DS Grid assets into native structure or wire bytes.
+
+The Huye-Gisagara proof created one separately authorized alignment, placed
+three structures on it, and strung both phase and shield sections while leaving
+the old network untouched. The receipt proved the existing 130 alignments and
+1,965 structures unchanged; appended alignment 131 and structures 1966-1968;
+phase section 2731 with `acsr 70-12mm2` over support chain
+`1966/2 -> 1967/2 -> 1968/4`; shield section 2732 with `opgw.wir` over
+`1966/1 -> 1967/1 -> 1968/1`; and final readback of 131 alignments, 1,968
+structures and 2,732 sections. These ordinals, assets and counts are proof of
+the pattern, not reusable project constants.
+
+For another project, require an explicit new-alignment identity, ordered
+vertices, exact structure-library leaves and placements, exact phase/shield
+wires, typed support sets, circuit/phase slots, sag basis and catenary values.
+Write them as one bounded native plan through the characterized composer; do
+not hand-edit coupled DON rows or expose a generic process, PowerShell or UI
+escape through `ds` or MCP.
+
+The receipt must prove:
+
+- the complete existing alignment vertex/station prefix is unchanged;
+- every existing structure placement and definition is unchanged;
+- only the authorized alignment and structure range were appended;
+- phase and shield section ids, wire leaves, ordered support chains, support
+  set labels/numbers, phase slots/circuit links and sag values read back;
+- expected alignment, structure, section and terrain counts match;
+- exact native member leaves/digests, attachment closure and source/output
+  workspace digests remain bound.
+
+Any existing-route mutation, ambiguous native leaf, changed source digest,
+support mismatch or readback difference is an atomic refusal. Authorization to
+add the branch never grants permission to move, replace, restation, retype or
+repair an operator-owned existing alignment or structure. Fresh native reopen
+remains mandatory and does not confer engineering approval.
+
 ## Operator/native loop
 
 Use PLS-CADD only for operator-owned PI movement, native solver work or an

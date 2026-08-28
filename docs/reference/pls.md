@@ -4,14 +4,35 @@ Tier-4 reference. `ds pls <command> --help` is the contract.
 
 ## What this domain is
 
-Seven of `ds-grid-tasks`' typed file tasks, exposed as commands. That crate
+Seven of `ds-grid-tasks`' typed file tasks plus one exact-byte `ds-io` backup
+writer, exposed as commands. The task crate
 exists so a host does not have to know how a `.don`, a `.012` or a workspace's
 reference closure is read: it takes a typed request, loads the exact bytes,
 checks identity, calls the owning operation, and returns a bounded typed
 result.
 
 So this domain is thin on purpose. It parses no PLS format, resolves no
-reference and compares no station. Those live behind the task boundary.
+reference and compares no station. Those live behind the owner boundaries.
+
+## Complete backup creation
+
+`backup-create` takes a closed, already portable workspace and an absent
+`.bak` path outside that workspace. It reads every member twice around native
+framing and refuses if the inventory or bytes move during the operation. The
+`ds-io` writer validates typed paths, creates native directory records,
+compresses the container, and self-extracts it to prove exact member-byte
+recovery before `ds` publishes the new file.
+
+```bash
+ds pls reference-closure --workspace './PLS-CADD WORKSPACE' --findings-only --output json
+ds pls backup-create --workspace './PLS-CADD WORKSPACE' --out ./submission.bak --yes --output json
+```
+
+This command does no path healing or native member conversion. Its receipt
+therefore sets `member_bytes_preserved: true`, `path_healing_performed: false`,
+and `native_restore_reopen_accepted: false`. A fresh native PLS-CADD Restore,
+reopen, post-Restore closure and expected-count comparison remain separate
+submission gates.
 
 ## Digest pinning is not optional
 
@@ -202,7 +223,7 @@ PLS post-processing. Those sit behind `ds-grid-exchange`'s PLS adapter and the
 Oracle spool rather than behind `ds-grid-tasks`, so each needs its own request
 translation rather than a typed task to call.
 
-These commands are exposed only where `ds-grid-tasks` publishes a typed task;
+Commands are exposed only through a linked owner with a narrow contract;
 there is no generic native-patch adapter or argument-vector escape hatch.
 
 ## Ownership
@@ -211,6 +232,7 @@ Every command calls one function in `ds-grid-tasks`:
 
 | Command | Task |
 |---|---|
+| `backup-create` | `ds_io::pls_cadd_write_workspace_backup_container` |
 | `pole-capacity read` | `describe_pole_capacity` |
 | `reference-closure` | `inspect_pls_reference_closure` |
 | `section-orientation` | `diagnose_pls_section_orientation` |

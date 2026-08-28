@@ -47,7 +47,7 @@ Specialized profiles publish conventional typed leaf tools for one workflow:
 ds mcp serve --exposure commands --profile pls
 ```
 
-Profiles are `grid`, `pls`, `survey`, `form-factory`, `survey-projects`,
+Profiles are `grid`, `pls`, `pls-library`, `survey`, `form-factory`, `survey-projects`,
 `design-edit`, `design-run`, `map`, `layers`, `tiling`, `project`, `solar-run`,
 `solar-delivery`, and `operations`. `survey` retains map/local-data survey work;
 `form-factory` owns global schemas, while `survey-projects` owns project-form
@@ -58,6 +58,11 @@ tile generation and catalogue membership. Each includes
 commands are unavailable and authority, effects, confirmation, output, and
 refusals are unchanged. Plain `--exposure commands` retains the previous
 all-command publication temporarily for compatibility.
+
+PLS is split by operator workflow: `pls` contains workspace backup, closure,
+terrain and diagnostics; `pls-library` contains immutable native-library
+lifecycle. Their union is the PLS-CADD chapter, but each typed tool surface
+stays below the host's context limit.
 
 ## Why a chapter, rather than one tool per command
 

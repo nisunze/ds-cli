@@ -118,6 +118,11 @@ static LIBRARY_ENTRIES: &[Entry] = &[
 
 static PLS_ENTRIES: &[Entry] = &[
     Entry {
+        command: &ds_cli_pls::backup_create::COMMAND,
+        handler: ds_cli_pls::backup_create::run,
+        render: ds_cli_pls::backup_create::render,
+    },
+    Entry {
         command: &ds_cli_pls::pole_capacity::COMMAND,
         handler: ds_cli_pls::pole_capacity::run,
         render: ds_cli_pls::pole_capacity::render,

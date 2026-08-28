@@ -91,6 +91,7 @@ ds-grid-model = { path = "../ds-network/crates/ds-grid-model", features = ["arro
 ds-grid-engine = { path = "../ds-network/crates/ds-grid-engine" }
 ds-grid-exchange = { path = "../ds-network/crates/ds-grid-exchange" }
 ds-grid-tasks = { path = "../ds-network/crates/ds-grid-tasks" }
+ds-io = { path = "../ds-network/crates/ds-io" }
 
 [profile.release]
 opt-level = "s"

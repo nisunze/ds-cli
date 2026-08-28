@@ -146,6 +146,10 @@ temporary link at Cargo's required relative path; it refuses any mismatched
 existing path and removes only the link it created. Do not substitute a copy,
 vendored fixture, or a different Network checkout.
 
+On Windows use `& .\scripts\with-network-deps.ps1 -Executable cargo -Arguments
+@('<subcommand>', ...)`; it enforces the same validated temporary-link
+contract with a directory junction and removes only the junction it created.
+
 These suites carry most of the weight, and it is worth knowing what each one
 will refuse to let you do:
 

@@ -88,7 +88,7 @@ was written.",
     examples: &[
         Example {
             command: "ds mcp install --output json --yes",
-            note: "Print the VS Code entry and its file path; without `--write` nothing is written.",
+            note: "Print the VS Code entry and path; no write.",
             runnable: true,
         },
         Example {

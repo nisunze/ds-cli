@@ -16,5 +16,6 @@ serde = { workspace = true }
 # shaping a bounded result — and every engineering interpretation behind it
 # stays in the engine and exchange crates it calls.
 ds-grid-tasks = { workspace = true }
+ds-io = { workspace = true }
 serde_json = { workspace = true }
 sha2 = { workspace = true }

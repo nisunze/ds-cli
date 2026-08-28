@@ -1,6 +1,6 @@
 ---
 name: ds
-description: "Use deployed `ds` as the sole DS interface: discover one live command, follow its contract, and report confirmed gaps. Required before every DS task."
+description: "Use deployed `ds` as the sole DS interface. Required before every DS task."
 ---
 
 # Work through `ds`
@@ -84,6 +84,7 @@ bypass `ds`.
 - `ds-map-local-data` — temporary layers, semantic panel staging, and still PNG evidence.
 - `ds-lv-design-revision` — revise one transformer's LV design safely.
 - `ds-pls-cadd-terrain-roundtrip` — PLS-CADD route and terrain delivery.
+- `ds-pls-cadd-backup-delivery` — complete `.bak` creation and native Restore acceptance.
 - `ds-style-composite` — colour/icon/size, a second field, and line/fill cartography.
 - `ds-report-consumption` — obtain and read delivered workbooks.
 - `ds-qgis-print-delivery` — governed multi-layout print delivery.

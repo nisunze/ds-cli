@@ -22,7 +22,7 @@ main_checkout=$(dirname "$common_git_dir")
 network_checkout=$(dirname "$main_checkout")/ds-network
 required_link=$(dirname "$repo_root")/ds-network
 
-for crate in ds-grid-model ds-grid-engine ds-grid-exchange ds-grid-tasks; do
+for crate in ds-grid-model ds-grid-engine ds-grid-exchange ds-grid-tasks ds-io; do
     if [[ ! -f "$network_checkout/crates/$crate/Cargo.toml" ]]; then
         echo "with-network-deps: expected $network_checkout/crates/$crate/Cargo.toml" >&2
         exit 66

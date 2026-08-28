@@ -12,6 +12,7 @@ pub const EXPOSURES: &[&str] = &["chapters", "commands"];
 pub const PROFILE_IDS: &[&str] = &[
     "grid",
     "pls",
+    "pls-library",
     "survey",
     "form-factory",
     "survey-projects",
@@ -53,6 +54,7 @@ impl Exposure {
 pub enum Profile {
     Grid,
     Pls,
+    PlsLibrary,
     Survey,
     FormFactory,
     SurveyProjects,
@@ -72,6 +74,7 @@ impl Profile {
         match token {
             "grid" => Some(Self::Grid),
             "pls" => Some(Self::Pls),
+            "pls-library" => Some(Self::PlsLibrary),
             "survey" => Some(Self::Survey),
             "form-factory" => Some(Self::FormFactory),
             "survey-projects" => Some(Self::SurveyProjects),
@@ -92,6 +95,7 @@ impl Profile {
         match self {
             Self::Grid => "grid",
             Self::Pls => "pls",
+            Self::PlsLibrary => "pls-library",
             Self::Survey => "survey",
             Self::FormFactory => "form-factory",
             Self::SurveyProjects => "survey-projects",
@@ -110,7 +114,8 @@ impl Profile {
     pub fn includes(self, tool: &Tool) -> bool {
         match self {
             Self::Grid => matches!(tool.chapter, Chapter::GridModel | Chapter::Reports),
-            Self::Pls => tool.chapter == Chapter::PlsCadd,
+            Self::Pls => tool.chapter == Chapter::PlsCadd && tool.id.starts_with("pls."),
+            Self::PlsLibrary => tool.chapter == Chapter::PlsCadd && tool.id.starts_with("library."),
             Self::Survey => SURVEY_MAP_COMMANDS.contains(&tool.id.as_str()),
             Self::FormFactory => FORM_FACTORY_COMMANDS.contains(&tool.id.as_str()),
             Self::SurveyProjects => SURVEY_PROJECT_COMMANDS.contains(&tool.id.as_str()),
@@ -146,6 +151,7 @@ impl Profile {
             Self::SolarDelivery => SOLAR_DELIVERY_COMMANDS,
             Self::Grid
             | Self::Pls
+            | Self::PlsLibrary
             | Self::Map
             | Self::Tiling
             | Self::Project
@@ -156,7 +162,7 @@ impl Profile {
     pub fn includes_chapter(self, chapter: Chapter) -> bool {
         match self {
             Self::Grid => matches!(chapter, Chapter::GridModel | Chapter::Reports),
-            Self::Pls => chapter == Chapter::PlsCadd,
+            Self::Pls | Self::PlsLibrary => chapter == Chapter::PlsCadd,
             Self::Survey | Self::FormFactory | Self::SurveyProjects | Self::Layers => {
                 chapter == Chapter::Survey
             }
@@ -887,14 +893,15 @@ mod tests {
             .into_iter()
             .map(|value| value["name"].as_str().unwrap().to_string())
             .collect::<Vec<_>>();
-        assert_eq!(
-            names,
-            [
-                "ds_catalog",
-                "library_resolve-native",
-                "pls_reference-closure"
-            ]
-        );
+        assert_eq!(names, ["ds_catalog", "pls_reference-closure"]);
+        let library = Surface::new(Exposure::Commands, Some(Profile::PlsLibrary), tools.clone())
+            .expect("library profile");
+        let names = library
+            .tool_list()
+            .into_iter()
+            .map(|value| value["name"].as_str().unwrap().to_string())
+            .collect::<Vec<_>>();
+        assert_eq!(names, ["ds_catalog", "library_resolve-native"]);
         let error = Surface::new(Exposure::Chapters, Some(Profile::Pls), tools).unwrap_err();
         assert_eq!(error.code(), "mcp_profile_exposure_invalid");
     }

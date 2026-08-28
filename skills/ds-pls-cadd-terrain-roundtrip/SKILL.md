@@ -1,6 +1,6 @@
 ---
 name: ds-pls-cadd-terrain-roundtrip
-description: Repair PLS-CADD terrain waterfalls, derive visible deviation labels, preserve operator-owned alignments, verify closure, and hand off native solver decisions.
+description: Repair PLS-CADD terrain and deliver an authorized new branch with bounded placement and phase/OPGW stringing. Not LV design or backup-only work.
 metadata:
   ds-chapters: grid-model, pls-cadd
 ---
@@ -12,6 +12,10 @@ horizontal CRS and vertical datum are evidence. Never infer one to make a
 repair run. Read
 [references/terrain-round-trip.md](references/terrain-round-trip.md) only for
 the longer import/operator-return workflow.
+
+Use `ds-pls-cadd-backup-delivery` instead when the requested outcome is a
+complete `.bak`, fresh Restore/reopen, or portability acceptance without a
+terrain/alignment revision.
 
 ## Five-minute fast path
 

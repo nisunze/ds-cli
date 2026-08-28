@@ -1,0 +1,4 @@
+interface:
+  display_name: "DS PLS-CADD Backup Delivery"
+  short_description: "Create and native-accept complete PLS backups"
+  default_prompt: "Use $ds-pls-cadd-backup-delivery to create a complete exact-byte PLS-CADD backup, verify its canonical contents, and hand off native Restore/reopen acceptance."

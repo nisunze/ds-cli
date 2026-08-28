@@ -622,6 +622,75 @@ fn pls_reference_closure_reads_the_real_workspace() {
 }
 
 #[test]
+fn pls_backup_create_frames_every_real_workspace_member_and_refuses_overwrite() {
+    let source = workspace();
+    let root = temp_root("pls-backup-create");
+    std::fs::create_dir_all(&root).unwrap();
+    let backup = root.join("humble-submission.bak");
+    let backup_text = backup.display().to_string();
+
+    let unconfirmed = ds(&[
+        "pls",
+        "backup-create",
+        "--workspace",
+        &source,
+        "--out",
+        &backup_text,
+        "--output",
+        "json",
+    ]);
+    assert_eq!(unconfirmed.code, 2);
+    assert_eq!(
+        unconfirmed.envelope["error"]["code"],
+        "confirmation_required"
+    );
+    assert!(!backup.exists(), "an unconfirmed call must write nothing");
+
+    let created = ok(&[
+        "pls",
+        "backup-create",
+        "--workspace",
+        &source,
+        "--out",
+        &backup_text,
+        "--yes",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(created["file_members"], 15);
+    assert_eq!(created["member_bytes_preserved"], true);
+    assert_eq!(created["path_healing_performed"], false);
+    assert_eq!(created["native_restore_reopen_required"], true);
+    assert_eq!(created["native_restore_reopen_accepted"], false);
+    assert!(backup.is_file());
+
+    let inspected = ok(&[
+        "dsgrid-exchange",
+        "inspect",
+        "--source",
+        &backup_text,
+        "--output",
+        "json",
+    ]);
+    assert_eq!(inspected["sources"][0]["kind"], "PlsBackupContainer");
+    assert_eq!(inspected["sources"][0]["counts"]["members"], 15);
+
+    let overwrite = ds(&[
+        "pls",
+        "backup-create",
+        "--workspace",
+        &source,
+        "--out",
+        &backup_text,
+        "--yes",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(overwrite.envelope["error"]["code"], "output_exists");
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
 fn pls_pole_capacity_reads_a_real_structure() {
     let structure = workspace_file("structures/hp-m1-strain.012");
     let data = ok(&[
@@ -2354,6 +2423,9 @@ fn capability_search_finds_library_seeding_and_native_resolution() {
 #[test]
 fn capability_search_finds_terrain_waterfall_and_visible_deviation_labels() {
     for (query, expected) in [
+        ("backup restore workspace", "pls.backup-create"),
+        ("exact-byte native backup", "pls.backup-create"),
+        ("submission bak", "pls.backup-create"),
         ("terrain waterfall", "pls.terrain-reconcile"),
         ("terrain datum", "pls.terrain-reconcile"),
         ("surveyed route seams", "pls.terrain-reconcile"),

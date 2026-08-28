@@ -83,6 +83,7 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("map.zoom", "local_ui", "desktop_pairing"),
     ("mcp.install", "machine_write", "none"),
     ("mcp.serve", "read_only", "none"),
+    ("pls.backup-create", "artifact_write", "none"),
     ("pls.compare-don", "discovery", "none"),
     ("pls.delivery-verify", "discovery", "none"),
     ("pls.deviation-labels", "local_file_write", "none"),

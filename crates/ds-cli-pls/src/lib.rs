@@ -17,6 +17,7 @@
 //! `--request <file>` is what they pass, rather than the domain growing a
 //! flag per nested field.
 
+pub mod backup_create;
 pub mod compare_don;
 pub mod delivery_verify;
 pub mod deviation_labels;
@@ -31,6 +32,7 @@ pub static DOMAIN: Domain = Domain {
     id: "pls",
     summary: "PLS-CADD workspaces: structures, capacity, references, DONs.",
     commands: &[
+        &backup_create::COMMAND,
         &pole_capacity::COMMAND,
         &reference_closure::COMMAND,
         &section_orientation::COMMAND,

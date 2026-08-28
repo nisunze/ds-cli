@@ -45,7 +45,12 @@ fn mcp(args: &[&str], requests: &[Value]) -> (Vec<Value>, String) {
         stdin.write_all(b"\n").expect("newline");
     }
     let output = child.wait_with_output().expect("MCP server exits");
-    assert!(output.status.success(), "MCP server failed");
+    assert!(
+        output.status.success(),
+        "MCP server failed for `{}`: {}",
+        args.join(" "),
+        String::from_utf8_lossy(&output.stderr)
+    );
     let stdout = String::from_utf8(output.stdout).expect("UTF-8 protocol output");
     let responses = stdout
         .lines()
@@ -319,6 +324,7 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
     for profile in [
         "grid",
         "pls",
+        "pls-library",
         "survey",
         "form-factory",
         "survey-projects",
@@ -353,6 +359,10 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
                 .collect(),
         );
     }
+    assert!(
+        published["pls"].contains("pls_backup-create"),
+        "the PLS profile must expose the live backup command without a second MCP schema"
+    );
 
     let (compatibility, _) = mcp(
         &["--exposure", "commands"],
@@ -367,10 +377,13 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
     for (prefix, first, second) in [
         ("map_design_", "design-edit", "design-run"),
         ("solar_", "solar-run", "solar-delivery"),
+        ("pls_", "pls", "pls-library"),
     ] {
         let expected = all
             .iter()
-            .filter(|name| name.starts_with(prefix))
+            .filter(|name| {
+                name.starts_with(prefix) || (prefix == "pls_" && name.starts_with("library_"))
+            })
             .cloned()
             .collect::<BTreeSet<_>>();
         let first_set = &published[first];

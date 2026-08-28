@@ -64,7 +64,7 @@ calls answered, and why the loop ended.",
         },
         Example {
             command: "ds mcp serve --exposure commands --profile pls",
-            note: "Typed PLS-CADD and native-library profile plus bounded catalogue.",
+            note: "Typed PLS workspace, backup and diagnostics.",
             runnable: false,
         },
     ],

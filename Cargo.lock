@@ -532,6 +532,7 @@ version = "0.1.0"
 dependencies = [
  "ds-cli-contract",
  "ds-grid-tasks",
+ "ds-io",
  "serde",
  "serde_json",
  "sha2",
