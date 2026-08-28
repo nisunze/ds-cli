@@ -53,6 +53,18 @@ pub(crate) const STDIO_UNAVAILABLE: Refusal = Refusal {
     remedy: "start the server from an MCP host as a stdio server; it is not an interactive command",
 };
 
+pub(crate) const DESKTOP_NOT_PAIRED: Refusal = Refusal {
+    code: "desktop_not_paired",
+    when: "an MCP-invoked command whose live descriptor requires desktop authority cannot find or pair the installed DS GridDesign application within the bounded wait",
+    remedy: "start DS GridDesign, sign in, and retry the MCP tool call",
+};
+
+pub(crate) const DESKTOP_SIGNED_OUT: Refusal = Refusal {
+    code: "desktop_signed_out",
+    when: "an MCP-invoked command whose live descriptor requires a desktop user or project reaches a paired session that is signed out or has no selected project",
+    remedy: "sign in and select the intended project in DS GridDesign, then retry the MCP tool call",
+};
+
 pub(crate) const PROFILE_EXPOSURE_INVALID: Refusal = Refusal {
     code: "mcp_profile_exposure_invalid",
     when: "a specialized profile was requested without typed command exposure",

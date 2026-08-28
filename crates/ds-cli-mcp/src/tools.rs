@@ -6,9 +6,11 @@
 
 use std::path::PathBuf;
 use std::process::Command;
+use std::thread;
+use std::time::Duration;
 
 use ds_cli_contract::outcome::Failure;
-use ds_cli_contract::spec::Chapter;
+use ds_cli_contract::spec::{Authority, Chapter};
 use serde_json::{Map, Value, json};
 
 /// One `ds` command as an MCP tool, plus what is needed to call it back.
@@ -21,6 +23,9 @@ pub struct Tool {
     /// same word the skills use.
     pub id: String,
     pub chapter: Chapter,
+    /// Parsed from the same live descriptor that supplied every other tool
+    /// field. It is the only input to the MCP desktop gate.
+    pub authority: Authority,
     pub path: Vec<String>,
     pub description: String,
     pub input_schema: Value,
@@ -29,6 +34,9 @@ pub struct Tool {
     /// The authoritative tier-3 descriptor this tool was generated from.
     pub descriptor: Value,
 }
+
+const PAIR_POLL_INTERVAL: Duration = Duration::from_millis(200);
+const PAIR_POLL_ATTEMPTS: usize = 50;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Input {
@@ -58,6 +66,7 @@ pub fn tool_name(id: &str) -> String {
 pub fn tool_from_descriptor(command: &Value) -> Option<Tool> {
     let id = command.get("id")?.as_str()?.to_string();
     let chapter = Chapter::from_token(command.get("chapter")?.as_str()?)?;
+    let authority = Authority::from_token(command.get("authority")?.as_str()?)?;
     let path: Vec<String> = command
         .get("path")?
         .as_array()?
@@ -137,7 +146,7 @@ pub fn tool_from_descriptor(command: &Value) -> Option<Tool> {
     let purpose = command.get("purpose").and_then(Value::as_str).unwrap_or("");
     let output = command.get("output").and_then(Value::as_str).unwrap_or("");
     let effect = command.get("effect").and_then(Value::as_str).unwrap_or("");
-    let authority = command
+    let authority_token = command
         .get("authority")
         .and_then(Value::as_str)
         .unwrap_or("");
@@ -145,7 +154,9 @@ pub fn tool_from_descriptor(command: &Value) -> Option<Tool> {
     if !output.is_empty() {
         description.push_str(&format!("\n\nReturns: {output}"));
     }
-    description.push_str(&format!("\n\nEffect: {effect}. Authority: {authority}."));
+    description.push_str(&format!(
+        "\n\nEffect: {effect}. Authority: {authority_token}."
+    ));
     if confirmation_required {
         description.push_str(&format!(" Requires `{CONFIRM_PROPERTY}: true`."));
     }
@@ -168,6 +179,7 @@ pub fn tool_from_descriptor(command: &Value) -> Option<Tool> {
         name: tool_name(&id),
         id,
         chapter,
+        authority,
         path,
         description,
         input_schema: json!({
@@ -180,6 +192,220 @@ pub fn tool_from_descriptor(command: &Value) -> Option<Tool> {
         inputs,
         descriptor: command.clone(),
     })
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DesktopState {
+    Absent,
+    Paired {
+        signed_in: bool,
+        project_selected: bool,
+    },
+}
+
+/// Ensure exactly the authority the descriptor names, before dispatching an
+/// MCP invocation. Discovery, `describe`, and every `Authority::None` tool
+/// bypass this entirely.
+pub fn ensure_desktop(tool: &Tool, arguments: &Value, executable: &PathBuf) -> Result<(), Failure> {
+    if !tool.authority.requires_desktop() {
+        return Ok(());
+    }
+    let named_descriptor = arguments
+        .get("desktop-descriptor")
+        .and_then(Value::as_str)
+        .is_some()
+        || std::env::var_os("DS_DESKTOP_DESCRIPTOR").is_some_and(|value| !value.is_empty());
+    let descriptor = arguments
+        .get("desktop-descriptor")
+        .and_then(Value::as_str)
+        .map(str::to_owned);
+    let mut status = || desktop_status(executable, descriptor.as_deref());
+    let mut launch = || launch_installed_desktop(executable);
+    let mut wait = || thread::sleep(PAIR_POLL_INTERVAL);
+    ensure_desktop_with(
+        tool.authority,
+        named_descriptor,
+        &mut status,
+        &mut launch,
+        &mut wait,
+    )
+}
+
+/// The deterministic gate behind [`ensure_desktop`]. It has injectable
+/// observation, launch, and wait steps so its no-launch and bounded-launch
+/// guarantees are testable without an installed desktop.
+fn ensure_desktop_with<S, L, W>(
+    authority: Authority,
+    named_descriptor: bool,
+    status: &mut S,
+    launch: &mut L,
+    wait: &mut W,
+) -> Result<(), Failure>
+where
+    S: FnMut() -> Result<DesktopState, Failure>,
+    L: FnMut() -> Result<(), Failure>,
+    W: FnMut(),
+{
+    if !authority.requires_desktop() {
+        return Ok(());
+    }
+    match status()? {
+        state @ DesktopState::Paired { .. } => return authority_ready(authority, state),
+        DesktopState::Absent if named_descriptor => {
+            return Err(not_paired("named descriptor did not publish a session"));
+        }
+        DesktopState::Absent => {}
+    }
+
+    // One invocation gets one launch attempt. Retrying an unchanged MCP call
+    // must not turn into a process fan-out.
+    launch()?;
+    for _ in 0..PAIR_POLL_ATTEMPTS {
+        wait();
+        match status()? {
+            state @ DesktopState::Paired { .. } => return authority_ready(authority, state),
+            DesktopState::Absent => {}
+        }
+    }
+    Err(not_paired(
+        "desktop launch did not publish a paired session before the 10 second bound",
+    ))
+}
+
+fn authority_ready(authority: Authority, state: DesktopState) -> Result<(), Failure> {
+    let DesktopState::Paired {
+        signed_in,
+        project_selected,
+    } = state
+    else {
+        return Err(not_paired("desktop is not paired"));
+    };
+    if authority.requires_signed_in_user() && !signed_in {
+        return Err(Failure::unauthorized(
+            "desktop_signed_out",
+            "the paired DS GridDesign session is signed out",
+        )
+        .remedy("sign in to DS GridDesign, then retry the MCP tool call")
+        .next("ds desktop status"));
+    }
+    if authority.requires_project() && !project_selected {
+        return Err(Failure::unauthorized(
+            "desktop_signed_out",
+            "the paired DS GridDesign session has no selected project",
+        )
+        .remedy("select the intended project in DS GridDesign, then retry the MCP tool call")
+        .next("ds desktop status"));
+    }
+    Ok(())
+}
+
+fn not_paired(detail: &str) -> Failure {
+    Failure::unavailable("desktop_not_paired", "no paired DS GridDesign session is available")
+        .remedy("start DS GridDesign and sign in, then retry the MCP tool call")
+        .next("ds desktop status")
+        .detail(json!({ "mcp_desktop_gate": detail, "wait_bound_ms": PAIR_POLL_ATTEMPTS as u64 * PAIR_POLL_INTERVAL.as_millis() as u64 }))
+}
+
+fn desktop_status(executable: &PathBuf, descriptor: Option<&str>) -> Result<DesktopState, Failure> {
+    let mut argv = vec![
+        "desktop".to_string(),
+        "status".to_string(),
+        "--output".to_string(),
+        "json".to_string(),
+    ];
+    if let Some(descriptor) = descriptor {
+        argv.insert(2, descriptor.to_string());
+        argv.insert(2, "--desktop-descriptor".to_string());
+    }
+    let (code, stdout, stderr) = run_cli(executable, &argv).map_err(|message| {
+        Failure::unavailable("desktop_not_paired", "desktop status could not be read")
+            .remedy("start DS GridDesign and retry the MCP tool call")
+            .detail(json!({ "mcp_desktop_gate": bounded(&message) }))
+    })?;
+    let envelope: Value = serde_json::from_str(stdout.trim()).map_err(|_| {
+        Failure::unavailable(
+            "desktop_not_paired",
+            "desktop status returned no readable envelope",
+        )
+        .remedy("start DS GridDesign and retry the MCP tool call")
+        .detail(json!({ "mcp_desktop_gate": bounded(&stderr) }))
+    })?;
+    if code != 0 || envelope.get("status").and_then(Value::as_str) != Some("ok") {
+        return Err(not_paired(
+            "desktop status refused before pairing completed",
+        ));
+    }
+    let data = &envelope["data"];
+    if !data["paired"].as_bool().unwrap_or(false) {
+        return Ok(DesktopState::Absent);
+    }
+    Ok(DesktopState::Paired {
+        signed_in: data["signed_in"].as_bool().unwrap_or(false),
+        project_selected: data["project"]
+            .as_str()
+            .is_some_and(|project| !project.is_empty()),
+    })
+}
+
+fn bounded(value: &str) -> String {
+    value
+        .lines()
+        .next()
+        .unwrap_or_default()
+        .chars()
+        .take(160)
+        .collect()
+}
+
+fn launch_installed_desktop(executable: &PathBuf) -> Result<(), Failure> {
+    let application = installed_desktop(executable)?;
+    Command::new(application)
+        .spawn()
+        .map(|_| ())
+        .map_err(|error| {
+            not_paired(&format!(
+                "installed desktop could not start: {}",
+                error.kind()
+            ))
+        })
+}
+
+fn installed_desktop(executable: &PathBuf) -> Result<PathBuf, Failure> {
+    #[cfg(windows)]
+    {
+        let mut candidates = Vec::new();
+        if let Some(directory) = executable.parent() {
+            candidates.push(directory.join("DS GridDesign.exe"));
+            candidates.push(directory.join("DS GridDesign Canary.exe"));
+        }
+        if let Some(base) = std::env::var_os("LOCALAPPDATA") {
+            let base = PathBuf::from(base);
+            candidates.push(base.join("DS GridDesign").join("DS GridDesign.exe"));
+            candidates.push(
+                base.join("DS GridDesign Canary")
+                    .join("DS GridDesign Canary.exe"),
+            );
+        }
+        candidates.retain(|candidate| candidate.is_file());
+        candidates.sort();
+        candidates.dedup();
+        return match candidates.as_slice() {
+            [application] => Ok(application.clone()),
+            [] => Err(not_paired(
+                "no installed DS GridDesign application was found beside ds or in LOCALAPPDATA",
+            )),
+            _ => Err(not_paired(
+                "more than one installed DS GridDesign application was found; start the intended one or provide its descriptor",
+            )),
+        };
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = executable;
+        Err(not_paired(
+            "automatic desktop launch is currently available only in the installed Windows package",
+        ))
+    }
 }
 
 /// Map a `tools/call` argument object onto the argv `ds` expects after the
@@ -461,6 +687,7 @@ mod tests {
         assert_eq!(tool.input_schema["required"], json!(["transformer"]));
         assert_eq!(tool.input_schema["additionalProperties"], false);
         assert!(tool.description.contains("desktop_not_paired"));
+        assert_eq!(tool.authority, Authority::Project);
     }
 
     #[test]
@@ -533,5 +760,115 @@ mod tests {
             tool_name("map.design.batch.process"),
             "map_design_batch_process"
         );
+    }
+
+    #[test]
+    fn headless_authority_never_observes_waits_or_launches_a_desktop() {
+        let mut observed = 0usize;
+        let mut launched = 0usize;
+        let mut waited = 0usize;
+        ensure_desktop_with(
+            Authority::None,
+            false,
+            &mut || {
+                observed += 1;
+                Ok(DesktopState::Absent)
+            },
+            &mut || {
+                launched += 1;
+                Ok(())
+            },
+            &mut || waited += 1,
+        )
+        .expect("headless command is ready without desktop work");
+        assert_eq!((observed, launched, waited), (0, 0, 0));
+    }
+
+    #[test]
+    fn paired_authority_launches_once_and_waits_only_to_the_declared_bound() {
+        let mut observations = 0usize;
+        let mut launched = 0usize;
+        let mut waited = 0usize;
+        let failure = ensure_desktop_with(
+            Authority::DesktopPairing,
+            false,
+            &mut || {
+                observations += 1;
+                Ok(DesktopState::Absent)
+            },
+            &mut || {
+                launched += 1;
+                Ok(())
+            },
+            &mut || waited += 1,
+        )
+        .expect_err("no descriptor ever appears");
+        assert_eq!(failure.code(), "desktop_not_paired");
+        assert_eq!(launched, 1, "one call must not fan out app launches");
+        assert_eq!(waited, PAIR_POLL_ATTEMPTS);
+        assert_eq!(observations, PAIR_POLL_ATTEMPTS + 1);
+    }
+
+    #[test]
+    fn an_already_running_desktop_is_never_duplicated() {
+        let mut launched = 0usize;
+        ensure_desktop_with(
+            Authority::DesktopUser,
+            false,
+            &mut || {
+                Ok(DesktopState::Paired {
+                    signed_in: true,
+                    project_selected: false,
+                })
+            },
+            &mut || {
+                launched += 1;
+                Ok(())
+            },
+            &mut || panic!("a paired desktop must not be polled"),
+        )
+        .expect("signed-in desktop user is ready");
+        assert_eq!(launched, 0);
+    }
+
+    #[test]
+    fn signed_out_desktop_refuses_without_a_second_launch() {
+        let mut launched = 0usize;
+        let failure = ensure_desktop_with(
+            Authority::Project,
+            false,
+            &mut || {
+                Ok(DesktopState::Paired {
+                    signed_in: false,
+                    project_selected: false,
+                })
+            },
+            &mut || {
+                launched += 1;
+                Ok(())
+            },
+            &mut || panic!("a paired desktop must not be polled"),
+        )
+        .expect_err("sign-out is an authority refusal");
+        assert_eq!(failure.code(), "desktop_signed_out");
+        assert_eq!(launched, 0);
+    }
+
+    #[test]
+    fn a_named_descriptor_is_never_replaced_by_an_automatic_launch() {
+        let mut launched = 0usize;
+        let failure = ensure_desktop_with(
+            Authority::DesktopPairing,
+            true,
+            &mut || Ok(DesktopState::Absent),
+            &mut || {
+                launched += 1;
+                Ok(())
+            },
+            &mut || panic!("a named descriptor must not enter launch polling"),
+        )
+        .expect_err("named descriptor remains authoritative");
+        assert_eq!(failure.code(), "desktop_not_paired");
+        assert_eq!(launched, 0);
     }
 }

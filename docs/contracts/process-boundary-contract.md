@@ -44,12 +44,16 @@ four owner classes, and each is audited where it lives:
 | A sibling DS executable | `crates/ds-cli-exec` | `ds-report`, `ds-solar`, under one named subcommand |
 | The platform package manager | `crates/ds-cli-workstation/src/install.rs` | one fixed manager with a `const` package identity |
 | An executable already on this machine, probed | `crates/ds-cli-workstation/src/detect.rs`, `verify.rs` | bounded version probes and the harmless verification smoke test |
-| This same `ds` | `crates/ds-cli-mcp/src/tools.rs` | one `ds <path> … --output json` per `tools/call` |
+| This same `ds`, and the installed desktop | `crates/ds-cli-mcp/src/tools.rs` | one `ds <path> … --output json` per `tools/call`; for a live-descriptor command that requires desktop authority and has no named descriptor, one fixed no-argument DS GridDesign launch |
 
 Every one of those sites builds its arguments from a literal array in its own
 source. None accepts an argv, a subcommand string, or a shell fragment from a
 caller, and the MCP adapter refuses any argument key the live descriptor does
-not declare before it maps a single element.
+not declare before it maps a single element. Its desktop launch has no
+arguments at all and is available only to an MCP *invoke* whose live descriptor
+authority is `desktop_pairing`, `desktop_user`, or `project`; catalogue and
+describe paths, and every `authority: none` command, never observe or launch a
+desktop.
 
 `crates/ds/tests/process_boundary.rs` pins that inventory: it asserts the exact
 set of non-test files permitted to construct a process. A fifth spawn site

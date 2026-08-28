@@ -98,6 +98,36 @@ pub enum Authority {
 }
 
 impl Authority {
+    /// Parse the token carried by a live command descriptor.
+    ///
+    /// MCP uses this when it projects a descriptor into a tool. Keeping the
+    /// vocabulary here means the adapter cannot grow a second authority list.
+    pub fn from_token(token: &str) -> Option<Self> {
+        match token {
+            "none" => Some(Self::None),
+            "desktop_pairing" => Some(Self::DesktopPairing),
+            "desktop_user" => Some(Self::DesktopUser),
+            "project" => Some(Self::Project),
+            _ => None,
+        }
+    }
+
+    /// Whether this authority needs the paired desktop transport at all.
+    pub const fn requires_desktop(self) -> bool {
+        !matches!(self, Self::None)
+    }
+
+    /// Whether the paired desktop must report a signed-in user before the
+    /// command is sent to its handler.
+    pub const fn requires_signed_in_user(self) -> bool {
+        matches!(self, Self::DesktopUser | Self::Project)
+    }
+
+    /// Whether a selected desktop project is part of the authority proof.
+    pub const fn requires_project(self) -> bool {
+        matches!(self, Self::Project)
+    }
+
     pub const fn token(self) -> &'static str {
         match self {
             Self::None => "none",

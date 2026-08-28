@@ -2,7 +2,7 @@
 
 use std::path::PathBuf;
 
-use ds_cli_contract::outcome::Failure;
+use ds_cli_contract::outcome::{Failure, error_envelope};
 use ds_cli_contract::spec::Chapter;
 use serde_json::{Map, Value, json};
 
@@ -565,7 +565,33 @@ fn invoke_leaf(
     executable: &PathBuf,
 ) -> Result<Value, (i64, String)> {
     let argv = tools::argv_for_call(tool, arguments).map_err(|message| (-32602, message))?;
+    // The registry owns confirmation and refuses before any handler opens a
+    // bridge. Preserve that ordering here too: an unconfirmed paired write is
+    // an input refusal, never a reason to start a desktop.
+    if tool.confirmation_required
+        && !arguments
+            .get(tools::CONFIRM_PROPERTY)
+            .and_then(Value::as_bool)
+            .unwrap_or(false)
+    {
+        return invoke_argv(&argv, executable);
+    }
+    if let Err(failure) = tools::ensure_desktop(tool, arguments, executable) {
+        return Ok(failure_result(tool, &failure));
+    }
     invoke_argv(&argv, executable)
+}
+
+fn failure_result(tool: &Tool, failure: &Failure) -> Value {
+    let contract = tool.descriptor["contract"].as_u64().unwrap_or(1) as u32;
+    let envelope = serde_json::to_value(error_envelope(&tool.id, contract, failure))
+        .unwrap_or_else(|_| json!({ "status": "error" }));
+    let text = serde_json::to_string(&envelope).unwrap_or_else(|_| "{}".to_string());
+    json!({
+        "content": [{ "type": "text", "text": text }],
+        "structuredContent": envelope,
+        "isError": true,
+    })
 }
 
 fn invoke_argv(argv: &[String], executable: &PathBuf) -> Result<Value, (i64, String)> {
@@ -714,12 +740,14 @@ pub const fn chapter_description(chapter: Chapter) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ds_cli_contract::spec::Authority;
 
     fn tool(id: &str, chapter: Chapter, confirmation_required: bool) -> Tool {
         Tool {
             name: tools::tool_name(id),
             id: id.to_string(),
             chapter,
+            authority: Authority::None,
             path: id.split('.').map(str::to_string).collect(),
             description: format!("{id} purpose"),
             input_schema: json!({ "type": "object" }),
@@ -825,6 +853,20 @@ mod tests {
             )
             .unwrap_err();
         assert!(nested.1.contains("chapter envelope"), "{}", nested.1);
+    }
+
+    #[test]
+    fn catalog_discovery_never_enters_the_desktop_launch_gate() {
+        let mut paired = tool("desktop.project.list", Chapter::Project, false);
+        paired.authority = Authority::DesktopUser;
+        let surface = Surface::new(Exposure::Chapters, None, vec![paired]).expect("surface");
+        let response = surface
+            .call_catalog(&json!({ "command": "desktop.project.list" }))
+            .expect("catalogue is descriptor-only");
+        assert_eq!(
+            response["structuredContent"]["command"]["id"],
+            "desktop.project.list"
+        );
     }
 
     #[test]

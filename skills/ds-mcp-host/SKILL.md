@@ -54,6 +54,14 @@ A wrong-chapter command returns the matching router. Unknown properties and
 arbitrary argv are refused before dispatch. Project and desktop identity remain
 owned by the selected command, not by the MCP session.
 
+MCP reads the selected command's live `authority` descriptor before an
+`invoke`: `none` stays headless and never starts DS GridDesign. A paired
+authority may make one bounded Windows installed-app launch only when no
+session and no explicit `desktop-descriptor` are present. Discovery and
+`describe` never launch the app. If the app is signed out or cannot pair in
+the bounded wait, follow the returned DS refusal and remedy; do not retry by
+inventing another descriptor or identity.
+
 ## Typed-profile routing
 
 Use the advertised leaf tool directly after reading its schema and description.

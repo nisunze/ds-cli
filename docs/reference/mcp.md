@@ -18,7 +18,7 @@ surface**.
 | The same `ds` executable, launched with `mcp serve` by the host | A separate binary, sidecar or service |
 | Chapter/profile views generated at startup from `ds capabilities` descriptors | A second command registry or hand-written command schema |
 | One `ds <path> … --output json` process per `tools/call`, envelope returned verbatim | A cache, a batch, or a "convenience" tool the CLI lacks |
-| Paired with the running DS GridDesign exactly as a terminal would be | A credential, a listener, or a network hop |
+| Uses each live descriptor's authority to keep headless commands headless, and to make one bounded local pairing attempt for paired commands | A credential, a listener, or a network hop |
 
 The `mcp` domain excludes itself from the tool list. Chapter classification is
 declared once on every canonical command and appears in its live descriptor.
@@ -124,6 +124,27 @@ hold for every exposure mode and every profile:
 
 A profile is an allowlist over the same registry. A command a profile omits is
 unavailable through that server; it is never reimplemented locally.
+
+## Desktop readiness for MCP invocation
+
+Authority is read from the same tier-3 descriptor used for the tool schema;
+there is no MCP-side list of desktop commands. `authority: none` means local
+owner/process work and MCP does not probe or launch DS GridDesign. Catalogue
+and `describe` are discovery too, so they never launch it regardless of the
+selected command.
+
+For an `invoke` whose descriptor says `desktop_pairing`, `desktop_user`, or
+`project`, MCP first reads `ds desktop status`. If no session is present and
+the caller did not name `--desktop-descriptor` (nor set
+`DS_DESKTOP_DESCRIPTOR`), the installed Windows package may start its fixed DS
+GridDesign executable once, then waits at most 10 seconds for its loopback
+descriptor. It never launches a second app when status already reports one,
+and it never launches a different app in place of a named descriptor.
+
+Failure remains a normal DS envelope: `desktop_not_paired` carries the bounded
+remedy to start/sign in, and `desktop_signed_out` remains a refusal rather than
+an implicit login. Automatic launch is intentionally unavailable outside the
+installed Windows package; start and pair the application manually there.
 
 ## Confirmation
 

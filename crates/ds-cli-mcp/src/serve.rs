@@ -71,6 +71,8 @@ calls answered, and why the loop ended.",
     refusals: &[
         crate::CAPABILITIES_UNAVAILABLE,
         crate::STDIO_UNAVAILABLE,
+        crate::DESKTOP_NOT_PAIRED,
+        crate::DESKTOP_SIGNED_OUT,
         crate::PROFILE_EXPOSURE_INVALID,
         crate::PROFILE_TOO_BROAD,
     ],
