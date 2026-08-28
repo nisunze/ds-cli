@@ -275,8 +275,22 @@ fn inspect_reports_the_engine_s_own_identity() {
     assert_eq!(data["model"]["crs"], "EPSG:32735");
     assert_eq!(data["model"]["schema_version"], 1);
     assert_eq!(data["model"]["format_version"], 1);
-    assert_eq!(data["model"]["fingerprint"], "fnv1a64:6f9e4a421fccf238");
-    assert_eq!(data["model"]["id"], "pls-import-fnv1a64:6f9e4a42");
+    // Canonical ds-network cb09403 regenerated this self-authored fixture.
+    // Keep the source fingerprint and its derived model id coupled: changing
+    // one while leaving the other stale would conceal an identity drift.
+    const HUMBLE_FINGERPRINT: &str = "fnv1a64:50caa569815f07b9";
+    assert_eq!(data["model"]["fingerprint"], HUMBLE_FINGERPRINT);
+    assert_eq!(
+        data["model"]["id"],
+        format!(
+            "pls-import-fnv1a64:{}",
+            HUMBLE_FINGERPRINT
+                .strip_prefix("fnv1a64:")
+                .expect("fixture fingerprint prefix")
+                .get(..8)
+                .expect("fingerprint has the id digest prefix")
+        )
+    );
 
     // The default answer decodes nothing. This is the cost contract, not a
     // detail: it is why calling inspect first is cheap.
