@@ -122,6 +122,8 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("survey.templates.list", "read_only", "desktop_user"),
     ("style.appearance.plan", "read_only", "project"),
     ("style.appearance.set", "global_write", "project"),
+    ("style.cartography.plan", "read_only", "project"),
+    ("style.cartography.set", "global_write", "project"),
     ("style.dimension.clear", "global_write", "project"),
     ("style.dimension.plan", "read_only", "project"),
     ("style.dimension.set", "global_write", "project"),

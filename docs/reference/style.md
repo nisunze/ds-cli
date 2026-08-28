@@ -14,12 +14,31 @@ Second-dimension modules the UI uses and the same governed save payload its
 That is why there is no `--project` flag: the active project is the one the
 application has open.
 
-## Guided appearance and two dimensions
+## The three axes of a document
+
+A style document carries three independent axes, and every command belongs to
+exactly one of them. Choosing the wrong axis is the most expensive mistake
+here, because two of them are paid for in fields:
+
+| axis | command family | driven by | what it answers |
+|---|---|---|---|
+| base appearance | `appearance plan/set` | nothing — one flat value | what colour, icon and size is this layer? |
+| second dimension | `dimension plan/set/clear` | a second field | which features differ, and how do I see it? |
+| cartography | `cartography plan/set` | nothing — one flat value | how does this line or fill *read as a map*? |
+
+Cartography is field-free, which is the whole point of having it: a proposed
+service area can be hatched, a water main can carry flow arrows and an MV line
+can be cased for contrast without spending the colour dimension or the second
+dimension on it. The three compose — none replaces another.
+
+## Guided appearance
 
 `appearance plan` and `appearance set` author a layer's flat colour, raster
 symbol icon and base size through the live Style Center schema. They accept
 only properties that make sense for the layer type and validate icon names and
 numeric bounds against the open application before publishing.
+
+## Two field-driven dimensions
 
 A layer's PRIMARY categorical dimension is its colour — `struct_type →
 circle-color` — authored by the Style Center's colour builder. The SECOND
@@ -35,6 +54,55 @@ Everything written is a plain `["match", ["get", field], v1, out1, …, fallback
 on those properties. There is no metadata flag; the legend, the Current State
 summary and `ds style read` all read the expression shape back.
 
+## Cartography
+
+`cartography plan` and `cartography set` author the third axis. Four
+instructions, each a name rather than a value the CLI composes:
+
+| instruction | flags | applies to |
+|---|---|---|
+| line type | `--line-type` | lines |
+| flow direction | `--direction-size`, `--direction-spacing` | lines, with `--line-type directional` |
+| contrast casing | `--casing-color`, `--casing-width` | lines |
+| fill hatching | `--fill-pattern`, `--pattern-color`, `--pattern-background`, `--pattern-spacing`, `--pattern-stroke` | fills |
+
+**Line type** is one of `solid`, `dashed`, `dotted`, `dash-dot`, `long-dash`,
+`dash-dot-dot` or `directional`. The dash names are ds-brain's published
+vocabulary, not a dash array composed here — that is deliberate, because the
+backend table and the editor's offline fallback had already drifted once, and
+a document authored against one tuple was then named by the other.
+
+**`directional` is not a dash.** It draws repeating arrow markers along the
+line — which way the water flows, which way the feeder runs — so it is
+mutually exclusive with a dash pattern and is one entry in the same closed
+choice. `--direction-size` (6..48 px) and `--direction-spacing` (20..1000 px)
+size and space those arrows.
+
+**Casing** is the contrast outline drawn under a line. `--casing-width`
+(0..20 px, halves allowed) and `--casing-color` are what make a bright design
+line legible over satellite imagery; `--casing-width 0` removes it again.
+
+**Hatching** rasterises a repeating tile: `--fill-pattern` is one of `solid`,
+`diagonal-forward`, `diagonal-back`, `crosshatch` or `dots`, with
+`--pattern-color` for the strokes, `--pattern-background` behind them (use an
+8-digit hex such as `#FFFFFF00` to keep the fill see-through),
+`--pattern-stroke` (1..6 px, whole pixels — a rasterised tile aliases
+otherwise) and `--pattern-spacing` for the tile size.
+
+**`--pattern-spacing` is 4, 8, 16 or 32 — nothing else.** MapLibre repeats a
+pattern by tiling its image, and only a power-of-two tile meets its neighbour
+without a visible seam at every edge. This is enforced as a closed choice, so
+`--pattern-spacing 12` is refused by the parser with `invalid_choice` before
+the application is contacted at all.
+
+An omitted flag leaves that part of the document alone, so adjusting arrow
+spacing on a line that already carries `directional` is one flag. Two
+combinations are refused locally with `invalid_cartography`, because no
+document state could make them right: direction detail sent in the same call
+as a non-directional `--line-type`, and `--pattern-*` detail sent with
+`--fill-pattern solid`, which is the instruction that removes the hatch. A
+call with no cartography flag at all is refused the same way.
+
 ## The shape of a session
 
 ```bash
@@ -49,6 +117,17 @@ ds style dimension plan --ref master/lv_poles \
 ds style dimension set   --ref master/lv_poles \
   --field drafting_status --channel halo --value draft=3:#FFFFFF --other 0 --yes
 ds style dimension clear --ref master/lv_poles --yes
+
+# Water flow: arrows along the main, colour untouched.
+ds style cartography set --ref master/water_mains \
+  --line-type directional --direction-size 14 --direction-spacing 140 --yes
+# Satellite contrast: a dark casing keeps a bright line legible over imagery.
+ds style cartography set --ref master/mv_lines \
+  --casing-color '#0F172A' --casing-width 2 --yes
+# Proposed service areas, crosshatched over a see-through background.
+ds style cartography set --ref master/service_areas \
+  --fill-pattern crosshatch --pattern-color '#B45309' \
+  --pattern-background '#FFFFFF00' --pattern-spacing 8 --pattern-stroke 1 --yes
 ```
 
 `plan` and `set` are one operation with `apply` false or true — what you
@@ -78,8 +157,17 @@ does not require or justify a retile.
   (icon, colour, halo) and nests the halo match around the colour unroll. The
   authored document keeps the spec-pure `icon-halo-*`; `icon-halo-blur` is
   refused because it has no raster equivalent.
+- **Cartography is composed by the application**, not by `ds`. The dash tuple
+  behind a line type, the arrow marker image, and the pattern tile are all
+  minted there, from the same vocabulary the Style Center's own controls use.
+  A layer type with no place for a property — a fill pattern on a line, a
+  casing on a fill — is refused as `desktop_refused`; `ds style read` reports
+  the layer type before you ask.
 
 ## What is deliberately absent
 
-Raw document writes. The Style Center's JSON tab is the human escape hatch; a
-CLI door for arbitrary paint would bypass every invariant above.
+Raw document writes, on every axis. The Style Center's JSON tab is the human
+escape hatch; a CLI door for arbitrary paint would bypass every invariant
+above. There is no flag that takes a dash array, a pattern image, a marker
+sprite or a paint expression, and adding one would be the first thing to
+reject in review.

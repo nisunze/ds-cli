@@ -512,7 +512,9 @@ static SURVEY_ENTRIES: &[Entry] = &[
 ];
 
 /// Map styling. Ordered as a session uses it: list the refs, read one, author
-/// guided base appearance, then plan, publish or clear a second dimension.
+/// guided base appearance, then plan, publish or clear a second dimension, and
+/// last the cartography — line type, direction, casing and hatching — which
+/// needs no field and so is reached once the field-driven axes are settled.
 static STYLE_ENTRIES: &[Entry] = &[
     Entry {
         command: &ds_cli_style::list::COMMAND,
@@ -548,6 +550,16 @@ static STYLE_ENTRIES: &[Entry] = &[
         command: &ds_cli_style::dimension::clear::COMMAND,
         handler: ds_cli_style::dimension::clear::run,
         render: ds_cli_style::dimension::clear::render,
+    },
+    Entry {
+        command: &ds_cli_style::cartography::plan::COMMAND,
+        handler: ds_cli_style::cartography::plan::run,
+        render: ds_cli_style::cartography::plan::render,
+    },
+    Entry {
+        command: &ds_cli_style::cartography::set::COMMAND,
+        handler: ds_cli_style::cartography::set::run,
+        render: ds_cli_style::cartography::set::render,
     },
 ];
 

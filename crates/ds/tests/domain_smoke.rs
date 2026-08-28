@@ -2346,3 +2346,385 @@ fn feedback_triage_bounds_are_enforced_before_the_bridge() {
         );
     }
 }
+
+// ---------------------------------------------------------------------------
+// style — the cartographic axis
+// ---------------------------------------------------------------------------
+
+/// Everything `ds style cartography` can decide without the application.
+///
+/// The axis is deliberately field-free, so unlike the second dimension there
+/// is no `ds style read` value list to check a flag against. That makes what
+/// *is* locally decidable worth pinning: the bounds, the two closed
+/// vocabularies, the seamless tile sizes, and the two contradictions that
+/// cannot be right under any document state.
+#[test]
+fn style_cartography_validates_its_own_inputs_before_it_opens_the_bridge() {
+    for (case, args, expected) in [
+        (
+            "a call that asks for nothing",
+            vec!["style", "cartography", "plan", "--ref", "master/mv_lines"],
+            "invalid_cartography",
+        ),
+        (
+            "arrow size sent with a dashed line in the same call",
+            vec![
+                "style",
+                "cartography",
+                "plan",
+                "--ref",
+                "master/mv_lines",
+                "--line-type",
+                "dashed",
+                "--direction-size",
+                "14",
+            ],
+            "invalid_cartography",
+        ),
+        (
+            "hatch detail sent with the pattern that removes the hatch",
+            vec![
+                "style",
+                "cartography",
+                "plan",
+                "--ref",
+                "master/service_areas",
+                "--fill-pattern",
+                "solid",
+                "--pattern-color",
+                "#B45309",
+            ],
+            "invalid_cartography",
+        ),
+        (
+            "an arrow smaller than the marker bound",
+            vec![
+                "style",
+                "cartography",
+                "plan",
+                "--ref",
+                "master/water_mains",
+                "--line-type",
+                "directional",
+                "--direction-size",
+                "5",
+            ],
+            "invalid_number",
+        ),
+        (
+            "arrows spaced beyond the bound",
+            vec![
+                "style",
+                "cartography",
+                "plan",
+                "--ref",
+                "master/water_mains",
+                "--line-type",
+                "directional",
+                "--direction-spacing",
+                "1001",
+            ],
+            "invalid_number",
+        ),
+        (
+            "a casing wider than the bound",
+            vec![
+                "style",
+                "cartography",
+                "plan",
+                "--ref",
+                "master/mv_lines",
+                "--casing-width",
+                "21",
+            ],
+            "invalid_number",
+        ),
+        (
+            "a hatch stroke wider than the bound",
+            vec![
+                "style",
+                "cartography",
+                "plan",
+                "--ref",
+                "master/service_areas",
+                "--pattern-stroke",
+                "7",
+            ],
+            "invalid_number",
+        ),
+        (
+            "a casing colour that is not a colour",
+            vec![
+                "style",
+                "cartography",
+                "plan",
+                "--ref",
+                "master/mv_lines",
+                "--casing-color",
+                "navy",
+            ],
+            "invalid_color",
+        ),
+        (
+            "a line type outside the closed vocabulary",
+            vec![
+                "style",
+                "cartography",
+                "plan",
+                "--ref",
+                "master/mv_lines",
+                "--line-type",
+                "dash_dot",
+            ],
+            "invalid_choice",
+        ),
+        (
+            "a fill pattern outside the closed vocabulary",
+            vec![
+                "style",
+                "cartography",
+                "plan",
+                "--ref",
+                "master/service_areas",
+                "--fill-pattern",
+                "hatch",
+            ],
+            "invalid_choice",
+        ),
+        (
+            // MapLibre repeats a pattern by tiling its image, so only the
+            // powers of two meet without a visible seam at every tile edge.
+            "a pattern tile size that would seam",
+            vec![
+                "style",
+                "cartography",
+                "plan",
+                "--ref",
+                "master/service_areas",
+                "--fill-pattern",
+                "crosshatch",
+                "--pattern-spacing",
+                "12",
+            ],
+            "invalid_choice",
+        ),
+        (
+            "a publish with no confirmation",
+            vec![
+                "style",
+                "cartography",
+                "set",
+                "--ref",
+                "master/mv_lines",
+                "--line-type",
+                "dashed",
+            ],
+            "confirmation_required",
+        ),
+    ] {
+        let mut args = args;
+        args.extend(["--output", "json"]);
+        assert_eq!(
+            refusal(&args),
+            expected,
+            "{case}: `ds {}` did not refuse with `{expected}`",
+            args.join(" ")
+        );
+    }
+
+    // Every seamless size is accepted, so the closed choice is a real bound
+    // rather than one spelling that happens to work.
+    for spacing in ["4", "8", "16", "32"] {
+        let code = refusal(&[
+            "style",
+            "cartography",
+            "plan",
+            "--ref",
+            "master/service_areas",
+            "--fill-pattern",
+            "crosshatch",
+            "--pattern-spacing",
+            spacing,
+            "--output",
+            "json",
+        ]);
+        assert!(
+            code.is_empty() || PAIRING_CODES.contains(&code.as_str()),
+            "`--pattern-spacing {spacing}` is seamless but was refused with `{code}`"
+        );
+    }
+
+    // Adjusting arrow spacing on a ref that already carries the directional
+    // type is legitimate: `ds` has not read the document, so it must not
+    // invent a contradiction. This one is well formed and may only end at the
+    // bridge.
+    let adjust = refusal(&[
+        "style",
+        "cartography",
+        "plan",
+        "--ref",
+        "master/water_mains",
+        "--direction-spacing",
+        "140",
+        "--output",
+        "json",
+    ]);
+    assert!(
+        adjust.is_empty() || PAIRING_CODES.contains(&adjust.as_str()),
+        "adjusting arrow spacing alone failed with `{adjust}`, which is not a pairing outcome"
+    );
+}
+
+/// Each of the three scenarios the cartography commands exist for is one
+/// well-formed call that reaches the bridge and stops there — never an input
+/// refusal, and never `undeclared_bridge_argument`, which would mean a
+/// handler built an argument key its own BridgeOp does not declare.
+#[test]
+fn a_well_formed_cartography_call_stops_at_confirmation_or_pairing() {
+    for args in [
+        // Directional water-flow lines.
+        vec![
+            "style",
+            "cartography",
+            "plan",
+            "--ref",
+            "master/water_mains",
+            "--line-type",
+            "directional",
+            "--direction-size",
+            "14",
+            "--direction-spacing",
+            "140",
+            "--output",
+            "json",
+        ],
+        // Satellite-contrast casing, on the fractional bound.
+        vec![
+            "style",
+            "cartography",
+            "plan",
+            "--ref",
+            "master/mv_lines",
+            "--casing-color",
+            "#0F172A",
+            "--casing-width",
+            "2.5",
+            "--output",
+            "json",
+        ],
+        // Crosshatched proposed service areas, every pattern flag at once so
+        // every declared key is built at least once by a real invocation.
+        vec![
+            "style",
+            "cartography",
+            "plan",
+            "--ref",
+            "master/service_areas",
+            "--fill-pattern",
+            "crosshatch",
+            "--pattern-color",
+            "#B45309",
+            "--pattern-background",
+            "#FFFFFF00",
+            "--pattern-spacing",
+            "8",
+            "--pattern-stroke",
+            "1",
+            "--output",
+            "json",
+        ],
+        // The same, published.
+        vec![
+            "style",
+            "cartography",
+            "set",
+            "--ref",
+            "master/service_areas",
+            "--fill-pattern",
+            "crosshatch",
+            "--pattern-color",
+            "#B45309",
+            "--pattern-spacing",
+            "8",
+            "--yes",
+            "--output",
+            "json",
+        ],
+    ] {
+        let code = refusal(&args);
+        assert!(
+            code.is_empty() || PAIRING_CODES.contains(&code.as_str()),
+            "`ds {}` failed with `{code}`, which is not a pairing outcome",
+            args.join(" ")
+        );
+    }
+}
+
+/// The three scenarios are what an operator says, not what the flags are
+/// called. Discovery has to survive that gap, or the axis stays unreachable
+/// to anyone who did not already know it exists.
+#[test]
+fn capability_search_finds_cartography_by_operator_vocabulary() {
+    for (query, expected) in [
+        ("water flow direction", "style.cartography.plan"),
+        ("directional arrows", "style.cartography.plan"),
+        ("satellite contrast casing", "style.cartography.plan"),
+        ("dashed line type", "style.cartography.plan"),
+        (
+            "crosshatch proposed service areas",
+            "style.cartography.plan",
+        ),
+        ("hatching a fill", "style.cartography.plan"),
+        ("publish casing satellite", "style.cartography.set"),
+    ] {
+        let data = ok(&["capabilities", "--search", query, "--output", "json"]);
+        let results = data["results"].as_array().expect("search results");
+        assert!(
+            results.iter().any(|row| row["id"] == expected),
+            "`{query}` did not find {expected}: {results:?}"
+        );
+    }
+}
+
+/// Each scenario is also a declared example, so an agent that has found the
+/// command is handed the exact invocation instead of a set of flags to
+/// assemble. A summary check would not catch this: an example that stops
+/// carrying its scenario's flags is how the vocabulary a caller searches for
+/// and the contract they then run drift apart.
+#[test]
+fn every_cartography_scenario_is_a_declared_example_of_its_own_command() {
+    for id in ["style.cartography.plan", "style.cartography.set"] {
+        let descriptor = ok(&["capabilities", id, "--output", "json"]);
+        let command = &descriptor["command"];
+        let examples: Vec<String> = command["examples"]
+            .as_array()
+            .expect("examples")
+            .iter()
+            .filter_map(|example| example["command"].as_str())
+            .map(str::to_string)
+            .collect();
+        for scenario in [
+            "--line-type directional",
+            "--casing-color",
+            "--fill-pattern crosshatch",
+        ] {
+            assert!(
+                examples.iter().any(|example| example.contains(scenario)),
+                "`{id}` declares no example for `{scenario}`: {examples:?}"
+            );
+        }
+        let path = command["path"]
+            .as_array()
+            .expect("path")
+            .iter()
+            .filter_map(Value::as_str)
+            .collect::<Vec<_>>()
+            .join(" ");
+        for example in &examples {
+            assert!(
+                example.starts_with(&format!("ds {path} ")),
+                "`{id}` example `{example}` does not invoke `ds {path}`"
+            );
+        }
+    }
+}

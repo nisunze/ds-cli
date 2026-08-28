@@ -667,6 +667,64 @@ fn every_style_command_has_one_closed_operation_owner() {
 }
 
 #[test]
+fn style_cartography_sends_exactly_the_arguments_and_bounds_the_desktop_owns() {
+    let Some(app) = app() else {
+        skip("the ds-web sibling repository is not on disk");
+        return;
+    };
+    let operation = ds_cli_style::CARTOGRAPHY_SET.operation;
+
+    // Ten camelCase keys hand-copied from the application's own input schema
+    // is the largest such copy in this domain, and `ds style appearance set`
+    // proves a subset check is not enough: a key the adapter accepts but ds
+    // never sends is a property no caller can reach. Hold both directions.
+    assert!(
+        has_operation_contract(&app.style, operation),
+        "`{operation}` has no typed style-adapter argument contract"
+    );
+    let accepted = quoted_contract_items(operation_contract(&app.style, operation));
+    let declared = ds_cli_style::CARTOGRAPHY_SET
+        .arguments
+        .iter()
+        .map(|argument| (*argument).to_string())
+        .collect::<BTreeSet<_>>();
+    assert_eq!(
+        accepted, declared,
+        "`{operation}` arguments drifted between ds and the desktop"
+    );
+
+    // MapLibre repeats a pattern image by tiling it, so a tile size that is
+    // not a power of two seams at every edge. `ds` refuses the others at the
+    // door; that refusal is only correct while it is the same list the
+    // application rasterises to.
+    let spacings = ds_cli_style::PATTERN_SPACINGS
+        .iter()
+        .map(i64::to_string)
+        .collect::<Vec<_>>()
+        .join(", ");
+    assert!(
+        app.style
+            .contains(&format!("const PATTERN_SPACINGS = [{spacings}]")),
+        "the desktop must rasterise exactly the seamless pattern tile sizes ds offers: [{spacings}]"
+    );
+
+    // The fill-pattern vocabulary is the adapter's own — unlike the dash
+    // presets, which ds-brain publishes — so every name a caller may pass
+    // must appear in it. `directional` is the one line type that is a marker
+    // rather than a dash, and the adapter is what knows that.
+    let fill_patterns = ds_cli_style::cartography::plan::COMMAND
+        .arg("fill-pattern")
+        .expect("--fill-pattern is declared")
+        .choices;
+    for name in fill_patterns.iter().chain(["directional"].iter()) {
+        assert!(
+            app.style.contains(&format!("'{name}'")) || app.style.contains(&format!("\"{name}\"")),
+            "ds style cartography offers `{name}`, but the desktop adapter does not name it"
+        );
+    }
+}
+
+#[test]
 fn every_tile_command_has_one_closed_operation_owner() {
     let Some(app) = app() else {
         skip("the ds-web sibling repository is not on disk");

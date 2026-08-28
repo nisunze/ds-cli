@@ -14,22 +14,30 @@
 //! ## What the family is
 //!
 //! ```text
-//!   list → read → appearance plan/set → dimension plan/set | dimension clear
+//!   list → read → appearance plan/set
+//!                 dimension  plan/set | dimension clear
+//!                 cartography plan/set
 //! ```
 //!
 //! `appearance` owns flat primary colour, catalog icon and base size through
 //! the Style Center's guided schema. `dimension` adds a second field on a
 //! channel the primary appearance does not use — halo, opacity, or size — as
 //! plain `["match", ["get", field], …]` expressions the legend reads back.
+//! `cartography` is the third, field-free axis: how the line or fill reads as
+//! a map — its line type, flow direction, contrast casing and hatching.
 //!
 //! ## What is deliberately absent
 //!
 //! Raw document writes. A command that accepted arbitrary paint JSON would
 //! bypass the guided invariants (one label type per match, no arm-less
 //! match, the halo channel per layer type) that keep a document renderable.
-//! The JSON tab of the Style Center remains the human escape hatch.
+//! The JSON tab of the Style Center remains the human escape hatch. For the
+//! same reason no command here composes a dash array, a marker image or a
+//! pattern tile: a caller names the cartographic instruction and the
+//! application, which owns the vocabulary ds-brain publishes, resolves it.
 
 pub mod appearance;
+pub mod cartography;
 pub mod dimension;
 pub mod list;
 pub mod read;
@@ -48,7 +56,7 @@ pub use ds_cli_desktop::ops::{
 
 pub static DOMAIN: Domain = Domain {
     id: "style",
-    summary: "Guided map appearance and a second field-driven dimension.",
+    summary: "Guided appearance, a second field dimension, and cartography.",
     commands: &[
         &list::COMMAND,
         &read::COMMAND,
@@ -57,6 +65,8 @@ pub static DOMAIN: Domain = Domain {
         &dimension::plan::COMMAND,
         &dimension::set::COMMAND,
         &dimension::clear::COMMAND,
+        &cartography::plan::COMMAND,
+        &cartography::set::COMMAND,
     ],
 };
 
@@ -86,6 +96,26 @@ pub const DIMENSION_CLEAR: BridgeOp = BridgeOp {
     operation: "style.dimension.clear",
     arguments: &["ref", "apply"],
 };
+/// Line type, flow direction, contrast casing and fill hatching — the
+/// cartographic axis, which carries no field and so shares no key with the
+/// second dimension.
+pub const CARTOGRAPHY_SET: BridgeOp = BridgeOp {
+    operation: "style.cartography.set",
+    arguments: &[
+        "ref",
+        "lineType",
+        "directionSize",
+        "directionSpacing",
+        "casingColor",
+        "casingWidth",
+        "fillPattern",
+        "patternColor",
+        "patternBackground",
+        "patternSpacing",
+        "patternStroke",
+        "apply",
+    ],
+};
 
 /// Every operation this domain can send, for the parity test to walk. `plan`
 /// and `set` are one operation — `apply` false or true — so the list is
@@ -96,7 +126,14 @@ pub const BRIDGE_OPS: &[&BridgeOp] = &[
     &APPEARANCE_SET,
     &DIMENSION_SET,
     &DIMENSION_CLEAR,
+    &CARTOGRAPHY_SET,
 ];
+
+/// The seamless pattern tile sizes. MapLibre repeats a pattern image by
+/// tiling it, so a size that is not a power of two seams visibly at every
+/// tile edge. Declared here as one number list because both the CLI choice
+/// set and the parity test read it.
+pub const PATTERN_SPACINGS: &[i64] = &[4, 8, 16, 32];
 
 /// The most values one dimension names. Matches the adapter's own bound so an
 /// over-long list is refused once, locally.
@@ -112,13 +149,13 @@ pub const WRITE_TIMEOUT: Duration = Duration::from_secs(2 * 60);
 
 pub const STYLE_REFUSED: Refusal = Refusal {
     code: "desktop_refused",
-    when: "no such style ref, an unknown field or channel, or ds-brain declined the document",
-    remedy: "check the ref with `ds style list` and the fields with `ds style read`; read detail.detail for the message",
+    when: "no such style ref, an unknown field or channel, a cartography property this layer type has no place for, or ds-brain declined the document",
+    remedy: "check the ref with `ds style list`, and the fields, channels and layer type with `ds style read`; read detail.detail for the message",
 };
 pub const CONFIRMATION_REQUIRED: Refusal = Refusal {
     code: "confirmation_required",
     when: "--yes was not given for a command that publishes a style document",
-    remedy: "run `ds style dimension plan` first, then re-run with --yes once the expressions are what you intend",
+    remedy: "run the matching `plan` command, read the document it returns, then re-run the same flags with --yes",
 };
 pub const INVALID_VALUE_SPEC: Refusal = Refusal {
     code: "invalid_value_spec",
@@ -134,6 +171,11 @@ pub const INVALID_APPEARANCE: Refusal = Refusal {
     code: "invalid_appearance",
     when: "no colour, icon or size was supplied",
     remedy: "pass at least one of --color, --icon or --size",
+};
+pub const INVALID_CARTOGRAPHY: Refusal = Refusal {
+    code: "invalid_cartography",
+    when: "no cartography flag was supplied, or direction/pattern detail contradicts the line type or fill pattern set in the same call",
+    remedy: "pass at least one cartography flag; keep --direction-* with `--line-type directional`, and --pattern-* with a --fill-pattern other than solid",
 };
 
 /// Ordinary operation refusals stay `desktop_refused`; only the signed-out
@@ -256,7 +298,56 @@ mod tests {
         let mut unique = names.clone();
         unique.dedup();
         assert_eq!(names, unique, "an operation is declared twice");
-        // Appearance plan/set and dimension plan/set each share one operation.
-        assert_eq!(names.len(), DOMAIN.commands.len() - 2);
+        // Appearance, dimension and cartography each pair one plan with one
+        // set over a single operation, so three commands have no operation of
+        // their own.
+        assert_eq!(names.len(), DOMAIN.commands.len() - 3);
+        for op in BRIDGE_OPS {
+            let mut keys = op.arguments.to_vec();
+            keys.sort_unstable();
+            let mut unique = keys.clone();
+            unique.dedup();
+            assert_eq!(keys, unique, "`{}` declares a key twice", op.operation);
+        }
+    }
+
+    #[test]
+    fn cartography_shares_no_argument_key_with_the_field_driven_axes() {
+        // Cartography carries no field, so nothing it sends can be mistaken
+        // for a colour or a second-dimension instruction. `appearance` and
+        // `dimension` do legitimately share `color` — a primary fill and a
+        // ring on two different operations — which is why this holds the new
+        // axis against them rather than asserting three disjoint sets.
+        for other in [&APPEARANCE_SET, &DIMENSION_SET] {
+            let shared: Vec<&str> = CARTOGRAPHY_SET
+                .arguments
+                .iter()
+                .copied()
+                .filter(|key| other.arguments.contains(key))
+                .filter(|key| *key != "ref" && *key != "apply")
+                .collect();
+            assert!(
+                shared.is_empty(),
+                "`style.cartography.set` and `{}` share {shared:?}; publishing one \
+                 axis must not silently carry another",
+                other.operation
+            );
+        }
+        // The seamless tile sizes and the flag's closed choices are one list.
+        let declared: Vec<String> = PATTERN_SPACINGS
+            .iter()
+            .map(|size| size.to_string())
+            .collect();
+        let offered: Vec<String> = cartography::plan::COMMAND
+            .arg("pattern-spacing")
+            .expect("--pattern-spacing is declared")
+            .choices
+            .iter()
+            .map(|choice| (*choice).to_string())
+            .collect();
+        assert_eq!(
+            declared, offered,
+            "--pattern-spacing must offer exactly the power-of-two tile sizes MapLibre repeats seamlessly"
+        );
     }
 }
