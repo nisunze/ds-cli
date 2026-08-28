@@ -1,6 +1,6 @@
 ---
 name: ds-pls-cadd-terrain-roundtrip
-description: Repair PLS-CADD terrain and deliver an authorized new branch with bounded placement and phase/OPGW stringing. Not LV design or backup-only work.
+description: Repair PLS-CADD terrain waterfalls, preserve operator-owned alignments, and deliver an explicitly authorized new branch with bounded structure placement and phase/OPGW stringing. For deviation delivery, not LV design, backup-only work, or structure repair.
 metadata:
   ds-chapters: grid-model, pls-cadd
 ---

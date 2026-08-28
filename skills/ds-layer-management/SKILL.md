@@ -1,6 +1,6 @@
 ---
 name: ds-layer-management
-description: Inspect or order DS project layers and manage validated local XYZ or raster PMTiles overlays through `ds`.
+description: Inspect and order canonical DS project layers, or manage validated desktop-local XYZ and raster PMTiles overlays through `ds`; route GeoJSON, governed tiles, and cleaned design imports to their actual owners.
 metadata:
   ds-chapters: survey
   ds-mcp-profile: layers

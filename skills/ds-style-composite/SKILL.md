@@ -1,6 +1,6 @@
 ---
 name: ds-style-composite
-description: Style a DS map layer by category and a second visual field through `ds style`.
+description: Style a DS map layer through `ds style`: colour/icon/size, a second field on halo/opacity/size, and line type, direction, casing or hatching.
 metadata:
   ds-chapters: map-presentation
   ds-mcp-profile: map

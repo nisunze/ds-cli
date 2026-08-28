@@ -92,6 +92,7 @@ jobs:
         working-directory: data-solutions/ds-cli
         run: |
           python3 scripts/check.py
+          python3 scripts/test-check.py
           bash scripts/test-install-skills.sh
 
       - name: Lint

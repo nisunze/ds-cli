@@ -94,9 +94,9 @@ function Assert-OwnedDestinations([string]$Target, [string[]]$Names) {
     foreach ($Name in $Names) {
         $Destination = Join-Path $Target $Name
         if (Test-Path -LiteralPath $Destination) {
-            if (Test-ReparsePoint $Destination -or
-                -not (Test-Path -LiteralPath $Destination -PathType Container) -or
-                -not (Test-OwnedSkill $Destination)) {
+            if ((Test-ReparsePoint $Destination) -or
+                (-not (Test-Path -LiteralPath $Destination -PathType Container)) -or
+                (-not (Test-OwnedSkill $Destination))) {
                 throw "refusing to replace or remove unowned skill: $Destination"
             }
         }

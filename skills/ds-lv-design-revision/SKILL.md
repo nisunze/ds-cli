@@ -1,6 +1,6 @@
 ---
 name: ds-lv-design-revision
-description: Revise one transformer LV design through `ds`, preserving built work and staging before save.
+description: Revise one transformer’s LV design through `ds`, preserving built infrastructure and staging before save. For LV extensions and drafting reruns.
 metadata:
   ds-chapters: project, design
 ---

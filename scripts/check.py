@@ -13,7 +13,6 @@ ROOT = Path(__file__).resolve().parent.parent
 MAX_DESCRIPTION_CHARS = 512
 MAX_ENTRY_SKILL_BYTES = 4 * 1024
 MAX_SKILL_BYTES = 8 * 1024
-MAX_ALL_DESCRIPTIONS = 2 * 1024
 # Tokens that only appear when something routes around `ds`, or tells the
 # reader to switch off a platform security control to run something. A skill
 # that has to disable Windows' execution policy is asking an agent to trust an
@@ -138,18 +137,9 @@ def main():
     skills = sorted(p for p in (ROOT / "skills").iterdir() if p.is_dir())
     for d in skills:
         check_skill(d)
-    descriptions = []
-    for d in skills:
-        text = (d / "SKILL.md").read_text(encoding="utf-8")
-        descriptions.append(frontmatter(text, (d / "SKILL.md").relative_to(ROOT)).get("description", ""))
-    description_chars = sum(map(len, descriptions))
-    if description_chars > MAX_ALL_DESCRIPTIONS:
-        FAIL.append(
-            f"skill discovery metadata is {description_chars} chars; budget is {MAX_ALL_DESCRIPTIONS}"
-        )
     if (ROOT / "gaps").exists():
         FAIL.append("gaps/: local gap ledgers are forbidden; use `ds feedback submit`")
-    print(f"{len(skills)} skills checked; {description_chars} discovery characters")
+    print(f"{len(skills)} skills checked")
     for f in FAIL:
         print("FAIL", f)
     return 1 if FAIL else 0

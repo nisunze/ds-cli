@@ -1,6 +1,6 @@
 ---
 name: ds-pls-cadd-backup-delivery
-description: Create and prove an exact-byte PLS-CADD .bak, then require fresh native Restore/reopen. For backup delivery, not terrain or alignment edits.
+description: Create a complete exact-byte PLS-CADD .bak from a closed reference-ready workspace, prove canonical contents and counts, and require fresh native Restore/reopen before submission. For backup recovery and portability acceptance, not terrain or alignment editing.
 metadata:
   ds-chapters: grid-model, pls-cadd
 ---

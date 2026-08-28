@@ -1,6 +1,6 @@
 ---
 name: ds
-description: "Use deployed `ds` as the sole DS interface. Required before every DS task."
+description: "Use deployed `ds` as the sole DS interface: discover one live command, follow its contract, and report confirmed gaps. Required before every DS task."
 ---
 
 # Work through `ds`
