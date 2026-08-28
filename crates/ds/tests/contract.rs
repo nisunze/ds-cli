@@ -291,14 +291,27 @@ fn command_help_matches_its_descriptor() {
         );
         for input in command["inputs"].as_array().expect("inputs") {
             let name = input["name"].as_str().expect("name");
+            let documented = if input["kind"] == "positional" {
+                input["value"]
+                    .as_str()
+                    .expect("positional value")
+                    .to_string()
+            } else {
+                format!("--{name}")
+            };
             assert!(
-                help.contains(name),
-                "`ds {} --help` does not document its declared input `{name}`",
+                help.contains(&documented),
+                "`ds {} --help` does not document its declared input `{documented}`",
                 path.join(" ")
             );
         }
         for refusal in command["refusals"].as_array().expect("refusals") {
             let code = refusal["code"].as_str().expect("code");
+            assert!(
+                !code.is_empty(),
+                "`ds {}` declares an empty refusal code",
+                path.join(" ")
+            );
             assert!(
                 help.contains(code),
                 "`ds {} --help` does not document its refusal `{code}`",
@@ -315,6 +328,32 @@ fn every_command_reachable_by_id_and_by_path() {
         let (by_id, code) = ds(&["capabilities", id, "--output", "json"]);
         assert_eq!(code, 0, "`{id}` is not reachable by id");
         assert_eq!(by_id["data"]["command"]["id"], id);
+
+        let path: Vec<&str> = command["path"]
+            .as_array()
+            .expect("path")
+            .iter()
+            .map(|part| part.as_str().expect("path part"))
+            .collect();
+        let mut invocation = path.clone();
+        invocation.push("--help");
+        let output = Command::new(env!("CARGO_BIN_EXE_ds"))
+            .args(&invocation)
+            .env("NO_COLOR", "1")
+            .output()
+            .expect("path help runs");
+        assert!(
+            output.status.success(),
+            "`ds {} --help` did not resolve: {}",
+            path.join(" "),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(
+            String::from_utf8_lossy(&output.stdout)
+                .contains(command["summary"].as_str().expect("summary")),
+            "`ds {} --help` did not reach its own command",
+            path.join(" ")
+        );
     }
 }
 
