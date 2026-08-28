@@ -4,36 +4,19 @@ The Data Solutions command line. One executable is the door into the whole
 stack — for a person in a terminal, and for a coding agent that has never seen
 it before.
 
+```bash
+ds --help
 ```
-$ ds --help
-ds — the Data Solutions command line.
 
-USAGE
-  ds <domain> <command> [--flags]
+That screen is the domain list, and it is generated from the domain
+declarations themselves. One row per domain — its name and a one-line summary —
+then the calls that go a tier deeper, then the global flags, then the exit-code
+legend. Nothing on it names a command.
 
-DOMAINS
-  dsgrid           Canonical .dsgrid models: identity, inventory, validation.
-  dsgrid-exchange  Import, export, compose: classify, plan, convert.
-  pls              PLS-CADD workspaces: structures, capacity, references, DONs.
-  solar            Solar batches: prepare inputs, run them offline, verify weather.
-  report           Deliverables: transformer and combined report artifacts.
-  map              The paired map: local layers, vector tools, design-layer edits.
-  work             Project Work: the plan, its tasks, assignments and records.
-  sre              Platform reliability: fleet health and bounded request events.
-  style            Map styling: style documents and a second halo/opacity/size dimension.
-  tile             Vector tiles: status, plan, generate, and the catalogue.
-  feedback         Product feedback: report a gap, and close it once it is fixed.
-  desktop          The paired DS GridDesign session: pairing, sign-in, project.
-  shell            Reach `ds` from any shell: status, register, unregister.
-
-DISCOVERY
-  ds <domain> --help             commands in one domain
-  ds <domain> <cmd> --help       one command's full contract
-  ds capabilities [<domain>|<id>]  the same, as JSON
-  ds capabilities --search <text>  find a command by words
-  ds doctor                      what works here, and why not
-…
-```
+This file deliberately keeps no copy of it. A pasted domain table is a second
+description of the same declarations: it is right on the day it is written and
+silently wrong from the next domain onwards, which is exactly the failure mode
+the tiering exists to prevent. Run the binary; that answer is always current.
 
 ## The idea
 
@@ -52,7 +35,15 @@ the same command declarations.
 
 That is enforced, in bytes, by `crates/ds/tests/context_budget.rs`. An agent
 that has never seen `ds` reaches a specific command's full contract in **three
-calls totalling ~3.1 KB**.
+calls, and pays for one domain rather than all of them**: the domain index,
+one domain's command list, one command's descriptor. Measured for
+`dsgrid.inspect` at this commit, that is 1 721 + 813 + 2 984 = **5 518 bytes**
+of JSON, or 2 043 + 492 + 2 737 = **5 272 bytes** of human help.
+
+Only the first of the three grows with the rest of the stack, and it grows by
+one summary line per domain. On a `ds` with twice as many domains the second
+and third calls cost exactly what they cost here — which is the property that
+matters, and the one the budget test asserts.
 
 See [`docs/contracts/discovery-contract.md`](docs/contracts/discovery-contract.md).
 
@@ -116,7 +107,10 @@ Rules you can rely on:
 - **results are bounded**. A command returns its cheapest useful projection and
   names the rest in `more`. Truncation is always reported.
 - **no command guesses your intent.** Anything that writes a durable artifact
-  or mutates shared state requires `--yes`.
+  of record, changes software or integration settings on this machine, or
+  mutates shared project state requires `--yes`. Those are the three effect
+  classes `needs_confirmation` covers, and the descriptor reports the answer
+  as `confirmation_required`.
 
 Full rules: [`docs/contracts/cli-output-contract.md`](docs/contracts/cli-output-contract.md).
 
@@ -131,6 +125,9 @@ DS GridDesign ships a receipt-bound copy of this skill tree beside `ds`. Its
 `pt` shortcut copies a short setup prompt for any chatbot on that machine. The
 chatbot runs `ds doctor --output json`, follows the exact installer path under
 `.data.skills.installers`, and verifies its native skill directory is current.
+That key exists only when a receipt-bound bundle is found beside `ds`, which is
+the installed case this describes; on a source checkout `.data.skills.status`
+is `missing` with its own remedy, and there is no `installers` key to follow.
 Nothing is injected into a conversation. For MCP-only hosts, `ds mcp install`
 writes an entry for the same executable. Its compact default publishes stable
 chapter routers; optional role profiles publish bounded typed command views.
@@ -209,36 +206,21 @@ pushes to the project — `ds map design save` — requires `--yes`. See
 
 ## Architecture
 
-```
-crates/
-  ds-cli-contract   command metadata, tiered help, output envelope,
-                    error classes, exit codes, argument parsing.
-                    Links no domain crate — the contract is testable
-                    without building an engine.
-  ds-cli-exec       the typed process boundary: the one place a process
-                    can be spawned, and the only way to reach a sibling
-                    DS executable.
-  ds-cli-desktop    the paired-desktop authority surface.
-  ds-cli-map        the map domain: local layers, vector tools and
-                    design-layer edits, entirely over the paired bridge.
-                    Links no engine — the map is inside the application.
-  ds-cli-dsgrid     the canonical-model domain, linking ds-network's
-                    crates. Discovery and read-only throughout.
-  ds-cli-dsgrid-exchange
-                    classify, plan, convert. Split from ds-cli-dsgrid by
-                    effect: it holds the only command in either that
-                    writes a file.
-  ds-cli-pls        the PLS-CADD domain, over ds-grid-tasks' typed tasks.
-  ds-cli-solar      the solar domain, over the ds-solar contract.
-  ds-cli-report     the reporter domain, over the ds-report contract.
-  ds-cli-work       governed Project Work through the paired application.
-  ds-cli-sre        platform-global Reliability reads through the signed-in
-                    paired application; no active project or credential in ds.
-  ds-cli-feedback   agent observations, the shared backlog, and its governed
-                    triage close, through the app's existing feedback client
-                    and signed-in session.
-  ds                the binary: registers domains, dispatches, renders.
-```
+`ls crates/` is the inventory, and the naming is the map: `ds` is the binary
+that registers domains, dispatches and renders, `ds-cli-<domain>` owns one
+domain and nothing else, and each crate's own header says what it may reach.
+A list here would be a second inventory that nothing checks, so there is not
+one — but three crates carry a boundary the name does not give away:
+
+- **`ds-cli-contract`** is the CLI's own contract: command metadata, tiered
+  help, the output envelope, error classes, exit codes and argument parsing.
+  It links no domain crate, so the contract is testable without building an
+  engine.
+- **`ds-cli-exec`** is the typed process boundary — the audited set of files
+  from which a sibling DS executable can be reached at all.
+- **`ds-cli-desktop`** is the paired-desktop authority surface every domain
+  needing a signed-in principal borrows. It is separate so that nothing in it
+  is reachable from a domain that did not ask for it.
 
 Two boundaries hold this together.
 
@@ -255,8 +237,9 @@ implementation would be a second answer to a question that must have one.
   chose process separation and wrote down why. `ds-report` and `ds-solar` are
   both in this category; `ds-report`'s own header states the rule — one named
   subcommand per call, a typed request file, a machine-readable result
-  document. There is no generic `run(binary, argv)` anywhere in this
-  repository, so a subcommand no `ds` command names stays unreachable.
+  document. No caller-supplied argv reaches an owner — every spawn site passes
+  a statically known argument list — so a subcommand no `ds` command names
+  stays unreachable.
 
 **Every fact about a command lives once.** Help, the JSON descriptor, argument
 validation and dispatch all read the same `Command` value. A command that
@@ -268,9 +251,9 @@ unrelated engines" is a structural property rather than a promise.
 
 ## Status
 
-Thirteen domains, including Project Work, platform Reliability, shared
-feedback, the tile domain that rebuilds a project's vector tiles, and the shell
-domain that registers `ds` on a user's PATH, plus three root metadata commands.
+`ds --help` names the domains this build registers, and `ds doctor` reports how
+many of their commands can run on this machine and why not for the rest. Both
+answers are generated; neither is copied here.
 
 `dsgrid`, `dsgrid-exchange` and `pls` **link** the authoritative
 `ds-network` crates, so they work on a machine with no sidecar installed and
@@ -284,9 +267,13 @@ binaries are absent. `desktop` reaches the paired application session.
 `ds-grid-mcp` sidecars are gone from the package, from the build, from the
 component manifest, and from the dev launcher.
 
-This completes the runtime cutover. The migration matrix remains the evidence
-ledger and capability backlog; historical `ds-mcp` source is not a runtime or
-fallback.
+That completed the runtime cutover. What it changed is recorded, as closed
+history, in
+[`docs/migration/cutover-history.md`](docs/migration/cutover-history.md);
+historical `ds-mcp` source is not a runtime, a fallback, or a source of live
+contracts. Remaining capability gaps are recorded in the reference document of
+the domain that owns them, and a gap found while working goes to
+`ds feedback submit` rather than into a Markdown ledger.
 
 ## Documentation
 
@@ -306,4 +293,5 @@ fallback.
 | [`docs/reference/map.md`](docs/reference/map.md) | local map layers, vector tools, and staged design-layer edits |
 | [`docs/reference/desktop.status.md`](docs/reference/desktop.status.md) | pairing, discovery, what is never printed |
 | [`docs/reference/shell.md`](docs/reference/shell.md) | this shell versus a new one, what `register` writes, who runs it |
-| [`docs/migration/matrix.md`](docs/migration/matrix.md) | what moves, what is deleted, in what order |
+| [`docs/reference/mcp.md`](docs/reference/mcp.md) | serving `ds` to an MCP host: chapters, profiles, and what they may not change |
+| [`docs/migration/cutover-history.md`](docs/migration/cutover-history.md) | closed history: what the `ds-mcp` → `ds` cutover changed |

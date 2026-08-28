@@ -145,8 +145,15 @@ pub const fn exit_code(class: ExitClass) -> u8 {
 /// Deliberately shallow and capped. `detail` is structured context for a
 /// machine; a person needs the gist, and a refusal that filled the terminal
 /// would be worse than one that said nothing.
+///
+/// Every one of the three caps below announces itself. A human reading
+/// `domains: dsgrid, …, feedback` with no marker concludes the list ends
+/// there and that the four it cannot see do not exist — which is exactly the
+/// wrong answer, and worse than printing nothing. Silent truncation is not
+/// permitted anywhere in this product; see `docs/contracts/cli-output-contract.md`.
 fn flatten_detail(detail: &serde_json::Value) -> Vec<String> {
     const MAX_LINES: usize = 8;
+    const MAX_ITEMS: usize = 12;
     const MAX_VALUE: usize = 220;
 
     fn scalar(value: &serde_json::Value) -> String {
@@ -159,18 +166,27 @@ fn flatten_detail(detail: &serde_json::Value) -> Vec<String> {
     let mut lines = Vec::new();
     match detail {
         serde_json::Value::Object(fields) => {
-            for (key, value) in fields {
+            for (position, (key, value)) in fields.iter().enumerate() {
                 if lines.len() >= MAX_LINES {
-                    lines.push("…".to_string());
+                    // Count the keys never reached, not the lines emitted —
+                    // a key whose value rendered empty produces no line.
+                    lines.push(format!("… +{} more", fields.len() - position));
                     break;
                 }
                 let rendered = match value {
-                    serde_json::Value::Array(items) => items
-                        .iter()
-                        .take(12)
-                        .map(scalar)
-                        .collect::<Vec<_>>()
-                        .join(", "),
+                    serde_json::Value::Array(items) => {
+                        let mut rendered = items
+                            .iter()
+                            .take(MAX_ITEMS)
+                            .map(scalar)
+                            .collect::<Vec<_>>()
+                            .join(", ");
+                        let hidden = items.len().saturating_sub(MAX_ITEMS);
+                        if hidden > 0 {
+                            rendered.push_str(&format!(", … +{hidden} more"));
+                        }
+                        rendered
+                    }
                     serde_json::Value::Object(_) => {
                         // One level in, then stop: deeper nesting belongs to
                         // the JSON envelope, not to a terminal.
@@ -178,13 +194,91 @@ fn flatten_detail(detail: &serde_json::Value) -> Vec<String> {
                     }
                     other => scalar(other),
                 };
-                let rendered: String = rendered.chars().take(MAX_VALUE).collect();
+                let rendered = clip(&rendered, MAX_VALUE);
                 if !rendered.is_empty() {
                     lines.push(format!("{key}: {rendered}"));
                 }
             }
         }
-        other => lines.push(scalar(other)),
+        other => lines.push(clip(&scalar(other), MAX_VALUE)),
     }
     lines
+}
+
+/// Cut `text` to `limit` characters, marking the cut when one happened.
+fn clip(text: &str, limit: usize) -> String {
+    let mut clipped: String = text.chars().take(limit).collect();
+    if text.chars().nth(limit).is_some() {
+        clipped.push('…');
+    }
+    clipped
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    use super::{clip, flatten_detail};
+
+    #[test]
+    fn a_short_array_renders_whole_with_no_marker() {
+        let lines = flatten_detail(&json!({ "domains": ["a", "b", "c"] }));
+        assert_eq!(lines, vec!["domains: a, b, c".to_string()]);
+    }
+
+    #[test]
+    fn an_over_long_array_reports_what_it_hid() {
+        // The live shape this exists for: 16 domains rendered into a cap of
+        // twelve. Before this was fixed the four beyond the cap vanished with
+        // no ellipsis and no count, so a caller who mistyped a domain
+        // concluded the four did not exist.
+        let domains: Vec<String> = (0..16).map(|index| format!("d{index}")).collect();
+        let lines = flatten_detail(&json!({ "domains": domains }));
+        assert_eq!(lines.len(), 1);
+        let line = &lines[0];
+        assert!(line.starts_with("domains: d0, d1,"), "{line}");
+        assert!(
+            line.ends_with("d11, … +4 more"),
+            "the four hidden domains must be counted, not dropped: {line}"
+        );
+        assert!(!line.contains("d12"), "the cap must still bind: {line}");
+    }
+
+    #[test]
+    fn an_over_long_value_is_marked_where_it_was_cut() {
+        let long = "x".repeat(300);
+        let lines = flatten_detail(&json!({ "reason": long }));
+        assert_eq!(lines.len(), 1);
+        let value = lines[0].strip_prefix("reason: ").expect("key prefix");
+        assert_eq!(value.chars().count(), 221, "220 kept plus one marker");
+        assert!(value.ends_with('…'), "the cut must be visible: {value}");
+    }
+
+    #[test]
+    fn a_value_exactly_at_the_cap_is_not_marked() {
+        let exact = "y".repeat(220);
+        let lines = flatten_detail(&json!({ "reason": exact.clone() }));
+        assert_eq!(lines, vec![format!("reason: {exact}")]);
+    }
+
+    #[test]
+    fn too_many_keys_report_how_many_were_hidden() {
+        let mut fields = serde_json::Map::new();
+        for index in 0..11 {
+            fields.insert(format!("k{index:02}"), json!(index));
+        }
+        let lines = flatten_detail(&serde_json::Value::Object(fields));
+        assert_eq!(lines.len(), 9, "eight keys plus one marker");
+        assert_eq!(lines[8], "… +3 more");
+    }
+
+    #[test]
+    fn clip_marks_only_when_it_cut() {
+        assert_eq!(clip("abc", 5), "abc");
+        assert_eq!(clip("abc", 3), "abc");
+        assert_eq!(clip("abcd", 3), "abc…");
+        // Character-wise, never byte-wise: a cut inside a multi-byte scalar
+        // would not be valid UTF-8.
+        assert_eq!(clip("héllo", 2), "hé…");
+    }
 }

@@ -40,6 +40,13 @@ fn main() -> ExitCode {
 /// Global flags, stripped before routing so they may appear anywhere. They
 /// are the only flags with that privilege; everything else belongs to exactly
 /// one command and is validated against its declaration.
+///
+/// "Anywhere" stops at `--`. Without an end-of-options sentinel this scan
+/// reads every token, including one a command meant as an operand, so a
+/// caller passing the literal text `--yes` as a *value* would have silently
+/// granted global confirmation on the way past. Nothing declares an operand
+/// today, which is the only reason that was latent rather than live; the
+/// sentinel closes it before the first one does.
 struct Globals {
     output: Output,
     confirmed: bool,
@@ -61,6 +68,13 @@ fn split_globals(argv: &[String]) -> Result<(Globals, Vec<String>), Failure> {
         let token = &argv[index];
         index += 1;
         match token.as_str() {
+            // Everything past the sentinel belongs to the command, verbatim.
+            // The sentinel itself travels with it so argument parsing sees the
+            // same boundary this scan did.
+            "--" => {
+                rest.extend_from_slice(&argv[index - 1..]);
+                break;
+            }
             "--help" | "-h" => help = true,
             "--version" | "-V" => version = true,
             "--pretty" => pretty = true,
@@ -346,4 +360,66 @@ fn unknown_command(domain: &'static Domain, name: &str) -> Failure {
     failure
         .next(format!("ds {} --help", domain.id))
         .detail(serde_json::json!({ "commands": names }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::split_globals;
+
+    fn argv(parts: &[&str]) -> Vec<String> {
+        parts.iter().map(|part| (*part).to_string()).collect()
+    }
+
+    #[test]
+    fn globals_are_still_recognised_at_any_depth() {
+        let (globals, rest) = split_globals(&argv(&["dsgrid", "inspect", "--yes"])).expect("split");
+        assert!(globals.confirmed);
+        assert_eq!(rest, argv(&["dsgrid", "inspect"]));
+    }
+
+    #[test]
+    fn a_token_after_the_sentinel_never_becomes_global_confirmation() {
+        // The whole point of F8: `--yes` arriving as somebody's *value* must
+        // not grant confirmation on a `global_write` before dispatch is
+        // reached. Delete the `"--"` arm in `split_globals` and this fails.
+        let (globals, rest) =
+            split_globals(&argv(&["feedback", "close", "--", "--yes"])).expect("split");
+        assert!(
+            !globals.confirmed,
+            "a value that reads like `--yes` must never confirm anything"
+        );
+        assert_eq!(rest, argv(&["feedback", "close", "--", "--yes"]));
+    }
+
+    #[test]
+    fn the_sentinel_shields_every_global_not_just_confirmation() {
+        let (globals, rest) = split_globals(&argv(&[
+            "work", "task", "create", "--", "--help", "--output", "json",
+        ]))
+        .expect("split");
+        assert!(!globals.help);
+        assert!(!globals.output.is_json());
+        assert_eq!(
+            rest,
+            argv(&["work", "task", "create", "--", "--help", "--output", "json"])
+        );
+    }
+
+    #[test]
+    fn globals_before_the_sentinel_are_still_honoured() {
+        let (globals, rest) =
+            split_globals(&argv(&["--output", "json", "capabilities", "--", "--yes"]))
+                .expect("split");
+        assert!(globals.output.is_json());
+        assert!(!globals.confirmed);
+        assert_eq!(rest, argv(&["capabilities", "--", "--yes"]));
+    }
+
+    #[test]
+    fn the_sentinel_travels_with_the_command_so_parsing_sees_the_same_boundary() {
+        // `find_by_path` matches path segments, so `--` cannot be mistaken for
+        // one; it reaches `ds_cli_contract::parse`, which owns operands.
+        let (_, rest) = split_globals(&argv(&["style", "list", "--", "-x"])).expect("split");
+        assert!(rest.contains(&"--".to_string()));
+    }
 }

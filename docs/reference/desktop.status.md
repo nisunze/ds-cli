@@ -130,13 +130,27 @@ selection, undo history, or local cache state.
 
 ## Refusals
 
-| Code | Class | Meaning |
-|---|---|---|
-| `desktop_ambiguous` | unavailable | more than one profile running |
-| `descriptor_unusable` | unavailable | descriptor unreadable, stale, or not loopback |
-| `desktop_unreachable` | unavailable | descriptor names a port nothing answers on |
-| `pairing_rejected` | unauthorized | the app refused the secret; descriptor is stale |
-| `desktop_contract_mismatch` | unavailable | the app's reply does not match this build |
+`ds desktop status --help` is the live list, with the remedy for each. What is
+worth saying here is what the seven codes are *about*, because they divide into
+three different failures that look alike from outside:
+
+| Code | Meaning |
+|---|---|
+| `desktop_ambiguous` | more than one profile running; name one with `--desktop-descriptor` |
+| `descriptor_unusable` | a descriptor exists but is unreadable, stale, or not loopback |
+| `desktop_unreachable` | the descriptor names a port nothing answers on |
+| `pairing_rejected` | the application refused the secret; the descriptor is stale |
+| `desktop_refused` | the session answered and declined the status request |
+| `desktop_unreadable` | the reply could not be read within its bound |
+| `desktop_contract_mismatch` | the reply does not match this build's contract |
+
+The first three are about *finding* a session, the next two about *reaching*
+one, and the last two about *understanding* what came back. Branch on
+`error.code`; the class and exit code arrive with the envelope and follow the
+output contract's table.
+
+"Not paired" appears nowhere above, because it is a success — see the previous
+section.
 
 ## Related
 

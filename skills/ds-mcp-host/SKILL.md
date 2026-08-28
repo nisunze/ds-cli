@@ -15,14 +15,18 @@ For a general agent, install the broad default. It advertises `ds_catalog` and
 eleven operator-intent chapter routers (12 tools total), even as commands grow:
 
 ```text
-ds mcp install --host vscode --output json
+ds mcp install --host vscode --output json --yes
 ds mcp install --host vscode --write --yes
 ```
+
+`install` changes this machine's integration settings, so dispatch requires
+`--yes` on every invocation, including the print-only one. `--write` is what
+decides whether the host file is edited.
 
 For a narrow role, explicitly install one typed profile:
 
 ```text
-ds mcp install --host claude-code --exposure commands --profile pls
+ds mcp install --host claude-code --exposure commands --profile pls --write --yes
 ```
 
 Profiles are `grid`, `pls`, `survey`, `design-edit`, `design-run`, `map`,

@@ -109,6 +109,29 @@ impl Profile {
         }
     }
 
+    /// The exact command ids a by-command profile publishes, or an empty
+    /// slice for a profile that selects by chapter.
+    ///
+    /// Exposed so a test holding the live registry can prove these
+    /// hand-written splits still partition it. Chapter membership is declared
+    /// once, on the command; these four are not, and an unlisted command in a
+    /// split chapter is simply unreachable through its profile — silently,
+    /// and with every unit test still passing.
+    pub const fn command_ids(self) -> &'static [&'static str] {
+        match self {
+            Self::DesignEdit => DESIGN_EDIT_COMMANDS,
+            Self::DesignRun => DESIGN_RUN_COMMANDS,
+            Self::SolarRun => SOLAR_RUN_COMMANDS,
+            Self::SolarDelivery => SOLAR_DELIVERY_COMMANDS,
+            Self::Grid
+            | Self::Pls
+            | Self::Survey
+            | Self::Map
+            | Self::Project
+            | Self::Operations => &[],
+        }
+    }
+
     pub fn includes_chapter(self, chapter: Chapter) -> bool {
         match self {
             Self::Grid => matches!(chapter, Chapter::GridModel | Chapter::Reports),
@@ -173,6 +196,11 @@ const SOLAR_DELIVERY_COMMANDS: &[&str] = &[
     "solar.portfolio.export",
 ];
 
+/// Every chapter except `Catalog`, which is the index rather than a routed
+/// destination. Held to `Chapter::ALL` by
+/// `every_declared_chapter_except_the_catalog_is_routed`: without that, a
+/// thirteenth chapter would leave its commands unreachable through MCP while
+/// every assertion here still passed at the literal twelve.
 const ROUTED_CHAPTERS: &[Chapter] = &[
     Chapter::Project,
     Chapter::GridModel,
@@ -714,10 +742,36 @@ mod tests {
             .into_iter()
             .map(|value| value["name"].as_str().unwrap().to_string())
             .collect::<Vec<_>>();
-        assert_eq!(names.len(), 12);
+        // Derived, not the literal 12: the catalogue plus one router per
+        // routed chapter. A thirteenth chapter that nobody routed fails here
+        // instead of quietly publishing the same twelve.
+        assert_eq!(names.len(), Chapter::ALL.len());
         assert_eq!(names[0], "ds_catalog");
-        assert!(names.contains(&"ds_pls_cadd".to_string()));
-        assert!(names.contains(&"ds_workstation".to_string()));
+        for chapter in Chapter::ALL {
+            assert!(
+                names.contains(&chapter_tool_name(*chapter).to_string()),
+                "chapter `{chapter}` publishes no tool"
+            );
+        }
+    }
+
+    #[test]
+    fn every_declared_chapter_except_the_catalog_is_routed() {
+        // F36: `ROUTED_CHAPTERS` is hand-maintained beside a declaration that
+        // already enumerates every chapter. Adding a chapter and forgetting
+        // this list makes its commands unreachable through MCP with nothing
+        // failing, because the surface's own count matches the list, not the
+        // registry.
+        let expected: Vec<Chapter> = Chapter::ALL
+            .iter()
+            .copied()
+            .filter(|chapter| *chapter != Chapter::Catalog)
+            .collect();
+        assert_eq!(
+            ROUTED_CHAPTERS.to_vec(),
+            expected,
+            "`ROUTED_CHAPTERS` must be `Chapter::ALL` minus the catalogue, in declaration order"
+        );
     }
 
     #[test]

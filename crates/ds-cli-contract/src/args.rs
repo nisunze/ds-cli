@@ -63,12 +63,27 @@ pub fn parse(command: &Command, tokens: &[String]) -> Result<Inputs, Failure> {
         .filter(|arg| arg.kind == ArgKind::Positional)
         .collect();
     let mut filled = 0usize;
+    // POSIX `--`: after it, a token is an operand even if it looks like a
+    // flag. Without it there is no way to pass a value whose text begins with
+    // `--`, and the global scan in `ds` would read such a token as its own.
+    let mut operands_only = false;
 
     while index < tokens.len() {
         let token = &tokens[index];
         index += 1;
 
-        let Some(rest) = token.strip_prefix("--") else {
+        if !operands_only && token == "--" {
+            operands_only = true;
+            continue;
+        }
+
+        let stripped = if operands_only {
+            None
+        } else {
+            token.strip_prefix("--")
+        };
+
+        let Some(rest) = stripped else {
             let Some(arg) = positionals.get(filled) else {
                 return Err(if positionals.is_empty() {
                     Failure::invalid(
@@ -261,4 +276,79 @@ fn distance(left: &str, right: &str) -> usize {
         std::mem::swap(&mut previous, &mut current);
     }
     previous[right.len()]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse;
+    use crate::spec::{Arg, Authority, Availability, Chapter, Command, Effect, Execution, Refusal};
+
+    fn available() -> Availability {
+        Availability::Available
+    }
+
+    /// A command shaped like the first one to declare an operand. No shipping
+    /// command does yet, which is precisely why the `--yes`-as-a-value hole
+    /// was latent rather than live.
+    static WITH_OPERAND: Command = Command {
+        id: "test.operand",
+        path: &["test", "operand"],
+        contract: 1,
+        chapter: Chapter::Catalog,
+        summary: "Takes one bare operand.",
+        purpose: "Exists only to hold the operand parsing rules to their contract.",
+        effect: Effect::Discovery,
+        authority: Authority::None,
+        execution: Execution::Sync,
+        args: &[
+            Arg::positional("subject", "<subject>", "The thing named."),
+            Arg::value("model", "<name>", "An ordinary valued flag."),
+        ],
+        output: "Nothing; this command is never dispatched.",
+        examples: &[],
+        refusals: &[Refusal {
+            code: "unexpected_operand",
+            when: "a bare token arrives at a command that declares none",
+            remedy: "pass inputs as `--name value`",
+        }],
+        reference: None,
+        availability: available,
+    };
+
+    fn tokens(parts: &[&str]) -> Vec<String> {
+        parts.iter().map(|part| (*part).to_string()).collect()
+    }
+
+    #[test]
+    fn a_sentinel_turns_a_flag_looking_token_into_the_operand() {
+        let inputs = parse(&WITH_OPERAND, &tokens(&["--", "--yes"])).expect("parsed");
+        assert_eq!(inputs.value("subject"), Some("--yes"));
+    }
+
+    #[test]
+    fn the_sentinel_still_lets_real_flags_come_first() {
+        let inputs =
+            parse(&WITH_OPERAND, &tokens(&["--model", "m1", "--", "--output"])).expect("parsed");
+        assert_eq!(inputs.value("model"), Some("m1"));
+        assert_eq!(inputs.value("subject"), Some("--output"));
+    }
+
+    #[test]
+    fn a_second_sentinel_is_an_operand_not_another_sentinel() {
+        let inputs = parse(&WITH_OPERAND, &tokens(&["--", "--"])).expect("parsed");
+        assert_eq!(inputs.value("subject"), Some("--"));
+    }
+
+    #[test]
+    fn a_declared_flag_after_the_sentinel_is_no_longer_a_flag() {
+        let refused = parse(&WITH_OPERAND, &tokens(&["--", "a", "--model", "m1"])).unwrap_err();
+        assert_eq!(refused.code(), "too_many_operands");
+    }
+
+    #[test]
+    fn a_lone_sentinel_changes_nothing() {
+        let inputs = parse(&WITH_OPERAND, &tokens(&["--"])).expect("parsed");
+        assert_eq!(inputs.value("subject"), None);
+        assert_eq!(inputs.value("model"), None);
+    }
 }

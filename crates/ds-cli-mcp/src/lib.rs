@@ -5,9 +5,16 @@
 //! `tools/list` and `tools/call`. This domain gives them `ds` without giving
 //! them a second product surface:
 //!
-//! - the tool list is BUILT from `ds capabilities` at startup, descriptor by
-//!   descriptor — nothing here is hand-written, so the list can never drift
-//!   from the CLI it fronts;
+//! - no command schema is hand-written. Every command's inputs, effect,
+//!   authority and refusals are read from `ds capabilities` at startup,
+//!   descriptor by descriptor, so a command's typing can never drift from the
+//!   CLI it fronts. What *is* written here is the routing above that: under
+//!   the default `--exposure chapters` the twelve published tool definitions
+//!   and their prose live in `surface.rs`, and four profiles select by
+//!   command id rather than by chapter. Those lists are held to the live
+//!   registry by tests rather than by assertion — see
+//!   `every_declared_chapter_except_the_catalog_is_routed` here and
+//!   `crates/ds/tests/mcp.rs`;
 //! - every `tools/call` is literally a `ds <path> … --output json` process,
 //!   and the CLI's typed envelope (result or refusal) is returned verbatim;
 //! - pairing with the running DS GridDesign stays the only authority. The

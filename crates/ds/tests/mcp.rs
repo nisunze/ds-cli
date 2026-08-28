@@ -4,6 +4,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::io::Write;
 use std::process::{Command, Stdio};
 
+use ds_cli_contract::spec::Chapter;
+use ds_cli_mcp::surface::Profile;
 use serde_json::{Value, json};
 
 fn cli(args: &[&str]) -> Value {
@@ -77,24 +79,127 @@ fn broad_server_has_twelve_stable_tools_and_reports_build_identity() {
     let tools = response(&responses, 2)["result"]["tools"]
         .as_array()
         .expect("tools");
-    assert_eq!(tools.len(), 12);
+    // One router per chapter, with the catalogue standing in for its own.
+    // Derived from the declaration so a thirteenth chapter cannot ship
+    // unreachable while this still reads twelve.
+    assert_eq!(tools.len(), Chapter::ALL.len());
     assert_eq!(tools[0]["name"], "ds_catalog");
-    assert!(tools.iter().any(|tool| tool["name"] == "ds_pls_cadd"));
-    assert!(tools.iter().any(|tool| tool["name"] == "ds_survey"));
-    assert!(tools.iter().any(|tool| tool["name"] == "ds_vector_tiles"));
-    assert!(tools.iter().any(|tool| tool["name"] == "ds_workstation"));
+    for chapter in Chapter::ALL {
+        let name = ds_cli_mcp::surface::chapter_tool_name(*chapter);
+        assert!(
+            tools.iter().any(|tool| tool["name"] == name),
+            "chapter `{chapter}` publishes no tool"
+        );
+    }
     let version = cli(&["version", "--output", "json"]);
     assert_eq!(
         response(&responses, 1)["result"]["serverInfo"]["sourceSha"],
         version["data"]["source_sha"]
     );
-    let install = cli(&["mcp", "install", "--output", "json"]);
+    // `--yes` because `mcp.install` is `machine_write`; without `--write` it
+    // still only prints, and this call writes nothing.
+    let install = cli(&["mcp", "install", "--output", "json", "--yes"]);
     assert_eq!(install["data"]["source_sha"], version["data"]["source_sha"]);
+    assert_eq!(install["data"]["written"], json!(false));
     assert_eq!(
         install["data"]["entry"]["servers"]["ds"]["args"],
         json!(["mcp", "serve", "--exposure", "chapters"])
     );
-    assert!(stderr.contains("serving 12"), "{stderr}");
+    assert!(
+        stderr.contains(&format!("serving {}", Chapter::ALL.len())),
+        "{stderr}"
+    );
+}
+
+#[test]
+fn installing_the_host_entry_is_gated_and_names_its_own_gate() {
+    // F7: the effect class was `local_file_write`, which is not in the
+    // confirmation set, so the `--write --yes` this command's help, its
+    // reference doc and the `ds-mcp-host` skill all asked for was decorative.
+    // Nothing is written here: the refusal happens before the handler runs.
+    let output = Command::new(env!("CARGO_BIN_EXE_ds"))
+        .args(["mcp", "install", "--output", "json"])
+        .output()
+        .expect("ds runs");
+    assert_eq!(output.status.code(), Some(2), "an unconfirmed gate exits 2");
+    let envelope: Value = serde_json::from_slice(&output.stdout).expect("one CLI envelope");
+    assert_eq!(envelope["error"]["code"], "confirmation_required");
+
+    let descriptor = cli(&["capabilities", "mcp.install", "--output", "json"]);
+    let descriptor = &descriptor["data"]["command"];
+    assert_eq!(descriptor["effect"], "machine_write");
+    assert_eq!(descriptor["confirmation_required"], json!(true));
+    let codes: BTreeSet<String> = descriptor["refusals"]
+        .as_array()
+        .expect("refusals")
+        .iter()
+        .map(|refusal| refusal["code"].as_str().expect("code").to_string())
+        .collect();
+    assert!(
+        codes.contains("confirmation_required"),
+        "a gate a caller cannot discover from the descriptor is not a contract: {codes:?}"
+    );
+    assert!(
+        codes.contains("mcp_capabilities_unavailable"),
+        "`build_identity` runs before the entry is printed: {codes:?}"
+    );
+}
+
+#[test]
+fn by_command_profiles_still_partition_the_live_registry() {
+    // F36: chapter membership is declared once, on the command. These four
+    // profiles are not — they hand-list command ids, and an id nobody added
+    // is simply unreachable through its profile with every unit test still
+    // green. The lists partitioned the registry when written; this is what
+    // makes that a fact rather than a snapshot.
+    // Discovery is tiered on purpose, so the id set is walked domain by
+    // domain rather than read from a flat index that does not exist.
+    let mut live: BTreeSet<String> = BTreeSet::new();
+    for domain in cli(&["capabilities", "--output", "json"])["data"]["domains"]
+        .as_array()
+        .expect("domains")
+    {
+        let domain = domain["id"].as_str().expect("domain id");
+        for command in cli(&["capabilities", domain, "--output", "json"])["data"]["commands"]
+            .as_array()
+            .expect("commands")
+        {
+            live.insert(command["id"].as_str().expect("id").to_string());
+        }
+    }
+    assert!(!live.is_empty(), "the live registry must not be empty");
+
+    for (prefix, profiles) in [
+        ("map.design.", [Profile::DesignEdit, Profile::DesignRun]),
+        ("solar.", [Profile::SolarRun, Profile::SolarDelivery]),
+    ] {
+        let expected: BTreeSet<String> = live
+            .iter()
+            .filter(|id| id.starts_with(prefix))
+            .cloned()
+            .collect();
+        assert!(!expected.is_empty(), "no live `{prefix}*` commands");
+
+        let mut listed: BTreeSet<String> = BTreeSet::new();
+        for profile in profiles {
+            for id in profile.command_ids() {
+                assert!(
+                    listed.insert((*id).to_string()),
+                    "`{id}` is claimed by more than one `{prefix}*` profile"
+                );
+            }
+        }
+        let missing: Vec<&String> = expected.difference(&listed).collect();
+        assert!(
+            missing.is_empty(),
+            "these live `{prefix}*` commands reach no profile: {missing:?}"
+        );
+        let stale: Vec<&String> = listed.difference(&expected).collect();
+        assert!(
+            stale.is_empty(),
+            "these profile entries name no live command: {stale:?}"
+        );
+    }
 }
 
 #[test]

@@ -4,8 +4,11 @@ name: ci
 # workspace by path, and its test suite binds to that repository's real
 # `.dsgrid` fixture rather than a vendored copy. `ds map` additionally checks
 # every operation and argument key it sends against the paired application's
-# own source in `ds-web`. So CI checks out all three repositories side by
-# side, in the same layout an operator has locally.
+# own source in `ds-web`, and `tests/engine_parity.rs` checks every field name
+# `ds report` and `ds solar` hand-copy against the engines those flags are
+# copied from. So CI checks out all five repositories side by side, in the
+# same layout an operator has locally, and builds the two engines it calls
+# over a process contract: that suite skips — and reports green — without them.
 on:
   push:
     branches: [master]
@@ -23,12 +26,18 @@ jobs:
         with:
           path: data-solutions/ds-cli
 
+      # `persist-credentials: false` on every private checkout below.
+      # `actions/checkout` otherwise writes WORKSPACE_TOKEN into that clone's
+      # `.git/config` as an auth header and leaves it there for every later
+      # step. Nothing after the clone runs git against these repositories, so
+      # the token has no reason to outlive the step that used it.
       - name: Check out ds-network
         uses: actions/checkout@v4
         with:
           repository: nisunze/ds-network
           path: data-solutions/ds-network
           token: ${{ secrets.WORKSPACE_TOKEN }}
+          persist-credentials: false
 
       # Source only — `tests/bridge_parity.rs` reads the bridge's allow-list,
       # the operation schemas and the map snapshot. Nothing here is built.
@@ -38,6 +47,27 @@ jobs:
           repository: nisunze/ds-web
           path: data-solutions/ds-web
           token: ${{ secrets.WORKSPACE_TOKEN }}
+          persist-credentials: false
+
+      # The two engines `ds` reaches over a typed process contract. Unlike
+      # ds-web these are needed as *binaries*: `tests/engine_parity.rs` asks
+      # the reporter for its published task schemas and the solar CLI for its
+      # own help, and compares them with what `ds` declares.
+      - name: Check out ds-network-reporter
+        uses: actions/checkout@v4
+        with:
+          repository: nisunze/ds-network-reporter
+          path: data-solutions/ds-network-reporter
+          token: ${{ secrets.WORKSPACE_TOKEN }}
+          persist-credentials: false
+
+      - name: Check out ds-solar
+        uses: actions/checkout@v4
+        with:
+          repository: nisunze/ds-solar
+          path: data-solutions/ds-solar
+          token: ${{ secrets.WORKSPACE_TOKEN }}
+          persist-credentials: false
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -45,7 +75,14 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: data-solutions/ds-cli
+          # The engine workspaces are cached alongside this one. A debug
+          # `ds-solar` pulls Polars, Arrow and Parquet; paying for that on
+          # every pull request is what makes an engine build look too
+          # expensive to run, which is how the parity suite came to skip.
+          workspaces: |
+            data-solutions/ds-cli
+            data-solutions/ds-network-reporter
+            data-solutions/ds-solar
 
       - name: Format
         working-directory: data-solutions/ds-cli
@@ -70,13 +107,56 @@ jobs:
       # A parity suite that skips reports green, which is worse than no test:
       # it claims a hand-copied field name was checked when nothing looked at
       # it. Prove here that it actually ran.
+      #
+      # `shell: bash` with `pipefail` on every step below that pipes: the
+      # Actions default is `bash -e {0}` *without* it, so the step's status
+      # would be `tee`'s, and a compile error or a failed assertion inside the
+      # suite would exit 0 here.
       - name: Prove bridge parity did not skip
         working-directory: data-solutions/ds-cli
+        shell: bash
         run: |
+          set -o pipefail
           cargo test --locked -p ds --test bridge_parity -- --nocapture 2>&1 \
             | tee bridge-parity.log
           if grep -q "SKIPPED" bridge-parity.log; then
             echo "::error::bridge_parity skipped; the ds-web checkout was not found"
+            exit 1
+          fi
+
+      # Debug, not release: `ds-network-reporter`'s build script refuses a
+      # release build without `DS_REPORT_SOURCE_SHA`, because a release build
+      # identity is a packaging artifact. The parity check reads published
+      # schemas and help, which a debug binary answers identically.
+      #
+      # No `--locked`: these lockfiles belong to the engine repositories.
+      # Pinning their resolution is their CI's job, and `--locked` here would
+      # turn their lockfile drift into a red build on a ds-cli pull request
+      # that cannot fix it.
+      - name: Build the report engine
+        working-directory: data-solutions/ds-network-reporter
+        run: cargo build --bin ds-report
+
+      - name: Build the solar engine
+        working-directory: data-solutions/ds-solar
+        run: cargo build -p ds-solar-cli --bin ds-solar
+
+      # The same anti-skip proof for the engines. Without it this suite is
+      # three tests that return `ok` having looked at nothing — and because
+      # the run above is not `--nocapture`, cargo swallows the `SKIPPED:`
+      # lines that would have said so.
+      - name: Prove engine parity did not skip
+        working-directory: data-solutions/ds-cli
+        shell: bash
+        env:
+          DS_REPORT_BIN: ${{ github.workspace }}/data-solutions/ds-network-reporter/target/debug/ds-report
+          DS_SOLAR_BIN: ${{ github.workspace }}/data-solutions/ds-solar/target/debug/ds-solar
+        run: |
+          set -o pipefail
+          cargo test --locked -p ds --test engine_parity -- --nocapture 2>&1 \
+            | tee engine-parity.log
+          if grep -q "SKIPPED" engine-parity.log; then
+            echo "::error::engine_parity skipped; an engine binary was not found where DS_REPORT_BIN or DS_SOLAR_BIN points"
             exit 1
           fi
 
@@ -89,7 +169,9 @@ jobs:
       # release pipeline.
       - name: Verify build identity
         working-directory: data-solutions/ds-cli
+        shell: bash
         run: |
+          set -o pipefail
           ./target/release/ds version --output json
           ./target/release/ds version --output json \
             | grep -q '"product":"ds"'

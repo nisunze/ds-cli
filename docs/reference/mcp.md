@@ -25,9 +25,11 @@ declared once on every canonical command and appears in its live descriptor.
 
 ## Exposure modes
 
-The default broad server publishes 11 stable tools: `ds_catalog` plus project,
-grid-model, PLS-CADD, survey, design, map-presentation, vector-tile, Solar,
-report, and operations routers. Adding a command does not enlarge this list.
+The default broad server publishes twelve stable tools: `ds_catalog` plus one
+router per chapter — `ds_project`, `ds_grid_model`, `ds_pls_cadd`, `ds_survey`,
+`ds_design`, `ds_map_presentation`, `ds_vector_tiles`, `ds_solar`,
+`ds_reports`, `ds_operations` and `ds_workstation`. Adding a command does not
+enlarge this list.
 
 ```text
 ds mcp serve --exposure chapters
@@ -52,6 +54,77 @@ commands are unavailable and authority, effects, confirmation, output, and
 refusals are unchanged. Plain `--exposure commands` retains the previous
 all-command publication temporarily for compatibility.
 
+## Why a chapter, rather than one tool per command
+
+Publishing one tool per command makes the MCP surface grow with implementation
+detail. Every command `ds` adds costs every connected host context it spends
+before it has chosen anything, and a long undifferentiated tool list makes
+first-hop selection less reliable, not more informed.
+
+The opposite extreme is worse. A single `ds_call` tool taking a command id and
+an argument bag minimises the count but deletes the semantic hints an agent
+needs to choose safely: PLS-CADD patching, a survey read, a design save, a
+Solar run and a platform-health query all look interchangeable. Chapter routers
+keep the routing information and drop the schema bulk.
+
+Publishing each chapter as one union schema over its commands would move the
+same cost inside eleven very large tool definitions, and would make a chapter's
+schema change whenever any command inside it changed. So the chapter envelope
+stays small and stable, full input typing is delivered on demand through
+`operation: "describe"`, and the invocation is then validated against the
+canonical descriptor before dispatch.
+
+## Where the chapter boundaries fall
+
+A chapter is an **operator-intent** boundary, not a repository or crate
+boundary, which is why the chapter table is not the domain table:
+
+- PLS-CADD inspection, reference closure, terrain reconciliation, capacity and
+  exact native-library resolution are one native delivery workflow, so `pls`
+  and `library` share `ds_pls_cadd`.
+- Survey acquisition and bounded local geospatial preparation belong together;
+  LV design mutation does not. The `map` domain is therefore split across
+  `ds_survey` and `ds_design` at this layer.
+- Vector-tile publication has its own preflight/generate/catalogue lifecycle
+  and global-write effects, so it is not folded into map presentation: styling
+  an existing layer is not regenerating and publishing its tile archive.
+- Canonical `.dsgrid` work stays distinct from native PLS-CADD work even when
+  one delivery round-trip uses both.
+
+Chapter descriptions name the operator concern and its main operation groups.
+They must stay true when a command is added inside the chapter; a description
+that enumerates flags or commands would be a second description of a command,
+and would have to be maintained against the registry it is derived from.
+
+## What chaptering may never change
+
+Chaptering is discovery compression. It has no behaviour of its own, and these
+hold for every exposure mode and every profile:
+
+1. The live command descriptor remains authoritative for arguments,
+   availability, authority, effect, confirmation, refusals and output.
+2. The adapter dispatches the same handler the CLI does. It contains no
+   project, survey, PLS-CADD, tile or Solar logic.
+3. `confirm: true` is honoured only where that exact command's contract
+   requires it. A chapter cannot grant confirmation to its neighbours, and a
+   read-only command rejects it rather than forwarding it.
+4. Project and desktop identity are resolved by the command, never by hidden
+   MCP session state. A profile introduces no identity or project override
+   argument.
+5. Result envelopes, artifact receipts, bounded-output rules and error codes
+   are identical to the CLI's.
+6. Protocol logs stay off MCP stdout.
+7. The `mcp` domain is never exposed as a chapter command, so an MCP client
+   cannot reach `mcp install` or start a second server.
+8. An unknown or wrong-chapter command id refuses with the correct router and
+   a bounded next action. It is never forwarded as argv or as shell text. The
+   `arguments` object is not permission to accept arbitrary CLI text: it
+   carries one canonical command id whose values are validated against that
+   command's live schema.
+
+A profile is an allowlist over the same registry. A command a profile omits is
+unavailable through that server; it is never reimplemented locally.
+
 ## Confirmation
 
 The CLI requires `--yes` for effectful commands. Typed leaf tools declare
@@ -69,11 +142,26 @@ carry the command's effect, authority, and the refusals it can name.
 ## Installing the host entry
 
 ```
-ds mcp install                       # print the VS Code entry and its file
-ds mcp install --write --yes         # merge it into the VS Code user profile
-ds mcp install --host claude-code    # other hosts: claude-code, cursor, codex, generic
-ds mcp install --host claude-code --exposure commands --profile pls
+ds mcp install --yes                        # print the VS Code entry and its file
+ds mcp install --write --yes                # merge it into the VS Code user profile
+ds mcp install --host claude-code --yes     # other hosts: claude-code, cursor, codex, generic
+ds mcp install --host claude-code --exposure commands --profile pls --write --yes
 ```
+
+`--yes` is on every one of those lines because confirmation in `ds` is decided
+by the **command's** effect, once, in `registry::dispatch` — not by which flags
+the invocation happens to carry. `mcp.install` is `machine_write`: its writing
+path targets a user-level host configuration file, which changes this machine's
+integration settings rather than a file in the workspace you are standing in.
+So dispatch refuses `confirmation_required` without `--yes`, including for the
+print-only invocation. A per-flag gate would have to be re-derived in every
+handler, and the one that forgot would be the one that mattered.
+
+Without `--write`, `install` prints the entry and the file it belongs in and
+changes nothing. With `--write` the merge is atomic: the merged document is
+staged as a sibling temp file, fsynced, and renamed over the target, and any
+pre-existing file is preserved as `<file>.bak`. An interrupted merge therefore
+cannot leave a host with a truncated configuration.
 
 The entry points at **this** executable and belongs in the **user** profile
 — `%APPDATA%\Code\User\mcp.json` on Windows, `~/.config/Code/User/mcp.json`

@@ -62,14 +62,23 @@ desktop bridge's 8 MiB response ceiling even for worst-case escaped text.
 
 ## Refusals
 
+Both commands reach the paired application, so both can end in any of the
+pairing states every bridge domain shares — no session, ambiguous profiles, an
+unreachable or stale descriptor, a rejected pairing secret, a refused or
+unreadable reply, an operation this desktop build does not offer, and a
+signed-out session. `ds sre <command> --help` lists that set with a remedy for
+each; copying it here would be a second list that drifts the next time one is
+added.
+
+What belongs to this domain:
+
 | Code | Meaning |
 |---|---|
-| `desktop_not_paired` | no DS GridDesign session is running |
-| `desktop_signed_out` | the app is running without a signed-in user; a project is not required |
-| `sre_not_permitted` | the signed-in user lacks Reliability access |
-| `desktop_operation_unsupported` | the app build does not yet own this SRE operation |
-| `invalid_number` | a numeric flag is outside its declared bound |
-| `invalid_text` | a text filter is empty, untrimmed, or too long |
+| `sre_not_permitted` | the signed-in user lacks Reliability access; a platform administrator grants it |
+| `invalid_number` | a numeric flag falls outside the bound in its summary; the refusal carries the accepted range |
+| `invalid_text` | a text filter is empty, untrimmed, or longer than 200 characters |
+
+The two input codes belong to `events` alone — `overview` declares no flags.
 
 The closed wire operations are `sre.overview` with `{}` and `sre.events` with
 only `days`, `limit`, `scanLimit`, `service`, `outcome`, `category`, `lane`,

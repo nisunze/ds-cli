@@ -51,28 +51,58 @@ which is the specific failure this CLI exists to avoid.
 
 ## Byte budgets
 
-Enforced by `crates/ds/tests/context_budget.rs`. They sit close to today's
-sizes on purpose: they are meant to fire when text lands in the wrong tier,
-not to leave a year of room for drift.
+Enforced by `crates/ds/tests/context_budget.rs`. The important property is that
+the ceilings are **derived, not flat**. A command that genuinely declares
+twelve inputs must be allowed to describe twelve inputs; what a ceiling is for
+is catching text that landed in the wrong tier — an explanation that grew, an
+example that became a tutorial, an architecture note that should have been a
+cross-link. So each allowance is a small frame plus an amount per declared
+thing, and the formula is the contract:
 
-| Surface | Budget | Today |
+| Surface | Ceiling | Asserted by |
 |---|---|---|
-| `ds --help` | 800 + 80/domain | 1 600 (10 domains) |
-| `ds <domain> --help` | 900 | 263–270 |
-| `ds <cmd> --help` | 3 200 | 1 344–2 308 |
-| `ds capabilities` (JSON) | 900 | 336 |
-| `ds capabilities <domain>` (JSON) | 1 200 | 315 |
-| `ds capabilities <id>` (JSON) | 3 500 | 2 498 |
-| `ds capabilities --search` (JSON) | 1 200 | 272 |
-| default command result (JSON) | 1 500 | 525 |
-| error envelope (JSON) | 800 | 277 |
+| `ds --help` | 800 + 80 per **domain** | `root_help_scales_with_domains_not_commands` |
+| `ds <domain> --help` | 260 + 140 per command in that domain | `domain_help_scales_with_its_own_commands` |
+| `ds <domain> <cmd> --help` | 1 200 + 180 per declared input + 220 per declared refusal | `command_help_is_bounded` |
+| `ds capabilities` (JSON) | 400 + 140 per domain | `discovery_indexes_are_cheap_in_json` |
+| `ds capabilities <domain>` (JSON) | 300 + 220 per command in that domain | `discovery_indexes_are_cheap_in_json` |
+| `ds capabilities <id>` (JSON) | that command's help ceiling, plus 600 for JSON's own punctuation | `command_descriptors_are_bounded` |
+
+Three surfaces have nothing to scale against, so they carry a flat cap:
+
+| Surface | Cap | Asserted by |
+|---|---|---|
+| `ds capabilities --search` (JSON) | 1 320 — search is already bounded by its ten-result cap, so this prices the tenth id/summary row | `discovery_indexes_are_cheap_in_json` |
+| default command result (JSON) | 1 500 | `default_results_are_bounded` |
+| error envelope (JSON) | 800 | `errors_are_short` |
+
+Root help carries a flat cap *in addition to* its derived one, in
+`root_help_is_cheap`, so that a raise is a deliberate edit with a written
+reason rather than an arithmetic side effect of registering a domain. It is
+held at or above the derived ceiling on purpose: if the flat number bound
+first, the scaling assertion — the one this entire contract rests on — could
+never be the test that fails.
+
+Measured at this commit, for scale and not as a promise: `ds --help` is 2 043
+bytes across 16 domains; domain help runs 341 (`sre`) to 2 740 (`map`); command
+help runs 749 to 6 798 across 117 commands; `ds capabilities` is 1 721 bytes
+and a single descriptor 892 to 6 948; a representative search is 1 299; a
+default `dsgrid inspect` result is 524; an error envelope is 291.
 
 Raising a budget is allowed. Raising one silently is not: change the number in
-the test, in the same commit, with the reason.
+the test, in the same commit, with the reason it moved. The comments in that
+file are the record of what each domain cost, and a budget that only ever gets
+relaxed is protecting nothing.
 
 **Cost of a cold start.** An agent that has never seen `ds` reaches a specific
-command's full contract in three calls totalling ~3.1 KB of JSON (336 + 315 +
-2 498), or ~3.5 KB of human help.
+command's full contract in three calls — the domain index, one domain's command
+list, one descriptor — and pays for one domain rather than all of them. For
+`dsgrid.inspect` at this commit that is 1 721 + 813 + 2 984 = 5 518 bytes of
+JSON, or 2 043 + 492 + 2 737 = 5 272 bytes of human help.
+
+Only the first of the three grows with the rest of the stack, and it grows by
+one summary line per domain. That is the claim worth making: on a `ds` with
+twice as many domains, the second and third calls cost the same.
 
 ## Domain discovery must not probe other domains
 

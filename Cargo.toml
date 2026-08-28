@@ -1,57 +1,33 @@
 # The `ds` command line: one Rust executable that is the supported door into
 # the Data Solutions stack for a person in a terminal and for a coding agent.
 #
-# Workspace shape follows real dependency boundaries, not tidiness:
+# Workspace shape follows real dependency boundaries, not tidiness. `ls
+# crates/` is the inventory and each crate's own header states its boundary;
+# a list kept here would be a second inventory that nothing checks, and it
+# would be wrong from the next crate onwards. Four boundaries the naming does
+# not give away:
 #
 #   ds-cli-contract  the CLI's own contract — command metadata, output
 #                    envelope, error classes, exit codes, help rendering,
 #                    argument parsing. Depends on no domain crate, so the
 #                    contract can be tested without building an engine.
 #   ds-cli-desktop   the paired-desktop authority surface. Separate because
-#                    every future domain that needs a signed-in principal
-#                    routes through it, and because nothing in it may be
-#                    reachable from a domain that does not ask for it.
+#                    every domain that needs a signed-in principal routes
+#                    through it, and because nothing in it may be reachable
+#                    from a domain that does not ask for it.
 #   ds-cli-exec      the typed process boundary: locating a sibling DS
 #                    executable and calling one named subcommand under
-#                    bounds. Separate so there is exactly one place a
-#                    process can be spawned from, and it can be audited.
-#   ds-cli-map       the map domain: the paired desktop's map, its local
-#                    layers and its design layers. Links no engine — the map
-#                    lives inside the running application, so every command
-#                    is one named bridge operation. Separate from
-#                    ds-cli-desktop because that crate is the authority
-#                    surface every domain borrows, and a map command must not
-#                    become reachable from a domain that never asked for one.
-#   ds-cli-dsgrid    the canonical-model domain. Links the authoritative
-#                    ds-network crates directly; owns no engineering logic.
-#   ds-cli-dsgrid-exchange
-#                    the exchange domain: classify, plan, convert. Split from
-#                    ds-cli-dsgrid because reading a model someone already has
-#                    and manufacturing a new one are different questions with
-#                    different blast radii — one is Discovery, the other
-#                    writes files — and because a caller who only wants model
-#                    identity must not link the conversion engine to get it.
-#   ds-cli-report    the reporter domain, over the `ds-report` process
-#                    contract its workspace deliberately published.
-#   ds-cli-solar     the solar domain, over the `ds-solar` process contract.
-#   ds-cli-work      the Project Work domain: the plan, its tasks, the
-#                    assignment loop and the record of what happened. Like
-#                    ds-cli-map it links no engine — the graph is governed by
-#                    ds-brain and reached only through the paired application,
-#                    so every command is one named bridge operation.
-#   ds-cli-sre       platform reliability reads through the paired app:
-#                    fleet overview and bounded request events. Global to the
-#                    signed-in user; no active project or credential in ds.
-#   ds-cli-feedback  the shared product-feedback domain. It reaches the same
-#                    authenticated backlog as the desktop's `fb` shortcut and
-#                    pins reports from this surface as agent observations.
-#   ds-cli-shell     reaching `ds` from the shells on this machine: where
-#                    it resolves from, and the per-user PATH registration
-#                    a new terminal reads. Links no engine, asks no session.
+#                    bounds. Separate so the files from which a process can
+#                    be created stay few and auditable; that set is pinned by
+#                    crates/ds/tests/process_boundary.rs and explained in
+#                    docs/contracts/process-boundary-contract.md.
 #   ds               the binary. Registers domains, dispatches, renders.
 #
-# Domains are separate crates so "domain discovery must not initialize or
-# probe unrelated engines" is a structural property rather than a promise.
+# Every other crate is one domain, named for it. It owns no engineering logic
+# and reaches its owner exactly one of three ways: linking a pure library,
+# calling a typed process contract, or asking the paired application. Domains
+# are separate crates so "domain discovery must not initialize or probe
+# unrelated engines" is a structural property rather than a promise.
 [workspace]
 resolver = "3"
 members = ["crates/*"]
@@ -99,13 +75,7 @@ ds-cli-report = { path = "crates/ds-cli-report" }
 ds-cli-solar = { path = "crates/ds-cli-solar" }
 ds-cli-work = { path = "crates/ds-cli-work" }
 ds-cli-sre = { path = "crates/ds-cli-sre" }
-#   ds-cli-style     the styling domain: Style Center documents and the second
-#                    categorical dimension (halo / opacity / size by a second
-#                    field). A bridge domain like ds-cli-work.
 ds-cli-style = { path = "crates/ds-cli-style" }
-#   ds-cli-tile      the tiling domain: a project's survey and design vector
-#                    tile outputs — status, preflight, plan, generate, and the
-#                    catalogue. A bridge domain like ds-cli-style.
 ds-cli-tile = { path = "crates/ds-cli-tile" }
 ds-cli-feedback = { path = "crates/ds-cli-feedback" }
 ds-cli-shell = { path = "crates/ds-cli-shell" }

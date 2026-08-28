@@ -123,13 +123,15 @@ acceptance and engineering approval remain PLS-CADD/engineer decisions.
 For an authorized launch-only handoff, after PLS-CADD is closed:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\open-pls-workspace.ps1 `
+powershell -File .\open-pls-workspace.ps1 `
   -Project ".\PLS-CADD WORKSPACE\A Project.don" `
   -Receipt ".\native-open-receipt.json"
 ```
 
-The launcher must refuse an existing PLS-CADD process unless the operator
-explicitly authorizes closing it. After any UI save, re-import the saved
+The launcher is operator-supplied and is not shipped with `ds`, so run it under
+the machine's existing PowerShell execution policy and never relax that policy
+to launch it. The launcher must refuse an existing PLS-CADD process unless the
+operator explicitly authorizes closing it. After any UI save, re-import the saved
 workspace as a new authority candidate and compare it with `$LABELLED`.
 
 Resolve every native resource through an exact library id, immutable version,

@@ -22,17 +22,42 @@ process contracts exist today, each designed as one:
 
 ## There is no generic invoker
 
-`ds-cli-exec` exposes `External::call(subcommand, args, timeout)` where
-`subcommand` is `&'static str`. It comes from a `ds` command's own source and
-can never come from a caller.
+The rule, stated as what is actually enforced:
 
-There is deliberately **no** `run(binary, argv)`. A subcommand that no `ds`
-command names is not reachable from `ds`, and that unreachability is the
-property the owners' contracts exist to preserve. `ds-report` states it
-plainly: *"never a caller-supplied argv."*
+**No caller-supplied argv reaches any owner. Every spawn site passes a
+statically known argument list, and the set of files permitted to spawn a
+process at all is pinned.**
 
-Adding a generic argv route — or accepting a caller-supplied subcommand
-string — is a rejectable change.
+`ds-cli-exec` is the boundary for the typed sibling contracts. It exposes
+`External::call(subcommand, args, timeout)` where `subcommand` is
+`&'static str`: it comes from a `ds` command's own source and can never come
+from a caller. A subcommand that no `ds` command names is therefore not
+reachable from `ds`, and that unreachability is the property the owners'
+contracts exist to preserve. `ds-report` states it plainly: *"never a
+caller-supplied argv."*
+
+`ds-cli-exec` is not, however, the only place a process is created — there are
+four owner classes, and each is audited where it lives:
+
+| Owner class | Where | What it may spawn |
+|---|---|---|
+| A sibling DS executable | `crates/ds-cli-exec` | `ds-report`, `ds-solar`, under one named subcommand |
+| The platform package manager | `crates/ds-cli-workstation/src/install.rs` | one fixed manager with a `const` package identity |
+| An executable already on this machine, probed | `crates/ds-cli-workstation/src/detect.rs`, `verify.rs` | bounded version probes and the harmless verification smoke test |
+| This same `ds` | `crates/ds-cli-mcp/src/tools.rs` | one `ds <path> … --output json` per `tools/call` |
+
+Every one of those sites builds its arguments from a literal array in its own
+source. None accepts an argv, a subcommand string, or a shell fragment from a
+caller, and the MCP adapter refuses any argument key the live descriptor does
+not declare before it maps a single element.
+
+`crates/ds/tests/process_boundary.rs` pins that inventory: it asserts the exact
+set of non-test files permitted to construct a process. A fifth spawn site
+fails the suite until it is added deliberately, with its owner class named.
+
+A generic `run(binary, argv)` reachable from a command — or a route that
+accepts a caller-supplied subcommand string — remains a rejectable change. The
+list above is a closed set of audited owners, not permission to grow one.
 
 ## Locating a sibling executable
 
@@ -103,8 +128,10 @@ asserts both directions:
 The second direction matters as much as the first: a flag writing a field the
 engine ignores looks like it worked.
 
-See `crates/ds/tests/engine_parity.rs`. This is the same discipline `ds-mcp`
-applies to its own hand-authored schemas.
+See `crates/ds/tests/engine_parity.rs`. The retired `ds-mcp` applied the same
+discipline to its own hand-authored schemas, and that is where the practice
+came from; the enforcement a change is measured against now is the suite in
+this repository.
 
 ## Every refusal code must be documented
 

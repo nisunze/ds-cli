@@ -128,6 +128,12 @@ Acceptance criteria:
 
 ### Priority 2 — make desktop selection configurable
 
+*Partly landed, verified 2026-08-28:* `--desktop-descriptor` and
+`DS_DESKTOP_DESCRIPTOR` both exist and their precedence is declared — the flag,
+then the variable, then automatic discovery, with the variable a default for
+the flag rather than an override of it. Named profiles and a `ds config`
+surface do not exist; the rest of this item is unchanged.
+
 Support the same descriptor through a consistent precedence chain:
 
 1. explicit `--desktop-descriptor`;

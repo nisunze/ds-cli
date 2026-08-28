@@ -1,9 +1,11 @@
 # TODO — governance actions through `ds` and MCP
 
-**Status: recorded, not implemented.** `ds feedback close` shipped on this
-branch as an ordinary paired command. The governance surface it belongs to is
-described here so it is designed once, deliberately, rather than grown one
-admin command at a time.
+**Status: recorded, not implemented.** `ds feedback close` has shipped as an
+ordinary paired command; the four gaps below were last verified against the
+live binary at `3ad2c244606e41407fe75e8198f05f754d2b2168` on 2026-08-28, and
+all four were still open. The governance surface they belong to is described
+here so it is designed once, deliberately, rather than grown one admin command
+at a time.
 
 ## The rule
 

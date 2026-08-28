@@ -14,10 +14,27 @@ MAX_DESCRIPTION_CHARS = 512
 MAX_ENTRY_SKILL_BYTES = 4 * 1024
 MAX_SKILL_BYTES = 8 * 1024
 MAX_ALL_DESCRIPTIONS = 2 * 1024
-# Tokens that only appear when something routes around `ds`.
+# Tokens that only appear when something routes around `ds`, or tells the
+# reader to switch off a platform security control to run something. A skill
+# that has to disable Windows' execution policy is asking an agent to trust an
+# unsigned script of unverified provenance, which no skill here needs.
 BYPASS = re.compile(
     r"\b(curl|wget|Invoke-WebRequest|Invoke-RestMethod|gcloud|firebase|bq|psql|sqlite3)\b"
     r"|https?://(127\.0\.0\.1|localhost)|\blocalhost:\d+|\bfetch\("
+    r"|ExecutionPolicy\s+Bypass"
+)
+# Credential shapes. Every entry names a class, and a hit reports the file and
+# the class only — never the matched text. A gate that echoes the secret it
+# found has published it a second time, in a build log that is easier to read
+# than the repository.
+SECRETS = (
+    ("google api key", re.compile(r"AIza[0-9A-Za-z_-]{35}")),
+    ("github token", re.compile(r"\bgh[pousr]_[0-9A-Za-z]{36,}")),
+    ("openai-style api key", re.compile(r"\bsk-[A-Za-z0-9]{20,}")),
+    ("slack token", re.compile(r"\bxox[baprs]-[0-9A-Za-z-]{10,}")),
+    ("json web token", re.compile(r"\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.")),
+    ("private key block", re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----")),
+    ("service account key", re.compile(r'"type"\s*:\s*"service_account"')),
 )
 DUPLICATED_FRONT_DOOR_CONTRACT = re.compile(
     r"\b(unexpected_operand|desktop_pairing|desktop_user|local_file_write|artifact_write|global_write)\b"
@@ -42,6 +59,21 @@ def frontmatter(text, where):
         if _:
             out[k.strip()] = v.strip().strip('"')
     return out
+
+
+def shipped_text(path):
+    """One shipped file's text, or None where it is not text.
+
+    A NUL in the first block, or bytes that are not UTF-8, means an image or an
+    archive: scanning its mojibake would produce noise, not findings.
+    """
+    data = path.read_bytes()
+    if b"\x00" in data[:8192]:
+        return None
+    try:
+        return data.decode("utf-8")
+    except UnicodeDecodeError:
+        return None
 
 
 def check_skill(d):
@@ -76,12 +108,30 @@ def check_skill(d):
                 FAIL.append(
                     f"{where}:{n}: duplicates the live ds contract: {line.strip()[:80]}"
                 )
-    for path in [md, *d.glob("references/*.md"), *d.glob("scripts/*")]:
-        for n, line in enumerate(path.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
+    # The installer copies the whole skill directory, so the scan walks the
+    # whole skill directory. A non-recursive `references/*.md` scan left
+    # `references/sub/notes.md`, any `.txt`, and every `agents/` file shipping
+    # unread.
+    for path in sorted(p for p in d.rglob("*") if p.is_file()):
+        text = shipped_text(path)
+        if text is None:
+            continue
+        where_file = path.relative_to(ROOT)
+        for n, line in enumerate(text.splitlines(), 1):
             if BYPASS.search(line):
-                FAIL.append(f"{path.relative_to(ROOT)}:{n}: routes around ds: {line.strip()[:80]}")
+                FAIL.append(
+                    f"{where_file}:{n}: routes around ds or disables a security control: "
+                    f"{line.strip()[:80]}"
+                )
             if LOCAL_GAP_LEDGER.search(line):
-                FAIL.append(f"{path.relative_to(ROOT)}:{n}: creates a local gap ledger: {line.strip()[:80]}")
+                FAIL.append(f"{where_file}:{n}: creates a local gap ledger: {line.strip()[:80]}")
+            for label, pattern in SECRETS:
+                if pattern.search(line):
+                    # Path and class only. The value is never echoed.
+                    FAIL.append(
+                        f"{where_file}:{n}: possible {label}; remove it from the skill "
+                        "and rotate the value"
+                    )
 
 
 def main():

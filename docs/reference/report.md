@@ -16,7 +16,7 @@ That is a deliberate ownership boundary, not an accident of packaging. So
 document that comes back. It links none of the reporter's library and
 reimplements none of it.
 
-Contrast `ds network`, which *links* `ds-grid-model` and `ds-grid-exchange`
+Contrast `ds dsgrid`, which *links* `ds-grid-model` and `ds-grid-exchange`
 directly — those are pure libraries with a clean boundary and no such
 contract. Both routes are legitimate; which one applies is decided by the
 owning workspace, not by convenience.
@@ -119,12 +119,23 @@ binary, because `ds doctor` and domain help both call it.
 
 ## Effect classification
 
-`report.export` declares `local_file_write`, not `artifact_write`. This
-matches `ds-mcp`'s existing classification of the same operation
-(`network_report_export_transformer`), and is the reason it does **not**
-require `--yes`: it writes into a directory the operator named, and publishes
-nothing of record. `ds-mcp` reserves `artifact_write` for operations like
-`network_report_detect_collisions`, which produce a durable artifact.
+`report.export` declares `local_file_write`, not `artifact_write`, and that is
+the reason it does **not** require `--yes`: it writes one file into a directory
+the operator named on the command line, and publishes nothing of record.
+
+The test is where the bytes land and who else can see them, not how much work
+produced them. A command earns `artifact_write` when what it leaves behind is a
+durable record someone else will read as authoritative — `map design save`,
+`library seed`, `solar final submit`. A `machine_write` command reaches further
+still, changing this machine outside any workspace. Both are confirmation-gated
+and `report export` is not, because undoing `report export` is deleting one
+file at a path the caller chose. See
+[`../contracts/cli-output-contract.md`](../contracts/cli-output-contract.md)
+for the full table.
+
+`report bundle` sits in the same class as `export` for the same reason: it
+assembles a ZIP at a path the caller names, from local documents whose digests
+it verifies, and contacts nothing.
 
 ## Related
 

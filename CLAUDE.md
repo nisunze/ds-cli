@@ -69,9 +69,17 @@ a caller-supplied argv, a typed request file rather than flags built from model
 output. Honour it. Never build a generic `run_<binary>(args)` shape — a
 subcommand no command registers must stay unreachable.
 
-Every process spawn goes through `ds-cli-exec`, which takes a `&'static str`
-subcommand. There is no `run(binary, argv)` and there must not be one — see
+A sibling DS executable is reached through `ds-cli-exec`, which takes a
+`&'static str` subcommand. The rule across the whole repository is that **no
+caller-supplied argv reaches any owner**: every spawn site passes a statically
+known argument list, and the set of non-test files permitted to create a
+process is pinned by `crates/ds/tests/process_boundary.rs`. There are four such
+owner classes — a sibling DS executable, the platform package manager,
+an already-installed executable being probed, and `ds` itself re-invoked by the
+MCP adapter — and each is named in
 [`docs/contracts/process-boundary-contract.md`](docs/contracts/process-boundary-contract.md).
+A generic `run(binary, argv)` reachable from a command is still forbidden, and
+so is a fifth spawn site that has not been added to that test deliberately.
 
 **Ask the paired application** when the owner is the running desktop itself —
 its map, its local layers, its signed-in session, its transformer rooms. None
@@ -119,7 +127,7 @@ semantic bridge operation using the same store function the UI uses.
 
 ## Verification
 
-All three must pass, and CI runs all three:
+All of these must pass, and CI runs all of them:
 
 ```bash
 cargo fmt --all --check
@@ -131,7 +139,7 @@ The suite links `ds-network` by path and binds to its real `.dsgrid` fixture.
 That is deliberate: a vendored copy would keep passing after the format moved
 on, reporting parity that no longer exists.
 
-Four suites carry most of the weight, and it is worth knowing what each one
+These suites carry most of the weight, and it is worth knowing what each one
 will refuse to let you do:
 
 | Suite | Refuses |
@@ -141,6 +149,8 @@ will refuse to let you do:
 | `refusal_coverage.rs` | an error code a handler can emit that no command documents |
 | `engine_parity.rs` | a hand-copied schema field that the installed engine does not actually have |
 | `bridge_parity.rs` | the same, for the paired application: an operation it does not implement, an argument key it does not accept, a bound or snapshot field that moved |
+| `process_boundary.rs` | a new file creating a process without being added to the audited set deliberately |
+| `mcp.rs` | an MCP surface that has stopped being a projection of the live CLI — a tool the registry does not back, or an envelope that differs from the same call made directly |
 | `domain_smoke.rs` | a command that compiles, helps correctly — and returns the wrong answer on real data |
 
 `domain_smoke.rs` is the one that catches what the others cannot. Two bugs got
@@ -179,6 +189,10 @@ only ever gets relaxed is not protecting anything.
 - Root help that names a command.
 - A generic argv, shell, SQL or code-execution route to any owner.
 - A flag whose engine mapping was never run against the real binary.
-- MCP: a server, a transport, a handshake, a manifest, or the concepts under
-  new names. `ds` is an ordinary executable and stays one.
+- MCP that is anything other than a projection of live `ds capabilities`: a
+  hand-authored command schema, a second contract surface, a transport `ds`
+  does not own and run itself, or a tool with no registered command behind it.
+  `ds mcp serve` is this executable answering JSON-RPC on stdio and `ds mcp
+  install` writes a host's own entry for it; `ds` is an ordinary executable and
+  stays one. `crates/ds/tests/mcp.rs` is what holds that line.
 - Go, anywhere in the shipping or local-development path.

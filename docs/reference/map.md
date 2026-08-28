@@ -22,10 +22,10 @@ pairing argument in full.
 
 | | Local layers | Design layers |
 |---|---|---|
-| Commands | `view` `draw` `remove` `zoom` `points-along` `random-points` `outliers` `line-difference` | `design read` `layer-to-local` `upload-to-local` `select` `set` `create` `setup` `process` `save` |
+| Commands | `view` `draw` `remove` `zoom` `points-along` `random-points` `outliers` `line-difference` | everything under `ds map design` and `ds map survey` — `ds map --help` is the list, and it is the only one |
 | Authority | `desktop_pairing` — the app is running | `project` — signed in, project selected |
 | Reaches | what the operator can see | project data |
-| Survives the session | no | only through `design save` |
+| Survives the session | no | only through a confirmed push, `design save` being the common one |
 
 A local layer is never project data. `persisted` is reported on every command
 that makes one, and it is always false. `map zoom --layer <id>` asks the
@@ -124,6 +124,19 @@ target. Form-template materialization, project settings and network
 relationships remain the migration API's responsibility. There are no
 caller-controlled delete/move, overwrite, filter, form, or alternate-target
 flags. The receipt returns only bounded counts, never survey rows.
+
+## Survey Working Area materialization
+
+`ds map survey download --entire-project` applies the paired desktop's
+full-project Working Area and waits for its existing sequential survey loader
+to materialize every configured survey form. The application owns
+authentication, Working Area state, API calls, IndexedDB and feature rows. The
+CLI sends only `{ entireProject: true }` and returns bounded cache counts; it
+never receives raw rows.
+
+This is distinct from `map survey migrate` above: migration copies governed
+survey records between projects, while download materializes the *active*
+project's records into its local desktop cache for map and WASM processing.
 
 ## Explicit upload, cleaning, process and save batches
 
@@ -331,8 +344,3 @@ malformed invocation refuses the same way whether or not an application is
 running. `tests/domain_smoke.rs` asserts that ordering command by command;
 without it, the input contract would be untestable everywhere the desktop is
 not installed, which is every CI machine.
-# Survey Working Area materialization
-
-`ds map survey download --entire-project` applies the paired desktop's full-project Working Area and waits for its existing sequential survey loader to materialize every configured survey form. The application owns authentication, Working Area state, API calls, IndexedDB and feature rows. The CLI sends only `{ entireProject: true }` and returns bounded cache counts; it never receives raw rows.
-
-This is distinct from `map survey migrate`: migration copies governed survey records between projects, while download materializes the active project's records into its local desktop cache for map and WASM processing.

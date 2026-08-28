@@ -57,17 +57,64 @@ shell. `configure` supports only VS Code and an already-defined suitable Git
 Bash profile. It merges one key, preserves unrelated JSONC, and leaves Windows
 Terminal and Remote-SSH unchanged.
 
+## Approval and confirmation
+
+`install` and `configure` are `machine_write`: they change software or settings
+on this machine, so dispatch requires `--yes` and refuses
+`confirmation_required` without it. Review `ds workstation plan` first — it is
+a `proposal`, it mutates nothing, and it is the document `--yes` is consenting
+to.
+
+A native Windows installer may additionally raise the operating system's own
+UAC prompt, which `ds` neither suppresses nor answers. So that path also needs
+`--approval interactive`, which is the caller asserting a person is present to
+accept it:
+
+```bash
+ds workstation install --component libreoffice --approval interactive --yes
+```
+
+Without it the command refuses `workstation_approval_required` rather than
+starting an installer that will silently block on a dialogue nobody is
+watching. The flag grants no privilege of its own and never bypasses UAC.
+
 ## Refusals and gaps
 
-- `workstation_platform_unsupported` — browser/unsupported host.
+`ds workstation <command> --help` is the live list per command; these are the
+codes worth understanding before reading it.
+
+Shared by more than one command:
+
 - `workstation_component_unknown` — id outside the governed catalogue.
-- `workstation_plan_invalid` — component/platform/target combination is not a
-  real supported intent.
-- `workstation_mutation_unsupported` — the exact mutation is not implemented.
-- `workstation_dataset_acquisition_failed` — the official NISR component could
-  not be fetched, validated, or committed.
-- `workstation_settings_unsafe` — Git Bash/profile/settings evidence is not
-  strong enough for the conservative merge.
+- `workstation_mutation_unsupported` — the component, platform or target has no
+  proven mutation contract, so `install` and `configure` fail closed.
+
+`plan` only:
+
+- `workstation_platform_unsupported` — browser or unsupported host.
+- `workstation_plan_invalid` — the component/platform/target combination is not
+  a real supported intent.
+
+`install` only:
+
+- `workstation_approval_required` — see above.
+- `workstation_source_unverified` — the package mechanism, official manifest
+  membership, or artifact hash is unverified.
+- `workstation_package_manager_missing` / `workstation_package_manager_failed`
+  — the proven Windows package manager is absent, or exits unsuccessfully or
+  times out.
+- `workstation_verification_failed` — registration, executable identity or
+  version, or the harmless smoke test fails after the install.
+- `workstation_receipt_conflict` — an existing ownership receipt cannot safely
+  describe this installation. Ownership evidence is never overwritten blindly.
+- `workstation_dataset_acquisition_failed` — the fixed official NISR component
+  could not be read, validated, or committed. There is no ungoverned mirror.
+
+`configure` only:
+
+- `workstation_settings_unsafe` — the Git Bash, profile or settings evidence is
+  not strong enough for the conservative merge.
+- `workstation_settings_write_failed` — the merge could not be written.
 
 A confirmed missing lifecycle is reported through the existing
 `ds feedback submit` contract. It is not implemented with an API, shell script,

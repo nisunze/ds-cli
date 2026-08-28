@@ -114,8 +114,10 @@ clean bytes without asking.
 
 ## Effects and confirmation
 
-Every command declares an effect class. The vocabulary is shared with `ds-mcp`
-and the desktop agent bridge — one set of words for one question.
+Every command declares an effect class. The vocabulary is shared with the
+desktop agent bridge — one set of words for one question. The retired `ds-mcp`
+used the same words, which is where several of them came from; it is not a
+source a reader can check anything against today.
 
 | Effect | Meaning | `--yes`? |
 |---|---|---|
@@ -125,10 +127,20 @@ and the desktop agent bridge — one set of words for one question.
 | `local_file_write` | writes a file in the operator's workspace | no |
 | `local_ui` | changes the paired desktop's visible state | no |
 | `artifact_write` | produces a durable artifact of record | **yes** |
+| `machine_write` | changes software or settings on this machine | **yes** |
 | `global_write` | mutates shared project state | **yes** |
 
-Confirmation is enforced once, in `registry::dispatch`, so a handler cannot
-forget it. Read-only commands stay frictionless.
+`machine_write` is the class for a command that reaches outside the operator's
+workspace into the machine itself — installing a component, or writing a
+user-level host configuration file. That is why `workstation install`,
+`workstation configure` and `mcp install` are gated while `report export`,
+which writes into a directory the caller named, is not.
+
+Confirmation is enforced once, in `registry::dispatch`, on the **command's**
+declared effect — so a handler cannot forget it, and it does not depend on
+which flags an invocation carries. A command whose writing path is gated is
+gated on every invocation, including the one that only prints what it would
+do. Read-only commands stay frictionless.
 
 Consent is never inferred from prose. `--yes` is the only way to pre-confirm.
 
