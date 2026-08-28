@@ -9,7 +9,7 @@ use std::net::{TcpListener, TcpStream};
 use std::path::PathBuf;
 use std::process::Command;
 use std::thread::{self, JoinHandle};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -174,10 +174,29 @@ fn ds(args: &[&str]) -> (Value, i32, String, String) {
 fn bridge(replies: Vec<(&'static str, Value)>) -> Bridge {
     let listener = TcpListener::bind("127.0.0.1:0").expect("bind loopback bridge");
     let address = listener.local_addr().expect("bridge address");
+    listener
+        .set_nonblocking(true)
+        .expect("make loopback bridge nonblocking");
     let server = thread::spawn(move || {
         let mut received = Vec::new();
         for (expected_operation, reply) in replies {
-            let (mut stream, _) = listener.accept().expect("bridge accepts request");
+            let deadline = Instant::now() + Duration::from_secs(10);
+            let mut stream = loop {
+                match listener.accept() {
+                    Ok((stream, _)) => break stream,
+                    Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                        assert!(
+                            Instant::now() < deadline,
+                            "bridge timed out waiting for `{expected_operation}`; ds may have refused before the paired request"
+                        );
+                        thread::sleep(Duration::from_millis(10));
+                    }
+                    Err(error) => panic!("bridge accepts `{expected_operation}`: {error}"),
+                }
+            };
+            stream
+                .set_read_timeout(Some(Duration::from_secs(10)))
+                .expect("set bridge read timeout");
             let request = read_json_request(&mut stream);
             assert_eq!(
                 request["operation"], expected_operation,

@@ -7,10 +7,21 @@
 //! reaches the authoritative engine and reports what the engine says.
 
 use std::process::Command;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use serde_json::Value;
 
 mod common;
+
+static TEMP_SEQUENCE: AtomicU64 = AtomicU64::new(0);
+
+fn temp_file(label: &str) -> std::path::PathBuf {
+    let sequence = TEMP_SEQUENCE.fetch_add(1, Ordering::Relaxed);
+    std::env::temp_dir().join(format!(
+        "ds-cli-{label}-{}-{sequence}.json",
+        std::process::id()
+    ))
+}
 
 struct Run {
     envelope: Value,
@@ -414,7 +425,7 @@ fn an_explicit_stale_descriptor_never_leaks_its_secret() {
     // upstream transport error is echoed into `detail`, so this is the path
     // where a naive implementation would carry a URL, a header, or whatever
     // the HTTP client happened to include.
-    let descriptor = std::env::temp_dir().join("ds-cli-test-stale-bridge.json");
+    let descriptor = temp_file("test-stale-bridge");
     std::fs::write(
         &descriptor,
         br#"{"version":1,"url":"http://127.0.0.1:1","token":"s3cr3t-pairing-value","pid":1}"#,
@@ -613,13 +624,13 @@ fn an_environment_descriptor_is_used_and_the_flag_still_wins() {
     // `DS_DESKTOP_DESCRIPTOR` is how a terminal opened by the desktop's own
     // `cl` launcher stays pinned to the window that opened it. It is a
     // default, not an override: the flag names a descriptor verbatim.
-    let stale = std::env::temp_dir().join("ds-cli-test-env-bridge.json");
+    let stale = temp_file("test-env-bridge");
     std::fs::write(
         &stale,
         br#"{"version":1,"url":"http://127.0.0.1:1","token":"env-s3cr3t-value","pid":1}"#,
     )
     .expect("write descriptor");
-    let missing = std::env::temp_dir().join("ds-cli-test-env-missing.json");
+    let missing = temp_file("test-env-missing");
     let _ = std::fs::remove_file(&missing);
 
     let run = |args: &[&str]| {
