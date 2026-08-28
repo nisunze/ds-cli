@@ -23,6 +23,7 @@
 
 use std::path::PathBuf;
 use std::process::Command;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use ds_grid_engine::{CommandEnvelope, GridCommand, GridSession};
 use ds_grid_exchange::{parse_standards_library_manifest, unpack, unpack_library};
@@ -97,7 +98,12 @@ fn ok(args: &[&str]) -> Value {
 }
 
 fn temp_root(label: &str) -> PathBuf {
-    std::env::temp_dir().join(format!("ds-cli-{label}-{}", std::process::id()))
+    static NEXT_TEMP: AtomicU64 = AtomicU64::new(0);
+    std::env::temp_dir().join(format!(
+        "ds-cli-{label}-{}-{}",
+        std::process::id(),
+        NEXT_TEMP.fetch_add(1, Ordering::Relaxed)
+    ))
 }
 
 // ---------------------------------------------------------------------------
@@ -932,7 +938,9 @@ fn every_offline_command_is_available_without_any_engine_binary() {
 
 /// A features file holding one line, for the geometry checks.
 fn line_geojson() -> String {
-    let path = std::env::temp_dir().join("ds-map-smoke-line.geojson");
+    let root = temp_root("map-line");
+    std::fs::create_dir_all(&root).expect("temp directory is writable");
+    let path = root.join("line.geojson");
     std::fs::write(
         &path,
         r#"{"type":"FeatureCollection","features":[
