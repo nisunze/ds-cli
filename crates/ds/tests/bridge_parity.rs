@@ -159,6 +159,11 @@ fn every_project_context_command_has_one_closed_operation_owner() {
         "pub const CLI_OPERATIONS: &[&str] = &[",
         "];",
     );
+    assert!(
+        !allowlist.trim().is_empty(),
+        "ds-web no longer exposed the CLI_OPERATIONS allowlist at the pinned marker; \
+         refusing an empty string would make this negative messaging-door check vacuous"
+    );
     for operation in ds_cli_desktop::project::BRIDGE_OPS {
         assert_eq!(
             count(allowlist, &format!("\"{}\"", operation.operation)),
