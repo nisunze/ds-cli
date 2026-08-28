@@ -32,6 +32,7 @@ ds-cli-sre = { workspace = true }
 ds-cli-survey = { workspace = true }
 ds-cli-style = { workspace = true }
 ds-cli-tile = { workspace = true }
+ds-cli-data = { workspace = true }
 serde_json = { workspace = true }
 sha2 = { workspace = true }
 

@@ -80,6 +80,7 @@ ds-cli-sre = { path = "crates/ds-cli-sre" }
 ds-cli-survey = { path = "crates/ds-cli-survey" }
 ds-cli-style = { path = "crates/ds-cli-style" }
 ds-cli-tile = { path = "crates/ds-cli-tile" }
+ds-cli-data = { path = "crates/ds-cli-data" }
 ds-cli-feedback = { path = "crates/ds-cli-feedback" }
 ds-cli-shell = { path = "crates/ds-cli-shell" }
 ds-cli-workstation = { path = "crates/ds-cli-workstation" }

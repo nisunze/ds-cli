@@ -608,6 +608,21 @@ static STYLE_ENTRIES: &[Entry] = &[
     },
 ];
 
+/// Local data preparation. Ordered as a session uses it: look at the source
+/// first, then convert with what you saw.
+static DATA_ENTRIES: &[Entry] = &[
+    Entry {
+        command: &ds_cli_data::inspect::COMMAND,
+        handler: ds_cli_data::inspect::run,
+        render: ds_cli_data::inspect::render,
+    },
+    Entry {
+        command: &ds_cli_data::convert::COMMAND,
+        handler: ds_cli_data::convert::run,
+        render: ds_cli_data::convert::render,
+    },
+];
+
 /// Tiling. Ordered as a session uses it: read the state, look at the
 /// sources, decide, run; then the catalogue.
 static TILE_ENTRIES: &[Entry] = &[
@@ -959,6 +974,10 @@ static DOMAINS: &[Registered] = &[
     Registered {
         domain: &ds_cli_tile::DOMAIN,
         entries: TILE_ENTRIES,
+    },
+    Registered {
+        domain: &ds_cli_data::DOMAIN,
+        entries: DATA_ENTRIES,
     },
     Registered {
         domain: &ds_cli_feedback::DOMAIN,

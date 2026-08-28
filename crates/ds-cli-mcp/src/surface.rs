@@ -279,6 +279,7 @@ const SOLAR_DELIVERY_COMMANDS: &[&str] = &[
 /// new chapter would leave its commands unreachable through MCP while every
 /// assertion here still passed at the old literal count.
 const ROUTED_CHAPTERS: &[Chapter] = &[
+    Chapter::Data,
     Chapter::Project,
     Chapter::GridModel,
     Chapter::PlsCadd,
@@ -761,6 +762,7 @@ fn chapter_tool_json(chapter: Chapter) -> Value {
 pub const fn chapter_tool_name(chapter: Chapter) -> &'static str {
     match chapter {
         Chapter::Catalog => "ds_catalog",
+        Chapter::Data => "ds_data",
         Chapter::Project => "ds_project",
         Chapter::GridModel => "ds_grid_model",
         Chapter::PlsCadd => "ds_pls_cadd",
@@ -778,6 +780,9 @@ pub const fn chapter_tool_name(chapter: Chapter) -> &'static str {
 pub const fn chapter_description(chapter: Chapter) -> &'static str {
     match chapter {
         Chapter::Catalog => "Discover DS chapters, commands, and one exact live contract.",
+        Chapter::Data => {
+            "Prepare local data for analysis: inspect a source file, then convert it to the analytical GeoParquet format. Conversion is an explicit step that runs before analysis, never inside it, and needs no project or paired desktop. Describe a command before invoking it."
+        }
         Chapter::Project => {
             "Establish project context and manage project plans, tasks, assignments, and records. Describe a command before invoking it."
         }

@@ -13,6 +13,11 @@ use std::process::Command;
 use serde_json::Value;
 
 const EXPECTED: &[(&str, &str, &str)] = &[
+    // Local data preparation. `none` authority is exact: a file on the
+    // operator's own disk involves no project and no principal. `convert`
+    // writes one file into the operator's own workspace and publishes nothing.
+    ("data.convert", "local_file_write", "none"),
+    ("data.inspect", "read_only", "none"),
     ("desktop.project.list", "read_only", "desktop_user"),
     ("desktop.project.switch", "local_ui", "desktop_user"),
     ("desktop.status", "discovery", "none"),

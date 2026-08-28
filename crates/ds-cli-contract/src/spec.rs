@@ -357,6 +357,9 @@ pub struct Refusal {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Chapter {
     Catalog,
+    /// Local data preparation: inspecting a source and converting it to the
+    /// analytical format before any analysis reads it.
+    Data,
     Project,
     GridModel,
     PlsCadd,
@@ -373,6 +376,7 @@ pub enum Chapter {
 impl Chapter {
     pub const ALL: &[Self] = &[
         Self::Catalog,
+        Self::Data,
         Self::Project,
         Self::GridModel,
         Self::PlsCadd,
@@ -389,6 +393,7 @@ impl Chapter {
     pub const fn token(self) -> &'static str {
         match self {
             Self::Catalog => "catalog",
+            Self::Data => "data",
             Self::Project => "project",
             Self::GridModel => "grid-model",
             Self::PlsCadd => "pls-cadd",
@@ -482,7 +487,7 @@ mod tests {
 
     #[test]
     fn chapter_tokens_are_unique_stable_and_round_trip() {
-        assert_eq!(Chapter::ALL.len(), 12);
+        assert_eq!(Chapter::ALL.len(), 13);
         for (index, chapter) in Chapter::ALL.iter().enumerate() {
             let token = chapter.token();
             assert_eq!(Chapter::from_token(token), Some(*chapter));

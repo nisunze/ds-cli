@@ -277,7 +277,12 @@ mod tests {
             &mut calls,
         )
         .expect("response");
-        assert_eq!(list["result"]["tools"].as_array().unwrap().len(), 12);
+        // One router per chapter. Derived rather than literal so a new chapter
+        // cannot ship unreachable while this still reads an old count.
+        assert_eq!(
+            list["result"]["tools"].as_array().unwrap().len(),
+            ds_cli_contract::spec::Chapter::ALL.len()
+        );
         assert_eq!(list["result"]["tools"][0]["name"], "ds_catalog");
         assert_eq!(
             list["result"]["tools"][0]["annotations"]["readOnlyHint"],

@@ -101,10 +101,15 @@ fn root_help_is_cheap() {
     // below the root tier and cost exactly one domain line here.
     // 2026-08-28: raised for the `design` collaboration domain. Its 17
     // commands remain below this tier; only one bounded domain line is added.
+    // 2026-08-28: raised for the `data` domain — local source inspection and
+    // conversion to the analytical format. One bounded domain line; its two
+    // commands stay below this tier. This is the domain that makes conversion
+    // an explicit step a caller can see rather than something an import does
+    // silently, so it earns its line.
     // Keep this guard at least as loose as the derived budget below. The
     // scaling assertion is load-bearing; a tighter flat cap would always fail
     // first and hide a domain-vs-command growth regression.
-    assert_within("root help", &["--help"], 2_240);
+    assert_within("root help", &["--help"], 2_300);
 }
 
 #[test]
@@ -288,7 +293,9 @@ fn discovery_indexes_are_cheap_in_json() {
     // this prices the tenth compact id/summary row without relaxing a command
     // descriptor or help tier. Raised by ten bytes on 2026-08-28 because the
     // `design` domain makes the same bounded search result include one extra
-    // compact domain context line; the ten-result cap is unchanged.
+    // compact domain context line; the ten-result cap is unchanged. Raised
+    // again on 2026-08-28 for the `data` domain, for the same reason and the
+    // same one extra compact line; the ten-result cap is still unchanged.
     assert_within(
         "capabilities search",
         &[
@@ -298,7 +305,7 @@ fn discovery_indexes_are_cheap_in_json() {
             "--output",
             "json",
         ],
-        1_330,
+        1_350,
     );
 }
 

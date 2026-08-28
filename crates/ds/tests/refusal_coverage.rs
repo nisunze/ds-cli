@@ -213,6 +213,7 @@ fn every_constructible_refusal_code_is_documented() {
     // command equally, so they are documented once in the output contract
     // rather than repeated in every REFUSALS section.
     let domain_crates = [
+        ("ds-cli-data", Some("data")),
         ("ds-cli-design", Some("design")),
         ("ds-cli-map", Some("map")),
         ("ds-cli-dsgrid", Some("dsgrid")),

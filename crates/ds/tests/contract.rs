@@ -61,6 +61,11 @@ const AUTHORITIES: &[&str] = &["none", "desktop_pairing", "desktop_user", "proje
 /// surface what its own vocabulary is proves nothing.
 const CHAPTERS: &[&str] = &[
     "catalog",
+    // 2026-08-28: local data preparation. Its own chapter rather than a corner
+    // of `survey` or `project`, because it needs neither: converting a file on
+    // a local disk has no project and no principal, and a caller looking for
+    // it is not looking for either of those.
+    "data",
     "project",
     "grid-model",
     "pls-cadd",

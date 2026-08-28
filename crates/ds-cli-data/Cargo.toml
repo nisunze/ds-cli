@@ -1,0 +1,17 @@
+[package]
+name = "ds-cli-data"
+description = "The `ds data` domain: inspect a local source and convert it to the analytical format before analysis reads it."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[dependencies]
+ds-cli-contract = { workspace = true }
+# The centralized converter. `ds` links the same implementation Desktop import
+# links; neither reimplements the format decisions it encodes. See
+# ds-network/docs/contracts/columnar-format-contract.md.
+ds-columnar = { path = "../../../ds-network/crates/ds-columnar" }
+serde_json = { workspace = true }
