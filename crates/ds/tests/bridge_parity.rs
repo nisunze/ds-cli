@@ -45,6 +45,7 @@ struct App {
     survey_project_forms: String,
     survey_templates: String,
     design: String,
+    design_collaboration: String,
     analysis: String,
     work: String,
     sre: String,
@@ -70,6 +71,7 @@ fn app() -> Option<App> {
         survey_project_forms: read("src/lib/desktop/cli-survey-project-forms.ts")?,
         survey_templates: read("src/lib/desktop/cli-survey-templates.ts")?,
         design: read("src/lib/desktop/cli-map-design.ts")?,
+        design_collaboration: read("src/lib/desktop/cli-design.ts")?,
         analysis: read("src/lib/analysis/outliers.ts")?,
         work: read("src/lib/desktop/cli-work.ts")?,
         sre: read("src/lib/desktop/cli-sre.ts")?,
@@ -472,6 +474,56 @@ fn every_work_command_has_one_closed_operation_owner() {
                 );
             }
         }
+    }
+}
+
+#[test]
+fn every_design_collaboration_command_has_one_closed_operation_owner_and_exact_arguments() {
+    let Some(app) = app() else {
+        skip("the ds-web sibling repository is not on disk");
+        return;
+    };
+    let allowlist = between(
+        &app.transport,
+        "pub const CLI_OPERATIONS: &[&str] = &[",
+        "];",
+    );
+    let mut seen = BTreeSet::new();
+    for operation in ds_cli_design::BRIDGE_OPS {
+        assert!(
+            seen.insert(operation.operation),
+            "`{}` is declared twice by ds design",
+            operation.operation
+        );
+        assert_eq!(
+            count(allowlist, &format!("\"{}\"", operation.operation)),
+            1,
+            "`{}` must appear exactly once in the desktop allowlist",
+            operation.operation
+        );
+        assert_eq!(
+            switch_case_count(&app.frontend, operation.operation),
+            1,
+            "`{}` must have exactly one frontend handler",
+            operation.operation
+        );
+        let contract = operation_contract(&app.design_collaboration, operation.operation);
+        assert!(
+            !contract.is_empty(),
+            "`{}` has no typed design-collaboration adapter argument contract",
+            operation.operation
+        );
+        let accepted = quoted_contract_items(contract);
+        let declared = operation
+            .arguments
+            .iter()
+            .map(|argument| argument.split('.').next().unwrap().to_string())
+            .collect::<BTreeSet<_>>();
+        assert_eq!(
+            accepted, declared,
+            "`{}` must accept exactly the keys ds design declares",
+            operation.operation
+        );
     }
 }
 

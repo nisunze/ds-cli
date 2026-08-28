@@ -699,6 +699,96 @@ static WORK_ENTRIES: &[Entry] = &[
     },
 ];
 
+/// Design collaboration is durable project metadata, not map-owned local
+/// state. It is available through a paired desktop without an open map.
+static DESIGN_ENTRIES: &[Entry] = &[
+    Entry {
+        command: &ds_cli_design::selection::list::COMMAND,
+        handler: ds_cli_design::selection::list::run,
+        render: ds_cli_design::selection::list::render,
+    },
+    Entry {
+        command: &ds_cli_design::selection::read::COMMAND,
+        handler: ds_cli_design::selection::read::run,
+        render: ds_cli_design::selection::read::render,
+    },
+    Entry {
+        command: &ds_cli_design::selection::save::COMMAND,
+        handler: ds_cli_design::selection::save::run,
+        render: ds_cli_design::selection::save::render,
+    },
+    Entry {
+        command: &ds_cli_design::selection::archive::COMMAND,
+        handler: ds_cli_design::selection::archive::run,
+        render: ds_cli_design::selection::archive::render,
+    },
+    Entry {
+        command: &ds_cli_design::selection::assign::COMMAND,
+        handler: ds_cli_design::selection::assign::run,
+        render: ds_cli_design::selection::assign::render,
+    },
+    Entry {
+        command: &ds_cli_design::attachment::list::COMMAND,
+        handler: ds_cli_design::attachment::list::run,
+        render: ds_cli_design::attachment::list::render,
+    },
+    Entry {
+        command: &ds_cli_design::attachment::publish::COMMAND,
+        handler: ds_cli_design::attachment::publish::run,
+        render: ds_cli_design::attachment::publish::render,
+    },
+    Entry {
+        command: &ds_cli_design::attachment::download::COMMAND,
+        handler: ds_cli_design::attachment::download::run,
+        render: ds_cli_design::attachment::download::render,
+    },
+    Entry {
+        command: &ds_cli_design::attachment::retire::COMMAND,
+        handler: ds_cli_design::attachment::retire::run,
+        render: ds_cli_design::attachment::retire::render,
+    },
+    Entry {
+        command: &ds_cli_design::tag::list::COMMAND,
+        handler: ds_cli_design::tag::list::run,
+        render: ds_cli_design::tag::list::render,
+    },
+    Entry {
+        command: &ds_cli_design::tag::define::COMMAND,
+        handler: ds_cli_design::tag::define::run,
+        render: ds_cli_design::tag::define::render,
+    },
+    Entry {
+        command: &ds_cli_design::tag::set::COMMAND,
+        handler: ds_cli_design::tag::set::run,
+        render: ds_cli_design::tag::set::render,
+    },
+    Entry {
+        command: &ds_cli_design::comment::list::COMMAND,
+        handler: ds_cli_design::comment::list::run,
+        render: ds_cli_design::comment::list::render,
+    },
+    Entry {
+        command: &ds_cli_design::comment::read::COMMAND,
+        handler: ds_cli_design::comment::read::run,
+        render: ds_cli_design::comment::read::render,
+    },
+    Entry {
+        command: &ds_cli_design::comment::post::COMMAND,
+        handler: ds_cli_design::comment::post::run,
+        render: ds_cli_design::comment::post::render,
+    },
+    Entry {
+        command: &ds_cli_design::comment::resolve::COMMAND,
+        handler: ds_cli_design::comment::resolve::run,
+        render: ds_cli_design::comment::resolve::render,
+    },
+    Entry {
+        command: &ds_cli_design::comment::promote::COMMAND,
+        handler: ds_cli_design::comment::promote::run,
+        render: ds_cli_design::comment::promote::render,
+    },
+];
+
 static SRE_ENTRIES: &[Entry] = &[
     Entry {
         command: &ds_cli_sre::overview::COMMAND,
@@ -853,6 +943,10 @@ static DOMAINS: &[Registered] = &[
     Registered {
         domain: &ds_cli_work::DOMAIN,
         entries: WORK_ENTRIES,
+    },
+    Registered {
+        domain: &ds_cli_design::DOMAIN,
+        entries: DESIGN_ENTRIES,
     },
     Registered {
         domain: &ds_cli_sre::DOMAIN,

@@ -99,10 +99,12 @@ fn root_help_is_cheap() {
     // bytes while command growth remains isolated below this tier. Raised for
     // the Survey control-plane domain on 2026-08-28; its 16 commands remain
     // below the root tier and cost exactly one domain line here.
+    // 2026-08-28: raised for the `design` collaboration domain. Its 17
+    // commands remain below this tier; only one bounded domain line is added.
     // Keep this guard at least as loose as the derived budget below. The
     // scaling assertion is load-bearing; a tighter flat cap would always fail
     // first and hide a domain-vs-command growth regression.
-    assert_within("root help", &["--help"], 2_160);
+    assert_within("root help", &["--help"], 2_240);
 }
 
 #[test]
@@ -284,7 +286,9 @@ fn discovery_indexes_are_cheap_in_json() {
     // Raised from 1,200 when `tile` made this representative query fill the
     // existing default ten-result cap. Search remains bounded by that cap;
     // this prices the tenth compact id/summary row without relaxing a command
-    // descriptor or help tier.
+    // descriptor or help tier. Raised by ten bytes on 2026-08-28 because the
+    // `design` domain makes the same bounded search result include one extra
+    // compact domain context line; the ten-result cap is unchanged.
     assert_within(
         "capabilities search",
         &[
@@ -294,7 +298,7 @@ fn discovery_indexes_are_cheap_in_json() {
             "--output",
             "json",
         ],
-        1_320,
+        1_330,
     );
 }
 

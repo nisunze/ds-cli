@@ -1945,6 +1945,236 @@ fn a_well_formed_map_call_stops_at_confirmation_or_pairing() {
 // work
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// design collaboration
+// ---------------------------------------------------------------------------
+
+#[test]
+fn design_collaboration_is_a_complete_headless_project_surface() {
+    // Saved Transformer Status selections, versioned attachments, tags and
+    // comment threads are project records, not map-owned state. All commands
+    // must therefore be discoverable without an open map; reads reach only
+    // the paired application and writes stop at the global confirmation gate.
+    let index = ok(&["capabilities", "design", "--output", "json"]);
+    let commands = index["commands"].as_array().expect("commands");
+    let actual: BTreeSet<&str> = commands
+        .iter()
+        .map(|command| command["id"].as_str().expect("id"))
+        .collect();
+    let expected: BTreeSet<&str> = [
+        "design.selection.list",
+        "design.selection.read",
+        "design.selection.save",
+        "design.selection.archive",
+        "design.selection.assign",
+        "design.attachment.list",
+        "design.attachment.publish",
+        "design.attachment.download",
+        "design.attachment.retire",
+        "design.tag.list",
+        "design.tag.define",
+        "design.tag.set",
+        "design.comment.list",
+        "design.comment.read",
+        "design.comment.post",
+        "design.comment.resolve",
+        "design.comment.promote",
+    ]
+    .into_iter()
+    .collect();
+    assert_eq!(
+        actual, expected,
+        "design collaboration must expose every governed record operation"
+    );
+
+    let writes: BTreeSet<&str> = [
+        "design.selection.save",
+        "design.selection.archive",
+        "design.selection.assign",
+        "design.attachment.publish",
+        "design.attachment.retire",
+        "design.tag.define",
+        "design.tag.set",
+        "design.comment.post",
+        "design.comment.resolve",
+        "design.comment.promote",
+    ]
+    .into_iter()
+    .collect();
+    for command in commands {
+        let id = command["id"].as_str().expect("id");
+        assert_eq!(
+            command["availability"], "available",
+            "`{id}` must not require an open map"
+        );
+        assert_eq!(
+            command["effect"],
+            if writes.contains(id) {
+                "global_write"
+            } else {
+                "read_only"
+            }
+        );
+        if writes.contains(id) {
+            let mut args = match id {
+                "design.selection.save" => vec![
+                    "design",
+                    "selection",
+                    "save",
+                    "--name",
+                    "smoke",
+                    "--transformers",
+                    "T-smoke",
+                ],
+                "design.selection.archive" => {
+                    vec!["design", "selection", "archive", "--selection", "sel-smoke"]
+                }
+                "design.selection.assign" => vec![
+                    "design",
+                    "selection",
+                    "assign",
+                    "--selection",
+                    "sel-smoke",
+                    "--title",
+                    "Smoke",
+                ],
+                "design.attachment.publish" => vec![
+                    "design",
+                    "attachment",
+                    "publish",
+                    "--kind",
+                    "lv_transformer",
+                    "--object",
+                    "T-smoke",
+                    "--path",
+                    "smoke.bak",
+                ],
+                "design.attachment.retire" => vec![
+                    "design",
+                    "attachment",
+                    "retire",
+                    "--attachment",
+                    "att-smoke",
+                ],
+                "design.tag.define" => vec![
+                    "design",
+                    "tag",
+                    "define",
+                    "--definition",
+                    "scope",
+                    "--name",
+                    "Scope",
+                    "--values",
+                    "smoke",
+                ],
+                "design.tag.set" => vec![
+                    "design",
+                    "tag",
+                    "set",
+                    "--kind",
+                    "lv_transformer",
+                    "--object",
+                    "T-smoke",
+                    "--definition",
+                    "scope",
+                ],
+                "design.comment.post" => vec![
+                    "design",
+                    "comment",
+                    "post",
+                    "--kind",
+                    "lv_transformer",
+                    "--object",
+                    "T-smoke",
+                    "--body",
+                    "Smoke",
+                ],
+                "design.comment.resolve" => {
+                    vec!["design", "comment", "resolve", "--thread", "thread-smoke"]
+                }
+                "design.comment.promote" => {
+                    vec!["design", "comment", "promote", "--thread", "thread-smoke"]
+                }
+                _ => unreachable!("write inventory and command surface diverged: {id}"),
+            };
+            args.extend(["--output", "json"]);
+            assert_eq!(
+                refusal(&args),
+                "confirmation_required",
+                "`{id}` reached past confirmation"
+            );
+        }
+    }
+
+    // Well-formed reads reach the paired bridge rather than silently asking
+    // the map for local state or rejecting a valid shared-record request.
+    for args in [
+        vec!["design", "selection", "list"],
+        vec!["design", "selection", "read", "--selection", "sel-smoke"],
+        vec![
+            "design",
+            "attachment",
+            "list",
+            "--kind",
+            "lv_transformer",
+            "--object",
+            "T-smoke",
+        ],
+        vec![
+            "design",
+            "attachment",
+            "download",
+            "--attachment",
+            "att-smoke",
+        ],
+        vec![
+            "design",
+            "tag",
+            "list",
+            "--kind",
+            "lv_transformer",
+            "--object",
+            "T-smoke",
+        ],
+        vec![
+            "design",
+            "comment",
+            "list",
+            "--kind",
+            "lv_transformer",
+            "--object",
+            "T-smoke",
+        ],
+        vec!["design", "comment", "read", "--thread", "thread-smoke"],
+    ] {
+        let mut argv = args;
+        argv.extend(["--output", "json"]);
+        let code = refusal(&argv);
+        assert!(
+            PAIRING_CODES.contains(&code.as_str()),
+            "`ds {}` stopped at `{code}`, not the paired application",
+            argv.join(" ")
+        );
+    }
+
+    assert_eq!(
+        refusal(&[
+            "design",
+            "selection",
+            "save",
+            "--name",
+            "smoke",
+            "--transformers",
+            ",,",
+            "--yes",
+            "--output",
+            "json"
+        ]),
+        "invalid_value_list",
+        "empty member lists must be refused before pairing",
+    );
+}
+
 #[test]
 fn work_validates_its_own_inputs_before_it_opens_the_bridge() {
     // Every refusal below must be reachable on a machine with no application

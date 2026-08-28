@@ -293,6 +293,11 @@ pub const TOO_MANY: Refusal = Refusal {
     when: "a list flag carries more entries than the record accepts",
     remedy: "split the work, or pass fewer values",
 };
+pub const INVALID_VALUE_LIST: Refusal = Refusal {
+    code: "invalid_value_list",
+    when: "a comma-separated list is empty after whitespace and separators are removed",
+    remedy: "pass at least one non-empty comma-separated value, e.g. --values ready,review",
+};
 pub const CONFIRMATION_REQUIRED: Refusal = Refusal {
     code: "confirmation_required",
     when: "--yes was not given for a command that changes governed project state",

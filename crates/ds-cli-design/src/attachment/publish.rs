@@ -2,7 +2,7 @@
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
-    Arg, ArgKind, Authority, Chapter, Command, Effect, Example, Execution, Refusal,
+    Arg, ArgKind, Authority, Chapter, Command, Effect, Example, Execution,
 };
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
@@ -47,15 +47,6 @@ const PURPOSE_ARG: Arg = Arg {
     default: None,
     choices: &[],
     summary: "Why it is attached, e.g. native_workspace or client_deliverable.",
-};
-
-/// The desktop's own bounded path reader. Publishing a larger file from `ds`
-/// would need a streaming reader the shell does not have, so the refusal names
-/// the surface that does rather than truncating the file to a preview.
-const TOO_LARGE: Refusal = Refusal {
-    code: "desktop_refused",
-    when: "the file is larger than the paired desktop's bounded path reader",
-    remedy: "publish it from the application's Attachments dialog, which streams from the file picker",
 };
 
 pub static COMMAND: Command = Command {
@@ -105,7 +96,6 @@ publish is refused rather than overwritten.",
         crate::READ_ONLY,
         crate::CONFLICT,
         crate::INVALID_ANCHOR,
-        TOO_LARGE,
         crate::CONFIRMATION_REQUIRED,
     ],
     reference: Some("docs/reference/design.md"),
