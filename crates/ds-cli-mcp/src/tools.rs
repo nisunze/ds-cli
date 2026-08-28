@@ -4,7 +4,7 @@
 //! so the mapping is testable without a process and the tool list can never
 //! say something the CLI did not.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::thread;
 use std::time::Duration;
@@ -357,7 +357,7 @@ fn bounded(value: &str) -> String {
         .collect()
 }
 
-fn launch_installed_desktop(executable: &PathBuf) -> Result<(), Failure> {
+fn launch_installed_desktop(executable: &Path) -> Result<(), Failure> {
     let application = installed_desktop(executable)?;
     Command::new(application)
         .spawn()
@@ -370,34 +370,30 @@ fn launch_installed_desktop(executable: &PathBuf) -> Result<(), Failure> {
         })
 }
 
-fn installed_desktop(executable: &PathBuf) -> Result<PathBuf, Failure> {
+fn installed_desktop(executable: &Path) -> Result<PathBuf, Failure> {
     #[cfg(windows)]
     {
-        let mut candidates = Vec::new();
-        if let Some(directory) = executable.parent() {
-            candidates.push(directory.join("DS GridDesign.exe"));
-            candidates.push(directory.join("DS GridDesign Canary.exe"));
-        }
-        if let Some(base) = std::env::var_os("LOCALAPPDATA") {
-            let base = PathBuf::from(base);
-            candidates.push(base.join("DS GridDesign").join("DS GridDesign.exe"));
-            candidates.push(
-                base.join("DS GridDesign Canary")
-                    .join("DS GridDesign Canary.exe"),
-            );
-        }
-        candidates.retain(|candidate| candidate.is_file());
-        candidates.sort();
-        candidates.dedup();
-        return match candidates.as_slice() {
-            [application] => Ok(application.clone()),
-            [] => Err(not_paired(
+        let sibling = sibling_application(executable).map(|path| {
+            let exists = path.is_file();
+            (path, exists)
+        });
+        let fallback = local_applications()
+            .into_iter()
+            .filter(|candidate| candidate.is_file())
+            .collect();
+        match select_installed_desktop(sibling, fallback) {
+            ApplicationSelection::Selected(application) => Ok(application),
+            ApplicationSelection::MissingSibling(application) => Err(not_paired(&format!(
+                "the installed ds belongs to {}, but its sibling application is missing",
+                application.display()
+            ))),
+            ApplicationSelection::None => Err(not_paired(
                 "no installed DS GridDesign application was found beside ds or in LOCALAPPDATA",
             )),
-            _ => Err(not_paired(
+            ApplicationSelection::Ambiguous(_) => Err(not_paired(
                 "more than one installed DS GridDesign application was found; start the intended one or provide its descriptor",
             )),
-        };
+        }
     }
     #[cfg(not(windows))]
     {
@@ -405,6 +401,66 @@ fn installed_desktop(executable: &PathBuf) -> Result<PathBuf, Failure> {
         Err(not_paired(
             "automatic desktop launch is currently available only in the installed Windows package",
         ))
+    }
+}
+
+/// The only product layouts an installed `ds.exe` may claim. The directory
+/// itself carries the Stable/Canary identity, so a side-by-side install never
+/// makes its own sibling ambiguous.
+#[cfg(any(windows, test))]
+fn sibling_application(executable: &std::path::Path) -> Option<PathBuf> {
+    let directory = executable.parent()?;
+    let application = match directory.file_name()?.to_str()? {
+        "DS GridDesign" => "DS GridDesign.exe",
+        "DS GridDesign Canary" => "DS GridDesign Canary.exe",
+        _ => return None,
+    };
+    Some(directory.join(application))
+}
+
+#[cfg(windows)]
+fn local_applications() -> Vec<PathBuf> {
+    let Some(base) = std::env::var_os("LOCALAPPDATA") else {
+        return Vec::new();
+    };
+    let base = PathBuf::from(base);
+    vec![
+        base.join("DS GridDesign").join("DS GridDesign.exe"),
+        base.join("DS GridDesign Canary")
+            .join("DS GridDesign Canary.exe"),
+    ]
+}
+
+#[cfg(any(windows, test))]
+#[derive(Debug, PartialEq, Eq)]
+enum ApplicationSelection {
+    Selected(PathBuf),
+    MissingSibling(PathBuf),
+    None,
+    Ambiguous(Vec<PathBuf>),
+}
+
+/// Select a desktop without using filesystem state, so side-by-side product
+/// layout is testable on every host. A recognized sibling is an owner proof;
+/// fallbacks are consulted only when the running `ds` has no such identity.
+#[cfg(any(windows, test))]
+fn select_installed_desktop(
+    sibling: Option<(PathBuf, bool)>,
+    mut fallback: Vec<PathBuf>,
+) -> ApplicationSelection {
+    if let Some((application, exists)) = sibling {
+        return if exists {
+            ApplicationSelection::Selected(application)
+        } else {
+            ApplicationSelection::MissingSibling(application)
+        };
+    }
+    fallback.sort();
+    fallback.dedup();
+    match fallback.as_slice() {
+        [] => ApplicationSelection::None,
+        [application] => ApplicationSelection::Selected(application.clone()),
+        _ => ApplicationSelection::Ambiguous(fallback),
     }
 }
 
@@ -870,5 +926,54 @@ mod tests {
         .expect_err("named descriptor remains authoritative");
         assert_eq!(failure.code(), "desktop_not_paired");
         assert_eq!(launched, 0);
+    }
+
+    #[test]
+    fn sibling_product_layout_selects_its_own_stable_or_canary_app_first() {
+        let stable_ds = PathBuf::from("C:/Users/test/AppData/Local/DS GridDesign/ds.exe");
+        let stable = sibling_application(&stable_ds).expect("stable sibling layout");
+        assert_eq!(
+            stable,
+            PathBuf::from("C:/Users/test/AppData/Local/DS GridDesign/DS GridDesign.exe")
+        );
+        let selected = select_installed_desktop(
+            Some((stable.clone(), true)),
+            vec![
+                stable.clone(),
+                PathBuf::from(
+                    "C:/Users/test/AppData/Local/DS GridDesign Canary/DS GridDesign Canary.exe",
+                ),
+            ],
+        );
+        assert_eq!(selected, ApplicationSelection::Selected(stable.clone()));
+
+        let canary_ds = PathBuf::from("C:/Users/test/AppData/Local/DS GridDesign Canary/ds.exe");
+        let canary = sibling_application(&canary_ds).expect("canary sibling layout");
+        assert_eq!(
+            canary,
+            PathBuf::from(
+                "C:/Users/test/AppData/Local/DS GridDesign Canary/DS GridDesign Canary.exe"
+            )
+        );
+        assert_eq!(
+            select_installed_desktop(Some((canary.clone(), true)), vec![stable]),
+            ApplicationSelection::Selected(canary)
+        );
+    }
+
+    #[test]
+    fn fallback_refuses_true_ambiguity_and_never_crosses_a_missing_owned_sibling() {
+        let stable = PathBuf::from("C:/Users/test/AppData/Local/DS GridDesign/DS GridDesign.exe");
+        let canary = PathBuf::from(
+            "C:/Users/test/AppData/Local/DS GridDesign Canary/DS GridDesign Canary.exe",
+        );
+        assert_eq!(
+            select_installed_desktop(None, vec![stable.clone(), canary.clone()]),
+            ApplicationSelection::Ambiguous(vec![stable.clone(), canary.clone()])
+        );
+        assert_eq!(
+            select_installed_desktop(Some((stable.clone(), false)), vec![canary]),
+            ApplicationSelection::MissingSibling(stable)
+        );
     }
 }

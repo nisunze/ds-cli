@@ -494,11 +494,11 @@ fn create_exclusive(path: &Path) -> std::io::Result<File> {
     #[cfg(windows)]
     {
         use std::os::windows::fs::OpenOptionsExt as _;
-        return OpenOptions::new()
+        OpenOptions::new()
             .write(true)
             .create_new(true)
             .custom_flags(0x0020_0000)
-            .open(path);
+            .open(path)
     }
     #[cfg(not(any(unix, windows)))]
     OpenOptions::new().write(true).create_new(true).open(path)

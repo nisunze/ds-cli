@@ -138,8 +138,12 @@ For an `invoke` whose descriptor says `desktop_pairing`, `desktop_user`, or
 the caller did not name `--desktop-descriptor` (nor set
 `DS_DESKTOP_DESCRIPTOR`), the installed Windows package may start its fixed DS
 GridDesign executable once, then waits at most 10 seconds for its loopback
-descriptor. It never launches a second app when status already reports one,
-and it never launches a different app in place of a named descriptor.
+descriptor. Stable and Canary are selected from the invoking `ds.exe`'s exact
+recognized sibling layout first; side-by-side installs therefore do not become
+ambiguous. `LOCALAPPDATA` is only a fallback when that sibling identity is
+absent, and a genuinely ambiguous fallback still refuses. MCP never launches a
+second app when status already reports one, and it never launches a different
+app in place of a named descriptor.
 
 Failure remains a normal DS envelope: `desktop_not_paired` carries the bounded
 remedy to start/sign in, and `desktop_signed_out` remains a refusal rather than
