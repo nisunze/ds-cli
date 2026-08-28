@@ -16,11 +16,11 @@
 //! with the reason. That list is the escape hatch, and it is deliberately
 //! short: putting a code there is a claim that a caller can never see it.
 
+use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
-use serde_json::Value;
+mod common;
 
 /// Codes a caller cannot reach, with why.
 const NOT_A_REFUSAL: &[(&str, &str)] = &[
@@ -52,13 +52,7 @@ const NOT_A_REFUSAL: &[(&str, &str)] = &[
 ];
 
 fn ds(args: &[&str]) -> Value {
-    let output = Command::new(env!("CARGO_BIN_EXE_ds"))
-        .args(args)
-        .env("NO_COLOR", "1")
-        .output()
-        .expect("ds binary runs");
-    let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
-    serde_json::from_str(&stdout).unwrap_or(Value::Null)
+    common::json(args).0
 }
 
 /// Codes declared by each domain's commands, plus the union across all of
@@ -87,7 +81,7 @@ fn declared_codes() -> (BTreeMap<String, BTreeSet<String>>, BTreeSet<String>) {
             ));
         }
     }
-    for meta in ["capabilities", "doctor", "version"] {
+    for meta in common::META_COMMANDS {
         targets.push(("meta".to_string(), meta.to_string()));
     }
 

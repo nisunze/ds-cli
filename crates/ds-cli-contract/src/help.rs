@@ -18,7 +18,21 @@ use std::fmt::Write as _;
 
 use serde_json::{Value, json};
 
-use crate::spec::{Arg, ArgKind, Command, Domain};
+use crate::spec::{Arg, ArgKind, Command, Domain, Effect};
+
+/// A command whose normal example needs operator data, a paired session, or a
+/// project still has one universally safe execution: asking it for its own
+/// contract. Discovery and read-only commands promise that this path is
+/// available without confirmation, so expose it as a generated runnable
+/// example rather than leaving most of the surface unexecuted by CI.
+fn canonical_runnable_example(command: &Command) -> Option<String> {
+    if !matches!(command.effect, Effect::Discovery | Effect::ReadOnly)
+        || command.examples.iter().any(|example| example.runnable)
+    {
+        return None;
+    }
+    Some(format!("ds {} --help", command.path.join(" ")))
+}
 
 /// Global flags. Printed once at the root and never repeated per command:
 /// repeating them would multiply the most-read text in the product by the
@@ -166,13 +180,21 @@ pub fn command(command: &Command) -> String {
 
     let _ = writeln!(out, "\nOUTPUT\n{}", wrap(command.output, 76, "  "));
 
-    if !command.examples.is_empty() {
+    let canonical_example = canonical_runnable_example(command);
+    if !command.examples.is_empty() || canonical_example.is_some() {
         let _ = writeln!(out, "\nEXAMPLES");
         for example in command.examples {
             let _ = writeln!(out, "  {}", example.command);
             if !example.note.is_empty() {
                 let _ = writeln!(out, "      {}", example.note);
             }
+        }
+        if let Some(example) = canonical_example {
+            let _ = writeln!(out, "  {example}");
+            let _ = writeln!(
+                out,
+                "      The always-safe complete contract for this command."
+            );
         }
     }
 
@@ -208,6 +230,28 @@ pub fn command(command: &Command) -> String {
 /// a caller that wants a schema does not have to parse a help screen.
 pub fn command_json(command: &Command) -> Value {
     let availability = (command.availability)();
+    let mut examples: Vec<Value> = command
+        .examples
+        .iter()
+        .map(|example| {
+            json!({
+                "command": example.command,
+                "note": example.note,
+                // Whether the contract test may execute this verbatim. An example
+                // needing a paired desktop, a project, or an operator's own file
+                // is documentation; one marked runnable is a promise, and the
+                // suite holds it.
+                "runnable": example.runnable,
+            })
+        })
+        .collect();
+    if let Some(example) = canonical_runnable_example(command) {
+        examples.push(json!({
+            "command": example,
+            "note": "The always-safe complete contract for this command.",
+            "runnable": true,
+        }));
+    }
     let mut descriptor = json!({
         "id": command.id,
         "path": command.path,
@@ -223,15 +267,7 @@ pub fn command_json(command: &Command) -> Value {
         "availability": availability.token(),
         "inputs": command.args.iter().map(arg_json).collect::<Vec<_>>(),
         "output": command.output,
-        "examples": command.examples.iter().map(|example| json!({
-            "command": example.command,
-            "note": example.note,
-            // Whether the contract test may execute this verbatim. An example
-            // needing a paired desktop, a project, or an operator's own file
-            // is documentation; one marked runnable is a promise, and the
-            // suite holds it.
-            "runnable": example.runnable,
-        })).collect::<Vec<_>>(),
+        "examples": examples,
         "refusals": command.refusals.iter().map(|refusal| json!({
             "code": refusal.code,
             "when": refusal.when,

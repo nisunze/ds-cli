@@ -17,6 +17,18 @@ mkdir -p "$BUNDLE"
 cp -R -- "$ROOT/skills" "$BUNDLE/skills"
 cp -R -- "$ROOT/scripts" "$BUNDLE/scripts"
 INSTALLER="$BUNDLE/scripts/install-skills.sh"
+POWERSHELL_INSTALLER="$ROOT/scripts/install-skills.ps1"
+
+# Linux cannot exercise Windows reparse-point behaviour, but keep the
+# destructive boundary visible to this host's installer test. These controls
+# intentionally inspect the shipped PowerShell source without executing it:
+# runtime proof belongs to the Windows/pwsh gate, while deleting through a
+# reparse point must not be silently unguarded here.
+grep -Fq 'function Test-ReparsePoint' "$POWERSHELL_INSTALLER"
+grep -Fq 'function Test-RegularFile' "$POWERSHELL_INSTALLER"
+grep -Fq 'refusing reparse-point skill target' "$POWERSHELL_INSTALLER"
+grep -Fq 'Test-ReparsePoint $Destination' "$POWERSHELL_INSTALLER"
+grep -Fq 'Test-RegularFile $Marker' "$POWERSHELL_INSTALLER"
 
 export HOME="$TEMP/home"
 export CODEX_HOME="$HOME/.codex"

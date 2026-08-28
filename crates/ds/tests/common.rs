@@ -1,6 +1,49 @@
 //! Shared test helpers.
+//!
+//! Each integration target compiles this module independently, so a helper
+//! used by one target is intentionally unused in another.
+#![allow(dead_code)]
 
 use std::path::PathBuf;
+use std::process::Command;
+
+use serde_json::Value;
+
+/// Root-level commands are part of the public surface even though they do not
+/// belong to a domain. Keep this one shared list so a fourth command cannot be
+/// added to only one of the budget/contract/refusal walkers.
+pub const META_COMMANDS: &[&str] = &["capabilities", "doctor", "version"];
+
+pub struct Invocation {
+    pub stdout: String,
+    pub stderr: String,
+    pub code: i32,
+}
+
+pub fn invoke(args: &[&str]) -> Invocation {
+    let output = Command::new(env!("CARGO_BIN_EXE_ds"))
+        .args(args)
+        .env("NO_COLOR", "1")
+        .output()
+        .expect("ds binary runs");
+    Invocation {
+        stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
+        stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
+        code: output.status.code().unwrap_or(-1),
+    }
+}
+
+pub fn json(args: &[&str]) -> (Value, i32) {
+    let invocation = invoke(args);
+    let value = serde_json::from_str(&invocation.stdout).unwrap_or_else(|error| {
+        panic!(
+            "`ds {}` did not emit JSON ({error}): {}",
+            args.join(" "),
+            invocation.stdout
+        )
+    });
+    (value, invocation.code)
+}
 
 /// The real `.dsgrid` fixture, in the authoritative repository that owns the
 /// format.

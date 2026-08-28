@@ -9,6 +9,7 @@
 use std::process::Command;
 use std::sync::atomic::{AtomicU64, Ordering};
 
+use ds_cli_contract::{ExitClass, Failure};
 use serde_json::Value;
 
 mod common;
@@ -128,6 +129,27 @@ fn exit_code_and_envelope_class_always_agree() {
             args.join(" "),
             run.code
         );
+    }
+}
+
+#[test]
+fn every_failure_class_has_its_exact_exit_and_envelope_token() {
+    // Integration calls above exercise real invalid-input refusals. The other
+    // classes require intentionally paired/authenticated or failing owners,
+    // so pin the complete shared envelope contract directly instead of
+    // pretending one parser refusal covers all six.
+    for (class, code, token) in [
+        (ExitClass::InvalidInput, 2, "invalid_input"),
+        (ExitClass::Unavailable, 3, "unavailable"),
+        (ExitClass::Unauthorized, 4, "unauthorized"),
+        (ExitClass::Conflict, 5, "conflict"),
+        (ExitClass::Failed, 6, "failed"),
+        (ExitClass::Internal, 1, "internal"),
+    ] {
+        let refusal = Failure::new(class, "test_refusal", "test refusal");
+        assert_eq!(refusal.class(), class);
+        assert_eq!(refusal.class().token(), token);
+        assert_eq!(ds_cli_contract::output::exit_code(refusal.class()), code);
     }
 }
 

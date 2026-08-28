@@ -40,12 +40,24 @@ function Write-Utf8Lines([string]$Path, [string[]]$Lines) {
     [IO.File]::WriteAllText($Path, (($Lines -join "`n") + "`n"), $Utf8NoBom)
 }
 
+function Test-ReparsePoint([string]$Path) {
+    if (-not (Test-Path -LiteralPath $Path)) { return $false }
+    return ((Get-Item -LiteralPath $Path -Force).Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0
+}
+
+function Test-RegularFile([string]$Path) {
+    return (Test-Path -LiteralPath $Path -PathType Leaf) -and -not (Test-ReparsePoint $Path)
+}
+
 $SourceSkills = @(Get-ChildItem -LiteralPath $SourceRoot -Directory | Sort-Object Name)
 if ($SourceSkills.Count -eq 0) { throw "no skills found under $SourceRoot" }
 foreach ($Skill in $SourceSkills) {
     if ($Skill.Name -notmatch '^[a-z0-9]+(?:-[a-z0-9]+)*$' -or
         -not (Test-Path -LiteralPath (Join-Path $Skill.FullName "SKILL.md") -PathType Leaf)) {
         throw "invalid source skill directory: $($Skill.FullName)"
+    }
+    if (Test-ReparsePoint $Skill.FullName) {
+        throw "source skill is a link or reparse point: $($Skill.Name)"
     }
     $Reparse = Get-ChildItem -LiteralPath $Skill.FullName -Force -Recurse |
         Where-Object { $_.Attributes -band [IO.FileAttributes]::ReparsePoint } |
@@ -55,7 +67,7 @@ foreach ($Skill in $SourceSkills) {
 
 function Test-OwnedSkill([string]$Path) {
     $Marker = Join-Path $Path $OwnerMarker
-    if (-not (Test-Path -LiteralPath $Marker -PathType Leaf)) { return $false }
+    if (-not (Test-RegularFile $Marker)) { return $false }
     $MarkerOwner = (Get-Content -LiteralPath $Marker -Raw).TrimEnd("`r", "`n")
     return $MarkerOwner -eq $Owner -or $MarkerOwner -eq $LegacyOwner
 }
@@ -63,7 +75,7 @@ function Test-OwnedSkill([string]$Path) {
 function Read-OwnedInventory([string]$Target) {
     $Path = Join-Path $Target $Inventory
     if (-not (Test-Path -LiteralPath $Path)) { return @() }
-    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+    if (-not (Test-RegularFile $Path)) {
         throw "install inventory is not a regular file: $Path"
     }
     $Lines = @(Get-Content -LiteralPath $Path)
@@ -82,7 +94,8 @@ function Assert-OwnedDestinations([string]$Target, [string[]]$Names) {
     foreach ($Name in $Names) {
         $Destination = Join-Path $Target $Name
         if (Test-Path -LiteralPath $Destination) {
-            if (-not (Test-Path -LiteralPath $Destination -PathType Container) -or
+            if (Test-ReparsePoint $Destination -or
+                -not (Test-Path -LiteralPath $Destination -PathType Container) -or
                 -not (Test-OwnedSkill $Destination)) {
                 throw "refusing to replace or remove unowned skill: $Destination"
             }
@@ -91,6 +104,9 @@ function Assert-OwnedDestinations([string]$Target, [string[]]$Names) {
 }
 
 function Install-Target([string]$Target) {
+    if ((Test-Path -LiteralPath $Target) -and (Test-ReparsePoint $Target)) {
+        throw "refusing reparse-point skill target: $Target"
+    }
     New-Item -ItemType Directory -Force -Path $Target | Out-Null
     $OldNames = @(Read-OwnedInventory $Target)
     $NewNames = @($SourceSkills | ForEach-Object Name)
@@ -99,8 +115,8 @@ function Install-Target([string]$Target) {
     $InventoryPath = Join-Path $Target $Inventory
     $ReceiptPath = Join-Path $Target $Receipt
     if ((Test-Path -LiteralPath $ReceiptPath) -and
-        (-not (Test-Path -LiteralPath $InventoryPath -PathType Leaf) -or
-         -not (Test-Path -LiteralPath $ReceiptPath -PathType Leaf))) {
+        (-not (Test-RegularFile $InventoryPath) -or
+         -not (Test-RegularFile $ReceiptPath))) {
         throw "refusing unowned or non-regular install receipt: $ReceiptPath"
     }
 
@@ -115,15 +131,15 @@ function Install-Target([string]$Target) {
         }
         $BundleReceipt = Join-Path $Here "receipt.json"
         if (Test-Path -LiteralPath $BundleReceipt) {
-            if (-not (Test-Path -LiteralPath $BundleReceipt -PathType Leaf)) {
+            if (-not (Test-RegularFile $BundleReceipt)) {
                 throw "bundle receipt is not a regular file: $BundleReceipt"
             }
             Copy-Item -LiteralPath $BundleReceipt -Destination (Join-Path $Stage $Receipt)
         }
-        if (Test-Path -LiteralPath $InventoryPath -PathType Leaf) {
+        if (Test-RegularFile $InventoryPath) {
             Copy-Item -LiteralPath $InventoryPath -Destination (Join-Path $Backup $Inventory)
         }
-        if (Test-Path -LiteralPath $ReceiptPath -PathType Leaf) {
+        if (Test-RegularFile $ReceiptPath) {
             Copy-Item -LiteralPath $ReceiptPath -Destination (Join-Path $Backup $Receipt)
         }
         foreach ($Name in $ManagedNames) {
@@ -137,7 +153,7 @@ function Install-Target([string]$Target) {
         }
         Remove-Item -LiteralPath $ReceiptPath -Force -ErrorAction SilentlyContinue
         $StagedReceipt = Join-Path $Stage $Receipt
-        if (Test-Path -LiteralPath $StagedReceipt -PathType Leaf) {
+        if (Test-RegularFile $StagedReceipt) {
             $ReceiptTemp = Join-Path $Target ("$Receipt.tmp." + [guid]::NewGuid().ToString("N"))
             Copy-Item -LiteralPath $StagedReceipt -Destination $ReceiptTemp
             Move-Item -Force -LiteralPath $ReceiptTemp -Destination $ReceiptPath
@@ -169,9 +185,10 @@ function Install-Target([string]$Target) {
 
 function Uninstall-Target([string]$Target) {
     if (-not (Test-Path -LiteralPath $Target -PathType Container)) { return }
+    if (Test-ReparsePoint $Target) { throw "refusing reparse-point skill target: $Target" }
     $OldNames = @(Read-OwnedInventory $Target)
     $InventoryPath = Join-Path $Target $Inventory
-    if (-not (Test-Path -LiteralPath $InventoryPath -PathType Leaf)) {
+    if (-not (Test-RegularFile $InventoryPath)) {
         Write-Host "no owned skills -> $Target"
         return
     }

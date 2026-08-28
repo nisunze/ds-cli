@@ -197,6 +197,41 @@ fn workstation_configure_refuses_outside_native_windows() {
     );
 }
 
+// On the platform where these commands can change a machine, their smoke
+// coverage must not disappear. Deliberately omit --yes: this exercises the
+// same dispatch choke point without installing or configuring anything.
+#[cfg(windows)]
+#[test]
+fn workstation_install_is_confirmation_gated_on_native_windows() {
+    let run = ds(&[
+        "workstation",
+        "install",
+        "--component",
+        "git-bash",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(run.code, 2, "{}{}", run.stdout, run.stderr);
+    assert_eq!(run.envelope["error"]["code"], "confirmation_required");
+}
+
+#[cfg(windows)]
+#[test]
+fn workstation_configure_is_confirmation_gated_on_native_windows() {
+    let run = ds(&[
+        "workstation",
+        "configure",
+        "--component",
+        "git-bash",
+        "--target",
+        "vscode",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(run.code, 2, "{}{}", run.stdout, run.stderr);
+    assert_eq!(run.envelope["error"]["code"], "confirmation_required");
+}
+
 // ---------------------------------------------------------------------------
 // dsgrid
 // ---------------------------------------------------------------------------

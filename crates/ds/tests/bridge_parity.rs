@@ -148,6 +148,18 @@ fn dotted_arguments(source: &str) -> BTreeSet<&str> {
         .collect()
 }
 
+/// True only for an object field in the projection currently under test.
+/// Searching the whole adapter made `more`, `stale`, and `events` match
+/// unrelated identifiers such as `furthermore` or `staleness` in comments or
+/// helpers. Projection fields are rendered one per line in the owner; keep the
+/// assertion tied to that return-object slice and its exact field spelling.
+fn projects_field(slice: &str, field: &str) -> bool {
+    slice.lines().any(|line| {
+        let trimmed = line.trim_start();
+        trimmed.starts_with(&format!("{field}:")) || trimmed == format!("{field},")
+    })
+}
+
 #[test]
 fn every_project_context_command_has_one_closed_operation_owner() {
     let Some(app) = app() else {
@@ -445,6 +457,15 @@ fn sre_bounds_outputs_and_typed_refusals_match_the_desktop_owner() {
         );
     }
 
+    let overview = between(
+        &app.sre,
+        "export function projectCliSreOverview",
+        "function same",
+    );
+    assert!(
+        !overview.is_empty(),
+        "the bounded SRE overview projection is absent"
+    );
     for field in [
         "generated_at",
         "fleet",
@@ -465,8 +486,34 @@ fn sre_bounds_outputs_and_typed_refusals_match_the_desktop_owner() {
         "events",
     ] {
         assert!(
-            app.sre.contains(field),
+            projects_field(overview, field),
             "the desktop SRE owner no longer projects `{field}`"
+        );
+    }
+
+    let events = between(
+        &app.sre,
+        "export function projectCliSreEvents",
+        "export async function readCliSreOverview",
+    );
+    assert!(
+        !events.is_empty(),
+        "the bounded SRE event projection is absent"
+    );
+    for field in [
+        "filters", "scanned", "matching", "returned", "events", "more",
+    ] {
+        assert!(
+            projects_field(events, field),
+            "the desktop SRE event projection no longer projects `{field}`"
+        );
+    }
+    let events_read = between(&app.sre, "export async function readCliSreEvents", "\n}");
+    assert!(!events_read.is_empty(), "the SRE events owner is absent");
+    for field in ["generated_at", "window_days", "scan_limit"] {
+        assert!(
+            projects_field(events_read, field),
+            "the desktop SRE event owner no longer projects `{field}`"
         );
     }
 

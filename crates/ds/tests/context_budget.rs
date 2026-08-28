@@ -16,23 +16,13 @@
 //! proportional to the number of *domains*, never to the number of commands.
 //! That is what makes the whole stack fit behind one executable.
 
-use std::process::Command;
-
 use serde_json::Value;
 
 mod common;
 
 fn ds(args: &[&str]) -> (String, String, i32) {
-    let output = Command::new(env!("CARGO_BIN_EXE_ds"))
-        .args(args)
-        .env("NO_COLOR", "1")
-        .output()
-        .expect("ds binary runs");
-    (
-        String::from_utf8_lossy(&output.stdout).into_owned(),
-        String::from_utf8_lossy(&output.stderr).into_owned(),
-        output.status.code().unwrap_or(-1),
-    )
+    let run = common::invoke(args);
+    (run.stdout, run.stderr, run.code)
 }
 
 fn bytes(args: &[&str]) -> usize {
@@ -70,7 +60,7 @@ fn every_command() -> Vec<Value> {
             ids.push(command["id"].as_str().expect("id").to_string());
         }
     }
-    for meta in ["capabilities", "doctor", "version"] {
+    for meta in common::META_COMMANDS {
         ids.push(meta.to_string());
     }
 
