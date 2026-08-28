@@ -43,10 +43,10 @@ fn main() -> ExitCode {
 ///
 /// "Anywhere" stops at `--`. Without an end-of-options sentinel this scan
 /// reads every token, including one a command meant as an operand, so a
-/// caller passing the literal text `--yes` as a *value* would have silently
-/// granted global confirmation on the way past. Nothing declares an operand
-/// today, which is the only reason that was latent rather than live; the
-/// sentinel closes it before the first one does.
+/// caller passing the literal text `--yes` as an operand would have silently
+/// granted global confirmation on the way past. The live `capabilities`
+/// command already declares the optional `selector` operand, so the sentinel
+/// is a current boundary, not speculative parser hardening.
 struct Globals {
     output: Output,
     confirmed: bool,
@@ -365,6 +365,9 @@ fn unknown_command(domain: &'static Domain, name: &str) -> Failure {
 #[cfg(test)]
 mod tests {
     use super::split_globals;
+    use crate::{meta, registry};
+    use ds_cli_contract::args::parse;
+    use ds_cli_contract::spec::ArgKind;
 
     fn argv(parts: &[&str]) -> Vec<String> {
         parts.iter().map(|part| (*part).to_string()).collect()
@@ -379,16 +382,17 @@ mod tests {
 
     #[test]
     fn a_token_after_the_sentinel_never_becomes_global_confirmation() {
-        // The whole point of F8: `--yes` arriving as somebody's *value* must
-        // not grant confirmation on a `global_write` before dispatch is
-        // reached. Delete the `"--"` arm in `split_globals` and this fails.
+        // F8: capabilities has a real positional `selector`; literal --yes
+        // after -- must be that selector, never global confirmation.
         let (globals, rest) =
-            split_globals(&argv(&["feedback", "close", "--", "--yes"])).expect("split");
+            split_globals(&argv(&["capabilities", "--", "--yes"])).expect("split");
         assert!(
             !globals.confirmed,
             "a value that reads like `--yes` must never confirm anything"
         );
-        assert_eq!(rest, argv(&["feedback", "close", "--", "--yes"]));
+        assert_eq!(rest, argv(&["capabilities", "--", "--yes"]));
+        let inputs = parse(&meta::CAPABILITIES, &rest[1..]).expect("real selector parses");
+        assert_eq!(inputs.value("selector"), Some("--yes"));
     }
 
     #[test]
@@ -421,5 +425,29 @@ mod tests {
         // one; it reaches `ds_cli_contract::parse`, which owns operands.
         let (_, rest) = split_globals(&argv(&["style", "list", "--", "-x"])).expect("split");
         assert!(rest.contains(&"--".to_string()));
+    }
+
+    #[test]
+    fn confirmation_gated_commands_have_no_positional_boundary_without_a_reviewed_test() {
+        let commands = registry::meta_commands()
+            .iter()
+            .map(|entry| entry.command)
+            .chain(
+                registry::domains()
+                    .iter()
+                    .flat_map(|domain| domain.domain.commands.iter().copied()),
+            );
+        for command in commands {
+            if command.effect.needs_confirmation() {
+                assert!(
+                    command
+                        .args
+                        .iter()
+                        .all(|arg| arg.kind != ArgKind::Positional),
+                    "confirmation-gated command `{}` gained a positional input; add a reviewed --/--yes boundary test before allowing it",
+                    command.id
+                );
+            }
+        }
     }
 }

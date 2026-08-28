@@ -287,9 +287,9 @@ mod tests {
         Availability::Available
     }
 
-    /// A command shaped like the first one to declare an operand. No shipping
-    /// command does yet, which is precisely why the `--yes`-as-a-value hole
-    /// was latent rather than live.
+    /// A compact parser fixture for operand edge cases. Shipping discovery
+    /// already has an operand (`capabilities selector`); its end-to-end global
+    /// confirmation boundary is pinned in the `ds` binary tests.
     static WITH_OPERAND: Command = Command {
         id: "test.operand",
         path: &["test", "operand"],

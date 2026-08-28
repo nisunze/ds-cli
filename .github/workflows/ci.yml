@@ -108,10 +108,10 @@ jobs:
       # it claims a hand-copied field name was checked when nothing looked at
       # it. Prove here that it actually ran.
       #
-      # `shell: bash` with `pipefail` on every step below that pipes: the
-      # Actions default is `bash -e {0}` *without* it, so the step's status
-      # would be `tee`'s, and a compile error or a failed assertion inside the
-      # suite would exit 0 here.
+      # GitHub's explicit `shell: bash` already enables `-o pipefail`; keep
+      # the local `set -o pipefail` below as visible defence in depth. The
+      # important property is that a failing cargo process cannot be masked by
+      # `tee`, regardless of future shell/default changes.
       - name: Prove bridge parity did not skip
         working-directory: data-solutions/ds-cli
         shell: bash
