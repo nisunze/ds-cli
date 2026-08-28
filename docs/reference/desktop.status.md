@@ -52,8 +52,11 @@ auto-discovery profile: it is a developer harness and must be named with
 an ordinary `ds` invocation from silently mixing source-run state with an
 installed Stable, Canary, or dev desktop.
 
-**Ambiguity is refused, never resolved by preference.** Two profiles running at
-once produces `desktop_ambiguous` listing both descriptor paths. Silently
+Automatic discovery first applies one bounded loopback liveness probe to each
+known descriptor, so dead files left by exited Stable, Canary or dev processes
+do not create false ambiguity. **Real ambiguity is refused, never resolved by
+preference.** Two responsive profiles at once produce `desktop_ambiguous`
+listing both descriptor paths. Silently
 picking whichever sorted first is the class of mistake that stays invisible
 until it has written to the wrong project.
 
@@ -136,7 +139,7 @@ three different failures that look alike from outside:
 
 | Code | Meaning |
 |---|---|
-| `desktop_ambiguous` | more than one profile running; name one with `--desktop-descriptor` |
+| `desktop_ambiguous` | more than one profile is responsive; name one with `--desktop-descriptor` |
 | `descriptor_unusable` | a descriptor exists but is unreadable, stale, or not loopback |
 | `desktop_unreachable` | the descriptor names a port nothing answers on |
 | `pairing_rejected` | the application refused the secret; the descriptor is stale |

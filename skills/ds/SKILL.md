@@ -84,7 +84,7 @@ bypass `ds`.
 - `ds-map-local-data` — temporary map layers, focus and restore.
 - `ds-lv-design-revision` — revise one transformer's LV design safely.
 - `ds-pls-cadd-terrain-roundtrip` — PLS-CADD route and terrain delivery.
-- `ds-style-composite` — colour plus a second style dimension.
+- `ds-style-composite` — guided colour/icon/base size plus a second style dimension.
 - `ds-report-consumption` — obtain and read delivered workbooks.
 - `ds-qgis-print-delivery` — governed multi-layout print delivery.
 - `ds-boq-staking-table` — LV/MV staking tables against a BOQ.

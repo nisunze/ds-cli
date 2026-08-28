@@ -1,5 +1,5 @@
-//! `ds style` — Style Center documents: read them, and author a SECOND
-//! categorical dimension by a second field.
+//! `ds style` — read Style Center documents, author their guided base
+//! appearance, and add a SECOND categorical dimension by a second field.
 //!
 //! ## Why this domain is a bridge domain
 //!
@@ -14,15 +14,13 @@
 //! ## What the family is
 //!
 //! ```text
-//!   list → read → dimension plan → dimension set | dimension clear
+//!   list → read → appearance plan/set → dimension plan/set | dimension clear
 //! ```
 //!
-//! The PRIMARY dimension of a layer is its colour (`struct_type → circle-color`);
-//! the Style Center's colour builder owns it. This domain adds the second
-//! one: a field told apart on a channel the colour does not use — a halo /
-//! stroke ring (baked into raster icons by ds-brain), the opacity, or the
-//! size — as plain `["match", ["get", field], …]` expressions the legend reads
-//! back from the shape alone.
+//! `appearance` owns flat primary colour, catalog icon and base size through
+//! the Style Center's guided schema. `dimension` adds a second field on a
+//! channel the primary appearance does not use — halo, opacity, or size — as
+//! plain `["match", ["get", field], …]` expressions the legend reads back.
 //!
 //! ## What is deliberately absent
 //!
@@ -31,6 +29,7 @@
 //! match, the halo channel per layer type) that keep a document renderable.
 //! The JSON tab of the Style Center remains the human escape hatch.
 
+pub mod appearance;
 pub mod dimension;
 pub mod list;
 pub mod read;
@@ -49,10 +48,12 @@ pub use ds_cli_desktop::ops::{
 
 pub static DOMAIN: Domain = Domain {
     id: "style",
-    summary: "Map styling: style documents and a second halo/opacity/size dimension.",
+    summary: "Guided map appearance and a second field-driven dimension.",
     commands: &[
         &list::COMMAND,
         &read::COMMAND,
+        &appearance::plan::COMMAND,
+        &appearance::set::COMMAND,
         &dimension::plan::COMMAND,
         &dimension::set::COMMAND,
         &dimension::clear::COMMAND,
@@ -71,6 +72,10 @@ pub const STYLE_READ: BridgeOp = BridgeOp {
     operation: "style.read",
     arguments: &["ref"],
 };
+pub const APPEARANCE_SET: BridgeOp = BridgeOp {
+    operation: "style.appearance.set",
+    arguments: &["ref", "color", "icon", "size", "apply"],
+};
 pub const DIMENSION_SET: BridgeOp = BridgeOp {
     operation: "style.dimension.set",
     arguments: &[
@@ -85,7 +90,13 @@ pub const DIMENSION_CLEAR: BridgeOp = BridgeOp {
 /// Every operation this domain can send, for the parity test to walk. `plan`
 /// and `set` are one operation — `apply` false or true — so the list is
 /// shorter than the command list.
-pub const BRIDGE_OPS: &[&BridgeOp] = &[&STYLE_LIST, &STYLE_READ, &DIMENSION_SET, &DIMENSION_CLEAR];
+pub const BRIDGE_OPS: &[&BridgeOp] = &[
+    &STYLE_LIST,
+    &STYLE_READ,
+    &APPEARANCE_SET,
+    &DIMENSION_SET,
+    &DIMENSION_CLEAR,
+];
 
 /// The most values one dimension names. Matches the adapter's own bound so an
 /// over-long list is refused once, locally.
@@ -118,6 +129,11 @@ pub const INVALID_COLOR: Refusal = Refusal {
     code: "invalid_color",
     when: "a colour flag is not a hex colour",
     remedy: "pass e.g. --color #FFFFFF or #FFFFFF80",
+};
+pub const INVALID_APPEARANCE: Refusal = Refusal {
+    code: "invalid_appearance",
+    when: "no colour, icon or size was supplied",
+    remedy: "pass at least one of --color, --icon or --size",
 };
 
 /// Ordinary operation refusals stay `desktop_refused`; only the signed-out
@@ -240,7 +256,7 @@ mod tests {
         let mut unique = names.clone();
         unique.dedup();
         assert_eq!(names, unique, "an operation is declared twice");
-        // plan and set share one operation; every other command owns one.
-        assert_eq!(names.len(), DOMAIN.commands.len() - 1);
+        // Appearance plan/set and dimension plan/set each share one operation.
+        assert_eq!(names.len(), DOMAIN.commands.len() - 2);
     }
 }

@@ -13,7 +13,8 @@ pub static COMMAND: Command = Command {
     contract: 1,
     summary: "One style document with its fields, on-map values and channels.",
     purpose: "\
-Reads the authored MapLibre document for one ref, the fields and values the \
+Reads the authored MapLibre document for one ref, its guided base appearance, \
+the fields and values the \
 backend publishes for it, the fields and value TYPES the map currently \
 renders (so a numeric tile property gets numeric match labels), the second \
 dimension if one is authored, and the channels this layer type offers.",
@@ -23,7 +24,8 @@ dimension if one is authored, and the channels this layer type offers.",
     execution: Execution::Sync,
     args: &[REF_ARG, DESCRIPTOR_ARG],
     output: "\
-The `ds style list` row plus `document`, `fields`, `fieldValues`, `onMap` \
+The `ds style list` row plus `document`, `appearance` (current primary colour, \
+icon quick picks/catalog count, base-size property and live bounds), `fields`, `fieldValues`, `onMap` \
 (features, fields, values, types — null when no map is mounted), `channels` \
 (channel, numberProperty, colorProperty, min, max, on, off), `second` and \
 `warnings` from ds-brain's expression validator.",

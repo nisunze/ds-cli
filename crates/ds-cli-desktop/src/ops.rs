@@ -131,7 +131,7 @@ pub const NOT_PAIRED: Refusal = Refusal {
 };
 pub const AMBIGUOUS: Refusal = Refusal {
     code: "desktop_ambiguous",
-    when: "Stable, Canary or a dev build are running together",
+    when: "two or more Stable, Canary or dev bridge endpoints are responsive",
     remedy: "pass --desktop-descriptor <path> to name which one",
 };
 pub const UNREACHABLE: Refusal = Refusal {

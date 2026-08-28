@@ -8,12 +8,18 @@ the part that is true of every command.
 One MapLibre document per style ref, stored and validated by ds-brain and
 rendered by the paired application's Style Center. `ds` holds no token and no
 second styling model: every command is one named operation the application
-performs under its own session, with the same pure module its Second-dimension
-panel uses and the same governed save payload its *Save globally* button sends.
+performs under its own session, with the same guided appearance and
+Second-dimension modules the UI uses and the same governed save payload its
+*Save globally* button sends.
 That is why there is no `--project` flag: the active project is the one the
 application has open.
 
-## Two dimensions, one document
+## Guided appearance and two dimensions
+
+`appearance plan` and `appearance set` author a layer's flat colour, raster
+symbol icon and base size through the live Style Center schema. They accept
+only properties that make sense for the layer type and validate icon names and
+numeric bounds against the open application before publishing.
 
 A layer's PRIMARY categorical dimension is its colour — `struct_type →
 circle-color` — authored by the Style Center's colour builder. The SECOND
@@ -34,6 +40,10 @@ summary and `ds style read` all read the expression shape back.
 ```bash
 ds style list --query lv_poles                      # choose the ref the visible layer uses
 ds style read --ref master/lv_poles                 # bare ref = Design GeoJSON
+ds style appearance plan --ref gt/secondary_schools \
+  --color '#008695' --icon school --size 1.2
+ds style appearance set --ref gt/secondary_schools \
+  --color '#008695' --icon school --size 1.2 --yes
 ds style dimension plan --ref master/lv_poles \
   --field drafting_status --channel halo --value draft=3:#FFFFFF --other 0
 ds style dimension set   --ref master/lv_poles \
@@ -57,6 +67,12 @@ does not require or justify a retile.
   map currently renders (`.data.onMap.types`) and strays fall to the fallback.
 - **Never an arm-less match** — zero values collapse to the flat fallback.
 - **One second dimension per ref** — setting a different channel replaces it.
+- **Base-size changes preserve a size dimension** — when size is the second
+  channel, `appearance set --size` changes its fallback instead of flattening
+  the authored match arms.
+- **Explicit fallback means covered** — values intentionally routed through
+  `--other` are reported as fallback coverage, not as false uncovered-value
+  warnings.
 - **The colour field is refused** as the second field; pick another.
 - **Raster symbol halos are baked**: ds-brain mints one runtime image per
   (icon, colour, halo) and nests the halo match around the colour unroll. The

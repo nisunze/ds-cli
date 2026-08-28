@@ -14,7 +14,9 @@
 //! `cl` command line sets, so a terminal it opened stays pinned to the window
 //! that opened it.
 
+use std::net::{SocketAddr, TcpStream};
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 use serde::Deserialize;
 
@@ -39,6 +41,11 @@ pub const DESCRIPTOR_ENV: &str = "DS_DESKTOP_DESCRIPTOR";
 
 /// Bound the descriptor read. The real file is a few hundred bytes.
 pub const MAX_DESCRIPTOR_BYTES: u64 = 16 * 1024;
+
+/// Automatic discovery probes at most three loopback endpoints. A dead
+/// descriptor must not make a live Stable session ambiguous, and each dead
+/// probe must stay cheap.
+const LIVE_PROBE_TIMEOUT: Duration = Duration::from_millis(150);
 
 /// The application's published pairing descriptor.
 ///
@@ -121,6 +128,60 @@ pub fn read(path: &Path) -> Result<Descriptor, String> {
     Ok(descriptor)
 }
 
+fn descriptor_is_live(descriptor: &Descriptor) -> bool {
+    let Some(authority) = descriptor.url.strip_prefix("http://127.0.0.1:") else {
+        return false;
+    };
+    let Some(port) = authority
+        .split('/')
+        .next()
+        .and_then(|raw| raw.parse::<u16>().ok())
+    else {
+        return false;
+    };
+    TcpStream::connect_timeout(
+        &SocketAddr::from(([127, 0, 0, 1], port)),
+        LIVE_PROBE_TIMEOUT,
+    )
+    .is_ok()
+}
+
+fn select_candidates<F>(candidates: Vec<(&'static str, PathBuf)>, is_live: F) -> Discovery
+where
+    F: Fn(&Descriptor) -> bool,
+{
+    let mut live = Vec::new();
+    let mut first_unusable = None;
+    for (profile, path) in candidates {
+        match read(&path) {
+            Ok(descriptor) if is_live(&descriptor) => live.push(Found {
+                profile,
+                path,
+                descriptor,
+            }),
+            Ok(_) => {}
+            Err(reason) => {
+                if first_unusable.is_none() {
+                    first_unusable = Some((path, reason));
+                }
+            }
+        }
+    }
+
+    match live.len() {
+        0 => first_unusable.map_or(Discovery::None, |(path, reason)| Discovery::Unusable {
+            path,
+            reason,
+        }),
+        1 => Discovery::Paired(Box::new(live.pop().expect("length checked"))),
+        _ => Discovery::Ambiguous(
+            live.into_iter()
+                .map(|found| (found.profile, found.path))
+                .collect(),
+        ),
+    }
+}
+
 /// Discover the descriptor. An explicit path is used verbatim and is never
 /// second-guessed; automatic discovery scans the known profiles.
 pub fn discover(explicit: Option<&str>) -> Discovery {
@@ -150,19 +211,79 @@ pub fn discover(explicit: Option<&str>) -> Discovery {
         .filter(|(_, path)| path.is_file())
         .collect();
 
-    match candidates.len() {
-        0 => Discovery::None,
-        1 => {
-            let (profile, path) = candidates.into_iter().next().expect("length checked");
-            match read(&path) {
-                Ok(descriptor) => Discovery::Paired(Box::new(Found {
-                    profile,
-                    path,
-                    descriptor,
-                })),
-                Err(reason) => Discovery::Unusable { path, reason },
-            }
+    select_candidates(candidates, descriptor_is_live)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::fs;
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    use super::*;
+
+    static NEXT: AtomicU64 = AtomicU64::new(1);
+
+    fn scratch() -> PathBuf {
+        let path = std::env::temp_dir().join(format!(
+            "ds-descriptor-discovery-{}-{}",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::Relaxed),
+        ));
+        fs::create_dir_all(&path).expect("scratch");
+        path
+    }
+
+    fn descriptor(root: &Path, name: &str, pid: u32) -> PathBuf {
+        let path = root.join(name);
+        fs::write(
+            &path,
+            format!(
+                r#"{{"version":1,"url":"http://127.0.0.1:{}","token":"test","pid":{pid}}}"#,
+                20_000 + pid,
+            ),
+        )
+        .expect("descriptor");
+        path
+    }
+
+    #[test]
+    fn one_live_profile_ignores_dead_descriptor_leftovers() {
+        let root = scratch();
+        let stable = descriptor(&root, "stable.json", 1);
+        let canary = descriptor(&root, "canary.json", 2);
+        let dev = descriptor(&root, "dev.json", 3);
+        let selected = select_candidates(
+            vec![("stable", stable), ("canary", canary), ("dev", dev)],
+            |candidate| candidate.pid == 1,
+        );
+        match selected {
+            Discovery::Paired(found) => assert_eq!(found.profile, "stable"),
+            _ => panic!("the sole live Stable descriptor was not selected"),
         }
-        _ => Discovery::Ambiguous(candidates),
+        fs::remove_dir_all(root).expect("cleanup");
+    }
+
+    #[test]
+    fn two_live_profiles_remain_ambiguous() {
+        let root = scratch();
+        let stable = descriptor(&root, "stable.json", 1);
+        let canary = descriptor(&root, "canary.json", 2);
+        let selected =
+            select_candidates(vec![("stable", stable), ("canary", canary)], |candidate| {
+                candidate.pid <= 2
+            });
+        match selected {
+            Discovery::Ambiguous(candidates) => {
+                assert_eq!(
+                    candidates
+                        .iter()
+                        .map(|(profile, _)| *profile)
+                        .collect::<Vec<_>>(),
+                    ["stable", "canary"]
+                );
+            }
+            _ => panic!("two live profiles must still refuse ambiguity"),
+        }
+        fs::remove_dir_all(root).expect("cleanup");
     }
 }

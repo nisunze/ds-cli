@@ -511,8 +511,8 @@ static SURVEY_ENTRIES: &[Entry] = &[
     },
 ];
 
-/// Map styling. Ordered as a session uses it: list the refs, read one, plan
-/// the second dimension, publish it or clear it.
+/// Map styling. Ordered as a session uses it: list the refs, read one, author
+/// guided base appearance, then plan, publish or clear a second dimension.
 static STYLE_ENTRIES: &[Entry] = &[
     Entry {
         command: &ds_cli_style::list::COMMAND,
@@ -523,6 +523,16 @@ static STYLE_ENTRIES: &[Entry] = &[
         command: &ds_cli_style::read::COMMAND,
         handler: ds_cli_style::read::run,
         render: ds_cli_style::read::render,
+    },
+    Entry {
+        command: &ds_cli_style::appearance::plan::COMMAND,
+        handler: ds_cli_style::appearance::plan::run,
+        render: ds_cli_style::appearance::plan::render,
+    },
+    Entry {
+        command: &ds_cli_style::appearance::set::COMMAND,
+        handler: ds_cli_style::appearance::set::run,
+        render: ds_cli_style::appearance::set::render,
     },
     Entry {
         command: &ds_cli_style::dimension::plan::COMMAND,
