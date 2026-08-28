@@ -61,6 +61,17 @@ data-solutions/
   ds-web/       read by the bridge parity suite; DS_WEB_DIR overrides
 ```
 
+From a linked `ds-cli` worktree, use the tracked wrapper for any Cargo command:
+
+```bash
+scripts/with-network-deps.sh cargo test --locked --workspace --all-features
+```
+
+It resolves the exact `ds-network` checkout beside the main `ds-cli` checkout,
+creates the otherwise-missing worktree-local link only for that command, and
+removes the link on exit. It refuses an existing mismatched path rather than
+retargeting it. The wrapper does not download, build, or modify `ds-network`.
+
 ```bash
 cargo build --locked --release
 ./target/release/ds --help

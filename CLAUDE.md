@@ -139,6 +139,13 @@ The suite links `ds-network` by path and binds to its real `.dsgrid` fixture.
 That is deliberate: a vendored copy would keep passing after the format moved
 on, reporting parity that no longer exists.
 
+When this checkout is a linked git worktree, use
+`scripts/with-network-deps.sh cargo <subcommand>` for verification. It resolves
+the exact `ds-network` sibling of the main checkout and creates a validated,
+temporary link at Cargo's required relative path; it refuses any mismatched
+existing path and removes only the link it created. Do not substitute a copy,
+vendored fixture, or a different Network checkout.
+
 These suites carry most of the weight, and it is worth knowing what each one
 will refuse to let you do:
 
