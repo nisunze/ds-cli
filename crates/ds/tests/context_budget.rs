@@ -107,7 +107,10 @@ fn root_help_is_cheap() {
     // the domain table, no new prose. The next domain must earn its own line.
     // Skill Zero adds one real top-level concern. Its single summary costs 48
     // bytes while command growth remains isolated below this tier.
-    assert_within("root help", &["--help"], 2_050);
+    // Keep this guard at least as loose as the derived budget below. The
+    // scaling assertion is load-bearing; a tighter flat cap would always fail
+    // first and hide a domain-vs-command growth regression.
+    assert_within("root help", &["--help"], 2_080);
 }
 
 #[test]

@@ -895,15 +895,22 @@ fn every_offline_command_is_available_without_any_engine_binary() {
         .expect("ds runs");
     let envelope: Value = serde_json::from_slice(&output.stdout).expect("doctor emits JSON");
 
+    let mut checked = 0usize;
     for command in envelope["data"]["commands"].as_array().expect("commands") {
         let id = command["id"].as_str().unwrap_or("");
-        if id.starts_with("dsgrid.") || id.starts_with("pls.") {
+        if id.starts_with("dsgrid.") || id.starts_with("dsgrid-exchange.") || id.starts_with("pls.")
+        {
+            checked += 1;
             assert_eq!(
                 command["availability"], "available",
                 "`{id}` links its engine and must not depend on an installed binary"
             );
         }
     }
+    assert!(
+        checked > 0,
+        "doctor returned no linked-engine commands; this availability check would be vacuous"
+    );
 }
 
 // ---------------------------------------------------------------------------
