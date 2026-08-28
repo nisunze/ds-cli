@@ -428,6 +428,89 @@ static MAP_ENTRIES: &[Entry] = &[
     },
 ];
 
+static SURVEY_ENTRIES: &[Entry] = &[
+    Entry {
+        command: &ds_cli_survey::forms::LIST_COMMAND,
+        handler: ds_cli_survey::forms::list,
+        render: ds_cli_survey::forms::render_list,
+    },
+    Entry {
+        command: &ds_cli_survey::forms::READ_COMMAND,
+        handler: ds_cli_survey::forms::read,
+        render: ds_cli_survey::forms::render_form,
+    },
+    Entry {
+        command: &ds_cli_survey::forms::TYPES_COMMAND,
+        handler: ds_cli_survey::forms::types,
+        render: ds_cli_survey::forms::render_types,
+    },
+    Entry {
+        command: &ds_cli_survey::forms::CREATE_COMMAND,
+        handler: ds_cli_survey::forms::create,
+        render: ds_cli_survey::forms::render_form,
+    },
+    Entry {
+        command: &ds_cli_survey::forms::UPDATE_COMMAND,
+        handler: ds_cli_survey::forms::update,
+        render: ds_cli_survey::forms::render_form,
+    },
+    Entry {
+        command: &ds_cli_survey::forms::LIFECYCLE_COMMAND,
+        handler: ds_cli_survey::forms::lifecycle,
+        render: ds_cli_survey::forms::render_lifecycle,
+    },
+    Entry {
+        command: &ds_cli_survey::project_forms::READ_COMMAND,
+        handler: ds_cli_survey::project_forms::read,
+        render: ds_cli_survey::project_forms::render_read,
+    },
+    Entry {
+        command: &ds_cli_survey::project_forms::EDITOR_COMMAND,
+        handler: ds_cli_survey::project_forms::editor,
+        render: ds_cli_survey::project_forms::render_editor,
+    },
+    Entry {
+        command: &ds_cli_survey::project_forms::PLAN_COMMAND,
+        handler: ds_cli_survey::project_forms::plan,
+        render: ds_cli_survey::project_forms::render_plan,
+    },
+    Entry {
+        command: &ds_cli_survey::project_forms::APPLY_COMMAND,
+        handler: ds_cli_survey::project_forms::apply,
+        render: ds_cli_survey::project_forms::render_apply,
+    },
+    Entry {
+        command: &ds_cli_survey::templates::LIST_COMMAND,
+        handler: ds_cli_survey::templates::list,
+        render: ds_cli_survey::templates::render_list,
+    },
+    Entry {
+        command: &ds_cli_survey::templates::READ_COMMAND,
+        handler: ds_cli_survey::templates::read,
+        render: ds_cli_survey::templates::render_template,
+    },
+    Entry {
+        command: &ds_cli_survey::templates::CREATE_COMMAND,
+        handler: ds_cli_survey::templates::create,
+        render: ds_cli_survey::templates::render_template,
+    },
+    Entry {
+        command: &ds_cli_survey::templates::APPLY_COMMAND,
+        handler: ds_cli_survey::templates::apply,
+        render: ds_cli_survey::templates::render_mutation,
+    },
+    Entry {
+        command: &ds_cli_survey::templates::LIFECYCLE_COMMAND,
+        handler: ds_cli_survey::templates::lifecycle,
+        render: ds_cli_survey::templates::render_mutation,
+    },
+    Entry {
+        command: &ds_cli_survey::templates::CREATE_PROJECT_COMMAND,
+        handler: ds_cli_survey::templates::create_project,
+        render: ds_cli_survey::templates::render_project,
+    },
+];
+
 /// Map styling. Ordered as a session uses it: list the refs, read one, plan
 /// the second dimension, publish it or clear it.
 static STYLE_ENTRIES: &[Entry] = &[
@@ -691,6 +774,10 @@ static DOMAINS: &[Registered] = &[
     Registered {
         domain: &ds_cli_report::DOMAIN,
         entries: REPORT_ENTRIES,
+    },
+    Registered {
+        domain: &ds_cli_survey::DOMAIN,
+        entries: SURVEY_ENTRIES,
     },
     Registered {
         domain: &ds_cli_map::DOMAIN,

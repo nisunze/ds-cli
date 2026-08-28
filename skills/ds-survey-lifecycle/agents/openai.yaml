@@ -1,0 +1,4 @@
+interface:
+  display_name: "DS Survey Lifecycle"
+  short_description: "Manage forms, project settings, templates, and template-created projects"
+  default_prompt: "Use $ds-survey-lifecycle to discover and execute the survey control-plane workflow through live ds survey contracts."

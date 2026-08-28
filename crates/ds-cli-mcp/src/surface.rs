@@ -13,6 +13,8 @@ pub const PROFILE_IDS: &[&str] = &[
     "grid",
     "pls",
     "survey",
+    "form-factory",
+    "survey-projects",
     "design-edit",
     "design-run",
     "map",
@@ -50,6 +52,8 @@ pub enum Profile {
     Grid,
     Pls,
     Survey,
+    FormFactory,
+    SurveyProjects,
     DesignEdit,
     DesignRun,
     Map,
@@ -65,6 +69,8 @@ impl Profile {
             "grid" => Some(Self::Grid),
             "pls" => Some(Self::Pls),
             "survey" => Some(Self::Survey),
+            "form-factory" => Some(Self::FormFactory),
+            "survey-projects" => Some(Self::SurveyProjects),
             "design-edit" => Some(Self::DesignEdit),
             "design-run" => Some(Self::DesignRun),
             "map" => Some(Self::Map),
@@ -81,6 +87,8 @@ impl Profile {
             Self::Grid => "grid",
             Self::Pls => "pls",
             Self::Survey => "survey",
+            Self::FormFactory => "form-factory",
+            Self::SurveyProjects => "survey-projects",
             Self::DesignEdit => "design-edit",
             Self::DesignRun => "design-run",
             Self::Map => "map",
@@ -95,7 +103,9 @@ impl Profile {
         match self {
             Self::Grid => matches!(tool.chapter, Chapter::GridModel | Chapter::Reports),
             Self::Pls => tool.chapter == Chapter::PlsCadd,
-            Self::Survey => tool.chapter == Chapter::Survey,
+            Self::Survey => SURVEY_MAP_COMMANDS.contains(&tool.id.as_str()),
+            Self::FormFactory => FORM_FACTORY_COMMANDS.contains(&tool.id.as_str()),
+            Self::SurveyProjects => SURVEY_PROJECT_COMMANDS.contains(&tool.id.as_str()),
             Self::Map => matches!(
                 tool.chapter,
                 Chapter::MapPresentation | Chapter::VectorTiles
@@ -114,21 +124,19 @@ impl Profile {
     ///
     /// Exposed so a test holding the live registry can prove these
     /// hand-written splits still partition it. Chapter membership is declared
-    /// once, on the command; these four are not, and an unlisted command in a
+    /// once, on the command; split workflow profiles are not, and an unlisted command in a
     /// split chapter is simply unreachable through its profile — silently,
     /// and with every unit test still passing.
     pub const fn command_ids(self) -> &'static [&'static str] {
         match self {
+            Self::Survey => SURVEY_MAP_COMMANDS,
+            Self::FormFactory => FORM_FACTORY_COMMANDS,
+            Self::SurveyProjects => SURVEY_PROJECT_COMMANDS,
             Self::DesignEdit => DESIGN_EDIT_COMMANDS,
             Self::DesignRun => DESIGN_RUN_COMMANDS,
             Self::SolarRun => SOLAR_RUN_COMMANDS,
             Self::SolarDelivery => SOLAR_DELIVERY_COMMANDS,
-            Self::Grid
-            | Self::Pls
-            | Self::Survey
-            | Self::Map
-            | Self::Project
-            | Self::Operations => &[],
+            Self::Grid | Self::Pls | Self::Map | Self::Project | Self::Operations => &[],
         }
     }
 
@@ -136,7 +144,7 @@ impl Profile {
         match self {
             Self::Grid => matches!(chapter, Chapter::GridModel | Chapter::Reports),
             Self::Pls => chapter == Chapter::PlsCadd,
-            Self::Survey => chapter == Chapter::Survey,
+            Self::Survey | Self::FormFactory | Self::SurveyProjects => chapter == Chapter::Survey,
             Self::DesignEdit | Self::DesignRun => chapter == Chapter::Design,
             Self::Map => matches!(chapter, Chapter::MapPresentation | Chapter::VectorTiles),
             Self::Project => chapter == Chapter::Project,
@@ -145,6 +153,42 @@ impl Profile {
         }
     }
 }
+
+const SURVEY_MAP_COMMANDS: &[&str] = &[
+    "map.view",
+    "map.draw",
+    "map.remove",
+    "map.zoom",
+    "map.points-along",
+    "map.random-points",
+    "map.outliers",
+    "map.line-difference",
+    "map.survey.download",
+    "map.survey.migrate.plan",
+    "map.survey.migrate.apply",
+];
+
+const FORM_FACTORY_COMMANDS: &[&str] = &[
+    "survey.forms.list",
+    "survey.form.read",
+    "survey.form.types",
+    "survey.form.create",
+    "survey.form.update",
+    "survey.form.lifecycle",
+];
+
+const SURVEY_PROJECT_COMMANDS: &[&str] = &[
+    "survey.project-forms.read",
+    "survey.project-form.editor",
+    "survey.project-forms.plan",
+    "survey.project-forms.apply",
+    "survey.templates.list",
+    "survey.template.read",
+    "survey.template.create",
+    "survey.template.apply",
+    "survey.template.lifecycle",
+    "survey.project.create-from-template",
+];
 
 const DESIGN_EDIT_COMMANDS: &[&str] = &[
     "map.design.read",
@@ -711,7 +755,7 @@ pub const fn chapter_description(chapter: Chapter) -> &'static str {
             "Work with native PLS-CADD deliveries and pinned engineering libraries: inspect capacity and references, reconcile terrain, label deviations, verify delivery, and resolve exact native assets. Describe a command before invoking it."
         }
         Chapter::Survey => {
-            "Obtain project survey data and work with temporary local geospatial layers: view, draw, remove, focus, sample points, detect outliers, compare lines, and plan or apply survey migration. Describe a command before invoking it."
+            "Manage Form Factory schemas, project-form settings, project templates and project creation without map state; or work with survey/map-owned local data. Describe a command before invoking it."
         }
         Chapter::Design => {
             "Read, stage, process, report, save, or discard transformer and LV design work. Describe a command before invoking it."

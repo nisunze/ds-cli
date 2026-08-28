@@ -222,6 +222,7 @@ fn every_constructible_refusal_code_is_documented() {
         ("ds-cli-solar", Some("solar")),
         ("ds-cli-work", Some("work")),
         ("ds-cli-sre", Some("sre")),
+        ("ds-cli-survey", Some("survey")),
         ("ds-cli-style", Some("style")),
         ("ds-cli-tile", Some("tile")),
         ("ds-cli-feedback", Some("feedback")),

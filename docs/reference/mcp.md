@@ -47,8 +47,11 @@ Specialized profiles publish conventional typed leaf tools for one workflow:
 ds mcp serve --exposure commands --profile pls
 ```
 
-Profiles are `grid`, `pls`, `survey`, `design-edit`, `design-run`, `map`,
-`project`, `solar-run`, `solar-delivery`, and `operations`. Each includes
+Profiles are `grid`, `pls`, `survey`, `form-factory`, `survey-projects`,
+`design-edit`, `design-run`, `map`, `project`, `solar-run`, `solar-delivery`,
+and `operations`. `survey` retains map/local-data survey work;
+`form-factory` owns global schemas, while `survey-projects` owns project-form
+settings, reusable templates, and create-from-template. Each includes
 `ds_catalog` and at most 14 leaf tools. A profile is only an allowlist: omitted
 commands are unavailable and authority, effects, confirmation, output, and
 refusals are unchanged. Plain `--exposure commands` retains the previous

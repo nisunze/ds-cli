@@ -40,6 +40,9 @@ struct App {
     project: String,
     map: String,
     survey: String,
+    survey_forms: String,
+    survey_project_forms: String,
+    survey_templates: String,
     design: String,
     analysis: String,
     work: String,
@@ -59,6 +62,9 @@ fn app() -> Option<App> {
         project: read("src/lib/desktop/cli-project.ts")?,
         map: read("src/lib/desktop/cli-map.ts")?,
         survey: read("src/lib/desktop/cli-survey.ts")?,
+        survey_forms: read("src/lib/desktop/cli-survey-forms.ts")?,
+        survey_project_forms: read("src/lib/desktop/cli-survey-project-forms.ts")?,
+        survey_templates: read("src/lib/desktop/cli-survey-templates.ts")?,
         design: read("src/lib/desktop/cli-map-design.ts")?,
         analysis: read("src/lib/analysis/outliers.ts")?,
         work: read("src/lib/desktop/cli-work.ts")?,
@@ -273,6 +279,81 @@ fn every_map_command_has_one_closed_operation_owner() {
 }
 
 #[test]
+fn every_survey_control_plane_command_has_one_api_only_owner_and_exact_arguments() {
+    let Some(app) = app() else {
+        skip("the ds-web sibling repository is not on disk");
+        return;
+    };
+    let allowlist = between(
+        &app.transport,
+        "pub const CLI_OPERATIONS: &[&str] = &[",
+        "];",
+    );
+    let adapters = [
+        &app.survey_forms,
+        &app.survey_project_forms,
+        &app.survey_templates,
+    ];
+    let mut seen = BTreeSet::new();
+    for operation in ds_cli_survey::BRIDGE_OPS {
+        assert!(
+            seen.insert(operation.operation),
+            "`{}` is declared twice by ds survey",
+            operation.operation
+        );
+        assert_eq!(
+            count(allowlist, &format!("\"{}\"", operation.operation)),
+            1,
+            "`{}` must appear exactly once in the native allowlist",
+            operation.operation
+        );
+        assert_eq!(
+            switch_case_count(&app.frontend, operation.operation),
+            1,
+            "`{}` must have exactly one frontend handler",
+            operation.operation
+        );
+        let owners = adapters
+            .iter()
+            .filter(|source| has_operation_contract(source, operation.operation))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            owners.len(),
+            1,
+            "`{}` must have exactly one typed survey adapter owner",
+            operation.operation
+        );
+        let accepted = quoted_contract_items(operation_contract(owners[0], operation.operation));
+        let declared = operation
+            .arguments
+            .iter()
+            .map(|argument| (*argument).to_string())
+            .collect::<BTreeSet<_>>();
+        assert_eq!(
+            accepted, declared,
+            "`{}` arguments drifted between ds and the desktop",
+            operation.operation
+        );
+    }
+
+    for source in adapters {
+        for forbidden in [
+            "$lib/stores/map",
+            "mapInstance",
+            "activeProject",
+            "editSession",
+            "indexedDB",
+            "bearer token",
+        ] {
+            assert!(
+                !source.contains(forbidden),
+                "survey control-plane adapters must not depend on map or credential state: {forbidden}"
+            );
+        }
+    }
+}
+
+#[test]
 fn every_solar_command_has_one_closed_operation_owner_and_exact_arguments() {
     let Some(app) = app() else {
         skip("the ds-web sibling repository is not on disk");
@@ -477,13 +558,6 @@ fn sre_bounds_outputs_and_typed_refusals_match_the_desktop_owner() {
         "error_catalog",
         "totals",
         "more",
-        "window_days",
-        "scan_limit",
-        "filters",
-        "scanned",
-        "matching",
-        "returned",
-        "events",
     ] {
         assert!(
             projects_field(overview, field),

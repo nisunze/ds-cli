@@ -92,5 +92,6 @@ bypass `ds`.
 - `ds-mcp-host` — compact chapters and typed MCP profiles.
 - `ds-workstation-setup` — prerequisites, component provenance, and safe setup planning.
 - `ds-feedback-close` — close backlog reports this session has fixed.
+- `ds-survey-lifecycle` — Form Factory, project-form settings, reusable templates, and create-from-template without a map.
 
 Those skills assume this one. Do not load them for ordinary discovery.

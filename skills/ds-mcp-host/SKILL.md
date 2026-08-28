@@ -1,6 +1,6 @@
 ---
 name: ds-mcp-host
-description: Install the same `ds` executable as a compact chapter-based MCP server or one bounded typed workflow profile, then route through live command contracts.
+description: Install and use compact chapter or typed-profile MCP surfaces from the live `ds` executable.
 ---
 
 # `ds` through an MCP host
@@ -29,8 +29,11 @@ For a narrow role, explicitly install one typed profile:
 ds mcp install --host claude-code --exposure commands --profile pls --write --yes
 ```
 
-Profiles are `grid`, `pls`, `survey`, `design-edit`, `design-run`, `map`,
-`project`, `solar-run`, `solar-delivery`, and `operations`. Each publishes
+Profiles are `grid`, `pls`, `survey`, `form-factory`, `survey-projects`,
+`design-edit`, `design-run`, `map`, `project`, `solar-run`, `solar-delivery`,
+and `operations`. `survey` retains the map/local-data workflow;
+`form-factory` owns global schemas and `survey-projects` owns project-form
+settings, reusable templates, and create-from-template. Each publishes
 `ds_catalog` plus at most 14 fully typed command tools. Do not install every
 profile: that duplicates discovery and recreates selection ambiguity.
 

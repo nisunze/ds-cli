@@ -96,11 +96,13 @@ fn root_help_is_cheap() {
     // 2026-08-27: raised from 1_920 for the `mcp` domain — one more line in
     // the domain table, no new prose. The next domain must earn its own line.
     // Skill Zero adds one real top-level concern. Its single summary costs 48
-    // bytes while command growth remains isolated below this tier.
+    // bytes while command growth remains isolated below this tier. Raised for
+    // the Survey control-plane domain on 2026-08-28; its 16 commands remain
+    // below the root tier and cost exactly one domain line here.
     // Keep this guard at least as loose as the derived budget below. The
     // scaling assertion is load-bearing; a tighter flat cap would always fail
     // first and hide a domain-vs-command growth regression.
-    assert_within("root help", &["--help"], 2_080);
+    assert_within("root help", &["--help"], 2_160);
 }
 
 #[test]

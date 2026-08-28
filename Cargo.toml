@@ -76,6 +76,7 @@ ds-cli-report = { path = "crates/ds-cli-report" }
 ds-cli-solar = { path = "crates/ds-cli-solar" }
 ds-cli-work = { path = "crates/ds-cli-work" }
 ds-cli-sre = { path = "crates/ds-cli-sre" }
+ds-cli-survey = { path = "crates/ds-cli-survey" }
 ds-cli-style = { path = "crates/ds-cli-style" }
 ds-cli-tile = { path = "crates/ds-cli-tile" }
 ds-cli-feedback = { path = "crates/ds-cli-feedback" }

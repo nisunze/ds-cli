@@ -1,0 +1,14 @@
+[package]
+name = "ds-cli-survey"
+description = "Typed survey form, project-form, template, and project-creation control plane for ds."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[dependencies]
+ds-cli-contract = { workspace = true }
+ds-cli-desktop = { workspace = true }
+serde_json = { workspace = true }

@@ -147,7 +147,7 @@ fn installing_the_host_entry_is_gated_and_names_its_own_gate() {
 
 #[test]
 fn by_command_profiles_still_partition_the_live_registry() {
-    // F36: chapter membership is declared once, on the command. These four
+    // F36: chapter membership is declared once, on the command. Split
     // profiles are not — they hand-list command ids, and an id nobody added
     // is simply unreachable through its profile with every unit test still
     // green. The lists partitioned the registry when written; this is what
@@ -200,6 +200,31 @@ fn by_command_profiles_still_partition_the_live_registry() {
             "these profile entries name no live command: {stale:?}"
         );
     }
+
+    let expected_survey: BTreeSet<String> = live
+        .iter()
+        .filter(|id| {
+            cli(&["capabilities", id, "--output", "json"])["data"]["command"]["chapter"] == "survey"
+        })
+        .cloned()
+        .collect();
+    let mut listed_survey = BTreeSet::new();
+    for profile in [
+        Profile::Survey,
+        Profile::FormFactory,
+        Profile::SurveyProjects,
+    ] {
+        for id in profile.command_ids() {
+            assert!(
+                listed_survey.insert((*id).to_string()),
+                "`{id}` is claimed by more than one Survey profile"
+            );
+        }
+    }
+    assert_eq!(
+        listed_survey, expected_survey,
+        "survey, form-factory, and survey-projects must partition the live Survey chapter"
+    );
 }
 
 #[test]
@@ -294,6 +319,8 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
         "grid",
         "pls",
         "survey",
+        "form-factory",
+        "survey-projects",
         "design-edit",
         "design-run",
         "map",
