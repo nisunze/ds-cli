@@ -21,6 +21,7 @@
 //! is offered" is what makes this suite worth having; an assertion that the
 //! response parses is not.
 
+use std::collections::BTreeSet;
 use std::path::PathBuf;
 use std::process::Command;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -1364,10 +1365,49 @@ fn every_map_command_is_reachable_without_the_desktop_installed() {
     // put every input refusal above out of reach on a machine with no app.
     let index = ok(&["capabilities", "map", "--output", "json"]);
     let commands = index["commands"].as_array().expect("commands");
+    let actual: BTreeSet<&str> = commands
+        .iter()
+        .map(|command| command["id"].as_str().expect("command id"))
+        .collect();
+    let expected: BTreeSet<&str> = [
+        "map.view",
+        "map.draw",
+        "map.remove",
+        "map.zoom",
+        "map.points-along",
+        "map.random-points",
+        "map.outliers",
+        "map.line-difference",
+        "map.survey.download",
+        "map.survey.migrate.plan",
+        "map.survey.migrate.apply",
+        "map.design.read",
+        "map.design.discard",
+        "map.design.layer-to-local",
+        "map.design.upload-to-local",
+        "map.design.select",
+        "map.design.set",
+        "map.design.create",
+        "map.design.delete",
+        "map.design.geometry",
+        "map.design.setup",
+        "map.design.version.begin",
+        "map.design.process",
+        "map.design.batch.process",
+        "map.design.batch.report",
+        "map.design.batch.save",
+        "map.design.save",
+        "map.design.list",
+        "map.design.report",
+        "map.design.attach-print",
+        "map.design.upload.inspect",
+        "map.design.upload.stage",
+    ]
+    .into_iter()
+    .collect();
     assert_eq!(
-        commands.len(),
-        32,
-        "the map domain should register thirty-two commands"
+        actual, expected,
+        "map command coverage list changed; add a specific smoke assertion for the new command before accepting it"
     );
     for command in commands {
         assert_eq!(
@@ -1700,10 +1740,26 @@ fn every_work_command_is_reachable_without_the_desktop_installed() {
     // input refusal above out of reach on a machine with no application.
     let index = ok(&["capabilities", "work", "--output", "json"]);
     let commands = index["commands"].as_array().expect("commands");
+    let actual: BTreeSet<&str> = commands
+        .iter()
+        .map(|command| command["id"].as_str().expect("command id"))
+        .collect();
+    let expected: BTreeSet<&str> = [
+        "work.plan",
+        "work.task.list",
+        "work.task.read",
+        "work.task.create",
+        "work.task.update",
+        "work.task.assign",
+        "work.task.respond",
+        "work.record.list",
+        "work.record.read",
+    ]
+    .into_iter()
+    .collect();
     assert_eq!(
-        commands.len(),
-        9,
-        "the work domain should register nine commands"
+        actual, expected,
+        "work command coverage list changed; add a specific smoke assertion for the new command before accepting it"
     );
     for command in commands {
         assert_eq!(
@@ -1922,7 +1978,15 @@ fn a_well_formed_work_call_only_ever_fails_on_the_pairing_state() {
 fn sre_is_two_global_read_only_commands_with_stable_defaults() {
     let index = ok(&["capabilities", "sre", "--output", "json"]);
     let commands = index["commands"].as_array().expect("commands");
-    assert_eq!(commands.len(), 2, "the SRE domain has two bounded reads");
+    let actual: BTreeSet<&str> = commands
+        .iter()
+        .map(|command| command["id"].as_str().expect("command id"))
+        .collect();
+    let expected: BTreeSet<&str> = ["sre.overview", "sre.events"].into_iter().collect();
+    assert_eq!(
+        actual, expected,
+        "SRE command coverage list changed; add a specific smoke assertion for the new command before accepting it"
+    );
     for command in commands {
         assert_eq!(command["effect"], "read_only");
         assert_eq!(

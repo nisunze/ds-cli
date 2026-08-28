@@ -64,10 +64,13 @@ fn ds(args: &[&str]) -> Value {
 /// Codes declared by each domain's commands, plus the union across all of
 /// them.
 ///
-/// The per-domain map is what makes this check meaningful: a code that
-/// `ds report export` can emit must appear in *its* help, not merely
-/// somewhere in the product. A caller reads one command's REFUSALS, not all
-/// of them.
+/// Source ownership is by crate, while a number of commands share a crate and
+/// can legitimately share a failure constructor. This static check therefore
+/// proves the narrower, truthful invariant: every constructed caller-visible
+/// code is declared by at least one command in its owner domain. Per-command
+/// execution and descriptor tests cover the command-specific contract; do not
+/// describe this aggregate source scan as proof of a particular command's
+/// REFUSALS section.
 fn declared_codes() -> (BTreeMap<String, BTreeSet<String>>, BTreeSet<String>) {
     let mut by_domain: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
     let mut all = BTreeSet::new();
