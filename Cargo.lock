@@ -521,6 +521,7 @@ name = "ds-cli-mcp"
 version = "0.1.0"
 dependencies = [
  "ds-cli-contract",
+ "libc",
  "serde_json",
 ]
 

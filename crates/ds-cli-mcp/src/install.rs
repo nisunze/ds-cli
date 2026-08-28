@@ -14,9 +14,11 @@
 //! `local_file_write` once, which is not in the confirmation set, so the
 //! `--yes` this command's own help asked for was decorative.
 
-use std::io::Write as _;
-
-use std::path::PathBuf;
+use std::fs::{File, Metadata, OpenOptions};
+use std::io::{Read as _, Write as _};
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::Duration;
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
@@ -244,30 +246,40 @@ pub fn config_file(host: &str) -> Option<PathBuf> {
 /// keeping every other key and server. A malformed file is refused, never
 /// overwritten.
 ///
-/// The replacement is atomic and reversible. The merged document is written
-/// to a sibling temporary file, flushed, and renamed over the target, so a
-/// host that reads the file concurrently sees either the old document or the
-/// new one and never a half-written prefix. The previous contents are kept
-/// beside it as `<file>.bak`, matching what `scripts/install-skills.sh`
-/// already does for the skills bundle: this is somebody's editor
-/// configuration, and it should be recoverable without git.
-pub fn merge_into_file(path: &std::path::Path, host: &str, entry: &Value) -> Result<(), Failure> {
+/// The target-file policy is deliberately conservative: a target, its direct
+/// parent, the lock, the staging files, and the backup must all be ordinary
+/// files/directories, never symlinks or Windows reparse points. In particular
+/// this command never follows a target symlink and replaces its referent.
+///
+/// A bounded, same-directory exclusive lock serializes cooperating DS writers.
+/// We also re-read the target immediately before replacement, so an external
+/// editor that did not take that lock is preserved and the install is refused
+/// instead of silently discarding its change. The stage and backup are synced
+/// before rename, and the parent directory is synced where the platform
+/// supports directory fsync.
+pub fn merge_into_file(path: &Path, host: &str, entry: &Value) -> Result<(), Failure> {
+    merge_into_file_with_hook(path, host, entry, || {})
+}
+
+fn merge_into_file_with_hook(
+    path: &Path,
+    host: &str,
+    entry: &Value,
+    before_replace: impl FnOnce(),
+) -> Result<(), Failure> {
     let unwritable = |message: String| {
         Failure::failed("mcp_config_unwritable", message)
             .remedy("read the reported path; fix or remove a malformed file, then re-run, or copy the printed entry by hand")
             .detail(json!({ "file": path.display().to_string(), "host": host }))
     };
-    let existing: Option<Vec<u8>> = match std::fs::read(path) {
-        Ok(bytes) => Some(bytes),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
-        Err(error) => {
-            return Err(unwritable(format!(
-                "could not read {}: {error}",
-                path.display()
-            )));
-        }
-    };
-    let document: Value = match existing.as_deref() {
+    let parent = prepare_parent(path)
+        .map_err(|error| unwritable(format!("could not prepare {}: {error}", path.display())))?;
+    let _lock = InstallLock::acquire(path)
+        .map_err(|error| unwritable(format!("could not lock {}: {error}", path.display())))?;
+
+    let existing = read_regular_file(path)
+        .map_err(|error| unwritable(format!("could not read {}: {error}", path.display())))?;
+    let document: Value = match existing.as_ref().map(|existing| existing.bytes.as_slice()) {
         None => json!({}),
         Some(bytes) if bytes.iter().all(u8::is_ascii_whitespace) => json!({}),
         Some(bytes) => serde_json::from_slice(bytes).map_err(|error| {
@@ -280,55 +292,435 @@ pub fn merge_into_file(path: &std::path::Path, host: &str, entry: &Value) -> Res
             path.display()
         ))
     })?;
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).map_err(|error| {
-            unwritable(format!("could not create {}: {error}", parent.display()))
-        })?;
-    }
     let mut bytes =
         serde_json::to_vec_pretty(&document).map_err(|error| unwritable(error.to_string()))?;
     bytes.push(b'\n');
 
-    // Same directory, so the rename below cannot cross a filesystem boundary
-    // and degrade into a copy.
-    let staged = staging_path(path);
-    let stage = |message: String| {
-        let _ = std::fs::remove_file(&staged);
-        unwritable(message)
-    };
-    let mut handle = std::fs::File::create(&staged)
-        .map_err(|error| unwritable(format!("could not create {}: {error}", staged.display())))?;
-    handle
-        .write_all(&bytes)
-        .and_then(|()| handle.sync_all())
-        .map_err(|error| stage(format!("could not write {}: {error}", staged.display())))?;
-    drop(handle);
+    // Same directory, so replacement cannot cross a filesystem boundary and
+    // degrade into a copy. `create_new` makes a hostile pre-created stage a
+    // refusal rather than a truncation or a followed symlink.
+    let mut staged = StagedFile::create(path, "stage").map_err(|error| {
+        unwritable(format!(
+            "could not create private stage for {}: {error}",
+            path.display()
+        ))
+    })?;
+    staged
+        .write_synced(&bytes, existing.as_ref().map(|existing| &existing.metadata))
+        .map_err(|error| {
+            unwritable(format!(
+                "could not write {}: {error}",
+                staged.path.display()
+            ))
+        })?;
 
-    if let Some(previous) = existing {
-        let backup = backup_path(path);
-        std::fs::write(&backup, previous)
-            .map_err(|error| stage(format!("could not write {}: {error}", backup.display())))?;
+    if let Some(previous) = &existing {
+        write_backup(path, previous).map_err(|error| {
+            unwritable(format!(
+                "could not preserve backup for {}: {error}",
+                path.display()
+            ))
+        })?;
     }
-    std::fs::rename(&staged, path)
-        .map_err(|error| stage(format!("could not replace {}: {error}", path.display())))
+
+    // The lock protects DS installers. This check covers an editor or another
+    // program that changes the path without joining that protocol.
+    before_replace();
+    let current = read_regular_file(path).map_err(|error| {
+        unwritable(format!(
+            "could not re-check {} before replacement: {error}",
+            path.display()
+        ))
+    })?;
+    if !same_contents(existing.as_ref(), current.as_ref()) {
+        return Err(unwritable(format!(
+            "{} changed while its replacement was being prepared; it was left untouched",
+            path.display()
+        )));
+    }
+
+    staged
+        .replace(path)
+        .map_err(|error| unwritable(format!("could not replace {}: {error}", path.display())))?;
+    sync_parent(parent).map_err(|error| {
+        unwritable(format!(
+            "could not make {} durable: {error}",
+            parent.display()
+        ))
+    })
 }
 
-/// The sibling this process stages into. Named after the running process so
-/// two `ds` invocations cannot stage over each other.
-fn staging_path(path: &std::path::Path) -> PathBuf {
+const LOCK_ATTEMPTS: u32 = 100;
+const LOCK_WAIT: Duration = Duration::from_millis(20);
+static PRIVATE_PATH_SEQUENCE: AtomicU64 = AtomicU64::new(0);
+
+fn sibling_path(path: &Path, kind: &str) -> PathBuf {
     let name = path.file_name().map_or_else(
         || String::from("mcp.json"),
         |name| name.to_string_lossy().into_owned(),
     );
-    path.with_file_name(format!(".{name}.ds-{}.tmp", std::process::id()))
+    let sequence = PRIVATE_PATH_SEQUENCE.fetch_add(1, Ordering::Relaxed);
+    path.with_file_name(format!(
+        ".{name}.ds-{kind}-{}-{sequence}.tmp",
+        std::process::id()
+    ))
 }
 
-fn backup_path(path: &std::path::Path) -> PathBuf {
+fn lock_path(path: &Path) -> PathBuf {
+    let name = path.file_name().map_or_else(
+        || String::from("mcp.json"),
+        |name| name.to_string_lossy().into_owned(),
+    );
+    path.with_file_name(format!(".{name}.ds.lock"))
+}
+
+fn backup_path(path: &Path) -> PathBuf {
     let name = path.file_name().map_or_else(
         || String::from("mcp.json"),
         |name| name.to_string_lossy().into_owned(),
     );
     path.with_file_name(format!("{name}.bak"))
+}
+
+struct ExistingFile {
+    bytes: Vec<u8>,
+    metadata: Metadata,
+}
+
+fn same_contents(left: Option<&ExistingFile>, right: Option<&ExistingFile>) -> bool {
+    match (left, right) {
+        (None, None) => true,
+        (Some(left), Some(right)) => left.bytes == right.bytes,
+        _ => false,
+    }
+}
+
+fn prepare_parent(path: &Path) -> std::io::Result<&Path> {
+    let parent = path.parent().ok_or_else(|| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "target has no parent directory",
+        )
+    })?;
+    std::fs::create_dir_all(parent)?;
+    let metadata = std::fs::symlink_metadata(parent)?;
+    if metadata.file_type().is_symlink() || is_reparse_point(&metadata) || !metadata.is_dir() {
+        return Err(unsafe_path_error(parent));
+    }
+    Ok(parent)
+}
+
+fn read_regular_file(path: &Path) -> std::io::Result<Option<ExistingFile>> {
+    let checked = match std::fs::symlink_metadata(path) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(error),
+    };
+    if checked.file_type().is_symlink() || is_reparse_point(&checked) || !checked.is_file() {
+        return Err(unsafe_path_error(path));
+    }
+    let mut file = open_read_no_follow(path)?;
+    let opened = file.metadata()?;
+    if is_reparse_point(&opened) || !opened.is_file() {
+        return Err(unsafe_path_error(path));
+    }
+    let mut bytes = Vec::new();
+    file.read_to_end(&mut bytes)?;
+    Ok(Some(ExistingFile {
+        bytes,
+        // Preserve the policy of the inode actually opened, not a pathname
+        // observation that might have changed before O_NOFOLLOW opened it.
+        metadata: opened,
+    }))
+}
+
+fn unsafe_path_error(path: &Path) -> std::io::Error {
+    std::io::Error::new(
+        std::io::ErrorKind::InvalidInput,
+        format!(
+            "{} is not an ordinary non-link file or directory",
+            path.display()
+        ),
+    )
+}
+
+#[cfg(windows)]
+fn is_reparse_point(metadata: &Metadata) -> bool {
+    use std::os::windows::fs::MetadataExt as _;
+    metadata.file_attributes() & 0x400 != 0 // FILE_ATTRIBUTE_REPARSE_POINT
+}
+
+#[cfg(not(windows))]
+fn is_reparse_point(_metadata: &Metadata) -> bool {
+    false
+}
+
+#[cfg(unix)]
+fn open_read_no_follow(path: &Path) -> std::io::Result<File> {
+    use std::os::unix::fs::OpenOptionsExt as _;
+    OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW)
+        .open(path)
+}
+
+#[cfg(windows)]
+fn open_read_no_follow(path: &Path) -> std::io::Result<File> {
+    use std::os::windows::fs::OpenOptionsExt as _;
+    // FILE_FLAG_OPEN_REPARSE_POINT makes CreateFile open the link object rather
+    // than its referent; reading it then fails, which is the desired refusal.
+    OpenOptions::new()
+        .read(true)
+        .custom_flags(0x0020_0000)
+        .open(path)
+}
+
+#[cfg(not(any(unix, windows)))]
+fn open_read_no_follow(path: &Path) -> std::io::Result<File> {
+    OpenOptions::new().read(true).open(path)
+}
+
+fn create_exclusive(path: &Path) -> std::io::Result<File> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt as _;
+        OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .mode(0o600)
+            .custom_flags(libc::O_NOFOLLOW)
+            .open(path)
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::OpenOptionsExt as _;
+        return OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .custom_flags(0x0020_0000)
+            .open(path);
+    }
+    #[cfg(not(any(unix, windows)))]
+    OpenOptions::new().write(true).create_new(true).open(path)
+}
+
+fn preserve_file_policy(file: &File, source: Option<&Metadata>) -> std::io::Result<()> {
+    #[cfg(unix)]
+    {
+        use std::os::fd::AsRawFd as _;
+        use std::os::unix::fs::{MetadataExt as _, PermissionsExt as _};
+        if let Some(source) = source {
+            // Rename replaces ownership with that of the staging file. Preserve
+            // owner/group when the platform lets this process do so, rather than
+            // silently changing the access policy of a secret-bearing config.
+            if unsafe { libc::fchown(file.as_raw_fd(), source.uid(), source.gid()) } != 0 {
+                return Err(std::io::Error::last_os_error());
+            }
+            return file.set_permissions(std::fs::Permissions::from_mode(source.mode() & 0o7777));
+        }
+        file.set_permissions(std::fs::Permissions::from_mode(0o600))
+    }
+    #[cfg(not(unix))]
+    {
+        if let Some(source) = source {
+            return file.set_permissions(source.permissions());
+        }
+        Ok(())
+    }
+}
+
+fn sync_parent(parent: &Path) -> std::io::Result<()> {
+    #[cfg(unix)]
+    {
+        File::open(parent)?.sync_all()
+    }
+    #[cfg(not(unix))]
+    {
+        // Windows does not expose a portable directory handle sync through
+        // std. The staged file itself is flushed before replacement.
+        let _ = parent;
+        Ok(())
+    }
+}
+
+#[cfg(windows)]
+fn atomic_replace(source: &Path, destination: &Path) -> std::io::Result<()> {
+    use std::os::windows::ffi::OsStrExt as _;
+
+    #[link(name = "kernel32")]
+    unsafe extern "system" {
+        fn MoveFileExW(existing: *const u16, new: *const u16, flags: u32) -> i32;
+    }
+    const MOVEFILE_REPLACE_EXISTING: u32 = 0x1;
+    const MOVEFILE_WRITE_THROUGH: u32 = 0x8;
+
+    let source: Vec<u16> = source.as_os_str().encode_wide().chain(Some(0)).collect();
+    let destination: Vec<u16> = destination
+        .as_os_str()
+        .encode_wide()
+        .chain(Some(0))
+        .collect();
+    if unsafe {
+        MoveFileExW(
+            source.as_ptr(),
+            destination.as_ptr(),
+            MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH,
+        )
+    } == 0
+    {
+        return Err(std::io::Error::last_os_error());
+    }
+    Ok(())
+}
+
+#[cfg(not(windows))]
+fn atomic_replace(source: &Path, destination: &Path) -> std::io::Result<()> {
+    std::fs::rename(source, destination)
+}
+
+struct StagedFile {
+    path: PathBuf,
+    file: Option<File>,
+    committed: bool,
+}
+
+impl StagedFile {
+    fn create(target: &Path, kind: &str) -> std::io::Result<Self> {
+        for _ in 0..32 {
+            let path = sibling_path(target, kind);
+            match create_exclusive(&path) {
+                Ok(file) => {
+                    return Ok(Self {
+                        path,
+                        file: Some(file),
+                        committed: false,
+                    });
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+                Err(error) => return Err(error),
+            }
+        }
+        Err(std::io::Error::new(
+            std::io::ErrorKind::AlreadyExists,
+            "could not reserve a private staging path",
+        ))
+    }
+
+    fn write_synced(&mut self, bytes: &[u8], policy: Option<&Metadata>) -> std::io::Result<()> {
+        let file = self.file.as_mut().expect("stage is open until replacement");
+        file.write_all(bytes)?;
+        preserve_file_policy(file, policy)?;
+        file.sync_all()
+    }
+
+    fn replace(mut self, destination: &Path) -> std::io::Result<()> {
+        drop(self.file.take());
+        atomic_replace(&self.path, destination)?;
+        self.committed = true;
+        Ok(())
+    }
+}
+
+impl Drop for StagedFile {
+    fn drop(&mut self) {
+        if !self.committed {
+            let _ = std::fs::remove_file(&self.path);
+        }
+    }
+}
+
+fn write_backup(path: &Path, previous: &ExistingFile) -> std::io::Result<()> {
+    let backup = backup_path(path);
+    if let Some(metadata) = read_path_metadata(&backup)?
+        && (metadata.file_type().is_symlink() || is_reparse_point(&metadata) || !metadata.is_file())
+    {
+        return Err(unsafe_path_error(&backup));
+    }
+    let parent = backup.parent().ok_or_else(|| unsafe_path_error(&backup))?;
+    let mut staged = StagedFile::create(&backup, "backup")?;
+    staged.write_synced(&previous.bytes, Some(&previous.metadata))?;
+    staged.replace(&backup)?;
+    sync_parent(parent)
+}
+
+fn read_path_metadata(path: &Path) -> std::io::Result<Option<Metadata>> {
+    match std::fs::symlink_metadata(path) {
+        Ok(metadata) => Ok(Some(metadata)),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(error),
+    }
+}
+
+struct InstallLock {
+    path: PathBuf,
+    token: Vec<u8>,
+    _file: File,
+}
+
+impl InstallLock {
+    fn acquire(target: &Path) -> std::io::Result<Self> {
+        Self::acquire_with_attempts(target, LOCK_ATTEMPTS)
+    }
+
+    fn acquire_with_attempts(target: &Path, attempts: u32) -> std::io::Result<Self> {
+        let path = lock_path(target);
+        for attempt in 0..attempts {
+            match create_exclusive(&path) {
+                Ok(mut file) => {
+                    let token = format!(
+                        "ds mcp install {} {}\n",
+                        std::process::id(),
+                        PRIVATE_PATH_SEQUENCE.fetch_add(1, Ordering::Relaxed)
+                    )
+                    .into_bytes();
+                    file.write_all(&token)?;
+                    file.sync_all()?;
+                    return Ok(Self {
+                        path,
+                        token,
+                        _file: file,
+                    });
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
+                    let metadata = read_path_metadata(&path)?
+                        .ok_or_else(|| std::io::Error::from(std::io::ErrorKind::WouldBlock))?;
+                    if metadata.file_type().is_symlink()
+                        || is_reparse_point(&metadata)
+                        || !metadata.is_file()
+                    {
+                        return Err(unsafe_path_error(&path));
+                    }
+                    if attempt + 1 == attempts {
+                        return Err(std::io::Error::new(
+                            std::io::ErrorKind::WouldBlock,
+                            "another DS installer is still updating this file; retry after it finishes",
+                        ));
+                    }
+                    std::thread::sleep(LOCK_WAIT);
+                }
+                Err(error) => return Err(error),
+            }
+        }
+        Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "lock attempts must be non-zero",
+        ))
+    }
+}
+
+impl Drop for InstallLock {
+    fn drop(&mut self) {
+        // Never remove a hostile replacement. The contents check is also what
+        // makes a left-over lock inspectable and safely recoverable by a user.
+        if let Ok(Some(metadata)) = read_path_metadata(&self.path)
+            && metadata.is_file()
+            && !metadata.file_type().is_symlink()
+            && !is_reparse_point(&metadata)
+            && std::fs::read(&self.path).ok().as_deref() == Some(self.token.as_slice())
+        {
+            let _ = std::fs::remove_file(&self.path);
+        }
+    }
 }
 
 /// Pure merge: the entry's single top-level map key is merged into the
@@ -464,7 +856,6 @@ mod tests {
         let path = dir.join("mcp.json");
         let entry = default_entry("vscode", std::path::Path::new("/usr/bin/ds"));
         merge_into_file(&path, "vscode", &entry).expect("write");
-        assert!(!super::staging_path(&path).exists());
 
         let leftovers: Vec<String> = std::fs::read_dir(&dir)
             .unwrap()
@@ -476,9 +867,193 @@ mod tests {
             "staging files survived: {leftovers:?}"
         );
 
-        // The staged sibling shares the target's directory, so the rename can
-        // never cross a filesystem boundary and silently become a copy.
-        assert_eq!(super::staging_path(&path).parent(), path.parent());
+        // Every private sibling shares the target's directory, so the rename
+        // can never cross a filesystem boundary and silently become a copy.
+        assert_eq!(super::backup_path(&path).parent(), path.parent());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn an_external_edit_between_read_and_replace_is_preserved_and_refused() {
+        let dir = scratch("external-edit");
+        let path = dir.join("mcp.json");
+        std::fs::create_dir_all(&dir).unwrap();
+        let before = b"{\"servers\": {\"other\": {\"command\": \"x\"}}}";
+        let external = b"{\"servers\": {\"external\": {\"command\": \"keep\"}}}";
+        std::fs::write(&path, before).unwrap();
+        let entry = default_entry("vscode", std::path::Path::new("/usr/bin/ds"));
+
+        let refused = merge_into_file_with_hook(&path, "vscode", &entry, || {
+            std::fs::write(&path, external).unwrap();
+        })
+        .unwrap_err();
+        assert_eq!(refused.code(), "mcp_config_unwritable");
+        assert_eq!(std::fs::read(&path).unwrap(), external);
+        assert_eq!(std::fs::read(backup_path(&path)).unwrap(), before);
+        assert_no_private_stages(&dir);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn concurrent_installers_serialize_their_merges() {
+        let dir = scratch("concurrent");
+        let path = dir.join("mcp.json");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(&path, b"{\"keep\": true}").unwrap();
+        let start = std::sync::Arc::new(std::sync::Barrier::new(3));
+        let first_path = path.clone();
+        let first_start = start.clone();
+        let first = std::thread::spawn(move || {
+            first_start.wait();
+            merge_into_file(
+                &first_path,
+                "vscode",
+                &json!({ "servers": { "ds": { "command": "first" } } }),
+            )
+        });
+        let second_path = path.clone();
+        let second_start = start.clone();
+        let second = std::thread::spawn(move || {
+            second_start.wait();
+            merge_into_file(
+                &second_path,
+                "vscode",
+                &json!({ "mcpServers": { "ds": { "command": "second" } } }),
+            )
+        });
+        start.wait();
+        first.join().unwrap().expect("first installer succeeds");
+        second.join().unwrap().expect("second installer succeeds");
+
+        let written: Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        assert_eq!(written["keep"], true);
+        assert_eq!(written["servers"]["ds"]["command"], "first");
+        assert_eq!(written["mcpServers"]["ds"]["command"], "second");
+        assert!(!lock_path(&path).exists(), "our lock must be cleaned up");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    fn assert_no_private_stages(dir: &Path) {
+        let leftovers: Vec<String> = std::fs::read_dir(dir)
+            .unwrap()
+            .filter_map(|entry| Some(entry.ok()?.file_name().to_string_lossy().into_owned()))
+            .filter(|name| name.contains(".ds-stage-") || name.contains(".ds-backup-"))
+            .collect();
+        assert!(
+            leftovers.is_empty(),
+            "private stages survived: {leftovers:?}"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn hostile_target_backup_stage_and_lock_links_are_never_followed() {
+        use std::os::unix::fs::symlink;
+
+        let entry = default_entry("vscode", std::path::Path::new("/usr/bin/ds"));
+
+        let target_dir = scratch("target-link");
+        std::fs::create_dir_all(&target_dir).unwrap();
+        let victim = target_dir.join("victim.json");
+        std::fs::write(&victim, b"target secret").unwrap();
+        let target = target_dir.join("mcp.json");
+        symlink(&victim, &target).unwrap();
+        assert!(merge_into_file(&target, "vscode", &entry).is_err());
+        assert_eq!(std::fs::read(&victim).unwrap(), b"target secret");
+        assert!(
+            std::fs::symlink_metadata(&target)
+                .unwrap()
+                .file_type()
+                .is_symlink()
+        );
+        let _ = std::fs::remove_dir_all(&target_dir);
+
+        let backup_dir = scratch("backup-link");
+        std::fs::create_dir_all(&backup_dir).unwrap();
+        let backup_target = backup_dir.join("mcp.json");
+        let before = b"{\"servers\": {\"other\": {\"command\": \"x\"}}}";
+        std::fs::write(&backup_target, before).unwrap();
+        let backup_victim = backup_dir.join("backup-victim.json");
+        std::fs::write(&backup_victim, b"backup secret").unwrap();
+        symlink(&backup_victim, backup_path(&backup_target)).unwrap();
+        assert!(merge_into_file(&backup_target, "vscode", &entry).is_err());
+        assert_eq!(std::fs::read(&backup_target).unwrap(), before);
+        assert_eq!(std::fs::read(&backup_victim).unwrap(), b"backup secret");
+        assert_no_private_stages(&backup_dir);
+        let _ = std::fs::remove_dir_all(&backup_dir);
+
+        let lock_dir = scratch("lock-link");
+        std::fs::create_dir_all(&lock_dir).unwrap();
+        let lock_target = lock_dir.join("mcp.json");
+        let lock_victim = lock_dir.join("lock-victim");
+        std::fs::write(&lock_victim, b"lock secret").unwrap();
+        symlink(&lock_victim, lock_path(&lock_target)).unwrap();
+        assert!(merge_into_file(&lock_target, "vscode", &entry).is_err());
+        assert_eq!(std::fs::read(&lock_victim).unwrap(), b"lock secret");
+        assert!(
+            std::fs::symlink_metadata(lock_path(&lock_target))
+                .unwrap()
+                .file_type()
+                .is_symlink()
+        );
+        let _ = std::fs::remove_dir_all(&lock_dir);
+
+        // A pre-created stage is rejected by exclusive creation; it is neither
+        // followed nor truncated, even though a hostile name resembles ours.
+        let stage_dir = scratch("stage-link");
+        std::fs::create_dir_all(&stage_dir).unwrap();
+        let stage_victim = stage_dir.join("stage-victim");
+        std::fs::write(&stage_victim, b"stage secret").unwrap();
+        let hostile_stage = stage_dir.join(".mcp.json.ds-stage-attacker.tmp");
+        symlink(&stage_victim, &hostile_stage).unwrap();
+        assert!(create_exclusive(&hostile_stage).is_err());
+        assert_eq!(std::fs::read(&stage_victim).unwrap(), b"stage secret");
+        let hostile_regular_stage = stage_dir.join(".mcp.json.ds-stage-foreign.tmp");
+        std::fs::write(&hostile_regular_stage, b"foreign stage").unwrap();
+        assert!(create_exclusive(&hostile_regular_stage).is_err());
+        assert_eq!(
+            std::fs::read(&hostile_regular_stage).unwrap(),
+            b"foreign stage"
+        );
+        let _ = std::fs::remove_dir_all(&stage_dir);
+    }
+
+    #[test]
+    fn a_precreated_regular_lock_is_not_overwritten_or_removed() {
+        let dir = scratch("foreign-lock");
+        std::fs::create_dir_all(&dir).unwrap();
+        let target = dir.join("mcp.json");
+        let lock = lock_path(&target);
+        std::fs::write(&lock, b"foreign lock").unwrap();
+        assert!(InstallLock::acquire_with_attempts(&target, 1).is_err());
+        assert_eq!(std::fs::read(&lock).unwrap(), b"foreign lock");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn target_and_backup_keep_restrictive_modes() {
+        use std::os::unix::fs::PermissionsExt as _;
+
+        let dir = scratch("modes");
+        let path = dir.join("mcp.json");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(&path, b"{\"servers\": {}}").unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).unwrap();
+        let entry = default_entry("vscode", std::path::Path::new("/usr/bin/ds"));
+        merge_into_file(&path, "vscode", &entry).unwrap();
+        assert_eq!(
+            std::fs::metadata(&path).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
+        assert_eq!(
+            std::fs::metadata(backup_path(&path))
+                .unwrap()
+                .permissions()
+                .mode()
+                & 0o777,
+            0o600
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 

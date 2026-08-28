@@ -58,6 +58,7 @@ ureq = { version = "3.3.0", features = ["json"] }
 # ds-network workspace already builds.
 sha2 = "0.10"
 zip = "2.4.2"
+libc = "0.2"
 # Per-user PATH registration on Windows reads and writes HKCU\Environment
 # through the raw Win32 registry API. Same crate and major this workspace's
 # own lockfile already resolves transitively.
