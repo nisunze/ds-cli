@@ -1,4 +1,4 @@
 interface:
-  display_name: "DS Local Map Data"
-  short_description: "Manage temporary DS map layers safely"
-  default_prompt: "Use $ds-map-local-data to add, focus, or remove temporary map data with minimal viewport movement."
+  display_name: "DS Map Evidence"
+  short_description: "Stage DS map frames and manage temporary layers"
+  default_prompt: "Use $ds-map-local-data to stage a reproducible DS map view or panel, capture still PNG evidence, or manage temporary map data."

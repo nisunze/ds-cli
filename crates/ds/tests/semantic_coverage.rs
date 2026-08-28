@@ -55,6 +55,15 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("map.design.upload.stage", "local_ui", "project"),
     ("map.design.version.begin", "artifact_write", "project"),
     ("map.draw", "local_ui", "desktop_pairing"),
+    // A frame lands on the operator's own disk, so the effect is the file
+    // write and not the panel that was opened to compose it. Authority stays
+    // `desktop_pairing`: capturing what is already on screen proves a
+    // transport, never a person, and reaches no project.
+    (
+        "map.evidence.capture",
+        "local_file_write",
+        "desktop_pairing",
+    ),
     ("map.line-difference", "local_ui", "desktop_pairing"),
     ("map.outliers", "local_ui", "desktop_pairing"),
     ("map.points-along", "local_ui", "desktop_pairing"),
@@ -63,6 +72,7 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("map.survey.download", "local_ui", "project"),
     ("map.survey.migrate.apply", "global_write", "project"),
     ("map.survey.migrate.plan", "read_only", "project"),
+    ("map.ui.open", "local_ui", "desktop_pairing"),
     ("map.view", "read_only", "desktop_pairing"),
     ("map.zoom", "local_ui", "desktop_pairing"),
     ("mcp.install", "machine_write", "none"),

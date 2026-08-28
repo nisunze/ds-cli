@@ -234,6 +234,7 @@ fn every_map_command_has_one_closed_operation_owner() {
             "`{}` is declared twice by ds map; one semantic operation has one owner",
             operation.operation
         );
+
         assert_eq!(
             count(allowlist, &format!("\"{}\"", operation.operation)),
             1,
@@ -652,7 +653,8 @@ fn every_style_command_has_one_closed_operation_owner() {
         );
         for argument in operation.arguments {
             assert!(
-                contract.contains(&format!("'{argument}'")),
+                contract.contains(&format!("'{argument}'"))
+                    || contract.contains(&format!("\"{argument}\"")),
                 "ds style sends `{argument}` to `{}`, but its typed adapter does not accept it",
                 operation.operation
             );

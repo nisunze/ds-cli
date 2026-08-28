@@ -1136,6 +1136,50 @@ fn map_validates_its_own_inputs_before_it_opens_the_bridge() {
             ],
             "invalid_pair",
         ),
+        // `ds map ui open` is a panel door, not a UI driver. A selector, an
+        // expression and a URL each have to be refused here — after the
+        // bridge is open it is too late for the distinction to mean anything,
+        // because the argument would already have been sent.
+        (
+            &[
+                "map",
+                "ui",
+                "open",
+                "--target",
+                "style-center",
+                "--ref",
+                "#legend",
+            ],
+            "ui_ref_not_semantic",
+        ),
+        (
+            &[
+                "map",
+                "ui",
+                "open",
+                "--target",
+                "attribute-table",
+                "--ref",
+                "http://127.0.0.1/panel",
+            ],
+            "ui_ref_not_semantic",
+        ),
+        // A relative path and a non-PNG are the two ways `--out` goes wrong,
+        // and both are cheaper to name here than after a full render.
+        (
+            &["map", "evidence", "capture", "--out", "step-1.png"],
+            "evidence_out_invalid",
+        ),
+        (
+            &[
+                "map",
+                "evidence",
+                "capture",
+                "--out",
+                "/evidence/step-1.jpg",
+            ],
+            "evidence_out_invalid",
+        ),
     ];
 
     for (args, expected) in cases {
@@ -1393,6 +1437,179 @@ fn map_design_attach_print_validates_before_pairing() {
 }
 
 #[test]
+fn map_evidence_capture_will_not_overwrite_a_frame_without_being_asked_and_confirmed() {
+    // The gate that matters for this command. `local_file_write` is not in
+    // dispatch's confirmation set, so the whole of what stands between a model
+    // and an overwritten piece of evidence is the handler — and it has to hold
+    // on a machine with no desktop, which is every CI machine.
+    let root = temp_root("map-evidence");
+    std::fs::create_dir_all(&root).expect("temp directory is writable");
+    let existing = root.join("step-3.png");
+    std::fs::write(&existing, b"an earlier frame").expect("temp file is writable");
+    let existing = existing.display().to_string();
+
+    assert_eq!(
+        refusal(&[
+            "map", "evidence", "capture", "--out", &existing, "--output", "json"
+        ]),
+        "evidence_exists",
+        "an existing frame must be refused rather than silently re-shot"
+    );
+    assert_eq!(
+        refusal(&[
+            "map",
+            "evidence",
+            "capture",
+            "--out",
+            &existing,
+            "--replace",
+            "--output",
+            "json",
+        ]),
+        "confirmation_required",
+        "--replace without --yes must stop before the bridge is opened"
+    );
+
+    // Confirmed, the local checks are satisfied and the call proceeds to the
+    // desktop — which is not here, so it ends in a pairing state rather than
+    // in either local refusal. That ordering is the claim: the gate is not
+    // merely reachable, it is the only thing that was stopping the call.
+    let confirmed = refusal(&[
+        "map",
+        "evidence",
+        "capture",
+        "--out",
+        &existing,
+        "--replace",
+        "--yes",
+        "--output",
+        "json",
+    ]);
+    assert!(
+        PAIRING_CODES.contains(&confirmed.as_str()),
+        "a confirmed replace ended in `{confirmed}`, not at the pairing boundary"
+    );
+    assert_eq!(
+        std::fs::read(&existing).expect("the frame is still there"),
+        b"an earlier frame",
+        "no invocation in this test may touch the file; the application writes it"
+    );
+
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn map_evidence_capture_declares_a_fixed_receipt_and_no_way_to_record() {
+    // Two claims a caller reads before it ever runs the command, held to the
+    // descriptor rather than to prose: the receipt is the seven fields, and
+    // there is no recording door. Video is a third-party tool's job, and the
+    // way that stays true is that no flag here could ever start or bound one.
+    let descriptor = ok(&["capabilities", "map.evidence.capture", "--output", "json"]);
+    let command = &descriptor["command"];
+    let output = command["output"].as_str().expect("output");
+    for field in [
+        "path",
+        "bytes",
+        "sha256",
+        "dimensions",
+        "scope",
+        "view",
+        "ui",
+    ] {
+        assert!(
+            output.contains(field),
+            "the declared output no longer names the receipt field `{field}`"
+        );
+    }
+
+    let inputs: BTreeSet<&str> = command["inputs"]
+        .as_array()
+        .expect("inputs")
+        .iter()
+        .map(|input| input["name"].as_str().expect("input name"))
+        .collect();
+    assert_eq!(
+        inputs,
+        ["out", "scope", "replace", "desktop-descriptor"]
+            .into_iter()
+            .collect::<BTreeSet<_>>(),
+        "a flag appeared on the capture contract; a recorder would arrive as one"
+    );
+
+    let scope: BTreeSet<&str> = command["inputs"]
+        .as_array()
+        .expect("inputs")
+        .iter()
+        .find(|input| input["name"] == "scope")
+        .expect("--scope is declared")["choices"]
+        .as_array()
+        .expect("choices")
+        .iter()
+        .map(|choice| choice.as_str().expect("choice"))
+        .collect();
+    assert_eq!(
+        scope,
+        ["map", "app"].into_iter().collect::<BTreeSet<_>>(),
+        "--scope is a closed pair: the canvas, or the whole window"
+    );
+}
+
+#[test]
+fn map_ui_open_offers_three_panels_and_no_way_to_address_the_interface() {
+    // The reason this command is safe to have at all: the target is a closed
+    // set of published panels, and there is no second input that could carry a
+    // selector, a coordinate or a script. If a fourth target or a new flag
+    // appears, someone is turning a panel door into a UI driver.
+    let command = ok(&["capabilities", "map.ui.open", "--output", "json"])["command"].clone();
+    let inputs: BTreeSet<&str> = command["inputs"]
+        .as_array()
+        .expect("inputs")
+        .iter()
+        .map(|input| input["name"].as_str().expect("input name"))
+        .collect();
+    assert_eq!(
+        inputs,
+        ["target", "ref", "desktop-descriptor"]
+            .into_iter()
+            .collect::<BTreeSet<_>>(),
+        "`ds map ui open` grew an input; it takes a published panel and a published ref"
+    );
+
+    let targets: Vec<&str> = command["inputs"]
+        .as_array()
+        .expect("inputs")
+        .iter()
+        .find(|input| input["name"] == "target")
+        .expect("--target is declared")["choices"]
+        .as_array()
+        .expect("choices")
+        .iter()
+        .map(|choice| choice.as_str().expect("choice"))
+        .collect();
+    assert_eq!(
+        targets,
+        vec!["attribute-table", "style-center", "selection-properties"],
+    );
+
+    // A ref the application publishes reaches the bridge; a selector does not.
+    let published = refusal(&[
+        "map",
+        "ui",
+        "open",
+        "--target",
+        "selection-properties",
+        "--ref",
+        "TX-1042.lv_lines/17",
+        "--output",
+        "json",
+    ]);
+    assert!(
+        PAIRING_CODES.contains(&published.as_str()),
+        "a published reference ended in `{published}`, not at the pairing boundary"
+    );
+}
+
+#[test]
 fn every_map_command_is_reachable_without_the_desktop_installed() {
     // Availability here is deliberately unconditional: dispatch checks it
     // before parsing, so a gate would make `--desktop-descriptor` — the flag
@@ -1409,6 +1626,8 @@ fn every_map_command_is_reachable_without_the_desktop_installed() {
         "map.draw",
         "map.remove",
         "map.zoom",
+        "map.ui.open",
+        "map.evidence.capture",
         "map.points-along",
         "map.random-points",
         "map.outliers",
@@ -1461,6 +1680,15 @@ fn a_well_formed_map_call_stops_at_confirmation_or_pairing() {
     for args in [
         vec!["map", "view"],
         vec!["map", "zoom", "--bbox", "29.9,-2.1,30.2,-1.85"],
+        vec![
+            "map",
+            "ui",
+            "open",
+            "--target",
+            "attribute-table",
+            "--ref",
+            "master/customers",
+        ],
         vec!["map", "zoom", "--layer", "sketch-does-not-exist"],
         vec!["map", "remove", "--layer", "sketch-does-not-exist"],
         vec![

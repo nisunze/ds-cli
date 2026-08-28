@@ -46,12 +46,14 @@
 
 pub mod design;
 pub mod draw;
+pub mod evidence;
 pub mod line_difference;
 pub mod outliers;
 pub mod points_along;
 pub mod random_points;
 pub mod remove;
 pub mod survey;
+pub mod ui;
 pub mod view;
 pub mod zoom;
 
@@ -80,6 +82,8 @@ pub static DOMAIN: Domain = Domain {
         &draw::COMMAND,
         &remove::COMMAND,
         &zoom::COMMAND,
+        &ui::open::COMMAND,
+        &evidence::capture::COMMAND,
         &points_along::COMMAND,
         &random_points::COMMAND,
         &outliers::COMMAND,
@@ -126,6 +130,14 @@ pub const LAYER_REMOVE: BridgeOp = BridgeOp {
 pub const ZOOM_TO: BridgeOp = BridgeOp {
     operation: "map.zoom_to",
     arguments: &["bbox", "layerId", "padding"],
+};
+pub const UI_OPEN: BridgeOp = BridgeOp {
+    operation: "map.ui.open",
+    arguments: &["target", "ref"],
+};
+pub const EVIDENCE_CAPTURE: BridgeOp = BridgeOp {
+    operation: "map.evidence.capture",
+    arguments: &["scope", "path", "replace"],
 };
 pub const POINTS_ALONG: BridgeOp = BridgeOp {
     operation: "gis.points_along",
@@ -318,6 +330,8 @@ pub const BRIDGE_OPS: &[&BridgeOp] = &[
     &LAYER_ADD,
     &LAYER_REMOVE,
     &ZOOM_TO,
+    &UI_OPEN,
+    &EVIDENCE_CAPTURE,
     &POINTS_ALONG,
     &RANDOM_POINTS,
     &DETECT_OUTLIERS,
@@ -400,12 +414,68 @@ pub const SNAPSHOT_LAYER_ID: &str = "id";
 /// built — and the parity test holds the prefix to the application's.
 pub const ANALYSIS_SKETCH_PREFIX: &str = "sketch:";
 
+/// What `ds map ui open` reports, as (reported, published).
+///
+/// `resolvedRef` is the one worth having: the application resolves a layer id
+/// or style ref to the thing it actually opened — a style key, a survey table
+/// key, a `sketch-` tab id — and reporting it means the next command in a
+/// sequence passes a value it was given rather than one it guessed.
+pub const UI_OPEN_REPLY_FIELDS: &[(&str, &str)] = &[
+    ("target", "target"),
+    ("ref", "ref"),
+    ("resolved_ref", "resolvedRef"),
+    ("opened", "opened"),
+];
+
+/// The evidence receipt fields carried straight through, as (reported,
+/// published).
+///
+/// Declared here rather than written inline for the same reason the map
+/// snapshot fields are: a renamed field in the application does not fail, it
+/// reports `null`, and a caller ends up with a receipt whose digest is missing
+/// rather than an error. Declaring the pairs makes the projection one table
+/// `tests/bridge_parity.rs` can hold to the application's own reply.
+pub const EVIDENCE_RECEIPT_FIELDS: &[(&str, &str)] = &[
+    ("path", "path"),
+    ("bytes", "bytes"),
+    ("sha256", "sha256"),
+    ("scope", "scope"),
+    ("view", "view"),
+    ("ui", "ui"),
+];
+
+/// The frame size, which the application publishes as two top-level numbers
+/// from its native `EvidenceCaptureReceipt`.
+///
+/// `ds` reports them as one `dimensions` object because the receipt is read as
+/// a whole — a width without its height beside it is not a fact anyone uses —
+/// and because that keeps the receipt at exactly seven keys. It is a shape
+/// change and nothing more: no number here is derived, scaled or rounded.
+pub const EVIDENCE_WIDTH: &str = "width";
+pub const EVIDENCE_HEIGHT: &str = "height";
+
+/// The whole receipt, in the order it is written. Seven keys, fixed: a
+/// screenshot is evidence only if what is written beside it does not vary.
+pub const EVIDENCE_RECEIPT_KEYS: &[&str] = &[
+    "path",
+    "bytes",
+    "sha256",
+    "dimensions",
+    "scope",
+    "view",
+    "ui",
+];
+
 // ---------------------------------------------------------------------------
 // Timeouts
 // ---------------------------------------------------------------------------
 
 /// Adding, removing or moving is a redraw. Anything slower is a hung webview.
 pub const UI_TIMEOUT: Duration = Duration::from_secs(60);
+/// A capture has to wait for tiles, labels and the panel to settle before the
+/// frame is worth keeping, then write and digest a PNG. Longer than a redraw,
+/// far shorter than a vector tool.
+pub const EVIDENCE_TIMEOUT: Duration = Duration::from_secs(3 * 60);
 /// A vector tool runs real geometry over a whole layer, in WASM.
 pub const TOOL_TIMEOUT: Duration = Duration::from_secs(10 * 60);
 /// Reading a transformer room may have to fetch it from the project first.

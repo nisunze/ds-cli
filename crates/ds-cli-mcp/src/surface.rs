@@ -159,6 +159,8 @@ const SURVEY_MAP_COMMANDS: &[&str] = &[
     "map.draw",
     "map.remove",
     "map.zoom",
+    "map.ui.open",
+    "map.evidence.capture",
     "map.points-along",
     "map.random-points",
     "map.outliers",

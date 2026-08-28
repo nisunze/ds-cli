@@ -43,6 +43,37 @@ installed transformer. Marking an as-built network approved is the most
 consequential property write in the product; one sentence from a model must
 not be able to reach the project.
 
+## Still evidence and semantic UI staging
+
+The CLI can stage and capture a deterministic still frame of the installed
+Windows desktop. It does not expose generic clicks, selectors, scripts,
+keystrokes or screen recording.
+
+```bash
+ds map ui open --target attribute-table --ref master/customers
+ds map evidence capture \
+  --scope app \
+  --out 'C:\Evidence\01-customer-table.png' \
+  --output json
+```
+
+`map ui open` accepts exactly `attribute-table`, `style-center`, or
+`selection-properties`. The paired application resolves `--ref` through its
+own layer, style and selection state and refuses missing or ambiguous targets.
+Navigation remains `ds map zoom`; governed property edits remain
+`ds map design select` and `ds map design set`.
+
+`map evidence capture` accepts `--scope map|app`. The output must be an
+absolute `.png` path whose parent already exists. The installed desktop waits
+for its MapLibre frame and UI to settle, captures through native WebView2, and
+returns the exact path, bytes, SHA-256, pixel dimensions, scope, view and open
+UI state. Existing files are never replaced unless `--replace --yes` is
+explicit.
+
+Video recording is intentionally absent. Use a third-party recorder after
+these commands stage the desired frame; the CLI never launches or controls
+that recorder.
+
 ## Design/local transfer and line extension difference
 
 The comparison workflow stays inside the application and uses one shared

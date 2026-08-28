@@ -287,6 +287,16 @@ static MAP_ENTRIES: &[Entry] = &[
         render: ds_cli_map::zoom::render,
     },
     Entry {
+        command: &ds_cli_map::ui::open::COMMAND,
+        handler: ds_cli_map::ui::open::run,
+        render: ds_cli_map::ui::open::render,
+    },
+    Entry {
+        command: &ds_cli_map::evidence::capture::COMMAND,
+        handler: ds_cli_map::evidence::capture::run,
+        render: ds_cli_map::evidence::capture::render,
+    },
+    Entry {
         command: &ds_cli_map::points_along::COMMAND,
         handler: ds_cli_map::points_along::run,
         render: ds_cli_map::points_along::render,

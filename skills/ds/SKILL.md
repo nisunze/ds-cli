@@ -81,7 +81,7 @@ bypass `ds`.
 ## Route to a narrower skill when one fits
 
 - `ds-project-context` — active project and state boundary.
-- `ds-map-local-data` — temporary map layers, focus and restore.
+- `ds-map-local-data` — temporary layers, semantic panel staging, and still PNG evidence.
 - `ds-lv-design-revision` — revise one transformer's LV design safely.
 - `ds-pls-cadd-terrain-roundtrip` — PLS-CADD route and terrain delivery.
 - `ds-style-composite` — colour/icon/size, a second field, and line/fill cartography.
