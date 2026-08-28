@@ -324,6 +324,7 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
         "design-edit",
         "design-run",
         "map",
+        "tiling",
         "project",
         "solar-run",
         "solar-delivery",

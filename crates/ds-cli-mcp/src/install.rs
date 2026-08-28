@@ -34,7 +34,7 @@ pub static COMMAND: Command = Command {
     path: &["mcp", "install"],
     contract: 2,
     chapter: ds_cli_contract::spec::Chapter::Catalog,
-    summary: "Print or write the MCP host entry that launches this `ds`.",
+    summary: "Print or write an MCP host entry for this `ds`.",
     purpose: "\
 Prints this executable's stdio server entry and its user-level host file. With \
 `--write`, merges only the `ds` entry and preserves other servers, staging the \

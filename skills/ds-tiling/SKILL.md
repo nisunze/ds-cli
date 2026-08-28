@@ -3,7 +3,7 @@ name: ds-tiling
 description: Inspect or regenerate project tiles through `ds` when survey/design maps are stale.
 metadata:
   ds-chapters: vector-tiles
-  ds-mcp-profile: map
+  ds-mcp-profile: tiling
 ---
 
 # Tile a project's outputs

@@ -45,7 +45,7 @@ const LINE_TYPE_ARG: Arg = Arg {
         "dash-dot-dot",
         "directional",
     ],
-    summary: "How the line is drawn. `solid` clears a dash; `directional` draws flow arrows along it instead.",
+    summary: "Line preset. `solid` clears dashes; `directional` draws flow arrows.",
 };
 const DIRECTION_SIZE_ARG: Arg = Arg {
     name: "direction-size",
@@ -54,7 +54,7 @@ const DIRECTION_SIZE_ARG: Arg = Arg {
     required: false,
     default: None,
     choices: &[],
-    summary: "Flow arrow size in px, 6..48. Only with the directional line type.",
+    summary: "Flow-arrow size in px, 6..48; directional lines only.",
 };
 const DIRECTION_SPACING_ARG: Arg = Arg {
     name: "direction-spacing",
@@ -63,7 +63,7 @@ const DIRECTION_SPACING_ARG: Arg = Arg {
     required: false,
     default: None,
     choices: &[],
-    summary: "Distance between flow arrows in px, 20..1000. Only with the directional line type.",
+    summary: "Flow-arrow spacing in px, 20..1000; directional lines only.",
 };
 const CASING_COLOR_ARG: Arg = Arg {
     name: "casing-color",
@@ -72,7 +72,7 @@ const CASING_COLOR_ARG: Arg = Arg {
     required: false,
     default: None,
     choices: &[],
-    summary: "Casing colour — the contrast outline drawn under the line, e.g. #0F172A over satellite.",
+    summary: "Contrast casing colour, e.g. #0F172A over satellite imagery.",
 };
 const CASING_WIDTH_ARG: Arg = Arg {
     name: "casing-width",
@@ -81,7 +81,7 @@ const CASING_WIDTH_ARG: Arg = Arg {
     required: false,
     default: None,
     choices: &[],
-    summary: "Casing width in px on each side, 0..20. 0 removes the casing. Halves are allowed.",
+    summary: "Casing width in px, 0..20; 0 removes it. Halves are allowed.",
 };
 const FILL_PATTERN_ARG: Arg = Arg {
     name: "fill-pattern",
@@ -96,7 +96,7 @@ const FILL_PATTERN_ARG: Arg = Arg {
         "crosshatch",
         "dots",
     ],
-    summary: "Hatch a fill so status reads without spending its colour. `solid` clears the hatch.",
+    summary: "Fill hatch preset; `solid` clears the hatch.",
 };
 const PATTERN_COLOR_ARG: Arg = Arg {
     name: "pattern-color",
@@ -114,7 +114,7 @@ const PATTERN_BACKGROUND_ARG: Arg = Arg {
     required: false,
     default: None,
     choices: &[],
-    summary: "Colour behind the hatch. Use an 8-digit hex such as #FFFFFF00 to keep the fill see-through.",
+    summary: "Hatch background; use #FFFFFF00 for transparency.",
 };
 const PATTERN_SPACING_ARG: Arg = Arg {
     name: "pattern-spacing",
@@ -123,7 +123,7 @@ const PATTERN_SPACING_ARG: Arg = Arg {
     required: false,
     default: None,
     choices: &["4", "8", "16", "32"],
-    summary: "Pattern tile size in px: only 4, 8, 16 or 32, the powers of two MapLibre repeats seamlessly.",
+    summary: "Pattern tile size in px: 4, 8, 16 or 32.",
 };
 const PATTERN_STROKE_ARG: Arg = Arg {
     name: "pattern-stroke",
@@ -132,7 +132,7 @@ const PATTERN_STROKE_ARG: Arg = Arg {
     required: false,
     default: None,
     choices: &[],
-    summary: "Hatch stroke or dot width in px, 1..6. Whole pixels only; a rasterised tile aliases otherwise.",
+    summary: "Hatch stroke or dot width in whole px, 1..6.",
 };
 
 /// The declared inputs, in the order help prints them. One list, used by both
@@ -391,15 +391,12 @@ pub mod plan {
         id: "style.cartography.plan",
         path: &["style", "cartography", "plan"],
         contract: 1,
-        summary: "Plan a layer's line type, casing or fill hatch; publishes nothing.",
+        summary: "Plan dashed line types, casing, direction or fill hatching.",
         purpose: "\
-Runs the Style Center's own cartography authoring — dash, dotted and \
-long-dash line types, directional arrows for water flow or feed direction, a \
-contrasting casing that keeps a thin line legible over satellite imagery, and \
-diagonal, crosshatch or dotted hatching that marks proposed service areas \
-without spending the colour dimension — and returns the exact resulting \
-document without saving. An omitted flag leaves that part of the document \
-alone. Read it, then `ds style cartography set` with the same flags.",
+Plans governed line presets, direction arrows, contrast casing and fill \
+hatching. Crosshatch can mark proposed service areas. It returns the resulting \
+document without saving. Omitted flags leave those properties unchanged; \
+apply the reviewed flags with `set`.",
         chapter: Chapter::MapPresentation,
         effect: Effect::ReadOnly,
         authority: Authority::Project,
@@ -413,17 +410,17 @@ alone. Read it, then `ds style cartography set` with the same flags.",
         examples: &[
             Example {
                 command: "ds style cartography plan --ref master/water_mains --line-type directional --direction-size 14 --direction-spacing 140 --output json",
-                note: "Water flow: arrows along the main show which way it runs, without touching its colour.",
+                note: "Show water-flow direction without changing colour.",
                 runnable: false,
             },
             Example {
                 command: "ds style cartography plan --ref master/mv_lines --casing-color '#0F172A' --casing-width 2 --output json",
-                note: "Satellite contrast: a dark casing under a bright line keeps it legible over imagery.",
+                note: "Keep a bright line legible over satellite imagery.",
                 runnable: false,
             },
             Example {
                 command: "ds style cartography plan --ref master/service_areas --fill-pattern crosshatch --pattern-color '#B45309' --pattern-background '#FFFFFF00' --pattern-spacing 8 --pattern-stroke 1 --output json",
-                note: "Proposed service areas read as crosshatched over a see-through background.",
+                note: "Crosshatch a proposed area over a transparent background.",
                 runnable: false,
             },
         ],
@@ -456,14 +453,12 @@ pub mod set {
         id: "style.cartography.set",
         path: &["style", "cartography", "set"],
         contract: 1,
-        summary: "Publish a layer's line type, direction, casing or fill hatch.",
+        summary: "Publish a layer's line, direction, casing or fill hatch.",
         purpose: "\
-Authors the same line type, directional water-flow arrows, satellite-contrast \
-casing and crosshatch or dotted hatching that `ds style cartography plan` \
-shows, then publishes through the application's governed save: ds-brain \
-validates the document, the local map renders it. The colour dimension and \
-the second dimension are untouched; an omitted flag leaves that part of the \
-document alone.",
+Publishes the cartography shown by `plan` through the governed save. ds-brain \
+validates it and the map renders it, including contrast casing over satellite \
+imagery. Colour and field-driven dimensions stay unchanged; omitted flags \
+leave their properties unchanged.",
         chapter: Chapter::MapPresentation,
         effect: Effect::GlobalWrite,
         authority: Authority::Project,
@@ -473,17 +468,17 @@ document alone.",
         examples: &[
             Example {
                 command: "ds style cartography set --ref master/water_mains --line-type directional --direction-size 14 --direction-spacing 140 --yes",
-                note: "Water flow arrows are markers, not a dash; the dash presets and directional are one choice.",
+                note: "Publish water-flow markers instead of a dash preset.",
                 runnable: false,
             },
             Example {
                 command: "ds style cartography set --ref master/mv_lines --casing-color '#0F172A' --casing-width 2 --yes",
-                note: "Satellite contrast casing. --casing-width 0 removes it again.",
+                note: "Add contrast casing; width 0 removes it.",
                 runnable: false,
             },
             Example {
                 command: "ds style cartography set --ref master/service_areas --fill-pattern crosshatch --pattern-color '#B45309' --pattern-spacing 8 --yes",
-                note: "Crosshatched proposed service areas; spacing is one of 4, 8, 16 or 32 so the tile repeats seamlessly.",
+                note: "Crosshatch a proposed service area with a governed tile size.",
                 runnable: false,
             },
         ],

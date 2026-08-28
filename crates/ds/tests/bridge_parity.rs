@@ -48,6 +48,8 @@ struct App {
     work: String,
     sre: String,
     style: String,
+    style_fill_pattern: String,
+    style_line_type: String,
     tile: String,
     feedback: String,
     feedback_submit: String,
@@ -70,6 +72,8 @@ fn app() -> Option<App> {
         work: read("src/lib/desktop/cli-work.ts")?,
         sre: read("src/lib/desktop/cli-sre.ts")?,
         style: read("src/lib/desktop/cli-style.ts")?,
+        style_fill_pattern: read("src/lib/styles/fill-pattern.ts")?,
+        style_line_type: read("src/lib/styles/line-type.ts")?,
         tile: read("src/lib/desktop/cli-tile.ts")?,
         feedback: read("src/lib/desktop/cli-feedback.ts")?,
         feedback_submit: read("src/lib/feedback/submit.ts")?,
@@ -705,8 +709,8 @@ fn style_cartography_sends_exactly_the_arguments_and_bounds_the_desktop_owns() {
         .collect::<Vec<_>>()
         .join(", ");
     assert!(
-        app.style
-            .contains(&format!("const PATTERN_SPACINGS = [{spacings}]")),
+        app.style_fill_pattern
+            .contains(&format!("const FILL_PATTERN_SPACINGS = [{spacings}]")),
         "the desktop must rasterise exactly the seamless pattern tile sizes ds offers: [{spacings}]"
     );
 
@@ -719,8 +723,13 @@ fn style_cartography_sends_exactly_the_arguments_and_bounds_the_desktop_owns() {
         .expect("--fill-pattern is declared")
         .choices;
     for name in fill_patterns.iter().chain(["directional"].iter()) {
+        let named = [&app.style, &app.style_fill_pattern, &app.style_line_type]
+            .iter()
+            .any(|source| {
+                source.contains(&format!("'{name}'")) || source.contains(&format!("\"{name}\""))
+            });
         assert!(
-            app.style.contains(&format!("'{name}'")) || app.style.contains(&format!("\"{name}\"")),
+            named,
             "ds style cartography offers `{name}`, but the desktop adapter does not name it"
         );
     }

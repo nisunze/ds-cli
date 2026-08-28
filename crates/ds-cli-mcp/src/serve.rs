@@ -24,7 +24,7 @@ pub static COMMAND: Command = Command {
     path: &["mcp", "serve"],
     contract: 2,
     chapter: ds_cli_contract::spec::Chapter::Catalog,
-    summary: "Serve chapter or typed `ds` tools to an MCP host.",
+    summary: "Serve chapter or typed `ds` tools over MCP.",
     purpose: "\
 Serves generated chapter routers or typed command tools over MCP stdio. Every \
 view comes from this executable's live descriptors and dispatches the same \

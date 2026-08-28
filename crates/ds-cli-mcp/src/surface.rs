@@ -18,6 +18,7 @@ pub const PROFILE_IDS: &[&str] = &[
     "design-edit",
     "design-run",
     "map",
+    "tiling",
     "project",
     "solar-run",
     "solar-delivery",
@@ -57,6 +58,7 @@ pub enum Profile {
     DesignEdit,
     DesignRun,
     Map,
+    Tiling,
     Project,
     SolarRun,
     SolarDelivery,
@@ -74,6 +76,7 @@ impl Profile {
             "design-edit" => Some(Self::DesignEdit),
             "design-run" => Some(Self::DesignRun),
             "map" => Some(Self::Map),
+            "tiling" => Some(Self::Tiling),
             "project" => Some(Self::Project),
             "solar-run" => Some(Self::SolarRun),
             "solar-delivery" => Some(Self::SolarDelivery),
@@ -92,6 +95,7 @@ impl Profile {
             Self::DesignEdit => "design-edit",
             Self::DesignRun => "design-run",
             Self::Map => "map",
+            Self::Tiling => "tiling",
             Self::Project => "project",
             Self::SolarRun => "solar-run",
             Self::SolarDelivery => "solar-delivery",
@@ -106,10 +110,8 @@ impl Profile {
             Self::Survey => SURVEY_MAP_COMMANDS.contains(&tool.id.as_str()),
             Self::FormFactory => FORM_FACTORY_COMMANDS.contains(&tool.id.as_str()),
             Self::SurveyProjects => SURVEY_PROJECT_COMMANDS.contains(&tool.id.as_str()),
-            Self::Map => matches!(
-                tool.chapter,
-                Chapter::MapPresentation | Chapter::VectorTiles
-            ),
+            Self::Map => tool.chapter == Chapter::MapPresentation,
+            Self::Tiling => tool.chapter == Chapter::VectorTiles,
             Self::Project => tool.chapter == Chapter::Project,
             Self::Operations => tool.chapter == Chapter::Operations,
             Self::DesignEdit => DESIGN_EDIT_COMMANDS.contains(&tool.id.as_str()),
@@ -136,7 +138,12 @@ impl Profile {
             Self::DesignRun => DESIGN_RUN_COMMANDS,
             Self::SolarRun => SOLAR_RUN_COMMANDS,
             Self::SolarDelivery => SOLAR_DELIVERY_COMMANDS,
-            Self::Grid | Self::Pls | Self::Map | Self::Project | Self::Operations => &[],
+            Self::Grid
+            | Self::Pls
+            | Self::Map
+            | Self::Tiling
+            | Self::Project
+            | Self::Operations => &[],
         }
     }
 
@@ -146,7 +153,8 @@ impl Profile {
             Self::Pls => chapter == Chapter::PlsCadd,
             Self::Survey | Self::FormFactory | Self::SurveyProjects => chapter == Chapter::Survey,
             Self::DesignEdit | Self::DesignRun => chapter == Chapter::Design,
-            Self::Map => matches!(chapter, Chapter::MapPresentation | Chapter::VectorTiles),
+            Self::Map => chapter == Chapter::MapPresentation,
+            Self::Tiling => chapter == Chapter::VectorTiles,
             Self::Project => chapter == Chapter::Project,
             Self::SolarRun | Self::SolarDelivery => chapter == Chapter::Solar,
             Self::Operations => chapter == Chapter::Operations,
