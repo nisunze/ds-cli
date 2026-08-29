@@ -35,6 +35,17 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("design.selection.list", "read_only", "project"),
     ("design.selection.read", "read_only", "project"),
     ("design.selection.save", "global_write", "project"),
+    // The governed city and phasing groups. `apply` and `unassign` write the
+    // shared project record, so both are `global_write`; `preview` proposes
+    // nothing durable and `export` is a projection of what is already stored,
+    // so both stay `read_only` and usable on a project the caller cannot edit.
+    // Every row is `project` authority: a group is assigned to transformers in
+    // the paired session's selected project, never to a named one.
+    ("design.group.apply", "global_write", "project"),
+    ("design.group.export", "read_only", "project"),
+    ("design.group.list", "read_only", "project"),
+    ("design.group.preview", "read_only", "project"),
+    ("design.group.unassign", "global_write", "project"),
     ("design.tag.define", "global_write", "project"),
     ("design.tag.list", "read_only", "project"),
     ("design.tag.set", "global_write", "project"),

@@ -240,12 +240,15 @@ snake_case, with `detail.server_code` carrying the server's spelling verbatim:
 ds-brain's 64-city request bound locally, so an over-large selection is refused
 once with that same code rather than after a round trip.
 
-**Not yet reachable.** ds-web has shipped the seeding card but not the two CLI
-bridge operations, so `ds solar seed` currently refuses with
-`desktop_operation_unsupported` and the remedy to update DS GridDesign.
-`crates/ds-cli-solar/src/paired.rs` records that gap in `PENDING_DESKTOP_OPS`,
-and `crates/ds/tests/bridge_parity.rs` fails once the application lands either
-operation so it is promoted into the full parity check deliberately.
+**One door, both surfaces.** DS GridDesign answers `solar.seed.preview` and
+`solar.seed.apply` from `src/lib/desktop/cli-solar-seed.ts`, which calls the
+same `$lib/api/solar-seed` client the Project Control seeding card uses. So the
+CLI and the card send one governed request through one declared operation and
+read one refusal vocabulary; `crates/ds/tests/bridge_parity.rs` holds that, and
+`ds mcp serve` inherits both commands by their being registered rather than by
+any MCP-specific implementation. An older DS GridDesign build that predates the
+door still refuses with `desktop_operation_unsupported` and the remedy to
+update it.
 
 ## Authority and typed operations
 

@@ -9,6 +9,8 @@
 
 use std::{collections::BTreeSet, path::PathBuf};
 
+use ds_cli_desktop::ops::BridgeOp;
+
 /// The sibling desktop source. It is intentionally a source-level parity
 /// check: the desktop is not a Rust build dependency, but a missing operation
 /// must fail CI rather than be discovered by an operator after deployment.
@@ -57,6 +59,7 @@ struct App {
     feedback_submit: String,
     solar_seed_client: String,
     solar_seed_pure: String,
+    solar_seed_adapter: String,
 }
 
 fn app() -> Option<App> {
@@ -85,6 +88,7 @@ fn app() -> Option<App> {
         feedback_submit: read("src/lib/feedback/submit.ts")?,
         solar_seed_client: read("src/lib/api/solar-seed.ts")?,
         solar_seed_pure: read("src/lib/solar/seed.ts")?,
+        solar_seed_adapter: read("src/lib/desktop/cli-solar-seed.ts")?,
     })
 }
 
@@ -384,12 +388,6 @@ fn every_solar_command_has_one_closed_operation_owner_and_exact_arguments() {
         "];",
     );
     for operation in ds_cli_solar::paired::BRIDGE_OPS {
-        if ds_cli_solar::paired::PENDING_DESKTOP_OPS.contains(&operation.operation) {
-            // Held instead by the two checks below: one proves the server
-            // contract it carries still matches ds-web's own seeding client,
-            // the other fails the moment the application lands its CLI door.
-            continue;
-        }
         assert_eq!(
             count(allowlist, &format!("\"{}\"", operation.operation)),
             1,
@@ -402,12 +400,33 @@ fn every_solar_command_has_one_closed_operation_owner_and_exact_arguments() {
             "{} must have exactly one frontend executor",
             operation.operation,
         );
-        for argument in operation.arguments {
-            assert!(
-                app.frontend.contains(&format!("args.{argument}")),
-                "ds solar sends `{argument}` to `{}`, but the paired adapter does not read that exact key",
+        // Seeding is the one Solar family the application answers from its own
+        // typed adapter rather than inside the dispatcher, because it needs no
+        // run, workspace or native engine — so its keys are checked as an exact
+        // set against that declared contract, not by grepping the dispatcher.
+        if has_operation_contract(&app.solar_seed_adapter, operation.operation) {
+            let accepted = quoted_contract_items(operation_contract(
+                &app.solar_seed_adapter,
                 operation.operation,
+            ));
+            let declared = operation
+                .arguments
+                .iter()
+                .map(|argument| (*argument).to_string())
+                .collect::<BTreeSet<_>>();
+            assert_eq!(
+                accepted, declared,
+                "`{}` arguments drifted between ds and the desktop seeding adapter",
+                operation.operation
             );
+        } else {
+            for argument in operation.arguments {
+                assert!(
+                    app.frontend.contains(&format!("args.{argument}")),
+                    "ds solar sends `{argument}` to `{}`, but the paired adapter does not read that exact key",
+                    operation.operation,
+                );
+            }
         }
         if operation.operation == "solar.run.start" {
             let start = between(
@@ -503,7 +522,7 @@ fn solar_seeding_sends_the_same_governed_request_and_reads_the_same_refusals_as_
         );
     }
     assert_eq!(
-        ds_cli_solar::paired::PENDING_DESKTOP_OPS.len(),
+        seeding_operations().len(),
         ds_cli_solar::seed::SERVER_ACTIONS.len(),
         "`ds solar seed` must expose exactly one operation per governed action"
     );
@@ -540,14 +559,27 @@ fn solar_seeding_sends_the_same_governed_request_and_reads_the_same_refusals_as_
     );
 }
 
-/// The gap record is temporary by construction.
+/// The two seeding operations `ds solar seed` sends, in declaration order.
+fn seeding_operations() -> [&'static BridgeOp; 2] {
+    [
+        &ds_cli_solar::seed::PREVIEW_OP,
+        &ds_cli_solar::seed::APPLY_OP,
+    ]
+}
+
+/// The seeding door is landed, owned once, and still only a door.
 ///
-/// `PENDING_DESKTOP_OPS` exists because ds-web shipped the seeding card before
-/// its CLI door. The moment the application lands one of these operations this
-/// fails, so it is promoted into the fully checked loop above deliberately
-/// rather than sitting in a permanent exemption that nobody re-reads.
+/// ds-web shipped the seeding CARD before its CLI bridge. While that gap
+/// existed the two operations sat in a `PENDING_DESKTOP_OPS` gap record which
+/// the loop above skipped; the application has landed them, so that record is
+/// deleted rather than kept as a standing exemption and the ordinary parity
+/// checks now cover both. What this test adds are the negative controls
+/// specific to a GOVERNED WRITE reached through the paired session: that the
+/// destination is never an argument, that the digest is never derived on either
+/// side, and that the application answers from the card's own client rather
+/// than a second backend path.
 #[test]
-fn a_pending_solar_operation_the_desktop_has_landed_must_leave_the_pending_set() {
+fn the_solar_seeding_door_is_landed_and_owned_by_one_typed_adapter() {
     let Some(app) = app() else {
         skip("the ds-web sibling repository is not on disk");
         return;
@@ -561,21 +593,137 @@ fn a_pending_solar_operation_the_desktop_has_landed_must_leave_the_pending_set()
         !allowlist.trim().is_empty(),
         "the desktop CLI operation allowlist is absent"
     );
-    for operation in ds_cli_solar::paired::PENDING_DESKTOP_OPS {
+
+    for operation in seeding_operations() {
         assert!(
             ds_cli_solar::paired::BRIDGE_OPS
                 .iter()
-                .any(|declared| declared.operation == *operation),
-            "`{operation}` is pending but `ds solar` does not declare it"
+                .any(|declared| declared.operation == operation.operation),
+            "`{}` is sent by ds solar seed but is not declared in BRIDGE_OPS",
+            operation.operation
         );
+        assert_eq!(
+            count(allowlist, &format!("\"{}\"", operation.operation)),
+            1,
+            "`{}` must appear exactly once in the desktop allowlist",
+            operation.operation
+        );
+        assert_eq!(
+            switch_case_count(&app.frontend, operation.operation),
+            1,
+            "`{}` must have exactly one frontend handler",
+            operation.operation
+        );
+        // One owner. The dispatcher routes; it must not also grow a second
+        // argument contract for the same operation.
+        let owners = [
+            &app.solar_seed_adapter,
+            &app.frontend,
+            &app.design_collaboration,
+            &app.map,
+        ]
+        .into_iter()
+        .filter(|source| has_operation_contract(source, operation.operation))
+        .count();
+        assert_eq!(
+            owners, 1,
+            "`{}` must have exactly one typed seeding adapter owner",
+            operation.operation
+        );
+        // The destination is the paired session's selected project. A project,
+        // root or ds_project argument would make a project id proof of
+        // something, which is exactly what this contract refuses.
+        let accepted = quoted_contract_items(operation_contract(
+            &app.solar_seed_adapter,
+            operation.operation,
+        ));
+        for forbidden in ["root", "project", "ds_project"] {
+            assert!(
+                !accepted.contains(forbidden),
+                "the seeding adapter must not accept `{forbidden}` on `{}`",
+                operation.operation
+            );
+        }
+    }
+
+    // Only the apply is a confirmation, so only the apply carries a digest.
+    assert!(
+        !quoted_contract_items(operation_contract(
+            &app.solar_seed_adapter,
+            ds_cli_solar::seed::PREVIEW_OP.operation
+        ))
+        .contains("seed_digest"),
+        "a preview confirms nothing and must not accept `seed_digest`"
+    );
+    assert!(
+        quoted_contract_items(operation_contract(
+            &app.solar_seed_adapter,
+            ds_cli_solar::seed::APPLY_OP.operation
+        ))
+        .contains("seed_digest"),
+        "the apply must accept the digest of the plan being confirmed"
+    );
+
+    // The application answers from the card's own client — one governed
+    // request, one refusal vocabulary, no second backend and no MCP transport.
+    assert!(
+        app.solar_seed_adapter.contains("$lib/api/solar-seed"),
+        "the seeding adapter must reach ds-brain through the card's own client"
+    );
+    let adapter_code = seed_adapter_code(&app);
+    for forbidden in [
+        "/api/v1/",
+        "firestore.googleapis.com",
+        "documents:commit",
+        "storage.googleapis.com",
+        "invokeDesktop",
+    ] {
         assert!(
-            count(allowlist, &format!("\"{operation}\"")) == 0
-                && switch_case_count(&app.frontend, operation) == 0,
-            "the paired application now implements `{operation}`. Remove it from \
-             PENDING_DESKTOP_OPS so the full allowlist/dispatcher/argument parity \
-             check covers it."
+            !adapter_code.contains(forbidden),
+            "the seeding adapter must not compose a second path: {forbidden}"
         );
     }
+    // Neither side derives the digest; both echo the plan's own.
+    assert!(
+        !adapter_code.contains("sha256Hex("),
+        "the seeding adapter must echo `seed_digest`, never derive one"
+    );
+
+    // No third seeding operation, on either side of the boundary.
+    for invented in ["solar.seed.run", "solar.seed.write", "solar.seed.delete"] {
+        assert_eq!(count(allowlist, &format!("\"{invented}\"")), 0);
+        assert_eq!(switch_case_count(&app.frontend, invented), 0);
+    }
+}
+
+/// The seeding adapter with its prose removed.
+///
+/// Its docstring names the boundary it must not cross — the ds-brain path, the
+/// server's two actions — so a substring search over the whole file would
+/// report the explanation as a violation.
+fn seed_adapter_code(app: &App) -> String {
+    let mut code = String::with_capacity(app.solar_seed_adapter.len());
+    let mut rest = app.solar_seed_adapter.as_str();
+    while let Some(open) = rest.find("/*") {
+        code.push_str(&rest[..open]);
+        let after = &rest[open + 2..];
+        match after.find("*/") {
+            Some(close) => rest = &after[close + 2..],
+            None => {
+                rest = "";
+                break;
+            }
+        }
+    }
+    code.push_str(rest);
+    code.lines()
+        .map(|line| match line.find("//") {
+            // A `://` is part of a URL, not the start of a comment.
+            Some(marker) if !line[..marker].ends_with(':') => &line[..marker],
+            _ => line,
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 #[test]
