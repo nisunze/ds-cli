@@ -50,9 +50,65 @@ ds design tag list --kind lv_transformer --object kigali_a
 ds design tag set --kind lv_transformer --object kigali_a \
   --definition transformer_scope --values additional_scope --yes
 
+ds design group list --transformers kigali_a,kigali_b            # allowed values
+ds design group preview --group city --transformers kigali_a,kigali_b \
+  --value kigali --output json                                   # plan + digest
+ds design group apply --group city --transformers kigali_a,kigali_b \
+  --value kigali --digest <plan-digest> --yes
+ds design group export --transformers kigali_a,kigali_b \
+  --output json | jq -r .data.document > tags.json               # for a report
+
 ds design comment list --kind lv_transformer --object kigali_a
 ds design comment post --thread thread-clearance --body "Agreed, re-spot it." --yes
 ```
+
+## The governed groups, and why they are a family of their own
+
+`city` and `phasing` are two reserved tag definitions held to a fixed shape —
+single-valued, LV transformers only — and given a batch. The generic
+`ds design tag set` refuses them and points at `ds design group`, so a governed
+group has exactly one write door.
+
+**A value is matched, never corrected.** The vocabulary is normalized when the
+definition is saved, so an entry either matches an allowed value byte for byte
+or is refused. `Phase 1` is not `phase 1`. Read `allowed` from
+`ds design group list` rather than guessing a spelling; a refusal quotes the
+value as you sent it so the difference is visible.
+
+**Preview is not optional.** `preview` returns one explicit outcome per named
+transformer plus a `digest`, and `apply`/`unassign` must echo that digest back.
+The server recomputes it, so a batch approved against one state cannot land
+against another. `ds` carries the digest and never mints one. `preview` writes
+nothing, so it keeps working on a project that accepts no changes.
+
+**`phasing` is not finished when its tag lands.** Its canonical home is
+`AlignmentRow.delivery_phase` in the DS Grid model. `ds` holds no model session,
+reports no receipt, and therefore gets `partial` back with every named
+transformer listed as outstanding. That is the true state — nobody has written
+the model — not a degradation to work around. Finish those in the application,
+which resolves the alignment and writes it.
+
+### `ds design group export` — the document a report pins
+
+A per-city report is grouped by the tag group named exactly `city`. `export`
+publishes that authority as the read-only `ds-report.design-tags/v1` document,
+for an explicitly named transformer set: the project's active group
+vocabularies (`phasing` and ordinary groups carried past untouched) and the
+values those transformers carry.
+
+Two things about it are load-bearing:
+
+- **Write `.data.document` verbatim.** The `sha256` beside it is over those
+  exact bytes, and it is what a report request pins. Parsing and
+  re-serializing produces different bytes for the same facts, and the pin
+  stops matching.
+- **It refuses rather than guesses.** No group named exactly `city`, or two of
+  them, and the export fails. Neither is repairable: picking one would decide a
+  published per-city total on a coin flip.
+
+Values the closed document shape cannot carry — one under an archived
+definition, or a cleared assignment — come back in `excluded` with the reason,
+so nothing is dropped in silence.
 
 ## The three rules the whole domain rests on
 
@@ -93,6 +149,13 @@ A comma-separated list flag is bounded locally as well as on the server, so an
 over-long `--transformers` or `--values` is refused before a round trip that
 would have been rejected anyway.
 
+Two of those bounds differ on purpose. A governed group batch takes at most
+200 transformers, because 200 is one Firestore transaction's write budget on
+the server. `ds design group export` takes 2,000, because it is a read whose
+unit is a whole project: a live project already carries 202 transformers, and
+splitting one export would produce two documents with two digests that a report
+pins separately and will not join.
+
 ## Where `ds` deliberately stops
 
 **Publishing a large attachment.** The paired desktop reads a named path
@@ -122,6 +185,8 @@ belongs to the governance surface, not to a headless command.
 | `invalid_value_list` | a comma-separated flag was given but carries no values |
 | `too_many_values` | a list flag carries more entries than the record accepts |
 | `missing_comment_target` | neither `--thread` nor a complete `--kind`/`--object`/`--title` |
+| `unknown_tag_group` | `--group` named something other than `city` or `phasing` |
+| `design_plan_stale` | the project moved after the plan was previewed; preview again |
 
 The pairing refusals (`desktop_not_paired`, `desktop_ambiguous`,
 `desktop_unreachable`, `pairing_rejected`, `desktop_signed_out`) are the shared

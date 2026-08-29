@@ -2022,6 +2022,150 @@ fn design_validates_its_own_inputs_before_it_opens_the_bridge() {
         "invalid_choice",
         "an object kind outside the closed set must be refused by the parser"
     );
+    // The governed set is closed and declared on the descriptor, so a third
+    // name is refused here rather than after a round trip.
+    assert_eq!(
+        refusal(&[
+            "design",
+            "group",
+            "preview",
+            "--group",
+            "region",
+            "--transformers",
+            "kigali_a",
+            "--output",
+            "json",
+        ]),
+        "invalid_choice",
+        "a group outside the closed set must be refused by the parser"
+    );
+    // The batch bound is one transaction's write budget; the projection's is a
+    // whole project's export. 300 is over the first and well inside the second,
+    // which is the distinction a single shared bound would have erased.
+    let three_hundred = (0..300)
+        .map(|index| format!("t{index}"))
+        .collect::<Vec<_>>()
+        .join(",");
+    assert_eq!(
+        refusal(&[
+            "design",
+            "group",
+            "preview",
+            "--group",
+            "city",
+            "--transformers",
+            &three_hundred,
+            "--output",
+            "json",
+        ]),
+        "too_many_values",
+        "an over-large batch must be refused locally, not by a rejected write"
+    );
+    let over_projection = (0..(ds_cli_design::group::MAX_PROJECTION_TRANSFORMERS + 1))
+        .map(|index| format!("t{index}"))
+        .collect::<Vec<_>>()
+        .join(",");
+    assert_eq!(
+        refusal(&[
+            "design",
+            "group",
+            "export",
+            "--transformers",
+            &over_projection,
+            "--output",
+            "json",
+        ]),
+        "too_many_values",
+        "an over-large projection must be refused locally, not by a rejected read"
+    );
+}
+
+#[test]
+fn a_projection_covers_a_whole_project_where_a_batch_covers_one_transaction() {
+    // A live project already carries 202 transformers. Bounding the export at
+    // the batch's 200 would split the one report it exists to serve into two
+    // documents with two digests, which the report consumer pins separately and
+    // will not join.
+    let batch = ds_cli_design::group::MAX_GROUP_BATCH;
+    let projection = ds_cli_design::group::MAX_PROJECTION_TRANSFORMERS;
+    assert_eq!(
+        batch, 200,
+        "the batch bound moved; it is a transaction budget, not a page size"
+    );
+    assert!(
+        projection >= 2_000,
+        "the projection bound is {projection}; it must cover at least 2000 explicit transformers"
+    );
+    // 202 and the bound itself both reach the bridge rather than a local
+    // refusal, so the whole-project export is genuinely available.
+    for count in [202, ds_cli_design::group::MAX_PROJECTION_TRANSFORMERS] {
+        let names = (0..count)
+            .map(|index| format!("t{index}"))
+            .collect::<Vec<_>>()
+            .join(",");
+        let code = refusal(&[
+            "design",
+            "group",
+            "export",
+            "--transformers",
+            &names,
+            "--output",
+            "json",
+        ]);
+        assert!(
+            PAIRING_CODES.contains(&code.as_str()),
+            "a {count}-transformer export ended in `{code}`, not a pairing state"
+        );
+    }
+}
+
+#[test]
+fn a_governed_group_batch_cannot_be_applied_without_the_plan_it_was_previewed_as() {
+    // The digest is the fence. `ds` carries the one the server returned and
+    // never mints one, so a caller that skips the preview has no digest to
+    // send and dispatch refuses on the missing input rather than committing a
+    // batch nobody approved.
+    assert_eq!(
+        refusal(&[
+            "design",
+            "group",
+            "apply",
+            "--group",
+            "city",
+            "--transformers",
+            "kigali_a",
+            "--value",
+            "kigali",
+            "--output",
+            "json",
+            "--yes",
+        ]),
+        "missing_input",
+        "apply without --digest must be refused before the bridge opens"
+    );
+    // Clearing is its own command, so forgetting --value can never silently
+    // become an unassign.
+    assert_eq!(
+        refusal(&[
+            "design",
+            "group",
+            "apply",
+            "--group",
+            "city",
+            "--transformers",
+            "kigali_a",
+            "--digest",
+            "abc123",
+            "--output",
+            "json",
+            "--yes",
+        ]),
+        "missing_input",
+        "apply with no --value must refuse rather than clear the group"
+    );
+    // Both refusals come from the parser because both flags are DECLARED
+    // required on apply. `--value` is deliberately not shared with `preview`,
+    // where omitting it is the meaningful way to plan an unassign.
 }
 
 #[test]
@@ -2089,6 +2233,30 @@ fn every_design_write_refuses_without_confirmation() {
         ],
         vec!["design", "comment", "resolve", "--thread", "thread-1"],
         vec!["design", "comment", "promote", "--thread", "thread-1"],
+        vec![
+            "design",
+            "group",
+            "apply",
+            "--group",
+            "city",
+            "--transformers",
+            "kigali_a",
+            "--value",
+            "kigali",
+            "--digest",
+            "abc123",
+        ],
+        vec![
+            "design",
+            "group",
+            "unassign",
+            "--group",
+            "phasing",
+            "--transformers",
+            "kigali_a",
+            "--digest",
+            "abc123",
+        ],
     ] {
         let mut argv = args.clone();
         argv.extend(["--output", "json"]);
@@ -2110,7 +2278,7 @@ fn every_design_read_is_reachable_without_the_desktop_installed() {
     let commands = index["commands"].as_array().expect("commands");
     assert_eq!(
         commands.len(),
-        17,
+        22,
         "the design domain should expose its whole family: {commands:?}"
     );
     for command in commands {
@@ -2151,6 +2319,14 @@ fn design_reads_are_reads_and_design_writes_are_governed_writes() {
         ("design.tag.set", "global_write"),
         ("design.comment.post", "global_write"),
         ("design.comment.promote", "global_write"),
+        // A governed group's preview and its report projection are reads: they
+        // decide and describe, and neither writes a byte. That is what keeps
+        // both usable on a project that accepts no changes.
+        ("design.group.list", "read_only"),
+        ("design.group.preview", "read_only"),
+        ("design.group.export", "read_only"),
+        ("design.group.apply", "global_write"),
+        ("design.group.unassign", "global_write"),
     ] {
         let descriptor = ok(&["capabilities", id, "--output", "json"]);
         assert_eq!(
@@ -2197,6 +2373,11 @@ fn design_collaboration_is_a_complete_headless_project_surface() {
         "design.tag.list",
         "design.tag.define",
         "design.tag.set",
+        "design.group.list",
+        "design.group.preview",
+        "design.group.apply",
+        "design.group.unassign",
+        "design.group.export",
         "design.comment.list",
         "design.comment.read",
         "design.comment.post",
@@ -2221,6 +2402,12 @@ fn design_collaboration_is_a_complete_headless_project_surface() {
         "design.comment.post",
         "design.comment.resolve",
         "design.comment.promote",
+        // The governed group's two committing actions. `list`, `preview` and
+        // `export` are reads: they decide and describe, and neither writes a
+        // byte, which is what keeps all three usable on a project that accepts
+        // no changes.
+        "design.group.apply",
+        "design.group.unassign",
     ]
     .into_iter()
     .collect();
@@ -2318,6 +2505,30 @@ fn design_collaboration_is_a_complete_headless_project_surface() {
                 "design.comment.promote" => {
                     vec!["design", "comment", "promote", "--thread", "thread-smoke"]
                 }
+                "design.group.apply" => vec![
+                    "design",
+                    "group",
+                    "apply",
+                    "--group",
+                    "city",
+                    "--transformers",
+                    "T-smoke",
+                    "--value",
+                    "kigali",
+                    "--digest",
+                    "digest-smoke",
+                ],
+                "design.group.unassign" => vec![
+                    "design",
+                    "group",
+                    "unassign",
+                    "--group",
+                    "phasing",
+                    "--transformers",
+                    "T-smoke",
+                    "--digest",
+                    "digest-smoke",
+                ],
                 _ => unreachable!("write inventory and command surface diverged: {id}"),
             };
             args.extend(["--output", "json"]);

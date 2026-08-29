@@ -28,6 +28,7 @@
 //!   selection  list → read → save | archive | assign
 //!   attachment list → publish | download | retire
 //!   tag        list → define | set
+//!   group      list → preview → apply | unassign; export
 //!   comment    list → read → post | resolve | promote
 //! ```
 //!
@@ -41,6 +42,7 @@
 
 pub mod attachment;
 pub mod comment;
+pub mod group;
 pub mod selection;
 pub mod tag;
 
@@ -76,6 +78,11 @@ pub static DOMAIN: Domain = Domain {
         &tag::list::COMMAND,
         &tag::define::COMMAND,
         &tag::set::COMMAND,
+        &group::list::COMMAND,
+        &group::preview::COMMAND,
+        &group::apply::COMMAND,
+        &group::unassign::COMMAND,
+        &group::export::COMMAND,
         &comment::list::COMMAND,
         &comment::read::COMMAND,
         &comment::post::COMMAND,
@@ -144,6 +151,26 @@ pub const TAG_SET: BridgeOp = BridgeOp {
     operation: "design.tag.set",
     arguments: &["kind", "object", "version", "definition", "values"],
 };
+pub const GROUP_LIST: BridgeOp = BridgeOp {
+    operation: "design.group.list",
+    arguments: &["transformers"],
+};
+pub const GROUP_PREVIEW: BridgeOp = BridgeOp {
+    operation: "design.group.preview",
+    arguments: &["group", "transformers", "value"],
+};
+pub const GROUP_APPLY: BridgeOp = BridgeOp {
+    operation: "design.group.apply",
+    arguments: &["group", "transformers", "value", "digest"],
+};
+pub const GROUP_UNASSIGN: BridgeOp = BridgeOp {
+    operation: "design.group.unassign",
+    arguments: &["group", "transformers", "digest"],
+};
+pub const GROUP_EXPORT: BridgeOp = BridgeOp {
+    operation: "design.group.export",
+    arguments: &["transformers"],
+};
 pub const COMMENT_LIST: BridgeOp = BridgeOp {
     operation: "design.comment.list",
     arguments: &["kind", "object", "version", "resolved"],
@@ -182,6 +209,11 @@ pub const BRIDGE_OPS: &[&BridgeOp] = &[
     &TAG_LIST,
     &TAG_DEFINE,
     &TAG_SET,
+    &GROUP_LIST,
+    &GROUP_PREVIEW,
+    &GROUP_APPLY,
+    &GROUP_UNASSIGN,
+    &GROUP_EXPORT,
     &COMMENT_LIST,
     &COMMENT_READ,
     &COMMENT_POST,
@@ -306,6 +338,14 @@ pub const INVALID_VALUE_LIST: Refusal = Refusal {
     code: "invalid_value_list",
     when: "a comma-separated list is empty after whitespace and separators are removed",
     remedy: "pass at least one non-empty comma-separated value, e.g. --values ready,review",
+};
+/// A third governed group does not exist. Refused locally because the set is
+/// closed and declared on the descriptor: a round trip would only say the same
+/// thing more slowly.
+pub const UNKNOWN_TAG_GROUP: Refusal = Refusal {
+    code: "unknown_tag_group",
+    when: "--group named something other than the two governed groups",
+    remedy: "pass --group city or --group phasing",
 };
 pub const CONFIRMATION_REQUIRED: Refusal = Refusal {
     code: "confirmation_required",

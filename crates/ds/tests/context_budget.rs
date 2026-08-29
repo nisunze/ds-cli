@@ -296,6 +296,11 @@ fn discovery_indexes_are_cheap_in_json() {
     // compact domain context line; the ten-result cap is unchanged. Raised
     // again on 2026-08-28 for the `data` domain, for the same reason and the
     // same one extra compact line; the ten-result cap is still unchanged.
+    // 2026-08-29: raised ten bytes for the `design group` family. Its five
+    // commands stay below the descriptor and help tiers; what reaches this one
+    // is a single compact id/summary row (`design.group.apply`) displacing the
+    // previous tenth. The ten-result cap is unchanged, so this prices one
+    // row's width and nothing else.
     assert_within(
         "capabilities search",
         &[
@@ -305,7 +310,7 @@ fn discovery_indexes_are_cheap_in_json() {
             "--output",
             "json",
         ],
-        1_350,
+        1_360,
     );
 }
 

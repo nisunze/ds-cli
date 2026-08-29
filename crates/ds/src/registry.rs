@@ -778,6 +778,31 @@ static DESIGN_ENTRIES: &[Entry] = &[
         render: ds_cli_design::tag::set::render,
     },
     Entry {
+        command: &ds_cli_design::group::list::COMMAND,
+        handler: ds_cli_design::group::list::run,
+        render: ds_cli_design::group::list::render,
+    },
+    Entry {
+        command: &ds_cli_design::group::preview::COMMAND,
+        handler: ds_cli_design::group::preview::run,
+        render: ds_cli_design::group::preview::render,
+    },
+    Entry {
+        command: &ds_cli_design::group::apply::COMMAND,
+        handler: ds_cli_design::group::apply::run,
+        render: ds_cli_design::group::apply::render,
+    },
+    Entry {
+        command: &ds_cli_design::group::unassign::COMMAND,
+        handler: ds_cli_design::group::unassign::run,
+        render: ds_cli_design::group::unassign::render,
+    },
+    Entry {
+        command: &ds_cli_design::group::export::COMMAND,
+        handler: ds_cli_design::group::export::run,
+        render: ds_cli_design::group::export::render,
+    },
+    Entry {
         command: &ds_cli_design::comment::list::COMMAND,
         handler: ds_cli_design::comment::list::run,
         render: ds_cli_design::comment::list::render,
