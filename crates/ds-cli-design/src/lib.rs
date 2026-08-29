@@ -43,6 +43,7 @@
 pub mod attachment;
 pub mod comment;
 pub mod group;
+pub mod grouping;
 pub mod selection;
 pub mod tag;
 
@@ -50,16 +51,16 @@ use std::time::Duration;
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{Arg, ArgKind, Domain, Refusal};
-use serde_json::{Map, Value, json};
+use serde_json::{json, Map, Value};
 
 // The paired-application primitives every bridge domain shares. They are
 // declared once in `ds-cli-desktop` — the authority surface — so a caller who
 // learned `--desktop-descriptor` and the pairing refusals from `ds map` has
 // learned them here too.
 pub use ds_cli_desktop::ops::{
-    AMBIGUOUS, BridgeOp, DESCRIPTOR_ARG, INVALID_NUMBER, NOT_PAIRED, PAIRING_REJECTED, REFUSED,
-    SIGNED_OUT, UNREACHABLE, UNREADABLE, UNSUPPORTED, classify_signed_out, integer, invoke, paired,
-    paired_availability, plural,
+    classify_signed_out, integer, invoke, paired, paired_availability, plural, BridgeOp, AMBIGUOUS,
+    DESCRIPTOR_ARG, INVALID_NUMBER, NOT_PAIRED, PAIRING_REJECTED, REFUSED, SIGNED_OUT, UNREACHABLE,
+    UNREADABLE, UNSUPPORTED,
 };
 
 pub static DOMAIN: Domain = Domain {
@@ -84,6 +85,8 @@ pub static DOMAIN: Domain = Domain {
         &group::apply::COMMAND,
         &group::unassign::COMMAND,
         &group::export::COMMAND,
+        &grouping::preview::COMMAND,
+        &grouping::apply::COMMAND,
         &comment::list::COMMAND,
         &comment::read::COMMAND,
         &comment::post::COMMAND,
@@ -192,6 +195,14 @@ pub const GROUP_EXPORT: BridgeOp = BridgeOp {
     operation: "design.group.export",
     arguments: &["transformers"],
 };
+pub const CONSUMER_GROUPING_PREVIEW: BridgeOp = BridgeOp {
+    operation: "design.consumer-grouping.preview",
+    arguments: &["transformers", "definition-ids", "bindings"],
+};
+pub const CONSUMER_GROUPING_APPLY: BridgeOp = BridgeOp {
+    operation: "design.consumer-grouping.apply",
+    arguments: &["transformers", "definition-ids", "bindings", "digest"],
+};
 pub const COMMENT_LIST: BridgeOp = BridgeOp {
     operation: "design.comment.list",
     arguments: &["kind", "object", "version", "resolved"],
@@ -236,6 +247,8 @@ pub const BRIDGE_OPS: &[&BridgeOp] = &[
     &GROUP_APPLY,
     &GROUP_UNASSIGN,
     &GROUP_EXPORT,
+    &CONSUMER_GROUPING_PREVIEW,
+    &CONSUMER_GROUPING_APPLY,
     &COMMENT_LIST,
     &COMMENT_READ,
     &COMMENT_POST,
@@ -356,7 +369,8 @@ pub const INVALID_ANCHOR: Refusal = Refusal {
 pub const TOO_LARGE: Refusal = Refusal {
     code: "attachment_too_large",
     when: "the file is larger than the paired desktop's bounded path reader",
-    remedy: "publish it from the application's Attachments dialog, which streams from the file picker",
+    remedy:
+        "publish it from the application's Attachments dialog, which streams from the file picker",
 };
 pub const TOO_MANY: Refusal = Refusal {
     code: "too_many_values",

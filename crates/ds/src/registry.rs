@@ -828,6 +828,16 @@ static DESIGN_ENTRIES: &[Entry] = &[
         render: ds_cli_design::group::export::render,
     },
     Entry {
+        command: &ds_cli_design::grouping::preview::COMMAND,
+        handler: ds_cli_design::grouping::preview::run,
+        render: ds_cli_design::grouping::preview::render,
+    },
+    Entry {
+        command: &ds_cli_design::grouping::apply::COMMAND,
+        handler: ds_cli_design::grouping::apply::run,
+        render: ds_cli_design::grouping::apply::render,
+    },
+    Entry {
         command: &ds_cli_design::comment::list::COMMAND,
         handler: ds_cli_design::comment::list::run,
         render: ds_cli_design::comment::list::render,
