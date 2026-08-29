@@ -107,9 +107,18 @@ returns exact ordered membership plus its revision and refreshes the shared
 offline cache when connected.
 
 `solar run result` includes the committed city document inventory and the
-root-level portfolio inventory. `solar report export` pages one exact
-`apd`/`draft`, `network`, `plant`, or `financial` Markdown document through the
-named `solar.document.read` bridge operation. `solar portfolio read` pages and
+root-level portfolio inventory. A portfolio's governed publication is a handoff
+the application performs after its local commit, so a run can seal and commit
+its aggregate and still fail to queue that intent. The run stays `succeeded`
+and the receipt carries `publication` with the state, the application's reason
+and the remedy. An intent that never reached the outbox has no Sync Center row,
+so `solar sync status` cannot report it and this receipt is where it is read.
+No `publication` means the application stated nothing about one, which is what
+every receipt written before it recorded the fact looks like.
+
+`solar report export` pages one exact `apd`/`draft`, `network`, `plant`, or
+`financial` Markdown document through the named `solar.document.read` bridge
+operation. `solar portfolio read` pages and
 verifies the sealed aggregate result JSON, then returns one bounded semantic
 projection. Repeated `--path` values descend through at most eight object keys;
 large arrays and strings are edge-sampled and reported with `complete: false`.
@@ -259,7 +268,7 @@ update it.
 | `solar prepare` | `solar.prepare` | local file write | completed preparation receipt |
 | `solar run start` | `solar.run.start` | local file write | durable run id / launch receipt |
 | `solar run progress` | `solar.run.progress` | read only | bounded progress receipt |
-| `solar run result` | `solar.run.result` | read only | bounded public result receipt |
+| `solar run result` | `solar.run.result` | read only | bounded public result receipt, with any unqueued governed publication |
 | `solar run cancel` | `solar.run.cancel` | local UI | cancellation receipt |
 | `solar result read` | `solar.result.read` | read only | bounded city result projection |
 | `solar results read` | `solar.results.read` | read only | bounded canonical dashboard-section projection |

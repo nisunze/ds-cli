@@ -25,6 +25,30 @@ const READ_OPERATION: &str = "solar.result.read";
 const START_TIMEOUT: Duration = Duration::from_secs(30);
 const READ_TIMEOUT: Duration = Duration::from_secs(30);
 
+/// The wire key the paired session carries a portfolio's failed governed
+/// publication under, inside the result receipt's `portfolio` projection.
+///
+/// It is the snake_case spelling of the application receipt's own
+/// `publicationError`, hand-copied like every other field of that projection
+/// (`sourceRunId` → `source_run_id`, `inputDigest` → `input_digest`) and pinned
+/// against the owner by `bridge_parity.rs`.
+pub const PUBLICATION_ERROR_KEY: &str = "publication_error";
+
+/// The application's own bound on the reason it records.
+///
+/// `runExplicitNativePortfolio` slices a queue failure to 256 characters before
+/// it reaches the receipt, so a longer value does not mean a longer warning —
+/// it means this `ds` and that application no longer agree on the field.
+pub const PUBLICATION_ERROR_CHARS: usize = 256;
+
+/// The application's own token for an intent that was never queued, as its
+/// `solar.final.import` receipt already spells it.
+pub const PUBLICATION_NOT_QUEUED: &str = "not_queued";
+
+/// Nothing else re-queues it. The intent never reached the outbox, so there is
+/// no Sync Center row to retry and no state a later poll will change.
+const PUBLICATION_REMEDY: &str = "the sealed local result is unaffected; clear the reported cause in DS GridDesign and run the same portfolio again to publish the governed copy";
+
 pub static START_COMMAND: Command = Command {
     id: "solar.run.start",
     path: &["solar", "run", "start"],
@@ -151,7 +175,7 @@ pub static PROGRESS_COMMAND: Command = Command {
 pub static RESULT_COMMAND: Command = Command {
     id: "solar.run.result",
     path: &["solar", "run", "result"],
-    contract: 1,
+    contract: 2,
     summary: "Read the result receipt for one paired local Solar run.",
     purpose: "Reads the paired application's public result receipt for a run returned by `solar run start`. The receipt says whether the local run finished and where to continue; use `solar result read` for one bounded city/result projection.",
     chapter: Chapter::Solar,
@@ -166,7 +190,7 @@ pub static RESULT_COMMAND: Command = Command {
             "Use this bridge descriptor instead of discovering one.",
         ),
     ],
-    output: "The paired application's bounded public result receipt for the requested run.",
+    output: "The paired application's bounded public result receipt for the requested run. A portfolio run that sealed its result but could not queue its governed publication stays `succeeded` and carries `publication` with the state, the application's reason and the remedy; that intent never reached the outbox, so `solar sync status` has no row for it. No `publication` means the application stated nothing about one.",
     examples: &[Example {
         command: "ds solar run result --run-id solar-run-123 --output json",
         note: "Reads a completed run's public receipt.",
@@ -320,7 +344,56 @@ pub fn progress(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
 }
 
 pub fn result(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
-    run_receipt(inputs, RESULT_OPERATION)
+    publication_receipt(run_receipt(inputs, RESULT_OPERATION)?)
+}
+
+/// Keep a sealed portfolio calculation a success while naming a governed
+/// publication that did not happen.
+///
+/// The application publishes the aggregate as a handoff *after* the local
+/// commit: the result is on disk and its receipt is written before the intent
+/// is queued, so a queue failure is a sync-lane fact that never undoes the run.
+/// It records that fact on the portfolio receipt and nowhere else — an intent
+/// that never reached the outbox has no Sync Center row, so `solar sync status`
+/// cannot report it either. Reading it here is what lets the deployed `ds` see
+/// what the application's own screen sees.
+///
+/// So the status is untouched and the fact is lifted out of the pass-through
+/// projection into one named block, which is the only place `ds` describes it.
+/// A receipt written before the application recorded the field carries none,
+/// and gets no block: `ds` says nothing about a publication the application
+/// made no statement about.
+fn publication_receipt(mut receipt: Value) -> Result<Value, Failure> {
+    if receipt["status"].as_str() != Some("succeeded") {
+        return Ok(receipt);
+    }
+    let reported = receipt["portfolio"]
+        .as_object_mut()
+        .and_then(|portfolio| portfolio.remove(PUBLICATION_ERROR_KEY));
+    let Some(reported) = reported else {
+        return Ok(receipt);
+    };
+    let detail = reported
+        .as_str()
+        .map(str::trim)
+        .filter(|detail| !detail.is_empty() && detail.chars().count() <= PUBLICATION_ERROR_CHARS)
+        .ok_or_else(|| {
+            Failure::unavailable(
+                "desktop_contract_mismatch",
+                format!(
+                    "the paired session reported a portfolio publication failure outside its \
+                     bounded {PUBLICATION_ERROR_CHARS}-character reason"
+                ),
+            )
+            .remedy("update DS GridDesign and ds to matching releases")
+        })?
+        .to_string();
+    receipt["publication"] = json!({
+        "state": PUBLICATION_NOT_QUEUED,
+        "detail": detail,
+        "remedy": PUBLICATION_REMEDY,
+    });
+    Ok(receipt)
 }
 
 pub fn cancel(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
@@ -527,6 +600,18 @@ pub fn render_receipt(data: &Value) -> String {
     }
     if let Some(digest) = data["result_digest"].as_str() {
         out.push_str(&format!("digest    {digest}\n"));
+    }
+    // A succeeded run whose governed publication did not happen. Printing it
+    // beside the status is the point: text callers must not have to read JSON
+    // to learn that only the local copy exists.
+    if let Some(state) = data["publication"]["state"].as_str() {
+        out.push_str(&format!("publish   {state}\n"));
+        if let Some(detail) = data["publication"]["detail"].as_str() {
+            out.push_str(&format!("          {detail}\n"));
+        }
+        if let Some(remedy) = data["publication"]["remedy"].as_str() {
+            out.push_str(&format!("remedy    {remedy}\n"));
+        }
     }
     if let Some(note) = data["note"].as_str() {
         out.push_str(&format!("{note}\n"));

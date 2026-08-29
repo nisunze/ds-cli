@@ -60,6 +60,8 @@ struct App {
     solar_seed_client: String,
     solar_seed_pure: String,
     solar_seed_adapter: String,
+    solar_portfolio_run: String,
+    solar_portfolio_receipt: String,
 }
 
 fn app() -> Option<App> {
@@ -89,6 +91,8 @@ fn app() -> Option<App> {
         solar_seed_client: read("src/lib/api/solar-seed.ts")?,
         solar_seed_pure: read("src/lib/solar/seed.ts")?,
         solar_seed_adapter: read("src/lib/desktop/cli-solar-seed.ts")?,
+        solar_portfolio_run: read("src/lib/solar/native-batch.ts")?,
+        solar_portfolio_receipt: read("src/lib/solar/native-portfolio-batches.ts")?,
     })
 }
 
@@ -724,6 +728,106 @@ fn seed_adapter_code(app: &App) -> String {
         })
         .collect::<Vec<_>>()
         .join("\n")
+}
+
+/// A governed portfolio publication that never queued is a fact the
+/// application owns, and `ds solar run result` reports the same one.
+///
+/// The application publishes the aggregate from the run that sealed it, as a
+/// handoff after the local commit: the receipt is written first, the intent is
+/// queued after, and a queue failure is recorded on that already-succeeded
+/// receipt instead of undoing it. An intent that never reached the outbox has
+/// no Sync Center row, so the result receipt is the only place either surface
+/// can learn it — which is why `ds` reads it there rather than deriving a
+/// publication state of its own.
+///
+/// What has to agree is therefore the receipt field `ds` hand-copies, the bound
+/// the application puts on it, the order that keeps the run successful, and the
+/// "never queued" word both surfaces print. The application's own CLI
+/// projection does not forward the field yet; the directional guard below
+/// pins the spelling `ds` reads for when it does.
+#[test]
+fn a_failed_portfolio_publication_stays_a_sync_lane_fact_on_a_succeeded_receipt() {
+    let Some(app) = app() else {
+        return skip("ds-web checkout not found");
+    };
+
+    assert!(
+        app.solar_portfolio_receipt
+            .contains("publicationError?: string;"),
+        "the portfolio receipt must still own an optional publication failure; \
+         `ds solar run result` reports that field and nothing it derives itself"
+    );
+    assert!(
+        app.solar_portfolio_receipt
+            .contains(r#"if (receipt.status === "succeeded") return receipt.error === undefined;"#),
+        "a succeeded portfolio receipt must stay valid while carrying a publication \
+         failure; if the application starts rejecting one, `ds` must stop reporting \
+         a success alongside it"
+    );
+
+    // From the local commit to the value returned: everything the run does
+    // about publication happens here, after success is durable.
+    let handoff = between(
+        &app.solar_portfolio_run,
+        "await putNativePortfolioBatchReceipt(receipt);",
+        "return receipt;",
+    );
+    assert!(
+        handoff.contains("enqueueSolarPortfolioPublication("),
+        "the governed publication must be queued after the local commit, not before it"
+    );
+    assert!(
+        handoff.contains("receipt.publicationError ="),
+        "a publication that could not be queued must be recorded on the committed receipt"
+    );
+    assert!(
+        !handoff.contains("receipt.status ="),
+        "a failed publication must never relabel the calculation; `ds` reports the \
+         same receipt as succeeded"
+    );
+    assert!(
+        handoff.contains(&format!(
+            ".slice(0, {})",
+            ds_cli_solar::paired_run::PUBLICATION_ERROR_CHARS
+        )),
+        "ds bounds the reported reason at {} characters because the application does; \
+         a moved bound makes ds refuse a reply the application considers valid",
+        ds_cli_solar::paired_run::PUBLICATION_ERROR_CHARS
+    );
+
+    assert!(
+        app.frontend.contains(&format!(
+            "\"{}\"",
+            ds_cli_solar::paired_run::PUBLICATION_NOT_QUEUED
+        )),
+        "`{}` is the application's own word for an intent that never queued; ds prints \
+         the same one rather than inventing a second vocabulary",
+        ds_cli_solar::paired_run::PUBLICATION_NOT_QUEUED
+    );
+
+    // The hand copy rests on one convention: this projection renames every
+    // receipt field it forwards to snake_case. Prove the convention, then hold
+    // the field to it if and when the projection carries it.
+    let projection = between(&app.frontend, "portfolio: {", "};");
+    for (owner, wire) in [
+        ("portfolio.sourceRunId", "source_run_id"),
+        ("portfolio.inputDigest", "input_digest"),
+    ] {
+        assert!(
+            projects_field(projection, wire) && projection.contains(owner),
+            "the portfolio projection no longer renames `{owner}` to `{wire}`; the key \
+             ds reads is derived from that convention"
+        );
+    }
+    if app.frontend.contains("publicationError") {
+        assert!(
+            projects_field(projection, ds_cli_solar::paired_run::PUBLICATION_ERROR_KEY),
+            "the projection carries the receipt's publication failure under a key ds does \
+             not read; ds reads `{}`",
+            ds_cli_solar::paired_run::PUBLICATION_ERROR_KEY
+        );
+    }
 }
 
 #[test]

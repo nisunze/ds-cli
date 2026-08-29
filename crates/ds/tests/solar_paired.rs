@@ -473,6 +473,236 @@ fn solar_run_lifecycle_uses_closed_operations_and_preserves_arguments() {
     );
 }
 
+/// The default human surface, which is not JSON and so cannot use `ds`.
+fn ds_text(args: &[&str]) -> (String, i32) {
+    let output = Command::new(env!("CARGO_BIN_EXE_ds"))
+        .args(args)
+        .env("NO_COLOR", "1")
+        .output()
+        .expect("ds binary runs");
+    (
+        String::from_utf8_lossy(&output.stdout).into_owned(),
+        output.status.code().unwrap_or(-1),
+    )
+}
+
+/// The application's result receipt for a portfolio run that calculated,
+/// sealed and committed its aggregate — with only the publication half and the
+/// lifecycle status varying.
+fn portfolio_run_receipt(status: &str, publication_error: Option<Value>) -> Value {
+    let digest = |byte: char| format!("sha256:{}", byte.to_string().repeat(64));
+    let mut portfolio = json!({
+        "portfolio_id": "pf-1",
+        "portfolio_name": "Eastern portfolio",
+        "membership_revision": MEMBERSHIP_REVISION,
+        "city_ids": ["a", "b"],
+        "source_run_id": "solar-run-123",
+        "portfolio_run_id": "solar-run-123",
+        "input_digest": digest('b'),
+        "result_digest": digest('c'),
+        "batch_id": BATCH_ID,
+        "batch_digest": BATCH_DIGEST,
+    });
+    if let Some(reported) = publication_error {
+        portfolio["publication_error"] = reported;
+    }
+    json!({
+        "status": status,
+        "run_id": "solar-run-123",
+        "contexts": ["a", "b"],
+        "portfolio": portfolio,
+    })
+}
+
+#[test]
+fn solar_run_result_descriptor_declares_the_publication_receipt() {
+    let (envelope, code, stdout, stderr) =
+        ds(&["capabilities", "solar.run.result", "--output", "json"]);
+    assert_eq!(code, 0, "{stdout}{stderr}");
+    let command = &envelope["data"]["command"];
+    assert_eq!(command["contract"], 2);
+    let output = command["output"].as_str().expect("result output contract");
+    for expected in ["succeeded", "publication", "remedy", "solar sync status"] {
+        assert!(
+            output.contains(expected),
+            "the result contract must name `{expected}` so a caller knows a sealed \
+             portfolio can carry an unpublished governed copy: {output}"
+        );
+    }
+}
+
+/// A sealed calculation whose governed publication never queued.
+///
+/// The application commits local success before it queues the intent, so this
+/// is a sync-lane fact and not a failed run. `ds` must say both things at once:
+/// exit 0 with `succeeded`, and one explicit block naming the state, the
+/// application's reason and what would fix it.
+#[test]
+fn a_failed_portfolio_publication_is_reported_on_a_succeeded_result() {
+    const REASON: &str = "The governed portfolio publication has no durable destination.";
+    let reply = || portfolio_run_receipt("succeeded", Some(json!(REASON)));
+    let bridge = bridge(vec![
+        ("solar.run.result", reply()),
+        ("solar.run.result", reply()),
+    ]);
+    let descriptor = bridge.descriptor.to_string_lossy().into_owned();
+    let base: &[&str] = &[
+        "solar",
+        "run",
+        "result",
+        "--run-id",
+        "solar-run-123",
+        "--desktop-descriptor",
+        &descriptor,
+    ];
+
+    let mut args = base.to_vec();
+    args.extend(["--output", "json"]);
+    let (envelope, code, stdout, stderr) = ds(&args);
+    assert_eq!(
+        code, 0,
+        "a sealed calculation is not a failed one: {stdout}{stderr}"
+    );
+    let data = &envelope["data"];
+    assert_eq!(data["status"], "succeeded");
+    assert_eq!(data["publication"]["state"], "not_queued");
+    assert_eq!(data["publication"]["detail"], REASON);
+    assert!(
+        data["publication"]["remedy"]
+            .as_str()
+            .is_some_and(|remedy| remedy.contains("run the same portfolio again")),
+        "a publication warning with no remedy leaves the caller exactly where an \
+         English log would: {data}"
+    );
+    assert_eq!(
+        data["portfolio"]["result_digest"],
+        format!("sha256:{}", "c".repeat(64))
+    );
+    assert!(
+        data["portfolio"]["publication_error"].is_null(),
+        "the wire field must not survive beside the block that describes it: {data}"
+    );
+
+    // The text surface is where an operator actually reads this. Learning that
+    // only a local copy exists must not require asking for JSON.
+    let (text, code) = ds_text(base);
+    assert_eq!(code, 0, "{text}");
+    assert!(
+        text.contains("status    succeeded")
+            && text.contains("publish   not_queued")
+            && text.contains(REASON)
+            && text.contains("remedy"),
+        "the rendered receipt hides the unpublished governed copy:\n{text}"
+    );
+
+    let requests = finish(bridge);
+    assert_eq!(requests.len(), 2);
+}
+
+/// Neither invented nor relabelled.
+///
+/// A receipt written before the application recorded the field carries none,
+/// and `ds` must not mint a publication state it cannot know. A receipt that is
+/// not a successful calculation has no successful calculation to annotate, so
+/// its status stays exactly what the application reported and the application's
+/// own field is left where the application put it.
+#[test]
+fn portfolio_publication_is_never_invented_or_relabelled() {
+    const REASON: &str = "The governed portfolio publication could not be queued.";
+    let bridge = bridge(vec![
+        ("solar.run.result", portfolio_run_receipt("succeeded", None)),
+        (
+            "solar.run.result",
+            portfolio_run_receipt("failed", Some(json!(REASON))),
+        ),
+    ]);
+    let descriptor = bridge.descriptor.to_string_lossy().into_owned();
+    let call = |descriptor: &str| {
+        ds(&[
+            "solar",
+            "run",
+            "result",
+            "--run-id",
+            "solar-run-123",
+            "--desktop-descriptor",
+            descriptor,
+            "--output",
+            "json",
+        ])
+    };
+
+    let (envelope, code, stdout, stderr) = call(&descriptor);
+    assert_eq!(code, 0, "{stdout}{stderr}");
+    assert_eq!(envelope["data"]["status"], "succeeded");
+    assert!(
+        envelope["data"]["publication"].is_null(),
+        "an older receipt states nothing about publication, and neither may ds: {}",
+        envelope["data"]
+    );
+
+    let (envelope, code, stdout, stderr) = call(&descriptor);
+    assert_eq!(code, 0, "{stdout}{stderr}");
+    assert_eq!(
+        envelope["data"]["status"], "failed",
+        "the application's lifecycle status is never rewritten by ds"
+    );
+    assert!(
+        envelope["data"]["publication"].is_null(),
+        "a run that never sealed a result has no successful calculation to annotate: {}",
+        envelope["data"]
+    );
+    assert_eq!(
+        envelope["data"]["portfolio"]["publication_error"], REASON,
+        "what ds does not promote it must still not drop"
+    );
+
+    let requests = finish(bridge);
+    assert_eq!(requests.len(), 2);
+}
+
+/// The reason is a bounded field the application guarantees, not free text.
+///
+/// A value outside that bound means this `ds` and that build no longer agree on
+/// the field, which is a reply outside the contract rather than a longer
+/// warning — the same refusal a spliced run id gets, and it names the same fix.
+#[test]
+fn an_unbounded_portfolio_publication_reason_is_a_contract_mismatch() {
+    let bridge = bridge(vec![
+        (
+            "solar.run.result",
+            portfolio_run_receipt("succeeded", Some(json!("x".repeat(257)))),
+        ),
+        (
+            "solar.run.result",
+            portfolio_run_receipt("succeeded", Some(json!({ "reason": "structured" }))),
+        ),
+    ]);
+    let descriptor = bridge.descriptor.to_string_lossy().into_owned();
+    for _ in 0..2 {
+        let (envelope, code, stdout, stderr) = ds(&[
+            "solar",
+            "run",
+            "result",
+            "--run-id",
+            "solar-run-123",
+            "--desktop-descriptor",
+            &descriptor,
+            "--output",
+            "json",
+        ]);
+        assert_eq!(code, 3, "{stdout}{stderr}");
+        assert_eq!(envelope["error"]["code"], "desktop_contract_mismatch");
+        assert!(
+            envelope["error"]["remedy"]
+                .as_str()
+                .is_some_and(|remedy| remedy.contains("matching releases")),
+            "{envelope}"
+        );
+    }
+    let requests = finish(bridge);
+    assert_eq!(requests.len(), 2);
+}
+
 #[test]
 fn solar_portfolio_start_descriptor_exposes_the_explicit_contract() {
     let (envelope, code, stdout, stderr) =

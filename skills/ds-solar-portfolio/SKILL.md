@@ -70,13 +70,15 @@ labels a ratio-of-totals or consolidated-cashflow result.
 
 For a file, use the discovered portfolio export command. Export only a result
 or report declared by the same closed batch and choose a new destination;
-never reconstruct an aggregate JSON or draft in the skill. The portfolio batch
-and aggregate artifacts are currently local-only. City Sync Center rows do not
-prove that the portfolio aggregate was published. If the user asks to publish
-a portfolio artifact, discover a dedicated portfolio publication command; if
-the installed CLI does not declare one, use the `ds` skill's bounded feedback
-procedure. A local sealed result remains viewable independently of city
-publication state.
+never reconstruct an aggregate JSON or draft in the skill.
+
+The application publishes the governed aggregate itself, from the run that
+sealed it. There is no separate publication command to discover or request.
+Read the publication state on the run's own result receipt: a successful
+calculation whose publication did not queue stays successful and says so
+explicitly. Report that state with the result and follow its remedy; never
+present it as a failed calculation, and never treat a sealed local result or a
+city Sync Center row as proof the governed portfolio copy exists.
 
 When the installed CLI lacks a needed operation, follow the `ds` skill's live
 feedback procedure. Do not compensate with direct bridge calls, source-tree
