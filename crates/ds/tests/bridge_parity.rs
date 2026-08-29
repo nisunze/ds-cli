@@ -57,6 +57,7 @@ struct App {
     style_line_type: String,
     tile: String,
     feedback: String,
+    catalog: String,
     feedback_submit: String,
     solar_seed_client: String,
     solar_seed_pure: String,
@@ -89,6 +90,7 @@ fn app() -> Option<App> {
         style_line_type: read("src/lib/styles/line-type.ts")?,
         tile: read("src/lib/desktop/cli-tile.ts")?,
         feedback: read("src/lib/desktop/cli-feedback.ts")?,
+        catalog: read("src/lib/desktop/cli-catalog.ts")?,
         feedback_submit: read("src/lib/feedback/submit.ts")?,
         solar_seed_client: read("src/lib/api/solar-seed.ts")?,
         solar_seed_pure: read("src/lib/solar/seed.ts")?,
@@ -1413,6 +1415,58 @@ fn every_feedback_command_has_one_closed_operation_owner() {
             "no `{condition}` marker remains in the desktop feedback adapter; \
              `ds feedback close` would report desktop_refused instead of its \
              named refusal"
+        );
+    }
+}
+
+#[test]
+fn every_global_catalog_command_has_one_closed_map_independent_owner() {
+    let Some(app) = app() else {
+        skip("the ds-web sibling repository is not on disk");
+        return;
+    };
+    let allowlist = between(
+        &app.transport,
+        "pub const CLI_OPERATIONS: &[&str] = &[",
+        "];",
+    );
+    let mut seen = BTreeSet::new();
+    for operation in ds_cli_library::global_catalog::BRIDGE_OPS {
+        assert!(
+            seen.insert(operation.operation),
+            "catalog operation is declared twice: {}",
+            operation.operation
+        );
+        assert_eq!(
+            count(allowlist, &format!("\"{}\"", operation.operation)),
+            1,
+            "{} must appear once in the native allowlist",
+            operation.operation
+        );
+        assert_eq!(
+            switch_case_count(&app.frontend, operation.operation),
+            1,
+            "{} must have one frontend handler",
+            operation.operation
+        );
+        assert!(
+            app.catalog.contains(&format!("'{}':", operation.operation)),
+            "{} has no typed catalogue adapter contract",
+            operation.operation
+        );
+        for argument in operation.arguments {
+            assert!(
+                app.catalog.contains(&format!("'{argument}'"))
+                    || app.catalog.contains(&format!("\"{argument}\"")),
+                "ds catalogue sends `{argument}` to `{}` but the typed adapter does not accept it",
+                operation.operation
+            );
+        }
+    }
+    for purpose in ["library_asset", "example_project"] {
+        assert!(
+            app.catalog.contains(&format!("'{purpose}'")),
+            "catalogue adapter must admit the backend's `{purpose}` upload purpose"
         );
     }
 }

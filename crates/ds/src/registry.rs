@@ -110,6 +110,31 @@ static LIBRARY_ENTRIES: &[Entry] = &[
         render: ds_cli_library::global_catalog::render,
     },
     Entry {
+        command: &ds_cli_library::global_catalog::UPLOAD_COMMAND,
+        handler: ds_cli_library::global_catalog::run_upload,
+        render: ds_cli_library::global_catalog::render,
+    },
+    Entry {
+        command: &ds_cli_library::global_catalog::PUBLISH_LIBRARY_COMMAND,
+        handler: ds_cli_library::global_catalog::run_publish_library,
+        render: ds_cli_library::global_catalog::render,
+    },
+    Entry {
+        command: &ds_cli_library::global_catalog::PUBLISH_EXAMPLE_COMMAND,
+        handler: ds_cli_library::global_catalog::run_publish_example,
+        render: ds_cli_library::global_catalog::render,
+    },
+    Entry {
+        command: &ds_cli_library::global_catalog::LIBRARY_LIFECYCLE_COMMAND,
+        handler: ds_cli_library::global_catalog::run_library_lifecycle,
+        render: ds_cli_library::global_catalog::render,
+    },
+    Entry {
+        command: &ds_cli_library::global_catalog::EXAMPLE_LIFECYCLE_COMMAND,
+        handler: ds_cli_library::global_catalog::run_example_lifecycle,
+        render: ds_cli_library::global_catalog::render,
+    },
+    Entry {
         command: &ds_cli_library::pack::COMMAND,
         handler: ds_cli_library::pack::run,
         render: ds_cli_library::pack::render,

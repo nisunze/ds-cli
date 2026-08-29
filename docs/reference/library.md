@@ -46,10 +46,12 @@ decision.
 
 The global catalogue is a separate authority from the local immutable store.
 `library global read` lists global libraries, exact immutable releases, global
-examples, and exact example revisions. `library global write` uploads bounded
-artifacts, publishes new immutable releases/revisions, and changes only the
-governed head lifecycle (`active`, `archived`, `deprecated`, or restored). It
-never overwrites or deletes an immutable child. `library global fork-example`
+examples, and exact example revisions. The primary publisher commands are
+`library global upload`, `publish-library`, `publish-example`, and the two
+typed lifecycle commands. They use explicit flags or a local prepared
+directory—never a raw server body on the command line. They change only the
+governed head lifecycle (`active`, `archived`, `deprecated`, or restored) and
+never overwrite or delete an immutable child. `library global fork-example`
 creates a project model from one exact active example revision and records its
 server-derived provenance without copying or re-uploading the source object.
 
@@ -61,20 +63,33 @@ authorization. Local `library seed` does not publish anything globally.
 Short hypothetical requests and their command shapes:
 
 ```text
-"Show every immutable release of the Rwanda PLS-CADD structures library."
-ds library global read --action library-releases \
-  --payload '{"library_id":"rw-pls-cadd-structures"}' --output json
+"Publish the prepared Rwanda PLS-CADD library without hand-building an API body."
+ds library global publish-library --prepared ./rw-pls-cadd-library --yes --output json
 
 "Archive this head, but refuse if another publisher moved it first."
-ds library global write --action library-lifecycle \
-  --payload '{"library_id":"rw-pls-cadd-structures","expected_head_release_id":"2026.08","lifecycle":"archived"}' \
-  --yes --output json
+ds library global library-lifecycle --library-id rw-pls-cadd-structures \
+  --expected-head-release 2026_08 --expected-lifecycle active --lifecycle archived --yes --output json
 
 "Create a project model from the exact Karongi example revision."
 ds library global fork-example \
   --payload '{"project_id":"my-project","fork":{"example_id":"karongi-mv","example_revision_id":"2026.08","expected_head_revision_id":"2026.08","model_id":"karongi-copy","revision_id":"v1","display_name":"Karongi governed copy","model_kind":"mv_line","model_schema_version":"1","engine_version":"pls-cadd-pinned","reason":"Start from the proven global example"}}' \
   --yes --output json
 ```
+
+A library prepared directory has a small `library.json` with a top-level
+`visibility` and a `library` member containing the governed head fields and a
+`release` member. `release.manifest` and `release.validation_report` are
+`{ "path": "relative-file" }`; every entry in `release.assets` keeps its
+server-defined `relative_path`, `class`, `provenance`, and optional
+`external_definition`, plus a local `path`. The
+adapter uploads the first two under `library_manifest` and
+`library_validation_report`, and every asset under `library_asset`, then
+replaces only those local `path` values with canonical artifact pins. An
+`example.json` works identically: `revision.model`, `previews`, and
+`artifacts` name local files, with `model`, `project`, and `preview` routed to
+`example_model`, `example_project`, and `example_preview`. Safe relative
+paths, immutable artifacts, scope, and lifecycle are still enforced by the
+catalogue service.
 
 Global publication is a governance claim about immutable bytes, validation
 evidence, scope, and provenance. It is not PLS-CADD solver acceptance or an

@@ -75,6 +75,27 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("library.global.read", "read_only", "desktop_user"),
     ("library.global.write", "global_write", "desktop_user"),
     ("library.global.fork-example", "global_write", "project"),
+    ("library.global.upload", "global_write", "desktop_user"),
+    (
+        "library.global.publish-library",
+        "global_write",
+        "desktop_user",
+    ),
+    (
+        "library.global.publish-example",
+        "global_write",
+        "desktop_user",
+    ),
+    (
+        "library.global.library-lifecycle",
+        "global_write",
+        "desktop_user",
+    ),
+    (
+        "library.global.example-lifecycle",
+        "global_write",
+        "desktop_user",
+    ),
     ("library.open", "read_only", "none"),
     ("library.pack", "local_file_write", "none"),
     ("library.resolve-native", "read_only", "none"),
