@@ -66,9 +66,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         json!(crate::group::projection_transformers(inputs)?),
     );
     let definition_ids = crate::group::projection_definition_ids(inputs)?;
-    if !definition_ids.is_empty() {
-        arguments.insert("definition_ids".into(), json!(definition_ids));
-    }
+    arguments.insert("definition_ids".into(), json!(definition_ids));
     let descriptor = crate::paired(inputs.value("desktop-descriptor"))?;
     crate::invoke(
         &descriptor,
