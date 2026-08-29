@@ -1,0 +1,42 @@
+{
+  "schema_version": "ds.native-client-profiles/v1",
+  "development": true,
+  "profiles": {
+    "stable": {
+      "firebase": {
+        "project_id": "fixture-project",
+        "api_key": "fixture-firebase-public-key"
+      },
+      "gateway": {
+        "origin": "https://fixture.ue.gateway.dev",
+        "api_key": "fixture-gateway-public-key"
+      },
+      "projects_read": {
+        "method": "GET",
+        "path": "/api/v1/user/projects"
+      },
+      "provenance": {
+        "source_revision": "0123456789abcdef0123456789abcdef01234567",
+        "descriptor_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      }
+    },
+    "canary": {
+      "firebase": {
+        "project_id": "fixture-project",
+        "api_key": "fixture-firebase-public-key"
+      },
+      "gateway": {
+        "origin": "https://fixture-canary.ue.gateway.dev",
+        "api_key": "fixture-gateway-public-key"
+      },
+      "projects_read": {
+        "method": "GET",
+        "path": "/api/v1/user/projects"
+      },
+      "provenance": {
+        "source_revision": "0123456789abcdef0123456789abcdef01234567",
+        "descriptor_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      }
+    }
+  }
+}

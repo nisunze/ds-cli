@@ -127,7 +127,10 @@ impl Profile {
             Self::Map => tool.chapter == Chapter::MapPresentation,
             Self::Layers => LAYER_COMMANDS.contains(&tool.id.as_str()),
             Self::Tiling => tool.chapter == Chapter::VectorTiles,
-            Self::Project => tool.chapter == Chapter::Project,
+            // Native account bootstrap is available on the broad live surface
+            // but is not project-workflow tooling and must not inflate the
+            // already bounded specialized project profile.
+            Self::Project => tool.chapter == Chapter::Project && !tool.id.starts_with("auth."),
             Self::Operations => tool.chapter == Chapter::Operations,
             Self::DesignEdit => DESIGN_EDIT_COMMANDS.contains(&tool.id.as_str()),
             Self::DesignRun => DESIGN_RUN_COMMANDS.contains(&tool.id.as_str()),

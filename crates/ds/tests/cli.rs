@@ -251,6 +251,10 @@ fn build_identity_is_verifiable() {
         sha == "unknown" || sha.len() == 40,
         "source_sha is neither a git SHA nor an honest `unknown`: {sha}"
     );
+    assert_eq!(
+        data["native_client_core_source_sha"],
+        include_str!("../../../pins/ds-client-core.rev").trim()
+    );
 
     // `--version` and `ds version` are the same fact.
     let flag = ds(&["--version", "--output", "json"]);

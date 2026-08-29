@@ -443,7 +443,7 @@ pub static VERSION: Command = Command {
     summary: "Report verifiable build identity.",
     purpose: "\
 Reports the exact source this binary was built from, its target triple, \
-profile and whether the tree was dirty, alongside the contract versions it \
+profile and whether the tree was dirty, the pinned native-client core, and the contract versions it \
 speaks. Packaging verifies a staged executable by running this, so the answer \
 has to come from the build rather than from a string someone maintains.",
     chapter: Chapter::Catalog,
@@ -451,7 +451,7 @@ has to come from the build rather than from a string someone maintains.",
     authority: Authority::None,
     execution: Execution::Sync,
     args: &[],
-    output: "Product name, release version, source SHA, dirty flag, target, profile, envelope version.",
+    output: "Product name, release version, CLI and native-client-core source SHAs, dirty flag, target, profile, and envelope version.",
     examples: &[Example {
         command: "ds version --output json",
         note: "Packaging asserts .data.source_sha against its pin.",

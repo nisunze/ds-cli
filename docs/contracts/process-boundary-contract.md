@@ -51,8 +51,9 @@ source. None accepts an argv, a subcommand string, or a shell fragment from a
 caller, and the MCP adapter refuses any argument key the live descriptor does
 not declare before it maps a single element. Its desktop launch has no
 arguments at all and is available only to an MCP *invoke* whose live descriptor
-authority is `desktop_pairing`, `desktop_user`, or `project`; catalogue and
-describe paths, and every `authority: none` command, never observe or launch a
+authority is `desktop_pairing`, `desktop_user`, or legacy `project`; catalogue,
+describe paths, every `authority: none` command, and the `headless_user` and
+`headless_project` native auth authorities never observe or launch a
 desktop.
 
 `crates/ds/tests/process_boundary.rs` pins that inventory: it asserts the exact

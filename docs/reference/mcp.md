@@ -147,7 +147,8 @@ and `describe` are discovery too, so they never launch it regardless of the
 selected command.
 
 For an `invoke` whose descriptor says `desktop_pairing`, `desktop_user`, or
-`project`, MCP first reads `ds desktop status`. If no session is present and
+legacy `project`, MCP first reads `ds desktop status`. `headless_user` and
+`headless_project` never do so. If no Desktop session is present and
 the caller did not name `--desktop-descriptor` (nor set
 `DS_DESKTOP_DESCRIPTOR`), the installed Windows package may start its fixed DS
 GridDesign executable once, then waits at most 10 seconds for its loopback

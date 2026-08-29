@@ -13,6 +13,7 @@ name = "ds"
 path = "src/main.rs"
 
 [dependencies]
+ds-cli-auth = { workspace = true }
 ds-cli-contract = { workspace = true }
 ds-cli-design = { workspace = true }
 ds-cli-desktop = { workspace = true }

@@ -574,6 +574,7 @@ dependencies = [
 name = "ds"
 version = "0.1.0"
 dependencies = [
+ "ds-cli-auth",
  "ds-cli-contract",
  "ds-cli-data",
  "ds-cli-design",
@@ -598,6 +599,20 @@ dependencies = [
  "ds-grid-exchange",
  "serde_json",
  "sha2",
+]
+
+[[package]]
+name = "ds-cli-auth"
+version = "0.1.0"
+dependencies = [
+ "ds-cli-contract",
+ "ds-client-core",
+ "libc",
+ "serde",
+ "serde_json",
+ "sha2",
+ "ureq",
+ "zeroize",
 ]
 
 [[package]]
@@ -803,6 +818,18 @@ dependencies = [
  "serde_json",
  "sha2",
  "ureq",
+]
+
+[[package]]
+name = "ds-client-core"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "serde",
+ "serde_json",
+ "sha2",
+ "url",
+ "zeroize",
 ]
 
 [[package]]

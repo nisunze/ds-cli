@@ -109,7 +109,9 @@ fn root_help_is_cheap() {
     // Keep this guard at least as loose as the derived budget below. The
     // scaling assertion is load-bearing; a tighter flat cap would always fail
     // first and hide a domain-vs-command growth regression.
-    assert_within("root help", &["--help"], 2_300);
+    // 2026-08-29: native auth earns one domain line; its six commands remain
+    // entirely below this tier.
+    assert_within("root help", &["--help"], 2_380);
 }
 
 #[test]
@@ -310,7 +312,9 @@ fn discovery_indexes_are_cheap_in_json() {
             "--output",
             "json",
         ],
-        1_360,
+        // Native auth adds one compact domain context line; result count is
+        // still capped and command prose remains below this tier.
+        1_380,
     );
 }
 

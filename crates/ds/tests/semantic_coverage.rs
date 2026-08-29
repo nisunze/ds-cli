@@ -13,6 +13,14 @@ use std::process::Command;
 use serde_json::Value;
 
 const EXPECTED: &[(&str, &str, &str)] = &[
+    // Native auth is one local-state class because even status/list can rotate
+    // a refresh credential. None of these authorities implies Desktop.
+    ("auth.login", "local_auth_state", "none"),
+    ("auth.logout", "local_auth_state", "none"),
+    ("auth.project.list", "local_auth_state", "headless_user"),
+    ("auth.project.status", "local_auth_state", "headless_user"),
+    ("auth.project.use", "local_auth_state", "headless_user"),
+    ("auth.status", "local_auth_state", "none"),
     // Local data preparation. `none` authority is exact: a file on the
     // operator's own disk involves no project and no principal. `convert`
     // writes one file into the operator's own workspace and publishes nothing.

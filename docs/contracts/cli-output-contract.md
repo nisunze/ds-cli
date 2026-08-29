@@ -124,6 +124,7 @@ source a reader can check anything against today.
 | `discovery` | reads nothing outside the process | no |
 | `read_only` | reads state, writes nothing | no |
 | `proposal` | drafts a document a human applies; spends model credit | no |
+| `local_auth_state` | may rotate a native credential and may change its fenced project context | no |
 | `local_file_write` | writes a file in the operator's workspace | no |
 | `local_ui` | changes the paired desktop's visible state | no |
 | `artifact_write` | produces a durable artifact of record | **yes** |
@@ -152,8 +153,12 @@ Consent is never inferred from prose. `--yes` is the only way to pre-confirm.
 | `desktop_pairing` | a running DS GridDesign session — proves a transport, not a person |
 | `desktop_user` | that session, signed in |
 | `project` | a verified principal bound to a confirmed project |
+| `headless_user` | a restored native user session; never a Desktop requirement |
+| `headless_project` | that native user with matching UID/lane/credential-audience project context |
 
 Possession of a file, a descriptor or a project id is never authorization.
+Legacy `project` authority remains Desktop-backed for unmigrated commands.
+Headless authorities never cause an MCP Desktop status probe or launch.
 
 ## Input parsing
 

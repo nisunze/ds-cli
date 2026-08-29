@@ -26,6 +26,8 @@ pub enum Effect {
     /// Produces a document a human must apply. Persists nothing, but spends
     /// model credit and reads pinned project context.
     Proposal,
+    /// May rotate the native credential and may mutate its fenced context.
+    LocalAuthState,
     /// Writes a durable file inside the operator's own workspace and
     /// publishes nothing. Not read-only — the disk changed.
     LocalFileWrite,
@@ -45,6 +47,7 @@ impl Effect {
             Self::Discovery => "discovery",
             Self::ReadOnly => "read_only",
             Self::Proposal => "proposal",
+            Self::LocalAuthState => "local_auth_state",
             Self::LocalFileWrite => "local_file_write",
             Self::LocalUi => "local_ui",
             Self::ArtifactWrite => "artifact_write",
@@ -68,6 +71,7 @@ impl Effect {
             Self::Discovery => "reads nothing outside this process",
             Self::ReadOnly => "reads state; writes nothing",
             Self::Proposal => "drafts a document a human must apply",
+            Self::LocalAuthState => "changes protected native credential or project state",
             Self::LocalFileWrite => "writes a file in your workspace",
             Self::LocalUi => "changes the paired desktop's visible state",
             Self::ArtifactWrite => "produces a durable artifact of record",
@@ -95,6 +99,10 @@ pub enum Authority {
     DesktopUser,
     /// Requires a verified principal bound to a confirmed project.
     Project,
+    /// Requires a restored native user session; never implies a desktop.
+    HeadlessUser,
+    /// Requires a restored native user and its fenced local project context.
+    HeadlessProject,
 }
 
 impl Authority {
@@ -108,13 +116,18 @@ impl Authority {
             "desktop_pairing" => Some(Self::DesktopPairing),
             "desktop_user" => Some(Self::DesktopUser),
             "project" => Some(Self::Project),
+            "headless_user" => Some(Self::HeadlessUser),
+            "headless_project" => Some(Self::HeadlessProject),
             _ => None,
         }
     }
 
     /// Whether this authority needs the paired desktop transport at all.
     pub const fn requires_desktop(self) -> bool {
-        !matches!(self, Self::None)
+        matches!(
+            self,
+            Self::DesktopPairing | Self::DesktopUser | Self::Project
+        )
     }
 
     /// Whether the paired desktop must report a signed-in user before the
@@ -134,6 +147,8 @@ impl Authority {
             Self::DesktopPairing => "desktop_pairing",
             Self::DesktopUser => "desktop_user",
             Self::Project => "project",
+            Self::HeadlessUser => "headless_user",
+            Self::HeadlessProject => "headless_project",
         }
     }
 
@@ -143,6 +158,8 @@ impl Authority {
             Self::DesktopPairing => "a running DS GridDesign session on this machine",
             Self::DesktopUser => "a running DS GridDesign session, signed in",
             Self::Project => "signed in, with a project selected",
+            Self::HeadlessUser => "a restored native user session",
+            Self::HeadlessProject => "a restored native user with a fenced project selection",
         }
     }
 }

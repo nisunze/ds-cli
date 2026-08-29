@@ -232,6 +232,14 @@ one — but three crates carry a boundary the name does not give away:
 - **`ds-cli-desktop`** is the paired-desktop authority surface every domain
   needing a signed-in principal borrows. It is separate so that nothing in it
   is reachable from a domain that did not ask for it.
+- **`ds-cli-auth`** is the thin native host adapter. It links the release-pinned
+  `ds-web/crates/ds-client-core` owner for identity/session/project semantics,
+  while the CLI supplies only package discovery, fixed HTTP, terminal input,
+  and protected OS state. Clean clones therefore require both `ds-network`
+  and `ds-web` as siblings; `scripts/with-network-deps.sh` and `.ps1` create
+  only those verified temporary links for nested worktrees. The sole core
+  revision authority is `pins/ds-client-core.rev`; wrappers, CI, and `ds
+  version` all consume that same pin.
 
 Two boundaries hold this together.
 

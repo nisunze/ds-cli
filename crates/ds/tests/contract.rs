@@ -49,13 +49,21 @@ const EFFECTS: &[&str] = &[
     "discovery",
     "read_only",
     "proposal",
+    "local_auth_state",
     "local_file_write",
     "local_ui",
     "artifact_write",
     "machine_write",
     "global_write",
 ];
-const AUTHORITIES: &[&str] = &["none", "desktop_pairing", "desktop_user", "project"];
+const AUTHORITIES: &[&str] = &[
+    "none",
+    "desktop_pairing",
+    "desktop_user",
+    "project",
+    "headless_user",
+    "headless_project",
+];
 /// The closed chapter catalog, spelled the way a caller receives it. Written
 /// out rather than read from the binary on purpose: a test that asks the
 /// surface what its own vocabulary is proves nothing.

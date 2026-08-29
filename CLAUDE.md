@@ -116,10 +116,15 @@ Routing order:
 2. Desktop state, app-owned workflows, the web app's local cache → the paired
    loopback bridge (`ds-cli-desktop`).
 3. Authenticated project reads and writes → the same public API contracts
-   ds-web uses, executed *through* the desktop so credentials never leave the
-   application.
-4. App not running, or signed out → a typed refusal with a remedy. Never a
-   fallback to ADC, a service account, raw cache files, or another identity.
+   ds-web uses. Existing commands execute them *through* the desktop. The
+   narrow `ds auth` exception links ds-web's Tauri-independent
+   `ds-client-core` and supplies only its closed native transport and protected
+   refresh store; it exposes no generic URL/path/token API and never falls
+   back to Desktop authority.
+4. The authority a command declares is unavailable → a typed refusal with a
+   remedy. Never a fallback to ADC, a service account, raw cache files, or
+   another identity; native-auth commands do not turn Desktop absence into a
+   refusal because they never declared Desktop authority.
 
 The web application's IndexedDB is an implementation detail. Do not open,
 scrape, lock, copy or reverse-engineer it. A missing cache read is a named

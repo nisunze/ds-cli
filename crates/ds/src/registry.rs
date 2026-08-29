@@ -30,6 +30,39 @@ pub struct Registered {
     pub entries: &'static [Entry],
 }
 
+static AUTH_ENTRIES: &[Entry] = &[
+    Entry {
+        command: &ds_cli_auth::STATUS_COMMAND,
+        handler: ds_cli_auth::run_status,
+        render: ds_cli_auth::render_status,
+    },
+    Entry {
+        command: &ds_cli_auth::LOGIN_COMMAND,
+        handler: ds_cli_auth::run_login,
+        render: ds_cli_auth::render_login,
+    },
+    Entry {
+        command: &ds_cli_auth::LOGOUT_COMMAND,
+        handler: ds_cli_auth::run_logout,
+        render: ds_cli_auth::render_logout,
+    },
+    Entry {
+        command: &ds_cli_auth::PROJECT_LIST_COMMAND,
+        handler: ds_cli_auth::run_project_list,
+        render: ds_cli_auth::render_project_list,
+    },
+    Entry {
+        command: &ds_cli_auth::PROJECT_USE_COMMAND,
+        handler: ds_cli_auth::run_project_use,
+        render: ds_cli_auth::render_project,
+    },
+    Entry {
+        command: &ds_cli_auth::PROJECT_STATUS_COMMAND,
+        handler: ds_cli_auth::run_project_status,
+        render: ds_cli_auth::render_project,
+    },
+];
+
 /// Every domain, in root-help order. Static because the table is the
 /// interface: it is walked by dispatch, by help and by the contract tests,
 /// and all three must be looking at the same thing.
@@ -1113,6 +1146,10 @@ static DOMAINS: &[Registered] = &[
     Registered {
         domain: &ds_cli_mcp::DOMAIN,
         entries: MCP_ENTRIES,
+    },
+    Registered {
+        domain: &ds_cli_auth::DOMAIN,
+        entries: AUTH_ENTRIES,
     },
 ];
 

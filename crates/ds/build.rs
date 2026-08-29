@@ -17,6 +17,7 @@ fn main() {
     println!("cargo:rerun-if-env-changed=DS_CLI_SOURCE_SHA");
     println!("cargo:rerun-if-env-changed=DS_CLI_SOURCE_DIRTY");
     println!("cargo:rerun-if-changed=../../.git/HEAD");
+    println!("cargo:rerun-if-changed=../../pins/ds-client-core.rev");
 
     let pinned = std::env::var("DS_CLI_SOURCE_SHA")
         .ok()
@@ -35,6 +36,17 @@ fn main() {
 
     println!("cargo:rustc-env=DS_BUILD_SHA={sha}");
     println!("cargo:rustc-env=DS_BUILD_DIRTY={}", u8::from(dirty));
+    let native_client_core_sha = include_str!("../../pins/ds-client-core.rev").trim();
+    let native_client_core_sha = if native_client_core_sha.len() == 40
+        && native_client_core_sha
+            .bytes()
+            .all(|byte| byte.is_ascii_hexdigit())
+    {
+        native_client_core_sha
+    } else {
+        "unknown"
+    };
+    println!("cargo:rustc-env=DS_NATIVE_CLIENT_CORE_SHA={native_client_core_sha}");
     println!(
         "cargo:rustc-env=DS_BUILD_TARGET={}",
         std::env::var("TARGET").unwrap_or_else(|_| "unknown".into())

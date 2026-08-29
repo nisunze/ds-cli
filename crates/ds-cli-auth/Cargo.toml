@@ -1,0 +1,21 @@
+[package]
+name = "ds-cli-auth"
+description = "Thin native auth and project-context host adapter for ds-client-core."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[dependencies]
+ds-cli-contract = { workspace = true }
+ds-client-core = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+ureq = { workspace = true }
+zeroize = { workspace = true }
+
+[target.'cfg(unix)'.dependencies]
+libc = { workspace = true }

@@ -40,6 +40,10 @@ const NOT_A_REFUSAL: &[(&str, &str)] = &[
         "raised only if a validated --target/--mode/--container choice has no          engine value behind it, which the choice list makes unreachable",
     ),
     (
+        "invalid_lane",
+        "raised only if the auth host receives a lane outside the command's parser-enforced stable/canary choices",
+    ),
+    (
         "callee_wait_failed",
         "raised only if the OS cannot report on a child ds itself spawned",
     ),
@@ -213,6 +217,7 @@ fn every_constructible_refusal_code_is_documented() {
     // command equally, so they are documented once in the output contract
     // rather than repeated in every REFUSALS section.
     let domain_crates = [
+        ("ds-cli-auth", Some("auth")),
         ("ds-cli-data", Some("data")),
         ("ds-cli-design", Some("design")),
         ("ds-cli-map", Some("map")),

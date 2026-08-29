@@ -39,15 +39,33 @@ jobs:
           token: ${{ secrets.WORKSPACE_TOKEN }}
           persist-credentials: false
 
-      # Source only — `tests/bridge_parity.rs` reads the bridge's allow-list,
-      # the operation schemas and the map snapshot. Nothing here is built.
+      - name: Read native client core authority pin
+        id: native-client-core
+        working-directory: data-solutions/ds-cli
+        shell: bash
+        run: |
+          sha="$(tr -d '\r\n' < pins/ds-client-core.rev)"
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]]
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      # `tests/bridge_parity.rs` reads the web bridge and Cargo also compiles
+      # the exact pinned Tauri-independent native client core from this tree.
       - name: Check out ds-web
         uses: actions/checkout@v4
         with:
           repository: nisunze/ds-web
+          ref: ${{ steps.native-client-core.outputs.sha }}
           path: data-solutions/ds-web
           token: ${{ secrets.WORKSPACE_TOKEN }}
           persist-credentials: false
+
+      - name: Verify native client core authority pin
+        working-directory: data-solutions/ds-web
+        env:
+          EXPECTED_CORE_SHA: ${{ steps.native-client-core.outputs.sha }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$EXPECTED_CORE_SHA"
+          test -f crates/ds-client-core/Cargo.toml
 
       # The two engines `ds` reaches over a typed process contract. Unlike
       # ds-web these are needed as *binaries*: `tests/engine_parity.rs` asks

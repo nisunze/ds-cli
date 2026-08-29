@@ -820,24 +820,30 @@ mod tests {
 
     #[test]
     fn headless_authority_never_observes_waits_or_launches_a_desktop() {
-        let mut observed = 0usize;
-        let mut launched = 0usize;
-        let mut waited = 0usize;
-        ensure_desktop_with(
+        for authority in [
             Authority::None,
-            false,
-            &mut || {
-                observed += 1;
-                Ok(DesktopState::Absent)
-            },
-            &mut || {
-                launched += 1;
-                Ok(())
-            },
-            &mut || waited += 1,
-        )
-        .expect("headless command is ready without desktop work");
-        assert_eq!((observed, launched, waited), (0, 0, 0));
+            Authority::HeadlessUser,
+            Authority::HeadlessProject,
+        ] {
+            let mut observed = 0usize;
+            let mut launched = 0usize;
+            let mut waited = 0usize;
+            ensure_desktop_with(
+                authority,
+                false,
+                &mut || {
+                    observed += 1;
+                    Ok(DesktopState::Absent)
+                },
+                &mut || {
+                    launched += 1;
+                    Ok(())
+                },
+                &mut || waited += 1,
+            )
+            .expect("headless command is ready without desktop work");
+            assert_eq!((observed, launched, waited), (0, 0, 0));
+        }
     }
 
     #[test]
