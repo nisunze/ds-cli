@@ -393,12 +393,14 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
         "grid",
         "pls",
         "pls-library",
+        "library-governance",
         "survey",
         "form-factory",
         "survey-projects",
         "design-edit",
         "design-run",
         "map",
+        "layers",
         "tiling",
         "project",
         "solar-run",
@@ -442,10 +444,10 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
         .iter()
         .map(|tool| tool["name"].as_str().unwrap().to_string())
         .collect::<BTreeSet<_>>();
-    for (prefix, first, second) in [
-        ("map_design_", "design-edit", "design-run"),
-        ("solar_", "solar-run", "solar-delivery"),
-        ("pls_", "pls", "pls-library"),
+    for (prefix, profiles) in [
+        ("map_design_", &["design-edit", "design-run"][..]),
+        ("solar_", &["solar-run", "solar-delivery"][..]),
+        ("pls_", &["pls", "pls-library", "library-governance"][..]),
     ] {
         let expected = all
             .iter()
@@ -454,20 +456,16 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
             })
             .cloned()
             .collect::<BTreeSet<_>>();
-        let first_set = &published[first];
-        let second_set = &published[second];
-        assert!(
-            first_set.is_disjoint(second_set),
-            "{first} overlaps {second}"
-        );
-        assert_eq!(
-            first_set
-                .union(second_set)
-                .cloned()
-                .collect::<BTreeSet<_>>(),
-            expected,
-            "{first} and {second} must partition `{prefix}*`"
-        );
+        let mut union = BTreeSet::new();
+        for profile in profiles {
+            let current = &published[profile];
+            assert!(
+                union.is_disjoint(current),
+                "{profile} overlaps a sibling profile"
+            );
+            union.extend(current.iter().cloned());
+        }
+        assert_eq!(union, expected, "{profiles:?} must partition `{prefix}*`");
     }
 
     let (responses, _) = mcp(

@@ -29,17 +29,20 @@ For a narrow role, explicitly install one typed profile:
 ds mcp install --host claude-code --exposure commands --profile pls --write --yes
 ```
 
-Profiles are `grid`, `pls`, `pls-library`, `survey`, `form-factory`, `survey-projects`,
-`design-edit`, `design-run`, `map`, `layers`, `tiling`, `project`, `solar-run`,
-`solar-delivery`, and `operations`. `survey` retains the map/local-data workflow;
+Profiles are `grid`, `pls`, `pls-library`, `library-governance`, `survey`,
+`form-factory`, `survey-projects`, `design-edit`, `design-run`, `map`, `layers`,
+`tiling`, `project`, `solar-run`, `solar-delivery`, and `operations`. `survey`
+retains the map/local-data workflow;
 `form-factory` owns global schemas and `survey-projects` owns project-form
 settings, reusable templates, and create-from-template. Each publishes
 `ds_catalog` plus at most 14 fully typed command tools. Do not install every
 profile: that duplicates discovery and recreates selection ambiguity.
 
 Use `pls` for backup recovery, workspace diagnostics and native delivery; use
-`pls-library` for immutable native-library lifecycle. The split keeps both
-surfaces bounded. They project live descriptors and never publish a generic
+`pls-library` for local immutable library verification, packing, seeding and
+native resolution; use `library-governance` for global library/example upload,
+publication and lifecycle. The split keeps every surface bounded. They project
+live descriptors and never publish a generic
 filesystem, process, PowerShell, Win32, or PLS-CADD UI escape hatch. Find a
 changed/new operation through `ds_catalog` instead of guessing its generated
 tool name.

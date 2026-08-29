@@ -13,6 +13,7 @@ pub const PROFILE_IDS: &[&str] = &[
     "grid",
     "pls",
     "pls-library",
+    "library-governance",
     "survey",
     "form-factory",
     "survey-projects",
@@ -55,6 +56,7 @@ pub enum Profile {
     Grid,
     Pls,
     PlsLibrary,
+    LibraryGovernance,
     Survey,
     FormFactory,
     SurveyProjects,
@@ -75,6 +77,7 @@ impl Profile {
             "grid" => Some(Self::Grid),
             "pls" => Some(Self::Pls),
             "pls-library" => Some(Self::PlsLibrary),
+            "library-governance" => Some(Self::LibraryGovernance),
             "survey" => Some(Self::Survey),
             "form-factory" => Some(Self::FormFactory),
             "survey-projects" => Some(Self::SurveyProjects),
@@ -96,6 +99,7 @@ impl Profile {
             Self::Grid => "grid",
             Self::Pls => "pls",
             Self::PlsLibrary => "pls-library",
+            Self::LibraryGovernance => "library-governance",
             Self::Survey => "survey",
             Self::FormFactory => "form-factory",
             Self::SurveyProjects => "survey-projects",
@@ -115,7 +119,8 @@ impl Profile {
         match self {
             Self::Grid => matches!(tool.chapter, Chapter::GridModel | Chapter::Reports),
             Self::Pls => tool.chapter == Chapter::PlsCadd && tool.id.starts_with("pls."),
-            Self::PlsLibrary => tool.chapter == Chapter::PlsCadd && tool.id.starts_with("library."),
+            Self::PlsLibrary => PLS_LIBRARY_COMMANDS.contains(&tool.id.as_str()),
+            Self::LibraryGovernance => LIBRARY_GOVERNANCE_COMMANDS.contains(&tool.id.as_str()),
             Self::Survey => SURVEY_MAP_COMMANDS.contains(&tool.id.as_str()),
             Self::FormFactory => FORM_FACTORY_COMMANDS.contains(&tool.id.as_str()),
             Self::SurveyProjects => SURVEY_PROJECT_COMMANDS.contains(&tool.id.as_str()),
@@ -149,9 +154,10 @@ impl Profile {
             Self::DesignRun => DESIGN_RUN_COMMANDS,
             Self::SolarRun => SOLAR_RUN_COMMANDS,
             Self::SolarDelivery => SOLAR_DELIVERY_COMMANDS,
+            Self::PlsLibrary => PLS_LIBRARY_COMMANDS,
+            Self::LibraryGovernance => LIBRARY_GOVERNANCE_COMMANDS,
             Self::Grid
             | Self::Pls
-            | Self::PlsLibrary
             | Self::Map
             | Self::Tiling
             | Self::Project
@@ -162,7 +168,7 @@ impl Profile {
     pub fn includes_chapter(self, chapter: Chapter) -> bool {
         match self {
             Self::Grid => matches!(chapter, Chapter::GridModel | Chapter::Reports),
-            Self::Pls | Self::PlsLibrary => chapter == Chapter::PlsCadd,
+            Self::Pls | Self::PlsLibrary | Self::LibraryGovernance => chapter == Chapter::PlsCadd,
             Self::Survey | Self::FormFactory | Self::SurveyProjects | Self::Layers => {
                 chapter == Chapter::Survey
             }
@@ -175,6 +181,27 @@ impl Profile {
         }
     }
 }
+
+const PLS_LIBRARY_COMMANDS: &[&str] = &[
+    "library.verify",
+    "library.open",
+    "library.catalog",
+    "library.pack",
+    "library.unpack",
+    "library.seed",
+    "library.resolve-native",
+];
+
+const LIBRARY_GOVERNANCE_COMMANDS: &[&str] = &[
+    "library.global.read",
+    "library.global.write",
+    "library.global.fork-example",
+    "library.global.upload",
+    "library.global.publish-library",
+    "library.global.publish-example",
+    "library.global.library-lifecycle",
+    "library.global.example-lifecycle",
+];
 
 const SURVEY_MAP_COMMANDS: &[&str] = &[
     "map.view",
