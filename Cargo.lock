@@ -682,6 +682,7 @@ name = "ds-cli-library"
 version = "0.1.0"
 dependencies = [
  "ds-cli-contract",
+ "ds-cli-desktop",
  "ds-grid-exchange",
  "ds-grid-model",
  "serde_json",
