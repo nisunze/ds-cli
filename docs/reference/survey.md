@@ -83,6 +83,25 @@ creates a new project instance. Creating a template is different again: `survey
 template create` snapshots a named source project's current configuration into
 a reusable catalogue object.
 
+## Complex-form lifecycle and refusals
+
+Keep the master-form lifecycle separate from a project's binding lifecycle. A
+safe complex-network sequence is: discover `form types`; create the master
+schema; read it; update it with the returned version; publish it; use the
+project-form editor to configure the explicit project binding; then unpublish,
+archive or delete only with the exact dependency result the backend returns.
+`survey form lifecycle` is the master transition door; `project-forms plan` /
+`apply` are the project-settings door; neither creates a project template or a
+new project instance.
+
+Every transition can refuse. A stale `--expect-version` is a concurrency
+refusal; archive/delete can refuse live bindings unless an operator explicitly
+uses `--force`; a missing or archived master is returned as an unavailable
+binding and permits only an enable-only `false` cleanup. Follow that refusal
+through the same `ds survey` contract—do not open the map, reconstruct settings
+from a cached form, or make template management conditional on an unavailable
+form.
+
 Commands under `ds map` remain reserved for operations that genuinely consume
 map-owned local state, such as Working Area transfer or survey-data migration.
 Form Factory, project-form settings, project templates, and project creation

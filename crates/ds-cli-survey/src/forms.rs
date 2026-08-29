@@ -62,7 +62,7 @@ pub static READ_COMMAND: Command = Command {
     ],
     output: "The canonical form schema with one ordered field page, total field count, next offset, and completeness flag.",
     examples: &[Example {
-        command: "ds survey form read --slug pole_activities --field-limit 25 --output json",
+        command: "ds survey form read --slug lv_poles_survey --field-limit 25 --output json",
         note: "Inspect the master schema before changing a project binding or template.",
         runnable: false,
     }],

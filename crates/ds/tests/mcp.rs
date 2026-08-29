@@ -234,6 +234,74 @@ fn by_command_profiles_still_partition_the_live_registry() {
 }
 
 #[test]
+fn form_factory_and_survey_projects_keep_their_distinct_mapless_contracts() {
+    // These two profiles are deliberately adjacent but not interchangeable:
+    // one manages global master schemas, the other project bindings/templates
+    // and new-project instantiation. Describe is discovery, so this proof must
+    // not need an application session or cause MCP's desktop gate to launch.
+    let (responses, _) = mcp(
+        &["--exposure", "commands", "--profile", "form-factory"],
+        &[json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/list" })],
+    );
+    let form_factory = response(&responses, 1)["result"]["tools"]
+        .as_array()
+        .expect("form-factory tools");
+    let form_factory_names = form_factory
+        .iter()
+        .map(|tool| tool["name"].as_str().expect("tool name"))
+        .collect::<BTreeSet<_>>();
+    assert!(form_factory_names.contains("survey_form_lifecycle"));
+    assert!(!form_factory_names.contains("survey_project_create-from-template"));
+    let lifecycle = form_factory
+        .iter()
+        .find(|tool| tool["name"] == "survey_form_lifecycle")
+        .expect("form lifecycle tool");
+    assert_eq!(lifecycle["title"], "survey.form.lifecycle");
+    assert_eq!(
+        lifecycle["inputSchema"]["properties"]["confirm"]["type"],
+        "boolean"
+    );
+    assert_eq!(
+        lifecycle["inputSchema"]["properties"]["action"]["enum"],
+        json!([
+            "duplicate",
+            "publish",
+            "unpublish",
+            "archive",
+            "restore",
+            "delete"
+        ])
+    );
+
+    let (responses, _) = mcp(
+        &["--exposure", "commands", "--profile", "survey-projects"],
+        &[json!({ "jsonrpc": "2.0", "id": 3, "method": "tools/list" })],
+    );
+    let survey_projects = response(&responses, 3)["result"]["tools"]
+        .as_array()
+        .expect("survey-project tools");
+    let survey_project_names = survey_projects
+        .iter()
+        .map(|tool| tool["name"].as_str().expect("tool name"))
+        .collect::<BTreeSet<_>>();
+    assert!(survey_project_names.contains("survey_project_create-from-template"));
+    assert!(!survey_project_names.contains("survey_form_lifecycle"));
+    let creation = survey_projects
+        .iter()
+        .find(|tool| tool["name"] == "survey_project_create-from-template")
+        .expect("create-from-template tool");
+    assert_eq!(creation["title"], "survey.project.create-from-template");
+    assert_eq!(
+        creation["inputSchema"]["properties"]["project-name"]["type"],
+        "string"
+    );
+    assert_eq!(
+        creation["inputSchema"]["properties"]["confirm"]["type"],
+        "boolean"
+    );
+}
+
+#[test]
 fn chapter_describe_and_invoke_return_the_exact_cli_envelopes() {
     let (responses, _) = mcp(
         &["--exposure", "chapters"],

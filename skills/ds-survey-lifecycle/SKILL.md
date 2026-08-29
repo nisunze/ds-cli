@@ -52,7 +52,7 @@ Hypothetical requests that should route here include:
 - “Make the pipe form an edge and the junction form a node for project A.”
 - “Turn project A's survey configuration into a reusable template.”
 - “Create a new project from that template.”
-- “Disable the stale `pole_activities` binding whose master was archived.”
+- “Disable an unavailable archived binding without touching its missing master.”
 
 Water is only an example. Never infer topology setting keys from the domain
 word. Read the live field types and the target form's settings editor.
@@ -93,7 +93,9 @@ ds survey project-forms apply --project project-a --changes ./changes.json --yes
 
 An unavailable binding may be cleaned independently with exactly an
 enable-only `false` row. Do not edit or re-enable it until its master is
-restored.
+restored. The absent master is a refusal/control case, never a prerequisite for
+listing forms, managing templates, creating a project from a template, or
+editing another project's bindings.
 
 ## Reuse configuration
 
