@@ -7,7 +7,7 @@
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::PathBuf;
-use std::process::Command;
+use std::process::{Command, Stdio};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -271,6 +271,68 @@ fn bridge_with_status(replies: Vec<(&'static str, u16, Value)>) -> Bridge {
     Bridge { descriptor, server }
 }
 
+/// A paired bridge reached through MCP. MCP deliberately proves desktop-user
+/// authority before invoking a command, so this fixture serves the same
+/// bounded session status the application does and only then the closed Solar
+/// operation. A command-only fixture would test an authority bypass that does
+/// not exist in the product.
+fn mcp_bridge(expected_operation: &'static str, reply: Value) -> Bridge {
+    let listener = TcpListener::bind("127.0.0.1:0").expect("bind loopback bridge");
+    let address = listener.local_addr().expect("bridge address");
+    let server = thread::spawn(move || {
+        let (mut status_stream, _) = listener.accept().expect("accept MCP status request");
+        status_stream
+            .set_read_timeout(Some(Duration::from_secs(10)))
+            .expect("set status read timeout");
+        let status_headers = read_request_headers(&mut status_stream);
+        assert!(
+            status_headers.starts_with("GET /v1/session "),
+            "MCP must prove the paired session before command dispatch: {status_headers}"
+        );
+        write_json_reply(
+            &mut status_stream,
+            200,
+            &json!({
+                "signed_in": true,
+                "uid": "uid-1",
+                "email": "operator@example.test",
+                "project": "project-1",
+                "design_context": null,
+            }),
+        );
+
+        let (mut operation_stream, _) = listener.accept().expect("accept MCP operation request");
+        operation_stream
+            .set_read_timeout(Some(Duration::from_secs(10)))
+            .expect("set operation read timeout");
+        let request = read_json_request(&mut operation_stream);
+        assert_eq!(request["operation"], expected_operation);
+        write_json_reply(&mut operation_stream, 200, &reply);
+        vec![request]
+    });
+
+    let unique = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("clock after epoch")
+        .as_nanos();
+    let descriptor = std::env::temp_dir().join(format!(
+        "ds-cli-solar-mcp-paired-{}-{unique}.json",
+        std::process::id()
+    ));
+    let body = json!({
+        "version": 1,
+        "url": format!("http://{address}"),
+        "token": "test-pairing-secret",
+        "pid": 1,
+    });
+    std::fs::write(
+        &descriptor,
+        serde_json::to_vec(&body).expect("serialize descriptor"),
+    )
+    .expect("write descriptor");
+    Bridge { descriptor, server }
+}
+
 fn finish(bridge: Bridge) -> Vec<Value> {
     let Bridge { descriptor, server } = bridge;
     let _ = std::fs::remove_file(descriptor);
@@ -310,6 +372,30 @@ fn read_json_request(stream: &mut TcpStream) -> Value {
     }
     serde_json::from_slice(&bytes[body_start..body_start + content_length])
         .expect("bridge request is JSON")
+}
+
+fn read_request_headers(stream: &mut TcpStream) -> String {
+    let mut bytes = Vec::new();
+    loop {
+        let mut chunk = [0_u8; 1024];
+        let count = stream.read(&mut chunk).expect("read request headers");
+        assert!(count > 0, "bridge client closed before completing headers");
+        bytes.extend_from_slice(&chunk[..count]);
+        if let Some(at) = bytes.windows(4).position(|window| window == b"\r\n\r\n") {
+            return String::from_utf8(bytes[..at].to_vec()).expect("request headers UTF-8");
+        }
+    }
+}
+
+fn write_json_reply(stream: &mut TcpStream, status: u16, value: &Value) {
+    let reply = serde_json::to_vec(value).expect("serialize bridge reply");
+    let headers = format!(
+        "HTTP/1.1 {status} REPLY\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+        reply.len()
+    );
+    stream.write_all(headers.as_bytes()).expect("write headers");
+    stream.write_all(&reply).expect("write body");
+    stream.flush().expect("flush bridge reply");
 }
 
 #[test]
@@ -2479,4 +2565,200 @@ fn paired_run_refuses_incomplete_or_mixed_portfolio_launches_before_pairing() {
             args.join(" ")
         );
     }
+}
+
+/// A governed portfolio run publishes ONE public identity: the native batch run
+/// id `solar run start --portfolio` returned. Each member city's assembled
+/// result is stored by the application under an internal `<run>-<city>` id that
+/// is not a public batch and is refused when addressed directly.
+///
+/// Live, the paired session answered a parent-run read with that internal id,
+/// so `require_exact_identity` refused a correct read as
+/// `desktop_contract_mismatch` and no reachable spelling existed in between.
+/// The application now echoes the identity it was addressed with and publishes
+/// its internal one as `city_run_id`; the CLI's identity check is unchanged,
+/// which is the whole point — these assertions pin both halves together.
+const PORTFOLIO_PARENT_RUN: &str = "run-106a4dcc-0fdc-4534-967a-f36ad4070657";
+
+fn portfolio_city_read() -> Vec<&'static str> {
+    vec![
+        "solar",
+        "results",
+        "read",
+        "--run-id",
+        PORTFOLIO_PARENT_RUN,
+        "--city",
+        "aderm_beinamar",
+        "--section",
+        "costs",
+    ]
+}
+
+#[test]
+fn a_portfolio_member_city_is_read_through_the_parent_run_id() {
+    let bridge = bridge(vec![(
+        "solar.results.read",
+        json!({
+            "status": "ok",
+            "run_id": PORTFOLIO_PARENT_RUN,
+            "batch_run_id": PORTFOLIO_PARENT_RUN,
+            "city_run_id": format!("{PORTFOLIO_PARENT_RUN}-aderm_beinamar"),
+            "context": "aderm_beinamar",
+            "section": "costs",
+            "path": ["network_costs"],
+            "value": { "grand_total": 1_077_842_254, "currency": "XAF" },
+            "complete": true,
+        }),
+    )]);
+    let descriptor = bridge.descriptor.to_string_lossy().into_owned();
+
+    let mut args = portfolio_city_read();
+    args.extend(["--path", "network_costs"]);
+    args.extend(["--desktop-descriptor", &descriptor, "--output", "json"]);
+    let (envelope, code, stdout, stderr) = ds(&args);
+
+    assert_eq!(code, 0, "{stdout}{stderr}");
+    assert_eq!(envelope["status"], "ok");
+    let data = &envelope["data"];
+    assert_eq!(data["run_id"], PORTFOLIO_PARENT_RUN);
+    assert_eq!(data["context"], "aderm_beinamar");
+    // The internal per-city identity is carried through, never substituted for
+    // the one the caller addressed.
+    assert_eq!(
+        data["city_run_id"],
+        format!("{PORTFOLIO_PARENT_RUN}-aderm_beinamar")
+    );
+    assert_eq!(data["value"]["grand_total"], 1_077_842_254_i64);
+    assert_eq!(data["complete"], true);
+
+    let requests = finish(bridge);
+    assert_eq!(requests.len(), 1);
+    assert_eq!(requests[0]["operation"], "solar.results.read");
+    assert_eq!(requests[0]["arguments"]["run_id"], PORTFOLIO_PARENT_RUN);
+    assert_eq!(requests[0]["arguments"]["context"], "aderm_beinamar");
+    assert_eq!(requests[0]["arguments"]["section"], "costs");
+    assert_eq!(requests[0]["arguments"]["path"], json!(["network_costs"]));
+}
+
+#[test]
+fn a_child_run_identity_in_a_parent_run_receipt_is_still_refused() {
+    // The exact live regression, in reverse: an application that answers the
+    // parent read with the child id must still be caught at this boundary.
+    for spoofed in [
+        json!({
+            "status": "ok",
+            "run_id": format!("{PORTFOLIO_PARENT_RUN}-aderm_beinamar"),
+            "context": "aderm_beinamar",
+            "section": "costs",
+        }),
+        json!({
+            "status": "ok",
+            "run_id": PORTFOLIO_PARENT_RUN,
+            "context": "aderm_bere",
+            "section": "costs",
+        }),
+    ] {
+        let bridge = bridge(vec![("solar.results.read", spoofed)]);
+        let descriptor = bridge.descriptor.to_string_lossy().into_owned();
+        let mut args = portfolio_city_read();
+        args.extend(["--desktop-descriptor", &descriptor, "--output", "json"]);
+        let (envelope, code, stdout, stderr) = ds(&args);
+        assert_eq!(code, 3, "{stdout}{stderr}");
+        assert_eq!(envelope["error"]["code"], "desktop_contract_mismatch");
+        assert!(
+            envelope["error"]["remedy"]
+                .as_str()
+                .is_some_and(|remedy| !remedy.is_empty())
+        );
+        finish(bridge);
+    }
+}
+
+fn mcp_portfolio_city_read(descriptor: &str) -> (Value, String) {
+    let mut child = Command::new(env!("CARGO_BIN_EXE_ds"))
+        .args(["mcp", "serve", "--exposure", "chapters"])
+        .env("NO_COLOR", "1")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("MCP server starts");
+    {
+        let stdin = child.stdin.as_mut().expect("MCP stdin");
+        serde_json::to_writer(
+            &mut *stdin,
+            &json!({
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "tools/call",
+                "params": {
+                    "name": "ds_solar",
+                    "arguments": {
+                        "operation": "invoke",
+                        "command": "solar.results.read",
+                        "arguments": {
+                            "run-id": PORTFOLIO_PARENT_RUN,
+                            "city": "aderm_beinamar",
+                            "section": "costs",
+                            "path": ["network_costs"],
+                            "desktop-descriptor": descriptor,
+                        },
+                    },
+                },
+            }),
+        )
+        .expect("MCP request");
+        stdin.write_all(b"\n").expect("MCP request newline");
+        serde_json::to_writer(
+            &mut *stdin,
+            &json!({ "jsonrpc": "2.0", "id": 999, "method": "shutdown" }),
+        )
+        .expect("MCP shutdown");
+        stdin.write_all(b"\n").expect("MCP shutdown newline");
+    }
+    let output = child.wait_with_output().expect("MCP server exits");
+    let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+    assert!(output.status.success(), "MCP server failed: {stderr}");
+    let response = String::from_utf8(output.stdout)
+        .expect("MCP stdout is UTF-8")
+        .lines()
+        .map(|line| serde_json::from_str::<Value>(line).expect("MCP response is JSON"))
+        .find(|response| response["id"] == 1)
+        .expect("MCP call response");
+    (response["result"]["structuredContent"].clone(), stderr)
+}
+
+#[test]
+fn mcp_projects_the_exact_parent_run_city_read_envelope_from_ds() {
+    let reply = json!({
+        "status": "ok",
+        "run_id": PORTFOLIO_PARENT_RUN,
+        "batch_run_id": PORTFOLIO_PARENT_RUN,
+        "city_run_id": format!("{PORTFOLIO_PARENT_RUN}-aderm_beinamar"),
+        "context": "aderm_beinamar",
+        "section": "costs",
+        "path": ["network_costs"],
+        "value": { "grand_total": 1_077_842_254, "currency": "XAF" },
+        "complete": true,
+    });
+
+    let direct_bridge = bridge(vec![("solar.results.read", reply.clone())]);
+    let direct_descriptor = direct_bridge.descriptor.to_string_lossy().into_owned();
+    let mut direct_args = portfolio_city_read();
+    direct_args.extend(["--path", "network_costs"]);
+    direct_args.extend([
+        "--desktop-descriptor",
+        &direct_descriptor,
+        "--output",
+        "json",
+    ]);
+    let (direct, code, stdout, stderr) = ds(&direct_args);
+    assert_eq!(code, 0, "{stdout}{stderr}");
+    finish(direct_bridge);
+
+    let mcp_bridge = mcp_bridge("solar.results.read", reply);
+    let mcp_descriptor = mcp_bridge.descriptor.to_string_lossy().into_owned();
+    let (through_mcp, mcp_stderr) = mcp_portfolio_city_read(&mcp_descriptor);
+    assert_eq!(through_mcp, direct, "{mcp_stderr}");
+    finish(mcp_bridge);
 }
