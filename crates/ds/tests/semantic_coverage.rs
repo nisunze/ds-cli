@@ -24,6 +24,16 @@ const EXPECTED: &[(&str, &str, &str)] = &[
         "local_file_write",
         "desktop_pairing",
     ),
+    // Extraction generates points from an explicit area; it is intentionally
+    // separate from attachment, which enriches an existing point file. The
+    // plan is a map-independent preview; extraction writes only local files
+    // through the paired Desktop's governed Rwanda DEM component.
+    ("data.elevation.plan", "read_only", "desktop_pairing"),
+    (
+        "data.elevation.extract",
+        "local_file_write",
+        "desktop_pairing",
+    ),
     ("data.convert", "local_file_write", "none"),
     ("data.conversion-matrix", "discovery", "none"),
     ("data.inspect", "read_only", "none"),

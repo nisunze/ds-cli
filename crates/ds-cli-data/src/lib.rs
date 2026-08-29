@@ -18,6 +18,7 @@ pub mod conversion_matrix;
 pub mod convert;
 pub mod elevation;
 pub mod inspect;
+pub mod point_cloud;
 
 pub static DOMAIN: Domain = Domain {
     id: "data",
@@ -27,14 +28,20 @@ pub static DOMAIN: Domain = Domain {
         &convert::COMMAND,
         &conversion_matrix::COMMAND,
         &elevation::COMMAND,
+        &point_cloud::PLAN_COMMAND,
+        &point_cloud::EXTRACT_COMMAND,
         &admin_bounds::COMMAND,
     ],
 };
 
 /// The paired operations in this otherwise local domain. Both are file work
 /// and deliberately own no map state.
-pub const BRIDGE_OPS: &[&ds_cli_desktop::ops::BridgeOp] =
-    &[&elevation::OPERATION, &admin_bounds::OPERATION];
+pub const BRIDGE_OPS: &[&ds_cli_desktop::ops::BridgeOp] = &[
+    &elevation::OPERATION,
+    &point_cloud::PLAN_OPERATION,
+    &point_cloud::EXTRACT_OPERATION,
+    &admin_bounds::OPERATION,
+];
 
 pub const SOURCE_ARG: Arg = Arg {
     name: "source",

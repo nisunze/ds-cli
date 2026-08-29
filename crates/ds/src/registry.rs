@@ -682,6 +682,16 @@ static DATA_ENTRIES: &[Entry] = &[
         render: ds_cli_data::elevation::render,
     },
     Entry {
+        command: &ds_cli_data::point_cloud::PLAN_COMMAND,
+        handler: ds_cli_data::point_cloud::run_plan,
+        render: ds_cli_data::point_cloud::render_plan,
+    },
+    Entry {
+        command: &ds_cli_data::point_cloud::EXTRACT_COMMAND,
+        handler: ds_cli_data::point_cloud::run_extract,
+        render: ds_cli_data::point_cloud::render_extract,
+    },
+    Entry {
         command: &ds_cli_data::admin_bounds::COMMAND,
         handler: ds_cli_data::admin_bounds::run,
         render: ds_cli_data::admin_bounds::render,
