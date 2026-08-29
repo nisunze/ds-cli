@@ -193,7 +193,7 @@ pub const GROUP_UNASSIGN: BridgeOp = BridgeOp {
 };
 pub const GROUP_EXPORT: BridgeOp = BridgeOp {
     operation: "design.group.export",
-    arguments: &["transformers"],
+    arguments: &["transformers", "definition-ids"],
 };
 pub const CONSUMER_GROUPING_PREVIEW: BridgeOp = BridgeOp {
     operation: "design.consumer-grouping.preview",
