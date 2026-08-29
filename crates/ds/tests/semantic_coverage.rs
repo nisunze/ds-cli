@@ -16,6 +16,14 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     // Local data preparation. `none` authority is exact: a file on the
     // operator's own disk involves no project and no principal. `convert`
     // writes one file into the operator's own workspace and publishes nothing.
+    // Admin enrichment also writes locally, but its governed Rwanda boundary
+    // digest is resolved from the paired project's pinned resource receipt.
+    ("data.admin-bounds.attach", "local_file_write", "project"),
+    (
+        "data.elevation.attach",
+        "local_file_write",
+        "desktop_pairing",
+    ),
     ("data.convert", "local_file_write", "none"),
     ("data.inspect", "read_only", "none"),
     ("desktop.project.list", "read_only", "desktop_user"),
@@ -48,6 +56,7 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("design.group.unassign", "global_write", "project"),
     ("design.tag.define", "global_write", "project"),
     ("design.tag.list", "read_only", "project"),
+    ("design.tag.query", "read_only", "project"),
     ("design.tag.set", "global_write", "project"),
     ("dsgrid-exchange.convert", "local_file_write", "none"),
     ("dsgrid-exchange.inspect", "discovery", "none"),

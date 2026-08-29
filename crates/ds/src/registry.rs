@@ -632,6 +632,11 @@ static DATA_ENTRIES: &[Entry] = &[
         render: ds_cli_data::convert::render,
     },
     Entry {
+        command: &ds_cli_data::elevation::COMMAND,
+        handler: ds_cli_data::elevation::run,
+        render: ds_cli_data::elevation::render,
+    },
+    Entry {
         command: &ds_cli_data::admin_bounds::COMMAND,
         handler: ds_cli_data::admin_bounds::run,
         render: ds_cli_data::admin_bounds::render,
@@ -781,6 +786,11 @@ static DESIGN_ENTRIES: &[Entry] = &[
         command: &ds_cli_design::tag::list::COMMAND,
         handler: ds_cli_design::tag::list::run,
         render: ds_cli_design::tag::list::render,
+    },
+    Entry {
+        command: &ds_cli_design::tag::query::COMMAND,
+        handler: ds_cli_design::tag::query::run,
+        render: ds_cli_design::tag::query::render,
     },
     Entry {
         command: &ds_cli_design::tag::define::COMMAND,

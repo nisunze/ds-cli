@@ -8,6 +8,10 @@ Inspection and conversion run entirely locally. Admin-bound attachment also
 runs locally, but pairs with the desktop to resolve the active project's
 digest-pinned Rwanda reference asset. None of these commands needs a map open.
 
+Native elevation attachment pairs with Desktop for the governed Rwanda DEM and
+native engine. It writes a new local GeoJSON; it does not upload the source or
+result and does not need a signed-in project or an open map.
+
 ```text
 inspect → (choose the sheet, layer, or coordinate columns) → convert
 ```
@@ -19,6 +23,24 @@ Writes a new CSV, TSV, or GeoJSON elevation-point file carrying `province`,
 elevation values, and non-empty operator-supplied admin values are preserved.
 CSV/TSV callers name longitude and latitude columns explicitly; GeoJSON uses
 feature geometry. The source is never overwritten.
+
+## `elevation attach`
+
+Interpolates point sources through the native Desktop engine. CSV/TSV can name
+their coordinate columns and CRS; geometry formats carry coordinates. A
+`common-column` keeps each named surface all-or-nothing. AWS Terrarium fallback
+is explicit and can be disabled. Jobs above 4,000 parsed points require the
+verified full local Rwanda DEM component; the Desktop component manager installs
+or verifies it once before the operation retries. Smaller jobs may read exact
+public COG ranges through the bounded Desktop cache.
+
+Hypothetical requests are intentionally short and discoverable from the live
+command descriptor:
+
+```text
+ds data elevation attach --source /data/poles.csv --out /data/poles-elevation.geojson --x-column longitude --y-column latitude --source-crs wgs84_lonlat
+ds data elevation attach --source /data/alignment-points.tsv --out /data/alignment-elevation.geojson --common-column alignment --fallback none
+```
 
 ## `inspect`
 
@@ -69,7 +91,7 @@ coordinate and therefore carry no geometry — reported, never silently dropped.
 Not a query engine. `ds data` writes formats; reading and reducing them is a
 separate decision, and deliberately not made yet.
 
-Not for elevation. A DEM is a surface, not a table — one value per cell and no
-attributes — so it stays a Cloud-Optimized GeoTIFF read by byte range. Vector
-data *derived* from a DEM (contours, extracted points, coverage footprints)
-does carry attributes and converts here like anything else.
+`convert` is not a DEM converter. A DEM is a surface, not a table — one value
+per cell and no attributes — so it stays a Cloud-Optimized GeoTIFF read by byte
+range or from the verified full Desktop component. `elevation attach` samples
+that surface into a new point artifact; it does not rewrite the DEM.

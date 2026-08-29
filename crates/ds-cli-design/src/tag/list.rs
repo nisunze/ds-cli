@@ -13,9 +13,11 @@ pub static COMMAND: Command = Command {
     contract: 1,
     summary: "List the project's tag definitions and this object's values.",
     purpose: "\
-Names every tag definition the project owns — its allowed values, its \
-cardinality, whether it was adopted from a governed global template — and the \
-values currently applied to the named object. Pass --version to read the values \
+Names every tag definition the project owns — its value type, input control, \
+constraints, choice vocabulary, cardinality and governed-template origin — \
+plus the lossless typed values currently applied to the named object. The \
+legacy canonical string projection remains present for compatibility. Pass \
+--version to read the values \
 anchored to one exact object version rather than the object-level ones; the two \
 are separate records, which is how a value keeps its historical context after a \
 later edit. This is where a reporting run learns the vocabulary instead of \
@@ -26,12 +28,12 @@ scraping it out of a UI.",
     execution: Execution::Sync,
     args: &[KIND_ARG, OBJECT_ARG, VERSION_ARG, DESCRIPTOR_ARG],
     output: "\
-The project, the anchored object, and rows of `definition`, `name`, \
-`cardinality`, `state`, the `allowed` vocabulary, the applied `values`, and \
-`template` when the definition was adopted from a global template version.",
+The project, anchored object, and rows of definition, value_type, input_control, \
+constraints, cardinality, state, allowed choice vocabulary, values, typed_values \
+and template origin.",
     examples: &[Example {
         command: "ds design tag list --kind lv_transformer --object kigali_a --output json",
-        note: "Read .data.tags[].allowed before setting a value; the server refuses anything else.",
+        note: "Read value_type and allowed before choosing --values, --text, --integer or --number.",
         runnable: false,
     }],
     refusals: &[
@@ -76,8 +78,10 @@ pub fn render(data: &Value) -> String {
             .filter_map(Value::as_str)
             .collect();
         out.push_str(&format!(
-            "  {} ({}) = {}{}\n",
+            "  {} ({}/{}, {}) = {}{}\n",
             row["definition"].as_str().unwrap_or("?"),
+            row["value_type"].as_str().unwrap_or("choice"),
+            row["input_control"].as_str().unwrap_or("?"),
             row["cardinality"].as_str().unwrap_or("?"),
             if values.is_empty() {
                 "—".to_string()

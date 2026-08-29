@@ -50,6 +50,17 @@ ds design tag list --kind lv_transformer --object kigali_a
 ds design tag set --kind lv_transformer --object kigali_a \
   --definition transformer_scope --values additional_scope --yes
 
+# Typed definitions and values retain their numeric/text identity.
+ds design tag define --definition completion --name "Completion percent" \
+  --value-type number --min 0 --max 100 --yes
+ds design tag set --kind lv_transformer --object kigali_a \
+  --definition completion --number 82.5 --yes
+
+# Project-wide typed filters never require an open map.
+ds design tag query --choice city:any_of:huye,kigali --output json
+ds design tag query --choice phasing:equals:phase-1 \
+  --number completion:gte:80 --output json
+
 ds design group list --transformers kigali_a,kigali_b            # allowed values
 ds design group preview --group city --transformers kigali_a,kigali_b \
   --value kigali --output json                                   # plan + digest
@@ -109,6 +120,34 @@ Two things about it are load-bearing:
 Values the closed document shape cannot carry — one under an archived
 definition, or a cleared assignment — come back in `excluded` with the reason,
 so nothing is dropped in silence.
+
+## Typed tag definitions and Transformer Status queries
+
+Definitions are not all vocabularies. `choice` owns an ordered `--values`
+list and may use a radio, dropdown or multiselect according to cardinality.
+`text`, `integer` and `number` are single-valued; they use `--text`,
+`--integer` or `--number` when assigned, and constraints such as `--min`,
+`--max` or `--max-length` when defined. The typed assignment is carried to the
+owner as `typed_values`; the legacy string projection remains in read results
+for old choice callers and report compatibility.
+
+`ds design tag query` is the bounded, mapless Transformer Status filter. Each
+repeated predicate names its type in the flag rather than asking the server to
+infer it:
+
+```bash
+--presence inspection:exists
+--choice city:any_of:huye,kigali
+--text survey_note:contains:access
+--integer revision:gte:3
+--number completion:gte:80
+```
+
+Use `--match all` (the default) or `--match any`. One call accepts at most 20
+predicates and scans at most 2,000 current LV transformers. `--limit` is not a
+page: if the complete match set is larger, the server refuses and asks for a
+larger explicit bound rather than returning a selection that only looks
+complete. A saved selection can then pin the returned object ids.
 
 ## The three rules the whole domain rests on
 

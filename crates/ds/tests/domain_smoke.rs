@@ -1025,6 +1025,50 @@ fn every_offline_command_is_available_without_any_engine_binary() {
 }
 
 // ---------------------------------------------------------------------------
+// data elevation
+// ---------------------------------------------------------------------------
+
+#[test]
+fn native_elevation_validates_absolute_paths_before_pairing() {
+    let absolute_source = temp_root("elevation-source")
+        .join("points.csv")
+        .display()
+        .to_string();
+    let absolute_out = temp_root("elevation-out")
+        .join("points.geojson")
+        .display()
+        .to_string();
+    for args in [
+        vec![
+            "data",
+            "elevation",
+            "attach",
+            "--source",
+            "points.csv",
+            "--out",
+            absolute_out.as_str(),
+            "--output",
+            "json",
+        ],
+        vec![
+            "data",
+            "elevation",
+            "attach",
+            "--source",
+            absolute_source.as_str(),
+            "--out",
+            "points.geojson",
+            "--output",
+            "json",
+        ],
+    ] {
+        let run = ds(&args);
+        assert_eq!(run.code, 2, "{}{}", run.stdout, run.stderr);
+        assert_eq!(run.envelope["error"]["code"], "absolute_path_required");
+    }
+}
+
+// ---------------------------------------------------------------------------
 // map
 // ---------------------------------------------------------------------------
 //
@@ -2278,7 +2322,7 @@ fn every_design_read_is_reachable_without_the_desktop_installed() {
     let commands = index["commands"].as_array().expect("commands");
     assert_eq!(
         commands.len(),
-        22,
+        23,
         "the design domain should expose its whole family: {commands:?}"
     );
     for command in commands {
@@ -2309,6 +2353,7 @@ fn design_reads_are_reads_and_design_writes_are_governed_writes() {
         ("design.attachment.list", "read_only"),
         ("design.attachment.download", "read_only"),
         ("design.tag.list", "read_only"),
+        ("design.tag.query", "read_only"),
         ("design.comment.list", "read_only"),
         ("design.comment.read", "read_only"),
         ("design.selection.save", "global_write"),
@@ -2371,6 +2416,7 @@ fn design_collaboration_is_a_complete_headless_project_surface() {
         "design.attachment.download",
         "design.attachment.retire",
         "design.tag.list",
+        "design.tag.query",
         "design.tag.define",
         "design.tag.set",
         "design.group.list",
@@ -2570,6 +2616,7 @@ fn design_collaboration_is_a_complete_headless_project_surface() {
             "--object",
             "T-smoke",
         ],
+        vec!["design", "tag", "query", "--choice", "city:equals:kigali"],
         vec![
             "design",
             "comment",
@@ -2606,6 +2653,86 @@ fn design_collaboration_is_a_complete_headless_project_surface() {
         ]),
         "invalid_value_list",
         "empty member lists must be refused before pairing",
+    );
+    assert_eq!(
+        refusal(&[
+            "design",
+            "tag",
+            "define",
+            "--definition",
+            "score",
+            "--name",
+            "Score",
+            "--value-type",
+            "number",
+            "--values",
+            "one",
+            "--yes",
+            "--output",
+            "json",
+        ]),
+        "invalid_tag_input",
+        "a numeric definition must not disguise strings as a vocabulary",
+    );
+    assert_eq!(
+        refusal(&[
+            "design",
+            "tag",
+            "set",
+            "--kind",
+            "lv_transformer",
+            "--object",
+            "T-smoke",
+            "--definition",
+            "score",
+            "--values",
+            "one",
+            "--number",
+            "1",
+            "--yes",
+            "--output",
+            "json",
+        ]),
+        "invalid_tag_input",
+        "an assignment must carry exactly one value representation",
+    );
+    assert_eq!(
+        refusal(&[
+            "design",
+            "tag",
+            "query",
+            "--number",
+            "completion:gte:NaN",
+            "--output",
+            "json",
+        ]),
+        "invalid_number",
+        "numeric query predicates must be finite before pairing",
+    );
+    let mut too_many_filters = vec!["design", "tag", "query"];
+    for _ in 0..=ds_cli_design::MAX_TAG_QUERY_FILTERS {
+        too_many_filters.extend(["--presence", "city:exists"]);
+    }
+    too_many_filters.extend(["--output", "json"]);
+    assert_eq!(
+        refusal(&too_many_filters),
+        "too_many_tag_filters",
+        "a query must enforce the backend's predicate-read bound before pairing",
+    );
+    assert_eq!(
+        refusal(&[
+            "design",
+            "tag",
+            "query",
+            "--presence",
+            "city:exists",
+            "--limit",
+            "2001",
+            "--output",
+            "json",
+        ]),
+        "invalid_number",
+        "a result bound past the backend's complete-project limit must refuse locally",
     );
 }
 

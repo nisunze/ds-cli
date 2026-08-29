@@ -15,16 +15,24 @@ use ds_cli_contract::spec::{Arg, ArgKind, Domain, Refusal};
 
 pub mod admin_bounds;
 pub mod convert;
+pub mod elevation;
 pub mod inspect;
 
 pub static DOMAIN: Domain = Domain {
     id: "data",
     summary: "Local data: inspect, convert, and attach governed reference fields.",
-    commands: &[&inspect::COMMAND, &convert::COMMAND, &admin_bounds::COMMAND],
+    commands: &[
+        &inspect::COMMAND,
+        &convert::COMMAND,
+        &elevation::COMMAND,
+        &admin_bounds::COMMAND,
+    ],
 };
 
-/// The sole paired operation in this otherwise local domain.
-pub const BRIDGE_OPS: &[&ds_cli_desktop::ops::BridgeOp] = &[&admin_bounds::OPERATION];
+/// The paired operations in this otherwise local domain. Both are file work
+/// and deliberately own no map state.
+pub const BRIDGE_OPS: &[&ds_cli_desktop::ops::BridgeOp] =
+    &[&elevation::OPERATION, &admin_bounds::OPERATION];
 
 pub const SOURCE_ARG: Arg = Arg {
     name: "source",

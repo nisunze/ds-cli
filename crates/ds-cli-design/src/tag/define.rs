@@ -36,17 +36,67 @@ const CARDINALITY_ARG: Arg = Arg {
     required: false,
     default: Some("single"),
     choices: &["single", "multiple"],
-    summary: "One value (a radio) or any number of them (checkboxes).",
+    summary: "One value or many choice values. Free-form tags must be single.",
 };
 
 const VALUES_ARG: Arg = Arg {
     name: "values",
     kind: ArgKind::Value,
     value: "<values>",
-    required: true,
+    required: false,
     default: None,
     choices: &[],
-    summary: "Comma-separated allowed values, in the order they should appear.",
+    summary: "Choice vocabulary in display order. Required for choice; forbidden otherwise.",
+};
+
+const VALUE_TYPE_ARG: Arg = Arg {
+    name: "value-type",
+    kind: ArgKind::Value,
+    value: "<type>",
+    required: false,
+    default: Some("choice"),
+    choices: &["choice", "text", "integer", "number"],
+    summary: "Stored value type. Existing definitions default to choice.",
+};
+
+const INPUT_CONTROL_ARG: Arg = Arg {
+    name: "input-control",
+    kind: ArgKind::Value,
+    value: "<control>",
+    required: false,
+    default: None,
+    choices: &["radio", "dropdown", "multiselect", "text", "number"],
+    summary: "UI control metadata. Omit for the type/cardinality default.",
+};
+
+const MIN_ARG: Arg = Arg {
+    name: "min",
+    kind: ArgKind::Value,
+    value: "<number>",
+    required: false,
+    default: None,
+    choices: &[],
+    summary: "Inclusive finite lower bound for integer or number tags.",
+};
+
+const MAX_ARG: Arg = Arg {
+    name: "max",
+    kind: ArgKind::Value,
+    value: "<number>",
+    required: false,
+    default: None,
+    choices: &[],
+    summary: "Inclusive finite upper bound for integer or number tags.",
+};
+
+const MAX_LENGTH_ARG: Arg = Arg {
+    name: "max-length",
+    kind: ArgKind::Value,
+    value: "<characters>",
+    required: false,
+    default: None,
+    choices: &[],
+    summary: "Text limit (1-500). Omit for the server default of 500.",
 };
 
 const DESCRIPTION_ARG: Arg = Arg {
@@ -65,8 +115,10 @@ pub static COMMAND: Command = Command {
     contract: 1,
     summary: "Create or edit one of the project's typed tag definitions.",
     purpose: "\
-Declares the vocabulary a tag may take — its allowed values, whether one or \
-many apply, and the order they are offered in. Re-running on an existing \
+Declares the type and presentation of one project tag. Choice tags own an \
+ordered vocabulary and may be single or multiple. Text, integer and number \
+tags are single-valued and use constraints instead of pretending observed \
+values are a vocabulary. Re-running on an existing \
 definition edits it: the application reads its current version and writes under \
 it, so a concurrent edit is refused rather than overwritten. Editing a \
 definition the project ADOPTED from a global template detaches it from that \
@@ -81,15 +133,27 @@ copy no longer says what that exact template version says.",
         NAME_ARG,
         CARDINALITY_ARG,
         VALUES_ARG,
+        VALUE_TYPE_ARG,
+        INPUT_CONTROL_ARG,
+        MIN_ARG,
+        MAX_ARG,
+        MAX_LENGTH_ARG,
         DESCRIPTION_ARG,
         DESCRIPTOR_ARG,
     ],
-    output: "The project, the `definition` id, its `name`, `cardinality`, committed `version` and the accepted `values`.",
-    examples: &[Example {
-        command: "ds design tag define --definition transformer_scope --name \"Transformer scope\" --values initial_scope,additional_scope --yes",
-        note: "Cardinality defaults to single; pass --cardinality multiple for checkboxes.",
-        runnable: false,
-    }],
+    output: "The project, definition id, name, value type, input control, constraints, cardinality, version and choice vocabulary.",
+    examples: &[
+        Example {
+            command: "ds design tag define --definition transformer_scope --name \"Transformer scope\" --values initial_scope,additional_scope --yes",
+            note: "Legacy choice spelling stays valid; cardinality and value type default to single/choice.",
+            runnable: false,
+        },
+        Example {
+            command: "ds design tag define --definition completion --name \"Completion percent\" --value-type number --min 0 --max 100 --yes",
+            note: "A numeric definition has no --values vocabulary; the server stores its closed type and bounds.",
+            runnable: false,
+        },
+    ],
     refusals: &[
         crate::NOT_PAIRED,
         crate::AMBIGUOUS,
@@ -103,6 +167,8 @@ copy no longer says what that exact template version says.",
         crate::READ_ONLY,
         crate::CONFLICT,
         crate::INVALID_VALUE_LIST,
+        crate::INVALID_TAG_INPUT,
+        crate::INVALID_NUMBER,
         crate::TOO_MANY,
         crate::CONFIRMATION_REQUIRED,
     ],
@@ -111,11 +177,52 @@ copy no longer says what that exact template version says.",
 };
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
-    let values = crate::list_values(inputs.require("values")?, "values", MAX_TAG_VALUES)?;
+    let value_type = inputs.require("value-type")?;
+    let values = match inputs.value("values") {
+        Some(raw) => crate::list_values(raw, "values", MAX_TAG_VALUES)?,
+        None => Vec::new(),
+    };
+    if (value_type == "choice") != !values.is_empty() {
+        return Err(Failure::invalid(
+            "invalid_tag_input",
+            if value_type == "choice" {
+                "a choice definition requires --values"
+            } else {
+                "only choice definitions accept --values"
+            },
+        )
+        .remedy("pass --values for choice, or omit it for text/integer/number"));
+    }
+    if value_type != "choice" && inputs.require("cardinality")? != "single" {
+        return Err(Failure::invalid(
+            "invalid_tag_input",
+            "text, integer and number definitions are single-valued",
+        )
+        .remedy("omit --cardinality or pass --cardinality single"));
+    }
     let mut arguments = Map::new();
     arguments.insert("definition".into(), json!(inputs.require("definition")?));
     arguments.insert("name".into(), json!(inputs.require("name")?));
     arguments.insert("values".into(), json!(values));
+    arguments.insert("value_type".into(), json!(value_type));
+    if let Some(value) = inputs.value("input-control") {
+        arguments.insert("input_control".into(), json!(value));
+    }
+    let mut constraints = Map::new();
+    for flag in ["min", "max"] {
+        if let Some(raw) = inputs.value(flag) {
+            constraints.insert(flag.into(), json!(finite_number(raw, flag)?));
+        }
+    }
+    if let Some(raw) = inputs.value("max-length") {
+        constraints.insert(
+            "max_length".into(),
+            json!(crate::integer(raw, "max-length", 1, 500)?),
+        );
+    }
+    if !constraints.is_empty() {
+        arguments.insert("constraints".into(), Value::Object(constraints));
+    }
     for flag in ["cardinality", "description"] {
         if let Some(value) = inputs.value(flag) {
             arguments.insert(flag.into(), json!(value));
@@ -131,6 +238,20 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     .map_err(crate::classify_design_failure)
 }
 
+fn finite_number(raw: &str, flag: &str) -> Result<f64, Failure> {
+    let value = raw.parse::<f64>().map_err(|_| {
+        Failure::invalid("invalid_number", format!("`--{flag}` must be a number"))
+            .remedy("pass one finite numeric value")
+    })?;
+    if !value.is_finite() {
+        return Err(
+            Failure::invalid("invalid_number", format!("`--{flag}` must be finite"))
+                .remedy("pass a finite number"),
+        );
+    }
+    Ok(value)
+}
+
 pub fn render(data: &Value) -> String {
     let values: Vec<&str> = data["values"]
         .as_array()
@@ -139,9 +260,11 @@ pub fn render(data: &Value) -> String {
         .filter_map(Value::as_str)
         .collect();
     format!(
-        "{} \"{}\" ({}) = {} · v{}\n",
+        "{} \"{}\" ({}/{}, {}) = {} · v{}\n",
         data["definition"].as_str().unwrap_or("?"),
         data["name"].as_str().unwrap_or("?"),
+        data["value_type"].as_str().unwrap_or("choice"),
+        data["input_control"].as_str().unwrap_or("?"),
         data["cardinality"].as_str().unwrap_or("?"),
         values.join(", "),
         data["version"].as_u64().unwrap_or(0),

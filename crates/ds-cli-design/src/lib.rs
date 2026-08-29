@@ -27,7 +27,7 @@
 //! ```text
 //!   selection  list → read → save | archive | assign
 //!   attachment list → publish | download | retire
-//!   tag        list → define | set
+//!   tag        list | query → define | set
 //!   group      list → preview → apply | unassign; export
 //!   comment    list → read → post | resolve | promote
 //! ```
@@ -76,6 +76,7 @@ pub static DOMAIN: Domain = Domain {
         &attachment::download::COMMAND,
         &attachment::retire::COMMAND,
         &tag::list::COMMAND,
+        &tag::query::COMMAND,
         &tag::define::COMMAND,
         &tag::set::COMMAND,
         &group::list::COMMAND,
@@ -145,11 +146,31 @@ pub const TAG_LIST: BridgeOp = BridgeOp {
 };
 pub const TAG_DEFINE: BridgeOp = BridgeOp {
     operation: "design.tag.define",
-    arguments: &["definition", "name", "cardinality", "values", "description"],
+    arguments: &[
+        "definition",
+        "name",
+        "cardinality",
+        "values",
+        "description",
+        "value_type",
+        "input_control",
+        "constraints",
+    ],
 };
 pub const TAG_SET: BridgeOp = BridgeOp {
     operation: "design.tag.set",
-    arguments: &["kind", "object", "version", "definition", "values"],
+    arguments: &[
+        "kind",
+        "object",
+        "version",
+        "definition",
+        "values",
+        "typed_values",
+    ],
+};
+pub const TAG_QUERY: BridgeOp = BridgeOp {
+    operation: "design.tag.query",
+    arguments: &["kind", "match", "filters", "limit"],
 };
 pub const GROUP_LIST: BridgeOp = BridgeOp {
     operation: "design.group.list",
@@ -207,6 +228,7 @@ pub const BRIDGE_OPS: &[&BridgeOp] = &[
     &ATTACHMENT_DOWNLOAD,
     &ATTACHMENT_RETIRE,
     &TAG_LIST,
+    &TAG_QUERY,
     &TAG_DEFINE,
     &TAG_SET,
     &GROUP_LIST,
@@ -233,6 +255,13 @@ pub const MAX_SELECTION_MEMBERS: usize = 500;
 
 /// The largest number of values one tag definition may declare.
 pub const MAX_TAG_VALUES: usize = 100;
+
+/// One backend tag query evaluates at most this many predicates.
+pub const MAX_TAG_QUERY_FILTERS: usize = 20;
+
+/// The backend deliberately refuses projects and result sets beyond this
+/// bound instead of silently truncating Transformer Status membership.
+pub const MAX_TAG_QUERY_ROWS: i64 = 2_000;
 
 // ---------------------------------------------------------------------------
 // Timeouts
@@ -338,6 +367,16 @@ pub const INVALID_VALUE_LIST: Refusal = Refusal {
     code: "invalid_value_list",
     when: "a comma-separated list is empty after whitespace and separators are removed",
     remedy: "pass at least one non-empty comma-separated value, e.g. --values ready,review",
+};
+pub const INVALID_TAG_INPUT: Refusal = Refusal {
+    code: "invalid_tag_input",
+    when: "typed tag flags conflict, or a typed query predicate is malformed",
+    remedy: "read `ds design tag <command> --help` and pass one compatible value shape",
+};
+pub const TOO_MANY_TAG_FILTERS: Refusal = Refusal {
+    code: "too_many_tag_filters",
+    when: "a project tag query carries more than 20 predicates",
+    remedy: "narrow or split the query so one call carries at most 20 predicates",
 };
 /// A third governed group does not exist. Refused locally because the set is
 /// closed and declared on the descriptor: a round trip would only say the same
