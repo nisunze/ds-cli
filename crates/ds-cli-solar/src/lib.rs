@@ -18,6 +18,7 @@ pub mod paired;
 pub mod paired_run;
 pub mod prepare;
 pub mod run;
+pub mod seed;
 pub mod weather;
 pub mod workflow;
 
@@ -70,6 +71,8 @@ pub static DOMAIN: Domain = Domain {
         &workflow::FINAL_SUBMIT_COMMAND,
         &exports::REPORT_EXPORT_COMMAND,
         &exports::PORTFOLIO_EXPORT_COMMAND,
+        &seed::PREVIEW_COMMAND,
+        &seed::APPLY_COMMAND,
         &weather::COMMAND,
     ],
 };

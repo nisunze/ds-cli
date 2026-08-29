@@ -173,10 +173,86 @@ directory. That would cross the desktop cache boundary and invite two cache
 protocols. Use the paired lifecycle for product city contexts; use the
 `ds-solar` artifact contract when an offline batch already has prepared bytes.
 
+## Governed project seeding
+
+Seeding is what makes a project's Solar cities exist before any preparation or
+run. It COPIES authored city inputs from a governed seed source root into the
+project's Solar root, and it is the same governed copy `create_template`
+already performs — not a second seed model and not a duplicate city catalog.
+`ds solar prepare` is a different thing entirely: it caches and seals inputs
+for cities the project already has.
+
+```text
+ds solar seed preview [--source <root>] [--city <id> ...]
+ds solar seed apply --seed-digest <64-hex> [--source <root>] [--city <id> ...] --yes
+```
+
+ds-brain owns every decision. Its
+`docs/contracts/solar-project-seeding.md` is the authority, and it names
+exactly two actions on the existing `POST /api/v1/solar` door: `seed_preview`
+(read only) and `seed_apply` (digest bound). There is one parity boundary —
+the ds-web seeding card and this CLI — and `ds mcp serve` is not a third
+consumer, because it transports these same registered commands.
+
+**Propose, then confirm.** `preview` writes nothing; its plan carries the
+server's own `mutated: false`. `apply` takes `--seed-digest` from that plan and
+echoes it. `ds` never derives, recomputes or repairs that digest: it exists to
+prove the set being written is the set someone looked at. If either end moved,
+ds-brain refuses with `solar_seed_digest_mismatch` and the remedy is to preview
+again and re-confirm — never to retry with a fresh digest the operator never
+saw.
+
+**The plan is returned verbatim.** `changed`, `missing` and `warnings` are the
+rows a human would have acted on, so nothing summarizes them away. `changed`
+in particular is how seeding protects authored project data: it never
+overwrites, so a diverged destination is reported and left alone.
+`root_digest` vs `destination_root_digest` says which half moved, and no
+client re-derives it.
+
+**The city root is a listed document.** Each city's `documents[]` begins with
+its root row — `kind: "root"`, an empty `subcollection`, `doc_id` equal to the
+city id — because the apply writes it like any other document. `ds` refuses a
+plan whose `document_count` does not equal what the creatable cities list, and
+an apply receipt that claims every creatable city committed but wrote a
+different number. Both are `desktop_contract_mismatch`: a plan that omitted the
+document deciding whether a city exists would promise fewer documents than the
+apply then wrote.
+
+**What `ds` sends is only the selection.** The destination is the paired
+session's selected project, composed by the application exactly as the card
+does; there is no project or root argument, because a project id is not proof
+of anything. ds-brain decodes the body with `DisallowUnknownFields` and reads
+an absent `--source` as its governed catalog and an absent `--city` list as
+every live source city, so an unset optional is omitted rather than sent as an
+empty value.
+
+Network assets are reported and never seeded: a finalized media reference is
+pinned to its own city's storage prefix and receipt, so a copied one would fail
+verification at the seeded city's first calculation. The plan carries
+`network_assets_are_not_seeded`, and the seeded city needs its network maps
+uploaded through the normal upload/finalize path.
+
+ds-brain's own refusal codes survive the trip under the same names in
+snake_case, with `detail.server_code` carrying the server's spelling verbatim:
+`solar_seed_project_root_required`, `solar_seed_source_invalid`,
+`solar_seed_component_disabled`, `solar_seed_digest_required`,
+`solar_seed_digest_mismatch` and `solar_seed_bounded`. `ds` also holds
+ds-brain's 64-city request bound locally, so an over-large selection is refused
+once with that same code rather than after a round trip.
+
+**Not yet reachable.** ds-web has shipped the seeding card but not the two CLI
+bridge operations, so `ds solar seed` currently refuses with
+`desktop_operation_unsupported` and the remedy to update DS GridDesign.
+`crates/ds-cli-solar/src/paired.rs` records that gap in `PENDING_DESKTOP_OPS`,
+and `crates/ds/tests/bridge_parity.rs` fails once the application lands either
+operation so it is promoted into the full parity check deliberately.
+
 ## Authority and typed operations
 
 | CLI command | paired operation | effect | result |
 |---|---|---|---|
+| `solar seed preview` | `solar.seed.preview` | read only | ds-brain's SolarSeedPlan, verbatim |
+| `solar seed apply` | `solar.seed.apply` | global write | ds-brain's SolarSeedApplyResult, verbatim |
 | `solar prepare` | `solar.prepare` | local file write | completed preparation receipt |
 | `solar run start` | `solar.run.start` | local file write | durable run id / launch receipt |
 | `solar run progress` | `solar.run.progress` | read only | bounded progress receipt |
@@ -200,6 +276,7 @@ set of product actions and never a generic desktop RPC.
 
 | Command | Timeout | Why |
 |---|---:|---|
+| `solar seed preview` / `apply` | 60 s | one ds-brain round trip; the card allows the same |
 | `solar prepare` | 30 min | cache capture or authenticated refresh across selected cities |
 | `solar run start` | 30 s | creates a local run receipt; compute continues as a job |
 | lifecycle reads / cancel | 30 s | bounded local bridge replies |
@@ -232,6 +309,7 @@ can be tied to the same exact Solar source revision as the desktop release.
 
 ## Related
 
+- `crates/ds-cli-solar/src/seed.rs` — governed project seeding: preview and digest-bound apply
 - `crates/ds-cli-solar/src/prepare.rs` — paired preparation adapter
 - `crates/ds-cli-solar/src/paired_run.rs` — paired run lifecycle adapter
 - `crates/ds-cli-solar/src/exports.rs` — paired city-report and exact portfolio-artifact exporter

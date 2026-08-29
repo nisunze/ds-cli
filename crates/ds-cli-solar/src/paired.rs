@@ -86,6 +86,8 @@ pub const PORTFOLIO_READ_OP: BridgeOp = BridgeOp {
 /// runtime key guard and gives bridge-parity tests one machine-readable source
 /// of truth to compare with the paired application.
 pub const BRIDGE_OPS: &[&BridgeOp] = &[
+    &crate::seed::PREVIEW_OP,
+    &crate::seed::APPLY_OP,
     &PREPARE_OP,
     &RUN_START_OP,
     &RUN_PROGRESS_OP,
@@ -99,6 +101,24 @@ pub const BRIDGE_OPS: &[&BridgeOp] = &[
     &FINAL_SUBMIT_OP,
     &DOCUMENT_READ_OP,
     &PORTFOLIO_READ_OP,
+];
+
+/// Declared operations whose CLI door the paired application has not landed.
+///
+/// ds-web shipped the Solar seeding CARD (`src/lib/api/solar-seed.ts` and
+/// `src/lib/solar/seed-runtime.ts`), which reaches ds-brain through
+/// `brainOperation` from the UI. It has not yet added the two operations to
+/// `CLI_OPERATIONS` and its CLI dispatcher, so `ds solar seed` currently
+/// refuses with `desktop_operation_unsupported` — a named refusal with a
+/// remedy, which is the right shipping state for a door that is not open yet.
+///
+/// This list is a GAP RECORD, not an exemption. `bridge_parity.rs` holds the
+/// server contract these operations carry against ds-web's own seeding client
+/// today, and fails the moment the application does land one of them so it is
+/// promoted to the fully checked set deliberately rather than drifting.
+pub const PENDING_DESKTOP_OPS: &[&str] = &[
+    crate::seed::PREVIEW_OP.operation,
+    crate::seed::APPLY_OP.operation,
 ];
 
 pub static REFUSALS: &[Refusal] = &[

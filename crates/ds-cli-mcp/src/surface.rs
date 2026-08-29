@@ -252,6 +252,11 @@ const DESIGN_RUN_COMMANDS: &[&str] = &[
 
 const SOLAR_RUN_COMMANDS: &[&str] = &[
     "solar.engine",
+    // Seeding is what makes a project's Solar cities exist at all, so it sits
+    // with preparation and the run rather than with delivery. It reaches this
+    // profile the same way every other command does — by being registered.
+    "solar.seed.preview",
+    "solar.seed.apply",
     "solar.prepare",
     "solar.run",
     "solar.run.start",

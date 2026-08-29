@@ -172,6 +172,38 @@ fn ds(args: &[&str]) -> (Value, i32, String, String) {
 }
 
 fn bridge(replies: Vec<(&'static str, Value)>) -> Bridge {
+    bridge_with_status(
+        replies
+            .into_iter()
+            .map(|(operation, reply)| (operation, 200, reply))
+            .collect(),
+    )
+}
+
+/// A paired session that answers one operation with a non-200 status.
+///
+/// The refusal path is not a variant of the success path: `bridge::invoke`
+/// deliberately does not let the HTTP client promote a 4xx into a transport
+/// error, because the actionable message is in that body. A test that only
+/// ever saw 200 would never exercise it.
+fn refusing_bridge(status: u16, server_code: &'static str) -> Bridge {
+    bridge_with_status(vec![(
+        "solar.seed.apply",
+        status,
+        json!({ "error": format!("Solar seeding was refused ({server_code})") }),
+    )])
+}
+
+/// A DS GridDesign build that does not offer the named operation at all.
+fn unknown_operation_bridge(operation: &'static str) -> Bridge {
+    bridge_with_status(vec![(
+        operation,
+        400,
+        json!({ "error": "unknown_operation" }),
+    )])
+}
+
+fn bridge_with_status(replies: Vec<(&'static str, u16, Value)>) -> Bridge {
     let listener = TcpListener::bind("127.0.0.1:0").expect("bind loopback bridge");
     let address = listener.local_addr().expect("bridge address");
     listener
@@ -179,7 +211,7 @@ fn bridge(replies: Vec<(&'static str, Value)>) -> Bridge {
         .expect("make loopback bridge nonblocking");
     let server = thread::spawn(move || {
         let mut received = Vec::new();
-        for (expected_operation, reply) in replies {
+        for (expected_operation, status, reply) in replies {
             let deadline = Instant::now() + Duration::from_secs(10);
             let mut stream = loop {
                 match listener.accept() {
@@ -206,7 +238,7 @@ fn bridge(replies: Vec<(&'static str, Value)>) -> Bridge {
 
             let reply = serde_json::to_vec(&reply).expect("serialize bridge reply");
             let headers = format!(
-                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                "HTTP/1.1 {status} REPLY\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
                 reply.len()
             );
             stream.write_all(headers.as_bytes()).expect("write headers");
@@ -1527,6 +1559,498 @@ fn paired_solar_rejects_a_reply_without_a_receipt_status() {
     assert_eq!(code, 3);
     assert_eq!(envelope["error"]["code"], "desktop_contract_mismatch");
     let _ = finish(bridge);
+}
+
+// ---------------------------------------------------------------------------
+// Governed project seeding: previewed, then confirmed by digest
+// ---------------------------------------------------------------------------
+
+const SEED_DIGEST: &str = "d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3";
+const OTHER_DIGEST: &str = "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1";
+
+/// One city row shaped exactly as ds-brain emits it: the city ROOT first,
+/// marked `kind: "root"` with an empty subcollection and the city's own id.
+fn seed_city(city_id: &str, action: &str, inputs: usize) -> Value {
+    let mut documents = vec![json!({
+        "subcollection": "",
+        "doc_id": city_id,
+        "kind": "root",
+        "digest": "root-digest",
+        "bytes": 96,
+    })];
+    for index in 0..inputs {
+        documents.push(json!({
+            "subcollection": "01_city_inputs",
+            "doc_id": format!("input-{index}"),
+            "digest": format!("input-digest-{index}"),
+            "bytes": 128,
+        }));
+    }
+    json!({
+        "city_id": city_id,
+        "display_name": city_id,
+        "action": action,
+        "source_digest": format!("source-{city_id}"),
+        "root_digest": "root-digest",
+        "documents": documents,
+        "assets": [],
+    })
+}
+
+/// A plan whose counts are internally consistent, so a test that breaks one
+/// field is breaking exactly that field.
+fn seed_plan(cities: Vec<Value>) -> Value {
+    let class = |action: &str| {
+        cities
+            .iter()
+            .filter(|city| city["action"] == action)
+            .count()
+    };
+    let document_count: usize = cities
+        .iter()
+        .filter(|city| city["action"] == "create")
+        .map(|city| city["documents"].as_array().map_or(0, Vec::len))
+        .sum();
+    json!({
+        "root": "eds_project/demo/eds_solar",
+        "seed_source_root": "eds_solar",
+        "ds_project": "demo",
+        "seed_digest": SEED_DIGEST,
+        "cities": cities,
+        "create_count": class("create"),
+        "skip_count": class("skip"),
+        "changed_count": class("changed"),
+        "missing_count": class("missing"),
+        "document_count": document_count,
+        "asset_count": 1,
+        "excluded_asset_count": 1,
+        "warnings": ["network_assets_are_not_seeded"],
+        "mutated": false,
+    })
+}
+
+#[test]
+fn solar_seed_preview_sends_only_the_selection_and_returns_the_server_plan_byte_exact() {
+    let plan = seed_plan(vec![
+        seed_city("huye", "create", 2),
+        seed_city("gasabo", "changed", 3),
+        json!({
+            "city_id": "rubavu",
+            "action": "missing",
+            "reason": "source_city_missing",
+            "documents": [],
+            "assets": [],
+            "warnings": ["source_city_missing"],
+        }),
+    ]);
+    let bridge = bridge(vec![(
+        "solar.seed.preview",
+        json!({ "status": "ok", "plan": plan }),
+    )]);
+    let descriptor = bridge.descriptor.to_string_lossy().into_owned();
+
+    let (envelope, code, stdout, stderr) = ds(&[
+        "solar",
+        "seed",
+        "preview",
+        "--city",
+        "huye",
+        "--city",
+        "gasabo",
+        "--source",
+        "eds_solar",
+        "--desktop-descriptor",
+        &descriptor,
+        "--output",
+        "json",
+    ]);
+    assert_eq!(code, 0, "{stdout}{stderr}");
+    assert_eq!(envelope["command"], "solar.seed.preview");
+
+    // Byte-exact server evidence. The digest, every row's classification and
+    // digests, and the warnings are the rows a human would act on; the CLI
+    // returns ds-brain's own plan rather than a projection of it.
+    assert_eq!(envelope["data"]["plan"], plan);
+    assert_eq!(envelope["data"]["plan"]["seed_digest"], SEED_DIGEST);
+    assert_eq!(envelope["data"]["plan"]["mutated"], false);
+
+    let requests = finish(bridge);
+    assert_eq!(requests.len(), 1);
+    assert_eq!(
+        requests[0]["arguments"],
+        json!({ "seed_source_root": "eds_solar", "cities": ["huye", "gasabo"] }),
+        "seeding must send only the governed selection; the app owns the destination"
+    );
+}
+
+#[test]
+fn solar_seed_preview_with_no_selection_sends_no_keys_at_all() {
+    // ds-brain reads an ABSENT source as its governed catalog and an ABSENT
+    // city list as every live source city, and decodes with
+    // DisallowUnknownFields. `""` or `[]` would be a different request.
+    let bridge = bridge(vec![(
+        "solar.seed.preview",
+        json!({ "status": "ok", "plan": seed_plan(vec![seed_city("huye", "create", 1)]) }),
+    )]);
+    let descriptor = bridge.descriptor.to_string_lossy().into_owned();
+
+    let (_, code, stdout, stderr) = ds(&[
+        "solar",
+        "seed",
+        "preview",
+        "--desktop-descriptor",
+        &descriptor,
+        "--output",
+        "json",
+    ]);
+    assert_eq!(code, 0, "{stdout}{stderr}");
+
+    let requests = finish(bridge);
+    assert_eq!(requests[0]["arguments"], json!({}));
+}
+
+#[test]
+fn solar_seed_apply_cannot_run_without_confirmation() {
+    // The gate is in dispatch, before the handler, so it holds on a machine
+    // with no desktop at all — and it must, because apply is the only command
+    // in this domain that mutates governed shared state.
+    let (envelope, code, stdout, stderr) = ds(&[
+        "solar",
+        "seed",
+        "apply",
+        "--seed-digest",
+        SEED_DIGEST,
+        "--desktop-descriptor",
+        "/definitely/not/a/bridge.json",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(
+        envelope["error"]["code"], "confirmation_required",
+        "`ds solar seed apply` reached past the confirmation gate: {stdout}{stderr}"
+    );
+    assert_ne!(code, 0);
+}
+
+#[test]
+fn solar_seed_apply_echoes_the_confirmed_digest_and_reconciles_what_it_wrote() {
+    let plan = seed_plan(vec![seed_city("huye", "create", 2)]);
+    let bridge = bridge(vec![(
+        "solar.seed.apply",
+        json!({
+            "status": "ok",
+            "plan": plan,
+            "seed_digest": SEED_DIGEST,
+            "applied_cities": ["huye"],
+            "skipped_cities": [],
+            "applied_count": 1,
+            "skipped_count": 0,
+            "documents_written": 3,
+            "idempotent": false,
+        }),
+    )]);
+    let descriptor = bridge.descriptor.to_string_lossy().into_owned();
+
+    let (envelope, code, stdout, stderr) = ds(&[
+        "solar",
+        "seed",
+        "apply",
+        "--seed-digest",
+        SEED_DIGEST,
+        "--city",
+        "huye",
+        "--yes",
+        "--desktop-descriptor",
+        &descriptor,
+        "--output",
+        "json",
+    ]);
+    assert_eq!(code, 0, "{stdout}{stderr}");
+    assert_eq!(envelope["data"]["documents_written"], 3);
+    assert_eq!(envelope["data"]["applied_cities"], json!(["huye"]));
+    assert_eq!(envelope["data"]["plan"], plan);
+
+    let requests = finish(bridge);
+    assert_eq!(
+        requests[0]["arguments"],
+        json!({ "seed_digest": SEED_DIGEST, "cities": ["huye"] })
+    );
+}
+
+#[test]
+fn solar_seed_apply_refuses_a_receipt_that_confirms_a_different_digest() {
+    // The apply IS the confirmation, so a receipt naming another digest
+    // describes a write nobody authorized.
+    let bridge = bridge(vec![(
+        "solar.seed.apply",
+        json!({
+            "status": "ok",
+            "plan": seed_plan(vec![seed_city("huye", "create", 2)]),
+            "seed_digest": OTHER_DIGEST,
+            "applied_cities": ["huye"],
+            "skipped_cities": [],
+            "applied_count": 1,
+            "skipped_count": 0,
+            "documents_written": 3,
+            "idempotent": false,
+        }),
+    )]);
+    let descriptor = bridge.descriptor.to_string_lossy().into_owned();
+
+    let (envelope, code, stdout, stderr) = ds(&[
+        "solar",
+        "seed",
+        "apply",
+        "--seed-digest",
+        SEED_DIGEST,
+        "--yes",
+        "--desktop-descriptor",
+        &descriptor,
+        "--output",
+        "json",
+    ]);
+    assert_eq!(code, 3, "{stdout}{stderr}");
+    assert_eq!(envelope["error"]["code"], "desktop_contract_mismatch");
+    let _ = finish(bridge);
+}
+
+#[test]
+fn solar_seed_refuses_a_plan_that_does_not_account_for_the_city_root() {
+    // ds-brain bcd502d: the city root is a document the apply writes, so it is
+    // a listed row and `document_count` counts it. A plan that enumerated
+    // everything except the document deciding whether the city exists promises
+    // fewer documents than the apply would write.
+    let mut rootless = seed_plan(vec![seed_city("huye", "create", 2)]);
+    rootless["cities"][0]["documents"] = json!([{
+        "subcollection": "01_city_inputs",
+        "doc_id": "input-0",
+        "digest": "input-digest-0",
+        "bytes": 128,
+    }]);
+    rootless["document_count"] = json!(1);
+
+    let mut undercounted = seed_plan(vec![seed_city("huye", "create", 2)]);
+    undercounted["document_count"] = json!(2);
+
+    let mut mutating_preview = seed_plan(vec![seed_city("huye", "create", 2)]);
+    mutating_preview["mutated"] = json!(true);
+
+    for (case, plan) in [
+        ("root-row-absent", rootless),
+        ("root-not-counted", undercounted),
+        ("preview-claims-it-mutated", mutating_preview),
+    ] {
+        let bridge = bridge(vec![(
+            "solar.seed.preview",
+            json!({ "status": "ok", "plan": plan }),
+        )]);
+        let descriptor = bridge.descriptor.to_string_lossy().into_owned();
+        let (envelope, code, stdout, stderr) = ds(&[
+            "solar",
+            "seed",
+            "preview",
+            "--desktop-descriptor",
+            &descriptor,
+            "--output",
+            "json",
+        ]);
+        assert_eq!(code, 3, "{case}: {stdout}{stderr}");
+        assert_eq!(
+            envelope["error"]["code"], "desktop_contract_mismatch",
+            "{case}: {stdout}{stderr}"
+        );
+        let _ = finish(bridge);
+    }
+}
+
+#[test]
+fn solar_seed_apply_refuses_a_receipt_that_wrote_fewer_documents_than_it_applied() {
+    let bridge = bridge(vec![(
+        "solar.seed.apply",
+        json!({
+            "status": "ok",
+            "plan": seed_plan(vec![seed_city("huye", "create", 2)]),
+            "seed_digest": SEED_DIGEST,
+            "applied_cities": ["huye"],
+            "skipped_cities": [],
+            "applied_count": 1,
+            "skipped_count": 0,
+            // The plan promised three documents for its one creatable city and
+            // this receipt claims that city applied. One city is ONE
+            // transaction, so there is no partial city to report.
+            "documents_written": 2,
+            "idempotent": false,
+        }),
+    )]);
+    let descriptor = bridge.descriptor.to_string_lossy().into_owned();
+    let (envelope, code, stdout, stderr) = ds(&[
+        "solar",
+        "seed",
+        "apply",
+        "--seed-digest",
+        SEED_DIGEST,
+        "--yes",
+        "--desktop-descriptor",
+        &descriptor,
+        "--output",
+        "json",
+    ]);
+    assert_eq!(code, 3, "{stdout}{stderr}");
+    assert_eq!(envelope["error"]["code"], "desktop_contract_mismatch");
+    let _ = finish(bridge);
+}
+
+#[test]
+fn solar_seed_reraises_ds_brains_own_refusal_codes() {
+    // The server's code is the stable half of the refusal contract, so it must
+    // survive the paired trip rather than arriving as `desktop_refused` prose.
+    // A stale view is a conflict (5) and an undeclared component is an
+    // authority answer (4); both are retryable/actionable in different ways
+    // from an invalid request (2), which is the whole reason the class is part
+    // of the refusal rather than only its code.
+    let cases = [
+        (
+            409,
+            "SOLAR_SEED_DIGEST_MISMATCH",
+            "solar_seed_digest_mismatch",
+            5,
+        ),
+        (
+            400,
+            "SOLAR_SEED_SOURCE_INVALID",
+            "solar_seed_source_invalid",
+            2,
+        ),
+        (
+            403,
+            "SOLAR_SEED_COMPONENT_DISABLED",
+            "solar_seed_component_disabled",
+            4,
+        ),
+        (400, "SOLAR_SEED_BOUNDED", "solar_seed_bounded", 2),
+    ];
+    for (status, server_code, expected, exit) in cases {
+        let bridge = refusing_bridge(status, server_code);
+        let descriptor = bridge.descriptor.to_string_lossy().into_owned();
+        let (envelope, code, stdout, stderr) = ds(&[
+            "solar",
+            "seed",
+            "apply",
+            "--seed-digest",
+            SEED_DIGEST,
+            "--yes",
+            "--desktop-descriptor",
+            &descriptor,
+            "--output",
+            "json",
+        ]);
+        assert_eq!(
+            envelope["error"]["code"], expected,
+            "{server_code}: {stdout}{stderr}"
+        );
+        assert_eq!(code, exit, "{server_code}: {stdout}{stderr}");
+        assert_eq!(
+            envelope["error"]["detail"]["server_code"], server_code,
+            "the server's own code must survive verbatim"
+        );
+        assert!(
+            envelope["error"]["remedy"]
+                .as_str()
+                .is_some_and(|remedy| remedy.len() > 10),
+            "{server_code} arrived without a remedy"
+        );
+        let _ = finish(bridge);
+    }
+}
+
+#[test]
+fn solar_seed_names_a_desktop_build_that_has_no_seeding_door() {
+    // ds-web shipped the seeding card before its CLI door, so this is the live
+    // behaviour today: a named refusal with a remedy, never a fallback to a
+    // second route, a raw API call, or the web app's local cache.
+    for (operation, command) in [
+        ("solar.seed.preview", vec!["solar", "seed", "preview"]),
+        (
+            "solar.seed.apply",
+            vec![
+                "solar",
+                "seed",
+                "apply",
+                "--seed-digest",
+                SEED_DIGEST,
+                "--yes",
+            ],
+        ),
+    ] {
+        let bridge = unknown_operation_bridge(operation);
+        let descriptor = bridge.descriptor.to_string_lossy().into_owned();
+        let mut args = command;
+        args.extend(["--desktop-descriptor", &descriptor, "--output", "json"]);
+        let (envelope, code, stdout, stderr) = ds(&args);
+        assert_eq!(code, 3, "{stdout}{stderr}");
+        assert_eq!(
+            envelope["error"]["code"], "desktop_operation_unsupported",
+            "{stdout}{stderr}"
+        );
+        let _ = finish(bridge);
+    }
+}
+
+#[test]
+fn solar_seed_validates_its_own_selection_and_digest_before_pairing() {
+    let mut too_many = vec!["solar", "seed", "preview"];
+    let ids: Vec<String> = (0..65).map(|index| format!("city-{index}")).collect();
+    for id in &ids {
+        too_many.extend(["--city", id]);
+    }
+
+    let cases: Vec<(Vec<&str>, &str, i32)> = vec![
+        (too_many, "solar_seed_bounded", 2),
+        (
+            vec!["solar", "seed", "preview", "--city", " huye"],
+            "invalid_seed_city",
+            2,
+        ),
+        (
+            vec!["solar", "seed", "preview", "--source="],
+            "invalid_seed_source",
+            2,
+        ),
+        (
+            vec![
+                "solar",
+                "seed",
+                "apply",
+                "--seed-digest",
+                "sha256:d3d3d3d3",
+                "--yes",
+            ],
+            "solar_seed_digest_required",
+            2,
+        ),
+        (
+            vec!["solar", "seed", "apply", "--seed-digest=", "--yes"],
+            "solar_seed_digest_required",
+            2,
+        ),
+    ];
+
+    for (mut args, expected, exit) in cases {
+        args.extend([
+            "--desktop-descriptor",
+            "/definitely/not/a/bridge.json",
+            "--output",
+            "json",
+        ]);
+        let (envelope, code, stdout, stderr) = ds(&args);
+        assert_eq!(
+            envelope["error"]["code"],
+            expected,
+            "unexpected refusal for `{}`: {stdout}{stderr}",
+            args.join(" ")
+        );
+        assert_eq!(code, exit, "{stdout}{stderr}");
+    }
 }
 
 #[test]

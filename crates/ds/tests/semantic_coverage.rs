@@ -135,6 +135,15 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("solar.run.progress", "read_only", "desktop_user"),
     ("solar.run.result", "read_only", "desktop_user"),
     ("solar.run.start", "local_file_write", "desktop_user"),
+    // Seeding is a governed ds-brain copy into a project's Solar root, so
+    // `apply` is `global_write` and not `artifact_write`: what changes is
+    // shared project state, not a durable file. Both carry `project`
+    // authority because the destination IS the paired session's selected
+    // project — the CLI never names one — and preview keeps `read_only`
+    // exactly as ds-brain classifies `seed_preview`, so it stays usable on a
+    // read-only project.
+    ("solar.seed.apply", "global_write", "project"),
+    ("solar.seed.preview", "read_only", "project"),
     ("solar.sync.status", "read_only", "desktop_user"),
     ("solar.verify-weather", "read_only", "none"),
     ("sre.events", "read_only", "desktop_user"),

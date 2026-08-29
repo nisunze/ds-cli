@@ -1,6 +1,6 @@
 ---
 name: ds-solar-workflow
-description: Run and deliver single-city or explicit city-batch Solar results through deployed `ds`, not governed portfolios.
+description: Seed a project's governed Solar cities, then run and deliver single-city or explicit city-batch Solar results through deployed `ds`, not governed portfolios.
 metadata:
   ds-chapters: project, solar
 ---
@@ -16,6 +16,35 @@ storage, local caches, APIs, source files, or remembered command syntax.
 For a governed aggregate with a portfolio id and membership revision, stop and
 use `ds-solar-portfolio`. Repeated city contexts form an explicit city batch;
 they do not become a portfolio merely because more than one city was run.
+
+## Seed the project's cities first, if they are absent
+
+When the project has no Solar cities yet, or the user asks to add governed
+cities to it — "seed Solar into this project", "copy the standard cities",
+"which cities would be added" — discover the seeding commands rather than
+preparing a city that does not exist. Seeding copies authored city inputs from
+a governed source into the project; preparation caches inputs for cities the
+project already has. They are different requests.
+
+Seeding is propose-then-confirm and the two halves are not interchangeable.
+Preview first, always: it writes nothing, and its plan is what the operator
+authorizes. Show that plan before asking for a decision, and show it whole —
+the cities that would be created, the ones already present, the ones that
+differ at the destination, the ones missing from the source, and every
+warning. A destination that differs is never overwritten; report it and let
+the operator decide.
+
+Confirm by echoing the exact digest that plan returned, together with the same
+selection. Never derive, recompute, reconstruct or guess that digest, and
+never confirm a plan nobody was shown. If the digest is refused as stale, the
+source or destination moved: preview again, show the new plan, and ask again.
+Do not retry with a fresh digest as though the refusal were a transient error.
+
+Report the applied and skipped cities and the documents written exactly as
+returned. An idempotent second apply that writes nothing is a success, not a
+failure. Network assets are reported and never seeded, so a seeded city still
+needs its network maps uploaded through the normal path — say so rather than
+implying the city is complete.
 
 ## Freeze the city request
 
