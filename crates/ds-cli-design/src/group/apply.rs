@@ -3,12 +3,12 @@
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{Authority, Chapter, Command, Effect, Example, Execution};
 use ds_cli_contract::{Context, Inputs};
-use serde_json::{Map, Value, json};
+use serde_json::{json, Map, Value};
 
 use ds_cli_contract::spec::{Arg, ArgKind};
 
-use crate::DESCRIPTOR_ARG;
 use crate::group::{DIGEST_ARG, GROUP_ARG, TRANSFORMERS_ARG};
+use crate::DESCRIPTOR_ARG;
 
 /// Assigning REQUIRES a value. It is declared required here rather than shared
 /// with `preview`, where omitting it is the meaningful way to plan an unassign:

@@ -3,10 +3,10 @@
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{Authority, Chapter, Command, Effect, Example, Execution};
 use ds_cli_contract::{Context, Inputs};
-use serde_json::{Map, Value, json};
+use serde_json::{json, Map, Value};
 
+use crate::group::{PROJECTION_DEFINITION_IDS_ARG, PROJECTION_TRANSFORMERS_ARG};
 use crate::DESCRIPTOR_ARG;
-use crate::group::PROJECTION_TRANSFORMERS_ARG;
 
 pub static COMMAND: Command = Command {
     id: "design.group.export",
@@ -28,7 +28,7 @@ character differently no longer matches the pin.",
     effect: Effect::ReadOnly,
     authority: Authority::Project,
     execution: Execution::Sync,
-    args: &[PROJECTION_TRANSFORMERS_ARG, DESCRIPTOR_ARG],
+    args: &[PROJECTION_TRANSFORMERS_ARG, PROJECTION_DEFINITION_IDS_ARG, DESCRIPTOR_ARG],
     output: "\
 The project, the `schema`, the `cityGroup` that will do the grouping, the \
 `sha256` and `bytes` of the document, counts of `groups`/`assignments`/\
@@ -65,6 +65,10 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         "transformers".into(),
         json!(crate::group::projection_transformers(inputs)?),
     );
+    let definition_ids = crate::group::projection_definition_ids(inputs)?;
+    if !definition_ids.is_empty() {
+        arguments.insert("definition_ids".into(), json!(definition_ids));
+    }
     let descriptor = crate::paired(inputs.value("desktop-descriptor"))?;
     crate::invoke(
         &descriptor,

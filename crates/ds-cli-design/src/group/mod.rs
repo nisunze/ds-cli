@@ -87,6 +87,23 @@ pub const PROJECTION_TRANSFORMERS_ARG: Arg = Arg {
     summary: "Comma-separated transformer names the export covers (1-2000).",
 };
 
+pub const PROJECTION_DEFINITION_IDS_ARG: Arg = Arg {
+    name: "definition-ids",
+    kind: ArgKind::Value,
+    value: "<ids>",
+    required: false,
+    default: None,
+    choices: &[],
+    summary: "Ordered comma-separated typed tag definition IDs used for grouping; omit for one untagged group.",
+};
+
+pub fn projection_definition_ids(inputs: &ds_cli_contract::Inputs) -> Result<Vec<String>, Failure> {
+    match inputs.value("definition-ids") {
+        Some(value) => crate::list_values(value, "definition-ids", 16),
+        None => Ok(Vec::new()),
+    }
+}
+
 pub const DIGEST_ARG: Arg = Arg {
     name: "digest",
     kind: ArgKind::Value,
