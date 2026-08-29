@@ -28,6 +28,36 @@ const ACTION: Arg = Arg {
     ],
     summary: "One named catalog operation; list/read are map-independent.",
 };
+const READ_ACTION: Arg = Arg {
+    name: "action",
+    kind: ArgKind::Value,
+    value: "<action>",
+    required: true,
+    default: None,
+    choices: &[
+        "library-list",
+        "library-read",
+        "library-releases",
+        "example-list",
+        "example-revisions",
+    ],
+    summary: "Read-only exact catalog discovery action.",
+};
+const WRITE_ACTION: Arg = Arg {
+    name: "action",
+    kind: ArgKind::Value,
+    value: "<action>",
+    required: true,
+    default: None,
+    choices: &[
+        "upload",
+        "library-publish",
+        "example-publish",
+        "library-lifecycle",
+        "example-lifecycle",
+    ],
+    summary: "Confirmation-required governed catalog write action.",
+};
 const PAYLOAD: Arg = Arg::value(
     "payload",
     "<json>",
@@ -41,9 +71,69 @@ const VISIBILITY: Arg = Arg::value(
     "Upload visibility: public, organization, or private.",
 );
 const DESCRIPTOR: Arg = Arg::value("desktop-descriptor", "<path>", "Paired Desktop descriptor.");
-pub static READ_COMMAND: Command = Command { id:"library.global.read", path:&["library","global","read"], contract:1, summary:"List or inspect exact global catalog libraries and examples.", purpose:"Map-independent signed-in catalog discovery only. The action is one of library-list, library-read, library-releases, example-list, or example-revisions; no governed state changes.", chapter:Chapter::PlsCadd, effect:Effect::ReadOnly, authority:Authority::DesktopUser, execution:Execution::Sync, args:&[ACTION,PAYLOAD,DESCRIPTOR], output:"Bounded exact library/example heads or immutable release/revision histories.", examples:&[], refusals:&[Refusal{code:"not_paired",when:"the Desktop session is unavailable",remedy:"pair ds with the signed-in Desktop application"}], reference:Some("docs/reference/library.md"), availability:|| Availability::Available };
-pub static WRITE_COMMAND: Command = Command { id:"library.global.write", path:&["library","global","write"], contract:1, summary:"Upload or govern immutable global catalog releases and example revisions.", purpose:"Confirmation-required publisher action. It uploads bytes through a server-minted resumable session without emitting that session URI, publishes immutable records, or advances a lifecycle head behind an expected-head fence.", chapter:Chapter::PlsCadd, effect:Effect::GlobalWrite, authority:Authority::DesktopUser, execution:Execution::Sync, args:&[ACTION,PAYLOAD,PATH,PURPOSE,VISIBILITY,DESCRIPTOR], output:"Artifact pin, immutable published record, or fenced lifecycle receipt.", examples:&[], refusals:&[Refusal{code:"not_paired",when:"the Desktop session is unavailable",remedy:"pair ds with the signed-in Desktop application"}], reference:Some("docs/reference/library.md"), availability:|| Availability::Available };
-pub static FORK_COMMAND: Command = Command { id:"library.global.fork-example", path:&["library","global","fork-example"], contract:1, summary:"Fork one exact global example revision into a project model.", purpose:"Project-authorized, map-independent exact fork. Pass --action fork-example and the server pins global provenance and reuses the verified source object; it does not upload or copy model bytes.", chapter:Chapter::PlsCadd, effect:Effect::GlobalWrite, authority:Authority::Project, execution:Execution::Sync, args:&[ACTION,PAYLOAD,DESCRIPTOR], output:"The new immutable project model version with server-derived global provenance.", examples:&[], refusals:&[Refusal{code:"not_paired",when:"the Desktop session is unavailable",remedy:"pair ds with the signed-in Desktop application"}], reference:Some("docs/reference/library.md"), availability:|| Availability::Available };
+pub static READ_COMMAND: Command = Command {
+    id: "library.global.read",
+    path: &["library", "global", "read"],
+    contract: 1,
+    summary: "List or inspect exact global catalog libraries and examples.",
+    purpose: "Map-independent signed-in catalog discovery only.",
+    chapter: Chapter::PlsCadd,
+    effect: Effect::ReadOnly,
+    authority: Authority::DesktopUser,
+    execution: Execution::Sync,
+    args: &[READ_ACTION, PAYLOAD, DESCRIPTOR],
+    output: "Bounded exact library/example heads or immutable release/revision histories.",
+    examples: &[],
+    refusals: &[Refusal {
+        code: "not_paired",
+        when: "the Desktop session is unavailable",
+        remedy: "pair ds with the signed-in Desktop application",
+    }],
+    reference: Some("docs/reference/library.md"),
+    availability: || Availability::Available,
+};
+pub static WRITE_COMMAND: Command = Command {
+    id: "library.global.write",
+    path: &["library", "global", "write"],
+    contract: 1,
+    summary: "Upload or govern immutable global catalog releases and example revisions.",
+    purpose: "Confirmation-required publisher action. Upload session URIs are never emitted.",
+    chapter: Chapter::PlsCadd,
+    effect: Effect::GlobalWrite,
+    authority: Authority::DesktopUser,
+    execution: Execution::Sync,
+    args: &[WRITE_ACTION, PAYLOAD, PATH, PURPOSE, VISIBILITY, DESCRIPTOR],
+    output: "Artifact pin, immutable published record, or fenced lifecycle receipt.",
+    examples: &[],
+    refusals: &[Refusal {
+        code: "not_paired",
+        when: "the Desktop session is unavailable",
+        remedy: "pair ds with the signed-in Desktop application",
+    }],
+    reference: Some("docs/reference/library.md"),
+    availability: || Availability::Available,
+};
+pub static FORK_COMMAND: Command = Command {
+    id: "library.global.fork-example",
+    path: &["library", "global", "fork-example"],
+    contract: 1,
+    summary: "Fork one exact global example revision into a project model.",
+    purpose: "Project-authorized, map-independent exact fork; no source reupload/copy.",
+    chapter: Chapter::PlsCadd,
+    effect: Effect::GlobalWrite,
+    authority: Authority::Project,
+    execution: Execution::Sync,
+    args: &[PAYLOAD, DESCRIPTOR],
+    output: "The new immutable project model version with server-derived global provenance.",
+    examples: &[],
+    refusals: &[Refusal {
+        code: "not_paired",
+        when: "the Desktop session is unavailable",
+        remedy: "pair ds with the signed-in Desktop application",
+    }],
+    reference: Some("docs/reference/library.md"),
+    availability: || Availability::Available,
+};
 const LIST: BridgeOp = BridgeOp {
     operation: "catalog.library.list",
     arguments: &[],
@@ -91,7 +181,7 @@ const FORK: BridgeOp = BridgeOp {
 pub const BRIDGE_OPS: &[&BridgeOp] = &[
     &LIST, &READ, &RELEASES, &EXAMPLES, &REVISIONS, &UPLOAD, &LP, &EP, &LL, &EL, &FORK,
 ];
-pub fn run(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
+fn run_allowed(inputs: &Inputs, allowed: &[&str]) -> Result<Value, Failure> {
     let payload: Value = inputs
         .value("payload")
         .map(|v| {
@@ -104,6 +194,12 @@ pub fn run(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
         Failure::invalid("catalog_payload_invalid", "--payload must be an object")
     })?;
     let action = inputs.require("action")?;
+    if !allowed.contains(&action) {
+        return Err(Failure::invalid(
+            "catalog_action_not_allowed",
+            format!("{action} is not allowed by this command's effect and authority"),
+        ));
+    }
     let (op, args) = match action {
         "library-list" => (&LIST, json!({})),
         "library-read" => (&READ, payload),
@@ -128,6 +224,46 @@ pub fn run(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
     };
     let descriptor = paired(inputs.value("desktop-descriptor"))?;
     invoke(&descriptor, op, args, std::time::Duration::from_secs(120))
+}
+pub fn run_read(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
+    run_allowed(
+        inputs,
+        &[
+            "library-list",
+            "library-read",
+            "library-releases",
+            "example-list",
+            "example-revisions",
+        ],
+    )
+}
+pub fn run_write(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
+    run_allowed(
+        inputs,
+        &[
+            "upload",
+            "library-publish",
+            "example-publish",
+            "library-lifecycle",
+            "example-lifecycle",
+        ],
+    )
+}
+pub fn run_fork(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
+    let payload: Value = inputs
+        .value("payload")
+        .ok_or_else(|| Failure::invalid("catalog_payload_invalid", "--payload is required"))
+        .and_then(|value| {
+            serde_json::from_str(value)
+                .map_err(|_| Failure::invalid("catalog_payload_invalid", "--payload must be JSON"))
+        })?;
+    let descriptor = paired(inputs.value("desktop-descriptor"))?;
+    invoke(
+        &descriptor,
+        &FORK,
+        payload,
+        std::time::Duration::from_secs(120),
+    )
 }
 pub fn render(data: &Value) -> String {
     serde_json::to_string_pretty(data).unwrap_or_else(|_| "catalog result".into())
