@@ -632,6 +632,11 @@ static DATA_ENTRIES: &[Entry] = &[
         render: ds_cli_data::convert::render,
     },
     Entry {
+        command: &ds_cli_data::conversion_matrix::COMMAND,
+        handler: ds_cli_data::conversion_matrix::run,
+        render: ds_cli_data::conversion_matrix::render,
+    },
+    Entry {
         command: &ds_cli_data::elevation::COMMAND,
         handler: ds_cli_data::elevation::run,
         render: ds_cli_data::elevation::render,

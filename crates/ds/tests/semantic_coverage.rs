@@ -25,6 +25,7 @@ const EXPECTED: &[(&str, &str, &str)] = &[
         "desktop_pairing",
     ),
     ("data.convert", "local_file_write", "none"),
+    ("data.conversion-matrix", "discovery", "none"),
     ("data.inspect", "read_only", "none"),
     ("desktop.project.list", "read_only", "desktop_user"),
     ("desktop.project.switch", "local_ui", "desktop_user"),

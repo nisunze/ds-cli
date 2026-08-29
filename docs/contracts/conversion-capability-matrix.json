@@ -1,0 +1,55 @@
+{
+  "schema": "ds-conversion-capability-matrix/v1",
+  "revision": "2026-08-29",
+  "title": "Data Solutions conversion capability matrix",
+  "rows": [
+    {
+      "id": "dsgrid-package-open",
+      "sources": ["DS Grid .dsgrid package"],
+      "destinations": ["DS Grid working copy"],
+      "browser": "supported",
+      "desktop": "supported",
+      "local_file_handling": "The browser stages and validates the selected package before it becomes a local working copy. No source is uploaded merely by opening it.",
+      "streaming": "not_applicable",
+      "map_required": false,
+      "ui_required": false,
+      "constraints": "Use ds dsgrid inspect and ds dsgrid validate for map-independent local preflight. A project version is created only through the existing versioned-model authority."
+    },
+    {
+      "id": "pls-cadd-to-dsgrid",
+      "sources": ["PLS-CADD .bak backup", "PLS-CADD workspace folder"],
+      "destinations": ["DS Grid .dsgrid package", "DS Grid working copy"],
+      "browser": "supported",
+      "desktop": "supported",
+      "local_file_handling": "Browser import stages a selected backup or workspace and runs the same inspect, digest-pinned plan, then execute sequence. CLI reads an explicit local file or directory only.",
+      "streaming": "bounded_read",
+      "map_required": false,
+      "ui_required": false,
+      "constraints": "Classification identifies the container, recovered PLS version and units. Unsupported, ambiguous or unsafe sources stop at inspect or plan before a model is opened. CLI bounds a source set to 512 MiB and 4,096 files and never overwrites output."
+    },
+    {
+      "id": "dsgrid-to-interchange-or-gis",
+      "sources": ["DS Grid .dsgrid package"],
+      "destinations": ["PLS-CADD workspace folder", "PLS-CADD .bak backup", "GeoJSON", "KMZ", "zipped Shapefile", "GeoPackage", "CSV", "TSV", "XLSX"],
+      "browser": "supported",
+      "desktop": "supported",
+      "local_file_handling": "Browser downloads verified conversion artifacts; a browser workspace-folder export needs the File System Access API. CLI writes only into a new explicit output directory and includes exchange-report.json.",
+      "streaming": "not_applicable",
+      "map_required": false,
+      "ui_required": false,
+      "constraints": "Availability remains source-specific: inspect exposes only ready or unverified capabilities by default and reports blocked reasons on request. A plan pins every source digest; execution refuses changed bytes and existing output paths."
+    },
+    {
+      "id": "local-data-to-geoparquet",
+      "sources": ["CSV", "TSV", "XLSX", "GeoJSON", "KML", "KMZ", "zipped Shapefile"],
+      "destinations": ["GeoParquet"],
+      "browser": "desktop_only_for_geoparquet",
+      "desktop": "supported",
+      "local_file_handling": "ds data inspect then ds data convert reads a named local source and writes a named GeoParquet artifact. Desktop large-delimited import reads from the native path in bounded chunks while producing or reusing its GeoParquet analytical artifact.",
+      "streaming": "native_delimited_only",
+      "map_required": false,
+      "ui_required": false,
+      "constraints": "The web browser can import supported data as a layer, but it does not offer a browser-local GeoParquet file writer. Tables require explicit coordinate columns unless attributes-only is selected; multi-layer sources require --layer. Existing output is refused unless --overwrite is explicit."
+    }
+  ]
+}
