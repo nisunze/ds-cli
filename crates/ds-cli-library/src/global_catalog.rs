@@ -1,33 +1,12 @@
 //! Paired, map-independent global DS Grid catalog governance.
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
-    Arg, ArgKind, Authority, Availability, Chapter, Command, Effect, Execution, Refusal,
+    Arg, ArgKind, Authority, Availability, Chapter, Command, Effect, Example, Execution, Refusal,
 };
 use ds_cli_contract::{Context, Inputs};
-use ds_cli_desktop::ops::{invoke, paired, BridgeOp};
-use serde_json::{json, Value};
+use ds_cli_desktop::ops::{BridgeOp, invoke, paired};
+use serde_json::{Value, json};
 
-const ACTION: Arg = Arg {
-    name: "action",
-    kind: ArgKind::Value,
-    value: "<action>",
-    required: true,
-    default: None,
-    choices: &[
-        "library-list",
-        "library-read",
-        "library-releases",
-        "example-list",
-        "example-revisions",
-        "upload",
-        "library-publish",
-        "example-publish",
-        "library-lifecycle",
-        "example-lifecycle",
-        "fork-example",
-    ],
-    summary: "One named catalog operation; list/read are map-independent.",
-};
 const READ_ACTION: Arg = Arg {
     name: "action",
     kind: ArgKind::Value,
@@ -64,7 +43,11 @@ const PAYLOAD: Arg = Arg::value(
     "Typed action body JSON (library, example, lifecycle, or fork fields).",
 );
 const PATH: Arg = Arg::value("path", "<path>", "Local artifact path for upload only.");
-const PURPOSE: Arg = Arg::value("purpose", "<purpose>", "Upload purpose: library_manifest, library_validation_report, example_model, or example_preview.");
+const PURPOSE: Arg = Arg::value(
+    "purpose",
+    "<purpose>",
+    "Upload purpose: library_manifest, library_validation_report, example_model, or example_preview.",
+);
 const VISIBILITY: Arg = Arg::value(
     "visibility",
     "<visibility>",
@@ -83,7 +66,11 @@ pub static READ_COMMAND: Command = Command {
     execution: Execution::Sync,
     args: &[READ_ACTION, PAYLOAD, DESCRIPTOR],
     output: "Bounded exact library/example heads or immutable release/revision histories.",
-    examples: &[],
+    examples: &[Example {
+        command: "ds library global read --action library-releases --payload '{\"library_id\":\"rw-pls-cadd-structures\"}' --output json",
+        note: "List the immutable releases of one governed global library without opening a map.",
+        runnable: false,
+    }],
     refusals: &[Refusal {
         code: "not_paired",
         when: "the Desktop session is unavailable",
@@ -104,7 +91,11 @@ pub static WRITE_COMMAND: Command = Command {
     execution: Execution::Sync,
     args: &[WRITE_ACTION, PAYLOAD, PATH, PURPOSE, VISIBILITY, DESCRIPTOR],
     output: "Artifact pin, immutable published record, or fenced lifecycle receipt.",
-    examples: &[],
+    examples: &[Example {
+        command: "ds library global write --action library-lifecycle --payload '{\"library_id\":\"rw-pls-cadd-structures\",\"expected_head_release_id\":\"2026.08\",\"lifecycle\":\"archived\"}' --yes --output json",
+        note: "Archive the current library head with an optimistic head fence; immutable releases remain readable.",
+        runnable: false,
+    }],
     refusals: &[Refusal {
         code: "not_paired",
         when: "the Desktop session is unavailable",
@@ -125,7 +116,11 @@ pub static FORK_COMMAND: Command = Command {
     execution: Execution::Sync,
     args: &[PAYLOAD, DESCRIPTOR],
     output: "The new immutable project model version with server-derived global provenance.",
-    examples: &[],
+    examples: &[Example {
+        command: "ds library global fork-example --payload '{\"project_id\":\"my-project\",\"fork\":{\"example_id\":\"karongi-mv\",\"example_revision_id\":\"2026.08\",\"expected_head_revision_id\":\"2026.08\",\"model_id\":\"karongi-copy\",\"revision_id\":\"v1\",\"display_name\":\"Karongi governed copy\",\"model_kind\":\"mv_line\",\"model_schema_version\":\"1\",\"engine_version\":\"pls-cadd-pinned\",\"reason\":\"Start from the proven global example\"}}' --yes --output json",
+        note: "Fork one exact active global example revision into an authorized project without copying or re-uploading its source object.",
+        runnable: false,
+    }],
     refusals: &[Refusal {
         code: "not_paired",
         when: "the Desktop session is unavailable",
@@ -219,7 +214,7 @@ fn run_allowed(inputs: &Inputs, allowed: &[&str]) -> Result<Value, Failure> {
             return Err(Failure::invalid(
                 "catalog_action_invalid",
                 "unknown catalog action",
-            ))
+            ));
         }
     };
     let descriptor = paired(inputs.value("desktop-descriptor"))?;
@@ -267,4 +262,28 @@ pub fn run_fork(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
 }
 pub fn render(data: &Value) -> String {
     serde_json::to_string_pretty(data).unwrap_or_else(|_| "catalog result".into())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn read_and_publisher_actions_are_disjoint() {
+        let read = READ_COMMAND.args[0].choices;
+        let write = WRITE_COMMAND.args[0].choices;
+
+        assert!(read.iter().all(|action| !write.contains(action)));
+        assert!(read.contains(&"library-list"));
+        assert!(!read.contains(&"library-publish"));
+        assert!(write.contains(&"library-publish"));
+        assert!(!write.contains(&"library-list"));
+    }
+
+    #[test]
+    fn exact_project_fork_has_no_action_multiplexer() {
+        assert_eq!(FORK_COMMAND.id, "library.global.fork-example");
+        assert!(FORK_COMMAND.args.iter().all(|arg| arg.name != "action"));
+        assert_eq!(FORK.operation, "catalog.fork-example");
+    }
 }

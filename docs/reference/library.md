@@ -42,6 +42,44 @@ version. Re-running the identical seed is idempotent; any byte difference at an
 existing version refuses. Publication/sync remains a separate governed service
 decision.
 
+## Governed global catalogue
+
+The global catalogue is a separate authority from the local immutable store.
+`library global read` lists global libraries, exact immutable releases, global
+examples, and exact example revisions. `library global write` uploads bounded
+artifacts, publishes new immutable releases/revisions, and changes only the
+governed head lifecycle (`active`, `archived`, `deprecated`, or restored). It
+never overwrites or deletes an immutable child. `library global fork-example`
+creates a project model from one exact active example revision and records its
+server-derived provenance without copying or re-uploading the source object.
+
+These commands use the signed-in Desktop API bridge but do not require the map
+or a project page to be open. Read and publisher-write commands have separate
+effect/authority contracts; exact project forks additionally require project
+authorization. Local `library seed` does not publish anything globally.
+
+Short hypothetical requests and their command shapes:
+
+```text
+"Show every immutable release of the Rwanda PLS-CADD structures library."
+ds library global read --action library-releases \
+  --payload '{"library_id":"rw-pls-cadd-structures"}' --output json
+
+"Archive this head, but refuse if another publisher moved it first."
+ds library global write --action library-lifecycle \
+  --payload '{"library_id":"rw-pls-cadd-structures","expected_head_release_id":"2026.08","lifecycle":"archived"}' \
+  --yes --output json
+
+"Create a project model from the exact Karongi example revision."
+ds library global fork-example \
+  --payload '{"project_id":"my-project","fork":{"example_id":"karongi-mv","example_revision_id":"2026.08","expected_head_revision_id":"2026.08","model_id":"karongi-copy","revision_id":"v1","display_name":"Karongi governed copy","model_kind":"mv_line","model_schema_version":"1","engine_version":"pls-cadd-pinned","reason":"Start from the proven global example"}}' \
+  --yes --output json
+```
+
+Global publication is a governance claim about immutable bytes, validation
+evidence, scope, and provenance. It is not PLS-CADD solver acceptance or an
+engineering certification claim.
+
 Execution ownership:
 
 - `ds`: inspect, verify, catalogue, local store access, pack/unpack, plan and
