@@ -5,6 +5,7 @@
 //! reading explicit paths and materializing new paths without overwrite.
 
 pub mod catalog;
+pub mod global_catalog;
 pub mod open;
 pub mod pack;
 pub mod resolve_native;
@@ -27,6 +28,9 @@ pub static DOMAIN: Domain = Domain {
         &verify::COMMAND,
         &open::COMMAND,
         &catalog::COMMAND,
+		&global_catalog::READ_COMMAND,
+		&global_catalog::WRITE_COMMAND,
+		&global_catalog::FORK_COMMAND,
         &pack::COMMAND,
         &unpack::COMMAND,
         &seed::COMMAND,

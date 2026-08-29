@@ -95,6 +95,21 @@ static LIBRARY_ENTRIES: &[Entry] = &[
         render: ds_cli_library::catalog::render,
     },
     Entry {
+        command: &ds_cli_library::global_catalog::READ_COMMAND,
+        handler: ds_cli_library::global_catalog::run,
+        render: ds_cli_library::global_catalog::render,
+    },
+    Entry {
+        command: &ds_cli_library::global_catalog::WRITE_COMMAND,
+        handler: ds_cli_library::global_catalog::run,
+        render: ds_cli_library::global_catalog::render,
+    },
+    Entry {
+        command: &ds_cli_library::global_catalog::FORK_COMMAND,
+        handler: ds_cli_library::global_catalog::run,
+        render: ds_cli_library::global_catalog::render,
+    },
+    Entry {
         command: &ds_cli_library::pack::COMMAND,
         handler: ds_cli_library::pack::run,
         render: ds_cli_library::pack::render,
