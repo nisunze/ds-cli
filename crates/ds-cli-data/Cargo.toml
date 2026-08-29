@@ -10,6 +10,7 @@ publish.workspace = true
 
 [dependencies]
 ds-cli-contract = { workspace = true }
+ds-cli-desktop = { workspace = true }
 # The centralized converter. `ds` links the same implementation Desktop import
 # links; neither reimplements the format decisions it encodes. See
 # ds-network/docs/contracts/columnar-format-contract.md.

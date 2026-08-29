@@ -4,23 +4,27 @@
 //! silently inside it. A caller inspects a source, decides how to read it, and
 //! converts; analysis then reads the converted artifact.
 //!
-//! These commands run entirely locally. They need no project, no principal and
-//! no paired desktop: a local file on a local disk is nobody else's data. That
-//! is also why local inspection and conversion must work with no map open.
+//! Inspection and conversion need no project or paired desktop. Admin-bound
+//! attachment pairs only to resolve the active project's governed installed
+//! reference asset; the file computation stays native and needs no map open.
 //!
 //! The conversion itself lives in `ds-columnar` in `ds-network`. This crate is
 //! a surface over it, not a second implementation of it.
 
 use ds_cli_contract::spec::{Arg, ArgKind, Domain, Refusal};
 
+pub mod admin_bounds;
 pub mod convert;
 pub mod inspect;
 
 pub static DOMAIN: Domain = Domain {
     id: "data",
-    summary: "Local data: inspect a source, convert it for analysis.",
-    commands: &[&inspect::COMMAND, &convert::COMMAND],
+    summary: "Local data: inspect, convert, and attach governed reference fields.",
+    commands: &[&inspect::COMMAND, &convert::COMMAND, &admin_bounds::COMMAND],
 };
+
+/// The sole paired operation in this otherwise local domain.
+pub const BRIDGE_OPS: &[&ds_cli_desktop::ops::BridgeOp] = &[&admin_bounds::OPERATION];
 
 pub const SOURCE_ARG: Arg = Arg {
     name: "source",

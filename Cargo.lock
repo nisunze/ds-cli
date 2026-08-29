@@ -613,6 +613,7 @@ name = "ds-cli-data"
 version = "0.1.0"
 dependencies = [
  "ds-cli-contract",
+ "ds-cli-desktop",
  "ds-columnar",
  "serde_json",
 ]

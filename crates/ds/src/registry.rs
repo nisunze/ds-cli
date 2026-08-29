@@ -631,6 +631,11 @@ static DATA_ENTRIES: &[Entry] = &[
         handler: ds_cli_data::convert::run,
         render: ds_cli_data::convert::render,
     },
+    Entry {
+        command: &ds_cli_data::admin_bounds::COMMAND,
+        handler: ds_cli_data::admin_bounds::run,
+        render: ds_cli_data::admin_bounds::render,
+    },
 ];
 
 /// Tiling. Ordered as a session uses it: read the state, look at the

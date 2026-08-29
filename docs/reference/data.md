@@ -4,13 +4,21 @@
 GeoParquet as a named step that happens *before* anything queries it — never
 silently inside an import.
 
-Both commands run entirely locally. They need no project, no signed-in user and
-no paired desktop: a file on your own disk is nobody else's data, and local
-inspection has to work with no map open.
+Inspection and conversion run entirely locally. Admin-bound attachment also
+runs locally, but pairs with the desktop to resolve the active project's
+digest-pinned Rwanda reference asset. None of these commands needs a map open.
 
 ```text
 inspect → (choose the sheet, layer, or coordinate columns) → convert
 ```
+
+## `admin-bounds attach`
+
+Writes a new CSV, TSV, or GeoJSON elevation-point file carrying `province`,
+`district`, `sector`, `cell`, `village`, and `code_village`. Geometry,
+elevation values, and non-empty operator-supplied admin values are preserved.
+CSV/TSV callers name longitude and latitude columns explicitly; GeoJSON uses
+feature geometry. The source is never overwritten.
 
 ## `inspect`
 

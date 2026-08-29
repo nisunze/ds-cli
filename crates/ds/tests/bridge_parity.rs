@@ -48,6 +48,7 @@ struct App {
     survey_templates: String,
     design: String,
     design_collaboration: String,
+    data: String,
     analysis: String,
     work: String,
     sre: String,
@@ -79,6 +80,7 @@ fn app() -> Option<App> {
         survey_templates: read("src/lib/desktop/cli-survey-templates.ts")?,
         design: read("src/lib/desktop/cli-map-design.ts")?,
         design_collaboration: read("src/lib/desktop/cli-design.ts")?,
+        data: read("src/lib/desktop/cli-data.ts")?,
         analysis: read("src/lib/analysis/outliers.ts")?,
         work: read("src/lib/desktop/cli-work.ts")?,
         sre: read("src/lib/desktop/cli-sre.ts")?,
@@ -889,6 +891,36 @@ fn every_work_command_has_one_closed_operation_owner() {
             }
         }
     }
+}
+
+#[test]
+fn admin_attachment_has_one_closed_mapless_desktop_operation() {
+    let Some(app) = app() else {
+        skip("the ds-web sibling repository is not on disk");
+        return;
+    };
+    let allowlist = between(
+        &app.transport,
+        "pub const CLI_OPERATIONS: &[&str] = &[",
+        "];",
+    );
+    for operation in ds_cli_data::BRIDGE_OPS {
+        assert_eq!(
+            count(allowlist, &format!("\"{}\"", operation.operation)),
+            1,
+            "the native allowlist must own the data operation exactly once"
+        );
+        assert_eq!(switch_case_count(&app.frontend, operation.operation), 1);
+        let accepted = quoted_contract_items(operation_contract(&app.data, operation.operation));
+        let declared: BTreeSet<String> = operation
+            .arguments
+            .iter()
+            .map(|argument| (*argument).to_string())
+            .collect();
+        assert_eq!(accepted, declared);
+    }
+    assert!(!app.data.contains("mapInstance"));
+    assert!(!app.data.contains("maplibre-gl"));
 }
 
 #[test]
