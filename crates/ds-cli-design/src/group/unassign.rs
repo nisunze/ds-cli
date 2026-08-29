@@ -3,10 +3,10 @@
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{Authority, Chapter, Command, Effect, Example, Execution};
 use ds_cli_contract::{Context, Inputs};
-use serde_json::{json, Map, Value};
+use serde_json::{Map, Value, json};
 
-use crate::group::{DIGEST_ARG, GROUP_ARG, TRANSFORMERS_ARG};
 use crate::DESCRIPTOR_ARG;
+use crate::group::{DIGEST_ARG, GROUP_ARG, TRANSFORMERS_ARG};
 
 pub static COMMAND: Command = Command {
     id: "design.group.unassign",

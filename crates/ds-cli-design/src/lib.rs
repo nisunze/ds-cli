@@ -51,16 +51,16 @@ use std::time::Duration;
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{Arg, ArgKind, Domain, Refusal};
-use serde_json::{json, Map, Value};
+use serde_json::{Map, Value, json};
 
 // The paired-application primitives every bridge domain shares. They are
 // declared once in `ds-cli-desktop` — the authority surface — so a caller who
 // learned `--desktop-descriptor` and the pairing refusals from `ds map` has
 // learned them here too.
 pub use ds_cli_desktop::ops::{
-    classify_signed_out, integer, invoke, paired, paired_availability, plural, BridgeOp, AMBIGUOUS,
-    DESCRIPTOR_ARG, INVALID_NUMBER, NOT_PAIRED, PAIRING_REJECTED, REFUSED, SIGNED_OUT, UNREACHABLE,
-    UNREADABLE, UNSUPPORTED,
+    AMBIGUOUS, BridgeOp, DESCRIPTOR_ARG, INVALID_NUMBER, NOT_PAIRED, PAIRING_REJECTED, REFUSED,
+    SIGNED_OUT, UNREACHABLE, UNREADABLE, UNSUPPORTED, classify_signed_out, integer, invoke, paired,
+    paired_availability, plural,
 };
 
 pub static DOMAIN: Domain = Domain {
@@ -369,8 +369,7 @@ pub const INVALID_ANCHOR: Refusal = Refusal {
 pub const TOO_LARGE: Refusal = Refusal {
     code: "attachment_too_large",
     when: "the file is larger than the paired desktop's bounded path reader",
-    remedy:
-        "publish it from the application's Attachments dialog, which streams from the file picker",
+    remedy: "publish it from the application's Attachments dialog, which streams from the file picker",
 };
 pub const TOO_MANY: Refusal = Refusal {
     code: "too_many_values",

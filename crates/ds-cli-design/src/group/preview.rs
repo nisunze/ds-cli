@@ -5,10 +5,10 @@ use ds_cli_contract::spec::{
     Arg, ArgKind, Authority, Chapter, Command, Effect, Example, Execution,
 };
 use ds_cli_contract::{Context, Inputs};
-use serde_json::{json, Map, Value};
+use serde_json::{Map, Value, json};
 
-use crate::group::{GROUP_ARG, TRANSFORMERS_ARG};
 use crate::DESCRIPTOR_ARG;
+use crate::group::{GROUP_ARG, TRANSFORMERS_ARG};
 
 pub const VALUE_ARG: Arg = Arg {
     name: "value",
