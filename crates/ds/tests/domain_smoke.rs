@@ -2110,13 +2110,18 @@ fn design_lv_project_export_refuses_an_existing_artifact_before_auth_or_desktop(
                 "method": "POST",
                 "path": "/api/v1/survey/entries/changes"
             },
+            "survey_entry_create": {
+                "method": "POST",
+                "path": "/api/v1/entries/mutate",
+                "operation": "create"
+            },
             "provenance": { "source_revision": "abc123", "descriptor_sha256": digest }
         })
     };
     std::fs::write(
         &profile_path,
         serde_json::to_vec(&json!({
-            "schema_version": "ds.native-client-profiles/v8",
+            "schema_version": "ds.native-client-profiles/v9",
             "development": true,
             "profiles": {
                 "stable": profile(
@@ -4258,6 +4263,106 @@ fn project_forms_native_reads_preserve_the_explicit_project_desktop_surface() {
     assert_eq!(
         invalid_changes.envelope["error"]["code"],
         "survey_entries_changes_invalid"
+    );
+
+    let create = ok(&["capabilities", "survey.entries.create", "--output", "json"]);
+    assert_eq!(create["command"]["authority"], "headless_project");
+    assert_eq!(create["command"]["effect"], "global_write");
+    assert_eq!(create["command"]["execution"], "sync");
+    assert_eq!(create["command"]["confirmation_required"], true);
+    let create_help = ds(&["survey", "entries", "create", "--help"]);
+    assert_eq!(create_help.code, 0);
+    assert!(
+        create_help
+            .stdout
+            .contains("--idempotency-key <opaque-key>")
+    );
+    assert!(create_help.stdout.contains("Firestore committed"));
+    assert!(create_help.stdout.contains("BigQuery mirror unconfirmed"));
+    let names = create["command"]["inputs"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|arg| arg["name"].as_str())
+        .collect::<BTreeSet<_>>();
+    assert_eq!(
+        names,
+        BTreeSet::from([
+            "context-key",
+            "created-at",
+            "doc-id",
+            "document",
+            "form",
+            "idempotency-key",
+            "lane",
+        ])
+    );
+    for forbidden in [
+        "project",
+        "url",
+        "method",
+        "body",
+        "token",
+        "origin",
+        "operation",
+        "retry",
+        "force",
+        "authority",
+        "desktop-descriptor",
+    ] {
+        assert!(
+            create["command"]["inputs"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|arg| arg["name"] != forbidden),
+            "survey.entries.create exposed --{forbidden}"
+        );
+    }
+    let unconfirmed_create = ds(&[
+        "survey",
+        "entries",
+        "create",
+        "--form",
+        "poles",
+        "--doc-id",
+        "pole-1",
+        "--idempotency-key",
+        "opaque-1",
+        "--created-at",
+        "2026-08-30T00:00:00Z",
+        "--document",
+        "missing.json",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(unconfirmed_create.code, 2);
+    assert_eq!(
+        unconfirmed_create.envelope["error"]["code"],
+        "confirmation_required"
+    );
+    let confirmed_invalid_create = ds(&[
+        "survey",
+        "entries",
+        "create",
+        "--form",
+        "poles",
+        "--doc-id",
+        "pole-1",
+        "--idempotency-key",
+        "opaque-1",
+        "--created-at",
+        "2026-08-30T00:00:00Z",
+        "--document",
+        "missing.json",
+        "--yes",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(confirmed_invalid_create.code, 2);
+    assert_eq!(
+        confirmed_invalid_create.envelope["error"]["code"],
+        "survey_entry_create_document_invalid"
     );
 
     let legacy = ok(&[

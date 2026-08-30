@@ -266,6 +266,7 @@ const EXPECTED: &[(&str, &str, &str)] = &[
         "local_auth_state",
         "headless_project",
     ),
+    ("survey.entries.create", "global_write", "headless_project"),
     ("survey.template.apply", "global_write", "desktop_user"),
     ("survey.template.create", "global_write", "desktop_user"),
     ("survey.template.lifecycle", "global_write", "desktop_user"),

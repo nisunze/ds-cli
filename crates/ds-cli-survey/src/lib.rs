@@ -7,6 +7,7 @@
 //! client; this crate never owns form validation or topology.
 
 pub mod changes;
+pub mod create;
 pub mod entries;
 pub mod forms;
 pub mod project_forms;
@@ -41,6 +42,7 @@ pub static DOMAIN: Domain = Domain {
         &query::COMMAND,
         &entries::COMMAND,
         &changes::COMMAND,
+        &create::COMMAND,
         &templates::LIST_COMMAND,
         &templates::READ_COMMAND,
         &templates::CREATE_COMMAND,

@@ -1,5 +1,5 @@
 {
-  "schema_version": "ds.native-client-profiles/v8",
+  "schema_version": "ds.native-client-profiles/v9",
   "development": true,
   "profiles": {
     "stable": {
@@ -43,6 +43,11 @@
       "survey_entries_changes": {
         "method": "POST",
         "path": "/api/v1/survey/entries/changes"
+      },
+      "survey_entry_create": {
+        "method": "POST",
+        "path": "/api/v1/entries/mutate",
+        "operation": "create"
       },
       "provenance": {
         "source_revision": "0123456789abcdef0123456789abcdef01234567",
@@ -90,6 +95,11 @@
       "survey_entries_changes": {
         "method": "POST",
         "path": "/api/v1/survey/entries/changes"
+      },
+      "survey_entry_create": {
+        "method": "POST",
+        "path": "/api/v1/entries/mutate",
+        "operation": "create"
       },
       "provenance": {
         "source_revision": "0123456789abcdef0123456789abcdef01234567",

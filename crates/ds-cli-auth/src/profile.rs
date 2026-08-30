@@ -76,6 +76,7 @@ struct Entry {
     survey_query: SurveyQuery,
     survey_entries_select: SurveyEntriesSelect,
     survey_entries_changes: SurveyEntriesChanges,
+    survey_entry_create: SurveyEntryCreate,
     provenance: Provenance,
 }
 
@@ -145,6 +146,14 @@ struct SurveyEntriesSelect {
 struct SurveyEntriesChanges {
     method: String,
     path: String,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SurveyEntryCreate {
+    method: String,
+    path: String,
+    operation: String,
 }
 
 #[derive(Deserialize)]
@@ -265,6 +274,9 @@ fn load_path(
         survey_entries_select_path: entry.survey_entries_select.path,
         survey_entries_changes_method: entry.survey_entries_changes.method,
         survey_entries_changes_path: entry.survey_entries_changes.path,
+        survey_entry_create_method: entry.survey_entry_create.method,
+        survey_entry_create_path: entry.survey_entry_create.path,
+        survey_entry_create_operation: entry.survey_entry_create.operation,
     })
     .map_err(|_| unsafe_catalog())
 }
@@ -315,6 +327,7 @@ mod tests {
                     "survey_query": { "method": "POST", "path": "/api/v1/survey/query" },
                     "survey_entries_select": { "method": "POST", "path": "/api/v1/survey/entries/select" },
                     "survey_entries_changes": { "method": "POST", "path": "/api/v1/survey/entries/changes" },
+                    "survey_entry_create": { "method": "POST", "path": "/api/v1/entries/mutate", "operation": "create" },
                     "provenance": { "source_revision": "abc123", "descriptor_sha256": "a".repeat(64) }
                 },
                 "canary": {
@@ -327,6 +340,7 @@ mod tests {
                     "survey_query": { "method": "POST", "path": "/api/v1/survey/query" },
                     "survey_entries_select": { "method": "POST", "path": "/api/v1/survey/entries/select" },
                     "survey_entries_changes": { "method": "POST", "path": "/api/v1/survey/entries/changes" },
+                    "survey_entry_create": { "method": "POST", "path": "/api/v1/entries/mutate", "operation": "create" },
                     "provenance": { "source_revision": "def456", "descriptor_sha256": "b".repeat(64) }
                 }
             }
@@ -453,7 +467,7 @@ mod tests {
     }
 
     #[test]
-    fn v8_fixed_read_blocks_are_required_and_exact() {
+    fn v9_fixed_calls_are_required_and_exact() {
         let mut missing: serde_json::Value = serde_json::from_slice(&fixture(false)).unwrap();
         missing["profiles"]["stable"]
             .as_object_mut()
@@ -544,6 +558,23 @@ mod tests {
 
         let mut escaped: serde_json::Value = serde_json::from_slice(&fixture(false)).unwrap();
         escaped["profiles"]["stable"]["survey_entries_changes"]["path"] = json!("/api/v1/anything");
+        let escaped = serde_json::to_vec(&escaped).unwrap();
+        with_fixture(&escaped, |path| {
+            assert_eq!(
+                load_path(
+                    path,
+                    Lane::Stable,
+                    false,
+                    format!("{:x}", Sha256::digest(&escaped))
+                )
+                .unwrap_err()
+                .code(),
+                "native_profile_unsafe"
+            );
+        });
+
+        let mut escaped: serde_json::Value = serde_json::from_slice(&fixture(false)).unwrap();
+        escaped["profiles"]["stable"]["survey_entry_create"]["operation"] = json!("update");
         let escaped = serde_json::to_vec(&escaped).unwrap();
         with_fixture(&escaped, |path| {
             assert_eq!(

@@ -309,6 +309,7 @@ fn form_factory_and_survey_projects_keep_their_distinct_mapless_contracts() {
     assert!(survey_project_names.contains("survey_query"));
     assert!(survey_project_names.contains("survey_entries_select"));
     assert!(survey_project_names.contains("survey_entries_changes"));
+    assert!(survey_project_names.contains("survey_entries_create"));
     assert!(!survey_project_names.contains("survey_form_lifecycle"));
     let creation = survey_projects
         .iter()
@@ -405,6 +406,43 @@ fn form_factory_and_survey_projects_keep_their_distinct_mapless_contracts() {
     assert_eq!(
         changes["inputSchema"]["properties"]["limit"]["default"],
         "100"
+    );
+    let entry_create = survey_projects
+        .iter()
+        .find(|tool| tool["name"] == "survey_entries_create")
+        .expect("native selected-project Survey create tool");
+    assert_eq!(entry_create["title"], "survey.entries.create");
+    assert_eq!(
+        entry_create["inputSchema"]["required"],
+        json!([
+            "form",
+            "doc-id",
+            "idempotency-key",
+            "created-at",
+            "document"
+        ])
+    );
+    assert_eq!(
+        entry_create["inputSchema"]["properties"]
+            .as_object()
+            .unwrap()
+            .keys()
+            .map(String::as_str)
+            .collect::<BTreeSet<_>>(),
+        BTreeSet::from([
+            "confirm",
+            "context-key",
+            "created-at",
+            "doc-id",
+            "document",
+            "form",
+            "idempotency-key",
+            "lane",
+        ])
+    );
+    assert_eq!(
+        entry_create["inputSchema"]["properties"]["confirm"]["type"],
+        "boolean"
     );
 }
 
@@ -522,7 +560,7 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
         let tools = response(&responses, 1)["result"]["tools"]
             .as_array()
             .expect("tools");
-        let maximum = if profile == "survey-projects" { 16 } else { 15 };
+        let maximum = if profile == "survey-projects" { 17 } else { 15 };
         assert!(
             (2..=maximum).contains(&tools.len()),
             "{profile}: {}",

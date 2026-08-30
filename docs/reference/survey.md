@@ -145,6 +145,37 @@ Malformed, unknown, contradictory, or oversized service envelopes retain a
 coarse status-class refusal. The CLI never parses backend response bodies or
 promotes an unrecognized message into a typed service meaning.
 
+`survey entries create` is the governed single-entry write path. It requires
+explicit `--yes` confirmation and accepts only a form slug, new document id,
+opaque idempotency key, RFC3339 device creation time, one closed local JSON
+document, an optional context ancestor chain, and stable/canary lane. Project
+identity comes only from the restored user's audience-fenced selection. The
+CLI validates the complete local grammar before profile discovery or auth,
+releases the selected-project lease before the request, and calls only the
+create-bound `POST /api/v1/entries/mutate` native-core contract. It never
+retries or falls back automatically.
+
+```text
+ds survey entries create --form lv_poles_survey --doc-id pole-104 \
+  --idempotency-key '<opaque-key>' --created-at 2026-08-30T12:00:00Z \
+  --document ./pole-104.json --yes --output json
+```
+
+The document must be a regular non-symlink file no larger than 900 KiB. Its
+root is closed: required `data` must be an object; optional `geometry`,
+`connectivity`, and `detailed_location` must be non-null, with the latter two
+also objects. Unknown root keys are refused. The shared core owns form and
+document identity, context, canonical timestamp, GeoJSON, finite-number, and
+exact serialized payload validation. No project id, raw URL, method, request
+body, token, origin, operation, retry, force, caller authority, or Desktop
+descriptor is accepted.
+
+Success returns a receipt only: Firestore is `committed`, while the BigQuery
+mirror remains `unconfirmed`. The output never contains request data or the
+idempotency key. A later governed selection or changes read establishes mirror
+visibility; the create receipt itself does not. A manual retry after an
+ambiguous service failure must reuse the exact document and idempotency key.
+
 Four related objects have separate lifecycles:
 
 1. A **Form Factory form** is a global master schema. Use `survey forms list`,

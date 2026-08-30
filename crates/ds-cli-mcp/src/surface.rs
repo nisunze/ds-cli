@@ -121,10 +121,10 @@ impl Profile {
 
     const fn tool_limit(self) -> usize {
         match self {
-            // The bounded changes-feed page is a third selected-project data
-            // read beside query and spatial selection, so it stays with the
-            // same operator workflow rather than creating another profile.
-            Self::SurveyProjects => 16,
+            // Query, spatial selection, fenced changes, and governed
+            // single-entry create belong to the same selected-project Survey
+            // workflow. The count includes the one ds_catalog discovery tool.
+            Self::SurveyProjects => 17,
             _ => 15,
         }
     }
@@ -260,6 +260,7 @@ const SURVEY_PROJECT_COMMANDS: &[&str] = &[
     "survey.query",
     "survey.entries.select",
     "survey.entries.changes",
+    "survey.entries.create",
     "survey.project-forms.list",
     "survey.project-form.settings",
     "survey.project-forms.read",

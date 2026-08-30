@@ -20,7 +20,8 @@ use ds_client_core::{
     Client, ClientError, ErrorKind, Project, ProjectFormSettingsEditor, ProjectFormsSnapshot,
     ProjectStatus, SolarSnapshot, SurveyEntriesChanges, SurveyEntriesChangesRequest,
     SurveyEntriesChangesServiceCode, SurveyEntriesSelectRequest, SurveyEntriesSelectServiceCode,
-    SurveyEntriesSelection, SurveyQueryRequest, SurveyQueryResult, TransformerContext,
+    SurveyEntriesSelection, SurveyEntryCreateReceipt, SurveyEntryCreateRequest,
+    SurveyEntryCreateServiceCode, SurveyQueryRequest, SurveyQueryResult, TransformerContext,
 };
 use profile::Lane;
 use serde_json::{Value, json};
@@ -494,6 +495,31 @@ pub struct HeadlessSurveyEntriesChanges {
     project_name: String,
     project_status: String,
     changes: SurveyEntriesChanges,
+}
+
+/// One governed Survey create receipt produced under the restored user and
+/// audience-fenced selected project. Request payload and idempotency material
+/// are deliberately not retained in this projection.
+pub struct HeadlessSurveyEntryCreate {
+    lane: &'static str,
+    project_name: String,
+    project_status: String,
+    receipt: SurveyEntryCreateReceipt,
+}
+
+impl HeadlessSurveyEntryCreate {
+    pub const fn lane(&self) -> &'static str {
+        self.lane
+    }
+    pub fn project_name(&self) -> &str {
+        &self.project_name
+    }
+    pub fn project_status(&self) -> &str {
+        &self.project_status
+    }
+    pub const fn receipt(&self) -> &SurveyEntryCreateReceipt {
+        &self.receipt
+    }
 }
 
 impl HeadlessSurveyEntriesChanges {
@@ -971,6 +997,135 @@ pub fn survey_entries_changes(
         project_status: selected.status().to_owned(),
         changes,
     })
+}
+
+/// Restore one native user and create one governed Survey entry in only the
+/// saved, audience-fenced project. Local callers construct the strict core
+/// request before entering this adapter; the selected-project lease is
+/// released before the fixed network call.
+pub fn survey_entry_create(
+    lane_value: &str,
+    request: &SurveyEntryCreateRequest,
+) -> Result<HeadlessSurveyEntryCreate, Failure> {
+    let lane = Lane::parse(lane_value)?;
+    let profile = profile::load(lane)?;
+    let store = NativeRefreshStore::open()?;
+    let mut client = Client::new(profile, NativeTransport, store);
+    let user = require_restore_before_context(&mut client)?;
+    let selected = ProjectContextLease::acquire(client.profile())?
+        .load_snapshot(client.profile(), user.uid(), user.email())?
+        .ok_or_else(|| {
+            Failure::conflict(
+                "headless_project_not_selected",
+                "no project is selected for this native user, lane, and credential audience",
+            )
+            .remedy("run ds auth project use --project <exact-id>")
+            .next("ds auth project status")
+        })?;
+    let result = client.survey_entry_create(selected.project_id(), request, now());
+    let receipt = match result {
+        Err(error) if error.survey_entry_create_service_code().is_some() => {
+            return Err(map_survey_entry_create_service_code(
+                error
+                    .survey_entry_create_service_code()
+                    .expect("the guarded Survey create service code is present"),
+            ));
+        }
+        Err(error) if error.kind() == ErrorKind::ResourceNotFound => {
+            return Err(Failure::invalid(
+                "survey_entry_create_scope_not_found",
+                "the selected project, governed form, or context ancestor is unavailable",
+            )
+            .remedy("verify the selected project, form, and optional context key"));
+        }
+        Err(error) if error.kind() == ErrorKind::InvalidInput => {
+            return Err(Failure::invalid(
+                "survey_entry_create_refused",
+                "the backend refused the already validated governed Survey create request",
+            )
+            .remedy("recheck the form, document identity, context, and document bounds"));
+        }
+        Err(error) if error.kind() == ErrorKind::AuthenticationRejected => {
+            return Err(Failure::unauthorized(
+                "survey_entry_create_auth_rejected",
+                "the fixed create route rejected the verified identity or form authority",
+            )
+            .remedy("verify account and entries.create authority in the selected project"));
+        }
+        Err(error) if error.kind() == ErrorKind::Transient => {
+            return Err(Failure::unavailable(
+                "survey_entry_create_failed",
+                "the governed Survey create service failed temporarily",
+            )
+            .remedy(
+                "after service recovery, retry the exact document with the same idempotency key",
+            ));
+        }
+        Err(error) if error.kind() == ErrorKind::UnreadableResponse => {
+            return Err(Failure::unavailable(
+                "survey_entry_create_unreadable",
+                "the create response violated its closed identity, version, clock, or authority contract",
+            )
+            .remedy("verify the backend release and update ds before retrying"));
+        }
+        other => with_released_context_disposition(client.profile(), &selected, other)?,
+    };
+    Ok(HeadlessSurveyEntryCreate {
+        lane: lane.token(),
+        project_name: selected.project_name().to_owned(),
+        project_status: selected.status().to_owned(),
+        receipt,
+    })
+}
+
+fn map_survey_entry_create_service_code(code: SurveyEntryCreateServiceCode) -> Failure {
+    match code {
+        SurveyEntryCreateServiceCode::Invalid => Failure::invalid(
+            "survey_entry_create_invalid",
+            "the fixed service rejected the bounded Survey create request",
+        )
+        .remedy("recheck the exact form, document id, timestamp, context, and JSON document"),
+        SurveyEntryCreateServiceCode::Unauthorized => Failure::unauthorized(
+            "survey_entry_create_auth_rejected",
+            "the governed Survey create service rejected the current native session",
+        )
+        .remedy("sign in again and verify the selected project"),
+        SurveyEntryCreateServiceCode::PermissionDenied => Failure::unauthorized(
+            "survey_entry_create_permission_denied",
+            "the verified user lacks entries.create authority for this Survey form",
+        )
+        .remedy("request entries.create authority for the selected project and form"),
+        SurveyEntryCreateServiceCode::ScopeNotFound => Failure::invalid(
+            "survey_entry_create_scope_not_found",
+            "the selected project, governed form, or context ancestor is unavailable",
+        )
+        .remedy("verify the selected project, form, and optional context key"),
+        SurveyEntryCreateServiceCode::FormDisabled => Failure::invalid(
+            "survey_entry_create_form_disabled",
+            "the Survey form is not enabled for entry creation in the selected project",
+        )
+        .remedy("enable the project form before creating entries"),
+        SurveyEntryCreateServiceCode::ProjectReadOnly => Failure::conflict(
+            "survey_entry_create_project_read_only",
+            "the selected project lifecycle does not permit Survey entry creation",
+        )
+        .remedy("select an active writable project"),
+        SurveyEntryCreateServiceCode::IdempotencyConflict => Failure::conflict(
+            "survey_entry_create_idempotency_conflict",
+            "the idempotency key is already bound to a different Survey mutation",
+        )
+        .remedy("use the original exact request for replay, or a fresh key for a distinct create"),
+        SurveyEntryCreateServiceCode::AlreadyExists => Failure::conflict(
+            "survey_entry_create_already_exists",
+            "the Survey document already exists and this request is not its exact replay",
+        )
+        .remedy("choose a new document id, or replay the original exact request and key"),
+        SurveyEntryCreateServiceCode::Failed => Failure::unavailable(
+            "survey_entry_create_failed",
+            "the governed Survey create service failed temporarily",
+        )
+        .remedy("after service recovery, retry the exact document with the same idempotency key"),
+    }
 }
 
 fn survey_entries_changes_refused() -> Failure {
@@ -1740,6 +1895,85 @@ mod tests {
         assert_eq!(coarse.code(), "survey_entries_changes_refused");
         assert_eq!(coarse.class(), ExitClass::InvalidInput);
         assert!(!coarse.class().retryable());
+    }
+
+    #[test]
+    fn survey_create_service_codes_have_exact_stable_cli_refusals() {
+        use SurveyEntryCreateServiceCode as ServiceCode;
+        use ds_cli_contract::outcome::ExitClass;
+
+        let cases = [
+            (
+                ServiceCode::Invalid,
+                "survey_entry_create_invalid",
+                ExitClass::InvalidInput,
+                "recheck the exact form",
+                false,
+            ),
+            (
+                ServiceCode::Unauthorized,
+                "survey_entry_create_auth_rejected",
+                ExitClass::Unauthorized,
+                "sign in again",
+                false,
+            ),
+            (
+                ServiceCode::PermissionDenied,
+                "survey_entry_create_permission_denied",
+                ExitClass::Unauthorized,
+                "entries.create authority",
+                false,
+            ),
+            (
+                ServiceCode::ScopeNotFound,
+                "survey_entry_create_scope_not_found",
+                ExitClass::InvalidInput,
+                "optional context key",
+                false,
+            ),
+            (
+                ServiceCode::FormDisabled,
+                "survey_entry_create_form_disabled",
+                ExitClass::InvalidInput,
+                "enable the project form",
+                false,
+            ),
+            (
+                ServiceCode::ProjectReadOnly,
+                "survey_entry_create_project_read_only",
+                ExitClass::Conflict,
+                "active writable project",
+                true,
+            ),
+            (
+                ServiceCode::IdempotencyConflict,
+                "survey_entry_create_idempotency_conflict",
+                ExitClass::Conflict,
+                "fresh key",
+                true,
+            ),
+            (
+                ServiceCode::AlreadyExists,
+                "survey_entry_create_already_exists",
+                ExitClass::Conflict,
+                "new document id",
+                true,
+            ),
+            (
+                ServiceCode::Failed,
+                "survey_entry_create_failed",
+                ExitClass::Unavailable,
+                "same idempotency key",
+                true,
+            ),
+        ];
+        for (service_code, cli_code, class, remedy, retryable) in cases {
+            let failure = map_survey_entry_create_service_code(service_code);
+            assert_eq!(failure.code(), cli_code);
+            assert_eq!(failure.class(), class);
+            assert_eq!(failure.class().retryable(), retryable);
+            assert!(failure.remedy_text().unwrap().contains(remedy));
+        }
     }
 
     #[test]
