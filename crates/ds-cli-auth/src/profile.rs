@@ -72,6 +72,7 @@ struct Entry {
     projects_read: ProjectsRead,
     transformer_context: TransformerContext,
     project_forms: ProjectForms,
+    solar_snapshot: SolarSnapshot,
     provenance: Provenance,
 }
 
@@ -112,6 +113,14 @@ struct ProjectForms {
     path: String,
     action: String,
     settings_editor_action: String,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SolarSnapshot {
+    method: String,
+    path: String,
+    action: String,
 }
 
 #[derive(Deserialize)]
@@ -223,6 +232,9 @@ fn load_path(
         project_forms_path: entry.project_forms.path,
         project_forms_action: entry.project_forms.action,
         project_form_editor_action: entry.project_forms.settings_editor_action,
+        solar_snapshot_method: entry.solar_snapshot.method,
+        solar_snapshot_path: entry.solar_snapshot.path,
+        solar_snapshot_action: entry.solar_snapshot.action,
     })
     .map_err(|_| unsafe_catalog())
 }
@@ -269,6 +281,7 @@ mod tests {
                     "projects_read": { "method": "GET", "path": "/api/v1/user/projects" },
                     "transformer_context": { "method": "POST", "path": "/api/v1/data", "action": "get_transformers_data", "fields": "context" },
                     "project_forms": { "method": "POST", "path": "/api/v1/project-forms", "action": "activate", "settings_editor_action": "settings_editor" },
+                    "solar_snapshot": { "method": "POST", "path": "/api/v1/solar", "action": "desktop_snapshot" },
                     "provenance": { "source_revision": "abc123", "descriptor_sha256": "a".repeat(64) }
                 },
                 "canary": {
@@ -277,6 +290,7 @@ mod tests {
                     "projects_read": { "method": "GET", "path": "/api/v1/user/projects" },
                     "transformer_context": { "method": "POST", "path": "/api/v1/data", "action": "get_transformers_data", "fields": "context" },
                     "project_forms": { "method": "POST", "path": "/api/v1/project-forms", "action": "activate", "settings_editor_action": "settings_editor" },
+                    "solar_snapshot": { "method": "POST", "path": "/api/v1/solar", "action": "desktop_snapshot" },
                     "provenance": { "source_revision": "def456", "descriptor_sha256": "b".repeat(64) }
                 }
             }
@@ -403,7 +417,7 @@ mod tests {
     }
 
     #[test]
-    fn v4_fixed_read_blocks_are_required_and_exact() {
+    fn v5_fixed_read_blocks_are_required_and_exact() {
         let mut missing: serde_json::Value = serde_json::from_slice(&fixture(false)).unwrap();
         missing["profiles"]["stable"]
             .as_object_mut()
@@ -426,6 +440,23 @@ mod tests {
 
         let mut escaped: serde_json::Value = serde_json::from_slice(&fixture(false)).unwrap();
         escaped["profiles"]["stable"]["transformer_context"]["path"] = json!("/api/v1/anything");
+        let escaped = serde_json::to_vec(&escaped).unwrap();
+        with_fixture(&escaped, |path| {
+            assert_eq!(
+                load_path(
+                    path,
+                    Lane::Stable,
+                    false,
+                    format!("{:x}", Sha256::digest(&escaped))
+                )
+                .unwrap_err()
+                .code(),
+                "native_profile_unsafe"
+            );
+        });
+
+        let mut escaped: serde_json::Value = serde_json::from_slice(&fixture(false)).unwrap();
+        escaped["profiles"]["stable"]["solar_snapshot"]["action"] = json!("calculate");
         let escaped = serde_json::to_vec(&escaped).unwrap();
         with_fixture(&escaped, |path| {
             assert_eq!(

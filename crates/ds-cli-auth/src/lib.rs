@@ -18,7 +18,7 @@ use ds_cli_contract::spec::{
 use ds_cli_contract::{Context, Inputs};
 use ds_client_core::{
     Client, ClientError, ErrorKind, Project, ProjectFormSettingsEditor, ProjectFormsSnapshot,
-    ProjectStatus, TransformerContext,
+    ProjectStatus, SolarSnapshot, TransformerContext,
 };
 use profile::Lane;
 use serde_json::{Value, json};
@@ -454,6 +454,31 @@ pub struct HeadlessProjectFormEditor {
     snapshot: ProjectFormSettingsEditor,
 }
 
+/// One governed Solar snapshot fetched under the restored user and the
+/// audience-fenced selected project. Signed download URLs remain only inside
+/// the zeroizing owner-intake bytes and are never exposed as fields.
+pub struct HeadlessSolarSnapshot {
+    lane: &'static str,
+    project_name: String,
+    project_status: String,
+    snapshot: SolarSnapshot,
+}
+
+impl HeadlessSolarSnapshot {
+    pub const fn lane(&self) -> &'static str {
+        self.lane
+    }
+    pub fn project_name(&self) -> &str {
+        &self.project_name
+    }
+    pub fn project_status(&self) -> &str {
+        &self.project_status
+    }
+    pub const fn snapshot(&self) -> &SolarSnapshot {
+        &self.snapshot
+    }
+}
+
 impl HeadlessProjectFormEditor {
     pub const fn lane(&self) -> &'static str {
         self.lane
@@ -579,6 +604,88 @@ pub fn project_form_editor(
         &context,
     )?;
     Ok(HeadlessProjectFormEditor {
+        lane: lane.token(),
+        project_name: selected.project_name().to_owned(),
+        project_status: selected.status().to_owned(),
+        snapshot,
+    })
+}
+
+/// Restore one native user and capture one governed Solar city snapshot from
+/// only the saved, audience-fenced selected project. There is no project or
+/// Solar-root override.
+pub fn solar_snapshot(
+    lane_value: &str,
+    template_id: &str,
+) -> Result<HeadlessSolarSnapshot, Failure> {
+    let lane = Lane::parse(lane_value)?;
+    let profile = profile::load(lane)?;
+    let store = NativeRefreshStore::open()?;
+    let mut client = Client::new(profile, NativeTransport, store);
+    // Restore may refresh Firebase. The credential store already serializes
+    // that rotation; do not also hold the selected-project filesystem lease
+    // over a remote identity call.
+    let user = match client.restore(now()) {
+        Ok(Some(user)) => user,
+        Ok(None) => {
+            return Err(Failure::unauthorized(
+                "headless_signed_out",
+                "no native user is signed in for this lane and profile",
+            )
+            .remedy("run ds auth login --email <address>")
+            .next("ds auth status"));
+        }
+        Err(error)
+            if matches!(
+                error.kind(),
+                ErrorKind::PermanentlyRevoked | ErrorKind::IdentityMismatch
+            ) =>
+        {
+            let context = ProjectContextLease::acquire(client.profile())?;
+            context.clear().map_err(|_| cleanup_required())?;
+            return Err(map_client(error));
+        }
+        Err(error) => return Err(map_client(error)),
+    };
+    let context = ProjectContextLease::acquire(client.profile())?;
+    let selected = context
+        .load(client.profile(), user.uid(), user.email())?
+        .ok_or_else(|| {
+            Failure::conflict(
+                "headless_project_not_selected",
+                "no project is selected for this native user, lane, and credential audience",
+            )
+            .remedy("run ds auth project use --project <exact-id>")
+            .next("ds auth project status")
+        })?;
+    // The audience/identity-fenced selected value is now owned and the core
+    // binds the response to it. Do not serialize unrelated headless work over
+    // the network call merely to retain a filesystem lease.
+    drop(context);
+    let snapshot = match client.solar_snapshot(selected.project_id(), template_id, now()) {
+        Ok(snapshot) => snapshot,
+        Err(error)
+            if matches!(
+                error.kind(),
+                ErrorKind::PermanentlyRevoked | ErrorKind::IdentityMismatch
+            ) =>
+        {
+            let context = ProjectContextLease::acquire(client.profile())?;
+            context
+                .clear_if_unchanged(&selected)
+                .map_err(|_| cleanup_required())?;
+            return Err(map_client(error));
+        }
+        Err(error) if error.kind() == ErrorKind::ResourceNotFound => {
+            return Err(Failure::invalid(
+                "solar_city_not_found",
+                "the Solar city does not exist in the selected project",
+            )
+            .remedy("pass one exact live city id from the selected project"));
+        }
+        Err(error) => return Err(map_client(error)),
+    };
+    Ok(HeadlessSolarSnapshot {
         lane: lane.token(),
         project_name: selected.project_name().to_owned(),
         project_status: selected.status().to_owned(),

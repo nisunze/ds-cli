@@ -770,9 +770,12 @@ dependencies = [
 name = "ds-cli-solar"
 version = "0.1.0"
 dependencies = [
+ "ds-cli-auth",
  "ds-cli-contract",
  "ds-cli-desktop",
  "ds-cli-exec",
+ "libc",
+ "serde",
  "serde_json",
  "sha2",
 ]

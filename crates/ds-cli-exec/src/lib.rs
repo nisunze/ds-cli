@@ -18,7 +18,7 @@
 //! reachable from `ds`, which is the property the rule exists to preserve.
 
 use std::ffi::OsString;
-use std::io::Read;
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
@@ -32,6 +32,8 @@ use serde_json::json;
 /// result `ds` should be inlining anyway — it belongs in a file the callee
 /// already wrote.
 pub const MAX_OUTPUT_BYTES: usize = 4 * 1024 * 1024;
+/// Cap on an in-memory typed request transferred to a sibling through stdin.
+pub const MAX_INPUT_BYTES: usize = 32 * 1024 * 1024;
 
 /// How often the wait loop checks. Small enough that a fast task is not
 /// delayed, large enough not to spin.
@@ -216,6 +218,130 @@ impl External {
         })
     }
 
+    /// Invoke one named subcommand with one bounded typed stdin document.
+    ///
+    /// This is the credential-adjacent handoff for owner contracts containing
+    /// short-lived transport authority: the bytes are never placed in argv or
+    /// a temporary file. The subcommand remains static and arguments remain a
+    /// command-owned typed projection, exactly as in [`Self::call`].
+    pub fn call_with_stdin(
+        &self,
+        subcommand: &'static str,
+        args: &[OsString],
+        input: &[u8],
+        timeout: Duration,
+    ) -> Result<Completed, Failure> {
+        if input.is_empty() || input.len() > MAX_INPUT_BYTES {
+            return Err(Failure::invalid(
+                "callee_input_bounded",
+                format!(
+                    "the typed `{}` stdin document is empty or exceeds {} bytes",
+                    self.name, MAX_INPUT_BYTES
+                ),
+            )
+            .remedy("use the owner-supported bounded input contract"));
+        }
+        let executable = self.locate().ok_or_else(|| {
+            Failure::unavailable(self.missing_code, format!("`{}` was not found", self.name))
+                .remedy(self.remedy)
+                .detail(
+                    json!({ "binary": self.name, "owner": self.owner, "override": self.env_override }),
+                )
+        })?;
+
+        let mut command = Command::new(&executable);
+        command
+            .arg(subcommand)
+            .args(args)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        let mut child = command.spawn().map_err(|error| {
+            Failure::unavailable(
+                self.missing_code,
+                format!("`{}` could not be started", self.name),
+            )
+            .remedy(self.remedy)
+            .detail(json!({ "detail": error.kind().to_string() }))
+        })?;
+
+        let mut stdin = child.stdin.take().ok_or_else(|| {
+            Failure::internal(
+                "callee_stdin_failed",
+                format!("could not open `{}` typed stdin", self.name),
+            )
+        })?;
+        let stdout = child.stdout.take();
+        let stderr = child.stderr.take();
+        let stdout_reader = std::thread::spawn(move || read_bounded(stdout));
+        let stderr_reader = std::thread::spawn(move || read_bounded(stderr));
+        let deadline = Instant::now() + timeout;
+        let (wait_result, write_succeeded) = std::thread::scope(|scope| {
+            let writer = scope.spawn(|| {
+                let result = stdin.write_all(input);
+                drop(stdin);
+                result
+            });
+            let wait_result = loop {
+                match child.try_wait() {
+                    Ok(Some(status)) => break Ok(Some(status)),
+                    Ok(None) => {
+                        if Instant::now() >= deadline {
+                            let _ = child.kill();
+                            let _ = child.wait();
+                            break Ok(None);
+                        }
+                        std::thread::sleep(POLL);
+                    }
+                    Err(error) => {
+                        let _ = child.kill();
+                        let _ = child.wait();
+                        break Err(error);
+                    }
+                }
+            };
+            let write_succeeded = writer.join().is_ok_and(|result| result.is_ok());
+            (wait_result, write_succeeded)
+        });
+
+        let (stdout, stdout_truncated) = stdout_reader.join().unwrap_or_default();
+        let (stderr, stderr_truncated) = stderr_reader.join().unwrap_or_default();
+        let status = match wait_result {
+            Err(error) => {
+                return Err(Failure::internal(
+                    "callee_wait_failed",
+                    format!("could not wait for `{}`", self.name),
+                )
+                .detail(json!({ "detail": error.kind().to_string() })));
+            }
+            Ok(Some(status)) => status,
+            Ok(None) => {
+                return Err(Failure::failed(
+                    "callee_timed_out",
+                    format!(
+                        "`{}` did not finish within {}s",
+                        self.name,
+                        timeout.as_secs()
+                    ),
+                )
+                .remedy("retry with a smaller input, or investigate the engine"));
+            }
+        };
+        if status.success() && !write_succeeded {
+            return Err(Failure::failed(
+                "callee_stdin_failed",
+                format!("`{}` did not consume its complete typed input", self.name),
+            )
+            .remedy("update ds and the owner engine to one matching release"));
+        }
+        Ok(Completed {
+            status: status.code(),
+            stdout,
+            stderr,
+            truncated: stdout_truncated || stderr_truncated,
+        })
+    }
+
     /// Parse a callee's stdout as JSON, or refuse with a typed contract
     /// mismatch. A discovery command that returned prose where a document was
     /// promised is a contract break, not a parse inconvenience.
@@ -344,4 +470,73 @@ fn bounded_message(stderr: &str, stdout: &str) -> String {
         .map(|line| line.chars().take(200).collect::<String>())
         .collect::<Vec<_>>()
         .join("\n")
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    use std::fs;
+    use std::os::unix::fs::PermissionsExt;
+    use std::time::Duration;
+
+    use super::*;
+
+    #[test]
+    fn typed_stdin_is_bounded_delivered_and_timeout_safe() {
+        let root = std::env::temp_dir().join(format!("ds-cli-exec-stdin-{}", std::process::id()));
+        fs::create_dir_all(&root).unwrap();
+        let executable = root.join("fixture-owner");
+        fs::write(
+            &executable,
+            b"#!/bin/sh\ncase \"$1\" in\n  transfer) wc -c ;;\n  stall) sleep 5 ;;\n  *) exit 9 ;;\nesac\n",
+        )
+        .unwrap();
+        let mut permissions = fs::metadata(&executable).unwrap().permissions();
+        permissions.set_mode(0o700);
+        fs::set_permissions(&executable, permissions).unwrap();
+
+        const OVERRIDE: &str = "DS_CLI_EXEC_TEST_STDIN_OWNER";
+        // This one test is the only user of its unique environment key.
+        unsafe { std::env::set_var(OVERRIDE, &executable) };
+        let owner = External {
+            name: "fixture-owner",
+            env_override: OVERRIDE,
+            owner: "test",
+            remedy: "repair fixture",
+            missing_code: "fixture_missing",
+        };
+
+        let input = vec![b'x'; 256 * 1024];
+        let completed = owner
+            .call_with_stdin("transfer", &[], &input, Duration::from_secs(2))
+            .unwrap();
+        assert!(completed.succeeded());
+        assert_eq!(completed.stdout.trim(), input.len().to_string());
+
+        let oversized = vec![b'x'; MAX_INPUT_BYTES + 1];
+        assert_eq!(
+            owner
+                .call_with_stdin("transfer", &[], &oversized, Duration::from_secs(2))
+                .err()
+                .expect("oversized stdin must be refused")
+                .code(),
+            "callee_input_bounded"
+        );
+
+        // Fill more than a typical pipe while the child never reads. The
+        // timeout must kill the child, unblock the writer, and return rather
+        // than deadlocking on either pipe or stdin thread.
+        let blocking = vec![b'x'; 1024 * 1024];
+        assert_eq!(
+            owner
+                .call_with_stdin("stall", &[], &blocking, Duration::from_millis(80))
+                .err()
+                .expect("stalled owner must time out")
+                .code(),
+            "callee_timed_out"
+        );
+
+        unsafe { std::env::remove_var(OVERRIDE) };
+        fs::remove_file(executable).unwrap();
+        fs::remove_dir(root).unwrap();
+    }
 }

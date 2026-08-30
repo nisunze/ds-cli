@@ -192,6 +192,22 @@ impl ProjectContextLease {
     pub fn clear(&self) -> Result<(), Failure> {
         remove_and_sync(&self.path).map_err(state_failure)
     }
+
+    /// Clear only the exact context an operation previously loaded. A native
+    /// request may release this lease while it is in flight; a concurrent
+    /// project selection must not then be removed by the older request's
+    /// revoked-identity cleanup.
+    pub fn clear_if_unchanged(&self, expected: &ProjectContext) -> Result<(), Failure> {
+        let Some(bytes) = protected_read(&self.path).map_err(state_failure)? else {
+            return Ok(());
+        };
+        let current: ProjectContext = serde_json::from_slice(&bytes)
+            .map_err(|_| state_failure(StoreError::UnsafeOrUnreadable))?;
+        if &current == expected {
+            remove_and_sync(&self.path).map_err(state_failure)?;
+        }
+        Ok(())
+    }
 }
 
 impl Drop for ProjectContextLease {
@@ -598,8 +614,8 @@ mod tests {
     use super::*;
     use ds_client_core::{
         CLIENT_PROFILE_SCHEMA, Client, ClientProfileInput, DeploymentLane, ProjectFormEditorCall,
-        ProjectFormsCall, ProjectListCall, RefreshCall, SignInCall, TransformerContextCall,
-        Transport, TransportError, TransportResponse,
+        ProjectFormsCall, ProjectListCall, RefreshCall, SignInCall, SolarSnapshotCall,
+        TransformerContextCall, Transport, TransportError, TransportResponse,
     };
     use std::os::unix::fs::{PermissionsExt, symlink};
 
@@ -659,6 +675,13 @@ mod tests {
         ) -> Result<TransportResponse, TransportError> {
             Err(TransportError::Unreachable)
         }
+
+        fn solar_snapshot(
+            &mut self,
+            _call: SolarSnapshotCall<'_>,
+        ) -> Result<TransportResponse, TransportError> {
+            Err(TransportError::Unreachable)
+        }
     }
 
     fn profile() -> ClientProfile {
@@ -681,6 +704,9 @@ mod tests {
             project_forms_path: "/api/v1/project-forms".to_owned(),
             project_forms_action: "activate".to_owned(),
             project_form_editor_action: "settings_editor".to_owned(),
+            solar_snapshot_method: "POST".to_owned(),
+            solar_snapshot_path: "/api/v1/solar".to_owned(),
+            solar_snapshot_action: "desktop_snapshot".to_owned(),
         })
         .unwrap()
     }
@@ -720,6 +746,46 @@ mod tests {
         lock_exclusive_for(&second, Duration::from_millis(20), Duration::from_millis(2)).unwrap();
         unlock(&second).unwrap();
         assert!(lock_path.exists());
+        fs::remove_file(lock_path).unwrap();
+        fs::remove_dir(root).unwrap();
+    }
+
+    #[test]
+    fn delayed_cleanup_never_clears_a_concurrent_context_replacement() {
+        let root = temp_dir("conditional-context-clear");
+        let path = root.join("context.json");
+        let lock_path = root.join("context.lock");
+        let lock = protected_open_lock(&lock_path).unwrap();
+        lock_exclusive(&lock).unwrap();
+        let lease = ProjectContextLease {
+            path: path.clone(),
+            lock,
+        };
+        let expected = ProjectContext {
+            schema: CONTEXT_SCHEMA.to_owned(),
+            lane: "stable".to_owned(),
+            credential_audience_sha256: "a".repeat(64),
+            uid: "uid-a".to_owned(),
+            email: "operator@example.com".to_owned(),
+            ds_project: "project-a".to_owned(),
+            project_name: "Project A".to_owned(),
+            display_name: None,
+            role: Some("owner".to_owned()),
+            status: "active".to_owned(),
+        };
+        let mut replacement = expected.clone();
+        replacement.ds_project = "project-b".to_owned();
+        replacement.project_name = "Project B".to_owned();
+
+        atomic_write(&path, &serde_json::to_vec(&replacement).unwrap()).unwrap();
+        lease.clear_if_unchanged(&expected).unwrap();
+        let retained: ProjectContext =
+            serde_json::from_slice(&protected_read(&path).unwrap().unwrap()).unwrap();
+        assert_eq!(retained, replacement);
+
+        lease.clear_if_unchanged(&replacement).unwrap();
+        assert!(!path.exists());
+        drop(lease);
         fs::remove_file(lock_path).unwrap();
         fs::remove_dir(root).unwrap();
     }

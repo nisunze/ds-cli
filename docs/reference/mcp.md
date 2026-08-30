@@ -49,7 +49,8 @@ ds mcp serve --exposure commands --profile pls
 
 Profiles are `grid`, `pls`, `pls-library`, `library-governance`, `survey`,
 `form-factory`, `survey-projects`, `design-edit`, `design-run`, `map`, `layers`,
-`tiling`, `project`, `solar-run`, `solar-delivery`, and `operations`. `survey`
+`tiling`, `project`, `solar-input`, `solar-run`, `solar-delivery`, and
+`operations`. `survey`
 retains map/local-data survey work;
 `form-factory` owns global schemas, while `survey-projects` owns project-form
 settings, reusable templates, and create-from-template. `layers` isolates
@@ -59,6 +60,10 @@ tile generation and catalogue membership. Each includes
 commands are unavailable and authority, effects, confirmation, output, and
 refusals are unchanged. Plain `--exposure commands` retains the previous
 all-command publication temporarily for compatibility.
+
+`solar-input` is the narrow authenticated selected-project capture surface.
+The established `solar-run` profile retains seeding, preparation, execution,
+result inspection, and verification so existing MCP hosts do not lose tools.
 
 PLS and its libraries are split by operator workflow: `pls` contains workspace
 backup, closure, terrain and diagnostics; `pls-library` contains local

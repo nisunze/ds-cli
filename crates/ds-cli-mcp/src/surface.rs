@@ -23,6 +23,7 @@ pub const PROFILE_IDS: &[&str] = &[
     "layers",
     "tiling",
     "project",
+    "solar-input",
     "solar-run",
     "solar-delivery",
     "operations",
@@ -66,6 +67,7 @@ pub enum Profile {
     Layers,
     Tiling,
     Project,
+    SolarInput,
     SolarRun,
     SolarDelivery,
     Operations,
@@ -87,6 +89,7 @@ impl Profile {
             "layers" => Some(Self::Layers),
             "tiling" => Some(Self::Tiling),
             "project" => Some(Self::Project),
+            "solar-input" => Some(Self::SolarInput),
             "solar-run" => Some(Self::SolarRun),
             "solar-delivery" => Some(Self::SolarDelivery),
             "operations" => Some(Self::Operations),
@@ -109,6 +112,7 @@ impl Profile {
             Self::Layers => "layers",
             Self::Tiling => "tiling",
             Self::Project => "project",
+            Self::SolarInput => "solar-input",
             Self::SolarRun => "solar-run",
             Self::SolarDelivery => "solar-delivery",
             Self::Operations => "operations",
@@ -134,6 +138,7 @@ impl Profile {
             Self::Operations => tool.chapter == Chapter::Operations,
             Self::DesignEdit => DESIGN_EDIT_COMMANDS.contains(&tool.id.as_str()),
             Self::DesignRun => DESIGN_RUN_COMMANDS.contains(&tool.id.as_str()),
+            Self::SolarInput => SOLAR_INPUT_COMMANDS.contains(&tool.id.as_str()),
             Self::SolarRun => SOLAR_RUN_COMMANDS.contains(&tool.id.as_str()),
             Self::SolarDelivery => SOLAR_DELIVERY_COMMANDS.contains(&tool.id.as_str()),
         }
@@ -155,6 +160,7 @@ impl Profile {
             Self::Layers => LAYER_COMMANDS,
             Self::DesignEdit => DESIGN_EDIT_COMMANDS,
             Self::DesignRun => DESIGN_RUN_COMMANDS,
+            Self::SolarInput => SOLAR_INPUT_COMMANDS,
             Self::SolarRun => SOLAR_RUN_COMMANDS,
             Self::SolarDelivery => SOLAR_DELIVERY_COMMANDS,
             Self::PlsLibrary => PLS_LIBRARY_COMMANDS,
@@ -179,7 +185,7 @@ impl Profile {
             Self::Map => chapter == Chapter::MapPresentation,
             Self::Tiling => chapter == Chapter::VectorTiles,
             Self::Project => chapter == Chapter::Project,
-            Self::SolarRun | Self::SolarDelivery => chapter == Chapter::Solar,
+            Self::SolarInput | Self::SolarRun | Self::SolarDelivery => chapter == Chapter::Solar,
             Self::Operations => chapter == Chapter::Operations,
         }
     }
@@ -287,9 +293,9 @@ const DESIGN_RUN_COMMANDS: &[&str] = &[
 
 const SOLAR_RUN_COMMANDS: &[&str] = &[
     "solar.engine",
-    // Seeding is what makes a project's Solar cities exist at all, so it sits
-    // with preparation and the run rather than with delivery. It reaches this
-    // profile the same way every other command does — by being registered.
+    // Preserve the established end-to-end run profile. The native capture
+    // command gets its own narrow profile because adding it here would exceed
+    // the bounded leaf-tool surface and would silently change existing hosts.
     "solar.seed.preview",
     "solar.seed.apply",
     "solar.prepare",
@@ -304,6 +310,8 @@ const SOLAR_RUN_COMMANDS: &[&str] = &[
     "solar.sync.status",
     "solar.verify-weather",
 ];
+
+const SOLAR_INPUT_COMMANDS: &[&str] = &["solar.input.capture"];
 
 const SOLAR_DELIVERY_COMMANDS: &[&str] = &[
     "solar.portfolio.list",

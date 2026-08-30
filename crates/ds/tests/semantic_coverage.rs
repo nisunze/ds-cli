@@ -199,6 +199,11 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("solar.engine", "discovery", "none"),
     ("solar.final.import", "artifact_write", "desktop_user"),
     ("solar.final.submit", "artifact_write", "desktop_user"),
+    (
+        "solar.input.capture",
+        "local_file_write",
+        "headless_project",
+    ),
     ("solar.portfolio.export", "local_file_write", "desktop_user"),
     ("solar.portfolio.list", "read_only", "desktop_user"),
     ("solar.portfolio.read", "read_only", "desktop_user"),

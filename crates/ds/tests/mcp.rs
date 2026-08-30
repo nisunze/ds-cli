@@ -175,8 +175,18 @@ fn by_command_profiles_still_partition_the_live_registry() {
     assert!(!live.is_empty(), "the live registry must not be empty");
 
     for (prefix, profiles) in [
-        ("map.design.", [Profile::DesignEdit, Profile::DesignRun]),
-        ("solar.", [Profile::SolarRun, Profile::SolarDelivery]),
+        (
+            "map.design.",
+            &[Profile::DesignEdit, Profile::DesignRun][..],
+        ),
+        (
+            "solar.",
+            &[
+                Profile::SolarInput,
+                Profile::SolarRun,
+                Profile::SolarDelivery,
+            ][..],
+        ),
     ] {
         let expected: BTreeSet<String> = live
             .iter()
@@ -195,7 +205,7 @@ fn by_command_profiles_still_partition_the_live_registry() {
         assert!(!expected.is_empty(), "no live `{prefix}*` commands");
 
         let mut listed: BTreeSet<String> = BTreeSet::new();
-        for profile in profiles {
+        for profile in profiles.iter().copied() {
             for id in profile.command_ids() {
                 assert!(
                     listed.insert((*id).to_string()),
@@ -430,6 +440,7 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
         "layers",
         "tiling",
         "project",
+        "solar-input",
         "solar-run",
         "solar-delivery",
         "operations",
@@ -473,7 +484,10 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
         .collect::<BTreeSet<_>>();
     for (prefix, profiles) in [
         ("map_design_", &["design-edit", "design-run"][..]),
-        ("solar_", &["solar-run", "solar-delivery"][..]),
+        (
+            "solar_",
+            &["solar-input", "solar-run", "solar-delivery"][..],
+        ),
         ("pls_", &["pls", "pls-library", "library-governance"][..]),
     ] {
         let expected = all

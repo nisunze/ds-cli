@@ -151,6 +151,30 @@ than falling back to an untyped request or a storage scrape.
 
 ## Headless artifact route
 
+`ds solar input capture --city <canonical-id> --out <fresh-file> [--lane
+stable|canary]` is the authenticated headless intake route. It restores the
+native user and the audience-fenced selected project, derives
+`eds_project/<project>/eds_solar` internally, and makes exactly the fixed
+`desktop_snapshot` request for that city. There is no project, root, endpoint,
+token, receipt or generic request override.
+
+The bounded response is streamed directly to the pinned `ds-solar intake
+--snapshot - --out <fresh-file>` owner contract. Short-lived media download
+URLs therefore exist only in protected memory and the stdin pipe: they are
+never written to an intermediate snapshot file, argv, stdout or the resulting
+governed intake. Before the authenticated read, `ds` requires the installed
+owner's machine-readable build identity to advertise
+`ds-solar.governed-city-intake/v1`; a mismatched package refuses safely rather
+than attempting an unversioned handoff.
+
+The owner creates the output with create-new semantics. `ds` then opens that
+exact regular file without following symlinks, performs a bounded read, and
+verifies its closed v1 envelope against the selected project, city, derived
+root, snapshot digest, input fingerprint, receipt authority, expiry and source
+counts before reporting success. The command returns only the intake digest,
+bounded provenance and a SHA-256 of the receipt id. The raw actor-bound receipt
+id remains solely inside the deliberate authority-bearing intake.
+
 `ds solar run --prepared <dir> --out <dir>` remains a separate, reproducible
 offline adapter over the external `ds-solar run` process contract. It accepts
 an already prepared city-artifact directory, performs no intake or network
@@ -263,6 +287,7 @@ update it.
 
 | CLI command | paired operation | effect | result |
 |---|---|---|---|
+| `solar input capture` | fixed native `desktop_snapshot` + governed owner stdin | local file write | verified governed city intake |
 | `solar seed preview` | `solar.seed.preview` | read only | ds-brain's SolarSeedPlan, verbatim |
 | `solar seed apply` | `solar.seed.apply` | global write | ds-brain's SolarSeedApplyResult, verbatim |
 | `solar prepare` | `solar.prepare` | local file write | completed preparation receipt |
@@ -289,6 +314,7 @@ set of product actions and never a generic desktop RPC.
 
 | Command | Timeout | Why |
 |---|---:|---|
+| `solar input capture` | 120 s request + 5 min owner intake | bounded selected-project capture and create-new sealing |
 | `solar seed preview` / `apply` | 60 s | one ds-brain round trip; the card allows the same |
 | `solar prepare` | 30 min | cache capture or authenticated refresh across selected cities |
 | `solar run start` | 30 s | creates a local run receipt; compute continues as a job |
@@ -308,8 +334,8 @@ launches; the assumption and report flags apply only to portfolio launches.
 
 ## Engine identity
 
-`ds solar engine`, the headless artifact runner, `solar verify-weather` and
-`solar result compare`
+`ds solar engine`, `solar input capture`, the headless artifact runner,
+`solar verify-weather` and `solar result compare`
 resolve the `ds-solar` sibling packaged with `ds`. `DS_SOLAR_BIN` is an
 explicit development override and wins when set. The paired product lifecycle
 uses the same release-pinned Solar source linked into DS GridDesign rather than
@@ -332,6 +358,7 @@ project membership nor authorizes publication or mutation.
 ## Related
 
 - `crates/ds-cli-solar/src/seed.rs` — governed project seeding: preview and digest-bound apply
+- `crates/ds-cli-solar/src/input_capture.rs` — selected-project governed intake capture
 - `crates/ds-cli-solar/src/prepare.rs` — paired preparation adapter
 - `crates/ds-cli-solar/src/paired_run.rs` — paired run lifecycle adapter
 - `crates/ds-cli-solar/src/exports.rs` — paired city-report and exact portfolio-artifact exporter

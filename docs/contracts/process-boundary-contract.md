@@ -36,6 +36,14 @@ reachable from `ds`, and that unreachability is the property the owners'
 contracts exist to preserve. `ds-report` states it plainly: *"never a
 caller-supplied argv."*
 
+For an owner contract whose typed document must not be persisted before the
+owner seals it, `External::call_with_stdin` keeps the same static subcommand and
+closed argv rules and accepts one caller-owned byte slice bounded to 32 MiB.
+It drains output and writes stdin concurrently, so a child that stops reading
+cannot deadlock the caller. The one current use is the fixed `ds-solar intake
+--snapshot - --out <fresh-file>` handoff: its snapshot contains short-lived
+download authority and must never cross a temporary-file boundary.
+
 `ds-cli-exec` is not, however, the only place a process is created — there are
 four owner classes, and each is audited where it lives:
 
@@ -95,6 +103,7 @@ one nobody can afford to make.
 | Bound | Value | Why |
 |---|---|---|
 | Output | 4 MiB per stream | beyond this the result belongs in a file the callee already wrote |
+| Typed stdin | 32 MiB | the largest governed owner intake envelope; larger input refuses before spawn |
 | Timeout | per command, declared | a `callee_timed_out` refusal names the bound it exceeded |
 
 Both pipes are drained on their own threads. A callee that fills one while
