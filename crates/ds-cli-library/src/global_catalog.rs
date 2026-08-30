@@ -98,11 +98,18 @@ pub static READ_COMMAND: Command = Command {
         note: "List the immutable releases of one governed global library without opening a map.",
         runnable: false,
     }],
-    refusals: &[Refusal {
-        code: "not_paired",
-        when: "the Desktop session is unavailable",
-        remedy: "pair ds with the signed-in Desktop application",
-    }],
+    refusals: &[
+        Refusal {
+            code: "not_paired",
+            when: "the Desktop session is unavailable",
+            remedy: "pair ds with the signed-in Desktop application",
+        },
+        Refusal {
+            code: "catalog_payload_invalid",
+            when: "--payload is not a JSON object",
+            remedy: "pass one object matching the selected read action",
+        },
+    ],
     reference: Some("docs/reference/library.md"),
     availability: || Availability::Available,
 };
@@ -123,11 +130,18 @@ pub static WRITE_COMMAND: Command = Command {
         note: "Archive the current library head with an optimistic head fence; immutable releases remain readable.",
         runnable: false,
     }],
-    refusals: &[Refusal {
-        code: "not_paired",
-        when: "the Desktop session is unavailable",
-        remedy: "pair ds with the signed-in Desktop application",
-    }],
+    refusals: &[
+        Refusal {
+            code: "not_paired",
+            when: "the Desktop session is unavailable",
+            remedy: "pair ds with the signed-in Desktop application",
+        },
+        Refusal {
+            code: "catalog_payload_invalid",
+            when: "--payload is not a JSON object",
+            remedy: "pass one object matching the selected write action",
+        },
+    ],
     reference: Some("docs/reference/library.md"),
     availability: || Availability::Available,
 };
@@ -148,11 +162,18 @@ pub static FORK_COMMAND: Command = Command {
         note: "Fork one exact active global example revision into an authorized project without copying or re-uploading its source object.",
         runnable: false,
     }],
-    refusals: &[Refusal {
-        code: "not_paired",
-        when: "the Desktop session is unavailable",
-        remedy: "pair ds with the signed-in Desktop application",
-    }],
+    refusals: &[
+        Refusal {
+            code: "not_paired",
+            when: "the Desktop session is unavailable",
+            remedy: "pair ds with the signed-in Desktop application",
+        },
+        Refusal {
+            code: "catalog_payload_invalid",
+            when: "--payload is missing or is not valid JSON",
+            remedy: "pass one object containing project_id and the exact fork request",
+        },
+    ],
     reference: Some("docs/reference/library.md"),
     availability: || Availability::Available,
 };

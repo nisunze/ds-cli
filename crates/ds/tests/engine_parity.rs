@@ -145,10 +145,14 @@ fn report_export_flags_cover_every_required_engine_field() {
 
     for task in index["data"]["tasks"].as_array().expect("tasks") {
         let name = task["name"].as_str().expect("task name");
-        if name == "export_compounded_report" {
-            // `report bundle` accepts the reporter's complete typed request;
-            // unlike report.export it intentionally has no convenience-field
-            // translation to keep archive layout and digests one document.
+        if !matches!(
+            name,
+            "export_transformer_report" | "export_combined_transformer_report"
+        ) {
+            // This test owns only `report export`'s two fixed subcommands.
+            // `export_compounded_report` belongs to `report bundle`; local
+            // admin enrichment is a distinct file task and is intentionally
+            // not smuggled through transformer-report convenience flags.
             continue;
         }
         let required: Vec<&str> = task["required"]

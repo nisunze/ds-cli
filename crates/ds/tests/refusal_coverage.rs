@@ -53,6 +53,14 @@ const NOT_A_REFUSAL: &[(&str, &str)] = &[
          BridgeOp does not declare — a defect in ds caught at the boundary, \
          and one tests/bridge_parity.rs proves cannot be a schema drift",
     ),
+    (
+        "catalog_action_invalid",
+        "raised only if a parser-validated global catalog action has no match arm behind it",
+    ),
+    (
+        "catalog_action_not_allowed",
+        "raised only if a parser-validated global catalog action escapes the exact read/write allowlist that declared it",
+    ),
 ];
 
 fn ds(args: &[&str]) -> Value {
@@ -217,7 +225,10 @@ fn every_constructible_refusal_code_is_documented() {
     // command equally, so they are documented once in the output contract
     // rather than repeated in every REFUSALS section.
     let domain_crates = [
-        ("ds-cli-auth", Some("auth")),
+        // Native auth is now a shared selected-project client boundary used by
+        // Design, Survey/Forms, and Solar commands as well as `ds auth`.
+        // Caller commands declare the relevant helper refusals.
+        ("ds-cli-auth", None),
         ("ds-cli-data", Some("data")),
         ("ds-cli-design", Some("design")),
         ("ds-cli-map", Some("map")),
