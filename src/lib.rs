@@ -46,6 +46,7 @@ impl fmt::Display for LoginError {
 impl std::error::Error for LoginError {}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct LoginPrincipal {
     uid: String,
     email: String,
