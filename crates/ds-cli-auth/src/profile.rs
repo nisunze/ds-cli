@@ -153,15 +153,21 @@ fn discovery() -> Result<(PathBuf, bool, String), Failure> {
         .ok_or_else(not_configured)?;
     #[cfg(not(windows))]
     let path = PRODUCT_ROOT
-        .filter(|root| {
-            *root == "/usr/lib/DS GridDesign" || *root == "/usr/lib/DS GridDesign Canary"
-        })
+        .filter(|root| valid_product_root(root))
         .map(|root| PathBuf::from(root).join(CATALOG_RELATIVE))
         .ok_or_else(not_configured)?;
     if !path.is_file() {
         return Err(not_configured());
     }
     Ok((path, false, expected))
+}
+
+#[cfg(not(windows))]
+fn valid_product_root(root: &str) -> bool {
+    matches!(
+        root,
+        "/usr/lib/DS GridDesign" | "/usr/lib/DS GridDesign Canary" | "/usr/lib/ds"
+    )
 }
 
 fn load_path(
@@ -299,6 +305,21 @@ mod tests {
         assert_eq!(Lane::parse("stable").unwrap(), Lane::Stable);
         assert_eq!(Lane::parse("canary").unwrap(), Lane::Canary);
         assert!(Lane::parse("prod").is_err());
+    }
+
+    #[cfg(not(windows))]
+    #[test]
+    fn release_product_roots_are_closed_to_two_desktops_and_headless_ds() {
+        for root in [
+            "/usr/lib/DS GridDesign",
+            "/usr/lib/DS GridDesign Canary",
+            "/usr/lib/ds",
+        ] {
+            assert!(valid_product_root(root));
+        }
+        for root in ["/tmp/ds", "/usr/lib/ds-canary", "/usr/lib/ds/other"] {
+            assert!(!valid_product_root(root));
+        }
     }
 
     #[test]

@@ -30,16 +30,17 @@ use ds_cli_exec::External;
 
 /// The solar binary.
 ///
-/// The desktop links the Solar runtime for paired product work and packages
-/// this sibling process for the deliberately separate headless artifact
-/// route. Both are built from the same release-pinned `ds-solar` checkout.
-/// `DS_SOLAR_BIN` remains an explicit developer override; an installed build
-/// resolves its packaged sibling first and needs no configuration.
+/// The desktop links the Solar runtime for paired product work. Both desktop
+/// and headless ds releases package this sibling process for the deliberately
+/// separate artifact route, built from the same release-pinned `ds-solar`
+/// checkout. `DS_SOLAR_BIN` remains an explicit developer override; an
+/// installed build resolves its packaged sibling first and needs no
+/// configuration.
 pub static DS_SOLAR: External = External {
     name: "ds-solar",
     env_override: "DS_SOLAR_BIN",
     owner: "ds-solar",
-    remedy: "reinstall DS GridDesign, or for development set DS_SOLAR_BIN to an exact compatible ds-solar",
+    remedy: "reinstall the complete ds release, or for development set DS_SOLAR_BIN to an exact compatible ds-solar",
     missing_code: "solar_engine_missing",
 };
 

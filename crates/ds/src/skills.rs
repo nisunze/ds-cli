@@ -1,9 +1,10 @@
 //! Discovery and verification for the agent guidance shipped beside `ds`.
 //!
-//! Skills are documents, not another executable surface. The desktop package
-//! carries a closed, hashed bundle whose receipt binds those documents to the
-//! exact `ds` source SHA they describe. `ds doctor` verifies that local bundle
-//! and any user-level copies without executing an installer or an engine.
+//! Skills are documents, not another executable surface. Each desktop or
+//! headless package carries a closed, hashed bundle whose receipt binds those
+//! documents to the exact `ds` source SHA they describe. `ds doctor` verifies
+//! that local bundle and any user-level copies without executing an installer
+//! or an engine.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::ffi::OsString;
@@ -65,14 +66,14 @@ pub fn doctor_report() -> Value {
                 "missing",
                 None,
                 Some("no packaged ds-cli-skills bundle was found".to_string()),
-                Some("reinstall DS GridDesign; its package carries the skills matched to this ds build".to_string()),
+                Some("reinstall the complete ds release; its package carries the skills matched to this ds build".to_string()),
             )
         } else {
             (
                 "invalid",
                 None,
                 invalid.first().cloned(),
-                Some("reinstall DS GridDesign from one verified release".to_string()),
+                Some("reinstall ds from one complete verified release".to_string()),
             )
         }
     } else {
@@ -158,6 +159,10 @@ fn bundle_candidates() -> Vec<PathBuf> {
                     .join("DS GridDesign")
                     .join("ds-cli-skills"),
             );
+            push_unique(
+                &mut candidates,
+                prefix.join("lib").join("ds").join("ds-cli-skills"),
+            );
         }
     }
     push_unique(
@@ -168,6 +173,7 @@ fn bundle_candidates() -> Vec<PathBuf> {
         &mut candidates,
         PathBuf::from("/usr/lib/DS GridDesign/ds-cli-skills"),
     );
+    push_unique(&mut candidates, PathBuf::from("/usr/lib/ds/ds-cli-skills"));
     candidates
 }
 
@@ -663,6 +669,11 @@ mod tests {
                 .unwrap_err()
                 .contains("targets ds-cli")
         );
+    }
+
+    #[test]
+    fn headless_release_bundle_is_a_closed_candidate() {
+        assert!(bundle_candidates().contains(&PathBuf::from("/usr/lib/ds/ds-cli-skills")));
     }
 
     #[test]

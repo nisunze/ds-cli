@@ -54,7 +54,7 @@ publication or mutation authority and does not contact the desktop or network.",
         Refusal {
             code: "solar_engine_missing",
             when: "the packaged `ds-solar` sidecar cannot be found",
-            remedy: "reinstall DS GridDesign, or set DS_SOLAR_BIN for development",
+            remedy: "reinstall the complete ds release, or set DS_SOLAR_BIN for development",
         },
         Refusal {
             code: "left_result_not_found",

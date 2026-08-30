@@ -33,7 +33,7 @@ starting a batch, and to record which exact engine produced a result.",
         Refusal {
             code: "solar_engine_missing",
             when: "the packaged `ds-solar` sidecar cannot be found",
-            remedy: "reinstall DS GridDesign, or set DS_SOLAR_BIN for development",
+            remedy: "reinstall the complete ds release, or set DS_SOLAR_BIN for development",
         },
         Refusal {
             code: "callee_contract_mismatch",

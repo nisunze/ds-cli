@@ -319,7 +319,8 @@ starting the sidecar.
 engine name and version, exact source SHA, Cargo.lock digest, features, target,
 profile, supported schemas and a canonical manifest digest. `ds solar engine`
 returns that document with the resolved executable path, so headless results
-can be tied to the same exact Solar source revision as the desktop release.
+can be tied to the same exact Solar source revision as its desktop or headless
+ds release.
 
 `ds solar result compare` validates both complete `ds-solar.result/v1`
 documents in that native engine, including recomputing each canonical digest,
