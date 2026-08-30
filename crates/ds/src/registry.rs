@@ -932,6 +932,37 @@ static SRE_ENTRIES: &[Entry] = &[
     },
 ];
 
+/// Governance is the loop the architecture graph is for: read the head, plan
+/// a change against it, validate it, and only then commit it. The order is
+/// that loop.
+static GOVERNANCE_ENTRIES: &[Entry] = &[
+    Entry {
+        command: &ds_cli_governance::get::COMMAND,
+        handler: ds_cli_governance::get::run,
+        render: ds_cli_governance::get::render,
+    },
+    Entry {
+        command: &ds_cli_governance::list::COMMAND,
+        handler: ds_cli_governance::list::run,
+        render: ds_cli_governance::list::render,
+    },
+    Entry {
+        command: &ds_cli_governance::history::COMMAND,
+        handler: ds_cli_governance::history::run,
+        render: ds_cli_governance::history::render,
+    },
+    Entry {
+        command: &ds_cli_governance::preview::COMMAND,
+        handler: ds_cli_governance::preview::run,
+        render: ds_cli_governance::preview::render,
+    },
+    Entry {
+        command: &ds_cli_governance::apply::COMMAND,
+        handler: ds_cli_governance::apply::run,
+        render: ds_cli_governance::apply::render,
+    },
+];
+
 static DESKTOP_ENTRIES: &[Entry] = &[
     Entry {
         command: &ds_cli_desktop::status::COMMAND,
@@ -1097,6 +1128,10 @@ static DOMAINS: &[Registered] = &[
     Registered {
         domain: &ds_cli_feedback::DOMAIN,
         entries: FEEDBACK_ENTRIES,
+    },
+    Registered {
+        domain: &ds_cli_governance::DOMAIN,
+        entries: GOVERNANCE_ENTRIES,
     },
     Registered {
         domain: &ds_cli_desktop::DOMAIN,

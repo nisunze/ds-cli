@@ -17,6 +17,7 @@ ds-cli-contract = { workspace = true }
 ds-cli-design = { workspace = true }
 ds-cli-desktop = { workspace = true }
 ds-cli-feedback = { workspace = true }
+ds-cli-governance = { workspace = true }
 ds-cli-map = { workspace = true }
 ds-cli-dsgrid = { workspace = true }
 ds-cli-dsgrid-exchange = { workspace = true }

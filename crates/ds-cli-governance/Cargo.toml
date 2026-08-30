@@ -1,0 +1,15 @@
+[package]
+name = "ds-cli-governance"
+description = "The governed architecture planning surface: read, plan and apply graph revisions."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[dependencies]
+ds-cli-contract = { workspace = true }
+ds-cli-desktop = { workspace = true }
+serde_json = { workspace = true }
+sha2 = { workspace = true }

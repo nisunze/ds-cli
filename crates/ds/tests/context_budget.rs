@@ -106,10 +106,16 @@ fn root_help_is_cheap() {
     // commands stay below this tier. This is the domain that makes conversion
     // an explicit step a caller can see rather than something an import does
     // silently, so it earns its line.
+    // 2026-08-29: raised for the `governance` domain — the governed
+    // architecture planning graph. Its five commands (get, list, history,
+    // preview, apply) stay below this tier and cost root help exactly one
+    // domain line, so the per-domain price is unchanged and
+    // `root_help_scales_with_domains_not_commands` still binds at
+    // 800 + 80 × 20 = 2,400. The next domain must earn its own line.
     // Keep this guard at least as loose as the derived budget below. The
     // scaling assertion is load-bearing; a tighter flat cap would always fail
     // first and hide a domain-vs-command growth regression.
-    assert_within("root help", &["--help"], 2_300);
+    assert_within("root help", &["--help"], 2_400);
 }
 
 #[test]

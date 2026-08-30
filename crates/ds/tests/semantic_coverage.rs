@@ -81,6 +81,30 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("feedback.close", "global_write", "desktop_user"),
     ("feedback.list", "read_only", "desktop_user"),
     ("feedback.submit", "global_write", "desktop_user"),
+    // The governed architecture graph. Every row is `desktop_user` and not
+    // `project`: the graph is platform-wide, like reliability, so a project
+    // selection is not part of the authority proof. `preview` is `read_only`
+    // because it runs the validator and writes nothing — the contract puts
+    // `applied: false` on the wire so that is a fact, not a naming choice —
+    // while `apply` commits an immutable revision and is therefore
+    // `global_write`, which is what makes `--yes` mandatory.
+    (
+        "governance.architecture.apply",
+        "global_write",
+        "desktop_user",
+    ),
+    ("governance.architecture.get", "read_only", "desktop_user"),
+    (
+        "governance.architecture.history",
+        "read_only",
+        "desktop_user",
+    ),
+    ("governance.architecture.list", "read_only", "desktop_user"),
+    (
+        "governance.architecture.preview",
+        "read_only",
+        "desktop_user",
+    ),
     ("library.catalog", "read_only", "none"),
     ("library.global.read", "read_only", "desktop_user"),
     ("library.global.write", "global_write", "desktop_user"),

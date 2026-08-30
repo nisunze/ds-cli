@@ -581,6 +581,7 @@ dependencies = [
  "ds-cli-dsgrid",
  "ds-cli-dsgrid-exchange",
  "ds-cli-feedback",
+ "ds-cli-governance",
  "ds-cli-library",
  "ds-cli-map",
  "ds-cli-mcp",
@@ -675,6 +676,16 @@ dependencies = [
  "ds-cli-contract",
  "ds-cli-desktop",
  "serde_json",
+]
+
+[[package]]
+name = "ds-cli-governance"
+version = "0.1.0"
+dependencies = [
+ "ds-cli-contract",
+ "ds-cli-desktop",
+ "serde_json",
+ "sha2",
 ]
 
 [[package]]

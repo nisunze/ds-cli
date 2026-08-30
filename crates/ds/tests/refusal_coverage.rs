@@ -229,6 +229,7 @@ fn every_constructible_refusal_code_is_documented() {
         ("ds-cli-style", Some("style")),
         ("ds-cli-tile", Some("tile")),
         ("ds-cli-feedback", Some("feedback")),
+        ("ds-cli-governance", Some("governance")),
         ("ds-cli-shell", Some("shell")),
         ("ds-cli-workstation", Some("workstation")),
         ("ds-cli-mcp", Some("mcp")),
