@@ -1,5 +1,5 @@
 {
-  "schema_version": "ds.native-client-profiles/v2",
+  "schema_version": "ds.native-client-profiles/v3",
   "development": true,
   "profiles": {
     "stable": {
@@ -20,6 +20,11 @@
         "path": "/api/v1/data",
         "action": "get_transformers_data",
         "fields": "context"
+      },
+      "project_forms": {
+        "method": "POST",
+        "path": "/api/v1/project-forms",
+        "action": "activate"
       },
       "provenance": {
         "source_revision": "0123456789abcdef0123456789abcdef01234567",
@@ -44,6 +49,11 @@
         "path": "/api/v1/data",
         "action": "get_transformers_data",
         "fields": "context"
+      },
+      "project_forms": {
+        "method": "POST",
+        "path": "/api/v1/project-forms",
+        "action": "activate"
       },
       "provenance": {
         "source_revision": "0123456789abcdef0123456789abcdef01234567",

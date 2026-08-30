@@ -3890,3 +3890,49 @@ fn every_cartography_scenario_is_a_declared_example_of_its_own_command() {
         }
     }
 }
+
+#[test]
+fn project_forms_native_list_preserves_the_explicit_project_desktop_read() {
+    let native = ok(&[
+        "capabilities",
+        "survey.project-forms.list",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(native["command"]["authority"], "headless_project");
+    assert_eq!(native["command"]["effect"], "local_auth_state");
+    let names = native["command"]["inputs"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|arg| arg["name"].as_str())
+        .collect::<BTreeSet<_>>();
+    assert_eq!(names, BTreeSet::from(["lane", "limit"]));
+    assert_eq!(
+        refusal(&[
+            "survey",
+            "project-forms",
+            "list",
+            "--limit",
+            "0",
+            "--output",
+            "json",
+        ]),
+        "invalid_number"
+    );
+
+    let legacy = ok(&[
+        "capabilities",
+        "survey.project-forms.read",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(legacy["command"]["authority"], "desktop_user");
+    assert!(
+        legacy["command"]["inputs"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|arg| arg["name"] == "project" && arg["required"] == true)
+    );
+}

@@ -2,8 +2,9 @@
 //!
 //! Global Form Factory schemas, project-form bindings/settings, reusable
 //! project templates, and project creation from a template are related but
-//! distinct lifecycle layers. Each command calls one closed operation in the
-//! signed-in application; this crate never owns form validation or topology.
+//! distinct lifecycle layers. Desktop control-plane commands call one closed
+//! application operation. The selected-project list uses the fixed native
+//! client; this crate never owns form validation or topology.
 
 pub mod forms;
 pub mod project_forms;
@@ -29,6 +30,7 @@ pub static DOMAIN: Domain = Domain {
         &forms::UPDATE_COMMAND,
         &forms::LIFECYCLE_COMMAND,
         &project_forms::READ_COMMAND,
+        &project_forms::LIST_COMMAND,
         &project_forms::EDITOR_COMMAND,
         &project_forms::PLAN_COMMAND,
         &project_forms::APPLY_COMMAND,

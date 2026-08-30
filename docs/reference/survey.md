@@ -1,10 +1,12 @@
 # Survey control plane
 
 `ds survey` manages the API-backed survey lifecycle without requiring an open
-map or an active project in DS GridDesign. Pass the exact project id whenever a
-command is project-scoped. The paired MCP host may launch the matching Stable
-or Canary desktop application to obtain its signed-in authority, but the CLI
-never reads IndexedDB, copies a JWT, or owns token refresh.
+map. Existing control-plane commands retain their explicit project ids and
+paired Desktop authority. `survey project-forms list` is a separate native
+read: it restores `ds auth` identity and uses only the UID/email/lane/audience-
+fenced project selected by `ds auth project use`. It has no project override or
+Desktop descriptor, and ds-brain rechecks membership on the fixed
+`POST /api/v1/project-forms` action `activate` request.
 
 Four related objects have separate lifecycles:
 
@@ -12,7 +14,8 @@ Four related objects have separate lifecycles:
    `survey form read`, `survey form types`, `survey form create`, `survey form
    update`, and `survey form lifecycle`.
 2. A **project-form binding** enables a master form for one project and stores
-   that project's settings. Use `survey project-forms read`, `survey
+   that project's settings. Use `survey project-forms list` for the selected
+   native project's bounded summary. Use `survey project-forms read`, `survey
    project-form editor`, `survey project-forms plan`, and `survey project-forms
    apply`.
 3. A **project template** is a reusable snapshot containing project-form

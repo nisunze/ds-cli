@@ -788,6 +788,7 @@ dependencies = [
 name = "ds-cli-survey"
 version = "0.1.0"
 dependencies = [
+ "ds-cli-auth",
  "ds-cli-contract",
  "ds-cli-desktop",
  "serde_json",

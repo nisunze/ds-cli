@@ -598,6 +598,11 @@ static SURVEY_ENTRIES: &[Entry] = &[
         render: ds_cli_survey::project_forms::render_read,
     },
     Entry {
+        command: &ds_cli_survey::project_forms::LIST_COMMAND,
+        handler: ds_cli_survey::project_forms::list,
+        render: ds_cli_survey::project_forms::render_list,
+    },
+    Entry {
         command: &ds_cli_survey::project_forms::EDITOR_COMMAND,
         handler: ds_cli_survey::project_forms::editor,
         render: ds_cli_survey::project_forms::render_editor,

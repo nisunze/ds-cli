@@ -12,6 +12,131 @@ use crate::{
     PROJECT_FORMS_READ,
 };
 
+const LANE: Arg = Arg::value(
+    "lane",
+    "<stable|canary>",
+    "Deployment lane; stable is the default.",
+)
+.default("stable")
+.choices(&["stable", "canary"]);
+
+pub static LIST_COMMAND: Command = Command {
+    id: "survey.project-forms.list",
+    path: &["survey", "project-forms", "list"],
+    contract: 1,
+    summary: "List the selected project's form bindings headlessly.",
+    purpose: "Restores the native user, loads only its UID/email/lane/audience-fenced selected project, and performs the fixed project-forms activate read. The gateway rechecks membership. It accepts no project id, Desktop descriptor, arbitrary request field, or mutation action.",
+    chapter: Chapter::Survey,
+    effect: Effect::LocalAuthState,
+    authority: Authority::HeadlessProject,
+    execution: Execution::Sync,
+    args: &[
+        Arg::value("limit", "<n>", "Return at most 1..500 bindings.").default("50"),
+        LANE,
+    ],
+    output: "The selected project identity, complete available/unavailable totals, a stable-slug-ordered bounded form summary followed by orphan bindings, and the exact omitted count.",
+    examples: &[Example {
+        command: "ds survey project-forms list --limit 100 --output json",
+        note: "Lists the Stable native user's selected project forms without opening Desktop.",
+        runnable: false,
+    }],
+    refusals: &[
+        ds_cli_contract::spec::Refusal {
+            code: "native_profile_not_configured",
+            when: "the exact packaged native profile is unavailable",
+            remedy: "install one complete ds release",
+        },
+        ds_cli_contract::spec::Refusal {
+            code: "native_profile_digest_mismatch",
+            when: "the packaged catalogue differs from the build pin",
+            remedy: "reinstall one complete ds release",
+        },
+        ds_cli_contract::spec::Refusal {
+            code: "native_profile_unsafe",
+            when: "the packaged native catalogue is unsafe or malformed",
+            remedy: "reinstall one complete ds release",
+        },
+        ds_cli_contract::spec::Refusal {
+            code: "headless_signed_out",
+            when: "the selected lane has no restorable native user",
+            remedy: "run ds auth login --email <address>",
+        },
+        ds_cli_contract::spec::Refusal {
+            code: "headless_project_not_selected",
+            when: "the user has no audience-fenced project selection",
+            remedy: "run ds auth project use --project <exact-id>",
+        },
+        ds_cli_contract::spec::Refusal {
+            code: "project_context_stale",
+            when: "the saved project belongs to another identity, lane, or audience",
+            remedy: "select the project again with ds auth project use",
+        },
+        ds_cli_contract::spec::Refusal {
+            code: "native_state_unsafe",
+            when: "protected native state is unsafe or unreadable",
+            remedy: "repair the owner-only DS config directory",
+        },
+        ds_cli_contract::spec::Refusal {
+            code: "native_state_unavailable",
+            when: "protected native state cannot be accessed",
+            remedy: "repair the owner-only DS config directory",
+        },
+        ds_cli_contract::spec::Refusal {
+            code: "native_state_protection_unavailable",
+            when: "this build has no protected-state adapter",
+            remedy: "install a supported native ds build",
+        },
+        ds_cli_contract::spec::Refusal {
+            code: "native_state_root_invalid",
+            when: "the configured state root is not absolute",
+            remedy: "unset it or provide an absolute path",
+        },
+        ds_cli_contract::spec::Refusal {
+            code: "native_state_conflict",
+            when: "another native operation holds the state lease",
+            remedy: "retry after that operation finishes",
+        },
+        ds_cli_contract::spec::Refusal {
+            code: "native_cleanup_required",
+            when: "revoked identity cleanup cannot clear project context",
+            remedy: "repair protected state and run auth logout",
+        },
+        ds_cli_contract::spec::Refusal {
+            code: "auth_input_invalid",
+            when: "the fenced project identity violates the fixed bound",
+            remedy: "select a freshly visible project again",
+        },
+        ds_cli_contract::spec::Refusal {
+            code: "auth_rejected",
+            when: "the gateway rejects membership or the verified request",
+            remedy: "verify account membership in the selected project",
+        },
+        ds_cli_contract::spec::Refusal {
+            code: "auth_revoked",
+            when: "Firebase permanently revokes the native session",
+            remedy: "sign in again interactively",
+        },
+        ds_cli_contract::spec::Refusal {
+            code: "auth_identity_mismatch",
+            when: "Firebase returns an identity outside the bound session",
+            remedy: "sign in again and report a repeated mismatch",
+        },
+        ds_cli_contract::spec::Refusal {
+            code: "auth_transient",
+            when: "the fixed native service is temporarily unavailable",
+            remedy: "retry without changing local state",
+        },
+        ds_cli_contract::spec::Refusal {
+            code: "auth_response_unreadable",
+            when: "the project-forms response violates its closed bounded contract",
+            remedy: "retry once, then update ds if it persists",
+        },
+        ops::INVALID_NUMBER,
+    ],
+    reference: Some("docs/reference/survey.md"),
+    availability: ds_cli_auth::native_availability,
+};
+
 pub static READ_COMMAND: Command = Command {
     id: "survey.project-forms.read",
     path: &["survey", "project-forms", "read"],
@@ -175,6 +300,64 @@ pub fn read(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     crate::invoke(inputs, &PROJECT_FORMS_READ, args)
 }
 
+pub fn list(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
+    let limit = ops::integer(inputs.require("limit")?, "limit", 1, 500)? as usize;
+    let headless = ds_cli_auth::project_forms(inputs.require("lane")?)?;
+    let snapshot = headless.snapshot();
+    let total = snapshot.forms().len() + snapshot.orphaned_project_forms().len();
+    let available_total = snapshot
+        .forms()
+        .iter()
+        .filter(|form| form.available())
+        .count();
+    let unavailable_total = snapshot.forms().len().saturating_sub(available_total)
+        + snapshot.orphaned_project_forms().len();
+    let forms = snapshot
+        .forms()
+        .iter()
+        .take(limit)
+        .map(|form| {
+            json!({
+                "slug": form.slug(),
+                "display_name": form.display_name(),
+                "enabled": form.enabled(),
+                "available": form.available(),
+                "settings_revision": form.settings_revision(),
+                "geometry_type": form.geometry_type(),
+            })
+        })
+        .collect::<Vec<_>>();
+    let remaining = limit.saturating_sub(forms.len());
+    let orphaned_project_forms = snapshot
+        .orphaned_project_forms()
+        .iter()
+        .take(remaining)
+        .map(|form| {
+            json!({
+                "form_slug": form.form_slug(),
+                "reason": form.reason(),
+                "enabled": form.enabled(),
+                "settings_revision": form.settings_revision(),
+            })
+        })
+        .collect::<Vec<_>>();
+    let returned = forms.len() + orphaned_project_forms.len();
+    Ok(json!({
+        "lane": headless.lane(),
+        "project": {
+            "ds_project": snapshot.ds_project(),
+            "project_name": headless.project_name(),
+            "status": headless.project_status(),
+        },
+        "total": total,
+        "available_total": available_total,
+        "unavailable_total": unavailable_total,
+        "forms": forms,
+        "orphaned_project_forms": orphaned_project_forms,
+        "more": { "omitted": total.saturating_sub(returned) },
+    }))
+}
+
 pub fn editor(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let mut args = base(inputs)?;
     args.insert(
@@ -209,6 +392,14 @@ pub fn render_read(data: &Value) -> String {
     )
 }
 
+pub fn render_list(data: &Value) -> String {
+    format!(
+        "{}  {} project forms\n",
+        data["project"]["ds_project"].as_str().unwrap_or("project"),
+        data["total"].as_u64().unwrap_or(0)
+    )
+}
+
 pub fn render_editor(data: &Value) -> String {
     format!(
         "{}/{}  settings v{}\n",
@@ -235,4 +426,23 @@ pub fn render_apply(data: &Value) -> String {
         "{} project forms saved\n",
         data["applied"].as_u64().unwrap_or(0)
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn native_list_is_selected_project_only_and_legacy_read_is_unchanged() {
+        assert_eq!(LIST_COMMAND.authority, Authority::HeadlessProject);
+        assert_eq!(LIST_COMMAND.effect, Effect::LocalAuthState);
+        assert!(LIST_COMMAND.arg("project").is_none());
+        assert!(LIST_COMMAND.arg("desktop-descriptor").is_none());
+        assert!(LIST_COMMAND.arg("url").is_none());
+        assert!(LIST_COMMAND.arg("action").is_none());
+
+        assert_eq!(READ_COMMAND.authority, Authority::DesktopUser);
+        assert!(READ_COMMAND.arg("project").is_some());
+        assert!(READ_COMMAND.arg("desktop-descriptor").is_some());
+    }
 }

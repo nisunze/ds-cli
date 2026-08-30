@@ -16,7 +16,10 @@ use ds_cli_contract::spec::{
     Arg, Authority, Chapter, Command, Domain, Effect, Example, Execution, Refusal,
 };
 use ds_cli_contract::{Context, Inputs};
-use ds_client_core::{Client, ClientError, ErrorKind, Project, ProjectStatus, TransformerContext};
+use ds_client_core::{
+    Client, ClientError, ErrorKind, Project, ProjectFormsSnapshot, ProjectStatus,
+    TransformerContext,
+};
 use profile::Lane;
 use serde_json::{Value, json};
 use state::{NativeRefreshStore, ProjectContextLease};
@@ -433,6 +436,30 @@ impl HeadlessTransformerContext {
     }
 }
 
+/// One project-form catalogue fetched under the restored user and that
+/// user's audience-fenced selected project.
+pub struct HeadlessProjectForms {
+    lane: &'static str,
+    project_name: String,
+    project_status: String,
+    snapshot: ProjectFormsSnapshot,
+}
+
+impl HeadlessProjectForms {
+    pub const fn lane(&self) -> &'static str {
+        self.lane
+    }
+    pub fn project_name(&self) -> &str {
+        &self.project_name
+    }
+    pub fn project_status(&self) -> &str {
+        &self.project_status
+    }
+    pub const fn snapshot(&self) -> &ProjectFormsSnapshot {
+        &self.snapshot
+    }
+}
+
 /// Availability of the exact packaged native profiles used by headless
 /// project commands.
 pub fn native_availability() -> ds_cli_contract::spec::Availability {
@@ -466,6 +493,34 @@ pub fn transformer_context(
         &context,
     )?;
     Ok(HeadlessTransformerContext {
+        lane: lane.token(),
+        project_name: selected.project_name().to_owned(),
+        project_status: selected.status().to_owned(),
+        snapshot,
+    })
+}
+
+/// Restore one native user and activate project forms for only the saved,
+/// audience-fenced selected project. The gateway rechecks membership.
+pub fn project_forms(lane_value: &str) -> Result<HeadlessProjectForms, Failure> {
+    let lane = Lane::parse(lane_value)?;
+    let profile = profile::load(lane)?;
+    let store = NativeRefreshStore::open()?;
+    let mut client = Client::new(profile, NativeTransport, store);
+    let context = ProjectContextLease::acquire(client.profile())?;
+    let user = require_restore(&mut client, &context)?;
+    let selected = context
+        .load(client.profile(), user.uid(), user.email())?
+        .ok_or_else(|| {
+            Failure::conflict(
+                "headless_project_not_selected",
+                "no project is selected for this native user, lane, and credential audience",
+            )
+            .remedy("run ds auth project use --project <exact-id>")
+            .next("ds auth project status")
+        })?;
+    let snapshot = with_disposition(client.project_forms(selected.project_id(), now()), &context)?;
+    Ok(HeadlessProjectForms {
         lane: lane.token(),
         project_name: selected.project_name().to_owned(),
         project_status: selected.status().to_owned(),
