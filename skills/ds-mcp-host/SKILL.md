@@ -12,7 +12,8 @@ no identity, project state, command schema, or authority.
 ## Choose one installation shape
 
 For a general agent, install the broad default. It advertises `ds_catalog` and
-eleven operator-intent chapter routers (12 tools total), even as commands grow:
+`ds_diagnostics` plus twelve operator-intent chapter routers (14 tools total),
+even as commands grow:
 
 ```text
 ds mcp install --host vscode --output json
@@ -30,14 +31,16 @@ ds mcp install --host claude-code --exposure commands --profile pls --write --ye
 ```
 
 Profiles are `grid`, `pls`, `pls-library`, `library-governance`, `survey`,
-`form-factory`, `survey-projects`, `design-edit`, `design-run`, `map`, `layers`,
-`tiling`, `project`, `solar-run`, `solar-delivery`, and `operations`. `survey`
-retains the map/local-data workflow;
+`form-factory`, `survey-projects`, `survey-migration`, `design-edit`,
+`design-run`, `map`, `layers`, `tiling`, `project`, `solar-input`, `solar-run`,
+`solar-delivery`, and `operations`. `survey` retains the map/local-data workflow;
 `form-factory` owns global schemas and `survey-projects` owns governed
 aggregate/spatial reads, project-form settings, reusable templates, and
-create-from-template. Each publishes
-`ds_catalog` plus at most 14 fully typed command tools. Do not install every
-profile: that duplicates discovery and recreates selection ambiguity.
+create-from-template. `survey-migration` isolates governed bulk import, while
+`solar-input` isolates selected-project input capture. Each profile publishes
+both bootstrap tools, `ds_catalog` and `ds_diagnostics`, plus bounded fully
+typed leaves. Do not install every profile: that duplicates discovery and
+recreates selection ambiguity.
 
 Use `pls` for backup recovery, workspace diagnostics and native delivery; use
 `pls-library` for local immutable library verification, packing, seeding and
@@ -56,6 +59,21 @@ On Windows, `--host claude-desktop` targets Claude Desktop's verified
 user-level `mcpServers` configuration and Claude Desktop launches `ds.exe`
 directly after restart; VS Code is not involved.
 
+## MCP-only bootstrap
+
+After initialization, call `ds_diagnostics` with `operation: "identity"` to
+confirm the absolute executable, version/source SHA, target, build/install
+profiles, selected MCP exposure/profile, and shipped skill-bundle identity.
+`doctor`, `shell.status`, and the bounded capabilities index are available
+through the same read-only diagnostics tool when the agent has no shell.
+
+Skill guidance is lazy. Call `resources/list`, select one receipt-listed
+`ds-skill://bundle/<skill>/SKILL.md` identifier, then call `resources/read` for
+that exact resource. Read the smallest receipt-current skill that governs the
+task; do not preload every skill or require a writable local skills directory.
+The same structured identity and skill-resource availability are echoed by
+`ds_catalog` after reconnects.
+
 ## Broad-server routing
 
 1. Call `ds_catalog` with a bounded query or chapter.
@@ -72,12 +90,13 @@ arbitrary argv are refused before dispatch. Project and desktop identity remain
 owned by the selected command, not by the MCP session.
 
 MCP reads the selected command's live `authority` descriptor before an
-`invoke`: `none` stays headless and never starts DS GridDesign. A paired
-authority may make one bounded Windows installed-app launch only when no
-session and no explicit `desktop-descriptor` are present. Discovery and
-`describe` never launch the app. If the app is signed out or cannot pair in
-the bounded wait, follow the returned DS refusal and remedy; do not retry by
-inventing another descriptor or identity.
+`invoke`: `none`, `headless_user`, and `headless_project` never start DS
+GridDesign. A paired authority may make one bounded Windows installed-app
+launch, lazily, only when no session and no explicit `desktop-descriptor` are
+present. Discovery, diagnostics, resources, and `describe` never launch the
+app. If the app is signed out or cannot pair in the bounded wait, follow the
+returned DS refusal and remedy; do not retry by inventing another descriptor
+or identity.
 
 ## Typed-profile routing
 
@@ -85,6 +104,9 @@ Use the advertised leaf tool directly after reading its schema and description.
 Its title is the canonical command id; its result is the same CLI envelope.
 Omitted commands are unavailable through that profile, not forwarded through a
 generic call. Use `ds_catalog` only for bounded discovery inside the profile.
+Pass `confirm: true` only when the invocation's live descriptor conditionally
+requires confirmation and the user's intent authorizes that exact effect and
+scope.
 
 Keep `--exposure commands` without a profile only for temporary compatibility
 with hosts configured for the previous command-per-tool surface.
