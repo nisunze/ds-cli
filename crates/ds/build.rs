@@ -13,10 +13,13 @@
 
 use std::process::Command;
 
+mod build_pin;
+
 fn main() {
     println!("cargo:rerun-if-env-changed=DS_CLI_SOURCE_SHA");
     println!("cargo:rerun-if-env-changed=DS_CLI_SOURCE_DIRTY");
     println!("cargo:rerun-if-env-changed=DS_NATIVE_CLIENT_PROFILE_SHA256");
+    println!("cargo:rerun-if-env-changed=DS_RELEASE_PIN_DS_NETWORK");
     println!("cargo:rerun-if-changed=../../.git/HEAD");
     println!("cargo:rerun-if-changed=../../pins/ds-client-core.rev");
 
@@ -60,14 +63,25 @@ fn main() {
     println!(
         "cargo:rustc-env=DS_NATIVE_CLIENT_PROFILE_CATALOG_SHA256={native_client_profile_sha256}"
     );
+    let profile = std::env::var("PROFILE").unwrap_or_else(|_| "unknown".to_owned());
+    let release_pin = std::env::var("DS_RELEASE_PIN_DS_NETWORK").ok();
+    let ds_network_pin = build_pin::resolve_ds_network_pin(&profile, release_pin.as_deref())
+        .unwrap_or_else(|error| {
+            panic!("{error}");
+        });
+    println!(
+        "cargo:rustc-env=DS_NETWORK_SOURCE_SHA={}",
+        ds_network_pin.source_sha.as_deref().unwrap_or("")
+    );
+    println!(
+        "cargo:rustc-env=DS_NETWORK_SOURCE_STATE={}",
+        ds_network_pin.state
+    );
     println!(
         "cargo:rustc-env=DS_BUILD_TARGET={}",
         std::env::var("TARGET").unwrap_or_else(|_| "unknown".into())
     );
-    println!(
-        "cargo:rustc-env=DS_BUILD_PROFILE={}",
-        std::env::var("PROFILE").unwrap_or_else(|_| "unknown".into())
-    );
+    println!("cargo:rustc-env=DS_BUILD_PROFILE={}", profile);
 }
 
 fn git_sha() -> Option<String> {

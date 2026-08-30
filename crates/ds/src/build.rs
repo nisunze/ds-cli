@@ -13,6 +13,8 @@ pub const SOURCE_SHA: &str = env!("DS_BUILD_SHA");
 pub const NATIVE_CLIENT_CORE_SHA: &str = env!("DS_NATIVE_CLIENT_CORE_SHA");
 pub const NATIVE_CLIENT_PROFILE_CATALOG_SHA256: &str =
     env!("DS_NATIVE_CLIENT_PROFILE_CATALOG_SHA256");
+pub const DS_NETWORK_SOURCE_SHA: &str = env!("DS_NETWORK_SOURCE_SHA");
+pub const DS_NETWORK_SOURCE_STATE: &str = env!("DS_NETWORK_SOURCE_STATE");
 pub const TARGET: &str = env!("DS_BUILD_TARGET");
 pub const PROFILE: &str = env!("DS_BUILD_PROFILE");
 
@@ -29,6 +31,12 @@ pub fn identity() -> Value {
         "source_sha": SOURCE_SHA,
         "native_client_core_source_sha": NATIVE_CLIENT_CORE_SHA,
         "native_client_profile_catalog_sha256": NATIVE_CLIENT_PROFILE_CATALOG_SHA256,
+        "ds_network_source_sha": if DS_NETWORK_SOURCE_SHA.is_empty() {
+            None
+        } else {
+            Some(DS_NETWORK_SOURCE_SHA)
+        },
+        "ds_network_source_state": DS_NETWORK_SOURCE_STATE,
         "dirty": dirty(),
         "target": TARGET,
         "profile": PROFILE,

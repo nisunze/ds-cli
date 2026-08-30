@@ -12,6 +12,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use ds_cli_contract::{ExitClass, Failure};
 use serde_json::Value;
 
+#[path = "../build_pin.rs"]
+mod build_pin;
 mod common;
 
 static TEMP_SEQUENCE: AtomicU64 = AtomicU64::new(0);
@@ -255,6 +257,25 @@ fn build_identity_is_verifiable() {
         data["native_client_core_source_sha"],
         include_str!("../../../pins/ds-client-core.rev").trim()
     );
+    match data["profile"].as_str().expect("build profile") {
+        "release" => {
+            let sha = data["ds_network_source_sha"]
+                .as_str()
+                .expect("release ds-network source SHA");
+            assert!(
+                sha.len() == 40
+                    && sha
+                        .bytes()
+                        .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte)),
+                "release ds-network pin is not exact lowercase 40-hex: {sha}"
+            );
+            assert_eq!(data["ds_network_source_state"], "release_pin");
+        }
+        _ => {
+            assert!(data["ds_network_source_sha"].is_null());
+            assert_eq!(data["ds_network_source_state"], "development_unpinned");
+        }
+    }
     let catalog = data["native_client_profile_catalog_sha256"]
         .as_str()
         .expect("native profile catalog digest");
@@ -270,6 +291,58 @@ fn build_identity_is_verifiable() {
     // `--version` and `ds version` are the same fact.
     let flag = ds(&["--version", "--output", "json"]);
     assert_eq!(flag.envelope["data"], *data);
+
+    // Doctor reports the same compile-time identity object rather than
+    // inventing a separate component probe.
+    let doctor = ds(&["doctor", "--output", "json"]);
+    assert_eq!(doctor.code, 0);
+    assert_eq!(doctor.envelope["data"]["build"], *data);
+
+    // Runtime environment cannot replace values embedded by build.rs.
+    let spoofed = Command::new(env!("CARGO_BIN_EXE_ds"))
+        .args(["version", "--output", "json"])
+        .env("DS_RELEASE_PIN_DS_NETWORK", "f".repeat(40))
+        .env("DS_NETWORK_SOURCE_SHA", "e".repeat(40))
+        .env("DS_NETWORK_SOURCE_STATE", "release_pin")
+        .output()
+        .expect("spoofed-environment version runs");
+    assert!(spoofed.status.success());
+    let spoofed: Value = serde_json::from_slice(&spoofed.stdout).unwrap();
+    assert_eq!(
+        spoofed["data"]["ds_network_source_sha"],
+        data["ds_network_source_sha"]
+    );
+    assert_eq!(
+        spoofed["data"]["ds_network_source_state"],
+        data["ds_network_source_state"]
+    );
+}
+
+#[test]
+fn ds_network_release_pin_validation_is_closed_and_development_is_explicit() {
+    use build_pin::{DEVELOPMENT_UNPINNED_STATE, RELEASE_PIN_STATE, resolve_ds_network_pin};
+
+    for invalid in [
+        None,
+        Some(""),
+        Some("a"),
+        Some("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
+        Some("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
+        Some("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"),
+        Some("gggggggggggggggggggggggggggggggggggggggg"),
+    ] {
+        assert!(resolve_ds_network_pin("release", invalid).is_err());
+    }
+    let exact = "0123456789abcdef0123456789abcdef01234567";
+    let release = resolve_ds_network_pin("release", Some(exact)).unwrap();
+    assert_eq!(release.source_sha.as_deref(), Some(exact));
+    assert_eq!(release.state, RELEASE_PIN_STATE);
+
+    for supplied in [None, Some(exact), Some("malformed-runtime-value")] {
+        let development = resolve_ds_network_pin("debug", supplied).unwrap();
+        assert_eq!(development.source_sha, None);
+        assert_eq!(development.state, DEVELOPMENT_UNPINNED_STATE);
+    }
 }
 
 // ---------------------------------------------------------------------------

@@ -300,7 +300,10 @@ Resolves every registered command's availability and reports the ones that \
 cannot run here, each with the concrete thing that would fix it. Availability \
 checks are domain-local and cheap. Doctor also verifies the packaged agent \
 skill bundle and reports whether each supported user skill directory has the \
-matching install, and whether `ds` is reachable from this shell and from a \nnew one. It starts no engine and probes no network. It is the right \
+matching install, and whether `ds` is reachable from this shell and from a \
+new one. Its build object includes the compile-time ds-network source pin or \
+the explicit development-unpinned state; it does not introspect linked Rust \
+code at runtime. It starts no engine and probes no network. It is the right \
 first call on an unfamiliar machine, and the right call after any \
 `unavailable` refusal.",
     chapter: Chapter::Catalog,
@@ -313,7 +316,8 @@ first call on an unfamiliar machine, and the right call after any \
     )],
     output: "\
 Counts of available and unavailable commands, one entry per unavailable \
-command with its reason and remedy, build identity, and agent skill bundle and \
+command with its reason and remedy, build identity including linked ds-network \
+compile-time provenance, and agent skill bundle and \
 install status, and shell reach. With --all, every command.",
     examples: &[
         Example {
@@ -443,15 +447,17 @@ pub static VERSION: Command = Command {
     summary: "Report verifiable build identity.",
     purpose: "\
 Reports the exact source this binary was built from, its target triple, \
-profile and whether the tree was dirty, the pinned native-client core, and the contract versions it \
-speaks. Packaging verifies a staged executable by running this, so the answer \
+profile and whether the tree was dirty, the pinned native-client core, the \
+compile-time clean ds-network release pin, and the contract versions it \
+speaks. The ds-network field is build provenance, not a claim of runtime \
+introspection into linked Rust code. Packaging verifies a staged executable by running this, so the answer \
 has to come from the build rather than from a string someone maintains.",
     chapter: Chapter::Catalog,
     effect: Effect::Discovery,
     authority: Authority::None,
     execution: Execution::Sync,
     args: &[],
-    output: "Product name, release version, CLI and native-client-core source SHAs, dirty flag, target, profile, and envelope version.",
+    output: "Product name, release version, CLI, native-client-core, and linked ds-network source provenance, dirty flag, target, profile, and envelope version.",
     examples: &[Example {
         command: "ds version --output json",
         note: "Packaging asserts .data.source_sha against its pin.",
