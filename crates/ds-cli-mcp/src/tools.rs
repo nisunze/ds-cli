@@ -5,7 +5,7 @@
 //! say something the CLI did not.
 
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
 use std::thread;
 use std::time::Duration;
 
@@ -420,7 +420,13 @@ fn bounded(value: &str) -> String {
 
 fn launch_installed_desktop(executable: &Path) -> Result<(), Failure> {
     let application = installed_desktop(executable)?;
+    // The MCP server's stdin/stdout ARE the JSON-RPC channel. A GUI child that
+    // inherited them would hold the host's pipe open for its whole lifetime and
+    // could write into the protocol stream; it gets no standard streams at all.
     Command::new(application)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
         .spawn()
         .map(|_| ())
         .map_err(|error| {
