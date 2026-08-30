@@ -144,6 +144,10 @@ impl Drop for ValidatedLogin {
 #[serde(rename_all = "camelCase")]
 struct FirebaseLoginWire {
     local_id: String,
+    #[serde(default)]
+    user_id: Option<String>,
+    #[serde(default)]
+    uid: Option<String>,
     email: String,
     id_token: String,
     refresh_token: String,
@@ -186,6 +190,13 @@ pub fn validate_firebase_login_response(
     }
     let mut wire: FirebaseLoginWire =
         serde_json::from_slice(response).map_err(|_| unreadable_response())?;
+    if [wire.user_id.as_deref(), wire.uid.as_deref()]
+        .into_iter()
+        .flatten()
+        .any(|alias| alias != wire.local_id)
+    {
+        return Err(identity_mismatch());
+    }
     let principal = validate_identity(
         &wire.local_id,
         &wire.email,
@@ -554,6 +565,17 @@ mod tests {
                 .unwrap_err()
                 .kind(),
             LoginErrorKind::UnreadableResponse,
+        );
+        assert_eq!(
+            validate_firebase_login_response(
+                &response(serde_json::json!({ "userId": "another-uid" })),
+                Some(EMAIL),
+                PROJECT,
+                NOW,
+            )
+            .unwrap_err()
+            .kind(),
+            LoginErrorKind::IdentityMismatch,
         );
     }
 }
