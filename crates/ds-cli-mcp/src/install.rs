@@ -176,12 +176,10 @@ pub static COMMAND: Command = Command {
     chapter: ds_cli_contract::spec::Chapter::Catalog,
     summary: "Print or write an MCP host entry for this `ds`.",
     purpose: "\
-Reports this executable's stdio server entry and user-level host target. Without \
-`--write`, lists supported hosts and prints the exact proposed entry. \
-With `--write --yes`, merges only the `ds` entry and preserves other servers, staging the \
-merged document beside the target and renaming it into place. It never writes \
-workspace configuration. Changing a user-level host file changes how agent \
-sessions start on this machine, so the writing path needs `--yes`.",
+Prints this executable's exact stdio entry and user-level host target. Without \
+`--write`, lists supported hosts and proposes the entry. With `--write --yes`, \
+stages and atomically merges only `ds` while preserving sibling servers. It \
+never writes workspace configuration; writing needs `--yes`.",
     effect: Effect::MachineWrite,
     authority: Authority::None,
     execution: Execution::Sync,
@@ -224,17 +222,17 @@ sessions start on this machine, so the writing path needs `--yes`.",
         },
     ],
     output: "\
-The canonical connection descriptor, supported hosts, selected host entry and \
-user-level target, build/skill identity, and whether a write occurred.",
+Canonical connection descriptor, supported hosts, selected entry and target, \
+build/skill identity, and write status.",
     examples: &[
         Example {
             command: "ds mcp install --output json",
-            note: "List supported hosts and print the default VS Code entry; no write.",
+            note: "Print supported hosts and the default VS Code proposal.",
             runnable: true,
         },
         Example {
             command: "ds mcp install --host vscode --write --yes",
-            note: "Merge the `ds` server into the VS Code user profile's mcp.json.",
+            note: "Merge `ds` into the VS Code user mcp.json.",
             runnable: false,
         },
     ],
@@ -248,7 +246,7 @@ user-level target, build/skill identity, and whether a write occurred.",
         Refusal {
             code: "confirmation_required",
             when: "--write was requested without --yes",
-            remedy: "inspect the proposed entry first, then re-run with --write --yes",
+            remedy: "inspect the proposal, then re-run with --write --yes",
         },
     ],
     reference: Some("docs/reference/mcp.md"),
