@@ -25,6 +25,7 @@ The context contains only:
 - an optional device-local selected project projection;
 - credential-provider kind;
 - optional public device identity and public-key fingerprint;
+- an independent, non-authoritative paired-map observation;
 - session state.
 
 It contains no password, access token, refresh credential, authorization
@@ -53,6 +54,18 @@ directory, remains bound to the canonical principal, lane, profile/audience,
 and (for device sessions) exact device and entitlement revision, and is
 re-authorized by the server on every project operation. Desktop and headless
 devices deliberately do not copy one another's selected address.
+
+The selected-project address and the map's active project are separate facts.
+They may be equal, different, or one may be absent. A composed provider can
+report `map_state` as `unavailable`, `paired`, or `active` with the map's own
+active project address. A native/headless identity resolution reports
+`unobserved` and never probes or launches Desktop merely to fill this field.
+
+Ordinary `user` or `project` operations act through their canonical principal
+and device-local selected project even when no map exists or the map displays a
+different project. Only an explicitly `map`-capable command may require active
+map state. A map observation is useful context, not an implicit limit or a
+fallback source of project authority.
 
 ## Normalized capabilities and compatibility
 

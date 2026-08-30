@@ -13,6 +13,11 @@ It is not loaded project data, active map state, an open edit room, or evidence
 that Desktop is running. Browser providers may keep that bounded address in
 IndexedDB; this native provider keeps its equivalent below protected per-user
 state. The server still authorizes every operation against the exact project.
+The context separately reports paired-map observation as `map_state`.
+Headless status leaves it `unobserved`: it does not probe or launch Desktop.
+When a future composed provider observes a map, its active project may differ
+from the CLI's selected operation project without blocking ordinary project
+commands; only explicit `map` authority may depend on active map state.
 
 `ds auth` is the initial native authority seam shared with `ds-web` through
 `ds-client-core`. It is independent of the paired Desktop bridge. Existing

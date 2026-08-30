@@ -33,8 +33,8 @@ use transport::NativeTransport;
 use zeroize::Zeroize;
 
 pub use context::{
-    AuthContext, CanonicalPrincipal, CredentialProviderKind, DeviceIdentity, ProfileFence,
-    SelectedProject, SessionState,
+    AuthContext, CanonicalPrincipal, CredentialProviderKind, DeviceIdentity, MapProjectAddress,
+    MapState, ProfileFence, SelectedProject, SessionState,
 };
 
 pub static DOMAIN: Domain = Domain {

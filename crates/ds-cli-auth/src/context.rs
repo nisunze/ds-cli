@@ -33,6 +33,30 @@ pub enum SessionState {
     Active,
 }
 
+/// Optional paired-map observation, independent of the operation target.
+///
+/// A native/headless provider reports `Unobserved`: resolving identity must
+/// not probe or launch Desktop. A composed Desktop provider may populate the
+/// other states without changing the selected project used by headless work.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(tag = "state", rename_all = "snake_case")]
+pub enum MapState {
+    Unobserved,
+    Unavailable,
+    Paired {
+        active_project: Option<MapProjectAddress>,
+    },
+    Active {
+        active_project: Option<MapProjectAddress>,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct MapProjectAddress {
+    ds_project: String,
+    project_name: Option<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct CanonicalPrincipal {
     uid: String,
@@ -109,6 +133,7 @@ pub struct AuthContext {
     selected_project: Option<SelectedProject>,
     credential_provider: CredentialProviderKind,
     device_identity: Option<DeviceIdentity>,
+    map_state: MapState,
     session_state: SessionState,
 }
 
@@ -121,6 +146,7 @@ impl AuthContext {
             None,
             CredentialProviderKind::None,
             None,
+            MapState::Unobserved,
             SessionState::SignedOut,
         )
     }
@@ -143,6 +169,7 @@ impl AuthContext {
             selected_project,
             provider,
             device_identity,
+            MapState::Unobserved,
             SessionState::Active,
         )
     }
@@ -154,6 +181,7 @@ impl AuthContext {
         selected_project: Option<SelectedProject>,
         credential_provider: CredentialProviderKind,
         device_identity: Option<DeviceIdentity>,
+        map_state: MapState,
         session_state: SessionState,
     ) -> Self {
         let authority_capabilities = if principal.is_none() {
@@ -176,6 +204,7 @@ impl AuthContext {
             selected_project,
             credential_provider,
             device_identity,
+            map_state,
             session_state,
         }
     }
@@ -230,6 +259,7 @@ mod tests {
             None,
             CredentialProviderKind::None,
             None,
+            MapState::Unobserved,
             SessionState::SignedOut,
         );
         assert!(context.has_capability(AuthorityCapability::None));
@@ -255,6 +285,7 @@ mod tests {
             )),
             CredentialProviderKind::NativeRefresh,
             None,
+            MapState::Unobserved,
             SessionState::Active,
         );
         assert!(context.has_capability(AuthorityCapability::User));
@@ -276,6 +307,7 @@ mod tests {
             None,
             CredentialProviderKind::NativeRefresh,
             None,
+            MapState::Unobserved,
             SessionState::Active,
         );
         let value = serde_json::to_value(context).expect("serializable context");
@@ -293,5 +325,6 @@ mod tests {
             assert!(value.get(forbidden).is_none(), "exposed `{forbidden}`");
             assert!(!encoded.contains(&format!("\"{forbidden}\"")));
         }
+        assert_eq!(value["map_state"]["state"], "unobserved");
     }
 }
