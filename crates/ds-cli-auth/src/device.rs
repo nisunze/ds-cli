@@ -43,22 +43,69 @@ const DEVICE_NAME: Arg = Arg::value(
 const REQUEST: Arg = Arg::value("request", "<request-id>", "Exact link request id.").required();
 const DEVICE_ID: Arg = Arg::value("device", "<device-id>", "Exact public DS device id.").required();
 
-const REFUSALS: &[Refusal] = &[
-    Refusal {
-        code: "device_state_unavailable",
-        when: "protected device state is absent, unsafe, or held by another process",
-        remedy: "repair the owner-only DS config directory or retry after the other operation",
-    },
-    Refusal {
-        code: "device_auth_transient",
-        when: "the fixed DS device endpoint is temporarily unreachable",
-        remedy: "retry without deleting protected device state",
-    },
-    Refusal {
-        code: "device_auth_response_invalid",
-        when: "the fixed endpoint returns a response outside the closed device contract",
-        remedy: "update ds and retry; do not copy credentials into arguments",
-    },
+const STATE_UNAVAILABLE: Refusal = Refusal {
+    code: "device_state_unavailable",
+    when: "protected device state is absent or unsafe",
+    remedy: "repair the owner-only DS config directory",
+};
+const STATE_CONFLICT: Refusal = Refusal {
+    code: "device_state_conflict",
+    when: "another process holds or changed protected device state",
+    remedy: "retry after the other device operation finishes",
+};
+const AUTH_TRANSIENT: Refusal = Refusal {
+    code: "device_auth_transient",
+    when: "the fixed DS device endpoint is temporarily unreachable",
+    remedy: "retry without deleting protected device state",
+};
+const AUTH_RESPONSE_INVALID: Refusal = Refusal {
+    code: "device_auth_response_invalid",
+    when: "the fixed endpoint returns a response outside the closed device contract",
+    remedy: "update ds and retry; do not copy credentials into arguments",
+};
+const STATE_EXISTS: Refusal = Refusal {
+    code: "device_state_exists",
+    when: "the lane already holds a pending link or durable device credential",
+    remedy: "complete or revoke the existing device before beginning another link",
+};
+const RNG_UNAVAILABLE: Refusal = Refusal {
+    code: "device_rng_unavailable",
+    when: "the operating-system cryptographic RNG is unavailable",
+    remedy: "repair or update the native ds installation before creating device secrets",
+};
+const NOT_LINKED: Refusal = Refusal {
+    code: "device_not_linked",
+    when: "no protected DS device state exists for the lane",
+    remedy: "run ds auth link begin",
+};
+const REQUEST_MISMATCH: Refusal = Refusal {
+    code: "device_request_mismatch",
+    when: "the requested link id is not the protected pending link for the lane",
+    remedy: "use the exact request id returned by ds auth link begin",
+};
+
+const BEGIN_REFUSALS: &[Refusal] = &[
+    STATE_UNAVAILABLE,
+    STATE_CONFLICT,
+    AUTH_TRANSIENT,
+    AUTH_RESPONSE_INVALID,
+    STATE_EXISTS,
+    RNG_UNAVAILABLE,
+];
+const PENDING_REFUSALS: &[Refusal] = &[
+    STATE_UNAVAILABLE,
+    STATE_CONFLICT,
+    AUTH_TRANSIENT,
+    AUTH_RESPONSE_INVALID,
+    NOT_LINKED,
+    REQUEST_MISMATCH,
+];
+const LINKED_REFUSALS: &[Refusal] = &[
+    STATE_UNAVAILABLE,
+    STATE_CONFLICT,
+    AUTH_TRANSIENT,
+    AUTH_RESPONSE_INVALID,
+    NOT_LINKED,
 ];
 
 pub const BEGIN_COMMAND: Command = Command {
@@ -78,7 +125,7 @@ pub const BEGIN_COMMAND: Command = Command {
         note: "Approve the shown request from an exact signed-in Desktop.",
         runnable: false,
     }],
-    refusals: REFUSALS,
+    refusals: BEGIN_REFUSALS,
     reference: Some("docs/contracts/unified-identity.md"),
     availability: profile::availability,
 };
@@ -100,7 +147,7 @@ pub const STATUS_COMMAND: Command = Command {
         note: "Poll no faster than the returned interval.",
         runnable: false,
     }],
-    refusals: REFUSALS,
+    refusals: PENDING_REFUSALS,
     reference: Some("docs/contracts/unified-identity.md"),
     availability: profile::availability,
 };
@@ -122,7 +169,7 @@ pub const COMPLETE_COMMAND: Command = Command {
         note: "Run after explicit approval.",
         runnable: false,
     }],
-    refusals: REFUSALS,
+    refusals: PENDING_REFUSALS,
     reference: Some("docs/contracts/unified-identity.md"),
     availability: profile::availability,
 };
@@ -144,7 +191,7 @@ pub const LIST_COMMAND: Command = Command {
         note: "Uses the protected stable-lane device by default.",
         runnable: false,
     }],
-    refusals: REFUSALS,
+    refusals: LINKED_REFUSALS,
     reference: Some("docs/contracts/unified-identity.md"),
     availability: profile::availability,
 };
@@ -166,7 +213,7 @@ pub const READ_COMMAND: Command = Command {
         note: "Use an exact id from device list.",
         runnable: false,
     }],
-    refusals: REFUSALS,
+    refusals: LINKED_REFUSALS,
     reference: Some("docs/contracts/unified-identity.md"),
     availability: profile::availability,
 };
@@ -188,7 +235,7 @@ pub const REVOKE_COMMAND: Command = Command {
         note: "Requires explicit confirmation.",
         runnable: false,
     }],
-    refusals: REFUSALS,
+    refusals: LINKED_REFUSALS,
     reference: Some("docs/contracts/unified-identity.md"),
     availability: profile::availability,
 };

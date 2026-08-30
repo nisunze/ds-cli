@@ -263,6 +263,7 @@ fn bootstrap_identity(
         "build_profile": build["profile"],
         "install_profile": tools::install_profile(executable),
         "native_client_core_source_sha": build["native_client_core_source_sha"],
+        "command_kernel_source_sha": build["command_kernel_source_sha"],
         "native_client_profile_catalog_sha256": build["native_client_profile_catalog_sha256"],
         "ds_network_source_sha": build["ds_network_source_sha"],
         "ds_network_source_state": build["ds_network_source_state"],

@@ -910,6 +910,7 @@ name = "ds-client-core"
 version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
+ "ds-command-kernel",
  "ed25519-dalek",
  "serde",
  "serde_json",
@@ -933,6 +934,16 @@ dependencies = [
  "serde_json",
  "sha2",
  "thiserror",
+]
+
+[[package]]
+name = "ds-command-kernel"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "serde",
+ "serde_json",
+ "zeroize",
 ]
 
 [[package]]

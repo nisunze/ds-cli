@@ -20,6 +20,13 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ),
     // Native auth is one local-state class because even status/list can rotate
     // a refresh credential. None of these authorities implies Desktop.
+    ("auth.link.begin", "local_auth_state", "none"),
+    ("auth.link.status", "read_only", "none"),
+    ("auth.link.complete", "local_auth_state", "none"),
+    ("auth.link.approve", "global_write", "desktop_user"),
+    ("auth.device.list", "read_only", "headless_user"),
+    ("auth.device.read", "read_only", "headless_user"),
+    ("auth.device.revoke", "global_write", "headless_user"),
     ("auth.login", "local_auth_state", "none"),
     ("auth.logout", "local_auth_state", "none"),
     ("auth.project.list", "local_auth_state", "headless_user"),

@@ -58,6 +58,13 @@ password. `--password-stdin` explicitly reads one line, bounded to 4096 bytes.
 Passwords and tokens are never accepted in argv or environment variables.
 MCP children cannot open the prompt. Only a rotating refresh credential is
 durable; the ID token stays in process memory and is zeroized by the core.
+Firebase password failures are classified without exposing the response body.
+Invalid credentials and password-provider unavailability point to the governed
+`auth link` flow so a headless machine can adopt the already signed-in paired
+Desktop principal instead of repeating a password that Firebase will never
+accept. Account-disabled and transient failures remain distinct. The link
+contracts preserve the exact Stable/Canary lane and reject a different map
+principal rather than borrowing it silently.
 
 On Unix, refresh state and project context live below the per-user DS config
 root (`DS_CONFIG_HOME` as an explicit absolute override, then absolute XDG

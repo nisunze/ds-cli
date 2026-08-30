@@ -23,6 +23,7 @@ fn main() {
     println!("cargo:rerun-if-env-changed=DS_RELEASE_PIN_DS_NETWORK");
     println!("cargo:rerun-if-changed=../../.git/HEAD");
     println!("cargo:rerun-if-changed=../../pins/ds-client-core.rev");
+    println!("cargo:rerun-if-changed=../../pins/ds-command-kernel.rev");
 
     let pinned = std::env::var("DS_CLI_SOURCE_SHA")
         .ok()
@@ -52,6 +53,9 @@ fn main() {
         "unknown"
     };
     println!("cargo:rustc-env=DS_NATIVE_CLIENT_CORE_SHA={native_client_core_sha}");
+    let command_kernel_sha =
+        exact_source_pin(include_str!("../../pins/ds-command-kernel.rev")).unwrap_or("unknown");
+    println!("cargo:rustc-env=DS_COMMAND_KERNEL_SHA={command_kernel_sha}");
     let native_client_profile_sha256 = std::env::var("DS_NATIVE_CLIENT_PROFILE_SHA256")
         .ok()
         .filter(|digest| {
@@ -83,6 +87,15 @@ fn main() {
         std::env::var("TARGET").unwrap_or_else(|_| "unknown".into())
     );
     println!("cargo:rustc-env=DS_BUILD_PROFILE={}", profile);
+}
+
+fn exact_source_pin(value: &str) -> Option<&str> {
+    let value = value.trim();
+    (value.len() == 40
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte)))
+    .then_some(value)
 }
 
 fn git_sha() -> Option<String> {

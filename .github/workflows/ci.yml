@@ -6,7 +6,8 @@ name: ci
 # every operation and argument key it sends against the paired application's
 # own source in `ds-web`, and `tests/engine_parity.rs` checks every field name
 # `ds report` and `ds solar` hand-copy against the engines those flags are
-# copied from. So CI checks out all five repositories side by side, in the
+# copied from. The native client core also links the exact shared command
+# kernel used by browser WASM. So CI checks out all six repositories side by side, in the
 # same layout an operator has locally, and builds the two engines it calls
 # over a process contract: that suite skips — and reports green — without them.
 on:
@@ -48,6 +49,15 @@ jobs:
           [[ "$sha" =~ ^[0-9a-f]{40}$ ]]
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
 
+      - name: Read command kernel authority pin
+        id: command-kernel
+        working-directory: data-solutions/ds-cli
+        shell: bash
+        run: |
+          sha="$(tr -d '\r\n' < pins/ds-command-kernel.rev)"
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]]
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
       # `tests/bridge_parity.rs` reads the web bridge and Cargo also compiles
       # the exact pinned Tauri-independent native client core from this tree.
       - name: Check out ds-web
@@ -66,6 +76,23 @@ jobs:
         run: |
           test "$(git rev-parse HEAD)" = "$EXPECTED_CORE_SHA"
           test -f crates/ds-client-core/Cargo.toml
+
+      - name: Check out ds-command-kernel
+        uses: actions/checkout@v4
+        with:
+          repository: nisunze/ds-command-kernel
+          ref: ${{ steps.command-kernel.outputs.sha }}
+          path: data-solutions/ds-command-kernel
+          token: ${{ secrets.WORKSPACE_TOKEN }}
+          persist-credentials: false
+
+      - name: Verify command kernel authority pin
+        working-directory: data-solutions/ds-command-kernel
+        env:
+          EXPECTED_KERNEL_SHA: ${{ steps.command-kernel.outputs.sha }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$EXPECTED_KERNEL_SHA"
+          test -f Cargo.toml
 
       # The two engines `ds` reaches over a typed process contract. Unlike
       # ds-web these are needed as *binaries*: `tests/engine_parity.rs` asks

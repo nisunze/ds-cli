@@ -185,6 +185,21 @@ const AUTH_REJECTED_REFUSAL: Refusal = Refusal {
     when: "the fixed authentication or project service rejects the request",
     remedy: "verify the account and its project access",
 };
+const INVALID_CREDENTIALS_REFUSAL: Refusal = Refusal {
+    code: "auth_invalid_credentials",
+    when: "Firebase does not accept the protected email/password exchange",
+    remedy: "retry the exact password, or run ds auth link begin to use the signed-in Desktop identity",
+};
+const PASSWORD_SIGN_IN_UNAVAILABLE_REFUSAL: Refusal = Refusal {
+    code: "auth_password_sign_in_unavailable",
+    when: "password sign-in is disabled for the Firebase project or unavailable for this account",
+    remedy: "run ds auth link begin to use the signed-in Desktop identity",
+};
+const ACCOUNT_DISABLED_REFUSAL: Refusal = Refusal {
+    code: "auth_account_disabled",
+    when: "Firebase reports that this account is disabled",
+    remedy: "restore the account with an administrator, then retry",
+};
 const AUTH_REVOKED_REFUSAL: Refusal = Refusal {
     code: "auth_revoked",
     when: "Firebase permanently revokes the native session",
@@ -209,6 +224,11 @@ const AUTH_CONTEXT_REFUSAL: Refusal = Refusal {
     code: "auth_context_unreadable",
     when: "the bounded non-secret authenticated context cannot be projected safely",
     remedy: "update ds and retry without changing protected state",
+};
+const AUTH_CONTEXT_MISMATCH_REFUSAL: Refusal = Refusal {
+    code: "auth_context_mismatch",
+    when: "protected or paired providers disagree on principal, lane, audience, or project",
+    remedy: "use matching identity context or explicitly remove the unintended provider",
 };
 const PASSWORD_INPUT_REFUSAL: Refusal = Refusal {
     code: "password_input_invalid",
@@ -257,6 +277,7 @@ const STATUS_REFUSALS: &[Refusal] = &[
     UNREADABLE_REFUSAL,
     CONTEXT_STALE_REFUSAL,
     AUTH_CONTEXT_REFUSAL,
+    AUTH_CONTEXT_MISMATCH_REFUSAL,
 ];
 const LOGIN_REFUSALS: &[Refusal] = &[
     PROFILE_REFUSAL,
@@ -269,6 +290,9 @@ const LOGIN_REFUSALS: &[Refusal] = &[
     STATE_CONFLICT_REFUSAL,
     CLEANUP_REFUSAL,
     AUTH_INPUT_REFUSAL,
+    INVALID_CREDENTIALS_REFUSAL,
+    PASSWORD_SIGN_IN_UNAVAILABLE_REFUSAL,
+    ACCOUNT_DISABLED_REFUSAL,
     AUTH_REJECTED_REFUSAL,
     IDENTITY_REFUSAL,
     TRANSIENT_REFUSAL,
@@ -276,6 +300,7 @@ const LOGIN_REFUSALS: &[Refusal] = &[
     PASSWORD_INPUT_REFUSAL,
     PASSWORD_PROMPT_REFUSAL,
     PASSWORD_TTY_REFUSAL,
+    AUTH_CONTEXT_MISMATCH_REFUSAL,
 ];
 const LOGOUT_REFUSALS: &[Refusal] = &[
     PROFILE_REFUSAL,
@@ -287,6 +312,7 @@ const LOGOUT_REFUSALS: &[Refusal] = &[
     STATE_ROOT_REFUSAL,
     STATE_CONFLICT_REFUSAL,
     CLEANUP_REFUSAL,
+    AUTH_CONTEXT_MISMATCH_REFUSAL,
 ];
 const PROJECT_LIST_REFUSALS: &[Refusal] = &[
     PROFILE_REFUSAL,
@@ -367,7 +393,7 @@ pub static STATUS_COMMAND: Command = Command {
 pub static LOGIN_COMMAND: Command = Command {
     id: "auth.login",
     path: &["auth", "login"],
-    contract: 1,
+    contract: 2,
     chapter: Chapter::Project,
     summary: "Sign in with protected terminal password input.",
     purpose: "Exchanges an email and hidden TTY password for a native Firebase session. Only the rotating refresh credential is stored; no password, ID token, argv token, environment token, or Desktop session is used.",
@@ -2010,6 +2036,23 @@ fn map_client_kind(kind: ErrorKind, message: String) -> Failure {
         ErrorKind::InvalidInput => Failure::invalid("auth_input_invalid", message),
         ErrorKind::SignedOut => Failure::unauthorized("headless_signed_out", message)
             .next("ds auth login --email <address>"),
+        ErrorKind::InvalidCredentials => Failure::unauthorized(
+            "auth_invalid_credentials",
+            "Firebase did not accept this email/password sign-in",
+        )
+        .remedy("retry the exact password, or link this machine through the signed-in Desktop")
+        .next("ds auth link begin"),
+        ErrorKind::PasswordSignInUnavailable => Failure::unauthorized(
+            "auth_password_sign_in_unavailable",
+            "password sign-in is unavailable for this Firebase account or project",
+        )
+        .remedy("link this machine through the signed-in Desktop identity")
+        .next("ds auth link begin"),
+        ErrorKind::AccountDisabled => Failure::unauthorized(
+            "auth_account_disabled",
+            "Firebase reports that this account is disabled",
+        )
+        .remedy("restore the account with an administrator, then retry"),
         ErrorKind::AuthenticationRejected => Failure::unauthorized(
             "auth_rejected",
             "the native authentication or project service rejected this verified request",
@@ -2254,6 +2297,22 @@ mod tests {
             failure.class(),
             ds_cli_contract::outcome::ExitClass::InvalidInput
         );
+    }
+
+    #[test]
+    fn rejected_password_points_to_the_passwordless_identity_link() {
+        let failure = map_client_kind(
+            ErrorKind::InvalidCredentials,
+            "upstream detail must not escape".to_owned(),
+        );
+        assert_eq!(failure.code(), "auth_invalid_credentials");
+        assert_eq!(failure.next_commands(), &["ds auth link begin"]);
+        assert!(
+            failure
+                .remedy_text()
+                .is_some_and(|remedy| remedy.contains("signed-in Desktop"))
+        );
+        assert!(!failure.message().contains("upstream detail"));
     }
 
     #[test]

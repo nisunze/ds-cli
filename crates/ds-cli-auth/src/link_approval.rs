@@ -60,7 +60,7 @@ pub static COMMAND: Command = Command {
     path: &["auth", "link", "approve"],
     contract: 1,
     chapter: Chapter::Project,
-    summary: "Approve one exact headless device through paired Desktop (needs --yes).",
+    summary: "Approve one headless device through paired Desktop (needs --yes).",
     purpose: "Fetches a read-only approval preview through the paired Desktop, checks its exact request, public-key fingerprint, lane, scopes, expiry, and renewable flag, then commits the same decision only after explicit confirmation. No Desktop credential or device private key enters ds.",
     effect: Effect::GlobalWrite,
     authority: Authority::DesktopUser,

@@ -213,13 +213,36 @@ fn bridge_with_status(replies: Vec<(&'static str, u16, Value)>) -> Bridge {
         let mut received = Vec::new();
         for (expected_operation, status, reply) in replies {
             let deadline = Instant::now() + Duration::from_secs(10);
-            let mut stream = loop {
+            let mut session_stream = loop {
                 match listener.accept() {
                     Ok((stream, _)) => break stream,
                     Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
                         assert!(
                             Instant::now() < deadline,
                             "bridge timed out waiting for `{expected_operation}`; ds may have refused before the paired request"
+                        );
+                        thread::sleep(Duration::from_millis(10));
+                    }
+                    Err(error) => panic!("bridge accepts `{expected_operation}`: {error}"),
+                }
+            };
+            session_stream
+                .set_read_timeout(Some(Duration::from_secs(10)))
+                .expect("set bridge session timeout");
+            let session_headers = read_request_headers(&mut session_stream);
+            assert!(
+                session_headers.starts_with("GET /v1/session "),
+                "the CLI must snapshot the paired identity before `{expected_operation}`: {session_headers}"
+            );
+            write_json_reply(&mut session_stream, 200, &paired_session());
+
+            let mut stream = loop {
+                match listener.accept() {
+                    Ok((stream, _)) => break stream,
+                    Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                        assert!(
+                            Instant::now() < deadline,
+                            "bridge timed out waiting for `{expected_operation}` after identity snapshot"
                         );
                         thread::sleep(Duration::from_millis(10));
                     }
@@ -289,17 +312,15 @@ fn mcp_bridge(expected_operation: &'static str, reply: Value) -> Bridge {
             status_headers.starts_with("GET /v1/session "),
             "MCP must prove the paired session before command dispatch: {status_headers}"
         );
-        write_json_reply(
-            &mut status_stream,
-            200,
-            &json!({
-                "signed_in": true,
-                "uid": "uid-1",
-                "email": "operator@example.test",
-                "project": "project-1",
-                "design_context": null,
-            }),
-        );
+        write_json_reply(&mut status_stream, 200, &paired_session());
+
+        let (mut fence_stream, _) = listener.accept().expect("accept command identity snapshot");
+        fence_stream
+            .set_read_timeout(Some(Duration::from_secs(10)))
+            .expect("set fence read timeout");
+        let fence_headers = read_request_headers(&mut fence_stream);
+        assert!(fence_headers.starts_with("GET /v1/session "));
+        write_json_reply(&mut fence_stream, 200, &paired_session());
 
         let (mut operation_stream, _) = listener.accept().expect("accept MCP operation request");
         operation_stream
@@ -331,6 +352,19 @@ fn mcp_bridge(expected_operation: &'static str, reply: Value) -> Bridge {
     )
     .expect("write descriptor");
     Bridge { descriptor, server }
+}
+
+fn paired_session() -> Value {
+    json!({
+        "signed_in": true,
+        "uid": "uid-1",
+        "email": "operator@example.test",
+        "project": "project-1",
+        "design_context": null,
+        "lane": "stable",
+        "credential_audience_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "session_revision": 1,
+    })
 }
 
 fn finish(bridge: Bridge) -> Vec<Value> {

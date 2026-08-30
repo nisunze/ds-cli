@@ -257,6 +257,10 @@ fn build_identity_is_verifiable() {
         data["native_client_core_source_sha"],
         include_str!("../../../pins/ds-client-core.rev").trim()
     );
+    assert_eq!(
+        data["command_kernel_source_sha"],
+        include_str!("../../../pins/ds-command-kernel.rev").trim()
+    );
     match data["profile"].as_str().expect("build profile") {
         "release" => {
             let sha = data["ds_network_source_sha"]
