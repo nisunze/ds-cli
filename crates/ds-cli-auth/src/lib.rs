@@ -18,8 +18,8 @@ use ds_cli_contract::spec::{
 use ds_cli_contract::{Context, Inputs};
 use ds_client_core::{
     Client, ClientError, ErrorKind, Project, ProjectFormSettingsEditor, ProjectFormsSnapshot,
-    ProjectStatus, SolarSnapshot, SurveyEntriesSelectRequest, SurveyEntriesSelection,
-    SurveyQueryRequest, SurveyQueryResult, TransformerContext,
+    ProjectStatus, SolarSnapshot, SurveyEntriesSelectRequest, SurveyEntriesSelectServiceCode,
+    SurveyEntriesSelection, SurveyQueryRequest, SurveyQueryResult, TransformerContext,
 };
 use profile::Lane;
 use serde_json::{Value, json};
@@ -818,6 +818,13 @@ pub fn survey_entries_select(
         })?;
     let selection = client.survey_entries_select(selected.project_id(), request, now());
     let selection = match selection {
+        Err(error) if error.survey_entries_select_service_code().is_some() => {
+            return Err(map_survey_entries_service_code(
+                error
+                    .survey_entries_select_service_code()
+                    .expect("the guarded Survey selection service code is present"),
+            ));
+        }
         Err(error) if error.kind() == ErrorKind::ResourceNotFound => {
             return Err(Failure::invalid(
                 "survey_entries_scope_not_found",
@@ -862,6 +869,51 @@ pub fn survey_entries_select(
         project_status: selected.status().to_owned(),
         selection,
     })
+}
+
+fn map_survey_entries_service_code(code: SurveyEntriesSelectServiceCode) -> Failure {
+    match code {
+        SurveyEntriesSelectServiceCode::TooExpensive => Failure::invalid(
+            "survey_entries_too_expensive",
+            "the bounded Survey entry selection exceeded its query budget",
+        )
+        .remedy("narrow --bbox before retrying"),
+        SurveyEntriesSelectServiceCode::TooLarge => Failure::invalid(
+            "survey_entries_too_large",
+            "the bounded Survey entry selection exceeded its response limit",
+        )
+        .remedy("narrow --bbox or lower --limit before retrying"),
+        SurveyEntriesSelectServiceCode::SyncFailed => Failure::unavailable(
+            "survey_entries_sync_failed",
+            "Survey data could not be synchronized before entry selection",
+        )
+        .remedy("retry without changing the selection; report repeated sync failures"),
+        SurveyEntriesSelectServiceCode::MirrorInvalid => Failure::failed(
+            "survey_entries_mirror_invalid",
+            "the Survey mirror could not represent the entry selection safely",
+        )
+        .remedy("repair or update the governed Survey mirror; an unchanged retry is not a remedy"),
+        SurveyEntriesSelectServiceCode::Invalid => Failure::invalid(
+            "survey_entries_invalid",
+            "the fixed service rejected the bounded Survey entry selection",
+        )
+        .remedy("recheck the exact form, bbox, and limit before retrying"),
+        SurveyEntriesSelectServiceCode::Unavailable => Failure::unavailable(
+            "survey_entries_unavailable",
+            "the governed Survey entry selection service is unavailable on this deployment",
+        )
+        .remedy("retry later without changing the selection"),
+        SurveyEntriesSelectServiceCode::Failed => Failure::unavailable(
+            "survey_entries_failed",
+            "the governed Survey entry selection service failed temporarily",
+        )
+        .remedy("retry without changing the selection; report repeated failures"),
+        SurveyEntriesSelectServiceCode::ScopeNotFound => Failure::invalid(
+            "survey_entries_scope_not_found",
+            "the selected project or governed form is unavailable to this verified user",
+        )
+        .remedy("verify the selected project and pass one exact available form slug"),
+    }
 }
 
 fn client(inputs: &Inputs) -> Result<(Lane, NativeClient), Failure> {
@@ -1337,6 +1389,83 @@ mod tests {
         assert_eq!(
             failure.class(),
             ds_cli_contract::outcome::ExitClass::InvalidInput
+        );
+    }
+
+    #[test]
+    fn survey_entry_service_codes_have_exact_stable_cli_refusals() {
+        use SurveyEntriesSelectServiceCode as ServiceCode;
+        use ds_cli_contract::outcome::ExitClass;
+
+        let cases = [
+            (
+                ServiceCode::TooExpensive,
+                "survey_entries_too_expensive",
+                ExitClass::InvalidInput,
+                "narrow --bbox",
+                false,
+            ),
+            (
+                ServiceCode::TooLarge,
+                "survey_entries_too_large",
+                ExitClass::InvalidInput,
+                "lower --limit",
+                false,
+            ),
+            (
+                ServiceCode::SyncFailed,
+                "survey_entries_sync_failed",
+                ExitClass::Unavailable,
+                "retry without changing",
+                true,
+            ),
+            (
+                ServiceCode::MirrorInvalid,
+                "survey_entries_mirror_invalid",
+                ExitClass::Failed,
+                "unchanged retry is not a remedy",
+                false,
+            ),
+            (
+                ServiceCode::Invalid,
+                "survey_entries_invalid",
+                ExitClass::InvalidInput,
+                "recheck the exact form, bbox, and limit",
+                false,
+            ),
+            (
+                ServiceCode::Unavailable,
+                "survey_entries_unavailable",
+                ExitClass::Unavailable,
+                "retry later",
+                true,
+            ),
+            (
+                ServiceCode::Failed,
+                "survey_entries_failed",
+                ExitClass::Unavailable,
+                "retry without changing",
+                true,
+            ),
+            (
+                ServiceCode::ScopeNotFound,
+                "survey_entries_scope_not_found",
+                ExitClass::InvalidInput,
+                "verify the selected project",
+                false,
+            ),
+        ];
+        for (service_code, cli_code, class, remedy, retryable) in cases {
+            let failure = map_survey_entries_service_code(service_code);
+            assert_eq!(failure.code(), cli_code);
+            assert_eq!(failure.class(), class);
+            assert_eq!(failure.class().retryable(), retryable);
+            assert!(failure.remedy_text().unwrap().contains(remedy));
+        }
+        let scope = map_survey_entries_service_code(ServiceCode::ScopeNotFound);
+        assert_eq!(
+            scope.message(),
+            "the selected project or governed form is unavailable to this verified user"
         );
     }
 

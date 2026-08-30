@@ -73,6 +73,25 @@ media expansion, or mutable apply path. The command also accepts no project,
 URL, method, body, token, WKT, GeoJSON request, caller-authority, force, or
 Desktop override.
 
+The shared native core validates the backend error envelope and exact
+HTTP-status/code pair before exposing one closed service enum. Backend error
+messages, details, and response bytes do not cross into ds-cli. The command
+maps that enum as follows:
+
+| Service meaning | CLI code | Operator action |
+| --- | --- | --- |
+| Query budget exceeded | `survey_entries_too_expensive` | Narrow `--bbox`. |
+| Response bound exceeded | `survey_entries_too_large` | Narrow `--bbox` or lower `--limit`. |
+| Mirror synchronization failed | `survey_entries_sync_failed` | Retry; report repeated sync failures. |
+| Mirror data is unsafe to represent | `survey_entries_mirror_invalid` | Repair or update the governed mirror; an unchanged retry is not a remedy. |
+| Bounded request rejected | `survey_entries_invalid` | Recheck the exact form, bbox, and limit. |
+| Route unavailable | `survey_entries_unavailable` | Retry later. |
+| Service failed temporarily | `survey_entries_failed` | Retry; report repeated failures. |
+| Project or form scope unavailable | `survey_entries_scope_not_found` | Verify the selected project and an exact available form; the response does not reveal which scope was absent. |
+
+If an older or unrecognized response has no typed service code, ds-cli retains
+the coarse status-class fallback without inspecting response bodies.
+
 Four related objects have separate lifecycles:
 
 1. A **Form Factory form** is a global master schema. Use `survey forms list`,

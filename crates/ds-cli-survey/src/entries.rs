@@ -41,6 +41,36 @@ const REFUSALS: &[Refusal] = &[
         remedy: "verify the selected project and pass one exact available form slug",
     },
     Refusal {
+        code: "survey_entries_too_expensive",
+        when: "the selection exceeds the backend query budget",
+        remedy: "narrow --bbox before retrying",
+    },
+    Refusal {
+        code: "survey_entries_too_large",
+        when: "the selection exceeds the bounded response limit",
+        remedy: "narrow --bbox or lower --limit before retrying",
+    },
+    Refusal {
+        code: "survey_entries_sync_failed",
+        when: "Survey data cannot be synchronized before selection",
+        remedy: "retry without changing the selection and report repeated sync failures",
+    },
+    Refusal {
+        code: "survey_entries_mirror_invalid",
+        when: "the governed Survey mirror cannot represent the selection safely",
+        remedy: "repair or update the governed mirror; an unchanged retry is not a remedy",
+    },
+    Refusal {
+        code: "survey_entries_unavailable",
+        when: "the bounded selection service is unavailable on this deployment",
+        remedy: "retry later without changing the selection",
+    },
+    Refusal {
+        code: "survey_entries_failed",
+        when: "the bounded selection service fails temporarily",
+        remedy: "retry without changing the selection and report repeated failures",
+    },
+    Refusal {
         code: "survey_entries_refused",
         when: "the backend refuses the already validated bounded selection",
         remedy: "narrow --bbox or lower --limit, then verify the governed form state",
@@ -365,6 +395,12 @@ mod tests {
             .collect::<std::collections::BTreeSet<_>>();
         for code in [
             "survey_entries_scope_not_found",
+            "survey_entries_too_expensive",
+            "survey_entries_too_large",
+            "survey_entries_sync_failed",
+            "survey_entries_mirror_invalid",
+            "survey_entries_unavailable",
+            "survey_entries_failed",
             "survey_entries_refused",
             "survey_entries_auth_rejected",
             "survey_entries_transient",
