@@ -16,6 +16,7 @@ pub mod compare;
 pub mod engine;
 pub mod exports;
 pub mod input_capture;
+pub mod input_prepare;
 pub mod paired;
 pub mod paired_run;
 pub mod prepare;
@@ -61,6 +62,7 @@ pub static DOMAIN: Domain = Domain {
         &engine::COMMAND,
         &compare::COMMAND,
         &input_capture::COMMAND,
+        &input_prepare::COMMAND,
         &prepare::COMMAND,
         &run::COMMAND,
         &paired_run::START_COMMAND,

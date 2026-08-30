@@ -320,9 +320,9 @@ const DESIGN_RUN_COMMANDS: &[&str] = &[
 
 const SOLAR_RUN_COMMANDS: &[&str] = &[
     "solar.engine",
-    // Preserve the established end-to-end run profile. The native capture
-    // command gets its own narrow profile because adding it here would exceed
-    // the bounded leaf-tool surface and would silently change existing hosts.
+    // Preserve the established end-to-end run profile. Native governed input
+    // handoffs get their own narrow profile because adding them here would
+    // exceed the bounded leaf-tool surface and silently change existing hosts.
     "solar.seed.preview",
     "solar.seed.apply",
     "solar.prepare",
@@ -338,7 +338,7 @@ const SOLAR_RUN_COMMANDS: &[&str] = &[
     "solar.verify-weather",
 ];
 
-const SOLAR_INPUT_COMMANDS: &[&str] = &["solar.input.capture"];
+const SOLAR_INPUT_COMMANDS: &[&str] = &["solar.input.capture", "solar.input.prepare"];
 
 const SOLAR_DELIVERY_COMMANDS: &[&str] = &[
     "solar.portfolio.list",

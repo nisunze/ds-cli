@@ -95,11 +95,20 @@ failed; never call it published without a successful publication receipt.
 
 ## Keep the headless route separate
 
-Use the headless artifact runner only when the caller already supplied a
-prepared artifact directory and explicitly wants offline file output. That
-route must not be used to extract paired-app inputs or bypass project context.
-Verify its engine identity and closed batch receipt through the live CLI
-contracts, and never combine its artifacts with a paired run receipt.
+When the user explicitly wants a headless city run, discover the live input
+capture, input preparation and artifact-runner descriptors. Capture establishes
+the selected headless project's authority; never substitute a caller-supplied
+project or root. Preparation may use only an already verified local reference
+cache named through the live command. It must not be given a provider URL,
+weather token, API key, browser cache, fixture input, or invented owner flags.
+If the exact reference bundle is absent, report that governed cache acquisition
+is still required; do not bypass the refusal with a direct engine call.
+
+Keep the captured intake private and pass the resulting prepared directory
+unchanged to the discovered offline artifact runner. Verify engine identity and
+the closed preparation and batch receipts through the live CLI contracts. Never
+combine these artifacts with a paired run receipt, and never describe cache-hit
+preparation as a complete fresh-server route.
 
 When live discovery proves a needed operation is absent, follow the `ds`
 skill's feedback procedure. Do not compensate with direct bridge calls or a

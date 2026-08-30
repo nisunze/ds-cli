@@ -715,6 +715,13 @@ fn confirmation_policy_is_enforced_for_every_effectful_command() {
                 .map(|part| part.as_str().expect("part"))
                 .collect();
             let mut args = path.clone();
+            // Machine-write proposal commands are effectful only when their
+            // descriptor's declared switch selects the writing path. Exercise
+            // that exact path; the proposal-only invocation is allowed to
+            // succeed without confirmation.
+            if let Some(trigger) = descriptor["confirmation_trigger"].as_str() {
+                args.push(trigger);
+            }
             args.extend(["--output", "json"]);
             let run = ds(&args);
             assert_ne!(

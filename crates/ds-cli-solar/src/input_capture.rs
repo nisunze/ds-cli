@@ -63,7 +63,7 @@ pub static COMMAND: Command = Command {
     output: "The fresh governed-intake path and SHA-256; selected lane/project/city; server snapshot/fingerprint and hashed receipt provenance plus expiry; bounded source/media counts; and the verified ds-solar owner schema. No snapshot body, raw receipt id, token, signed URL, or owner stdout is emitted.",
     examples: &[Example {
         command: "ds solar input capture --city pala --out ./pala.intake.json --output json",
-        note: "Capture one selected-project city for `ds-solar prepare --governed-intake`.",
+        note: "Capture one selected-project city for `ds solar input prepare`.",
         runnable: false,
     }],
     refusals: &[

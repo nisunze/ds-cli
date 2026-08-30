@@ -272,6 +272,11 @@ static SOLAR_ENTRIES: &[Entry] = &[
         render: ds_cli_solar::input_capture::render,
     },
     Entry {
+        command: &ds_cli_solar::input_prepare::COMMAND,
+        handler: ds_cli_solar::input_prepare::run,
+        render: ds_cli_solar::input_prepare::render,
+    },
+    Entry {
         command: &ds_cli_solar::prepare::COMMAND,
         handler: ds_cli_solar::prepare::run,
         render: ds_cli_solar::prepare::render,

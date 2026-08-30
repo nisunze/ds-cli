@@ -175,6 +175,30 @@ counts before reporting success. The command returns only the intake digest,
 bounded provenance and a SHA-256 of the receipt id. The raw actor-bound receipt
 id remains solely inside the deliberate authority-bearing intake.
 
+`ds solar input prepare --intake <file> --cache <dir> --out <fresh-dir>`
+continues that handoff without a Desktop session. It calls only the fixed
+native governed-intake preparation operation, against an existing verified
+`ds-solar` reference cache. There is deliberately no provider URL, weather
+token, API key, project/root override, fixture mode, overwrite, or generic
+engine argument. A missing exact weather/reference bundle is therefore a
+refusal, not an implicit network request.
+
+The command accepts one private, bounded, non-symlinked governed intake and a
+real local cache directory. It creates `--out` itself with private permissions
+on Unix, then requires the owner to emit exactly one matching
+`<city>.prepared.json` and
+`<city>.prepared-publication-claim.json` pair. Its receipt carries only paths,
+sizes, SHA-256 digests and immutable engine identity; the actor-bound claim and
+cache contents remain on disk. The prepared directory can then be passed
+unchanged to `ds solar run --prepared`.
+
+This closes cache-hit preparation, not fresh-server reference acquisition.
+Until DS exposes a governed reference-cache acquisition contract, populate the
+exact cache through the reviewed paired product route. Do not compensate with
+raw `ds-solar` provider URLs or credentials. That remaining gap is explicit so
+a Linux host is never described as end-to-end headless when it lacks reference
+data.
+
 `ds solar run --prepared <dir> --out <dir>` remains a separate, reproducible
 offline adapter over the external `ds-solar run` process contract. It accepts
 an already prepared city-artifact directory, performs no intake or network
@@ -197,7 +221,10 @@ This route is intentionally distinct from the paired product lifecycle:
 ds solar prepare --city rw-kigali --output json
 ds solar run start --city rw-kigali --output json
 
-# Headless, caller-supplied prepared artifacts
+# Headless selected-project capture, cache-hit preparation and artifact run
+ds solar input capture --city rw-kigali --out ./rw-kigali.intake.json --output json
+ds solar input prepare --intake ./rw-kigali.intake.json \
+  --cache ./solar-reference-cache --out ./prepared --output json
 ds solar run --prepared ./prepared --out ./out --output json
 ```
 
@@ -288,6 +315,7 @@ update it.
 | CLI command | paired operation | effect | result |
 |---|---|---|---|
 | `solar input capture` | fixed native `desktop_snapshot` + governed owner stdin | local file write | verified governed city intake |
+| `solar input prepare` | fixed native cache-only `prepare` | local file write | private prepared input and publication-claim pair |
 | `solar seed preview` | `solar.seed.preview` | read only | ds-brain's SolarSeedPlan, verbatim |
 | `solar seed apply` | `solar.seed.apply` | global write | ds-brain's SolarSeedApplyResult, verbatim |
 | `solar prepare` | `solar.prepare` | local file write | completed preparation receipt |
@@ -315,6 +343,7 @@ set of product actions and never a generic desktop RPC.
 | Command | Timeout | Why |
 |---|---:|---|
 | `solar input capture` | 120 s request + 5 min owner intake | bounded selected-project capture and create-new sealing |
+| `solar input prepare` | 30 min | cache-only native preparation of one governed intake |
 | `solar seed preview` / `apply` | 60 s | one ds-brain round trip; the card allows the same |
 | `solar prepare` | 30 min | cache capture or authenticated refresh across selected cities |
 | `solar run start` | 30 s | creates a local run receipt; compute continues inside the paired application for as long as it runs — closing DS GridDesign ends the run and later reads settle it as abandoned |
@@ -334,7 +363,7 @@ launches; the assumption and report flags apply only to portfolio launches.
 
 ## Engine identity
 
-`ds solar engine`, `solar input capture`, the headless artifact runner,
+`ds solar engine`, `solar input capture`, `solar input prepare`, the headless artifact runner,
 `solar verify-weather` and `solar result compare`
 resolve the `ds-solar` sibling packaged with `ds`. `DS_SOLAR_BIN` is an
 explicit development override and wins when set. The paired product lifecycle
@@ -359,6 +388,7 @@ project membership nor authorizes publication or mutation.
 
 - `crates/ds-cli-solar/src/seed.rs` — governed project seeding: preview and digest-bound apply
 - `crates/ds-cli-solar/src/input_capture.rs` — selected-project governed intake capture
+- `crates/ds-cli-solar/src/input_prepare.rs` — cache-only governed intake preparation
 - `crates/ds-cli-solar/src/prepare.rs` — paired preparation adapter
 - `crates/ds-cli-solar/src/paired_run.rs` — paired run lifecycle adapter
 - `crates/ds-cli-solar/src/exports.rs` — paired city-report and exact portfolio-artifact exporter
