@@ -28,7 +28,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use ds_grid_engine::{CommandEnvelope, GridCommand, GridSession};
 use ds_grid_exchange::{parse_standards_library_manifest, unpack, unpack_library};
-use serde_json::Value;
+use serde_json::{Value, json};
 
 mod common;
 
@@ -1988,6 +1988,88 @@ fn a_well_formed_map_call_stops_at_confirmation_or_pairing() {
 // ---------------------------------------------------------------------------
 // design
 // ---------------------------------------------------------------------------
+//
+// Fast LV is the one file-owned command in this domain. It is intentionally
+// exercised here before the paired collaboration refusals below.
+
+#[test]
+fn design_lv_process_runs_the_native_batch_without_project_or_desktop_state() {
+    let root = temp_root("native-fast-lv");
+    std::fs::create_dir_all(&root).unwrap();
+    let input_path = root.join("request.json");
+    let output_path = root.join("result.json");
+    let job = |name: &str| {
+        json!({
+            "transformer_name": name,
+            "gdfs": {
+                "tr": {
+                    "type": "FeatureCollection",
+                    "features": [{
+                        "type": "Feature",
+                        "id": format!("{name}-tr"),
+                        "geometry": { "type": "Point", "coordinates": [30.0, -2.0] },
+                        "properties": { "name": name, "names": name }
+                    }]
+                },
+                "lv_lines": {
+                    "type": "FeatureCollection",
+                    "features": [{
+                        "type": "Feature",
+                        "id": format!("{name}-line"),
+                        "geometry": { "type": "LineString", "coordinates": [[30.0, -2.0], [30.0004, -2.0]] },
+                        "properties": {}
+                    }]
+                },
+                "customers": { "type": "FeatureCollection", "features": [] }
+            },
+            "settings": {}
+        })
+    };
+    std::fs::write(
+        &input_path,
+        serde_json::to_vec(&json!({
+            "schema": "ds.fast-lv.request/v1",
+            "jobs": [job("T2"), job("T1")]
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+
+    let input = input_path.display().to_string();
+    let output = output_path.display().to_string();
+    let run = Command::new(env!("CARGO_BIN_EXE_ds"))
+        .args([
+            "design", "lv", "process", "--input", &input, "--out", &output, "--output", "json",
+        ])
+        // A stale explicit Desktop descriptor would fail any bridge-backed
+        // command. Native Fast LV must never inspect it.
+        .env("DS_DESKTOP_DESCRIPTOR", root.join("stale-desktop.json"))
+        .env("NO_COLOR", "1")
+        .output()
+        .expect("ds binary runs");
+    assert_eq!(
+        run.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    let envelope: Value = serde_json::from_slice(&run.stdout).unwrap();
+    let receipt = &envelope["data"];
+    assert_eq!(receipt["execution_environment"], "native");
+    assert_eq!(receipt["jobs"], 2);
+    assert_eq!(receipt["succeeded"], 2);
+    assert_eq!(receipt["failed"], 0);
+    assert_eq!(receipt["results"][0]["transformer_name"], "T2");
+    assert_eq!(receipt["results"][1]["transformer_name"], "T1");
+
+    let result: Value = serde_json::from_slice(&std::fs::read(&output_path).unwrap()).unwrap();
+    assert_eq!(result["schema"], "ds.fast-lv.result/v1");
+    assert_eq!(result["jobs"][0]["transformer_name"], "T2");
+    assert!(result.get("ds_project").is_none());
+    assert!(result["jobs"][0].get("ds_project").is_none());
+    let _ = std::fs::remove_dir_all(&root);
+}
+
 //
 // Design collaboration lives behind ds-brain and is reached through the paired
 // application, so no fixture can stand in for a saved selection or a comment

@@ -602,6 +602,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "ds-cleaning"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "thiserror",
+]
+
+[[package]]
 name = "ds-cli-auth"
 version = "0.1.0"
 dependencies = [
@@ -641,7 +650,9 @@ dependencies = [
  "ds-cli-contract",
  "ds-cli-desktop",
  "ds-geo",
+ "ds-network",
  "serde_json",
+ "sha2",
 ]
 
 [[package]]
@@ -960,6 +971,22 @@ dependencies = [
  "shapefile",
  "zip",
  "zstd",
+]
+
+[[package]]
+name = "ds-network"
+version = "0.1.0"
+dependencies = [
+ "ds-cleaning",
+ "ds-geo",
+ "ds-graph",
+ "ds-profile",
+ "rayon",
+ "regex",
+ "rstar",
+ "serde",
+ "serde_json",
+ "thiserror",
 ]
 
 [[package]]

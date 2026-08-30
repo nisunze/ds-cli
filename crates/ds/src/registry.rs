@@ -965,6 +965,11 @@ static DESIGN_ENTRIES: &[Entry] = &[
         handler: ds_cli_design::comment::promote::run,
         render: ds_cli_design::comment::promote::render,
     },
+    Entry {
+        command: &ds_cli_design::lv::process::COMMAND,
+        handler: ds_cli_design::lv::process::run,
+        render: ds_cli_design::lv::process::render,
+    },
 ];
 
 static SRE_ENTRIES: &[Entry] = &[

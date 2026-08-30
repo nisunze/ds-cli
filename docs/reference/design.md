@@ -4,8 +4,45 @@ Tier-4 reference. `ds design <command> --help` is the contract; this document
 is the part that does not belong in any command's help because it is true of
 all of them.
 
-The product contract these commands serve is
-`ds-brain/docs/contracts/design-collaboration-roadmap.md`.
+Governed collaboration serves
+`ds-brain/docs/contracts/design-collaboration-roadmap.md`. Offline Fast LV
+processing serves the ds-network native batch contract directly.
+
+## Offline Fast LV processing
+
+`ds design lv process` is the mapless, signed-out native route to the same
+Rust engineering kernel used below ds-web's Fast WASM adapter. Its input is one
+closed `ds.fast-lv.request/v1` file:
+
+```json
+{
+  "schema": "ds.fast-lv.request/v1",
+  "jobs": [{
+    "transformer_name": "Kigali_T1",
+    "gdfs": {
+      "tr": { "type": "FeatureCollection", "features": [] },
+      "lv_lines": { "type": "FeatureCollection", "features": [] },
+      "customers": { "type": "FeatureCollection", "features": [] }
+    },
+    "settings": {},
+    "config_dfs": {}
+  }]
+}
+```
+
+The schema has no project id, credential, mutable session, browser table
+address, or operation name. It cannot impersonate a project or dispatch a
+different engine action. A batch holds 1–32 uniquely named transformers, at
+most 64 layers and 64 config sheets per transformer, at most 100,000 input
+features in total, and at most 64 MiB of source bytes. Names are at most 120
+bytes. Unknown envelope/job fields and unknown process settings are refused.
+
+Independent transformer jobs use native Rayon's process-wide pool and results
+retain input order. The complete `ds.fast-lv.result/v1` document is written to
+an absent `--out` path; it is never truncated or overwritten. Terminal output
+is only a bounded count/digest receipt. This command neither reads nor updates
+Desktop, map, IndexedDB, project, or saved transformer state. Importing or
+saving the result is a separate governed operation.
 
 ## Headless feature selection
 
@@ -37,17 +74,19 @@ using a paired application.
 
 ## Where design collaboration is
 
-Not on disk, and not reachable with a credential this process holds.
+Governed collaboration is not on disk and is not reachable with a credential
+this process holds. The offline Fast LV file contract above is deliberately
+separate from that authority boundary.
 
 Saved selections, attachments, tags and comment threads are governed project
 state behind ds-brain, which is the only gateway and the only authority: it
 decides who may write, it arbitrates two people editing the same record in the
 same second, and it refuses a write authored against a version that has since
-moved. So every command here is one named semantic operation the *paired
-application* performs under the session it already holds. `ds` sends a request
-and receives an outcome. It never receives a credential, and it never runs code
-inside the application — `docs/reference/desktop.status.md` has the pairing
-argument in full.
+moved. So every collaboration command here is one named semantic operation the
+*paired application* performs under the session it already holds. `ds` sends a
+request and receives an outcome. It never receives a credential, and it never
+runs code inside the application — `docs/reference/desktop.status.md` has the
+pairing argument in full.
 
 There is no `--project` flag anywhere in this domain. Collaboration commands
 use the project open in the paired application; the headless feature command
@@ -55,12 +94,10 @@ uses the exact audience-fenced context selected by `ds auth project use`.
 
 ## Why this is not `ds map`
 
-Every command here is metadata. None of them needs a map instance, an edit
-session, or an open design room: a selection is a list of stable identities, an
-attachment is bytes with a media type, a tag is a value from the project's own
-vocabulary. `ds map` owns local map state; this domain owns none. Putting these
-under `ds map` would make headless collaboration require an open map, which is
-exactly what the contract says it must not.
+No command here needs a map instance, an edit session, or an open design room:
+local Fast LV consumes an explicit file; a selection is a list of stable
+identities; an attachment is bytes with a media type; a tag is a value from the
+project's own vocabulary. `ds map` owns local map state; this domain owns none.
 
 ## The shape of a session
 

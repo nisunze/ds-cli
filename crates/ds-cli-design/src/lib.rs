@@ -1,14 +1,26 @@
-//! `ds design` — headless transformer selection and design collaboration.
+//! `ds design` — headless reads, local compute, and governed collaboration.
 //!
-//! ## Why this domain is a bridge domain
+//! ## Headless reads and offline compute
 //!
-//! The collaboration surfaces are governed shared state behind ds-brain, which is the
+//! `design.lv.process` consumes one closed, versioned local batch document and
+//! writes one local result document through ds-network's native Rayon adapter.
+//! It has no project id, credential, Desktop bridge, map state, browser store,
+//! or generic engine operation. The Rust kernel is the same owner used below
+//! ds-web's Fast WASM adapter; only host file placement differs.
+//! `design.features.select` separately restores the governed native user and
+//! its audience-fenced project, fetches one fixed context projection, and
+//! delegates deterministic selection to `ds-geo`.
+//!
+//! ## Why collaboration uses the bridge
+//!
+//! Selections, attachments, tags, groups, and comments are governed shared
+//! state behind ds-brain, which is the
 //! only gateway and the only authority: it decides who may write, arbitrates
 //! two people editing the same record in the same second, and refuses a write
 //! authored against a version that has moved. None of that is reachable from a
 //! file, and none of it may be reached with an ambient credential — so every
-//! command here is one named semantic operation the *paired application*
-//! performs under the session it already holds.
+//! collaboration command is one named semantic operation the *paired
+//! application* performs under the session it already holds.
 //!
 //! Collaboration commands ask the paired application for an outcome. The
 //! separate `design features select` read restores the governed native user
@@ -18,15 +30,16 @@
 //!
 //! ## Why this is not `ds map`
 //!
-//! Every command here is metadata. None of them needs a map instance, an edit
-//! session, or an open design room: a selection is a list of stable identities,
-//! an attachment is bytes with a media type, a tag is a value from a project's
-//! own vocabulary. `ds map` owns local map state; this domain owns none, and
-//! putting it there would make headless collaboration require an open map.
+//! No command here needs a map instance, an edit session, or an open design
+//! room: local Fast LV consumes an explicit file; a selection is a list of
+//! stable identities; an attachment is bytes with a media type; a tag is a
+//! value from a project's own vocabulary. `ds map` owns local map state; this
+//! domain owns none.
 //!
 //! ## What the family is
 //!
 //! ```text
+//!   lv         process
 //!   selection  list → read → save | archive | assign
 //!   attachment list → publish | download | retire
 //!   tag        list | query → define | set
@@ -47,6 +60,7 @@ pub mod comment;
 pub mod features;
 pub mod group;
 pub mod grouping;
+pub mod lv;
 pub mod selection;
 pub mod tag;
 
@@ -68,7 +82,7 @@ pub use ds_cli_desktop::ops::{
 
 pub static DOMAIN: Domain = Domain {
     id: "design",
-    summary: "Headless feature reads and governed design collaboration.",
+    summary: "Headless feature reads, offline LV compute, and governed collaboration.",
     commands: &[
         &features::COMMAND,
         &selection::list::COMMAND,
@@ -96,6 +110,7 @@ pub static DOMAIN: Domain = Domain {
         &comment::post::COMMAND,
         &comment::resolve::COMMAND,
         &comment::promote::COMMAND,
+        &lv::process::COMMAND,
     ],
 };
 

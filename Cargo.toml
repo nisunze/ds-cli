@@ -98,6 +98,7 @@ ds-grid-engine = { path = "../ds-network/crates/ds-grid-engine" }
 ds-grid-exchange = { path = "../ds-network/crates/ds-grid-exchange" }
 ds-grid-tasks = { path = "../ds-network/crates/ds-grid-tasks" }
 ds-io = { path = "../ds-network/crates/ds-io" }
+ds-network = { path = "../ds-network/crates/ds-network" }
 
 [profile.release]
 opt-level = "s"

@@ -303,6 +303,9 @@ fn discovery_indexes_are_cheap_in_json() {
     // is a single compact id/summary row (`design.group.apply`) displacing the
     // previous tenth. The ten-result cap is unchanged, so this prices one
     // row's width and nothing else.
+    // Native Fast LV adds one compact `design.lv.process` result to the same
+    // fixed ten-row search projection. Raise only the measured ten bytes;
+    // command help and descriptors retain their derived per-field budgets.
     assert_within(
         "capabilities search",
         &[
@@ -313,8 +316,9 @@ fn discovery_indexes_are_cheap_in_json() {
             "json",
         ],
         // Native auth adds one compact domain context line; result count is
-        // still capped and command prose remains below this tier.
-        1_380,
+        // still capped and command prose remains below this tier. Fast LV
+        // adds one more compact Design result to this same fixed projection.
+        1_390,
     );
 }
 
