@@ -2102,13 +2102,17 @@ fn design_lv_project_export_refuses_an_existing_artifact_before_auth_or_desktop(
                 "method": "POST",
                 "path": "/api/v1/survey/query"
             },
+            "survey_entries_select": {
+                "method": "POST",
+                "path": "/api/v1/survey/entries/select"
+            },
             "provenance": { "source_revision": "abc123", "descriptor_sha256": digest }
         })
     };
     std::fs::write(
         &profile_path,
         serde_json::to_vec(&json!({
-            "schema_version": "ds.native-client-profiles/v6",
+            "schema_version": "ds.native-client-profiles/v7",
             "development": true,
             "profiles": {
                 "stable": profile(
@@ -4147,6 +4151,56 @@ fn project_forms_native_reads_preserve_the_explicit_project_desktop_surface() {
             "survey.query exposed --{forbidden}"
         );
     }
+
+    let entries = ok(&["capabilities", "survey.entries.select", "--output", "json"]);
+    assert_eq!(entries["command"]["authority"], "headless_project");
+    assert_eq!(entries["command"]["effect"], "local_auth_state");
+    let names = entries["command"]["inputs"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|arg| arg["name"].as_str())
+        .collect::<BTreeSet<_>>();
+    assert_eq!(names, BTreeSet::from(["bbox", "form", "lane", "limit"]));
+    for forbidden in [
+        "project",
+        "url",
+        "method",
+        "body",
+        "token",
+        "cursor",
+        "wkt",
+        "geojson",
+        "fields",
+        "media",
+        "deleted",
+        "include-deleted",
+        "force",
+        "authority",
+        "desktop-descriptor",
+    ] {
+        assert!(
+            entries["command"]["inputs"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|arg| arg["name"] != forbidden),
+            "survey.entries.select exposed --{forbidden}"
+        );
+    }
+    let invalid = ds(&[
+        "survey",
+        "entries",
+        "select",
+        "--form",
+        "poles",
+        "--bbox",
+        "not-a-bbox",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(invalid.code, 2);
+    assert_eq!(invalid.envelope["error"]["code"], "survey_entries_invalid");
 
     let legacy = ok(&[
         "capabilities",

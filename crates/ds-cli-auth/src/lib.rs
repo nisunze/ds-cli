@@ -18,7 +18,8 @@ use ds_cli_contract::spec::{
 use ds_cli_contract::{Context, Inputs};
 use ds_client_core::{
     Client, ClientError, ErrorKind, Project, ProjectFormSettingsEditor, ProjectFormsSnapshot,
-    ProjectStatus, SolarSnapshot, SurveyQueryRequest, SurveyQueryResult, TransformerContext,
+    ProjectStatus, SolarSnapshot, SurveyEntriesSelectRequest, SurveyEntriesSelection,
+    SurveyQueryRequest, SurveyQueryResult, TransformerContext,
 };
 use profile::Lane;
 use serde_json::{Value, json};
@@ -474,6 +475,34 @@ pub struct HeadlessSurveyQuery {
     result: SurveyQueryResult,
 }
 
+/// One bounded, mutable Survey mirror selection fetched under the restored
+/// user and the audience-fenced selected project.
+pub struct HeadlessSurveyEntriesSelection {
+    lane: &'static str,
+    project_id: String,
+    project_name: String,
+    project_status: String,
+    selection: SurveyEntriesSelection,
+}
+
+impl HeadlessSurveyEntriesSelection {
+    pub const fn lane(&self) -> &'static str {
+        self.lane
+    }
+    pub fn project_id(&self) -> &str {
+        &self.project_id
+    }
+    pub fn project_name(&self) -> &str {
+        &self.project_name
+    }
+    pub fn project_status(&self) -> &str {
+        &self.project_status
+    }
+    pub const fn selection(&self) -> &SurveyEntriesSelection {
+        &self.selection
+    }
+}
+
 impl HeadlessSurveyQuery {
     pub const fn lane(&self) -> &'static str {
         self.lane
@@ -761,6 +790,77 @@ pub fn survey_query(
         project_name: selected.project_name().to_owned(),
         project_status: selected.status().to_owned(),
         result,
+    })
+}
+
+/// Restore one native user and select one bounded spatial receipt from only
+/// the saved, audience-fenced project. The context lease is released before
+/// the fixed core network call. The result is mutable live-mirror data, not a
+/// datastore snapshot, and the core verifies its server-issued digest.
+pub fn survey_entries_select(
+    lane_value: &str,
+    request: &SurveyEntriesSelectRequest,
+) -> Result<HeadlessSurveyEntriesSelection, Failure> {
+    let lane = Lane::parse(lane_value)?;
+    let profile = profile::load(lane)?;
+    let store = NativeRefreshStore::open()?;
+    let mut client = Client::new(profile, NativeTransport, store);
+    let user = require_restore_before_context(&mut client)?;
+    let selected = ProjectContextLease::acquire(client.profile())?
+        .load_snapshot(client.profile(), user.uid(), user.email())?
+        .ok_or_else(|| {
+            Failure::conflict(
+                "headless_project_not_selected",
+                "no project is selected for this native user, lane, and credential audience",
+            )
+            .remedy("run ds auth project use --project <exact-id>")
+            .next("ds auth project status")
+        })?;
+    let selection = client.survey_entries_select(selected.project_id(), request, now());
+    let selection = match selection {
+        Err(error) if error.kind() == ErrorKind::ResourceNotFound => {
+            return Err(Failure::invalid(
+                "survey_entries_scope_not_found",
+                "the selected project or governed form is unavailable to this verified user",
+            )
+            .remedy("verify the selected project and pass one exact available form slug"));
+        }
+        Err(error) if error.kind() == ErrorKind::InvalidInput => {
+            return Err(Failure::conflict(
+                "survey_entries_refused",
+                "the backend refused the already validated bounded Survey entry selection",
+            )
+            .remedy("narrow --bbox or lower --limit, then verify the governed form state"));
+        }
+        Err(error) if error.kind() == ErrorKind::AuthenticationRejected => {
+            return Err(Failure::unauthorized(
+                "survey_entries_auth_rejected",
+                "the fixed selection route rejected the verified identity or form authority",
+            )
+            .remedy("verify account and form authority in the selected project"));
+        }
+        Err(error) if error.kind() == ErrorKind::Transient => {
+            return Err(Failure::unavailable(
+                "survey_entries_transient",
+                "the fixed selection service or its required mirror sync is temporarily unavailable",
+            )
+            .remedy("retry without changing local state"));
+        }
+        Err(error) if error.kind() == ErrorKind::UnreadableResponse => {
+            return Err(Failure::unavailable(
+                "survey_entries_unreadable",
+                "the selection response violated its closed identity, geometry, consistency, order, or digest contract",
+            )
+            .remedy("retry once, then update ds if it persists"));
+        }
+        other => with_released_context_disposition(client.profile(), &selected, other)?,
+    };
+    Ok(HeadlessSurveyEntriesSelection {
+        lane: lane.token(),
+        project_id: selected.project_id().to_owned(),
+        project_name: selected.project_name().to_owned(),
+        project_status: selected.status().to_owned(),
+        selection,
     })
 }
 

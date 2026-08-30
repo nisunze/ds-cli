@@ -1,5 +1,5 @@
 {
-  "schema_version": "ds.native-client-profiles/v4",
+  "schema_version": "ds.native-client-profiles/v7",
   "development": true,
   "profiles": {
     "stable": {
@@ -26,6 +26,19 @@
         "path": "/api/v1/project-forms",
         "action": "activate",
         "settings_editor_action": "settings_editor"
+      },
+      "solar_snapshot": {
+        "method": "POST",
+        "path": "/api/v1/solar",
+        "action": "desktop_snapshot"
+      },
+      "survey_query": {
+        "method": "POST",
+        "path": "/api/v1/survey/query"
+      },
+      "survey_entries_select": {
+        "method": "POST",
+        "path": "/api/v1/survey/entries/select"
       },
       "provenance": {
         "source_revision": "0123456789abcdef0123456789abcdef01234567",
@@ -56,6 +69,19 @@
         "path": "/api/v1/project-forms",
         "action": "activate",
         "settings_editor_action": "settings_editor"
+      },
+      "solar_snapshot": {
+        "method": "POST",
+        "path": "/api/v1/solar",
+        "action": "desktop_snapshot"
+      },
+      "survey_query": {
+        "method": "POST",
+        "path": "/api/v1/survey/query"
+      },
+      "survey_entries_select": {
+        "method": "POST",
+        "path": "/api/v1/survey/entries/select"
       },
       "provenance": {
         "source_revision": "0123456789abcdef0123456789abcdef01234567",

@@ -52,8 +52,9 @@ Profiles are `grid`, `pls`, `pls-library`, `library-governance`, `survey`,
 `tiling`, `project`, `solar-input`, `solar-run`, `solar-delivery`, and
 `operations`. `survey`
 retains map/local-data survey work;
-`form-factory` owns global schemas, while `survey-projects` owns project-form
-settings, reusable templates, and create-from-template. `layers` isolates
+`form-factory` owns global schemas, while `survey-projects` owns governed
+aggregate/spatial reads, project-form settings, reusable templates, and
+create-from-template. `layers` isolates
 project ordering and desktop-local remote overlays; `tiling` owns governed
 tile generation and catalogue membership. Each includes
 `ds_catalog` and at most 14 leaf tools. A profile is only an allowlist: omitted

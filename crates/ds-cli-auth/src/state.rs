@@ -628,7 +628,8 @@ mod tests {
     use ds_client_core::{
         CLIENT_PROFILE_SCHEMA, Client, ClientProfileInput, DeploymentLane, ProjectFormEditorCall,
         ProjectFormsCall, ProjectListCall, RefreshCall, SignInCall, SolarSnapshotCall,
-        SurveyQueryCall, TransformerContextCall, Transport, TransportError, TransportResponse,
+        SurveyEntriesSelectCall, SurveyQueryCall, TransformerContextCall, Transport,
+        TransportError, TransportResponse,
     };
     use std::os::unix::fs::{PermissionsExt, symlink};
 
@@ -702,6 +703,13 @@ mod tests {
         ) -> Result<TransportResponse, TransportError> {
             Err(TransportError::Unreachable)
         }
+
+        fn survey_entries_select(
+            &mut self,
+            _call: SurveyEntriesSelectCall<'_>,
+        ) -> Result<TransportResponse, TransportError> {
+            Err(TransportError::Unreachable)
+        }
     }
 
     fn profile() -> ClientProfile {
@@ -729,6 +737,8 @@ mod tests {
             solar_snapshot_action: "desktop_snapshot".to_owned(),
             survey_query_method: "POST".to_owned(),
             survey_query_path: "/api/v1/survey/query".to_owned(),
+            survey_entries_select_method: "POST".to_owned(),
+            survey_entries_select_path: "/api/v1/survey/entries/select".to_owned(),
         })
         .unwrap()
     }

@@ -6,6 +6,7 @@
 //! application operation. The selected-project list uses the fixed native
 //! client; this crate never owns form validation or topology.
 
+pub mod entries;
 pub mod forms;
 pub mod project_forms;
 pub mod query;
@@ -37,6 +38,7 @@ pub static DOMAIN: Domain = Domain {
         &project_forms::PLAN_COMMAND,
         &project_forms::APPLY_COMMAND,
         &query::COMMAND,
+        &entries::COMMAND,
         &templates::LIST_COMMAND,
         &templates::READ_COMMAND,
         &templates::CREATE_COMMAND,

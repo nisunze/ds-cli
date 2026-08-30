@@ -307,6 +307,7 @@ fn form_factory_and_survey_projects_keep_their_distinct_mapless_contracts() {
     assert!(survey_project_names.contains("survey_project_create-from-template"));
     assert!(survey_project_names.contains("survey_project-form_settings"));
     assert!(survey_project_names.contains("survey_query"));
+    assert!(survey_project_names.contains("survey_entries_select"));
     assert!(!survey_project_names.contains("survey_form_lifecycle"));
     let creation = survey_projects
         .iter()
@@ -363,6 +364,25 @@ fn form_factory_and_survey_projects_keep_their_distinct_mapless_contracts() {
     ] {
         assert!(query["inputSchema"]["properties"].get(forbidden).is_none());
     }
+    let entries = survey_projects
+        .iter()
+        .find(|tool| tool["name"] == "survey_entries_select")
+        .expect("native selected-project Survey entry selection tool");
+    assert_eq!(entries["title"], "survey.entries.select");
+    assert_eq!(entries["inputSchema"]["required"], json!(["form", "bbox"]));
+    assert_eq!(
+        entries["inputSchema"]["properties"]
+            .as_object()
+            .unwrap()
+            .keys()
+            .map(String::as_str)
+            .collect::<BTreeSet<_>>(),
+        BTreeSet::from(["bbox", "form", "lane", "limit"])
+    );
+    assert_eq!(
+        entries["inputSchema"]["properties"]["limit"]["default"],
+        "100"
+    );
 }
 
 #[test]

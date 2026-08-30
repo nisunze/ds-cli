@@ -33,8 +33,9 @@ Profiles are `grid`, `pls`, `pls-library`, `library-governance`, `survey`,
 `form-factory`, `survey-projects`, `design-edit`, `design-run`, `map`, `layers`,
 `tiling`, `project`, `solar-run`, `solar-delivery`, and `operations`. `survey`
 retains the map/local-data workflow;
-`form-factory` owns global schemas and `survey-projects` owns project-form
-settings, reusable templates, and create-from-template. Each publishes
+`form-factory` owns global schemas and `survey-projects` owns governed
+aggregate/spatial reads, project-form settings, reusable templates, and
+create-from-template. Each publishes
 `ds_catalog` plus at most 14 fully typed command tools. Do not install every
 profile: that duplicates discovery and recreates selection ambiguity.
 

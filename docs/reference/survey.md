@@ -42,6 +42,37 @@ descending order and 50 rows; `--limit` may explicitly raise the bound to 200.
 The response does not present `bytes_processed` as billing evidence because the
 current service cannot recover iterator statistics after execution.
 
+`survey entries select` is the bounded spatial data plane for headless
+selection semantics. It accepts only an exact governed `--form`, one WGS84
+`--bbox '<west,south,east,north>'`, a `--limit` from 1 through 500 (default
+100), and the stable/canary lane. All four coordinates, their legal longitude
+and latitude ranges, their west/east and south/north ordering, the form slug,
+and the limit are validated before profile discovery, auth restoration,
+project-context access, or network work. The command then releases the
+selected-project lease before calling only
+`POST /api/v1/survey/entries/select`.
+
+```text
+ds survey entries select --form lv_poles_survey \
+  --bbox '29.70,-2.05,29.80,-1.95' --limit 100 --output json
+```
+
+The backend refreshes the project Survey mirror, reapplies project, paired,
+per-form, and view-blocked creator authority, and returns rows ordered by
+`doc_id`. Each row contains only `doc_id`, GeoJSON `geometry`, `created_by`,
+and `firestore_updated_at`. The CLI verifies the echoed project, form, and
+bounding box, row ordering and bounds, geometry shape, explicit consistency,
+and the server-issued `selection_digest` before returning anything. The
+consistency is live mutable `survey_mirror` data after `ensure_synced_all`; the
+selection is not a datastore snapshot and its digest is not a revision token.
+
+`truncated: true` and `complete: false` mean the returned rows are not a
+complete selection. Narrow `--bbox` and run a new selection. There is no
+cursor, pagination contract, include-deleted mode, arbitrary field projection,
+media expansion, or mutable apply path. The command also accepts no project,
+URL, method, body, token, WKT, GeoJSON request, caller-authority, force, or
+Desktop override.
+
 Four related objects have separate lifecycles:
 
 1. A **Form Factory form** is a global master schema. Use `survey forms list`,

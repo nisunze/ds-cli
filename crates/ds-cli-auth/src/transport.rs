@@ -1,4 +1,4 @@
-//! Fixed-origin ureq adapter for ds-client-core's eight closed calls.
+//! Fixed-origin ureq adapter for ds-client-core's closed calls.
 
 use std::io::Read;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -6,8 +6,8 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use ds_client_core::{
     ProjectFormEditorCall, ProjectFormsCall, ProjectListCall, RefreshCall, SignInCall,
-    SolarSnapshotCall, SurveyQueryCall, TransformerContextCall, Transport, TransportError,
-    TransportResponse,
+    SolarSnapshotCall, SurveyEntriesSelectCall, SurveyQueryCall, TransformerContextCall, Transport,
+    TransportError, TransportResponse,
 };
 use sha2::{Digest, Sha256};
 use zeroize::{Zeroize, Zeroizing};
@@ -249,6 +249,39 @@ impl Transport for NativeTransport {
         let response = result.map_err(classify)?;
         bounded(response, call.response_limit())
     }
+
+    fn survey_entries_select(
+        &mut self,
+        call: SurveyEntriesSelectCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        debug_assert_eq!(call.method(), "POST");
+        debug_assert_eq!(call.path(), "/api/v1/survey/entries/select");
+        debug_assert_eq!(call.timeout_seconds(), 120);
+        let (request_id, action_id) = correlation_headers();
+        let mut bearer = format!("Bearer {}", call.bearer_token());
+        let body = call.body();
+        let url = survey_entries_select_url(call.gateway_origin());
+        let result = ureq::post(url)
+            .header("Accept", call.content_type())
+            .header("Content-Type", call.content_type())
+            .header("X-App-Id", call.client_id())
+            .header("X-Request-Id", &request_id)
+            .header("X-DS-Action-Id", &action_id)
+            .header("X-User-Email", call.canonical_email())
+            .header("x-api-key", call.gateway_api_key())
+            .header("Authorization", &bearer)
+            .header("X-Forwarded-Authorization", &bearer)
+            .config()
+            .max_redirects(0)
+            .http_status_as_error(false)
+            .timeout_connect(Some(CONNECT_TIMEOUT))
+            .timeout_global(Some(Duration::from_secs(call.timeout_seconds())))
+            .build()
+            .send(body.as_bytes());
+        bearer.zeroize();
+        let response = result.map_err(classify)?;
+        bounded(response, call.response_limit())
+    }
 }
 
 fn transformer_context_url(origin: &str) -> String {
@@ -265,6 +298,10 @@ fn solar_snapshot_url(origin: &str) -> String {
 
 fn survey_query_url(origin: &str) -> String {
     format!("{origin}{}", ds_client_core::SURVEY_QUERY_PATH)
+}
+
+fn survey_entries_select_url(origin: &str) -> String {
+    format!("{origin}{}", ds_client_core::SURVEY_ENTRIES_SELECT_PATH)
 }
 
 fn bounded(
@@ -406,5 +443,19 @@ mod tests {
         assert_eq!(ds_client_core::SURVEY_QUERY_METHOD, "POST");
         assert_eq!(ds_client_core::SURVEY_QUERY_TIMEOUT_SECONDS, 120);
         assert_eq!(ds_client_core::SURVEY_QUERY_RESPONSE_LIMIT, 1024 * 1024);
+    }
+
+    #[test]
+    fn survey_entries_select_wire_target_and_limits_are_fixed() {
+        assert_eq!(
+            survey_entries_select_url("https://fixture.ue.gateway.dev"),
+            "https://fixture.ue.gateway.dev/api/v1/survey/entries/select"
+        );
+        assert_eq!(ds_client_core::SURVEY_ENTRIES_SELECT_METHOD, "POST");
+        assert_eq!(ds_client_core::SURVEY_ENTRIES_SELECT_TIMEOUT_SECONDS, 120);
+        assert_eq!(
+            ds_client_core::SURVEY_ENTRIES_SELECT_RESPONSE_LIMIT,
+            1024 * 1024
+        );
     }
 }
