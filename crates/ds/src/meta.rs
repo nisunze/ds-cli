@@ -311,9 +311,8 @@ skill bundle and reports whether each supported user skill directory has the \
 matching install, and whether `ds` is reachable from this shell and from a \
 new one. Its build object includes the compile-time ds-network source pin or \
 the explicit development-unpinned state; it does not introspect linked Rust \
-code at runtime. It starts no engine and probes no network. It is the right \
-first call on an unfamiliar machine, and the right call after any \
-`unavailable` refusal.",
+code at runtime. It starts no engine and probes no network. Use it first on \
+an unfamiliar machine.",
     chapter: Chapter::Catalog,
     effect: Effect::Discovery,
     authority: Authority::None,
