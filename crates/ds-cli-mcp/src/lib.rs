@@ -9,7 +9,7 @@
 //!   authority and refusals are read from `ds capabilities` at startup,
 //!   descriptor by descriptor, so a command's typing can never drift from the
 //!   CLI it fronts. What *is* written here is the routing above that: under
-//!   the default `--exposure chapters` the twelve published tool definitions
+//!   the default `--exposure chapters` the bounded bootstrap and chapter tools
 //!   and their prose live in `surface.rs`, and four profiles select by
 //!   command id rather than by chapter. Those lists are held to the live
 //!   registry by tests rather than by assertion — see
@@ -25,6 +25,7 @@
 //! tool the CLI lacks, it is the second surface the product ruled out.
 
 pub mod install;
+pub mod resources;
 pub mod serve;
 pub mod surface;
 pub mod tools;
@@ -73,7 +74,7 @@ pub(crate) const PROFILE_EXPOSURE_INVALID: Refusal = Refusal {
 
 pub(crate) const PROFILE_TOO_BROAD: Refusal = Refusal {
     code: "mcp_profile_too_broad",
-    when: "a specialized profile would exceed its bounded tool limit: normally 15 including `ds_catalog`, or 16 for survey-projects",
+    when: "a specialized profile would exceed its bounded tool limit including `ds_catalog` and `ds_diagnostics`",
     remedy: "split the profile by operator workflow before publishing it",
 };
 

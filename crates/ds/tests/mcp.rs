@@ -1,12 +1,38 @@
 //! Real stdio coverage for chapter routing, typed profiles, and CLI parity.
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::fs;
 use std::io::Write;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use ds_cli_contract::spec::Chapter;
 use ds_cli_mcp::surface::Profile;
 use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
+
+static NEXT_TEMP: AtomicU64 = AtomicU64::new(0);
+
+struct TestDir(PathBuf);
+
+impl TestDir {
+    fn new(label: &str) -> Self {
+        let path = std::env::temp_dir().join(format!(
+            "ds-mcp-{label}-{}-{}",
+            std::process::id(),
+            NEXT_TEMP.fetch_add(1, Ordering::Relaxed)
+        ));
+        fs::create_dir_all(&path).expect("temp directory");
+        Self(path)
+    }
+}
+
+impl Drop for TestDir {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.0);
+    }
+}
 
 fn cli(args: &[&str]) -> Value {
     let output = Command::new(env!("CARGO_BIN_EXE_ds"))
@@ -23,9 +49,20 @@ fn cli(args: &[&str]) -> Value {
 }
 
 fn mcp(args: &[&str], requests: &[Value]) -> (Vec<Value>, String) {
-    let mut child = Command::new(env!("CARGO_BIN_EXE_ds"))
-        .args(["mcp", "serve"])
-        .args(args)
+    mcp_with_env(args, requests, &[])
+}
+
+fn mcp_with_env(
+    args: &[&str],
+    requests: &[Value],
+    environment: &[(&str, &Path)],
+) -> (Vec<Value>, String) {
+    let mut command = Command::new(env!("CARGO_BIN_EXE_ds"));
+    command.args(["mcp", "serve"]).args(args);
+    for (name, value) in environment {
+        command.env(name, value);
+    }
+    let mut child = command
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -65,6 +102,40 @@ fn mcp(args: &[&str], requests: &[Value]) -> (Vec<Value>, String) {
     )
 }
 
+fn write_skill_bundle(root: &Path, source_sha: &str) {
+    let documents = [
+        ("ds", "---\nname: ds\n---\n# DS\nUse deployed ds.\n"),
+        (
+            "ds-mcp-host",
+            "---\nname: ds-mcp-host\n---\n# DS MCP host\nUse the live MCP contract.\n",
+        ),
+    ];
+    let mut files = Vec::new();
+    for (name, text) in documents {
+        let relative = format!("skills/{name}/SKILL.md");
+        let path = root.join(&relative);
+        fs::create_dir_all(path.parent().unwrap()).expect("skill directory");
+        fs::write(&path, text).expect("skill document");
+        files.push(json!({
+            "path": relative,
+            "sha256": format!("{:x}", Sha256::digest(text.as_bytes())),
+        }));
+    }
+    fs::write(
+        root.join("receipt.json"),
+        serde_json::to_vec(&json!({
+            "contract": "ds-cli-skills-bundle/v3",
+            "source": "ds-cli",
+            "source_sha": source_sha,
+            "dirty": false,
+            "skills": ["ds", "ds-mcp-host"],
+            "files": files,
+        }))
+        .expect("receipt JSON"),
+    )
+    .expect("receipt");
+}
+
 fn response(responses: &[Value], id: i64) -> &Value {
     responses
         .iter()
@@ -79,16 +150,20 @@ fn broad_server_has_declared_stable_tools_and_reports_build_identity() {
         &[
             json!({ "jsonrpc": "2.0", "id": 1, "method": "initialize", "params": { "protocolVersion": "2025-06-18" } }),
             json!({ "jsonrpc": "2.0", "id": 2, "method": "tools/list" }),
+            json!({ "jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": { "name": "ds_diagnostics", "arguments": { "operation": "identity" } } }),
+            json!({ "jsonrpc": "2.0", "id": 4, "method": "tools/call", "params": { "name": "ds_catalog", "arguments": {} } }),
         ],
     );
     let tools = response(&responses, 2)["result"]["tools"]
         .as_array()
         .expect("tools");
-    // One router per chapter, with the catalogue standing in for its own.
+    // One router per chapter, with the catalogue standing in for its own,
+    // plus one bounded diagnostics bootstrap.
     // Derived from the declaration so a new chapter cannot ship unreachable
     // while this test still reads an old literal count.
-    assert_eq!(tools.len(), Chapter::ALL.len());
+    assert_eq!(tools.len(), Chapter::ALL.len() + 1);
     assert_eq!(tools[0]["name"], "ds_catalog");
+    assert_eq!(tools[1]["name"], "ds_diagnostics");
     for chapter in Chapter::ALL {
         let name = ds_cli_mcp::surface::chapter_tool_name(*chapter);
         assert!(
@@ -97,9 +172,19 @@ fn broad_server_has_declared_stable_tools_and_reports_build_identity() {
         );
     }
     let version = cli(&["version", "--output", "json"]);
+    let identity = &response(&responses, 3)["result"]["structuredContent"]["data"];
+    assert_eq!(identity["source_sha"], version["data"]["source_sha"]);
+    assert_eq!(identity["version"], version["data"]["version"]);
+    assert_eq!(identity["mcp"]["transport"], "stdio");
     assert_eq!(
-        response(&responses, 1)["result"]["serverInfo"]["sourceSha"],
-        version["data"]["source_sha"]
+        response(&responses, 4)["result"]["structuredContent"]["identity"],
+        *identity
+    );
+    assert!(
+        response(&responses, 1)["result"]["instructions"]
+            .as_str()
+            .unwrap()
+            .contains(version["data"]["source_sha"].as_str().unwrap())
     );
     // `--yes` because `mcp.install` is `machine_write`; without `--write` it
     // still only prints, and this call writes nothing.
@@ -111,8 +196,135 @@ fn broad_server_has_declared_stable_tools_and_reports_build_identity() {
         json!(["mcp", "serve", "--exposure", "chapters"])
     );
     assert!(
-        stderr.contains(&format!("serving {}", Chapter::ALL.len())),
+        stderr.contains(&format!("serving {}", Chapter::ALL.len() + 1)),
         "{stderr}"
+    );
+}
+
+#[test]
+fn mcp_only_agent_reads_receipt_verified_skills_without_a_skills_home() {
+    let temp = TestDir::new("resources");
+    let bundle = temp.0.join("bundle");
+    fs::create_dir_all(&bundle).expect("bundle root");
+    let version = cli(&["version", "--output", "json"]);
+    let source_sha = version["data"]["source_sha"].as_str().unwrap();
+    write_skill_bundle(&bundle, source_sha);
+    let missing_home = temp.0.join("no-agent-home");
+
+    let (responses, _) = mcp_with_env(
+        &["--exposure", "chapters"],
+        &[
+            json!({ "jsonrpc": "2.0", "id": 1, "method": "initialize", "params": { "protocolVersion": "2025-06-18" } }),
+            json!({ "jsonrpc": "2.0", "id": 2, "method": "resources/list" }),
+            json!({ "jsonrpc": "2.0", "id": 3, "method": "resources/read", "params": { "uri": "ds-skill://bundle/ds/SKILL.md" } }),
+            json!({ "jsonrpc": "2.0", "id": 4, "method": "resources/read", "params": { "uri": "ds-skill://bundle/ds-mcp-host/SKILL.md" } }),
+            json!({ "jsonrpc": "2.0", "id": 5, "method": "resources/read", "params": { "uri": "file:///etc/passwd" } }),
+            json!({ "jsonrpc": "2.0", "id": 6, "method": "tools/call", "params": { "name": "ds_diagnostics", "arguments": { "operation": "identity" } } }),
+            json!({ "jsonrpc": "2.0", "id": 7, "method": "tools/call", "params": { "name": "ds_catalog", "arguments": {} } }),
+        ],
+        &[("DS_CLI_SKILLS_BUNDLE", &bundle), ("HOME", &missing_home)],
+    );
+
+    assert_eq!(
+        response(&responses, 1)["result"]["capabilities"]["resources"]["subscribe"],
+        false
+    );
+    let resources = response(&responses, 2)["result"]["resources"]
+        .as_array()
+        .expect("resources");
+    assert_eq!(resources.len(), 2);
+    assert_eq!(resources[0]["name"], "ds");
+    assert_eq!(resources[1]["name"], "ds-mcp-host");
+    assert!(
+        response(&responses, 3)["result"]["contents"][0]["text"]
+            .as_str()
+            .unwrap()
+            .contains("Use deployed ds")
+    );
+    assert!(
+        response(&responses, 4)["result"]["contents"][0]["text"]
+            .as_str()
+            .unwrap()
+            .contains("live MCP contract")
+    );
+    assert_eq!(response(&responses, 5)["error"]["code"], -32602);
+    let identity = &response(&responses, 6)["result"]["structuredContent"]["data"];
+    assert_eq!(identity["skills"]["source_sha"], source_sha);
+    assert_eq!(identity["skills"]["count"], 2);
+    assert_eq!(identity["skills"]["requires_skills_home"], false);
+    assert_eq!(
+        response(&responses, 7)["result"]["structuredContent"]["skill_resources"],
+        identity["skills"]
+    );
+    assert!(
+        !missing_home.exists(),
+        "MCP resources must not create an agent skills home"
+    );
+}
+
+#[test]
+fn diagnostics_reuse_the_exact_cli_envelopes_in_a_typed_profile() {
+    let (responses, _) = mcp(
+        &["--exposure", "commands", "--profile", "survey-migration"],
+        &[
+            json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": { "name": "ds_diagnostics", "arguments": { "operation": "doctor" } } }),
+            json!({ "jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": { "name": "ds_diagnostics", "arguments": { "operation": "shell.status" } } }),
+            json!({ "jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": { "name": "ds_diagnostics", "arguments": { "operation": "capabilities" } } }),
+        ],
+    );
+    assert_eq!(
+        response(&responses, 1)["result"]["structuredContent"],
+        cli(&["doctor", "--output", "json"])
+    );
+    assert_eq!(
+        response(&responses, 2)["result"]["structuredContent"],
+        cli(&["shell", "status", "--output", "json"])
+    );
+    assert_eq!(
+        response(&responses, 3)["result"]["structuredContent"],
+        cli(&["capabilities", "--output", "json"])
+    );
+}
+
+#[test]
+fn startup_schema_discovery_does_not_resolve_command_availability() {
+    let output = Command::new(env!("CARGO_BIN_EXE_ds"))
+        .args(["capabilities", "solar.engine", "--output", "json"])
+        .env("DS_MCP_SCHEMA_ONLY", "1")
+        .output()
+        .expect("schema discovery runs");
+    assert!(output.status.success());
+    let descriptor: Value = serde_json::from_slice(&output.stdout).expect("descriptor envelope");
+    assert_eq!(descriptor["data"]["command"]["availability"], "unchecked");
+
+    let live = cli(&["capabilities", "solar.engine", "--output", "json"]);
+    assert_ne!(live["data"]["command"]["availability"], "unchecked");
+}
+
+#[test]
+fn a_map_refusal_is_lazy_and_does_not_end_the_headless_server() {
+    let temp = TestDir::new("descriptor");
+    let missing_descriptor = temp.0.join("no-desktop.json");
+    let descriptor = missing_descriptor.to_string_lossy().into_owned();
+    let (responses, _) = mcp(
+        &["--exposure", "chapters"],
+        &[
+            json!({ "jsonrpc": "2.0", "id": 1, "method": "initialize", "params": { "protocolVersion": "2025-06-18" } }),
+            json!({ "jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": { "name": "ds_survey", "arguments": { "operation": "invoke", "command": "map.layer.list", "arguments": { "desktop-descriptor": descriptor } } } }),
+            json!({ "jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": { "name": "ds_diagnostics", "arguments": { "operation": "capabilities" } } }),
+        ],
+    );
+    assert_eq!(
+        response(&responses, 1)["result"]["serverInfo"]["name"],
+        "ds"
+    );
+    assert_eq!(
+        response(&responses, 2)["result"]["structuredContent"]["error"]["code"],
+        "desktop_not_paired"
+    );
+    assert_eq!(
+        response(&responses, 3)["result"]["structuredContent"]["status"],
+        "ok"
     );
 }
 
@@ -321,16 +533,21 @@ fn form_factory_and_survey_projects_keep_their_distinct_mapless_contracts() {
     let migration = response(&migration_responses, 4)["result"]["tools"]
         .as_array()
         .expect("survey-migration tools");
-    assert_eq!(migration.len(), 2, "catalog plus one bounded import leaf");
-    assert_eq!(migration[0]["name"], "ds_catalog");
-    assert_eq!(migration[1]["name"], "survey_entries_import");
-    assert_eq!(migration[1]["title"], "survey.entries.import");
     assert_eq!(
-        migration[1]["inputSchema"]["properties"]["confirm"]["type"],
+        migration.len(),
+        3,
+        "catalog and diagnostics plus one bounded import leaf"
+    );
+    assert_eq!(migration[0]["name"], "ds_catalog");
+    assert_eq!(migration[1]["name"], "ds_diagnostics");
+    assert_eq!(migration[2]["name"], "survey_entries_import");
+    assert_eq!(migration[2]["title"], "survey.entries.import");
+    assert_eq!(
+        migration[2]["inputSchema"]["properties"]["confirm"]["type"],
         "boolean"
     );
     assert!(
-        migration[1]["inputSchema"]["properties"]
+        migration[2]["inputSchema"]["properties"]
             .get("project")
             .is_none()
     );
@@ -584,18 +801,19 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
         let tools = response(&responses, 1)["result"]["tools"]
             .as_array()
             .expect("tools");
-        let maximum = if profile == "survey-projects" { 17 } else { 15 };
+        let maximum = if profile == "survey-projects" { 18 } else { 16 };
         assert!(
             (2..=maximum).contains(&tools.len()),
             "{profile}: {}",
             tools.len()
         );
         assert_eq!(tools[0]["name"], "ds_catalog", "{profile}");
+        assert_eq!(tools[1]["name"], "ds_diagnostics", "{profile}");
         published.insert(
             profile,
             tools
                 .iter()
-                .skip(1)
+                .skip(2)
                 .map(|tool| tool["name"].as_str().unwrap().to_string())
                 .collect(),
         );

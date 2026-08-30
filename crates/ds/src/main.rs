@@ -20,7 +20,6 @@
 mod build;
 mod meta;
 mod registry;
-mod skills;
 
 use std::process::ExitCode;
 

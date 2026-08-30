@@ -127,9 +127,9 @@ impl Profile {
         match self {
             // Query, spatial selection, fenced changes, and governed
             // single-entry create belong to the same selected-project Survey
-            // workflow. The count includes the one ds_catalog discovery tool.
-            Self::SurveyProjects => 17,
-            _ => 15,
+            // workflow. The count includes both bootstrap tools.
+            Self::SurveyProjects => 18,
+            _ => 16,
         }
     }
 
@@ -374,6 +374,7 @@ pub struct Surface {
     exposure: Exposure,
     profile: Option<Profile>,
     commands: Vec<Tool>,
+    identity: Value,
 }
 
 impl Surface {
@@ -391,13 +392,13 @@ impl Surface {
         }
         if let Some(profile) = profile {
             commands.retain(|tool| profile.includes(tool));
-            if commands.len() + 1 > profile.tool_limit() {
+            if commands.len() + 2 > profile.tool_limit() {
                 return Err(Failure::failed(
                     "mcp_profile_too_broad",
                     format!(
-                        "profile `{}` would publish {} tools including `ds_catalog`",
+                        "profile `{}` would publish {} tools including `ds_catalog` and `ds_diagnostics`",
                         profile.token(),
-                        commands.len() + 1
+                        commands.len() + 2
                     ),
                 )
                 .remedy("split the profile by operator workflow before publishing it"));
@@ -408,7 +409,13 @@ impl Surface {
             exposure,
             profile,
             commands,
+            identity: Value::Null,
         })
+    }
+
+    pub fn with_identity(mut self, identity: Value) -> Self {
+        self.identity = identity;
+        self
     }
 
     pub fn exposure(&self) -> Exposure {
@@ -421,9 +428,9 @@ impl Surface {
 
     pub fn published_count(&self) -> usize {
         match (self.exposure, self.profile) {
-            (Exposure::Chapters, None) => ROUTED_CHAPTERS.len() + 1,
-            (Exposure::Commands, Some(_)) => self.commands.len() + 1,
-            (Exposure::Commands, None) => self.commands.len(),
+            (Exposure::Chapters, None) => ROUTED_CHAPTERS.len() + 2,
+            (Exposure::Commands, Some(_)) => self.commands.len() + 2,
+            (Exposure::Commands, None) => self.commands.len() + 1,
             (Exposure::Chapters, Some(_)) => 0,
         }
     }
@@ -443,12 +450,16 @@ impl Surface {
     pub fn tool_list(&self) -> Vec<Value> {
         match (self.exposure, self.profile) {
             (Exposure::Chapters, None) => std::iter::once(catalog_tool_json())
+                .chain(std::iter::once(diagnostics_tool_json()))
                 .chain(ROUTED_CHAPTERS.iter().copied().map(chapter_tool_json))
                 .collect(),
             (Exposure::Commands, Some(_)) => std::iter::once(catalog_tool_json())
+                .chain(std::iter::once(diagnostics_tool_json()))
                 .chain(self.commands.iter().map(leaf_tool_json))
                 .collect(),
-            (Exposure::Commands, None) => self.commands.iter().map(leaf_tool_json).collect(),
+            (Exposure::Commands, None) => std::iter::once(diagnostics_tool_json())
+                .chain(self.commands.iter().map(leaf_tool_json))
+                .collect(),
             (Exposure::Chapters, Some(_)) => Vec::new(),
         }
     }
@@ -459,8 +470,11 @@ impl Surface {
         arguments: &Value,
         executable: &PathBuf,
     ) -> Result<Value, (i64, String)> {
+        if name == "ds_diagnostics" {
+            return self.call_diagnostics(arguments, executable);
+        }
         if name == "ds_catalog" && (self.exposure == Exposure::Chapters || self.profile.is_some()) {
-            return self.call_catalog(arguments);
+            return self.call_catalog(arguments, executable);
         }
         match self.exposure {
             Exposure::Commands => {
@@ -559,7 +573,11 @@ impl Surface {
         }
     }
 
-    fn call_catalog(&self, arguments: &Value) -> Result<Value, (i64, String)> {
+    fn call_catalog(
+        &self,
+        arguments: &Value,
+        executable: &PathBuf,
+    ) -> Result<Value, (i64, String)> {
         let object = object_with_known_keys(arguments, &["query", "chapter", "command"])?;
         let query = optional_string(&object, "query")?;
         let chapter = optional_string(&object, "chapter")?;
@@ -588,7 +606,7 @@ impl Surface {
             .iter()
             .filter(|tool| chapter.is_none_or(|value| tool.chapter == value));
 
-        let data = if let Some(command) = command {
+        let mut data = if let Some(command) = command {
             let Some(tool) = visible.into_iter().find(|tool| tool.id == command) else {
                 if let Some(tool) = self.commands.iter().find(|tool| tool.id == command) {
                     return Err((
@@ -603,7 +621,7 @@ impl Surface {
                 return Err((-32602, format!("unknown command `{command}`")));
             };
             json!({
-                "command": command_summary(tool),
+                "command": live_command_summary(tool, executable)?,
                 "next": { "tool": chapter_tool_name(tool.chapter), "arguments": { "operation": "describe", "command": tool.id } },
             })
         } else if let Some(query) = query {
@@ -633,14 +651,20 @@ impl Surface {
             });
             let matched = matches.len();
             matches.truncate(10);
+            let results = matches
+                .into_iter()
+                .map(|(_, tool)| live_command_summary(tool, executable))
+                .collect::<Result<Vec<_>, _>>()?;
             json!({
                 "query": query,
                 "matched": matched,
-                "results": matches.into_iter().map(|(_, tool)| command_summary(tool)).collect::<Vec<_>>(),
+                "results": results,
                 "next": "call the matching chapter with operation=describe and the exact command id",
             })
         } else if let Some(chapter) = chapter {
-            let commands = visible.map(command_summary).collect::<Vec<_>>();
+            let commands = visible
+                .map(|tool| live_command_summary(tool, executable))
+                .collect::<Result<Vec<_>, _>>()?;
             json!({
                 "chapter": chapter.token(),
                 "tool": chapter_tool_name(chapter),
@@ -661,7 +685,51 @@ impl Surface {
                 "next": "call ds_catalog with one chapter or a bounded query",
             })
         };
+        if let Some(object) = data.as_object_mut() {
+            object.insert("identity".to_string(), self.identity.clone());
+            object.insert(
+                "skill_resources".to_string(),
+                self.identity.get("skills").cloned().unwrap_or(Value::Null),
+            );
+        }
         Ok(value_result(data, false))
+    }
+
+    fn call_diagnostics(
+        &self,
+        arguments: &Value,
+        executable: &PathBuf,
+    ) -> Result<Value, (i64, String)> {
+        let object = object_with_known_keys(arguments, &["operation"])?;
+        let operation = required_string(&object, "operation")?;
+        if operation == "identity" {
+            return Ok(value_result(
+                json!({
+                    "v": 1,
+                    "command": "mcp.diagnostics",
+                    "contract": 1,
+                    "status": "ok",
+                    "data": self.identity,
+                }),
+                false,
+            ));
+        }
+        let argv = match operation.as_str() {
+            "doctor" => vec!["doctor", "--output", "json"],
+            "shell.status" => vec!["shell", "status", "--output", "json"],
+            "capabilities" => vec!["capabilities", "--output", "json"],
+            _ => {
+                return Err((
+                    -32602,
+                    "`operation` must be `identity`, `doctor`, `shell.status`, or `capabilities`"
+                        .to_string(),
+                ));
+            }
+        }
+        .into_iter()
+        .map(str::to_string)
+        .collect::<Vec<_>>();
+        invoke_argv(&argv, executable)
     }
 }
 
@@ -703,14 +771,20 @@ fn optional_bool(object: &Map<String, Value>, key: &str) -> Result<Option<bool>,
     }
 }
 
-fn command_summary(tool: &Tool) -> Value {
+fn command_summary(tool: &Tool, descriptor: &Value) -> Value {
     json!({
         "id": tool.id,
         "chapter": tool.chapter.token(),
-        "summary": tool.descriptor["summary"],
-        "availability": tool.descriptor["availability"],
+        "summary": descriptor["summary"],
+        "availability": descriptor["availability"],
         "next": { "tool": chapter_tool_name(tool.chapter), "operation": "describe" },
     })
+}
+
+fn live_command_summary(tool: &Tool, executable: &PathBuf) -> Result<Value, (i64, String)> {
+    let descriptor = tools::live_command_descriptor(executable, &tool.id)
+        .map_err(|failure| (-32000, failure.to_string()))?;
+    Ok(command_summary(tool, &descriptor))
 }
 
 fn invoke_leaf(
@@ -811,6 +885,33 @@ fn catalog_tool_json() -> Value {
             "additionalProperties": false
         },
         "annotations": { "title": "DS catalogue", "readOnlyHint": true, "openWorldHint": false }
+    })
+}
+
+fn diagnostics_tool_json() -> Value {
+    json!({
+        "name": "ds_diagnostics",
+        "title": "DS diagnostics",
+        "description": "Obtain bounded bootstrap identity or invoke the same read-only version/doctor/shell/capabilities implementations as the CLI. Requires no map, project, desktop session, or confirmation.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "operation": {
+                    "type": "string",
+                    "enum": ["identity", "doctor", "shell.status", "capabilities"],
+                    "description": "Select one bounded read-only diagnostic."
+                }
+            },
+            "required": ["operation"],
+            "additionalProperties": false
+        },
+        "annotations": {
+            "title": "DS diagnostics",
+            "readOnlyHint": true,
+            "destructiveHint": false,
+            "idempotentHint": true,
+            "openWorldHint": false
+        }
     })
 }
 
@@ -928,10 +1029,9 @@ mod tests {
             .into_iter()
             .map(|value| value["name"].as_str().unwrap().to_string())
             .collect::<Vec<_>>();
-        // Derived, not the literal 12: the catalogue plus one router per
-        // routed chapter. A new chapter that nobody routed fails here instead
-        // of quietly publishing the old count.
-        assert_eq!(names.len(), Chapter::ALL.len());
+        // Derived: the catalogue and diagnostics bootstrap plus one router
+        // per routed chapter. A new chapter that nobody routed fails here.
+        assert_eq!(names.len(), Chapter::ALL.len() + 1);
         assert_eq!(names[0], "ds_catalog");
         for chapter in Chapter::ALL {
             assert!(
@@ -974,7 +1074,10 @@ mod tests {
             .into_iter()
             .map(|value| value["name"].as_str().unwrap().to_string())
             .collect::<Vec<_>>();
-        assert_eq!(names, ["ds_catalog", "pls_reference-closure"]);
+        assert_eq!(
+            names,
+            ["ds_catalog", "ds_diagnostics", "pls_reference-closure"]
+        );
         let library = Surface::new(Exposure::Commands, Some(Profile::PlsLibrary), tools.clone())
             .expect("library profile");
         let names = library
@@ -982,7 +1085,10 @@ mod tests {
             .into_iter()
             .map(|value| value["name"].as_str().unwrap().to_string())
             .collect::<Vec<_>>();
-        assert_eq!(names, ["ds_catalog", "library_resolve-native"]);
+        assert_eq!(
+            names,
+            ["ds_catalog", "ds_diagnostics", "library_resolve-native"]
+        );
         let error = Surface::new(Exposure::Chapters, Some(Profile::Pls), tools).unwrap_err();
         assert_eq!(error.code(), "mcp_profile_exposure_invalid");
     }
@@ -1020,7 +1126,10 @@ mod tests {
         paired.authority = Authority::DesktopUser;
         let surface = Surface::new(Exposure::Chapters, None, vec![paired]).expect("surface");
         let response = surface
-            .call_catalog(&json!({ "command": "desktop.project.list" }))
+            .call_catalog(
+                &json!({ "command": "desktop.project.list" }),
+                &PathBuf::from("ds"),
+            )
             .expect("catalogue is descriptor-only");
         assert_eq!(
             response["structuredContent"]["command"]["id"],

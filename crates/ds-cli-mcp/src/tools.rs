@@ -564,11 +564,41 @@ pub fn cli_executable() -> Result<PathBuf, Failure> {
     })
 }
 
+/// Installation channel evidence available from the executable path. Desktop
+/// Stable and Canary packages have closed sibling layouts. Other layouts are
+/// deliberately reported as unlabeled rather than guessed to be development
+/// or one of the release lanes.
+pub fn install_profile(executable: &Path) -> &'static str {
+    match executable
+        .parent()
+        .and_then(Path::file_name)
+        .and_then(|name| name.to_str())
+    {
+        Some("DS GridDesign") => "stable",
+        Some("DS GridDesign Canary") => "canary",
+        _ => "unlabeled",
+    }
+}
+
 /// Run `ds <argv…>` and return (exit code, stdout, stderr).
 pub fn run_cli(executable: &PathBuf, argv: &[String]) -> Result<(i32, String, String), String> {
-    let output = Command::new(executable)
+    run_cli_with_schema_mode(executable, argv, false)
+}
+
+fn run_cli_with_schema_mode(
+    executable: &PathBuf,
+    argv: &[String],
+    schema_only: bool,
+) -> Result<(i32, String, String), String> {
+    let mut command = Command::new(executable);
+    command
         .args(argv)
         .env("DS_MCP_CHILD", "1")
+        .env_remove("DS_MCP_SCHEMA_ONLY");
+    if schema_only {
+        command.env("DS_MCP_SCHEMA_ONLY", "1");
+    }
+    let output = command
         .output()
         .map_err(|error| format!("could not start `{}`: {error}", executable.display()))?;
     Ok((
@@ -608,18 +638,23 @@ pub fn build_identity(executable: &PathBuf) -> Result<Value, Failure> {
 }
 
 /// Read one `ds capabilities …` envelope and return its `data`.
-fn capabilities(executable: &PathBuf, selector: Option<&str>) -> Result<Value, Failure> {
+fn capabilities(
+    executable: &PathBuf,
+    selector: Option<&str>,
+    schema_only: bool,
+) -> Result<Value, Failure> {
     let mut argv = vec!["capabilities".to_string()];
     if let Some(selector) = selector {
         argv.push(selector.to_string());
     }
     argv.push("--output".to_string());
     argv.push("json".to_string());
-    let (code, stdout, stderr) = run_cli(executable, &argv).map_err(|message| {
-        Failure::failed("mcp_capabilities_unavailable", message).remedy(
+    let (code, stdout, stderr) =
+        run_cli_with_schema_mode(executable, &argv, schema_only).map_err(|message| {
+            Failure::failed("mcp_capabilities_unavailable", message).remedy(
             "run `ds capabilities --output json` by hand and fix what it reports before serving",
         )
-    })?;
+        })?;
     let envelope: Value = serde_json::from_str(&stdout).map_err(|error| {
         Failure::failed(
             "mcp_capabilities_unavailable",
@@ -653,7 +688,7 @@ fn capabilities(executable: &PathBuf, selector: Option<&str>) -> Result<Value, F
 /// from a table. The `mcp` domain itself is excluded: a server that lists
 /// "start a server" as a tool is a loop, not a capability.
 pub fn discover_tools(executable: &PathBuf) -> Result<Vec<Tool>, Failure> {
-    let index = capabilities(executable, None)?;
+    let index = capabilities(executable, None, true)?;
     let mut tools = Vec::new();
     for domain in index
         .get("domains")
@@ -667,7 +702,7 @@ pub fn discover_tools(executable: &PathBuf) -> Result<Vec<Tool>, Failure> {
         if domain_id == crate::DOMAIN.id {
             continue;
         }
-        let tier = capabilities(executable, Some(domain_id))?;
+        let tier = capabilities(executable, Some(domain_id), true)?;
         for command in tier
             .get("commands")
             .and_then(Value::as_array)
@@ -677,7 +712,7 @@ pub fn discover_tools(executable: &PathBuf) -> Result<Vec<Tool>, Failure> {
             let Some(id) = command.get("id").and_then(Value::as_str) else {
                 continue;
             };
-            let descriptor = capabilities(executable, Some(id))?;
+            let descriptor = capabilities(executable, Some(id), true)?;
             let command = descriptor.get("command").ok_or_else(|| {
                 Failure::failed(
                     "mcp_capabilities_unavailable",
@@ -698,6 +733,20 @@ pub fn discover_tools(executable: &PathBuf) -> Result<Vec<Tool>, Failure> {
     }
     tools.sort_by(|a, b| a.name.cmp(&b.name));
     Ok(tools)
+}
+
+/// Resolve one command's ordinary live descriptor on an explicit catalogue
+/// request. Startup discovery deliberately uses the unchecked schema mode;
+/// this function is the lazy availability boundary.
+pub fn live_command_descriptor(executable: &PathBuf, id: &str) -> Result<Value, Failure> {
+    let data = capabilities(executable, Some(id), false)?;
+    data.get("command").cloned().ok_or_else(|| {
+        Failure::failed(
+            "mcp_capabilities_unavailable",
+            format!("`ds capabilities {id}` omitted its command descriptor"),
+        )
+        .remedy("repair the command registry and rebuild this exact `ds` executable")
+    })
 }
 
 #[cfg(test)]

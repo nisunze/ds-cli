@@ -248,6 +248,9 @@ fn every_constructible_refusal_code_is_documented() {
         ("ds-cli-shell", Some("shell")),
         ("ds-cli-workstation", Some("workstation")),
         ("ds-cli-mcp", Some("mcp")),
+        // Receipt verification returns bounded diagnostic strings to doctor
+        // and MCP resources; it constructs no CLI Failure/refusal codes.
+        ("ds-cli-skills", None),
         // Shared across every calling domain; declaring it in any one of them
         // is enough for this check, and the per-command help of each caller
         // is what the domain checks above enforce.

@@ -16,17 +16,19 @@ surface**.
 | It is | It is not |
 |---|---|
 | The same `ds` executable, launched with `mcp serve` by the host | A separate binary, sidecar or service |
-| Chapter/profile views generated at startup from `ds capabilities` descriptors | A second command registry or hand-written command schema |
+| Chapter/profile views generated at startup from unchecked `ds capabilities` schemas; live availability resolves on catalogue describe or invoke | A second command registry or hand-written command schema |
 | One `ds <path> … --output json` process per `tools/call`, envelope returned verbatim | A cache, a batch, or a "convenience" tool the CLI lacks |
 | Uses each live descriptor's authority to keep headless commands headless, and to make one bounded local pairing attempt for paired commands | A credential, a listener, or a network hop |
+| Receipt-verified `SKILL.md` documents exposed lazily through MCP resources | A requirement to copy skills into an agent home directory |
 
 The `mcp` domain excludes itself from the tool list. Chapter classification is
 declared once on every canonical command and appears in its live descriptor.
 
 ## Exposure modes
 
-The default broad server publishes twelve stable tools: `ds_catalog` plus one
-router per chapter — `ds_project`, `ds_grid_model`, `ds_pls_cadd`, `ds_survey`,
+The default broad server publishes fourteen stable tools: `ds_catalog`, the
+bounded `ds_diagnostics` bootstrap, plus one router per non-catalogue chapter —
+`ds_data`, `ds_project`, `ds_grid_model`, `ds_pls_cadd`, `ds_survey`,
 `ds_design`, `ds_map_presentation`, `ds_vector_tiles`, `ds_solar`,
 `ds_reports`, `ds_operations` and `ds_workstation`. Adding a command does not
 enlarge this list.
@@ -48,7 +50,7 @@ ds mcp serve --exposure commands --profile pls
 ```
 
 Profiles are `grid`, `pls`, `pls-library`, `library-governance`, `survey`,
-`form-factory`, `survey-projects`, `design-edit`, `design-run`, `map`, `layers`,
+`form-factory`, `survey-projects`, `survey-migration`, `design-edit`, `design-run`, `map`, `layers`,
 `tiling`, `project`, `solar-input`, `solar-run`, `solar-delivery`, and
 `operations`. `survey`
 retains map/local-data survey work;
@@ -56,10 +58,10 @@ retains map/local-data survey work;
 aggregate/spatial/change-feed reads, project-form settings, reusable templates, and
 create-from-template. `layers` isolates
 project ordering and desktop-local remote overlays; `tiling` owns governed
-tile generation and catalogue membership. Each includes
-`ds_catalog` and at most 14 leaf tools, except `survey-projects`, whose fifteenth
-leaf is the bounded changes-feed page beside the existing aggregate and spatial
-reads. A profile is only an allowlist: omitted
+tile generation and catalogue membership. Each includes `ds_catalog`,
+`ds_diagnostics`, and a bounded leaf set. `survey-migration` deliberately
+contains only the governed import leaf in addition to those bootstrap tools.
+A profile is only an allowlist: omitted
 commands are unavailable and authority, effects, confirmation, output, and
 refusals are unchanged. Plain `--exposure commands` retains the previous
 all-command publication temporarily for compatibility.
@@ -172,6 +174,58 @@ remedy to start/sign in, and `desktop_signed_out` remains a refusal rather than
 an implicit login. Automatic launch is intentionally unavailable outside the
 installed Windows package; start and pair the application manually there.
 
+The launch gate is entered only during `invoke`, after argument and confirmation
+validation, and only for an authority that requires Desktop. Server startup,
+MCP initialization, catalogue discovery, diagnostics, resources, local-file
+commands, `headless_user`, and `headless_project` never launch or poll the
+Desktop. One invocation makes at most one launch attempt and one bounded wait;
+failure returns the ordinary command envelope and does not terminate MCP.
+
+## MCP-only identity, diagnostics, and skills
+
+Every exposure publishes `ds_diagnostics` with four read-only operations:
+
+| Operation | Result |
+|---|---|
+| `identity` | Absolute executable, version/source/dirty/target/build profile, labeled Stable/Canary path evidence when available, native-client and Network pins, selected MCP exposure/profile, and skill-bundle identity |
+| `doctor` | The unchanged `ds doctor --output json` envelope |
+| `shell.status` | The unchanged `ds shell status --output json` envelope |
+| `capabilities` | The unchanged bounded tier-1 `ds capabilities --output json` envelope |
+
+`initialize.serverInfo` uses only the MCP name/title/version fields. Concise
+identity and bootstrap directions are in `initialize.instructions`; structured
+identity is returned by diagnostics and echoed by `ds_catalog`. An executable
+outside the recognized Windows Stable/Canary sibling layout reports
+`install_profile: unlabeled`: the server does not guess a Linux package channel
+or call it development. Packaging needs a future stamped channel if those
+lanes must be distinguished away from the desktop layout.
+
+At startup only the packaged bundle's bounded receipt metadata is indexed. When
+that receipt matches this CLI source SHA,
+`resources/list` returns one `ds-skill://bundle/<receipt-id>/SKILL.md` resource
+per shipped skill. `resources/read` accepts only one of those closed URIs,
+then runs the same complete inventory/digest verification as doctor and returns
+that one UTF-8 document.
+It cannot read a caller path, a nested reference, a symlink, or an arbitrary
+file. Resource metadata carries the receipt contract/source/source SHA and
+dirty state. No skill is preloaded into initialization and no writable
+Codex/Claude/Copilot skills home is required.
+
+## Headless support matrix
+
+| Surface/runtime boundary | Starts without Desktop/map/project/auth | What resolves lazily |
+|---|---:|---|
+| initialize, tools/list, identity, resources/list/read | yes | Packaged receipt and selected skill bytes only |
+| diagnostics doctor | yes | Local command availability, shell, and skill installation evidence when explicitly called |
+| catalogue index | yes | No command runtime; exact/query/chapter summaries resolve live availability only when requested |
+| `authority: none` | yes | Local file or declared external engine at invocation |
+| `authority: headless_user` | yes | Native user authentication at invocation; no Desktop launch |
+| `authority: headless_project` | yes | Native auth and selected headless project at invocation; no Desktop launch |
+| `authority: desktop_pairing` / `desktop_user` / legacy `project` | yes | Exact paired Desktop and any command-specific map/project readiness at invocation; one bounded Windows launch may occur |
+
+Map-open state is not inferred from the chapter name. The selected command's
+canonical authority and ordinary refusals remain the only runtime contract.
+
 ## Confirmation
 
 The CLI requires `--yes` for effectful commands. Typed leaf tools declare
@@ -219,12 +273,26 @@ have neither. With both Stable and Canary installed, run `install` from the
 
 Codex keeps TOML: `install --host codex` prints the data; translate it into
 `~/.codex/config.toml` under `[mcp_servers.ds]`. The install receipt and MCP
-initialize result report this executable's source SHA; it must match the skill
-bundle SHA reported by `ds doctor`.
+diagnostics identity report this executable's source SHA; it must match the
+skill-bundle SHA reported by `ds doctor`.
+
+## Server migration note
+
+Existing stdio hosts keep both chapter and typed-profile exposure. They will
+see one additional read-only tool, `ds_diagnostics`, and the standard MCP
+resources capability. Hosts that ignore resources continue to use tools.
+Callers that read the former non-standard `serverInfo.sourceSha` or
+`serverInfo.dirty` fields must move to `ds_diagnostics(operation=identity)` or
+the `ds_catalog` identity object; `serverInfo` now stays within valid MCP
+fields. Broad and typed tool-count assertions must include the diagnostics
+tool. No HTTP transport, managed service, host installer adapter, command
+business logic, or UI behavior is introduced by this server change.
 
 ## Verifying
 
 `ds doctor` reports the executable and skills. In the broad server, confirm
-`tools/list` returns 12 tools, use `ds_catalog` to route `shell.status`, then
-describe and invoke it through `ds_operations`. A paired-desktop command can
-then prove pairing. In a typed profile, call an advertised read-only leaf.
+`tools/list` returns 14 tools, call `ds_diagnostics` for identity, use
+`resources/list` then read `ds` and `ds-mcp-host`, and use `ds_catalog` to
+route one command. A paired-desktop command can then prove its lazy pairing
+refusal without affecting a later diagnostics call. In a typed profile, verify
+both bootstrap tools and call an advertised read-only leaf.

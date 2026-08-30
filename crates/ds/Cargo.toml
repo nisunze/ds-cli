@@ -27,6 +27,7 @@ ds-cli-report = { workspace = true }
 ds-cli-shell = { workspace = true }
 ds-cli-workstation = { workspace = true }
 ds-cli-mcp = { workspace = true }
+ds-cli-skills = { workspace = true }
 ds-cli-solar = { workspace = true }
 ds-cli-work = { workspace = true }
 ds-cli-sre = { workspace = true }
@@ -35,9 +36,9 @@ ds-cli-style = { workspace = true }
 ds-cli-tile = { workspace = true }
 ds-cli-data = { workspace = true }
 serde_json = { workspace = true }
-sha2 = { workspace = true }
 
 [dev-dependencies]
 ds-grid-engine = { workspace = true }
 ds-grid-exchange = { workspace = true }
 serde_json = { workspace = true }
+sha2 = { workspace = true }

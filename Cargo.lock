@@ -591,6 +591,7 @@ dependencies = [
  "ds-cli-pls",
  "ds-cli-report",
  "ds-cli-shell",
+ "ds-cli-skills",
  "ds-cli-solar",
  "ds-cli-sre",
  "ds-cli-style",
@@ -735,6 +736,7 @@ name = "ds-cli-mcp"
 version = "0.1.0"
 dependencies = [
  "ds-cli-contract",
+ "ds-cli-skills",
  "libc",
  "serde_json",
 ]
@@ -767,6 +769,14 @@ dependencies = [
  "ds-cli-contract",
  "serde_json",
  "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "ds-cli-skills"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "sha2",
 ]
 
 [[package]]

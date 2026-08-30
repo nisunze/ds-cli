@@ -15,11 +15,9 @@ use std::path::{Component, Path, PathBuf};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
-use crate::build;
-
-const RECEIPT_CONTRACT: &str = "ds-cli-skills-bundle/v3";
+pub const RECEIPT_CONTRACT: &str = "ds-cli-skills-bundle/v3";
+pub const RECEIPT_SOURCE: &str = "ds-cli";
 const INSTALL_CONTRACT: &str = "ds-cli-skills-install/v1";
-const SOURCE: &str = "ds-cli";
 const OWNER: &str = "nisunze/ds-cli";
 const OWNER_MARKER: &str = ".ds-cli-skills-owner";
 const INVENTORY: &str = ".ds-cli-skills-owned";
@@ -27,6 +25,7 @@ const INSTALLED_RECEIPT: &str = ".ds-cli-skills-receipt.json";
 const MAX_RECEIPT_BYTES: u64 = 1024 * 1024;
 const MAX_BUNDLE_BYTES: u64 = 32 * 1024 * 1024;
 const MAX_FILES: usize = 1_000;
+const MAX_SKILL_DOCUMENT_BYTES: u64 = 1024 * 1024;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct Receipt {
@@ -41,7 +40,105 @@ struct Bundle {
     receipt: Receipt,
 }
 
-pub fn doctor_report() -> Value {
+/// One packaged bundle whose bounded receipt metadata matches the exact CLI
+/// source identity supplied by the caller. File inventory and content digests
+/// are deliberately verified only when a document is read.
+#[derive(Clone, Debug)]
+pub struct IndexedBundle {
+    bundle: Bundle,
+}
+
+impl IndexedBundle {
+    pub fn root(&self) -> &Path {
+        &self.bundle.root
+    }
+
+    pub fn source_sha(&self) -> &str {
+        &self.bundle.receipt.source_sha
+    }
+
+    pub fn skills(&self) -> &[String] {
+        &self.bundle.receipt.skills
+    }
+
+    /// Read only the selected skill's entry document. The name must be one
+    /// of the receipt identifiers; callers never supply a path. Re-validate
+    /// the complete bundle and the selected digest at read time so a prior
+    /// resources/list result cannot become a filesystem escape or stale-byte
+    /// authority. This is the first point that reads skill document content.
+    pub fn read_skill(&self, name: &str) -> Result<String, String> {
+        if !valid_skill_name(name) || !self.bundle.receipt.skills.iter().any(|item| item == name) {
+            return Err(format!("unknown shipped skill `{name}`"));
+        }
+        let current = validate_bundle(&self.bundle.root, self.source_sha())?;
+        if current != self.bundle.receipt {
+            return Err("skill bundle changed after it was selected".to_string());
+        }
+        let relative = format!("skills/{name}/SKILL.md");
+        let expected = current
+            .files
+            .get(&relative)
+            .ok_or_else(|| format!("receipt omits {relative}"))?;
+        let path = self.bundle.root.join(&relative);
+        let metadata = fs::symlink_metadata(&path)
+            .map_err(|error| format!("skill document is unreadable: {error}"))?;
+        if !metadata.file_type().is_file() || metadata.len() > MAX_SKILL_DOCUMENT_BYTES {
+            return Err("skill document is not a bounded regular file".to_string());
+        }
+        if &sha256(&path)? != expected {
+            return Err("skill document digest changed after bundle verification".to_string());
+        }
+        fs::read_to_string(path).map_err(|error| format!("skill document is not UTF-8: {error}"))
+    }
+}
+
+/// Locate one unambiguous release-matched packaged bundle without consulting
+/// or requiring any user-level agent skills directory. This reads bounded
+/// receipt metadata only; [`IndexedBundle::read_skill`] performs the complete
+/// inventory and digest verification lazily.
+pub fn indexed_bundle(expected_cli_sha: &str) -> Result<IndexedBundle, String> {
+    let candidates = bundle_candidates();
+    let existing = candidates
+        .iter()
+        .filter(|path| path.exists())
+        .collect::<Vec<_>>();
+    let mut valid = Vec::new();
+    let mut invalid = Vec::new();
+    for root in existing {
+        match index_bundle_root(root, expected_cli_sha) {
+            Ok(bundle) => valid.push(bundle),
+            Err(reason) => invalid.push(format!("{}: {reason}", root.display())),
+        }
+    }
+    let Some(first) = valid.first().cloned() else {
+        return Err(invalid
+            .into_iter()
+            .next()
+            .unwrap_or_else(|| "no packaged ds-cli-skills bundle was found".to_string()));
+    };
+    if valid
+        .iter()
+        .skip(1)
+        .any(|candidate| candidate.receipt != first.receipt)
+    {
+        return Err("multiple release-matched skill bundles contain different skills".to_string());
+    }
+    Ok(IndexedBundle { bundle: first })
+}
+
+fn index_bundle_root(root: &Path, expected_cli_sha: &str) -> Result<Bundle, String> {
+    let root_meta = fs::symlink_metadata(root).map_err(|error| error.to_string())?;
+    if !root_meta.file_type().is_dir() {
+        return Err("bundle root is not a regular directory".to_string());
+    }
+    let receipt = parse_receipt(&root.join("receipt.json"), expected_cli_sha)?;
+    Ok(Bundle {
+        root: root.to_path_buf(),
+        receipt,
+    })
+}
+
+pub fn doctor_report(expected_cli_sha: &str) -> Value {
     let candidates = bundle_candidates();
     let existing: Vec<PathBuf> = candidates
         .iter()
@@ -51,7 +148,7 @@ pub fn doctor_report() -> Value {
     let mut valid = Vec::new();
     let mut invalid = Vec::new();
     for root in &existing {
-        match validate_bundle(root, build::SOURCE_SHA) {
+        match validate_bundle(root, expected_cli_sha) {
             Ok(receipt) => valid.push(Bundle {
                 root: root.clone(),
                 receipt,
@@ -103,7 +200,7 @@ pub fn doctor_report() -> Value {
         ("copilot", copilot_skills_dir()),
     ]
     .into_iter()
-    .map(|(agent, target)| inspect_install(agent, target, bundle.as_ref(), build::SOURCE_SHA))
+    .map(|(agent, target)| inspect_install(agent, target, bundle.as_ref(), expected_cli_sha))
     .collect::<Vec<_>>();
 
     let mut report = json!({
@@ -282,7 +379,7 @@ fn parse_receipt(path: &Path, expected_cli_sha: &str) -> Result<Receipt, String>
         ],
         "receipt",
     )?;
-    if value["contract"] != RECEIPT_CONTRACT || value["source"] != SOURCE {
+    if value["contract"] != RECEIPT_CONTRACT || value["source"] != RECEIPT_SOURCE {
         return Err("receipt contract or source is not ds-cli v3".to_string());
     }
     if value["dirty"] != false {
@@ -646,7 +743,7 @@ mod tests {
             root.join("receipt.json"),
             serde_json::to_vec(&json!({
                 "contract": RECEIPT_CONTRACT,
-                "source": SOURCE,
+                "source": RECEIPT_SOURCE,
                 "source_sha": receipt.source_sha,
                 "dirty": false,
                 "skills": receipt.skills,
@@ -683,6 +780,18 @@ mod tests {
         write_bundle(&temp.0, cli_sha);
         fs::write(temp.0.join("skills/ds/SKILL.md"), "changed\n").unwrap();
         assert!(validate_bundle(&temp.0, cli_sha).is_err());
+    }
+
+    #[test]
+    fn startup_index_reads_receipt_metadata_and_defers_content_verification() {
+        let temp = TestDir::new();
+        let cli_sha = "2222222222222222222222222222222222222222";
+        write_bundle(&temp.0, cli_sha);
+        fs::write(temp.0.join("skills/ds/SKILL.md"), "changed\n").unwrap();
+        let indexed = IndexedBundle {
+            bundle: index_bundle_root(&temp.0, cli_sha).expect("receipt metadata remains readable"),
+        };
+        assert!(indexed.read_skill("ds").is_err());
     }
 
     #[test]

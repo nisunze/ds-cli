@@ -23,7 +23,6 @@ use serde_json::{Value, json};
 
 use crate::build;
 use crate::registry::{self, Entry};
-use crate::skills;
 
 pub static ENTRIES: &[Entry] = &[
     Entry {
@@ -115,6 +114,7 @@ availability, inputs, refusals and examples.",
 };
 
 fn capabilities(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
+    let schema_only = std::env::var_os("DS_MCP_SCHEMA_ONLY").is_some_and(|value| !value.is_empty());
     if let Some(query) = inputs.value("search") {
         return search(query, inputs.value("limit").unwrap_or("10"));
     }
@@ -149,7 +149,11 @@ fn capabilities(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
                     "summary": entry.command.summary,
                     "effect": entry.command.effect.token(),
                     "authority": entry.command.authority.token(),
-                    "availability": (entry.command.availability)().token(),
+                    "availability": if schema_only {
+                        "unchecked"
+                    } else {
+                        (entry.command.availability)().token()
+                    },
                 }))
                 .collect::<Vec<_>>(),
             "next": "ds capabilities <command-id>",
@@ -160,7 +164,11 @@ fn capabilities(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         // Tier 3. Exactly one contract.
         return Ok(json!({
             "tier": "command",
-            "command": help::command_json(entry.command),
+            "command": if schema_only {
+                help::command_json_unchecked(entry.command)
+            } else {
+                help::command_json(entry.command)
+            },
         }));
     }
 
@@ -375,7 +383,7 @@ fn doctor(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         "unavailable": blocked,
         "build": build::identity(),
         "shell": ds_cli_shell::report(),
-        "skills": skills::doctor_report(),
+        "skills": ds_cli_skills::doctor_report(build::SOURCE_SHA),
     });
     if all {
         report["commands"] = Value::Array(listed);

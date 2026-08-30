@@ -229,7 +229,21 @@ pub fn command(command: &Command) -> String {
 /// The machine form of tier 3. Same facts, same source, no prose layout — so
 /// a caller that wants a schema does not have to parse a help screen.
 pub fn command_json(command: &Command) -> Value {
-    let availability = (command.availability)();
+    command_json_with_availability(command, Some((command.availability)()))
+}
+
+/// The canonical command schema without resolving runtime availability.
+/// MCP uses this only while building its startup routing table; an explicit
+/// catalogue describe or invocation still calls [`command_json`] and resolves
+/// the command's ordinary live availability lazily.
+pub fn command_json_unchecked(command: &Command) -> Value {
+    command_json_with_availability(command, None)
+}
+
+fn command_json_with_availability(
+    command: &Command,
+    availability: Option<crate::spec::Availability>,
+) -> Value {
     let mut examples: Vec<Value> = command
         .examples
         .iter()
@@ -264,7 +278,7 @@ pub fn command_json(command: &Command) -> Value {
         "authority": command.authority.token(),
         "execution": command.execution.token(),
         "confirmation_required": command.effect.needs_confirmation(),
-        "availability": availability.token(),
+        "availability": availability.as_ref().map_or("unchecked", |value| value.token()),
         "inputs": command.args.iter().map(arg_json).collect::<Vec<_>>(),
         "output": command.output,
         "examples": examples,
@@ -275,11 +289,11 @@ pub fn command_json(command: &Command) -> Value {
         })).collect::<Vec<_>>(),
     });
 
-    if let crate::spec::Availability::Unavailable {
+    if let Some(crate::spec::Availability::Unavailable {
         code,
         reason,
         remedy,
-    } = &availability
+    }) = &availability
     {
         descriptor["unavailable"] = json!({ "code": code, "reason": reason, "remedy": remedy });
     }

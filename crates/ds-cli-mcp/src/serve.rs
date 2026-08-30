@@ -5,7 +5,9 @@
 //! to stderr. The methods a host needs to use tools are exactly four —
 //! `initialize`, `notifications/initialized`, `tools/list`, `tools/call` —
 //! plus `ping`; everything else answers "method not found", which a host
-//! treats as "unsupported", not as an error.
+//! treats as "unsupported", not as an error. Receipt-backed guidance is
+//! available through `resources/list` and `resources/read` without preloading
+//! documents into initialization.
 
 use std::io::{self, BufRead, Write};
 
@@ -15,21 +17,25 @@ use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
 
 use crate::surface::{Exposure, Profile, Surface};
-use crate::tools;
+use crate::{resources::SkillResources, tools};
 
 pub const PROTOCOL_VERSION: &str = "2025-06-18";
 
 pub static COMMAND: Command = Command {
     id: "mcp.serve",
     path: &["mcp", "serve"],
-    contract: 2,
+    contract: 3,
     chapter: ds_cli_contract::spec::Chapter::Catalog,
     summary: "Serve chapter or typed `ds` tools over MCP.",
     purpose: "\
 Serves generated chapter or typed command tools over MCP stdio. Every view \
 comes from live descriptors and dispatches the same \
-`ds … --output json` command. It adds no credential, listener, cache, project \
-state, or authority.",
+`ds … --output json` command. Initialization also publishes bounded \
+diagnostics and receipt-indexed skill resources, digest-verified when read, \
+without probing Desktop, map, \
+project, authentication, network, or external engines. Runtime requirements \
+stay command-lazy. It adds no credential, listener, cache, project state, or \
+authority.",
     effect: Effect::ReadOnly,
     authority: Authority::None,
     execution: Execution::Sync,
@@ -59,7 +65,7 @@ calls answered, and why the loop ended.",
     examples: &[
         Example {
             command: "ds mcp serve --exposure chapters",
-            note: "Default: 12 stable chapter tools.",
+            note: "Default: 14 stable bootstrap and chapter tools.",
             runnable: false,
         },
         Example {
@@ -83,12 +89,22 @@ calls answered, and why the loop ended.",
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let executable = tools::cli_executable()?;
     let build = tools::build_identity(&executable)?;
+    let source_sha = build["source_sha"].as_str().ok_or_else(|| {
+        Failure::failed(
+            "mcp_capabilities_unavailable",
+            "`ds version` omitted its source SHA",
+        )
+        .remedy("run `ds version --output json` and repair this executable")
+    })?;
+    let resources = SkillResources::load(source_sha);
     let exposure = Exposure::from_token(inputs.value("exposure").unwrap_or("chapters"))
         .expect("the command parser enforces exposure choices");
     let profile = inputs.value("profile").map(|value| {
         Profile::from_token(value).expect("the command parser enforces profile choices")
     });
-    let surface = Surface::new(exposure, profile, tools::discover_tools(&executable)?)?;
+    let identity = bootstrap_identity(&executable, &build, exposure, profile, &resources);
+    let surface = Surface::new(exposure, profile, tools::discover_tools(&executable)?)?
+        .with_identity(identity);
     eprintln!(
         "ds mcp: serving {} {} tools{} from {}",
         surface.published_count(),
@@ -125,7 +141,14 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
                 continue;
             }
         };
-        let Some(response) = handle(&request, &executable, &surface, &build, &mut calls) else {
+        let Some(response) = handle(
+            &request,
+            &executable,
+            &surface,
+            &build,
+            &resources,
+            &mut calls,
+        ) else {
             continue; // a notification
         };
         write_line(&stdout, &response)?;
@@ -181,6 +204,7 @@ pub fn handle(
     executable: &std::path::PathBuf,
     surface: &Surface,
     build: &Value,
+    resources: &SkillResources,
     calls: &mut usize,
 ) -> Option<Value> {
     let id = request.get("id").cloned();
@@ -190,15 +214,23 @@ pub fn handle(
     let result = match method {
         "initialize" => Ok(json!({
             "protocolVersion": negotiated_version(&params),
-            "capabilities": { "tools": { "listChanged": false } },
+            "capabilities": {
+                "tools": { "listChanged": false },
+                "resources": { "subscribe": false, "listChanged": false }
+            },
             "serverInfo": {
                 "name": "ds",
                 "title": "DS command line",
                 "version": env!("CARGO_PKG_VERSION"),
-                "sourceSha": build["source_sha"],
-                "dirty": build["dirty"],
             },
-            "instructions": surface.instructions(),
+            "instructions": format!(
+                "{} Bootstrap: executable {}; source {}; build profile {}; skill resources {}. Use ds_diagnostics(operation=identity) for structured identity and resources/list then resources/read for one receipt-verified skill. Desktop and map checks are command-lazy.",
+                surface.instructions(),
+                executable.display(),
+                build["source_sha"].as_str().unwrap_or("unknown"),
+                build["profile"].as_str().unwrap_or("unknown"),
+                resources.identity()["status"].as_str().unwrap_or("unavailable"),
+            ),
         })),
         "ping" => Ok(json!({})),
         "tools/list" => Ok(json!({ "tools": surface.tool_list() })),
@@ -206,6 +238,8 @@ pub fn handle(
             *calls += 1;
             call(&params, executable, surface)
         }
+        "resources/list" => Ok(resources.list()),
+        "resources/read" => resources.read(&params),
         "shutdown" => Ok(Value::Null),
         _ if is_notification => return None,
         other => Err((-32601, format!("method not found: {other}"))),
@@ -216,6 +250,35 @@ pub fn handle(
     Some(match result {
         Ok(value) => json!({ "jsonrpc": "2.0", "id": id, "result": value }),
         Err((code, message)) => error_response(id.unwrap_or(Value::Null), code, &message),
+    })
+}
+
+fn bootstrap_identity(
+    executable: &std::path::Path,
+    build: &Value,
+    exposure: Exposure,
+    profile: Option<Profile>,
+    resources: &SkillResources,
+) -> Value {
+    json!({
+        "executable": executable.display().to_string(),
+        "version": build["version"],
+        "source_sha": build["source_sha"],
+        "dirty": build["dirty"],
+        "target": build["target"],
+        "build_profile": build["profile"],
+        "install_profile": tools::install_profile(executable),
+        "native_client_core_source_sha": build["native_client_core_source_sha"],
+        "native_client_profile_catalog_sha256": build["native_client_profile_catalog_sha256"],
+        "ds_network_source_sha": build["ds_network_source_sha"],
+        "ds_network_source_state": build["ds_network_source_state"],
+        "mcp": {
+            "transport": "stdio",
+            "exposure": exposure.token(),
+            "profile": profile.map(Profile::token),
+            "protocol": PROTOCOL_VERSION,
+        },
+        "skills": resources.identity(),
     })
 }
 
@@ -258,7 +321,17 @@ mod tests {
     }
 
     fn build() -> Value {
-        json!({ "source_sha": "0123456789012345678901234567890123456789", "dirty": false })
+        json!({
+            "version": "0.1.0",
+            "source_sha": "0123456789012345678901234567890123456789",
+            "dirty": false,
+            "target": "test-target",
+            "profile": "debug",
+        })
+    }
+
+    fn resources() -> SkillResources {
+        SkillResources::load("0123456789012345678901234567890123456789")
     }
 
     #[test]
@@ -266,7 +339,8 @@ mod tests {
         let mut calls = 0;
         let exe = std::path::PathBuf::from("ds");
         let surface = surface(Exposure::Chapters);
-        let init = handle(&json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26"}}), &exe, &surface, &build(), &mut calls).expect("response");
+        let resources = resources();
+        let init = handle(&json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26"}}), &exe, &surface, &build(), &resources, &mut calls).expect("response");
         assert_eq!(init["result"]["protocolVersion"], "2025-03-26");
         assert_eq!(init["result"]["serverInfo"]["name"], "ds");
         let list = handle(
@@ -274,6 +348,7 @@ mod tests {
             &exe,
             &surface,
             &build(),
+            &resources,
             &mut calls,
         )
         .expect("response");
@@ -281,7 +356,7 @@ mod tests {
         // cannot ship unreachable while this still reads an old count.
         assert_eq!(
             list["result"]["tools"].as_array().unwrap().len(),
-            ds_cli_contract::spec::Chapter::ALL.len()
+            ds_cli_contract::spec::Chapter::ALL.len() + 1
         );
         assert_eq!(list["result"]["tools"][0]["name"], "ds_catalog");
         assert_eq!(
@@ -296,30 +371,34 @@ mod tests {
         let mut calls = 0;
         let exe = std::path::PathBuf::from("ds");
         let surface = surface(Exposure::Chapters);
+        let resources = resources();
         assert!(
             handle(
                 &json!({"jsonrpc":"2.0","method":"notifications/initialized"}),
                 &exe,
                 &surface,
                 &build(),
+                &resources,
                 &mut calls
             )
             .is_none()
         );
-        let unknown = handle(
+        let listed = handle(
             &json!({"jsonrpc":"2.0","id":3,"method":"resources/list"}),
             &exe,
             &surface,
             &build(),
+            &resources,
             &mut calls,
         )
         .expect("response");
-        assert_eq!(unknown["error"]["code"], -32601);
+        assert!(listed["result"]["resources"].is_array());
         let missing = handle(
             &json!({"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"nope"}}),
             &exe,
             &surface,
             &build(),
+            &resources,
             &mut calls,
         )
         .expect("response");
