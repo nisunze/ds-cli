@@ -278,6 +278,7 @@ fn solar_engine_flags_are_real() {
                 "--charts",
             ],
         ),
+        ("compare", &["--left", "--right", "--json"]),
         ("verify-weather", &["--file"]),
     ];
 

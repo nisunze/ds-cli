@@ -12,6 +12,7 @@
 //! while preserving `ds solar run --prepared ... --out ...` for reproducible
 //! offline artifact work.
 
+pub mod compare;
 pub mod engine;
 pub mod exports;
 pub mod paired;
@@ -56,6 +57,7 @@ pub static DOMAIN: Domain = Domain {
     summary: "Solar preparation, local run lifecycle and artifact execution.",
     commands: &[
         &engine::COMMAND,
+        &compare::COMMAND,
         &prepare::COMMAND,
         &run::COMMAND,
         &paired_run::START_COMMAND,

@@ -271,6 +271,7 @@ update it.
 | `solar run result` | `solar.run.result` | read only | bounded public result receipt, with any unqueued governed publication |
 | `solar run cancel` | `solar.run.cancel` | local UI | cancellation receipt |
 | `solar result read` | `solar.result.read` | read only | bounded city result projection |
+| `solar result compare` | fixed native `compare` | read only | sealed-result equality and bounded provenance |
 | `solar results read` | `solar.results.read` | read only | bounded canonical dashboard-section projection |
 | `solar sync status` | `solar.sync.status` | read only | durable publication rows and state counts |
 | `solar portfolio list` | `solar.portfolio.list` | read only | governed ids, membership revisions and ordered cities |
@@ -296,7 +297,7 @@ set of product actions and never a generic desktop RPC.
 | final import | 10 min | bounded source validation plus optional local Pandoc render |
 | final submit | 30 s | exact imported-final lookup and publication enqueue |
 | headless `solar run` | 4 h | offline compute over a caller-supplied prepared batch |
-| `solar engine`, `solar verify-weather` | 20 s | external engine discovery or verification |
+| `solar engine`, `solar verify-weather`, `solar result compare` | 20 s | external engine discovery or bounded verification |
 
 `--concurrency` on `solar run start` is constrained to 1 through 32. This is a
 bounded native worker pool, not one WASM instance per city. `--serial`
@@ -307,7 +308,8 @@ launches; the assumption and report flags apply only to portfolio launches.
 
 ## Engine identity
 
-`ds solar engine`, the headless artifact runner and `solar verify-weather`
+`ds solar engine`, the headless artifact runner, `solar verify-weather` and
+`solar result compare`
 resolve the `ds-solar` sibling packaged with `ds`. `DS_SOLAR_BIN` is an
 explicit development override and wins when set. The paired product lifecycle
 uses the same release-pinned Solar source linked into DS GridDesign rather than
@@ -319,6 +321,13 @@ profile, supported schemas and a canonical manifest digest. `ds solar engine`
 returns that document with the resolved executable path, so headless results
 can be tied to the same exact Solar source revision as the desktop release.
 
+`ds solar result compare` validates both complete `ds-solar.result/v1`
+documents in that native engine, including recomputing each canonical digest,
+then returns the closed `ds-solar.result-comparison/v1` equality receipt with
+project/city, input, weather and engine provenance. A valid difference is data (`equal: false`), not a
+failure. The operation reads local artifacts only; it neither proves current
+project membership nor authorizes publication or mutation.
+
 ## Related
 
 - `crates/ds-cli-solar/src/seed.rs` — governed project seeding: preview and digest-bound apply
@@ -327,6 +336,7 @@ can be tied to the same exact Solar source revision as the desktop release.
 - `crates/ds-cli-solar/src/exports.rs` — paired city-report and exact portfolio-artifact exporter
 - `crates/ds-cli-solar/src/workflow.rs` — canonical result, sync, portfolio and final import/submit operations
 - `crates/ds-cli-solar/src/run.rs` — headless artifact adapter
+- `crates/ds-cli-solar/src/compare.rs` — headless sealed-result comparison adapter
 - `skills/ds-solar-workflow/` — single-city and explicit city-batch lifecycle guidance
 - `skills/ds-solar-portfolio/` — exact governed portfolio lifecycle guidance
 - [`../contracts/cli-output-contract.md`](../contracts/cli-output-contract.md)
