@@ -81,7 +81,19 @@ pub(crate) const PROFILE_TOO_BROAD: Refusal = Refusal {
 pub(crate) const HOST_UNKNOWN: Refusal = Refusal {
     code: "mcp_host_unknown",
     when: "`--host` names a host this command has no configuration recipe for",
-    remedy: "pass one of the hosts listed in `ds mcp install --help`, or omit --host to print the generic entry",
+    remedy: "pass one of the supported host tokens reported by `ds mcp install --output json`",
+};
+
+pub(crate) const HOST_OS_MISMATCH: Refusal = Refusal {
+    code: "mcp_host_os_mismatch",
+    when: "the selected host cannot locally spawn this executable on this operating system",
+    remedy: "run MCP installation from the compatible ds executable on the machine where the selected host runs",
+};
+
+pub(crate) const HOST_WRITE_UNSUPPORTED: Refusal = Refusal {
+    code: "mcp_host_write_unsupported",
+    when: "the selected adapter has a verified printable shape but no verified automatic merge",
+    remedy: "copy the exact proposed entry into the reported user-level target by hand",
 };
 
 pub(crate) const CONFIG_UNWRITABLE: Refusal = Refusal {

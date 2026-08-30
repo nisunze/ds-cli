@@ -186,15 +186,21 @@ fn broad_server_has_declared_stable_tools_and_reports_build_identity() {
             .unwrap()
             .contains(version["data"]["source_sha"].as_str().unwrap())
     );
-    // `--yes` because `mcp.install` is `machine_write`; without `--write` it
-    // still only prints, and this call writes nothing.
-    let install = cli(&["mcp", "install", "--output", "json", "--yes"]);
+    let install = cli(&["mcp", "install", "--output", "json"]);
     assert_eq!(install["data"]["source_sha"], version["data"]["source_sha"]);
     assert_eq!(install["data"]["written"], json!(false));
     assert_eq!(
         install["data"]["entry"]["servers"]["ds"]["args"],
         json!(["mcp", "serve", "--exposure", "chapters"])
     );
+    assert!(
+        install["data"]["supported_hosts"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|host| host["token"] == "claude-desktop")
+    );
+    assert_eq!(install["data"]["connection"]["transport"], "stdio");
     assert!(
         stderr.contains(&format!("serving {}", Chapter::ALL.len() + 1)),
         "{stderr}"
@@ -329,13 +335,19 @@ fn a_map_refusal_is_lazy_and_does_not_end_the_headless_server() {
 }
 
 #[test]
-fn installing_the_host_entry_is_gated_and_names_its_own_gate() {
-    // F7: the effect class was `local_file_write`, which is not in the
-    // confirmation set, so the `--write --yes` this command's help, its
-    // reference doc and the `ds-mcp-host` skill all asked for was decorative.
-    // Nothing is written here: the refusal happens before the handler runs.
-    let output = Command::new(env!("CARGO_BIN_EXE_ds"))
+fn install_discovery_is_blind_but_writing_stays_gated() {
+    let discovery = Command::new(env!("CARGO_BIN_EXE_ds"))
         .args(["mcp", "install", "--output", "json"])
+        .output()
+        .expect("ds runs");
+    assert!(discovery.status.success());
+
+    // Generic has no target, but --write must still hit confirmation before
+    // adapter-specific refusal logic.
+    let output = Command::new(env!("CARGO_BIN_EXE_ds"))
+        .args([
+            "mcp", "install", "--host", "generic", "--write", "--output", "json",
+        ])
         .output()
         .expect("ds runs");
     assert_eq!(output.status.code(), Some(2), "an unconfirmed gate exits 2");
@@ -346,6 +358,7 @@ fn installing_the_host_entry_is_gated_and_names_its_own_gate() {
     let descriptor = &descriptor["data"]["command"];
     assert_eq!(descriptor["effect"], "machine_write");
     assert_eq!(descriptor["confirmation_required"], json!(true));
+    assert_eq!(descriptor["confirmation_trigger"], "--write");
     let codes: BTreeSet<String> = descriptor["refusals"]
         .as_array()
         .expect("refusals")

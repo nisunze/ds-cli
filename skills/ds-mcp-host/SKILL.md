@@ -15,13 +15,13 @@ For a general agent, install the broad default. It advertises `ds_catalog` and
 eleven operator-intent chapter routers (12 tools total), even as commands grow:
 
 ```text
-ds mcp install --host vscode --output json --yes
+ds mcp install --host vscode --output json
 ds mcp install --host vscode --write --yes
 ```
 
-`install` changes this machine's integration settings, so dispatch requires
-`--yes` on every invocation, including the print-only one. `--write` is what
-decides whether the host file is edited.
+The first command is a read-only proposal and also reports `supported_hosts`.
+`--write` selects the machine-setting change, so dispatch then requires
+`--yes` before adapter code runs.
 
 For a narrow role, explicitly install one typed profile:
 
@@ -52,6 +52,9 @@ The entry belongs in the user profile on the PC where DS GridDesign is
 installed and paired, never a travelling workspace file. Run installation
 from the exact Stable, Canary, or development `ds` you intend the host to use.
 The receipt's `source_sha` must match `ds doctor`'s skill-bundle SHA.
+On Windows, `--host claude-desktop` targets Claude Desktop's verified
+user-level `mcpServers` configuration and Claude Desktop launches `ds.exe`
+directly after restart; VS Code is not involved.
 
 ## Broad-server routing
 

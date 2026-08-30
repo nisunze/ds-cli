@@ -243,20 +243,16 @@ carry the command's effect, authority, and the refusals it can name.
 ## Installing the host entry
 
 ```
-ds mcp install --yes                        # print the VS Code entry and its file
+ds mcp install --output json                # supported hosts plus the default VS Code proposal
+ds mcp install --host claude-desktop --output json # Windows Claude Desktop proposal
 ds mcp install --write --yes                # merge it into the VS Code user profile
-ds mcp install --host claude-code --yes     # other hosts: claude-code, cursor, codex, generic
+ds mcp install --host claude-code           # other hosts: claude-code, cursor, codex, generic
 ds mcp install --host claude-code --exposure commands --profile pls --write --yes
 ```
 
-`--yes` is on every one of those lines because confirmation in `ds` is decided
-by the **command's** effect, once, in `registry::dispatch` — not by which flags
-the invocation happens to carry. `mcp.install` is `machine_write`: its writing
-path targets a user-level host configuration file, which changes this machine's
-integration settings rather than a file in the workspace you are standing in.
-So dispatch refuses `confirmation_required` without `--yes`, including for the
-print-only invocation. A per-flag gate would have to be re-derived in every
-handler, and the one that forgot would be the one that mattered.
+`mcp.install` remains `machine_write`, but its declared `--write` switch is the
+central confirmation trigger. A proposal writes nothing and can be queried
+blindly; `--write` is refused without `--yes` before adapter code runs.
 
 Without `--write`, `install` prints the entry and the file it belongs in and
 changes nothing. With `--write` the merge is atomic: the merged document is
@@ -270,6 +266,15 @@ on Linux — never in a workspace file. The server must run on the PC where DS
 GridDesign is installed and paired; a workspace file travels to machines that
 have neither. With both Stable and Canary installed, run `install` from the
 `ds` of the app you use, and keep one server entry.
+
+Every result includes a host-neutral `connection` descriptor and a
+`supported_hosts` table. Thin adapters translate only the root and target;
+all hosts launch the same absolute executable and fixed stdio arguments.
+Claude Desktop is verified on Windows at
+`%APPDATA%\Claude\claude_desktop_config.json`, under `mcpServers.ds`. It
+starts `ds.exe` directly after a restart; VS Code need not be installed or
+running. See the [adapter contract](../contracts/mcp-client-adapter-contract.md)
+and [v3 migration note](../migration/mcp-client-adapters.md).
 
 Codex keeps TOML: `install --host codex` prints the data; translate it into
 `~/.codex/config.toml` under `[mcp_servers.ds]`. The install receipt and MCP

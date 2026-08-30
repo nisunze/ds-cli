@@ -131,17 +131,17 @@ source a reader can check anything against today.
 | `machine_write` | changes software or settings on this machine | **yes** |
 | `global_write` | mutates shared project state | **yes** |
 
-`machine_write` is the class for a command that reaches outside the operator's
+`machine_write` is the class for a command that can reach outside the operator's
 workspace into the machine itself — installing a component, or writing a
 user-level host configuration file. That is why `workstation install`,
-`workstation configure` and `mcp install` are gated while `report export`,
-which writes into a directory the caller named, is not.
+`workstation configure` and `mcp install --write` are gated while `report
+export`, which writes into a directory the caller named, is not.
 
 Confirmation is enforced once, in `registry::dispatch`, on the **command's**
-declared effect — so a handler cannot forget it, and it does not depend on
-which flags an invocation carries. A command whose writing path is gated is
-gated on every invocation, including the one that only prints what it would
-do. Read-only commands stay frictionless.
+declared effect — so a handler cannot forget it. A `machine_write` command
+that declares the unique `--write` switch uses that switch as its centralized
+trigger: its proposal is frictionless and its write is gated. Other effectful
+commands are gated on every invocation.
 
 Consent is never inferred from prose. `--yes` is the only way to pre-confirm.
 

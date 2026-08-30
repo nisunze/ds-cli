@@ -1281,7 +1281,16 @@ pub fn all_commands() -> Vec<&'static Command> {
 pub fn dispatch(entry: &Entry, tokens: &[String], context: &Context) -> Result<Value, Failure> {
     let inputs: Inputs = ds_cli_contract::parse(entry.command, tokens)?;
 
-    if entry.command.effect.needs_confirmation() && !context.confirmed {
+    // A machine-write command may expose one declared `--write` switch for a
+    // read-only preview. The declaration remains machine_write, but the gate
+    // is required only when that switch selects the writing path. Parsing
+    // still happens first and the policy stays centralized here.
+    let confirmation_required = entry.command.effect.needs_confirmation()
+        && entry
+            .command
+            .arg("write")
+            .is_none_or(|_| inputs.switch("write"));
+    if confirmation_required && !context.confirmed {
         return Err(Failure::invalid(
             "confirmation_required",
             format!(

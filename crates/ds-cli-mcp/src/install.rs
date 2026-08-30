@@ -6,14 +6,13 @@
 //! host's user-level file (never a workspace file: the server must run on the
 //! machine that has DS GridDesign, and a workspace file travels).
 //!
-//! That target is what fixes the effect class. A user-level host
-//! configuration is not "a file in your workspace" — it changes how every
-//! agent session on this machine starts, and it survives the workspace being
-//! deleted. So the command is `machine_write` and dispatch requires `--yes`,
-//! the same gate `ds workstation install` passes through. It was
-//! `local_file_write` once, which is not in the confirmation set, so the
-//! `--yes` this command's own help asked for was decorative.
+//! That target fixes the effect class. A user-level host configuration is not
+//! "a file in your workspace" — it changes how every agent session on this
+//! machine starts. The command remains `machine_write`; its declared
+//! `--write` switch is the centralized confirmation trigger, while the blind
+//! proposal path is read-only.
 
+use std::collections::BTreeMap;
 use std::fs::{File, Metadata, OpenOptions};
 use std::io::{Read as _, Write as _};
 use std::path::{Path, PathBuf};
@@ -27,20 +26,162 @@ use ds_cli_contract::spec::{
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
 
-pub const HOSTS: &[&str] = &["vscode", "claude-code", "codex", "cursor", "generic"];
+pub const HOSTS: &[&str] = &[
+    "vscode",
+    "claude-code",
+    "claude-desktop",
+    "codex",
+    "cursor",
+    "generic",
+];
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Platform {
+    Windows,
+    Macos,
+    Linux,
+}
+
+impl Platform {
+    const fn token(self) -> &'static str {
+        match self {
+            Self::Windows => "windows",
+            Self::Macos => "macos",
+            Self::Linux => "linux",
+        }
+    }
+
+    const fn current() -> Self {
+        #[cfg(target_os = "windows")]
+        return Self::Windows;
+        #[cfg(target_os = "macos")]
+        return Self::Macos;
+        #[cfg(all(not(target_os = "windows"), not(target_os = "macos")))]
+        Self::Linux
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ConfigRoot {
+    Servers,
+    McpServers,
+    McpServersSnake,
+}
+
+impl ConfigRoot {
+    const fn token(self) -> &'static str {
+        match self {
+            Self::Servers => "servers",
+            Self::McpServers => "mcpServers",
+            Self::McpServersSnake => "mcp_servers",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+struct HostAdapter {
+    token: &'static str,
+    display_name: &'static str,
+    platforms: &'static [Platform],
+    root: ConfigRoot,
+    automatic_merge: bool,
+    restart_requirement: &'static str,
+}
+
+const ALL_PLATFORMS: &[Platform] = &[Platform::Windows, Platform::Macos, Platform::Linux];
+const WINDOWS_ONLY: &[Platform] = &[Platform::Windows];
+
+const ADAPTERS: &[HostAdapter] = &[
+    HostAdapter {
+        token: "vscode",
+        display_name: "Visual Studio Code",
+        platforms: ALL_PLATFORMS,
+        root: ConfigRoot::Servers,
+        automatic_merge: true,
+        restart_requirement: "restart VS Code or start a new agent session",
+    },
+    HostAdapter {
+        token: "claude-code",
+        display_name: "Claude Code",
+        platforms: ALL_PLATFORMS,
+        root: ConfigRoot::McpServers,
+        automatic_merge: true,
+        restart_requirement: "restart Claude Code",
+    },
+    HostAdapter {
+        token: "claude-desktop",
+        display_name: "Claude Desktop",
+        platforms: WINDOWS_ONLY,
+        root: ConfigRoot::McpServers,
+        automatic_merge: true,
+        restart_requirement: "restart Claude Desktop",
+    },
+    HostAdapter {
+        token: "codex",
+        display_name: "Codex",
+        platforms: ALL_PLATFORMS,
+        root: ConfigRoot::McpServersSnake,
+        automatic_merge: false,
+        restart_requirement: "restart Codex",
+    },
+    HostAdapter {
+        token: "cursor",
+        display_name: "Cursor",
+        platforms: ALL_PLATFORMS,
+        root: ConfigRoot::McpServers,
+        automatic_merge: true,
+        restart_requirement: "restart Cursor or start a new agent session",
+    },
+    HostAdapter {
+        token: "generic",
+        display_name: "Generic MCP client",
+        platforms: ALL_PLATFORMS,
+        root: ConfigRoot::McpServers,
+        automatic_merge: false,
+        restart_requirement: "follow the MCP client's restart requirements",
+    },
+];
+
+#[derive(Debug, Clone)]
+struct ConnectionDescriptor {
+    executable: PathBuf,
+    args: Vec<String>,
+    exposure: crate::surface::Exposure,
+    profile: Option<crate::surface::Profile>,
+    build: Value,
+    skill_bundle_source_sha: Option<String>,
+    required_environment: BTreeMap<String, String>,
+}
+
+impl ConnectionDescriptor {
+    fn json(&self) -> Value {
+        json!({
+            "server_name": "ds",
+            "transport": "stdio",
+            "executable": self.executable.display().to_string(),
+            "args": self.args,
+            "exposure": self.exposure.token(),
+            "profile": self.profile.map(crate::surface::Profile::token),
+            "build": self.build,
+            "skill_bundle_source_sha": self.skill_bundle_source_sha,
+            "required_environment": self.required_environment,
+        })
+    }
+}
 
 pub static COMMAND: Command = Command {
     id: "mcp.install",
     path: &["mcp", "install"],
-    contract: 2,
+    contract: 3,
     chapter: ds_cli_contract::spec::Chapter::Catalog,
     summary: "Print or write an MCP host entry for this `ds`.",
     purpose: "\
-Prints this executable's stdio server entry and its user-level host file. With \
-`--write`, merges only the `ds` entry and preserves other servers, staging the \
+Reports this executable's stdio server entry and user-level host target. Without \
+`--write`, lists supported hosts and prints the exact proposed entry. \
+With `--write --yes`, merges only the `ds` entry and preserves other servers, staging the \
 merged document beside the target and renaming it into place. It never writes \
 workspace configuration. Changing a user-level host file changes how agent \
-sessions start on this machine, so every invocation needs `--yes`.",
+sessions start on this machine, so the writing path needs `--yes`.",
     effect: Effect::MachineWrite,
     authority: Authority::None,
     execution: Execution::Sync,
@@ -48,10 +189,10 @@ sessions start on this machine, so every invocation needs `--yes`.",
         Arg {
             name: "host",
             kind: ArgKind::Value,
-            value: "<vscode|claude-code|codex|cursor|generic>",
+            value: "<vscode|claude-code|claude-desktop|codex|cursor|generic>",
             required: false,
             default: Some("vscode"),
-            choices: &["vscode", "claude-code", "codex", "cursor", "generic"],
+            choices: &[],
             summary: "Which host's configuration shape and file to target.",
         },
         Arg {
@@ -83,12 +224,12 @@ sessions start on this machine, so every invocation needs `--yes`.",
         },
     ],
     output: "\
-The host, the server entry as JSON, the file it belongs in, and whether it \
-was written.",
+The canonical connection descriptor, supported hosts, selected host entry and \
+user-level target, build/skill identity, and whether a write occurred.",
     examples: &[
         Example {
-            command: "ds mcp install --output json --yes",
-            note: "Print the VS Code entry and path; no write.",
+            command: "ds mcp install --output json",
+            note: "List supported hosts and print the default VS Code entry; no write.",
             runnable: true,
         },
         Example {
@@ -99,13 +240,15 @@ was written.",
     ],
     refusals: &[
         crate::HOST_UNKNOWN,
+        crate::HOST_OS_MISMATCH,
+        crate::HOST_WRITE_UNSUPPORTED,
         crate::CONFIG_UNWRITABLE,
         crate::PROFILE_EXPOSURE_INVALID,
         crate::CAPABILITIES_UNAVAILABLE,
         Refusal {
             code: "confirmation_required",
-            when: "--yes was not given for a command that can change this machine's host configuration",
-            remedy: "re-run with --yes; without --write the entry is only printed",
+            when: "--write was requested without --yes",
+            remedy: "inspect the proposed entry first, then re-run with --write --yes",
         },
     ],
     reference: Some("docs/reference/mcp.md"),
@@ -114,16 +257,20 @@ was written.",
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let host = inputs.value("host").unwrap_or("vscode");
-    if !HOSTS.contains(&host) {
-        return Err(Failure::invalid("mcp_host_unknown", format!("no configuration recipe for host `{host}`"))
-            .remedy("pass one of the hosts listed in `ds mcp install --help`, or omit --host to print the generic entry")
-            .detail(json!({ "hosts": HOSTS })));
-    }
+    let adapter = adapter(host).ok_or_else(|| unknown_host(host))?;
     let executable = std::env::current_exe().map_err(|error| {
         Failure::failed("mcp_config_unwritable", format!("could not resolve this executable's path: {error}"))
             .remedy("read the reported path; fix or remove a malformed file, then re-run, or copy the printed entry by hand")
     })?;
+    if !executable.is_absolute() {
+        return Err(Failure::failed(
+            "mcp_config_unwritable",
+            "the running ds executable did not resolve to an absolute path",
+        )
+        .remedy("run the installed ds by its absolute path, then retry MCP installation"));
+    }
     let build = crate::tools::build_identity(&executable)?;
+    let doctor = crate::tools::doctor_identity(&executable)?;
     let exposure =
         crate::surface::Exposure::from_token(inputs.value("exposure").unwrap_or("chapters"))
             .expect("the command parser enforces exposure choices");
@@ -138,29 +285,86 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         )
         .remedy("pass `--exposure commands --profile <name>`, or omit `--profile`"));
     }
-    let entry = server_entry(host, &executable, exposure, profile);
-    let file = config_file(host);
+    let descriptor = connection_descriptor(
+        executable,
+        build,
+        doctor["skills"]["source_sha"].as_str().map(str::to_owned),
+        exposure,
+        profile,
+    );
+    validate_host_platform(adapter, &descriptor)?;
+    let entry = server_entry(adapter, &descriptor);
+    let file = config_file(adapter);
+    if adapter.automatic_merge && file.is_none() {
+        return Err(Failure::failed(
+            "mcp_config_unwritable",
+            format!("host `{host}` has no resolvable user-level configuration target"),
+        )
+        .remedy(
+            "restore the platform's HOME/USERPROFILE/APPDATA environment and retry from the host machine",
+        ));
+    }
+    if let Some(path) = &file
+        && !path.is_absolute()
+    {
+        return Err(Failure::failed(
+            "mcp_config_unwritable",
+            format!(
+                "host `{host}` resolved a non-absolute user-level target: {}",
+                path.display()
+            ),
+        )
+        .remedy(
+            "restore an absolute HOME/USERPROFILE/APPDATA value and retry from the host machine",
+        ));
+    }
     let written = if inputs.switch("write") {
+        if !adapter.automatic_merge {
+            return Err(Failure::invalid(
+                "mcp_host_write_unsupported",
+                format!(
+                    "host `{host}` has no verified automatic merge; the proposed entry was not written"
+                ),
+            )
+            .remedy(format!(
+                "copy only the `ds` entry under `{}` in the reported user-level configuration",
+                adapter.root.token()
+            ))
+            .next(format!("ds mcp install --host {host} --output json"))
+            .detail(json!({ "host": host, "supported_hosts": HOSTS })));
+        }
         let Some(path) = file.as_ref() else {
-            return Err(Failure::invalid("mcp_host_unknown", format!("host `{host}` has no user-level file to write; copy the printed entry into your host's MCP settings"))
-                .remedy("pass one of the hosts listed in `ds mcp install --help`, or omit --host to print the generic entry"));
+            return Err(Failure::failed(
+                "mcp_config_unwritable",
+                format!("host `{host}` has no resolvable user-level configuration path"),
+            )
+            .remedy(
+                "restore the platform's user profile environment and retry from that host machine",
+            ));
         };
         merge_into_file(path, host, &entry)?;
         true
     } else {
         false
     };
+    let descriptor_json = descriptor.json();
     Ok(json!({
         "host": host,
         "server_name": "ds",
         "entry": entry,
         "file": file.map(|path| path.display().to_string()),
         "written": written,
-        "executable": executable.display().to_string(),
-        "source_sha": build["source_sha"],
-        "dirty": build["dirty"],
+        "executable": descriptor.executable.display().to_string(),
+        "source_sha": descriptor.build["source_sha"],
+        "dirty": descriptor.build["dirty"],
         "exposure": exposure.token(),
         "profile": profile.map(crate::surface::Profile::token),
+        "transport": "stdio",
+        "build": descriptor.build,
+        "skill_bundle_source_sha": descriptor.skill_bundle_source_sha,
+        "required_environment": descriptor.required_environment,
+        "connection": descriptor_json,
+        "supported_hosts": supported_hosts(),
     }))
 }
 
@@ -183,63 +387,246 @@ pub fn render(data: &Value) -> String {
     out
 }
 
-/// The entry in the host's own dialect. Every host launches the same thing.
-pub fn server_entry(
-    host: &str,
-    executable: &std::path::Path,
+fn connection_descriptor(
+    executable: PathBuf,
+    build: Value,
+    skill_bundle_source_sha: Option<String>,
     exposure: crate::surface::Exposure,
     profile: Option<crate::surface::Profile>,
-) -> Value {
-    let command = executable.display().to_string();
-    let mut args = vec!["mcp", "serve", "--exposure", exposure.token()];
+) -> ConnectionDescriptor {
+    let mut args = vec![
+        "mcp".to_string(),
+        "serve".to_string(),
+        "--exposure".to_string(),
+        exposure.token().to_string(),
+    ];
     if let Some(profile) = profile {
-        args.extend(["--profile", profile.token()]);
+        args.extend(["--profile".to_string(), profile.token().to_string()]);
     }
-    match host {
-        // VS Code: `servers` map with an explicit `type`.
-        "vscode" => {
-            json!({ "servers": { "ds": { "type": "stdio", "command": command, "args": args } } })
-        }
-        // Claude Code, Cursor: `mcpServers` map.
-        "claude-code" | "cursor" | "generic" => {
-            json!({ "mcpServers": { "ds": { "command": command, "args": args } } })
-        }
-        // Codex: TOML on disk; the JSON here is the same data for the caller to translate.
-        "codex" => {
-            json!({ "mcp_servers": { "ds": { "command": command, "args": args } } })
-        }
-        _ => json!({ "mcpServers": { "ds": { "command": command, "args": args } } }),
+    ConnectionDescriptor {
+        executable,
+        args,
+        exposure,
+        profile,
+        build,
+        skill_bundle_source_sha,
+        required_environment: BTreeMap::new(),
     }
 }
 
-/// The user-level file for the host on this platform; `None` when the host
-/// keeps no JSON file this command should touch (Codex uses TOML).
-pub fn config_file(host: &str) -> Option<PathBuf> {
+/// Transform the one canonical descriptor into a host's verified dialect.
+fn server_entry(adapter: &HostAdapter, descriptor: &ConnectionDescriptor) -> Value {
+    let command = descriptor.executable.display().to_string();
+    let server = if adapter.root == ConfigRoot::Servers {
+        json!({ "type": "stdio", "command": command, "args": descriptor.args })
+    } else {
+        json!({ "command": command, "args": descriptor.args })
+    };
+    json!({ adapter.root.token(): { "ds": server } })
+}
+
+fn adapter(host: &str) -> Option<&'static HostAdapter> {
+    ADAPTERS.iter().find(|adapter| adapter.token == host)
+}
+
+fn unknown_host(host: &str) -> Failure {
+    let tokens = HOSTS.join(", ");
+    Failure::invalid(
+        "mcp_host_unknown",
+        format!("no configuration recipe for host `{host}`"),
+    )
+    .remedy(format!("pass one of these supported host tokens: {tokens}"))
+    .next(format!(
+        "ds mcp install --host <{}> --output json",
+        HOSTS.join("|")
+    ))
+    .detail(json!({ "supported_hosts": HOSTS }))
+}
+
+/// The user-level file for the host on this platform. Generic output has no
+/// target, and Codex remains print-only because its on-disk format is TOML.
+fn config_file(adapter: &HostAdapter) -> Option<PathBuf> {
     let home = std::env::var_os("HOME")
         .or_else(|| std::env::var_os("USERPROFILE"))
-        .map(PathBuf::from)?;
-    match host {
-        "vscode" => Some(if cfg!(target_os = "windows") {
-            PathBuf::from(std::env::var_os("APPDATA")?)
-                .join("Code")
-                .join("User")
-                .join("mcp.json")
-        } else if cfg!(target_os = "macos") {
-            home.join("Library")
+        .map(PathBuf::from);
+    config_file_for(
+        adapter,
+        Platform::current(),
+        home.as_deref(),
+        std::env::var_os("APPDATA").as_deref().map(Path::new),
+    )
+}
+
+fn config_file_for(
+    adapter: &HostAdapter,
+    platform: Platform,
+    home: Option<&Path>,
+    appdata: Option<&Path>,
+) -> Option<PathBuf> {
+    if !adapter.platforms.contains(&platform) {
+        return None;
+    }
+    match adapter.token {
+        "vscode" => Some(if platform == Platform::Windows {
+            appdata?.join("Code").join("User").join("mcp.json")
+        } else if platform == Platform::Macos {
+            home?
+                .join("Library")
                 .join("Application Support")
                 .join("Code")
                 .join("User")
                 .join("mcp.json")
         } else {
-            home.join(".config")
+            home?
+                .join(".config")
                 .join("Code")
                 .join("User")
                 .join("mcp.json")
         }),
-        "claude-code" => Some(home.join(".claude.json")),
-        "cursor" => Some(home.join(".cursor").join("mcp.json")),
+        "claude-code" => Some(home?.join(".claude.json")),
+        "claude-desktop" => Some(appdata?.join("Claude").join("claude_desktop_config.json")),
+        "codex" => Some(home?.join(".codex").join("config.toml")),
+        "cursor" => Some(home?.join(".cursor").join("mcp.json")),
         _ => None,
     }
+}
+
+fn supported_hosts() -> Vec<Value> {
+    let current = Platform::current();
+    ADAPTERS
+        .iter()
+        .map(|adapter| {
+            let resolved = config_file(adapter);
+            let discoverable = resolved.as_ref().is_some_and(|path| {
+                path.exists() || path.parent().is_some_and(Path::exists)
+            });
+            json!({
+                "token": adapter.token,
+                "display_name": adapter.display_name,
+                "supported_platforms": adapter.platforms.iter().map(|platform| platform.token()).collect::<Vec<_>>(),
+                "supported_on_this_platform": adapter.platforms.contains(&current),
+                "configuration_path": resolved.map(|path| path.display().to_string()),
+                "configuration_paths": configuration_paths(adapter),
+                "configuration_root": adapter.root.token(),
+                "supported_transports": ["stdio"],
+                "automatic_merge": adapter.automatic_merge,
+                "discoverable": discoverable,
+                "appears_installed_or_discoverable": discoverable,
+                "restart_requirement": adapter.restart_requirement,
+            })
+        })
+        .collect()
+}
+
+fn configuration_paths(adapter: &HostAdapter) -> Vec<Value> {
+    match adapter.token {
+        "vscode" => vec![
+            json!({ "platform": "windows", "path": r"%APPDATA%\Code\User\mcp.json" }),
+            json!({ "platform": "macos", "path": "~/Library/Application Support/Code/User/mcp.json" }),
+            json!({ "platform": "linux", "path": "~/.config/Code/User/mcp.json" }),
+        ],
+        "claude-code" => ALL_PLATFORMS
+            .iter()
+            .map(|platform| json!({ "platform": platform.token(), "path": "~/.claude.json" }))
+            .collect(),
+        "claude-desktop" => vec![json!({
+            "platform": "windows",
+            "path": r"%APPDATA%\Claude\claude_desktop_config.json",
+        })],
+        "codex" => ALL_PLATFORMS
+            .iter()
+            .map(|platform| json!({ "platform": platform.token(), "path": "~/.codex/config.toml" }))
+            .collect(),
+        "cursor" => ALL_PLATFORMS
+            .iter()
+            .map(|platform| json!({ "platform": platform.token(), "path": "~/.cursor/mcp.json" }))
+            .collect(),
+        _ => Vec::new(),
+    }
+}
+
+fn validate_host_platform(
+    adapter: &HostAdapter,
+    descriptor: &ConnectionDescriptor,
+) -> Result<(), Failure> {
+    let current = Platform::current();
+    let executable_platform = executable_platform(&descriptor.executable).map_err(|reason| {
+        Failure::failed(
+            "mcp_host_os_mismatch",
+            format!("the selected ds executable format could not be verified: {reason}"),
+        )
+        .remedy("run MCP installation from a native installed ds executable on the host machine")
+        .next(format!(
+            "ds mcp install --host {} --output json",
+            adapter.token
+        ))
+    })?;
+    if executable_platform == current && adapter.platforms.contains(&current) {
+        return Ok(());
+    }
+    let supported = adapter
+        .platforms
+        .iter()
+        .map(|platform| platform.token())
+        .collect::<Vec<_>>()
+        .join(", ");
+    let profile = descriptor.build["profile"].as_str().unwrap_or("unknown");
+    Err(Failure::invalid(
+        "mcp_host_os_mismatch",
+        format!(
+            "{} cannot locally spawn {} from this {} process",
+            adapter.display_name,
+            descriptor.executable.display(),
+            current.token()
+        ),
+    )
+    .remedy(format!(
+        "run installation on a {supported} machine where {} is installed, using that machine's ds executable; selected executable {} is {} profile {profile}",
+        adapter.display_name,
+        descriptor.executable.display(),
+        executable_platform.token(),
+    ))
+    .next(format!(
+        "ds mcp install --host {} --output json",
+        adapter.token
+    ))
+    .detail(json!({
+        "host": adapter.token,
+        "host_platforms": adapter.platforms.iter().map(|platform| platform.token()).collect::<Vec<_>>(),
+        "current_platform": current.token(),
+        "executable_platform": executable_platform.token(),
+        "executable": descriptor.executable.display().to_string(),
+        "build_profile": profile,
+    })))
+}
+
+fn executable_platform(path: &Path) -> Result<Platform, String> {
+    let metadata = std::fs::symlink_metadata(path).map_err(|error| error.to_string())?;
+    if !metadata.file_type().is_file() {
+        return Err("path is not a regular file".to_string());
+    }
+    let mut file = File::open(path).map_err(|error| error.to_string())?;
+    let mut magic = [0u8; 4];
+    file.read_exact(&mut magic)
+        .map_err(|error| error.to_string())?;
+    if magic[..2] == *b"MZ" {
+        return Ok(Platform::Windows);
+    }
+    if magic == [0x7f, b'E', b'L', b'F'] {
+        return Ok(Platform::Linux);
+    }
+    if matches!(
+        magic,
+        [0xfe, 0xed, 0xfa, 0xce]
+            | [0xce, 0xfa, 0xed, 0xfe]
+            | [0xfe, 0xed, 0xfa, 0xcf]
+            | [0xcf, 0xfa, 0xed, 0xfe]
+            | [0xca, 0xfe, 0xba, 0xbe]
+            | [0xbe, 0xba, 0xfe, 0xca]
+    ) {
+        return Ok(Platform::Macos);
+    }
+    Err("file has no supported PE, ELF, or Mach-O signature".to_string())
 }
 
 /// Merge `entry` (one top-level map with one server) into the JSON at `path`,
@@ -727,17 +1114,21 @@ impl Drop for InstallLock {
 /// document's map of the same name, replacing only the `ds` server.
 pub fn merge(document: &Value, entry: &Value) -> Option<Value> {
     let mut root = document.as_object()?.clone();
-    for (section, servers) in entry.as_object()? {
-        let mut existing = root
-            .get(section)
-            .and_then(Value::as_object)
-            .cloned()
-            .unwrap_or_else(Map::new);
-        for (name, server) in servers.as_object()? {
-            existing.insert(name.clone(), server.clone());
-        }
-        root.insert(section.clone(), Value::Object(existing));
+    let entry_root = entry.as_object()?;
+    if entry_root.len() != 1 {
+        return None;
     }
+    let (section, servers) = entry_root.iter().next()?;
+    let servers = servers.as_object()?;
+    if servers.len() != 1 || !servers.contains_key("ds") {
+        return None;
+    }
+    let mut existing = match root.get(section) {
+        Some(value) => value.as_object()?.clone(),
+        None => Map::new(),
+    };
+    existing.insert("ds".to_string(), servers["ds"].clone());
+    root.insert(section.clone(), Value::Object(existing));
     Some(Value::Object(root))
 }
 
@@ -746,7 +1137,19 @@ mod tests {
     use super::*;
 
     fn default_entry(host: &str, executable: &std::path::Path) -> Value {
-        server_entry(host, executable, crate::surface::Exposure::Chapters, None)
+        let descriptor = connection_descriptor(
+            executable.to_path_buf(),
+            json!({
+                "source_sha": "0123456789012345678901234567890123456789",
+                "dirty": false,
+                "profile": "debug",
+                "target": "x86_64-unknown-linux-gnu",
+            }),
+            Some("0123456789012345678901234567890123456789".to_string()),
+            crate::surface::Exposure::Chapters,
+            None,
+        );
+        server_entry(adapter(host).expect("adapter"), &descriptor)
     }
 
     #[test]
@@ -762,16 +1165,158 @@ mod tests {
 
     #[test]
     fn typed_profile_entry_names_both_exposure_and_profile() {
-        let entry = server_entry(
-            "claude-code",
-            std::path::Path::new("/usr/bin/ds"),
+        let descriptor = connection_descriptor(
+            std::path::PathBuf::from("/usr/bin/ds"),
+            json!({ "source_sha": "a", "dirty": false, "profile": "release" }),
+            Some("a".to_string()),
             crate::surface::Exposure::Commands,
             Some(crate::surface::Profile::Pls),
         );
+        let entry = server_entry(adapter("claude-code").unwrap(), &descriptor);
         assert_eq!(
             entry["mcpServers"]["ds"]["args"],
             json!(["mcp", "serve", "--exposure", "commands", "--profile", "pls"])
         );
+    }
+
+    #[test]
+    fn every_adapter_is_table_driven_and_claude_desktop_uses_its_verified_root() {
+        assert_eq!(
+            ADAPTERS
+                .iter()
+                .map(|adapter| adapter.token)
+                .collect::<Vec<_>>(),
+            HOSTS
+        );
+        let entry = default_entry(
+            "claude-desktop",
+            std::path::Path::new(r"C:\Program Files\DS GridDesign\ds.exe"),
+        );
+        assert_eq!(
+            entry["mcpServers"]["ds"]["command"],
+            r"C:\Program Files\DS GridDesign\ds.exe"
+        );
+        assert_eq!(
+            entry["mcpServers"]["ds"]["args"],
+            json!(["mcp", "serve", "--exposure", "chapters"])
+        );
+        assert_eq!(
+            configuration_paths(adapter("claude-desktop").unwrap()),
+            vec![json!({
+                "platform": "windows",
+                "path": r"%APPDATA%\Claude\claude_desktop_config.json",
+            })]
+        );
+    }
+
+    #[test]
+    fn windows_paths_are_verified_user_level_targets() {
+        let home = Path::new(r"C:\Users\operator");
+        let appdata = Path::new(r"C:\Users\operator\AppData\Roaming");
+        assert_eq!(
+            config_file_for(
+                adapter("claude-desktop").unwrap(),
+                Platform::Windows,
+                Some(home),
+                Some(appdata),
+            ),
+            Some(appdata.join("Claude").join("claude_desktop_config.json"))
+        );
+        assert_eq!(
+            config_file_for(
+                adapter("vscode").unwrap(),
+                Platform::Windows,
+                Some(home),
+                Some(appdata),
+            ),
+            Some(appdata.join("Code").join("User").join("mcp.json"))
+        );
+    }
+
+    #[test]
+    fn claude_desktop_is_refused_off_windows_and_generic_has_no_guessed_path() {
+        assert_eq!(
+            config_file_for(
+                adapter("claude-desktop").unwrap(),
+                Platform::Linux,
+                Some(Path::new("/home/operator")),
+                None,
+            ),
+            None
+        );
+        assert_eq!(
+            config_file_for(
+                adapter("generic").unwrap(),
+                Platform::Linux,
+                Some(Path::new("/home/operator")),
+                None,
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn canonical_descriptor_keeps_host_neutral_identity_and_required_environment() {
+        let descriptor = connection_descriptor(
+            PathBuf::from("/opt/ds/bin/ds"),
+            json!({ "source_sha": "abc", "dirty": false, "profile": "release" }),
+            Some("abc".to_string()),
+            crate::surface::Exposure::Commands,
+            Some(crate::surface::Profile::SurveyProjects),
+        );
+        let value = descriptor.json();
+        assert_eq!(value["server_name"], "ds");
+        assert_eq!(value["transport"], "stdio");
+        assert_eq!(value["executable"], "/opt/ds/bin/ds");
+        assert_eq!(value["build"]["source_sha"], "abc");
+        assert_eq!(value["skill_bundle_source_sha"], "abc");
+        assert_eq!(value["required_environment"], json!({}));
+        assert_eq!(value["profile"], "survey-projects");
+    }
+
+    #[test]
+    fn supported_host_records_expose_every_discovery_field() {
+        let hosts = supported_hosts();
+        assert_eq!(hosts.len(), HOSTS.len());
+        for (record, token) in hosts.iter().zip(HOSTS) {
+            assert_eq!(record["token"], *token);
+            assert!(record["display_name"].is_string());
+            assert!(record["supported_platforms"].is_array());
+            assert!(record["configuration_paths"].is_array());
+            assert!(record["configuration_root"].is_string());
+            assert_eq!(record["supported_transports"], json!(["stdio"]));
+            assert!(record["automatic_merge"].is_boolean());
+            assert!(record["appears_installed_or_discoverable"].is_boolean());
+            assert!(record["restart_requirement"].is_string());
+        }
+    }
+
+    #[test]
+    fn unknown_host_remedy_and_next_enumerate_every_token() {
+        let failure = unknown_host("invented");
+        for token in HOSTS {
+            assert!(failure.remedy_text().unwrap().contains(token));
+            assert!(failure.next_commands()[0].contains(token));
+        }
+    }
+
+    #[test]
+    fn executable_formats_are_checked_without_guessing_from_the_filename() {
+        let dir = scratch("formats");
+        std::fs::create_dir_all(&dir).unwrap();
+        let pe = dir.join("pe.bin");
+        let elf = dir.join("elf.exe");
+        let macho = dir.join("macho.bin");
+        let unknown = dir.join("unknown.bin");
+        std::fs::write(&pe, b"MZ\0\0").unwrap();
+        std::fs::write(&elf, b"\x7fELF").unwrap();
+        std::fs::write(&macho, [0xcf, 0xfa, 0xed, 0xfe]).unwrap();
+        std::fs::write(&unknown, b"text").unwrap();
+        assert_eq!(executable_platform(&pe), Ok(Platform::Windows));
+        assert_eq!(executable_platform(&elf), Ok(Platform::Linux));
+        assert_eq!(executable_platform(&macho), Ok(Platform::Macos));
+        assert!(executable_platform(&unknown).is_err());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
@@ -782,6 +1327,52 @@ mod tests {
         assert_eq!(merged["inputs"], json!([]));
         assert_eq!(merged["servers"]["other"]["command"], "x");
         assert_eq!(merged["servers"]["ds"]["command"], "/new/ds");
+    }
+
+    #[test]
+    fn claude_desktop_merge_preserves_siblings_and_unrelated_settings() {
+        let existing = json!({
+            "preferences": { "theme": "dark" },
+            "mcpServers": {
+                "other": { "command": "other.exe" },
+                "ds": { "command": "old.exe" },
+            },
+        });
+        let entry = default_entry(
+            "claude-desktop",
+            Path::new(r"C:\Program Files\DS GridDesign\ds.exe"),
+        );
+        let merged = merge(&existing, &entry).unwrap();
+        assert_eq!(merged["preferences"]["theme"], "dark");
+        assert_eq!(merged["mcpServers"]["other"]["command"], "other.exe");
+        assert_eq!(
+            merged["mcpServers"]["ds"]["command"],
+            r"C:\Program Files\DS GridDesign\ds.exe"
+        );
+    }
+
+    #[test]
+    fn merge_is_idempotent_and_refuses_malformed_or_overbroad_sections() {
+        let entry = default_entry("vscode", std::path::Path::new("/new/ds"));
+        let existing = json!({ "inputs": [], "servers": { "other": { "command": "x" } } });
+        let once = merge(&existing, &entry).unwrap();
+        let twice = merge(&once, &entry).unwrap();
+        assert_eq!(once, twice);
+        assert!(merge(&json!({ "servers": "not-an-object" }), &entry).is_none());
+        assert!(
+            merge(
+                &existing,
+                &json!({ "servers": { "ds": {}, "foreign": {} } })
+            )
+            .is_none()
+        );
+        assert!(
+            merge(
+                &existing,
+                &json!({ "servers": { "ds": {} }, "otherRoot": {} })
+            )
+            .is_none()
+        );
     }
 
     #[test]
@@ -1058,13 +1649,10 @@ mod tests {
     }
 
     #[test]
-    fn the_declared_effect_makes_the_documented_yes_real() {
-        // F7: this command writes a *user-level host* file, not a workspace
-        // file. `local_file_write` is not in the confirmation set, so the
-        // `--write --yes` its own help and `docs/reference/mcp.md` ask for was
-        // decorative. Reverting either half of this fails here.
+    fn the_declared_effect_and_write_trigger_keep_confirmation_discoverable() {
         assert_eq!(COMMAND.effect, Effect::MachineWrite);
         assert!(COMMAND.effect.needs_confirmation());
+        assert!(COMMAND.arg("write").is_some());
         assert!(
             COMMAND
                 .refusals

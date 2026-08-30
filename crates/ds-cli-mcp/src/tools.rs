@@ -637,6 +637,37 @@ pub fn build_identity(executable: &PathBuf) -> Result<Value, Failure> {
     Ok(envelope.get("data").cloned().unwrap_or(Value::Null))
 }
 
+/// Read this exact executable's doctor result. The install descriptor uses
+/// only the verified skill-bundle source SHA from it; a missing or stale
+/// user-level skill copy never prevents a host from launching MCP.
+pub fn doctor_identity(executable: &PathBuf) -> Result<Value, Failure> {
+    let argv = [
+        "doctor".to_string(),
+        "--output".to_string(),
+        "json".to_string(),
+    ];
+    let (code, stdout, stderr) = run_cli(executable, &argv).map_err(|message| {
+        Failure::failed("mcp_capabilities_unavailable", message)
+            .remedy("run `ds doctor --output json` and repair this executable")
+    })?;
+    let envelope: Value = serde_json::from_str(&stdout).map_err(|error| {
+        Failure::failed(
+            "mcp_capabilities_unavailable",
+            format!("`ds doctor` emitted no envelope ({error}): {stderr}"),
+        )
+        .remedy("run `ds doctor --output json` and repair this executable")
+    })?;
+    if code != 0 || envelope.get("status").and_then(Value::as_str) != Some("ok") {
+        return Err(Failure::failed(
+            "mcp_capabilities_unavailable",
+            "`ds doctor --output json` refused",
+        )
+        .remedy("run `ds doctor --output json` and repair this executable")
+        .detail(envelope));
+    }
+    Ok(envelope.get("data").cloned().unwrap_or(Value::Null))
+}
+
 /// Read one `ds capabilities …` envelope and return its `data`.
 fn capabilities(
     executable: &PathBuf,
