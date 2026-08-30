@@ -197,7 +197,7 @@ present, must be non-null. `connectivity` and `detailed_location` must be
 objects, and `geometry` must satisfy the shared GeoJSON contract.
 
 ```json
-{"doc_id":"pole-104","idempotency_key":"<opaque-key>","data":{},"metadata":{"created_at":"2026-08-30T12:00:00Z"},"context_key":"village/sector","geometry":{"type":"Point","coordinates":[30.1,-1.9]},"connectivity":{},"detailed_location":{}}
+{"doc_id":"pole-104","idempotency_key":"<opaque-key>","data":{},"metadata":{"created_at":"2026-08-30T12:00:00Z"},"context_key":"parent_form:parent-id","geometry":{"type":"Point","coordinates":[30.1,-1.9]},"connectivity":{},"detailed_location":{}}
 ```
 
 Only `metadata.created_at` is caller-provided metadata. The selected
@@ -219,14 +219,26 @@ idempotency material, token, or email. A terminal receipt is synced before the
 checkpoint advances. A crash before that append safely replays the exact
 idempotent create; a complete receipt event one row ahead of the checkpoint is
 reconciled without a network call; a partial receipt tail is removed before
-the exact row is replayed. Other incomplete or contradictory state refuses.
-An owner-private sidecar lock gives one process exclusive ownership of an exact
-checkpoint while allowing imports with distinct state paths to run together.
+the exact row is replayed, but only after the unchanged receipt, principal,
+audience, selected project, form, and both state paths are rebound. Pre-auth
+inspection never truncates a receipt. Other incomplete or contradictory state
+refuses.
+A non-link sidecar lock derived from the canonical receipt gives one process
+exclusive ownership of every writer to that receipt while allowing imports
+with distinct receipts to run together. Checkpoint and receipt manifests bind
+both canonical state paths.
 `--on-error continue` advances only past the exact row-local `invalid`,
 `idempotency conflict`, and `already exists` create outcomes. Permission,
 disabled/read-only scope, missing-scope, coarse refusal, uncertain, and
 retryable outcomes all pause without advancing because they may affect every
 remaining row.
+
+On Unix, import state also enforces owner and `0600`-equivalent file
+permissions. The current Windows build can prove reparse points, file identity,
+link count, and process exclusion, but cannot yet prove an owner-private DACL.
+The import command therefore reports
+`survey_entries_import_windows_state_unavailable` on Windows until a protected
+state-root adapter is available; it does not claim durable-state privacy there.
 
 Four related objects have separate lifecycles:
 
