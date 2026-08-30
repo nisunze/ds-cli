@@ -752,6 +752,73 @@ fn chapter_describe_and_invoke_return_the_exact_cli_envelopes() {
 }
 
 #[test]
+fn map_design_open_is_projected_by_catalog_chapter_and_typed_profile() {
+    let (responses, _) = mcp(
+        &["--exposure", "chapters"],
+        &[
+            json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": { "name": "ds_catalog", "arguments": { "command": "map.design.open" } } }),
+            json!({ "jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": { "name": "ds_design", "arguments": { "operation": "describe", "command": "map.design.open" } } }),
+        ],
+    );
+    assert_eq!(
+        response(&responses, 1)["result"]["structuredContent"]["next"]["tool"],
+        "ds_design"
+    );
+    assert_eq!(
+        response(&responses, 2)["result"]["structuredContent"],
+        cli(&["capabilities", "map.design.open", "--output", "json"])
+    );
+
+    let (profile, _) = mcp(
+        &["--exposure", "commands", "--profile", "design-edit"],
+        &[json!({ "jsonrpc": "2.0", "id": 3, "method": "tools/list" })],
+    );
+    let tool = response(&profile, 3)["result"]["tools"]
+        .as_array()
+        .expect("tools")
+        .iter()
+        .find(|tool| tool["name"] == "map_design_open")
+        .expect("map.design.open typed leaf");
+    assert_eq!(tool["title"], "map.design.open");
+    assert_eq!(tool["inputSchema"]["required"], json!(["transformer"]));
+    assert_eq!(
+        tool["inputSchema"]["properties"]
+            .as_object()
+            .expect("properties")
+            .keys()
+            .map(String::as_str)
+            .collect::<BTreeSet<_>>(),
+        BTreeSet::from(["desktop-descriptor", "transformer"])
+    );
+
+    // The typed leaf reaches this command without VS Code or another UI host
+    // mediating it. An absent explicit descriptor is stopped by MCP's bounded
+    // pairing gate before command dispatch, with the canonical command still
+    // named in the DS envelope.
+    let temp = TestDir::new("design-open-descriptor");
+    let missing = temp.0.join("no-desktop.json");
+    let missing = missing.to_string_lossy().into_owned();
+    let (invoked, _) = mcp(
+        &["--exposure", "commands", "--profile", "design-edit"],
+        &[json!({
+            "jsonrpc": "2.0",
+            "id": 4,
+            "method": "tools/call",
+            "params": {
+                "name": "map_design_open",
+                "arguments": {
+                    "transformer": "agasharu",
+                    "desktop-descriptor": missing,
+                }
+            }
+        })],
+    );
+    let envelope = &response(&invoked, 4)["result"]["structuredContent"];
+    assert_eq!(envelope["command"], "map.design.open");
+    assert_eq!(envelope["error"]["code"], "desktop_not_paired");
+}
+
+#[test]
 fn chapter_routing_refuses_escape_and_confirmation_misuse() {
     let (responses, _) = mcp(
         &["--exposure", "chapters"],
@@ -829,7 +896,11 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
         let tools = response(&responses, 1)["result"]["tools"]
             .as_array()
             .expect("tools");
-        let maximum = if profile == "survey-projects" { 18 } else { 16 };
+        let maximum = match profile {
+            "survey-projects" => 18,
+            "design-edit" => 17,
+            _ => 16,
+        };
         assert!(
             (2..=maximum).contains(&tools.len()),
             "{profile}: {}",
@@ -849,6 +920,10 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
     assert!(
         published["pls"].contains("pls_backup-create"),
         "the PLS profile must expose the live backup command without a second MCP schema"
+    );
+    assert!(
+        published["design-edit"].contains("map_design_open"),
+        "the design-edit profile must project the canonical visible context-entry command"
     );
 
     let (compatibility, _) = mcp(

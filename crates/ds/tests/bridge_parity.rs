@@ -310,6 +310,45 @@ fn every_map_command_has_one_closed_operation_owner() {
 }
 
 #[test]
+fn design_open_has_one_exact_argument_and_keeps_typed_safety_refusals() {
+    let Some(app) = app() else {
+        skip("the ds-web sibling repository is not on disk");
+        return;
+    };
+    let operation = ds_cli_map::DESIGN_OPEN.operation;
+    let accepted = quoted_contract_items(operation_contract(&app.map, operation));
+    let declared = ds_cli_map::DESIGN_OPEN
+        .arguments
+        .iter()
+        .map(|argument| (*argument).to_string())
+        .collect::<BTreeSet<_>>();
+    assert_eq!(
+        accepted, declared,
+        "design context entry must accept exactly one transformer name"
+    );
+
+    let lowered = app.map.to_ascii_lowercase();
+    for (marker, _) in ds_cli_map::design::open::REFUSAL_MARKERS {
+        assert!(
+            lowered.contains(marker),
+            "the desktop design-open owner no longer emits `{marker}`"
+        );
+    }
+    for field in [
+        "contextType",
+        "previousContext",
+        "contextChanged",
+        "editorReady",
+        "mapReady",
+    ] {
+        assert!(
+            app.map.contains(field),
+            "the desktop design-open receipt no longer publishes `{field}`"
+        );
+    }
+}
+
+#[test]
 fn every_survey_control_plane_command_has_one_api_only_owner_and_exact_arguments() {
     let Some(app) = app() else {
         skip("the ds-web sibling repository is not on disk");

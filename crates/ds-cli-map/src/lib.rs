@@ -102,6 +102,7 @@ pub static DOMAIN: Domain = Domain {
         &survey::download::COMMAND,
         &survey::plan::COMMAND,
         &survey::apply::COMMAND,
+        &design::open::COMMAND,
         &design::read::COMMAND,
         &design::discard::COMMAND,
         &design::layer_to_local::COMMAND,
@@ -209,6 +210,10 @@ pub const LINE_EXTENSION_DIFFERENCE: BridgeOp = BridgeOp {
 pub const DESIGN_READ: BridgeOp = BridgeOp {
     operation: "design.transformer.read",
     arguments: &["transformer", "layers", "property"],
+};
+pub const DESIGN_OPEN: BridgeOp = BridgeOp {
+    operation: "design.transformer.open",
+    arguments: &["transformer"],
 };
 pub const DESIGN_DISCARD: BridgeOp = BridgeOp {
     operation: "design.transformer.discard",
@@ -372,6 +377,7 @@ pub const BRIDGE_OPS: &[&BridgeOp] = &[
     &RANDOM_POINTS,
     &DETECT_OUTLIERS,
     &LINE_EXTENSION_DIFFERENCE,
+    &DESIGN_OPEN,
     &DESIGN_READ,
     &DESIGN_DISCARD,
     &DESIGN_LAYER_TO_LOCAL,

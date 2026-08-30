@@ -1789,6 +1789,7 @@ fn every_map_command_is_reachable_without_the_desktop_installed() {
         "map.survey.download",
         "map.survey.migrate.plan",
         "map.survey.migrate.apply",
+        "map.design.open",
         "map.design.read",
         "map.design.discard",
         "map.design.layer-to-local",
@@ -1822,6 +1823,59 @@ fn every_map_command_is_reachable_without_the_desktop_installed() {
             command["availability"], "available",
             "`{}` gates on discovery, which puts --desktop-descriptor out of reach",
             command["id"]
+        );
+    }
+}
+
+#[test]
+fn map_design_open_is_the_one_discoverable_visible_context_entry() {
+    let descriptor = ok(&["capabilities", "map.design.open", "--output", "json"]);
+    let command = &descriptor["command"];
+    assert_eq!(command["authority"], "project");
+    assert_eq!(command["effect"], "local_ui");
+    assert_eq!(command["confirmation_required"], false);
+    let inputs = command["inputs"].as_array().expect("inputs");
+    assert_eq!(
+        inputs
+            .iter()
+            .map(|input| input["name"].as_str().unwrap())
+            .collect::<Vec<_>>(),
+        ["transformer", "desktop-descriptor"]
+    );
+    assert_eq!(inputs[0]["required"], true);
+    let refusals = command["refusals"]
+        .as_array()
+        .expect("refusals")
+        .iter()
+        .map(|refusal| refusal["code"].as_str().unwrap())
+        .collect::<BTreeSet<_>>();
+    assert_eq!(
+        refusals,
+        BTreeSet::from([
+            "desktop_not_paired",
+            "desktop_ambiguous",
+            "desktop_unreachable",
+            "pairing_rejected",
+            "desktop_signed_out",
+            "desktop_refused",
+            "transformer_not_found",
+            "project_mismatch",
+            "dirty_room",
+            "desktop_operation_unsupported",
+            "desktop_unreadable",
+        ])
+    );
+
+    for query in [
+        "open transformer",
+        "transformer edit context",
+        "activate design",
+    ] {
+        let result = ok(&["capabilities", "--search", query, "--output", "json"]);
+        let matches = result["results"].as_array().expect("search results");
+        assert!(
+            matches.iter().any(|row| row["id"] == "map.design.open"),
+            "`{query}` did not find the canonical context-entry command: {matches:?}"
         );
     }
 }

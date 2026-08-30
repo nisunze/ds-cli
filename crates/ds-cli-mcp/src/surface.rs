@@ -133,6 +133,10 @@ impl Profile {
             // single-entry create belong to the same selected-project Survey
             // workflow. The count includes both bootstrap tools.
             Self::SurveyProjects => 18,
+            // Fifteen governed design-edit leaves plus the two bootstrap
+            // tools. `map.design.open` makes visible context entry explicit;
+            // it does not justify removing an established edit operation.
+            Self::DesignEdit => 17,
             _ => 16,
         }
     }
@@ -317,6 +321,7 @@ const SURVEY_MIGRATION_COMMANDS: &[&str] = &["survey.entries.import"];
 
 const DESIGN_EDIT_COMMANDS: &[&str] = &[
     "design.features.select",
+    "map.design.open",
     "map.design.read",
     "map.design.discard",
     "map.design.layer-to-local",

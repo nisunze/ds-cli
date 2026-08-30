@@ -500,6 +500,11 @@ static MAP_ENTRIES: &[Entry] = &[
         render: ds_cli_map::survey::apply::render,
     },
     Entry {
+        command: &ds_cli_map::design::open::COMMAND,
+        handler: ds_cli_map::design::open::run,
+        render: ds_cli_map::design::open::render,
+    },
+    Entry {
         command: &ds_cli_map::design::read::COMMAND,
         handler: ds_cli_map::design::read::run,
         render: ds_cli_map::design::read::render,

@@ -24,8 +24,11 @@ scripted browser or a hand-built request.
 
 ## Preserve the constructed network first
 
-1. Confirm the exact active project and transformer, then read the current
-   room summary and dirty/server version state.
+1. Confirm the exact active project and transformer. Discover and invoke the
+   canonical visible context-entry command, require its ready receipt, then
+   verify `ds desktop status` names that same transformer before reading the
+   room summary and dirty/server version state. If another room is dirty,
+   follow the refusal remedy; never save, discard, or switch it implicitly.
 2. Before introducing any new geometry, dry-run a property update over every
    existing feature to set `drafting_status=approved`. Apply it locally and
    re-read the room. Require every pre-existing layer count to be approved.

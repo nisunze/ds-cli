@@ -145,6 +145,7 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("map.design.create", "local_ui", "project"),
     ("map.design.delete", "local_ui", "project"),
     ("map.design.discard", "local_ui", "project"),
+    ("map.design.open", "local_ui", "project"),
     ("map.design.geometry", "local_ui", "project"),
     ("map.design.layer-to-local", "local_ui", "project"),
     ("map.design.list", "read_only", "project"),
