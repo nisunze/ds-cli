@@ -1,0 +1,24 @@
+{
+  "name": "@ds-platform/command-kernel",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Thin WASM adapter over the shared DS command kernel.",
+  "license": "Proprietary",
+  "private": true,
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@github.com/nisunze/ds-command-kernel.git"
+  },
+  "main": "dist/ds_command_kernel.js",
+  "types": "dist/ds_command_kernel.d.ts",
+  "files": [
+    "dist/ds_command_kernel.js",
+    "dist/ds_command_kernel.d.ts",
+    "dist/ds_command_kernel_bg.wasm",
+    "dist/ds_command_kernel_bg.wasm.d.ts"
+  ],
+  "scripts": {
+    "build": "./build.sh",
+    "test": "cargo test && wasm-pack test --node --features wasm"
+  }
+}
