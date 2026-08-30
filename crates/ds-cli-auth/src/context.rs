@@ -146,7 +146,6 @@ impl AuthContext {
             None,
             CredentialProviderKind::None,
             None,
-            MapState::Unobserved,
             SessionState::SignedOut,
         )
     }
@@ -169,7 +168,6 @@ impl AuthContext {
             selected_project,
             provider,
             device_identity,
-            MapState::Unobserved,
             SessionState::Active,
         )
     }
@@ -181,7 +179,6 @@ impl AuthContext {
         selected_project: Option<SelectedProject>,
         credential_provider: CredentialProviderKind,
         device_identity: Option<DeviceIdentity>,
-        map_state: MapState,
         session_state: SessionState,
     ) -> Self {
         let authority_capabilities = if principal.is_none() {
@@ -204,7 +201,7 @@ impl AuthContext {
             selected_project,
             credential_provider,
             device_identity,
-            map_state,
+            map_state: MapState::Unobserved,
             session_state,
         }
     }
@@ -259,7 +256,6 @@ mod tests {
             None,
             CredentialProviderKind::None,
             None,
-            MapState::Unobserved,
             SessionState::SignedOut,
         );
         assert!(context.has_capability(AuthorityCapability::None));
@@ -285,7 +281,6 @@ mod tests {
             )),
             CredentialProviderKind::NativeRefresh,
             None,
-            MapState::Unobserved,
             SessionState::Active,
         );
         assert!(context.has_capability(AuthorityCapability::User));
@@ -307,7 +302,6 @@ mod tests {
             None,
             CredentialProviderKind::NativeRefresh,
             None,
-            MapState::Unobserved,
             SessionState::Active,
         );
         let value = serde_json::to_value(context).expect("serializable context");
