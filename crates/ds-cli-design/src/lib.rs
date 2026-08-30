@@ -1,9 +1,8 @@
-//! `ds design` — design collaboration: saved Transformer Status selections,
-//! versioned attachments, and the project's tags and comment threads.
+//! `ds design` — headless transformer selection and design collaboration.
 //!
 //! ## Why this domain is a bridge domain
 //!
-//! All three surfaces are governed shared state behind ds-brain, which is the
+//! The collaboration surfaces are governed shared state behind ds-brain, which is the
 //! only gateway and the only authority: it decides who may write, arbitrates
 //! two people editing the same record in the same second, and refuses a write
 //! authored against a version that has moved. None of that is reachable from a
@@ -11,8 +10,11 @@
 //! command here is one named semantic operation the *paired application*
 //! performs under the session it already holds.
 //!
-//! `ds` therefore carries no token, no project id it trusts, and no copy of the
-//! rules. It asks the application for an outcome.
+//! Collaboration commands ask the paired application for an outcome. The
+//! separate `design features select` read restores the governed native user
+//! and its audience-fenced project, fetches one closed context projection, and
+//! delegates selection to `ds-geo`; it accepts no Desktop descriptor or
+//! project override.
 //!
 //! ## Why this is not `ds map`
 //!
@@ -42,6 +44,7 @@
 
 pub mod attachment;
 pub mod comment;
+pub mod features;
 pub mod group;
 pub mod grouping;
 pub mod selection;
@@ -65,8 +68,9 @@ pub use ds_cli_desktop::ops::{
 
 pub static DOMAIN: Domain = Domain {
     id: "design",
-    summary: "Saved selections, attachments, tags and comments on design objects.",
+    summary: "Headless feature reads and governed design collaboration.",
     commands: &[
+        &features::COMMAND,
         &selection::list::COMMAND,
         &selection::read::COMMAND,
         &selection::save::COMMAND,

@@ -16,6 +16,7 @@ use std::process::Command;
 fn main() {
     println!("cargo:rerun-if-env-changed=DS_CLI_SOURCE_SHA");
     println!("cargo:rerun-if-env-changed=DS_CLI_SOURCE_DIRTY");
+    println!("cargo:rerun-if-env-changed=DS_NATIVE_CLIENT_PROFILE_SHA256");
     println!("cargo:rerun-if-changed=../../.git/HEAD");
     println!("cargo:rerun-if-changed=../../pins/ds-client-core.rev");
 
@@ -47,6 +48,18 @@ fn main() {
         "unknown"
     };
     println!("cargo:rustc-env=DS_NATIVE_CLIENT_CORE_SHA={native_client_core_sha}");
+    let native_client_profile_sha256 = std::env::var("DS_NATIVE_CLIENT_PROFILE_SHA256")
+        .ok()
+        .filter(|digest| {
+            digest.len() == 64
+                && digest
+                    .bytes()
+                    .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+        })
+        .unwrap_or_else(|| "unknown".to_owned());
+    println!(
+        "cargo:rustc-env=DS_NATIVE_CLIENT_PROFILE_CATALOG_SHA256={native_client_profile_sha256}"
+    );
     println!(
         "cargo:rustc-env=DS_BUILD_TARGET={}",
         std::env::var("TARGET").unwrap_or_else(|_| "unknown".into())

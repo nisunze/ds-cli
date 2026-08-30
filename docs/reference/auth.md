@@ -15,6 +15,14 @@ If packaging has not supplied both values, auth commands report
 `development: true` bundle with `DS_NATIVE_CLIENT_PROFILE_BUNDLE`; there are
 no per-field environment overrides.
 
+Catalog schema v2 adds the four exact transformer-context fields: `POST`,
+`/api/v1/data`, `get_transformers_data`, and the `context` projection. They are
+validated as exact bytes and do not create a generic request surface. Because
+these fixed call fields participate in the credential audience, upgrading
+from a v1 credential intentionally appears signed out and can require
+`ds auth login` followed by `ds auth project use`; credentials and project
+contexts are never silently migrated across that audience change.
+
 The current ds-cli CI release build intentionally injects neither the catalog
 digest nor product root, so its auth surface is typed unavailable. The desktop
 packaging owner must generate/stage the catalog and inject both compile-time

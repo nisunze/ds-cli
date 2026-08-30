@@ -255,6 +255,17 @@ fn build_identity_is_verifiable() {
         data["native_client_core_source_sha"],
         include_str!("../../../pins/ds-client-core.rev").trim()
     );
+    let catalog = data["native_client_profile_catalog_sha256"]
+        .as_str()
+        .expect("native profile catalog digest");
+    assert!(
+        catalog == "unknown"
+            || (catalog.len() == 64
+                && catalog
+                    .bytes()
+                    .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))),
+        "catalog digest is neither exact lowercase sha256 nor honest unknown: {catalog}"
+    );
 
     // `--version` and `ds version` are the same fact.
     let flag = ds(&["--version", "--output", "json"]);

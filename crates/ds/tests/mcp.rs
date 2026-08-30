@@ -180,7 +180,10 @@ fn by_command_profiles_still_partition_the_live_registry() {
     ] {
         let expected: BTreeSet<String> = live
             .iter()
-            .filter(|id| id.starts_with(prefix))
+            .filter(|id| {
+                id.starts_with(prefix)
+                    || (prefix == "map.design." && id.as_str() == "design.features.select")
+            })
             .cloned()
             .collect();
         assert!(!expected.is_empty(), "no live `{prefix}*` commands");
@@ -452,7 +455,9 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
         let expected = all
             .iter()
             .filter(|name| {
-                name.starts_with(prefix) || (prefix == "pls_" && name.starts_with("library_"))
+                name.starts_with(prefix)
+                    || (prefix == "map_design_" && name.as_str() == "design_features_select")
+                    || (prefix == "pls_" && name.starts_with("library_"))
             })
             .cloned()
             .collect::<BTreeSet<_>>();

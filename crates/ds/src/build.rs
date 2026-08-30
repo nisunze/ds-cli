@@ -11,6 +11,8 @@ pub const PRODUCT: &str = "ds";
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 pub const SOURCE_SHA: &str = env!("DS_BUILD_SHA");
 pub const NATIVE_CLIENT_CORE_SHA: &str = env!("DS_NATIVE_CLIENT_CORE_SHA");
+pub const NATIVE_CLIENT_PROFILE_CATALOG_SHA256: &str =
+    env!("DS_NATIVE_CLIENT_PROFILE_CATALOG_SHA256");
 pub const TARGET: &str = env!("DS_BUILD_TARGET");
 pub const PROFILE: &str = env!("DS_BUILD_PROFILE");
 
@@ -26,6 +28,7 @@ pub fn identity() -> Value {
         "version": VERSION,
         "source_sha": SOURCE_SHA,
         "native_client_core_source_sha": NATIVE_CLIENT_CORE_SHA,
+        "native_client_profile_catalog_sha256": NATIVE_CLIENT_PROFILE_CATALOG_SHA256,
         "dirty": dirty(),
         "target": TARGET,
         "profile": PROFILE,

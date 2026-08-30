@@ -10,8 +10,10 @@ publish.workspace = true
 
 [dependencies]
 ds-cli-contract = { workspace = true }
+ds-cli-auth = { workspace = true }
 # Design collaboration is governed shared state behind ds-brain. The paired
 # application holds the session that may reach it, so every command here is one
 # named bridge operation and there is no engine to link.
 ds-cli-desktop = { workspace = true }
+ds-geo = { workspace = true }
 serde_json = { workspace = true }

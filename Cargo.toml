@@ -68,6 +68,7 @@ windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_
 ds-cli-contract = { path = "crates/ds-cli-contract" }
 ds-cli-auth = { path = "crates/ds-cli-auth" }
 ds-client-core = { path = "../ds-web/crates/ds-client-core" }
+ds-geo = { path = "../ds-network/crates/ds-geo" }
 ds-cli-desktop = { path = "crates/ds-cli-desktop" }
 ds-cli-design = { path = "crates/ds-cli-design" }
 ds-cli-exec = { path = "crates/ds-cli-exec" }

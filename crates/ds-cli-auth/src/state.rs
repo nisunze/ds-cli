@@ -598,7 +598,8 @@ mod tests {
     use super::*;
     use ds_client_core::{
         CLIENT_PROFILE_SCHEMA, Client, ClientProfileInput, DeploymentLane, ProjectListCall,
-        RefreshCall, SignInCall, Transport, TransportError, TransportResponse,
+        RefreshCall, SignInCall, TransformerContextCall, Transport, TransportError,
+        TransportResponse,
     };
     use std::os::unix::fs::{PermissionsExt, symlink};
 
@@ -637,6 +638,13 @@ mod tests {
         ) -> Result<TransportResponse, TransportError> {
             Err(TransportError::Unreachable)
         }
+
+        fn transformer_context(
+            &mut self,
+            _call: TransformerContextCall<'_>,
+        ) -> Result<TransportResponse, TransportError> {
+            Err(TransportError::Unreachable)
+        }
     }
 
     fn profile() -> ClientProfile {
@@ -651,6 +659,10 @@ mod tests {
             gateway_origin: "https://eds-gateway-3c0q477h.ue.gateway.dev".to_owned(),
             project_list_method: "GET".to_owned(),
             project_list_path: "/api/v1/user/projects".to_owned(),
+            transformer_context_method: "POST".to_owned(),
+            transformer_context_path: "/api/v1/data".to_owned(),
+            transformer_context_action: "get_transformers_data".to_owned(),
+            transformer_context_fields: "context".to_owned(),
         })
         .unwrap()
     }

@@ -13,6 +13,7 @@ const MAX_CATALOG_BYTES: u64 = 64 * 1024;
 const CATALOG_RELATIVE: &str = "ds-client-profiles/catalog.json";
 const PINNED_DIGEST: Option<&str> = option_env!("DS_NATIVE_CLIENT_PROFILE_SHA256");
 const PRODUCT_ROOT: Option<&str> = option_env!("DS_NATIVE_CLIENT_PRODUCT_ROOT");
+#[cfg(debug_assertions)]
 const DEV_BUNDLE_ENV: &str = "DS_NATIVE_CLIENT_PROFILE_BUNDLE";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -69,6 +70,7 @@ struct Entry {
     firebase: Firebase,
     gateway: Gateway,
     projects_read: ProjectsRead,
+    transformer_context: TransformerContext,
     provenance: Provenance,
 }
 
@@ -91,6 +93,15 @@ struct Gateway {
 struct ProjectsRead {
     method: String,
     path: String,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct TransformerContext {
+    method: String,
+    path: String,
+    action: String,
+    fields: String,
 }
 
 #[derive(Deserialize)]
@@ -188,6 +199,10 @@ fn load_path(
         gateway_origin: entry.gateway.origin,
         project_list_method: entry.projects_read.method,
         project_list_path: entry.projects_read.path,
+        transformer_context_method: entry.transformer_context.method,
+        transformer_context_path: entry.transformer_context.path,
+        transformer_context_action: entry.transformer_context.action,
+        transformer_context_fields: entry.transformer_context.fields,
     })
     .map_err(|_| unsafe_catalog())
 }
@@ -232,12 +247,14 @@ mod tests {
                     "firebase": { "project_id": "stable-project", "api_key": "firebase-public" },
                     "gateway": { "origin": "https://stable.ue.gateway.dev", "api_key": "gateway-public" },
                     "projects_read": { "method": "GET", "path": "/api/v1/user/projects" },
+                    "transformer_context": { "method": "POST", "path": "/api/v1/data", "action": "get_transformers_data", "fields": "context" },
                     "provenance": { "source_revision": "abc123", "descriptor_sha256": "a".repeat(64) }
                 },
                 "canary": {
                     "firebase": { "project_id": "canary-project", "api_key": "firebase-canary" },
                     "gateway": { "origin": "https://ds-canary.ue.gateway.dev", "api_key": "gateway-canary" },
                     "projects_read": { "method": "GET", "path": "/api/v1/user/projects" },
+                    "transformer_context": { "method": "POST", "path": "/api/v1/data", "action": "get_transformers_data", "fields": "context" },
                     "provenance": { "source_revision": "def456", "descriptor_sha256": "b".repeat(64) }
                 }
             }
@@ -343,6 +360,46 @@ mod tests {
                 load_path(path, Lane::Stable, false, "0".repeat(64))
                     .unwrap_err()
                     .code(),
+                "native_profile_unsafe"
+            );
+        });
+    }
+
+    #[test]
+    fn v2_transformer_context_block_is_required_and_exact() {
+        let mut missing: serde_json::Value = serde_json::from_slice(&fixture(false)).unwrap();
+        missing["profiles"]["stable"]
+            .as_object_mut()
+            .unwrap()
+            .remove("transformer_context");
+        let missing = serde_json::to_vec(&missing).unwrap();
+        with_fixture(&missing, |path| {
+            assert_eq!(
+                load_path(
+                    path,
+                    Lane::Stable,
+                    false,
+                    format!("{:x}", Sha256::digest(&missing))
+                )
+                .unwrap_err()
+                .code(),
+                "native_profile_unsafe"
+            );
+        });
+
+        let mut escaped: serde_json::Value = serde_json::from_slice(&fixture(false)).unwrap();
+        escaped["profiles"]["stable"]["transformer_context"]["path"] = json!("/api/v1/anything");
+        let escaped = serde_json::to_vec(&escaped).unwrap();
+        with_fixture(&escaped, |path| {
+            assert_eq!(
+                load_path(
+                    path,
+                    Lane::Stable,
+                    false,
+                    format!("{:x}", Sha256::digest(&escaped))
+                )
+                .unwrap_err()
+                .code(),
                 "native_profile_unsafe"
             );
         });

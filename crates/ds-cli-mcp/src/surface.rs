@@ -254,6 +254,7 @@ const SURVEY_PROJECT_COMMANDS: &[&str] = &[
 ];
 
 const DESIGN_EDIT_COMMANDS: &[&str] = &[
+    "design.features.select",
     "map.design.read",
     "map.design.discard",
     "map.design.layer-to-local",

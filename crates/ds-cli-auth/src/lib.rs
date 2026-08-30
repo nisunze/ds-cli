@@ -16,7 +16,7 @@ use ds_cli_contract::spec::{
     Arg, Authority, Chapter, Command, Domain, Effect, Example, Execution, Refusal,
 };
 use ds_cli_contract::{Context, Inputs};
-use ds_client_core::{Client, ClientError, ErrorKind, Project, ProjectStatus};
+use ds_client_core::{Client, ClientError, ErrorKind, Project, ProjectStatus, TransformerContext};
 use profile::Lane;
 use serde_json::{Value, json};
 use state::{NativeRefreshStore, ProjectContextLease};
@@ -405,6 +405,74 @@ pub static PROJECT_STATUS_COMMAND: Command = Command {
 
 type NativeClient = Client<NativeTransport, NativeRefreshStore>;
 
+/// One transformer snapshot fetched under the restored native user and the
+/// audience-fenced selected project. The server remains the membership and
+/// resource authority; this adapter only binds local identity and context.
+pub struct HeadlessTransformerContext {
+    lane: &'static str,
+    project_name: String,
+    project_status: String,
+    snapshot: TransformerContext,
+}
+
+impl HeadlessTransformerContext {
+    pub const fn lane(&self) -> &'static str {
+        self.lane
+    }
+
+    pub fn project_name(&self) -> &str {
+        &self.project_name
+    }
+
+    pub fn project_status(&self) -> &str {
+        &self.project_status
+    }
+
+    pub const fn snapshot(&self) -> &TransformerContext {
+        &self.snapshot
+    }
+}
+
+/// Availability of the exact packaged native profiles used by headless
+/// project commands.
+pub fn native_availability() -> ds_cli_contract::spec::Availability {
+    profile::availability()
+}
+
+/// Restore one native user and fetch one transformer from that user's fenced
+/// selected project. There is deliberately no project-id or URL override.
+pub fn transformer_context(
+    lane_value: &str,
+    transformer: &str,
+) -> Result<HeadlessTransformerContext, Failure> {
+    let lane = Lane::parse(lane_value)?;
+    let profile = profile::load(lane)?;
+    let store = NativeRefreshStore::open()?;
+    let mut client = Client::new(profile, NativeTransport, store);
+    let context = ProjectContextLease::acquire(client.profile())?;
+    let user = require_restore(&mut client, &context)?;
+    let selected = context
+        .load(client.profile(), user.uid(), user.email())?
+        .ok_or_else(|| {
+            Failure::conflict(
+                "headless_project_not_selected",
+                "no project is selected for this native user, lane, and credential audience",
+            )
+            .remedy("run ds auth project use --project <exact-id>")
+            .next("ds auth project status")
+        })?;
+    let snapshot = with_disposition(
+        client.transformer_context(selected.project_id(), transformer, now()),
+        &context,
+    )?;
+    Ok(HeadlessTransformerContext {
+        lane: lane.token(),
+        project_name: selected.project_name().to_owned(),
+        project_status: selected.status().to_owned(),
+        snapshot,
+    })
+}
+
 fn client(inputs: &Inputs) -> Result<(Lane, NativeClient), Failure> {
     let lane = Lane::parse(inputs.require("lane")?)?;
     let profile = profile::load(lane)?;
@@ -573,9 +641,13 @@ fn now() -> u64 {
 }
 
 fn map_client(error: ClientError) -> Failure {
-    match error.kind() {
-        ErrorKind::InvalidInput => Failure::invalid("auth_input_invalid", error.to_string()),
-        ErrorKind::SignedOut => Failure::unauthorized("headless_signed_out", error.to_string())
+    map_client_kind(error.kind(), error.to_string())
+}
+
+fn map_client_kind(kind: ErrorKind, message: String) -> Failure {
+    match kind {
+        ErrorKind::InvalidInput => Failure::invalid("auth_input_invalid", message),
+        ErrorKind::SignedOut => Failure::unauthorized("headless_signed_out", message)
             .next("ds auth login --email <address>"),
         ErrorKind::AuthenticationRejected => Failure::unauthorized(
             "auth_rejected",
@@ -603,6 +675,11 @@ fn map_client(error: ClientError) -> Failure {
             "native_state_unsafe",
             "the protected native auth state is unsafe, stale, or unreadable",
         ),
+        ErrorKind::ResourceNotFound => Failure::invalid(
+            "transformer_not_found",
+            "the selected transformer does not exist in the selected project",
+        )
+        .remedy("pass one exact transformer name from the selected project"),
     }
 }
 
@@ -803,6 +880,19 @@ mod tests {
                 "project_limit_invalid"
             );
         }
+    }
+
+    #[test]
+    fn transformer_absence_keeps_its_resource_specific_code() {
+        let failure = map_client_kind(
+            ErrorKind::ResourceNotFound,
+            "fixture detail that must not become an auth rejection".to_owned(),
+        );
+        assert_eq!(failure.code(), "transformer_not_found");
+        assert_eq!(
+            failure.class(),
+            ds_cli_contract::outcome::ExitClass::InvalidInput
+        );
     }
 
     #[test]

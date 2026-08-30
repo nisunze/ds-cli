@@ -826,6 +826,11 @@ static WORK_ENTRIES: &[Entry] = &[
 /// state. It is available through a paired desktop without an open map.
 static DESIGN_ENTRIES: &[Entry] = &[
     Entry {
+        command: &ds_cli_design::features::COMMAND,
+        handler: ds_cli_design::features::run,
+        render: ds_cli_design::features::render,
+    },
+    Entry {
         command: &ds_cli_design::selection::list::COMMAND,
         handler: ds_cli_design::selection::list::run,
         render: ds_cli_design::selection::list::render,

@@ -2314,23 +2314,27 @@ fn every_design_write_refuses_without_confirmation() {
 }
 
 #[test]
-fn every_design_read_is_reachable_without_the_desktop_installed() {
-    // Same reasoning as map and work: dispatch checks availability before
-    // parsing, so a discovery gate would put every input refusal above out of
-    // reach on a machine with no application.
+fn every_design_command_is_discoverable_without_the_desktop_installed() {
+    // Bridge collaboration remains available before pairing. The native
+    // feature read is separately discoverable and honestly unavailable when
+    // this test build has no digest-pinned release catalog.
     let index = ok(&["capabilities", "design", "--output", "json"]);
     let commands = index["commands"].as_array().expect("commands");
     assert_eq!(
         commands.len(),
-        23,
+        26,
         "the design domain should expose its whole family: {commands:?}"
     );
     for command in commands {
+        let id = command["id"].as_str().unwrap_or("?");
         assert_eq!(
             command["availability"],
-            "available",
-            "`{}` is gated on the desktop being installed",
-            command["id"].as_str().unwrap_or("?")
+            if id == "design.features.select" {
+                "unavailable"
+            } else {
+                "available"
+            },
+            "`{id}` has the wrong packaging or Desktop availability"
         );
     }
     // A well-formed read gets as far as pairing and no further.
@@ -2372,6 +2376,8 @@ fn design_reads_are_reads_and_design_writes_are_governed_writes() {
         ("design.group.export", "read_only"),
         ("design.group.apply", "global_write"),
         ("design.group.unassign", "global_write"),
+        ("design.consumer-grouping.preview", "read_only"),
+        ("design.consumer-grouping.apply", "global_write"),
     ] {
         let descriptor = ok(&["capabilities", id, "--output", "json"]);
         assert_eq!(
@@ -2383,6 +2389,9 @@ fn design_reads_are_reads_and_design_writes_are_governed_writes() {
             "`{id}` must require a verified principal bound to a project"
         );
     }
+    let descriptor = ok(&["capabilities", "design.features.select", "--output", "json"]);
+    assert_eq!(descriptor["command"]["effect"], "local_auth_state");
+    assert_eq!(descriptor["command"]["authority"], "headless_project");
 }
 
 // ---------------------------------------------------------------------------
@@ -2407,6 +2416,7 @@ fn design_collaboration_is_a_complete_headless_project_surface() {
         .collect();
     let expected: BTreeSet<&str> = [
         "design.selection.list",
+        "design.features.select",
         "design.selection.read",
         "design.selection.save",
         "design.selection.archive",
@@ -2424,6 +2434,8 @@ fn design_collaboration_is_a_complete_headless_project_surface() {
         "design.group.apply",
         "design.group.unassign",
         "design.group.export",
+        "design.consumer-grouping.preview",
+        "design.consumer-grouping.apply",
         "design.comment.list",
         "design.comment.read",
         "design.comment.post",
@@ -2454,11 +2466,18 @@ fn design_collaboration_is_a_complete_headless_project_surface() {
         // no changes.
         "design.group.apply",
         "design.group.unassign",
+        "design.consumer-grouping.apply",
     ]
     .into_iter()
     .collect();
     for command in commands {
         let id = command["id"].as_str().expect("id");
+        if id == "design.features.select" {
+            assert_eq!(command["availability"], "unavailable");
+            assert_eq!(command["effect"], "local_auth_state");
+            assert_eq!(command["authority"], "headless_project");
+            continue;
+        }
         assert_eq!(
             command["availability"], "available",
             "`{id}` must not require an open map"
@@ -2570,6 +2589,15 @@ fn design_collaboration_is_a_complete_headless_project_surface() {
                     "unassign",
                     "--group",
                     "phasing",
+                    "--transformers",
+                    "T-smoke",
+                    "--digest",
+                    "digest-smoke",
+                ],
+                "design.consumer-grouping.apply" => vec![
+                    "design",
+                    "consumer-grouping",
+                    "apply",
                     "--transformers",
                     "T-smoke",
                     "--digest",

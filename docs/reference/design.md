@@ -7,6 +7,34 @@ all of them.
 The product contract these commands serve is
 `ds-brain/docs/contracts/design-collaboration-roadmap.md`.
 
+## Headless feature selection
+
+`ds design features select` is the first native, map-independent design read.
+It restores the Firebase user for `--lane stable|canary`, loads only the saved
+project context fenced to that UID, canonical email, lane, and credential
+audience, then performs the fixed `get_transformers_data` context projection
+for one explicit transformer. The gateway remains membership authority. There
+is no `--project`, Desktop descriptor, arbitrary URL, body, header, or
+processing-lane argument.
+
+The returned layers go directly to `ds-geo`'s bounded deterministic selector.
+`--layer`, `--where`, `--bbox`, `--id`, `--sample`, and `--ids` retain the
+legacy `map design select` spelling, but this command does not open a map.
+Counts cover the complete accepted selection; IDs and samples are explicit
+bounded projections. `source.version` and `source.content_digest` are returned
+only when the server supplied them. `source.state` says `fenced` only when both
+exist; otherwise it says `legacy`, and the CLI never fabricates a digest.
+
+```bash
+ds auth login --email operator@example.com
+ds auth project use --project <exact-id>
+ds design features select --transformer T-1042 --layer lv_lines \
+  --where drafting_status= --sample 5 --ids 100 --output json
+```
+
+The older `ds map design select` contract is unchanged for callers already
+using a paired application.
+
 ## Where design collaboration is
 
 Not on disk, and not reachable with a credential this process holds.
@@ -21,9 +49,9 @@ and receives an outcome. It never receives a credential, and it never runs code
 inside the application — `docs/reference/desktop.status.md` has the pairing
 argument in full.
 
-That is also why there is no `--project` flag anywhere in this domain. The
-active project is the one the application has open; a project id passed as an
-argument would be a claim `ds` has no standing to make.
+There is no `--project` flag anywhere in this domain. Collaboration commands
+use the project open in the paired application; the headless feature command
+uses the exact audience-fenced context selected by `ds auth project use`.
 
 ## Why this is not `ds map`
 

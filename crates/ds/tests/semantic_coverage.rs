@@ -13,6 +13,11 @@ use std::process::Command;
 use serde_json::Value;
 
 const EXPECTED: &[(&str, &str, &str)] = &[
+    (
+        "design.features.select",
+        "local_auth_state",
+        "headless_project",
+    ),
     // Native auth is one local-state class because even status/list can rotate
     // a refresh credential. None of these authorities implies Desktop.
     ("auth.login", "local_auth_state", "none"),

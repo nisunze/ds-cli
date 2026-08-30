@@ -1,11 +1,12 @@
-//! Fixed-origin ureq adapter for ds-client-core's three closed calls.
+//! Fixed-origin ureq adapter for ds-client-core's four closed calls.
 
 use std::io::Read;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use ds_client_core::{
-    ProjectListCall, RefreshCall, SignInCall, Transport, TransportError, TransportResponse,
+    ProjectListCall, RefreshCall, SignInCall, TransformerContextCall, Transport, TransportError,
+    TransportResponse,
 };
 use sha2::{Digest, Sha256};
 use zeroize::{Zeroize, Zeroizing};
@@ -82,6 +83,43 @@ impl Transport for NativeTransport {
         let response = result.map_err(classify)?;
         bounded(response, call.response_limit())
     }
+
+    fn transformer_context(
+        &mut self,
+        call: TransformerContextCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        debug_assert_eq!(call.method(), "POST");
+        debug_assert_eq!(call.path(), "/api/v1/data");
+        debug_assert_eq!(call.timeout_seconds(), 120);
+        let (request_id, action_id) = correlation_headers();
+        let mut bearer = format!("Bearer {}", call.bearer_token());
+        let body = call.body();
+        let url = transformer_context_url(call.gateway_origin());
+        let result = ureq::post(url)
+            .header("Accept", call.content_type())
+            .header("Content-Type", call.content_type())
+            .header("X-App-Id", call.client_id())
+            .header("X-Request-Id", &request_id)
+            .header("X-DS-Action-Id", &action_id)
+            .header("X-User-Email", call.canonical_email())
+            .header("x-api-key", call.gateway_api_key())
+            .header("Authorization", &bearer)
+            .header("X-Forwarded-Authorization", &bearer)
+            .config()
+            .max_redirects(0)
+            .http_status_as_error(false)
+            .timeout_connect(Some(CONNECT_TIMEOUT))
+            .timeout_global(Some(Duration::from_secs(call.timeout_seconds())))
+            .build()
+            .send(body.as_bytes());
+        bearer.zeroize();
+        let response = result.map_err(classify)?;
+        bounded(response, call.response_limit())
+    }
+}
+
+fn transformer_context_url(origin: &str) -> String {
+    format!("{origin}{}", ds_client_core::TRANSFORMER_CONTEXT_PATH)
 }
 
 fn bounded(
@@ -164,5 +202,19 @@ mod tests {
         assert_eq!(one.len(), 36);
         assert_eq!(one.as_bytes()[14], b'4');
         assert_eq!(one.matches('-').count(), 4);
+    }
+
+    #[test]
+    fn transformer_wire_target_and_limits_are_fixed() {
+        assert_eq!(
+            transformer_context_url("https://fixture.ue.gateway.dev"),
+            "https://fixture.ue.gateway.dev/api/v1/data"
+        );
+        assert_eq!(ds_client_core::TRANSFORMER_CONTEXT_METHOD, "POST");
+        assert_eq!(ds_client_core::TRANSFORMER_CONTEXT_TIMEOUT_SECONDS, 120);
+        assert_eq!(
+            ds_client_core::TRANSFORMER_CONTEXT_RESPONSE_LIMIT,
+            64 * 1024 * 1024
+        );
     }
 }
