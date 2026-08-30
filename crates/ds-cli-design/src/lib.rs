@@ -82,7 +82,7 @@ pub use ds_cli_desktop::ops::{
 
 pub static DOMAIN: Domain = Domain {
     id: "design",
-    summary: "Headless feature reads, offline LV compute, and governed collaboration.",
+    summary: "Headless reads, offline LV compute, and governed collaboration.",
     commands: &[
         &features::COMMAND,
         &selection::list::COMMAND,

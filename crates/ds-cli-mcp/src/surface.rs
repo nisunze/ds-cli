@@ -272,6 +272,7 @@ const DESIGN_EDIT_COMMANDS: &[&str] = &[
 ];
 
 const DESIGN_RUN_COMMANDS: &[&str] = &[
+    "design.lv.process",
     "map.design.process",
     "map.design.batch.process",
     "map.design.batch.report",
@@ -295,6 +296,7 @@ const SOLAR_RUN_COMMANDS: &[&str] = &[
     "solar.run.progress",
     "solar.run.result",
     "solar.run.cancel",
+    "solar.result.compare",
     "solar.result.read",
     "solar.results.read",
     "solar.sync.status",

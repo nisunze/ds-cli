@@ -199,6 +199,7 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("solar.portfolio.read", "read_only", "desktop_user"),
     ("solar.prepare", "local_file_write", "desktop_user"),
     ("solar.report.export", "local_file_write", "desktop_user"),
+    ("solar.result.compare", "read_only", "none"),
     ("solar.result.read", "read_only", "desktop_user"),
     ("solar.results.read", "read_only", "desktop_user"),
     ("solar.run", "local_file_write", "none"),
