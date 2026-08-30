@@ -17,8 +17,8 @@ use ds_cli_contract::spec::{
 };
 use ds_cli_contract::{Context, Inputs};
 use ds_client_core::{
-    Client, ClientError, ErrorKind, Project, ProjectFormsSnapshot, ProjectStatus,
-    TransformerContext,
+    Client, ClientError, ErrorKind, Project, ProjectFormSettingsEditor, ProjectFormsSnapshot,
+    ProjectStatus, TransformerContext,
 };
 use profile::Lane;
 use serde_json::{Value, json};
@@ -445,6 +445,30 @@ pub struct HeadlessProjectForms {
     snapshot: ProjectFormsSnapshot,
 }
 
+/// One settings editor fetched under the restored user and that user's
+/// audience-fenced selected project.
+pub struct HeadlessProjectFormEditor {
+    lane: &'static str,
+    project_name: String,
+    project_status: String,
+    snapshot: ProjectFormSettingsEditor,
+}
+
+impl HeadlessProjectFormEditor {
+    pub const fn lane(&self) -> &'static str {
+        self.lane
+    }
+    pub fn project_name(&self) -> &str {
+        &self.project_name
+    }
+    pub fn project_status(&self) -> &str {
+        &self.project_status
+    }
+    pub const fn snapshot(&self) -> &ProjectFormSettingsEditor {
+        &self.snapshot
+    }
+}
+
 impl HeadlessProjectForms {
     pub const fn lane(&self) -> &'static str {
         self.lane
@@ -521,6 +545,40 @@ pub fn project_forms(lane_value: &str) -> Result<HeadlessProjectForms, Failure> 
         })?;
     let snapshot = with_disposition(client.project_forms(selected.project_id(), now()), &context)?;
     Ok(HeadlessProjectForms {
+        lane: lane.token(),
+        project_name: selected.project_name().to_owned(),
+        project_status: selected.status().to_owned(),
+        snapshot,
+    })
+}
+
+/// Restore one native user and read one backend-owned settings editor from
+/// only the saved, audience-fenced selected project.
+pub fn project_form_editor(
+    lane_value: &str,
+    form_slug: &str,
+) -> Result<HeadlessProjectFormEditor, Failure> {
+    let lane = Lane::parse(lane_value)?;
+    let profile = profile::load(lane)?;
+    let store = NativeRefreshStore::open()?;
+    let mut client = Client::new(profile, NativeTransport, store);
+    let context = ProjectContextLease::acquire(client.profile())?;
+    let user = require_restore(&mut client, &context)?;
+    let selected = context
+        .load(client.profile(), user.uid(), user.email())?
+        .ok_or_else(|| {
+            Failure::conflict(
+                "headless_project_not_selected",
+                "no project is selected for this native user, lane, and credential audience",
+            )
+            .remedy("run ds auth project use --project <exact-id>")
+            .next("ds auth project status")
+        })?;
+    let snapshot = with_disposition(
+        client.project_form_editor(selected.project_id(), form_slug, now()),
+        &context,
+    )?;
+    Ok(HeadlessProjectFormEditor {
         lane: lane.token(),
         project_name: selected.project_name().to_owned(),
         project_status: selected.status().to_owned(),

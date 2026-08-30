@@ -31,6 +31,7 @@ pub static DOMAIN: Domain = Domain {
         &forms::LIFECYCLE_COMMAND,
         &project_forms::READ_COMMAND,
         &project_forms::LIST_COMMAND,
+        &project_forms::SETTINGS_COMMAND,
         &project_forms::EDITOR_COMMAND,
         &project_forms::PLAN_COMMAND,
         &project_forms::APPLY_COMMAND,

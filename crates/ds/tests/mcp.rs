@@ -255,6 +255,7 @@ fn form_factory_and_survey_projects_keep_their_distinct_mapless_contracts() {
         .map(|tool| tool["name"].as_str().expect("tool name"))
         .collect::<BTreeSet<_>>();
     assert!(form_factory_names.contains("survey_form_lifecycle"));
+    assert!(!form_factory_names.contains("survey_project-form_settings"));
     assert!(!form_factory_names.contains("survey_project_create-from-template"));
     let lifecycle = form_factory
         .iter()
@@ -289,6 +290,7 @@ fn form_factory_and_survey_projects_keep_their_distinct_mapless_contracts() {
         .map(|tool| tool["name"].as_str().expect("tool name"))
         .collect::<BTreeSet<_>>();
     assert!(survey_project_names.contains("survey_project_create-from-template"));
+    assert!(survey_project_names.contains("survey_project-form_settings"));
     assert!(!survey_project_names.contains("survey_form_lifecycle"));
     let creation = survey_projects
         .iter()
@@ -302,6 +304,22 @@ fn form_factory_and_survey_projects_keep_their_distinct_mapless_contracts() {
     assert_eq!(
         creation["inputSchema"]["properties"]["confirm"]["type"],
         "boolean"
+    );
+    let settings = survey_projects
+        .iter()
+        .find(|tool| tool["name"] == "survey_project-form_settings")
+        .expect("native selected-project settings tool");
+    assert_eq!(settings["title"], "survey.project-form.settings");
+    assert_eq!(settings["inputSchema"]["required"], json!(["form"]));
+    assert!(
+        settings["inputSchema"]["properties"]
+            .get("project")
+            .is_none()
+    );
+    assert!(
+        settings["inputSchema"]["properties"]
+            .get("desktop-descriptor")
+            .is_none()
     );
 }
 

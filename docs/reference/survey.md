@@ -2,11 +2,15 @@
 
 `ds survey` manages the API-backed survey lifecycle without requiring an open
 map. Existing control-plane commands retain their explicit project ids and
-paired Desktop authority. `survey project-forms list` is a separate native
-read: it restores `ds auth` identity and uses only the UID/email/lane/audience-
+paired Desktop authority. `survey project-forms list` and `survey project-form
+settings` are separate native reads: they restore `ds auth` identity and use
+only the UID/email/lane/audience-
 fenced project selected by `ds auth project use`. It has no project override or
 Desktop descriptor, and ds-brain rechecks membership on the fixed
-`POST /api/v1/project-forms` action `activate` request.
+`POST /api/v1/project-forms` actions `activate` and `settings_editor`. The
+settings command accepts one form slug but no project override; ds-brain
+rechecks project-form admin authority before returning the backend-owned legal
+settings vocabulary and optimistic revision.
 
 Four related objects have separate lifecycles:
 
@@ -15,9 +19,10 @@ Four related objects have separate lifecycles:
    update`, and `survey form lifecycle`.
 2. A **project-form binding** enables a master form for one project and stores
    that project's settings. Use `survey project-forms list` for the selected
-   native project's bounded summary. Use `survey project-forms read`, `survey
+   native project's bounded summary and `survey project-form settings` for one
+   selected-project editor. Use `survey project-forms read`, `survey
    project-form editor`, `survey project-forms plan`, and `survey project-forms
-   apply`.
+   apply` for the existing explicit-project Desktop workflow.
 3. A **project template** is a reusable snapshot containing project-form
    configuration. Use `survey templates list`, `survey template read`, `survey
    template create`, `survey template apply`, and `survey template lifecycle`.
@@ -96,6 +101,11 @@ archive or delete only with the exact dependency result the backend returns.
 `survey form lifecycle` is the master transition door; `project-forms plan` /
 `apply` are the project-settings door; neither creates a project template or a
 new project instance.
+
+The native settings read intentionally does not replace the existing Desktop
+editor command yet. It proves a selected-project, no-map authority path for
+read and planning consumers; mutation parity and an explicit safe handoff must
+land before the paired editor/plan/apply route can be retired.
 
 Every transition can refuse. A stale `--expect-version` is a concurrency
 refusal; archive/delete can refuse live bindings unless an operator explicitly

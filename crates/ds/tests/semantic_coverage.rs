@@ -232,6 +232,11 @@ const EXPECTED: &[(&str, &str, &str)] = &[
         "desktop_user",
     ),
     ("survey.project-form.editor", "read_only", "desktop_user"),
+    (
+        "survey.project-form.settings",
+        "local_auth_state",
+        "headless_project",
+    ),
     ("survey.project-forms.apply", "global_write", "desktop_user"),
     (
         "survey.project-forms.list",

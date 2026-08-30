@@ -1,5 +1,5 @@
 {
-  "schema_version": "ds.native-client-profiles/v3",
+  "schema_version": "ds.native-client-profiles/v4",
   "development": true,
   "profiles": {
     "stable": {
@@ -24,7 +24,8 @@
       "project_forms": {
         "method": "POST",
         "path": "/api/v1/project-forms",
-        "action": "activate"
+        "action": "activate",
+        "settings_editor_action": "settings_editor"
       },
       "provenance": {
         "source_revision": "0123456789abcdef0123456789abcdef01234567",
@@ -53,7 +54,8 @@
       "project_forms": {
         "method": "POST",
         "path": "/api/v1/project-forms",
-        "action": "activate"
+        "action": "activate",
+        "settings_editor_action": "settings_editor"
       },
       "provenance": {
         "source_revision": "0123456789abcdef0123456789abcdef01234567",

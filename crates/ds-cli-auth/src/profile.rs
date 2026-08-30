@@ -111,6 +111,7 @@ struct ProjectForms {
     method: String,
     path: String,
     action: String,
+    settings_editor_action: String,
 }
 
 #[derive(Deserialize)]
@@ -221,6 +222,7 @@ fn load_path(
         project_forms_method: entry.project_forms.method,
         project_forms_path: entry.project_forms.path,
         project_forms_action: entry.project_forms.action,
+        project_form_editor_action: entry.project_forms.settings_editor_action,
     })
     .map_err(|_| unsafe_catalog())
 }
@@ -266,7 +268,7 @@ mod tests {
                     "gateway": { "origin": "https://stable.ue.gateway.dev", "api_key": "gateway-public" },
                     "projects_read": { "method": "GET", "path": "/api/v1/user/projects" },
                     "transformer_context": { "method": "POST", "path": "/api/v1/data", "action": "get_transformers_data", "fields": "context" },
-                    "project_forms": { "method": "POST", "path": "/api/v1/project-forms", "action": "activate" },
+                    "project_forms": { "method": "POST", "path": "/api/v1/project-forms", "action": "activate", "settings_editor_action": "settings_editor" },
                     "provenance": { "source_revision": "abc123", "descriptor_sha256": "a".repeat(64) }
                 },
                 "canary": {
@@ -274,7 +276,7 @@ mod tests {
                     "gateway": { "origin": "https://ds-canary.ue.gateway.dev", "api_key": "gateway-canary" },
                     "projects_read": { "method": "GET", "path": "/api/v1/user/projects" },
                     "transformer_context": { "method": "POST", "path": "/api/v1/data", "action": "get_transformers_data", "fields": "context" },
-                    "project_forms": { "method": "POST", "path": "/api/v1/project-forms", "action": "activate" },
+                    "project_forms": { "method": "POST", "path": "/api/v1/project-forms", "action": "activate", "settings_editor_action": "settings_editor" },
                     "provenance": { "source_revision": "def456", "descriptor_sha256": "b".repeat(64) }
                 }
             }
@@ -401,7 +403,7 @@ mod tests {
     }
 
     #[test]
-    fn v3_fixed_read_blocks_are_required_and_exact() {
+    fn v4_fixed_read_blocks_are_required_and_exact() {
         let mut missing: serde_json::Value = serde_json::from_slice(&fixture(false)).unwrap();
         missing["profiles"]["stable"]
             .as_object_mut()
@@ -441,6 +443,23 @@ mod tests {
 
         let mut escaped: serde_json::Value = serde_json::from_slice(&fixture(false)).unwrap();
         escaped["profiles"]["stable"]["project_forms"]["action"] = json!("bulk_save");
+        let escaped = serde_json::to_vec(&escaped).unwrap();
+        with_fixture(&escaped, |path| {
+            assert_eq!(
+                load_path(
+                    path,
+                    Lane::Stable,
+                    false,
+                    format!("{:x}", Sha256::digest(&escaped))
+                )
+                .unwrap_err()
+                .code(),
+                "native_profile_unsafe"
+            );
+        });
+
+        let mut escaped: serde_json::Value = serde_json::from_slice(&fixture(false)).unwrap();
+        escaped["profiles"]["stable"]["project_forms"]["settings_editor_action"] = json!("editor");
         let escaped = serde_json::to_vec(&escaped).unwrap();
         with_fixture(&escaped, |path| {
             assert_eq!(

@@ -176,6 +176,31 @@ pub static READ_COMMAND: Command = Command {
     availability: ops::paired_availability,
 };
 
+pub static SETTINGS_COMMAND: Command = Command {
+    id: "survey.project-form.settings",
+    path: &["survey", "project-form", "settings"],
+    contract: 1,
+    summary: "Read the selected project's form settings headlessly.",
+    purpose: "Restores the native user and reads one backend-owned settings editor through the fixed project-forms settings_editor action. The project comes only from audience-fenced auth state; ds-brain rechecks membership and project-form admin authority. No project id, Desktop descriptor, URL, body, or action override is accepted.",
+    chapter: Chapter::Survey,
+    effect: Effect::LocalAuthState,
+    authority: Authority::HeadlessProject,
+    execution: Execution::Sync,
+    args: &[
+        Arg::value("form", "<form-slug>", "Exact selected-project form slug.").required(),
+        LANE,
+    ],
+    output: "The selected project identity and one closed backend-owned editor: current/effective settings, legal sections, field state, capabilities, optimistic revision, and explicit unavailable/read-only state.",
+    examples: &[Example {
+        command: "ds survey project-form settings --form lv_poles_survey --output json",
+        note: "Reads the Stable native user's selected-project editor without opening Desktop.",
+        runnable: false,
+    }],
+    refusals: LIST_COMMAND.refusals,
+    reference: Some("docs/reference/survey.md"),
+    availability: ds_cli_auth::native_availability,
+};
+
 pub static EDITOR_COMMAND: Command = Command {
     id: "survey.project-form.editor",
     path: &["survey", "project-form", "editor"],
@@ -367,6 +392,22 @@ pub fn editor(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     crate::invoke(inputs, &PROJECT_FORM_EDITOR, args)
 }
 
+pub fn settings(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
+    let headless =
+        ds_cli_auth::project_form_editor(inputs.require("lane")?, inputs.require("form")?)?;
+    let snapshot = headless.snapshot();
+    Ok(json!({
+        "lane": headless.lane(),
+        "project": {
+            "ds_project": snapshot.ds_project(),
+            "project_name": headless.project_name(),
+            "status": headless.project_status(),
+        },
+        "form": snapshot.form_slug(),
+        "editor": snapshot.editor(),
+    }))
+}
+
 fn changes(inputs: &Inputs, op: &ds_cli_desktop::ops::BridgeOp) -> Result<Value, Failure> {
     let mut args = base(inputs)?;
     args.insert(
@@ -409,6 +450,15 @@ pub fn render_editor(data: &Value) -> String {
     )
 }
 
+pub fn render_settings(data: &Value) -> String {
+    format!(
+        "{}/{}  settings v{}\n",
+        data["project"]["ds_project"].as_str().unwrap_or("project"),
+        data["form"].as_str().unwrap_or("form"),
+        data["editor"]["version"].as_u64().unwrap_or(0)
+    )
+}
+
 pub fn render_plan(data: &Value) -> String {
     format!(
         "{} changes  {}\n",
@@ -433,7 +483,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn native_list_is_selected_project_only_and_legacy_read_is_unchanged() {
+    fn native_reads_are_selected_project_only_and_legacy_reads_are_unchanged() {
         assert_eq!(LIST_COMMAND.authority, Authority::HeadlessProject);
         assert_eq!(LIST_COMMAND.effect, Effect::LocalAuthState);
         assert!(LIST_COMMAND.arg("project").is_none());
@@ -444,5 +494,15 @@ mod tests {
         assert_eq!(READ_COMMAND.authority, Authority::DesktopUser);
         assert!(READ_COMMAND.arg("project").is_some());
         assert!(READ_COMMAND.arg("desktop-descriptor").is_some());
+
+        assert_eq!(SETTINGS_COMMAND.authority, Authority::HeadlessProject);
+        assert_eq!(SETTINGS_COMMAND.effect, Effect::LocalAuthState);
+        assert!(SETTINGS_COMMAND.arg("form").is_some());
+        assert!(SETTINGS_COMMAND.arg("project").is_none());
+        assert!(SETTINGS_COMMAND.arg("desktop-descriptor").is_none());
+        assert!(SETTINGS_COMMAND.arg("url").is_none());
+        assert!(SETTINGS_COMMAND.arg("action").is_none());
+        assert_eq!(EDITOR_COMMAND.authority, Authority::DesktopUser);
+        assert!(EDITOR_COMMAND.arg("project").is_some());
     }
 }

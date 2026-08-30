@@ -3974,7 +3974,7 @@ fn every_cartography_scenario_is_a_declared_example_of_its_own_command() {
 }
 
 #[test]
-fn project_forms_native_list_preserves_the_explicit_project_desktop_read() {
+fn project_forms_native_reads_preserve_the_explicit_project_desktop_surface() {
     let native = ok(&[
         "capabilities",
         "survey.project-forms.list",
@@ -3990,17 +3990,27 @@ fn project_forms_native_list_preserves_the_explicit_project_desktop_read() {
         .filter_map(|arg| arg["name"].as_str())
         .collect::<BTreeSet<_>>();
     assert_eq!(names, BTreeSet::from(["lane", "limit"]));
-    assert_eq!(
-        refusal(&[
-            "survey",
-            "project-forms",
-            "list",
-            "--limit",
-            "0",
-            "--output",
-            "json",
-        ]),
-        "invalid_number"
+    let settings = ok(&[
+        "capabilities",
+        "survey.project-form.settings",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(settings["command"]["authority"], "headless_project");
+    assert_eq!(settings["command"]["effect"], "local_auth_state");
+    let names = settings["command"]["inputs"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|arg| arg["name"].as_str())
+        .collect::<BTreeSet<_>>();
+    assert_eq!(names, BTreeSet::from(["form", "lane"]));
+    assert!(
+        settings["command"]["inputs"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|arg| arg["name"] != "project" && arg["name"] != "desktop-descriptor")
     );
 
     let legacy = ok(&[
@@ -4012,6 +4022,21 @@ fn project_forms_native_list_preserves_the_explicit_project_desktop_read() {
     assert_eq!(legacy["command"]["authority"], "desktop_user");
     assert!(
         legacy["command"]["inputs"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|arg| arg["name"] == "project" && arg["required"] == true)
+    );
+
+    let legacy_editor = ok(&[
+        "capabilities",
+        "survey.project-form.editor",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(legacy_editor["command"]["authority"], "desktop_user");
+    assert!(
+        legacy_editor["command"]["inputs"]
             .as_array()
             .unwrap()
             .iter()

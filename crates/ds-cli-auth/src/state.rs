@@ -597,9 +597,9 @@ fn sync_dir(path: &Path) -> Result<(), StoreError> {
 mod tests {
     use super::*;
     use ds_client_core::{
-        CLIENT_PROFILE_SCHEMA, Client, ClientProfileInput, DeploymentLane, ProjectFormsCall,
-        ProjectListCall, RefreshCall, SignInCall, TransformerContextCall, Transport,
-        TransportError, TransportResponse,
+        CLIENT_PROFILE_SCHEMA, Client, ClientProfileInput, DeploymentLane, ProjectFormEditorCall,
+        ProjectFormsCall, ProjectListCall, RefreshCall, SignInCall, TransformerContextCall,
+        Transport, TransportError, TransportResponse,
     };
     use std::os::unix::fs::{PermissionsExt, symlink};
 
@@ -652,6 +652,13 @@ mod tests {
         ) -> Result<TransportResponse, TransportError> {
             Err(TransportError::Unreachable)
         }
+
+        fn project_form_editor(
+            &mut self,
+            _call: ProjectFormEditorCall<'_>,
+        ) -> Result<TransportResponse, TransportError> {
+            Err(TransportError::Unreachable)
+        }
     }
 
     fn profile() -> ClientProfile {
@@ -673,6 +680,7 @@ mod tests {
             project_forms_method: "POST".to_owned(),
             project_forms_path: "/api/v1/project-forms".to_owned(),
             project_forms_action: "activate".to_owned(),
+            project_form_editor_action: "settings_editor".to_owned(),
         })
         .unwrap()
     }
