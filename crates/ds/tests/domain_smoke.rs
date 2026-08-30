@@ -302,7 +302,12 @@ fn library_seed_materializes_two_native_families_idempotently() {
     assert_eq!(first["execution_owner"], "ds");
     let version = out.join("library/new-design/2026-08-27-v1");
     assert!(version.join("manifest.json").is_file());
-    assert!(version.join("pls-cadd/pole.012").is_file());
+    let manifest =
+        parse_standards_library_manifest(&std::fs::read(version.join("manifest.json")).unwrap())
+            .unwrap();
+    let native_path = manifest.members[0].pls_cadd_path.clone();
+    assert_eq!(native_path, "pls-cadd/structures/source/pole.012");
+    assert!(version.join(&native_path).is_file());
     let release =
         unpack_library(&std::fs::read(version.join("dsgrid/library.dsgrid-library")).unwrap())
             .unwrap();
@@ -314,9 +319,6 @@ fn library_seed_materializes_two_native_families_idempotently() {
     let second = ok(&args);
     assert_eq!(second["idempotent"], true);
 
-    let manifest =
-        parse_standards_library_manifest(&std::fs::read(version.join("manifest.json")).unwrap())
-            .unwrap();
     let expected_root = format!("sha256:{}", manifest.content_root_sha256);
     let native_kind = manifest.members[0].native_kind.as_str();
     let resolved = ok(&[
@@ -342,17 +344,13 @@ fn library_seed_materializes_two_native_families_idempotently() {
     assert!(resolved["sha256"].as_str().unwrap().starts_with("sha256:"));
 
     let misrouted = out.join("library/new-design/wrong-version");
-    std::fs::create_dir_all(misrouted.join("pls-cadd")).unwrap();
+    std::fs::create_dir_all(misrouted.join(&native_path).parent().unwrap()).unwrap();
     std::fs::copy(
         version.join("manifest.json"),
         misrouted.join("manifest.json"),
     )
     .unwrap();
-    std::fs::copy(
-        version.join("pls-cadd/pole.012"),
-        misrouted.join("pls-cadd/pole.012"),
-    )
-    .unwrap();
+    std::fs::copy(version.join(&native_path), misrouted.join(&native_path)).unwrap();
     let wrong_version = ds(&[
         "library",
         "resolve-native",
@@ -2092,7 +2090,13 @@ fn design_lv_project_export_refuses_an_existing_artifact_before_auth_or_desktop(
             "project_forms": {
                 "method": "POST",
                 "path": "/api/v1/project-forms",
-                "action": "activate"
+                "action": "activate",
+                "settings_editor_action": "settings_editor"
+            },
+            "solar_snapshot": {
+                "method": "POST",
+                "path": "/api/v1/solar",
+                "action": "desktop_snapshot"
             },
             "provenance": { "source_revision": "abc123", "descriptor_sha256": digest }
         })
@@ -2100,7 +2104,7 @@ fn design_lv_project_export_refuses_an_existing_artifact_before_auth_or_desktop(
     std::fs::write(
         &profile_path,
         serde_json::to_vec(&json!({
-            "schema_version": "ds.native-client-profiles/v3",
+            "schema_version": "ds.native-client-profiles/v5",
             "development": true,
             "profiles": {
                 "stable": profile(

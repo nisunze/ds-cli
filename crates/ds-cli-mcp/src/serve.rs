@@ -26,8 +26,8 @@ pub static COMMAND: Command = Command {
     chapter: ds_cli_contract::spec::Chapter::Catalog,
     summary: "Serve chapter or typed `ds` tools over MCP.",
     purpose: "\
-Serves generated chapter routers or typed command tools over MCP stdio. Every \
-view comes from this executable's live descriptors and dispatches the same \
+Serves generated chapter or typed command tools over MCP stdio. Every view \
+comes from live descriptors and dispatches the same \
 `ds … --output json` command. It adds no credential, listener, cache, project \
 state, or authority.",
     effect: Effect::ReadOnly,
