@@ -10,6 +10,7 @@ use crate::tools::{self, CONFIRM_PROPERTY, Tool};
 
 pub const EXPOSURES: &[&str] = &["chapters", "commands"];
 pub const PROFILE_IDS: &[&str] = &[
+    "auth-context",
     "grid",
     "pls",
     "pls-library",
@@ -55,6 +56,7 @@ impl Exposure {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Profile {
+    AuthContext,
     Grid,
     Pls,
     PlsLibrary,
@@ -78,6 +80,7 @@ pub enum Profile {
 impl Profile {
     pub fn from_token(token: &str) -> Option<Self> {
         match token {
+            "auth-context" => Some(Self::AuthContext),
             "grid" => Some(Self::Grid),
             "pls" => Some(Self::Pls),
             "pls-library" => Some(Self::PlsLibrary),
@@ -102,6 +105,7 @@ impl Profile {
 
     pub const fn token(self) -> &'static str {
         match self {
+            Self::AuthContext => "auth-context",
             Self::Grid => "grid",
             Self::Pls => "pls",
             Self::PlsLibrary => "pls-library",
@@ -135,6 +139,7 @@ impl Profile {
 
     pub fn includes(self, tool: &Tool) -> bool {
         match self {
+            Self::AuthContext => AUTH_CONTEXT_COMMANDS.contains(&tool.id.as_str()),
             Self::Grid => matches!(tool.chapter, Chapter::GridModel | Chapter::Reports),
             Self::Pls => tool.chapter == Chapter::PlsCadd && tool.id.starts_with("pls."),
             Self::PlsLibrary => PLS_LIBRARY_COMMANDS.contains(&tool.id.as_str()),
@@ -169,6 +174,7 @@ impl Profile {
     /// and with every unit test still passing.
     pub const fn command_ids(self) -> &'static [&'static str] {
         match self {
+            Self::AuthContext => AUTH_CONTEXT_COMMANDS,
             Self::Survey => SURVEY_MAP_COMMANDS,
             Self::FormFactory => FORM_FACTORY_COMMANDS,
             Self::SurveyProjects => SURVEY_PROJECT_COMMANDS,
@@ -192,6 +198,7 @@ impl Profile {
 
     pub fn includes_chapter(self, chapter: Chapter) -> bool {
         match self {
+            Self::AuthContext => chapter == Chapter::Project,
             Self::Grid => matches!(chapter, Chapter::GridModel | Chapter::Reports),
             Self::Pls | Self::PlsLibrary | Self::LibraryGovernance => chapter == Chapter::PlsCadd,
             Self::Survey
@@ -208,6 +215,26 @@ impl Profile {
         }
     }
 }
+
+// Principal handoff for an MCP host uses only the protected native session a
+// person established in a trusted terminal. Password login is intentionally
+// absent: an MCP child may inspect the non-secret AuthContext, refresh the
+// visible project directory, and select one exact visible project, but it may
+// never receive password, approval authority, or credential material. Device
+// begin/status/complete and inventory operate only through protected native
+// state; `auth.link.approve` remains human-only and globally excluded.
+const AUTH_CONTEXT_COMMANDS: &[&str] = &[
+    "auth.status",
+    "auth.link.begin",
+    "auth.link.status",
+    "auth.link.complete",
+    "auth.device.list",
+    "auth.device.read",
+    "auth.device.revoke",
+    "auth.project.list",
+    "auth.project.use",
+    "auth.project.status",
+];
 
 const PLS_LIBRARY_COMMANDS: &[&str] = &[
     "library.verify",

@@ -2080,6 +2080,13 @@ fn design_lv_project_export_refuses_an_existing_artifact_before_auth_or_desktop(
         json!({
             "firebase": { "project_id": project, "api_key": "firebase-public" },
             "gateway": { "origin": gateway, "api_key": "gateway-public" },
+            "auth_link_begin": { "method": "POST", "path": "/api/v1/auth/device/begin" },
+            "auth_link_status": { "method": "POST", "path": "/api/v1/auth/device/status" },
+            "auth_link_complete": { "method": "POST", "path": "/api/v1/auth/device/complete" },
+            "auth_device_refresh": { "method": "POST", "path": "/api/v1/auth/device/refresh" },
+            "auth_device_list": { "method": "GET", "path": "/api/v1/auth/devices" },
+            "auth_device_read": { "method": "GET", "path_template": "/api/v1/auth/devices/{device_id}" },
+            "auth_device_revoke": { "method": "DELETE", "path_template": "/api/v1/auth/devices/{device_id}" },
             "projects_read": { "method": "GET", "path": "/api/v1/user/projects" },
             "transformer_context": {
                 "method": "POST",
@@ -2121,7 +2128,7 @@ fn design_lv_project_export_refuses_an_existing_artifact_before_auth_or_desktop(
     std::fs::write(
         &profile_path,
         serde_json::to_vec(&json!({
-            "schema_version": "ds.native-client-profiles/v9",
+            "schema_version": "ds.native-client-profiles/v10",
             "development": true,
             "profiles": {
                 "stable": profile(

@@ -4,10 +4,122 @@
 //! inside the provider and the closed native client core.
 
 use ds_cli_contract::{AuthorityCapability, Failure};
-use ds_client_core::{AuthenticatedUser, ClientProfile};
+use ds_client_core::{AuthenticatedUser, ClientProfile, DeviceAuthContext};
 use serde::Serialize;
+use serde_json::json;
 
 pub const AUTH_CONTEXT_SCHEMA: &str = "ds.auth-context/v1";
+
+/// Complete key for deciding whether paired Desktop may supply the same
+/// principal authority as a headless provider. Canonical email is deliberately
+/// absent: it is display metadata, not the stable principal key.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProviderIdentity {
+    lane: String,
+    credential_audience_sha256: String,
+    uid: String,
+}
+
+impl ProviderIdentity {
+    pub fn new(lane: &str, credential_audience_sha256: &str, uid: &str) -> Result<Self, Failure> {
+        if !bounded_identity(lane, 32)
+            || !valid_digest(credential_audience_sha256)
+            || !bounded_identity(uid, 256)
+        {
+            return Err(Failure::invalid(
+                "auth_context_unreadable",
+                "the provider identity fence is malformed",
+            )
+            .remedy("update ds and retry without changing protected state"));
+        }
+        Ok(Self {
+            lane: lane.to_owned(),
+            credential_audience_sha256: credential_audience_sha256.to_owned(),
+            uid: uid.to_owned(),
+        })
+    }
+
+    pub fn lane(&self) -> &str {
+        &self.lane
+    }
+
+    pub fn credential_audience_sha256(&self) -> &str {
+        &self.credential_audience_sha256
+    }
+
+    pub fn uid(&self) -> &str {
+        &self.uid
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProviderTarget {
+    /// An explicit user/project operation that remains valid without a map.
+    Headless,
+    /// An operation whose result is injected into or depends on the paired
+    /// map/shared projection.
+    MapAttached,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProviderSelection {
+    PairedDesktop,
+    HeadlessDevice,
+}
+
+/// Select Desktop only for one exact canonical provider identity.
+///
+/// A mismatch never changes either provider's account, lane, audience, or
+/// project. Explicit headless work stays map-independent; a map-attached path
+/// fails closed because injecting state across identities is forbidden.
+pub fn arbitrate_provider(
+    headless: &ProviderIdentity,
+    desktop: &ProviderIdentity,
+    target: ProviderTarget,
+    headless_project: Option<&str>,
+    desktop_project: Option<&str>,
+) -> Result<ProviderSelection, Failure> {
+    let same_lane = headless.lane == desktop.lane;
+    let same_audience = headless.credential_audience_sha256 == desktop.credential_audience_sha256;
+    let same_uid = headless.uid == desktop.uid;
+    let same_project = match (headless_project, desktop_project) {
+        (None, None) => true,
+        (None, Some(_)) if target == ProviderTarget::MapAttached => true,
+        (Some(headless), Some(desktop)) => headless == desktop,
+        _ => false,
+    };
+    if same_lane && same_audience && same_uid && same_project {
+        return Ok(ProviderSelection::PairedDesktop);
+    }
+    if target == ProviderTarget::Headless {
+        return Ok(ProviderSelection::HeadlessDevice);
+    }
+    Err(Failure::conflict(
+        "auth_context_mismatch",
+        "the paired map and headless provider do not represent the same canonical identity",
+    )
+    .remedy("use the explicit headless command without map attachment, or align the intended Desktop account and lane")
+    .detail(json!({
+        "same_lane": same_lane,
+        "same_credential_audience": same_audience,
+        "same_uid": same_uid,
+        "same_project": same_project,
+    })))
+}
+
+fn bounded_identity(value: &str, max: usize) -> bool {
+    !value.is_empty()
+        && value.len() <= max
+        && value.trim() == value
+        && !value.bytes().any(|byte| byte.is_ascii_control())
+}
+
+fn valid_digest(value: &str) -> bool {
+    value.len() == 64
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+}
 
 /// The narrow seam a credential implementation exposes to command code.
 ///
@@ -24,6 +136,7 @@ pub(crate) trait CredentialProvider {
 pub enum CredentialProviderKind {
     None,
     NativeRefresh,
+    DsDevice,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -168,6 +281,29 @@ impl AuthContext {
             selected_project,
             provider,
             device_identity,
+            SessionState::Active,
+        )
+    }
+
+    pub(crate) fn restored_device(
+        profile: &ClientProfile,
+        device: &DeviceAuthContext,
+        selected_project: Option<SelectedProject>,
+    ) -> Self {
+        Self::build(
+            device.lane(),
+            profile_fence(profile),
+            Some(CanonicalPrincipal {
+                uid: device.uid().to_owned(),
+                email: device.email().to_owned(),
+            }),
+            selected_project,
+            CredentialProviderKind::DsDevice,
+            Some(DeviceIdentity {
+                device_id: device.device_id().to_owned(),
+                name: device.device_name().to_owned(),
+                public_key_fingerprint: device.fingerprint().to_owned(),
+            }),
             SessionState::Active,
         )
     }
@@ -320,5 +456,96 @@ mod tests {
             assert!(!encoded.contains(&format!("\"{forbidden}\"")));
         }
         assert_eq!(value["map_state"]["state"], "unobserved");
+    }
+
+    #[test]
+    fn provider_arbitration_uses_lane_stable_audience_and_uid_only() {
+        let audience = "a".repeat(64);
+        let headless = ProviderIdentity::new("stable", &audience, "uid-a").unwrap();
+        let exact = ProviderIdentity::new("stable", &audience, "uid-a").unwrap();
+        assert_eq!(
+            arbitrate_provider(&headless, &exact, ProviderTarget::Headless, None, None).unwrap(),
+            ProviderSelection::PairedDesktop
+        );
+
+        let other_uid = ProviderIdentity::new("stable", &audience, "uid-b").unwrap();
+        assert_eq!(
+            arbitrate_provider(&headless, &other_uid, ProviderTarget::Headless, None, None,)
+                .unwrap(),
+            ProviderSelection::HeadlessDevice,
+            "a mismatched map must not limit explicit headless work"
+        );
+        assert_eq!(
+            arbitrate_provider(
+                &headless,
+                &other_uid,
+                ProviderTarget::MapAttached,
+                None,
+                None,
+            )
+            .unwrap_err()
+            .code(),
+            "auth_context_mismatch"
+        );
+        assert_eq!(
+            arbitrate_provider(
+                &headless,
+                &exact,
+                ProviderTarget::MapAttached,
+                None,
+                Some("map-project"),
+            )
+            .unwrap(),
+            ProviderSelection::PairedDesktop,
+            "an authorized map supplies its own project when headless has no selection"
+        );
+
+        for separate in [
+            ProviderIdentity::new("canary", &audience, "uid-a").unwrap(),
+            ProviderIdentity::new("stable", &"b".repeat(64), "uid-a").unwrap(),
+        ] {
+            assert_eq!(
+                arbitrate_provider(&headless, &separate, ProviderTarget::Headless, None, None,)
+                    .unwrap(),
+                ProviderSelection::HeadlessDevice
+            );
+            assert_eq!(
+                arbitrate_provider(
+                    &headless,
+                    &separate,
+                    ProviderTarget::MapAttached,
+                    None,
+                    None,
+                )
+                .unwrap_err()
+                .code(),
+                "auth_context_mismatch"
+            );
+        }
+
+        assert_eq!(
+            arbitrate_provider(
+                &headless,
+                &exact,
+                ProviderTarget::Headless,
+                Some("project-a"),
+                Some("project-b"),
+            )
+            .unwrap(),
+            ProviderSelection::HeadlessDevice,
+            "an open map on another project must not steal a project-bound headless operation"
+        );
+        assert_eq!(
+            arbitrate_provider(
+                &headless,
+                &exact,
+                ProviderTarget::MapAttached,
+                Some("project-a"),
+                Some("project-b"),
+            )
+            .unwrap_err()
+            .code(),
+            "auth_context_mismatch"
+        );
     }
 }

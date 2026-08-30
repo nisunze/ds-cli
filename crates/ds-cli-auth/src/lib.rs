@@ -5,6 +5,8 @@
 //! project response contract remain exclusively in `ds-client-core`.
 
 mod context;
+pub mod device;
+pub mod link_approval;
 mod profile;
 mod state;
 mod transport;
@@ -34,8 +36,49 @@ use zeroize::Zeroize;
 
 pub use context::{
     AuthContext, CanonicalPrincipal, CredentialProviderKind, DeviceIdentity, MapProjectAddress,
-    MapState, ProfileFence, SelectedProject, SessionState,
+    MapState, ProfileFence, ProviderIdentity, ProviderSelection, ProviderTarget, SelectedProject,
+    SessionState, arbitrate_provider,
 };
+
+/// Observe all durable headless providers without network or token output.
+/// Two providers may coexist only when they name one exact canonical UID,
+/// lane, audience and selected project.
+pub fn probe_headless_identity(
+    lane_token: &str,
+) -> Result<Option<(ProviderIdentity, Option<String>)>, Failure> {
+    let lane = Lane::parse(lane_token)?;
+    let profile = profile::load(lane)?;
+    let refresh = NativeRefreshStore::probe(&profile)?
+        .map(|context| {
+            let identity = ProviderIdentity::new(
+                context.lane(),
+                context.credential_audience_sha256(),
+                context.uid(),
+            )?;
+            let project = ProjectContextLease::probe_selected(&profile, context.uid())?;
+            Ok::<_, Failure>((identity, project))
+        })
+        .transpose()?;
+    let device = device::probe_identity(lane)?;
+    match (refresh, device) {
+        (None, None) => Ok(None),
+        (Some(provider), None) | (None, Some(provider)) => Ok(Some(provider)),
+        (Some(refresh), Some(device)) => {
+            let same_identity = refresh.0 == device.0;
+            let same_project = refresh.1 == device.1;
+            if !same_identity || !same_project {
+                return Err(Failure::conflict(
+                    "auth_context_mismatch",
+                    "the protected Firebase and DS device providers disagree on canonical identity",
+                )
+                .remedy(
+                    "do not attach to a map; explicitly sign out or revoke the unintended provider",
+                ));
+            }
+            Ok(Some(device))
+        }
+    }
+}
 
 pub static DOMAIN: Domain = Domain {
     id: "auth",
@@ -44,6 +87,13 @@ pub static DOMAIN: Domain = Domain {
         &STATUS_COMMAND,
         &LOGIN_COMMAND,
         &LOGOUT_COMMAND,
+        &device::BEGIN_COMMAND,
+        &device::STATUS_COMMAND,
+        &device::COMPLETE_COMMAND,
+        &link_approval::COMMAND,
+        &device::LIST_COMMAND,
+        &device::READ_COMMAND,
+        &device::REVOKE_COMMAND,
         &PROJECT_LIST_COMMAND,
         &PROJECT_USE_COMMAND,
         &PROJECT_STATUS_COMMAND,
@@ -568,7 +618,32 @@ pub struct HeadlessSurveyImportSession {
     principal_sha256: String,
     credential_audience_sha256: String,
     selected: state::ProjectContext,
-    client: NativeClient,
+    provider: SurveyImportProvider,
+}
+
+enum SurveyImportProvider {
+    Firebase(Box<NativeClient>),
+    Device(Box<device::DeviceSession>),
+}
+
+impl SurveyImportProvider {
+    fn create(
+        &mut self,
+        project: &str,
+        request: &SurveyEntryCreateRequest,
+    ) -> Result<SurveyEntryCreateReceipt, ClientError> {
+        match self {
+            Self::Firebase(client) => client.survey_entry_create(project, request, now()),
+            Self::Device(device) => device.survey_entry_create(project, request),
+        }
+    }
+
+    fn profile(&self) -> &ds_client_core::ClientProfile {
+        match self {
+            Self::Firebase(client) => client.profile(),
+            Self::Device(device) => device.profile(),
+        }
+    }
 }
 
 impl HeadlessSurveyImportSession {
@@ -605,9 +680,7 @@ impl HeadlessSurveyImportSession {
         &mut self,
         request: &SurveyEntryCreateRequest,
     ) -> Result<SurveyEntryCreateReceipt, Failure> {
-        let result = self
-            .client
-            .survey_entry_create(&self.project_id, request, now());
+        let result = self.provider.create(&self.project_id, request);
         match result {
             Err(error) if error.survey_entry_create_service_code().is_some() => {
                 Err(map_survey_entry_create_service_code(
@@ -648,7 +721,7 @@ impl HeadlessSurveyImportSession {
                 .remedy("verify the backend release and update ds before resuming"))
             }
             other => with_released_context_disposition(
-                self.client.profile(),
+                self.provider.profile(),
                 &self.selected,
                 other,
             ),
@@ -776,6 +849,27 @@ pub fn native_availability() -> ds_cli_contract::spec::Availability {
     profile::availability()
 }
 
+fn restored_device_project(
+    lane: Lane,
+) -> Result<Option<(device::DeviceSession, state::ProjectContext)>, Failure> {
+    let _ = probe_headless_identity(lane.token())?;
+    let Some(session) = device::restore_session(lane)? else {
+        return Ok(None);
+    };
+    let identity = session.context();
+    let selected = ProjectContextLease::acquire(session.profile())?
+        .load_snapshot(session.profile(), identity.uid(), identity.email())?
+        .ok_or_else(|| {
+            Failure::conflict(
+                "headless_project_not_selected",
+                "no project is selected for this device, lane, and credential audience",
+            )
+            .remedy("run ds auth project use --project <exact-id>")
+            .next("ds auth project status")
+        })?;
+    Ok(Some((session, selected)))
+}
+
 /// Restore one native user and fetch one transformer from that user's fenced
 /// selected project. There is deliberately no project-id or URL override.
 pub fn transformer_context(
@@ -783,6 +877,17 @@ pub fn transformer_context(
     transformer: &str,
 ) -> Result<HeadlessTransformerContext, Failure> {
     let lane = Lane::parse(lane_value)?;
+    if let Some((mut device, selected)) = restored_device_project(lane)? {
+        let snapshot = device
+            .transformer_context(selected.project_id(), transformer)
+            .map_err(map_client)?;
+        return Ok(HeadlessTransformerContext {
+            lane: lane.token(),
+            project_name: selected.project_name().to_owned(),
+            project_status: selected.status().to_owned(),
+            snapshot,
+        });
+    }
     let profile = profile::load(lane)?;
     let store = NativeRefreshStore::open()?;
     let mut client = Client::new(profile, NativeTransport, store);
@@ -811,6 +916,17 @@ pub fn transformer_context(
 /// audience-fenced selected project. The gateway rechecks membership.
 pub fn project_forms(lane_value: &str) -> Result<HeadlessProjectForms, Failure> {
     let lane = Lane::parse(lane_value)?;
+    if let Some((mut device, selected)) = restored_device_project(lane)? {
+        let snapshot = device
+            .project_forms(selected.project_id())
+            .map_err(map_client)?;
+        return Ok(HeadlessProjectForms {
+            lane: lane.token(),
+            project_name: selected.project_name().to_owned(),
+            project_status: selected.status().to_owned(),
+            snapshot,
+        });
+    }
     let profile = profile::load(lane)?;
     let store = NativeRefreshStore::open()?;
     let mut client = Client::new(profile, NativeTransport, store);
@@ -842,6 +958,17 @@ pub fn project_form_editor(
     form_slug: &str,
 ) -> Result<HeadlessProjectFormEditor, Failure> {
     let lane = Lane::parse(lane_value)?;
+    if let Some((mut device, selected)) = restored_device_project(lane)? {
+        let snapshot = device
+            .project_form_editor(selected.project_id(), form_slug)
+            .map_err(map_client)?;
+        return Ok(HeadlessProjectFormEditor {
+            lane: lane.token(),
+            project_name: selected.project_name().to_owned(),
+            project_status: selected.status().to_owned(),
+            snapshot,
+        });
+    }
     let profile = profile::load(lane)?;
     let store = NativeRefreshStore::open()?;
     let mut client = Client::new(profile, NativeTransport, store);
@@ -874,6 +1001,17 @@ pub fn solar_snapshot(
     template_id: &str,
 ) -> Result<HeadlessSolarSnapshot, Failure> {
     let lane = Lane::parse(lane_value)?;
+    if let Some((mut device, selected)) = restored_device_project(lane)? {
+        let snapshot = device
+            .solar_snapshot(selected.project_id(), template_id)
+            .map_err(map_client)?;
+        return Ok(HeadlessSolarSnapshot {
+            lane: lane.token(),
+            project_name: selected.project_name().to_owned(),
+            project_status: selected.status().to_owned(),
+            snapshot,
+        });
+    }
     let profile = profile::load(lane)?;
     let store = NativeRefreshStore::open()?;
     let mut client = Client::new(profile, NativeTransport, store);
@@ -956,6 +1094,26 @@ pub fn survey_query(
     query: &SurveyQueryRequest,
 ) -> Result<HeadlessSurveyQuery, Failure> {
     let lane = Lane::parse(lane_value)?;
+    if let Some((mut device, selected)) = restored_device_project(lane)? {
+        let result = device.survey_query(selected.project_id(), query);
+        let result = match result {
+            Err(error) if error.kind() == ErrorKind::ResourceNotFound => {
+                return Err(Failure::invalid(
+                    "survey_scope_not_found",
+                    "the selected project or governed form is unavailable to this verified user",
+                ));
+            }
+            Err(error) => return Err(map_client(error)),
+            Ok(result) => result,
+        };
+        return Ok(HeadlessSurveyQuery {
+            lane: lane.token(),
+            project_id: selected.project_id().to_owned(),
+            project_name: selected.project_name().to_owned(),
+            project_status: selected.status().to_owned(),
+            result,
+        });
+    }
     let profile = profile::load(lane)?;
     let store = NativeRefreshStore::open()?;
     let mut client = Client::new(profile, NativeTransport, store);
@@ -1006,6 +1164,24 @@ pub fn survey_entries_select(
     request: &SurveyEntriesSelectRequest,
 ) -> Result<HeadlessSurveyEntriesSelection, Failure> {
     let lane = Lane::parse(lane_value)?;
+    if let Some((mut device, selected)) = restored_device_project(lane)? {
+        let selection = match device.survey_entries_select(selected.project_id(), request) {
+            Err(error) if error.survey_entries_select_service_code().is_some() => {
+                return Err(map_survey_entries_service_code(
+                    error.survey_entries_select_service_code().unwrap(),
+                ));
+            }
+            Err(error) => return Err(map_client(error)),
+            Ok(selection) => selection,
+        };
+        return Ok(HeadlessSurveyEntriesSelection {
+            lane: lane.token(),
+            project_id: selected.project_id().to_owned(),
+            project_name: selected.project_name().to_owned(),
+            project_status: selected.status().to_owned(),
+            selection,
+        });
+    }
     let profile = profile::load(lane)?;
     let store = NativeRefreshStore::open()?;
     let mut client = Client::new(profile, NativeTransport, store);
@@ -1083,6 +1259,24 @@ pub fn survey_entries_changes(
     request: &SurveyEntriesChangesRequest,
 ) -> Result<HeadlessSurveyEntriesChanges, Failure> {
     let lane = Lane::parse(lane_value)?;
+    if let Some((mut device, selected)) = restored_device_project(lane)? {
+        let changes = match device.survey_entries_changes(selected.project_id(), request) {
+            Err(error) if error.survey_entries_changes_service_code().is_some() => {
+                return Err(map_survey_entries_changes_service_code(
+                    error.survey_entries_changes_service_code().unwrap(),
+                ));
+            }
+            Err(error) => return Err(map_client(error)),
+            Ok(changes) => changes,
+        };
+        return Ok(HeadlessSurveyEntriesChanges {
+            lane: lane.token(),
+            project_id: selected.project_id().to_owned(),
+            project_name: selected.project_name().to_owned(),
+            project_status: selected.status().to_owned(),
+            changes,
+        });
+    }
     let profile = profile::load(lane)?;
     let store = NativeRefreshStore::open()?;
     let mut client = Client::new(profile, NativeTransport, store);
@@ -1157,6 +1351,23 @@ pub fn survey_entry_create(
     request: &SurveyEntryCreateRequest,
 ) -> Result<HeadlessSurveyEntryCreate, Failure> {
     let lane = Lane::parse(lane_value)?;
+    if let Some((mut device, selected)) = restored_device_project(lane)? {
+        let receipt = match device.survey_entry_create(selected.project_id(), request) {
+            Err(error) if error.survey_entry_create_service_code().is_some() => {
+                return Err(map_survey_entry_create_service_code(
+                    error.survey_entry_create_service_code().unwrap(),
+                ));
+            }
+            Err(error) => return Err(map_client(error)),
+            Ok(receipt) => receipt,
+        };
+        return Ok(HeadlessSurveyEntryCreate {
+            lane: lane.token(),
+            project_name: selected.project_name().to_owned(),
+            project_status: selected.status().to_owned(),
+            receipt,
+        });
+    }
     let profile = profile::load(lane)?;
     let store = NativeRefreshStore::open()?;
     let mut client = Client::new(profile, NativeTransport, store);
@@ -1232,6 +1443,21 @@ pub fn survey_entry_create(
 /// released before this function returns and before any create call begins.
 pub fn survey_import_session(lane_value: &str) -> Result<HeadlessSurveyImportSession, Failure> {
     let lane = Lane::parse(lane_value)?;
+    if let Some((device, selected)) = restored_device_project(lane)? {
+        let identity = device.context();
+        let principal_sha256 = principal_binding_sha256(identity.uid(), identity.email());
+        let credential_audience_sha256 = device.profile().credential_audience_sha256().to_owned();
+        return Ok(HeadlessSurveyImportSession {
+            lane: lane.token(),
+            project_id: selected.project_id().to_owned(),
+            project_name: selected.project_name().to_owned(),
+            project_status: selected.status().to_owned(),
+            principal_sha256,
+            credential_audience_sha256,
+            selected,
+            provider: SurveyImportProvider::Device(Box::new(device)),
+        });
+    }
     let profile = profile::load(lane)?;
     let store = NativeRefreshStore::open()?;
     let mut client = Client::new(profile, NativeTransport, store);
@@ -1255,7 +1481,7 @@ pub fn survey_import_session(lane_value: &str) -> Result<HeadlessSurveyImportSes
         principal_sha256,
         credential_audience_sha256: client.profile().credential_audience_sha256().to_owned(),
         selected,
-        client,
+        provider: SurveyImportProvider::Firebase(Box::new(client)),
     })
 }
 
@@ -1439,6 +1665,24 @@ fn client(inputs: &Inputs) -> Result<(Lane, NativeClient), Failure> {
 }
 
 pub fn run_status(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
+    let lane = Lane::parse(inputs.require("lane")?)?;
+    let profile = profile::load(lane)?;
+    let _ = probe_headless_identity(lane.token())?;
+    if let Some(device) = device::probe_context(lane)? {
+        let selected = ProjectContextLease::acquire(&profile)?
+            .load_snapshot(&profile, device.uid(), device.email())?
+            .as_ref()
+            .map(selected_project);
+        let auth_context = AuthContext::restored_device(&profile, &device, selected);
+        return Ok(json!({
+            "lane": lane.token(), "signed_in": true,
+            "uid": device.uid(), "email": device.email(),
+            "credential_provider": "ds_device", "device_id": device.device_id(),
+            "auth_context": serde_json::to_value(auth_context).map_err(|_| Failure::failed(
+                "auth_context_unreadable", "the bounded authenticated context could not be projected safely"
+            ))?,
+        }));
+    }
     let (lane, mut client) = client(inputs)?;
     let context = ProjectContextLease::acquire(client.profile())?;
     let auth_context = NativeContextProvider {
@@ -1478,25 +1722,70 @@ fn selected_project(context: &state::ProjectContext) -> SelectedProject {
 pub fn run_login(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let (lane, mut client) = client(inputs)?;
     let context = ProjectContextLease::acquire(client.profile())?;
+    let durable_device = device::probe_context(lane)?;
     let email = inputs.require("email")?;
     let mut password = read_password(inputs.switch("password-stdin"))?;
     let result = client.sign_in(email, &password, now()).map_err(map_client);
     password.zeroize();
     let user = result?;
+    if let Some(device) = durable_device
+        && (device.lane() != lane.token()
+            || device.credential_audience_sha256() != client.profile().credential_audience_sha256()
+            || device.uid() != user.uid())
+    {
+        client.sign_out().map_err(|_| cleanup_required())?;
+        return Err(Failure::conflict(
+            "auth_context_mismatch",
+            "the signed-in Firebase principal conflicts with the protected DS device principal",
+        )
+        .remedy("revoke the unintended device or sign in with its exact canonical account"));
+    }
     context.clear().map_err(|_| cleanup_required())?;
     Ok(json!({ "lane": lane.token(), "signed_in": true, "uid": user.uid(), "email": user.email() }))
 }
 
 pub fn run_logout(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
+    let lane = Lane::parse(inputs.require("lane")?)?;
+    let _ = probe_headless_identity(lane.token())?;
+    let remaining_device = device::probe_context(lane)?;
     let (lane, mut client) = client(inputs)?;
     let context = ProjectContextLease::acquire(client.profile())?;
     client.sign_out().map_err(map_client)?;
+    if let Some(device) = remaining_device {
+        return Ok(json!({
+            "lane": lane.token(),
+            "signed_in": true,
+            "firebase_signed_out": true,
+            "credential_provider": "ds_device",
+            "device_id": device.device_id(),
+            "context_cleared": false,
+        }));
+    }
     context.clear().map_err(|_| cleanup_required())?;
-    Ok(json!({ "lane": lane.token(), "signed_in": false, "context_cleared": true }))
+    Ok(
+        json!({ "lane": lane.token(), "signed_in": false, "firebase_signed_out": true, "context_cleared": true }),
+    )
 }
 
 pub fn run_project_list(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let limit = parse_limit(inputs.require("limit")?)?;
+    let lane = Lane::parse(inputs.require("lane")?)?;
+    let _ = probe_headless_identity(lane.token())?;
+    if let Some(mut device) = device::restore_session(lane)? {
+        let directory = device.list_projects().map_err(map_client)?;
+        let total = directory.projects().len();
+        let projects = directory
+            .projects()
+            .iter()
+            .take(limit)
+            .map(project_json)
+            .collect::<Vec<_>>();
+        let returned = projects.len();
+        return Ok(
+            json!({ "lane": lane.token(), "credential_provider": "ds_device", "projects": projects,
+            "returned": returned, "total": total, "more": total > returned }),
+        );
+    }
     let (lane, mut client) = client(inputs)?;
     let context = ProjectContextLease::acquire(client.profile())?;
     require_restore(&mut client, &context)?;
@@ -1519,6 +1808,26 @@ pub fn run_project_list(inputs: &Inputs, _context: &Context) -> Result<Value, Fa
 }
 
 pub fn run_project_use(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
+    let lane = Lane::parse(inputs.require("lane")?)?;
+    let _ = probe_headless_identity(lane.token())?;
+    if let Some(mut device) = device::restore_session(lane)? {
+        let identity = device.context();
+        let directory = device.list_projects().map_err(map_client)?;
+        let requested = inputs.require("project")?;
+        let project = directory.exact(requested).ok_or_else(|| {
+            Failure::invalid(
+                "project_not_visible",
+                "that exact project id is not present in the freshly fetched project directory",
+            )
+            .remedy("run ds auth project list and pass one exact ds_project value")
+        })?;
+        let context = ProjectContextLease::acquire(device.profile())?;
+        let saved = context.save(device.profile(), identity.uid(), identity.email(), project)?;
+        return Ok(
+            json!({ "lane": lane.token(), "credential_provider": "ds_device", "selected": true,
+            "project": context_json(&saved) }),
+        );
+    }
     let (lane, mut client) = client(inputs)?;
     let context = ProjectContextLease::acquire(client.profile())?;
     let user = require_restore(&mut client, &context)?;
@@ -1536,6 +1845,20 @@ pub fn run_project_use(inputs: &Inputs, _context: &Context) -> Result<Value, Fai
 }
 
 pub fn run_project_status(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
+    let lane = Lane::parse(inputs.require("lane")?)?;
+    let _ = probe_headless_identity(lane.token())?;
+    if let Some(device) = device::probe_context(lane)? {
+        let profile = profile::load(lane)?;
+        let saved =
+            ProjectContextLease::acquire(&profile)?.load(&profile, device.uid(), device.email())?;
+        return Ok(match saved {
+            Some(context) => json!({ "lane": lane.token(), "credential_provider": "ds_device",
+                "selected": true, "project": context_json(&context) }),
+            None => {
+                json!({ "lane": lane.token(), "credential_provider": "ds_device", "selected": false })
+            }
+        });
+    }
     let (lane, mut client) = client(inputs)?;
     let context = ProjectContextLease::acquire(client.profile())?;
     let user = require_restore(&mut client, &context)?;
@@ -2195,7 +2518,6 @@ mod tests {
     #[test]
     fn auth_contract_has_no_secret_or_generic_transport_inputs() {
         for command in DOMAIN.commands {
-            assert_eq!(command.effect, Effect::LocalAuthState);
             for forbidden in [
                 "password",
                 "token",
@@ -2203,13 +2525,30 @@ mod tests {
                 "endpoint",
                 "url",
                 "header",
-                "desktop-descriptor",
             ] {
                 assert!(
                     command.arg(forbidden).is_none(),
                     "{} exposes {forbidden}",
                     command.id
                 );
+            }
+            if command.id == "auth.link.approve" {
+                assert_eq!(command.effect, Effect::GlobalWrite);
+                assert_eq!(command.authority, Authority::DesktopUser);
+                assert!(command.arg("desktop-descriptor").is_some());
+            } else if matches!(
+                command.id,
+                "auth.link.status" | "auth.device.list" | "auth.device.read"
+            ) {
+                assert_eq!(command.effect, Effect::ReadOnly);
+                assert!(command.arg("desktop-descriptor").is_none());
+            } else if command.id == "auth.device.revoke" {
+                assert_eq!(command.effect, Effect::GlobalWrite);
+                assert_eq!(command.authority, Authority::HeadlessUser);
+                assert!(command.arg("desktop-descriptor").is_none());
+            } else {
+                assert_eq!(command.effect, Effect::LocalAuthState);
+                assert!(command.arg("desktop-descriptor").is_none());
             }
         }
         assert_eq!(LOGIN_COMMAND.authority, Authority::None);

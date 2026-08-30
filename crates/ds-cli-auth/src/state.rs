@@ -10,11 +10,12 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use ds_cli_contract::Failure;
 use ds_client_core::{
-    ClientProfile, Project, ProjectStatus, RefreshTokenStore, StoreError, StoreKey,
+    ClientProfile, DeviceCredentialStore, Project, ProjectStatus, RefreshTokenStore, StoreError,
+    StoreKey, StoredAuthContext, probe_stored_refresh,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use zeroize::Zeroize;
+use zeroize::{Zeroize, Zeroizing};
 
 const MAX_STATE_BYTES: u64 = 64 * 1024;
 const CONTEXT_SCHEMA: &str = "ds-cli.project-context/v1";
@@ -26,6 +27,136 @@ static TEMP_SEQUENCE: AtomicU64 = AtomicU64::new(1);
 pub struct NativeRefreshStore {
     root: PathBuf,
     lease: Option<(String, File)>,
+}
+
+/// Protected opaque state for one DS device provider.
+///
+/// The closed client core owns the bytes and their schema. This host adapter
+/// only provides an owner-only, no-follow, atomically replaced blob under one
+/// bounded logical key. In particular it cannot inspect or project the device
+/// private key stored inside those bytes.
+pub struct NativeDeviceStore {
+    root: PathBuf,
+    lease: Option<(String, File)>,
+}
+
+impl NativeDeviceStore {
+    pub fn open() -> Result<Self, Failure> {
+        let root = state_root()?.join("devices");
+        secure_dir(&root).map_err(state_failure)?;
+        Ok(Self { root, lease: None })
+    }
+
+    fn paths(&self, key: &str) -> Result<(String, PathBuf, PathBuf), StoreError> {
+        if key.is_empty()
+            || key.len() > 512
+            || key.trim() != key
+            || key.bytes().any(|byte| byte.is_ascii_control())
+        {
+            return Err(StoreError::UnsafeOrUnreadable);
+        }
+        let identity = format!("{:x}", Sha256::digest(key.as_bytes()));
+        Ok((
+            identity.clone(),
+            self.root.join(format!("{identity}.json")),
+            self.root.join(format!("{identity}.lock")),
+        ))
+    }
+
+    fn prove_lease(&self, key: &str) -> Result<PathBuf, StoreError> {
+        let (identity, path, _) = self.paths(key)?;
+        if self.lease.as_ref().map(|lease| lease.0.as_str()) != Some(identity.as_str()) {
+            return Err(StoreError::Conflict);
+        }
+        Ok(path)
+    }
+
+    pub fn acquire(&mut self, key: &str) -> Result<(), StoreError> {
+        if self.lease.is_some() {
+            return Err(StoreError::Conflict);
+        }
+        let (identity, data_path, lock_path) = self.paths(key)?;
+        let file = protected_open_lock(&lock_path)?;
+        lock_exclusive(&file)?;
+        if let Err(error) = cleanup_stage(&data_path) {
+            let _ = unlock(&file);
+            return Err(error);
+        }
+        self.lease = Some((identity, file));
+        Ok(())
+    }
+
+    pub fn load(&mut self, key: &str) -> Result<Option<Vec<u8>>, StoreError> {
+        protected_read(&self.prove_lease(key)?)
+    }
+
+    pub fn compare_and_swap(
+        &mut self,
+        key: &str,
+        expected: Option<&[u8]>,
+        replacement: Option<&[u8]>,
+    ) -> Result<(), StoreError> {
+        let path = self.prove_lease(key)?;
+        let mut current = protected_read(&path)?;
+        if current.as_deref() != expected {
+            if let Some(bytes) = current.as_mut() {
+                bytes.zeroize();
+            }
+            return Err(StoreError::Conflict);
+        }
+        let result = match replacement {
+            Some(bytes) if bytes.len() as u64 <= MAX_STATE_BYTES => atomic_write(&path, bytes),
+            Some(_) => Err(StoreError::UnsafeOrUnreadable),
+            None => remove_and_sync(&path),
+        };
+        if let Some(bytes) = current.as_mut() {
+            bytes.zeroize();
+        }
+        result
+    }
+
+    pub fn release(&mut self, key: &str) -> Result<(), StoreError> {
+        let (identity, _, _) = self.paths(key)?;
+        let Some((held, file)) = self.lease.take() else {
+            return Err(StoreError::Conflict);
+        };
+        if held != identity {
+            self.lease = Some((held, file));
+            return Err(StoreError::Conflict);
+        }
+        unlock(&file)
+    }
+}
+
+impl Drop for NativeDeviceStore {
+    fn drop(&mut self) {
+        if let Some((_, file)) = self.lease.take() {
+            let _ = unlock(&file);
+        }
+    }
+}
+
+impl DeviceCredentialStore for NativeDeviceStore {
+    fn acquire(&mut self, key: &str) -> Result<(), StoreError> {
+        NativeDeviceStore::acquire(self, key)
+    }
+
+    fn load(&mut self, key: &str) -> Result<Option<Vec<u8>>, StoreError> {
+        NativeDeviceStore::load(self, key)
+    }
+
+    fn compare_and_swap(
+        &mut self,
+        key: &str,
+        expected: Option<&[u8]>,
+        replacement: Option<&[u8]>,
+    ) -> Result<(), StoreError> {
+        NativeDeviceStore::compare_and_swap(self, key, expected, replacement)
+    }
+
+    fn release(&mut self, key: &str) -> Result<(), StoreError> {
+        NativeDeviceStore::release(self, key)
+    }
 }
 
 impl NativeRefreshStore {
@@ -50,6 +181,38 @@ impl NativeRefreshStore {
             return Err(StoreError::Conflict);
         }
         Ok(path)
+    }
+
+    /// Inspect exact protected Firebase identity without any refresh/network.
+    pub fn probe(profile: &ClientProfile) -> Result<Option<StoredAuthContext>, Failure> {
+        let store = Self::open()?;
+        let raw_key = format!(
+            "ds-client/{}/{}",
+            profile.lane().token(),
+            profile.credential_audience_sha256()
+        );
+        let identity = format!("{:x}", Sha256::digest(raw_key.as_bytes()));
+        let path = store.root.join(format!("{identity}.json"));
+        let lock_path = store.root.join(format!("{identity}.lock"));
+        let lock = protected_open_lock(&lock_path).map_err(state_failure)?;
+        lock_exclusive(&lock).map_err(state_failure)?;
+        let loaded = protected_read(&path)
+            .map_err(state_failure)?
+            .map(Zeroizing::new);
+        let result = loaded
+            .as_deref()
+            .map(|bytes| {
+                probe_stored_refresh(bytes, profile).map_err(|_| {
+                    Failure::unavailable(
+                        "native_state_unsafe",
+                        "the protected native refresh identity is malformed or mismatched",
+                    )
+                    .remedy("run ds auth logout and sign in again")
+                })
+            })
+            .transpose();
+        let _ = unlock(&lock);
+        result
     }
 }
 
@@ -200,6 +363,27 @@ impl ProjectContextLease {
         let selected = self.load(profile, uid, email)?;
         drop(self);
         Ok(selected)
+    }
+
+    /// Non-network project observation keyed by stable UID/lane/audience.
+    pub fn probe_selected(profile: &ClientProfile, uid: &str) -> Result<Option<String>, Failure> {
+        let lease = Self::acquire(profile)?;
+        let Some(bytes) = protected_read(&lease.path).map_err(state_failure)? else {
+            return Ok(None);
+        };
+        let context: ProjectContext = serde_json::from_slice(&bytes)
+            .map_err(|_| state_failure(StoreError::UnsafeOrUnreadable))?;
+        if context.schema != CONTEXT_SCHEMA
+            || context.lane != profile.lane().token()
+            || context.credential_audience_sha256 != profile.credential_audience_sha256()
+            || context.uid != uid
+        {
+            return Err(Failure::conflict(
+                "project_context_stale",
+                "the saved project context belongs to another user, lane, or client audience",
+            ));
+        }
+        Ok(Some(context.ds_project))
     }
 
     pub fn clear(&self) -> Result<(), Failure> {
@@ -744,6 +928,20 @@ mod tests {
             firebase_api_key: "public-firebase-key".to_owned(),
             gateway_api_key: "public-gateway-key".to_owned(),
             gateway_origin: "https://eds-gateway-3c0q477h.ue.gateway.dev".to_owned(),
+            auth_link_begin_method: "POST".to_owned(),
+            auth_link_begin_path: "/api/v1/auth/device/begin".to_owned(),
+            auth_link_status_method: "POST".to_owned(),
+            auth_link_status_path: "/api/v1/auth/device/status".to_owned(),
+            auth_link_complete_method: "POST".to_owned(),
+            auth_link_complete_path: "/api/v1/auth/device/complete".to_owned(),
+            auth_device_refresh_method: "POST".to_owned(),
+            auth_device_refresh_path: "/api/v1/auth/device/refresh".to_owned(),
+            auth_device_list_method: "GET".to_owned(),
+            auth_device_list_path: "/api/v1/auth/devices".to_owned(),
+            auth_device_read_method: "GET".to_owned(),
+            auth_device_read_path_template: "/api/v1/auth/devices/{device_id}".to_owned(),
+            auth_device_revoke_method: "DELETE".to_owned(),
+            auth_device_revoke_path_template: "/api/v1/auth/devices/{device_id}".to_owned(),
             project_list_method: "GET".to_owned(),
             project_list_path: "/api/v1/user/projects".to_owned(),
             transformer_context_method: "POST".to_owned(),
@@ -777,6 +975,13 @@ mod tests {
         }
     }
 
+    fn device_store(root: &Path) -> NativeDeviceStore {
+        NativeDeviceStore {
+            root: root.to_owned(),
+            lease: None,
+        }
+    }
+
     fn temp_dir(name: &str) -> PathBuf {
         let path = std::env::temp_dir().join(format!(
             "ds-auth-state-{name}-{}-{}",
@@ -786,6 +991,48 @@ mod tests {
         fs::create_dir(&path).unwrap();
         fs::set_permissions(&path, fs::Permissions::from_mode(0o700)).unwrap();
         path
+    }
+
+    #[test]
+    fn device_provider_bytes_are_leased_owner_only_and_key_separated() {
+        let root = temp_dir("device-provider");
+        let mut store = device_store(&root);
+        let first = b"private-device-state-a";
+        let second = b"private-device-state-b";
+
+        store.acquire("stable:audience-a").unwrap();
+        assert_eq!(store.load("stable:audience-a").unwrap(), None);
+        store
+            .compare_and_swap("stable:audience-a", None, Some(first))
+            .unwrap();
+        assert_eq!(
+            store.load("stable:audience-a").unwrap().as_deref(),
+            Some(first.as_slice())
+        );
+        assert_eq!(
+            store
+                .compare_and_swap("stable:audience-a", Some(second), Some(first))
+                .unwrap_err(),
+            StoreError::Conflict
+        );
+        store.release("stable:audience-a").unwrap();
+
+        store.acquire("stable:audience-b").unwrap();
+        assert_eq!(store.load("stable:audience-b").unwrap(), None);
+        store
+            .compare_and_swap("stable:audience-b", None, Some(second))
+            .unwrap();
+        store.release("stable:audience-b").unwrap();
+
+        assert_eq!(
+            store.acquire("../unsafe\nkey").unwrap_err(),
+            StoreError::UnsafeOrUnreadable
+        );
+        for entry in fs::read_dir(&root).unwrap() {
+            let metadata = entry.unwrap().metadata().unwrap();
+            assert_eq!(metadata.permissions().mode() & 0o077, 0);
+        }
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]

@@ -47,6 +47,41 @@ static AUTH_ENTRIES: &[Entry] = &[
         render: ds_cli_auth::render_logout,
     },
     Entry {
+        command: &ds_cli_auth::device::BEGIN_COMMAND,
+        handler: ds_cli_auth::device::run_begin,
+        render: ds_cli_auth::device::render,
+    },
+    Entry {
+        command: &ds_cli_auth::device::STATUS_COMMAND,
+        handler: ds_cli_auth::device::run_status,
+        render: ds_cli_auth::device::render,
+    },
+    Entry {
+        command: &ds_cli_auth::device::COMPLETE_COMMAND,
+        handler: ds_cli_auth::device::run_complete,
+        render: ds_cli_auth::device::render,
+    },
+    Entry {
+        command: &ds_cli_auth::link_approval::COMMAND,
+        handler: ds_cli_auth::link_approval::run,
+        render: ds_cli_auth::link_approval::render,
+    },
+    Entry {
+        command: &ds_cli_auth::device::LIST_COMMAND,
+        handler: ds_cli_auth::device::run_list,
+        render: ds_cli_auth::device::render,
+    },
+    Entry {
+        command: &ds_cli_auth::device::READ_COMMAND,
+        handler: ds_cli_auth::device::run_read,
+        render: ds_cli_auth::device::render,
+    },
+    Entry {
+        command: &ds_cli_auth::device::REVOKE_COMMAND,
+        handler: ds_cli_auth::device::run_revoke,
+        render: ds_cli_auth::device::render,
+    },
+    Entry {
         command: &ds_cli_auth::PROJECT_LIST_COMMAND,
         handler: ds_cli_auth::run_project_list,
         render: ds_cli_auth::render_project_list,
@@ -1280,6 +1315,48 @@ pub fn all_commands() -> Vec<&'static Command> {
         .collect()
 }
 
+/// One central identity decision for commands that borrow paired user/map
+/// authority. Production observation stays outside this pure comparison: the
+/// registry obtains one non-secret protected-state probe and one paired
+/// session snapshot, then every eligible command passes through this gate.
+#[cfg(test)]
+fn enforce_provider_identity(
+    command: &Command,
+    headless: Option<(&ds_cli_auth::ProviderIdentity, Option<&str>)>,
+    desktop: Option<(&ds_cli_auth::ProviderIdentity, Option<&str>)>,
+) -> Result<(), Failure> {
+    if command.id == "auth.link.approve"
+        || !matches!(
+            command.authority,
+            ds_cli_contract::Authority::DesktopUser | ds_cli_contract::Authority::Project
+        )
+    {
+        return Ok(());
+    }
+    let Some((headless_identity, headless_project)) = headless else {
+        // An already-authorized map must not require a separate CLI login.
+        return Ok(());
+    };
+    let Some((desktop_identity, desktop_project)) = desktop else {
+        // The ordinary paired-authority handler owns the typed not-paired
+        // refusal; there is no mismatched identity to classify here.
+        return Ok(());
+    };
+    let projects = if command.authority == ds_cli_contract::Authority::Project {
+        (headless_project, desktop_project)
+    } else {
+        (None, None)
+    };
+    ds_cli_auth::arbitrate_provider(
+        headless_identity,
+        desktop_identity,
+        ds_cli_auth::ProviderTarget::MapAttached,
+        projects.0,
+        projects.1,
+    )?;
+    Ok(())
+}
+
 /// Run one entry: parse its declared inputs, enforce the confirmation policy
 /// its effect class implies, then hand off. Confirmation is checked here, in
 /// one place, so a handler cannot forget it.
@@ -1315,5 +1392,130 @@ pub fn dispatch(entry: &Entry, tokens: &[String], context: &Context) -> Result<V
             .next(format!("ds {} --help", entry.command.path.join(" "))));
     }
 
+    // Scope the non-network protected-provider observation. The shared
+    // Desktop bridge seam consumes it only for an actual map-backed call,
+    // snapshots the current map session, and sends the atomic fence beside
+    // domain arguments. Pure backend commands remain Desktop-independent.
+    let _headless_identity = scope_headless_identity(entry.command, &inputs)?;
+
     (entry.handler)(&inputs, context)
+}
+
+fn scope_headless_identity(
+    command: &Command,
+    inputs: &Inputs,
+) -> Result<ds_cli_desktop::ops::HeadlessIdentityGuard, Failure> {
+    // Pure backend commands carry this observation through dispatch without
+    // probing or requiring Desktop. If (and only if) a handler reaches the
+    // shared typed bridge seam, `ops::invoke` snapshots the map, arbitrates,
+    // and sends an atomic invocation fence.
+    if !matches!(
+        command.authority,
+        ds_cli_contract::Authority::DesktopUser | ds_cli_contract::Authority::Project
+    ) || command.id == "auth.link.approve"
+    {
+        return Ok(ds_cli_desktop::ops::scope_headless_identity(None));
+    }
+    let observed =
+        match ds_cli_auth::probe_headless_identity(inputs.value("lane").unwrap_or("stable")) {
+            Ok(observed) => observed,
+            Err(error) if headless_probe_means_absent(&error) => None,
+            Err(error) => return Err(error),
+        };
+    let observed = observed.map(
+        |(identity, project)| ds_cli_desktop::ops::HeadlessIdentity {
+            uid: identity.uid().to_owned(),
+            lane: identity.lane().to_owned(),
+            credential_audience_sha256: identity.credential_audience_sha256().to_owned(),
+            project,
+        },
+    );
+    Ok(ds_cli_desktop::ops::scope_headless_identity(observed))
+}
+
+fn headless_probe_means_absent(error: &Failure) -> bool {
+    error.code() == "native_profile_not_configured"
+        || error.code() == "native_state_protection_unavailable"
+}
+
+#[cfg(test)]
+mod identity_preflight_tests {
+    use super::*;
+
+    fn identity(lane: &str, audience: char, uid: &str) -> ds_cli_auth::ProviderIdentity {
+        ds_cli_auth::ProviderIdentity::new(lane, &audience.to_string().repeat(64), uid).unwrap()
+    }
+
+    #[test]
+    fn windows_without_native_store_still_allows_map_only_authority() {
+        let missing_adapter = Failure::unavailable(
+            "native_state_protection_unavailable",
+            "Windows adapter absent",
+        );
+        assert!(headless_probe_means_absent(&missing_adapter));
+        let malformed = Failure::unavailable("native_state_unsafe", "malformed state");
+        assert!(!headless_probe_means_absent(&malformed));
+        let mismatched_profile =
+            Failure::unavailable("native_profile_digest_mismatch", "mismatched profile");
+        assert!(!headless_probe_means_absent(&mismatched_profile));
+    }
+
+    #[test]
+    fn central_preflight_allows_map_only_and_blocks_mismatched_maphead() {
+        let desktop_user = all_commands()
+            .into_iter()
+            .find(|command| {
+                command.authority == ds_cli_contract::Authority::DesktopUser
+                    && command.id != "auth.link.approve"
+            })
+            .expect("one DesktopUser command");
+        let headless = identity("stable", 'a', "uid-a");
+        let exact = identity("stable", 'a', "uid-a");
+        let wrong_uid = identity("stable", 'a', "uid-b");
+
+        enforce_provider_identity(desktop_user, None, Some((&exact, Some("map-project"))))
+            .expect("map-only authority needs no second login");
+        enforce_provider_identity(desktop_user, Some((&headless, None)), Some((&exact, None)))
+            .expect("exact identity uses the paired provider first");
+        assert_eq!(
+            enforce_provider_identity(
+                desktop_user,
+                Some((&headless, None)),
+                Some((&wrong_uid, None)),
+            )
+            .unwrap_err()
+            .code(),
+            "auth_context_mismatch"
+        );
+    }
+
+    #[test]
+    fn project_preflight_requires_equality_only_when_both_selections_exist() {
+        let project = all_commands()
+            .into_iter()
+            .find(|command| command.authority == ds_cli_contract::Authority::Project)
+            .expect("one legacy Project command");
+        let exact = identity("stable", 'a', "uid-a");
+        enforce_provider_identity(
+            project,
+            Some((&exact, None)),
+            Some((&exact, Some("map-project"))),
+        )
+        .expect("the authorized map supplies its project when headless has none");
+        assert_eq!(
+            enforce_provider_identity(
+                project,
+                Some((&exact, Some("headless-project"))),
+                Some((&exact, Some("map-project"))),
+            )
+            .unwrap_err()
+            .code(),
+            "auth_context_mismatch"
+        );
+
+        let approval = find_by_id("auth.link.approve").unwrap().command;
+        let other = identity("stable", 'a', "uid-b");
+        enforce_provider_identity(approval, Some((&exact, None)), Some((&other, None)))
+            .expect("device approval is explicitly outside map/headless arbitration");
+    }
 }

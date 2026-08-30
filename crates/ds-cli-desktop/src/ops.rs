@@ -12,6 +12,7 @@
 //! field that only one domain reads stays in that domain, where its parity
 //! test can hold it to the application's source.
 
+use std::cell::RefCell;
 use std::time::Duration;
 
 use ds_cli_contract::outcome::Failure;
@@ -20,6 +21,32 @@ use serde_json::{Value, json};
 
 use crate::bridge;
 use crate::discover::Descriptor;
+
+thread_local! {
+    static HEADLESS_IDENTITY: RefCell<Option<HeadlessIdentity>> = const { RefCell::new(None) };
+}
+
+/// One non-secret protected-provider observation scoped by registry dispatch.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HeadlessIdentity {
+    pub uid: String,
+    pub lane: String,
+    pub credential_audience_sha256: String,
+    pub project: Option<String>,
+}
+
+pub struct HeadlessIdentityGuard(Option<HeadlessIdentity>);
+
+pub fn scope_headless_identity(identity: Option<HeadlessIdentity>) -> HeadlessIdentityGuard {
+    let previous = HEADLESS_IDENTITY.replace(identity);
+    HeadlessIdentityGuard(previous)
+}
+
+impl Drop for HeadlessIdentityGuard {
+    fn drop(&mut self) {
+        HEADLESS_IDENTITY.replace(self.0.take());
+    }
+}
 
 /// One bridge operation and the exact argument keys a domain may send it.
 ///
@@ -57,7 +84,43 @@ pub fn invoke(
         )
         .remedy("this is a defect in ds; report it with the command you ran"));
     }
-    bridge::invoke(descriptor, op.operation, arguments, timeout)
+    // Only this shared seam is map-attached. Pure ds-brain/device operations
+    // never reach it and therefore never acquire a Desktop dependency.
+    let session = bridge::session(descriptor)?;
+    let fence = bridge::IdentityFence::from_session(&session)?;
+    HEADLESS_IDENTITY.with(|headless| {
+        validate_headless_match(op.operation, headless.borrow().as_ref(), &fence)?;
+        bridge::invoke(descriptor, op.operation, arguments, &fence, timeout)
+    })
+}
+
+fn validate_headless_match(
+    operation: &str,
+    headless: Option<&HeadlessIdentity>,
+    fence: &bridge::IdentityFence,
+) -> Result<(), Failure> {
+    if operation == "auth.link.approve" {
+        return Ok(());
+    }
+    let Some(headless) = headless else {
+        return Ok(());
+    };
+    let identity_mismatch = headless.uid != fence.uid
+        || headless.lane != fence.lane
+        || headless.credential_audience_sha256 != fence.credential_audience_sha256;
+    let project_mismatch = match (headless.project.as_deref(), fence.project.as_deref()) {
+        (Some(_), None) => true,
+        (Some(headless), Some(desktop)) => headless != desktop,
+        _ => false,
+    };
+    if identity_mismatch || project_mismatch {
+        return Err(Failure::conflict(
+            "auth_context_mismatch",
+            "the paired map and protected headless provider do not represent the same identity context",
+        )
+        .remedy("use the matching lane, account, audience, and project, or run a map-independent headless command"));
+    }
+    Ok(())
 }
 
 /// The first key in `arguments` the operation does not declare, if any.
@@ -380,5 +443,95 @@ mod tests {
             classify_signed_out(unreachable).code(),
             "desktop_unreachable"
         );
+    }
+
+    #[test]
+    fn checked_identity_fence_is_transport_metadata_not_domain_input() {
+        let fence = bridge::IdentityFence::from_session(&json!({
+            "uid": "uid-1",
+            "lane": "stable",
+            "credential_audience_sha256": "a".repeat(64),
+            "project": "project-1",
+            "session_revision": 7,
+        }))
+        .expect("valid fence");
+        assert_eq!(
+            undeclared_key(&ZOOM_TO, &json!({ "identity_fence": fence })),
+            Some("identity_fence".to_owned()),
+            "a domain handler must never be able to inject the fence"
+        );
+    }
+
+    #[test]
+    fn scoped_headless_observation_is_restored_after_dispatch() {
+        let identity = HeadlessIdentity {
+            uid: "uid-1".to_owned(),
+            lane: "stable".to_owned(),
+            credential_audience_sha256: "a".repeat(64),
+            project: Some("project-1".to_owned()),
+        };
+        {
+            let _guard = scope_headless_identity(Some(identity.clone()));
+            HEADLESS_IDENTITY
+                .with(|current| assert_eq!(current.borrow().as_ref(), Some(&identity)));
+        }
+        HEADLESS_IDENTITY.with(|current| assert!(current.borrow().is_none()));
+    }
+
+    #[test]
+    fn map_arbitration_is_exact_and_project_can_be_inherited() {
+        let headless = HeadlessIdentity {
+            uid: "uid-1".to_owned(),
+            lane: "stable".to_owned(),
+            credential_audience_sha256: "a".repeat(64),
+            project: None,
+        };
+        let mut fence = bridge::IdentityFence::from_session(&json!({
+            "uid": "uid-1", "lane": "stable",
+            "credential_audience_sha256": "a".repeat(64),
+            "project": "map-project", "session_revision": 4,
+        }))
+        .unwrap();
+        validate_headless_match("map.zoom_to", Some(&headless), &fence)
+            .expect("map project supplies authority when headless project is absent");
+        fence.uid = "uid-2".to_owned();
+        assert_eq!(
+            validate_headless_match("map.zoom_to", Some(&headless), &fence)
+                .unwrap_err()
+                .code(),
+            "auth_context_mismatch"
+        );
+        fence.uid = "uid-1".to_owned();
+        fence.lane = "canary".to_owned();
+        assert_eq!(
+            validate_headless_match("map.zoom_to", Some(&headless), &fence)
+                .unwrap_err()
+                .code(),
+            "auth_context_mismatch"
+        );
+    }
+
+    #[test]
+    fn malformed_or_unsigned_map_session_has_no_invocation_fence() {
+        for bad in [
+            json!({}),
+            json!({
+                "uid": "uid-1", "lane": "stable",
+                "credential_audience_sha256": "a".repeat(64),
+                "project": null, "session_revision": 0
+            }),
+            json!({
+                "uid": "uid-1", "lane": "stable",
+                "credential_audience_sha256": "A".repeat(64),
+                "project": null, "session_revision": 1
+            }),
+        ] {
+            assert_eq!(
+                bridge::IdentityFence::from_session(&bad)
+                    .expect_err("malformed fence")
+                    .code(),
+                "auth_context_mismatch"
+            );
+        }
     }
 }

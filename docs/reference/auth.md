@@ -15,7 +15,7 @@ IndexedDB; this native provider keeps its equivalent below protected per-user
 state. The server still authorizes every operation against the exact project.
 The context separately reports paired-map observation as `map_state`.
 Headless status leaves it `unobserved`: it does not probe or launch Desktop.
-When a future composed provider observes a map, its active project may differ
+When the composed provider observes a map, its active project may differ
 from the CLI's selected operation project without blocking ordinary project
 commands; only explicit `map` authority may depend on active map state.
 
@@ -34,7 +34,7 @@ If packaging has not supplied both values, auth commands report
 `development: true` bundle with `DS_NATIVE_CLIENT_PROFILE_BUNDLE`; there are
 no per-field environment overrides.
 
-Catalog schema v3 retains the four exact transformer-context fields: `POST`,
+Catalog schema v10 retains the four exact transformer-context fields: `POST`,
 `/api/v1/data`, `get_transformers_data`, and the `context` projection. They are
 validated as exact bytes and do not create a generic request surface. Because
 these fixed call fields participate in the credential audience, upgrading
@@ -43,7 +43,10 @@ from a v1 credential intentionally appears signed out and can require
 contexts are never silently migrated across that audience change. Schema v3
 also fixes project forms to `POST /api/v1/project-forms`, action `activate`;
 the v2-to-v3 audience change can likewise require login and project selection
-again rather than silently widening an older credential.
+again rather than silently widening an older credential. It also closes the
+device authorization routes and public gateway key used by link, refresh, and
+inventory; these fields are validated as exact typed calls rather than a
+generic endpoint surface.
 
 The current ds-cli CI release build intentionally injects neither the catalog
 digest nor product root, so its auth surface is typed unavailable. The desktop
@@ -77,10 +80,23 @@ credential audience, Firebase UID, and canonical email. A project ID alone is
 never authority. Harmless profile provenance/public-key rotation does not
 invalidate the context; changing the stable audience, account, or lane does.
 
-Every auth command declares `local_auth_state`: even status/list can rotate a
-durable refresh credential, while login/logout/project use can also clear or
-replace context.
+Firebase-backed status/project reads can rotate a durable refresh credential,
+while login/logout/project use can also clear or replace context. Device-link
+begin/complete mutate only protected device state; device inventory mints a
+short-lived token in memory and does not persist it. Device revocation is the
+one confirmed global device write.
 Confirmed Firebase permanent revocation or identity mismatch clears both the
 exact credential and its context. Transient, unreadable, and conflict failures
 do not silently delete the context. Logout is authority `none`, so cleanup remains callable even
-when the credential is stale or absent.
+when the credential is stale or absent. Logging out Firebase reports the
+remaining `ds_device` provider and preserves its matching selected project;
+it never claims the process is globally signed out while that authority
+remains.
+
+`auth link approve` is the exception to the native-state effect: it is a
+confirmed global write performed only through a signed-in paired Desktop. The
+CLI first requests a read-only `auth.link.approve` preview with the exact
+request id and public device fingerprint, verifies its lane/binding/scope and
+expiry, then repeats the identical operation with confirmation. It accepts no
+password, token, private key, proof, user code, or arbitrary backend payload,
+and it is excluded from MCP even under broad command exposure.

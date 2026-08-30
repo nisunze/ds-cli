@@ -4,15 +4,10 @@
 
 `AuthContext` is the provider-independent, non-secret projection a DS command
 may use to reason about identity and authority. Credential bytes remain inside
-the provider that obtained them. The first implemented provider is the native
-Firebase refresh session already owned by `ds-client-core`; password input is
-only a trusted-terminal bootstrap for that provider.
-
-This contract does not claim that device authorization exists. A renewable
-device grant must be minted, consumed, inventoried, and revoked by an
-authenticated server authority. `ds-cli` must not invent a local grant, copy a
-Desktop credential, or advertise link/device commands before those fixed
-server operations and their typed responses exist.
+the provider that obtained them. Implemented providers are the native Firebase
+refresh session and the distinct DS device credential owned by
+`ds-client-core`; password input remains a trusted-terminal bootstrap and is
+not copied into device authorization.
 
 ## Bounded context
 
@@ -130,19 +125,130 @@ lane, profile-audience fence. It never advertises `desktop` or `map`.
 The credential-provider adapter resolves one `AuthContext` and reports a
 provider kind. Resolution may refresh/rotate protected state, but its result is
 always the bounded context above. Login bootstrap, project selection, logout,
-future device completion, and device revocation remain typed operations; they
+device completion, and device revocation remain typed operations; they
 must not be represented as caller-supplied credentials.
 
-A future Desktop provider and headless-device provider must resolve the same
+A Desktop provider and headless-device provider must resolve the same
 canonical principal and project entitlements while retaining distinct
 credentials and device attribution. Commands consume required capabilities,
 not provider-specific tokens.
 
+### Guarded automatic arbitration
+
+Provider choice is capability- and identity-bound, not a preference for a
+running UI. Desktop/map authority continues to use the paired application. A
+user/project operation may use paired Desktop automatically only when its
+bounded session observation exactly matches the canonical match key: lane,
+stable credential audience, and Firebase UID. Canonical email is deliberately
+not part of this key. Project equality remains a separate operation-target
+fence.
+
+When there is no exact Desktop match, the operation uses the durable headless
+device provider. A valid headless project operation therefore remains valid
+when Desktop is closed, signed out, or showing another project. A mismatch is
+never repaired by switching an account or project, and map availability is
+never treated as a limit on headless authority. Same lane/audience with a
+different UID, or any different lane/audience, prevents Desktop arbitration.
+An explicit map-independent operation proceeds through its own device
+provider, while a map-attached/shared-projection operation refuses with
+`auth_context_mismatch`; it never bridges or injects state across that identity
+boundary. Every command receipt retains the provider and public device
+attribution that actually authorized it.
+
+There is one map runtime and one IndexedDB implementation. Map-local or
+IndexedDB-backed operations attach to the existing DS map application through
+its typed bridge. If it is absent, a future bounded launcher slice may start
+that same application/runtime in the background—including on a Linux server—
+with the exact persistent-storage identity, lane, audience, canonical UID, and
+project, then attach through the same bridge. Window visibility is only
+presentation; unattended does not mean map-engine-forbidden. The launcher
+must refuse every identity/storage mismatch and must not introduce a second
+headless browser, direct IndexedDB adapter, emulator, or local-state engine.
+The current CLI has no proven identity-bound launcher contract, so this slice
+preserves the bridge seam and leaves auto-launch as an explicit next slice.
+There is bounded precedent: MCP already launches the exact installed Windows
+application once, with no arguments, null standard streams, and a ten-second
+descriptor wait. The Linux follow-up may extend only that policy to the exact
+installed `/usr/bin/ds-web-desktop` (or an exact package sibling) when a real
+graphical session exists. With no display it must return a typed refusal. It
+must not add Xvfb, a headless-browser stack, service manager, alternate state
+root, or retry fan-out.
+Map-independent governed cloud operations continue to call their fixed
+`ds-brain`/native-core contracts directly and do not launch a map runtime.
+
+For an eligible typed operation, precedence is exact matching map runtime
+first, executed inside that runtime through the closed bridge without
+exporting its Firebase token; otherwise a valid protected headless-device
+credential; otherwise the command returns the typed link/login remedy. A
+project-bound operation adds exact selected-project equality to the
+lane/audience/UID match. Exact map authority therefore reduces or eliminates a
+second CLI sign-in, while a different map account, lane, audience, or project
+never steals or limits an explicit headless operation.
+
+Map and headless project selections remain separate. For a map-attached
+operation, an exact-identity map may supply its own active project when the
+headless provider has no selected project; the CLI must not force `auth project
+use` first. When both selections exist they must be equal or the map-attached
+operation refuses. A `HeadlessProject` operation may intentionally use its own
+selected project independently and must not attach to or mutate a different
+open map.
+
+Registry dispatch scopes one non-network observation of every protected
+headless provider. Only the shared typed Desktop invocation seam consumes it:
+immediately before its POST it snapshots UID, lane, stable audience, project,
+and session revision, performs exact arbitration, and carries that snapshot as
+top-level transport metadata. The application rechecks the same fence
+immediately before operation dispatch. Pure backend commands never call this
+seam and never require a map.
+
+The durable headless credential is the protected Ed25519 private key plus
+public device metadata bound to device id, canonical UID, lane, and stable
+`credential_audience_sha256`. The exact profile/catalog digests approved at
+link time remain provenance for audit and context reporting; ordinary release
+changes do not globally revoke device credentials. A five-minute DS access JWT
+is minted only by a signed complete/refresh exchange, stays in process memory,
+is sent as an ordinary Bearer token on fixed native-core calls, and is
+zeroized rather than stored or projected. The backend checks the exact active
+device row on each call so one-device revocation takes effect independently.
+
+## Current MCP principal handoff
+
+The typed `auth-context` MCP profile is a bounded view of the existing live
+CLI contracts: identity status, device link begin/status/complete, public
+device inventory/revocation, fresh visible-project inventory, exact
+visible-project selection, and selected-project status. A person may establish
+Firebase refresh with trusted-terminal password login or explicitly approve a
+distinct device link. The MCP child receives only public projections; pending
+secrets, passwords, access tokens, refresh credentials, private keys, and
+protected state paths never enter MCP traffic.
+
+The profile deliberately omits password login, logout, and the Desktop-owned
+`auth link approve` operation. Its tools are generated from the same live command descriptors as the CLI, so
+their authority, arguments, effects, refusals, and result envelopes are
+unchanged. The MCP adapter also excludes password login and Desktop approval
+from its broad compatibility exposure; no profile choice can make either tool
+appear.
+
+## Desktop-owned device approval
+
+`auth link approve --request <id> --device-fingerprint <sha256:hex> --lane
+<stable|canary> --yes` is the one device-link operation owned by paired
+Desktop. The CLI passes no credential. It invokes the fixed
+`auth.link.approve` bridge operation first with `confirm: false`, verifies that
+the returned pending preview preserves the exact request, fingerprint, lane,
+`ds.api` scope, expiry, and renewable flag, then repeats the same closed
+arguments with `confirm: true`. Registry confirmation refuses the command
+before the bridge opens when `--yes` is absent.
+
+This approval command is CLI-visible for a person who can compare the public
+fingerprint on both devices, but is never an MCP tool. The result is public
+device/binding/decision metadata only; canonical credentials, access JWTs,
+proofs, private keys, and Desktop session material never enter the bridge
+receipt.
+
 ## Device authorization owner contract
 
-Before `auth link begin/status/complete/approve` or `auth device
-list/read/revoke` can be declared, the server owner must provide fixed routes
-with bounded typed payloads for:
+The fixed server routes and bounded payloads provide:
 
 1. creating a short-lived request bound to lane, profile/audience, catalog
    digest, receiving public key, nonce, PKCE-style challenge, and exact scopes;
@@ -160,24 +266,13 @@ may begin, inspect, and complete a request after human approval, but may never
 accept a password/token, approve any request, or read Desktop credential
 stores.
 
-Until that server contract exists, signed-out remedies continue to name the
-working trusted-terminal password flow. Advertising `headless_link_required`
-with a nonexistent next command would be a false recovery path.
+## Remaining migration order
 
-## Migration order
-
-1. Keep password login/logout and all Desktop/map descriptors regression
-   covered.
-2. Land server-owned one-time device grants, device inventory/revocation, and
-   non-secret audit events.
-3. Extend the closed native core and protected-state adapters for device keys
-   and renewable device sessions.
-4. Add link/device CLI descriptors, MCP exposure rules, and exact negative
-   tests only when those operations are reachable.
-5. Migrate project-data commands one authority-owned slice at a time from the
+1. Keep password login/logout and all Desktop/map descriptors regression covered.
+2. Migrate project-data commands one authority-owned slice at a time from the
    Desktop bridge to shared project operations; preserve concurrency fences
    and actor/device attribution on every write.
-6. Introduce explicit map authority only with a provable active-map state and
+3. Introduce explicit map authority only with a provable active-map state and
    a typed map-required refusal.
 
 Acceptance must include restart persistence, Desktop independence, exact

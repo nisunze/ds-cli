@@ -69,6 +69,13 @@ struct Profiles {
 struct Entry {
     firebase: Firebase,
     gateway: Gateway,
+    auth_link_begin: FixedRoute,
+    auth_link_status: FixedRoute,
+    auth_link_complete: FixedRoute,
+    auth_device_refresh: FixedRoute,
+    auth_device_list: FixedRoute,
+    auth_device_read: FixedRouteTemplate,
+    auth_device_revoke: FixedRouteTemplate,
     projects_read: ProjectsRead,
     transformer_context: TransformerContext,
     project_forms: ProjectForms,
@@ -92,6 +99,20 @@ struct Firebase {
 struct Gateway {
     origin: String,
     api_key: String,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct FixedRoute {
+    method: String,
+    path: String,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct FixedRouteTemplate {
+    method: String,
+    path_template: String,
 }
 
 #[derive(Deserialize)]
@@ -166,6 +187,36 @@ struct Provenance {
 pub fn load(lane: Lane) -> Result<ClientProfile, Failure> {
     let (path, development, expected) = discovery()?;
     load_path(&path, lane, development, expected)
+}
+
+/// Load the exact profile plus the catalog digest and public gateway key the
+/// host transport needs. Device binding uses the whole catalog digest; it is
+/// approval provenance, not a durable credential audience.
+pub fn load_device(lane: Lane) -> Result<(ClientProfile, String, String), Failure> {
+    let (path, development, expected) = discovery()?;
+    let metadata = fs::symlink_metadata(&path).map_err(|_| not_configured())?;
+    if metadata.file_type().is_symlink()
+        || !metadata.is_file()
+        || metadata.len() > MAX_CATALOG_BYTES
+    {
+        return Err(unsafe_catalog());
+    }
+    let bytes = fs::read(&path).map_err(|_| unsafe_catalog())?;
+    let actual = format!("{:x}", Sha256::digest(&bytes));
+    if !development && actual != expected {
+        return Err(Failure::unavailable(
+            "native_profile_digest_mismatch",
+            "the packaged native client catalog does not match this ds build",
+        )
+        .remedy("reinstall ds from one complete signed release"));
+    }
+    let catalog: Catalog = serde_json::from_slice(&bytes).map_err(|_| unsafe_catalog())?;
+    let gateway_key = match lane {
+        Lane::Stable => catalog.profiles.stable.gateway.api_key.clone(),
+        Lane::Canary => catalog.profiles.canary.gateway.api_key.clone(),
+    };
+    let profile = load_path(&path, lane, development, expected)?;
+    Ok((profile, actual, gateway_key))
 }
 
 pub fn availability() -> Availability {
@@ -255,6 +306,20 @@ fn load_path(
         firebase_api_key: entry.firebase.api_key,
         gateway_api_key: entry.gateway.api_key,
         gateway_origin: entry.gateway.origin,
+        auth_link_begin_method: entry.auth_link_begin.method,
+        auth_link_begin_path: entry.auth_link_begin.path,
+        auth_link_status_method: entry.auth_link_status.method,
+        auth_link_status_path: entry.auth_link_status.path,
+        auth_link_complete_method: entry.auth_link_complete.method,
+        auth_link_complete_path: entry.auth_link_complete.path,
+        auth_device_refresh_method: entry.auth_device_refresh.method,
+        auth_device_refresh_path: entry.auth_device_refresh.path,
+        auth_device_list_method: entry.auth_device_list.method,
+        auth_device_list_path: entry.auth_device_list.path,
+        auth_device_read_method: entry.auth_device_read.method,
+        auth_device_read_path_template: entry.auth_device_read.path_template,
+        auth_device_revoke_method: entry.auth_device_revoke.method,
+        auth_device_revoke_path_template: entry.auth_device_revoke.path_template,
         project_list_method: entry.projects_read.method,
         project_list_path: entry.projects_read.path,
         transformer_context_method: entry.transformer_context.method,
@@ -320,6 +385,13 @@ mod tests {
                 "stable": {
                     "firebase": { "project_id": "stable-project", "api_key": "firebase-public" },
                     "gateway": { "origin": "https://stable.ue.gateway.dev", "api_key": "gateway-public" },
+                    "auth_link_begin": { "method": "POST", "path": "/api/v1/auth/device/begin" },
+                    "auth_link_status": { "method": "POST", "path": "/api/v1/auth/device/status" },
+                    "auth_link_complete": { "method": "POST", "path": "/api/v1/auth/device/complete" },
+                    "auth_device_refresh": { "method": "POST", "path": "/api/v1/auth/device/refresh" },
+                    "auth_device_list": { "method": "GET", "path": "/api/v1/auth/devices" },
+                    "auth_device_read": { "method": "GET", "path_template": "/api/v1/auth/devices/{device_id}" },
+                    "auth_device_revoke": { "method": "DELETE", "path_template": "/api/v1/auth/devices/{device_id}" },
                     "projects_read": { "method": "GET", "path": "/api/v1/user/projects" },
                     "transformer_context": { "method": "POST", "path": "/api/v1/data", "action": "get_transformers_data", "fields": "context" },
                     "project_forms": { "method": "POST", "path": "/api/v1/project-forms", "action": "activate", "settings_editor_action": "settings_editor" },
@@ -333,6 +405,13 @@ mod tests {
                 "canary": {
                     "firebase": { "project_id": "canary-project", "api_key": "firebase-canary" },
                     "gateway": { "origin": "https://ds-canary.ue.gateway.dev", "api_key": "gateway-canary" },
+                    "auth_link_begin": { "method": "POST", "path": "/api/v1/auth/device/begin" },
+                    "auth_link_status": { "method": "POST", "path": "/api/v1/auth/device/status" },
+                    "auth_link_complete": { "method": "POST", "path": "/api/v1/auth/device/complete" },
+                    "auth_device_refresh": { "method": "POST", "path": "/api/v1/auth/device/refresh" },
+                    "auth_device_list": { "method": "GET", "path": "/api/v1/auth/devices" },
+                    "auth_device_read": { "method": "GET", "path_template": "/api/v1/auth/devices/{device_id}" },
+                    "auth_device_revoke": { "method": "DELETE", "path_template": "/api/v1/auth/devices/{device_id}" },
                     "projects_read": { "method": "GET", "path": "/api/v1/user/projects" },
                     "transformer_context": { "method": "POST", "path": "/api/v1/data", "action": "get_transformers_data", "fields": "context" },
                     "project_forms": { "method": "POST", "path": "/api/v1/project-forms", "action": "activate", "settings_editor_action": "settings_editor" },
@@ -467,7 +546,7 @@ mod tests {
     }
 
     #[test]
-    fn v9_fixed_calls_are_required_and_exact() {
+    fn v10_fixed_calls_are_required_and_exact() {
         let mut missing: serde_json::Value = serde_json::from_slice(&fixture(false)).unwrap();
         missing["profiles"]["stable"]
             .as_object_mut()

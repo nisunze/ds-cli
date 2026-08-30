@@ -19,6 +19,7 @@
 use std::time::Duration;
 
 use ds_cli_contract::outcome::Failure;
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 use crate::discover::{self, Discovery};
@@ -72,8 +73,14 @@ pub fn invoke(
     descriptor: &discover::Descriptor,
     operation: &'static str,
     arguments: Value,
+    identity_fence: &IdentityFence,
     timeout: Duration,
 ) -> Result<Value, Failure> {
+    let request = json!({
+        "operation": operation,
+        "arguments": arguments,
+        "identity_fence": identity_fence,
+    });
     let response = ureq::post(&format!("{}/v1/invoke", descriptor.url))
         .header("authorization", &format!("Bearer {}", descriptor.token))
         .config()
@@ -84,7 +91,7 @@ pub fn invoke(
         // unreachable desktop and discards that body.
         .http_status_as_error(false)
         .build()
-        .send_json(json!({ "operation": operation, "arguments": arguments }));
+        .send_json(request);
 
     let mut response = match response {
         Ok(response) => response,
@@ -127,6 +134,11 @@ pub fn invoke(
         .remedy(
             "update DS GridDesign to a release that does; `ds desktop status` reports the profile",
         )),
+        409 if parsed["error"] == "auth_context_mismatch" => Err(Failure::conflict(
+            "auth_context_mismatch",
+            "the paired map identity changed or does not match the checked invocation authority",
+        )
+        .remedy("re-run after confirming the paired account, lane, audience, and project")),
         _ => Err(Failure::failed(
             "desktop_refused",
             format!("the paired session refused `{operation}`"),
@@ -136,6 +148,62 @@ pub fn invoke(
             "http_status": status,
             "detail": bounded(parsed["error"].as_str().unwrap_or(&body))
         }))),
+    }
+}
+
+/// Non-secret snapshot fence carried beside (never inside) operation inputs.
+///
+/// The application rechecks every field immediately before dispatch. This
+/// closes the gap in which a map account or project could change after the
+/// CLI's provider arbitration but before the operation executes.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct IdentityFence {
+    pub uid: String,
+    pub lane: String,
+    pub credential_audience_sha256: String,
+    pub project: Option<String>,
+    pub session_revision: u64,
+}
+
+impl IdentityFence {
+    pub fn from_session(value: &Value) -> Result<Self, Failure> {
+        let fence: Self = serde_json::from_value(json!({
+            "uid": value.get("uid").cloned().unwrap_or(Value::Null),
+            "lane": value.get("lane").cloned().unwrap_or(Value::Null),
+            "credential_audience_sha256": value
+                .get("credential_audience_sha256")
+                .cloned()
+                .unwrap_or(Value::Null),
+            "project": value.get("project").cloned().unwrap_or(Value::Null),
+            "session_revision": value
+                .get("session_revision")
+                .cloned()
+                .unwrap_or(Value::Null),
+        }))
+        .map_err(|_| {
+            Failure::conflict(
+                "auth_context_mismatch",
+                "the paired map did not publish a complete signed-in identity fence",
+            )
+            .remedy("update DS GridDesign, sign in, select the intended project, and retry")
+        })?;
+        if fence.uid.is_empty()
+            || !matches!(fence.lane.as_str(), "stable" | "canary")
+            || fence.credential_audience_sha256.len() != 64
+            || !fence
+                .credential_audience_sha256
+                .bytes()
+                .all(|byte| byte.is_ascii_digit() || matches!(byte, b'a'..=b'f'))
+            || fence.session_revision == 0
+        {
+            return Err(Failure::conflict(
+                "auth_context_mismatch",
+                "the paired map published a malformed identity fence",
+            )
+            .remedy("update DS GridDesign, sign in, and retry"));
+        }
+        Ok(fence)
     }
 }
 

@@ -49,7 +49,7 @@ Specialized profiles publish conventional typed leaf tools for one workflow:
 ds mcp serve --exposure commands --profile pls
 ```
 
-Profiles are `grid`, `pls`, `pls-library`, `library-governance`, `survey`,
+Profiles are `auth-context`, `grid`, `pls`, `pls-library`, `library-governance`, `survey`,
 `form-factory`, `survey-projects`, `survey-migration`, `design-edit`, `design-run`, `map`, `layers`,
 `tiling`, `project`, `solar-input`, `solar-run`, `solar-delivery`, and
 `operations`. `survey`
@@ -65,6 +65,14 @@ A profile is only an allowlist: omitted
 commands are unavailable and authority, effects, confirmation, output, and
 refusals are unchanged. Plain `--exposure commands` retains the previous
 all-command publication temporarily for compatibility.
+
+`auth-context` is the principal handoff for MCP hosts after a person signs in
+through a trusted terminal. It publishes native identity status, fresh visible
+project inventory, exact project selection, and selected-project status from
+the live `auth` descriptors. It does not publish password login, logout, or any
+Desktop-owned device approval. Password login and `auth link approve` are also
+excluded from the broad compatibility command exposure, so no MCP profile can
+receive a password prompt or approve its own device authorization.
 
 `solar-input` is the narrow authenticated selected-project capture surface.
 The established `solar-run` profile retains seeding, preparation, execution,

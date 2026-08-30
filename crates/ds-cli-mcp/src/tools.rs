@@ -827,6 +827,13 @@ pub fn discover_tools(executable: &PathBuf) -> Result<Vec<Tool>, Failure> {
             let Some(id) = command.get("id").and_then(Value::as_str) else {
                 continue;
             };
+            // These commands deliberately require a person at a trusted
+            // terminal or an authenticated paired Desktop. They remain live,
+            // discoverable CLI contracts but must never become MCP tools —
+            // including under the temporary broad compatibility exposure.
+            if matches!(id, "auth.login" | "auth.link.approve") {
+                continue;
+            }
             let descriptor = capabilities(executable, Some(id), true)?;
             let command = descriptor.get("command").ok_or_else(|| {
                 Failure::failed(

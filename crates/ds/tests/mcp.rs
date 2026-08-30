@@ -48,6 +48,20 @@ fn cli(args: &[&str]) -> Value {
     serde_json::from_slice(&output.stdout).expect("one CLI envelope")
 }
 
+fn cli_envelope(args: &[&str]) -> Value {
+    let output = Command::new(env!("CARGO_BIN_EXE_ds"))
+        .args(args)
+        .output()
+        .expect("ds runs");
+    serde_json::from_slice(&output.stdout).unwrap_or_else(|error| {
+        panic!(
+            "ds {} returned no envelope ({error}): {}",
+            args.join(" "),
+            String::from_utf8_lossy(&output.stderr)
+        )
+    })
+}
+
 fn mcp(args: &[&str], requests: &[Value]) -> (Vec<Value>, String) {
     mcp_with_env(args, requests, &[])
 }
@@ -788,6 +802,7 @@ fn chapter_routing_refuses_escape_and_confirmation_misuse() {
 fn every_specialized_profile_is_bounded_and_catalogued() {
     let mut published = BTreeMap::<&str, BTreeSet<String>>::new();
     for profile in [
+        "auth-context",
         "grid",
         "pls",
         "pls-library",
@@ -890,4 +905,88 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
     );
     assert_eq!(response(&responses, 1)["error"]["code"], -32602);
     assert_eq!(response(&responses, 2)["error"]["code"], -32602);
+}
+
+#[test]
+fn auth_context_profile_hands_off_only_non_secret_native_identity_commands() {
+    let (responses, _) = mcp(
+        &["--exposure", "commands", "--profile", "auth-context"],
+        &[
+            json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/list" }),
+            json!({ "jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": { "name": "auth_status", "arguments": {} } }),
+            json!({ "jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": { "name": "auth_login", "arguments": { "email": "operator@example.com" } } }),
+            json!({ "jsonrpc": "2.0", "id": 4, "method": "tools/call", "params": { "name": "auth_link_approve", "arguments": {} } }),
+        ],
+    );
+    let tools = response(&responses, 1)["result"]["tools"]
+        .as_array()
+        .expect("tools");
+    let names = tools
+        .iter()
+        .map(|tool| tool["name"].as_str().expect("tool name"))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        names,
+        [
+            "ds_catalog",
+            "ds_diagnostics",
+            "auth_device_list",
+            "auth_device_read",
+            "auth_device_revoke",
+            "auth_link_begin",
+            "auth_link_complete",
+            "auth_link_status",
+            "auth_project_list",
+            "auth_project_status",
+            "auth_project_use",
+            "auth_status",
+        ]
+    );
+    assert_eq!(
+        response(&responses, 2)["result"]["structuredContent"],
+        cli_envelope(&["auth", "status", "--output", "json"]),
+        "the MCP principal projection must be the exact CLI envelope"
+    );
+    assert_eq!(response(&responses, 3)["error"]["code"], -32602);
+    assert_eq!(response(&responses, 4)["error"]["code"], -32602);
+    assert!(names.iter().all(|name| !name.contains("login")
+        && !name.contains("logout")
+        && name != &"auth_link_approve"));
+    for tool in tools {
+        let properties = tool["inputSchema"]["properties"]
+            .as_object()
+            .expect("tool properties");
+        for secret in [
+            "device_code",
+            "code_verifier",
+            "private_key",
+            "access_token",
+            "signature",
+            "password",
+        ] {
+            assert!(
+                !properties.contains_key(secret),
+                "MCP input exposed {secret}"
+            );
+        }
+    }
+
+    let (broad, _) = mcp(
+        &["--exposure", "commands"],
+        &[
+            json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/list" }),
+            json!({ "jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": { "name": "auth_login", "arguments": { "email": "operator@example.com" } } }),
+            json!({ "jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": { "name": "auth_link_approve", "arguments": { "request": "req_01", "device-fingerprint": format!("sha256:{}", "a".repeat(64)), "lane": "stable", "confirm": true } } }),
+        ],
+    );
+    let broad_names = response(&broad, 1)["result"]["tools"]
+        .as_array()
+        .expect("broad tools")
+        .iter()
+        .map(|tool| tool["name"].as_str().expect("tool name"))
+        .collect::<Vec<_>>();
+    assert!(!broad_names.contains(&"auth_login"));
+    assert!(!broad_names.contains(&"auth_link_approve"));
+    assert_eq!(response(&broad, 2)["error"]["code"], -32602);
+    assert_eq!(response(&broad, 3)["error"]["code"], -32602);
 }
