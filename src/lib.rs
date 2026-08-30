@@ -21,6 +21,19 @@ pub enum LoginErrorKind {
     IdentityMismatch,
 }
 
+/// Bounded, credential-free classification of a failed Firebase password
+/// exchange. Hosts use this only to select stable guidance; response text and
+/// credential material never cross the kernel boundary.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FirebaseAuthFailureKind {
+    InvalidCredentials,
+    PasswordSignInUnavailable,
+    AccountDisabled,
+    Transient,
+    Rejected,
+    UnreadableResponse,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LoginError {
     kind: LoginErrorKind,
@@ -237,6 +250,38 @@ pub fn validate_firebase_login_response(
         refresh_token: std::mem::take(&mut wire.refresh_token),
         expires_at_epoch_seconds: claim_expiry.min(now_epoch_seconds.saturating_add(expires_in)),
     })
+}
+
+pub fn classify_firebase_auth_failure(status: u16, response: &[u8]) -> FirebaseAuthFailureKind {
+    if response.len() > MAX_LOGIN_RESPONSE_BYTES {
+        return FirebaseAuthFailureKind::UnreadableResponse;
+    }
+    if matches!(status, 408 | 425 | 429 | 500..=599) {
+        return FirebaseAuthFailureKind::Transient;
+    }
+    let Some(code) = serde_json::from_slice::<Value>(response)
+        .ok()
+        .and_then(|body| body["error"]["message"].as_str().map(str::to_owned))
+        .and_then(|message| {
+            message
+                .split([':', ' '])
+                .next()
+                .filter(|code| !code.is_empty())
+                .map(str::to_owned)
+        })
+    else {
+        return FirebaseAuthFailureKind::UnreadableResponse;
+    };
+    match code.as_str() {
+        "INVALID_LOGIN_CREDENTIALS"
+        | "EMAIL_NOT_FOUND"
+        | "INVALID_PASSWORD"
+        | "MISSING_PASSWORD" => FirebaseAuthFailureKind::InvalidCredentials,
+        "OPERATION_NOT_ALLOWED" => FirebaseAuthFailureKind::PasswordSignInUnavailable,
+        "USER_DISABLED" => FirebaseAuthFailureKind::AccountDisabled,
+        "TOO_MANY_ATTEMPTS_TRY_LATER" => FirebaseAuthFailureKind::Transient,
+        _ => FirebaseAuthFailureKind::Rejected,
+    }
 }
 
 /// Validate the identity-binding claims on an ID token obtained directly from
@@ -576,6 +621,33 @@ mod tests {
             .unwrap_err()
             .kind(),
             LoginErrorKind::IdentityMismatch,
+        );
+    }
+
+    #[test]
+    fn classifies_failed_password_exchange_without_leaking_response_text() {
+        let response = |message: &str| {
+            serde_json::to_vec(&serde_json::json!({ "error": { "message": message } })).unwrap()
+        };
+        assert_eq!(
+            classify_firebase_auth_failure(400, &response("INVALID_LOGIN_CREDENTIALS")),
+            FirebaseAuthFailureKind::InvalidCredentials,
+        );
+        assert_eq!(
+            classify_firebase_auth_failure(400, &response("OPERATION_NOT_ALLOWED")),
+            FirebaseAuthFailureKind::PasswordSignInUnavailable,
+        );
+        assert_eq!(
+            classify_firebase_auth_failure(400, &response("USER_DISABLED")),
+            FirebaseAuthFailureKind::AccountDisabled,
+        );
+        assert_eq!(
+            classify_firebase_auth_failure(429, b"not exposed"),
+            FirebaseAuthFailureKind::Transient,
+        );
+        assert_eq!(
+            classify_firebase_auth_failure(400, b"not-json"),
+            FirebaseAuthFailureKind::UnreadableResponse,
         );
     }
 }
