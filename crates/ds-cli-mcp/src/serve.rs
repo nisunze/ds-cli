@@ -28,14 +28,10 @@ pub static COMMAND: Command = Command {
     chapter: ds_cli_contract::spec::Chapter::Catalog,
     summary: "Serve chapter or typed `ds` tools over MCP.",
     purpose: "\
-Serves generated chapter or typed command tools over MCP stdio. Every view \
-comes from live descriptors and dispatches the same \
-`ds … --output json` command. Initialization also publishes bounded \
-diagnostics and receipt-indexed skill resources, digest-verified when read, \
-without probing Desktop, map, \
-project, authentication, network, or external engines. Runtime requirements \
-stay command-lazy. It adds no credential, listener, cache, project state, or \
-authority.",
+Serves live `ds` contracts over MCP stdio as compact chapters or bounded typed \
+profiles. Calls run the same `ds` command. Startup is headless; runtime \
+dependencies and skill content stay lazy. It owns no credential, listener, \
+cache, project state, or authority.",
     effect: Effect::ReadOnly,
     authority: Authority::None,
     execution: Execution::Sync,
@@ -59,18 +55,16 @@ authority.",
             summary: "Filter typed tools to one operator workflow.",
         },
     ],
-    output: "\
-Nothing on stdout but MCP responses. On exit, a JSON summary: tools served, \
-calls answered, and why the loop ended.",
+    output: "MCP responses on stdout; an exit summary on stderr.",
     examples: &[
         Example {
             command: "ds mcp serve --exposure chapters",
-            note: "Default: 14 stable bootstrap and chapter tools.",
+            note: "Broad server.",
             runnable: false,
         },
         Example {
             command: "ds mcp serve --exposure commands --profile pls",
-            note: "Typed PLS workspace, backup and diagnostics.",
+            note: "Typed PLS profile.",
             runnable: false,
         },
     ],

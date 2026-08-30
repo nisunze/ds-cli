@@ -255,6 +255,18 @@ fn command_help_is_bounded() {
 }
 
 #[test]
+fn mcp_serve_help_stays_inside_its_derived_command_budget() {
+    let command =
+        json(&["capabilities", "mcp.serve", "--output", "json"])["data"]["command"].clone();
+    let ceiling = command_help_ceiling(&command);
+    let size = bytes(&["mcp", "serve", "--help"]);
+    assert!(
+        size <= ceiling,
+        "`ds mcp serve --help` is {size} bytes against its unchanged derived {ceiling}-byte budget"
+    );
+}
+
+#[test]
 fn command_descriptors_are_bounded() {
     // The machine tier carries the same facts with less framing, so it gets
     // the same allowance plus a little for JSON's own punctuation.
