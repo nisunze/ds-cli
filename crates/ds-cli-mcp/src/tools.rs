@@ -29,7 +29,13 @@ pub struct Tool {
     pub path: Vec<String>,
     pub description: String,
     pub input_schema: Value,
+    /// Whether this command can require confirmation. Static MCP annotations
+    /// stay conservative even when `confirmation_trigger` makes only one
+    /// invocation shape effectful.
     pub confirmation_required: bool,
+    /// The validated boolean switch name (without `--`) that selects the
+    /// effectful path. Absent means every invocation needs confirmation.
+    pub confirmation_trigger: Option<String>,
     pub inputs: Vec<Input>,
     /// The authoritative tier-3 descriptor this tool was generated from.
     pub descriptor: Value,
@@ -80,6 +86,11 @@ pub fn tool_from_descriptor(command: &Value) -> Option<Tool> {
         .get("confirmation_required")
         .and_then(Value::as_bool)
         .unwrap_or(false);
+    let declared_confirmation_trigger = match command.get("confirmation_trigger") {
+        None => None,
+        Some(Value::String(value)) => Some(value.as_str()),
+        Some(_) => return None,
+    };
     let mut properties = Map::new();
     let mut required = Vec::new();
     let mut inputs = Vec::new();
@@ -133,12 +144,33 @@ pub fn tool_from_descriptor(command: &Value) -> Option<Tool> {
             kind,
         });
     }
+    let confirmation_trigger = match declared_confirmation_trigger {
+        None => None,
+        Some(trigger) => {
+            if !confirmation_required {
+                return None;
+            }
+            let name = trigger.strip_prefix("--")?;
+            if name.is_empty()
+                || !inputs
+                    .iter()
+                    .any(|input| input.name == name && input.kind == "switch")
+            {
+                return None;
+            }
+            Some(name.to_string())
+        }
+    };
     if confirmation_required {
+        let description = confirmation_trigger.as_ref().map_or_else(
+            || "This command has an effect and the CLI requires confirmation. Pass true only when the user's intent authorizes exactly this effect and scope (maps to `--yes`).".to_string(),
+            |trigger| format!("Required only when `--{trigger}` is true. Pass true only when the user's intent authorizes exactly that effect and scope (maps to `--yes`)."),
+        );
         properties.insert(
             CONFIRM_PROPERTY.to_string(),
             json!({
                 "type": "boolean",
-                "description": "This command has an effect and the CLI requires confirmation. Pass true only when the user's intent authorizes exactly this effect and scope (maps to `--yes`).",
+                "description": description,
             }),
         );
     }
@@ -158,7 +190,13 @@ pub fn tool_from_descriptor(command: &Value) -> Option<Tool> {
         "\n\nEffect: {effect}. Authority: {authority_token}."
     ));
     if confirmation_required {
-        description.push_str(&format!(" Requires `{CONFIRM_PROPERTY}: true`."));
+        if let Some(trigger) = &confirmation_trigger {
+            description.push_str(&format!(
+                " Requires `{CONFIRM_PROPERTY}: true` only when `--{trigger}` is true."
+            ));
+        } else {
+            description.push_str(&format!(" Requires `{CONFIRM_PROPERTY}: true`."));
+        }
     }
     let refusals: Vec<String> = command
         .get("refusals")
@@ -189,9 +227,32 @@ pub fn tool_from_descriptor(command: &Value) -> Option<Tool> {
             "additionalProperties": false,
         }),
         confirmation_required,
+        confirmation_trigger,
         inputs,
         descriptor: command.clone(),
     })
+}
+
+impl Tool {
+    /// Whether this exact invocation shape requires confirmation.
+    pub fn confirmation_required_for(&self, arguments: &Value) -> Result<bool, String> {
+        if !self.confirmation_required {
+            return Ok(false);
+        }
+        let Some(trigger) = &self.confirmation_trigger else {
+            return Ok(true);
+        };
+        let object = match arguments {
+            Value::Null => return Ok(false),
+            Value::Object(object) => object,
+            _ => return Err("arguments must be an object".to_string()),
+        };
+        match object.get(trigger) {
+            None | Some(Value::Null) | Some(Value::Bool(false)) => Ok(false),
+            Some(Value::Bool(true)) => Ok(true),
+            Some(_) => Err(format!("`{trigger}` must be a boolean")),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -487,6 +548,23 @@ pub fn argv_for_call(tool: &Tool, arguments: &Value) -> Result<Vec<String>, Stri
         if key != CONFIRM_PROPERTY && !tool.inputs.iter().any(|input| &input.name == key) {
             return Err(format!("`{key}` is not an input of `{}`", tool.id));
         }
+    }
+    let confirmation_required = tool.confirmation_required_for(&Value::Object(object.clone()))?;
+    if object
+        .get(CONFIRM_PROPERTY)
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
+        && !confirmation_required
+    {
+        let trigger = tool
+            .confirmation_trigger
+            .as_deref()
+            .map(|name| format!("`--{name}` is true"))
+            .unwrap_or_else(|| "this invocation requires confirmation".to_string());
+        return Err(format!(
+            "`{CONFIRM_PROPERTY}` is accepted only when {trigger} for `{}`",
+            tool.id
+        ));
     }
     // Declared order, not object order: `serde_json::Map` sorts keys, and a
     // host may send them in any order. The argv is then reproducible.
@@ -807,6 +885,26 @@ mod tests {
         })
     }
 
+    fn conditional_descriptor() -> Value {
+        json!({
+            "id": "mcp.install",
+            "chapter": "catalog",
+            "path": ["mcp", "install"],
+            "contract": 3,
+            "summary": "Print or write an MCP host entry.",
+            "purpose": "The preview is read-only and --write changes machine settings.",
+            "output": "Connection receipt.",
+            "effect": "machine_write",
+            "authority": "none",
+            "confirmation_required": true,
+            "confirmation_trigger": "--write",
+            "inputs": [
+                { "name": "write", "kind": "switch", "required": false, "summary": "Write the host entry." }
+            ],
+            "refusals": []
+        })
+    }
+
     #[test]
     fn descriptor_becomes_a_tool_with_a_schema_the_cli_would_accept() {
         let tool = tool_from_descriptor(&descriptor()).expect("tool");
@@ -852,6 +950,61 @@ mod tests {
                 "json",
             ]
         );
+    }
+
+    #[test]
+    fn conditional_confirmation_preserves_preview_and_write_argv() {
+        let tool = tool_from_descriptor(&conditional_descriptor()).expect("tool");
+        assert_eq!(tool.confirmation_trigger.as_deref(), Some("write"));
+        assert!(tool.confirmation_required, "annotations stay conservative");
+
+        let preview = argv_for_call(&tool, &json!({})).unwrap();
+        assert_eq!(preview, ["mcp", "install", "--output", "json"]);
+        assert!(!tool.confirmation_required_for(&json!({})).unwrap());
+
+        let unconfirmed_write = argv_for_call(&tool, &json!({ "write": true })).unwrap();
+        assert_eq!(
+            unconfirmed_write,
+            ["mcp", "install", "--write", "--output", "json"]
+        );
+        assert!(
+            tool.confirmation_required_for(&json!({ "write": true }))
+                .unwrap(),
+            "MCP preflight must route this to the CLI confirmation refusal before an owner runs"
+        );
+
+        let confirmed_write =
+            argv_for_call(&tool, &json!({ "write": true, "confirm": true })).unwrap();
+        assert_eq!(
+            confirmed_write,
+            ["mcp", "install", "--write", "--yes", "--output", "json"]
+        );
+        let misplaced = argv_for_call(&tool, &json!({ "confirm": true })).unwrap_err();
+        assert!(
+            misplaced.contains("only when `--write` is true"),
+            "{misplaced}"
+        );
+    }
+
+    #[test]
+    fn malformed_confirmation_triggers_fail_closed() {
+        for malformed in [json!("write"), json!("--missing"), json!(7), Value::Null] {
+            let mut descriptor = conditional_descriptor();
+            descriptor["confirmation_trigger"] = malformed;
+            assert!(
+                tool_from_descriptor(&descriptor).is_none(),
+                "malformed trigger was accepted: {}",
+                descriptor["confirmation_trigger"]
+            );
+        }
+
+        let mut wrong_kind = conditional_descriptor();
+        wrong_kind["inputs"][0]["kind"] = json!("value");
+        assert!(tool_from_descriptor(&wrong_kind).is_none());
+
+        let mut not_effectful = conditional_descriptor();
+        not_effectful["confirmation_required"] = json!(false);
+        assert!(tool_from_descriptor(&not_effectful).is_none());
     }
 
     #[test]

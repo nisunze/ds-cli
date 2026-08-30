@@ -289,8 +289,8 @@ fn command_json_with_availability(
         })).collect::<Vec<_>>(),
     });
 
-    if command.effect == Effect::MachineWrite && command.arg("write").is_some() {
-        descriptor["confirmation_trigger"] = json!("--write");
+    if let Some(trigger) = command.confirmation_trigger() {
+        descriptor["confirmation_trigger"] = json!(trigger);
     }
 
     if let Some(crate::spec::Availability::Unavailable {

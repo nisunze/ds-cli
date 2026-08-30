@@ -558,9 +558,16 @@ impl Surface {
                         ),
                     ));
                 }
+                let nested_arguments = Value::Object(nested.clone());
+                let confirmation_required = tool
+                    .confirmation_required_for(&nested_arguments)
+                    .map_err(|message| (-32602, message))?;
                 if confirm {
-                    if !tool.confirmation_required {
-                        return Err((-32602, format!("`{command}` does not accept confirmation")));
+                    if !confirmation_required {
+                        return Err((
+                            -32602,
+                            format!("`{command}` does not accept confirmation for this invocation"),
+                        ));
                     }
                     nested.insert(CONFIRM_PROPERTY.to_string(), Value::Bool(true));
                 }
@@ -792,11 +799,14 @@ fn invoke_leaf(
     arguments: &Value,
     executable: &PathBuf,
 ) -> Result<Value, (i64, String)> {
+    let confirmation_required = tool
+        .confirmation_required_for(arguments)
+        .map_err(|message| (-32602, message))?;
     let argv = tools::argv_for_call(tool, arguments).map_err(|message| (-32602, message))?;
     // The registry owns confirmation and refuses before any handler opens a
     // bridge. Preserve that ordering here too: an unconfirmed paired write is
     // an input refusal, never a reason to start a desktop.
-    if tool.confirmation_required
+    if confirmation_required
         && !arguments
             .get(tools::CONFIRM_PROPERTY)
             .and_then(Value::as_bool)
@@ -1011,9 +1021,20 @@ mod tests {
             description: format!("{id} purpose"),
             input_schema: json!({ "type": "object" }),
             confirmation_required,
+            confirmation_trigger: None,
             inputs: Vec::new(),
             descriptor: json!({ "id": id, "summary": format!("{id} summary"), "availability": "available" }),
         }
+    }
+
+    fn conditional_tool(id: &str, chapter: Chapter) -> Tool {
+        let mut tool = tool(id, chapter, true);
+        tool.confirmation_trigger = Some("write".to_string());
+        tool.inputs.push(tools::Input {
+            name: "write".to_string(),
+            kind: "switch".to_string(),
+        });
+        tool
     }
 
     #[test]
@@ -1118,6 +1139,35 @@ mod tests {
             )
             .unwrap_err();
         assert!(nested.1.contains("chapter envelope"), "{}", nested.1);
+    }
+
+    #[test]
+    fn conditional_tool_annotations_stay_conservative_and_preview_rejects_confirm() {
+        let conditional = conditional_tool("operations.install", Chapter::Operations);
+        assert_eq!(
+            leaf_tool_json(&conditional)["annotations"]["readOnlyHint"],
+            false
+        );
+        let surface = Surface::new(Exposure::Chapters, None, vec![conditional]).unwrap();
+        let error = surface
+            .call_chapter(
+                Chapter::Operations,
+                &json!({
+                    "operation": "invoke",
+                    "command": "operations.install",
+                    "arguments": { "write": false },
+                    "confirm": true,
+                }),
+                &PathBuf::from("not-called"),
+            )
+            .unwrap_err();
+        assert!(
+            error
+                .1
+                .contains("does not accept confirmation for this invocation"),
+            "{}",
+            error.1
+        );
     }
 
     #[test]

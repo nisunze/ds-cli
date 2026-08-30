@@ -477,6 +477,25 @@ impl Command {
     pub fn arg(&self, name: &str) -> Option<&Arg> {
         self.args.iter().find(|arg| arg.name == name)
     }
+
+    /// The one supported mixed-effect command shape: a machine-level
+    /// proposal whose declared boolean `--write` switch selects its writing
+    /// path. Global and artifact writes never become conditional merely by
+    /// naming an input `write`.
+    pub fn confirmation_trigger(&self) -> Option<&'static str> {
+        (self.effect == Effect::MachineWrite
+            && self
+                .arg("write")
+                .is_some_and(|arg| arg.kind == ArgKind::Switch))
+        .then_some("--write")
+    }
+
+    pub fn confirmation_required_for(&self, inputs: &crate::args::Inputs) -> bool {
+        if self.confirmation_trigger().is_some() {
+            return inputs.switch("write");
+        }
+        self.effect.needs_confirmation()
+    }
 }
 
 /// A family of commands that share an owner and a vocabulary.
@@ -500,7 +519,34 @@ impl Domain {
 
 #[cfg(test)]
 mod tests {
-    use super::Chapter;
+    use super::{Arg, Authority, Availability, Chapter, Command, Effect, Execution};
+
+    fn available() -> Availability {
+        Availability::Available
+    }
+
+    static WRITE_SWITCH: Arg = Arg::switch("write", "Select the writing path.");
+    static WRITE_ARGS: &[Arg] = &[WRITE_SWITCH];
+
+    fn confirmation_fixture(effect: Effect) -> Command {
+        Command {
+            id: "test.confirmation-trigger",
+            path: &["test", "confirmation-trigger"],
+            contract: 1,
+            chapter: Chapter::Catalog,
+            summary: "Regression fixture.",
+            purpose: "Proves only machine writes can use a conditional write trigger.",
+            effect,
+            authority: Authority::None,
+            execution: Execution::Sync,
+            args: WRITE_ARGS,
+            output: "Nothing.",
+            examples: &[],
+            refusals: &[],
+            reference: None,
+            availability: available,
+        }
+    }
 
     #[test]
     fn chapter_tokens_are_unique_stable_and_round_trip() {
@@ -531,5 +577,32 @@ mod tests {
         assert_eq!(Chapter::from_token("grid_model"), None);
         assert_eq!(Chapter::from_token("Catalog"), None);
         assert_eq!(Chapter::from_token(""), None);
+    }
+
+    #[test]
+    fn only_machine_write_can_use_the_declared_write_trigger() {
+        let machine = confirmation_fixture(Effect::MachineWrite);
+        assert_eq!(machine.confirmation_trigger(), Some("--write"));
+        assert_eq!(
+            crate::help::command_json(&machine)["confirmation_trigger"],
+            "--write"
+        );
+        let preview = crate::parse(&machine, &[]).unwrap();
+        assert!(!machine.confirmation_required_for(&preview));
+        let write = crate::parse(&machine, &["--write".to_string()]).unwrap();
+        assert!(machine.confirmation_required_for(&write));
+
+        for effect in [Effect::GlobalWrite, Effect::ArtifactWrite] {
+            let command = confirmation_fixture(effect);
+            assert_eq!(command.confirmation_trigger(), None);
+            assert!(
+                crate::help::command_json(&command)
+                    .get("confirmation_trigger")
+                    .is_none(),
+                "{effect:?} must remain unconditionally gated in its descriptor"
+            );
+            let absent = crate::parse(&command, &[]).unwrap();
+            assert!(command.confirmation_required_for(&absent));
+        }
     }
 }

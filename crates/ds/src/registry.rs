@@ -1285,11 +1285,7 @@ pub fn dispatch(entry: &Entry, tokens: &[String], context: &Context) -> Result<V
     // read-only preview. The declaration remains machine_write, but the gate
     // is required only when that switch selects the writing path. Parsing
     // still happens first and the policy stays centralized here.
-    let confirmation_required = entry.command.effect.needs_confirmation()
-        && entry
-            .command
-            .arg("write")
-            .is_none_or(|_| inputs.switch("write"));
+    let confirmation_required = entry.command.confirmation_required_for(&inputs);
     if confirmation_required && !context.confirmed {
         return Err(Failure::invalid(
             "confirmation_required",
