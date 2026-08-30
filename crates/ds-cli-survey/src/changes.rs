@@ -12,19 +12,19 @@ const FORM: Arg = Arg::value("form", "<form-slug>", "Exact governed form slug.")
 const UPDATED_AFTER: Arg = Arg::value(
     "updated-after",
     "<RFC3339>",
-    "Inclusive lower replication clock; continuation pages must reuse it unchanged.",
+    "Inclusive lower clock; reuse unchanged across continuation pages.",
 )
 .required();
 const LIMIT: Arg = Arg::value(
     "limit",
     "<1-500>",
-    "Maximum rows in this one page; continuation pages must reuse it unchanged.",
+    "Rows in this page; reuse unchanged across continuations.",
 )
 .default("100");
 const CURSOR: Arg = Arg::value(
     "cursor",
     "<opaque-cursor>",
-    "Exact opaque next_cursor from the preceding incomplete page; no whitespace, maximum 4096 bytes.",
+    "Exact next_cursor for an incomplete page; no whitespace, maximum 4096 bytes.",
 );
 const LANE: Arg = Arg::value(
     "lane",
@@ -37,82 +37,82 @@ const LANE: Arg = Arg::value(
 const REFUSALS: &[Refusal] = &[
     Refusal {
         code: "survey_entries_changes_invalid",
-        when: "the form, updated-after clock, limit, or other fixed request value violates the closed changes grammar",
-        remedy: "pass one exact form, an RFC3339 lower clock, and a limit from 1 through 500",
+        when: "form, lower clock, limit, or another fixed value violates the closed grammar",
+        remedy: "pass an exact form, RFC3339 lower clock, and limit from 1 through 500",
     },
     Refusal {
         code: "survey_entries_changes_cursor_invalid",
-        when: "the supplied opaque cursor is malformed or does not match this authority and unchanged request",
-        remedy: "reuse the exact next_cursor with identical --updated-after and --limit, or restart from the last completed checkpoint",
+        when: "the cursor is malformed or does not match this authority and request",
+        remedy: "reuse it with identical --updated-after and --limit, or restart at the last completed checkpoint",
     },
     Refusal {
         code: "survey_entries_changes_fence_expired",
-        when: "the immutable BigQuery page fence carried by an incomplete cursor has expired",
-        remedy: "discard the incomplete cursor and restart from the last previously completed checkpoint, never this expired feed's upper_fence",
+        when: "an incomplete cursor's immutable BigQuery fence has expired",
+        remedy: "discard it and restart at the prior completed checkpoint, never the expired upper_fence",
     },
     Refusal {
         code: "survey_entries_changes_too_expensive",
-        when: "the bounded changes query exceeds the backend query budget",
-        remedy: "keep the last completed checkpoint unchanged; repair partitioning or indexing, or raise the governed backend query budget, then restart there",
+        when: "the changes query exceeds its backend budget",
+        remedy: "retain the completed checkpoint; repair partitioning/indexing or raise the governed budget, then restart there",
     },
     Refusal {
         code: "survey_entries_changes_too_large",
-        when: "the bounded changes response exceeds its byte limit",
-        remedy: "lower --limit and restart from the last completed checkpoint",
+        when: "the response exceeds its byte limit",
+        remedy: "lower --limit and restart at the last completed checkpoint",
     },
     Refusal {
         code: "survey_entries_changes_mirror_invalid",
-        when: "the governed Survey mirror cannot represent valid change evidence",
-        remedy: "repair or update the governed mirror; an unchanged retry is not a remedy",
+        when: "the Survey mirror cannot represent valid change evidence",
+        remedy: "repair or update the mirror; do not retry unchanged",
     },
     Refusal {
         code: "survey_entries_changes_snapshot_unavailable",
-        when: "the immutable BigQuery table version for this cursor is temporarily unavailable",
-        remedy: "retry the identical page request with the exact same cursor",
+        when: "this cursor's BigQuery table version is temporarily unavailable",
+        remedy: "retry the identical page with the same cursor",
     },
     Refusal {
         code: "survey_entries_changes_unavailable",
-        when: "the fenced changes service or its durable cursor-signing configuration is unavailable on this deployment",
-        remedy: "configure the governed deployment and durable changes cursor signing key, then retry from the last completed checkpoint",
+        when: "the changes service or durable cursor signing is not configured",
+        remedy: "configure the deployment and signing key, then restart at the completed checkpoint",
     },
     Refusal {
         code: "survey_entries_changes_sync_failed",
-        when: "Survey data cannot be synchronized before reading changes",
-        remedy: "retry without changing the page request and report repeated sync failures",
+        when: "Survey data cannot synchronize before the read",
+        remedy: "retry the same page and report repeated failures",
     },
     Refusal {
         code: "survey_entries_changes_failed",
-        when: "the fenced changes service fails temporarily",
-        remedy: "retry without changing the page request and report repeated failures",
+        when: "the changes service fails temporarily",
+        remedy: "retry the same page and report repeated failures",
     },
     Refusal {
         code: "survey_entries_scope_not_found",
-        when: "the selected project or governed form is unavailable to the verified user",
-        remedy: "verify the selected project and pass one exact available form slug",
+        when: "the selected project or form is unavailable to this user",
+        remedy: "verify the selected project and exact available form slug",
     },
     Refusal {
         code: "survey_entries_changes_refused",
-        when: "the backend coarsely refuses an already validated changes request without a recognized service code",
-        remedy: "verify the form and restart from the last completed checkpoint",
+        when: "the backend refuses the request without a recognized service code",
+        remedy: "verify the form and restart at the last completed checkpoint",
     },
     Refusal {
         code: "survey_entries_changes_auth_rejected",
-        when: "the fixed changes route rejects the verified identity or form authority",
-        remedy: "verify account and form authority in the selected project",
+        when: "the route rejects identity or form authority",
+        remedy: "verify the account and selected-project form authority",
     },
     Refusal {
         code: "survey_entries_changes_transient",
-        when: "the fixed changes service is temporarily unavailable without a recognized service code",
-        remedy: "retry the identical page request without advancing its checkpoint",
+        when: "the service is temporarily unavailable without a recognized code",
+        remedy: "retry the identical page without advancing its checkpoint",
     },
     Refusal {
         code: "survey_entries_changes_unreadable",
-        when: "the changes response violates its closed identity, clocks, geometry, ordering, paging, or consistency contract",
-        remedy: "retry once without advancing the checkpoint, then update ds if it persists",
+        when: "the response violates its closed identity, data, paging, or consistency contract",
+        remedy: "retry once without advancing the checkpoint; update ds if it persists",
     },
     Refusal {
         code: "native_profile_not_configured",
-        when: "the exact packaged native profile is unavailable",
+        when: "the packaged native profile is unavailable",
         remedy: "install one complete ds release",
     },
     Refusal {
@@ -122,7 +122,7 @@ const REFUSALS: &[Refusal] = &[
     },
     Refusal {
         code: "native_profile_unsafe",
-        when: "the packaged native catalogue is unsafe or malformed",
+        when: "the packaged native catalogue is unsafe",
         remedy: "reinstall one complete ds release",
     },
     Refusal {
@@ -132,7 +132,7 @@ const REFUSALS: &[Refusal] = &[
     },
     Refusal {
         code: "headless_project_not_selected",
-        when: "the user has no audience-fenced project selection",
+        when: "the user has no audience-fenced selected project",
         remedy: "run ds auth project use --project <exact-id>",
     },
     Refusal {
@@ -142,7 +142,7 @@ const REFUSALS: &[Refusal] = &[
     },
     Refusal {
         code: "native_state_unsafe",
-        when: "protected native state is unsafe or unreadable",
+        when: "protected native state is unsafe",
         remedy: "repair the owner-only DS config directory",
     },
     Refusal {
@@ -152,7 +152,7 @@ const REFUSALS: &[Refusal] = &[
     },
     Refusal {
         code: "native_state_protection_unavailable",
-        when: "this build has no protected-state adapter",
+        when: "the build has no protected-state adapter",
         remedy: "install a supported native ds build",
     },
     Refusal {
@@ -167,13 +167,13 @@ const REFUSALS: &[Refusal] = &[
     },
     Refusal {
         code: "native_cleanup_required",
-        when: "revoked identity cleanup cannot clear project context",
+        when: "revoked-session cleanup cannot clear project context",
         remedy: "repair protected state and run auth logout",
     },
     Refusal {
         code: "auth_rejected",
-        when: "native identity restoration rejects the saved credential before the changes call",
-        remedy: "verify the account and sign in again if the credential was revoked",
+        when: "identity restoration rejects the saved credential",
+        remedy: "verify the account; sign in again if the credential was revoked",
     },
     Refusal {
         code: "auth_revoked",
@@ -182,18 +182,18 @@ const REFUSALS: &[Refusal] = &[
     },
     Refusal {
         code: "auth_identity_mismatch",
-        when: "Firebase returns an identity outside the bound session",
-        remedy: "sign in again and report a repeated mismatch",
+        when: "Firebase returns an identity outside this session",
+        remedy: "sign in again; report a repeated mismatch",
     },
     Refusal {
         code: "auth_transient",
-        when: "native identity restoration is temporarily unavailable before the changes call",
+        when: "identity restoration is temporarily unavailable",
         remedy: "retry without changing local state",
     },
     Refusal {
         code: "auth_response_unreadable",
-        when: "native identity restoration returns an unreadable response before the changes call",
-        remedy: "retry once, then sign in again or update ds if it persists",
+        when: "identity restoration returns an unreadable response",
+        remedy: "retry once; sign in again or update ds if it persists",
     },
 ];
 
@@ -203,21 +203,21 @@ pub static COMMAND: Command = Command {
     contract: 1,
     chapter: Chapter::Survey,
     summary: "Read one fenced page of Survey changes headlessly.",
-    purpose: "Validates one exact form, RFC3339 inclusive lower clock, bounded limit, and optional opaque cursor before profile or auth access; restores the native user; loads only its audience-fenced selected project under lease; releases the lease before one fixed Survey changes call; and verifies typed coalesced mirror rows and immutable page-fence consistency. It never auto-paginates. An incomplete page must be continued with identical updated-after and limit plus the exact next_cursor, without advancing the checkpoint. Only a complete page's upper_fence may become the next checkpoint. The inclusive lower clock can safely replay exact-boundary evidence, so automation must apply idempotently by doc_id plus firestore_updated_at; a tombstone removes the corresponding local live row. This is not Firestore snapshot or mutation history. There is no project, URL, method, body, token, field/media/deletion projection, force, caller-authority, or Desktop override.",
+    purpose: "Validates the form, inclusive lower clock, limit, and cursor before auth; uses only the restored user's selected project; releases its lease before the fixed changes call; and verifies one immutable-fence page. It never auto-paginates. Continue incomplete pages with unchanged updated-after/limit and exact next_cursor without advancing the checkpoint. Only a complete upper_fence advances it. Apply rows idempotently by doc_id plus firestore_updated_at; tombstones remove live rows. This is coalesced mirror state, not Firestore history. No project, transport, projection, force, authority, or Desktop override exists.",
     effect: Effect::LocalAuthState,
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
     args: &[FORM, UPDATED_AFTER, LIMIT, CURSOR, LANE],
-    output: "Lane, selected-project identity, exact form and canonical inclusive updated_after, effective limit, typed coalesced rows with optional geometry and tombstones, upper_fence, next_cursor, has_more/complete, and explicit immutable BigQuery mirror-fence consistency. If has_more, retain the previous completed checkpoint and reuse identical updated_after and limit with exact next_cursor. Only when complete may upper_fence become the next checkpoint.",
+    output: "Selected project/form, canonical lower clock and limit, rows with optional geometry and tombstones, upper fence, cursor/completion, and immutable mirror consistency. For an incomplete page, retain the prior checkpoint and reuse the same clock/limit with its cursor; only a complete upper fence advances it.",
     examples: &[
         Example {
             command: "ds survey entries changes --form lv_poles_survey --updated-after 2026-08-30T00:00:00Z --output json",
-            note: "Reads one page from the selected project; an incomplete result must not advance the checkpoint.",
+            note: "Reads one page; an incomplete result does not advance the checkpoint.",
             runnable: false,
         },
         Example {
             command: "ds survey entries changes --form lv_poles_survey --updated-after 2026-08-30T00:00:00Z --limit 500 --cursor '<exact-next-cursor>' --output json",
-            note: "Continues one immutable feed fence with the exact prior request and cursor; it does not auto-loop.",
+            note: "Continues the prior immutable fence without auto-looping.",
             runnable: false,
         },
     ],
