@@ -213,15 +213,20 @@ in this first version because the shared core does not expose an unambiguous
 canonical identity projection for alias detection.
 
 The append-and-sync receipt records only the row number, source-row digest,
-form, document id, terminal code or verified commit clock/version. The atomic
-checkpoint and machine summary contain no payload, field names, coordinates,
+form, document-identity digest, terminal code or verified commit clock/version.
+The atomic checkpoint and machine summary contain no payload, field names, coordinates,
 idempotency material, token, or email. A terminal receipt is synced before the
 checkpoint advances. A crash before that append safely replays the exact
 idempotent create; a complete receipt event one row ahead of the checkpoint is
 reconciled without a network call; a partial receipt tail is removed before
 the exact row is replayed. Other incomplete or contradictory state refuses.
-`--on-error continue` advances only past exact permanent row refusals;
-uncertain and retryable outcomes pause without advancing.
+An owner-private sidecar lock gives one process exclusive ownership of an exact
+checkpoint while allowing imports with distinct state paths to run together.
+`--on-error continue` advances only past the exact row-local `invalid`,
+`idempotency conflict`, and `already exists` create outcomes. Permission,
+disabled/read-only scope, missing-scope, coarse refusal, uncertain, and
+retryable outcomes all pause without advancing because they may affect every
+remaining row.
 
 Four related objects have separate lifecycles:
 

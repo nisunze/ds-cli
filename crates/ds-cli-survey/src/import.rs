@@ -47,7 +47,7 @@ const RECEIPT: Arg = Arg::value(
 const ON_ERROR: Arg = Arg::value(
     "on-error",
     "<stop|continue>",
-    "Stop after the first permanent row refusal, or record it and continue.",
+    "Stop after the first exact row-local refusal, or record it and continue.",
 )
 .default("stop")
 .choices(&["stop", "continue"]);
@@ -111,8 +111,13 @@ const REFUSALS: &[Refusal] = &[
         remedy: "restore the matching state pair; a header-only receipt may be recovered automatically",
     },
     Refusal {
+        code: "survey_entries_import_state_conflict",
+        when: "another process owns this exact import checkpoint",
+        remedy: "let that import finish, then resume the same state pair",
+    },
+    Refusal {
         code: "survey_entries_import_paused",
-        when: "one row has an uncertain or retryable outcome and the contiguous checkpoint cannot advance",
+        when: "a create outcome is not exact row-local terminal, is uncertain, or is retryable",
         remedy: "resolve the reported bounded cause, then resume the exact source with unchanged document ids and idempotency keys",
     },
     Refusal {
@@ -375,7 +380,7 @@ enum ReceiptLine {
         line: usize,
         record_sha256: String,
         form: String,
-        doc_id: String,
+        doc_id_sha256: String,
         client_version: i64,
         firestore: String,
         bigquery_mirror: String,
@@ -386,7 +391,7 @@ enum ReceiptLine {
         line: usize,
         record_sha256: String,
         form: String,
-        doc_id: String,
+        doc_id_sha256: String,
         code: String,
     },
 }
@@ -406,10 +411,12 @@ impl ReceiptLine {
             }
         }
     }
-    fn doc_id(&self) -> Option<&str> {
+    fn doc_id_sha256(&self) -> Option<&str> {
         match self {
             Self::Manifest { .. } => None,
-            Self::Committed { doc_id, .. } | Self::Refused { doc_id, .. } => Some(doc_id),
+            Self::Committed { doc_id_sha256, .. } | Self::Refused { doc_id_sha256, .. } => {
+                Some(doc_id_sha256)
+            }
         }
     }
     fn is_committed(&self) -> bool {
@@ -432,6 +439,11 @@ struct Paths {
     source: PathBuf,
     checkpoint: PathBuf,
     receipt: PathBuf,
+    lock: PathBuf,
+}
+
+struct ImportLock {
+    _file: File,
 }
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
@@ -458,6 +470,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         return Err(source_changed());
     }
     let plan = second;
+    let _lock = acquire_import_lock(&paths.lock)?;
     let local = load_local_state(&paths, &plan, form, lane)?;
 
     // Only after the complete caller-controlled source and local state have
@@ -496,7 +509,11 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let mut reader = BufReader::new(file);
     let mut digest = Sha256::new();
     let mut line_number = 0usize;
+    let mut source_bytes = 0u64;
     while let Some(raw) = read_bounded_line(&mut reader)? {
+        if !add_bounded_bytes(&mut source_bytes, raw.len(), SOURCE_MAX_BYTES) {
+            return Err(source_changed());
+        }
         line_number += 1;
         digest.update(&raw);
         let parsed =
@@ -536,7 +553,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
                     line: line_number,
                     record_sha256: parsed.record_sha256,
                     form: form.to_owned(),
-                    doc_id: parsed.request.doc_id().to_owned(),
+                    doc_id_sha256: parsed.doc_id_sha256,
                     code: error.code().to_owned(),
                 };
                 append_receipt(&paths.receipt, &event)?;
@@ -560,7 +577,9 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             }
         }
     }
-    if line_number != plan.records.len() || format!("{:x}", digest.finalize()) != plan.source_sha256
+    if line_number != plan.records.len()
+        || source_bytes != plan.source_bytes
+        || format!("{:x}", digest.finalize()) != plan.source_sha256
     {
         return Err(source_changed());
     }
@@ -602,9 +621,13 @@ fn validate_source(path: &Path, form: &str) -> Result<ImportPlan, Failure> {
     let mut reader = BufReader::new(file);
     let mut digest = Sha256::new();
     let mut records = Vec::new();
+    let mut source_bytes = 0u64;
     let mut keys = BTreeSet::new();
     let mut identities = BTreeSet::new();
     while let Some(raw) = read_bounded_line(&mut reader)? {
+        if !add_bounded_bytes(&mut source_bytes, raw.len(), SOURCE_MAX_BYTES) {
+            return Err(source_invalid());
+        }
         digest.update(&raw);
         if records.len() >= ITEM_MAX {
             return Err(source_invalid());
@@ -624,7 +647,7 @@ fn validate_source(path: &Path, form: &str) -> Result<ImportPlan, Failure> {
     }
     Ok(ImportPlan {
         source_sha256: format!("{:x}", digest.finalize()),
-        source_bytes: metadata.len(),
+        source_bytes,
         records,
     })
 }
@@ -714,14 +737,84 @@ fn resolve_paths(source: &str, checkpoint: &str, receipt: &str) -> Result<Paths,
     let source = resolve_path(source)?;
     let checkpoint = resolve_path(checkpoint)?;
     let receipt = resolve_path(receipt)?;
-    if source == checkpoint || source == receipt || checkpoint == receipt {
+    let checkpoint_leaf = checkpoint
+        .file_name()
+        .and_then(|value| value.to_str())
+        .ok_or_else(path_conflict)?;
+    let lock = checkpoint.with_file_name(format!(".{checkpoint_leaf}.import.lock"));
+    if source == checkpoint
+        || source == receipt
+        || source == lock
+        || checkpoint == receipt
+        || receipt == lock
+    {
         return Err(path_conflict());
     }
     Ok(Paths {
         source,
         checkpoint,
         receipt,
+        lock,
     })
+}
+
+fn acquire_import_lock(path: &Path) -> Result<ImportLock, Failure> {
+    #[cfg(unix)]
+    {
+        use std::os::fd::AsRawFd;
+        let file = match open_private(path, true, 0) {
+            Ok(file) => file,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                create_private(path).map_err(|_| state_conflict())?
+            }
+            Err(_) => return Err(checkpoint_unsafe()),
+        };
+        loop {
+            if unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } == 0 {
+                return Ok(ImportLock { _file: file });
+            }
+            let error = std::io::Error::last_os_error();
+            if error.kind() == std::io::ErrorKind::Interrupted {
+                continue;
+            }
+            return if error.kind() == std::io::ErrorKind::WouldBlock {
+                Err(state_conflict())
+            } else {
+                Err(checkpoint_unsafe())
+            };
+        }
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::OpenOptionsExt;
+        let mut options = OpenOptions::new();
+        options
+            .read(true)
+            .write(true)
+            .create(true)
+            .share_mode(0)
+            .custom_flags(0x0020_0000);
+        let file = options.open(path).map_err(|error| {
+            if matches!(
+                error.kind(),
+                std::io::ErrorKind::PermissionDenied | std::io::ErrorKind::WouldBlock
+            ) {
+                state_conflict()
+            } else {
+                checkpoint_unsafe()
+            }
+        })?;
+        let metadata = file.metadata().map_err(|_| checkpoint_unsafe())?;
+        if !safe_regular(&metadata, 0, true) {
+            return Err(checkpoint_unsafe());
+        }
+        return Ok(ImportLock { _file: file });
+    }
+    #[cfg(not(any(unix, windows)))]
+    {
+        let _ = path;
+        Err(checkpoint_unsafe())
+    }
 }
 
 fn resolve_path(raw: &str) -> Result<PathBuf, Failure> {
@@ -866,6 +959,9 @@ fn create_receipt(path: &Path, manifest: &ReceiptLine) -> Result<(), Failure> {
     let mut file = create_private(path).map_err(|_| receipt_unsafe())?;
     let mut bytes = serde_json::to_vec(manifest).map_err(|_| receipt_unsafe())?;
     bytes.push(b'\n');
+    if bytes.len() as u64 > RECEIPT_MAX_BYTES {
+        return Err(receipt_unsafe());
+    }
     file.write_all(&bytes)
         .and_then(|_| file.sync_all())
         .map_err(|_| receipt_unsafe())
@@ -875,6 +971,13 @@ fn append_receipt(path: &Path, event: &ReceiptLine) -> Result<(), Failure> {
     let mut file = open_append_private(path).map_err(|_| receipt_unsafe())?;
     let mut bytes = serde_json::to_vec(event).map_err(|_| receipt_unsafe())?;
     bytes.push(b'\n');
+    let current = file.metadata().map_err(|_| receipt_unsafe())?.len();
+    if current
+        .checked_add(bytes.len() as u64)
+        .is_none_or(|next| next > RECEIPT_MAX_BYTES)
+    {
+        return Err(receipt_unsafe());
+    }
     file.write_all(&bytes)
         .and_then(|_| file.sync_all())
         .map_err(|_| receipt_unsafe())
@@ -1029,7 +1132,7 @@ fn validate_receipt_events_pre_auth(
         let expected = &plan.records[index];
         if event.line() != Some(index + 1)
             || event.record_sha256() != Some(expected.record_sha256.as_str())
-            || event.doc_id().map(digest_text).as_deref() != Some(expected.doc_id_sha256.as_str())
+            || event.doc_id_sha256() != Some(expected.doc_id_sha256.as_str())
         {
             return Err(receipt_mismatch());
         }
@@ -1101,7 +1204,7 @@ fn validate_event(
 ) -> Result<(), Failure> {
     if event.line() != Some(line)
         || event.record_sha256() != Some(parsed.record_sha256.as_str())
-        || event.doc_id() != Some(parsed.request.doc_id())
+        || event.doc_id_sha256() != Some(parsed.doc_id_sha256.as_str())
     {
         return Err(receipt_mismatch());
     }
@@ -1125,7 +1228,7 @@ fn committed_event(
         line,
         record_sha256: parsed.record_sha256.clone(),
         form: form.to_owned(),
-        doc_id: receipt.doc_id().to_owned(),
+        doc_id_sha256: parsed.doc_id_sha256.clone(),
         client_version: receipt.client_version(),
         firestore: "committed".to_owned(),
         bigquery_mirror: "unconfirmed".to_owned(),
@@ -1138,14 +1241,20 @@ fn permanent_row_refusal(code: &str) -> bool {
     matches!(
         code,
         "survey_entry_create_invalid"
-            | "survey_entry_create_permission_denied"
-            | "survey_entry_create_scope_not_found"
-            | "survey_entry_create_form_disabled"
-            | "survey_entry_create_project_read_only"
             | "survey_entry_create_idempotency_conflict"
             | "survey_entry_create_already_exists"
-            | "survey_entry_create_refused"
     )
+}
+
+fn add_bounded_bytes(total: &mut u64, added: usize, limit: u64) -> bool {
+    let Some(next) = total.checked_add(added as u64) else {
+        return false;
+    };
+    if next > limit {
+        return false;
+    }
+    *total = next;
+    true
 }
 
 fn digest_bytes(bytes: &[u8]) -> String {
@@ -1412,6 +1521,13 @@ fn state_incomplete() -> Failure {
     )
     .remedy("restore the matching pair; only a header-only receipt is automatically recoverable")
 }
+fn state_conflict() -> Failure {
+    Failure::conflict(
+        "survey_entries_import_state_conflict",
+        "another process owns this exact import checkpoint",
+    )
+    .remedy("let that import finish, then resume the same checkpoint and receipt")
+}
 
 pub fn render(data: &Value) -> String {
     format!(
@@ -1555,6 +1671,61 @@ mod tests {
     }
 
     #[test]
+    fn only_exact_row_local_create_refusals_advance() {
+        for code in [
+            "survey_entry_create_invalid",
+            "survey_entry_create_idempotency_conflict",
+            "survey_entry_create_already_exists",
+        ] {
+            assert!(permanent_row_refusal(code));
+        }
+        for code in [
+            "survey_entry_create_permission_denied",
+            "survey_entry_create_scope_not_found",
+            "survey_entry_create_form_disabled",
+            "survey_entry_create_project_read_only",
+            "survey_entry_create_refused",
+            "survey_entry_create_failed",
+        ] {
+            assert!(!permanent_row_refusal(code));
+        }
+    }
+
+    #[test]
+    fn streamed_source_and_receipt_growth_stop_at_their_exact_bounds() {
+        let mut total = 0;
+        assert!(add_bounded_bytes(&mut total, 3, 4));
+        assert!(!add_bounded_bytes(&mut total, 2, 4));
+        assert_eq!(total, 3, "a refused growth does not change the fence");
+
+        let dir = temp_dir();
+        let receipt = dir.join("receipt.ndjson");
+        let file = create_private(&receipt).unwrap();
+        file.set_len(RECEIPT_MAX_BYTES).unwrap();
+        drop(file);
+        let event = ReceiptLine::Refused {
+            line: 1,
+            record_sha256: "a".repeat(64),
+            form: "f".into(),
+            doc_id_sha256: "b".repeat(64),
+            code: "survey_entry_create_invalid".into(),
+        };
+        assert_eq!(
+            append_receipt(&receipt, &event).err().unwrap().code(),
+            "survey_entries_import_receipt_unsafe"
+        );
+        assert_eq!(
+            std::fs::metadata(&receipt).unwrap().len(),
+            RECEIPT_MAX_BYTES
+        );
+        let encoded = serde_json::to_string(&event).unwrap();
+        assert!(!encoded.contains("doc_id\""));
+        assert!(!encoded.contains("\"doc\""));
+        assert!(!encoded.contains("idempotency"));
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
     fn receipt_tail_repair_and_checkpoint_reconciliation_are_contiguous() {
         let dir = temp_dir();
         let receipt = dir.join("receipt.ndjson");
@@ -1581,8 +1752,8 @@ mod tests {
             line: 1,
             record_sha256: "d".repeat(64),
             form: "f".into(),
-            doc_id: "doc".into(),
-            code: "survey_entry_create_refused".into(),
+            doc_id_sha256: digest_text("doc"),
+            code: "survey_entry_create_invalid".into(),
         });
         let plan = ImportPlan {
             source_sha256: "a".repeat(64),
@@ -1658,6 +1829,21 @@ mod tests {
                 .code(),
             "survey_entries_import_path_conflict"
         );
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn one_checkpoint_has_one_process_owner() {
+        let dir = temp_dir();
+        let path = dir.join(".checkpoint.import.lock");
+        let first = acquire_import_lock(&path).unwrap();
+        assert_eq!(
+            acquire_import_lock(&path).err().unwrap().code(),
+            "survey_entries_import_state_conflict"
+        );
+        drop(first);
+        acquire_import_lock(&path).unwrap();
         std::fs::remove_dir_all(dir).unwrap();
     }
 
