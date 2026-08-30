@@ -12,6 +12,36 @@ settings command accepts one form slug but no project override; ds-brain
 rechecks project-form admin authority before returning the backend-owned legal
 settings vocabulary and optimistic revision.
 
+`survey query` is the selected-project aggregate data plane. It restores the
+same native identity, releases the audience-fenced project-context lease before
+network work, and calls only `POST /api/v1/survey/query`. The backend refreshes
+the project Survey mirror and rechecks project, form, paired/per-form, and
+view-blocked authority before executing the question. The CLI returns at most
+200 aggregate rows and never exposes raw entries, media, tokens, a project
+override, or an arbitrary request body. The governed backend rejects questions
+whose dry-run estimate exceeds the 256 MiB billed-byte ceiling.
+
+The aggregate grammar is deliberately closed:
+
+```text
+ds survey query --form lv_poles_survey --metric count \
+  --group-by created_by \
+  --filter '{"field":"created_by","op":"eq","value":"operator@example.com"}' \
+  --order desc --limit 50 --output json
+```
+
+`--metric` is `count` or `count_distinct`; only `count_distinct` requires and
+permits `--distinct-field`. Repeat `--group-by` at most twice. Repeat
+`--filter` at most eight times, once per JSON object—there is no whole-request
+JSON flag. Operators are `eq`, `neq`, `gte`, `lte`, `in`, `between`,
+`is_null`, and `not_null`, with exact operator-specific fields. `in` accepts 1
+through 20 string values. The public `created_by` field remains legal for
+filtering, grouping, and distinct counts; the server still applies any
+view-blocked creator restriction independently. Defaults mirror the backend:
+descending order and 50 rows; `--limit` may explicitly raise the bound to 200.
+The response does not present `bytes_processed` as billing evidence because the
+current service cannot recover iterator statistics after execution.
+
 Four related objects have separate lifecycles:
 
 1. A **Form Factory form** is a global master schema. Use `survey forms list`,

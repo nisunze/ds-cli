@@ -8,6 +8,7 @@
 
 pub mod forms;
 pub mod project_forms;
+pub mod query;
 pub mod templates;
 
 use std::io::Read;
@@ -35,6 +36,7 @@ pub static DOMAIN: Domain = Domain {
         &project_forms::EDITOR_COMMAND,
         &project_forms::PLAN_COMMAND,
         &project_forms::APPLY_COMMAND,
+        &query::COMMAND,
         &templates::LIST_COMMAND,
         &templates::READ_COMMAND,
         &templates::CREATE_COMMAND,

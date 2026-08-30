@@ -12,4 +12,6 @@ publish.workspace = true
 ds-cli-contract = { workspace = true }
 ds-cli-auth = { workspace = true }
 ds-cli-desktop = { workspace = true }
+ds-client-core = { workspace = true }
+serde = { workspace = true }
 serde_json = { workspace = true }

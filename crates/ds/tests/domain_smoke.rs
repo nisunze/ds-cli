@@ -2098,13 +2098,17 @@ fn design_lv_project_export_refuses_an_existing_artifact_before_auth_or_desktop(
                 "path": "/api/v1/solar",
                 "action": "desktop_snapshot"
             },
+            "survey_query": {
+                "method": "POST",
+                "path": "/api/v1/survey/query"
+            },
             "provenance": { "source_revision": "abc123", "descriptor_sha256": digest }
         })
     };
     std::fs::write(
         &profile_path,
         serde_json::to_vec(&json!({
-            "schema_version": "ds.native-client-profiles/v5",
+            "schema_version": "ds.native-client-profiles/v6",
             "development": true,
             "profiles": {
                 "stable": profile(
@@ -4101,6 +4105,48 @@ fn project_forms_native_reads_preserve_the_explicit_project_desktop_surface() {
             .iter()
             .all(|arg| arg["name"] != "project" && arg["name"] != "desktop-descriptor")
     );
+
+    let query = ok(&["capabilities", "survey.query", "--output", "json"]);
+    assert_eq!(query["command"]["authority"], "headless_project");
+    assert_eq!(query["command"]["effect"], "local_auth_state");
+    let names = query["command"]["inputs"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|arg| arg["name"].as_str())
+        .collect::<BTreeSet<_>>();
+    assert_eq!(
+        names,
+        BTreeSet::from([
+            "distinct-field",
+            "filter",
+            "form",
+            "group-by",
+            "lane",
+            "limit",
+            "metric",
+            "order",
+        ])
+    );
+    for forbidden in [
+        "project",
+        "url",
+        "body",
+        "token",
+        "raw",
+        "entry",
+        "media",
+        "desktop-descriptor",
+    ] {
+        assert!(
+            query["command"]["inputs"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|arg| arg["name"] != forbidden),
+            "survey.query exposed --{forbidden}"
+        );
+    }
 
     let legacy = ok(&[
         "capabilities",

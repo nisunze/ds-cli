@@ -247,6 +247,7 @@ const FORM_FACTORY_COMMANDS: &[&str] = &[
 ];
 
 const SURVEY_PROJECT_COMMANDS: &[&str] = &[
+    "survey.query",
     "survey.project-forms.list",
     "survey.project-form.settings",
     "survey.project-forms.read",

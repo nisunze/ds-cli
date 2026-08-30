@@ -306,6 +306,7 @@ fn form_factory_and_survey_projects_keep_their_distinct_mapless_contracts() {
         .collect::<BTreeSet<_>>();
     assert!(survey_project_names.contains("survey_project_create-from-template"));
     assert!(survey_project_names.contains("survey_project-form_settings"));
+    assert!(survey_project_names.contains("survey_query"));
     assert!(!survey_project_names.contains("survey_form_lifecycle"));
     let creation = survey_projects
         .iter()
@@ -336,6 +337,32 @@ fn form_factory_and_survey_projects_keep_their_distinct_mapless_contracts() {
             .get("desktop-descriptor")
             .is_none()
     );
+    let query = survey_projects
+        .iter()
+        .find(|tool| tool["name"] == "survey_query")
+        .expect("native selected-project Survey query tool");
+    assert_eq!(query["title"], "survey.query");
+    assert_eq!(query["inputSchema"]["required"], json!(["form"]));
+    assert_eq!(
+        query["inputSchema"]["properties"]["filter"]["type"],
+        "array"
+    );
+    assert_eq!(
+        query["inputSchema"]["properties"]["group-by"]["type"],
+        "array"
+    );
+    for forbidden in [
+        "project",
+        "url",
+        "body",
+        "token",
+        "raw",
+        "entry",
+        "media",
+        "desktop-descriptor",
+    ] {
+        assert!(query["inputSchema"]["properties"].get(forbidden).is_none());
+    }
 }
 
 #[test]

@@ -18,7 +18,7 @@ use ds_cli_contract::spec::{
 use ds_cli_contract::{Context, Inputs};
 use ds_client_core::{
     Client, ClientError, ErrorKind, Project, ProjectFormSettingsEditor, ProjectFormsSnapshot,
-    ProjectStatus, SolarSnapshot, TransformerContext,
+    ProjectStatus, SolarSnapshot, SurveyQueryRequest, SurveyQueryResult, TransformerContext,
 };
 use profile::Lane;
 use serde_json::{Value, json};
@@ -464,6 +464,34 @@ pub struct HeadlessSolarSnapshot {
     snapshot: SolarSnapshot,
 }
 
+/// One bounded Survey aggregate fetched under the restored user and the
+/// audience-fenced selected project.
+pub struct HeadlessSurveyQuery {
+    lane: &'static str,
+    project_id: String,
+    project_name: String,
+    project_status: String,
+    result: SurveyQueryResult,
+}
+
+impl HeadlessSurveyQuery {
+    pub const fn lane(&self) -> &'static str {
+        self.lane
+    }
+    pub fn project_id(&self) -> &str {
+        &self.project_id
+    }
+    pub fn project_name(&self) -> &str {
+        &self.project_name
+    }
+    pub fn project_status(&self) -> &str {
+        &self.project_status
+    }
+    pub const fn result(&self) -> &SurveyQueryResult {
+        &self.result
+    }
+}
+
 impl HeadlessSolarSnapshot {
     pub const fn lane(&self) -> &'static str {
         self.lane
@@ -684,6 +712,55 @@ pub fn solar_snapshot(
         project_name: selected.project_name().to_owned(),
         project_status: selected.status().to_owned(),
         snapshot,
+    })
+}
+
+/// Restore one native user and run one typed aggregate against only the saved,
+/// audience-fenced selected project. There is no project or request-target
+/// override, and the context lease is released before the network call.
+pub fn survey_query(
+    lane_value: &str,
+    query: &SurveyQueryRequest,
+) -> Result<HeadlessSurveyQuery, Failure> {
+    let lane = Lane::parse(lane_value)?;
+    let profile = profile::load(lane)?;
+    let store = NativeRefreshStore::open()?;
+    let mut client = Client::new(profile, NativeTransport, store);
+    let user = require_restore_before_context(&mut client)?;
+    let selected = ProjectContextLease::acquire(client.profile())?
+        .load_snapshot(client.profile(), user.uid(), user.email())?
+        .ok_or_else(|| {
+            Failure::conflict(
+                "headless_project_not_selected",
+                "no project is selected for this native user, lane, and credential audience",
+            )
+            .remedy("run ds auth project use --project <exact-id>")
+            .next("ds auth project status")
+        })?;
+    let result = client.survey_query(selected.project_id(), query, now());
+    let result = match result {
+        Err(error) if error.kind() == ErrorKind::ResourceNotFound => {
+            return Err(Failure::invalid(
+                "survey_scope_not_found",
+                "the selected project or governed form is unavailable to this verified user",
+            )
+            .remedy("verify the selected project and pass one exact available form slug"));
+        }
+        Err(error) if error.kind() == ErrorKind::InvalidInput => {
+            return Err(Failure::conflict(
+                "survey_query_refused",
+                "the backend refused the already validated Survey question or reported a stale view",
+            )
+            .remedy("retry once, then verify the governed form and Survey view state"));
+        }
+        other => with_released_context_disposition(client.profile(), &selected, other)?,
+    };
+    Ok(HeadlessSurveyQuery {
+        lane: lane.token(),
+        project_id: selected.project_id().to_owned(),
+        project_name: selected.project_name().to_owned(),
+        project_status: selected.status().to_owned(),
+        result,
     })
 }
 
