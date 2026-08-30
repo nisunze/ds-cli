@@ -648,6 +648,11 @@ static SURVEY_ENTRIES: &[Entry] = &[
         render: ds_cli_survey::create::render,
     },
     Entry {
+        command: &ds_cli_survey::import::COMMAND,
+        handler: ds_cli_survey::import::run,
+        render: ds_cli_survey::import::render,
+    },
+    Entry {
         command: &ds_cli_survey::templates::LIST_COMMAND,
         handler: ds_cli_survey::templates::list,
         render: ds_cli_survey::templates::render_list,

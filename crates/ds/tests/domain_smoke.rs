@@ -4365,6 +4365,71 @@ fn project_forms_native_reads_preserve_the_explicit_project_desktop_surface() {
         "survey_entry_create_document_invalid"
     );
 
+    let import = ok(&["capabilities", "survey.entries.import", "--output", "json"]);
+    assert_eq!(import["command"]["authority"], "headless_project");
+    assert_eq!(import["command"]["effect"], "global_write");
+    assert_eq!(import["command"]["confirmation_required"], true);
+    let names = import["command"]["inputs"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|arg| arg["name"].as_str())
+        .collect::<BTreeSet<_>>();
+    assert_eq!(
+        names,
+        BTreeSet::from(["checkpoint", "file", "form", "lane", "on-error", "receipt"])
+    );
+    for forbidden in [
+        "project",
+        "concurrency",
+        "retry",
+        "origin",
+        "operation",
+        "created-by",
+        "token",
+        "url",
+        "method",
+        "source-provenance",
+    ] {
+        assert!(
+            import["command"]["inputs"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|arg| arg["name"] != forbidden),
+            "survey.entries.import exposed --{forbidden}"
+        );
+    }
+    let root = temp_root("survey-import-preauth");
+    std::fs::create_dir_all(&root).unwrap();
+    let missing = root.join("missing.ndjson").display().to_string();
+    let checkpoint = root.join("state.json").display().to_string();
+    let receipt = root.join("receipt.ndjson").display().to_string();
+    let invalid_import = ds(&[
+        "survey",
+        "entries",
+        "import",
+        "--form",
+        "poles",
+        "--file",
+        &missing,
+        "--checkpoint",
+        &checkpoint,
+        "--receipt",
+        &receipt,
+        "--yes",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(invalid_import.code, 2);
+    assert_eq!(
+        invalid_import.envelope["error"]["code"], "survey_entries_import_source_invalid",
+        "the complete local source contract must fail before profile or auth access"
+    );
+    assert!(!PathBuf::from(checkpoint).exists());
+    assert!(!PathBuf::from(receipt).exists());
+    std::fs::remove_dir_all(root).unwrap();
+
     let legacy = ok(&[
         "capabilities",
         "survey.project-forms.read",

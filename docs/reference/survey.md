@@ -176,6 +176,53 @@ idempotency key. A later governed selection or changes read establishes mirror
 visibility; the create receipt itself does not. A manual retry after an
 ambiguous service failure must reuse the exact document and idempotency key.
 
+`survey entries import` is the separate bounded migration path. It leaves the
+single-entry command unchanged, requires explicit `--yes`, and accepts one
+immutable NDJSON source, checkpoint path, receipt path, fixed form, and lane.
+It validates the complete source twice before profile discovery, auth, local
+state creation, or network work; restores one native session; freezes the
+selected project and form; then invokes the same governed create contract
+sequentially. There is no concurrency, automatic retry, source-format parser,
+project override, per-row form, or transport fallback.
+
+```text
+ds survey entries import --form lv_poles_survey \
+  --file ./survey123.ndjson \
+  --checkpoint ./survey123.checkpoint.json \
+  --receipt ./survey123.receipt.ndjson --yes --output json
+```
+
+Each line is one closed canonical object. The four optional buckets, when
+present, must be non-null. `connectivity` and `detailed_location` must be
+objects, and `geometry` must satisfy the shared GeoJSON contract.
+
+```json
+{"doc_id":"pole-104","idempotency_key":"<opaque-key>","data":{},"metadata":{"created_at":"2026-08-30T12:00:00Z"},"context_key":"village/sector","geometry":{"type":"Point","coordinates":[30.1,-1.9]},"connectivity":{},"detailed_location":{}}
+```
+
+Only `metadata.created_at` is caller-provided metadata. The selected
+`project_id`, authenticated `created_by`, operation `create`, origin `unknown`,
+audit fields, and Firestore replication clock remain authority-owned. The
+current create contract has no safe source-provenance field, so imports do not
+invent or persist one.
+
+The source is bounded to 8 GiB, 100,000 rows, and 1 MiB per physical line.
+Duplicate idempotency keys or duplicate canonical context/document identities
+are refused before auth. Context keys containing percent encoding are refused
+in this first version because the shared core does not expose an unambiguous
+canonical identity projection for alias detection.
+
+The append-and-sync receipt records only the row number, source-row digest,
+form, document id, terminal code or verified commit clock/version. The atomic
+checkpoint and machine summary contain no payload, field names, coordinates,
+idempotency material, token, or email. A terminal receipt is synced before the
+checkpoint advances. A crash before that append safely replays the exact
+idempotent create; a complete receipt event one row ahead of the checkpoint is
+reconciled without a network call; a partial receipt tail is removed before
+the exact row is replayed. Other incomplete or contradictory state refuses.
+`--on-error continue` advances only past exact permanent row refusals;
+uncertain and retryable outcomes pause without advancing.
+
 Four related objects have separate lifecycles:
 
 1. A **Form Factory form** is a global master schema. Use `survey forms list`,

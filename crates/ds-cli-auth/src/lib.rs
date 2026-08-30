@@ -25,6 +25,7 @@ use ds_client_core::{
 };
 use profile::Lane;
 use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
 use state::{NativeRefreshStore, ProjectContextLease};
 use transport::NativeTransport;
 use zeroize::Zeroize;
@@ -505,6 +506,105 @@ pub struct HeadlessSurveyEntryCreate {
     project_name: String,
     project_status: String,
     receipt: SurveyEntryCreateReceipt,
+}
+
+/// One restored native session and one immutable selected-project snapshot for
+/// a sequential Survey import. The bearer token, refresh credential, canonical
+/// email, and request payload never cross this boundary.
+pub struct HeadlessSurveyImportSession {
+    lane: &'static str,
+    project_id: String,
+    project_name: String,
+    project_status: String,
+    principal_sha256: String,
+    credential_audience_sha256: String,
+    selected: state::ProjectContext,
+    client: NativeClient,
+}
+
+impl HeadlessSurveyImportSession {
+    pub const fn lane(&self) -> &'static str {
+        self.lane
+    }
+
+    pub fn project_id(&self) -> &str {
+        &self.project_id
+    }
+
+    pub fn project_name(&self) -> &str {
+        &self.project_name
+    }
+
+    pub fn project_status(&self) -> &str {
+        &self.project_status
+    }
+
+    /// Stable, non-reversible binding used only to refuse a checkpoint opened
+    /// by another authenticated principal. It is not an authentication proof.
+    pub fn principal_sha256(&self) -> &str {
+        &self.principal_sha256
+    }
+
+    pub fn credential_audience_sha256(&self) -> &str {
+        &self.credential_audience_sha256
+    }
+
+    /// Execute exactly one create in this session's frozen project. Callers
+    /// serialize invocations; this type deliberately exposes no Clone or
+    /// transport handle and therefore no worker/concurrency escape.
+    pub fn create(
+        &mut self,
+        request: &SurveyEntryCreateRequest,
+    ) -> Result<SurveyEntryCreateReceipt, Failure> {
+        let result = self
+            .client
+            .survey_entry_create(&self.project_id, request, now());
+        match result {
+            Err(error) if error.survey_entry_create_service_code().is_some() => {
+                Err(map_survey_entry_create_service_code(
+                    error
+                        .survey_entry_create_service_code()
+                        .expect("the guarded Survey create service code is present"),
+                ))
+            }
+            Err(error) if error.kind() == ErrorKind::ResourceNotFound => Err(Failure::invalid(
+                "survey_entry_create_scope_not_found",
+                "the selected project, governed form, or context ancestor is unavailable",
+            )
+            .remedy("verify the selected project, form, and optional context key")),
+            Err(error) if error.kind() == ErrorKind::InvalidInput => Err(Failure::invalid(
+                "survey_entry_create_refused",
+                "the backend refused the already validated governed Survey create request",
+            )
+            .remedy("recheck the form, document identity, context, and document bounds")),
+            Err(error) if error.kind() == ErrorKind::AuthenticationRejected => {
+                Err(Failure::unauthorized(
+                    "survey_entry_create_auth_rejected",
+                    "the fixed create route rejected the verified identity or form authority",
+                )
+                .remedy("verify account and entries.create authority in the selected project"))
+            }
+            Err(error) if error.kind() == ErrorKind::Transient => Err(Failure::unavailable(
+                "survey_entry_create_failed",
+                "the governed Survey create service failed temporarily",
+            )
+            .remedy(
+                "after service recovery, resume the exact import with unchanged idempotency keys",
+            )),
+            Err(error) if error.kind() == ErrorKind::UnreadableResponse => {
+                Err(Failure::unavailable(
+                    "survey_entry_create_unreadable",
+                    "the create response violated its closed identity, version, clock, or authority contract",
+                )
+                .remedy("verify the backend release and update ds before resuming"))
+            }
+            other => with_released_context_disposition(
+                self.client.profile(),
+                &self.selected,
+                other,
+            ),
+        }
+    }
 }
 
 impl HeadlessSurveyEntryCreate {
@@ -1076,6 +1176,47 @@ pub fn survey_entry_create(
         project_status: selected.status().to_owned(),
         receipt,
     })
+}
+
+/// Restore one native user exactly once and freeze one audience-fenced
+/// selected project for a sequential Survey import. The context lease is
+/// released before this function returns and before any create call begins.
+pub fn survey_import_session(lane_value: &str) -> Result<HeadlessSurveyImportSession, Failure> {
+    let lane = Lane::parse(lane_value)?;
+    let profile = profile::load(lane)?;
+    let store = NativeRefreshStore::open()?;
+    let mut client = Client::new(profile, NativeTransport, store);
+    let user = require_restore_before_context(&mut client)?;
+    let selected = ProjectContextLease::acquire(client.profile())?
+        .load_snapshot(client.profile(), user.uid(), user.email())?
+        .ok_or_else(|| {
+            Failure::conflict(
+                "headless_project_not_selected",
+                "no project is selected for this native user, lane, and credential audience",
+            )
+            .remedy("run ds auth project use --project <exact-id>")
+            .next("ds auth project status")
+        })?;
+    let principal_sha256 = principal_binding_sha256(user.uid(), user.email());
+    Ok(HeadlessSurveyImportSession {
+        lane: lane.token(),
+        project_id: selected.project_id().to_owned(),
+        project_name: selected.project_name().to_owned(),
+        project_status: selected.status().to_owned(),
+        principal_sha256,
+        credential_audience_sha256: client.profile().credential_audience_sha256().to_owned(),
+        selected,
+        client,
+    })
+}
+
+fn principal_binding_sha256(uid: &str, email: &str) -> String {
+    let mut digest = Sha256::new();
+    digest.update(b"ds.survey.import.principal/v1\0");
+    digest.update(uid.as_bytes());
+    digest.update(b"\0");
+    digest.update(email.as_bytes());
+    format!("{:x}", digest.finalize())
 }
 
 fn map_survey_entry_create_service_code(code: SurveyEntryCreateServiceCode) -> Failure {
@@ -2065,5 +2206,17 @@ mod tests {
         }));
         assert!(truncated.contains("project-1  active  owner  Project One"));
         assert!(truncated.contains("showing 1 of 2"));
+    }
+
+    #[test]
+    fn import_principal_binding_is_stable_non_identity_evidence() {
+        let first = principal_binding_sha256("uid-1", "operator@example.com");
+        let same = principal_binding_sha256("uid-1", "operator@example.com");
+        let other = principal_binding_sha256("uid-2", "operator@example.com");
+        assert_eq!(first, same);
+        assert_ne!(first, other);
+        assert_eq!(first.len(), 64);
+        assert!(!first.contains("uid-1"));
+        assert!(!first.contains("operator@example.com"));
     }
 }

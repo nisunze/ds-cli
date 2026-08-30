@@ -17,6 +17,7 @@ pub const PROFILE_IDS: &[&str] = &[
     "survey",
     "form-factory",
     "survey-projects",
+    "survey-migration",
     "design-edit",
     "design-run",
     "map",
@@ -61,6 +62,7 @@ pub enum Profile {
     Survey,
     FormFactory,
     SurveyProjects,
+    SurveyMigration,
     DesignEdit,
     DesignRun,
     Map,
@@ -83,6 +85,7 @@ impl Profile {
             "survey" => Some(Self::Survey),
             "form-factory" => Some(Self::FormFactory),
             "survey-projects" => Some(Self::SurveyProjects),
+            "survey-migration" => Some(Self::SurveyMigration),
             "design-edit" => Some(Self::DesignEdit),
             "design-run" => Some(Self::DesignRun),
             "map" => Some(Self::Map),
@@ -106,6 +109,7 @@ impl Profile {
             Self::Survey => "survey",
             Self::FormFactory => "form-factory",
             Self::SurveyProjects => "survey-projects",
+            Self::SurveyMigration => "survey-migration",
             Self::DesignEdit => "design-edit",
             Self::DesignRun => "design-run",
             Self::Map => "map",
@@ -138,6 +142,7 @@ impl Profile {
             Self::Survey => SURVEY_MAP_COMMANDS.contains(&tool.id.as_str()),
             Self::FormFactory => FORM_FACTORY_COMMANDS.contains(&tool.id.as_str()),
             Self::SurveyProjects => SURVEY_PROJECT_COMMANDS.contains(&tool.id.as_str()),
+            Self::SurveyMigration => SURVEY_MIGRATION_COMMANDS.contains(&tool.id.as_str()),
             Self::Map => tool.chapter == Chapter::MapPresentation,
             Self::Layers => LAYER_COMMANDS.contains(&tool.id.as_str()),
             Self::Tiling => tool.chapter == Chapter::VectorTiles,
@@ -167,6 +172,7 @@ impl Profile {
             Self::Survey => SURVEY_MAP_COMMANDS,
             Self::FormFactory => FORM_FACTORY_COMMANDS,
             Self::SurveyProjects => SURVEY_PROJECT_COMMANDS,
+            Self::SurveyMigration => SURVEY_MIGRATION_COMMANDS,
             Self::Layers => LAYER_COMMANDS,
             Self::DesignEdit => DESIGN_EDIT_COMMANDS,
             Self::DesignRun => DESIGN_RUN_COMMANDS,
@@ -188,9 +194,11 @@ impl Profile {
         match self {
             Self::Grid => matches!(chapter, Chapter::GridModel | Chapter::Reports),
             Self::Pls | Self::PlsLibrary | Self::LibraryGovernance => chapter == Chapter::PlsCadd,
-            Self::Survey | Self::FormFactory | Self::SurveyProjects | Self::Layers => {
-                chapter == Chapter::Survey
-            }
+            Self::Survey
+            | Self::FormFactory
+            | Self::SurveyProjects
+            | Self::SurveyMigration
+            | Self::Layers => chapter == Chapter::Survey,
             Self::DesignEdit | Self::DesignRun => chapter == Chapter::Design,
             Self::Map => chapter == Chapter::MapPresentation,
             Self::Tiling => chapter == Chapter::VectorTiles,
@@ -274,6 +282,11 @@ const SURVEY_PROJECT_COMMANDS: &[&str] = &[
     "survey.template.lifecycle",
     "survey.project.create-from-template",
 ];
+
+// Bulk migration is intentionally isolated from the ordinary Survey project
+// profile: one high-blast-radius leaf plus ds_catalog is the whole typed MCP
+// surface an import agent receives.
+const SURVEY_MIGRATION_COMMANDS: &[&str] = &["survey.entries.import"];
 
 const DESIGN_EDIT_COMMANDS: &[&str] = &[
     "design.features.select",

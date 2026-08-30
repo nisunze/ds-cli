@@ -10,6 +10,7 @@ pub mod changes;
 pub mod create;
 pub mod entries;
 pub mod forms;
+pub mod import;
 pub mod project_forms;
 pub mod query;
 pub mod templates;
@@ -43,6 +44,7 @@ pub static DOMAIN: Domain = Domain {
         &entries::COMMAND,
         &changes::COMMAND,
         &create::COMMAND,
+        &import::COMMAND,
         &templates::LIST_COMMAND,
         &templates::READ_COMMAND,
         &templates::CREATE_COMMAND,

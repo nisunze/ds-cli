@@ -237,6 +237,7 @@ fn by_command_profiles_still_partition_the_live_registry() {
         Profile::Survey,
         Profile::FormFactory,
         Profile::SurveyProjects,
+        Profile::SurveyMigration,
         Profile::Layers,
     ] {
         for id in profile.command_ids() {
@@ -248,7 +249,7 @@ fn by_command_profiles_still_partition_the_live_registry() {
     }
     assert_eq!(
         listed_survey, expected_survey,
-        "survey, form-factory, survey-projects, and layers must partition the live Survey chapter"
+        "survey, form-factory, survey-projects, survey-migration, and layers must partition the live Survey chapter"
     );
 }
 
@@ -311,6 +312,28 @@ fn form_factory_and_survey_projects_keep_their_distinct_mapless_contracts() {
     assert!(survey_project_names.contains("survey_entries_changes"));
     assert!(survey_project_names.contains("survey_entries_create"));
     assert!(!survey_project_names.contains("survey_form_lifecycle"));
+    assert!(!survey_project_names.contains("survey_entries_import"));
+
+    let (migration_responses, _) = mcp(
+        &["--exposure", "commands", "--profile", "survey-migration"],
+        &[json!({ "jsonrpc": "2.0", "id": 4, "method": "tools/list" })],
+    );
+    let migration = response(&migration_responses, 4)["result"]["tools"]
+        .as_array()
+        .expect("survey-migration tools");
+    assert_eq!(migration.len(), 2, "catalog plus one bounded import leaf");
+    assert_eq!(migration[0]["name"], "ds_catalog");
+    assert_eq!(migration[1]["name"], "survey_entries_import");
+    assert_eq!(migration[1]["title"], "survey.entries.import");
+    assert_eq!(
+        migration[1]["inputSchema"]["properties"]["confirm"]["type"],
+        "boolean"
+    );
+    assert!(
+        migration[1]["inputSchema"]["properties"]
+            .get("project")
+            .is_none()
+    );
     let creation = survey_projects
         .iter()
         .find(|tool| tool["name"] == "survey_project_create-from-template")
@@ -542,6 +565,7 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
         "survey",
         "form-factory",
         "survey-projects",
+        "survey-migration",
         "design-edit",
         "design-run",
         "map",
