@@ -2106,13 +2106,17 @@ fn design_lv_project_export_refuses_an_existing_artifact_before_auth_or_desktop(
                 "method": "POST",
                 "path": "/api/v1/survey/entries/select"
             },
+            "survey_entries_changes": {
+                "method": "POST",
+                "path": "/api/v1/survey/entries/changes"
+            },
             "provenance": { "source_revision": "abc123", "descriptor_sha256": digest }
         })
     };
     std::fs::write(
         &profile_path,
         serde_json::to_vec(&json!({
-            "schema_version": "ds.native-client-profiles/v7",
+            "schema_version": "ds.native-client-profiles/v8",
             "development": true,
             "profiles": {
                 "stable": profile(
@@ -4201,6 +4205,60 @@ fn project_forms_native_reads_preserve_the_explicit_project_desktop_surface() {
     ]);
     assert_eq!(invalid.code, 2);
     assert_eq!(invalid.envelope["error"]["code"], "survey_entries_invalid");
+
+    let changes = ok(&["capabilities", "survey.entries.changes", "--output", "json"]);
+    assert_eq!(changes["command"]["authority"], "headless_project");
+    assert_eq!(changes["command"]["effect"], "local_auth_state");
+    let names = changes["command"]["inputs"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|arg| arg["name"].as_str())
+        .collect::<BTreeSet<_>>();
+    assert_eq!(
+        names,
+        BTreeSet::from(["cursor", "form", "lane", "limit", "updated-after"])
+    );
+    for forbidden in [
+        "project",
+        "url",
+        "method",
+        "body",
+        "token",
+        "fields",
+        "media",
+        "deleted",
+        "include-deleted",
+        "force",
+        "authority",
+        "desktop-descriptor",
+        "auto-pagination",
+    ] {
+        assert!(
+            changes["command"]["inputs"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|arg| arg["name"] != forbidden),
+            "survey.entries.changes exposed --{forbidden}"
+        );
+    }
+    let invalid_changes = ds(&[
+        "survey",
+        "entries",
+        "changes",
+        "--form",
+        "poles",
+        "--updated-after",
+        "not-a-time",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(invalid_changes.code, 2);
+    assert_eq!(
+        invalid_changes.envelope["error"]["code"],
+        "survey_entries_changes_invalid"
+    );
 
     let legacy = ok(&[
         "capabilities",

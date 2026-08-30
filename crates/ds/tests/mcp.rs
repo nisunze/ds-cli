@@ -308,6 +308,7 @@ fn form_factory_and_survey_projects_keep_their_distinct_mapless_contracts() {
     assert!(survey_project_names.contains("survey_project-form_settings"));
     assert!(survey_project_names.contains("survey_query"));
     assert!(survey_project_names.contains("survey_entries_select"));
+    assert!(survey_project_names.contains("survey_entries_changes"));
     assert!(!survey_project_names.contains("survey_form_lifecycle"));
     let creation = survey_projects
         .iter()
@@ -381,6 +382,28 @@ fn form_factory_and_survey_projects_keep_their_distinct_mapless_contracts() {
     );
     assert_eq!(
         entries["inputSchema"]["properties"]["limit"]["default"],
+        "100"
+    );
+    let changes = survey_projects
+        .iter()
+        .find(|tool| tool["name"] == "survey_entries_changes")
+        .expect("native selected-project Survey changes tool");
+    assert_eq!(changes["title"], "survey.entries.changes");
+    assert_eq!(
+        changes["inputSchema"]["required"],
+        json!(["form", "updated-after"])
+    );
+    assert_eq!(
+        changes["inputSchema"]["properties"]
+            .as_object()
+            .unwrap()
+            .keys()
+            .map(String::as_str)
+            .collect::<BTreeSet<_>>(),
+        BTreeSet::from(["cursor", "form", "lane", "limit", "updated-after"])
+    );
+    assert_eq!(
+        changes["inputSchema"]["properties"]["limit"]["default"],
         "100"
     );
 }
@@ -499,8 +522,9 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
         let tools = response(&responses, 1)["result"]["tools"]
             .as_array()
             .expect("tools");
+        let maximum = if profile == "survey-projects" { 16 } else { 15 };
         assert!(
-            (2..=15).contains(&tools.len()),
+            (2..=maximum).contains(&tools.len()),
             "{profile}: {}",
             tools.len()
         );

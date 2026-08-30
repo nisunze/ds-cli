@@ -53,11 +53,13 @@ Profiles are `grid`, `pls`, `pls-library`, `library-governance`, `survey`,
 `operations`. `survey`
 retains map/local-data survey work;
 `form-factory` owns global schemas, while `survey-projects` owns governed
-aggregate/spatial reads, project-form settings, reusable templates, and
+aggregate/spatial/change-feed reads, project-form settings, reusable templates, and
 create-from-template. `layers` isolates
 project ordering and desktop-local remote overlays; `tiling` owns governed
 tile generation and catalogue membership. Each includes
-`ds_catalog` and at most 14 leaf tools. A profile is only an allowlist: omitted
+`ds_catalog` and at most 14 leaf tools, except `survey-projects`, whose fifteenth
+leaf is the bounded changes-feed page beside the existing aggregate and spatial
+reads. A profile is only an allowlist: omitted
 commands are unavailable and authority, effects, confirmation, output, and
 refusals are unchanged. Plain `--exposure commands` retains the previous
 all-command publication temporarily for compatibility.

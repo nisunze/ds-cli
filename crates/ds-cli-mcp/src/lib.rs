@@ -73,7 +73,7 @@ pub(crate) const PROFILE_EXPOSURE_INVALID: Refusal = Refusal {
 
 pub(crate) const PROFILE_TOO_BROAD: Refusal = Refusal {
     code: "mcp_profile_too_broad",
-    when: "a specialized profile would publish more than 15 tools including `ds_catalog`",
+    when: "a specialized profile would exceed its bounded tool limit: normally 15 including `ds_catalog`, or 16 for survey-projects",
     remedy: "split the profile by operator workflow before publishing it",
 };
 

@@ -18,7 +18,8 @@ use ds_cli_contract::spec::{
 use ds_cli_contract::{Context, Inputs};
 use ds_client_core::{
     Client, ClientError, ErrorKind, Project, ProjectFormSettingsEditor, ProjectFormsSnapshot,
-    ProjectStatus, SolarSnapshot, SurveyEntriesSelectRequest, SurveyEntriesSelectServiceCode,
+    ProjectStatus, SolarSnapshot, SurveyEntriesChanges, SurveyEntriesChangesRequest,
+    SurveyEntriesChangesServiceCode, SurveyEntriesSelectRequest, SurveyEntriesSelectServiceCode,
     SurveyEntriesSelection, SurveyQueryRequest, SurveyQueryResult, TransformerContext,
 };
 use profile::Lane;
@@ -485,6 +486,34 @@ pub struct HeadlessSurveyEntriesSelection {
     selection: SurveyEntriesSelection,
 }
 
+/// One immutable-fence page of coalesced Survey mirror changes fetched under
+/// the restored user and the audience-fenced selected project.
+pub struct HeadlessSurveyEntriesChanges {
+    lane: &'static str,
+    project_id: String,
+    project_name: String,
+    project_status: String,
+    changes: SurveyEntriesChanges,
+}
+
+impl HeadlessSurveyEntriesChanges {
+    pub const fn lane(&self) -> &'static str {
+        self.lane
+    }
+    pub fn project_id(&self) -> &str {
+        &self.project_id
+    }
+    pub fn project_name(&self) -> &str {
+        &self.project_name
+    }
+    pub fn project_status(&self) -> &str {
+        &self.project_status
+    }
+    pub const fn changes(&self) -> &SurveyEntriesChanges {
+        &self.changes
+    }
+}
+
 impl HeadlessSurveyEntriesSelection {
     pub const fn lane(&self) -> &'static str {
         self.lane
@@ -869,6 +898,147 @@ pub fn survey_entries_select(
         project_status: selected.status().to_owned(),
         selection,
     })
+}
+
+/// Restore one native user and read one immutable-fence page of coalesced
+/// Survey mirror changes from only the saved, audience-fenced project. The
+/// selected-project lease is released before the fixed core network call.
+pub fn survey_entries_changes(
+    lane_value: &str,
+    request: &SurveyEntriesChangesRequest,
+) -> Result<HeadlessSurveyEntriesChanges, Failure> {
+    let lane = Lane::parse(lane_value)?;
+    let profile = profile::load(lane)?;
+    let store = NativeRefreshStore::open()?;
+    let mut client = Client::new(profile, NativeTransport, store);
+    let user = require_restore_before_context(&mut client)?;
+    let selected = ProjectContextLease::acquire(client.profile())?
+        .load_snapshot(client.profile(), user.uid(), user.email())?
+        .ok_or_else(|| {
+            Failure::conflict(
+                "headless_project_not_selected",
+                "no project is selected for this native user, lane, and credential audience",
+            )
+            .remedy("run ds auth project use --project <exact-id>")
+            .next("ds auth project status")
+        })?;
+    let changes = client.survey_entries_changes(selected.project_id(), request, now());
+    let changes = match changes {
+        Err(error) if error.survey_entries_changes_service_code().is_some() => {
+            return Err(map_survey_entries_changes_service_code(
+                error
+                    .survey_entries_changes_service_code()
+                    .expect("the guarded Survey changes service code is present"),
+            ));
+        }
+        Err(error) if error.kind() == ErrorKind::ResourceNotFound => {
+            return Err(Failure::invalid(
+                "survey_entries_scope_not_found",
+                "the selected project or governed form is unavailable to this verified user",
+            )
+            .remedy("verify the selected project and pass one exact available form slug"));
+        }
+        Err(error) if error.kind() == ErrorKind::InvalidInput => {
+            return Err(survey_entries_changes_refused());
+        }
+        Err(error) if error.kind() == ErrorKind::AuthenticationRejected => {
+            return Err(Failure::unauthorized(
+                "survey_entries_changes_auth_rejected",
+                "the fixed changes route rejected the verified identity or form authority",
+            )
+            .remedy("verify account and form authority in the selected project"));
+        }
+        Err(error) if error.kind() == ErrorKind::Transient => {
+            return Err(Failure::unavailable(
+                "survey_entries_changes_transient",
+                "the fixed changes service is temporarily unavailable without a recognized service code",
+            )
+            .remedy("retry the identical page request without advancing its checkpoint"));
+        }
+        Err(error) if error.kind() == ErrorKind::UnreadableResponse => {
+            return Err(Failure::unavailable(
+                "survey_entries_changes_unreadable",
+                "the changes response violated its closed identity, clocks, geometry, ordering, paging, or consistency contract",
+            )
+            .remedy("retry once without advancing the checkpoint, then update ds if it persists"));
+        }
+        other => with_released_context_disposition(client.profile(), &selected, other)?,
+    };
+    Ok(HeadlessSurveyEntriesChanges {
+        lane: lane.token(),
+        project_id: selected.project_id().to_owned(),
+        project_name: selected.project_name().to_owned(),
+        project_status: selected.status().to_owned(),
+        changes,
+    })
+}
+
+fn survey_entries_changes_refused() -> Failure {
+    Failure::invalid(
+        "survey_entries_changes_refused",
+        "the backend refused the already validated Survey changes request without a recognized service code",
+    )
+    .remedy("verify the form and restart from the last completed checkpoint")
+}
+
+fn map_survey_entries_changes_service_code(code: SurveyEntriesChangesServiceCode) -> Failure {
+    match code {
+        SurveyEntriesChangesServiceCode::Invalid => Failure::invalid(
+            "survey_entries_changes_invalid",
+            "the fixed service rejected the bounded Survey changes request",
+        )
+        .remedy("recheck the exact form, updated-after clock, limit, and cursor"),
+        SurveyEntriesChangesServiceCode::CursorInvalid => Failure::invalid(
+            "survey_entries_changes_cursor_invalid",
+            "the opaque Survey changes cursor is invalid for this request or authority",
+        )
+        .remedy("reuse the exact next_cursor with identical --updated-after and --limit, or restart from the last completed checkpoint"),
+        SurveyEntriesChangesServiceCode::FenceExpired => Failure::invalid(
+            "survey_entries_changes_fence_expired",
+            "the immutable page fence carried by this incomplete cursor has expired",
+        )
+        .remedy("discard the incomplete cursor and restart from the last previously completed checkpoint, never this expired feed's upper_fence"),
+        SurveyEntriesChangesServiceCode::TooExpensive => Failure::failed(
+            "survey_entries_changes_too_expensive",
+            "the bounded Survey changes query exceeded its query budget",
+        )
+        .remedy("keep the last completed checkpoint unchanged; repair partitioning or indexing, or raise the governed backend query budget, then restart there"),
+        SurveyEntriesChangesServiceCode::TooLarge => Failure::invalid(
+            "survey_entries_changes_too_large",
+            "the bounded Survey changes page exceeded its response limit",
+        )
+        .remedy("lower --limit and restart from the last completed checkpoint"),
+        SurveyEntriesChangesServiceCode::MirrorInvalid => Failure::failed(
+            "survey_entries_changes_mirror_invalid",
+            "the Survey mirror could not represent valid change evidence",
+        )
+        .remedy("repair or update the governed Survey mirror; an unchanged retry is not a remedy"),
+        SurveyEntriesChangesServiceCode::SnapshotUnavailable => Failure::unavailable(
+            "survey_entries_changes_snapshot_unavailable",
+            "the immutable BigQuery table version for this changes cursor is temporarily unavailable",
+        )
+        .remedy("retry the identical page request with the exact same cursor"),
+        SurveyEntriesChangesServiceCode::Unavailable => Failure::failed(
+            "survey_entries_changes_unavailable",
+            "the governed Survey changes service or its durable cursor signing key is unavailable on this deployment",
+        )
+        .remedy("configure the governed deployment and durable changes cursor signing key, then retry from the last completed checkpoint"),
+        SurveyEntriesChangesServiceCode::SyncFailed => Failure::unavailable(
+            "survey_entries_changes_sync_failed",
+            "Survey data could not be synchronized before reading changes",
+        )
+        .remedy("retry without changing the page request; report repeated sync failures"),
+        SurveyEntriesChangesServiceCode::Failed => Failure::unavailable(
+            "survey_entries_changes_failed",
+            "the governed Survey changes service failed temporarily",
+        )
+        .remedy("retry without changing the page request; report repeated failures"),
+        SurveyEntriesChangesServiceCode::ScopeNotFound => Failure::invalid(
+            "survey_entries_scope_not_found",
+            "the selected project or governed form is unavailable to this verified user",
+        )
+        .remedy("verify the selected project and pass one exact available form slug"),
+    }
 }
 
 fn map_survey_entries_service_code(code: SurveyEntriesSelectServiceCode) -> Failure {
@@ -1467,6 +1637,109 @@ mod tests {
             scope.message(),
             "the selected project or governed form is unavailable to this verified user"
         );
+    }
+
+    #[test]
+    fn survey_changes_service_codes_have_exact_stable_cli_refusals() {
+        use SurveyEntriesChangesServiceCode as ServiceCode;
+        use ds_cli_contract::outcome::ExitClass;
+
+        let cases = [
+            (
+                ServiceCode::Invalid,
+                "survey_entries_changes_invalid",
+                ExitClass::InvalidInput,
+                "recheck the exact form",
+                false,
+            ),
+            (
+                ServiceCode::CursorInvalid,
+                "survey_entries_changes_cursor_invalid",
+                ExitClass::InvalidInput,
+                "exact next_cursor",
+                false,
+            ),
+            (
+                ServiceCode::FenceExpired,
+                "survey_entries_changes_fence_expired",
+                ExitClass::InvalidInput,
+                "last previously completed checkpoint",
+                false,
+            ),
+            (
+                ServiceCode::TooExpensive,
+                "survey_entries_changes_too_expensive",
+                ExitClass::Failed,
+                "query budget",
+                false,
+            ),
+            (
+                ServiceCode::TooLarge,
+                "survey_entries_changes_too_large",
+                ExitClass::InvalidInput,
+                "lower --limit",
+                false,
+            ),
+            (
+                ServiceCode::MirrorInvalid,
+                "survey_entries_changes_mirror_invalid",
+                ExitClass::Failed,
+                "unchanged retry is not a remedy",
+                false,
+            ),
+            (
+                ServiceCode::SnapshotUnavailable,
+                "survey_entries_changes_snapshot_unavailable",
+                ExitClass::Unavailable,
+                "exact same cursor",
+                true,
+            ),
+            (
+                ServiceCode::Unavailable,
+                "survey_entries_changes_unavailable",
+                ExitClass::Failed,
+                "durable changes cursor signing key",
+                false,
+            ),
+            (
+                ServiceCode::SyncFailed,
+                "survey_entries_changes_sync_failed",
+                ExitClass::Unavailable,
+                "retry without changing",
+                true,
+            ),
+            (
+                ServiceCode::Failed,
+                "survey_entries_changes_failed",
+                ExitClass::Unavailable,
+                "retry without changing",
+                true,
+            ),
+            (
+                ServiceCode::ScopeNotFound,
+                "survey_entries_scope_not_found",
+                ExitClass::InvalidInput,
+                "verify the selected project",
+                false,
+            ),
+        ];
+        for (service_code, cli_code, class, remedy, retryable) in cases {
+            let failure = map_survey_entries_changes_service_code(service_code);
+            assert_eq!(failure.code(), cli_code);
+            assert_eq!(failure.class(), class);
+            assert_eq!(failure.class().retryable(), retryable);
+            assert!(failure.remedy_text().unwrap().contains(remedy));
+        }
+        let scope = map_survey_entries_changes_service_code(ServiceCode::ScopeNotFound);
+        assert_eq!(
+            scope.message(),
+            "the selected project or governed form is unavailable to this verified user"
+        );
+
+        let coarse = survey_entries_changes_refused();
+        assert_eq!(coarse.code(), "survey_entries_changes_refused");
+        assert_eq!(coarse.class(), ExitClass::InvalidInput);
+        assert!(!coarse.class().retryable());
     }
 
     #[test]

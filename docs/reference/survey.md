@@ -92,6 +92,59 @@ maps that enum as follows:
 If an older or unrecognized response has no typed service code, ds-cli retains
 the coarse status-class fallback without inspecting response bodies.
 
+`survey entries changes` is the bounded incremental mirror data plane. It
+accepts only an exact governed `--form`, a required RFC3339
+`--updated-after`, a `--limit` from 1 through 500 (default 100), an optional
+opaque `--cursor` no larger than 4096 bytes and containing no whitespace, and
+the stable/canary lane. The CLI validates that entire grammar before profile
+discovery, identity restoration, or selected-project access. It releases the
+selected-project lease before one fixed
+`POST /api/v1/survey/entries/changes` call and never auto-paginates.
+
+```text
+ds survey entries changes --form lv_poles_survey \
+  --updated-after 2026-08-30T00:00:00Z --limit 100 --output json
+```
+
+The inclusive lower clock may safely replay exact-boundary evidence. Each row
+contains exactly `doc_id`, optional GeoJSON `geometry`, `created_by`,
+`is_deleted`, and `firestore_updated_at`. Automation must therefore apply or
+deduplicate idempotently by `doc_id` plus `firestore_updated_at`; a tombstone
+(`is_deleted: true`) removes the corresponding local live row. This is a
+coalesced current-state `survey_mirror` delta, not Firestore snapshot or
+mutation history, so hard-deleted documents cannot be inferred.
+
+`has_more: true` and `complete: false` mean the checkpoint must not advance.
+Call the command again with the identical `updated_after` and effective
+`limit`, plus the exact returned `next_cursor`. Only a response with
+`complete: true` may promote its `upper_fence` to the next checkpoint. If a
+cursor's fence expires, discard that incomplete cursor and restart from the
+last **previously completed** checkpoint—never from the expired feed's
+`upper_fence`. There is no auto-loop, project override, arbitrary transport,
+field/media projection, deletion filter, force flag, caller authority, or
+Desktop fallback.
+
+The changes feed preserves the core's closed service meanings without parsing
+backend response text:
+
+| Service meaning | CLI code | Operator action |
+| --- | --- | --- |
+| Request rejected | `survey_entries_changes_invalid` | Recheck form, lower clock, limit, and cursor. |
+| Cursor rejected | `survey_entries_changes_cursor_invalid` | Reuse the exact cursor with identical lower clock and limit, or restart from the last completed checkpoint. |
+| Immutable fence expired | `survey_entries_changes_fence_expired` | Discard the incomplete cursor and restart from the last previously completed checkpoint, never its upper fence. |
+| Query budget exceeded | `survey_entries_changes_too_expensive` | Keep the last completed checkpoint unchanged; repair partitioning/indexing or raise the governed backend budget, then restart there. |
+| Response bound exceeded | `survey_entries_changes_too_large` | Lower the limit and restart from the last completed checkpoint. |
+| Mirror data is unsafe | `survey_entries_changes_mirror_invalid` | Repair the governed mirror; retry alone cannot repair it. |
+| Immutable table version temporarily unavailable | `survey_entries_changes_snapshot_unavailable` | Retry the identical page with the same cursor. |
+| Route or durable cursor signing is unconfigured | `survey_entries_changes_unavailable` | Configure the governed deployment and durable changes cursor signing key, then restart from the last completed checkpoint. |
+| Mirror synchronization failed | `survey_entries_changes_sync_failed` | Retry the identical page; report repeated failures. |
+| Service failed temporarily | `survey_entries_changes_failed` | Retry the identical page; report repeated failures. |
+| Project or form scope unavailable | `survey_entries_scope_not_found` | Verify the selected project and exact form; the response does not reveal which scope was absent. |
+
+Malformed, unknown, contradictory, or oversized service envelopes retain a
+coarse status-class refusal. The CLI never parses backend response bodies or
+promotes an unrecognized message into a typed service meaning.
+
 Four related objects have separate lifecycles:
 
 1. A **Form Factory form** is a global master schema. Use `survey forms list`,

@@ -7,9 +7,10 @@
 //! rather than from whatever `git` happened to be on PATH; a developer build
 //! falls back to reading the working tree and says so.
 //!
-//! Nothing here fails the build. A binary that cannot determine its source is
-//! honest about that — `unknown` is a truthful answer and a broken build is
-//! not an improvement.
+//! CLI source discovery remains honest about an unavailable local Git SHA, but
+//! a release build deliberately fails unless `DS_RELEASE_PIN_DS_NETWORK` is
+//! one exact lowercase 40-hex clean-source pin. Development builds report that
+//! linked component as explicitly unpinned.
 
 use std::process::Command;
 

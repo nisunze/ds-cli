@@ -75,6 +75,7 @@ struct Entry {
     solar_snapshot: SolarSnapshot,
     survey_query: SurveyQuery,
     survey_entries_select: SurveyEntriesSelect,
+    survey_entries_changes: SurveyEntriesChanges,
     provenance: Provenance,
 }
 
@@ -135,6 +136,13 @@ struct SurveyQuery {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct SurveyEntriesSelect {
+    method: String,
+    path: String,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SurveyEntriesChanges {
     method: String,
     path: String,
 }
@@ -255,6 +263,8 @@ fn load_path(
         survey_query_path: entry.survey_query.path,
         survey_entries_select_method: entry.survey_entries_select.method,
         survey_entries_select_path: entry.survey_entries_select.path,
+        survey_entries_changes_method: entry.survey_entries_changes.method,
+        survey_entries_changes_path: entry.survey_entries_changes.path,
     })
     .map_err(|_| unsafe_catalog())
 }
@@ -304,6 +314,7 @@ mod tests {
                     "solar_snapshot": { "method": "POST", "path": "/api/v1/solar", "action": "desktop_snapshot" },
                     "survey_query": { "method": "POST", "path": "/api/v1/survey/query" },
                     "survey_entries_select": { "method": "POST", "path": "/api/v1/survey/entries/select" },
+                    "survey_entries_changes": { "method": "POST", "path": "/api/v1/survey/entries/changes" },
                     "provenance": { "source_revision": "abc123", "descriptor_sha256": "a".repeat(64) }
                 },
                 "canary": {
@@ -315,6 +326,7 @@ mod tests {
                     "solar_snapshot": { "method": "POST", "path": "/api/v1/solar", "action": "desktop_snapshot" },
                     "survey_query": { "method": "POST", "path": "/api/v1/survey/query" },
                     "survey_entries_select": { "method": "POST", "path": "/api/v1/survey/entries/select" },
+                    "survey_entries_changes": { "method": "POST", "path": "/api/v1/survey/entries/changes" },
                     "provenance": { "source_revision": "def456", "descriptor_sha256": "b".repeat(64) }
                 }
             }
@@ -441,7 +453,7 @@ mod tests {
     }
 
     #[test]
-    fn v7_fixed_read_blocks_are_required_and_exact() {
+    fn v8_fixed_read_blocks_are_required_and_exact() {
         let mut missing: serde_json::Value = serde_json::from_slice(&fixture(false)).unwrap();
         missing["profiles"]["stable"]
             .as_object_mut()
@@ -515,6 +527,23 @@ mod tests {
 
         let mut escaped: serde_json::Value = serde_json::from_slice(&fixture(false)).unwrap();
         escaped["profiles"]["stable"]["survey_entries_select"]["path"] = json!("/api/v1/anything");
+        let escaped = serde_json::to_vec(&escaped).unwrap();
+        with_fixture(&escaped, |path| {
+            assert_eq!(
+                load_path(
+                    path,
+                    Lane::Stable,
+                    false,
+                    format!("{:x}", Sha256::digest(&escaped))
+                )
+                .unwrap_err()
+                .code(),
+                "native_profile_unsafe"
+            );
+        });
+
+        let mut escaped: serde_json::Value = serde_json::from_slice(&fixture(false)).unwrap();
+        escaped["profiles"]["stable"]["survey_entries_changes"]["path"] = json!("/api/v1/anything");
         let escaped = serde_json::to_vec(&escaped).unwrap();
         with_fixture(&escaped, |path| {
             assert_eq!(

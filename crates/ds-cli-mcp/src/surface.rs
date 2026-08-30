@@ -119,6 +119,16 @@ impl Profile {
         }
     }
 
+    const fn tool_limit(self) -> usize {
+        match self {
+            // The bounded changes-feed page is a third selected-project data
+            // read beside query and spatial selection, so it stays with the
+            // same operator workflow rather than creating another profile.
+            Self::SurveyProjects => 16,
+            _ => 15,
+        }
+    }
+
     pub fn includes(self, tool: &Tool) -> bool {
         match self {
             Self::Grid => matches!(tool.chapter, Chapter::GridModel | Chapter::Reports),
@@ -249,6 +259,7 @@ const FORM_FACTORY_COMMANDS: &[&str] = &[
 const SURVEY_PROJECT_COMMANDS: &[&str] = &[
     "survey.query",
     "survey.entries.select",
+    "survey.entries.changes",
     "survey.project-forms.list",
     "survey.project-form.settings",
     "survey.project-forms.read",
@@ -366,7 +377,7 @@ impl Surface {
         }
         if let Some(profile) = profile {
             commands.retain(|tool| profile.includes(tool));
-            if commands.len() + 1 > 15 {
+            if commands.len() + 1 > profile.tool_limit() {
                 return Err(Failure::failed(
                     "mcp_profile_too_broad",
                     format!(
