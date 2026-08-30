@@ -1,6 +1,6 @@
 //! Create one governed Survey entry without a map or Desktop session.
 
-use std::fs::File;
+use std::fs::{File, Metadata, OpenOptions};
 use std::io::Read;
 use std::path::Path;
 
@@ -300,19 +300,10 @@ struct CreateDocument {
 
 fn load_document(raw: &str) -> Result<CreateDocument, Failure> {
     let path = Path::new(raw);
-    let metadata = std::fs::symlink_metadata(path).map_err(|_| document_invalid())?;
-    if metadata.file_type().is_symlink()
-        || !metadata.file_type().is_file()
-        || metadata.len() > SURVEY_ENTRY_CREATE_MAX_PAYLOAD_BYTES as u64
-    {
-        return Err(document_invalid());
-    }
-    let mut bytes = Vec::with_capacity(metadata.len() as usize);
-    File::open(path)
-        .and_then(|file| {
-            file.take(SURVEY_ENTRY_CREATE_MAX_PAYLOAD_BYTES as u64 + 1)
-                .read_to_end(&mut bytes)
-        })
+    let (file, byte_len) = open_document_file(path)?;
+    let mut bytes = Vec::with_capacity(byte_len as usize);
+    file.take(SURVEY_ENTRY_CREATE_MAX_PAYLOAD_BYTES as u64 + 1)
+        .read_to_end(&mut bytes)
         .map_err(|_| document_invalid())?;
     if bytes.len() > SURVEY_ENTRY_CREATE_MAX_PAYLOAD_BYTES {
         return Err(document_invalid());
@@ -340,6 +331,78 @@ fn load_document(raw: &str) -> Result<CreateDocument, Failure> {
         connectivity,
         detailed_location,
     })
+}
+
+fn open_document_file(path: &Path) -> Result<(File, u64), Failure> {
+    let path_metadata = std::fs::symlink_metadata(path).map_err(|_| document_invalid())?;
+    if !safe_regular_metadata(&path_metadata) {
+        return Err(document_invalid());
+    }
+    let file = open_no_follow(path).map_err(|_| document_invalid())?;
+    let handle_metadata = file.metadata().map_err(|_| document_invalid())?;
+    if !safe_regular_metadata(&handle_metadata) {
+        return Err(document_invalid());
+    }
+    #[cfg(unix)]
+    if !same_unix_identity(&path_metadata, &handle_metadata) {
+        return Err(document_invalid());
+    }
+    Ok((file, handle_metadata.len()))
+}
+
+fn safe_regular_metadata(metadata: &Metadata) -> bool {
+    if metadata.file_type().is_symlink()
+        || !metadata.file_type().is_file()
+        || metadata.len() > SURVEY_ENTRY_CREATE_MAX_PAYLOAD_BYTES as u64
+    {
+        return false;
+    }
+    #[cfg(windows)]
+    if windows_reparse_point(metadata) {
+        return false;
+    }
+    true
+}
+
+#[cfg(unix)]
+fn open_no_follow(path: &Path) -> std::io::Result<File> {
+    use std::os::unix::fs::OpenOptionsExt;
+
+    OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW)
+        .open(path)
+}
+
+#[cfg(unix)]
+fn same_unix_identity(path_metadata: &Metadata, handle_metadata: &Metadata) -> bool {
+    use std::os::unix::fs::MetadataExt;
+
+    path_metadata.dev() == handle_metadata.dev() && path_metadata.ino() == handle_metadata.ino()
+}
+
+#[cfg(windows)]
+fn open_no_follow(path: &Path) -> std::io::Result<File> {
+    use std::os::windows::fs::OpenOptionsExt;
+
+    const FILE_FLAG_OPEN_REPARSE_POINT: u32 = 0x0020_0000;
+    OpenOptions::new()
+        .read(true)
+        .custom_flags(FILE_FLAG_OPEN_REPARSE_POINT)
+        .open(path)
+}
+
+#[cfg(windows)]
+fn windows_reparse_point(metadata: &Metadata) -> bool {
+    use std::os::windows::fs::MetadataExt;
+
+    has_windows_reparse_attribute(metadata.file_attributes())
+}
+
+#[cfg(any(windows, test))]
+fn has_windows_reparse_attribute(attributes: u32) -> bool {
+    const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x0000_0400;
+    attributes & FILE_ATTRIBUTE_REPARSE_POINT != 0
 }
 
 fn non_null_optional(object: &mut Map<String, Value>, key: &str) -> Result<Option<Value>, Failure> {
@@ -474,6 +537,28 @@ mod tests {
         );
         std::fs::remove_file(link).unwrap();
         std::fs::remove_file(target).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn opened_handle_must_retain_the_path_identity() {
+        let first = fixture(br#"{"data":{"row":1}}"#);
+        let second = fixture(br#"{"data":{"row":2}}"#);
+        let first_path = std::fs::symlink_metadata(&first).unwrap();
+        let first_handle = open_no_follow(&first).unwrap().metadata().unwrap();
+        let second_handle = open_no_follow(&second).unwrap().metadata().unwrap();
+        assert!(same_unix_identity(&first_path, &first_handle));
+        assert!(!same_unix_identity(&first_path, &second_handle));
+        std::fs::remove_file(first).unwrap();
+        std::fs::remove_file(second).unwrap();
+    }
+
+    #[test]
+    fn windows_reparse_attribute_check_is_exact() {
+        assert!(has_windows_reparse_attribute(0x0000_0400));
+        assert!(has_windows_reparse_attribute(0x0000_0420));
+        assert!(!has_windows_reparse_attribute(0));
+        assert!(!has_windows_reparse_attribute(0x0000_0020));
     }
 
     #[test]

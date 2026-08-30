@@ -809,6 +809,7 @@ dependencies = [
  "ds-cli-contract",
  "ds-cli-desktop",
  "ds-client-core",
+ "libc",
  "serde",
  "serde_json",
 ]
