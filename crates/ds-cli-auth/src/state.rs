@@ -258,6 +258,14 @@ impl ProjectContext {
         &self.project_name
     }
 
+    pub fn display_name(&self) -> Option<&str> {
+        self.display_name.as_deref()
+    }
+
+    pub fn role(&self) -> Option<&str> {
+        self.role.as_deref()
+    }
+
     pub fn status(&self) -> &str {
         &self.status
     }

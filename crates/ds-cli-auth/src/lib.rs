@@ -4,6 +4,7 @@
 //! per-user files. Identity, Firebase validation, refresh rotation, and the
 //! project response contract remain exclusively in `ds-client-core`.
 
+mod context;
 mod profile;
 mod state;
 mod transport;
@@ -11,6 +12,7 @@ mod transport;
 use std::io::{self, BufRead, Read, Write};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use context::CredentialProvider;
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
     Arg, Authority, Chapter, Command, Domain, Effect, Example, Execution, Refusal,
@@ -29,6 +31,11 @@ use sha2::{Digest, Sha256};
 use state::{NativeRefreshStore, ProjectContextLease};
 use transport::NativeTransport;
 use zeroize::Zeroize;
+
+pub use context::{
+    AuthContext, CanonicalPrincipal, CredentialProviderKind, DeviceIdentity, ProfileFence,
+    SelectedProject, SessionState,
+};
 
 pub static DOMAIN: Domain = Domain {
     id: "auth",
@@ -148,6 +155,11 @@ const UNREADABLE_REFUSAL: Refusal = Refusal {
     when: "a fixed auth or project reply violates its bounded contract",
     remedy: "retry once, then update ds if it persists",
 };
+const AUTH_CONTEXT_REFUSAL: Refusal = Refusal {
+    code: "auth_context_unreadable",
+    when: "the bounded non-secret authenticated context cannot be projected safely",
+    remedy: "update ds and retry without changing protected state",
+};
 const PASSWORD_INPUT_REFUSAL: Refusal = Refusal {
     code: "password_input_invalid",
     when: "password stdin is empty, multiline, or oversized",
@@ -193,6 +205,8 @@ const STATUS_REFUSALS: &[Refusal] = &[
     IDENTITY_REFUSAL,
     TRANSIENT_REFUSAL,
     UNREADABLE_REFUSAL,
+    CONTEXT_STALE_REFUSAL,
+    AUTH_CONTEXT_REFUSAL,
 ];
 const LOGIN_REFUSALS: &[Refusal] = &[
     PROFILE_REFUSAL,
@@ -281,7 +295,7 @@ const PROJECT_STATUS_REFUSALS: &[Refusal] = &[
 pub static STATUS_COMMAND: Command = Command {
     id: "auth.status",
     path: &["auth", "status"],
-    contract: 1,
+    contract: 2,
     chapter: Chapter::Project,
     summary: "Show the native signed-in user for one lane.",
     purpose: "Restores the refresh-only native session and reports its bounded account identity. It never reads or launches the paired desktop.",
@@ -289,7 +303,7 @@ pub static STATUS_COMMAND: Command = Command {
     authority: Authority::None,
     execution: Execution::Sync,
     args: &[LANE],
-    output: "Lane, signed-in status, and canonical account email/UID; never a credential or profile key.",
+    output: "Lane, signed-in status, canonical account email/UID, and a non-secret provider-independent auth context; never credential material.",
     examples: &[Example {
         command: "ds auth status",
         note: "Stable is explicit by default.",
@@ -411,6 +425,41 @@ pub static PROJECT_STATUS_COMMAND: Command = Command {
 };
 
 type NativeClient = Client<NativeTransport, NativeRefreshStore>;
+
+struct NativeContextProvider<'a> {
+    lane: Lane,
+    client: &'a mut NativeClient,
+    context: &'a ProjectContextLease,
+}
+
+impl CredentialProvider for NativeContextProvider<'_> {
+    fn kind(&self) -> CredentialProviderKind {
+        CredentialProviderKind::NativeRefresh
+    }
+
+    fn resolve_context(&mut self) -> Result<AuthContext, Failure> {
+        let user = with_disposition(self.client.restore(now()), self.context)?;
+        let Some(user) = user else {
+            return Ok(AuthContext::signed_out(
+                self.lane.token(),
+                self.client.profile(),
+            ));
+        };
+        let selected = self
+            .context
+            .load(self.client.profile(), user.uid(), user.email())?
+            .as_ref()
+            .map(selected_project);
+        Ok(AuthContext::restored(
+            self.lane.token(),
+            self.client.profile(),
+            &user,
+            selected,
+            self.kind(),
+            None,
+        ))
+    }
+}
 
 /// One transformer snapshot fetched under the restored native user and the
 /// audience-fenced selected project. The server remains the membership and
@@ -1392,12 +1441,38 @@ fn client(inputs: &Inputs) -> Result<(Lane, NativeClient), Failure> {
 pub fn run_status(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let (lane, mut client) = client(inputs)?;
     let context = ProjectContextLease::acquire(client.profile())?;
-    match with_disposition(client.restore(now()), &context)? {
-        Some(user) => Ok(
-            json!({ "lane": lane.token(), "signed_in": true, "uid": user.uid(), "email": user.email() }),
-        ),
-        None => Ok(json!({ "lane": lane.token(), "signed_in": false })),
+    let auth_context = NativeContextProvider {
+        lane,
+        client: &mut client,
+        context: &context,
     }
+    .resolve_context()?;
+    let mut output = match auth_context.principal() {
+        Some(principal) => json!({
+            "lane": lane.token(),
+            "signed_in": true,
+            "uid": principal.uid(),
+            "email": principal.email(),
+        }),
+        None => json!({ "lane": lane.token(), "signed_in": false }),
+    };
+    output["auth_context"] = serde_json::to_value(auth_context).map_err(|_| {
+        Failure::failed(
+            "auth_context_unreadable",
+            "the bounded authenticated context could not be projected safely",
+        )
+    })?;
+    Ok(output)
+}
+
+fn selected_project(context: &state::ProjectContext) -> SelectedProject {
+    SelectedProject::new(
+        context.project_id(),
+        context.project_name(),
+        context.display_name(),
+        context.role(),
+        context.status(),
+    )
 }
 
 pub fn run_login(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
@@ -2142,6 +2217,7 @@ mod tests {
         assert_eq!(PROJECT_LIST_COMMAND.authority, Authority::HeadlessUser);
         assert_eq!(PROJECT_USE_COMMAND.authority, Authority::HeadlessUser);
         assert_eq!(PROJECT_STATUS_COMMAND.authority, Authority::HeadlessUser);
+        assert_eq!(STATUS_COMMAND.contract, 2);
     }
 
     #[test]
@@ -2157,6 +2233,8 @@ mod tests {
         assert!(!status.contains("password_input_invalid"));
         assert!(!status.contains("project_limit_invalid"));
         assert!(!status.contains("headless_signed_out"));
+        assert!(status.contains("project_context_stale"));
+        assert!(status.contains("auth_context_unreadable"));
 
         let login = codes(&LOGIN_COMMAND);
         assert!(login.contains("password_input_invalid"));

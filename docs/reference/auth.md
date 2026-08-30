@@ -1,5 +1,19 @@
 # Native authentication and project context
 
+`auth status` contract 2 also emits the non-secret, provider-independent
+`ds.auth-context/v1` projection while preserving the earlier `lane`,
+`signed_in`, `uid`, and `email` fields. The context and compatibility mapping
+are specified in `docs/contracts/unified-identity.md`. It reports only
+canonical identity, immutable profile/audience fences, selected-project
+metadata, provider/session state, and normalized capabilities; credential
+material never enters the projection.
+
+The selected project is only a device-local address plus an authority fence.
+It is not loaded project data, active map state, an open edit room, or evidence
+that Desktop is running. Browser providers may keep that bounded address in
+IndexedDB; this native provider keeps its equivalent below protected per-user
+state. The server still authorizes every operation against the exact project.
+
 `ds auth` is the initial native authority seam shared with `ds-web` through
 `ds-client-core`. It is independent of the paired Desktop bridge. Existing
 commands that declare `desktop_pairing`, `desktop_user`, or legacy `project`

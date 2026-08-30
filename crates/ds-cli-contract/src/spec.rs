@@ -15,6 +15,8 @@
 
 use std::fmt;
 
+use serde::Serialize;
+
 /// What a command can change. Part of every help screen and every capability
 /// descriptor, so blast radius is never inferred from a command's name.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -105,6 +107,55 @@ pub enum Authority {
     HeadlessProject,
 }
 
+/// Provider-independent authority capabilities.
+///
+/// Command descriptors retain their historical [`Authority`] tokens. This
+/// vocabulary is the normalized authorization seam used to compare those
+/// tokens without assuming that a user or project must come from Desktop.
+/// `Map` is intentionally not inferred from any legacy token: commands must
+/// migrate to an explicit map-aware contract before an interactive viewport
+/// can become part of their authority proof.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AuthorityCapability {
+    None,
+    User,
+    Project,
+    Desktop,
+    Map,
+}
+
+impl AuthorityCapability {
+    pub const fn token(self) -> &'static str {
+        match self {
+            Self::None => "none",
+            Self::User => "user",
+            Self::Project => "project",
+            Self::Desktop => "desktop",
+            Self::Map => "map",
+        }
+    }
+}
+
+impl fmt::Display for AuthorityCapability {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.token())
+    }
+}
+
+const NONE_CAPABILITIES: &[AuthorityCapability] = &[AuthorityCapability::None];
+const USER_CAPABILITIES: &[AuthorityCapability] = &[AuthorityCapability::User];
+const PROJECT_CAPABILITIES: &[AuthorityCapability] = &[
+    AuthorityCapability::User,
+    AuthorityCapability::Project,
+    AuthorityCapability::Desktop,
+];
+const HEADLESS_PROJECT_CAPABILITIES: &[AuthorityCapability] =
+    &[AuthorityCapability::User, AuthorityCapability::Project];
+const DESKTOP_CAPABILITIES: &[AuthorityCapability] = &[AuthorityCapability::Desktop];
+const DESKTOP_USER_CAPABILITIES: &[AuthorityCapability] =
+    &[AuthorityCapability::User, AuthorityCapability::Desktop];
+
 impl Authority {
     /// Parse the token carried by a live command descriptor.
     ///
@@ -122,23 +173,49 @@ impl Authority {
         }
     }
 
+    /// Normalize a compatibility descriptor into actual required
+    /// capabilities without changing the descriptor's public token.
+    ///
+    /// Legacy `project` remains desktop-backed. Provider-interchangeable
+    /// project commands already declare `headless_project`; changing the
+    /// legacy meaning requires a separately versioned command migration.
+    pub const fn capabilities(self) -> &'static [AuthorityCapability] {
+        match self {
+            Self::None => NONE_CAPABILITIES,
+            Self::DesktopPairing => DESKTOP_CAPABILITIES,
+            Self::DesktopUser => DESKTOP_USER_CAPABILITIES,
+            Self::Project => PROJECT_CAPABILITIES,
+            Self::HeadlessUser => USER_CAPABILITIES,
+            Self::HeadlessProject => HEADLESS_PROJECT_CAPABILITIES,
+        }
+    }
+
+    pub const fn requires_capability(self, capability: AuthorityCapability) -> bool {
+        let values = self.capabilities();
+        let mut index = 0;
+        while index < values.len() {
+            if values[index] as u8 == capability as u8 {
+                return true;
+            }
+            index += 1;
+        }
+        false
+    }
+
     /// Whether this authority needs the paired desktop transport at all.
     pub const fn requires_desktop(self) -> bool {
-        matches!(
-            self,
-            Self::DesktopPairing | Self::DesktopUser | Self::Project
-        )
+        self.requires_capability(AuthorityCapability::Desktop)
     }
 
     /// Whether the paired desktop must report a signed-in user before the
     /// command is sent to its handler.
     pub const fn requires_signed_in_user(self) -> bool {
-        matches!(self, Self::DesktopUser | Self::Project)
+        self.requires_desktop() && self.requires_capability(AuthorityCapability::User)
     }
 
     /// Whether a selected desktop project is part of the authority proof.
     pub const fn requires_project(self) -> bool {
-        matches!(self, Self::Project)
+        self.requires_desktop() && self.requires_capability(AuthorityCapability::Project)
     }
 
     pub const fn token(self) -> &'static str {
@@ -519,7 +596,9 @@ impl Domain {
 
 #[cfg(test)]
 mod tests {
-    use super::{Arg, Authority, Availability, Chapter, Command, Effect, Execution};
+    use super::{
+        Arg, Authority, AuthorityCapability, Availability, Chapter, Command, Effect, Execution,
+    };
 
     fn available() -> Availability {
         Availability::Available
@@ -577,6 +656,47 @@ mod tests {
         assert_eq!(Chapter::from_token("grid_model"), None);
         assert_eq!(Chapter::from_token("Catalog"), None);
         assert_eq!(Chapter::from_token(""), None);
+    }
+
+    #[test]
+    fn compatibility_authorities_normalize_without_weakening_desktop_proof() {
+        use AuthorityCapability::{Desktop, Map, None, Project, User};
+
+        let cases: &[(Authority, &[AuthorityCapability])] = &[
+            (Authority::None, &[None]),
+            (Authority::HeadlessUser, &[User]),
+            (Authority::HeadlessProject, &[User, Project]),
+            (Authority::DesktopPairing, &[Desktop]),
+            (Authority::DesktopUser, &[User, Desktop]),
+            (Authority::Project, &[User, Project, Desktop]),
+        ];
+        for (authority, expected) in cases {
+            assert_eq!(authority.capabilities(), *expected, "{authority}");
+            assert!(
+                !authority.requires_capability(Map),
+                "legacy authority `{authority}` must not invent active-map proof"
+            );
+        }
+        assert!(Authority::Project.requires_desktop());
+        assert!(Authority::Project.requires_signed_in_user());
+        assert!(Authority::Project.requires_project());
+        assert!(!Authority::HeadlessProject.requires_desktop());
+    }
+
+    #[test]
+    fn authority_tokens_remain_exactly_backward_compatible() {
+        for authority in [
+            Authority::None,
+            Authority::DesktopPairing,
+            Authority::DesktopUser,
+            Authority::Project,
+            Authority::HeadlessUser,
+            Authority::HeadlessProject,
+        ] {
+            assert_eq!(Authority::from_token(authority.token()), Some(authority));
+        }
+        assert_eq!(Authority::from_token("user"), None);
+        assert_eq!(Authority::from_token("map"), None);
     }
 
     #[test]

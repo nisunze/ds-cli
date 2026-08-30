@@ -17,8 +17,8 @@ pub use args::{Inputs, parse};
 pub use outcome::{ExitClass, Failure, SuccessEnvelope, success_envelope};
 pub use output::{Format, Output};
 pub use spec::{
-    Arg, ArgKind, Authority, Availability, Chapter, Command, Domain, Effect, Example, Execution,
-    Refusal,
+    Arg, ArgKind, Authority, AuthorityCapability, Availability, Chapter, Command, Domain, Effect,
+    Example, Execution, Refusal,
 };
 
 /// The handler signature every command implements.
