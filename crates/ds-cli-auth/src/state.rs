@@ -189,6 +189,19 @@ impl ProjectContextLease {
         Ok(Some(context))
     }
 
+    /// Load one identity- and audience-fenced context snapshot, then release
+    /// the serialization lease before the caller begins remote work.
+    pub fn load_snapshot(
+        self,
+        profile: &ClientProfile,
+        uid: &str,
+        email: &str,
+    ) -> Result<Option<ProjectContext>, Failure> {
+        let selected = self.load(profile, uid, email)?;
+        drop(self);
+        Ok(selected)
+    }
+
     pub fn clear(&self) -> Result<(), Failure> {
         remove_and_sync(&self.path).map_err(state_failure)
     }
@@ -786,6 +799,104 @@ mod tests {
         lease.clear_if_unchanged(&replacement).unwrap();
         assert!(!path.exists());
         drop(lease);
+        fs::remove_file(lock_path).unwrap();
+        fs::remove_dir(root).unwrap();
+    }
+
+    #[test]
+    fn selected_context_snapshot_releases_lease_before_network_phase() {
+        let root = temp_dir("released-read-lease");
+        let path = root.join("context.json");
+        let lock_path = root.join("context.lock");
+        let profile = profile();
+        let expected = ProjectContext {
+            schema: CONTEXT_SCHEMA.to_owned(),
+            lane: profile.lane().token().to_owned(),
+            credential_audience_sha256: profile.credential_audience_sha256().to_owned(),
+            uid: "uid-a".to_owned(),
+            email: "operator@example.com".to_owned(),
+            ds_project: "project-a".to_owned(),
+            project_name: "Project A".to_owned(),
+            display_name: None,
+            role: Some("owner".to_owned()),
+            status: "active".to_owned(),
+        };
+        atomic_write(&path, &serde_json::to_vec(&expected).unwrap()).unwrap();
+        let lock = protected_open_lock(&lock_path).unwrap();
+        lock_exclusive(&lock).unwrap();
+        let lease = ProjectContextLease {
+            path: path.clone(),
+            lock,
+        };
+
+        let selected = lease
+            .load_snapshot(&profile, "uid-a", "operator@example.com")
+            .unwrap()
+            .unwrap();
+        assert_eq!(selected.project_id(), "project-a");
+
+        // This acquisition represents an unrelated context operation starting
+        // while the selected-project network read is in flight.
+        let during_network = protected_open_lock(&lock_path).unwrap();
+        lock_exclusive_for(
+            &during_network,
+            Duration::from_millis(20),
+            Duration::from_millis(2),
+        )
+        .unwrap();
+        unlock(&during_network).unwrap();
+
+        fs::remove_file(path).unwrap();
+        fs::remove_file(lock_path).unwrap();
+        fs::remove_dir(root).unwrap();
+    }
+
+    #[test]
+    fn stale_context_snapshot_is_refused_and_retained() {
+        let root = temp_dir("stale-read-context");
+        let path = root.join("context.json");
+        let lock_path = root.join("context.lock");
+        let profile = profile();
+        let stale = ProjectContext {
+            schema: CONTEXT_SCHEMA.to_owned(),
+            lane: profile.lane().token().to_owned(),
+            credential_audience_sha256: "f".repeat(64),
+            uid: "uid-a".to_owned(),
+            email: "operator@example.com".to_owned(),
+            ds_project: "project-a".to_owned(),
+            project_name: "Project A".to_owned(),
+            display_name: None,
+            role: Some("owner".to_owned()),
+            status: "active".to_owned(),
+        };
+        let stale_bytes = serde_json::to_vec(&stale).unwrap();
+        atomic_write(&path, &stale_bytes).unwrap();
+        let lock = protected_open_lock(&lock_path).unwrap();
+        lock_exclusive(&lock).unwrap();
+        let lease = ProjectContextLease {
+            path: path.clone(),
+            lock,
+        };
+
+        assert_eq!(
+            lease
+                .load_snapshot(&profile, "uid-a", "operator@example.com")
+                .unwrap_err()
+                .code(),
+            "project_context_stale"
+        );
+        assert_eq!(protected_read(&path).unwrap().unwrap(), stale_bytes);
+
+        let after_refusal = protected_open_lock(&lock_path).unwrap();
+        lock_exclusive_for(
+            &after_refusal,
+            Duration::from_millis(20),
+            Duration::from_millis(2),
+        )
+        .unwrap();
+        unlock(&after_refusal).unwrap();
+
+        fs::remove_file(path).unwrap();
         fs::remove_file(lock_path).unwrap();
         fs::remove_dir(root).unwrap();
     }

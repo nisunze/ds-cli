@@ -525,10 +525,9 @@ pub fn transformer_context(
     let profile = profile::load(lane)?;
     let store = NativeRefreshStore::open()?;
     let mut client = Client::new(profile, NativeTransport, store);
-    let context = ProjectContextLease::acquire(client.profile())?;
-    let user = require_restore(&mut client, &context)?;
-    let selected = context
-        .load(client.profile(), user.uid(), user.email())?
+    let user = require_restore_before_context(&mut client)?;
+    let selected = ProjectContextLease::acquire(client.profile())?
+        .load_snapshot(client.profile(), user.uid(), user.email())?
         .ok_or_else(|| {
             Failure::conflict(
                 "headless_project_not_selected",
@@ -537,10 +536,8 @@ pub fn transformer_context(
             .remedy("run ds auth project use --project <exact-id>")
             .next("ds auth project status")
         })?;
-    let snapshot = with_disposition(
-        client.transformer_context(selected.project_id(), transformer, now()),
-        &context,
-    )?;
+    let result = client.transformer_context(selected.project_id(), transformer, now());
+    let snapshot = with_released_context_disposition(client.profile(), &selected, result)?;
     Ok(HeadlessTransformerContext {
         lane: lane.token(),
         project_name: selected.project_name().to_owned(),
@@ -556,10 +553,9 @@ pub fn project_forms(lane_value: &str) -> Result<HeadlessProjectForms, Failure> 
     let profile = profile::load(lane)?;
     let store = NativeRefreshStore::open()?;
     let mut client = Client::new(profile, NativeTransport, store);
-    let context = ProjectContextLease::acquire(client.profile())?;
-    let user = require_restore(&mut client, &context)?;
-    let selected = context
-        .load(client.profile(), user.uid(), user.email())?
+    let user = require_restore_before_context(&mut client)?;
+    let selected = ProjectContextLease::acquire(client.profile())?
+        .load_snapshot(client.profile(), user.uid(), user.email())?
         .ok_or_else(|| {
             Failure::conflict(
                 "headless_project_not_selected",
@@ -568,7 +564,8 @@ pub fn project_forms(lane_value: &str) -> Result<HeadlessProjectForms, Failure> 
             .remedy("run ds auth project use --project <exact-id>")
             .next("ds auth project status")
         })?;
-    let snapshot = with_disposition(client.project_forms(selected.project_id(), now()), &context)?;
+    let result = client.project_forms(selected.project_id(), now());
+    let snapshot = with_released_context_disposition(client.profile(), &selected, result)?;
     Ok(HeadlessProjectForms {
         lane: lane.token(),
         project_name: selected.project_name().to_owned(),
@@ -587,10 +584,9 @@ pub fn project_form_editor(
     let profile = profile::load(lane)?;
     let store = NativeRefreshStore::open()?;
     let mut client = Client::new(profile, NativeTransport, store);
-    let context = ProjectContextLease::acquire(client.profile())?;
-    let user = require_restore(&mut client, &context)?;
-    let selected = context
-        .load(client.profile(), user.uid(), user.email())?
+    let user = require_restore_before_context(&mut client)?;
+    let selected = ProjectContextLease::acquire(client.profile())?
+        .load_snapshot(client.profile(), user.uid(), user.email())?
         .ok_or_else(|| {
             Failure::conflict(
                 "headless_project_not_selected",
@@ -599,10 +595,8 @@ pub fn project_form_editor(
             .remedy("run ds auth project use --project <exact-id>")
             .next("ds auth project status")
         })?;
-    let snapshot = with_disposition(
-        client.project_form_editor(selected.project_id(), form_slug, now()),
-        &context,
-    )?;
+    let result = client.project_form_editor(selected.project_id(), form_slug, now());
+    let snapshot = with_released_context_disposition(client.profile(), &selected, result)?;
     Ok(HeadlessProjectFormEditor {
         lane: lane.token(),
         project_name: selected.project_name().to_owned(),
@@ -782,6 +776,60 @@ pub fn run_project_status(inputs: &Inputs, _context: &Context) -> Result<Value, 
         }
         None => json!({ "lane": lane.token(), "selected": false }),
     })
+}
+
+/// Restore before taking the project-context lease. Refresh-token rotation has
+/// its own durable store lease, so a remote Firebase refresh must not serialize
+/// unrelated selected-project reads.
+fn require_restore_before_context(
+    client: &mut NativeClient,
+) -> Result<ds_client_core::AuthenticatedUser, Failure> {
+    match client.restore(now()) {
+        Ok(Some(user)) => Ok(user),
+        Ok(None) => Err(Failure::unauthorized(
+            "headless_signed_out",
+            "no native user is signed in for this lane and profile",
+        )
+        .remedy("run ds auth login --email <address>")
+        .next("ds auth status")),
+        Err(error)
+            if matches!(
+                error.kind(),
+                ErrorKind::PermanentlyRevoked | ErrorKind::IdentityMismatch
+            ) =>
+        {
+            let context = ProjectContextLease::acquire(client.profile())?;
+            context.clear().map_err(|_| cleanup_required())?;
+            Err(map_client(error))
+        }
+        Err(error) => Err(map_client(error)),
+    }
+}
+
+/// Apply identity disposition after a request whose selected-project snapshot
+/// no longer holds the lease. Conditional cleanup cannot erase a concurrent
+/// project replacement.
+fn with_released_context_disposition<T>(
+    profile: &ds_client_core::ClientProfile,
+    selected: &state::ProjectContext,
+    result: Result<T, ClientError>,
+) -> Result<T, Failure> {
+    match result {
+        Ok(value) => Ok(value),
+        Err(error)
+            if matches!(
+                error.kind(),
+                ErrorKind::PermanentlyRevoked | ErrorKind::IdentityMismatch
+            ) =>
+        {
+            let context = ProjectContextLease::acquire(profile)?;
+            context
+                .clear_if_unchanged(selected)
+                .map_err(|_| cleanup_required())?;
+            Err(map_client(error))
+        }
+        Err(error) => Err(map_client(error)),
+    }
 }
 
 fn require_restore(
