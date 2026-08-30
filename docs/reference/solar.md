@@ -291,7 +291,7 @@ update it.
 | `solar seed preview` | `solar.seed.preview` | read only | ds-brain's SolarSeedPlan, verbatim |
 | `solar seed apply` | `solar.seed.apply` | global write | ds-brain's SolarSeedApplyResult, verbatim |
 | `solar prepare` | `solar.prepare` | local file write | completed preparation receipt |
-| `solar run start` | `solar.run.start` | local file write | durable run id / launch receipt |
+| `solar run start` | `solar.run.start` | local file write | launch receipt with a run id that outlives the session; the compute itself is owned by the paired application and ends with it |
 | `solar run progress` | `solar.run.progress` | read only | bounded progress receipt |
 | `solar run result` | `solar.run.result` | read only | bounded public result receipt, with any unqueued governed publication |
 | `solar run cancel` | `solar.run.cancel` | local UI | cancellation receipt |
@@ -317,7 +317,7 @@ set of product actions and never a generic desktop RPC.
 | `solar input capture` | 120 s request + 5 min owner intake | bounded selected-project capture and create-new sealing |
 | `solar seed preview` / `apply` | 60 s | one ds-brain round trip; the card allows the same |
 | `solar prepare` | 30 min | cache capture or authenticated refresh across selected cities |
-| `solar run start` | 30 s | creates a local run receipt; compute continues as a job |
+| `solar run start` | 30 s | creates a local run receipt; compute continues inside the paired application for as long as it runs — closing DS GridDesign ends the run and later reads settle it as abandoned |
 | lifecycle reads / cancel | 30 s | bounded local bridge replies |
 | results/sync/portfolio reads | 30 s | bounded local receipt/cache projections |
 | final import | 10 min | bounded source validation plus optional local Pandoc render |

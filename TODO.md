@@ -20,9 +20,12 @@ must be:
 
 ## What is true today
 
-- Authority runs through the paired DS GridDesign session. `ds` holds no
-  token; the application calls ds-brain under its signed-in Firebase user.
-  The "right JWT" is therefore the desktop user's, and nothing else can be.
+- Paired authority runs through the DS GridDesign session: the application
+  calls ds-brain under its signed-in Firebase user. Since `40515f8`
+  (2026-08-29) `ds` also owns a headless native session (`ds auth login`,
+  `ds-cli-auth` refresh store) whose id_token is the bearer on the closed
+  `ds-client-core` calls, so "the right JWT" is either the desktop user's or
+  the restored native user's — never anything else.
 - ds-brain gates the governance actions server-side on the `platform.admin`
   capability: feedback status/resolution triage
   (`internal/handlers/feedback.go`), the SRE overview and event reads
@@ -39,7 +42,8 @@ must be:
 ## The gaps
 
 1. **No governance rung in the authority vocabulary.** `Authority` is
-   `none | desktop_pairing | desktop_user | project`. A command that needs a
+   `none | desktop_pairing | desktop_user | project | headless_user |
+   headless_project` (the two headless rungs landed 2026-08-29). A command that needs a
    platform capability declares `desktop_user`, exactly like one that does
    not. A caller cannot tell before running which is which.
 2. **No capability discovery.** Nothing answers "may this session triage?"
