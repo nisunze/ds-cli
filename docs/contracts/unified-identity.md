@@ -67,6 +67,39 @@ different project. Only an explicitly `map`-capable command may require active
 map state. A map observation is useful context, not an implicit limit or a
 fallback source of project authority.
 
+## Open-map coherence
+
+When a map is open on the same project, a committed CLI/API change must become
+visible through the same local projection and render path as a UI-originated
+change. This is synchronization after a governed commit, not permission for
+the CLI to write browser storage directly and not a second map-dependent
+mutation path.
+
+The shared-data authority must emit a bounded change carrying exact project,
+domain/entity identity, committed revision or generation, canonical actor,
+device/provider attribution, and operation identity. The browser consumes that
+ordered change into its IndexedDB projection and the map redraws from that
+projection. A UI mutation uses the same commit and change path, so its visible
+result is not a separate implementation.
+
+Coherence rules are:
+
+- apply a change only to the matching lane, audience, and active map project;
+- deduplicate by operation identity and reject out-of-order generations;
+- never overwrite unsaved map/edit-room state silently;
+- surface revision conflicts for rebase or explicit operator resolution;
+- retain tombstones and removals so deleted objects cannot reappear from a
+  stale cache;
+- acknowledge a CLI write only from the governed commit receipt, not from an
+  optimistic map update;
+- allow push/event delivery for immediate refresh, with a fenced change-feed
+  catch-up after disconnect or restart.
+
+If the map is absent or open on another project, the CLI operation remains
+valid and headless. The relevant map catches up when that project becomes
+active. Interactive, unsaved UI state remains map-owned and is never inferred
+from IndexedDB or changed by a project-only CLI command.
+
 ## Normalized capabilities and compatibility
 
 Existing descriptor tokens retain their exact observable meaning:
