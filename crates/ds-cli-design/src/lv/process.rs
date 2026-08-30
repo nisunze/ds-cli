@@ -1,9 +1,8 @@
 //! `ds design lv process` — bounded native Fast LV batch compute.
 
-use std::fs::{File, OpenOptions};
-use std::io::{Read, Write};
+use std::fs::File;
+use std::io::Read;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
 
 use ds_cli_contract::spec::{
     Arg, Authority, Availability, Chapter, Command, Effect, Example, Execution, Refusal,
@@ -14,7 +13,8 @@ use ds_network::network::native_fast_lv::{
     encode_native_fast_lv_result, process_native_fast_lv,
 };
 use serde_json::{Value, json};
-use sha2::{Digest, Sha256};
+
+use super::artifact::{RESULT, ensure_absent, sha256, write_new};
 
 pub static COMMAND: Command = Command {
     id: "design.lv.process",
@@ -100,13 +100,7 @@ pub static COMMAND: Command = Command {
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let input_path = PathBuf::from(inputs.require("input")?);
     let output_path = PathBuf::from(inputs.require("out")?);
-    if output_path.exists() {
-        return Err(Failure::conflict(
-            "fast_lv_output_exists",
-            "The Fast LV result path already exists.",
-        )
-        .remedy("Choose a new --out path; existing results are never overwritten."));
-    }
+    ensure_absent(&output_path, &RESULT)?;
 
     let input = bounded_read(&input_path)?;
     let input_sha256 = sha256(&input);
@@ -129,7 +123,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let engine_core_version = result.engine_core_version;
     let output = encode_native_fast_lv_result(&result).map_err(map_owner_error)?;
     let result_sha256 = sha256(&output);
-    write_new(&output_path, &output)?;
+    write_new(&output_path, &output, &RESULT)?;
 
     Ok(json!({
         "out": output_path,
@@ -207,59 +201,6 @@ fn bounded_read(path: &Path) -> Result<Vec<u8>, Failure> {
     Ok(bytes)
 }
 
-fn write_new(path: &Path, bytes: &[u8]) -> Result<(), Failure> {
-    static NEXT_STAGE: AtomicU64 = AtomicU64::new(0);
-    let parent = path
-        .parent()
-        .filter(|path| !path.as_os_str().is_empty())
-        .unwrap_or(Path::new("."));
-    let file_name = path.file_name().ok_or_else(|| {
-        Failure::failed(
-            "fast_lv_output_write_failed",
-            "The Fast LV result path has no file name.",
-        )
-    })?;
-    let stage = parent.join(format!(
-        ".{}.ds-fast-lv-{}-{}.tmp",
-        file_name.to_string_lossy(),
-        std::process::id(),
-        NEXT_STAGE.fetch_add(1, Ordering::Relaxed)
-    ));
-    let write_result = (|| -> std::io::Result<()> {
-        let mut file = OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&stage)?;
-        file.write_all(bytes)?;
-        file.sync_all()?;
-        std::fs::hard_link(&stage, path)?;
-        // The hard link is already the complete immutable result. A failed
-        // stage cleanup is not permission to report failure after publishing
-        // it (and a retry would honestly find `--out` occupied).
-        let _ = std::fs::remove_file(&stage);
-        if let Ok(directory) = File::open(parent) {
-            let _ = directory.sync_all();
-        }
-        Ok(())
-    })();
-    if let Err(error) = write_result {
-        let _ = std::fs::remove_file(&stage);
-        if path.exists() {
-            return Err(Failure::conflict(
-                "fast_lv_output_exists",
-                "The Fast LV result path already exists.",
-            )
-            .remedy("Choose a new --out path; existing results are never overwritten."));
-        }
-        return Err(Failure::failed(
-            "fast_lv_output_write_failed",
-            format!("Could not write the Fast LV result: {error}"),
-        )
-        .remedy("Choose a writable absent path and retry from the unchanged input."));
-    }
-    Ok(())
-}
-
 fn map_owner_error(error: NativeFastLvError) -> Failure {
     let code = error.code();
     match code {
@@ -272,10 +213,6 @@ fn map_owner_error(error: NativeFastLvError) -> Failure {
         "fast_lv_result_encoding_failed" => Failure::internal(code, error.to_string()),
         _ => Failure::internal("fast_lv_result_encoding_failed", error.to_string()),
     }
-}
-
-fn sha256(bytes: &[u8]) -> String {
-    format!("{:x}", Sha256::digest(bytes))
 }
 
 #[cfg(test)]

@@ -971,6 +971,11 @@ static DESIGN_ENTRIES: &[Entry] = &[
         render: ds_cli_design::comment::promote::render,
     },
     Entry {
+        command: &ds_cli_design::lv::project_export::COMMAND,
+        handler: ds_cli_design::lv::project_export::run,
+        render: ds_cli_design::lv::project_export::render,
+    },
+    Entry {
         command: &ds_cli_design::lv::process::COMMAND,
         handler: ds_cli_design::lv::process::run,
         render: ds_cli_design::lv::process::render,

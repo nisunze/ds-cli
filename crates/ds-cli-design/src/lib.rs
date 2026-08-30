@@ -2,8 +2,10 @@
 //!
 //! ## Headless reads and offline compute
 //!
-//! `design.lv.process` consumes one closed, versioned local batch document and
-//! writes one local result document through ds-network's native Rayon adapter.
+//! `design.lv.project-export` reads one fenced governed snapshot and asks
+//! ds-network to encode its layers with explicit owner defaults into the same
+//! closed request consumed by `design.lv.process`. The process command writes
+//! one local result document through ds-network's native Rayon adapter.
 //! It has no project id, credential, Desktop bridge, map state, browser store,
 //! or generic engine operation. The Rust kernel is the same owner used below
 //! ds-web's Fast WASM adapter; only host file placement differs.
@@ -39,7 +41,7 @@
 //! ## What the family is
 //!
 //! ```text
-//!   lv         process
+//!   lv         project-export → process
 //!   selection  list → read → save | archive | assign
 //!   attachment list → publish | download | retire
 //!   tag        list | query → define | set
@@ -110,6 +112,7 @@ pub static DOMAIN: Domain = Domain {
         &comment::post::COMMAND,
         &comment::resolve::COMMAND,
         &comment::promote::COMMAND,
+        &lv::project_export::COMMAND,
         &lv::process::COMMAND,
     ],
 };

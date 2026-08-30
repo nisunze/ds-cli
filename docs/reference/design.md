@@ -10,6 +10,33 @@ processing serves the ds-network native batch contract directly.
 
 ## Offline Fast LV processing
 
+`ds design lv project-export` is the authenticated, mapless handoff from one
+governed transformer snapshot into the local file contract below. It restores
+the Firebase user for `--lane stable|canary`, uses only that user's
+audience-fenced selected project, and performs the fixed
+`get_transformers_data fields=context` call for one exact transformer. The
+gateway rechecks membership. The command refuses legacy context unless the
+server supplies both `metadata.version` and `metadata.content_digest`, then
+asks ds-network to encode the returned layers as one validated request at an
+absent `--out` path.
+
+The context projection does not contain the project's process-settings model
+or network-config sheets. The request therefore carries ds-network's explicit
+owner defaults and an empty `config_dfs`. Its receipt says
+`process_settings=ds-network-owner-defaults` and
+`project_config=not-included`; this is a truthful baseline handoff, not the
+configured Desktop preset. There is no `--project`, Desktop descriptor,
+arbitrary request field, browser store, or processing-lane argument.
+
+```bash
+ds auth login --email operator@example.com
+ds auth project use --project <exact-id>
+ds design lv project-export --transformer T-1042 \
+  --out ./T-1042.fast-lv.json --output json
+ds design lv process --input ./T-1042.fast-lv.json \
+  --out ./T-1042.fast-lv.result.json --output json
+```
+
 `ds design lv process` is the mapless, signed-out native route to the same
 Rust engineering kernel used below ds-web's Fast WASM adapter. Its input is one
 closed `ds.fast-lv.request/v1` file:
@@ -89,8 +116,9 @@ runs code inside the application — `docs/reference/desktop.status.md` has the
 pairing argument in full.
 
 There is no `--project` flag anywhere in this domain. Collaboration commands
-use the project open in the paired application; the headless feature command
-uses the exact audience-fenced context selected by `ds auth project use`.
+use the project open in the paired application; the headless feature and LV
+export commands use the exact audience-fenced context selected by
+`ds auth project use`.
 
 ## Why this is not `ds map`
 

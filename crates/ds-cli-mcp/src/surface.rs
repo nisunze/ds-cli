@@ -273,6 +273,7 @@ const DESIGN_EDIT_COMMANDS: &[&str] = &[
 ];
 
 const DESIGN_RUN_COMMANDS: &[&str] = &[
+    "design.lv.project-export",
     "design.lv.process",
     "map.design.process",
     "map.design.batch.process",

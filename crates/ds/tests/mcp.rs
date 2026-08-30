@@ -183,7 +183,12 @@ fn by_command_profiles_still_partition_the_live_registry() {
             .filter(|id| {
                 id.starts_with(prefix)
                     || (prefix == "map.design."
-                        && matches!(id.as_str(), "design.features.select" | "design.lv.process"))
+                        && matches!(
+                            id.as_str(),
+                            "design.features.select"
+                                | "design.lv.project-export"
+                                | "design.lv.process"
+                        ))
             })
             .cloned()
             .collect();
@@ -478,7 +483,9 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
                     || (prefix == "map_design_"
                         && matches!(
                             name.as_str(),
-                            "design_features_select" | "design_lv_process"
+                            "design_features_select"
+                                | "design_lv_project-export"
+                                | "design_lv_process"
                         ))
                     || (prefix == "pls_" && name.starts_with("library_"))
             })

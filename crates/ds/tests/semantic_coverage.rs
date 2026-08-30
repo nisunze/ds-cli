@@ -63,6 +63,11 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("design.comment.read", "read_only", "project"),
     ("design.comment.resolve", "global_write", "project"),
     ("design.lv.process", "local_file_write", "none"),
+    (
+        "design.lv.project-export",
+        "local_file_write",
+        "headless_project",
+    ),
     ("design.consumer-grouping.apply", "global_write", "project"),
     ("design.consumer-grouping.preview", "read_only", "project"),
     ("design.selection.archive", "global_write", "project"),

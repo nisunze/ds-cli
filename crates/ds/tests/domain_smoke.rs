@@ -1989,7 +1989,8 @@ fn a_well_formed_map_call_stops_at_confirmation_or_pairing() {
 // design
 // ---------------------------------------------------------------------------
 //
-// Fast LV is the one file-owned command in this domain. It is intentionally
+// Fast LV has two file-owned commands in this domain: a governed project
+// snapshot export and the project-free native process. They are intentionally
 // exercised here before the paired collaboration refusals below.
 
 #[test]
@@ -2067,6 +2068,78 @@ fn design_lv_process_runs_the_native_batch_without_project_or_desktop_state() {
     assert_eq!(result["jobs"][0]["transformer_name"], "T2");
     assert!(result.get("ds_project").is_none());
     assert!(result["jobs"][0].get("ds_project").is_none());
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn design_lv_project_export_refuses_an_existing_artifact_before_auth_or_desktop() {
+    let root = temp_root("native-fast-lv-project-export");
+    std::fs::create_dir_all(&root).unwrap();
+    let output_path = root.join("request.json");
+    std::fs::write(&output_path, b"operator-owned").unwrap();
+    let profile_path = root.join("catalog.json");
+    let profile = |project: &str, gateway: &str, digest: &str| {
+        json!({
+            "firebase": { "project_id": project, "api_key": "firebase-public" },
+            "gateway": { "origin": gateway, "api_key": "gateway-public" },
+            "projects_read": { "method": "GET", "path": "/api/v1/user/projects" },
+            "transformer_context": {
+                "method": "POST",
+                "path": "/api/v1/data",
+                "action": "get_transformers_data",
+                "fields": "context"
+            },
+            "project_forms": {
+                "method": "POST",
+                "path": "/api/v1/project-forms",
+                "action": "activate"
+            },
+            "provenance": { "source_revision": "abc123", "descriptor_sha256": digest }
+        })
+    };
+    std::fs::write(
+        &profile_path,
+        serde_json::to_vec(&json!({
+            "schema_version": "ds.native-client-profiles/v3",
+            "development": true,
+            "profiles": {
+                "stable": profile(
+                    "stable-project",
+                    "https://stable.ue.gateway.dev",
+                    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+                ),
+                "canary": profile(
+                    "canary-project",
+                    "https://ds-canary.ue.gateway.dev",
+                    "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+                )
+            }
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+    let output = output_path.display().to_string();
+    let run = Command::new(env!("CARGO_BIN_EXE_ds"))
+        .args([
+            "design",
+            "lv",
+            "project-export",
+            "--transformer",
+            "T-1",
+            "--out",
+            &output,
+            "--output",
+            "json",
+        ])
+        .env("DS_NATIVE_CLIENT_PROFILE_BUNDLE", &profile_path)
+        .env("DS_DESKTOP_DESCRIPTOR", root.join("stale-desktop.json"))
+        .env("NO_COLOR", "1")
+        .output()
+        .expect("ds binary runs");
+    assert_eq!(run.status.code(), Some(5));
+    let envelope: Value = serde_json::from_slice(&run.stdout).unwrap();
+    assert_eq!(envelope["error"]["code"], "fast_lv_request_output_exists");
+    assert_eq!(std::fs::read(&output_path).unwrap(), b"operator-owned");
     let _ = std::fs::remove_dir_all(&root);
 }
 
@@ -2404,14 +2477,14 @@ fn every_design_command_is_discoverable_without_the_desktop_installed() {
     let commands = index["commands"].as_array().expect("commands");
     assert_eq!(
         commands.len(),
-        26,
+        28,
         "the design domain should expose its whole family: {commands:?}"
     );
     for command in commands {
         let id = command["id"].as_str().unwrap_or("?");
         assert_eq!(
             command["availability"],
-            if id == "design.features.select" {
+            if matches!(id, "design.features.select" | "design.lv.project-export") {
                 "unavailable"
             } else {
                 "available"
@@ -2474,6 +2547,14 @@ fn design_reads_are_reads_and_design_writes_are_governed_writes() {
     let descriptor = ok(&["capabilities", "design.features.select", "--output", "json"]);
     assert_eq!(descriptor["command"]["effect"], "local_auth_state");
     assert_eq!(descriptor["command"]["authority"], "headless_project");
+    let descriptor = ok(&[
+        "capabilities",
+        "design.lv.project-export",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(descriptor["command"]["effect"], "local_file_write");
+    assert_eq!(descriptor["command"]["authority"], "headless_project");
 }
 
 // ---------------------------------------------------------------------------
@@ -2495,6 +2576,7 @@ fn design_collaboration_is_a_complete_headless_project_surface() {
     let actual: BTreeSet<&str> = commands
         .iter()
         .map(|command| command["id"].as_str().expect("id"))
+        .filter(|id| !id.starts_with("design.lv."))
         .collect();
     let expected: BTreeSet<&str> = [
         "design.selection.list",
@@ -2554,6 +2636,9 @@ fn design_collaboration_is_a_complete_headless_project_surface() {
     .collect();
     for command in commands {
         let id = command["id"].as_str().expect("id");
+        if id.starts_with("design.lv.") {
+            continue;
+        }
         if id == "design.features.select" {
             assert_eq!(command["availability"], "unavailable");
             assert_eq!(command["effect"], "local_auth_state");
