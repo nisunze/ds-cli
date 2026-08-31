@@ -204,11 +204,9 @@ pub static COMMAND: Command = Command {
     chapter: ds_cli_contract::spec::Chapter::Catalog,
     summary: "Print or write an MCP host entry for this `ds`.",
     purpose: "\
-Prints this executable's exact stdio entry and user-level host target. Without \
-`--write`, lists supported hosts and proposes the entry. With `--write --yes`, \
-stages and atomically merges only `ds` while preserving sibling servers. It \
-never writes workspace configuration; writing needs `--yes`. Conflict-safe \
-adapters refuse a non-identical existing `ds` entry rather than replacing it.",
+Print this executable's exact stdio entry and user-level target. The default \
+is read-only. `--write --yes` atomically merges only `ds`, preserves siblings, \
+and refuses a conflicting entry. Workspace configuration is never written.",
     effect: Effect::MachineWrite,
     authority: Authority::None,
     execution: Execution::Sync,
@@ -216,11 +214,11 @@ adapters refuse a non-identical existing `ds` entry rather than replacing it.",
         Arg {
             name: "host",
             kind: ArgKind::Value,
-            value: "<vscode|claude-code|claude-desktop|codex|cursor|gemini-cli|windsurf|github-copilot|generic>",
+            value: "<host>",
             required: false,
             default: Some("vscode"),
             choices: &[],
-            summary: "Which host's configuration shape and file to target.",
+            summary: "Target one host listed by the read-only JSON proposal.",
         },
         Arg {
             name: "write",
@@ -250,9 +248,7 @@ adapters refuse a non-identical existing `ds` entry rather than replacing it.",
             summary: "Choose a typed profile.",
         },
     ],
-    output: "\
-Canonical connection descriptor, supported hosts, selected entry and target, \
-build/skill identity, change state, and exact restart handoff.",
+    output: "Connection descriptor, supported hosts, selected entry/target, build identity, change state and restart handoff.",
     examples: &[
         Example {
             command: "ds mcp install --output json",
@@ -262,11 +258,6 @@ build/skill identity, change state, and exact restart handoff.",
         Example {
             command: "ds mcp install --host vscode --write --yes",
             note: "Merge `ds` into the VS Code user mcp.json.",
-            runnable: false,
-        },
-        Example {
-            command: "ds mcp install --host codex --write --yes",
-            note: "Losslessly register `ds` in the Codex user config.",
             runnable: false,
         },
     ],
