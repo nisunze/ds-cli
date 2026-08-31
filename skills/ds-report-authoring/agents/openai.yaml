@@ -1,0 +1,4 @@
+interface:
+  display_name: "Consumer Report Authoring"
+  short_description: "Write reports without internal technology leakage"
+  default_prompt: "Use $ds-report-authoring to write or revise this consumer-facing report so it contains the evidence, findings, limitations, and recommendations but no product name or internal implementation details."

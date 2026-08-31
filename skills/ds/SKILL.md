@@ -83,6 +83,7 @@ acceptance. Never create a gap file, call the API, or bypass `ds`.
 - `ds-pls-cadd-terrain-roundtrip` — PLS-CADD route and terrain delivery.
 - `ds-style-composite` — two-field cartography.
 - `ds-report-consumption` — obtain and read delivered workbooks.
+- `ds-report-authoring` — write consumer-facing reports without product or implementation leakage.
 - `ds-qgis-print-delivery` — governed multi-layout print delivery.
 - `ds-boq-staking-table` — staking tables against a BOQ.
 - `ds-boq-combined-report` — combined workbook against a BOQ.
