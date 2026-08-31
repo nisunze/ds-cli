@@ -12,4 +12,5 @@ publish.workspace = true
 ds-cli-contract = { workspace = true }
 ds-cli-skills = { workspace = true }
 serde_json = { workspace = true }
+toml_edit = { workspace = true }
 libc = { workspace = true }

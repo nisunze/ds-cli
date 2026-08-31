@@ -58,6 +58,10 @@ The receipt's `source_sha` must match `ds doctor`'s skill-bundle SHA.
 On Windows, `--host claude-desktop` targets Claude Desktop's verified
 user-level `mcpServers` configuration and Claude Desktop launches `ds.exe`
 directly after restart; VS Code is not involved.
+For Codex, first inspect `ds mcp install --host codex --output json`, then run
+`ds mcp install --host codex --write --yes`. It preserves unrelated TOML and
+refuses a conflicting `mcp_servers.ds`; after a changed write, fully quit and
+restart Codex and begin a new agent session. VS Code is not involved.
 
 ## MCP-only bootstrap
 

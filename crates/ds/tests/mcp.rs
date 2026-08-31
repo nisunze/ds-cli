@@ -390,6 +390,54 @@ fn install_discovery_is_blind_but_writing_stays_gated() {
 }
 
 #[test]
+fn codex_install_plans_writes_and_reports_the_restart_handoff_without_vscode() {
+    let home = TestDir::new("codex-install");
+    let path = home.0.join(".codex").join("config.toml");
+    let invoke = |extra: &[&str]| {
+        let output = Command::new(env!("CARGO_BIN_EXE_ds"))
+            .args(["mcp", "install", "--host", "codex"])
+            .args(extra)
+            .args(["--output", "json"])
+            .env("HOME", &home.0)
+            .env("USERPROFILE", &home.0)
+            .output()
+            .expect("ds runs");
+        let envelope: Value = serde_json::from_slice(&output.stdout).expect("one CLI envelope");
+        (output.status, envelope)
+    };
+
+    let (status, planned) = invoke(&[]);
+    assert!(status.success());
+    assert_eq!(planned["data"]["path"], path.display().to_string());
+    assert_eq!(planned["data"]["change"], "would_create");
+    assert_eq!(planned["data"]["written"], false);
+    assert_eq!(planned["data"]["restart_required"], false);
+    assert!(!path.exists(), "the proposal must remain read-only");
+
+    let (status, written) = invoke(&["--write", "--yes"]);
+    assert!(status.success());
+    assert_eq!(written["data"]["change"], "created");
+    assert_eq!(written["data"]["written"], true);
+    assert_eq!(written["data"]["changed"], true);
+    assert_eq!(written["data"]["restart_required"], true);
+    assert!(
+        written["data"]["restart_handoff"]
+            .as_str()
+            .unwrap()
+            .contains("fully quit and restart Codex")
+    );
+    let config = fs::read_to_string(&path).expect("Codex config");
+    assert!(config.contains("[mcp_servers.ds]"));
+    assert!(config.contains("\"mcp\", \"serve\""));
+
+    let (status, repeated) = invoke(&["--write", "--yes"]);
+    assert!(status.success());
+    assert_eq!(repeated["data"]["change"], "unchanged");
+    assert_eq!(repeated["data"]["changed"], false);
+    assert_eq!(repeated["data"]["restart_required"], false);
+}
+
+#[test]
 fn by_command_profiles_still_partition_the_live_registry() {
     // F36: chapter membership is declared once, on the command. Split
     // profiles are not — they hand-list command ids, and an id nobody added

@@ -98,6 +98,12 @@ pub(crate) const HOST_WRITE_UNSUPPORTED: Refusal = Refusal {
 
 pub(crate) const CONFIG_UNWRITABLE: Refusal = Refusal {
     code: "mcp_config_unwritable",
-    when: "the host's configuration file could not be read, parsed as JSON, or written",
+    when: "the host's configuration file could not be read, parsed in its verified JSON or TOML format, or written",
     remedy: "read the reported path; fix or remove a malformed file, then re-run, or copy the printed entry by hand",
+};
+
+pub(crate) const CONFIG_CONFLICT: Refusal = Refusal {
+    code: "mcp_config_conflict",
+    when: "the host configuration already owns a `ds` MCP entry that differs from the exact proposal",
+    remedy: "inspect the existing and proposed entries, then remove or rename the existing `ds` entry before retrying; DS never overwrites a conflict",
 };

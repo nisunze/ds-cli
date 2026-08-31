@@ -20,7 +20,7 @@ The verified adapters are:
 | `vscode` | `servers` | platform VS Code user `mcp.json` | yes |
 | `claude-code` | `mcpServers` | `~/.claude.json` | yes |
 | `claude-desktop` | `mcpServers` | Windows `%APPDATA%\Claude\claude_desktop_config.json` | yes |
-| `codex` | `mcp_servers` | `~/.codex/config.toml` | no; print only |
+| `codex` | `mcp_servers` | `~/.codex/config.toml` | yes; lossless TOML merge |
 | `cursor` | `mcpServers` | `~/.cursor/mcp.json` | yes |
 | `generic` | `mcpServers` | none | no; print only |
 
@@ -34,6 +34,12 @@ target, verifies that the source did not race, retains a backup, and renames
 atomically. Repeating the same install is idempotent. Malformed roots,
 symlinks/reparse points, special files, unsupported writes, unknown hosts,
 unresolved profile paths, and executable/host OS mismatches are refusals.
+
+The Codex adapter applies the same target, staging, race, backup and atomicity
+policy to TOML. It losslessly adds `[mcp_servers.ds]`, preserving unrelated
+tables, comments and formatting. An existing exact command/args match is
+idempotent. A different, partial or structurally ambiguous `ds` entry is a
+conflict with existing/proposed previews and is never overwritten.
 
 Adding a host requires a verified user-level path and root, a table entry,
 entry/path/platform/merge tests, reference documentation, and LF-normalized

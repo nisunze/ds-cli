@@ -261,6 +261,7 @@ ds mcp install --host claude-desktop --output json # Windows Claude Desktop prop
 ds mcp install --write --yes                # merge it into the VS Code user profile
 ds mcp install --host claude-code           # other hosts: claude-code, cursor, codex, generic
 ds mcp install --host claude-code --exposure commands --profile pls --write --yes
+ds mcp install --host codex --write --yes   # losslessly add [mcp_servers.ds]
 ```
 
 `mcp.install` remains `machine_write`, but its declared `--write` switch is the
@@ -289,10 +290,14 @@ starts `ds.exe` directly after a restart; VS Code need not be installed or
 running. See the [adapter contract](../contracts/mcp-client-adapter-contract.md)
 and [v3 migration note](../migration/mcp-client-adapters.md).
 
-Codex keeps TOML: `install --host codex` prints the data; translate it into
-`~/.codex/config.toml` under `[mcp_servers.ds]`. The install receipt and MCP
-diagnostics identity report this executable's source SHA; it must match the
-skill-bundle SHA reported by `ds doctor`.
+Codex keeps TOML. The read-only `install --host codex` proposal verifies
+`~/.codex/config.toml` and reports whether it would create, merge, or leave an
+exact match unchanged. `--write --yes` losslessly adds `[mcp_servers.ds]`,
+preserving unrelated tables, comments and formatting. A non-identical existing
+`ds` entry is shown as a conflict and never overwritten. A changed registration
+reports `restart_required: true`: fully quit and restart Codex, then start a new
+agent session. The install receipt and MCP diagnostics identity report this
+executable's source SHA; it must match the skill-bundle SHA from `ds doctor`.
 
 ## Server migration note
 
