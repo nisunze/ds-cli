@@ -48,7 +48,11 @@ pub mod set;
 pub mod upload;
 pub mod upload_stage;
 pub mod upload_to_local;
+pub mod version_compare;
 pub mod version_create;
+pub mod version_list;
+pub mod version_play;
+mod version_shared;
 
 use ds_cli_contract::Inputs;
 use ds_cli_contract::outcome::Failure;

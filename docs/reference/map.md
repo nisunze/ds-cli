@@ -45,6 +45,24 @@ both `staged: false` and `persisted: false`. Reopening the active transformer
 is idempotent. Opening a different transformer over a dirty room refuses with
 `dirty_room`; it never turns navigation into an implicit save or discard.
 
+Retained transformer history has one similarly closed read-only workflow:
+
+```bash
+ds map design version list --transformer agasharu --output json
+ds map design version play --transformer agasharu --version v2 --output json
+ds map design version compare --transformer agasharu --from v1 --to head --output json
+```
+
+`version list` returns bounded metadata only and keeps
+`playback_available=false` explicit for legacy rows that predate immutable
+snapshots. `version play` asks the application to render one playable snapshot
+in a shielded `version_playback` context; it reports `read_only: true`, map
+readiness, and no staged or persisted mutation. `version compare` pins its
+left version and either a right version or the observed saved-head generation,
+then opens the application-owned comparison dialog. Only exact aggregate and
+per-layer counts cross the bridge. Neither command transports features,
+restores a snapshot into a working room, or offers a force path.
+
 That split is the application's, and it exists because
 `drafting_status=approved` is what stops the kernel from redesigning an
 installed transformer. Marking an as-built network approved is the most

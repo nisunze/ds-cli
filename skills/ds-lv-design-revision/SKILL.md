@@ -102,6 +102,17 @@ pinned project layers.
 
 ## Begin a version deliberately; save the working copy separately
 
+Before choosing a baseline, discover `map.design.version.list` and list the
+exact transformer. Treat `playback_available` as a capability fact: legacy
+metadata-only rows remain valid history but cannot be opened or compared as
+content. To inspect a playable baseline, use `map.design.version.play` with its
+exact returned `v<number>` and require `read_only=true`, `map_ready=true`,
+`staged=false`, and `persisted=false`. To measure change, use
+`map.design.version.compare --from <vN> --to <vN|head>` and retain the pinned
+left/right descriptors plus aggregate and per-layer counts. Comparison is
+evidence, not restore: it never sends features through the CLI, edits a room,
+or authorizes force replacement.
+
 Before entering a new engineering edit, decide explicitly whether this work
 needs a new version. If it does, require a clean saved room and run `ds map
 design version begin --transformer <name> --reason <text> --yes`. The caller

@@ -133,10 +133,10 @@ impl Profile {
             // single-entry create belong to the same selected-project Survey
             // workflow. The count includes both bootstrap tools.
             Self::SurveyProjects => 18,
-            // Fifteen governed design-edit leaves plus the two bootstrap
-            // tools. `map.design.open` makes visible context entry explicit;
-            // it does not justify removing an established edit operation.
-            Self::DesignEdit => 17,
+            // Eighteen governed design-edit leaves plus the two bootstrap
+            // tools. Version list/play/compare project the same bounded
+            // desktop-owned history workflow without transporting features.
+            Self::DesignEdit => 20,
             _ => 16,
         }
     }
@@ -333,6 +333,9 @@ const DESIGN_EDIT_COMMANDS: &[&str] = &[
     "map.design.geometry",
     "map.design.setup",
     "map.design.version.begin",
+    "map.design.version.list",
+    "map.design.version.play",
+    "map.design.version.compare",
     "map.design.upload.inspect",
     "map.design.upload.stage",
 ];

@@ -867,6 +867,57 @@ fn map_design_open_is_projected_by_catalog_chapter_and_typed_profile() {
 }
 
 #[test]
+fn map_design_version_history_projects_through_catalog_chapter_and_typed_profile() {
+    let ids = [
+        "map.design.version.list",
+        "map.design.version.play",
+        "map.design.version.compare",
+    ];
+    let mut calls = Vec::new();
+    for (index, id) in ids.iter().enumerate() {
+        calls.push(json!({ "jsonrpc":"2.0", "id":index * 2 + 1, "method":"tools/call", "params":{ "name":"ds_catalog", "arguments":{ "command":id } } }));
+        calls.push(json!({ "jsonrpc":"2.0", "id":index * 2 + 2, "method":"tools/call", "params":{ "name":"ds_design", "arguments":{ "operation":"describe", "command":id } } }));
+    }
+    let (responses, _) = mcp(&["--exposure", "chapters"], &calls);
+    for (index, id) in ids.iter().enumerate() {
+        let catalog_id = (index * 2 + 1) as i64;
+        let chapter_id = (index * 2 + 2) as i64;
+        assert_eq!(
+            response(&responses, catalog_id)["result"]["structuredContent"]["next"]["tool"],
+            "ds_design",
+            "{id}",
+        );
+        assert_eq!(
+            response(&responses, chapter_id)["result"]["structuredContent"],
+            cli(&["capabilities", id, "--output", "json"]),
+            "{id}",
+        );
+    }
+
+    let (profile, _) = mcp(
+        &["--exposure", "commands", "--profile", "design-edit"],
+        &[json!({ "jsonrpc":"2.0", "id":20, "method":"tools/list" })],
+    );
+    let tools = response(&profile, 20)["result"]["tools"]
+        .as_array()
+        .expect("tools");
+    for (name, required) in [
+        ("map_design_version_list", json!(["transformer"])),
+        ("map_design_version_play", json!(["transformer", "version"])),
+        (
+            "map_design_version_compare",
+            json!(["transformer", "from", "to"]),
+        ),
+    ] {
+        let tool = tools
+            .iter()
+            .find(|tool| tool["name"] == name)
+            .unwrap_or_else(|| panic!("missing typed leaf {name}"));
+        assert_eq!(tool["inputSchema"]["required"], required, "{name}");
+    }
+}
+
+#[test]
 fn chapter_routing_refuses_escape_and_confirmation_misuse() {
     let (responses, _) = mcp(
         &["--exposure", "chapters"],
@@ -946,7 +997,7 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
             .expect("tools");
         let maximum = match profile {
             "survey-projects" => 18,
-            "design-edit" => 17,
+            "design-edit" => 20,
             _ => 16,
         };
         assert!(

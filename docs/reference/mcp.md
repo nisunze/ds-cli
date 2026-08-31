@@ -66,10 +66,13 @@ commands are unavailable and authority, effects, confirmation, output, and
 refusals are unchanged. Plain `--exposure commands` retains the previous
 all-command publication temporarily for compatibility.
 
-The `design-edit` profile includes the same canonical `map.design.open` leaf
-as the broad Design chapter router. Its MCP invocation asks the paired
-application itself to navigate and wait for readiness; no VS Code or other UI
-host mediates that transition.
+The `design-edit` profile includes the same canonical `map.design.open` and
+`map.design.version.list|play|compare` leaves as the broad Design chapter
+router. Their MCP invocations ask the paired application itself to navigate,
+render playback, or open its bounded comparison and wait for readiness; no VS
+Code or other UI host mediates those transitions. Version feature data remains
+inside the application, and the MCP receipts expose metadata or aggregate
+counts only.
 
 `auth-context` is the principal handoff for MCP hosts after a person signs in
 through a trusted terminal. It publishes native identity status, fresh visible

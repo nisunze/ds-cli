@@ -560,6 +560,21 @@ static MAP_ENTRIES: &[Entry] = &[
         render: ds_cli_map::design::version_create::render,
     },
     Entry {
+        command: &ds_cli_map::design::version_list::COMMAND,
+        handler: ds_cli_map::design::version_list::run,
+        render: ds_cli_map::design::version_list::render,
+    },
+    Entry {
+        command: &ds_cli_map::design::version_play::COMMAND,
+        handler: ds_cli_map::design::version_play::run,
+        render: ds_cli_map::design::version_play::render,
+    },
+    Entry {
+        command: &ds_cli_map::design::version_compare::COMMAND,
+        handler: ds_cli_map::design::version_compare::run,
+        render: ds_cli_map::design::version_compare::render,
+    },
+    Entry {
         command: &ds_cli_map::design::process::COMMAND,
         handler: ds_cli_map::design::process::run,
         render: ds_cli_map::design::process::render,

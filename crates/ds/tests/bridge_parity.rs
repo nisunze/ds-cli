@@ -349,6 +349,34 @@ fn design_open_has_one_exact_argument_and_keeps_typed_safety_refusals() {
 }
 
 #[test]
+fn design_version_history_has_closed_operations_and_exact_arguments() {
+    let Some(app) = app() else {
+        skip("the ds-web sibling repository is not on disk");
+        return;
+    };
+    for (operation, expected) in [
+        (&ds_cli_map::DESIGN_VERSION_LIST, ["transformer"].as_slice()),
+        (
+            &ds_cli_map::DESIGN_VERSION_PLAY,
+            ["transformer", "version"].as_slice(),
+        ),
+        (
+            &ds_cli_map::DESIGN_VERSION_COMPARE,
+            ["transformer", "from", "to"].as_slice(),
+        ),
+    ] {
+        assert_eq!(operation.arguments, expected, "{}", operation.operation);
+        let accepted = quoted_contract_items(operation_contract(&app.map, operation.operation));
+        let declared = operation
+            .arguments
+            .iter()
+            .map(|argument| (*argument).to_string())
+            .collect::<BTreeSet<_>>();
+        assert_eq!(accepted, declared, "{}", operation.operation);
+    }
+}
+
+#[test]
 fn every_survey_control_plane_command_has_one_api_only_owner_and_exact_arguments() {
     let Some(app) = app() else {
         skip("the ds-web sibling repository is not on disk");
