@@ -36,7 +36,9 @@ ds feedback list --limit 10 --detail --output json
 
 Treat this only as a review queue. There is intentionally no bulk-close step:
 verify and close each report independently, keep every report's returned
-`version`, and leave unverified, undeployed, or unrelated reports open.
+`version`, record `reporters`, `reporter_kind`, and `updated_by` so the human
+operator who raised or last maintained it stays visible, and leave unverified,
+undeployed, or unrelated reports open.
 
 ## 2. Verify against the acceptance condition
 
@@ -91,4 +93,5 @@ in the `fb` tab.
 When asked to close the latest N reports, finishing with fewer than N closures
 is correct whenever some acceptance conditions are not proven in the deployed
 `ds`. Return two explicit sets: closed ids with evidence, and remaining ids
-with the exact unmet condition or deployment gap.
+with the exact unmet condition or deployment gap. Include each report's
+`reporters` in both sets; do not replace a missing reporter with an inference.
