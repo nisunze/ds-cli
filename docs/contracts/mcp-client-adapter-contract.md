@@ -55,3 +55,17 @@ adapter while its CLI/global-storage schema remains unsettled.
 Adding a host requires a verified user-level path and root, a table entry,
 entry/path/platform/merge tests, reference documentation, and LF-normalized
 sources. It must not change `mcp serve` or create a second MCP schema.
+
+## Adapter verification sources
+
+The user paths and dialects for the added guarded adapters are pinned to their
+client owners' documentation:
+
+- [Gemini CLI MCP configuration](https://github.com/google-gemini/gemini-cli/blob/main/docs/tools/mcp-server.md)
+- [Windsurf Cascade MCP configuration](https://docs.windsurf.com/windsurf/cascade/mcp)
+- [GitHub Copilot CLI MCP configuration](https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/add-mcp-servers)
+
+[Cline's current configuration documentation](https://docs.cline.bot/getting-started/config)
+names moving global storage under `~/.cline/data/settings`; it does not yet
+justify a DS-owned blind merge adapter. Its supported `cline mcp` surface can
+be reconsidered when that on-disk contract is explicit and stable.
