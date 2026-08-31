@@ -824,12 +824,12 @@ fn an_unbounded_portfolio_publication_reason_is_a_contract_mismatch() {
 }
 
 #[test]
-fn solar_portfolio_start_descriptor_exposes_the_explicit_contract() {
+fn solar_portfolio_start_descriptor_exposes_only_membership_and_graph_strategy() {
     let (envelope, code, stdout, stderr) =
         ds(&["capabilities", "solar.run.start", "--output", "json"]);
     assert_eq!(code, 0, "{stdout}{stderr}");
     let command = &envelope["data"]["command"];
-    assert_eq!(command["contract"], 3);
+    assert_eq!(command["contract"], 4);
     let inputs = command["inputs"].as_array().expect("start inputs");
     let input = |name: &str| {
         inputs
@@ -838,14 +838,7 @@ fn solar_portfolio_start_descriptor_exposes_the_explicit_contract() {
             .unwrap_or_else(|| panic!("missing --{name} from the command descriptor"))
     };
 
-    for name in [
-        "membership-revision",
-        "currency",
-        "project-years",
-        "discount-rate",
-        "representative-city",
-        "language",
-    ] {
+    for name in ["membership-revision", "graph-strategy"] {
         assert_eq!(input(name)["kind"], "value");
         assert!(
             input(name)["summary"]
@@ -855,12 +848,98 @@ fn solar_portfolio_start_descriptor_exposes_the_explicit_contract() {
             "--{name} must disclose its conditional scope"
         );
     }
-    assert_eq!(input("language")["choices"], json!(["fr", "en"]));
-    assert_eq!(input("report")["kind"], "repeated");
-    assert_eq!(
-        input("report")["choices"],
-        json!(["apd", "network", "plant", "financial"])
-    );
+    for retired in [
+        "currency",
+        "project-years",
+        "discount-rate",
+        "representative-city",
+        "language",
+        "report",
+    ] {
+        assert!(
+            inputs.iter().all(|input| input["name"] != retired),
+            "calculation launch must not teach retired --{retired} input"
+        );
+    }
+
+    let help = Command::new(env!("CARGO_BIN_EXE_ds"))
+        .args(["solar", "run", "start", "--help"])
+        .env("NO_COLOR", "1")
+        .output()
+        .expect("solar run start help runs");
+    assert!(help.status.success());
+    let help = String::from_utf8_lossy(&help.stdout);
+    assert!(help.contains("--graph-strategy"), "{help}");
+    for retired in [
+        "--currency",
+        "--project-years",
+        "--discount-rate",
+        "--representative-city",
+        "--language",
+        "--report",
+    ] {
+        assert!(
+            !help.contains(retired),
+            "help still teaches {retired}: {help}"
+        );
+    }
+}
+
+#[test]
+fn solar_portfolio_start_canonicalises_each_graph_strategy_on_the_wire() {
+    let bridge = bridge(vec![
+        (
+            "solar.run.start",
+            json!({ "status": "started", "run_id": "run-first", "contexts": ["a", "b"] }),
+        ),
+        (
+            "solar.run.start",
+            json!({ "status": "started", "run_id": "run-round", "contexts": ["a", "b"] }),
+        ),
+        (
+            "solar.run.start",
+            json!({ "status": "started", "run_id": "run-member", "contexts": ["a", "b"] }),
+        ),
+    ]);
+    let descriptor = bridge.descriptor.to_string_lossy().into_owned();
+    for strategy in ["first", "round-robin", "city:b"] {
+        let (_envelope, code, stdout, stderr) = ds(&[
+            "solar",
+            "run",
+            "start",
+            "--portfolio",
+            "pf-1",
+            "--membership-revision",
+            MEMBERSHIP_REVISION,
+            "--graph-strategy",
+            strategy,
+            "--desktop-descriptor",
+            &descriptor,
+            "--output",
+            "json",
+        ]);
+        assert_eq!(code, 0, "{stdout}{stderr}");
+    }
+    let requests = finish(bridge);
+    assert_eq!(requests[0]["arguments"]["graph_strategy"], "first");
+    assert_eq!(requests[1]["arguments"]["graph_strategy"], "round_robin");
+    assert_eq!(requests[2]["arguments"]["graph_strategy"], "city:b");
+    for request in requests {
+        let arguments = request["arguments"].as_object().expect("arguments object");
+        for retired in [
+            "currency",
+            "project_years",
+            "discount_rate",
+            "representative_city",
+            "language",
+            "report_intents",
+        ] {
+            assert!(
+                !arguments.contains_key(retired),
+                "wire still sent {retired}"
+            );
+        }
+    }
 }
 
 #[test]
@@ -995,20 +1074,8 @@ fn solar_workflow_reads_import_and_portfolio_batches_use_closed_operations() {
             "pf-1",
             "--membership-revision",
             MEMBERSHIP_REVISION,
-            "--currency",
-            "XAF",
-            "--project-years",
-            "25",
-            "--discount-rate",
-            "0.08",
-            "--representative-city",
-            "a",
-            "--language",
-            "fr",
-            "--report",
-            "apd",
-            "--report",
-            "financial",
+            "--graph-strategy",
+            "city:a",
             "--no-charts",
             "--concurrency",
             "4",
@@ -1064,12 +1131,7 @@ fn solar_workflow_reads_import_and_portfolio_batches_use_closed_operations() {
         json!({
             "portfolio": "pf-1",
             "membership_revision": MEMBERSHIP_REVISION,
-            "currency": "XAF",
-            "project_years": 25,
-            "discount_rate": 0.08,
-            "representative_city": "a",
-            "language": "fr",
-            "report_intents": ["apd", "financial"],
+            "graph_strategy": "city:a",
             "render_charts": false,
             "concurrency": 4,
             "serial": true,
@@ -2445,13 +2507,25 @@ fn paired_run_refuses_incomplete_or_mixed_portfolio_launches_before_pairing() {
                 "start",
                 "--city",
                 "rw-kigali",
-                "--currency",
-                "XAF",
+                "--graph-strategy",
+                "first",
             ],
             "portfolio_only_input",
         ),
         (
             vec!["solar", "run", "start", "--portfolio", "pf-1"],
+            "missing_portfolio_input",
+        ),
+        (
+            vec![
+                "solar",
+                "run",
+                "start",
+                "--portfolio",
+                "pf-1",
+                "--membership-revision",
+                MEMBERSHIP_REVISION,
+            ],
             "missing_portfolio_input",
         ),
         (
@@ -2475,10 +2549,10 @@ fn paired_run_refuses_incomplete_or_mixed_portfolio_launches_before_pairing() {
                 "pf-1",
                 "--membership-revision",
                 MEMBERSHIP_REVISION,
-                "--currency",
-                "xaf",
+                "--graph-strategy",
+                "random",
             ],
-            "invalid_currency",
+            "invalid_graph_strategy",
         ),
         (
             vec![
@@ -2489,12 +2563,9 @@ fn paired_run_refuses_incomplete_or_mixed_portfolio_launches_before_pairing() {
                 "pf-1",
                 "--membership-revision",
                 MEMBERSHIP_REVISION,
-                "--currency",
-                "XAF",
-                "--project-years",
-                "101",
+                "--graph-strategy=city:",
             ],
-            "invalid_project_years",
+            "invalid_graph_strategy",
         ),
         (
             vec![
@@ -2505,81 +2576,10 @@ fn paired_run_refuses_incomplete_or_mixed_portfolio_launches_before_pairing() {
                 "pf-1",
                 "--membership-revision",
                 MEMBERSHIP_REVISION,
-                "--currency",
-                "XAF",
-                "--project-years",
-                "25",
-                "--discount-rate",
-                "NaN",
+                "--graph-strategy",
+                "city: padded ",
             ],
-            "invalid_discount_rate",
-        ),
-        (
-            vec![
-                "solar",
-                "run",
-                "start",
-                "--portfolio",
-                "pf-1",
-                "--membership-revision",
-                MEMBERSHIP_REVISION,
-                "--currency",
-                "XAF",
-                "--project-years",
-                "25",
-                "--discount-rate",
-                "0.08",
-                "--representative-city=",
-            ],
-            "invalid_representative_city",
-        ),
-        (
-            vec![
-                "solar",
-                "run",
-                "start",
-                "--portfolio",
-                "pf-1",
-                "--membership-revision",
-                MEMBERSHIP_REVISION,
-                "--currency",
-                "XAF",
-                "--project-years",
-                "25",
-                "--discount-rate",
-                "0.08",
-                "--representative-city",
-                "rw-kigali",
-                "--language",
-                "fr",
-            ],
-            "missing_portfolio_input",
-        ),
-        (
-            vec![
-                "solar",
-                "run",
-                "start",
-                "--portfolio",
-                "pf-1",
-                "--membership-revision",
-                MEMBERSHIP_REVISION,
-                "--currency",
-                "XAF",
-                "--project-years",
-                "25",
-                "--discount-rate",
-                "0.08",
-                "--representative-city",
-                "rw-kigali",
-                "--language",
-                "fr",
-                "--report",
-                "apd",
-                "--report",
-                "apd",
-            ],
-            "duplicate_report_intent",
+            "invalid_graph_strategy",
         ),
     ];
 

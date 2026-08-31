@@ -5,7 +5,7 @@
 //! use that id to observe, read, or cancel the same local run. The commands
 //! below do not reimplement calculation or reach into IndexedDB.
 
-use std::{collections::BTreeSet, time::Duration};
+use std::time::Duration;
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{Arg, Authority, Chapter, Command, Effect, Example, Execution};
@@ -52,9 +52,9 @@ const PUBLICATION_REMEDY: &str = "the sealed local result is unaffected; clear t
 pub static START_COMMAND: Command = Command {
     id: "solar.run.start",
     path: &["solar", "run", "start"],
-    contract: 3,
+    contract: 4,
     summary: "Start an explicit paired city or Solar portfolio run.",
-    purpose: "Starts the paired application's local native Solar lifecycle after city inputs have been prepared. A city run names one or more prepared contexts. A portfolio run names one governed portfolio, pins the membership revision returned by portfolio list, and explicitly supplies its currency, project years, discount rate, representative member, language and report intents; none are inferred by the CLI. It returns a run id immediately, while the desktop retains ownership of the selected project, cached inputs and output workspace.",
+    purpose: "Starts the paired application's local native Solar lifecycle after city inputs have been prepared. A city run names one or more prepared contexts. A portfolio run names one governed portfolio, pins the exact ordered membership returned by portfolio list, and chooses only how representative graphs use that membership: first member, round-robin, or one exact member. Currency, project horizon and discount rate remain governed prepared-input facts; language and report intent belong to later report generation rather than calculation launch. It returns a run id immediately, while the desktop retains ownership of the selected project, cached inputs and output workspace.",
     chapter: Chapter::Solar,
     effect: Effect::LocalFileWrite,
     authority: Authority::DesktopUser,
@@ -76,37 +76,10 @@ pub static START_COMMAND: Command = Command {
             "Portfolio-only exact membership revision returned by `solar portfolio list`; required with --portfolio.",
         ),
         Arg::value(
-            "currency",
-            "<ISO>",
-            "Portfolio-only three-letter uppercase ASCII currency; required with --portfolio.",
+            "graph-strategy",
+            "<first|round-robin|city:id>",
+            "Portfolio-only representative graph strategy; required with --portfolio. Use `city:<exact-member-id>` to pin one member.",
         ),
-        Arg::value(
-            "project-years",
-            "<n>",
-            "Portfolio-only project horizon from 1 through 100; required with --portfolio.",
-        ),
-        Arg::value(
-            "discount-rate",
-            "<rate>",
-            "Portfolio-only finite discount rate from 0 inclusive to 1 exclusive; required with --portfolio.",
-        ),
-        Arg::value(
-            "representative-city",
-            "<id>",
-            "Portfolio-only representative member id; required with --portfolio.",
-        ),
-        Arg::value(
-            "language",
-            "<fr|en>",
-            "Portfolio-only report language; required with --portfolio.",
-        )
-        .choices(&["fr", "en"]),
-        Arg::repeated(
-            "report",
-            "<intent>",
-            "Portfolio-only report intent. Repeat at least once with --portfolio.",
-        )
-        .choices(&["apd", "network", "plant", "financial"]),
         Arg::switch("no-charts", "Do not render chart artifacts for this run."),
         Arg::value(
             "concurrency",
@@ -133,8 +106,8 @@ pub static START_COMMAND: Command = Command {
             runnable: false,
         },
         Example {
-            command: "ds solar run start --portfolio aderm --membership-revision sha256:<digest> --currency XAF --project-years 25 --discount-rate 0.08 --representative-city kigali --language fr --report apd --report financial --output json",
-            note: "Starts the exact listed membership with no inferred financial or report assumptions.",
+            command: "ds solar run start --portfolio aderm --membership-revision sha256:<digest> --graph-strategy round-robin --output json",
+            note: "Starts the exact listed membership and rotates representative graphs across its ordered members.",
             runnable: false,
         },
     ],
@@ -284,36 +257,11 @@ pub fn start(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         let portfolio = require_exact_value(portfolio, "portfolio", "invalid_run_selection")?;
         let membership_revision =
             parse_membership_revision(portfolio_value(inputs, "membership-revision")?)?;
-        let currency = portfolio_value(inputs, "currency")?;
-        let currency = parse_currency(currency)?;
-        let project_years = parse_project_years(portfolio_value(inputs, "project-years")?)?;
-        let discount_rate = parse_discount_rate(portfolio_value(inputs, "discount-rate")?)?;
-        let representative_city = require_exact_value(
-            portfolio_value(inputs, "representative-city")?,
-            "representative-city",
-            "invalid_representative_city",
-        )?;
-        let language = portfolio_value(inputs, "language")?;
-        let report_intents = inputs.repeated("report");
-        if report_intents.is_empty() {
-            return Err(missing_portfolio_input("report"));
-        }
-        if let Some(duplicate) = first_duplicate(report_intents) {
-            return Err(Failure::invalid(
-                "duplicate_report_intent",
-                format!("portfolio report intent `{duplicate}` was requested more than once"),
-            )
-            .remedy("pass each --report intent at most once"));
-        }
+        let graph_strategy = parse_graph_strategy(portfolio_value(inputs, "graph-strategy")?)?;
 
         arguments.insert("portfolio".into(), json!(portfolio));
         arguments.insert("membership_revision".into(), json!(membership_revision));
-        arguments.insert("currency".into(), json!(currency));
-        arguments.insert("project_years".into(), json!(project_years));
-        arguments.insert("discount_rate".into(), json!(discount_rate));
-        arguments.insert("representative_city".into(), json!(representative_city));
-        arguments.insert("language".into(), json!(language));
-        arguments.insert("report_intents".into(), json!(report_intents));
+        arguments.insert("graph_strategy".into(), json!(graph_strategy));
     } else {
         reject_portfolio_inputs_for_city(inputs)?;
         arguments.insert("contexts".into(), json!(cities));
@@ -446,30 +394,20 @@ fn parse_concurrency(value: &str) -> Result<u8, Failure> {
         })
 }
 
-const PORTFOLIO_ONLY_VALUE_INPUTS: &[&str] = &[
-    "membership-revision",
-    "currency",
-    "project-years",
-    "discount-rate",
-    "representative-city",
-    "language",
-];
+const PORTFOLIO_ONLY_VALUE_INPUTS: &[&str] = &["membership-revision", "graph-strategy"];
 
 fn reject_portfolio_inputs_for_city(inputs: &Inputs) -> Result<(), Failure> {
-    let mut supplied = PORTFOLIO_ONLY_VALUE_INPUTS
+    let supplied = PORTFOLIO_ONLY_VALUE_INPUTS
         .iter()
         .copied()
         .filter(|name| inputs.value(name).is_some())
         .collect::<Vec<_>>();
-    if !inputs.repeated("report").is_empty() {
-        supplied.push("report");
-    }
     if supplied.is_empty() {
         return Ok(());
     }
     Err(Failure::invalid(
         "portfolio_only_input",
-        "portfolio assumptions and report intents cannot be used with --city",
+        "portfolio membership and graph strategy cannot be used with --city",
     )
     .remedy("remove the portfolio-only flags, or replace --city with one --portfolio")
     .detail(json!({ "inputs": supplied })))
@@ -509,17 +447,6 @@ fn require_exact_value<'a>(
     )))
 }
 
-fn parse_currency(value: &str) -> Result<&str, Failure> {
-    if value.len() == 3 && value.bytes().all(|byte| byte.is_ascii_uppercase()) {
-        return Ok(value);
-    }
-    Err(Failure::invalid(
-        "invalid_currency",
-        "--currency must be exactly three uppercase ASCII letters",
-    )
-    .remedy("pass an explicit three-letter currency such as XAF or USD"))
-}
-
 fn parse_membership_revision(value: &str) -> Result<&str, Failure> {
     if value.len() == 71
         && value.starts_with("sha256:")
@@ -536,39 +463,26 @@ fn parse_membership_revision(value: &str) -> Result<&str, Failure> {
     .remedy("list portfolios again and pass the selected row's exact membership_revision"))
 }
 
-fn parse_project_years(value: &str) -> Result<u8, Failure> {
-    value
-        .parse::<u8>()
-        .ok()
-        .filter(|years| (1..=100).contains(years))
-        .ok_or_else(|| {
-            Failure::invalid(
-                "invalid_project_years",
-                "--project-years must be a whole number from 1 through 100",
-            )
-            .remedy("pass an explicit integer from 1 through 100")
-        })
-}
-
-fn parse_discount_rate(value: &str) -> Result<f64, Failure> {
-    value
-        .parse::<f64>()
-        .ok()
-        .filter(|rate| rate.is_finite() && *rate >= 0.0 && *rate < 1.0)
-        .ok_or_else(|| {
-            Failure::invalid(
-                "invalid_discount_rate",
-                "--discount-rate must be finite, at least 0 and less than 1",
-            )
-            .remedy("pass an explicit decimal rate such as 0.08")
-        })
-}
-
-fn first_duplicate(values: &[String]) -> Option<&str> {
-    let mut seen = BTreeSet::new();
-    values
-        .iter()
-        .find_map(|value| (!seen.insert(value.as_str())).then_some(value.as_str()))
+fn parse_graph_strategy(value: &str) -> Result<&str, Failure> {
+    if matches!(value, "first" | "round-robin") {
+        return Ok(if value == "round-robin" {
+            "round_robin"
+        } else {
+            value
+        });
+    }
+    if let Some(city_id) = value.strip_prefix("city:")
+        && !city_id.is_empty()
+        && city_id.trim() == city_id
+        && city_id.len() <= 128
+    {
+        return Ok(value);
+    }
+    Err(Failure::invalid(
+        "invalid_graph_strategy",
+        "--graph-strategy must be first, round-robin, or city:<exact-member-id>",
+    )
+    .remedy("choose first, round-robin, or prefix one exact portfolio member id with city:"))
 }
 
 pub fn render_start(data: &Value) -> String {

@@ -47,10 +47,11 @@ Discover the portfolio-capable Solar run command and invoke it with the frozen
 portfolio id and exact membership revision returned by the selected list row.
 If the desktop reports that the revision changed, list again and ask the user
 to confirm the new ordered membership; never retry with the new revision
-silently. Supply currency, horizon, representative strategy, report
-intents, or other assumptions only when the live descriptor explicitly offers
-them and the user or governed portfolio supplies the values. Never invent
-XAF, 25 years, a representative city, or report defaults.
+silently. Choose exactly one graph strategy declared by the live contract:
+first member, round-robin, or one exact member of the frozen portfolio.
+Currency, horizon and discount rate are governed prepared-input facts, not
+launch flags. Language and report intent belong to a later report operation;
+do not invent or pass them to portfolio calculation.
 
 Treat the launch response as a job receipt, not a calculated result. Use the
 discovered lifecycle commands to observe that exact run id. A portfolio is

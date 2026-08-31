@@ -511,10 +511,27 @@ fn every_solar_command_has_one_closed_operation_owner_and_exact_arguments() {
             );
             assert!(!start.is_empty(), "the Solar start adapter is absent");
             let consumed = dotted_arguments(start);
-            let declared = operation.arguments.iter().copied().collect();
+            let declared = operation.arguments.iter().copied().collect::<BTreeSet<_>>();
+            assert!(
+                declared.is_subset(&consumed),
+                "solar.run.start must consume every key declared by ds: missing {:?}",
+                declared.difference(&consumed).collect::<Vec<_>>(),
+            );
+            let legacy = BTreeSet::from([
+                "currency",
+                "project_years",
+                "discount_rate",
+                "representative_city",
+                "language",
+                "report_intents",
+            ]);
             assert_eq!(
-                consumed, declared,
-                "solar.run.start must consume exactly the keys declared by ds; conditional portfolio inputs cannot be hidden in another handler",
+                consumed
+                    .difference(&declared)
+                    .copied()
+                    .collect::<BTreeSet<_>>(),
+                legacy,
+                "solar.run.start may retain only the pinned v3 rolling-upgrade assertions beyond the v4 CLI contract",
             );
         }
     }

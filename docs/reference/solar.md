@@ -21,9 +21,7 @@ ds solar final submit --run-id <id> --city <context> --yes
 ds solar sync status --run-id <id>
 ds solar portfolio list
 ds solar run start --portfolio <id> --membership-revision <sha256:digest> \
-  --currency <ISO> --project-years <n> \
-  --discount-rate <rate> --representative-city <context> --language fr|en \
-  --report apd|network|plant|financial ...
+  --graph-strategy first|round-robin|city:<context>
 ds solar portfolio read --run-id <id> --path <field> ...
 ds solar portfolio export --run-id <id> \
   --artifact result|apd|network|plant|financial --out <file>
@@ -57,35 +55,36 @@ contexts and the shared execution controls:
 ```
 
 Portfolio launch resolves the same exact refreshed/cache-retained membership
-used by the Pipeline page, but it is not just an id alias. The caller must
-freeze every portfolio assumption, choose a representative member and request
-at least one report intent:
+used by the Pipeline page, but it is not just an id alias. The caller freezes
+the ordered membership and chooses the legacy-compatible representative graph
+strategy:
 
 ```json
 {
   "portfolio": "portfolio-id",
   "membership_revision": "sha256:<digest returned by portfolio list>",
-  "currency": "XAF",
-  "project_years": 25,
-  "discount_rate": 0.08,
-  "representative_city": "rw-kigali",
-  "language": "fr",
-  "report_intents": ["apd", "financial"],
+  "graph_strategy": "city:rw-kigali",
   "concurrency": 4
 }
 ```
 
 `--membership-revision` is the exact lowercase SHA-256 revision returned with
 the selected portfolio row. The desktop recomputes it from the current ordered
-membership and refuses if the portfolio changed after listing. `--currency` is
-exactly three uppercase ASCII letters, `--project-years` is
-from 1 through 100, and `--discount-rate` is finite and lies in `[0, 1)`.
-`--language` accepts only `fr` or `en`; repeat `--report` with one or more of
-`apd`, `network`, `plant`, and `financial`. These seven portfolio-only inputs are
-all required with `--portfolio` and are rejected with `--city`. The CLI sends
-their values unchanged except for parsing the bounded numeric fields; it does
-not infer XAF, 25 years, a discount rate, a representative city, a language or
-a default report set.
+membership and refuses if the portfolio changed after listing.
+`--graph-strategy` is required and accepts `first`, `round-robin`, or
+`city:<exact-member-id>`. The CLI sends those as `first`, `round_robin`, or the
+exact `city:<id>` binding; the desktop refuses a named city outside the frozen
+membership. The membership revision and graph strategy are portfolio-only and
+are rejected with `--city`.
+
+Currency, project lifetime and discount rate are governed prepared-city facts.
+The native portfolio calculation derives and validates them across every
+sealed member instead of accepting operator overrides at launch. Language and
+report intents are document-generation choices and therefore do not belong to
+this calculation command. Until a separate digest-bound portfolio reporting
+operation is published, the paired application may use bounded internal
+document defaults for compatibility; the CLI neither exposes nor claims those
+defaults as calculation inputs.
 
 It returns a run receipt rather than waiting for calculation. The remaining
 commands call the paired lifecycle operations `solar.run.progress`,

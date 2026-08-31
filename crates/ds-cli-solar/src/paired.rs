@@ -24,12 +24,7 @@ pub const RUN_START_OP: BridgeOp = BridgeOp {
         "contexts",
         "portfolio",
         "membership_revision",
-        "currency",
-        "project_years",
-        "discount_rate",
-        "representative_city",
-        "language",
-        "report_intents",
+        "graph_strategy",
         "render_charts",
         "concurrency",
         "serial",
@@ -147,23 +142,23 @@ pub static REFUSALS: &[Refusal] = &[
 ];
 
 /// `solar.run.start` validates its mutually exclusive launch modes and the
-/// explicit portfolio assumptions before asking the desktop. It gets its own
+/// exact portfolio membership and graph strategy before asking the desktop. It gets its own
 /// list so command help names those local refusals.
 pub static START_REFUSALS: &[Refusal] = &[
     Refusal {
         code: "invalid_run_selection",
         when: "the launch has both --city and --portfolio, neither one, or a blank portfolio id",
-        remedy: "pass one or more --city values, or one exact --portfolio with its explicit inputs",
+        remedy: "pass one or more --city values, or one exact --portfolio with its membership revision and graph strategy",
     },
     Refusal {
         code: "portfolio_only_input",
-        when: "a portfolio assumption, language or report intent was passed with --city",
+        when: "portfolio membership or graph strategy was passed with --city",
         remedy: "remove the portfolio-only flags, or replace --city with one --portfolio",
     },
     Refusal {
         code: "missing_portfolio_input",
-        when: "a portfolio launch omits an explicit assumption, representative city, language or report intent",
-        remedy: "pass every portfolio-only input and at least one --report value",
+        when: "a portfolio launch omits its exact membership revision or graph strategy",
+        remedy: "pass --membership-revision and one --graph-strategy value with --portfolio",
     },
     Refusal {
         code: "invalid_membership_revision",
@@ -171,29 +166,9 @@ pub static START_REFUSALS: &[Refusal] = &[
         remedy: "list portfolios again and pass the selected row's exact membership_revision",
     },
     Refusal {
-        code: "invalid_currency",
-        when: "--currency is not exactly three uppercase ASCII letters",
-        remedy: "pass an explicit three-letter currency such as XAF or USD",
-    },
-    Refusal {
-        code: "invalid_project_years",
-        when: "--project-years is not a whole number from 1 through 100",
-        remedy: "pass an explicit integer from 1 through 100",
-    },
-    Refusal {
-        code: "invalid_discount_rate",
-        when: "--discount-rate is not finite, is negative, or is 1 or greater",
-        remedy: "pass an explicit decimal rate from 0 inclusive to 1 exclusive",
-    },
-    Refusal {
-        code: "invalid_representative_city",
-        when: "--representative-city is blank, padded or longer than 128 bytes",
-        remedy: "pass one exact member id from the selected portfolio",
-    },
-    Refusal {
-        code: "duplicate_report_intent",
-        when: "the same --report intent is passed more than once",
-        remedy: "pass each report intent at most once",
+        code: "invalid_graph_strategy",
+        when: "--graph-strategy is not first, round-robin, or city:<exact-member-id>",
+        remedy: "choose first, round-robin, or prefix one exact portfolio member id with city:",
     },
     Refusal {
         code: "invalid_concurrency",
