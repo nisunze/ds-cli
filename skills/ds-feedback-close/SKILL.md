@@ -27,6 +27,17 @@ ds feedback list --query '<words from the work>' --detail --output json
 is already closed. Match reports to the work by component and by what the
 report actually describes — never by title resemblance alone.
 
+For a bounded newest-first closure campaign, obtain the complete acceptance
+text for exactly the requested window before changing anything:
+
+```
+ds feedback list --limit 10 --detail --output json
+```
+
+Treat this only as a review queue. There is intentionally no bulk-close step:
+verify and close each report independently, keep every report's returned
+`version`, and leave unverified, undeployed, or unrelated reports open.
+
 ## 2. Verify against the acceptance condition
 
 Read `.data.reports[].detail`. The submitter wrote an expected behavior and an
@@ -45,7 +56,7 @@ the report is not addressed yet. Leave it open.
 ## 3. Close it with the record
 
 ```
-ds feedback close --id <id> --resolution '<what changed, and the evidence>' --yes --output json
+ds feedback close --id <id> --expect-version <version> --resolution '<what changed, and the evidence>' --yes --output json
 ```
 
 Use `--status wont_fix` with a resolution that says why, when the gap is real
@@ -76,3 +87,8 @@ each with its own resolution. Do not close a report to tidy the backlog, do
 not close by severity or age, and do not close what someone else is working
 on. Reopening is deliberately not available here; it stays a human decision
 in the `fb` tab.
+
+When asked to close the latest N reports, finishing with fewer than N closures
+is correct whenever some acceptance conditions are not proven in the deployed
+`ds`. Return two explicit sets: closed ids with evidence, and remaining ids
+with the exact unmet condition or deployment gap.
