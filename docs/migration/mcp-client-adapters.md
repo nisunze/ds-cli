@@ -1,10 +1,13 @@
 # MCP installation descriptor migration
 
-`mcp.install` contract v4 preserves the default VS Code proposal and all six
-existing host tokens. Its JSON result includes the canonical
+`mcp.install` contract v5 preserves the default VS Code proposal and adds
+Gemini CLI, Windsurf and GitHub Copilot CLI to the existing host tokens. Its
+JSON result includes the canonical
 `connection`, `supported_hosts`, full `build`, skill-bundle source SHA,
 transport, required environment, change state, and restart handoff. Version 4
-adds the verified persistent Codex TOML merge; JSON host behavior is unchanged.
+Version 4 added the persistent Codex TOML merge. Version 5 adds conflict-safe
+JSON registration at each new host's verified user-level path; existing JSON
+host behavior is unchanged.
 
 Read-only discovery no longer needs confirmation:
 

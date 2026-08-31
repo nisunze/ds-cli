@@ -259,9 +259,12 @@ carry the command's effect, authority, and the refusals it can name.
 ds mcp install --output json                # supported hosts plus the default VS Code proposal
 ds mcp install --host claude-desktop --output json # Windows Claude Desktop proposal
 ds mcp install --write --yes                # merge it into the VS Code user profile
-ds mcp install --host claude-code           # other hosts: claude-code, cursor, codex, generic
+ds mcp install --host claude-code           # also cursor, codex, Gemini CLI, Windsurf, Copilot, generic
 ds mcp install --host claude-code --exposure commands --profile pls --write --yes
 ds mcp install --host codex --write --yes   # losslessly add [mcp_servers.ds]
+ds mcp install --host gemini-cli --write --yes
+ds mcp install --host windsurf --write --yes
+ds mcp install --host github-copilot --write --yes
 ```
 
 `mcp.install` remains `machine_write`, but its declared `--write` switch is the
@@ -298,6 +301,14 @@ preserving unrelated tables, comments and formatting. A non-identical existing
 reports `restart_required: true`: fully quit and restart Codex, then start a new
 agent session. The install receipt and MCP diagnostics identity report this
 executable's source SHA; it must match the skill-bundle SHA from `ds doctor`.
+
+Gemini CLI targets `~/.gemini/settings.json`; Windsurf targets
+`~/.codeium/windsurf/mcp_config.json`; GitHub Copilot CLI targets
+`~/.copilot/mcp-config.json`. All are user-level paths on Windows, macOS and
+Linux, need no VS Code mediation, preserve unrelated JSON and sibling servers,
+and refuse a non-identical existing `ds` entry with existing/proposed previews.
+GitHub Copilot receives its verified `local` server shape. Cline is omitted
+until its CLI/global-storage schema is stable enough for a safe blind merge.
 
 ## Server migration note
 

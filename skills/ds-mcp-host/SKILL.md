@@ -62,6 +62,10 @@ For Codex, first inspect `ds mcp install --host codex --output json`, then run
 `ds mcp install --host codex --write --yes`. It preserves unrelated TOML and
 refuses a conflicting `mcp_servers.ds`; after a changed write, fully quit and
 restart Codex and begin a new agent session. VS Code is not involved.
+The same plan-then-write flow supports `gemini-cli`, `windsurf`, and
+`github-copilot`; each targets that host's verified user profile directly,
+preserves sibling registrations, and refuses a conflicting `ds` entry. Do not
+guess a Cline target while its global configuration contract is moving.
 
 ## MCP-only bootstrap
 

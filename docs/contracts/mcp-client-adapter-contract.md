@@ -22,6 +22,9 @@ The verified adapters are:
 | `claude-desktop` | `mcpServers` | Windows `%APPDATA%\Claude\claude_desktop_config.json` | yes |
 | `codex` | `mcp_servers` | `~/.codex/config.toml` | yes; lossless TOML merge |
 | `cursor` | `mcpServers` | `~/.cursor/mcp.json` | yes |
+| `gemini-cli` | `mcpServers` | `~/.gemini/settings.json` | yes; conflict-safe |
+| `windsurf` | `mcpServers` | `~/.codeium/windsurf/mcp_config.json` | yes; conflict-safe |
+| `github-copilot` | `mcpServers` | `~/.copilot/mcp-config.json` | yes; conflict-safe |
 | `generic` | `mcpServers` | none | no; print only |
 
 Claude Desktop is deliberately Windows-only until another platform path and
@@ -40,6 +43,14 @@ policy to TOML. It losslessly adds `[mcp_servers.ds]`, preserving unrelated
 tables, comments and formatting. An existing exact command/args match is
 idempotent. A different, partial or structurally ambiguous `ds` entry is a
 conflict with existing/proposed previews and is never overwritten.
+
+Gemini CLI and Windsurf use the plain JSON `command`/`args` dialect. GitHub
+Copilot CLI uses its local-server dialect: `type: local`, `command`, `args`, an
+empty `env`, and `tools: ["*"]`. Their verified user-level paths are identical
+across Windows, macOS and Linux. Each preserves sibling servers and unrelated
+root settings, treats an exact `ds` match as idempotent, and refuses a
+non-identical existing `ds` entry rather than replacing it. Cline is not an
+adapter while its CLI/global-storage schema remains unsettled.
 
 Adding a host requires a verified user-level path and root, a table entry,
 entry/path/platform/merge tests, reference documentation, and LF-normalized
