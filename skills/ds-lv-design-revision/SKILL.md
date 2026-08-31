@@ -100,30 +100,24 @@ view` and remove only its exact `this_session=true` layer id. Do not leave
 intermediate current/incoming/difference layers in the map, and never remove
 pinned project layers.
 
-## Begin a version deliberately; save the working copy separately
+## Version deliberately; save separately
 
-Before choosing a baseline, discover `map.design.version.list` and list the
-exact transformer. Treat `playback_available` as a capability fact: legacy
-metadata-only rows remain valid history but cannot be opened or compared as
-content. To inspect a playable baseline, use `map.design.version.play` with its
-exact returned `v<number>` and require `read_only=true`, `map_ready=true`,
-`staged=false`, and `persisted=false`. To measure change, use
-`map.design.version.compare --from <vN> --to <vN|head>` and retain the pinned
-left/right descriptors plus aggregate and per-layer counts. Comparison is
-evidence, not restore: it never sends features through the CLI, edits a room,
-or authorizes force replacement.
+Discover `map.design.version.list` for the exact transformer. Treat
+`playback_available` as fact: legacy metadata-only history cannot be opened or
+compared as content. Play an exact returned `v<number>` and require
+`read_only=true`, `map_ready=true`, `staged=false`, and `persisted=false`.
+Compare with `map.design.version.compare --from <vN> --to <vN|head>` and retain
+its pinned descriptors and aggregate/per-layer counts. Playback and comparison
+are evidence, never restore, editing, feature transport, or force replacement.
 
-Before entering a new engineering edit, decide explicitly whether this work
-needs a new version. If it does, require a clean saved room and run `ds map
-design version begin --transformer <name> --reason <text> --yes`. The caller
-supplies only transformer name and reason. ds-brain assigns the next
-`v<number>` and writes bounded version metadata; no layer/report data crosses
-that operation. Never ask the user to type a version number.
+Decide explicitly whether an engineering edit needs a new version. If so,
+require a clean saved room and run `ds map design version begin --transformer
+<name> --reason <text> --yes`. Supply no version number: ds-brain assigns the
+next `v<number>` and writes bounded metadata without layer/report data.
 
-For an upload that will overwrite an existing transformer, enable the explicit
-version option and supply its required reason only when the operator intends
-that bump. Never infer version intent from Replace, Save, Process, Report, or a
-dirty room. Deliberate v0 means no explicit version has yet been begun.
+For an overwrite upload, enable its version option and reason only when the
+operator intends the bump. Never infer version intent from Replace, Save,
+Process, Report, or a dirty room. v0 means no explicit version was begun.
 
 Immediately before save, re-check the project, transformer, dirty room,
 approved/draft split, customer source, preset, and process receipt. Save only
@@ -132,13 +126,12 @@ Save advances an optimistic concurrency generation only. It must not create a
 version, change version metadata, or stamp `v_first`/`v_last`. Reporting must
 not create a version either.
 
-Feature lineage is authored by the editing/compute boundary under the current
-deliberate version, before Save transports the room. At v1 and later, require
-known-example evidence: an unchanged row preserves both stamps, a changed row
-preserves `v_first` and advances `v_last`, and a new row receives the current
-version in both fields. Until that edit-boundary receipt exists, treat lineage
-claims as unverified and report the missing contract through the `ds` skill's
-live feedback procedure; do not resurrect save-time stamping.
+The editing/compute boundary authors feature lineage under the current version
+before Save transports the room. At v1+, require examples proving: unchanged
+rows preserve both stamps; changed rows preserve `v_first` and advance
+`v_last`; new rows receive the current version in both. Without that receipt,
+report lineage as unverified through the `ds` feedback procedure; never revive
+save-time stamping.
 
 If a necessary live command is absent or refuses the governed operation,
 follow the `ds` skill's feedback procedure. Do not compensate with source
