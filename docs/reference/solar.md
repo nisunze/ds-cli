@@ -121,10 +121,14 @@ operation. `solar portfolio read` pages and
 verifies the sealed aggregate result JSON, then returns one bounded semantic
 projection. Repeated `--path` values descend through at most eight object keys;
 large arrays and strings are edge-sampled and reported with `complete: false`.
-Every projection retains the v2 schema, bounded engine identity, portfolio
-name/id, membership revision, ordered city ids, run/input/result/content
-digests, native name, batch id/digest, currency, horizon, rate, and
-representative city. It never reconstructs the portfolio from city results.
+Every projection retains the v2 or v3 schema, bounded engine identity,
+portfolio name/id, membership revision, ordered city ids,
+run/input/result/content digests, native name, batch id/digest, currency,
+horizon, and rate. A v2 result retains its one representative city. A v3
+result additionally exposes bounded graph-strategy provenance: fixed strategies
+retain that city, while round-robin truthfully returns a null representative
+and the sealed city id for each available or unavailable graph. It never
+reconstructs the portfolio from city results.
 `solar portfolio export` pages exactly one of the native `result`, `apd`,
 `network`, `plant`, or `financial` artifacts through the same
 `solar.portfolio.read` operation. The selected name is sent unchanged: `result`

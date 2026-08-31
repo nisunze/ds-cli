@@ -69,6 +69,11 @@ and horizon with any figures you report. Distinguish portfolio ratios from
 city means and minima; do not average LCOE, payback, or DSCR when the aggregate
 labels a ratio-of-totals or consolidated-cashflow result.
 
+Keep the sealed graph provenance with any graph claim. A v3 round-robin result
+truthfully has no single representative city; use each available or unavailable
+graph's declared member id. Never replace that null with the first city or
+attribute every graph to one member.
+
 For a file, use the discovered portfolio export command. Export only a result
 or report declared by the same closed batch and choose a new destination;
 never reconstruct an aggregate JSON or draft in the skill.

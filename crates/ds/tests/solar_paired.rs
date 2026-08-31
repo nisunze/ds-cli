@@ -107,6 +107,51 @@ fn portfolio_result(run_id: &str) -> Value {
     })
 }
 
+fn portfolio_result_v3_round_robin(run_id: &str) -> Value {
+    let mut document = portfolio_result(run_id);
+    document["schema_version"] = json!("ds-solar.portfolio-result/v3");
+    document["representative_city_id"] = Value::Null;
+    document["sections"]["representative_graphs"] = json!({
+        "_strategy": "round_robin",
+        "_start_index": 1,
+        "_representative_cities": ["b", "a"],
+        "graph_count": 2,
+        "graphs": [
+            {
+                "graph_key": "daily_load_profile",
+                "city_id": "b",
+                "url": { "city_id": "b" }
+            },
+            {
+                "graph_key": "energy_production",
+                "city_id": "a",
+                "url": { "city_id": "a" }
+            }
+        ],
+        "_unavailable": [
+            { "kind": "cash_flow", "city_id": "b" }
+        ]
+    });
+    document
+}
+
+fn portfolio_result_v3_first(run_id: &str) -> Value {
+    let mut document = portfolio_result_v3_round_robin(run_id);
+    document["representative_city_id"] = json!("a");
+    document["sections"]["representative_graphs"] = json!({
+        "_strategy": "first",
+        "_representative_cities": ["a"],
+        "graph_count": 1,
+        "graphs": [{
+            "graph_key": "daily_load_profile",
+            "city_id": "a",
+            "url": { "city_id": "a" }
+        }],
+        "_unavailable": [{ "kind": "cash_flow", "city_id": "a" }]
+    });
+    document
+}
+
 fn portfolio_page(wrapper_run_id: &str, document: &Value) -> Value {
     let content = document.to_string();
     let content_digest = sha256_digest(content.as_bytes());
@@ -983,12 +1028,12 @@ fn solar_city_report_and_portfolio_read_descriptors_expose_current_contracts() {
     let (read, code, stdout, stderr) =
         ds(&["capabilities", "solar.portfolio.read", "--output", "json"]);
     assert_eq!(code, 0, "{stdout}{stderr}");
-    assert_eq!(read["data"]["command"]["contract"], 2);
+    assert_eq!(read["data"]["command"]["contract"], 3);
     let output = read["data"]["command"]["output"]
         .as_str()
         .expect("portfolio read output contract");
     for promised in [
-        "v2 schema",
+        "v2/v3 schema",
         "engine identity",
         "portfolio name",
         "content/batch digests",
@@ -1577,6 +1622,137 @@ fn solar_portfolio_read_returns_one_bounded_sealed_projection() {
 }
 
 #[test]
+fn solar_portfolio_read_accepts_v3_round_robin_and_surfaces_per_graph_cities() {
+    let document = portfolio_result_v3_round_robin("solar-run-v3-round");
+    let bridge = bridge(vec![(
+        "solar.portfolio.read",
+        portfolio_page("solar-run-v3-round", &document),
+    )]);
+    let descriptor = bridge.descriptor.to_string_lossy().into_owned();
+    let (portfolio, code, stdout, stderr) = ds(&[
+        "solar",
+        "portfolio",
+        "read",
+        "--run-id",
+        "solar-run-v3-round",
+        "--desktop-descriptor",
+        &descriptor,
+        "--output",
+        "json",
+    ]);
+    assert_eq!(code, 0, "{stdout}{stderr}");
+    assert_eq!(
+        portfolio["data"]["schema_version"],
+        "ds-solar.portfolio-result/v3"
+    );
+    assert!(portfolio["data"]["representative_city"].is_null());
+    assert_eq!(
+        portfolio["data"]["representative_graphs"],
+        json!({
+            "strategy": "round_robin",
+            "start_index": 1,
+            "representative_cities": ["b", "a"],
+            "graph_count": 2,
+            "available": [
+                { "graph_key": "daily_load_profile", "city_id": "b" },
+                { "graph_key": "energy_production", "city_id": "a" }
+            ],
+            "unavailable": [
+                { "graph_key": "cash_flow", "city_id": "b" }
+            ]
+        })
+    );
+    let _ = finish(bridge);
+}
+
+#[test]
+fn solar_portfolio_read_accepts_v3_single_representative_strategy() {
+    let document = portfolio_result_v3_first("solar-run-v3-first");
+    let bridge = bridge(vec![(
+        "solar.portfolio.read",
+        portfolio_page("solar-run-v3-first", &document),
+    )]);
+    let descriptor = bridge.descriptor.to_string_lossy().into_owned();
+    let (portfolio, code, stdout, stderr) = ds(&[
+        "solar",
+        "portfolio",
+        "read",
+        "--run-id",
+        "solar-run-v3-first",
+        "--desktop-descriptor",
+        &descriptor,
+        "--output",
+        "json",
+    ]);
+    assert_eq!(code, 0, "{stdout}{stderr}");
+    assert_eq!(portfolio["data"]["representative_city"], "a");
+    assert_eq!(
+        portfolio["data"]["representative_graphs"]["strategy"],
+        "first"
+    );
+    assert!(
+        portfolio["data"]["representative_graphs"]
+            .get("start_index")
+            .is_none()
+    );
+    let _ = finish(bridge);
+}
+
+#[test]
+fn solar_portfolio_read_rejects_false_v3_representative_and_graph_provenance() {
+    let mut round_robin_with_city = portfolio_result_v3_round_robin("run-round-city");
+    round_robin_with_city["representative_city_id"] = json!("a");
+
+    let mut first_without_city = portfolio_result_v3_first("run-first-null");
+    first_without_city["representative_city_id"] = Value::Null;
+
+    let mut receipt_city_mismatch = portfolio_result_v3_round_robin("run-receipt-mismatch");
+    receipt_city_mismatch["sections"]["representative_graphs"]["graphs"][0]["url"]["city_id"] =
+        json!("a");
+
+    let mut v2_without_city = portfolio_result("run-v2-null");
+    v2_without_city["representative_city_id"] = Value::Null;
+
+    for (case, run_id, document) in [
+        (
+            "round-robin-with-city",
+            "run-round-city",
+            round_robin_with_city,
+        ),
+        ("first-without-city", "run-first-null", first_without_city),
+        (
+            "receipt-city-mismatch",
+            "run-receipt-mismatch",
+            receipt_city_mismatch,
+        ),
+        ("v2-without-city", "run-v2-null", v2_without_city),
+    ] {
+        let bridge = bridge(vec![(
+            "solar.portfolio.read",
+            portfolio_page(run_id, &document),
+        )]);
+        let descriptor = bridge.descriptor.to_string_lossy().into_owned();
+        let (envelope, code, stdout, stderr) = ds(&[
+            "solar",
+            "portfolio",
+            "read",
+            "--run-id",
+            run_id,
+            "--desktop-descriptor",
+            &descriptor,
+            "--output",
+            "json",
+        ]);
+        assert_eq!(code, 3, "{case}: {stdout}{stderr}");
+        assert_eq!(
+            envelope["error"]["code"], "desktop_contract_mismatch",
+            "{case}: {stdout}{stderr}"
+        );
+        let _ = finish(bridge);
+    }
+}
+
+#[test]
 fn solar_portfolio_read_validates_path_before_pairing() {
     let mut args = vec!["solar", "portfolio", "read", "--run-id", "run-123"];
     for _ in 0..9 {
@@ -1732,7 +1908,7 @@ fn paired_solar_rejects_non_start_receipts_for_another_run_or_city() {
 }
 
 #[test]
-fn solar_portfolio_read_rejects_invalid_v2_trace_and_engine_identity() {
+fn solar_portfolio_read_rejects_invalid_supported_trace_and_engine_identity() {
     let mut wrong_schema = portfolio_result("solar-run-123");
     wrong_schema["schema_version"] = json!("ds-solar.portfolio-result/v1");
     let mut missing_name = portfolio_result("solar-run-123");
