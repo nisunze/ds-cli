@@ -63,6 +63,11 @@ const AUTH_RESPONSE_INVALID: Refusal = Refusal {
     when: "the fixed endpoint returns a response outside the closed device contract",
     remedy: "update ds and retry; do not copy credentials into arguments",
 };
+const AUTH_ENDPOINT_UNAVAILABLE: Refusal = Refusal {
+    code: "device_auth_endpoint_unavailable",
+    when: "the fixed device-authorization begin route is absent from the deployed gateway or backend",
+    remedy: "deploy the matching ds-brain and API Gateway device-auth routes, then retry without changing local state",
+};
 const STATE_EXISTS: Refusal = Refusal {
     code: "device_state_exists",
     when: "the lane already holds a pending link or durable device credential",
@@ -89,6 +94,7 @@ const BEGIN_REFUSALS: &[Refusal] = &[
     STATE_CONFLICT,
     AUTH_TRANSIENT,
     AUTH_RESPONSE_INVALID,
+    AUTH_ENDPOINT_UNAVAILABLE,
     STATE_EXISTS,
     RNG_UNAVAILABLE,
 ];
@@ -264,7 +270,9 @@ pub fn run_begin(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
     let response = transport
         .begin(device_secret_json(&request).map_err(device_failure)?)
         .map_err(transport_failure)?;
-    let result = parse_device_begin(response, &binding).map_err(device_failure)?;
+    let response_status = response.status;
+    let result = parse_device_begin(response, &binding)
+        .map_err(|error| device_response_failure(error, response_status))?;
     let pending =
         DevicePendingAuthorization::new(result, verifier, nonce, key).map_err(device_failure)?;
     let public = pending.public();
@@ -733,6 +741,20 @@ fn device_failure(_: DeviceError) -> Failure {
     .remedy("retry once, then update ds; never copy credential material into arguments")
 }
 
+fn device_response_failure(error: DeviceError, http_status: u16) -> Failure {
+    if http_status == 404 {
+        return Failure::unavailable(
+            "device_auth_endpoint_unavailable",
+            "the deployed gateway does not expose the fixed device-authorization begin route",
+        )
+        .remedy(
+            "deploy the matching ds-brain and API Gateway device-auth routes, then retry without changing local state",
+        )
+        .detail(json!({ "http_status": http_status }));
+    }
+    device_failure(error).detail(json!({ "http_status": http_status }))
+}
+
 fn transport_failure(_: TransportError) -> Failure {
     Failure::unavailable(
         "device_auth_transient",
@@ -906,5 +928,26 @@ mod tests {
         ] {
             assert!(!transcript.contains(secret), "CLI output exposed {secret}");
         }
+    }
+
+    #[test]
+    fn missing_begin_route_is_reported_as_deployment_unavailable() {
+        let failure = device_response_failure(DeviceError::Response, 404);
+        assert_eq!(failure.code(), "device_auth_endpoint_unavailable");
+        assert_eq!(failure.detail_value(), Some(&json!({ "http_status": 404 })));
+        assert_eq!(
+            failure
+                .detail_value()
+                .and_then(Value::as_object)
+                .map(|object| object.len()),
+            Some(1)
+        );
+    }
+
+    #[test]
+    fn malformed_begin_success_remains_response_invalid() {
+        let failure = device_response_failure(DeviceError::Response, 201);
+        assert_eq!(failure.code(), "device_auth_response_invalid");
+        assert_eq!(failure.detail_value(), Some(&json!({ "http_status": 201 })));
     }
 }
