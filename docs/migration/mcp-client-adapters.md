@@ -1,9 +1,13 @@
 # MCP installation descriptor migration
 
-`mcp.install` contract v3 preserves the default VS Code proposal and all five
-existing host tokens. Its JSON result now also includes the canonical
+`mcp.install` contract v5 preserves the default VS Code proposal and adds
+Gemini CLI, Windsurf and GitHub Copilot CLI to the existing host tokens. Its
+JSON result includes the canonical
 `connection`, `supported_hosts`, full `build`, skill-bundle source SHA,
-transport, and required environment.
+transport, required environment, change state, and restart handoff. Version 4
+Version 4 added the persistent Codex TOML merge. Version 5 adds conflict-safe
+JSON registration at each new host's verified user-level path; existing JSON
+host behavior is unchanged.
 
 Read-only discovery no longer needs confirmation:
 
@@ -18,9 +22,10 @@ Writing still requires both flags:
 ds mcp install --host cursor --write --yes
 ```
 
-Claude Desktop on Windows is the first added adapter. It writes only
+Claude Desktop on Windows writes only
 `mcpServers.ds` in `%APPDATA%\Claude\claude_desktop_config.json`; restart
-Claude Desktop after installation. Codex and `generic` remain print-only.
+Claude Desktop after installation. Codex now losslessly merges only
+`[mcp_servers.ds]` into `~/.codex/config.toml`; `generic` remains print-only.
 
 Callers that consumed the old top-level `host`, `entry`, `file`, `written`,
 `executable`, `source_sha`, `dirty`, `exposure`, and `profile` fields can keep

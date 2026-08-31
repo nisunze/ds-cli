@@ -37,6 +37,32 @@ A design command stages into the operator's local room and marks it dirty.
 requires `--yes` before it will run. Every design result reports `staged` and
 `persisted` separately so the two can never be read as one.
 
+Context entry is the exception that proves the wording: `map design open`
+navigates to and fully loads one transformer's real editor/map surface but
+does not stage a feature. It waits for the application to publish the same
+ready edit context that `desktop status` reads, and its receipt therefore says
+both `staged: false` and `persisted: false`. Reopening the active transformer
+is idempotent. Opening a different transformer over a dirty room refuses with
+`dirty_room`; it never turns navigation into an implicit save or discard.
+
+Retained transformer history has one similarly closed read-only workflow:
+
+```bash
+ds map design version list --transformer agasharu --output json
+ds map design version play --transformer agasharu --version v2 --output json
+ds map design version compare --transformer agasharu --from v1 --to head --output json
+```
+
+`version list` returns bounded metadata only and keeps
+`playback_available=false` explicit for legacy rows that predate immutable
+snapshots. `version play` asks the application to render one playable snapshot
+in a shielded `version_playback` context; it reports `read_only: true`, map
+readiness, and no staged or persisted mutation. `version compare` pins its
+left version and either a right version or the observed saved-head generation,
+then opens the application-owned comparison dialog. Only exact aggregate and
+per-layer counts cross the bridge. Neither command transports features,
+restores a snapshot into a working room, or offers a force path.
+
 That split is the application's, and it exists because
 `drafting_status=approved` is what stops the kernel from redesigning an
 installed transformer. Marking an as-built network approved is the most

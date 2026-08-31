@@ -1789,6 +1789,7 @@ fn every_map_command_is_reachable_without_the_desktop_installed() {
         "map.survey.download",
         "map.survey.migrate.plan",
         "map.survey.migrate.apply",
+        "map.design.open",
         "map.design.read",
         "map.design.discard",
         "map.design.layer-to-local",
@@ -1800,6 +1801,9 @@ fn every_map_command_is_reachable_without_the_desktop_installed() {
         "map.design.geometry",
         "map.design.setup",
         "map.design.version.begin",
+        "map.design.version.list",
+        "map.design.version.play",
+        "map.design.version.compare",
         "map.design.process",
         "map.design.batch.process",
         "map.design.batch.report",
@@ -1822,6 +1826,116 @@ fn every_map_command_is_reachable_without_the_desktop_installed() {
             command["availability"], "available",
             "`{}` gates on discovery, which puts --desktop-descriptor out of reach",
             command["id"]
+        );
+    }
+}
+
+#[test]
+fn map_design_open_is_the_one_discoverable_visible_context_entry() {
+    let descriptor = ok(&["capabilities", "map.design.open", "--output", "json"]);
+    let command = &descriptor["command"];
+    assert_eq!(command["authority"], "project");
+    assert_eq!(command["effect"], "local_ui");
+    assert_eq!(command["confirmation_required"], false);
+    let inputs = command["inputs"].as_array().expect("inputs");
+    assert_eq!(
+        inputs
+            .iter()
+            .map(|input| input["name"].as_str().unwrap())
+            .collect::<Vec<_>>(),
+        ["transformer", "desktop-descriptor"]
+    );
+    assert_eq!(inputs[0]["required"], true);
+    let refusals = command["refusals"]
+        .as_array()
+        .expect("refusals")
+        .iter()
+        .map(|refusal| refusal["code"].as_str().unwrap())
+        .collect::<BTreeSet<_>>();
+    assert_eq!(
+        refusals,
+        BTreeSet::from([
+            "desktop_not_paired",
+            "desktop_ambiguous",
+            "desktop_unreachable",
+            "pairing_rejected",
+            "desktop_signed_out",
+            "desktop_refused",
+            "transformer_not_found",
+            "project_mismatch",
+            "dirty_room",
+            "desktop_operation_unsupported",
+            "desktop_unreadable",
+        ])
+    );
+
+    for query in [
+        "open transformer",
+        "transformer edit context",
+        "activate design",
+    ] {
+        let result = ok(&["capabilities", "--search", query, "--output", "json"]);
+        let matches = result["results"].as_array().expect("search results");
+        assert!(
+            matches.iter().any(|row| row["id"] == "map.design.open"),
+            "`{query}` did not find the canonical context-entry command: {matches:?}"
+        );
+    }
+}
+
+#[test]
+fn map_design_version_history_is_discoverable_and_governed() {
+    let expected = [
+        (
+            "map.design.version.list",
+            "read_only",
+            vec!["transformer", "desktop-descriptor"],
+        ),
+        (
+            "map.design.version.play",
+            "local_ui",
+            vec!["transformer", "version", "desktop-descriptor"],
+        ),
+        (
+            "map.design.version.compare",
+            "local_ui",
+            vec!["transformer", "from", "to", "desktop-descriptor"],
+        ),
+    ];
+    for (id, effect, inputs) in expected {
+        let descriptor = ok(&["capabilities", id, "--output", "json"]);
+        let command = &descriptor["command"];
+        assert_eq!(command["authority"], "project", "{id}");
+        assert_eq!(command["effect"], effect, "{id}");
+        assert_eq!(command["confirmation_required"], false, "{id}");
+        assert_eq!(
+            command["inputs"]
+                .as_array()
+                .expect("inputs")
+                .iter()
+                .map(|input| input["name"].as_str().unwrap())
+                .collect::<Vec<_>>(),
+            inputs,
+            "{id}",
+        );
+    }
+
+    for (query, id) in [
+        (
+            "list retained transformer versions",
+            "map.design.version.list",
+        ),
+        ("play transformer version", "map.design.version.play"),
+        ("compare design version head", "map.design.version.compare"),
+    ] {
+        let result = ok(&["capabilities", "--search", query, "--output", "json"]);
+        assert!(
+            result["results"]
+                .as_array()
+                .expect("results")
+                .iter()
+                .any(|row| row["id"] == id),
+            "`{query}` did not discover {id}",
         );
     }
 }

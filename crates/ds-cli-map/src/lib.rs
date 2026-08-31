@@ -102,6 +102,7 @@ pub static DOMAIN: Domain = Domain {
         &survey::download::COMMAND,
         &survey::plan::COMMAND,
         &survey::apply::COMMAND,
+        &design::open::COMMAND,
         &design::read::COMMAND,
         &design::discard::COMMAND,
         &design::layer_to_local::COMMAND,
@@ -113,6 +114,9 @@ pub static DOMAIN: Domain = Domain {
         &design::geometry::COMMAND,
         &design::process_setup::COMMAND,
         &design::version_create::COMMAND,
+        &design::version_list::COMMAND,
+        &design::version_play::COMMAND,
+        &design::version_compare::COMMAND,
         &design::process::COMMAND,
         &design::batch_process::COMMAND,
         &design::batch_report::COMMAND,
@@ -210,6 +214,10 @@ pub const DESIGN_READ: BridgeOp = BridgeOp {
     operation: "design.transformer.read",
     arguments: &["transformer", "layers", "property"],
 };
+pub const DESIGN_OPEN: BridgeOp = BridgeOp {
+    operation: "design.transformer.open",
+    arguments: &["transformer"],
+};
 pub const DESIGN_DISCARD: BridgeOp = BridgeOp {
     operation: "design.transformer.discard",
     arguments: &["transformer"],
@@ -280,6 +288,18 @@ pub const DESIGN_PROCESS_CONFIGURE: BridgeOp = BridgeOp {
 pub const DESIGN_VERSION_BEGIN: BridgeOp = BridgeOp {
     operation: "design.version.begin",
     arguments: &["transformers", "reason"],
+};
+pub const DESIGN_VERSION_LIST: BridgeOp = BridgeOp {
+    operation: "design.version.list",
+    arguments: &["transformer"],
+};
+pub const DESIGN_VERSION_PLAY: BridgeOp = BridgeOp {
+    operation: "design.version.play",
+    arguments: &["transformer", "version"],
+};
+pub const DESIGN_VERSION_COMPARE: BridgeOp = BridgeOp {
+    operation: "design.version.compare",
+    arguments: &["transformer", "from", "to"],
 };
 pub const DESIGN_PROCESS_BATCH: BridgeOp = BridgeOp {
     operation: "design.process.batch",
@@ -372,6 +392,7 @@ pub const BRIDGE_OPS: &[&BridgeOp] = &[
     &RANDOM_POINTS,
     &DETECT_OUTLIERS,
     &LINE_EXTENSION_DIFFERENCE,
+    &DESIGN_OPEN,
     &DESIGN_READ,
     &DESIGN_DISCARD,
     &DESIGN_LAYER_TO_LOCAL,
@@ -383,6 +404,9 @@ pub const BRIDGE_OPS: &[&BridgeOp] = &[
     &DESIGN_GEOMETRY,
     &DESIGN_PROCESS_CONFIGURE,
     &DESIGN_VERSION_BEGIN,
+    &DESIGN_VERSION_LIST,
+    &DESIGN_VERSION_PLAY,
+    &DESIGN_VERSION_COMPARE,
     &DESIGN_PROCESS,
     &DESIGN_PROCESS_BATCH,
     &DESIGN_SAVE,

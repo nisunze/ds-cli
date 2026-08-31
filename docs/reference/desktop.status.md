@@ -123,13 +123,22 @@ is open in the project design editor, the bounded context is explicit:
   "project": "arjgpydw_survey_test",
   "design_context": {
     "mode": "edit",
-    "transformer": "agasharu"
+    "transformer": "agasharu",
+    "project": "arjgpydw_survey_test",
+    "context_type": "edit",
+    "editor_ready": true,
+    "map_ready": true,
+    "dirty": false,
+    "staged": false,
+    "persisted": false
   }
 }
 ```
 
 `design_context` is otherwise `null`. It contains no layers, geometry,
-selection, undo history, or local cache state.
+selection, undo history, or local cache state. Older paired applications that
+publish only `mode` and `transformer` remain readable; update DS GridDesign to
+receive the readiness and mutation-state fields.
 
 ## Refusals
 

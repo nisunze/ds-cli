@@ -24,8 +24,11 @@ scripted browser or a hand-built request.
 
 ## Preserve the constructed network first
 
-1. Confirm the exact active project and transformer, then read the current
-   room summary and dirty/server version state.
+1. Confirm the exact active project and transformer. Discover and invoke the
+   canonical visible context-entry command, require its ready receipt, then
+   verify `ds desktop status` names that same transformer before reading the
+   room summary and dirty/server version state. If another room is dirty,
+   follow the refusal remedy; never save, discard, or switch it implicitly.
 2. Before introducing any new geometry, dry-run a property update over every
    existing feature to set `drafting_status=approved`. Apply it locally and
    re-read the room. Require every pre-existing layer count to be approved.
@@ -98,6 +101,17 @@ intermediate current/incoming/difference layers in the map, and never remove
 pinned project layers.
 
 ## Begin a version deliberately; save the working copy separately
+
+Before choosing a baseline, discover `map.design.version.list` and list the
+exact transformer. Treat `playback_available` as a capability fact: legacy
+metadata-only rows remain valid history but cannot be opened or compared as
+content. To inspect a playable baseline, use `map.design.version.play` with its
+exact returned `v<number>` and require `read_only=true`, `map_ready=true`,
+`staged=false`, and `persisted=false`. To measure change, use
+`map.design.version.compare --from <vN> --to <vN|head>` and retain the pinned
+left/right descriptors plus aggregate and per-layer counts. Comparison is
+evidence, not restore: it never sends features through the CLI, edits a room,
+or authorizes force replacement.
 
 Before entering a new engineering edit, decide explicitly whether this work
 needs a new version. If it does, require a clean saved room and run `ds map

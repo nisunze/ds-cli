@@ -25,6 +25,7 @@ use ds_cli_contract::spec::{
 };
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
+use toml_edit::{Array, DocumentMut, Item, Table, value};
 
 pub const HOSTS: &[&str] = &[
     "vscode",
@@ -32,6 +33,9 @@ pub const HOSTS: &[&str] = &[
     "claude-desktop",
     "codex",
     "cursor",
+    "gemini-cli",
+    "windsurf",
+    "github-copilot",
     "generic",
 ];
 
@@ -121,8 +125,8 @@ const ADAPTERS: &[HostAdapter] = &[
         display_name: "Codex",
         platforms: ALL_PLATFORMS,
         root: ConfigRoot::McpServersSnake,
-        automatic_merge: false,
-        restart_requirement: "restart Codex",
+        automatic_merge: true,
+        restart_requirement: "fully quit and restart Codex, then start a new agent session so it reloads the `ds` MCP registration",
     },
     HostAdapter {
         token: "cursor",
@@ -131,6 +135,30 @@ const ADAPTERS: &[HostAdapter] = &[
         root: ConfigRoot::McpServers,
         automatic_merge: true,
         restart_requirement: "restart Cursor or start a new agent session",
+    },
+    HostAdapter {
+        token: "gemini-cli",
+        display_name: "Gemini CLI",
+        platforms: ALL_PLATFORMS,
+        root: ConfigRoot::McpServers,
+        automatic_merge: true,
+        restart_requirement: "restart Gemini CLI",
+    },
+    HostAdapter {
+        token: "windsurf",
+        display_name: "Windsurf",
+        platforms: ALL_PLATFORMS,
+        root: ConfigRoot::McpServers,
+        automatic_merge: true,
+        restart_requirement: "restart Windsurf or start a new agent session",
+    },
+    HostAdapter {
+        token: "github-copilot",
+        display_name: "GitHub Copilot CLI",
+        platforms: ALL_PLATFORMS,
+        root: ConfigRoot::McpServers,
+        automatic_merge: true,
+        restart_requirement: "restart GitHub Copilot CLI",
     },
     HostAdapter {
         token: "generic",
@@ -172,14 +200,13 @@ impl ConnectionDescriptor {
 pub static COMMAND: Command = Command {
     id: "mcp.install",
     path: &["mcp", "install"],
-    contract: 3,
+    contract: 5,
     chapter: ds_cli_contract::spec::Chapter::Catalog,
     summary: "Print or write an MCP host entry for this `ds`.",
     purpose: "\
-Prints this executable's exact stdio entry and user-level host target. Without \
-`--write`, lists supported hosts and proposes the entry. With `--write --yes`, \
-stages and atomically merges only `ds` while preserving sibling servers. It \
-never writes workspace configuration; writing needs `--yes`.",
+Print this executable's exact stdio entry and user-level target. The default \
+is read-only. `--write --yes` atomically merges only `ds`, preserves siblings, \
+and refuses a conflicting entry. Workspace configuration is never written.",
     effect: Effect::MachineWrite,
     authority: Authority::None,
     execution: Execution::Sync,
@@ -187,11 +214,11 @@ never writes workspace configuration; writing needs `--yes`.",
         Arg {
             name: "host",
             kind: ArgKind::Value,
-            value: "<vscode|claude-code|claude-desktop|codex|cursor|generic>",
+            value: "<host>",
             required: false,
             default: Some("vscode"),
             choices: &[],
-            summary: "Which host's configuration shape and file to target.",
+            summary: "Target one host listed by the read-only JSON proposal.",
         },
         Arg {
             name: "write",
@@ -221,9 +248,7 @@ never writes workspace configuration; writing needs `--yes`.",
             summary: "Choose a typed profile.",
         },
     ],
-    output: "\
-Canonical connection descriptor, supported hosts, selected entry and target, \
-build/skill identity, and write status.",
+    output: "Connection descriptor, supported hosts, selected entry/target, build identity, change state and restart handoff.",
     examples: &[
         Example {
             command: "ds mcp install --output json",
@@ -241,6 +266,7 @@ build/skill identity, and write status.",
         crate::HOST_OS_MISMATCH,
         crate::HOST_WRITE_UNSUPPORTED,
         crate::CONFIG_UNWRITABLE,
+        crate::CONFIG_CONFLICT,
         crate::PROFILE_EXPOSURE_INVALID,
         crate::CAPABILITIES_UNAVAILABLE,
         Refusal {
@@ -316,7 +342,8 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             "restore an absolute HOME/USERPROFILE/APPDATA value and retry from the host machine",
         ));
     }
-    let written = if inputs.switch("write") {
+    let writing = inputs.switch("write");
+    let (written, change, changed) = if writing {
         if !adapter.automatic_merge {
             return Err(Failure::invalid(
                 "mcp_host_write_unsupported",
@@ -340,18 +367,58 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
                 "restore the platform's user profile environment and retry from that host machine",
             ));
         };
-        merge_into_file(path, host, &entry)?;
-        true
+        if host == "codex" {
+            let change = merge_codex_into_file(path, &entry)?;
+            let token = change.token(true);
+            let changed = change.changed();
+            (true, token, changed)
+        } else if guarded_json_host(host) {
+            let change = merge_guarded_json_into_file(path, host, &entry)?;
+            let token = change.token(true);
+            let changed = change.changed();
+            (true, token, changed)
+        } else {
+            merge_into_file(path, host, &entry)?;
+            (true, "merged", true)
+        }
+    } else if host == "codex" || guarded_json_host(host) {
+        let Some(path) = file.as_ref() else {
+            return Err(Failure::failed(
+                "mcp_config_unwritable",
+                format!("host `{host}` has no resolvable user-level configuration path"),
+            )
+            .remedy("restore an absolute HOME or USERPROFILE and retry"));
+        };
+        let change = if host == "codex" {
+            plan_codex_file(path, &entry)?
+        } else {
+            plan_guarded_json_file(path, host, &entry)?
+        };
+        (false, change.token(false), false)
     } else {
-        false
+        (false, "planned", false)
+    };
+    let restart_required = written && changed;
+    let restart_handoff = if restart_required {
+        adapter.restart_requirement.to_string()
+    } else if written {
+        "no restart is required because the installed entry already exactly matched".to_string()
+    } else {
+        format!("after writing, {}", adapter.restart_requirement)
     };
     let descriptor_json = descriptor.json();
+    let file_path = file.as_ref().map(|path| path.display().to_string());
     Ok(json!({
         "host": host,
         "server_name": "ds",
         "entry": entry,
-        "file": file.map(|path| path.display().to_string()),
+        "file": file_path,
+        "path": file_path,
         "written": written,
+        "changed": changed,
+        "change": change,
+        "restart_required": restart_required,
+        "restart_handoff": restart_handoff,
         "executable": descriptor.executable.display().to_string(),
         "source_sha": descriptor.build["source_sha"],
         "dirty": descriptor.build["dirty"],
@@ -378,6 +445,12 @@ pub fn render(data: &Value) -> String {
                 ""
             }
         ));
+    }
+    if let Some(change) = data["change"].as_str() {
+        out.push_str(&format!("change: {change}\n"));
+    }
+    if let Some(handoff) = data["restart_handoff"].as_str() {
+        out.push_str(&format!("restart: {handoff}\n"));
     }
     out.push_str("entry:\n");
     out.push_str(&serde_json::to_string_pretty(&data["entry"]).unwrap_or_default());
@@ -415,7 +488,15 @@ fn connection_descriptor(
 /// Transform the one canonical descriptor into a host's verified dialect.
 fn server_entry(adapter: &HostAdapter, descriptor: &ConnectionDescriptor) -> Value {
     let command = descriptor.executable.display().to_string();
-    let server = if adapter.root == ConfigRoot::Servers {
+    let server = if adapter.token == "github-copilot" {
+        json!({
+            "type": "local",
+            "command": command,
+            "args": descriptor.args,
+            "env": {},
+            "tools": ["*"],
+        })
+    } else if adapter.root == ConfigRoot::Servers {
         json!({ "type": "stdio", "command": command, "args": descriptor.args })
     } else {
         json!({ "command": command, "args": descriptor.args })
@@ -423,8 +504,223 @@ fn server_entry(adapter: &HostAdapter, descriptor: &ConnectionDescriptor) -> Val
     json!({ adapter.root.token(): { "ds": server } })
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct CodexServerEntry {
+    command: String,
+    args: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum RegistrationChange {
+    Create(Vec<u8>),
+    Merge(Vec<u8>),
+    Unchanged,
+}
+
+impl RegistrationChange {
+    const fn token(&self, writing: bool) -> &'static str {
+        match (self, writing) {
+            (Self::Create(_), false) => "would_create",
+            (Self::Merge(_), false) => "would_merge",
+            (Self::Create(_), true) => "created",
+            (Self::Merge(_), true) => "merged",
+            (Self::Unchanged, _) => "unchanged",
+        }
+    }
+
+    const fn changed(&self) -> bool {
+        !matches!(self, Self::Unchanged)
+    }
+
+    fn bytes(&self) -> Option<&[u8]> {
+        match self {
+            Self::Create(bytes) | Self::Merge(bytes) => Some(bytes),
+            Self::Unchanged => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum CodexTomlIssue {
+    Malformed(String),
+    Conflict { existing: String, proposed: String },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum JsonRegistrationIssue {
+    Malformed(String),
+    Conflict { existing: String, proposed: String },
+}
+
+fn merge_guarded_json(
+    existing: Option<&[u8]>,
+    entry: &Value,
+) -> Result<RegistrationChange, JsonRegistrationIssue> {
+    let document: Value = match existing {
+        None => json!({}),
+        Some(bytes) if bytes.iter().all(u8::is_ascii_whitespace) => json!({}),
+        Some(bytes) => serde_json::from_slice(bytes)
+            .map_err(|error| JsonRegistrationIssue::Malformed(error.to_string()))?,
+    };
+    let root = document
+        .as_object()
+        .ok_or_else(|| JsonRegistrationIssue::Malformed("root is not an object".to_string()))?;
+    let entry_root = entry
+        .as_object()
+        .filter(|root| root.len() == 1)
+        .ok_or_else(|| {
+            JsonRegistrationIssue::Malformed(
+                "proposal has more than one configuration root".to_string(),
+            )
+        })?;
+    let (section, proposed_servers) = entry_root.iter().next().expect("one proposal root");
+    let proposed = proposed_servers
+        .get("ds")
+        .ok_or_else(|| JsonRegistrationIssue::Malformed("proposal has no ds server".to_string()))?;
+    if let Some(existing_root) = root.get(section) {
+        let existing_servers =
+            existing_root
+                .as_object()
+                .ok_or_else(|| JsonRegistrationIssue::Conflict {
+                    existing: existing_root.to_string(),
+                    proposed: proposed.to_string(),
+                })?;
+        if let Some(current) = existing_servers.get("ds") {
+            return if current == proposed {
+                Ok(RegistrationChange::Unchanged)
+            } else {
+                Err(JsonRegistrationIssue::Conflict {
+                    existing: serde_json::to_string_pretty(current)
+                        .unwrap_or_else(|_| current.to_string()),
+                    proposed: serde_json::to_string_pretty(proposed)
+                        .unwrap_or_else(|_| proposed.to_string()),
+                })
+            };
+        }
+    }
+    let merged = merge(&document, entry).ok_or_else(|| {
+        JsonRegistrationIssue::Malformed("configuration root is not mergeable".to_string())
+    })?;
+    let mut bytes = serde_json::to_vec_pretty(&merged)
+        .map_err(|error| JsonRegistrationIssue::Malformed(error.to_string()))?;
+    bytes.push(b'\n');
+    Ok(if existing.is_none() {
+        RegistrationChange::Create(bytes)
+    } else {
+        RegistrationChange::Merge(bytes)
+    })
+}
+
+fn codex_server_entry(entry: &Value) -> Option<CodexServerEntry> {
+    let server = entry.get("mcp_servers")?.get("ds")?;
+    let command = server.get("command")?.as_str()?.to_string();
+    let args = server
+        .get("args")?
+        .as_array()?
+        .iter()
+        .map(|arg| arg.as_str().map(str::to_owned))
+        .collect::<Option<Vec<_>>>()?;
+    Some(CodexServerEntry { command, args })
+}
+
+fn codex_entry_preview(entry: &CodexServerEntry) -> String {
+    let mut document = DocumentMut::new();
+    let mut server = Table::new();
+    server.insert("command", value(&entry.command));
+    let mut args = Array::new();
+    for arg in &entry.args {
+        args.push(arg);
+    }
+    server.insert("args", value(args));
+    let mut servers = Table::new();
+    servers.insert("ds", Item::Table(server));
+    document.insert("mcp_servers", Item::Table(servers));
+    document.to_string()
+}
+
+fn existing_codex_server(item: &Item) -> Option<CodexServerEntry> {
+    let table = item.as_table()?;
+    let command = table.get("command")?.as_str()?.to_string();
+    let args = table
+        .get("args")?
+        .as_array()?
+        .iter()
+        .map(|arg| arg.as_str().map(str::to_owned))
+        .collect::<Option<Vec<_>>>()?;
+    Some(CodexServerEntry { command, args })
+}
+
+/// Losslessly plan the one table DS owns in Codex's TOML document. Existing
+/// sibling tables, comments, whitespace, and key formatting remain under
+/// `toml_edit`; a pre-existing non-identical `ds` entry is never overwritten.
+fn merge_codex_toml(
+    existing: Option<&[u8]>,
+    entry: &Value,
+) -> Result<RegistrationChange, CodexTomlIssue> {
+    let desired = codex_server_entry(entry).ok_or_else(|| {
+        CodexTomlIssue::Malformed(
+            "the internal Codex proposal is not one command/args entry".to_string(),
+        )
+    })?;
+    let text = match existing {
+        None => String::new(),
+        Some(bytes) => std::str::from_utf8(bytes)
+            .map_err(|error| {
+                CodexTomlIssue::Malformed(format!("configuration is not UTF-8: {error}"))
+            })?
+            .to_string(),
+    };
+    let mut document = if text.trim().is_empty() {
+        DocumentMut::new()
+    } else {
+        text.parse::<DocumentMut>()
+            .map_err(|error| CodexTomlIssue::Malformed(error.to_string()))?
+    };
+
+    if let Some(servers) = document.get("mcp_servers") {
+        let servers = servers.as_table().ok_or_else(|| CodexTomlIssue::Conflict {
+            existing: servers.to_string(),
+            proposed: codex_entry_preview(&desired),
+        })?;
+        if let Some(current) = servers.get("ds") {
+            return match existing_codex_server(current) {
+                Some(current) if current == desired => Ok(RegistrationChange::Unchanged),
+                _ => Err(CodexTomlIssue::Conflict {
+                    existing: current.to_string(),
+                    proposed: codex_entry_preview(&desired),
+                }),
+            };
+        }
+    }
+
+    if !document.contains_key("mcp_servers") {
+        document.insert("mcp_servers", Item::Table(Table::new()));
+    }
+    let servers = document["mcp_servers"]
+        .as_table_mut()
+        .expect("the checked or inserted MCP root is a table");
+    let mut server = Table::new();
+    server.insert("command", value(&desired.command));
+    let mut args = Array::new();
+    for arg in &desired.args {
+        args.push(arg);
+    }
+    server.insert("args", value(args));
+    servers.insert("ds", Item::Table(server));
+    let bytes = document.to_string().into_bytes();
+    Ok(if existing.is_none() || text.trim().is_empty() {
+        RegistrationChange::Create(bytes)
+    } else {
+        RegistrationChange::Merge(bytes)
+    })
+}
+
 fn adapter(host: &str) -> Option<&'static HostAdapter> {
     ADAPTERS.iter().find(|adapter| adapter.token == host)
+}
+
+fn guarded_json_host(host: &str) -> bool {
+    matches!(host, "gemini-cli" | "windsurf" | "github-copilot")
 }
 
 fn unknown_host(host: &str) -> Failure {
@@ -485,6 +781,14 @@ fn config_file_for(
         "claude-desktop" => Some(appdata?.join("Claude").join("claude_desktop_config.json")),
         "codex" => Some(home?.join(".codex").join("config.toml")),
         "cursor" => Some(home?.join(".cursor").join("mcp.json")),
+        "gemini-cli" => Some(home?.join(".gemini").join("settings.json")),
+        "windsurf" => Some(
+            home?
+                .join(".codeium")
+                .join("windsurf")
+                .join("mcp_config.json"),
+        ),
+        "github-copilot" => Some(home?.join(".copilot").join("mcp-config.json")),
         _ => None,
     }
 }
@@ -538,6 +842,18 @@ fn configuration_paths(adapter: &HostAdapter) -> Vec<Value> {
         "cursor" => ALL_PLATFORMS
             .iter()
             .map(|platform| json!({ "platform": platform.token(), "path": "~/.cursor/mcp.json" }))
+            .collect(),
+        "gemini-cli" => ALL_PLATFORMS
+            .iter()
+            .map(|platform| json!({ "platform": platform.token(), "path": "~/.gemini/settings.json" }))
+            .collect(),
+        "windsurf" => ALL_PLATFORMS
+            .iter()
+            .map(|platform| json!({ "platform": platform.token(), "path": "~/.codeium/windsurf/mcp_config.json" }))
+            .collect(),
+        "github-copilot" => ALL_PLATFORMS
+            .iter()
+            .map(|platform| json!({ "platform": platform.token(), "path": "~/.copilot/mcp-config.json" }))
             .collect(),
         _ => Vec::new(),
     }
@@ -644,6 +960,222 @@ fn executable_platform(path: &Path) -> Result<Platform, String> {
 /// supports directory fsync.
 pub fn merge_into_file(path: &Path, host: &str, entry: &Value) -> Result<(), Failure> {
     merge_into_file_with_hook(path, host, entry, || {})
+}
+
+fn codex_issue(path: &Path, issue: CodexTomlIssue) -> Failure {
+    match issue {
+        CodexTomlIssue::Malformed(reason) => Failure::failed(
+            "mcp_config_unwritable",
+            format!("{} is not valid Codex TOML: {reason}", path.display()),
+        )
+        .remedy("fix the malformed TOML without removing unrelated settings, then re-run the read-only proposal")
+        .next("ds mcp install --host codex --output json")
+        .detail(json!({ "file": path.display().to_string(), "host": "codex" })),
+        CodexTomlIssue::Conflict { existing, proposed } => Failure::invalid(
+            "mcp_config_conflict",
+            format!(
+                "{} already contains a non-identical `mcp_servers.ds` entry; it was left untouched",
+                path.display()
+            ),
+        )
+        .remedy("inspect the previews, then remove or rename the existing `[mcp_servers.ds]` entry and re-run the read-only proposal; DS never overwrites it")
+        .next("ds mcp install --host codex --output json")
+        .detail(json!({
+            "file": path.display().to_string(),
+            "host": "codex",
+            "existing": existing,
+            "proposed": proposed,
+        })),
+    }
+}
+
+fn plan_codex_file(path: &Path, entry: &Value) -> Result<RegistrationChange, Failure> {
+    let existing = read_regular_file(path).map_err(|error| {
+        Failure::failed(
+            "mcp_config_unwritable",
+            format!("could not read {}: {error}", path.display()),
+        )
+        .remedy("read the reported path; replace links or special files with an ordinary Codex config, then retry")
+        .detail(json!({ "file": path.display().to_string(), "host": "codex" }))
+    })?;
+    merge_codex_toml(existing.as_ref().map(|file| file.bytes.as_slice()), entry)
+        .map_err(|issue| codex_issue(path, issue))
+}
+
+fn merge_codex_into_file(path: &Path, entry: &Value) -> Result<RegistrationChange, Failure> {
+    let unwritable = |message: String| {
+        Failure::failed("mcp_config_unwritable", message)
+            .remedy("read the reported path; fix or remove malformed TOML, then re-run the read-only proposal")
+            .detail(json!({ "file": path.display().to_string(), "host": "codex" }))
+    };
+    let parent = prepare_parent(path)
+        .map_err(|error| unwritable(format!("could not prepare {}: {error}", path.display())))?;
+    let _lock = InstallLock::acquire(path)
+        .map_err(|error| unwritable(format!("could not lock {}: {error}", path.display())))?;
+    let existing = read_regular_file(path)
+        .map_err(|error| unwritable(format!("could not read {}: {error}", path.display())))?;
+    let change = merge_codex_toml(existing.as_ref().map(|file| file.bytes.as_slice()), entry)
+        .map_err(|issue| codex_issue(path, issue))?;
+    let Some(bytes) = change.bytes() else {
+        return Ok(change);
+    };
+
+    let mut staged = StagedFile::create(path, "stage").map_err(|error| {
+        unwritable(format!(
+            "could not create private stage for {}: {error}",
+            path.display()
+        ))
+    })?;
+    staged
+        .write_synced(bytes, existing.as_ref().map(|file| &file.metadata))
+        .map_err(|error| {
+            unwritable(format!(
+                "could not write {}: {error}",
+                staged.path.display()
+            ))
+        })?;
+    if let Some(previous) = &existing {
+        write_backup(path, previous).map_err(|error| {
+            unwritable(format!(
+                "could not preserve backup for {}: {error}",
+                path.display()
+            ))
+        })?;
+    }
+    let current = read_regular_file(path).map_err(|error| {
+        unwritable(format!(
+            "could not re-check {} before replacement: {error}",
+            path.display()
+        ))
+    })?;
+    if !same_contents(existing.as_ref(), current.as_ref()) {
+        return Err(unwritable(format!(
+            "{} changed while its replacement was being prepared; it was left untouched",
+            path.display()
+        )));
+    }
+    staged
+        .replace(path)
+        .map_err(|error| unwritable(format!("could not replace {}: {error}", path.display())))?;
+    sync_parent(parent).map_err(|error| {
+        unwritable(format!(
+            "could not make {} durable: {error}",
+            parent.display()
+        ))
+    })?;
+    Ok(change)
+}
+
+fn guarded_json_issue(path: &Path, host: &str, issue: JsonRegistrationIssue) -> Failure {
+    match issue {
+        JsonRegistrationIssue::Malformed(reason) => Failure::failed(
+            "mcp_config_unwritable",
+            format!("{} is not valid host JSON: {reason}", path.display()),
+        )
+        .remedy("fix the malformed JSON without removing unrelated settings, then re-run the read-only proposal")
+        .next(format!("ds mcp install --host {host} --output json"))
+        .detail(json!({ "file": path.display().to_string(), "host": host })),
+        JsonRegistrationIssue::Conflict { existing, proposed } => Failure::invalid(
+            "mcp_config_conflict",
+            format!(
+                "{} already contains a non-identical MCP `ds` entry; it was left untouched",
+                path.display()
+            ),
+        )
+        .remedy("inspect the previews, then remove or rename the existing `ds` entry and re-run the read-only proposal; DS never overwrites it")
+        .next(format!("ds mcp install --host {host} --output json"))
+        .detail(json!({
+            "file": path.display().to_string(),
+            "host": host,
+            "existing": existing,
+            "proposed": proposed,
+        })),
+    }
+}
+
+fn plan_guarded_json_file(
+    path: &Path,
+    host: &str,
+    entry: &Value,
+) -> Result<RegistrationChange, Failure> {
+    let existing = read_regular_file(path).map_err(|error| {
+        Failure::failed(
+            "mcp_config_unwritable",
+            format!("could not read {}: {error}", path.display()),
+        )
+        .remedy("read the reported path; replace links or special files with an ordinary host config, then retry")
+        .detail(json!({ "file": path.display().to_string(), "host": host }))
+    })?;
+    merge_guarded_json(existing.as_ref().map(|file| file.bytes.as_slice()), entry)
+        .map_err(|issue| guarded_json_issue(path, host, issue))
+}
+
+fn merge_guarded_json_into_file(
+    path: &Path,
+    host: &str,
+    entry: &Value,
+) -> Result<RegistrationChange, Failure> {
+    let unwritable = |message: String| {
+        Failure::failed("mcp_config_unwritable", message)
+            .remedy("read the reported path; fix or remove malformed JSON, then re-run the read-only proposal")
+            .detail(json!({ "file": path.display().to_string(), "host": host }))
+    };
+    let parent = prepare_parent(path)
+        .map_err(|error| unwritable(format!("could not prepare {}: {error}", path.display())))?;
+    let _lock = InstallLock::acquire(path)
+        .map_err(|error| unwritable(format!("could not lock {}: {error}", path.display())))?;
+    let existing = read_regular_file(path)
+        .map_err(|error| unwritable(format!("could not read {}: {error}", path.display())))?;
+    let change = merge_guarded_json(existing.as_ref().map(|file| file.bytes.as_slice()), entry)
+        .map_err(|issue| guarded_json_issue(path, host, issue))?;
+    let Some(bytes) = change.bytes() else {
+        return Ok(change);
+    };
+
+    let mut staged = StagedFile::create(path, "stage").map_err(|error| {
+        unwritable(format!(
+            "could not create private stage for {}: {error}",
+            path.display()
+        ))
+    })?;
+    staged
+        .write_synced(bytes, existing.as_ref().map(|file| &file.metadata))
+        .map_err(|error| {
+            unwritable(format!(
+                "could not write {}: {error}",
+                staged.path.display()
+            ))
+        })?;
+    if let Some(previous) = &existing {
+        write_backup(path, previous).map_err(|error| {
+            unwritable(format!(
+                "could not preserve backup for {}: {error}",
+                path.display()
+            ))
+        })?;
+    }
+    let current = read_regular_file(path).map_err(|error| {
+        unwritable(format!(
+            "could not re-check {} before replacement: {error}",
+            path.display()
+        ))
+    })?;
+    if !same_contents(existing.as_ref(), current.as_ref()) {
+        return Err(unwritable(format!(
+            "{} changed while its replacement was being prepared; it was left untouched",
+            path.display()
+        )));
+    }
+    staged
+        .replace(path)
+        .map_err(|error| unwritable(format!("could not replace {}: {error}", path.display())))?;
+    sync_parent(parent).map_err(|error| {
+        unwritable(format!(
+            "could not make {} durable: {error}",
+            parent.display()
+        ))
+    })?;
+    Ok(change)
 }
 
 fn merge_into_file_with_hook(
@@ -1229,6 +1761,24 @@ mod tests {
             ),
             Some(appdata.join("Code").join("User").join("mcp.json"))
         );
+        assert_eq!(
+            config_file_for(
+                adapter("codex").unwrap(),
+                Platform::Windows,
+                Some(home),
+                Some(appdata),
+            ),
+            Some(home.join(".codex").join("config.toml"))
+        );
+        assert_eq!(
+            config_file_for(
+                adapter("codex").unwrap(),
+                Platform::Linux,
+                Some(Path::new("/home/operator")),
+                None,
+            ),
+            Some(Path::new("/home/operator/.codex/config.toml").to_path_buf())
+        );
     }
 
     #[test]
@@ -1270,6 +1820,129 @@ mod tests {
         assert_eq!(value["skill_bundle_source_sha"], "abc");
         assert_eq!(value["required_environment"], json!({}));
         assert_eq!(value["profile"], "survey-projects");
+    }
+
+    #[test]
+    fn codex_entry_is_the_verified_stdio_table_shape() {
+        let entry = default_entry("codex", Path::new("/opt/ds/bin/ds"));
+        assert_eq!(entry["mcp_servers"]["ds"]["command"], "/opt/ds/bin/ds");
+        assert_eq!(
+            entry["mcp_servers"]["ds"]["args"],
+            json!(["mcp", "serve", "--exposure", "chapters"])
+        );
+        assert!(adapter("codex").unwrap().automatic_merge);
+    }
+
+    #[test]
+    fn added_json_hosts_use_their_verified_dialects_and_user_paths() {
+        let home = Path::new("/home/operator");
+        for (host, relative) in [
+            ("gemini-cli", ".gemini/settings.json"),
+            ("windsurf", ".codeium/windsurf/mcp_config.json"),
+            ("github-copilot", ".copilot/mcp-config.json"),
+        ] {
+            for platform in ALL_PLATFORMS {
+                assert_eq!(
+                    config_file_for(adapter(host).unwrap(), *platform, Some(home), None),
+                    Some(home.join(relative)),
+                    "{host} on {}",
+                    platform.token()
+                );
+            }
+        }
+
+        for host in ["gemini-cli", "windsurf"] {
+            let entry = default_entry(host, Path::new("/opt/ds/bin/ds"));
+            assert_eq!(entry["mcpServers"]["ds"]["command"], "/opt/ds/bin/ds");
+            assert_eq!(
+                entry["mcpServers"]["ds"]["args"],
+                json!(["mcp", "serve", "--exposure", "chapters"])
+            );
+            assert!(entry["mcpServers"]["ds"].get("type").is_none());
+        }
+
+        let copilot = default_entry("github-copilot", Path::new("/opt/ds/bin/ds"));
+        assert_eq!(copilot["mcpServers"]["ds"]["type"], "local");
+        assert_eq!(copilot["mcpServers"]["ds"]["env"], json!({}));
+        assert_eq!(copilot["mcpServers"]["ds"]["tools"], json!(["*"]));
+    }
+
+    #[test]
+    fn added_json_hosts_preserve_siblings_and_refuse_ds_conflicts() {
+        let entry = default_entry("gemini-cli", Path::new("/opt/ds/bin/ds"));
+        let existing = br#"{
+  "theme": "dark",
+  "mcpServers": { "other": { "command": "keep" } }
+}"#;
+        let merged = merge_guarded_json(Some(existing), &entry).expect("merge");
+        let bytes = merged.bytes().expect("merged bytes");
+        let document: Value = serde_json::from_slice(bytes).unwrap();
+        assert_eq!(document["theme"], "dark");
+        assert_eq!(document["mcpServers"]["other"]["command"], "keep");
+        assert_eq!(document["mcpServers"]["ds"]["command"], "/opt/ds/bin/ds");
+        assert_eq!(
+            merge_guarded_json(Some(bytes), &entry).unwrap(),
+            RegistrationChange::Unchanged
+        );
+
+        let conflicting = br#"{"mcpServers":{"ds":{"command":"other","args":[]}}}"#;
+        assert!(matches!(
+            merge_guarded_json(Some(conflicting), &entry),
+            Err(JsonRegistrationIssue::Conflict { .. })
+        ));
+        assert!(matches!(
+            merge_guarded_json(Some(b"{broken"), &entry),
+            Err(JsonRegistrationIssue::Malformed(_))
+        ));
+    }
+
+    #[test]
+    fn codex_empty_config_creates_one_exact_table_and_is_idempotent() {
+        let entry = default_entry("codex", Path::new("/opt/ds/bin/ds"));
+        let first = merge_codex_toml(None, &entry).expect("create");
+        assert_eq!(first.token(false), "would_create");
+        let bytes = first.bytes().expect("created bytes");
+        let text = std::str::from_utf8(bytes).unwrap();
+        assert!(text.contains("[mcp_servers.ds]"));
+        assert!(text.contains("command = \"/opt/ds/bin/ds\""));
+        assert!(text.contains("args = [\"mcp\", \"serve\", \"--exposure\", \"chapters\"]"));
+        assert_eq!(
+            merge_codex_toml(Some(bytes), &entry).unwrap(),
+            RegistrationChange::Unchanged
+        );
+    }
+
+    #[test]
+    fn codex_merge_preserves_unrelated_tables_comments_and_formatting() {
+        let entry = default_entry("codex", Path::new("/opt/ds/bin/ds"));
+        let existing = b"# operator comment\nmodel = \"gpt-5\"\n\n[mcp_servers.other]\ncommand='other' # keep format\nargs = []\n";
+        let merged = merge_codex_toml(Some(existing), &entry).expect("merge");
+        assert_eq!(merged.token(false), "would_merge");
+        let text = std::str::from_utf8(merged.bytes().unwrap()).unwrap();
+        assert!(text.starts_with("# operator comment\nmodel = \"gpt-5\""));
+        assert!(text.contains("command='other' # keep format"));
+        assert!(text.contains("[mcp_servers.ds]"));
+    }
+
+    #[test]
+    fn codex_conflict_and_malformed_toml_are_bounded_refusals() {
+        let entry = default_entry("codex", Path::new("/opt/ds/bin/ds"));
+        let conflict = merge_codex_toml(
+            Some(b"[mcp_servers.ds]\ncommand = \"another-ds\"\nargs = []\n"),
+            &entry,
+        )
+        .unwrap_err();
+        match conflict {
+            CodexTomlIssue::Conflict { existing, proposed } => {
+                assert!(existing.contains("another-ds"));
+                assert!(proposed.contains("/opt/ds/bin/ds"));
+            }
+            other => panic!("wrong issue: {other:?}"),
+        }
+        assert!(matches!(
+            merge_codex_toml(Some(b"[mcp_servers.ds\ncommand ="), &entry),
+            Err(CodexTomlIssue::Malformed(_))
+        ));
     }
 
     #[test]
@@ -1413,6 +2086,60 @@ mod tests {
         let refused = merge_into_file(&path, "vscode", &entry).unwrap_err();
         assert_eq!(refused.code(), "mcp_config_unwritable");
         assert_eq!(std::fs::read(&path).unwrap(), b"{ not json");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn codex_write_is_atomic_idempotent_and_never_writes_on_refusal() {
+        let dir = scratch("codex-write");
+        let path = dir.join(".codex").join("config.toml");
+        let entry = default_entry("codex", Path::new("/usr/bin/ds"));
+
+        let created = merge_codex_into_file(&path, &entry).expect("create");
+        assert_eq!(created.token(true), "created");
+        let installed = std::fs::read(&path).unwrap();
+        assert!(
+            std::str::from_utf8(&installed)
+                .unwrap()
+                .contains("[mcp_servers.ds]")
+        );
+
+        let unchanged = merge_codex_into_file(&path, &entry).expect("idempotent");
+        assert_eq!(unchanged, RegistrationChange::Unchanged);
+        assert_eq!(std::fs::read(&path).unwrap(), installed);
+
+        let conflicting = b"# keep me\n[mcp_servers.ds]\ncommand = \"other\"\nargs = []\n";
+        std::fs::write(&path, conflicting).unwrap();
+        let refused = merge_codex_into_file(&path, &entry).unwrap_err();
+        assert_eq!(refused.code(), "mcp_config_conflict");
+        assert_eq!(std::fs::read(&path).unwrap(), conflicting);
+
+        let malformed = b"[mcp_servers.ds\ncommand =";
+        std::fs::write(&path, malformed).unwrap();
+        let refused = merge_codex_into_file(&path, &entry).unwrap_err();
+        assert_eq!(refused.code(), "mcp_config_unwritable");
+        assert_eq!(std::fs::read(&path).unwrap(), malformed);
+        assert_no_private_stages(path.parent().unwrap());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn guarded_json_host_never_writes_a_conflicting_registration() {
+        let dir = scratch("guarded-json-conflict");
+        let path = dir
+            .join(".codeium")
+            .join("windsurf")
+            .join("mcp_config.json");
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let before = br#"{"mcpServers":{"ds":{"command":"operator-owned","args":[]}},"keep":true}"#;
+        std::fs::write(&path, before).unwrap();
+        let entry = default_entry("windsurf", Path::new("/usr/bin/ds"));
+
+        let refused = merge_guarded_json_into_file(&path, "windsurf", &entry).unwrap_err();
+        assert_eq!(refused.code(), "mcp_config_conflict");
+        assert_eq!(std::fs::read(&path).unwrap(), before);
+        assert!(!backup_path(&path).exists());
+        assert_no_private_stages(path.parent().unwrap());
         let _ = std::fs::remove_dir_all(&dir);
     }
 

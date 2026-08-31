@@ -500,6 +500,11 @@ static MAP_ENTRIES: &[Entry] = &[
         render: ds_cli_map::survey::apply::render,
     },
     Entry {
+        command: &ds_cli_map::design::open::COMMAND,
+        handler: ds_cli_map::design::open::run,
+        render: ds_cli_map::design::open::render,
+    },
+    Entry {
         command: &ds_cli_map::design::read::COMMAND,
         handler: ds_cli_map::design::read::run,
         render: ds_cli_map::design::read::render,
@@ -553,6 +558,21 @@ static MAP_ENTRIES: &[Entry] = &[
         command: &ds_cli_map::design::version_create::COMMAND,
         handler: ds_cli_map::design::version_create::run,
         render: ds_cli_map::design::version_create::render,
+    },
+    Entry {
+        command: &ds_cli_map::design::version_list::COMMAND,
+        handler: ds_cli_map::design::version_list::run,
+        render: ds_cli_map::design::version_list::render,
+    },
+    Entry {
+        command: &ds_cli_map::design::version_play::COMMAND,
+        handler: ds_cli_map::design::version_play::run,
+        render: ds_cli_map::design::version_play::render,
+    },
+    Entry {
+        command: &ds_cli_map::design::version_compare::COMMAND,
+        handler: ds_cli_map::design::version_compare::run,
+        render: ds_cli_map::design::version_compare::render,
     },
     Entry {
         command: &ds_cli_map::design::process::COMMAND,

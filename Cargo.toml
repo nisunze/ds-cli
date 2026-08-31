@@ -52,6 +52,9 @@ base64 = "0.22.1"
 # docs/contracts/cli-output-contract.md.
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# Lossless Codex config editing. The parser is required so installation can
+# preserve comments/formatting and refuse malformed TOML instead of guessing.
+toml_edit = "0.22"
 # Loopback transport to the paired desktop bridge. Same crate and major the
 # ds-network workspace already builds.
 ureq = { version = "3.3.0", features = ["json"] }

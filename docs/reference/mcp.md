@@ -66,6 +66,14 @@ commands are unavailable and authority, effects, confirmation, output, and
 refusals are unchanged. Plain `--exposure commands` retains the previous
 all-command publication temporarily for compatibility.
 
+The `design-edit` profile includes the same canonical `map.design.open` and
+`map.design.version.list|play|compare` leaves as the broad Design chapter
+router. Their MCP invocations ask the paired application itself to navigate,
+render playback, or open its bounded comparison and wait for readiness; no VS
+Code or other UI host mediates those transitions. Version feature data remains
+inside the application, and the MCP receipts expose metadata or aggregate
+counts only.
+
 `auth-context` is the principal handoff for MCP hosts after a person signs in
 through a trusted terminal. It publishes native identity status, fresh visible
 project inventory, exact project selection, and selected-project status from
@@ -254,8 +262,12 @@ carry the command's effect, authority, and the refusals it can name.
 ds mcp install --output json                # supported hosts plus the default VS Code proposal
 ds mcp install --host claude-desktop --output json # Windows Claude Desktop proposal
 ds mcp install --write --yes                # merge it into the VS Code user profile
-ds mcp install --host claude-code           # other hosts: claude-code, cursor, codex, generic
+ds mcp install --host claude-code           # also cursor, codex, Gemini CLI, Windsurf, Copilot, generic
 ds mcp install --host claude-code --exposure commands --profile pls --write --yes
+ds mcp install --host codex --write --yes   # losslessly add [mcp_servers.ds]
+ds mcp install --host gemini-cli --write --yes
+ds mcp install --host windsurf --write --yes
+ds mcp install --host github-copilot --write --yes
 ```
 
 `mcp.install` remains `machine_write`, but its declared `--write` switch is the
@@ -284,10 +296,22 @@ starts `ds.exe` directly after a restart; VS Code need not be installed or
 running. See the [adapter contract](../contracts/mcp-client-adapter-contract.md)
 and [v3 migration note](../migration/mcp-client-adapters.md).
 
-Codex keeps TOML: `install --host codex` prints the data; translate it into
-`~/.codex/config.toml` under `[mcp_servers.ds]`. The install receipt and MCP
-diagnostics identity report this executable's source SHA; it must match the
-skill-bundle SHA reported by `ds doctor`.
+Codex keeps TOML. The read-only `install --host codex` proposal verifies
+`~/.codex/config.toml` and reports whether it would create, merge, or leave an
+exact match unchanged. `--write --yes` losslessly adds `[mcp_servers.ds]`,
+preserving unrelated tables, comments and formatting. A non-identical existing
+`ds` entry is shown as a conflict and never overwritten. A changed registration
+reports `restart_required: true`: fully quit and restart Codex, then start a new
+agent session. The install receipt and MCP diagnostics identity report this
+executable's source SHA; it must match the skill-bundle SHA from `ds doctor`.
+
+Gemini CLI targets `~/.gemini/settings.json`; Windsurf targets
+`~/.codeium/windsurf/mcp_config.json`; GitHub Copilot CLI targets
+`~/.copilot/mcp-config.json`. All are user-level paths on Windows, macOS and
+Linux, need no VS Code mediation, preserve unrelated JSON and sibling servers,
+and refuse a non-identical existing `ds` entry with existing/proposed previews.
+GitHub Copilot receives its verified `local` server shape. Cline is omitted
+until its CLI/global-storage schema is stable enough for a safe blind merge.
 
 ## Server migration note
 

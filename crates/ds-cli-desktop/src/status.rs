@@ -29,7 +29,7 @@ const MAX_SESSION_BYTES: u64 = 256 * 1024;
 pub static COMMAND: Command = Command {
     id: "desktop.status",
     path: &["desktop", "status"],
-    contract: 1,
+    contract: 2,
     summary: "Report pairing, project and active design context.",
     purpose: "\
 Answers whether a DS GridDesign session is running on this machine, whether it \
@@ -49,8 +49,9 @@ says what is missing.",
     output: "\
 `paired`, `signed_in`, `project` and `design_context` always present. When \
 paired, the install profile and the application's process id. `design_context` \
-is null unless a project transformer is open for editing. Never a token, JWT \
-or credential.",
+is null unless a project transformer is open for editing; a current desktop \
+also reports its project, context type, editor/map readiness, dirty, staged and \
+persisted state. Never a token, JWT or credential.",
     examples: &[
         Example {
             command: "ds desktop status",
@@ -144,6 +145,20 @@ struct SessionView {
 struct DesignContextView {
     mode: DesignContextMode,
     transformer: String,
+    #[serde(default)]
+    project: Option<String>,
+    #[serde(default, rename = "contextType")]
+    context_type: Option<String>,
+    #[serde(default, rename = "editorReady")]
+    editor_ready: Option<bool>,
+    #[serde(default, rename = "mapReady")]
+    map_ready: Option<bool>,
+    #[serde(default)]
+    dirty: Option<bool>,
+    #[serde(default)]
+    staged: Option<bool>,
+    #[serde(default)]
+    persisted: Option<bool>,
 }
 
 #[derive(Deserialize, serde::Serialize)]
@@ -214,11 +229,29 @@ fn paired_data(profile: &str, pid: u32, descriptor: String, session: SessionView
         "uid": session.uid,
         "email": session.email,
         "project": session.project,
-        "design_context": session.design_context.map(|context| json!({
-            "mode": context.mode,
-            "transformer": context.transformer,
-        })),
+        "design_context": session.design_context.map(design_context_data),
     })
+}
+
+fn design_context_data(context: DesignContextView) -> Value {
+    let mut data = serde_json::Map::from_iter([
+        ("mode".to_string(), json!(context.mode)),
+        ("transformer".to_string(), json!(context.transformer)),
+    ]);
+    for (key, value) in [
+        ("project", context.project.map(Value::String)),
+        ("context_type", context.context_type.map(Value::String)),
+        ("editor_ready", context.editor_ready.map(Value::Bool)),
+        ("map_ready", context.map_ready.map(Value::Bool)),
+        ("dirty", context.dirty.map(Value::Bool)),
+        ("staged", context.staged.map(Value::Bool)),
+        ("persisted", context.persisted.map(Value::Bool)),
+    ] {
+        if let Some(value) = value {
+            data.insert(key.to_string(), value);
+        }
+    }
+    Value::Object(data)
 }
 
 fn fetch_session(descriptor: &discover::Descriptor) -> Result<SessionView, Failure> {
@@ -315,9 +348,21 @@ pub fn render(data: &Value) -> String {
         }
         if let Some(context) = data["design_context"].as_object() {
             out.push_str(&format!(
-                "design  {} {}\n",
+                "design  {} {}{}{}\n",
                 context["mode"].as_str().unwrap_or("?"),
                 context["transformer"].as_str().unwrap_or("?"),
+                if context["editor_ready"].as_bool().unwrap_or(false)
+                    && context["map_ready"].as_bool().unwrap_or(false)
+                {
+                    "  ready"
+                } else {
+                    ""
+                },
+                if context["dirty"].as_bool().unwrap_or(false) {
+                    "  dirty"
+                } else {
+                    ""
+                },
             ));
         }
     } else {
@@ -339,7 +384,14 @@ mod tests {
             "project": "arjgpydw_survey_test",
             "design_context": {
                 "mode": "edit",
-                "transformer": "agasharu"
+                "transformer": "agasharu",
+                "project": "arjgpydw_survey_test",
+                "contextType": "edit",
+                "editorReady": true,
+                "mapReady": true,
+                "dirty": false,
+                "staged": false,
+                "persisted": false
             }
         }))
         .expect("session view parses");
@@ -347,7 +399,29 @@ mod tests {
 
         assert_eq!(data["design_context"]["mode"], "edit");
         assert_eq!(data["design_context"]["transformer"], "agasharu");
+        assert_eq!(data["design_context"]["project"], "arjgpydw_survey_test");
+        assert_eq!(data["design_context"]["context_type"], "edit");
+        assert_eq!(data["design_context"]["editor_ready"], true);
+        assert_eq!(data["design_context"]["map_ready"], true);
+        assert_eq!(data["design_context"]["dirty"], false);
+        assert_eq!(data["design_context"]["staged"], false);
+        assert_eq!(data["design_context"]["persisted"], false);
         assert!(render(&data).contains("design  edit agasharu"));
+    }
+
+    #[test]
+    fn legacy_two_field_design_context_remains_readable() {
+        let session: SessionView = serde_json::from_value(json!({
+            "signed_in": true,
+            "project": "arjgpydw_survey_test",
+            "design_context": { "mode": "edit", "transformer": "agasharu" }
+        }))
+        .expect("legacy context parses");
+        let data = paired_data("stable", 42, "descriptor.json".into(), session);
+        assert_eq!(
+            data["design_context"],
+            json!({ "mode": "edit", "transformer": "agasharu" })
+        );
     }
 
     #[test]
