@@ -122,6 +122,34 @@ static DSGRID_ENTRIES: &[Entry] = &[
         handler: ds_cli_dsgrid::apply::run,
         render: ds_cli_dsgrid::apply::render,
     },
+    // The application-local model family. Registered after the file commands
+    // and before the one project act, so domain help reads in the order the
+    // work happens: know a package, hold a model, publish a revision.
+    Entry {
+        command: &ds_cli_dsgrid::model::list::COMMAND,
+        handler: ds_cli_dsgrid::model::list::run,
+        render: ds_cli_dsgrid::model::list::render,
+    },
+    Entry {
+        command: &ds_cli_dsgrid::model::create_local::COMMAND,
+        handler: ds_cli_dsgrid::model::create_local::run,
+        render: ds_cli_dsgrid::model::create_local::render,
+    },
+    Entry {
+        command: &ds_cli_dsgrid::model::import_external::COMMAND,
+        handler: ds_cli_dsgrid::model::import_external::run,
+        render: ds_cli_dsgrid::model::import_external::render,
+    },
+    Entry {
+        command: &ds_cli_dsgrid::model::set_active::COMMAND,
+        handler: ds_cli_dsgrid::model::set_active::run,
+        render: ds_cli_dsgrid::model::set_active::render,
+    },
+    Entry {
+        command: &ds_cli_dsgrid::model::publish_version::COMMAND,
+        handler: ds_cli_dsgrid::model::publish_version::run,
+        render: ds_cli_dsgrid::model::publish_version::render,
+    },
 ];
 
 /// The exchange domain lists its commands in the order they are meant to be

@@ -51,6 +51,8 @@ struct App {
     data: String,
     analysis: String,
     work: String,
+    dsgrid: String,
+    dsgrid_contract: String,
     sre: String,
     style: String,
     style_fill_pattern: String,
@@ -84,6 +86,8 @@ fn app() -> Option<App> {
         data: read("src/lib/desktop/cli-data.ts")?,
         analysis: read("src/lib/analysis/outliers.ts")?,
         work: read("src/lib/desktop/cli-work.ts")?,
+        dsgrid: read("src/lib/desktop/cli-dsgrid.ts")?,
+        dsgrid_contract: read("docs/dsgrid-local-model-and-project-publication-contract.md")?,
         sre: read("src/lib/desktop/cli-sre.ts")?,
         style: read("src/lib/desktop/cli-style.ts")?,
         style_fill_pattern: read("src/lib/styles/fill-pattern.ts")?,
@@ -977,6 +981,344 @@ fn every_work_command_has_one_closed_operation_owner() {
             }
         }
     }
+}
+
+// ---------------------------------------------------------------------------
+// DS Grid local model lifecycle and project publication
+// ---------------------------------------------------------------------------
+//
+// This family is the one where the *vocabulary* is the boundary, so the checks
+// below are unusually specific. A reverted `dsgrid model create/import/convert`
+// family conflated acquisition, local activation and project publication under
+// one word; ds-web's own contract document names them apart, and everything
+// here proves `ds` still says the same three things it does.
+
+/// The four operations that must remain reachable without any project, and the
+/// one that must not be among them.
+const DSGRID_LOCAL_OPERATIONS: &[&str] = &[
+    "dsgrid.model.list",
+    "dsgrid.model.create",
+    "dsgrid.model.import",
+    "dsgrid.model.set_active",
+];
+const DSGRID_PROJECT_OPERATION: &str = "dsgrid.model.publish";
+
+#[test]
+fn every_dsgrid_model_command_has_one_closed_operation_owner_and_exact_arguments() {
+    let Some(app) = app() else {
+        skip("the ds-web sibling repository is not on disk");
+        return;
+    };
+    let allowlist = between(
+        &app.transport,
+        "pub const CLI_OPERATIONS: &[&str] = &[",
+        "];",
+    );
+    assert!(
+        !allowlist.trim().is_empty(),
+        "the desktop CLI operation allowlist is absent"
+    );
+
+    let mut seen = BTreeSet::new();
+    for operation in ds_cli_dsgrid::model::BRIDGE_OPS {
+        assert!(
+            seen.insert(operation.operation),
+            "`{}` is declared twice by ds dsgrid; one semantic operation has one owner",
+            operation.operation
+        );
+        assert_eq!(
+            count(allowlist, &format!("\"{}\"", operation.operation)),
+            1,
+            "`{}` must appear exactly once in the desktop allowlist",
+            operation.operation
+        );
+        assert_eq!(
+            switch_case_count(&app.frontend, operation.operation),
+            1,
+            "`{}` must have exactly one frontend handler",
+            operation.operation
+        );
+        // Exact set, not containment: an argument the adapter accepts but `ds`
+        // never sends is a door nothing here has reviewed, and an argument
+        // `ds` sends that the adapter rejects is a runtime failure with a
+        // compile-time cause.
+        let accepted = quoted_contract_items(operation_contract(&app.dsgrid, operation.operation));
+        let declared: BTreeSet<String> = operation
+            .arguments
+            .iter()
+            .map(|argument| (*argument).to_string())
+            .collect();
+        assert_eq!(
+            accepted, declared,
+            "`{}` arguments drifted between ds and the desktop",
+            operation.operation
+        );
+    }
+    assert_eq!(
+        seen.len(),
+        DSGRID_LOCAL_OPERATIONS.len() + 1,
+        "the family sends exactly the four local operations and the one project operation"
+    );
+}
+
+#[test]
+fn the_dsgrid_local_family_is_project_independent_on_both_sides() {
+    let Some(app) = app() else {
+        skip("the ds-web sibling repository is not on disk");
+        return;
+    };
+
+    // ds-web enforces this at BOTH generic fences rather than trusting each
+    // caller to send a null project, and names the four operations in a list
+    // on each side. If either list stops naming one, a projectless session
+    // silently stops being able to hold a local model.
+    let native = between(
+        &app.transport,
+        "pub const PROJECT_INDEPENDENT_CLI_OPERATIONS: &[&str] = &[",
+        "];",
+    );
+    let frontend = between(
+        &app.dsgrid,
+        "export const CLI_PROJECT_INDEPENDENT_DSGRID_OPERATIONS = [",
+        "] as const;",
+    );
+    assert!(
+        !native.trim().is_empty() && !frontend.trim().is_empty(),
+        "ds-web no longer publishes its project-independent operation lists at the pinned markers"
+    );
+    for operation in DSGRID_LOCAL_OPERATIONS {
+        assert_eq!(
+            count(native, &format!("\"{operation}\"")),
+            1,
+            "`{operation}` is no longer project-independent in the native transport"
+        );
+        assert_eq!(
+            count(frontend, &format!("'{operation}'")),
+            1,
+            "`{operation}` is no longer project-independent in the frontend fence"
+        );
+    }
+    assert!(
+        !native.contains(DSGRID_PROJECT_OPERATION) && !frontend.contains(DSGRID_PROJECT_OPERATION),
+        "publication resolves an exact catalogue revision; it must stay project-fenced"
+    );
+    assert!(
+        app.frontend
+            .contains("isProjectIndependentCliDsgridOperation(request.operation)"),
+        "the frontend bridge no longer consults the project-independent list"
+    );
+    assert!(
+        app.transport.contains("require_project_match"),
+        "the native transport no longer distinguishes a project-fenced invocation"
+    );
+
+    // And `ds` declares the same split in its own authority vocabulary: a
+    // local command that gained `Authority::Project` would start requiring a
+    // selected project for work that has nothing to do with one.
+    use ds_cli_contract::spec::Authority;
+    for command in [
+        &ds_cli_dsgrid::model::list::COMMAND,
+        &ds_cli_dsgrid::model::create_local::COMMAND,
+        &ds_cli_dsgrid::model::import_external::COMMAND,
+        &ds_cli_dsgrid::model::set_active::COMMAND,
+    ] {
+        assert_eq!(
+            command.authority,
+            Authority::DesktopPairing,
+            "`{}` is a local command and must not require a project",
+            command.id
+        );
+        assert!(
+            !command.authority.requires_project(),
+            "`{}` must not make a selected project part of its authority proof",
+            command.id
+        );
+        assert!(
+            command.arg("project").is_none() && command.arg("project-model").is_none(),
+            "`{}` must not accept project state as an input",
+            command.id
+        );
+    }
+    let publish = &ds_cli_dsgrid::model::publish_version::COMMAND;
+    assert_eq!(publish.authority, Authority::Project);
+    assert!(
+        publish.arg("project").is_none(),
+        "the destination is the paired session's own selected project; \
+         a project id is never an argument"
+    );
+}
+
+#[test]
+fn dsgrid_publication_refuses_rename_coupling_exactly_as_the_desktop_does() {
+    let Some(app) = app() else {
+        skip("the ds-web sibling repository is not on disk");
+        return;
+    };
+    // Publishing a revision must not quietly become a metadata edit. ds-web
+    // refuses `name` against an existing project model; `ds` refuses it
+    // earlier, by name, so the round trip is never spent.
+    assert!(
+        app.dsgrid
+            .contains("name is only accepted when publishing a new project model"),
+        "the desktop owner no longer refuses rename coupling on publication"
+    );
+    assert!(
+        app.dsgrid_contract.contains("quietly become a rename"),
+        "the owning contract no longer states the rename boundary"
+    );
+    let refusals: BTreeSet<&str> = ds_cli_dsgrid::model::publish_version::COMMAND
+        .refusals
+        .iter()
+        .map(|refusal| refusal.code)
+        .collect();
+    for code in [
+        "project_model_rename_unsupported",
+        "project_model_not_found",
+        "publish_head_conflict",
+        "new_project_model_incomplete",
+        "ambiguous_publish_source",
+        "confirmation_required",
+    ] {
+        assert!(
+            refusals.contains(code),
+            "`ds dsgrid publish-version` no longer documents `{code}`"
+        );
+    }
+}
+
+#[test]
+fn dsgrid_bounds_and_typed_refusal_markers_match_the_desktop_owner() {
+    let Some(app) = app() else {
+        skip("the ds-web sibling repository is not on disk");
+        return;
+    };
+    assert!(
+        app.dsgrid.contains(&format!(
+            "MAX_LIST_LIMIT = {}",
+            ds_cli_dsgrid::model::MAX_LIST_LIMIT
+        )),
+        "the desktop owner's list bound moved away from the one ds enforces locally"
+    );
+    let kinds = between(
+        &app.dsgrid,
+        "MODEL_KINDS: readonly GridModelKind[] = [",
+        "]",
+    );
+    assert!(!kinds.trim().is_empty(), "the model-kind list is absent");
+    assert_eq!(
+        quoted_contract_items(kinds),
+        ds_cli_dsgrid::model::MODEL_KINDS
+            .iter()
+            .map(|kind| (*kind).to_string())
+            .collect::<BTreeSet<_>>(),
+        "`--kind` choices drifted from the project catalogue's own kinds"
+    );
+
+    // Every prose marker `ds` keys a named refusal on must still be prose the
+    // application actually emits. An unmatched marker is not a silent
+    // mistranslation here — the untranslated `desktop_refused` survives — but
+    // it is a remedy a caller stops being given.
+    let lowered = app.dsgrid.to_ascii_lowercase();
+    for marker in ds_cli_dsgrid::model::LOCAL_MODEL_MISSING_MARKERS
+        .iter()
+        .chain(ds_cli_dsgrid::model::UNSUPPORTED_CRS_MARKERS)
+        .chain(ds_cli_dsgrid::model::EAGER_READ_MARKERS)
+        .chain(ds_cli_dsgrid::model::PROJECT_MODEL_MISSING_MARKERS)
+        .chain(ds_cli_dsgrid::model::HEAD_MOVED_MARKERS)
+    {
+        assert!(
+            lowered.contains(marker),
+            "the desktop DS Grid owner no longer emits `{marker}`"
+        );
+    }
+}
+
+#[test]
+fn the_dsgrid_bridge_admits_no_conversion_verb_no_revision_activation_and_no_bytes() {
+    let Some(app) = app() else {
+        skip("the ds-web sibling repository is not on disk");
+        return;
+    };
+    let allowlist = between(
+        &app.transport,
+        "pub const CLI_OPERATIONS: &[&str] = &[",
+        "];",
+    );
+    assert!(!allowlist.trim().is_empty());
+    // The reverted family's mistake, in operation names, on both sides.
+    for forbidden in [
+        "dsgrid.model.convert",
+        "dsgrid.convert",
+        "dsgrid.model.activate",
+        "dsgrid.project.activate",
+        "dsgrid.revision.activate",
+        "dsgrid.model.register",
+    ] {
+        assert!(
+            !allowlist.contains(&format!("\"{forbidden}\"")),
+            "`{forbidden}` is admitted by the desktop allowlist"
+        );
+        assert_eq!(switch_case_count(&app.frontend, forbidden), 0);
+        assert!(
+            ds_cli_dsgrid::model::BRIDGE_OPS
+                .iter()
+                .all(|op| op.operation != forbidden),
+            "`{forbidden}` is sent by ds"
+        );
+    }
+    // PLS-CADD workspaces and `.bak` backups stay at the exchange boundary, and
+    // both sides say so rather than accepting one quietly.
+    assert!(
+        app.dsgrid.contains(
+            "PLS-CADD workspaces and .bak backups convert through the DS Grid exchange boundary"
+        ),
+        "the desktop owner no longer routes conversion sources to the exchange boundary"
+    );
+
+    // Bytes never travel. The declared argument contract is the exact place a
+    // content field would have to appear to become transportable.
+    let contract_block = between(
+        &app.dsgrid,
+        "export const CLI_DSGRID_OPERATION_CONTRACT",
+        "export const CLI_DSGRID_OPERATION_NAMES",
+    );
+    assert!(!contract_block.trim().is_empty());
+    for forbidden in ["bytes", "content", "base64", "blob"] {
+        assert!(
+            !contract_block.contains(forbidden),
+            "the DS Grid operation contract admits a `{forbidden}` field"
+        );
+    }
+    for op in ds_cli_dsgrid::model::BRIDGE_OPS {
+        for argument in op.arguments {
+            assert!(
+                !matches!(*argument, "bytes" | "content" | "base64" | "blob" | "data"),
+                "`{}` sends a content-carrying argument `{argument}`",
+                op.operation
+            );
+        }
+    }
+
+    // Publication is project state only, and the receipt fields `ds` renders
+    // are what keep "published" from reading as "now current". `set_active` is
+    // idempotent and acquisition never activates; both are receipt facts, so
+    // both are pinned to the owner's projection.
+    for field in [
+        "became_active: false",
+        "status: 'unchanged'",
+        "active_model_changed:",
+        "binding_recorded",
+    ] {
+        assert!(
+            app.dsgrid.contains(field),
+            "the desktop DS Grid receipt no longer publishes `{field}`"
+        );
+    }
+    assert!(
+        app.dsgrid_contract
+            .contains("There is **no durable exclusive project revision activation"),
+        "the owning contract no longer denies a durable project revision activation authority"
+    );
 }
 
 #[test]

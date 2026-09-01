@@ -512,6 +512,342 @@ fn dsgrid_apply_dry_runs_then_writes_one_revision_without_overwriting_source() {
     std::fs::remove_dir_all(&root).expect("remove smoke dir");
 }
 
+// ---------------------------------------------------------------------------
+// dsgrid model — the paired application's local model lifecycle
+// ---------------------------------------------------------------------------
+//
+// A local model lives inside a running application, so there is no fixture
+// that can stand in for one: an assertion about which model occupies Profile
+// needs the desktop, and the desktop is not present on CI.
+//
+// What *is* assertable everywhere is the boundary this family exists to hold,
+// and it is a vocabulary boundary — the one a reverted `dsgrid model
+// create/import/convert` family got wrong. Each check below is a negative
+// control for one thing that family conflated, and every one of them holds on
+// a machine with no application at all.
+
+#[test]
+fn the_local_dsgrid_model_family_neither_requires_nor_accepts_a_project() {
+    // The load-bearing property. A local model is the application's own state;
+    // asking for a project to list, create, acquire or open one would make a
+    // projectless session — an ordinary session for this family — unable to do
+    // any of it. `--project` must be an unknown flag, not an optional one.
+    for path in [
+        vec!["dsgrid", "model", "list"],
+        vec!["dsgrid", "model", "create-local"],
+        vec!["dsgrid", "model", "import-external"],
+        vec!["dsgrid", "model", "set-active"],
+    ] {
+        let mut args = path.clone();
+        args.extend(["--project", "ds-project-1", "--output", "json"]);
+        let run = ds(&args);
+        assert_eq!(
+            run.envelope["error"]["code"],
+            "unknown_flag",
+            "`ds {}` accepted a project; the local family must be project-independent",
+            path.join(" ")
+        );
+
+        let descriptor = ok(&[
+            "capabilities",
+            &format!("dsgrid.model.{}", path[2]),
+            "--output",
+            "json",
+        ]);
+        let command = &descriptor["command"];
+        assert_eq!(
+            command["authority"], "desktop_pairing",
+            "`{}` must prove a transport, never a project",
+            command["id"]
+        );
+        for input in command["inputs"].as_array().expect("inputs") {
+            let name = input["name"].as_str().unwrap_or("");
+            assert!(
+                !name.contains("project"),
+                "`{}` declares the project input `{name}`",
+                command["id"]
+            );
+        }
+    }
+}
+
+#[test]
+fn local_dsgrid_model_commands_reach_the_bridge_with_a_well_formed_call() {
+    // The other half of the same claim: a well-formed local call must end in a
+    // pairing state, never in an input refusal. Without this, the checks above
+    // could pass on a command that refuses everything.
+    for args in [
+        vec!["dsgrid", "model", "list", "--output", "json"],
+        vec!["dsgrid", "model", "create-local", "--output", "json"],
+        vec![
+            "dsgrid",
+            "model",
+            "set-active",
+            "--model",
+            "gm-local-7",
+            "--output",
+            "json",
+        ],
+    ] {
+        let code = refusal(&args);
+        assert!(
+            PAIRING_CODES.contains(&code.as_str()),
+            "`ds {}` ended in `{code}`, which is not a pairing state",
+            args.join(" ")
+        );
+    }
+}
+
+#[test]
+fn external_import_is_dsgrid_only_and_routes_conversion_to_the_exchange_boundary() {
+    // The conflation the revert reversed, refused locally by name. A second
+    // convert-and-project verb would start exactly here: by accepting a PLS
+    // workspace or a `.bak` as a model source.
+    let root = temp_root("dsgrid-import");
+    std::fs::create_dir_all(&root).expect("temp directory is writable");
+    let backup = root.join("delivery.bak").display().to_string();
+    let folder = root.join("workspace").display().to_string();
+    let package = root.join("route.dsgrid").display().to_string();
+
+    for source in [&backup, &folder, &workspace_file("humble-pole.don")] {
+        for args in [
+            vec![
+                "dsgrid",
+                "model",
+                "import-external",
+                "--path",
+                source,
+                "--name",
+                "Route",
+                "--output",
+                "json",
+            ],
+            // Publication is confirmed here on purpose: the source check must
+            // still be the thing that refuses, and the confirmation gate would
+            // otherwise answer first and hide it.
+            vec![
+                "dsgrid",
+                "publish-version",
+                "--path",
+                source,
+                "--name",
+                "Route",
+                "--kind",
+                "mv_line",
+                "--yes",
+                "--output",
+                "json",
+            ],
+        ] {
+            let run = ds(&args);
+            assert_eq!(
+                run.envelope["error"]["code"], "unsupported_model_source",
+                "`{source}` was accepted as a DS Grid package"
+            );
+            assert!(
+                run.envelope["error"]["remedy"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .contains("ds dsgrid-exchange"),
+                "the refusal must name where conversion actually lives"
+            );
+        }
+    }
+
+    // A relative path is refused too: the application resolves it in its own
+    // working directory, where it means a different file or none.
+    assert_eq!(
+        refusal(&[
+            "dsgrid",
+            "model",
+            "import-external",
+            "--path",
+            "route.dsgrid",
+            "--output",
+            "json",
+        ]),
+        "absolute_path_required"
+    );
+    // And a well-formed one reaches the bridge rather than an input refusal.
+    let code = refusal(&[
+        "dsgrid",
+        "model",
+        "import-external",
+        "--path",
+        &package,
+        "--output",
+        "json",
+    ]);
+    assert!(
+        PAIRING_CODES.contains(&code.as_str()),
+        "a valid .dsgrid path ended in `{code}` instead of a pairing state"
+    );
+    std::fs::remove_dir_all(&root).ok();
+}
+
+#[test]
+fn publishing_a_version_is_confirmation_gated_and_never_implies_local_activation() {
+    // Publication writes a governed project revision, so the gate is in
+    // dispatch, before the handler — it holds with no application at all.
+    let run = ds(&[
+        "dsgrid",
+        "publish-version",
+        "--name",
+        "Kamonyi MV",
+        "--kind",
+        "mv_line",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(
+        run.envelope["error"]["code"], "confirmation_required",
+        "`ds dsgrid publish-version` reached past the confirmation gate"
+    );
+    assert_ne!(run.code, 0);
+
+    // There is no durable exclusive "activate this revision for the project"
+    // authority anywhere in this stack, so no command may be named or
+    // documented as though there were, and publication must say what it left
+    // alone rather than leaving it to be inferred.
+    let commands = ok(&["capabilities", "dsgrid", "--output", "json"]);
+    for command in commands["commands"].as_array().expect("commands") {
+        let id = command["id"].as_str().expect("id");
+        assert!(
+            !id.contains("activate"),
+            "`{id}` names an activation this stack has no authority for"
+        );
+    }
+    let publish =
+        ok(&["capabilities", "dsgrid.publish-version", "--output", "json"])["command"].clone();
+    assert_eq!(publish["effect"], "global_write");
+    assert_eq!(publish["authority"], "project");
+    assert_eq!(publish["confirmation_required"], true);
+    let output = publish["output"].as_str().expect("output");
+    assert!(
+        output.contains("active_model_changed"),
+        "the publication receipt must report what it left alone, so `published` \
+         is never read as `now current`"
+    );
+}
+
+#[test]
+fn publication_takes_one_source_and_refuses_to_become_a_rename() {
+    // Two selectors would leave the application to guess which source the
+    // operator meant, and it cannot.
+    assert_eq!(
+        refusal(&[
+            "dsgrid",
+            "publish-version",
+            "--model",
+            "gm-local-7",
+            "--path",
+            "/models/route.dsgrid",
+            "--project-model",
+            "gm-9",
+            "--yes",
+            "--output",
+            "json",
+        ]),
+        "ambiguous_publish_source"
+    );
+    // Project resource ids are generated, not authored: naming one and a
+    // display name together is a rename request wearing a publication's
+    // clothes, and ds-web refuses the same pairing.
+    assert_eq!(
+        refusal(&[
+            "dsgrid",
+            "publish-version",
+            "--project-model",
+            "gm-9",
+            "--name",
+            "Renamed",
+            "--yes",
+            "--output",
+            "json",
+        ]),
+        "project_model_rename_unsupported"
+    );
+    // A new project model needs both an authored name and a kind; refusing
+    // locally saves a capture and an upload that would be discarded.
+    for args in [
+        vec!["dsgrid", "publish-version", "--name", "Kamonyi MV"],
+        vec!["dsgrid", "publish-version", "--kind", "mv_line"],
+        vec!["dsgrid", "publish-version"],
+    ] {
+        let mut args = args;
+        args.extend(["--yes", "--output", "json"]);
+        assert_eq!(
+            refusal(&args),
+            "new_project_model_incomplete",
+            "`ds {}` was accepted without a complete new project model",
+            args.join(" ")
+        );
+    }
+    assert_eq!(
+        refusal(&[
+            "dsgrid",
+            "publish-version",
+            "--name",
+            "Kamonyi MV",
+            "--kind",
+            "substation",
+            "--yes",
+            "--output",
+            "json",
+        ]),
+        "invalid_choice",
+        "--kind must be one of the project catalogue's own kinds"
+    );
+    // An existing project model needs neither, and the call reaches the bridge.
+    let code = refusal(&[
+        "dsgrid",
+        "publish-version",
+        "--project-model",
+        "gm-9",
+        "--expected-head",
+        "r-7",
+        "--reason",
+        "Spotted route",
+        "--yes",
+        "--output",
+        "json",
+    ]);
+    assert!(
+        PAIRING_CODES.contains(&code.as_str()),
+        "a complete publication ended in `{code}` instead of a pairing state"
+    );
+}
+
+#[test]
+fn no_dsgrid_model_command_can_carry_model_content() {
+    // Bytes never travel in CLI or MCP JSON: a source is a filesystem path the
+    // shell prepares or an opaque local model id, and a receipt addresses
+    // content by digest and byte count. The declared inputs are the only place
+    // a content field could enter.
+    let commands = ok(&["capabilities", "dsgrid", "--output", "json"]);
+    let mut checked = 0usize;
+    for command in commands["commands"].as_array().expect("commands") {
+        let id = command["id"].as_str().expect("id");
+        if !(id.starts_with("dsgrid.model.") || id == "dsgrid.publish-version") {
+            continue;
+        }
+        checked += 1;
+        let descriptor = ok(&["capabilities", id, "--output", "json"])["command"].clone();
+        for input in descriptor["inputs"].as_array().expect("inputs") {
+            let name = input["name"].as_str().unwrap_or("");
+            assert!(
+                !matches!(name, "bytes" | "content" | "base64" | "blob" | "data"),
+                "`{id}` declares the content-carrying input `{name}`"
+            );
+        }
+    }
+    assert_eq!(
+        checked, 5,
+        "the DS Grid model family must be five commands; this check would \
+         otherwise silently stop covering one"
+    );
+}
+
 #[test]
 fn dsgrid_exchange_inspect_classifies_and_offers_real_capabilities() {
     let workspace = workspace();

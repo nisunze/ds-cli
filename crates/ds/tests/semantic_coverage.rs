@@ -104,6 +104,25 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("dsgrid.describe", "discovery", "none"),
     ("dsgrid.inspect", "discovery", "none"),
     ("dsgrid.validate", "discovery", "none"),
+    // The paired application's local model lifecycle. `desktop_pairing` is
+    // the exact authority and the load-bearing half of this family's
+    // contract: a local model is browser-local state, so none of these four
+    // requires — or may accept — a project. `local_ui` is the effect for the
+    // three that change the application's own store and occupancy; nothing
+    // durable is written outside it and nothing governed is published.
+    ("dsgrid.model.create-local", "local_ui", "desktop_pairing"),
+    (
+        "dsgrid.model.import-external",
+        "local_ui",
+        "desktop_pairing",
+    ),
+    ("dsgrid.model.list", "read_only", "desktop_pairing"),
+    ("dsgrid.model.set-active", "local_ui", "desktop_pairing"),
+    // The one project act, and the only command in the family that carries
+    // `project` authority: it registers one immutable revision in the paired
+    // session's own selected project's catalogue, so it is `global_write` and
+    // confirmation-gated. It activates nothing locally.
+    ("dsgrid.publish-version", "global_write", "project"),
     ("feedback.close", "global_write", "desktop_user"),
     ("feedback.list", "read_only", "desktop_user"),
     ("feedback.submit", "global_write", "desktop_user"),

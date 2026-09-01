@@ -970,6 +970,7 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
     for profile in [
         "auth-context",
         "grid",
+        "grid-local-model",
         "pls",
         "pls-library",
         "library-governance",
@@ -996,6 +997,10 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
             .as_array()
             .expect("tools");
         let maximum = match profile {
+            // The broad Grid profile carries the existing file/report tools
+            // plus the five local-lifecycle/publication leaves. Agents that
+            // need only that workflow use `grid-local-model` below.
+            "grid" => 18,
             "survey-projects" => 18,
             "design-edit" => 21,
             _ => 16,
@@ -1016,6 +1021,14 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
                 .collect(),
         );
     }
+    assert!(
+        published["grid-local-model"].contains("dsgrid_model_list")
+            && published["grid-local-model"].contains("dsgrid_model_create-local")
+            && published["grid-local-model"].contains("dsgrid_model_import-external")
+            && published["grid-local-model"].contains("dsgrid_model_set-active")
+            && published["grid-local-model"].contains("dsgrid_publish-version"),
+        "the grid-local-model profile must project the complete five-command lifecycle"
+    );
     assert!(
         published["pls"].contains("pls_backup-create"),
         "the PLS profile must expose the live backup command without a second MCP schema"

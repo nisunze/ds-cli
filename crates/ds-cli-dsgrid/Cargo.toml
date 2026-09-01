@@ -10,6 +10,11 @@ publish.workspace = true
 
 [dependencies]
 ds-cli-contract = { workspace = true }
+# A DS Grid model held locally by the running application is a live session,
+# not a file: the application owns which one occupies Profile, and it alone
+# can publish a revision under the identity it already holds. That family is
+# one named semantic operation each, over the shared paired-session surface.
+ds-cli-desktop = { workspace = true }
 # The authoritative owners. This crate holds argument handling, projection
 # and refusal mapping — and no engineering logic of its own. Every number it
 # reports was computed by one of these two crates.

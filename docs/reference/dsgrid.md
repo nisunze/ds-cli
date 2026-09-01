@@ -3,17 +3,43 @@
 Tier-4 reference. `ds dsgrid <command> --help` is the contract.
 `dsgrid inspect` has its own page: [`dsgrid.inspect.md`](dsgrid.inspect.md).
 
-## Why this domain links instead of calling
+## Two owners, kept separate
 
 `ds-grid-model`, `ds-grid-engine` and `ds-grid-exchange` are pure libraries
 with a clean boundary — no ambient state, no process contract, no documented
-reason to stay separate. `ds-web/src-tauri` links them; so does `ds`.
+reason to stay separate. `ds-web/src-tauri` links them; so does `ds` for the
+file commands (`inspect`, `validate`, `describe`, and `apply`).
 
-The consequence is worth stating because it is visible to a caller: **this
-domain has no external dependency at all.** `ds doctor` reports every
-`dsgrid` command available on a machine with no sidecar installed and an
-empty `PATH`, and `domain_smoke.rs` asserts exactly that. Contrast `ds report`
-and `ds solar`, which call binaries and report `unavailable` without them.
+The local-model commands have a different owner. A browser-local DS Grid model
+is a live worker session and durable application store, not a file the CLI can
+open. `model list`, `model create-local`, `model import-external`, and `model
+set-active` therefore ask the paired Desktop through one named operation each.
+They are project-independent; a projectless paired session is valid. Only
+`publish-version` needs project authority, because it registers one immutable
+revision in the paired session's selected project.
+
+This split is visible in availability. The four file commands remain available
+without a Desktop, sidecar, or populated `PATH`. The local-model family needs a
+paired Desktop, and publication additionally needs its signed-in project. No
+command in this domain calls a sidecar process.
+
+## Local acquisition, activity, and publication
+
+These words are deliberately not interchangeable:
+
+| Command | Meaning | Authority |
+|---|---|---|
+| `ds dsgrid model list` | List bounded browser-local model identities and the active one. | paired Desktop |
+| `ds dsgrid model create-local` | Create one empty local model; the application opens it as active. | paired Desktop |
+| `ds dsgrid model import-external` | Acquire one external `.dsgrid`; it does not become active. | paired Desktop |
+| `ds dsgrid model set-active` | Open one existing local model in Profile; idempotent when already active. | paired Desktop |
+| `ds dsgrid publish-version` | Register one immutable revision in the selected project's catalogue; never changes local activity. | project + `--yes` |
+
+The local commands never accept a project. Publication never accepts arbitrary
+model bytes or a project id: it names an opaque local model or an absolute
+`.dsgrid` path, and the paired Desktop supplies its own selected project.
+PLS-CADD workspaces and `.bak` files remain under `ds dsgrid-exchange inspect`,
+`plan`, and `convert`; there is no second conversion verb here.
 
 ## `validate` answers two questions, not one
 
@@ -101,8 +127,11 @@ identity still reaches it without loading exchange planning.
 | `validate` | `ds_grid_exchange::package::unpack`, `ds_grid_model::validate_snapshot` |
 | `describe` | `ds_grid_engine::{describe_commands, describe_operations, describe_projections}` |
 | `apply` | `ds_grid_engine::GridSession`, `ds_grid_exchange::dsgrid::emit` |
+| `model list/create-local/import-external/set-active` | paired Desktop `dsgrid.model.*` operations |
+| `publish-version` | paired Desktop `dsgrid.model.publish`, composing its existing project version flow |
 
-There is no second implementation of the `.dsgrid` format, of model
-validation, or of source classification in this repository, and there must not
-be one: two readers with two tolerances disagree silently, and the caller
-receives a different answer rather than a disagreement.
+There is no second implementation of the `.dsgrid` format, model validation,
+source classification, browser-local session state, or project publication in
+this repository, and there must not be one: two owners with two tolerances or
+two notions of "active" disagree silently, and the caller receives a different
+answer rather than a disagreement.

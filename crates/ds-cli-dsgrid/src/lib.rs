@@ -15,10 +15,17 @@
 //! domain reads or revision-gates one canonical package the caller already
 //! has. `apply` writes a new package, never the source; manufacturing from a
 //! foreign format remains in the exchange domain.
+//!
+//! One family in this domain reaches an owner instead of linking one. A
+//! *local model* is a live session and a durable store inside the running
+//! application, not a file, so [`model`] asks the paired application for each
+//! named transition. Its module header states the boundary that family holds;
+//! nothing in it manufactures a `.dsgrid` either.
 
 pub mod apply;
 pub mod describe;
 pub mod inspect;
+pub mod model;
 pub mod package;
 pub mod validate;
 
@@ -26,11 +33,16 @@ use ds_cli_contract::spec::Domain;
 
 pub static DOMAIN: Domain = Domain {
     id: "dsgrid",
-    summary: "Canonical .dsgrid models: inspect, validate, describe, revise.",
+    summary: "Canonical .dsgrid models: inspect, validate, revise, publish.",
     commands: &[
         &inspect::COMMAND,
         &validate::COMMAND,
         &describe::COMMAND,
         &apply::COMMAND,
+        &model::list::COMMAND,
+        &model::create_local::COMMAND,
+        &model::import_external::COMMAND,
+        &model::set_active::COMMAND,
+        &model::publish_version::COMMAND,
     ],
 };

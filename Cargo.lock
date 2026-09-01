@@ -725,6 +725,7 @@ name = "ds-cli-dsgrid"
 version = "0.1.0"
 dependencies = [
  "ds-cli-contract",
+ "ds-cli-desktop",
  "ds-grid-engine",
  "ds-grid-exchange",
  "ds-grid-model",

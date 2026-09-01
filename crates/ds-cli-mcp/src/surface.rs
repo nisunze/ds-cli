@@ -12,6 +12,7 @@ pub const EXPOSURES: &[&str] = &["chapters", "commands"];
 pub const PROFILE_IDS: &[&str] = &[
     "auth-context",
     "grid",
+    "grid-local-model",
     "pls",
     "pls-library",
     "library-governance",
@@ -58,6 +59,7 @@ impl Exposure {
 pub enum Profile {
     AuthContext,
     Grid,
+    GridLocalModel,
     Pls,
     PlsLibrary,
     LibraryGovernance,
@@ -82,6 +84,7 @@ impl Profile {
         match token {
             "auth-context" => Some(Self::AuthContext),
             "grid" => Some(Self::Grid),
+            "grid-local-model" => Some(Self::GridLocalModel),
             "pls" => Some(Self::Pls),
             "pls-library" => Some(Self::PlsLibrary),
             "library-governance" => Some(Self::LibraryGovernance),
@@ -107,6 +110,7 @@ impl Profile {
         match self {
             Self::AuthContext => "auth-context",
             Self::Grid => "grid",
+            Self::GridLocalModel => "grid-local-model",
             Self::Pls => "pls",
             Self::PlsLibrary => "pls-library",
             Self::LibraryGovernance => "library-governance",
@@ -129,6 +133,12 @@ impl Profile {
 
     const fn tool_limit(self) -> usize {
         match self {
+            // The broad Grid chapter router now also carries the paired
+            // application's local model lifecycle and its one project
+            // publication. Sixteen leaves plus both bootstrap tools; the
+            // narrow `grid-local-model` profile exists for an agent that
+            // wants only that workflow.
+            Self::Grid => 18,
             // Query, spatial selection, fenced changes, and governed
             // single-entry create belong to the same selected-project Survey
             // workflow. The count includes both bootstrap tools.
@@ -146,6 +156,7 @@ impl Profile {
         match self {
             Self::AuthContext => AUTH_CONTEXT_COMMANDS.contains(&tool.id.as_str()),
             Self::Grid => matches!(tool.chapter, Chapter::GridModel | Chapter::Reports),
+            Self::GridLocalModel => GRID_LOCAL_MODEL_COMMANDS.contains(&tool.id.as_str()),
             Self::Pls => tool.chapter == Chapter::PlsCadd && tool.id.starts_with("pls."),
             Self::PlsLibrary => PLS_LIBRARY_COMMANDS.contains(&tool.id.as_str()),
             Self::LibraryGovernance => LIBRARY_GOVERNANCE_COMMANDS.contains(&tool.id.as_str()),
@@ -180,6 +191,7 @@ impl Profile {
     pub const fn command_ids(self) -> &'static [&'static str] {
         match self {
             Self::AuthContext => AUTH_CONTEXT_COMMANDS,
+            Self::GridLocalModel => GRID_LOCAL_MODEL_COMMANDS,
             Self::Survey => SURVEY_MAP_COMMANDS,
             Self::FormFactory => FORM_FACTORY_COMMANDS,
             Self::SurveyProjects => SURVEY_PROJECT_COMMANDS,
@@ -205,6 +217,7 @@ impl Profile {
         match self {
             Self::AuthContext => chapter == Chapter::Project,
             Self::Grid => matches!(chapter, Chapter::GridModel | Chapter::Reports),
+            Self::GridLocalModel => chapter == Chapter::GridModel,
             Self::Pls | Self::PlsLibrary | Self::LibraryGovernance => chapter == Chapter::PlsCadd,
             Self::Survey
             | Self::FormFactory
@@ -239,6 +252,20 @@ const AUTH_CONTEXT_COMMANDS: &[&str] = &[
     "auth.project.list",
     "auth.project.use",
     "auth.project.status",
+];
+
+// The paired application's DS Grid model lifecycle, in the order the work
+// happens. Deliberately narrow: an agent acquiring a model, choosing which one
+// occupies Profile and publishing one revision needs these five leaves and
+// nothing else, and the four local ones reach no project at all. The one
+// project act is published beside them because it is where the workflow ends,
+// and it stays confirmation-gated exactly as the CLI declares it.
+const GRID_LOCAL_MODEL_COMMANDS: &[&str] = &[
+    "dsgrid.model.list",
+    "dsgrid.model.create-local",
+    "dsgrid.model.import-external",
+    "dsgrid.model.set-active",
+    "dsgrid.publish-version",
 ];
 
 const PLS_LIBRARY_COMMANDS: &[&str] = &[
