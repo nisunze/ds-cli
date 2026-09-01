@@ -89,6 +89,21 @@ bounded projections. `source.version` and `source.content_digest` are returned
 only when the server supplied them. `source.state` says `fenced` only when both
 exist; otherwise it says `legacy`, and the CLI never fabricates a digest.
 
+Each sampled row keeps `properties` and separately projects the Feature's
+authoritative top-level GeoJSON `geometry` in WGS84. Point, LineString, Polygon,
+and other GeoJSON values are copied exactly; geometry is neither rebuilt from
+properties nor reprojected. Legacy `properties.geometry`, `properties.x`, and
+`properties.y` are not fallbacks and their CRS is undeclared unless source
+metadata explicitly says otherwise.
+
+`geometryState` is always `included` or `omitted`. An omission names
+`geometryOmissionReason` as `missing`, `null`, or `oversize`. One geometry is
+included only when its compact JSON representation is at most 64 KiB. The
+top-level receipt fields `sample_with_geometry`, `sample_without_geometry`, and
+`sample_geometry_oversize_omissions` account for the bounded sample. The
+selector's top-level WGS84 `--bbox` remains an extent-overlap filter; no source
+Feature bbox is copied or synthesized.
+
 ```bash
 ds auth login --email operator@example.com
 ds auth project use --project <exact-id>

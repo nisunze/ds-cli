@@ -8,7 +8,8 @@ use ds_cli_contract::spec::{
 };
 use ds_cli_contract::{Context, Inputs};
 use ds_geo::feature_selection::{
-    FeatureSelectionError, FeatureSelector, MAX_PROJECTED_IDS, select_geojson_features,
+    FeatureSelectionError, FeatureSelectionResult, FeatureSelector, MAX_PROJECTED_IDS,
+    select_geojson_features,
 };
 use serde_json::{Value, json};
 
@@ -41,7 +42,7 @@ const ID: Arg = Arg::repeated(
 const SAMPLE: Arg = Arg::value(
     "sample",
     "<0-200>",
-    "Return this many bounded property samples.",
+    "Return this many bounded property and top-level geometry samples.",
 )
 .default("0");
 const IDS: Arg = Arg::value(
@@ -288,7 +289,7 @@ refusal!(
 pub static COMMAND: Command = Command {
     id: "design.features.select",
     path: &["design", "features", "select"],
-    contract: 1,
+    contract: 2,
     chapter: Chapter::Design,
     summary: "Select design features without opening a map.",
     purpose: "Restores the native user, reads one exact transformer from the audience-fenced selected project through the fixed gateway call, and runs the authoritative bounded Rust selector locally. The server remains membership authority. No Desktop descriptor, project override, arbitrary request, or processing-lane value is accepted.",
@@ -296,7 +297,7 @@ pub static COMMAND: Command = Command {
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
     args: &[TRANSFORMER, LAYER, WHERE, BBOX, ID, SAMPLE, IDS, LANE],
-    output: "Deterministic source fence state, selected layers, scan and match counts, per-layer counts, missing identities, requested ids, and bounded samples. Legacy metadata remains explicit and no digest is synthesized.",
+    output: "Deterministic source fence state, selected layers, scan and match counts, per-layer counts, missing identities, requested ids, and bounded samples. Sample geometry is the Feature's authoritative top-level WGS84 GeoJSON geometry; omission state/reason and with/without/oversize counts are explicit. Legacy properties.geometry/x/y are not geometry fallbacks and have undeclared CRS unless source metadata says otherwise. Legacy source metadata remains explicit and no digest is synthesized.",
     examples: &[Example {
         command: "ds design features select --transformer T-1042 --layer lv_lines --where drafting_status= --sample 5",
         note: "Headlessly previews unset drafting-status rows in one layer.",
@@ -356,14 +357,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let headless = ds_cli_auth::transformer_context(lane, transformer)?;
     let snapshot = headless.snapshot();
     let result = select_geojson_features(snapshot.layers(), selector).map_err(map_kernel)?;
-    let receipt = &result.receipt;
-    let ids: Vec<&str> = result
-        .ids
-        .iter()
-        .take(ids_wanted)
-        .map(String::as_str)
-        .collect();
-    let omitted = receipt.identified_matches.saturating_sub(ids.len());
+    let (selection, omitted) = selection_projection(&result, ids_wanted);
     let version = snapshot.metadata().version();
     let digest = snapshot.metadata().content_digest();
     let fenced = version.is_some() && digest.is_some();
@@ -382,15 +376,16 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             "version": version,
             "content_digest": digest,
         },
-        "selected_layers": receipt.selected_layers,
-        "scanned_features": receipt.scanned_features,
-        "matched": receipt.matched_features,
-        "matched_by_layer": receipt.matched_by_layer,
-        "missing_identity_features": receipt.missing_identity_features,
-        "identified_matches": receipt.identified_matches,
-        "ids": ids,
-        "sample": result.sample,
     });
+    output
+        .as_object_mut()
+        .expect("static command output is an object")
+        .extend(
+            selection
+                .as_object()
+                .expect("selection projection is an object")
+                .clone(),
+        );
     if ids_wanted > 0 && omitted > 0 {
         output["more"] = json!({
             "omitted": omitted,
@@ -398,6 +393,33 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         });
     }
     Ok(output)
+}
+
+fn selection_projection(result: &FeatureSelectionResult, ids_wanted: usize) -> (Value, usize) {
+    let receipt = &result.receipt;
+    let ids: Vec<&str> = result
+        .ids
+        .iter()
+        .take(ids_wanted)
+        .map(String::as_str)
+        .collect();
+    let omitted = receipt.identified_matches.saturating_sub(ids.len());
+    (
+        json!({
+            "selected_layers": receipt.selected_layers,
+            "scanned_features": receipt.scanned_features,
+            "matched": receipt.matched_features,
+            "matched_by_layer": receipt.matched_by_layer,
+            "missing_identity_features": receipt.missing_identity_features,
+            "identified_matches": receipt.identified_matches,
+            "ids": ids,
+            "sample": result.sample,
+            "sample_with_geometry": receipt.sample_with_geometry,
+            "sample_without_geometry": receipt.sample_without_geometry,
+            "sample_geometry_oversize_omissions": receipt.sample_geometry_oversize_omissions,
+        }),
+        omitted,
+    )
 }
 
 fn selector(inputs: &Inputs) -> Result<FeatureSelector, Failure> {
@@ -541,5 +563,55 @@ mod tests {
         )
         .unwrap_err();
         assert_eq!(map_kernel(error).code(), "invalid_bbox");
+    }
+
+    #[test]
+    fn cli_projection_keeps_authoritative_geometry_and_omission_receipts() {
+        let point = json!({"type":"Point","coordinates":[30.0,-2.0]});
+        let layers = BTreeMap::from([(
+            "poles".to_string(),
+            json!({
+                "type":"FeatureCollection",
+                "features":[
+                    {
+                        "type":"Feature",
+                        "id":"pole-1",
+                        "properties":{"geometry":{"type":"Point","coordinates":[0,0]},"x":0,"y":0},
+                        "geometry":point.clone()
+                    },
+                    {
+                        "type":"Feature",
+                        "id":"pole-2",
+                        "properties":{"geometry":{"type":"Point","coordinates":[31,-3]},"x":31,"y":-3}
+                    }
+                ]
+            }),
+        )]);
+        let result = select_geojson_features(
+            &layers,
+            FeatureSelector {
+                sample: 2,
+                ..FeatureSelector::default()
+            },
+        )
+        .unwrap();
+        let (projection, omitted_ids) = selection_projection(&result, 2);
+
+        assert_eq!(omitted_ids, 0);
+        assert_eq!(projection["sample"][0]["geometry"], point);
+        assert_eq!(projection["sample"][0]["geometryState"], "included");
+        assert_eq!(projection["sample"][1]["geometryState"], "omitted");
+        assert_eq!(projection["sample"][1]["geometryOmissionReason"], "missing");
+        assert_eq!(projection["sample_with_geometry"], 1);
+        assert_eq!(projection["sample_without_geometry"], 1);
+        assert_eq!(projection["sample_geometry_oversize_omissions"], 0);
+    }
+
+    #[test]
+    fn command_contract_names_geometry_authority_and_legacy_non_fallbacks() {
+        assert_eq!(COMMAND.contract, 2);
+        assert!(COMMAND.output.contains("top-level WGS84 GeoJSON geometry"));
+        assert!(COMMAND.output.contains("properties.geometry/x/y"));
+        assert!(COMMAND.output.contains("undeclared CRS"));
     }
 }
