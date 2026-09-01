@@ -46,11 +46,19 @@ fn main() -> ExitCode {
 /// granted global confirmation on the way past. The live `capabilities`
 /// command already declares the optional `selector` operand, so the sentinel
 /// is a current boundary, not speculative parser hardening.
+///
+/// "Anywhere" also stops at a command that declares its own `--version`.
+/// That flag is the one global whose name a command legitimately owns —
+/// `ds design comment post --version <version-id>` pins an object version —
+/// and stripping it here read the write as a request for the binary's
+/// version, printed the release envelope and exited 0 without posting
+/// anything. [`version_is_global`] makes that decision after the command is
+/// known instead of before, so the space and `=` forms behave identically and
+/// a declared input is never shadowed. See [`Globals::version`].
 struct Globals {
     output: Output,
     confirmed: bool,
     help: bool,
-    version: bool,
 }
 
 fn split_globals(argv: &[String]) -> Result<(Globals, Vec<String>), Failure> {
@@ -60,7 +68,6 @@ fn split_globals(argv: &[String]) -> Result<(Globals, Vec<String>), Failure> {
     let mut no_color = false;
     let mut confirmed = false;
     let mut help = false;
-    let mut version = false;
 
     let mut index = 0usize;
     while index < argv.len() {
@@ -75,7 +82,6 @@ fn split_globals(argv: &[String]) -> Result<(Globals, Vec<String>), Failure> {
                 break;
             }
             "--help" | "-h" => help = true,
-            "--version" | "-V" => version = true,
             "--pretty" => pretty = true,
             "--no-color" => no_color = true,
             "--yes" => confirmed = true,
@@ -102,10 +108,51 @@ fn split_globals(argv: &[String]) -> Result<(Globals, Vec<String>), Failure> {
             output: Output::resolve(format, pretty, no_color),
             confirmed,
             help,
-            version,
         },
         rest,
     ))
+}
+
+/// Whether `--version` in this invocation is the request for the binary's own
+/// version, rather than an input belonging to the command that was named.
+///
+/// The decision needs the command, so it happens after routing tokens are
+/// known and never inside [`split_globals`]. Two rules, and both matter:
+///
+/// * If the resolved command declares an input named `version`, the flag is
+///   that command's — in every spelling. `--version v3`, `--version=v3` and
+///   `-V v3` all reach the command's own parser, which reports a missing or
+///   unknown value with a code the command documents. A write can no longer
+///   answer with the release envelope and exit 0 having changed nothing.
+/// * Otherwise the flag keeps its old reach: it is global at any depth, so
+///   `ds dsgrid inspect --version` still reports the binary.
+///
+/// The scan stops at `--` for the same reason [`split_globals`] does: past
+/// the sentinel every token is an operand, including one spelled `--version`.
+fn version_is_global(rest: &[String]) -> bool {
+    if command_declares_version(rest) {
+        return false;
+    }
+    rest.iter()
+        .take_while(|token| token.as_str() != "--")
+        .any(|token| matches!(token.as_str(), "--version" | "-V"))
+}
+
+/// Whether the command these tokens name declares its own `version` input.
+///
+/// Read from the live declaration rather than a list kept here: a command
+/// that gains or loses `--version` changes this answer in the same commit,
+/// and there is no second place to update.
+fn command_declares_version(rest: &[String]) -> bool {
+    let declares = |command: &'static ds_cli_contract::Command| command.arg("version").is_some();
+    if let Some((entry, _)) = registry::find_by_path(rest) {
+        return declares(entry.command);
+    }
+    rest.first().is_some_and(|first| {
+        registry::meta_commands()
+            .iter()
+            .any(|entry| entry.command.path == [first.as_str()] && declares(entry.command))
+    })
 }
 
 fn parse_format(value: &str) -> Result<Format, Failure> {
@@ -136,7 +183,7 @@ fn run(argv: &[String]) -> Result<(), (ExitClass, ())> {
         .map(|registered| registered.domain)
         .collect();
 
-    if globals.version {
+    if version_is_global(&rest) {
         return finish(globals.output, &meta::VERSION, build::identity(), |data| {
             meta_render(&meta::VERSION, data)
         });
@@ -363,13 +410,135 @@ fn unknown_command(domain: &'static Domain, name: &str) -> Failure {
 
 #[cfg(test)]
 mod tests {
-    use super::split_globals;
+    use super::{split_globals, version_is_global};
     use crate::{meta, registry};
     use ds_cli_contract::args::parse;
-    use ds_cli_contract::spec::ArgKind;
+    use ds_cli_contract::spec::{ArgKind, Effect};
 
     fn argv(parts: &[&str]) -> Vec<String> {
         parts.iter().map(|part| (*part).to_string()).collect()
+    }
+
+    /// Every registered command that declares its own `--version` input.
+    /// Walked from the live surface so a command that gains one is covered
+    /// the day it lands, not the day someone remembers this test.
+    fn commands_declaring_version() -> Vec<&'static ds_cli_contract::Command> {
+        registry::all_commands()
+            .into_iter()
+            .filter(|command| command.arg("version").is_some())
+            .collect()
+    }
+
+    #[test]
+    fn a_command_that_owns_version_is_never_shadowed_by_the_global_one() {
+        // F: `ds design comment post --version v3 …` stripped `--version` on
+        // the way past, printed the release envelope and exited 0 without
+        // posting. The flag belongs to whichever command declared it, and the
+        // decision has to happen after the command is known.
+        let declaring = commands_declaring_version();
+        assert!(
+            !declaring.is_empty(),
+            "no command declares `--version`; this guard has stopped covering anything"
+        );
+        for command in declaring {
+            let mut path = command.path.to_vec();
+            path.push("--version");
+            let (_, rest) = split_globals(&argv(&path)).expect("split");
+            assert!(
+                !version_is_global(&rest),
+                "`ds {}` declares `--version` but the global flag still claimed it",
+                command.path.join(" ")
+            );
+            assert!(
+                rest.contains(&"--version".to_string()),
+                "`ds {}` must receive its own `--version` token",
+                command.path.join(" ")
+            );
+        }
+    }
+
+    #[test]
+    fn every_spelling_of_a_command_scoped_version_reaches_the_same_parser() {
+        // Space, `=` and the short form must not disagree. The `=` form
+        // already fell through to the command; the space form did not, so one
+        // spelling wrote and the other reported the binary's version.
+        let command = commands_declaring_version()
+            .into_iter()
+            .next()
+            .expect("a command declares --version");
+        let base = command.path.to_vec();
+        for tail in [
+            vec!["--version", "v3"],
+            vec!["--version=v3"],
+            vec!["-V", "v3"],
+        ] {
+            let mut invocation = base.clone();
+            invocation.extend_from_slice(&tail);
+            let (_, rest) = split_globals(&argv(&invocation)).expect("split");
+            assert!(
+                !version_is_global(&rest),
+                "`ds {}` answered with the global version for `{}`",
+                command.path.join(" "),
+                tail.join(" ")
+            );
+        }
+    }
+
+    #[test]
+    fn no_write_can_answer_a_version_request_with_the_release_envelope() {
+        // The consequence worth naming: a command that changes durable state
+        // must never be reachable by a token that silently turns it into a
+        // read of the binary's own version.
+        for command in commands_declaring_version() {
+            if !matches!(
+                command.effect,
+                Effect::ArtifactWrite | Effect::GlobalWrite | Effect::MachineWrite
+            ) {
+                continue;
+            }
+            for tail in [
+                vec!["--version", "v3"],
+                vec!["--version=v3"],
+                vec!["--version"],
+                vec!["-V"],
+            ] {
+                let mut invocation = command.path.to_vec();
+                invocation.extend_from_slice(&tail);
+                let (_, rest) = split_globals(&argv(&invocation)).expect("split");
+                assert!(
+                    !version_is_global(&rest),
+                    "the write `ds {}` returns the global version envelope for `{}`",
+                    command.path.join(" "),
+                    tail.join(" ")
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn the_global_version_flag_keeps_its_reach_where_no_command_claims_it() {
+        for invocation in [
+            vec!["--version"],
+            vec!["-V"],
+            vec!["--version", "--output", "json"],
+            // A command with no `version` input of its own: unchanged.
+            vec!["dsgrid", "inspect", "--version"],
+        ] {
+            let (_, rest) = split_globals(&argv(&invocation)).expect("split");
+            assert!(
+                version_is_global(&rest),
+                "`ds {}` no longer reports the binary's version",
+                invocation.join(" ")
+            );
+        }
+    }
+
+    #[test]
+    fn a_version_token_after_the_sentinel_is_an_operand_not_the_binarys_version() {
+        let (_, rest) = split_globals(&argv(&["capabilities", "--", "--version"])).expect("split");
+        assert!(!version_is_global(&rest));
+        let inputs = parse(&meta::CAPABILITIES, &rest[1..]).expect("real selector parses");
+        assert_eq!(inputs.value("selector"), Some("--version"));
     }
 
     #[test]

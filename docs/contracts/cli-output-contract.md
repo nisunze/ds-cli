@@ -106,7 +106,16 @@ Recognized at any position, ahead of command routing:
 | `--no-color` | never emit ANSI; `NO_COLOR` does the same |
 | `--yes` | pre-confirm an effectful command |
 | `--help`, `-h` | help at whatever depth was named |
-| `--version`, `-V` | build identity |
+| `--version`, `-V` | build identity, unless the named command declares its own `version` input |
+
+"Any position" stops at two boundaries. Past `--` every token is an operand,
+so `ds capabilities -- --yes` selects the literal text and confirms nothing.
+And `--version` belongs to the command whenever that command declares a
+`version` input of its own: `ds design comment post --version <version-id>`
+pins an object version, and all three spellings — `--version v3`,
+`--version=v3`, `-V v3` — reach the command's parser rather than the build
+identity. A command that declares no `version` input keeps the flag's full
+reach, so `ds dsgrid inspect --version` still reports the binary.
 
 Colour is emitted only when stdout is a terminal, `NO_COLOR` is unset, the
 format is human, and `--no-color` was not passed. Agent shells and CI get

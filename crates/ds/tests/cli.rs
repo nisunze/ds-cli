@@ -323,6 +323,54 @@ fn build_identity_is_verifiable() {
 }
 
 #[test]
+fn a_command_scoped_version_value_never_answers_with_the_release_envelope() {
+    // `ds design comment post --version <version-id>` pins the object version
+    // a comment is posted against. The global scan used to strip that token
+    // before routing, so the write printed the binary's version and exited 0
+    // having posted nothing — while the `=` spelling of the same flag reached
+    // the command. Both spellings must now reach the command, and the short
+    // form must not become a back door to the envelope either.
+    let release = ds(&["version", "--output", "json"]).envelope["data"].clone();
+
+    for tail in [
+        vec!["--version", "v3"],
+        vec!["--version=v3"],
+        vec!["--version"],
+        vec!["-V", "v3"],
+    ] {
+        let mut args = vec!["design", "comment", "post"];
+        args.extend_from_slice(&tail);
+        args.extend_from_slice(&["--output", "json"]);
+        let run = ds(&args);
+
+        assert_ne!(
+            run.envelope["command"],
+            "version",
+            "`ds {}` was answered by the global version command",
+            args.join(" ")
+        );
+        assert_ne!(
+            run.envelope["data"],
+            release,
+            "`ds {}` returned the release envelope",
+            args.join(" ")
+        );
+        assert_eq!(
+            run.envelope["command"],
+            "design.comment.post",
+            "`ds {}` did not reach the command that declares --version",
+            args.join(" ")
+        );
+        assert_ne!(run.code, 0, "`ds {}` reported success", args.join(" "));
+    }
+
+    // A command with no `version` input of its own keeps the flag's old reach.
+    let inherited = ds(&["dsgrid", "inspect", "--version", "--output", "json"]);
+    assert_eq!(inherited.code, 0);
+    assert_eq!(inherited.envelope["data"], release);
+}
+
+#[test]
 fn ds_network_release_pin_validation_is_closed_and_development_is_explicit() {
     use build_pin::{DEVELOPMENT_UNPINNED_STATE, RELEASE_PIN_STATE, resolve_ds_network_pin};
 
