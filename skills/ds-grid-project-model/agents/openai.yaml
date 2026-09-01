@@ -1,0 +1,4 @@
+interface:
+  display_name: "DS Grid Project Model"
+  short_description: "Manage local models and publish project versions"
+  default_prompt: "Use $ds-grid-project-model to create or import a local DS Grid model, select it for editing, and publish an authorized immutable project version."
