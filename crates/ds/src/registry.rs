@@ -122,21 +122,6 @@ static DSGRID_ENTRIES: &[Entry] = &[
         handler: ds_cli_dsgrid::apply::run,
         render: ds_cli_dsgrid::apply::render,
     },
-    Entry {
-        command: &ds_cli_dsgrid::model::CREATE_COMMAND,
-        handler: ds_cli_dsgrid::model::run_create,
-        render: ds_cli_dsgrid::model::render,
-    },
-    Entry {
-        command: &ds_cli_dsgrid::model::IMPORT_COMMAND,
-        handler: ds_cli_dsgrid::model::run_import,
-        render: ds_cli_dsgrid::model::render,
-    },
-    Entry {
-        command: &ds_cli_dsgrid::model::CONVERT_COMMAND,
-        handler: ds_cli_dsgrid::model::run_convert,
-        render: ds_cli_dsgrid::model::render,
-    },
 ];
 
 /// The exchange domain lists its commands in the order they are meant to be

@@ -15,19 +15,10 @@
 //! domain reads or revision-gates one canonical package the caller already
 //! has. `apply` writes a new package, never the source; manufacturing from a
 //! foreign format remains in the exchange domain.
-//!
-//! `model` is the one family here that is about a *project's* copy rather
-//! than a file's contents: registering a model head and its first immutable
-//! revision against a project, from nothing, from a verified package, or from
-//! a PLS-CADD workspace. It reads no bytes and computes nothing either — it
-//! is one act with three sources, and it lives beside the format it registers
-//! rather than in the domain that governs the global catalogue. See
-//! [`model`] for why every verb refuses closed today.
 
 pub mod apply;
 pub mod describe;
 pub mod inspect;
-pub mod model;
 pub mod package;
 pub mod validate;
 
@@ -35,14 +26,11 @@ use ds_cli_contract::spec::Domain;
 
 pub static DOMAIN: Domain = Domain {
     id: "dsgrid",
-    summary: "Canonical .dsgrid models: inspect, validate, revise, register.",
+    summary: "Canonical .dsgrid models: inspect, validate, describe, revise.",
     commands: &[
         &inspect::COMMAND,
         &validate::COMMAND,
         &describe::COMMAND,
         &apply::COMMAND,
-        &model::CREATE_COMMAND,
-        &model::IMPORT_COMMAND,
-        &model::CONVERT_COMMAND,
     ],
 };
