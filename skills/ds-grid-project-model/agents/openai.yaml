@@ -1,0 +1,4 @@
+interface:
+  display_name: "DS Grid Project Model"
+  short_description: "Create or import one governed project grid model"
+  default_prompt: "Use $ds-grid-project-model to create, import, or convert one project-scoped DS Grid model through the deployed ds contract, and refuse honestly when registration is unavailable."
