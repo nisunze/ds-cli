@@ -74,6 +74,7 @@ pub static DOMAIN: Domain = Domain {
         &workflow::SYNC_STATUS_COMMAND,
         &workflow::PORTFOLIO_LIST_COMMAND,
         &workflow::PORTFOLIO_READ_COMMAND,
+        &workflow::PORTFOLIO_ANALYSIS_COMMAND,
         &workflow::FINAL_IMPORT_COMMAND,
         &workflow::FINAL_SUBMIT_COMMAND,
         &exports::REPORT_EXPORT_COMMAND,

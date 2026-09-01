@@ -74,6 +74,16 @@ pub const PORTFOLIO_READ_OP: BridgeOp = BridgeOp {
     operation: "solar.portfolio.read",
     arguments: &["run_id", "artifact", "offset"],
 };
+/// The saved-analysis question, asked by portfolio id alone.
+///
+/// `solar.portfolio.list` answers membership and `solar.portfolio.read` needs a
+/// completed run id, so neither could say whether a governed portfolio has a
+/// saved analysis at all. The application answers this from the same projection
+/// its Pipeline panel renders, so the two cannot disagree.
+pub const PORTFOLIO_ANALYSIS_OP: BridgeOp = BridgeOp {
+    operation: "solar.portfolio.analysis",
+    arguments: &["portfolio_id"],
+};
 
 /// Every paired operation this crate can send, with its exact wire keys.
 ///
@@ -96,6 +106,7 @@ pub const BRIDGE_OPS: &[&BridgeOp] = &[
     &FINAL_SUBMIT_OP,
     &DOCUMENT_READ_OP,
     &PORTFOLIO_READ_OP,
+    &PORTFOLIO_ANALYSIS_OP,
 ];
 
 pub static REFUSALS: &[Refusal] = &[

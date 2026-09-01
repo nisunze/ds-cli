@@ -23,6 +23,7 @@ ds solar portfolio list
 ds solar run start --portfolio <id> --membership-revision <sha256:digest> \
   --graph-strategy first|round-robin|city:<context>
 ds solar portfolio read --run-id <id> --path <field> ...
+ds solar portfolio analysis --portfolio <id>
 ds solar portfolio export --run-id <id> \
   --artifact result|apd|network|plant|financial --out <file>
 ds solar run cancel --run-id <id>
@@ -129,6 +130,16 @@ result additionally exposes bounded graph-strategy provenance: fixed strategies
 retain that city, while round-robin truthfully returns a null representative
 and the sealed city id for each available or unavailable graph. It never
 reconstructs the portfolio from city results.
+
+`solar portfolio analysis` answers a different question and is addressed by
+portfolio id alone: does this governed portfolio have a saved analysis at all?
+`solar portfolio list` reports membership only and `solar portfolio read`
+requires a completed run id, so neither could say. It returns the SAME typed
+projection the application's own Pipeline panel renders — portfolio identity,
+membership revision, ordered members, a `saved_analysis` state of `ready`,
+`failed` or `none`, the analysis identity when one exists, and the governed
+refusal verbatim when the read failed. `none` is a state, not an error. It
+calculates nothing, selects no run, and does not read a sealed artifact.
 `solar portfolio export` pages exactly one of the native `result`, `apd`,
 `network`, `plant`, or `financial` artifacts through the same
 `solar.portfolio.read` operation. The selected name is sent unchanged: `result`
@@ -332,6 +343,7 @@ update it.
 | `solar sync status` | `solar.sync.status` | read only | durable publication rows and state counts |
 | `solar portfolio list` | `solar.portfolio.list` | read only | governed ids, membership revisions and ordered cities |
 | `solar portfolio read` | `solar.portfolio.read` | read only | bounded projection of one sealed aggregate result |
+| `solar portfolio analysis` | `solar.portfolio.analysis` | read only | one portfolio's saved-analysis state, identity and verbatim error |
 | `solar final import` | `solar.final.import` | artifact write | committed interpreted final in local review state |
 | `solar final submit` | `solar.final.submit` | artifact write | explicit publication enqueue for that imported final |
 | `solar report export` | `solar.document.read` | local file write | one exact APD/draft/network/plant/financial Markdown file |

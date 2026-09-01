@@ -2972,3 +2972,266 @@ fn mcp_projects_the_exact_parent_run_city_read_envelope_from_ds() {
     assert_eq!(through_mcp, direct, "{mcp_stderr}");
     finish(mcp_bridge);
 }
+
+// ── Saved-analysis projection (`solar portfolio analysis`) ──────────────────
+//
+// `solar portfolio list` reports membership and `solar portfolio read` needs a
+// completed run id, so neither could answer "does this governed portfolio have
+// a saved analysis?". These cases hold the new command to the SAME projection
+// the desktop Pipeline panel renders: identity, membership revision, state, the
+// analysis identity when present, and the governed refusal verbatim.
+
+/// The projection the application returns, exactly as the panel reads it.
+fn saved_analysis_reply(state: &str, analysis: Value, error: Value) -> Value {
+    json!({
+        "status": "ok",
+        "portfolio_id": "pf-1",
+        "portfolio_name": "Eastern portfolio",
+        "membership_revision": MEMBERSHIP_REVISION,
+        "city_ids": ["a", "b"],
+        "city_count": 2,
+        "saved_analysis": state,
+        "analysis": analysis,
+        "error": error,
+    })
+}
+
+fn ready_analysis() -> Value {
+    json!({
+        "generated_at": "2026-08-30T11:04:00Z",
+        "city_count": 2,
+        "graph_strategy": "round_robin",
+        "representative_city_id": null,
+        "portfolio_digest": "sha256:aaaa",
+        "run_id": "solar-run-123",
+    })
+}
+
+fn analysis_args(descriptor: &str) -> Vec<&str> {
+    vec![
+        "solar",
+        "portfolio",
+        "analysis",
+        "--portfolio",
+        "pf-1",
+        "--desktop-descriptor",
+        descriptor,
+        "--output",
+        "json",
+    ]
+}
+
+#[test]
+fn solar_portfolio_analysis_returns_the_panel_projection_for_every_state() {
+    for (state, analysis, error) in [
+        ("ready", ready_analysis(), Value::Null),
+        ("none", Value::Null, Value::Null),
+        (
+            "failed",
+            Value::Null,
+            // Verbatim: an operator comparing a terminal with the panel has to
+            // read the same sentence, so the CLI never rewords a refusal.
+            json!("The saved portfolio result belongs to a different membership revision."),
+        ),
+    ] {
+        let reply = saved_analysis_reply(state, analysis.clone(), error.clone());
+        let bridge = bridge(vec![("solar.portfolio.analysis", reply)]);
+        let descriptor = bridge.descriptor.to_string_lossy().into_owned();
+
+        let (envelope, code, stdout, stderr) = ds(&analysis_args(&descriptor));
+        assert_eq!(code, 0, "{state}: {stdout}{stderr}");
+        assert_eq!(envelope["command"], "solar.portfolio.analysis");
+        let data = &envelope["data"];
+        assert_eq!(data["portfolio_id"], "pf-1");
+        assert_eq!(data["portfolio_name"], "Eastern portfolio");
+        assert_eq!(data["membership_revision"], MEMBERSHIP_REVISION);
+        assert_eq!(data["city_ids"], json!(["a", "b"]));
+        assert_eq!(data["saved_analysis"], state);
+        assert_eq!(data["analysis"], analysis, "{state}");
+        assert_eq!(data["error"], error, "{state}");
+
+        let requests = finish(bridge);
+        assert_eq!(requests.len(), 1);
+        // Project-scoped by id alone: no run id, no membership, no root.
+        assert_eq!(requests[0]["arguments"], json!({ "portfolio_id": "pf-1" }));
+    }
+}
+
+/// A projection answers a question about ONE portfolio. A reply about another
+/// is a contract mismatch, not a result to print.
+#[test]
+fn solar_portfolio_analysis_refuses_a_reply_about_another_portfolio() {
+    let mut reply = saved_analysis_reply("ready", ready_analysis(), Value::Null);
+    reply["portfolio_id"] = json!("pf-2");
+    let bridge = bridge(vec![("solar.portfolio.analysis", reply)]);
+    let descriptor = bridge.descriptor.to_string_lossy().into_owned();
+
+    let (envelope, code, stdout, stderr) = ds(&analysis_args(&descriptor));
+    assert_eq!(code, 3, "{stdout}{stderr}");
+    assert_eq!(envelope["error"]["code"], "desktop_contract_mismatch");
+    finish(bridge);
+}
+
+/// The id is validated before pairing, so a hopeless call costs no session.
+#[test]
+fn solar_portfolio_analysis_validates_its_portfolio_id_before_pairing() {
+    let (envelope, code, stdout, stderr) = ds(&[
+        "solar",
+        "portfolio",
+        "analysis",
+        "--portfolio",
+        &"p".repeat(129),
+        "--output",
+        "json",
+    ]);
+    assert_eq!(code, 2, "{stdout}{stderr}");
+    assert_eq!(envelope["error"]["code"], "invalid_portfolio_id");
+    assert!(
+        envelope["error"]["remedy"]
+            .as_str()
+            .expect("remedy")
+            .contains("portfolio list"),
+        "{stdout}"
+    );
+}
+
+/// Discovery is how an agent learns this exists; the sealed-result command must
+/// still be discoverable beside it, with its own distinct contract.
+#[test]
+fn solar_portfolio_analysis_is_discoverable_beside_the_sealed_result_read() {
+    let (index, code, stdout, stderr) = ds(&["capabilities", "solar", "--output", "json"]);
+    assert_eq!(code, 0, "{stdout}{stderr}");
+    let ids = index["data"]["commands"]
+        .as_array()
+        .expect("solar command index")
+        .iter()
+        .map(|command| command["id"].as_str().unwrap_or_default().to_string())
+        .collect::<Vec<_>>();
+    for expected in ["solar.portfolio.analysis", "solar.portfolio.read"] {
+        assert!(ids.iter().any(|id| id == expected), "{expected} in {ids:?}");
+    }
+
+    let (descriptor, code, stdout, stderr) = ds(&[
+        "capabilities",
+        "solar.portfolio.analysis",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(code, 0, "{stdout}{stderr}");
+    let command = &descriptor["data"]["command"];
+    assert_eq!(command["effect"], "read_only");
+    assert_eq!(command["authority"], "desktop_user");
+    let inputs = command["inputs"].as_array().expect("analysis inputs");
+    let portfolio = inputs
+        .iter()
+        .find(|input| input["name"] == "portfolio")
+        .expect("portfolio input");
+    assert_eq!(portfolio["required"], true);
+    // The declared output is what an agent reads before calling; it must name
+    // every field the projection carries, including that `none` is a state.
+    let output = command["output"]
+        .as_str()
+        .expect("analysis output contract");
+    for promised in [
+        "membership revision",
+        "saved-analysis state",
+        "verbatim saved error",
+    ] {
+        assert!(
+            output.contains(promised),
+            "missing `{promised}` from {output}"
+        );
+    }
+    assert!(
+        command["refusals"]
+            .as_array()
+            .expect("analysis refusals")
+            .iter()
+            .any(|refusal| refusal["code"] == "invalid_portfolio_id"),
+        "{descriptor}"
+    );
+}
+
+fn mcp_portfolio_analysis(descriptor: &str, profile: &[&str]) -> (Value, String) {
+    let mut args = vec!["mcp", "serve"];
+    args.extend_from_slice(profile);
+    let mut child = Command::new(env!("CARGO_BIN_EXE_ds"))
+        .args(&args)
+        .env("NO_COLOR", "1")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("MCP server starts");
+    let typed = profile.contains(&"commands");
+    {
+        let stdin = child.stdin.as_mut().expect("MCP stdin");
+        let arguments = json!({
+            "portfolio": "pf-1",
+            "desktop-descriptor": descriptor,
+        });
+        let params = if typed {
+            json!({ "name": "solar_portfolio_analysis", "arguments": arguments })
+        } else {
+            json!({
+                "name": "ds_solar",
+                "arguments": {
+                    "operation": "invoke",
+                    "command": "solar.portfolio.analysis",
+                    "arguments": arguments,
+                },
+            })
+        };
+        serde_json::to_writer(
+            &mut *stdin,
+            &json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": params }),
+        )
+        .expect("MCP request");
+        stdin.write_all(b"\n").expect("MCP request newline");
+        serde_json::to_writer(
+            &mut *stdin,
+            &json!({ "jsonrpc": "2.0", "id": 999, "method": "shutdown" }),
+        )
+        .expect("MCP shutdown");
+        stdin.write_all(b"\n").expect("MCP shutdown newline");
+    }
+    let output = child.wait_with_output().expect("MCP server exits");
+    let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+    assert!(output.status.success(), "MCP server failed: {stderr}");
+    let response = String::from_utf8(output.stdout)
+        .expect("MCP stdout is UTF-8")
+        .lines()
+        .map(|line| serde_json::from_str::<Value>(line).expect("MCP response is JSON"))
+        .find(|response| response["id"] == 1)
+        .expect("MCP call response");
+    (response["result"]["structuredContent"].clone(), stderr)
+}
+
+/// MCP is a projection of the live CLI, so the delivery profile and the chapter
+/// surface must return byte-identical envelopes to the direct call.
+#[test]
+fn mcp_projects_the_saved_analysis_envelope_through_chapter_and_delivery_profile() {
+    let reply = saved_analysis_reply("ready", ready_analysis(), Value::Null);
+
+    let direct_bridge = bridge(vec![("solar.portfolio.analysis", reply.clone())]);
+    let direct_descriptor = direct_bridge.descriptor.to_string_lossy().into_owned();
+    let (direct, code, stdout, stderr) = ds(&analysis_args(&direct_descriptor));
+    assert_eq!(code, 0, "{stdout}{stderr}");
+    finish(direct_bridge);
+
+    let chapter_bridge = mcp_bridge("solar.portfolio.analysis", reply.clone());
+    let chapter_descriptor = chapter_bridge.descriptor.to_string_lossy().into_owned();
+    let (through_chapter, chapter_stderr) =
+        mcp_portfolio_analysis(&chapter_descriptor, &["--exposure", "chapters"]);
+    assert_eq!(through_chapter, direct, "{chapter_stderr}");
+    finish(chapter_bridge);
+
+    let profile_bridge = mcp_bridge("solar.portfolio.analysis", reply);
+    let profile_descriptor = profile_bridge.descriptor.to_string_lossy().into_owned();
+    let (through_profile, profile_stderr) = mcp_portfolio_analysis(
+        &profile_descriptor,
+        &["--exposure", "commands", "--profile", "solar-delivery"],
+    );
+    assert_eq!(through_profile, direct, "{profile_stderr}");
+    finish(profile_bridge);
+}

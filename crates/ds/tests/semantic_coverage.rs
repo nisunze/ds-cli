@@ -217,6 +217,7 @@ const EXPECTED: &[(&str, &str, &str)] = &[
         "headless_project",
     ),
     ("solar.input.prepare", "local_file_write", "none"),
+    ("solar.portfolio.analysis", "read_only", "desktop_user"),
     ("solar.portfolio.export", "local_file_write", "desktop_user"),
     ("solar.portfolio.list", "read_only", "desktop_user"),
     ("solar.portfolio.read", "read_only", "desktop_user"),

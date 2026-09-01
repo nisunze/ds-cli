@@ -367,6 +367,11 @@ static SOLAR_ENTRIES: &[Entry] = &[
         render: ds_cli_solar::workflow::render,
     },
     Entry {
+        command: &ds_cli_solar::workflow::PORTFOLIO_ANALYSIS_COMMAND,
+        handler: ds_cli_solar::workflow::portfolio_analysis,
+        render: ds_cli_solar::workflow::render,
+    },
+    Entry {
         command: &ds_cli_solar::workflow::FINAL_IMPORT_COMMAND,
         handler: ds_cli_solar::workflow::final_import,
         render: ds_cli_solar::workflow::render,

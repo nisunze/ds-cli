@@ -17,6 +17,8 @@ const IMPORT_TIMEOUT: Duration = Duration::from_secs(10 * 60);
 const RESULTS_READ_OPERATION: &str = "solar.results.read";
 const SYNC_STATUS_OPERATION: &str = "solar.sync.status";
 const PORTFOLIO_LIST_OPERATION: &str = "solar.portfolio.list";
+const PORTFOLIO_ANALYSIS_OPERATION: &str = "solar.portfolio.analysis";
+const MAX_PORTFOLIO_ID_CHARS: usize = 128;
 const FINAL_IMPORT_OPERATION: &str = "solar.final.import";
 const FINAL_SUBMIT_OPERATION: &str = "solar.final.submit";
 const MAX_PORTFOLIO_PATH_DEPTH: usize = 8;
@@ -178,6 +180,86 @@ pub static PORTFOLIO_LIST_COMMAND: Command = Command {
     availability: paired::available,
 };
 
+static PORTFOLIO_ANALYSIS_REFUSALS: &[Refusal] = &[
+    Refusal {
+        code: "invalid_portfolio_id",
+        when: "--portfolio is empty or longer than 128 characters",
+        remedy: "pass one exact portfolio id from `ds solar portfolio list`",
+    },
+    Refusal {
+        code: "desktop_not_paired",
+        when: "no DS GridDesign session is running on this machine",
+        remedy: "start DS GridDesign, sign in, and retry",
+    },
+    Refusal {
+        code: "desktop_ambiguous",
+        when: "more than one DS GridDesign session is running",
+        remedy: "name one with --desktop-descriptor <path>",
+    },
+    Refusal {
+        code: "desktop_unreachable",
+        when: "the bridge descriptor names a session that does not answer",
+        remedy: "restart DS GridDesign and retry",
+    },
+    Refusal {
+        code: "desktop_unreadable",
+        when: "the paired session's reply could not be read",
+        remedy: "restart DS GridDesign and retry",
+    },
+    Refusal {
+        code: "desktop_operation_unsupported",
+        when: "this DS GridDesign build does not offer the named Solar operation",
+        remedy: "update DS GridDesign and ds to matching releases",
+    },
+    Refusal {
+        code: "desktop_refused",
+        when: "the active project holds no portfolio with that id, or the governed read was declined",
+        remedy: "read the refusal detail, select the owning project, and retry",
+    },
+    Refusal {
+        code: "desktop_contract_mismatch",
+        when: "the paired session returned a saved-analysis projection outside this command contract",
+        remedy: "update DS GridDesign and ds to matching releases",
+    },
+    Refusal {
+        code: "pairing_rejected",
+        when: "the descriptor's pairing secret is stale",
+        remedy: "restart DS GridDesign to publish a fresh descriptor",
+    },
+];
+
+/// The saved-analysis read, addressed by portfolio id alone.
+///
+/// It is deliberately NOT a second way to read a sealed result: it returns the
+/// projection the application's own Pipeline panel renders — identity,
+/// membership revision, status, the analysis identity when one exists, and the
+/// governed refusal verbatim when the read failed. `solar portfolio read` keeps
+/// its exact-run-id sealed-result semantics untouched.
+pub static PORTFOLIO_ANALYSIS_COMMAND: Command = Command {
+    id: "solar.portfolio.analysis",
+    path: &["solar", "portfolio", "analysis"],
+    contract: 1,
+    summary: "Report one governed portfolio's saved analysis state.",
+    purpose: "Reads one portfolio in the active project through the same governed saved-analysis projection the desktop Pipeline panel renders: portfolio identity, membership revision, whether a saved analysis exists, its identity when it does, and the refusal verbatim when the read failed. It never calculates, never selects a run, and never reconstructs an aggregate from city rows; use `solar portfolio read --run-id` for a sealed result projection.",
+    chapter: Chapter::Solar,
+    effect: Effect::ReadOnly,
+    authority: Authority::DesktopUser,
+    execution: Execution::Sync,
+    args: &[
+        Arg::value("portfolio", "<id>", "Portfolio id in the active project.").required(),
+        DESCRIPTOR_ARG,
+    ],
+    output: "Portfolio id and name, membership revision, exact ordered members, saved-analysis state (ready, failed or none), the analysis identity when present, and the verbatim saved error when the read failed.",
+    examples: &[Example {
+        command: "ds solar portfolio analysis --portfolio aderm_loc7 --output json",
+        note: "The same answer the Pipeline panel shows for that portfolio; `none` means nothing has been saved yet, not an error.",
+        runnable: false,
+    }],
+    refusals: PORTFOLIO_ANALYSIS_REFUSALS,
+    reference: Some("docs/reference/solar.md"),
+    availability: paired::available,
+};
+
 pub static PORTFOLIO_READ_COMMAND: Command = Command {
     id: "solar.portfolio.read",
     path: &["solar", "portfolio", "read"],
@@ -306,6 +388,37 @@ pub fn sync_status(inputs: &Inputs, _context: &Context) -> Result<Value, Failure
 
 pub fn portfolio_list(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     paired::invoke(inputs, PORTFOLIO_LIST_OPERATION, json!({}), READ_TIMEOUT)
+}
+
+/// Ask the application for one portfolio's saved-analysis projection.
+///
+/// The reply is checked against the id that was asked for. A projection is the
+/// answer to a question about ONE portfolio, so a reply about a different one is
+/// a contract mismatch, not a result to print — the same rule
+/// `require_exact_identity` applies to run-addressed operations.
+pub fn portfolio_analysis(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
+    let portfolio_id = inputs.require("portfolio")?;
+    if portfolio_id.is_empty() || portfolio_id.chars().count() > MAX_PORTFOLIO_ID_CHARS {
+        return Err(Failure::invalid(
+            "invalid_portfolio_id",
+            "a portfolio id must be between one and 128 characters",
+        )
+        .remedy("pass one exact portfolio id from `ds solar portfolio list`"));
+    }
+    let result = paired::invoke(
+        inputs,
+        PORTFOLIO_ANALYSIS_OPERATION,
+        json!({ "portfolio_id": portfolio_id }),
+        READ_TIMEOUT,
+    )?;
+    if result.get("portfolio_id").and_then(Value::as_str) != Some(portfolio_id) {
+        return Err(Failure::unavailable(
+            "desktop_contract_mismatch",
+            "the paired session answered about a different portfolio",
+        )
+        .remedy("update DS GridDesign and ds to matching releases"));
+    }
+    Ok(result)
 }
 
 pub fn portfolio_read(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
