@@ -605,6 +605,11 @@ static MAP_ENTRIES: &[Entry] = &[
         render: ds_cli_map::design::list::render,
     },
     Entry {
+        command: &ds_cli_map::design::pin::COMMAND,
+        handler: ds_cli_map::design::pin::run,
+        render: ds_cli_map::design::pin::render,
+    },
+    Entry {
         command: &ds_cli_map::design::report::COMMAND,
         handler: ds_cli_map::design::report::run,
         render: ds_cli_map::design::report::render,

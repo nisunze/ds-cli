@@ -997,7 +997,7 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
             .expect("tools");
         let maximum = match profile {
             "survey-projects" => 18,
-            "design-edit" => 20,
+            "design-edit" => 21,
             _ => 16,
         };
         assert!(
@@ -1023,6 +1023,10 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
     assert!(
         published["design-edit"].contains("map_design_open"),
         "the design-edit profile must project the canonical visible context-entry command"
+    );
+    assert!(
+        published["design-edit"].contains("map_design_pin"),
+        "the design-edit profile must project the map-owned Working-set command"
     );
 
     let (compatibility, _) = mcp(

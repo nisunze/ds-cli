@@ -70,7 +70,11 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         json!(crate::group::projection_transformers(inputs)?),
     );
     let definition_ids = crate::group::projection_definition_ids(inputs)?;
-    arguments.insert("definition_ids".into(), json!(definition_ids));
+    // The paired application deliberately publishes the hyphenated key. Keep
+    // the handler aligned with the declared BridgeOp so a whole-project
+    // projection reaches the application instead of being refused locally as
+    // an undeclared argument.
+    arguments.insert("definition-ids".into(), json!(definition_ids));
     let descriptor = crate::paired(inputs.value("desktop-descriptor"))?;
     crate::invoke(
         &descriptor,

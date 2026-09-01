@@ -124,6 +124,7 @@ pub static DOMAIN: Domain = Domain {
         &design::attach_print::COMMAND,
         &design::save::COMMAND,
         &design::list::COMMAND,
+        &design::pin::COMMAND,
         &design::report::COMMAND,
         &design::upload::COMMAND,
         &design::upload_stage::COMMAND,
@@ -324,6 +325,10 @@ pub const DESIGN_GEOMETRY: BridgeOp = BridgeOp {
 pub const DESIGN_LIST: BridgeOp = BridgeOp {
     operation: "design.transformer.list",
     arguments: &["limit"],
+};
+pub const DESIGN_PIN: BridgeOp = BridgeOp {
+    operation: "design.pin.apply",
+    arguments: &["transformers", "selection", "mode"],
 };
 pub const DESIGN_REPORT: BridgeOp = BridgeOp {
     operation: "design.report.export",

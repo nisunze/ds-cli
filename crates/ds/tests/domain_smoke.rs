@@ -1810,6 +1810,7 @@ fn every_map_command_is_reachable_without_the_desktop_installed() {
         "map.design.batch.save",
         "map.design.save",
         "map.design.list",
+        "map.design.pin",
         "map.design.report",
         "map.design.attach-print",
         "map.design.upload.inspect",
@@ -1945,6 +1946,10 @@ fn a_well_formed_map_call_stops_at_confirmation_or_pairing() {
     // This test intentionally never passes --yes. A real paired desktop could
     // otherwise execute a shared write while running a smoke suite. Reads
     // reach the pairing boundary; writes must stop at confirmation first.
+    let descriptor = temp_root("map-smoke-unreachable")
+        .join("session.json")
+        .display()
+        .to_string();
     for args in [
         vec!["map", "view"],
         vec!["map", "zoom", "--bbox", "29.9,-2.1,30.2,-1.85"],
@@ -2050,6 +2055,15 @@ fn a_well_formed_map_call_stops_at_confirmation_or_pairing() {
         vec![
             "map",
             "design",
+            "pin",
+            "--transformer",
+            "T-1042",
+            "--mode",
+            "add",
+        ],
+        vec![
+            "map",
+            "design",
             "batch",
             "process",
             "--transformer",
@@ -2086,7 +2100,7 @@ fn a_well_formed_map_call_stops_at_confirmation_or_pairing() {
         ],
     ] {
         let mut argv = args.clone();
-        argv.extend(["--output", "json"]);
+        argv.extend(["--desktop-descriptor", &descriptor, "--output", "json"]);
         let code = refusal(&argv);
         assert!(
             code == "confirmation_required" || PAIRING_CODES.contains(&code.as_str()),
@@ -2635,7 +2649,19 @@ fn every_design_command_is_discoverable_without_the_desktop_installed() {
         );
     }
     // A well-formed read gets as far as pairing and no further.
-    let code = refusal(&["design", "selection", "list", "--output", "json"]);
+    let descriptor = temp_root("design-discovery-unreachable")
+        .join("session.json")
+        .display()
+        .to_string();
+    let code = refusal(&[
+        "design",
+        "selection",
+        "list",
+        "--desktop-descriptor",
+        &descriptor,
+        "--output",
+        "json",
+    ]);
     assert!(
         PAIRING_CODES.contains(&code.as_str()),
         "a well-formed design read ended in `{code}`, not a pairing state"
@@ -2923,6 +2949,11 @@ fn design_collaboration_is_a_complete_headless_project_surface() {
         }
     }
 
+    let descriptor = temp_root("design-collaboration-unreachable")
+        .join("session.json")
+        .display()
+        .to_string();
+
     // Well-formed reads reach the paired bridge rather than silently asking
     // the map for local state or rejecting a valid shared-record request.
     for args in [
@@ -2966,7 +2997,7 @@ fn design_collaboration_is_a_complete_headless_project_surface() {
         vec!["design", "comment", "read", "--thread", "thread-smoke"],
     ] {
         let mut argv = args;
-        argv.extend(["--output", "json"]);
+        argv.extend(["--desktop-descriptor", &descriptor, "--output", "json"]);
         let code = refusal(&argv);
         assert!(
             PAIRING_CODES.contains(&code.as_str()),
@@ -3322,7 +3353,15 @@ fn feedback_is_one_confirmed_shared_write() {
         );
     }
 
-    let base = [
+    // An explicit unreachable descriptor makes the test deterministic even
+    // when a production Desktop is open. The previous ambient-discovery form
+    // could submit its synthetic report to the real backlog during a local
+    // test run.
+    let descriptor = temp_root("feedback-smoke-unreachable")
+        .join("session.json")
+        .display()
+        .to_string();
+    let base = vec![
         "feedback",
         "submit",
         "--title",
@@ -3333,6 +3372,8 @@ fn feedback_is_one_confirmed_shared_write() {
         "ds-cli",
         "--agent",
         "test-agent",
+        "--desktop-descriptor",
+        &descriptor,
     ];
     let mut unconfirmed = base.to_vec();
     unconfirmed.extend(["--output", "json"]);
@@ -3380,6 +3421,10 @@ fn a_well_formed_work_call_only_ever_fails_on_the_pairing_state() {
     // error. `undeclared_bridge_argument` in particular would mean a handler
     // built an argument key its own BridgeOp does not declare, which no other
     // suite can see.
+    let descriptor = temp_root("work-smoke-unreachable")
+        .join("session.json")
+        .display()
+        .to_string();
     for args in [
         vec!["work", "plan"],
         vec!["work", "task", "list"],
@@ -3462,7 +3507,7 @@ fn a_well_formed_work_call_only_ever_fails_on_the_pairing_state() {
         vec!["work", "record", "read", "--record", "R-1"],
     ] {
         let mut argv = args.clone();
-        argv.extend(["--output", "json"]);
+        argv.extend(["--desktop-descriptor", &descriptor, "--output", "json"]);
         let code = refusal(&argv);
         assert!(
             code.is_empty() || PAIRING_CODES.contains(&code.as_str()),
@@ -3604,6 +3649,10 @@ fn sre_validates_bounds_and_filters_before_pairing() {
 
 #[test]
 fn well_formed_sre_reads_reach_only_the_global_runtime_boundary() {
+    let descriptor = temp_root("sre-smoke-unreachable")
+        .join("session.json")
+        .display()
+        .to_string();
     for args in [
         vec!["sre", "overview"],
         vec![
@@ -3632,7 +3681,7 @@ fn well_formed_sre_reads_reach_only_the_global_runtime_boundary() {
         ],
     ] {
         let mut argv = args.clone();
-        argv.extend(["--output", "json"]);
+        argv.extend(["--desktop-descriptor", &descriptor, "--output", "json"]);
         let code = refusal(&argv);
         assert!(
             code.is_empty()
@@ -3789,6 +3838,10 @@ fn feedback_triage_bounds_are_enforced_before_the_bridge() {
     // never `undeclared_bridge_argument`, which would mean a handler built an
     // argument key its own BridgeOp does not declare. The id below belongs to
     // no report, so a paired machine refuses it rather than closing anything.
+    let descriptor = temp_root("feedback-triage-unreachable")
+        .join("session.json")
+        .display()
+        .to_string();
     for args in [
         vec!["feedback", "list", "--view", "all", "--output", "json"],
         vec![
@@ -3803,7 +3856,9 @@ fn feedback_triage_bounds_are_enforced_before_the_bridge() {
             "json",
         ],
     ] {
-        let code = refusal(&args);
+        let mut argv = args.clone();
+        argv.extend(["--desktop-descriptor", &descriptor]);
+        let code = refusal(&argv);
         assert!(
             code.is_empty()
                 || PAIRING_CODES.contains(&code.as_str())

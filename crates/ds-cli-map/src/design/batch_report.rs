@@ -166,6 +166,12 @@ mod tests {
             tokens.push("--transformer".to_string());
             tokens.push(format!("tx_{index:03}"));
         }
+        let descriptor = std::env::temp_dir().join(format!(
+            "ds-cli-map-unreachable-batch-report-{}-session.json",
+            std::process::id()
+        ));
+        tokens.push("--desktop-descriptor".to_string());
+        tokens.push(descriptor.display().to_string());
         let inputs = parse(&COMMAND, &tokens).expect("parse 202-transformer scope");
         let context = Context {
             confirmed: true,
