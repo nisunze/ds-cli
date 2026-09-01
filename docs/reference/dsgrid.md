@@ -15,6 +15,15 @@ domain has no external dependency at all.** `ds doctor` reports every
 empty `PATH`, and `domain_smoke.rs` asserts exactly that. Contrast `ds report`
 and `ds solar`, which call binaries and report `unavailable` without them.
 
+The one family that is not about a file's contents is `dsgrid model`, which
+registers a project's own copy of a network — a head and its revision chain —
+rather than reading bytes. It links no engine and it is the one exception to
+the paragraph above: all three verbs report `unavailable` because no reviewed
+owner is reachable from `ds` yet, which no installed binary changes. See
+[the project-model contract](../contracts/project-grid-model-contract.md) for
+the family, the four routes into a project model, and the exact ds-web and
+ds-brain operations still required.
+
 ## `validate` answers two questions, not one
 
 A `.dsgrid` can be a sound container holding an unsound model, and the two are
@@ -101,6 +110,7 @@ identity still reaches it without loading exchange planning.
 | `validate` | `ds_grid_exchange::package::unpack`, `ds_grid_model::validate_snapshot` |
 | `describe` | `ds_grid_engine::{describe_commands, describe_operations, describe_projections}` |
 | `apply` | `ds_grid_engine::GridSession`, `ds_grid_exchange::dsgrid::emit` |
+| `model create` · `model import` · `model convert` | ds-brain `POST /grid/models` — no route from `ds` yet, so all three refuse closed |
 
 There is no second implementation of the `.dsgrid` format, of model
 validation, or of source classification in this repository, and there must not

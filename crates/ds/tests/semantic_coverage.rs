@@ -101,6 +101,14 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("dsgrid-exchange.inspect", "discovery", "none"),
     ("dsgrid-exchange.plan", "discovery", "none"),
     ("dsgrid.apply", "local_file_write", "none"),
+    // Registering a project model mutates shared project state through a
+    // governed ds-brain contract, so the family is `global_write` and
+    // confirmation-gated even while it refuses closed. Declaring it
+    // anything cheaper now would be a semantic that changes the day the
+    // owner lands, which is exactly what this table exists to stop.
+    ("dsgrid.model.convert", "global_write", "project"),
+    ("dsgrid.model.create", "global_write", "project"),
+    ("dsgrid.model.import", "global_write", "project"),
     ("dsgrid.describe", "discovery", "none"),
     ("dsgrid.inspect", "discovery", "none"),
     ("dsgrid.validate", "discovery", "none"),

@@ -1007,6 +1007,17 @@ fn every_offline_command_is_available_without_any_engine_binary() {
     let mut checked = 0usize;
     for command in envelope["data"]["commands"].as_array().expect("commands") {
         let id = command["id"].as_str().unwrap_or("");
+        // `dsgrid model …` registers against a project rather than reading a
+        // file, so it is the one family here with no engine to link. Its
+        // unavailability is "no owner exists yet", which no installed binary
+        // changes — the opposite of what this check is about.
+        if id.starts_with("dsgrid.model.") {
+            assert_eq!(
+                command["availability"], "unavailable",
+                "`{id}` registers project state and has no owner; it must not read as available"
+            );
+            continue;
+        }
         if id.starts_with("dsgrid.") || id.starts_with("dsgrid-exchange.") || id.starts_with("pls.")
         {
             checked += 1;
@@ -1019,6 +1030,111 @@ fn every_offline_command_is_available_without_any_engine_binary() {
     assert!(
         checked > 0,
         "doctor returned no linked-engine commands; this availability check would be vacuous"
+    );
+}
+
+#[test]
+fn the_project_model_family_refuses_closed_and_names_what_is_missing() {
+    // Fail-closed, and specific about it. Every verb refuses with one code
+    // that says "not built yet" rather than a generic outage, and the detail
+    // names the ds-brain endpoint and the desktop operations a reviewed owner
+    // would need — so the refusal is a work item, not a dead end.
+    for (verb, extra) in [
+        (
+            "create",
+            vec!["--name", "X", "--kind", "mv_line", "--reason", "R"],
+        ),
+        (
+            "import",
+            vec![
+                "--model", "x.dsgrid", "--name", "X", "--kind", "mv_line", "--reason", "R",
+            ],
+        ),
+        (
+            "convert",
+            vec![
+                "--source", "X.bak", "--name", "X", "--kind", "mv_line", "--reason", "R",
+            ],
+        ),
+    ] {
+        let mut args = vec!["dsgrid", "model", verb];
+        args.extend(extra);
+        args.extend(["--yes", "--output", "json"]);
+        let run = ds(&args);
+        assert_eq!(
+            run.envelope["error"]["code"], "project_model_registration_unsupported",
+            "`ds dsgrid model {verb}` must refuse by name"
+        );
+        assert_eq!(run.code, 3, "an absent prerequisite is exit class 3");
+        assert!(
+            run.envelope["error"]["remedy"]
+                .as_str()
+                .is_some_and(|remedy| remedy.contains("DS GridDesign")),
+            "a closed command still owes a way to get the work done"
+        );
+
+        // The gate answers before the handler, so the enumeration of what is
+        // missing lives one tier down — in the reference the descriptor names,
+        // never inlined into a refusal every caller pays for.
+        let descriptor = ok(&[
+            "capabilities",
+            run.envelope["command"].as_str().expect("command id"),
+            "--output",
+            "json",
+        ])["command"]
+            .clone();
+        assert_eq!(
+            descriptor["unavailable"]["code"], "project_model_registration_unsupported",
+            "an agent must learn this from discovery without running the command"
+        );
+        assert_eq!(
+            descriptor["reference"], "docs/contracts/project-grid-model-contract.md",
+            "the reference is where the required ds-web and ds-brain operations are enumerated"
+        );
+
+        // Confirmation is checked before availability, so the gate on a
+        // governed project write is proven even while the owner is missing.
+        let mut unconfirmed: Vec<&str> = args
+            .iter()
+            .copied()
+            .filter(|token| *token != "--yes")
+            .collect();
+        unconfirmed.push("--output");
+        unconfirmed.push("json");
+        assert_eq!(
+            ds(&unconfirmed).envelope["error"]["code"],
+            "confirmation_required",
+            "`ds dsgrid model {verb}` reached past the confirmation gate"
+        );
+    }
+
+    // One family, one place to find it — and the kind vocabulary is closed.
+    let index = ok(&["capabilities", "dsgrid", "--output", "json"]);
+    let ids: BTreeSet<&str> = index["commands"]
+        .as_array()
+        .expect("commands")
+        .iter()
+        .filter_map(|command| command["id"].as_str())
+        .filter(|id| id.starts_with("dsgrid.model."))
+        .collect();
+    assert_eq!(
+        ids,
+        [
+            "dsgrid.model.create",
+            "dsgrid.model.import",
+            "dsgrid.model.convert"
+        ]
+        .into_iter()
+        .collect::<BTreeSet<_>>(),
+        "the project-model family must stay exactly three discoverable verbs"
+    );
+    assert_eq!(
+        refusal(&[
+            "dsgrid", "model", "create", "--name", "X", "--kind", "network", "--reason", "R",
+            "--yes", "--output", "json",
+        ]),
+        "invalid_choice",
+        "a kind ds-brain does not accept must be refused by the parser, not by a round trip"
     );
 }
 
