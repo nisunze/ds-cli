@@ -3,9 +3,9 @@
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{Authority, Chapter, Command, Effect, Example, Execution};
 use ds_cli_contract::{Context, Inputs};
-use serde_json::{Value, json};
+use serde_json::{Map, Value};
 
-use crate::{DESCRIPTOR_ARG, OPTIONAL_TYPE_ARG};
+use crate::{LANE_ARG, OPTIONAL_TYPE_ARG};
 
 pub static COMMAND: Command = Command {
     id: "tile.status",
@@ -13,54 +13,68 @@ pub static COMMAND: Command = Command {
     contract: 1,
     summary: "The published state of the survey and design tile outputs.",
     purpose: "\
-Start here. For each output (survey, design): whether it is published, \
-running, failed or never built; when it was tiled; how many features it \
-holds; and whether the project's sources changed since (dirty). Reads the \
-same status the Pipeline panel shows.",
+Start here. Restores the native user and reads only its audience-fenced \
+selected project through the fixed tile status call. For each requested \
+output it reports whether it is published, running, failed or never built; \
+when it was tiled; how many features it holds; and whether its sources \
+changed since. No project, Desktop descriptor, URL, body or action override \
+is accepted.",
     chapter: Chapter::VectorTiles,
-    effect: Effect::ReadOnly,
-    authority: Authority::Project,
+    effect: Effect::LocalAuthState,
+    authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[OPTIONAL_TYPE_ARG, DESCRIPTOR_ARG],
+    args: &[OPTIONAL_TYPE_ARG, LANE_ARG],
     output: "\
-`project` and `tiles` keyed by type with `status`, `tiled_at`, \
-`total_features`, `dirty`, `in_progress`, `cache_available`, `last_error`.",
+Lane and selected-project identity/status, plus `tiles` keyed by type with \
+the fixed backend status, timestamps, feature count, dirty/progress/cache \
+state, decision and bounded diagnostics.",
     examples: &[Example {
         command: "ds tile status --output json",
         note: "`.data.tiles.design.dirty` true means a generate would run.",
         runnable: false,
     }],
-    refusals: &[
-        crate::NOT_PAIRED,
-        crate::AMBIGUOUS,
-        crate::UNREACHABLE,
-        crate::PAIRING_REJECTED,
-        crate::TILE_REFUSED,
-        crate::UNSUPPORTED,
-        crate::UNREADABLE,
-        crate::SIGNED_OUT,
-    ],
+    refusals: crate::NATIVE_REFUSALS,
     reference: Some("docs/reference/tile.md"),
-    availability: crate::paired_availability,
+    availability: ds_cli_auth::native_availability,
 };
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
-    let descriptor = crate::paired(inputs.value("desktop-descriptor"))?;
-    let mut arguments = serde_json::Map::new();
-    if let Some(kind) = inputs.value("type") {
-        arguments.insert("type".into(), json!(kind));
+    let lane = inputs.require("lane")?;
+    let types: &[ds_cli_auth::TileType] = match inputs.value("type") {
+        Some(kind) => std::slice::from_ref(match kind {
+            "survey" => &ds_cli_auth::TileType::Survey,
+            "design" => &ds_cli_auth::TileType::Design,
+            _ => unreachable!("the command parser enforces tile type choices"),
+        }),
+        None => &[ds_cli_auth::TileType::Survey, ds_cli_auth::TileType::Design],
+    };
+    let mut project = None;
+    let mut tiles = Map::new();
+    for kind in types {
+        let headless = ds_cli_auth::tile_status(lane, *kind)?;
+        let current = crate::operation_project(&headless);
+        if let Some(expected) = &project {
+            crate::require_same_project(expected, &current)?;
+        } else {
+            project = Some(current);
+        }
+        tiles.insert(
+            kind.token().to_owned(),
+            crate::operation_json(headless.result()),
+        );
     }
-    crate::invoke(
-        &descriptor,
-        &crate::TILE_STATUS,
-        Value::Object(arguments),
-        crate::READ_TIMEOUT,
-    )
-    .map_err(crate::classify_tile_failure)
+    let mut output = project.expect("status always requests at least one type");
+    output["tiles"] = Value::Object(tiles);
+    Ok(output)
 }
 
 pub fn render(data: &Value) -> String {
-    let mut out = format!("project {}\n", data["project"].as_str().unwrap_or("?"));
+    let mut out = format!(
+        "project {} ({}) · {}\n",
+        data["project"]["project_name"].as_str().unwrap_or("?"),
+        data["project"]["ds_project"].as_str().unwrap_or("?"),
+        data["lane"].as_str().unwrap_or("?"),
+    );
     if let Some(tiles) = data["tiles"].as_object() {
         for (kind, status) in tiles {
             if status.is_null() {

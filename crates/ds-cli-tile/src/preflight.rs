@@ -3,9 +3,9 @@
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{Authority, Chapter, Command, Effect, Example, Execution};
 use ds_cli_contract::{Context, Inputs};
-use serde_json::{Value, json};
+use serde_json::Value;
 
-use crate::{DESCRIPTOR_ARG, TYPE_ARG};
+use crate::{LANE_ARG, TYPE_ARG};
 
 pub static COMMAND: Command = Command {
     id: "tile.preflight",
@@ -13,48 +13,38 @@ pub static COMMAND: Command = Command {
     contract: 1,
     summary: "Inspect one output's sources: layers, rows, empties, blockers.",
     purpose: "\
-Asks ds-brain to look at the sources a run of this type would tile — every \
-layer with its row and geometry counts, the empty ones, invalid tables, and \
-any blocker — without starting anything. `ready` means a run would proceed; \
-`empty` means the sources hold nothing and a run would retire the output; \
-`blocked` names what must be fixed first.",
+Restores the native user, uses only its audience-fenced selected project, \
+and asks ds-brain through the fixed tile preflight call to inspect every \
+source layer, its rows and geometries, empty layers, invalid tables and any \
+blocker — without starting anything. `ready` means a run would proceed; \
+`empty` means it would retire the output; `blocked` names what must be fixed. \
+No project, Desktop descriptor, URL, body or action override is accepted.",
     chapter: Chapter::VectorTiles,
-    effect: Effect::ReadOnly,
-    authority: Authority::Project,
+    effect: Effect::LocalAuthState,
+    authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[TYPE_ARG, DESCRIPTOR_ARG],
+    args: &[TYPE_ARG, LANE_ARG],
     output: "\
-`project`, `type` and `preflight` with `status`, `expected_layer_count`, \
-`will_export_layers`, `total_rows`, `layers` (table, row_count, \
-geometry_count, empty), `empty_layers`, `errors`, `warnings`, `message`.",
+Lane and selected-project identity/status, `type`, and `preflight` with \
+status, layer/row/geometry counts, bounded layer details, empty layers, \
+errors, warnings, projection state and message.",
     examples: &[Example {
         command: "ds tile preflight --type design --output json",
         note: "Read `.data.preflight.layers` to see which design layers carry rows.",
         runnable: false,
     }],
-    refusals: &[
-        crate::NOT_PAIRED,
-        crate::AMBIGUOUS,
-        crate::UNREACHABLE,
-        crate::PAIRING_REJECTED,
-        crate::TILE_REFUSED,
-        crate::UNSUPPORTED,
-        crate::UNREADABLE,
-        crate::SIGNED_OUT,
-    ],
+    refusals: crate::NATIVE_REFUSALS,
     reference: Some("docs/reference/tile.md"),
-    availability: crate::paired_availability,
+    availability: ds_cli_auth::native_availability,
 };
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
-    let descriptor = crate::paired(inputs.value("desktop-descriptor"))?;
-    crate::invoke(
-        &descriptor,
-        &crate::TILE_PREFLIGHT,
-        json!({ "type": inputs.require("type")? }),
-        crate::RUN_TIMEOUT,
-    )
-    .map_err(crate::classify_tile_failure)
+    let kind = crate::tile_type(inputs.require("type")?);
+    let headless = ds_cli_auth::tile_preflight(inputs.require("lane")?, kind)?;
+    let mut output = crate::preflight_project(&headless);
+    output["type"] = Value::String(kind.token().to_owned());
+    output["preflight"] = crate::preflight_json(headless.result());
+    Ok(output)
 }
 
 pub fn render(data: &Value) -> String {

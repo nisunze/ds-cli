@@ -1724,7 +1724,7 @@ fn style_cartography_sends_exactly_the_arguments_and_bounds_the_desktop_owns() {
 }
 
 #[test]
-fn every_tile_command_has_one_closed_operation_owner() {
+fn every_paired_tile_catalogue_command_has_one_closed_operation_owner() {
     let Some(app) = app() else {
         skip("the ds-web sibling repository is not on disk");
         return;

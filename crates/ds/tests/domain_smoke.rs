@@ -2217,6 +2217,73 @@ fn map_layer_management_keeps_project_and_desktop_local_effects_separate() {
 }
 
 #[test]
+fn tile_managed_outputs_are_headless_while_the_catalogue_stays_paired() {
+    for (id, effect, inputs) in [
+        (
+            "tile.status",
+            "local_auth_state",
+            BTreeSet::from(["lane", "type"]),
+        ),
+        (
+            "tile.preflight",
+            "local_auth_state",
+            BTreeSet::from(["lane", "type"]),
+        ),
+        (
+            "tile.plan",
+            "local_auth_state",
+            BTreeSet::from(["force", "lane", "type"]),
+        ),
+        (
+            "tile.generate",
+            "global_write",
+            BTreeSet::from(["force", "lane", "type"]),
+        ),
+    ] {
+        let descriptor = ok(&["capabilities", id, "--output", "json"]);
+        let command = &descriptor["command"];
+        assert_eq!(command["authority"], "headless_project", "{id}");
+        assert_eq!(command["effect"], effect, "{id}");
+        let actual = command["inputs"]
+            .as_array()
+            .expect("inputs")
+            .iter()
+            .map(|input| input["name"].as_str().expect("input name"))
+            .collect::<BTreeSet<_>>();
+        assert_eq!(actual, inputs, "{id}");
+        assert!(
+            !actual.contains("project"),
+            "{id} gained a project override"
+        );
+        assert!(
+            !actual.contains("desktop-descriptor"),
+            "{id} still depends on Desktop"
+        );
+    }
+
+    for id in ["tile.list", "tile.add", "tile.remove"] {
+        let descriptor = ok(&["capabilities", id, "--output", "json"]);
+        let command = &descriptor["command"];
+        assert_eq!(command["authority"], "project", "{id}");
+        assert!(
+            command["inputs"]
+                .as_array()
+                .expect("inputs")
+                .iter()
+                .any(|input| input["name"] == "desktop-descriptor"),
+            "{id} must remain paired until its catalogue contract is extracted"
+        );
+    }
+
+    assert_eq!(
+        refusal(&[
+            "tile", "generate", "--type", "design", "--lane", "stable", "--output", "json",
+        ]),
+        "confirmation_required"
+    );
+}
+
+#[test]
 fn every_map_command_is_reachable_without_the_desktop_installed() {
     // Availability here is deliberately unconditional: dispatch checks it
     // before parsing, so a gate would make `--desktop-descriptor` — the flag

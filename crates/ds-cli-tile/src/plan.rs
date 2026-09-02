@@ -1,12 +1,11 @@
-//! `ds tile plan` — the decision `ds tile generate` would make, and nothing
-//! else. Same operation with `apply: false`.
+//! `ds tile plan` — combine status and preflight without dispatching.
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{Authority, Chapter, Command, Effect, Example, Execution};
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
 
-use crate::{DESCRIPTOR_ARG, FORCE_ARG, TYPE_ARG};
+use crate::{FORCE_ARG, LANE_ARG, TYPE_ARG};
 
 pub static COMMAND: Command = Command {
     id: "tile.plan",
@@ -14,55 +13,66 @@ pub static COMMAND: Command = Command {
     contract: 1,
     summary: "Decide whether a run is needed and preflight it, without running.",
     purpose: "\
-Applies the Pipeline panel's own rule — never built, sources changed \
-(dirty), or --force → a run; current and clean → no run — and, when a run \
-would start, performs the preflight so the decision is complete. Nothing is \
-dispatched. `ds tile generate --yes` does exactly what this reports.",
+Restores the native user and reads the fixed status for its audience-fenced \
+selected project. It applies the Pipeline staleness rule — never built, dirty \
+or --force means a run; current and clean means no run — then calls the fixed \
+preflight only when work would dispatch. It verifies both reads name the same \
+selected project and never calls generation. No project, Desktop descriptor, \
+URL, body or action override is accepted.",
     chapter: Chapter::VectorTiles,
-    effect: Effect::ReadOnly,
-    authority: Authority::Project,
+    effect: Effect::LocalAuthState,
+    authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[TYPE_ARG, FORCE_ARG, DESCRIPTOR_ARG],
+    args: &[TYPE_ARG, FORCE_ARG, LANE_ARG],
     output: "\
-`project`, `type`, `force`, `dispatched: false`, `wouldDispatch`, `reason`, \
-and `preflight` (null when no run is needed).",
+Lane and selected-project identity/status, `type`, `force`, `dispatched: \
+false`, `wouldDispatch`, `reason`, the status used for the decision, and \
+`preflight` (null when no run is needed).",
     examples: &[Example {
         command: "ds tile plan --type design --force --output json",
         note: "After a restyle or a vocabulary change the output is not dirty; --force is the honest flag.",
         runnable: false,
     }],
-    refusals: &[
-        crate::NOT_PAIRED,
-        crate::AMBIGUOUS,
-        crate::UNREACHABLE,
-        crate::PAIRING_REJECTED,
-        crate::TILE_REFUSED,
-        crate::UNSUPPORTED,
-        crate::UNREADABLE,
-        crate::SIGNED_OUT,
-    ],
+    refusals: crate::NATIVE_PLAN_REFUSALS,
     reference: Some("docs/reference/tile.md"),
-    availability: crate::paired_availability,
+    availability: ds_cli_auth::native_availability,
 };
 
-pub fn arguments(inputs: &Inputs, apply: bool) -> Result<Value, Failure> {
-    Ok(json!({
-        "type": inputs.require("type")?,
-        "force": inputs.switch("force"),
-        "apply": apply,
-    }))
-}
-
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
-    let arguments = arguments(inputs, false)?;
-    let descriptor = crate::paired(inputs.value("desktop-descriptor"))?;
-    crate::invoke(
-        &descriptor,
-        &crate::TILE_GENERATE,
-        arguments,
-        crate::RUN_TIMEOUT,
-    )
-    .map_err(crate::classify_tile_failure)
+    let lane = inputs.require("lane")?;
+    let kind = crate::tile_type(inputs.require("type")?);
+    let force = inputs.switch("force");
+    let status = ds_cli_auth::tile_status(lane, kind)?;
+    let project = crate::operation_project(&status);
+    let result = status.result();
+    let (would_dispatch, reason) =
+        crate::plan_decision(result.status(), result.tiled_at(), result.dirty(), force);
+    let preflight = if would_dispatch {
+        let preflight = ds_cli_auth::tile_preflight(lane, kind)?;
+        crate::require_same_project(&project, &crate::preflight_project(&preflight))?;
+        crate::preflight_json(preflight.result())
+    } else {
+        Value::Null
+    };
+    let mut output = project;
+    output
+        .as_object_mut()
+        .expect("receipt is an object")
+        .extend(
+            json!({
+                "type": kind.token(),
+                "force": force,
+                "dispatched": false,
+                "wouldDispatch": would_dispatch,
+                "reason": reason,
+                "status": crate::operation_json(result),
+                "preflight": preflight,
+            })
+            .as_object()
+            .expect("static plan projection is an object")
+            .clone(),
+        );
+    Ok(output)
 }
 
 pub fn render(data: &Value) -> String {
