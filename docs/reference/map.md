@@ -45,13 +45,20 @@ both `staged: false` and `persisted: false`. Reopening the active transformer
 is idempotent. Opening a different transformer over a dirty room refuses with
 `dirty_room`; it never turns navigation into an implicit save or discard.
 
-The map Working set is a separate local preference. `map design pin` changes
+The map Working set is a separate local preference. `map design pin` reads or changes
 the same per-desktop pinned-transformer set as the map UI, optionally resolving
 one governed Transformer Status selection into its present members. The names
 survive locally in that desktop's IndexedDB, but no transformer room, project
 record, or feature is staged or persisted; `persisted: false` in the receipt is
 the project-data fact. Missing selection members are reported and never
 substituted.
+
+```bash
+ds map design pin --mode read --output json
+ds map design pin --mode load --selection phase1-review --output json
+ds map design pin --mode unpin --transformer agasharu --output json
+ds map design pin --mode clear --output json
+```
 
 Retained transformer history has one similarly closed read-only workflow:
 

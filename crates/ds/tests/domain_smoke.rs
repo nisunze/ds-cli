@@ -2411,6 +2411,40 @@ fn map_design_open_is_the_one_discoverable_visible_context_entry() {
 }
 
 #[test]
+fn map_design_pin_exposes_complete_working_set_parity() {
+    let descriptor = ok(&["capabilities", "map.design.pin", "--output", "json"]);
+    let command = &descriptor["command"];
+    assert_eq!(command["contract"], 2);
+    assert_eq!(command["authority"], "project");
+    assert_eq!(command["effect"], "local_ui");
+    let mode = command["inputs"]
+        .as_array()
+        .expect("inputs")
+        .iter()
+        .find(|input| input["name"] == "mode")
+        .expect("mode input");
+    assert_eq!(
+        mode["choices"],
+        json!(["read", "set", "add", "remove", "unpin", "load", "clear"])
+    );
+
+    let search = ok(&[
+        "capabilities",
+        "--search",
+        "read unpin clear load selection working set",
+        "--output",
+        "json",
+    ]);
+    assert!(
+        search["results"]
+            .as_array()
+            .expect("search results")
+            .iter()
+            .any(|row| row["id"] == "map.design.pin")
+    );
+}
+
+#[test]
 fn map_design_version_history_is_discoverable_and_governed() {
     let expected = [
         (
