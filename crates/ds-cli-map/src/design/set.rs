@@ -32,17 +32,24 @@ const SET_ARG: Arg = Arg {
     summary: "Property to write. Repeat for more than one.",
 };
 
+const PROTECTED_PROPERTY: Refusal = Refusal {
+    code: "protected_property",
+    when: "a --set assignment targets an immutable design identity property",
+    remedy: "write an ordinary mutable property; identity rewrite requires a separate confirmation-gated command",
+};
+
 pub static COMMAND: Command = Command {
     id: "map.design.set",
     path: &["map", "design", "set"],
-    contract: 1,
+    contract: 2,
     summary: "Stage a property change on selected design features.",
     purpose: "\
 Writes properties onto every design feature a selector matches — the bulk edit \
 the application has no other way to make, and the one that marks an as-built \
 network approved so the kernel stops redesigning it. It stages into the \
 operator's local room and marks it dirty; nothing reaches the project until \
-`ds map design save`. Use --dry-run to count first.",
+`ds map design save`. Immutable identity properties refuse before dry-run or \
+staging; use --dry-run to count ordinary property changes first.",
     chapter: Chapter::Design,
     effect: Effect::LocalUi,
     authority: Authority::Project,
@@ -85,6 +92,7 @@ value, the change count per layer, and `staged` and `persisted` separately — \
         crate::INVALID_PAIR,
         crate::INVALID_BBOX,
         super::TOO_MANY_IDS,
+        PROTECTED_PROPERTY,
         Refusal {
             code: "no_properties",
             when: "every --set was parsed away, leaving nothing to write",
@@ -120,7 +128,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         super::with_selector(arguments, selector.clone()),
         crate::DESIGN_STAGE_TIMEOUT,
     )
-    .map_err(crate::classify_design_failure)?;
+    .map_err(classify_set_failure)?;
 
     Ok(json!({
         "transformer": transformer,
@@ -135,6 +143,32 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         "staged": result["staged"].as_bool().unwrap_or(false),
         "persisted": result["persisted"].as_bool().unwrap_or(false),
     }))
+}
+
+fn classify_set_failure(failure: Failure) -> Failure {
+    let failure = crate::classify_design_failure(failure);
+    if failure.code() != "desktop_refused" {
+        return failure;
+    }
+    let detail = failure
+        .detail_value()
+        .and_then(|value| value["detail"].as_str())
+        .unwrap_or_default();
+    let Some(rest) = detail.strip_prefix("protected_property:") else {
+        return failure;
+    };
+    let Some((property, _message)) = rest.split_once(':') else {
+        return failure;
+    };
+    if property.is_empty() {
+        return failure;
+    }
+    Failure::invalid(
+        "protected_property",
+        format!("`{property}` is an immutable design identity property"),
+    )
+    .remedy(PROTECTED_PROPERTY.remedy)
+    .detail(json!({ "property": property }))
 }
 
 pub fn render(data: &Value) -> String {
@@ -160,4 +194,33 @@ pub fn render(data: &Value) -> String {
     out.push('\n');
     out.push_str(super::staging_note(data));
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn protected_property_bridge_refusal_keeps_the_exact_key() {
+        let failure = Failure::failed("desktop_refused", "the paired session refused the write")
+            .detail(json!({
+                "detail": "protected_property:source_feature_id: design identity properties are immutable"
+            }));
+
+        let classified = classify_set_failure(failure);
+        assert_eq!(classified.code(), "protected_property");
+        assert_eq!(
+            classified.detail_value(),
+            Some(&json!({ "property": "source_feature_id" }))
+        );
+        assert_eq!(classified.remedy_text(), Some(PROTECTED_PROPERTY.remedy));
+    }
+
+    #[test]
+    fn unrelated_bridge_refusal_stays_generic() {
+        let failure = Failure::failed("desktop_refused", "the paired session refused the write")
+            .detail(json!({ "detail": "transformer not found" }));
+
+        assert_eq!(classify_set_failure(failure).code(), "desktop_refused");
+    }
 }

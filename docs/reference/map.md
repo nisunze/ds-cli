@@ -368,6 +368,20 @@ JSON `null`, which is its own predicate for the same thing.
 Run `design select` before `design set` with the same selector: the count it
 reports is the count `set` will report as matched.
 
+`design set` contract 2 protects the immutable identity properties `doc_id`,
+`id`, `source_feature_id`, and `node_id`. If any repeated `--set` assignment
+targets one of them, the application refuses the whole request as
+`protected_property` and the CLI returns the exact key in `detail.property`.
+This preflight happens before dry-run calculation or local staging, so mixing
+an ordinary assignment with a protected one never partly applies the ordinary
+assignment.
+
+This boundary is separate from `drafting_locked_properties`, ds-network's
+closed per-feature vocabulary for drafter-owned cell locks. It must not be
+used as an identity allow/deny list. If identity rewrite is ever legitimate,
+it needs a separate confirmation-gated command rather than an escape hatch in
+bulk property mutation.
+
 ## The differential process run
 
 `design process` with no differential flags runs FULL and recalculates
