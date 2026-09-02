@@ -28,7 +28,7 @@ pub static COMMAND: Command = Command {
     id: "design.group.apply",
     path: &["design", "group", "apply"],
     contract: 1,
-    summary: "Assign a governed group's value across a set of transformers.",
+    summary: "Assign a tag definition's value across a set of transformers.",
     purpose: "\
 Commits the plan `ds design group preview` returned, fenced by its digest: if \
 the project moved since, the batch is refused rather than landing against a \
@@ -37,11 +37,8 @@ transaction, and one transformer at fault refuses only its own entry. \
 Each landed outcome echoes the exact stored value in `to`; a case-only value \
 mismatch is refused rather than rewritten. \
 \
-A `phasing` batch is NOT finished when its tags land. Its canonical home is \
-the DS Grid model's alignment, and `ds` holds no model session — so it reports \
-no receipt, the result comes back `partial`, and every named transformer is \
-listed as outstanding. That is the true state: nobody has written the model. \
-Finish those in the application, which resolves and writes it.",
+If the returned plan carries explicit model evidence, report its state and \
+outstanding worklist exactly. Never infer model behavior from the definition id.",
     chapter: Chapter::Design,
     effect: Effect::GlobalWrite,
     authority: Authority::Project,

@@ -1,4 +1,4 @@
-//! `ds design group unassign` — clear a governed group's value.
+//! `ds design group unassign` — clear a tag definition's value.
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{Authority, Chapter, Command, Effect, Example, Execution};
@@ -12,7 +12,7 @@ pub static COMMAND: Command = Command {
     id: "design.group.unassign",
     path: &["design", "group", "unassign"],
     contract: 1,
-    summary: "Clear a governed group's value on a set of transformers.",
+    summary: "Clear a tag definition's value on a set of transformers.",
     purpose: "\
 Removes the group's value from every named transformer, fenced by the digest \
 `ds design group preview` returned for the same set with no value. A \

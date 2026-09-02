@@ -24,7 +24,7 @@ pub static COMMAND: Command = Command {
     id: "design.group.preview",
     path: &["design", "group", "preview"],
     contract: 1,
-    summary: "Plan a governed group batch and return its fencing digest.",
+    summary: "Plan a tag-definition batch and return its fencing digest.",
     purpose: "\
 Returns one explicit outcome per named transformer — assign, reassign, \
 unchanged, unassign, already_absent, duplicate, or refused with a reason — \

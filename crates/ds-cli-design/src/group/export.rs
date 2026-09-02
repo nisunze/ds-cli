@@ -1,4 +1,4 @@
-//! `ds design group export` — the digest-pinned tag document a report groups by.
+//! `ds design group export` — an explicit digest-pinned tag projection.
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{Authority, Chapter, Command, Effect, Example, Execution};
@@ -12,14 +12,13 @@ pub static COMMAND: Command = Command {
     id: "design.group.export",
     path: &["design", "group", "export"],
     contract: 1,
-    summary: "Export the digest-pinned tag document a per-city report groups by.",
+    summary: "Export a digest-pinned projection for ordered tag definition IDs.",
     purpose: "\
-Returns the read-only tag projection a report holds and pins: the project's \
-active group vocabularies and the values the named transformers carry, as the \
-exact bytes plus the sha256 over them. A per-city report is grouped by the \
-group named exactly `city`, so the export refuses when the project has none, \
-or has two — neither is repairable, and guessing would decide a published \
-total. `phasing` and any other active group are carried past untouched. \
+Returns the read-only tag projection a report holds and pins for an explicit \
+ordered definition-id selection and named transformer set, as exact bytes plus \
+the sha256 over them. Missing, archived, or inapplicable selected definitions \
+are refused by id; display names never select an authority. An empty selection \
+deliberately means one untagged group. \
 \
 Write `.data.document` VERBATIM. Do not parse and re-serialize it: the digest \
 is over those exact bytes, and a re-encoding that reorders a key or escapes a \
@@ -34,13 +33,13 @@ character differently no longer matches the pin.",
         DESCRIPTOR_ARG,
     ],
     output: "\
-The project, the `schema`, the `cityGroup` that will do the grouping, the \
+The project, the `schema`, ordered `definitionIds`, the \
 `sha256` and `bytes` of the document, counts of `groups`/`assignments`/\
 `transformers`, any values `excluded` from the document with why, and the \
 `document` text itself.",
     examples: &[Example {
-        command: "ds design group export --transformers kigali_a,kigali_b --output json",
-        note: "Save it with: ds design group export --transformers ... --output json | jq -r .data.document > tags.json",
+        command: "ds design group export --transformers site_a,site_b --definition-ids service_region --output json",
+        note: "Save `.data.document` verbatim and keep `.data.sha256` with it.",
         runnable: false,
     }],
     refusals: &[
@@ -96,11 +95,18 @@ pub fn render(data: &Value) -> String {
         data["sha256"].as_str().unwrap_or("?"),
     );
     out.push_str(&format!(
-        "  {} groups, {} assignments over {} transformers · grouped by {}\n",
+        "  {} groups, {} assignments over {} transformers · definitions {}\n",
         data["groups"].as_u64().unwrap_or(0),
         data["assignments"].as_u64().unwrap_or(0),
         data["transformers"].as_u64().unwrap_or(0),
-        data["cityGroup"].as_str().unwrap_or("?"),
+        data["definitionIds"]
+            .as_array()
+            .map(|ids| ids
+                .iter()
+                .filter_map(Value::as_str)
+                .collect::<Vec<_>>()
+                .join(","))
+            .unwrap_or_default(),
     ));
     for row in data["excluded"].as_array().into_iter().flatten() {
         out.push_str(&format!(

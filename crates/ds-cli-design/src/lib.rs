@@ -418,13 +418,12 @@ pub const TOO_MANY_TAG_FILTERS: Refusal = Refusal {
     when: "a project tag query carries more than 20 predicates",
     remedy: "narrow or split the query so one call carries at most 20 predicates",
 };
-/// A third governed group does not exist. Refused locally because the set is
-/// closed and declared on the descriptor: a round trip would only say the same
-/// thing more slowly.
+/// The selected definition is absent or not eligible for single-value LV
+/// transformer batching.
 pub const UNKNOWN_TAG_GROUP: Refusal = Refusal {
     code: "unknown_tag_group",
-    when: "--group named something other than the two governed groups",
-    remedy: "pass --group city or --group phasing",
+    when: "--group does not identify a batchable project tag definition",
+    remedy: "read the available definition ids with `ds design group list`",
 };
 pub const CONFIRMATION_REQUIRED: Refusal = Refusal {
     code: "confirmation_required",

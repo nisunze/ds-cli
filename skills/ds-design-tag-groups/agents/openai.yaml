@@ -1,4 +1,4 @@
 interface:
   display_name: "DS Design Tag Groups"
-  short_description: "Batch a project's governed city/phasing tags and export the report projection"
-  default_prompt: "Use $ds-design-tag-groups to assign a city or delivery phase across transformers, or to export the tag document a per-city report groups by, through ds design group."
+  short_description: "Batch eligible project tags and export an explicit grouping projection"
+  default_prompt: "Use $ds-design-tag-groups to batch-assign an explicitly selected project tag definition, or export a digest-pinned projection for ordered definition ids, through ds design group."

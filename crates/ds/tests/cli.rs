@@ -415,10 +415,10 @@ fn inspect_reports_the_engine_s_own_identity() {
     assert_eq!(data["model"]["crs"], "EPSG:32735");
     assert_eq!(data["model"]["schema_version"], 1);
     assert_eq!(data["model"]["format_version"], 1);
-    // Canonical ds-network cb09403 regenerated this self-authored fixture.
+    // Canonical ds-network granular-tag schema regenerated this self-authored fixture.
     // Keep the source fingerprint and its derived model id coupled: changing
     // one while leaving the other stale would conceal an identity drift.
-    const HUMBLE_FINGERPRINT: &str = "fnv1a64:50caa569815f07b9";
+    const HUMBLE_FINGERPRINT: &str = "fnv1a64:6b325cf842b29531";
     assert_eq!(data["model"]["fingerprint"], HUMBLE_FINGERPRINT);
     assert_eq!(
         data["model"]["id"],

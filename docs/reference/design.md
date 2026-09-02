@@ -181,12 +181,12 @@ ds design comment list --kind lv_transformer --object kigali_a
 ds design comment post --thread thread-clearance --body "Agreed, re-spot it." --yes
 ```
 
-## The governed groups, and why they are a family of their own
+## Batch-editing eligible tag definitions
 
-`city` and `phasing` are two reserved tag definitions held to a fixed shape —
-single-valued, LV transformers only — and given a batch. The generic
-`ds design tag set` refuses them and points at `ds design group`, so a governed
-group has exactly one write door.
+`ds design group list` discovers active, single-valued choice definitions that
+apply to LV transformers. Any returned definition id may use the bounded batch;
+City and Phase are ordinary project-authored examples, not reserved branches.
+The generic `ds design tag set` remains valid for one-object edits.
 
 **A value is matched, never corrected.** Definition save trims outer whitespace
 and otherwise preserves authored choice bytes and case. Two vocabulary values
@@ -202,20 +202,16 @@ The server recomputes it, so a batch approved against one state cannot land
 against another. `ds` carries the digest and never mints one. `preview` writes
 nothing, so it keeps working on a project that accepts no changes.
 
-**`phasing` is not finished when its tag lands.** Its canonical home is
-`AlignmentRow.delivery_phase` in the DS Grid model. `ds` holds no model session,
-reports no receipt, and therefore gets `partial` back with every named
-transformer listed as outstanding. That is the true state — nobody has written
-the model — not a degradation to work around. Finish those in the application,
-which resolves the alignment and writes it.
+**Model evidence is explicit.** If a returned plan carries model state, report
+it and its outstanding rows exactly. The CLI never infers a model requirement
+from a definition id or fabricates a receipt.
 
-### `ds design group export` — the document a report pins
+### `ds design group export` — the explicit projection a report pins
 
-A per-city report is grouped by the tag group named exactly `city`. `export`
-publishes that authority as the read-only `ds-report.design-tags/v1` document,
-for an explicitly named transformer set: the project's active group
-vocabularies (`phasing` and ordinary groups carried past untouched) and the
-values those transformers carry.
+`export` publishes the read-only `ds-report.design-tags/v2` document for an
+explicitly named transformer set and an explicit ordered `--definition-ids`
+selection. Omitting the selection deliberately requests one untagged group; it
+never means “find the city tag.”
 
 Two things about it are load-bearing:
 
@@ -223,9 +219,9 @@ Two things about it are load-bearing:
   exact bytes, and it is what a report request pins. Parsing and
   re-serializing produces different bytes for the same facts, and the pin
   stops matching.
-- **It refuses rather than guesses.** No group named exactly `city`, or two of
-  them, and the export fails. Neither is repairable: picking one would decide a
-  published per-city total on a coin flip.
+- **It refuses rather than guesses.** Missing, archived, duplicate, or
+  inapplicable selected definitions fail by id. A similarly named definition
+  is never substituted.
 
 Values the closed document shape cannot carry — one under an archived
 definition, or a cleared assignment — come back in `excluded` with the reason,
@@ -298,7 +294,7 @@ A comma-separated list flag is bounded locally as well as on the server, so an
 over-long `--transformers` or `--values` is refused before a round trip that
 would have been rejected anyway.
 
-Two of those bounds differ on purpose. A governed group batch takes at most
+Two of those bounds differ on purpose. A tag group batch takes at most
 200 transformers, because 200 is one Firestore transaction's write budget on
 the server. `ds design group export` takes 2,000, because it is a read whose
 unit is a whole project: a live project already carries 202 transformers, and
@@ -334,7 +330,7 @@ belongs to the governance surface, not to a headless command.
 | `invalid_value_list` | a comma-separated flag was given but carries no values |
 | `too_many_values` | a list flag carries more entries than the record accepts |
 | `missing_comment_target` | neither `--thread` nor a complete `--kind`/`--object`/`--title` |
-| `unknown_tag_group` | `--group` named something other than `city` or `phasing` |
+| `unknown_tag_group` | `--group` is missing or does not identify a batchable project definition |
 | `design_plan_stale` | the project moved after the plan was previewed; preview again |
 
 The pairing refusals (`desktop_not_paired`, `desktop_ambiguous`,

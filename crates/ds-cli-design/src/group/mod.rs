@@ -1,15 +1,13 @@
-//! `ds design group` — the two governed tag groups, `city` and `phasing`.
+//! `ds design group` — bounded batch editing for eligible project tag definitions.
 //!
 //! ```text
 //!   list → preview → apply | unassign
 //!   export
 //! ```
 //!
-//! A group is an ORDINARY tag definition held to a fixed shape (single-valued,
-//! LV transformers only). What the two reserved names buy is a BATCH: assigning
-//! a city to sixty transformers is one operation with one outcome per entry,
-//! not sixty `tag set` calls. The generic `ds design tag set` refuses a
-//! governed group and points here, so a group has exactly one write door.
+//! A group is an ordinary active, single-valued choice definition applicable to
+//! LV transformers. The definition id is discovered from project metadata and
+//! never interpreted as a business category by the CLI.
 //!
 //! Three properties a caller must not work around:
 //!
@@ -19,14 +17,11 @@
 //! * **A value is matched, not corrected.** Values are checked against the
 //!   project's own vocabulary by exact bytes. `Phase 1` is not `phase 1`; read
 //!   `allowed` from `ds design group list` rather than guessing a spelling.
-//! * **`phasing` needs two authorities.** Its canonical home is the DS Grid
-//!   model's alignment. `ds` holds no model session, so it reports no receipt
-//!   and a phasing batch comes back `partial` with the transformers still
-//!   outstanding. That is the honest state, not a degraded one — nobody has
-//!   written the model. Finish those in the application.
+//! * **Model evidence is explicit.** A returned model state is reported as-is;
+//!   the CLI never infers a second authority from the selected definition id.
 //!
 //! `export` is the separate read a REPORT needs: the digest-pinned document
-//! ds-network-reporter groups a per-city sheet by.
+//! a report consumer groups by.
 
 pub mod apply;
 pub mod export;
@@ -37,10 +32,6 @@ pub mod unassign;
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{Arg, ArgKind, Refusal};
 use serde_json::Value;
-
-/// The closed set of governed groups. Declared here so a caller learns it from
-/// the descriptor rather than from a refusal.
-pub const GROUPS: &[&str] = &["city", "phasing"];
 
 /// ds-brain's own batch bound, held locally so an over-large selection is
 /// refused with a remedy instead of by a rejected write.
@@ -61,8 +52,8 @@ pub const GROUP_ARG: Arg = Arg {
     value: "<group>",
     required: true,
     default: None,
-    choices: GROUPS,
-    summary: "Which governed group to act on.",
+    choices: &[],
+    summary: "Tag definition ID to batch-edit.",
 };
 
 pub const TRANSFORMERS_ARG: Arg = Arg {
@@ -138,19 +129,16 @@ fn bounded_transformers(
     crate::list_values(inputs.require("transformers")?, "transformers", max)
 }
 
-/// Read the group flag against the closed set.
-///
-/// Refused locally because the set is closed and declared: a third name is not
-/// a group this platform has, and a round trip would only say so more slowly.
+/// Read the authored definition id. Eligibility is discovered and validated
+/// by ds-brain from the project's tag metadata.
 pub fn group(inputs: &ds_cli_contract::Inputs) -> Result<String, Failure> {
     let value = inputs.require("group")?.trim().to_string();
-    if !GROUPS.contains(&value.as_str()) {
-        return Err(Failure::invalid(
-            "unknown_tag_group",
-            "only `city` and `phasing` are governed groups",
-        )
-        .remedy("pass --group city or --group phasing")
-        .next("ds design tag list --kind lv_transformer --object <name>"));
+    if value.is_empty() {
+        return Err(
+            Failure::invalid("unknown_tag_group", "group must name a tag definition id")
+                .remedy("read an id from `ds design group list`")
+                .next("ds design tag list --kind lv_transformer --object <name>"),
+        );
     }
     Ok(value)
 }
@@ -159,7 +147,7 @@ pub fn group(inputs: &ds_cli_contract::Inputs) -> Result<String, Failure> {
 ///
 /// `finished` is the SERVER's answer and is printed as it came. Re-deriving it
 /// from the outcomes would quietly disagree with the authority that decided it
-/// — a phasing batch whose tags all landed is still not finished.
+/// — a batch with model evidence may remain unfinished after tag writes land.
 pub fn render_plan(data: &Value) -> String {
     let mut out = format!(
         "{} {} · {} · {} changing, {} unchanged, {} refused\n",

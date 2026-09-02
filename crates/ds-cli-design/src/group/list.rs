@@ -12,10 +12,10 @@ pub static COMMAND: Command = Command {
     id: "design.group.list",
     path: &["design", "group", "list"],
     contract: 1,
-    summary: "List the governed city and phasing vocabularies and current values.",
+    summary: "List batchable tag definitions and current transformer values.",
     purpose: "\
-Names both governed groups, whether the project has defined each one, the \
-values each allows, and what every named transformer carries today. Read \
+Discovers active single-valued choice definitions that apply to LV \
+transformers, the values each allows, and what every named transformer carries today. Read \
 `allowed` here before assigning: values are matched against the project's own \
 vocabulary by exact bytes, so a spelling that only differs in case is refused \
 rather than corrected. `allowed` carries the exact stored spelling, not a \
@@ -28,7 +28,7 @@ state, not an error — it is defined in the application's Tags surface.",
     args: &[TRANSFORMERS_ARG, DESCRIPTOR_ARG],
     output: "\
 The project and one row per group: `group`, `defined`, `cardinality`, the \
-`allowed` vocabulary, `needsModel` (true for `phasing`), and each named \
+`allowed` vocabulary, optional model-evidence state, and each named \
 transformer's current `value` and `modelState`.",
     examples: &[Example {
         command: "ds design group list --transformers kigali_a,kigali_b --output json",
