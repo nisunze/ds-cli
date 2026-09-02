@@ -24,8 +24,12 @@ use ds_cli_contract::spec::{
     Arg, ArgKind, Authority, Command, Effect, Example, Execution, Refusal,
 };
 use ds_cli_contract::{Context, Inputs};
-use serde_json::{Map, Value, json};
+use serde_json::{Value, json};
 use toml_edit::{Array, DocumentMut, Item, Table, value};
+
+use crate::identity::ServerIdentity;
+
+const LEGACY_REGISTRATION_NAME: &str = "ds";
 
 pub const HOSTS: &[&str] = &[
     "vscode",
@@ -34,6 +38,7 @@ pub const HOSTS: &[&str] = &[
     "codex",
     "cursor",
     "gemini-cli",
+    "antigravity",
     "windsurf",
     "github-copilot",
     "generic",
@@ -145,6 +150,14 @@ const ADAPTERS: &[HostAdapter] = &[
         restart_requirement: "restart Gemini CLI",
     },
     HostAdapter {
+        token: "antigravity",
+        display_name: "Google Antigravity",
+        platforms: ALL_PLATFORMS,
+        root: ConfigRoot::McpServers,
+        automatic_merge: true,
+        restart_requirement: "restart Google Antigravity or start a new agent session",
+    },
+    HostAdapter {
         token: "windsurf",
         display_name: "Windsurf",
         platforms: ALL_PLATFORMS,
@@ -179,12 +192,17 @@ struct ConnectionDescriptor {
     build: Value,
     skill_bundle_source_sha: Option<String>,
     required_environment: BTreeMap<String, String>,
+    identity: ServerIdentity,
 }
 
 impl ConnectionDescriptor {
     fn json(&self) -> Value {
         json!({
-            "server_name": "ds",
+            "server_name": self.identity.protocol_name(),
+            "server_title": self.identity.title(),
+            "registration_name": self.identity.registration_name(),
+            "release_lane": self.identity.lane(),
+            "runtime_platform": self.identity.platform(),
             "transport": "stdio",
             "executable": self.executable.display().to_string(),
             "args": self.args,
@@ -200,13 +218,14 @@ impl ConnectionDescriptor {
 pub static COMMAND: Command = Command {
     id: "mcp.install",
     path: &["mcp", "install"],
-    contract: 5,
+    contract: 6,
     chapter: ds_cli_contract::spec::Chapter::Catalog,
     summary: "Print or write an MCP host entry for this `ds`.",
     purpose: "\
-Print this executable's exact stdio entry and user-level target. The default \
-is read-only. `--write --yes` atomically merges only `ds`, preserves siblings, \
-and refuses a conflicting entry. Workspace configuration is never written.",
+Print this executable's stdio entry and user target. Its key derives from the \
+build lane and runtime platform. The default is read-only. `--write --yes` \
+atomically owns only that key, migrates an exact legacy `ds`, preserves \
+siblings, and refuses conflicts. It never writes workspace configuration.",
     effect: Effect::MachineWrite,
     authority: Authority::None,
     execution: Execution::Sync,
@@ -248,7 +267,7 @@ and refuses a conflicting entry. Workspace configuration is never written.",
             summary: "Choose a typed profile.",
         },
     ],
-    output: "Connection descriptor, supported hosts, selected entry/target, build identity, change state and restart handoff.",
+    output: "Identity, connection, supported hosts, entry/target, build, change state and restart handoff.",
     examples: &[
         Example {
             command: "ds mcp install --output json",
@@ -257,7 +276,7 @@ and refuses a conflicting entry. Workspace configuration is never written.",
         },
         Example {
             command: "ds mcp install --host vscode --write --yes",
-            note: "Merge `ds` into the VS Code user mcp.json.",
+            note: "Merge the derived server into VS Code's user mcp.json.",
             runnable: false,
         },
     ],
@@ -352,7 +371,8 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
                 ),
             )
             .remedy(format!(
-                "copy only the `ds` entry under `{}` in the reported user-level configuration",
+                "copy only the `{}` entry under `{}` in the reported user-level configuration",
+                descriptor.identity.registration_name(),
                 adapter.root.token()
             ))
             .next(format!("ds mcp install --host {host} --output json"))
@@ -407,10 +427,18 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         format!("after writing, {}", adapter.restart_requirement)
     };
     let descriptor_json = descriptor.json();
+    let server_name = descriptor.identity.protocol_name();
+    let server_title = descriptor.identity.title();
+    let registration_name = descriptor.identity.registration_name();
     let file_path = file.as_ref().map(|path| path.display().to_string());
     Ok(json!({
         "host": host,
-        "server_name": "ds",
+        "server_name": server_name,
+        "server_title": server_title,
+        "registration_name": registration_name,
+        "legacy_registration_name": LEGACY_REGISTRATION_NAME,
+        "release_lane": descriptor.identity.lane(),
+        "runtime_platform": descriptor.identity.platform(),
         "entry": entry,
         "file": file_path,
         "path": file_path,
@@ -436,6 +464,11 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
 pub fn render(data: &Value) -> String {
     let mut out = String::new();
     out.push_str(&format!("host: {}\n", data["host"].as_str().unwrap_or("?")));
+    out.push_str(&format!(
+        "server: {} ({})\n",
+        data["server_title"].as_str().unwrap_or("?"),
+        data["registration_name"].as_str().unwrap_or("?")
+    ));
     if let Some(file) = data["file"].as_str() {
         out.push_str(&format!(
             "file: {file}{}\n",
@@ -482,6 +515,7 @@ fn connection_descriptor(
         build,
         skill_bundle_source_sha,
         required_environment: BTreeMap::new(),
+        identity: ServerIdentity::current(),
     }
 }
 
@@ -501,11 +535,12 @@ fn server_entry(adapter: &HostAdapter, descriptor: &ConnectionDescriptor) -> Val
     } else {
         json!({ "command": command, "args": descriptor.args })
     };
-    json!({ adapter.root.token(): { "ds": server } })
+    json!({ adapter.root.token(): { descriptor.identity.registration_name(): server } })
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct CodexServerEntry {
+    registration_name: String,
     command: String,
     args: Vec<String>,
 }
@@ -514,6 +549,7 @@ struct CodexServerEntry {
 enum RegistrationChange {
     Create(Vec<u8>),
     Merge(Vec<u8>),
+    Migrate(Vec<u8>),
     Unchanged,
 }
 
@@ -524,6 +560,8 @@ impl RegistrationChange {
             (Self::Merge(_), false) => "would_merge",
             (Self::Create(_), true) => "created",
             (Self::Merge(_), true) => "merged",
+            (Self::Migrate(_), false) => "would_migrate_legacy",
+            (Self::Migrate(_), true) => "migrated_legacy",
             (Self::Unchanged, _) => "unchanged",
         }
     }
@@ -534,7 +572,7 @@ impl RegistrationChange {
 
     fn bytes(&self) -> Option<&[u8]> {
         match self {
-            Self::Create(bytes) | Self::Merge(bytes) => Some(bytes),
+            Self::Create(bytes) | Self::Merge(bytes) | Self::Migrate(bytes) => Some(bytes),
             Self::Unchanged => None,
         }
     }
@@ -574,9 +612,18 @@ fn merge_guarded_json(
             )
         })?;
     let (section, proposed_servers) = entry_root.iter().next().expect("one proposal root");
-    let proposed = proposed_servers
-        .get("ds")
-        .ok_or_else(|| JsonRegistrationIssue::Malformed("proposal has no ds server".to_string()))?;
+    let proposed_servers = proposed_servers
+        .as_object()
+        .filter(|servers| servers.len() == 1)
+        .ok_or_else(|| {
+            JsonRegistrationIssue::Malformed(
+                "proposal must contain exactly one named server".to_string(),
+            )
+        })?;
+    let (registration_name, proposed) =
+        proposed_servers.iter().next().expect("one proposed server");
+    let mut migrate_legacy = false;
+    let mut desired_exists = false;
     if let Some(existing_root) = root.get(section) {
         let existing_servers =
             existing_root
@@ -585,26 +632,55 @@ fn merge_guarded_json(
                     existing: existing_root.to_string(),
                     proposed: proposed.to_string(),
                 })?;
-        if let Some(current) = existing_servers.get("ds") {
-            return if current == proposed {
-                Ok(RegistrationChange::Unchanged)
-            } else {
-                Err(JsonRegistrationIssue::Conflict {
+        if let Some(current) = existing_servers.get(registration_name) {
+            if current != proposed {
+                return Err(JsonRegistrationIssue::Conflict {
                     existing: serde_json::to_string_pretty(current)
                         .unwrap_or_else(|_| current.to_string()),
                     proposed: serde_json::to_string_pretty(proposed)
                         .unwrap_or_else(|_| proposed.to_string()),
-                })
-            };
+                });
+            }
+            desired_exists = true;
+        }
+        if registration_name != LEGACY_REGISTRATION_NAME
+            && let Some(legacy) = existing_servers.get(LEGACY_REGISTRATION_NAME)
+        {
+            if legacy != proposed {
+                return Err(JsonRegistrationIssue::Conflict {
+                    existing: serde_json::to_string_pretty(legacy)
+                        .unwrap_or_else(|_| legacy.to_string()),
+                    proposed: serde_json::to_string_pretty(proposed)
+                        .unwrap_or_else(|_| proposed.to_string()),
+                });
+            }
+            migrate_legacy = true;
         }
     }
-    let merged = merge(&document, entry).ok_or_else(|| {
-        JsonRegistrationIssue::Malformed("configuration root is not mergeable".to_string())
-    })?;
+    if desired_exists && !migrate_legacy {
+        return Ok(RegistrationChange::Unchanged);
+    }
+    let mut merged = document;
+    let merged_root = merged
+        .as_object_mut()
+        .expect("the JSON root was checked above");
+    if !merged_root.contains_key(section) {
+        merged_root.insert(section.clone(), json!({}));
+    }
+    let servers = merged_root
+        .get_mut(section)
+        .and_then(Value::as_object_mut)
+        .expect("the existing or inserted server root is an object");
+    if migrate_legacy {
+        servers.remove(LEGACY_REGISTRATION_NAME);
+    }
+    servers.insert(registration_name.clone(), proposed.clone());
     let mut bytes = serde_json::to_vec_pretty(&merged)
         .map_err(|error| JsonRegistrationIssue::Malformed(error.to_string()))?;
     bytes.push(b'\n');
-    Ok(if existing.is_none() {
+    Ok(if migrate_legacy {
+        RegistrationChange::Migrate(bytes)
+    } else if existing.is_none() {
         RegistrationChange::Create(bytes)
     } else {
         RegistrationChange::Merge(bytes)
@@ -612,7 +688,11 @@ fn merge_guarded_json(
 }
 
 fn codex_server_entry(entry: &Value) -> Option<CodexServerEntry> {
-    let server = entry.get("mcp_servers")?.get("ds")?;
+    let servers = entry.get("mcp_servers")?.as_object()?;
+    if servers.len() != 1 {
+        return None;
+    }
+    let (registration_name, server) = servers.iter().next()?;
     let command = server.get("command")?.as_str()?.to_string();
     let args = server
         .get("args")?
@@ -620,7 +700,11 @@ fn codex_server_entry(entry: &Value) -> Option<CodexServerEntry> {
         .iter()
         .map(|arg| arg.as_str().map(str::to_owned))
         .collect::<Option<Vec<_>>>()?;
-    Some(CodexServerEntry { command, args })
+    Some(CodexServerEntry {
+        registration_name: registration_name.clone(),
+        command,
+        args,
+    })
 }
 
 fn codex_entry_preview(entry: &CodexServerEntry) -> String {
@@ -633,13 +717,16 @@ fn codex_entry_preview(entry: &CodexServerEntry) -> String {
     }
     server.insert("args", value(args));
     let mut servers = Table::new();
-    servers.insert("ds", Item::Table(server));
+    servers.insert(&entry.registration_name, Item::Table(server));
     document.insert("mcp_servers", Item::Table(servers));
     document.to_string()
 }
 
 fn existing_codex_server(item: &Item) -> Option<CodexServerEntry> {
     let table = item.as_table()?;
+    if table.len() != 2 || !table.contains_key("command") || !table.contains_key("args") {
+        return None;
+    }
     let command = table.get("command")?.as_str()?.to_string();
     let args = table
         .get("args")?
@@ -647,12 +734,17 @@ fn existing_codex_server(item: &Item) -> Option<CodexServerEntry> {
         .iter()
         .map(|arg| arg.as_str().map(str::to_owned))
         .collect::<Option<Vec<_>>>()?;
-    Some(CodexServerEntry { command, args })
+    Some(CodexServerEntry {
+        registration_name: String::new(),
+        command,
+        args,
+    })
 }
 
 /// Losslessly plan the one table DS owns in Codex's TOML document. Existing
 /// sibling tables, comments, whitespace, and key formatting remain under
-/// `toml_edit`; a pre-existing non-identical `ds` entry is never overwritten.
+/// `toml_edit`; a pre-existing non-identical named or legacy `ds` entry is
+/// never overwritten.
 fn merge_codex_toml(
     existing: Option<&[u8]>,
     entry: &Value,
@@ -677,19 +769,46 @@ fn merge_codex_toml(
             .map_err(|error| CodexTomlIssue::Malformed(error.to_string()))?
     };
 
+    let mut desired_exists = false;
+    let mut migrate_legacy = false;
     if let Some(servers) = document.get("mcp_servers") {
         let servers = servers.as_table().ok_or_else(|| CodexTomlIssue::Conflict {
             existing: servers.to_string(),
             proposed: codex_entry_preview(&desired),
         })?;
-        if let Some(current) = servers.get("ds") {
-            return match existing_codex_server(current) {
-                Some(current) if current == desired => Ok(RegistrationChange::Unchanged),
-                _ => Err(CodexTomlIssue::Conflict {
-                    existing: current.to_string(),
-                    proposed: codex_entry_preview(&desired),
-                }),
-            };
+        if let Some(current) = servers.get(&desired.registration_name) {
+            match existing_codex_server(current) {
+                Some(current)
+                    if current.command == desired.command && current.args == desired.args =>
+                {
+                    desired_exists = true;
+                }
+                _ => {
+                    return Err(CodexTomlIssue::Conflict {
+                        existing: current.to_string(),
+                        proposed: codex_entry_preview(&desired),
+                    });
+                }
+            }
+        }
+        migrate_legacy = desired.registration_name != LEGACY_REGISTRATION_NAME
+            && servers.get(LEGACY_REGISTRATION_NAME).is_some();
+        if let Some(legacy) = servers.get(LEGACY_REGISTRATION_NAME)
+            && desired.registration_name != LEGACY_REGISTRATION_NAME
+        {
+            match existing_codex_server(legacy) {
+                Some(current)
+                    if current.command == desired.command && current.args == desired.args => {}
+                _ => {
+                    return Err(CodexTomlIssue::Conflict {
+                        existing: legacy.to_string(),
+                        proposed: codex_entry_preview(&desired),
+                    });
+                }
+            }
+        }
+        if desired_exists && !migrate_legacy {
+            return Ok(RegistrationChange::Unchanged);
         }
     }
 
@@ -699,16 +818,27 @@ fn merge_codex_toml(
     let servers = document["mcp_servers"]
         .as_table_mut()
         .expect("the checked or inserted MCP root is a table");
-    let mut server = Table::new();
-    server.insert("command", value(&desired.command));
-    let mut args = Array::new();
-    for arg in &desired.args {
-        args.push(arg);
+    if migrate_legacy {
+        let legacy = servers
+            .remove(LEGACY_REGISTRATION_NAME)
+            .expect("the checked legacy entry remains present");
+        if !desired_exists {
+            servers.insert(&desired.registration_name, legacy);
+        }
+    } else if !desired_exists {
+        let mut server = Table::new();
+        server.insert("command", value(&desired.command));
+        let mut args = Array::new();
+        for arg in &desired.args {
+            args.push(arg);
+        }
+        server.insert("args", value(args));
+        servers.insert(&desired.registration_name, Item::Table(server));
     }
-    server.insert("args", value(args));
-    servers.insert("ds", Item::Table(server));
     let bytes = document.to_string().into_bytes();
-    Ok(if existing.is_none() || text.trim().is_empty() {
+    Ok(if migrate_legacy {
+        RegistrationChange::Migrate(bytes)
+    } else if existing.is_none() || text.trim().is_empty() {
         RegistrationChange::Create(bytes)
     } else {
         RegistrationChange::Merge(bytes)
@@ -720,7 +850,17 @@ fn adapter(host: &str) -> Option<&'static HostAdapter> {
 }
 
 fn guarded_json_host(host: &str) -> bool {
-    matches!(host, "gemini-cli" | "windsurf" | "github-copilot")
+    matches!(
+        host,
+        "vscode"
+            | "claude-code"
+            | "claude-desktop"
+            | "cursor"
+            | "gemini-cli"
+            | "antigravity"
+            | "windsurf"
+            | "github-copilot"
+    )
 }
 
 fn unknown_host(host: &str) -> Failure {
@@ -738,17 +878,33 @@ fn unknown_host(host: &str) -> Failure {
 }
 
 /// The user-level file for the host on this platform. Generic output has no
-/// target, and Codex remains print-only because its on-disk format is TOML.
+/// target. Codex uses a dedicated lossless TOML planner/writer; every other
+/// automatic adapter uses the guarded JSON planner/writer.
 fn config_file(adapter: &HostAdapter) -> Option<PathBuf> {
-    let home = std::env::var_os("HOME")
-        .or_else(|| std::env::var_os("USERPROFILE"))
-        .map(PathBuf::from);
+    let platform = Platform::current();
+    let home = preferred_profile_home(
+        platform,
+        std::env::var_os("HOME").map(PathBuf::from),
+        std::env::var_os("USERPROFILE").map(PathBuf::from),
+    );
     config_file_for(
         adapter,
-        Platform::current(),
+        platform,
         home.as_deref(),
         std::env::var_os("APPDATA").as_deref().map(Path::new),
     )
+}
+
+fn preferred_profile_home(
+    platform: Platform,
+    home: Option<PathBuf>,
+    userprofile: Option<PathBuf>,
+) -> Option<PathBuf> {
+    if platform == Platform::Windows {
+        userprofile.or(home)
+    } else {
+        home.or(userprofile)
+    }
 }
 
 fn config_file_for(
@@ -782,6 +938,7 @@ fn config_file_for(
         "codex" => Some(home?.join(".codex").join("config.toml")),
         "cursor" => Some(home?.join(".cursor").join("mcp.json")),
         "gemini-cli" => Some(home?.join(".gemini").join("settings.json")),
+        "antigravity" => Some(home?.join(".gemini").join("config").join("mcp_config.json")),
         "windsurf" => Some(
             home?
                 .join(".codeium")
@@ -846,6 +1003,10 @@ fn configuration_paths(adapter: &HostAdapter) -> Vec<Value> {
         "gemini-cli" => ALL_PLATFORMS
             .iter()
             .map(|platform| json!({ "platform": platform.token(), "path": "~/.gemini/settings.json" }))
+            .collect(),
+        "antigravity" => ALL_PLATFORMS
+            .iter()
+            .map(|platform| json!({ "platform": platform.token(), "path": "~/.gemini/config/mcp_config.json" }))
             .collect(),
         "windsurf" => ALL_PLATFORMS
             .iter()
@@ -959,7 +1120,7 @@ fn executable_platform(path: &Path) -> Result<Platform, String> {
 /// before rename, and the parent directory is synced where the platform
 /// supports directory fsync.
 pub fn merge_into_file(path: &Path, host: &str, entry: &Value) -> Result<(), Failure> {
-    merge_into_file_with_hook(path, host, entry, || {})
+    merge_guarded_json_into_file(path, host, entry).map(|_| ())
 }
 
 fn codex_issue(path: &Path, issue: CodexTomlIssue) -> Failure {
@@ -974,11 +1135,11 @@ fn codex_issue(path: &Path, issue: CodexTomlIssue) -> Failure {
         CodexTomlIssue::Conflict { existing, proposed } => Failure::invalid(
             "mcp_config_conflict",
             format!(
-                "{} already contains a non-identical `mcp_servers.ds` entry; it was left untouched",
+                "{} already contains a non-identical DS MCP registration; it was left untouched",
                 path.display()
             ),
         )
-        .remedy("inspect the previews, then remove or rename the existing `[mcp_servers.ds]` entry and re-run the read-only proposal; DS never overwrites it")
+        .remedy("inspect the previews, then remove or rename only the reported conflicting registration and re-run the read-only proposal; DS never overwrites it")
         .next("ds mcp install --host codex --output json")
         .detail(json!({
             "file": path.display().to_string(),
@@ -1078,11 +1239,11 @@ fn guarded_json_issue(path: &Path, host: &str, issue: JsonRegistrationIssue) -> 
         JsonRegistrationIssue::Conflict { existing, proposed } => Failure::invalid(
             "mcp_config_conflict",
             format!(
-                "{} already contains a non-identical MCP `ds` entry; it was left untouched",
+                "{} already contains a non-identical DS MCP registration; it was left untouched",
                 path.display()
             ),
         )
-        .remedy("inspect the previews, then remove or rename the existing `ds` entry and re-run the read-only proposal; DS never overwrites it")
+        .remedy("inspect the previews, then remove or rename only the reported conflicting registration and re-run the read-only proposal; DS never overwrites it")
         .next(format!("ds mcp install --host {host} --output json"))
         .detail(json!({
             "file": path.display().to_string(),
@@ -1114,6 +1275,15 @@ fn merge_guarded_json_into_file(
     path: &Path,
     host: &str,
     entry: &Value,
+) -> Result<RegistrationChange, Failure> {
+    merge_guarded_json_into_file_with_hook(path, host, entry, || {})
+}
+
+fn merge_guarded_json_into_file_with_hook(
+    path: &Path,
+    host: &str,
+    entry: &Value,
+    before_replace: impl FnOnce(),
 ) -> Result<RegistrationChange, Failure> {
     let unwritable = |message: String| {
         Failure::failed("mcp_config_unwritable", message)
@@ -1154,6 +1324,7 @@ fn merge_guarded_json_into_file(
             ))
         })?;
     }
+    before_replace();
     let current = read_regular_file(path).map_err(|error| {
         unwritable(format!(
             "could not re-check {} before replacement: {error}",
@@ -1178,93 +1349,14 @@ fn merge_guarded_json_into_file(
     Ok(change)
 }
 
+#[cfg(test)]
 fn merge_into_file_with_hook(
     path: &Path,
     host: &str,
     entry: &Value,
     before_replace: impl FnOnce(),
 ) -> Result<(), Failure> {
-    let unwritable = |message: String| {
-        Failure::failed("mcp_config_unwritable", message)
-            .remedy("read the reported path; fix or remove a malformed file, then re-run, or copy the printed entry by hand")
-            .detail(json!({ "file": path.display().to_string(), "host": host }))
-    };
-    let parent = prepare_parent(path)
-        .map_err(|error| unwritable(format!("could not prepare {}: {error}", path.display())))?;
-    let _lock = InstallLock::acquire(path)
-        .map_err(|error| unwritable(format!("could not lock {}: {error}", path.display())))?;
-
-    let existing = read_regular_file(path)
-        .map_err(|error| unwritable(format!("could not read {}: {error}", path.display())))?;
-    let document: Value = match existing.as_ref().map(|existing| existing.bytes.as_slice()) {
-        None => json!({}),
-        Some(bytes) if bytes.iter().all(u8::is_ascii_whitespace) => json!({}),
-        Some(bytes) => serde_json::from_slice(bytes).map_err(|error| {
-            unwritable(format!("{} is not valid JSON: {error}", path.display()))
-        })?,
-    };
-    let document = merge(&document, entry).ok_or_else(|| {
-        unwritable(format!(
-            "{} does not hold an object at its root",
-            path.display()
-        ))
-    })?;
-    let mut bytes =
-        serde_json::to_vec_pretty(&document).map_err(|error| unwritable(error.to_string()))?;
-    bytes.push(b'\n');
-
-    // Same directory, so replacement cannot cross a filesystem boundary and
-    // degrade into a copy. `create_new` makes a hostile pre-created stage a
-    // refusal rather than a truncation or a followed symlink.
-    let mut staged = StagedFile::create(path, "stage").map_err(|error| {
-        unwritable(format!(
-            "could not create private stage for {}: {error}",
-            path.display()
-        ))
-    })?;
-    staged
-        .write_synced(&bytes, existing.as_ref().map(|existing| &existing.metadata))
-        .map_err(|error| {
-            unwritable(format!(
-                "could not write {}: {error}",
-                staged.path.display()
-            ))
-        })?;
-
-    if let Some(previous) = &existing {
-        write_backup(path, previous).map_err(|error| {
-            unwritable(format!(
-                "could not preserve backup for {}: {error}",
-                path.display()
-            ))
-        })?;
-    }
-
-    // The lock protects DS installers. This check covers an editor or another
-    // program that changes the path without joining that protocol.
-    before_replace();
-    let current = read_regular_file(path).map_err(|error| {
-        unwritable(format!(
-            "could not re-check {} before replacement: {error}",
-            path.display()
-        ))
-    })?;
-    if !same_contents(existing.as_ref(), current.as_ref()) {
-        return Err(unwritable(format!(
-            "{} changed while its replacement was being prepared; it was left untouched",
-            path.display()
-        )));
-    }
-
-    staged
-        .replace(path)
-        .map_err(|error| unwritable(format!("could not replace {}: {error}", path.display())))?;
-    sync_parent(parent).map_err(|error| {
-        unwritable(format!(
-            "could not make {} durable: {error}",
-            parent.display()
-        ))
-    })
+    merge_guarded_json_into_file_with_hook(path, host, entry, before_replace).map(|_| ())
 }
 
 const LOCK_ATTEMPTS: u32 = 100;
@@ -1640,26 +1732,14 @@ impl Drop for InstallLock {
     }
 }
 
-/// Pure merge: the entry's single top-level map key is merged into the
-/// document's map of the same name, replacing only the `ds` server.
+/// Pure migration-safe merge used by adapter tests. A conflict is never
+/// overwritten; the caller gets `None` just as it does for malformed shapes.
 pub fn merge(document: &Value, entry: &Value) -> Option<Value> {
-    let mut root = document.as_object()?.clone();
-    let entry_root = entry.as_object()?;
-    if entry_root.len() != 1 {
-        return None;
+    let bytes = serde_json::to_vec(document).ok()?;
+    match merge_guarded_json(Some(&bytes), entry).ok()? {
+        RegistrationChange::Unchanged => Some(document.clone()),
+        change => serde_json::from_slice(change.bytes()?).ok(),
     }
-    let (section, servers) = entry_root.iter().next()?;
-    let servers = servers.as_object()?;
-    if servers.len() != 1 || !servers.contains_key("ds") {
-        return None;
-    }
-    let mut existing = match root.get(section) {
-        Some(value) => value.as_object()?.clone(),
-        None => Map::new(),
-    };
-    existing.insert("ds".to_string(), servers["ds"].clone());
-    root.insert(section.clone(), Value::Object(existing));
-    Some(Value::Object(root))
 }
 
 #[cfg(test)]
@@ -1682,13 +1762,48 @@ mod tests {
         server_entry(adapter(host).expect("adapter"), &descriptor)
     }
 
+    fn entry_for_identity(
+        host: &str,
+        executable: &Path,
+        lane: &'static str,
+        platform: crate::identity::RuntimePlatform,
+    ) -> Value {
+        let mut descriptor = connection_descriptor(
+            executable.to_path_buf(),
+            json!({ "source_sha": "a", "dirty": false, "profile": "release" }),
+            Some("a".to_string()),
+            crate::surface::Exposure::Chapters,
+            None,
+        );
+        descriptor.identity = ServerIdentity::new(lane, platform);
+        server_entry(adapter(host).expect("adapter"), &descriptor)
+    }
+
+    fn registration_name<'a>(entry: &'a Value, host: &str) -> &'a str {
+        entry[adapter(host).unwrap().root.token()]
+            .as_object()
+            .and_then(|servers| servers.keys().next())
+            .map(String::as_str)
+            .expect("one named registration")
+    }
+
+    fn entry_server<'a>(entry: &'a Value, host: &str) -> &'a Value {
+        let root = adapter(host).unwrap().root.token();
+        &entry[root][registration_name(entry, host)]
+    }
+
     #[test]
     fn vscode_entry_is_a_stdio_server_pointing_at_this_executable() {
         let entry = default_entry("vscode", std::path::Path::new("/usr/bin/ds"));
-        assert_eq!(entry["servers"]["ds"]["type"], "stdio");
-        assert_eq!(entry["servers"]["ds"]["command"], "/usr/bin/ds");
+        let identity = ServerIdentity::current();
         assert_eq!(
-            entry["servers"]["ds"]["args"],
+            registration_name(&entry, "vscode"),
+            identity.registration_name()
+        );
+        assert_eq!(entry_server(&entry, "vscode")["type"], "stdio");
+        assert_eq!(entry_server(&entry, "vscode")["command"], "/usr/bin/ds");
+        assert_eq!(
+            entry_server(&entry, "vscode")["args"],
             json!(["mcp", "serve", "--exposure", "chapters"])
         );
     }
@@ -1704,7 +1819,7 @@ mod tests {
         );
         let entry = server_entry(adapter("claude-code").unwrap(), &descriptor);
         assert_eq!(
-            entry["mcpServers"]["ds"]["args"],
+            entry_server(&entry, "claude-code")["args"],
             json!(["mcp", "serve", "--exposure", "commands", "--profile", "pls"])
         );
     }
@@ -1723,11 +1838,11 @@ mod tests {
             std::path::Path::new(r"C:\Program Files\DS GridDesign\ds.exe"),
         );
         assert_eq!(
-            entry["mcpServers"]["ds"]["command"],
+            entry_server(&entry, "claude-desktop")["command"],
             r"C:\Program Files\DS GridDesign\ds.exe"
         );
         assert_eq!(
-            entry["mcpServers"]["ds"]["args"],
+            entry_server(&entry, "claude-desktop")["args"],
             json!(["mcp", "serve", "--exposure", "chapters"])
         );
         assert_eq!(
@@ -1779,6 +1894,61 @@ mod tests {
             ),
             Some(Path::new("/home/operator/.codex/config.toml").to_path_buf())
         );
+        assert_eq!(
+            config_file_for(
+                adapter("antigravity").unwrap(),
+                Platform::Windows,
+                Some(home),
+                Some(appdata),
+            ),
+            Some(home.join(".gemini").join("config").join("mcp_config.json"))
+        );
+        assert_eq!(
+            config_file_for(
+                adapter("antigravity").unwrap(),
+                Platform::Linux,
+                Some(Path::new("/home/operator")),
+                None,
+            ),
+            Some(Path::new("/home/operator/.gemini/config/mcp_config.json").to_path_buf())
+        );
+    }
+
+    #[test]
+    fn native_windows_profile_wins_over_git_bash_home_without_path_guessing() {
+        let git_bash_home = PathBuf::from("/c/Users/operator");
+        let native_profile = PathBuf::from(r"C:\Users\operator");
+        let selected = preferred_profile_home(
+            Platform::Windows,
+            Some(git_bash_home),
+            Some(native_profile.clone()),
+        );
+        assert_eq!(selected, Some(native_profile));
+
+        let posix_home = PathBuf::from("/home/operator");
+        let fallback_profile = PathBuf::from(r"C:\Users\operator");
+        assert_eq!(
+            preferred_profile_home(
+                Platform::Linux,
+                Some(posix_home.clone()),
+                Some(fallback_profile),
+            ),
+            Some(posix_home)
+        );
+    }
+
+    #[test]
+    fn every_automatic_json_adapter_uses_the_guarded_registration_path() {
+        for adapter in ADAPTERS {
+            if adapter.automatic_merge && adapter.token != "codex" {
+                assert!(
+                    guarded_json_host(adapter.token),
+                    "{} bypasses the guarded JSON planner/writer",
+                    adapter.token
+                );
+            }
+        }
+        assert!(!guarded_json_host("generic"));
     }
 
     #[test]
@@ -1813,7 +1983,12 @@ mod tests {
             Some(crate::surface::Profile::SurveyProjects),
         );
         let value = descriptor.json();
-        assert_eq!(value["server_name"], "ds");
+        let identity = ServerIdentity::current();
+        assert_eq!(value["server_name"], identity.protocol_name());
+        assert_eq!(value["registration_name"], identity.registration_name());
+        assert_eq!(value["server_title"], identity.title());
+        assert_eq!(value["release_lane"], identity.lane());
+        assert_eq!(value["runtime_platform"], identity.platform());
         assert_eq!(value["transport"], "stdio");
         assert_eq!(value["executable"], "/opt/ds/bin/ds");
         assert_eq!(value["build"]["source_sha"], "abc");
@@ -1823,11 +1998,37 @@ mod tests {
     }
 
     #[test]
+    fn descriptor_surfaces_wsl_identity_while_hosts_keep_linux_config_paths() {
+        let mut descriptor = connection_descriptor(
+            PathBuf::from("/usr/bin/ds"),
+            json!({ "source_sha": "abc", "dirty": false, "profile": "release" }),
+            Some("abc".to_string()),
+            crate::surface::Exposure::Chapters,
+            None,
+        );
+        descriptor.identity = ServerIdentity::new("stable", crate::identity::RuntimePlatform::Wsl);
+        let value = descriptor.json();
+        assert_eq!(value["runtime_platform"], "wsl");
+        assert_eq!(value["server_name"], "ds-stable-wsl");
+        assert_eq!(value["registration_name"], "dsGridDesignStableWsl");
+        assert_eq!(value["server_title"], "DS GridDesign — Stable on WSL");
+        assert_eq!(
+            config_file_for(
+                adapter("antigravity").unwrap(),
+                Platform::Linux,
+                Some(Path::new("/home/operator")),
+                None,
+            ),
+            Some(Path::new("/home/operator/.gemini/config/mcp_config.json").to_path_buf())
+        );
+    }
+
+    #[test]
     fn codex_entry_is_the_verified_stdio_table_shape() {
         let entry = default_entry("codex", Path::new("/opt/ds/bin/ds"));
-        assert_eq!(entry["mcp_servers"]["ds"]["command"], "/opt/ds/bin/ds");
+        assert_eq!(entry_server(&entry, "codex")["command"], "/opt/ds/bin/ds");
         assert_eq!(
-            entry["mcp_servers"]["ds"]["args"],
+            entry_server(&entry, "codex")["args"],
             json!(["mcp", "serve", "--exposure", "chapters"])
         );
         assert!(adapter("codex").unwrap().automatic_merge);
@@ -1838,6 +2039,7 @@ mod tests {
         let home = Path::new("/home/operator");
         for (host, relative) in [
             ("gemini-cli", ".gemini/settings.json"),
+            ("antigravity", ".gemini/config/mcp_config.json"),
             ("windsurf", ".codeium/windsurf/mcp_config.json"),
             ("github-copilot", ".copilot/mcp-config.json"),
         ] {
@@ -1851,25 +2053,29 @@ mod tests {
             }
         }
 
-        for host in ["gemini-cli", "windsurf"] {
+        for host in ["gemini-cli", "antigravity", "windsurf"] {
             let entry = default_entry(host, Path::new("/opt/ds/bin/ds"));
-            assert_eq!(entry["mcpServers"]["ds"]["command"], "/opt/ds/bin/ds");
+            assert_eq!(entry_server(&entry, host)["command"], "/opt/ds/bin/ds");
             assert_eq!(
-                entry["mcpServers"]["ds"]["args"],
+                entry_server(&entry, host)["args"],
                 json!(["mcp", "serve", "--exposure", "chapters"])
             );
-            assert!(entry["mcpServers"]["ds"].get("type").is_none());
+            assert!(entry_server(&entry, host).get("type").is_none());
         }
 
         let copilot = default_entry("github-copilot", Path::new("/opt/ds/bin/ds"));
-        assert_eq!(copilot["mcpServers"]["ds"]["type"], "local");
-        assert_eq!(copilot["mcpServers"]["ds"]["env"], json!({}));
-        assert_eq!(copilot["mcpServers"]["ds"]["tools"], json!(["*"]));
+        assert_eq!(entry_server(&copilot, "github-copilot")["type"], "local");
+        assert_eq!(entry_server(&copilot, "github-copilot")["env"], json!({}));
+        assert_eq!(
+            entry_server(&copilot, "github-copilot")["tools"],
+            json!(["*"])
+        );
     }
 
     #[test]
-    fn added_json_hosts_preserve_siblings_and_refuse_ds_conflicts() {
+    fn json_hosts_preserve_siblings_migrate_exact_legacy_and_refuse_conflicts() {
         let entry = default_entry("gemini-cli", Path::new("/opt/ds/bin/ds"));
+        let name = registration_name(&entry, "gemini-cli").to_string();
         let existing = br#"{
   "theme": "dark",
   "mcpServers": { "other": { "command": "keep" } }
@@ -1879,11 +2085,26 @@ mod tests {
         let document: Value = serde_json::from_slice(bytes).unwrap();
         assert_eq!(document["theme"], "dark");
         assert_eq!(document["mcpServers"]["other"]["command"], "keep");
-        assert_eq!(document["mcpServers"]["ds"]["command"], "/opt/ds/bin/ds");
+        assert_eq!(document["mcpServers"][&name]["command"], "/opt/ds/bin/ds");
         assert_eq!(
             merge_guarded_json(Some(bytes), &entry).unwrap(),
             RegistrationChange::Unchanged
         );
+
+        let legacy = serde_json::to_vec(&json!({
+            "theme": "dark",
+            "mcpServers": {
+                "ds": entry_server(&entry, "gemini-cli"),
+                "other": { "command": "keep" }
+            }
+        }))
+        .unwrap();
+        let migrated = merge_guarded_json(Some(&legacy), &entry).expect("exact migration");
+        assert_eq!(migrated.token(false), "would_migrate_legacy");
+        let migrated: Value = serde_json::from_slice(migrated.bytes().unwrap()).unwrap();
+        assert!(migrated["mcpServers"].get("ds").is_none());
+        assert_eq!(migrated["mcpServers"][&name]["command"], "/opt/ds/bin/ds");
+        assert_eq!(migrated["mcpServers"]["other"]["command"], "keep");
 
         let conflicting = br#"{"mcpServers":{"ds":{"command":"other","args":[]}}}"#;
         assert!(matches!(
@@ -1897,13 +2118,48 @@ mod tests {
     }
 
     #[test]
+    fn stable_and_canary_windows_registrations_coexist_in_vscode() {
+        let stable = entry_for_identity(
+            "vscode",
+            Path::new(r"C:\Program Files\DS GridDesign\ds.exe"),
+            "stable",
+            crate::identity::RuntimePlatform::Windows,
+        );
+        let canary = entry_for_identity(
+            "vscode",
+            Path::new(r"C:\Program Files\DS GridDesign Canary\ds.exe"),
+            "canary",
+            crate::identity::RuntimePlatform::Windows,
+        );
+        let stable_name = registration_name(&stable, "vscode");
+        let canary_name = registration_name(&canary, "vscode");
+        assert_eq!(stable_name, "dsGridDesignStableWindows");
+        assert_eq!(canary_name, "dsGridDesignCanaryWindows");
+
+        let first = merge_guarded_json(None, &stable).expect("stable registration");
+        let second =
+            merge_guarded_json(Some(first.bytes().unwrap()), &canary).expect("canary registration");
+        let document: Value = serde_json::from_slice(second.bytes().unwrap()).unwrap();
+        assert_eq!(
+            document["servers"][stable_name]["command"],
+            r"C:\Program Files\DS GridDesign\ds.exe"
+        );
+        assert_eq!(
+            document["servers"][canary_name]["command"],
+            r"C:\Program Files\DS GridDesign Canary\ds.exe"
+        );
+        assert!(document["servers"].get(LEGACY_REGISTRATION_NAME).is_none());
+    }
+
+    #[test]
     fn codex_empty_config_creates_one_exact_table_and_is_idempotent() {
         let entry = default_entry("codex", Path::new("/opt/ds/bin/ds"));
+        let name = registration_name(&entry, "codex");
         let first = merge_codex_toml(None, &entry).expect("create");
         assert_eq!(first.token(false), "would_create");
         let bytes = first.bytes().expect("created bytes");
         let text = std::str::from_utf8(bytes).unwrap();
-        assert!(text.contains("[mcp_servers.ds]"));
+        assert!(text.contains(&format!("[mcp_servers.{name}]")));
         assert!(text.contains("command = \"/opt/ds/bin/ds\""));
         assert!(text.contains("args = [\"mcp\", \"serve\", \"--exposure\", \"chapters\"]"));
         assert_eq!(
@@ -1915,13 +2171,14 @@ mod tests {
     #[test]
     fn codex_merge_preserves_unrelated_tables_comments_and_formatting() {
         let entry = default_entry("codex", Path::new("/opt/ds/bin/ds"));
+        let name = registration_name(&entry, "codex");
         let existing = b"# operator comment\nmodel = \"gpt-5\"\n\n[mcp_servers.other]\ncommand='other' # keep format\nargs = []\n";
         let merged = merge_codex_toml(Some(existing), &entry).expect("merge");
         assert_eq!(merged.token(false), "would_merge");
         let text = std::str::from_utf8(merged.bytes().unwrap()).unwrap();
         assert!(text.starts_with("# operator comment\nmodel = \"gpt-5\""));
         assert!(text.contains("command='other' # keep format"));
-        assert!(text.contains("[mcp_servers.ds]"));
+        assert!(text.contains(&format!("[mcp_servers.{name}]")));
     }
 
     #[test]
@@ -1942,6 +2199,49 @@ mod tests {
         assert!(matches!(
             merge_codex_toml(Some(b"[mcp_servers.ds\ncommand ="), &entry),
             Err(CodexTomlIssue::Malformed(_))
+        ));
+    }
+
+    #[test]
+    fn codex_migrates_only_an_exact_legacy_entry_and_keeps_lane_siblings() {
+        let stable = entry_for_identity(
+            "codex",
+            Path::new("/opt/stable/ds"),
+            "stable",
+            crate::identity::RuntimePlatform::Linux,
+        );
+        let canary = entry_for_identity(
+            "codex",
+            Path::new("/opt/canary/ds"),
+            "canary",
+            crate::identity::RuntimePlatform::Linux,
+        );
+        let stable_name = registration_name(&stable, "codex");
+        let canary_name = registration_name(&canary, "codex");
+        let legacy = b"# keep operator comment\n[mcp_servers.ds]\ncommand = \"/opt/stable/ds\" # exact legacy\nargs = [\"mcp\", \"serve\", \"--exposure\", \"chapters\"]\n";
+        let migrated = merge_codex_toml(Some(legacy), &stable).expect("exact legacy migration");
+        assert_eq!(migrated.token(false), "would_migrate_legacy");
+        let migrated_text = std::str::from_utf8(migrated.bytes().unwrap()).unwrap();
+        assert!(!migrated_text.contains("[mcp_servers.ds]"));
+        assert!(migrated_text.contains(&format!("[mcp_servers.{stable_name}]")));
+        assert!(migrated_text.contains("# keep operator comment"));
+        assert!(migrated_text.contains("# exact legacy"));
+
+        let coexist = merge_codex_toml(Some(migrated.bytes().unwrap()), &canary)
+            .expect("canary coexists with stable");
+        let coexist_text = std::str::from_utf8(coexist.bytes().unwrap()).unwrap();
+        assert!(coexist_text.contains(&format!("[mcp_servers.{stable_name}]")));
+        assert!(coexist_text.contains(&format!("[mcp_servers.{canary_name}]")));
+
+        let conflict = b"[mcp_servers.ds]\ncommand = \"operator-owned\"\nargs = []\n";
+        assert!(matches!(
+            merge_codex_toml(Some(conflict), &stable),
+            Err(CodexTomlIssue::Conflict { .. })
+        ));
+        let structurally_different = b"[mcp_servers.ds]\ncommand = \"/opt/stable/ds\"\nargs = [\"mcp\", \"serve\", \"--exposure\", \"chapters\"]\nenabled = true\n";
+        assert!(matches!(
+            merge_codex_toml(Some(structurally_different), &stable),
+            Err(CodexTomlIssue::Conflict { .. })
         ));
     }
 
@@ -1992,32 +2292,36 @@ mod tests {
 
     #[test]
     fn merge_keeps_other_servers_and_keys() {
-        let existing = json!({ "inputs": [], "servers": { "other": { "type": "stdio", "command": "x" }, "ds": { "command": "old" } } });
+        let existing =
+            json!({ "inputs": [], "servers": { "other": { "type": "stdio", "command": "x" } } });
         let entry = default_entry("vscode", std::path::Path::new("/new/ds"));
+        let name = registration_name(&entry, "vscode");
         let merged = merge(&existing, &entry).expect("merged");
         assert_eq!(merged["inputs"], json!([]));
         assert_eq!(merged["servers"]["other"]["command"], "x");
-        assert_eq!(merged["servers"]["ds"]["command"], "/new/ds");
+        assert_eq!(merged["servers"][name]["command"], "/new/ds");
     }
 
     #[test]
     fn claude_desktop_merge_preserves_siblings_and_unrelated_settings() {
-        let existing = json!({
-            "preferences": { "theme": "dark" },
-            "mcpServers": {
-                "other": { "command": "other.exe" },
-                "ds": { "command": "old.exe" },
-            },
-        });
         let entry = default_entry(
             "claude-desktop",
             Path::new(r"C:\Program Files\DS GridDesign\ds.exe"),
         );
+        let name = registration_name(&entry, "claude-desktop");
+        let existing = json!({
+            "preferences": { "theme": "dark" },
+            "mcpServers": {
+                "other": { "command": "other.exe" },
+                "ds": entry_server(&entry, "claude-desktop"),
+            },
+        });
         let merged = merge(&existing, &entry).unwrap();
         assert_eq!(merged["preferences"]["theme"], "dark");
         assert_eq!(merged["mcpServers"]["other"]["command"], "other.exe");
+        assert!(merged["mcpServers"].get("ds").is_none());
         assert_eq!(
-            merged["mcpServers"]["ds"]["command"],
+            merged["mcpServers"][name]["command"],
             r"C:\Program Files\DS GridDesign\ds.exe"
         );
     }
@@ -2076,10 +2380,11 @@ mod tests {
         let dir = scratch("malformed");
         let path = dir.join("User").join("mcp.json");
         let entry = default_entry("vscode", std::path::Path::new("/usr/bin/ds"));
+        let name = registration_name(&entry, "vscode");
         merge_into_file(&path, "vscode", &entry).expect("write");
         let written: Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
         assert_eq!(
-            written["servers"]["ds"]["args"],
+            written["servers"][name]["args"],
             json!(["mcp", "serve", "--exposure", "chapters"])
         );
         std::fs::write(&path, b"{ not json").unwrap();
@@ -2094,6 +2399,7 @@ mod tests {
         let dir = scratch("codex-write");
         let path = dir.join(".codex").join("config.toml");
         let entry = default_entry("codex", Path::new("/usr/bin/ds"));
+        let name = registration_name(&entry, "codex");
 
         let created = merge_codex_into_file(&path, &entry).expect("create");
         assert_eq!(created.token(true), "created");
@@ -2101,7 +2407,7 @@ mod tests {
         assert!(
             std::str::from_utf8(&installed)
                 .unwrap()
-                .contains("[mcp_servers.ds]")
+                .contains(&format!("[mcp_servers.{name}]"))
         );
 
         let unchanged = merge_codex_into_file(&path, &entry).expect("idempotent");
@@ -2152,6 +2458,7 @@ mod tests {
         std::fs::write(&path, before).unwrap();
 
         let entry = default_entry("vscode", std::path::Path::new("/usr/bin/ds"));
+        let name = registration_name(&entry, "vscode");
         merge_into_file(&path, "vscode", &entry).expect("write");
 
         let backup = super::backup_path(&path);
@@ -2162,7 +2469,7 @@ mod tests {
         );
         let written: Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
         assert_eq!(written["servers"]["other"]["command"], "x");
-        assert_eq!(written["servers"]["ds"]["command"], "/usr/bin/ds");
+        assert_eq!(written["servers"][name]["command"], "/usr/bin/ds");
         let _ = std::fs::remove_dir_all(&dir);
     }
 

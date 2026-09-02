@@ -24,6 +24,7 @@
 //! or expose anything `ds capabilities` does not list. The moment it grows a
 //! tool the CLI lacks, it is the second surface the product ruled out.
 
+mod identity;
 pub mod install;
 pub mod resources;
 pub mod serve;
@@ -104,6 +105,6 @@ pub(crate) const CONFIG_UNWRITABLE: Refusal = Refusal {
 
 pub(crate) const CONFIG_CONFLICT: Refusal = Refusal {
     code: "mcp_config_conflict",
-    when: "the host configuration already owns a `ds` MCP entry that differs from the exact proposal",
-    remedy: "inspect the existing and proposed entries, then remove or rename the existing `ds` entry before retrying; DS never overwrites a conflict",
+    when: "the derived lane/platform entry or legacy `ds` entry differs from this exact proposal",
+    remedy: "inspect the previews; remove or rename only the conflict, then retry",
 };

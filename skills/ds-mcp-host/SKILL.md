@@ -54,18 +54,35 @@ tool name.
 The entry belongs in the user profile on the PC where DS GridDesign is
 installed and paired, never a travelling workspace file. Run installation
 from the exact Stable, Canary, or development `ds` you intend the host to use.
-The receipt's `source_sha` must match `ds doctor`'s skill-bundle SHA.
+The receipt's `source_sha` must match `ds doctor`'s skill-bundle SHA. The
+installer derives, rather than accepts, three related names from that packaged
+executable:
+
+- a machine-safe MCP identity such as `ds-stable-windows`;
+- a cross-host configuration key such as `dsGridDesignStableWindows`; and
+- a human title such as `DS GridDesign — Stable on Windows`.
+
+The lane is a compile-time package stamp. The platform is the running platform;
+WSL is distinguished from native Linux only when the Linux kernel release
+provides Microsoft evidence. Stable and Canary keys therefore coexist in one
+host profile without changing any canonical DS tool or command id.
 On Windows, `--host claude-desktop` targets Claude Desktop's verified
 user-level `mcpServers` configuration and Claude Desktop launches `ds.exe`
 directly after restart; VS Code is not involved.
 For Codex, first inspect `ds mcp install --host codex --output json`, then run
 `ds mcp install --host codex --write --yes`. It preserves unrelated TOML and
-refuses a conflicting `mcp_servers.ds`; after a changed write, fully quit and
-restart Codex and begin a new agent session. VS Code is not involved.
-The same plan-then-write flow supports `gemini-cli`, `windsurf`, and
-`github-copilot`; each targets that host's verified user profile directly,
-preserves sibling registrations, and refuses a conflicting `ds` entry. Do not
-guess a Cline target while its global configuration contract is moving.
+refuses a conflicting lane/platform key or legacy `mcp_servers.ds`; after a
+changed write, fully quit and restart Codex and begin a new agent session. An
+exact legacy `ds` entry for this executable and argument list is migrated to
+the derived key; a non-identical legacy entry is never overwritten. VS Code is
+not involved.
+The same plan-then-write flow supports `gemini-cli`, `antigravity`, `windsurf`,
+and `github-copilot`; each targets that host's verified user profile directly,
+preserves sibling registrations, performs the same exact-only legacy
+migration, and refuses conflicts. Google Antigravity is a separate host whose
+configuration is `~/.gemini/config/mcp_config.json`; do not confuse it with
+Gemini CLI's `~/.gemini/settings.json`. Do not guess a Cline target while its
+global configuration contract is moving.
 
 ## MCP-only bootstrap
 

@@ -5,11 +5,11 @@ Tier-4 reference. `ds mcp <command> --help` is the contract.
 ## The problem it solves
 
 Some agent hosts — VS Code agent mode, GitHub Copilot, Claude Desktop and
-Claude Code, Cursor, Codex — learn tools only through the Model Context
-Protocol: a JSON-RPC server on stdio that answers `tools/list` and
-`tools/call`. Skills reach the hosts that read skills; MCP reaches the rest.
-`ds mcp` gives those hosts the command line **without a second product
-surface**.
+Claude Code, Cursor, Codex, Gemini CLI, Google Antigravity, and Windsurf —
+learn tools only through the Model Context Protocol: a JSON-RPC server on stdio
+that answers `tools/list` and `tools/call`. Skills reach the hosts that read
+skills; MCP reaches the rest. `ds mcp` gives those hosts the command line
+**without a second product surface**.
 
 ## What the server is, and is not
 
@@ -212,13 +212,16 @@ Every exposure publishes `ds_diagnostics` with four read-only operations:
 | `shell.status` | The unchanged `ds shell status --output json` envelope |
 | `capabilities` | The unchanged bounded tier-1 `ds capabilities --output json` envelope |
 
-`initialize.serverInfo` uses only the MCP name/title/version fields. Concise
+`initialize.serverInfo` uses only the MCP name/title/version fields. The name is
+a protocol-safe package identity such as `ds-stable-windows`; the title is a
+visible product identity such as `DS GridDesign — Stable on Windows`. Concise
 identity and bootstrap directions are in `initialize.instructions`; structured
-identity is returned by diagnostics and echoed by `ds_catalog`. An executable
-outside the recognized Windows Stable/Canary sibling layout reports
-`install_profile: unlabeled`: the server does not guess a Linux package channel
-or call it development. Packaging needs a future stamped channel if those
-lanes must be distinguished away from the desktop layout.
+identity is returned by diagnostics and echoed by `ds_catalog`. The release
+lane comes from the compile-time `DS_DESKTOP_LANE` package stamp; an unstamped
+developer build is explicitly `development`. The runtime platform comes from
+the compiled OS, with WSL distinguished from native Linux only when the kernel
+release carries Microsoft evidence. This MCP identity is independent of the
+existing executable-layout `install_profile` evidence.
 
 At startup only the packaged bundle's bounded receipt metadata is indexed. When
 that receipt matches this CLI source SHA,
@@ -266,10 +269,11 @@ carry the command's effect, authority, and the refusals it can name.
 ds mcp install --output json                # supported hosts plus the default VS Code proposal
 ds mcp install --host claude-desktop --output json # Windows Claude Desktop proposal
 ds mcp install --write --yes                # merge it into the VS Code user profile
-ds mcp install --host claude-code           # also cursor, codex, Gemini CLI, Windsurf, Copilot, generic
+ds mcp install --host claude-code           # also cursor, codex, Gemini CLI, Antigravity, Windsurf, Copilot, generic
 ds mcp install --host claude-code --exposure commands --profile pls --write --yes
-ds mcp install --host codex --write --yes   # losslessly add [mcp_servers.ds]
+ds mcp install --host codex --write --yes   # losslessly add its derived mcp_servers table
 ds mcp install --host gemini-cli --write --yes
+ds mcp install --host antigravity --write --yes
 ds mcp install --host windsurf --write --yes
 ds mcp install --host github-copilot --write --yes
 ```
@@ -288,34 +292,47 @@ The entry points at **this** executable and belongs in the **user** profile
 — `%APPDATA%\Code\User\mcp.json` on Windows, `~/.config/Code/User/mcp.json`
 on Linux — never in a workspace file. The server must run on the PC where DS
 GridDesign is installed and paired; a workspace file travels to machines that
-have neither. With both Stable and Canary installed, run `install` from the
-`ds` of the app you use, and keep one server entry.
+have neither. With both Stable and Canary installed, run `install` from each
+exact `ds`; their derived lane/platform keys coexist and remain visibly
+distinct.
 
 Every result includes a host-neutral `connection` descriptor and a
 `supported_hosts` table. Thin adapters translate only the root and target;
 all hosts launch the same absolute executable and fixed stdio arguments.
 Claude Desktop is verified on Windows at
-`%APPDATA%\Claude\claude_desktop_config.json`, under `mcpServers.ds`. It
-starts `ds.exe` directly after a restart; VS Code need not be installed or
-running. See the [adapter contract](../contracts/mcp-client-adapter-contract.md)
-and [v3 migration note](../migration/mcp-client-adapters.md).
+`%APPDATA%\Claude\claude_desktop_config.json`, under a derived `mcpServers`
+member such as `dsGridDesignStableWindows`. It starts `ds.exe` directly after
+a restart; VS Code need not be installed or running. See the
+[adapter contract](../contracts/mcp-client-adapter-contract.md) and
+[adapter migration note](../migration/mcp-client-adapters.md).
 
 Codex keeps TOML. The read-only `install --host codex` proposal verifies
 `~/.codex/config.toml` and reports whether it would create, merge, or leave an
-exact match unchanged. `--write --yes` losslessly adds `[mcp_servers.ds]`,
-preserving unrelated tables, comments and formatting. A non-identical existing
-`ds` entry is shown as a conflict and never overwritten. A changed registration
-reports `restart_required: true`: fully quit and restart Codex, then start a new
-agent session. The install receipt and MCP diagnostics identity report this
-executable's source SHA; it must match the skill-bundle SHA from `ds doctor`.
+exact match unchanged. `--write --yes` losslessly adds the derived table, for
+example `[mcp_servers.dsGridDesignStableLinux]`, preserving unrelated tables,
+comments and formatting. An exact legacy `[mcp_servers.ds]` table is migrated;
+a non-identical legacy or derived entry is shown as a conflict and never
+overwritten. A changed registration reports `restart_required: true`: fully
+quit and restart Codex, then start a new agent session. The install receipt and
+MCP diagnostics identity report this executable's source SHA; it must match the
+skill-bundle SHA from `ds doctor`.
 
-Gemini CLI targets `~/.gemini/settings.json`; Windsurf targets
+Gemini CLI targets `~/.gemini/settings.json`; Google Antigravity separately
+targets `~/.gemini/config/mcp_config.json`; Windsurf targets
 `~/.codeium/windsurf/mcp_config.json`; GitHub Copilot CLI targets
 `~/.copilot/mcp-config.json`. All are user-level paths on Windows, macOS and
 Linux, need no VS Code mediation, preserve unrelated JSON and sibling servers,
-and refuse a non-identical existing `ds` entry with existing/proposed previews.
-GitHub Copilot receives its verified `local` server shape. Cline is omitted
-until its CLI/global-storage schema is stable enough for a safe blind merge.
+and refuse conflicts with existing/proposed previews. GitHub Copilot receives
+its verified `local` server shape. Cline is omitted until its
+CLI/global-storage schema is stable enough for a safe blind merge.
+
+All JSON adapters use the same guarded planner and atomic writer. The visible
+configuration key is camelCase, for example `dsGridDesignCanaryWsl`; the MCP
+protocol name is separately `ds-canary-wsl`; and hosts that render the title
+show `DS GridDesign — Canary on WSL`. An exact legacy `ds` object is migrated
+once. A differing legacy object or named entry refuses rather than being
+silently overwritten. These names affect discovery and display only: tool
+names such as `ds_catalog` and every canonical command id remain unchanged.
 
 ## Server migration note
 

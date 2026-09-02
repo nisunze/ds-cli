@@ -48,6 +48,24 @@ fn cli(args: &[&str]) -> Value {
     serde_json::from_slice(&output.stdout).expect("one CLI envelope")
 }
 
+fn isolated_cli(args: &[&str]) -> Value {
+    let profile = TestDir::new("isolated-profile");
+    let output = Command::new(env!("CARGO_BIN_EXE_ds"))
+        .args(args)
+        .env("HOME", &profile.0)
+        .env("USERPROFILE", &profile.0)
+        .env("APPDATA", &profile.0)
+        .output()
+        .expect("ds runs");
+    assert!(
+        output.status.success(),
+        "ds {} failed: {}",
+        args.join(" "),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    serde_json::from_slice(&output.stdout).expect("one CLI envelope")
+}
+
 fn cli_envelope(args: &[&str]) -> Value {
     let output = Command::new(env!("CARGO_BIN_EXE_ds"))
         .args(args)
@@ -209,12 +227,32 @@ fn broad_server_has_declared_stable_tools_and_reports_build_identity() {
             .unwrap()
             .contains(version["data"]["source_sha"].as_str().unwrap())
     );
-    let install = cli(&["mcp", "install", "--output", "json"]);
+    let install = isolated_cli(&["mcp", "install", "--output", "json"]);
     assert_eq!(install["data"]["source_sha"], version["data"]["source_sha"]);
     assert_eq!(install["data"]["written"], json!(false));
+    let registration_name = install["data"]["registration_name"]
+        .as_str()
+        .expect("registration name");
     assert_eq!(
-        install["data"]["entry"]["servers"]["ds"]["args"],
+        install["data"]["entry"]["servers"][registration_name]["args"],
         json!(["mcp", "serve", "--exposure", "chapters"])
+    );
+    assert_eq!(
+        response(&responses, 1)["result"]["serverInfo"]["name"],
+        install["data"]["server_name"]
+    );
+    assert_eq!(
+        response(&responses, 1)["result"]["serverInfo"]["title"],
+        install["data"]["server_title"]
+    );
+    assert_eq!(identity["mcp"]["registration_name"], registration_name);
+    assert_eq!(
+        identity["mcp"]["release_lane"],
+        install["data"]["release_lane"]
+    );
+    assert_eq!(
+        identity["mcp"]["runtime_platform"],
+        install["data"]["runtime_platform"]
     );
     assert!(
         install["data"]["supported_hosts"]
@@ -343,9 +381,10 @@ fn a_map_refusal_is_lazy_and_does_not_end_the_headless_server() {
             json!({ "jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": { "name": "ds_diagnostics", "arguments": { "operation": "capabilities" } } }),
         ],
     );
+    let install = isolated_cli(&["mcp", "install", "--output", "json"]);
     assert_eq!(
         response(&responses, 1)["result"]["serverInfo"]["name"],
-        "ds"
+        install["data"]["server_name"]
     );
     assert_eq!(
         response(&responses, 2)["result"]["structuredContent"]["error"]["code"],
@@ -359,18 +398,18 @@ fn a_map_refusal_is_lazy_and_does_not_end_the_headless_server() {
 
 #[test]
 fn install_discovery_is_blind_but_writing_stays_gated() {
-    let discovery = Command::new(env!("CARGO_BIN_EXE_ds"))
-        .args(["mcp", "install", "--output", "json"])
-        .output()
-        .expect("ds runs");
-    assert!(discovery.status.success());
+    let _discovery = isolated_cli(&["mcp", "install", "--output", "json"]);
 
     // Generic has no target, but --write must still hit confirmation before
     // adapter-specific refusal logic.
+    let profile = TestDir::new("unconfirmed-install");
     let output = Command::new(env!("CARGO_BIN_EXE_ds"))
         .args([
             "mcp", "install", "--host", "generic", "--write", "--output", "json",
         ])
+        .env("HOME", &profile.0)
+        .env("USERPROFILE", &profile.0)
+        .env("APPDATA", &profile.0)
         .output()
         .expect("ds runs");
     assert_eq!(output.status.code(), Some(2), "an unconfirmed gate exits 2");
@@ -395,6 +434,49 @@ fn install_discovery_is_blind_but_writing_stays_gated() {
     assert!(
         codes.contains("mcp_capabilities_unavailable"),
         "`build_identity` runs before the entry is printed: {codes:?}"
+    );
+}
+
+#[test]
+fn antigravity_proposal_is_distinct_from_gemini_cli_and_remains_read_only() {
+    let home = TestDir::new("antigravity-install");
+    let output = Command::new(env!("CARGO_BIN_EXE_ds"))
+        .args([
+            "mcp",
+            "install",
+            "--host",
+            "antigravity",
+            "--output",
+            "json",
+        ])
+        .env("HOME", &home.0)
+        .env("USERPROFILE", &home.0)
+        .output()
+        .expect("ds runs");
+    assert!(output.status.success());
+    let envelope: Value = serde_json::from_slice(&output.stdout).expect("one CLI envelope");
+    let data = &envelope["data"];
+    let registration_name = data["registration_name"]
+        .as_str()
+        .expect("registration name");
+    let expected = home
+        .0
+        .join(".gemini")
+        .join("config")
+        .join("mcp_config.json");
+    assert_eq!(data["host"], "antigravity");
+    assert_eq!(data["path"], expected.display().to_string());
+    assert_eq!(data["change"], "would_create");
+    assert_eq!(data["written"], false);
+    assert_eq!(
+        data["entry"]["mcpServers"][registration_name]["command"],
+        data["executable"]
+    );
+    assert!(!expected.exists(), "a proposal must not touch host config");
+    assert_ne!(
+        expected,
+        home.0.join(".gemini").join("settings.json"),
+        "Antigravity and Gemini CLI do not share a configuration target"
     );
 }
 
@@ -436,7 +518,10 @@ fn codex_install_plans_writes_and_reports_the_restart_handoff_without_vscode() {
             .contains("fully quit and restart Codex")
     );
     let config = fs::read_to_string(&path).expect("Codex config");
-    assert!(config.contains("[mcp_servers.ds]"));
+    let registration_name = written["data"]["registration_name"]
+        .as_str()
+        .expect("registration name");
+    assert!(config.contains(&format!("[mcp_servers.{registration_name}]")));
     assert!(config.contains("\"mcp\", \"serve\""));
 
     let (status, repeated) = invoke(&["--write", "--yes"]);
@@ -494,6 +579,8 @@ fn by_command_profiles_still_partition_the_live_registry() {
                             "design.features.select"
                                 | "design.lv.project-export"
                                 | "design.lv.process"
+                                | "design.known-columns.list"
+                                | "design.known-columns.set"
                         ))
             })
             .cloned()

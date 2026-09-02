@@ -24,7 +24,7 @@ pub const PROTOCOL_VERSION: &str = "2025-06-18";
 pub static COMMAND: Command = Command {
     id: "mcp.serve",
     path: &["mcp", "serve"],
-    contract: 3,
+    contract: 4,
     chapter: ds_cli_contract::spec::Chapter::Catalog,
     summary: "Serve chapter or typed `ds` tools over MCP.",
     purpose: "\
@@ -206,15 +206,17 @@ pub fn handle(
     let params = request.get("params").cloned().unwrap_or(Value::Null);
     let is_notification = id.is_none() || method.starts_with("notifications/");
     let result = match method {
-        "initialize" => Ok(json!({
+        "initialize" => {
+            let server_identity = crate::identity::ServerIdentity::current();
+            Ok(json!({
             "protocolVersion": negotiated_version(&params),
             "capabilities": {
                 "tools": { "listChanged": false },
                 "resources": { "subscribe": false, "listChanged": false }
             },
             "serverInfo": {
-                "name": "ds",
-                "title": "DS command line",
+                "name": server_identity.protocol_name(),
+                "title": server_identity.title(),
                 "version": env!("CARGO_PKG_VERSION"),
             },
             "instructions": format!(
@@ -225,7 +227,8 @@ pub fn handle(
                 build["profile"].as_str().unwrap_or("unknown"),
                 resources.identity()["status"].as_str().unwrap_or("unavailable"),
             ),
-        })),
+            }))
+        }
         "ping" => Ok(json!({})),
         "tools/list" => Ok(json!({ "tools": surface.tool_list() })),
         "tools/call" => {
@@ -254,6 +257,7 @@ fn bootstrap_identity(
     profile: Option<Profile>,
     resources: &SkillResources,
 ) -> Value {
+    let server_identity = crate::identity::ServerIdentity::current();
     json!({
         "executable": executable.display().to_string(),
         "version": build["version"],
@@ -268,6 +272,11 @@ fn bootstrap_identity(
         "ds_network_source_sha": build["ds_network_source_sha"],
         "ds_network_source_state": build["ds_network_source_state"],
         "mcp": {
+            "server_name": server_identity.protocol_name(),
+            "server_title": server_identity.title(),
+            "registration_name": server_identity.registration_name(),
+            "release_lane": server_identity.lane(),
+            "runtime_platform": server_identity.platform(),
             "transport": "stdio",
             "exposure": exposure.token(),
             "profile": profile.map(Profile::token),
@@ -337,7 +346,12 @@ mod tests {
         let resources = resources();
         let init = handle(&json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26"}}), &exe, &surface, &build(), &resources, &mut calls).expect("response");
         assert_eq!(init["result"]["protocolVersion"], "2025-03-26");
-        assert_eq!(init["result"]["serverInfo"]["name"], "ds");
+        let identity = crate::identity::ServerIdentity::current();
+        assert_eq!(
+            init["result"]["serverInfo"]["name"],
+            identity.protocol_name()
+        );
+        assert_eq!(init["result"]["serverInfo"]["title"], identity.title());
         let list = handle(
             &json!({"jsonrpc":"2.0","id":2,"method":"tools/list"}),
             &exe,
