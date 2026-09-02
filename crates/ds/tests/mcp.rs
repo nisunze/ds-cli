@@ -867,6 +867,23 @@ fn map_design_open_is_projected_by_catalog_chapter_and_typed_profile() {
 }
 
 #[test]
+fn design_edit_profile_exposes_known_columns_as_the_external_field_authority() {
+    let (responses, _) = mcp(
+        &["--exposure", "commands", "--profile", "design-edit"],
+        &[json!({ "jsonrpc": "2.0", "id": 19, "method": "tools/list" })],
+    );
+    let tools = response(&responses, 19)["result"]["tools"]
+        .as_array()
+        .expect("tools");
+    let names = tools
+        .iter()
+        .filter_map(|tool| tool["name"].as_str())
+        .collect::<BTreeSet<_>>();
+    assert!(names.contains("design_known-columns_list"));
+    assert!(names.contains("design_known-columns_set"));
+}
+
+#[test]
 fn map_design_version_history_projects_through_catalog_chapter_and_typed_profile() {
     let ids = [
         "map.design.version.list",
@@ -1002,7 +1019,7 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
             // need only that workflow use `grid-local-model` below.
             "grid" => 18,
             "survey-projects" => 18,
-            "design-edit" => 21,
+            "design-edit" => 23,
             _ => 16,
         };
         assert!(
@@ -1040,6 +1057,10 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
     assert!(
         published["design-edit"].contains("map_design_pin"),
         "the design-edit profile must project the map-owned Working-set command"
+    );
+    assert!(
+        published["design-edit"].contains("design_known-columns_set"),
+        "the design-edit profile must expose the know_columns mutation"
     );
 
     let (compatibility, _) = mcp(

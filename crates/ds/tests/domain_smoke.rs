@@ -2908,8 +2908,9 @@ fn design_validates_its_own_inputs_before_it_opens_the_bridge() {
         "invalid_choice",
         "an object kind outside the closed set must be refused by the parser"
     );
-    // The governed set is closed and declared on the descriptor, so a third
-    // name is refused here rather than after a round trip.
+    // Group identifiers are governed project metadata, not a hardcoded City /
+    // Phase vocabulary. A syntactically valid unknown id therefore reaches
+    // the paired application, which resolves the live definitions.
     assert_eq!(
         refusal(&[
             "design",
@@ -2922,8 +2923,8 @@ fn design_validates_its_own_inputs_before_it_opens_the_bridge() {
             "--output",
             "json",
         ]),
-        "invalid_choice",
-        "a group outside the closed set must be refused by the parser"
+        "desktop_refused",
+        "a dynamic group id must be resolved by the paired project"
     );
     // The batch bound is one transaction's write budget; the projection's is a
     // whole project's export. 300 is over the first and well inside the second,
@@ -3212,6 +3213,7 @@ fn design_reads_are_reads_and_design_writes_are_governed_writes() {
         ("design.attachment.download", "read_only"),
         ("design.tag.list", "read_only"),
         ("design.tag.query", "read_only"),
+        ("design.known-columns.list", "read_only"),
         ("design.comment.list", "read_only"),
         ("design.comment.read", "read_only"),
         ("design.selection.save", "global_write"),
@@ -3220,6 +3222,7 @@ fn design_reads_are_reads_and_design_writes_are_governed_writes() {
         ("design.attachment.retire", "global_write"),
         ("design.tag.define", "global_write"),
         ("design.tag.set", "global_write"),
+        ("design.known-columns.set", "global_write"),
         ("design.comment.post", "global_write"),
         ("design.comment.promote", "global_write"),
         // A governed group's preview and its report projection are reads: they
@@ -3292,6 +3295,8 @@ fn design_collaboration_is_a_complete_headless_project_surface() {
         "design.tag.query",
         "design.tag.define",
         "design.tag.set",
+        "design.known-columns.list",
+        "design.known-columns.set",
         "design.group.list",
         "design.group.preview",
         "design.group.apply",
@@ -3320,6 +3325,7 @@ fn design_collaboration_is_a_complete_headless_project_surface() {
         "design.attachment.retire",
         "design.tag.define",
         "design.tag.set",
+        "design.known-columns.set",
         "design.comment.post",
         "design.comment.resolve",
         "design.comment.promote",
@@ -3419,6 +3425,17 @@ fn design_collaboration_is_a_complete_headless_project_surface() {
                     "--definition",
                     "scope",
                 ],
+                "design.known-columns.set" => vec![
+                    "design",
+                    "known-columns",
+                    "set",
+                    "--layer",
+                    "lv_lines",
+                    "--field",
+                    "tag_delivery_area",
+                    "--visibility",
+                    "published",
+                ],
                 "design.comment.post" => vec![
                     "design",
                     "comment",
@@ -3441,7 +3458,7 @@ fn design_collaboration_is_a_complete_headless_project_surface() {
                     "group",
                     "apply",
                     "--group",
-                    "city",
+                    "delivery_area",
                     "--transformers",
                     "T-smoke",
                     "--value",
@@ -3454,7 +3471,7 @@ fn design_collaboration_is_a_complete_headless_project_surface() {
                     "group",
                     "unassign",
                     "--group",
-                    "phasing",
+                    "delivery_phase",
                     "--transformers",
                     "T-smoke",
                     "--digest",

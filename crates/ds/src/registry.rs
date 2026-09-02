@@ -1044,6 +1044,16 @@ static DESIGN_ENTRIES: &[Entry] = &[
         render: ds_cli_design::tag::set::render,
     },
     Entry {
+        command: &ds_cli_design::known_columns::list::COMMAND,
+        handler: ds_cli_design::known_columns::list::run,
+        render: ds_cli_design::known_columns::list::render,
+    },
+    Entry {
+        command: &ds_cli_design::known_columns::set::COMMAND,
+        handler: ds_cli_design::known_columns::set::run,
+        render: ds_cli_design::known_columns::set::render,
+    },
+    Entry {
         command: &ds_cli_design::group::list::COMMAND,
         handler: ds_cli_design::group::list::run,
         render: ds_cli_design::group::list::render,

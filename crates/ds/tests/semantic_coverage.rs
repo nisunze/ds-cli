@@ -77,6 +77,8 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ),
     ("design.consumer-grouping.apply", "global_write", "project"),
     ("design.consumer-grouping.preview", "read_only", "project"),
+    ("design.known-columns.list", "read_only", "project"),
+    ("design.known-columns.set", "global_write", "project"),
     ("design.selection.archive", "global_write", "project"),
     ("design.selection.assign", "global_write", "project"),
     ("design.selection.list", "read_only", "project"),
