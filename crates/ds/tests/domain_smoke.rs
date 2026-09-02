@@ -1452,6 +1452,54 @@ fn every_offline_command_is_available_without_any_engine_binary() {
 // ---------------------------------------------------------------------------
 
 #[test]
+fn admin_boundary_scope_is_validated_before_desktop_pairing() {
+    let cases: &[&[&str]] = &[
+        &[
+            "data",
+            "admin-bounds",
+            "list",
+            "--country",
+            "kenya",
+            "--level",
+            "province",
+        ],
+        &["data", "admin-bounds", "list", "--level", "county"],
+        &[
+            "data",
+            "admin-bounds",
+            "list",
+            "--level",
+            "sector",
+            "--parent-code",
+            "1",
+        ],
+        &[
+            "data",
+            "admin-bounds",
+            "list",
+            "--level",
+            "province",
+            "--parent-code",
+            "1",
+        ],
+        &["data", "admin-bounds", "read", "--code", "110"],
+        &["data", "admin-bounds", "read", "--code", "11x2"],
+    ];
+    for args in cases {
+        let mut argv = args.to_vec();
+        argv.extend(["--output", "json"]);
+        let run = ds(&argv);
+        assert_eq!(run.code, 2, "{}{}", run.stdout, run.stderr);
+        assert_eq!(
+            run.envelope["error"]["code"],
+            "invalid_admin_scope",
+            "`ds {}` reached pairing before exact scope validation",
+            args.join(" ")
+        );
+    }
+}
+
+#[test]
 fn native_elevation_validates_absolute_paths_before_pairing() {
     let absolute_source = temp_root("elevation-source")
         .join("points.csv")
@@ -1538,6 +1586,7 @@ fn refusal(args: &[&str]) -> String {
 /// The pairing states a well-formed map call may legitimately end in. Which
 /// one depends on the machine; that it is one of these does not.
 const PAIRING_CODES: &[&str] = &[
+    "auth_context_mismatch",
     "desktop_not_paired",
     "desktop_ambiguous",
     "desktop_unreachable",

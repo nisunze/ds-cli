@@ -35,7 +35,7 @@ const COUNTRY_ARG: Arg = Arg {
     value: "<country>",
     required: false,
     default: Some("rwanda"),
-    choices: &["rwanda"],
+    choices: &[],
     summary: "Declared national boundary authority. Rwanda is the only installed authority.",
 };
 const LEVEL_ARG: Arg = Arg {
@@ -44,7 +44,7 @@ const LEVEL_ARG: Arg = Arg {
     value: "<level>",
     required: true,
     default: None,
-    choices: &["province", "district", "sector", "cell", "village"],
+    choices: &[],
     summary: "Exact hierarchy level to list.",
 };
 const PARENT_CODE_ARG: Arg = Arg::value(
@@ -75,6 +75,16 @@ const ADMIN_AUTHORITY_UNAVAILABLE: Refusal = Refusal {
     code: "admin_authority_unavailable",
     when: "the authenticated administrative-boundary authority cannot answer the exact read",
     remedy: "restore the service connection and retry unchanged; do not approximate the geometry",
+};
+const ADMIN_AUTHORITY_UNREADABLE: Refusal = Refusal {
+    code: "admin_authority_unreadable",
+    when: "the authority returns malformed rows, mismatched identity, or non-polygon geometry",
+    remedy: "retry once, then update DS GridDesign if the exact authority response remains unreadable",
+};
+const AUTH_CONTEXT_MISMATCH: Refusal = Refusal {
+    code: "auth_context_mismatch",
+    when: "the paired account, lane, audience, or project changes during the call",
+    remedy: "confirm the paired identity context and retry the unchanged request",
 };
 
 const OUT_ARG: Arg = Arg {
@@ -190,6 +200,8 @@ pub static LIST_COMMAND: Command = Command {
     refusals: &[
         INVALID_ADMIN_SCOPE,
         ADMIN_AUTHORITY_UNAVAILABLE,
+        ADMIN_AUTHORITY_UNREADABLE,
+        AUTH_CONTEXT_MISMATCH,
         NOT_PAIRED,
         AMBIGUOUS,
         UNREACHABLE,
@@ -230,6 +242,8 @@ pub static READ_COMMAND: Command = Command {
     refusals: &[
         INVALID_ADMIN_SCOPE,
         ADMIN_AUTHORITY_UNAVAILABLE,
+        ADMIN_AUTHORITY_UNREADABLE,
+        AUTH_CONTEXT_MISMATCH,
         NOT_PAIRED,
         AMBIGUOUS,
         UNREACHABLE,
@@ -258,20 +272,93 @@ fn invoke_read(
     .map_err(classify_signed_out)
 }
 
+fn invalid_admin_scope(message: impl Into<String>) -> Failure {
+    Failure::invalid("invalid_admin_scope", message).remedy(INVALID_ADMIN_SCOPE.remedy)
+}
+
+fn admin_country(raw: &str) -> Result<&'static str, Failure> {
+    if raw.trim().eq_ignore_ascii_case("rwanda") {
+        Ok("rwanda")
+    } else {
+        Err(invalid_admin_scope(
+            "`--country` must be rwanda; no other boundary authority is declared",
+        ))
+    }
+}
+
+fn admin_level(raw: &str) -> Result<&'static str, Failure> {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "province" => Ok("province"),
+        "district" => Ok("district"),
+        "sector" => Ok("sector"),
+        "cell" => Ok("cell"),
+        "village" => Ok("village"),
+        _ => Err(invalid_admin_scope(
+            "`--level` must be province, district, sector, cell, or village",
+        )),
+    }
+}
+
+fn exact_admin_code<'a>(raw: &'a str, flag: &str) -> Result<&'a str, Failure> {
+    if matches!(raw.len(), 1 | 2 | 4 | 6 | 8) && raw.bytes().all(|byte| byte.is_ascii_digit()) {
+        return Ok(raw);
+    }
+    Err(invalid_admin_scope(format!(
+        "`--{flag}` must be an exact 1, 2, 4, 6, or 8 digit Rwanda administrative code"
+    )))
+}
+
+fn expected_parent_length(level: &str) -> Option<usize> {
+    match level {
+        "province" => None,
+        "district" => Some(1),
+        "sector" => Some(2),
+        "cell" => Some(4),
+        "village" => Some(6),
+        _ => unreachable!("admin_level returns only declared levels"),
+    }
+}
+
 pub fn run_list(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
+    let country = admin_country(inputs.require("country")?)?;
+    let level = admin_level(inputs.require("level")?)?;
+    let parent = inputs
+        .value("parent-code")
+        .map(|raw| exact_admin_code(raw, "parent-code"))
+        .transpose()?;
+    match (expected_parent_length(level), parent) {
+        (None, Some(_)) => {
+            return Err(invalid_admin_scope(
+                "province is the hierarchy root and does not accept `--parent-code`",
+            ));
+        }
+        (Some(expected), None) => {
+            return Err(invalid_admin_scope(format!(
+                "{level} requires its exact immediate `--parent-code` ({expected} digits)"
+            )));
+        }
+        (Some(expected), Some(code)) if code.len() != expected => {
+            return Err(invalid_admin_scope(format!(
+                "{level} `--parent-code` must be exactly {expected} digits"
+            )));
+        }
+        _ => {}
+    }
     let mut arguments = Map::new();
-    arguments.insert("country".into(), json!(inputs.require("country")?));
-    arguments.insert("level".into(), json!(inputs.require("level")?));
-    if let Some(value) = inputs.value("parent-code") {
+    arguments.insert("country".into(), json!(country));
+    arguments.insert("level".into(), json!(level));
+    if let Some(value) = parent {
         arguments.insert("parent_code".into(), json!(value));
     }
     invoke_read(&LIST_OPERATION, arguments, inputs)
 }
 
 pub fn run_read(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
+    let country = admin_country(inputs.require("country")?)?;
+    let code = exact_admin_code(inputs.require("code")?, "code")?;
     let mut arguments = Map::new();
-    arguments.insert("country".into(), json!(inputs.require("country")?));
-    arguments.insert("code".into(), json!(inputs.require("code")?));
+    arguments.insert("country".into(), json!(country));
+    arguments.insert("code".into(), json!(code));
     arguments.insert("to_map".into(), json!(inputs.switch("to-map")));
     invoke_read(&READ_OPERATION, arguments, inputs)
 }
@@ -392,4 +479,31 @@ pub fn render(data: &Value) -> String {
         data["features_read"].as_u64().unwrap_or(0),
         data["output_sha256"].as_str().unwrap_or("?"),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn exact_scope_validation_has_one_stable_code() {
+        for failure in [
+            admin_country("kenya").unwrap_err(),
+            admin_level("county").unwrap_err(),
+            exact_admin_code("110", "code").unwrap_err(),
+            exact_admin_code("11x2", "parent-code").unwrap_err(),
+        ] {
+            assert_eq!(failure.code(), "invalid_admin_scope");
+            assert_eq!(failure.class().token(), "invalid_input");
+        }
+    }
+
+    #[test]
+    fn immediate_parent_lengths_match_the_prefix_hierarchy() {
+        assert_eq!(expected_parent_length("province"), None);
+        assert_eq!(expected_parent_length("district"), Some(1));
+        assert_eq!(expected_parent_length("sector"), Some(2));
+        assert_eq!(expected_parent_length("cell"), Some(4));
+        assert_eq!(expected_parent_length("village"), Some(6));
+    }
 }

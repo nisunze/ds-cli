@@ -120,6 +120,12 @@ pub fn invoke(
         })?;
     let parsed: Value = serde_json::from_str(&body).unwrap_or(Value::Null);
 
+    if status == 422
+        && let Some(failure) = structured_desktop_refusal(operation, &parsed, status)
+    {
+        return Err(failure);
+    }
+
     match status {
         200 => Ok(parsed),
         401 => Err(Failure::unauthorized(
@@ -134,7 +140,7 @@ pub fn invoke(
         .remedy(
             "update DS GridDesign to a release that does; `ds desktop status` reports the profile",
         )),
-        409 if parsed["error"] == "auth_context_mismatch" => Err(Failure::conflict(
+        409 if desktop_error_code(&parsed) == Some("auth_context_mismatch") => Err(Failure::conflict(
             "auth_context_mismatch",
             "the paired map identity changed or does not match the checked invocation authority",
         )
@@ -149,6 +155,65 @@ pub fn invoke(
             "detail": bounded(parsed["error"].as_str().unwrap_or(&body))
         }))),
     }
+}
+
+fn desktop_error_code(parsed: &Value) -> Option<&str> {
+    parsed["error"]
+        .as_str()
+        .or_else(|| parsed["error"]["code"].as_str())
+}
+
+/// Preserve the application's typed refusal instead of turning every HTTP
+/// 422 into `desktop_refused`. Invalid or legacy payloads deliberately fall
+/// back to the old conservative classification in [`invoke`].
+fn structured_desktop_refusal(operation: &str, parsed: &Value, status: u16) -> Option<Failure> {
+    if !matches!(
+        operation,
+        "data.admin_bounds.list" | "data.admin_bounds.read"
+    ) {
+        return None;
+    }
+    let error = parsed["error"].as_object()?;
+    let class = error.get("class")?.as_str()?;
+    let code = error.get("code")?.as_str()?;
+    if code.is_empty()
+        || code.len() > 80
+        || !code
+            .bytes()
+            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'_')
+    {
+        return None;
+    }
+    let message = bounded(error.get("message")?.as_str()?);
+    if message.is_empty() {
+        return None;
+    }
+    // A new frontend code is not automatically a CLI contract. Preserve only
+    // the exact structured refusals declared by these operations; everything
+    // else keeps the conservative `desktop_refused` fallback until its owning
+    // command explicitly adds it to the contract.
+    let mut failure = match (class, code) {
+        ("invalid_input", "invalid_admin_scope") => {
+            Failure::invalid("invalid_admin_scope", message)
+        }
+        ("unavailable", "admin_authority_unavailable") => {
+            Failure::unavailable("admin_authority_unavailable", message)
+        }
+        ("unavailable", "admin_authority_unreadable") => {
+            Failure::unavailable("admin_authority_unreadable", message)
+        }
+        ("conflict", "auth_context_mismatch") => {
+            Failure::conflict("auth_context_mismatch", message)
+        }
+        _ => return None,
+    };
+    if let Some(remedy) = error.get("remedy").and_then(Value::as_str) {
+        let remedy = bounded(remedy);
+        if !remedy.is_empty() {
+            failure = failure.remedy(remedy);
+        }
+    }
+    Some(failure.detail(json!({ "http_status": status })))
 }
 
 /// Non-secret snapshot fence carried beside (never inside) operation inputs.
@@ -276,4 +341,72 @@ pub fn session(descriptor: &discover::Descriptor) -> Result<Value, Failure> {
         )
         .remedy("update DS GridDesign and `ds` to matching releases")
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn structured_desktop_refusals_keep_code_class_and_remedy() {
+        let failure = structured_desktop_refusal(
+            "data.admin_bounds.read",
+            &json!({"error": {
+                "class": "unavailable",
+                "code": "admin_authority_unavailable",
+                "message": "authority did not answer",
+                "remedy": "retry unchanged"
+            }}),
+            422,
+        )
+        .expect("typed refusal");
+        assert_eq!(failure.code(), "admin_authority_unavailable");
+        assert_eq!(failure.class().token(), "unavailable");
+        assert_eq!(failure.message(), "authority did not answer");
+        assert_eq!(failure.remedy_text(), Some("retry unchanged"));
+        assert_eq!(failure.detail_value().unwrap()["http_status"], 422);
+    }
+
+    #[test]
+    fn malformed_structured_desktop_refusals_do_not_invent_codes() {
+        for error in [
+            json!({"class": "success", "code": "admin_authority_unavailable", "message": "bad class"}),
+            json!({"class": "unavailable", "code": "NOT-STABLE", "message": "bad code"}),
+            json!({"class": "unavailable", "code": "future_uncontracted_code", "message": "unknown code"}),
+            json!({"class": "unavailable", "code": "admin_authority_unavailable", "message": ""}),
+        ] {
+            assert!(
+                structured_desktop_refusal(
+                    "data.admin_bounds.read",
+                    &json!({"error": error}),
+                    422,
+                )
+                .is_none()
+            );
+        }
+        assert!(
+            structured_desktop_refusal(
+                "map.layer.list",
+                &json!({"error": {
+                    "class": "unavailable",
+                    "code": "admin_authority_unavailable",
+                    "message": "wrong owner"
+                }}),
+                422,
+            )
+            .is_none()
+        );
+    }
+
+    #[test]
+    fn auth_context_code_accepts_legacy_and_structured_desktop_shapes() {
+        assert_eq!(
+            desktop_error_code(&json!({"error": "auth_context_mismatch"})),
+            Some("auth_context_mismatch")
+        );
+        assert_eq!(
+            desktop_error_code(&json!({"error": {"code": "auth_context_mismatch"}})),
+            Some("auth_context_mismatch")
+        );
+    }
 }

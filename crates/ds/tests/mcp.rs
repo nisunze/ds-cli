@@ -911,9 +911,30 @@ fn exact_admin_boundaries_are_projected_by_catalog_chapter_and_typed_profile() {
         .expect("exact boundary read leaf");
     assert_eq!(read["title"], "data.admin-bounds.read");
     assert_eq!(read["inputSchema"]["required"], json!(["code"]));
-    // MCP's hint means "no durable shared mutation"; the optional local UI
-    // projection remains accurately declared by the DS command effect.
-    assert_eq!(read["annotations"]["readOnlyHint"], true);
+    for command in ["data.admin-bounds.list", "data.admin-bounds.read"] {
+        let descriptor = cli(&["capabilities", command, "--output", "json"]);
+        let codes = descriptor["data"]["command"]["refusals"]
+            .as_array()
+            .expect("admin boundary refusals")
+            .iter()
+            .map(|refusal| refusal["code"].as_str().expect("refusal code"))
+            .collect::<BTreeSet<_>>();
+        for code in [
+            "invalid_admin_scope",
+            "admin_authority_unavailable",
+            "admin_authority_unreadable",
+            "auth_context_mismatch",
+        ] {
+            assert!(
+                codes.contains(code),
+                "{command} no longer declares stable refusal `{code}`: {codes:?}"
+            );
+        }
+    }
+    // The static annotation covers every invocation shape. `--to-map` can
+    // mutate Desktop-local state, so the leaf must stay conservatively false
+    // even when this particular call omits that switch.
+    assert_eq!(read["annotations"]["readOnlyHint"], false);
 }
 
 #[test]

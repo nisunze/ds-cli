@@ -979,7 +979,10 @@ pub fn leaf_tool_json(tool: &Tool) -> Value {
         "inputSchema": tool.input_schema,
         "annotations": {
             "title": tool.id,
-            "readOnlyHint": !tool.confirmation_required,
+            "readOnlyHint": matches!(
+                tool.descriptor.get("effect").and_then(Value::as_str),
+                Some("discovery" | "read_only" | "proposal")
+            ),
             "openWorldHint": false,
         },
     })
@@ -1128,12 +1131,18 @@ mod tests {
             confirmation_required,
             confirmation_trigger: None,
             inputs: Vec::new(),
-            descriptor: json!({ "id": id, "summary": format!("{id} summary"), "availability": "available" }),
+            descriptor: json!({
+                "id": id,
+                "summary": format!("{id} summary"),
+                "availability": "available",
+                "effect": if confirmation_required { "global_write" } else { "read_only" }
+            }),
         }
     }
 
     fn conditional_tool(id: &str, chapter: Chapter) -> Tool {
         let mut tool = tool(id, chapter, true);
+        tool.descriptor["effect"] = json!("machine_write");
         tool.confirmation_trigger = Some("write".to_string());
         tool.inputs.push(tools::Input {
             name: "write".to_string(),
@@ -1272,6 +1281,16 @@ mod tests {
                 .contains("does not accept confirmation for this invocation"),
             "{}",
             error.1
+        );
+    }
+
+    #[test]
+    fn non_confirming_local_ui_tools_are_not_annotated_read_only() {
+        let mut local_ui = tool("data.admin-bounds.read", Chapter::Data, false);
+        local_ui.descriptor["effect"] = json!("local_ui");
+        assert_eq!(
+            leaf_tool_json(&local_ui)["annotations"]["readOnlyHint"],
+            false
         );
     }
 

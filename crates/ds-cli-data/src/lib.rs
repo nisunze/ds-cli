@@ -36,8 +36,9 @@ pub static DOMAIN: Domain = Domain {
     ],
 };
 
-/// The paired operations in this otherwise local domain. Both are file work
-/// and deliberately own no map state.
+/// The paired operations in this otherwise local domain. File operations stay
+/// mapless; the exact boundary read can ask the frontend to materialize a
+/// Desktop-local layer while the bridge still returns only bounded evidence.
 pub const BRIDGE_OPS: &[&ds_cli_desktop::ops::BridgeOp] = &[
     &elevation::OPERATION,
     &point_cloud::PLAN_OPERATION,

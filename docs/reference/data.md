@@ -44,15 +44,25 @@ ds data admin-bounds read --country rwanda --code 11020503 --to-map --output jso
 
 `list` always returns one bounded hierarchy leg: provinces need no parent;
 districts, sectors, cells and villages require the exact immediate parent code.
+Fresh rows are accepted only when every code has the requested level length
+and parent prefix, every name is non-empty, and no code is duplicated.
 `read` returns code, name, level, geometry type, bounds, coordinate-position
-count and SHA-256. Full coordinate arrays remain in the application. `--to-map`
-passes the same exact geometry to the normal derived local-layer path, so it is
-visible, removable and stylable through the existing map and Style Center
-surfaces. This local layer is Desktop-local reference evidence, not project
-data; the receipt reports national scope and the current project separately.
+count and SHA-256 for an exact Polygon or MultiPolygon. Other geometry types,
+malformed coordinates, a response whose code/level does not match the request,
+or a missing name are refused as unreadable authority data. Full coordinate
+arrays remain in the application. `--to-map` passes that exact geometry to the
+normal derived local-layer path, so it is visible, removable and stylable through the
+existing map and Style Center surfaces. Its success receipt is returned only
+after the Desktop has acknowledged the local IndexedDB metadata and feature
+commit. This local layer is Desktop-local reference evidence, not project data;
+the receipt reports national scope and the current project separately.
 
 The only declared country authority is `rwanda`. A service failure is a hard
 refusal: never substitute a lattice, bounding rectangle or approximate polygon.
+Malformed scope is `invalid_admin_scope`; an authority transport failure is
+`admin_authority_unavailable`; malformed authority data is
+`admin_authority_unreadable`; and an identity race remains
+`auth_context_mismatch` across the Desktop bridge.
 
 ## `elevation attach`
 

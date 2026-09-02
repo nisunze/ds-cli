@@ -16,7 +16,8 @@ Use the deployed CLI and read the selected command contract before invoking it.
    <code>` for bounded geometry evidence.
 3. Add `--to-map` only when the task needs the exact authority polygon in the
    Desktop. It uses the ordinary derived local-layer and hierarchy Style Center
-   path; it does not send coordinates through the CLI.
+   path; it does not send coordinates through the CLI. A successful receipt is
+   returned only after the Desktop-local IndexedDB commit is acknowledged.
 
 Treat `.data.scope.project: null` as national-reference ownership and
 `.data.desktop_active_project` only as UI context. A materialized boundary is

@@ -49,6 +49,10 @@ struct App {
     design: String,
     design_collaboration: String,
     data: String,
+    admin_boundary: String,
+    cli_errors: String,
+    materialize: String,
+    sketches: String,
     analysis: String,
     work: String,
     dsgrid: String,
@@ -84,6 +88,10 @@ fn app() -> Option<App> {
         design: read("src/lib/desktop/cli-map-design.ts")?,
         design_collaboration: read("src/lib/desktop/cli-design.ts")?,
         data: read("src/lib/desktop/cli-data.ts")?,
+        admin_boundary: read("src/lib/search-place/cli-boundary.ts")?,
+        cli_errors: read("src/lib/desktop/cli-errors.ts")?,
+        materialize: read("src/lib/search-place/materialize.ts")?,
+        sketches: read("src/lib/stores/sketches.ts")?,
         analysis: read("src/lib/analysis/outliers.ts")?,
         work: read("src/lib/desktop/cli-work.ts")?,
         dsgrid: read("src/lib/desktop/cli-dsgrid.ts")?,
@@ -1322,7 +1330,7 @@ fn the_dsgrid_bridge_admits_no_conversion_verb_no_revision_activation_and_no_byt
 }
 
 #[test]
-fn admin_attachment_has_one_closed_mapless_desktop_operation() {
+fn admin_boundaries_have_one_closed_typed_desktop_operation_each() {
     let Some(app) = app() else {
         skip("the ds-web sibling repository is not on disk");
         return;
@@ -1349,6 +1357,40 @@ fn admin_attachment_has_one_closed_mapless_desktop_operation() {
     }
     assert!(!app.data.contains("mapInstance"));
     assert!(!app.data.contains("maplibre-gl"));
+
+    for code in [
+        "invalid_admin_scope",
+        "admin_authority_unavailable",
+        "admin_authority_unreadable",
+    ] {
+        assert!(
+            app.data.contains(code) || app.admin_boundary.contains(code),
+            "the Desktop authority owner no longer emits `{code}` as a structured refusal"
+        );
+    }
+    for geometry_type in ["'Polygon'", "'MultiPolygon'"] {
+        assert!(
+            app.admin_boundary.contains(geometry_type),
+            "exact boundary reads no longer validate {geometry_type} geometry"
+        );
+    }
+    assert!(app.admin_boundary.contains("transported_to_cli: false"));
+    assert!(
+        app.admin_boundary
+            .contains("materializeAdminBoundariesPersisted")
+    );
+    assert!(
+        app.materialize
+            .contains("await persistSketchLayerAcknowledged")
+    );
+    assert!(app.sketches.contains("enqueueAcknowledgedIDBWrite"));
+
+    // Typed frontend errors must remain objects across the shell and the CLI;
+    // otherwise every authority failure silently regresses to desktop_refused.
+    assert!(app.frontend.contains("cliCompletionError(error)"));
+    assert!(app.cli_errors.contains("CliStructuredRefusal"));
+    assert!(app.transport.contains("StructuredInvocationError"));
+    assert!(app.transport.contains("auth_context_mismatch"));
 }
 
 #[test]
