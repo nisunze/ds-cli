@@ -382,6 +382,35 @@ used as an identity allow/deny list. If identity rewrite is ever legitimate,
 it needs a separate confirmation-gated command rather than an escape hatch in
 bulk property mutation.
 
+`design set` contract 3 makes value types explicit without breaking the common
+string form:
+
+| Form | Value sent |
+|---|---|
+| `--set status=approved` | string `"approved"` |
+| `--set enabled:=true` | boolean `true` |
+| `--set phase_count:=4` | integer `4` |
+| `--set voltage:=230.5` | number `230.5` |
+| `--set note:=null` or `--set note=` | null, meaning delete the property |
+
+The `:=` form parses one JSON scalar. Valid JSON arrays and objects are
+refused as `invalid_property_value`; this command does not broaden property
+cells into composite documents. To store text that resembles a typed value,
+use ordinary `=` (`enabled=true` is the string `"true"`). A property may appear
+only once, so conflicting string/typed assignments refuse as
+`duplicate_property` before the bridge is opened.
+
+Receipts keep `requested_values` separate from the application's
+`applied_values` and `would_apply_values`. A real stage has an applied object
+and a null would-apply field; a dry run has the inverse. These values come from
+the resulting design room, preserve scalar JSON types, and are accompanied by
+`effective_value_features`. When `matched` is positive, the active value object
+must contain exactly the requested property keys and only scalar values. When
+`matched` is zero, that object must be empty—requested values did not land
+anywhere. Its feature count must always equal `matched`. A partial, extra,
+composite, mismatched, or older desktop response refuses as
+`desktop_unreadable` instead of echoing the request as if it landed.
+
 ## The differential process run
 
 `design process` with no differential flags runs FULL and recalculates

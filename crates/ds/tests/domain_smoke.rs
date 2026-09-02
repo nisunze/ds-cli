@@ -1729,6 +1729,40 @@ fn map_design_set_refuses_an_edit_with_nothing_to_write() {
 }
 
 #[test]
+fn map_design_set_refuses_non_scalar_and_duplicate_values_before_pairing() {
+    assert_eq!(
+        refusal(&[
+            "map",
+            "design",
+            "set",
+            "--transformer",
+            "T",
+            "--set",
+            "tags:=[1]",
+            "--output",
+            "json",
+        ]),
+        "invalid_property_value"
+    );
+    assert_eq!(
+        refusal(&[
+            "map",
+            "design",
+            "set",
+            "--transformer",
+            "T",
+            "--set",
+            "enabled=true",
+            "--set",
+            "enabled:=true",
+            "--output",
+            "json",
+        ]),
+        "duplicate_property"
+    );
+}
+
+#[test]
 fn map_design_save_cannot_run_without_confirmation() {
     // The only command in the domain that writes to the project. The gate is
     // in dispatch, before the handler, so this holds no matter what the
