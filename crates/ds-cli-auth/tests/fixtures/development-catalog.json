@@ -1,5 +1,5 @@
 {
-  "schema_version": "ds.native-client-profiles/v11",
+  "schema_version": "ds.native-client-profiles/v12",
   "development": true,
   "profiles": {
     "stable": {
@@ -60,6 +60,11 @@
         "method": "POST",
         "path": "/api/v1/tiles",
         "actions": ["status", "preflight", "generate"]
+      },
+      "project_report": {
+        "method": "POST",
+        "path": "/report",
+        "actions": ["download_transfo", "list_compounded_reports", "transformer_inventory", "retire_transformer", "restore_transformer"]
       },
       "provenance": {
         "source_revision": "0123456789abcdef0123456789abcdef01234567",
@@ -124,6 +129,11 @@
         "method": "POST",
         "path": "/api/v1/tiles",
         "actions": ["status", "preflight", "generate"]
+      },
+      "project_report": {
+        "method": "POST",
+        "path": "/report",
+        "actions": ["download_transfo", "list_compounded_reports", "transformer_inventory", "retire_transformer", "restore_transformer"]
       },
       "provenance": {
         "source_revision": "0123456789abcdef0123456789abcdef01234567",

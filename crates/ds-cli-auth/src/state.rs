@@ -922,9 +922,10 @@ mod tests {
     use super::*;
     use ds_client_core::{
         CLIENT_PROFILE_SCHEMA, Client, ClientProfileInput, DeploymentLane, ProjectFormEditorCall,
-        ProjectFormsCall, ProjectListCall, RefreshCall, SignInCall, SolarSnapshotCall,
-        SurveyEntriesChangesCall, SurveyEntriesSelectCall, SurveyEntryCreateCall, SurveyQueryCall,
-        TileCall, TransformerContextCall, Transport, TransportError, TransportResponse,
+        ProjectFormsCall, ProjectListCall, ProjectReportCall, RefreshCall, SignInCall,
+        SolarSnapshotCall, SurveyEntriesChangesCall, SurveyEntriesSelectCall,
+        SurveyEntryCreateCall, SurveyQueryCall, TileCall, TransformerContextCall, Transport,
+        TransportError, TransportResponse,
     };
     use std::os::unix::fs::{PermissionsExt, symlink};
 
@@ -1023,6 +1024,13 @@ mod tests {
         fn tiles(&mut self, _call: TileCall<'_>) -> Result<TransportResponse, TransportError> {
             Err(TransportError::Unreachable)
         }
+
+        fn project_report(
+            &mut self,
+            _call: ProjectReportCall<'_>,
+        ) -> Result<TransportResponse, TransportError> {
+            Err(TransportError::Unreachable)
+        }
     }
 
     fn profile() -> ClientProfile {
@@ -1077,6 +1085,15 @@ mod tests {
                 "status".to_owned(),
                 "preflight".to_owned(),
                 "generate".to_owned(),
+            ],
+            project_report_method: "POST".to_owned(),
+            project_report_path: "/report".to_owned(),
+            project_report_actions: vec![
+                "download_transfo".to_owned(),
+                "list_compounded_reports".to_owned(),
+                "transformer_inventory".to_owned(),
+                "retire_transformer".to_owned(),
+                "restore_transformer".to_owned(),
             ],
         })
         .unwrap()

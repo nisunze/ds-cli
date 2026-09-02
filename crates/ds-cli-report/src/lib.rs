@@ -11,6 +11,11 @@
 //! reimplement any part of it. It builds a typed request, names one
 //! subcommand, and reads the document that comes back.
 //!
+//! The `project` family is the other door: the governed report service
+//! produces the compounded deliverable in the background for the
+//! CLI-selected project, with no local engine, map, or Desktop. See
+//! [`project`].
+//!
 //! Two of the reporter's rules shape everything here:
 //!
 //! * **The result file must not already exist**, and there is no `--force`.
@@ -25,6 +30,7 @@
 pub mod bundle;
 pub mod engine;
 pub mod export;
+pub mod project;
 pub mod tasks;
 
 use std::time::Duration;
@@ -58,5 +64,8 @@ pub static DOMAIN: Domain = Domain {
         &tasks::COMMAND,
         &export::COMMAND,
         &bundle::COMMAND,
+        &project::scope::COMMAND,
+        &project::compounded::COMMAND,
+        &project::archives::COMMAND,
     ],
 };

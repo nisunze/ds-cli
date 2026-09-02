@@ -5,10 +5,10 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use ds_client_core::{
-    ProjectFormEditorCall, ProjectFormsCall, ProjectListCall, RefreshCall, SignInCall,
-    SolarSnapshotCall, SurveyEntriesChangesCall, SurveyEntriesSelectCall, SurveyEntryCreateCall,
-    SurveyQueryCall, TileCall, TransformerContextCall, Transport, TransportError,
-    TransportResponse,
+    ProjectFormEditorCall, ProjectFormsCall, ProjectListCall, ProjectReportCall, RefreshCall,
+    SignInCall, SolarSnapshotCall, SurveyEntriesChangesCall, SurveyEntriesSelectCall,
+    SurveyEntryCreateCall, SurveyQueryCall, TileCall, TransformerContextCall, Transport,
+    TransportError, TransportResponse,
 };
 use sha2::{Digest, Sha256};
 use zeroize::{Zeroize, Zeroizing};
@@ -379,6 +379,54 @@ impl Transport for NativeTransport {
         let response = result.map_err(classify)?;
         bounded(response, call.response_limit())
     }
+
+    fn project_report(
+        &mut self,
+        call: ProjectReportCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        self.send_project_report(call)
+    }
+}
+
+impl NativeTransport {
+    fn send_project_report(
+        &mut self,
+        call: ProjectReportCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        debug_assert_eq!(call.method(), "POST");
+        debug_assert_eq!(call.path(), "/report");
+        let (request_id, action_id) = correlation_headers();
+        let mut bearer = format!("Bearer {}", call.bearer_token());
+        let body = call.body();
+        let url = project_report_url(call.gateway_origin());
+        let mut request = ureq::post(url)
+            .header("Accept", call.content_type())
+            .header("Content-Type", call.content_type())
+            .header("X-App-Id", call.client_id())
+            .header("X-Request-Id", &request_id)
+            .header("X-DS-Action-Id", &action_id)
+            .header("X-User-Email", call.canonical_email())
+            .header("x-api-key", call.gateway_api_key())
+            .header("Authorization", &bearer)
+            .header("X-Forwarded-Authorization", &bearer);
+        // The compounded deliverable is Fast-lane only; ds-brain warns on a
+        // lane-aware action without the header and defaults to the retired
+        // Standard lane, so the core names the lane and the adapter sends it.
+        if let Some(lane) = call.processing_lane() {
+            request = request.header(call.processing_lane_header(), lane);
+        }
+        let result = request
+            .config()
+            .max_redirects(0)
+            .http_status_as_error(false)
+            .timeout_connect(Some(CONNECT_TIMEOUT))
+            .timeout_global(Some(Duration::from_secs(call.timeout_seconds())))
+            .build()
+            .send(body.as_bytes());
+        bearer.zeroize();
+        let response = result.map_err(classify)?;
+        bounded(response, call.response_limit())
+    }
 }
 
 fn transformer_context_url(origin: &str) -> String {
@@ -411,6 +459,10 @@ fn survey_entry_create_url(origin: &str) -> String {
 
 fn tiles_url(origin: &str) -> String {
     format!("{origin}{}", ds_client_core::TILES_PATH)
+}
+
+fn project_report_url(origin: &str) -> String {
+    format!("{origin}{}", ds_client_core::PROJECT_REPORT_PATH)
 }
 
 fn bounded(
@@ -594,6 +646,25 @@ mod tests {
         assert_eq!(
             ds_client_core::SURVEY_ENTRY_CREATE_RESPONSE_LIMIT,
             1024 * 1024
+        );
+    }
+
+    #[test]
+    fn project_report_wire_target_and_limits_are_fixed() {
+        assert_eq!(
+            project_report_url("https://fixture.ue.gateway.dev"),
+            "https://fixture.ue.gateway.dev/report"
+        );
+        assert_eq!(ds_client_core::PROJECT_REPORT_METHOD, "POST");
+        assert_eq!(ds_client_core::PROJECT_REPORT_TIMEOUT_SECONDS, 600);
+        assert_eq!(ds_client_core::PROJECT_REPORT_READ_TIMEOUT_SECONDS, 120);
+        assert_eq!(
+            ds_client_core::PROJECT_REPORT_RESPONSE_LIMIT,
+            8 * 1024 * 1024
+        );
+        assert_eq!(
+            ds_client_core::PROCESSING_LANE_HEADER,
+            "X-DS-Processing-Lane"
         );
     }
 

@@ -9,6 +9,9 @@ authors.workspace = true
 publish.workspace = true
 
 [dependencies]
+# Background project reports restore the native user through the fixed
+# client; the local reporter engine commands need no credential at all.
+ds-cli-auth = { workspace = true }
 ds-cli-contract = { workspace = true }
 ds-cli-exec = { workspace = true }
 serde_json = { workspace = true }

@@ -42,6 +42,7 @@
 //!
 //! ```text
 //!   lv         project-export → process
+//!   transformer inventory → retire | restore   (headless, reversible)
 //!   selection  list → read → save | archive | assign
 //!   attachment list → publish | download | retire
 //!   tag        list | query → define | set
@@ -66,6 +67,7 @@ pub mod known_columns;
 pub mod lv;
 pub mod selection;
 pub mod tag;
+pub mod transformer;
 
 use std::time::Duration;
 
@@ -117,6 +119,9 @@ pub static DOMAIN: Domain = Domain {
         &comment::promote::COMMAND,
         &lv::project_export::COMMAND,
         &lv::process::COMMAND,
+        &transformer::inventory::COMMAND,
+        &transformer::retire::COMMAND,
+        &transformer::restore::COMMAND,
     ],
 };
 

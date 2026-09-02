@@ -42,8 +42,13 @@ pub use context::{
     SessionState, arbitrate_provider,
 };
 pub use ds_client_core::{
-    TileOperationResult, TileOperationStatus, TilePreflight, TilePreflightLayer,
-    TilePreflightStatus, TileType,
+    CompoundedArchive, CompoundedArchiveLayout, CompoundedReportReceipt, CompoundedReportRequest,
+    CompoundedReportStatus, PROJECT_REPORT_MAX_REASON_CHARS, PROJECT_REPORT_MAX_TRANSFORMER_CHARS,
+    PROJECT_REPORT_MAX_TRANSFORMERS, ReportFileLevel, RetirementAction, RetirementReceipt,
+    RetirementRecord, RetirementRefusal, RetirementRequest, RetirementResult, TileOperationResult,
+    TileOperationStatus, TilePreflight, TilePreflightLayer, TilePreflightStatus, TileType,
+    TransformerInventory, TransformerInventoryRow, TransformerKind, TransformerLifecycle,
+    TransformerSet,
 };
 
 /// Observe all durable headless providers without network or token output.
@@ -600,6 +605,39 @@ pub struct HeadlessTilePreflight {
     result: TilePreflight,
 }
 
+/// One selected-project `/report` result produced under the restored user
+/// and that user's audience-fenced selected project. `T` is one of the closed
+/// core receipt types; the project identity travels beside it so a CLI
+/// receipt can name what it acted on without a second read.
+pub struct HeadlessProjectReport<T> {
+    lane: &'static str,
+    project_id: String,
+    project_name: String,
+    project_status: String,
+    result: T,
+}
+
+impl<T> HeadlessProjectReport<T> {
+    pub const fn lane(&self) -> &'static str {
+        self.lane
+    }
+    pub fn project_id(&self) -> &str {
+        &self.project_id
+    }
+    pub fn project_name(&self) -> &str {
+        &self.project_name
+    }
+    pub fn project_status(&self) -> &str {
+        &self.project_status
+    }
+    pub const fn result(&self) -> &T {
+        &self.result
+    }
+    pub fn into_result(self) -> T {
+        self.result
+    }
+}
+
 /// One settings editor fetched under the restored user and that user's
 /// audience-fenced selected project.
 pub struct HeadlessProjectFormEditor {
@@ -1123,6 +1161,100 @@ pub fn tile_generate(
         project_status: selected.status().to_owned(),
         result,
     })
+}
+
+/// Run one closed selected-project `/report` operation through whichever
+/// native provider restores: the device credential first, then the Firebase
+/// refresh session. There is no project, URL, lane-header, or action
+/// override; the core owns the grammar and the caller only chooses the
+/// typed operation.
+fn headless_project_report<T>(
+    lane_value: &str,
+    device_call: impl FnOnce(&mut device::DeviceSession, &str) -> Result<T, ClientError>,
+    session_call: impl FnOnce(
+        &mut Client<NativeTransport, NativeRefreshStore>,
+        &str,
+    ) -> Result<T, ClientError>,
+) -> Result<HeadlessProjectReport<T>, Failure> {
+    let lane = Lane::parse(lane_value)?;
+    if let Some((mut device, selected)) = restored_device_project(lane)? {
+        let result = device_call(&mut device, selected.project_id()).map_err(map_client)?;
+        return Ok(HeadlessProjectReport {
+            lane: lane.token(),
+            project_id: selected.project_id().to_owned(),
+            project_name: selected.project_name().to_owned(),
+            project_status: selected.status().to_owned(),
+            result,
+        });
+    }
+    let profile = profile::load(lane)?;
+    let store = NativeRefreshStore::open()?;
+    let mut client = Client::new(profile, NativeTransport, store);
+    let user = require_restore_before_context(&mut client)?;
+    let selected = load_selected_project(client.profile(), &user)?;
+    let result = session_call(&mut client, selected.project_id());
+    let result = with_released_context_disposition(client.profile(), &selected, result)?;
+    Ok(HeadlessProjectReport {
+        lane: lane.token(),
+        project_id: selected.project_id().to_owned(),
+        project_name: selected.project_name().to_owned(),
+        project_status: selected.status().to_owned(),
+        result,
+    })
+}
+
+/// Request one compounded report deliverable for only the saved,
+/// audience-fenced selected project. ds-brain owns scope, freshness,
+/// composition, and publication.
+pub fn compounded_report(
+    lane_value: &str,
+    request: &CompoundedReportRequest,
+) -> Result<HeadlessProjectReport<CompoundedReportReceipt>, Failure> {
+    headless_project_report(
+        lane_value,
+        |device, project| device.compounded_report(project, request),
+        |client, project| client.compounded_report(project, request, now()),
+    )
+}
+
+/// List the published compounded archives of only the saved,
+/// audience-fenced selected project.
+pub fn compounded_report_list(
+    lane_value: &str,
+) -> Result<HeadlessProjectReport<Vec<CompoundedArchive>>, Failure> {
+    headless_project_report(
+        lane_value,
+        |device, project| device.compounded_report_list(project),
+        |client, project| client.compounded_report_list(project, now()),
+    )
+}
+
+/// Read the transformer lifecycle inventory of only the saved,
+/// audience-fenced selected project, or of the exact requested names.
+pub fn transformer_inventory(
+    lane_value: &str,
+    requested: &TransformerSet,
+) -> Result<HeadlessProjectReport<TransformerInventory>, Failure> {
+    headless_project_report(
+        lane_value,
+        |device, project| device.transformer_inventory(project, requested),
+        |client, project| client.transformer_inventory(project, requested, now()),
+    )
+}
+
+/// Retire or restore exact transformers in only the saved, audience-fenced
+/// selected project. ds-brain decides governance, ownership, and lifecycle
+/// per name and answers every name in order.
+pub fn transformer_retirement(
+    lane_value: &str,
+    action: RetirementAction,
+    request: &RetirementRequest,
+) -> Result<HeadlessProjectReport<RetirementReceipt>, Failure> {
+    headless_project_report(
+        lane_value,
+        |device, project| device.transformer_retirement(project, action, request),
+        |client, project| client.transformer_retirement(project, action, request, now()),
+    )
 }
 
 /// Restore one native user and activate project forms for only the saved,
@@ -2450,6 +2582,27 @@ pub fn render_project(data: &Value) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn project_report_adapter_exposes_only_lane_and_typed_requests() {
+        let _: fn(
+            &str,
+            &CompoundedReportRequest,
+        ) -> Result<HeadlessProjectReport<CompoundedReportReceipt>, Failure> = compounded_report;
+        let _: fn(&str) -> Result<HeadlessProjectReport<Vec<CompoundedArchive>>, Failure> =
+            compounded_report_list;
+        let _: fn(
+            &str,
+            &TransformerSet,
+        ) -> Result<HeadlessProjectReport<TransformerInventory>, Failure> = transformer_inventory;
+        let _: fn(
+            &str,
+            RetirementAction,
+            &RetirementRequest,
+        ) -> Result<HeadlessProjectReport<RetirementReceipt>, Failure> = transformer_retirement;
+        assert_eq!(ReportFileLevel::Sector.token(), "sector");
+        assert_eq!(RetirementAction::Restore.token(), "restore");
+    }
 
     #[test]
     fn tile_adapter_exposes_only_lane_kind_and_force_choices() {

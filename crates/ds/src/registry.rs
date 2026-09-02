@@ -321,6 +321,21 @@ static REPORT_ENTRIES: &[Entry] = &[
         handler: ds_cli_report::bundle::run,
         render: ds_cli_report::bundle::render,
     },
+    Entry {
+        command: &ds_cli_report::project::scope::COMMAND,
+        handler: ds_cli_report::project::scope::run,
+        render: ds_cli_report::project::scope::render,
+    },
+    Entry {
+        command: &ds_cli_report::project::compounded::COMMAND,
+        handler: ds_cli_report::project::compounded::run,
+        render: ds_cli_report::project::compounded::render,
+    },
+    Entry {
+        command: &ds_cli_report::project::archives::COMMAND,
+        handler: ds_cli_report::project::archives::run,
+        render: ds_cli_report::project::archives::render,
+    },
 ];
 
 static SOLAR_ENTRIES: &[Entry] = &[
@@ -1122,6 +1137,21 @@ static DESIGN_ENTRIES: &[Entry] = &[
         command: &ds_cli_design::lv::process::COMMAND,
         handler: ds_cli_design::lv::process::run,
         render: ds_cli_design::lv::process::render,
+    },
+    Entry {
+        command: &ds_cli_design::transformer::inventory::COMMAND,
+        handler: ds_cli_design::transformer::inventory::run,
+        render: ds_cli_design::transformer::inventory::render,
+    },
+    Entry {
+        command: &ds_cli_design::transformer::retire::COMMAND,
+        handler: ds_cli_design::transformer::retire::run,
+        render: ds_cli_design::transformer::retire::render,
+    },
+    Entry {
+        command: &ds_cli_design::transformer::restore::COMMAND,
+        handler: ds_cli_design::transformer::restore::run,
+        render: ds_cli_design::transformer::restore::render,
     },
 ];
 

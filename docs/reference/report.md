@@ -89,6 +89,35 @@ reporter-side `all`: a paired desktop/cache command must first resolve the
 selection, refresh missing or stale IndexedDB rooms, and pass the exact local
 documents. The reporter performs no download.
 
+## Background project reports
+
+`ds report project scope|compounded|archives` is the other door of this
+domain: no local engine, no map, no Desktop. The commands restore the native
+user for `--lane stable|canary`, load only its audience-fenced selected project
+(`ds auth project use`), and call the governed report service's fixed
+contract. ds-brain owns everything that follows — it resolves the exact scope
+(every active saved transformer, or the `--transformer` names given), reuses
+fresh individual report artifacts, regenerates missing or stale ones with the
+cloud reporter, composes the overall and optional per-district combined sets,
+streams one ZIP with its manifest and writes a registry row. Retired
+transformers (`ds design transformer retire`) are never in scope.
+
+```bash
+ds report project scope --output json                      # the plan: who participates, who is excluded and why
+ds report project compounded --file-level sector --yes     # publish; blocks until the service answers (≤ 10 min)
+ds report project archives --output json                   # the registry, newest first, with signed downloads
+```
+
+`compounded` is `artifact_write` and needs `--yes`: it publishes a durable
+archive of record. Its receipt carries `status` (`success` or `partial`), the
+archive `prefix` (the registry stem), cloud locators, individual artifact
+coverage, the missing individuals with typed causes, bounded errors and
+`registry_write_failed`. A receipt advertising an archive for zero individual
+artifacts is refused as unreadable, as the application refuses it. The scope
+rules, layout vocabulary and archive tree are ds-brain's
+`docs/contracts/compounded-reports.md`; this is the same deliverable the paired
+`ds map design batch report` requests through the application's session.
+
 ## Compounded desktop reports
 
 `ds report bundle --request <file>` invokes the reporter-owned
@@ -136,6 +165,11 @@ for the full table.
 `report bundle` sits in the same class as `export` for the same reason: it
 assembles a ZIP at a path the caller names, from local documents whose digests
 it verifies, and contacts nothing.
+
+`report project compounded` is the contrast: `artifact_write`, because the ZIP
+it publishes lands in the project's cloud registry where every member reads it
+as the delivery. `scope` and `archives` are `local_auth_state` like every
+headless read — they may rotate the native credential, and write nothing else.
 
 ## Related
 

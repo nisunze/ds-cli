@@ -99,6 +99,21 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("design.tag.list", "read_only", "project"),
     ("design.tag.query", "read_only", "project"),
     ("design.tag.set", "global_write", "project"),
+    (
+        "design.transformer.inventory",
+        "local_auth_state",
+        "headless_project",
+    ),
+    (
+        "design.transformer.retire",
+        "global_write",
+        "headless_project",
+    ),
+    (
+        "design.transformer.restore",
+        "global_write",
+        "headless_project",
+    ),
     ("dsgrid-exchange.convert", "local_file_write", "none"),
     ("dsgrid-exchange.inspect", "discovery", "none"),
     ("dsgrid-exchange.plan", "discovery", "none"),
@@ -227,6 +242,21 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("report.engine", "discovery", "none"),
     ("report.export", "local_file_write", "none"),
     ("report.tasks", "discovery", "none"),
+    (
+        "report.project.scope",
+        "local_auth_state",
+        "headless_project",
+    ),
+    (
+        "report.project.compounded",
+        "artifact_write",
+        "headless_project",
+    ),
+    (
+        "report.project.archives",
+        "local_auth_state",
+        "headless_project",
+    ),
     ("shell.register", "local_file_write", "none"),
     ("shell.status", "discovery", "none"),
     ("shell.unregister", "local_file_write", "none"),

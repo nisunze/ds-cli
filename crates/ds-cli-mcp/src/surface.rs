@@ -30,6 +30,7 @@ pub const PROFILE_IDS: &[&str] = &[
     "solar-run",
     "solar-delivery",
     "operations",
+    "project-operations",
 ];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -77,6 +78,7 @@ pub enum Profile {
     SolarRun,
     SolarDelivery,
     Operations,
+    ProjectOperations,
 }
 
 impl Profile {
@@ -102,6 +104,7 @@ impl Profile {
             "solar-run" => Some(Self::SolarRun),
             "solar-delivery" => Some(Self::SolarDelivery),
             "operations" => Some(Self::Operations),
+            "project-operations" => Some(Self::ProjectOperations),
             _ => None,
         }
     }
@@ -128,6 +131,7 @@ impl Profile {
             Self::SolarRun => "solar-run",
             Self::SolarDelivery => "solar-delivery",
             Self::Operations => "operations",
+            Self::ProjectOperations => "project-operations",
         }
     }
 
@@ -135,10 +139,10 @@ impl Profile {
         match self {
             // The broad Grid chapter router now also carries the paired
             // application's local model lifecycle and its one project
-            // publication. Sixteen leaves plus both bootstrap tools; the
+            // publication. Seventeen leaves plus both bootstrap tools; the
             // narrow `grid-local-model` profile exists for an agent that
             // wants only that workflow.
-            Self::Grid => 18,
+            Self::Grid => 19,
             // Query, spatial selection, fenced changes, and governed
             // single-entry create belong to the same selected-project Survey
             // workflow. The count includes both bootstrap tools.
@@ -155,7 +159,10 @@ impl Profile {
     pub fn includes(self, tool: &Tool) -> bool {
         match self {
             Self::AuthContext => AUTH_CONTEXT_COMMANDS.contains(&tool.id.as_str()),
-            Self::Grid => matches!(tool.chapter, Chapter::GridModel | Chapter::Reports),
+            Self::Grid => {
+                matches!(tool.chapter, Chapter::GridModel | Chapter::Reports)
+                    && !PROJECT_OPERATIONS_COMMANDS.contains(&tool.id.as_str())
+            }
             Self::GridLocalModel => GRID_LOCAL_MODEL_COMMANDS.contains(&tool.id.as_str()),
             Self::Pls => tool.chapter == Chapter::PlsCadd && tool.id.starts_with("pls."),
             Self::PlsLibrary => PLS_LIBRARY_COMMANDS.contains(&tool.id.as_str()),
@@ -177,6 +184,7 @@ impl Profile {
             Self::SolarInput => SOLAR_INPUT_COMMANDS.contains(&tool.id.as_str()),
             Self::SolarRun => SOLAR_RUN_COMMANDS.contains(&tool.id.as_str()),
             Self::SolarDelivery => SOLAR_DELIVERY_COMMANDS.contains(&tool.id.as_str()),
+            Self::ProjectOperations => PROJECT_OPERATIONS_COMMANDS.contains(&tool.id.as_str()),
         }
     }
 
@@ -204,6 +212,7 @@ impl Profile {
             Self::SolarDelivery => SOLAR_DELIVERY_COMMANDS,
             Self::PlsLibrary => PLS_LIBRARY_COMMANDS,
             Self::LibraryGovernance => LIBRARY_GOVERNANCE_COMMANDS,
+            Self::ProjectOperations => PROJECT_OPERATIONS_COMMANDS,
             Self::Grid
             | Self::Pls
             | Self::Map
@@ -230,6 +239,7 @@ impl Profile {
             Self::Project => chapter == Chapter::Project,
             Self::SolarInput | Self::SolarRun | Self::SolarDelivery => chapter == Chapter::Solar,
             Self::Operations => chapter == Chapter::Operations,
+            Self::ProjectOperations => matches!(chapter, Chapter::Design | Chapter::Reports),
         }
     }
 }
@@ -369,6 +379,21 @@ const DESIGN_EDIT_COMMANDS: &[&str] = &[
     "map.design.version.compare",
     "map.design.upload.inspect",
     "map.design.upload.stage",
+];
+
+// Background project operations against the CLI-selected project: no map,
+// room, or Desktop. Retirement is the reversible lifecycle of transformer
+// documents; the report family is the governed compounded deliverable. Kept
+// out of `design-edit` (already at its bound) and out of the `grid` chapter
+// router so neither grows; an agent doing background delivery work gets this
+// narrow profile.
+const PROJECT_OPERATIONS_COMMANDS: &[&str] = &[
+    "design.transformer.inventory",
+    "design.transformer.retire",
+    "design.transformer.restore",
+    "report.project.scope",
+    "report.project.compounded",
+    "report.project.archives",
 ];
 
 const DESIGN_RUN_COMMANDS: &[&str] = &[
@@ -1062,7 +1087,7 @@ pub const fn chapter_description(chapter: Chapter) -> &'static str {
             "Prepare, run, inspect, publish, and export Solar work. Describe a command before invoking it."
         }
         Chapter::Reports => {
-            "Discover report tasks and export or bundle verified report artifacts. Describe a command before invoking it."
+            "Discover report tasks, export or bundle verified report artifacts, and produce the selected project's compounded deliverable in the background. Describe a command before invoking it."
         }
         Chapter::Operations => {
             "Inspect platform health, manage shell reachability, and report product gaps. Describe a command before invoking it."
