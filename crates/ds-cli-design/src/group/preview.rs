@@ -33,7 +33,7 @@ written, so this stays available on a project that accepts no changes: seeing \
 what WOULD happen is exactly what an operator needs before asking for one to \
 be unarchived. Omitting --value previews the unassign rather than assigning an \
 empty value. The value is checked against the project's vocabulary by exact \
-bytes; a refusal names the value as you sent it.",
+bytes; `value_case_mismatch` names what you sent and the stored spelling.",
     chapter: Chapter::Design,
     effect: Effect::ReadOnly,
     authority: Authority::Project,

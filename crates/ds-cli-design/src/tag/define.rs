@@ -118,7 +118,9 @@ pub static COMMAND: Command = Command {
 Declares the type and presentation of one project tag. Choice tags own an \
 ordered vocabulary and may be single or multiple. Text, integer and number \
 tags are single-valued and use constraints instead of pretending observed \
-values are a vocabulary. Re-running on an existing \
+values are a vocabulary. Choice values are trimmed at their outer boundary, \
+then stored with authored case unchanged. Values that differ only by case are \
+refused rather than folded into one. Re-running on an existing \
 definition edits it: the application reads its current version and writes under \
 it, so a concurrent edit is refused rather than overwritten. Editing a \
 definition the project ADOPTED from a global template detaches it from that \
@@ -141,7 +143,7 @@ copy no longer says what that exact template version says.",
         DESCRIPTION_ARG,
         DESCRIPTOR_ARG,
     ],
-    output: "The project, definition id, name, value type, input control, constraints, cardinality, version and choice vocabulary.",
+    output: "The project, definition id, name, value type, input control, constraints, cardinality, version and stored exact-case choice vocabulary.",
     examples: &[
         Example {
             command: "ds design tag define --definition transformer_scope --name \"Transformer scope\" --values initial_scope,additional_scope --yes",
@@ -168,6 +170,7 @@ copy no longer says what that exact template version says.",
         crate::CONFLICT,
         crate::INVALID_VALUE_LIST,
         crate::INVALID_TAG_INPUT,
+        crate::TAG_VALUE_CASE_MISMATCH,
         crate::INVALID_NUMBER,
         crate::TOO_MANY,
         crate::CONFIRMATION_REQUIRED,

@@ -34,6 +34,8 @@ Commits the plan `ds design group preview` returned, fenced by its digest: if \
 the project moved since, the batch is refused rather than landing against a \
 state nobody approved. The accepted entries commit together in one \
 transaction, and one transformer at fault refuses only its own entry. \
+Each landed outcome echoes the exact stored value in `to`; a case-only value \
+mismatch is refused rather than rewritten. \
 \
 A `phasing` batch is NOT finished when its tags land. Its canonical home is \
 the DS Grid model's alignment, and `ds` holds no model session — so it reports \

@@ -60,7 +60,9 @@ Writes the value(s) an object carries under one definition, replacing whatever \
 it carried before. Choice definitions use --values; free-form definitions use \
 exactly one of --text, --integer or --number. Omitting every value flag clears \
 the assignment. The server checks the value against the definition's type, \
-vocabulary and constraints and never coerces it. Pass --version to tag one \
+vocabulary and constraints and never coerces it. Choice values must match the \
+stored authored spelling byte for byte; a case-only mismatch is explicitly \
+refused. Pass --version to tag one \
 exact object version instead of the object \
 as a whole — a separate record, so a version-anchored value survives a later \
 edit of the object-level one.",
@@ -79,7 +81,7 @@ edit of the object-level one.",
         VERSION_ARG,
         DESCRIPTOR_ARG,
     ],
-    output: "The project, object, definition, canonical values, closed typed_values and committed version.",
+    output: "The project, object, definition, exact stored values, closed typed_values and committed version; the receipt echoes what was persisted.",
     examples: &[
         Example {
             command: "ds design tag set --kind lv_transformer --object kigali_a --definition transformer_scope --values additional_scope --yes",
@@ -106,6 +108,7 @@ edit of the object-level one.",
         crate::CONFLICT,
         crate::INVALID_VALUE_LIST,
         crate::INVALID_TAG_INPUT,
+        crate::TAG_VALUE_CASE_MISMATCH,
         crate::INVALID_NUMBER,
         crate::TOO_MANY,
         crate::INVALID_ANCHOR,

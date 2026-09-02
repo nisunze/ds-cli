@@ -18,7 +18,8 @@ Names both governed groups, whether the project has defined each one, the \
 values each allows, and what every named transformer carries today. Read \
 `allowed` here before assigning: values are matched against the project's own \
 vocabulary by exact bytes, so a spelling that only differs in case is refused \
-rather than corrected. A group the project has not defined yet is a real \
+rather than corrected. `allowed` carries the exact stored spelling, not a \
+display normalization. A group the project has not defined yet is a real \
 state, not an error — it is defined in the application's Tags surface.",
     chapter: Chapter::Design,
     effect: Effect::ReadOnly,

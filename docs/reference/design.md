@@ -188,11 +188,13 @@ single-valued, LV transformers only — and given a batch. The generic
 `ds design tag set` refuses them and points at `ds design group`, so a governed
 group has exactly one write door.
 
-**A value is matched, never corrected.** The vocabulary is normalized when the
-definition is saved, so an entry either matches an allowed value byte for byte
-or is refused. `Phase 1` is not `phase 1`. Read `allowed` from
-`ds design group list` rather than guessing a spelling; a refusal quotes the
-value as you sent it so the difference is visible.
+**A value is matched, never corrected.** Definition save trims outer whitespace
+and otherwise preserves authored choice bytes and case. Two vocabulary values
+that differ only by case are refused rather than collapsed. Assignments and
+groups either match an allowed value byte for byte or are refused. `Phase 1` is
+not `phase 1`; a `value_case_mismatch` refusal names the stored spelling. Read
+`allowed` from `ds design group list` rather than guessing. Successful tag and
+group write receipts echo the exact stored values.
 
 **Preview is not optional.** `preview` returns one explicit outcome per named
 transformer plus a `digest`, and `apply`/`unassign` must echo that digest back.

@@ -408,6 +408,11 @@ pub const INVALID_TAG_INPUT: Refusal = Refusal {
     when: "typed tag flags conflict, or a typed query predicate is malformed",
     remedy: "read `ds design tag <command> --help` and pass one compatible value shape",
 };
+pub const TAG_VALUE_CASE_MISMATCH: Refusal = Refusal {
+    code: "tag_value_case_mismatch",
+    when: "a choice value differs from one stored vocabulary token only by case",
+    remedy: "read the vocabulary and repeat its authored spelling exactly",
+};
 pub const TOO_MANY_TAG_FILTERS: Refusal = Refusal {
     code: "too_many_tag_filters",
     when: "a project tag query carries more than 20 predicates",
@@ -437,6 +442,8 @@ pub const CONFLICT_MARKERS: &[&str] = &["not ", "changed since", "already exists
 
 /// What the application says when the project accepts no changes at all.
 pub const READ_ONLY_MARKERS: &[&str] = &["archived", "expired", "read-only"];
+pub const TAG_VALUE_CASE_MISMATCH_MARKERS: &[&str] =
+    &["authored spelling exactly", "differ only by case"];
 
 /// What the application says when a file exceeds its bounded path reader.
 pub const TOO_LARGE_MARKERS: &[&str] = &["path reader is bounded"];
@@ -488,6 +495,17 @@ pub fn classify_design_failure(failure: Failure) -> Failure {
         )
         .remedy(READ_ONLY.remedy)
         .next("ds project status");
+    }
+    if TAG_VALUE_CASE_MISMATCH_MARKERS
+        .iter()
+        .any(|marker| detail.contains(marker))
+    {
+        return Failure::invalid(
+            "tag_value_case_mismatch",
+            "the choice value does not use the vocabulary's authored case",
+        )
+        .remedy(TAG_VALUE_CASE_MISMATCH.remedy)
+        .next("ds design tag list --kind <kind> --object <object>");
     }
     if NOT_PERMITTED_MARKERS
         .iter()
@@ -554,4 +572,32 @@ pub fn list_values(raw: &str, flag: &str, max: usize) -> Result<Vec<String>, Fai
         .remedy(TOO_MANY.remedy));
     }
     Ok(values)
+}
+
+#[cfg(test)]
+mod tag_value_case_tests {
+    use super::*;
+
+    #[test]
+    fn case_only_tag_refusal_has_one_actionable_public_code() {
+        let failure = Failure::failed("desktop_refused", "the paired session refused the write")
+            .detail(json!({
+                "detail": "phase allows \"Phase II\", not \"phase ii\"; use the authored spelling exactly"
+            }));
+
+        let classified = classify_design_failure(failure);
+        assert_eq!(classified.code(), "tag_value_case_mismatch");
+        assert_eq!(
+            classified.remedy_text(),
+            Some(TAG_VALUE_CASE_MISMATCH.remedy)
+        );
+    }
+
+    #[test]
+    fn unrelated_design_refusal_stays_generic() {
+        let failure = Failure::failed("desktop_refused", "the paired session refused the write")
+            .detail(json!({ "detail": "the transformer does not exist" }));
+
+        assert_eq!(classify_design_failure(failure).code(), "desktop_refused");
+    }
 }
