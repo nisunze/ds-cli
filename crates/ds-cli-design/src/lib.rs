@@ -62,6 +62,7 @@ pub mod comment;
 pub mod features;
 pub mod group;
 pub mod grouping;
+pub mod known_columns;
 pub mod lv;
 pub mod selection;
 pub mod tag;
@@ -100,6 +101,8 @@ pub static DOMAIN: Domain = Domain {
         &tag::query::COMMAND,
         &tag::define::COMMAND,
         &tag::set::COMMAND,
+        &known_columns::list::COMMAND,
+        &known_columns::set::COMMAND,
         &group::list::COMMAND,
         &group::preview::COMMAND,
         &group::apply::COMMAND,
@@ -197,6 +200,14 @@ pub const TAG_QUERY: BridgeOp = BridgeOp {
     operation: "design.tag.query",
     arguments: &["kind", "match", "filters", "limit"],
 };
+pub const KNOWN_COLUMNS_LIST: BridgeOp = BridgeOp {
+    operation: "design.known-columns.list",
+    arguments: &[],
+};
+pub const KNOWN_COLUMNS_SET: BridgeOp = BridgeOp {
+    operation: "design.known-columns.set",
+    arguments: &["layer", "field", "visible"],
+};
 pub const GROUP_LIST: BridgeOp = BridgeOp {
     operation: "design.group.list",
     arguments: &["transformers"],
@@ -264,6 +275,8 @@ pub const BRIDGE_OPS: &[&BridgeOp] = &[
     &TAG_QUERY,
     &TAG_DEFINE,
     &TAG_SET,
+    &KNOWN_COLUMNS_LIST,
+    &KNOWN_COLUMNS_SET,
     &GROUP_LIST,
     &GROUP_PREVIEW,
     &GROUP_APPLY,

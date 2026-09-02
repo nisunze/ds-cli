@@ -143,11 +143,11 @@ impl Profile {
             // single-entry create belong to the same selected-project Survey
             // workflow. The count includes both bootstrap tools.
             Self::SurveyProjects => 18,
-            // Nineteen governed design-edit leaves plus the two bootstrap
+            // Twenty-one governed design-edit leaves plus the two bootstrap
             // tools. Version history and the pinned Working set project the
             // same bounded desktop-owned workflow without transporting
             // features through MCP.
-            Self::DesignEdit => 21,
+            Self::DesignEdit => 23,
             _ => 16,
         }
     }
@@ -349,6 +349,8 @@ const SURVEY_MIGRATION_COMMANDS: &[&str] = &["survey.entries.import"];
 
 const DESIGN_EDIT_COMMANDS: &[&str] = &[
     "design.features.select",
+    "design.known-columns.list",
+    "design.known-columns.set",
     "map.design.open",
     "map.design.pin",
     "map.design.read",

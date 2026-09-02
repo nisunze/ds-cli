@@ -164,6 +164,13 @@ ds design tag define --definition completion --name "Completion percent" \
 ds design tag set --kind lv_transformer --object kigali_a \
   --definition completion --number 82.5 --yes
 
+# `know_columns` is the exact external property authority.
+ds design known-columns list
+ds design known-columns set --layer mv_lines --field tag_city \
+  --visibility published --yes
+ds design known-columns set --layer mv_lines --field tag_internal_review \
+  --visibility hidden --yes
+
 # Project-wide typed filters never require an open map.
 ds design tag query --choice city:any_of:huye,kigali --output json
 ds design tag query --choice phasing:equals:phase-1 \
@@ -226,6 +233,20 @@ Two things about it are load-bearing:
 Values the closed document shape cannot carry — one under an archived
 definition, or a cleared assignment — come back in `excluded` with the reason,
 so nothing is dropped in silence.
+
+## Internal properties versus external publication
+
+`tag_<definition_id>` is an ordinary property in Properties and Attribute
+Table. The model preserves it whether or not an external consumer needs it.
+`ds design known-columns set` edits the project's `know_columns` authority one
+layer/field pair at a time; it does not edit or clear any feature value.
+
+`published` allows that property on later report, GIS and design-tile
+materializations. `hidden` removes the permission. An unlisted tag remains
+internal by default. The paired application reads the policy revision before
+writing, and ds-brain commits the one-field change, derived-output
+invalidation and audit row together. If another editor moves the revision,
+the write is refused and must be retried from a fresh `known-columns list`.
 
 ## Typed tag definitions and Transformer Status queries
 
