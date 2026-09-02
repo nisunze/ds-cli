@@ -39,6 +39,11 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     // Admin enrichment also writes locally, but its governed Rwanda boundary
     // digest is resolved from the paired project's pinned resource receipt.
     ("data.admin-bounds.attach", "local_file_write", "project"),
+    // Exact hierarchy and geometry evidence use the signed-in Desktop's
+    // national reference authority. The list is read-only; read optionally
+    // materializes the same geometry as a Desktop-local map layer.
+    ("data.admin-bounds.list", "read_only", "desktop_user"),
+    ("data.admin-bounds.read", "local_ui", "desktop_user"),
     (
         "data.elevation.attach",
         "local_file_write",

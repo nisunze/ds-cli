@@ -867,6 +867,56 @@ fn map_design_open_is_projected_by_catalog_chapter_and_typed_profile() {
 }
 
 #[test]
+fn exact_admin_boundaries_are_projected_by_catalog_chapter_and_typed_profile() {
+    let (responses, _) = mcp(
+        &["--exposure", "chapters"],
+        &[
+            json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": { "name": "ds_catalog", "arguments": { "command": "data.admin-bounds.read" } } }),
+            json!({ "jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": { "name": "ds_data", "arguments": { "operation": "describe", "command": "data.admin-bounds.list" } } }),
+        ],
+    );
+    assert_eq!(
+        response(&responses, 1)["result"]["structuredContent"]["next"]["tool"],
+        "ds_data"
+    );
+    assert_eq!(
+        response(&responses, 2)["result"]["structuredContent"],
+        cli(&["capabilities", "data.admin-bounds.list", "--output", "json",])
+    );
+
+    let (profile, _) = mcp(
+        &["--exposure", "commands", "--profile", "admin-bounds"],
+        &[json!({ "jsonrpc": "2.0", "id": 3, "method": "tools/list" })],
+    );
+    let tools = response(&profile, 3)["result"]["tools"]
+        .as_array()
+        .expect("tools");
+    let names = tools
+        .iter()
+        .map(|tool| tool["name"].as_str().unwrap())
+        .collect::<BTreeSet<_>>();
+    assert_eq!(
+        names,
+        BTreeSet::from([
+            "ds_catalog",
+            "ds_diagnostics",
+            "data_admin-bounds_attach",
+            "data_admin-bounds_list",
+            "data_admin-bounds_read",
+        ])
+    );
+    let read = tools
+        .iter()
+        .find(|tool| tool["name"] == "data_admin-bounds_read")
+        .expect("exact boundary read leaf");
+    assert_eq!(read["title"], "data.admin-bounds.read");
+    assert_eq!(read["inputSchema"]["required"], json!(["code"]));
+    // MCP's hint means "no durable shared mutation"; the optional local UI
+    // projection remains accurately declared by the DS command effect.
+    assert_eq!(read["annotations"]["readOnlyHint"], true);
+}
+
+#[test]
 fn design_edit_profile_exposes_known_columns_as_the_external_field_authority() {
     let (responses, _) = mcp(
         &["--exposure", "commands", "--profile", "design-edit"],

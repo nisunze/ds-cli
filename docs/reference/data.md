@@ -29,6 +29,31 @@ elevation values, and non-empty operator-supplied admin values are preserved.
 CSV/TSV callers name longitude and latitude columns explicitly; GeoJSON uses
 feature geometry. The source is never overwritten.
 
+## `admin-bounds list` and `admin-bounds read`
+
+These commands read the authenticated Rwanda administrative-boundary authority
+used by Desktop Search place. They do not infer boundaries from sampled points
+or reconstruct polygons in the CLI.
+
+```bash
+ds data admin-bounds list --country rwanda --level province --output json
+ds data admin-bounds list --country rwanda --level village --parent-code 110205 --output json
+ds data admin-bounds read --country rwanda --code 11020503 --output json
+ds data admin-bounds read --country rwanda --code 11020503 --to-map --output json
+```
+
+`list` always returns one bounded hierarchy leg: provinces need no parent;
+districts, sectors, cells and villages require the exact immediate parent code.
+`read` returns code, name, level, geometry type, bounds, coordinate-position
+count and SHA-256. Full coordinate arrays remain in the application. `--to-map`
+passes the same exact geometry to the normal derived local-layer path, so it is
+visible, removable and stylable through the existing map and Style Center
+surfaces. This local layer is Desktop-local reference evidence, not project
+data; the receipt reports national scope and the current project separately.
+
+The only declared country authority is `rwanda`. A service failure is a hard
+refusal: never substitute a lattice, bounding rectangle or approximate polygon.
+
 ## `elevation attach`
 
 Interpolates point sources through the native Desktop engine. CSV/TSV can name

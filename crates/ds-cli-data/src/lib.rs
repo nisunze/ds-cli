@@ -31,6 +31,8 @@ pub static DOMAIN: Domain = Domain {
         &point_cloud::PLAN_COMMAND,
         &point_cloud::EXTRACT_COMMAND,
         &admin_bounds::COMMAND,
+        &admin_bounds::LIST_COMMAND,
+        &admin_bounds::READ_COMMAND,
     ],
 };
 
@@ -41,6 +43,8 @@ pub const BRIDGE_OPS: &[&ds_cli_desktop::ops::BridgeOp] = &[
     &point_cloud::PLAN_OPERATION,
     &point_cloud::EXTRACT_OPERATION,
     &admin_bounds::OPERATION,
+    &admin_bounds::LIST_OPERATION,
+    &admin_bounds::READ_OPERATION,
 ];
 
 pub const SOURCE_ARG: Arg = Arg {

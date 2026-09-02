@@ -1,0 +1,4 @@
+interface:
+  display_name: "DS Administrative Boundaries"
+  short_description: "Read exact Rwanda boundary hierarchy and map evidence"
+  default_prompt: "Use $ds-admin-boundaries to list exact Rwanda administrative units or materialize one exact authority boundary as a Desktop-local styled layer."

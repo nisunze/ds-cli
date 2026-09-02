@@ -11,6 +11,7 @@ use crate::tools::{self, CONFIRM_PROPERTY, Tool};
 pub const EXPOSURES: &[&str] = &["chapters", "commands"];
 pub const PROFILE_IDS: &[&str] = &[
     "auth-context",
+    "admin-bounds",
     "grid",
     "grid-local-model",
     "pls",
@@ -59,6 +60,7 @@ impl Exposure {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Profile {
     AuthContext,
+    AdminBounds,
     Grid,
     GridLocalModel,
     Pls,
@@ -85,6 +87,7 @@ impl Profile {
     pub fn from_token(token: &str) -> Option<Self> {
         match token {
             "auth-context" => Some(Self::AuthContext),
+            "admin-bounds" => Some(Self::AdminBounds),
             "grid" => Some(Self::Grid),
             "grid-local-model" => Some(Self::GridLocalModel),
             "pls" => Some(Self::Pls),
@@ -112,6 +115,7 @@ impl Profile {
     pub const fn token(self) -> &'static str {
         match self {
             Self::AuthContext => "auth-context",
+            Self::AdminBounds => "admin-bounds",
             Self::Grid => "grid",
             Self::GridLocalModel => "grid-local-model",
             Self::Pls => "pls",
@@ -159,6 +163,7 @@ impl Profile {
     pub fn includes(self, tool: &Tool) -> bool {
         match self {
             Self::AuthContext => AUTH_CONTEXT_COMMANDS.contains(&tool.id.as_str()),
+            Self::AdminBounds => ADMIN_BOUNDS_COMMANDS.contains(&tool.id.as_str()),
             Self::Grid => {
                 matches!(tool.chapter, Chapter::GridModel | Chapter::Reports)
                     && !PROJECT_OPERATIONS_COMMANDS.contains(&tool.id.as_str())
@@ -199,6 +204,7 @@ impl Profile {
     pub const fn command_ids(self) -> &'static [&'static str] {
         match self {
             Self::AuthContext => AUTH_CONTEXT_COMMANDS,
+            Self::AdminBounds => ADMIN_BOUNDS_COMMANDS,
             Self::GridLocalModel => GRID_LOCAL_MODEL_COMMANDS,
             Self::Survey => SURVEY_MAP_COMMANDS,
             Self::FormFactory => FORM_FACTORY_COMMANDS,
@@ -225,6 +231,7 @@ impl Profile {
     pub fn includes_chapter(self, chapter: Chapter) -> bool {
         match self {
             Self::AuthContext => chapter == Chapter::Project,
+            Self::AdminBounds => chapter == Chapter::Data,
             Self::Grid => matches!(chapter, Chapter::GridModel | Chapter::Reports),
             Self::GridLocalModel => chapter == Chapter::GridModel,
             Self::Pls | Self::PlsLibrary | Self::LibraryGovernance => chapter == Chapter::PlsCadd,
@@ -262,6 +269,12 @@ const AUTH_CONTEXT_COMMANDS: &[&str] = &[
     "auth.project.list",
     "auth.project.use",
     "auth.project.status",
+];
+
+const ADMIN_BOUNDS_COMMANDS: &[&str] = &[
+    "data.admin-bounds.list",
+    "data.admin-bounds.read",
+    "data.admin-bounds.attach",
 ];
 
 // The paired application's DS Grid model lifecycle, in the order the work
