@@ -35,6 +35,22 @@ those operations do not require the map to be open. For archive parsing,
 canonical column mapping, and Rust cleaning, use the design upload inspect /
 stage contracts rather than `map draw`.
 
+## Read or change the transformer Working set
+
+The Working set is paired-map view state, not the project selected for a
+headless command and not a saved Transformer Status selection. Discover
+`map.design.pin`, then use one exact mode:
+
+- `--mode read` returns the current pins without changing or painting them;
+- `--mode load --selection <id>` replaces pins from the selection's current
+  present members and reports missing members;
+- `--mode unpin --transformer <name>` removes only exact named pins;
+- `--mode clear` empties the Working set.
+
+Require `staged: false` and `persisted: false`. Never change the CLI-selected
+project merely to make it match a different visible map; the paired operation
+must enforce the existing project/identity fence.
+
 ## Capture one reproducible still frame
 
 Use the map commands as a sequence; none is a generic UI driver.

@@ -1,4 +1,4 @@
-//! `ds map design pin` — manage the visible LV map Working set.
+//! `ds map design pin` — read and manage the visible LV map Working set.
 //!
 //! The Working set (pinned transformers) is the map's curated read-only
 //! context — a different state boundary from a governed Transformer Status
@@ -24,7 +24,7 @@ const TRANSFORMERS_ARG: Arg = Arg {
     required: false,
     default: None,
     choices: &[],
-    summary: "Exact transformer to pin. Repeat for a family.",
+    summary: "Exact transformer to pin or unpin. Repeat for a family.",
 };
 
 const SELECTION_ARG: Arg = Arg {
@@ -34,7 +34,7 @@ const SELECTION_ARG: Arg = Arg {
     required: false,
     default: None,
     choices: &[],
-    summary: "Saved Transformer Status selection whose present members to pin.",
+    summary: "Saved Transformer Status selection whose present members to load.",
 };
 
 const MODE_ARG: Arg = Arg {
@@ -43,17 +43,17 @@ const MODE_ARG: Arg = Arg {
     value: "<mode>",
     required: false,
     default: Some("set"),
-    choices: &["set", "add", "remove", "clear"],
-    summary: "set replaces the Working set; add and remove adjust it; clear empties it.",
+    choices: &["read", "set", "add", "remove", "unpin", "load", "clear"],
+    summary: "read inspects; load replaces from one selection; set/add pin; remove/unpin adjust; clear empties.",
 };
 
 pub static COMMAND: Command = Command {
     id: "map.design.pin",
     path: &["map", "design", "pin"],
-    contract: 1,
-    summary: "Pin transformers into the visible map Working set.",
+    contract: 2,
+    summary: "Read, load, pin, unpin, or clear the visible map Working set.",
     purpose: "\
-Manages the paired application's LV map Working set — the pinned read-only \
+Reads and manages the paired application's LV map Working set — the pinned read-only \
 transformer context the map paints. Pass exact transformer names, a saved \
 Transformer Status selection (its server-evaluated present members are \
 pinned; missing members are reported, never guessed), or both. The Working \
@@ -71,13 +71,23 @@ when a selection was loaded — any members missing from the project. \
 state.",
     examples: &[
         Example {
+            command: "ds map design pin --mode read --output json",
+            note: "Reads the current Working set without loading or changing it.",
+            runnable: false,
+        },
+        Example {
             command: "ds map design pin --transformer agasharu --transformer gitega --output json",
             note: "Replaces the Working set with exactly these two transformers and paints them.",
             runnable: false,
         },
         Example {
-            command: "ds map design pin --selection phase1-review --mode add --output json",
-            note: "Adds a saved selection's present members to the current Working set.",
+            command: "ds map design pin --selection phase1-review --mode load --output json",
+            note: "Replaces the Working set with a saved selection's present members.",
+            runnable: false,
+        },
+        Example {
+            command: "ds map design pin --transformer agasharu --mode unpin --output json",
+            note: "Unpins one exact transformer without disturbing the remaining Working set.",
             runnable: false,
         },
         Example {
@@ -104,8 +114,8 @@ state.",
         },
         Refusal {
             code: "invalid_mode",
-            when: "--mode is not set, add, remove, or clear, or clear was combined with names",
-            remedy: "pass one of set, add, remove — or --mode clear alone",
+            when: "--mode has an invalid target shape: read/clear take none, load takes one selection, or unpin takes transformer names",
+            remedy: "use read or clear alone; load with --selection; unpin with one or more --transformer values",
         },
         crate::UNSUPPORTED,
         crate::UNREADABLE,
@@ -118,25 +128,43 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let transformers = inputs.repeated("transformer");
     let selection = inputs.value("selection");
     let mode = inputs.value("mode").unwrap_or("set");
-    if !matches!(mode, "set" | "add" | "remove" | "clear") {
-        return Err(
-            Failure::invalid("invalid_mode", "--mode must be set, add, remove, or clear")
-                .remedy("pass one of set, add, remove — or --mode clear alone"),
-        );
-    }
-    if mode == "clear" && (!transformers.is_empty() || selection.is_some()) {
+    if !matches!(
+        mode,
+        "read" | "set" | "add" | "remove" | "unpin" | "load" | "clear"
+    ) {
         return Err(Failure::invalid(
             "invalid_mode",
-            "--mode clear does not take --transformer or --selection",
+            "--mode must be read, set, add, remove, unpin, load, or clear",
         )
-        .remedy("run `ds map design pin --mode clear` alone"));
+        .remedy("read/clear take no target; load takes --selection; unpin takes --transformer"));
     }
-    if mode != "clear" && transformers.is_empty() && selection.is_none() {
+    if matches!(mode, "read" | "clear") && (!transformers.is_empty() || selection.is_some()) {
         return Err(Failure::invalid(
             "invalid_mode",
-            "pass at least one --transformer, a --selection, or --mode clear",
+            format!("--mode {mode} does not take --transformer or --selection"),
         )
-        .remedy("name what to pin, or clear the Working set explicitly"));
+        .remedy(format!("run `ds map design pin --mode {mode}` alone")));
+    }
+    if mode == "load" && (selection.is_none() || !transformers.is_empty()) {
+        return Err(Failure::invalid(
+            "invalid_mode",
+            "--mode load takes exactly one --selection and no --transformer",
+        )
+        .remedy("run `ds map design pin --mode load --selection <id>`"));
+    }
+    if mode == "unpin" && (transformers.is_empty() || selection.is_some()) {
+        return Err(Failure::invalid(
+            "invalid_mode",
+            "--mode unpin takes one or more --transformer values and no --selection",
+        )
+        .remedy("run `ds map design pin --mode unpin --transformer <name>`"));
+    }
+    if !matches!(mode, "read" | "clear") && transformers.is_empty() && selection.is_none() {
+        return Err(Failure::invalid(
+            "invalid_mode",
+            "pass at least one --transformer, a --selection, --mode read, or --mode clear",
+        )
+        .remedy("name what to pin, read the Working set, or clear it explicitly"));
     }
 
     let mut arguments = Map::new();
@@ -229,6 +257,47 @@ mod tests {
         )
         .expect_err("clear plus a transformer must refuse");
         assert_eq!(failure.code(), "invalid_mode");
+    }
+
+    #[test]
+    fn read_refuses_a_target_before_pairing() {
+        let failure = run(
+            &inputs(&["--mode", "read", "--transformer", "agasharu"]),
+            &context(),
+        )
+        .expect_err("read plus a transformer must refuse");
+        assert_eq!(failure.code(), "invalid_mode");
+    }
+
+    #[test]
+    fn load_requires_only_a_selection_before_pairing() {
+        for arguments in [
+            vec!["--mode", "load"],
+            vec![
+                "--mode",
+                "load",
+                "--selection",
+                "phase-1",
+                "--transformer",
+                "agasharu",
+            ],
+        ] {
+            let failure =
+                run(&inputs(&arguments), &context()).expect_err("invalid load must refuse");
+            assert_eq!(failure.code(), "invalid_mode");
+        }
+    }
+
+    #[test]
+    fn unpin_requires_only_transformers_before_pairing() {
+        for arguments in [
+            vec!["--mode", "unpin"],
+            vec!["--mode", "unpin", "--selection", "phase-1"],
+        ] {
+            let failure =
+                run(&inputs(&arguments), &context()).expect_err("invalid unpin must refuse");
+            assert_eq!(failure.code(), "invalid_mode");
+        }
     }
 
     #[test]
