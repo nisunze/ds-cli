@@ -114,6 +114,48 @@ ds design features select --transformer T-1042 --layer lv_lines \
 The older `ds map design select` contract is unchanged for callers already
 using a paired application.
 
+## Reversible transformer retirement
+
+`ds design transformer inventory|retire|restore` is the map-independent
+lifecycle of a project's transformer documents. Like `features select`, the
+family restores the native user for `--lane stable|canary`, loads only its
+audience-fenced selected project, and calls the fixed governed report contract.
+There is no `--project`, Desktop descriptor, URL, body or action override.
+
+**Retirement is not deletion.** Deleting a transformer (`ds map design delete`,
+paired) archives and destroys its artifacts. Retiring it flips the one
+soft-delete bit every consumer already honours and records who, when and why:
+the transformer leaves Transformer Status, every listing, combined and
+compounded reports, design tile runs and layer counts, while its document,
+layers, versions, attachments, uploads and cached artifacts stay exactly where
+they are. `restore` clears the bit and keeps the record as history. ds-brain
+decides per name — membership and project lifecycle, `design.edit` or
+`transformer.delete`, the edit lease, and creator ownership for non-admins —
+and answers every name in order; one refusal never cancels the others.
+
+`inventory` is the plan. Without names it lists every transformer document
+with its lifecycle state; with names it answers exactly those:
+
+| State | Meaning | Next |
+|---|---|---|
+| `active` | live; consumers include it | `retire` |
+| `retired` | tombstoned with a retirement record | `restore` |
+| `deleted` | tombstoned by another path, no record | not restorable here |
+| `missing` | no such document | check the name |
+
+```bash
+ds auth project use --project <exact-id>
+ds design transformer inventory --transformer TX-1 --transformer TX-2 --output json
+ds design transformer retire --transformer TX-1 --reason "superseded by the 2026 survey" --yes
+ds design transformer restore --transformer TX-1 --yes
+```
+
+The receipt of a write names each transformer with `applied` and a timestamp,
+or a closed `refusal`: `not_found`, `already_retired`, `not_retired`,
+`no_retirement_record`, `special_document` (`mv_data`, the combined row and
+collision docs are never retired), `governance_locked`, `not_owner`, `failed`.
+Contract: ds-brain `docs/contracts/transformer-retirement.md`.
+
 ## Where design collaboration is
 
 Governed collaboration is not on disk and is not reachable with a credential
@@ -353,6 +395,12 @@ belongs to the governance surface, not to a headless command.
 | `missing_comment_target` | neither `--thread` nor a complete `--kind`/`--object`/`--title` |
 | `unknown_tag_group` | `--group` is missing or does not identify a batchable project definition |
 | `design_plan_stale` | the project moved after the plan was previewed; preview again |
+| `invalid_transformer_scope` | no transformer named, or a name is blank, repeated or over 200 characters, or over 500 named |
+| `invalid_reason` | `--reason` is blank, untrimmed or over 512 characters |
+
+The headless `transformer` family adds the native-profile, headless-session
+and `auth_*` codes `ds tile --help` documents once; `auth_rejected` there also
+covers an archived or expired project and a missing capability.
 
 The pairing refusals (`desktop_not_paired`, `desktop_ambiguous`,
 `desktop_unreachable`, `pairing_rejected`, `desktop_signed_out`) are the shared

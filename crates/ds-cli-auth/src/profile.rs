@@ -85,6 +85,7 @@ struct Entry {
     survey_entries_changes: SurveyEntriesChanges,
     survey_entry_create: SurveyEntryCreate,
     tiles: Tiles,
+    project_report: ProjectReport,
     provenance: Provenance,
 }
 
@@ -181,6 +182,14 @@ struct SurveyEntryCreate {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Tiles {
+    method: String,
+    path: String,
+    actions: Vec<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ProjectReport {
     method: String,
     path: String,
     actions: Vec<String>,
@@ -354,6 +363,9 @@ fn load_path(
         tiles_method: entry.tiles.method,
         tiles_path: entry.tiles.path,
         tiles_actions: entry.tiles.actions,
+        project_report_method: entry.project_report.method,
+        project_report_path: entry.project_report.path,
+        project_report_actions: entry.project_report.actions,
     })
     .map_err(|_| unsafe_catalog())
 }
@@ -413,6 +425,7 @@ mod tests {
                     "survey_entries_changes": { "method": "POST", "path": "/api/v1/survey/entries/changes" },
                     "survey_entry_create": { "method": "POST", "path": "/api/v1/entries/mutate", "operation": "create" },
                     "tiles": { "method": "POST", "path": "/api/v1/tiles", "actions": ["status", "preflight", "generate"] },
+                    "project_report": { "method": "POST", "path": "/report", "actions": ["download_transfo", "list_compounded_reports", "transformer_inventory", "retire_transformer", "restore_transformer"] },
                     "provenance": { "source_revision": "abc123", "descriptor_sha256": "a".repeat(64) }
                 },
                 "canary": {
@@ -434,6 +447,7 @@ mod tests {
                     "survey_entries_changes": { "method": "POST", "path": "/api/v1/survey/entries/changes" },
                     "survey_entry_create": { "method": "POST", "path": "/api/v1/entries/mutate", "operation": "create" },
                     "tiles": { "method": "POST", "path": "/api/v1/tiles", "actions": ["status", "preflight", "generate"] },
+                    "project_report": { "method": "POST", "path": "/report", "actions": ["download_transfo", "list_compounded_reports", "transformer_inventory", "retire_transformer", "restore_transformer"] },
                     "provenance": { "source_revision": "def456", "descriptor_sha256": "b".repeat(64) }
                 }
             }
@@ -560,7 +574,7 @@ mod tests {
     }
 
     #[test]
-    fn v11_fixed_calls_are_required_and_exact() {
+    fn v12_fixed_calls_are_required_and_exact() {
         let mut missing: serde_json::Value = serde_json::from_slice(&fixture(false)).unwrap();
         missing["profiles"]["stable"]
             .as_object_mut()
@@ -601,6 +615,30 @@ mod tests {
         let mut escaped: serde_json::Value = serde_json::from_slice(&fixture(false)).unwrap();
         escaped["profiles"]["stable"]["tiles"]["actions"] =
             json!(["status", "preflight", "generate", "delete"]);
+        let escaped = serde_json::to_vec(&escaped).unwrap();
+        with_fixture(&escaped, |path| {
+            assert_eq!(
+                load_path(
+                    path,
+                    Lane::Stable,
+                    false,
+                    format!("{:x}", Sha256::digest(&escaped))
+                )
+                .unwrap_err()
+                .code(),
+                "native_profile_unsafe"
+            );
+        });
+
+        let mut escaped: serde_json::Value = serde_json::from_slice(&fixture(false)).unwrap();
+        escaped["profiles"]["stable"]["project_report"]["actions"] = json!([
+            "download_transfo",
+            "list_compounded_reports",
+            "transformer_inventory",
+            "retire_transformer",
+            "restore_transformer",
+            "delete_transformer"
+        ]);
         let escaped = serde_json::to_vec(&escaped).unwrap();
         with_fixture(&escaped, |path| {
             assert_eq!(

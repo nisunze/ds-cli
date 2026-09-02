@@ -2284,6 +2284,161 @@ fn tile_managed_outputs_are_headless_while_the_catalogue_stays_paired() {
 }
 
 #[test]
+fn background_project_operations_are_headless_and_map_independent() {
+    for (id, effect, inputs) in [
+        (
+            "design.transformer.inventory",
+            "local_auth_state",
+            BTreeSet::from(["lane", "transformer"]),
+        ),
+        (
+            "design.transformer.retire",
+            "global_write",
+            BTreeSet::from(["lane", "reason", "transformer"]),
+        ),
+        (
+            "design.transformer.restore",
+            "global_write",
+            BTreeSet::from(["lane", "transformer"]),
+        ),
+        (
+            "report.project.scope",
+            "local_auth_state",
+            BTreeSet::from(["lane", "transformer"]),
+        ),
+        (
+            "report.project.compounded",
+            "artifact_write",
+            BTreeSet::from([
+                "combine-per-district",
+                "file-level",
+                "force",
+                "lane",
+                "transformer",
+            ]),
+        ),
+        (
+            "report.project.archives",
+            "local_auth_state",
+            BTreeSet::from(["lane"]),
+        ),
+    ] {
+        let descriptor = ok(&["capabilities", id, "--output", "json"]);
+        let command = &descriptor["command"];
+        assert_eq!(command["authority"], "headless_project", "{id}");
+        assert_eq!(command["effect"], effect, "{id}");
+        let actual = command["inputs"]
+            .as_array()
+            .expect("inputs")
+            .iter()
+            .map(|input| input["name"].as_str().expect("input name"))
+            .collect::<BTreeSet<_>>();
+        assert_eq!(actual, inputs, "{id}");
+        assert!(
+            !actual.contains("project"),
+            "{id} gained a project override"
+        );
+        assert!(
+            !actual.contains("desktop-descriptor"),
+            "{id} depends on Desktop"
+        );
+    }
+
+    // Scope refusals are local and precede any credential restore; the
+    // development catalog makes the native availability gate pass so the
+    // command's own input validation is what answers.
+    let bundle = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../ds-cli-auth/tests/fixtures/development-catalog.json");
+    let headless = |args: &[&str]| -> String {
+        let output = Command::new(env!("CARGO_BIN_EXE_ds"))
+            .args(args)
+            .env("DS_NATIVE_CLIENT_PROFILE_BUNDLE", &bundle)
+            .env("NO_COLOR", "1")
+            .output()
+            .expect("ds binary runs");
+        let envelope: Value = serde_json::from_slice(&output.stdout).unwrap_or(Value::Null);
+        envelope["error"]["code"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string()
+    };
+    assert_eq!(
+        headless(&[
+            "design",
+            "transformer",
+            "retire",
+            "--reason",
+            "dup",
+            "--yes",
+            "--output",
+            "json"
+        ]),
+        "invalid_transformer_scope"
+    );
+    assert_eq!(
+        headless(&[
+            "design",
+            "transformer",
+            "retire",
+            "--transformer",
+            "tx_a",
+            "--transformer",
+            "tx_a",
+            "--reason",
+            "dup",
+            "--yes",
+            "--output",
+            "json",
+        ]),
+        "invalid_transformer_scope"
+    );
+    assert_eq!(
+        headless(&[
+            "design",
+            "transformer",
+            "retire",
+            "--transformer",
+            "tx_a",
+            "--reason",
+            "  ",
+            "--yes",
+            "--output",
+            "json",
+        ]),
+        "invalid_reason"
+    );
+    assert_eq!(
+        headless(&[
+            "report",
+            "project",
+            "scope",
+            "--transformer",
+            " tx_a",
+            "--output",
+            "json"
+        ]),
+        "invalid_transformer_scope"
+    );
+    // Confirmation is decided by dispatch before any availability or input check.
+    assert_eq!(
+        refusal(&[
+            "design",
+            "transformer",
+            "restore",
+            "--transformer",
+            "tx_a",
+            "--output",
+            "json"
+        ]),
+        "confirmation_required"
+    );
+    assert_eq!(
+        refusal(&["report", "project", "compounded", "--output", "json"]),
+        "confirmation_required"
+    );
+}
+
+#[test]
 fn every_map_command_is_reachable_without_the_desktop_installed() {
     // Availability here is deliberately unconditional: dispatch checks it
     // before parsing, so a gate would make `--desktop-descriptor` — the flag
@@ -2781,13 +2936,18 @@ fn design_lv_project_export_refuses_an_existing_artifact_before_auth_or_desktop(
                 "path": "/api/v1/tiles",
                 "actions": ["status", "preflight", "generate"]
             },
+            "project_report": {
+                "method": "POST",
+                "path": "/report",
+                "actions": ["download_transfo", "list_compounded_reports", "transformer_inventory", "retire_transformer", "restore_transformer"]
+            },
             "provenance": { "source_revision": "abc123", "descriptor_sha256": digest }
         })
     };
     std::fs::write(
         &profile_path,
         serde_json::to_vec(&json!({
-            "schema_version": "ds.native-client-profiles/v11",
+            "schema_version": "ds.native-client-profiles/v12",
             "development": true,
             "profiles": {
                 "stable": profile(
@@ -3165,14 +3325,21 @@ fn every_design_command_is_discoverable_without_the_desktop_installed() {
     let commands = index["commands"].as_array().expect("commands");
     assert_eq!(
         commands.len(),
-        28,
+        33,
         "the design domain should expose its whole family: {commands:?}"
     );
     for command in commands {
         let id = command["id"].as_str().unwrap_or("?");
         assert_eq!(
             command["availability"],
-            if matches!(id, "design.features.select" | "design.lv.project-export") {
+            if matches!(
+                id,
+                "design.features.select"
+                    | "design.lv.project-export"
+                    | "design.transformer.inventory"
+                    | "design.transformer.retire"
+                    | "design.transformer.restore"
+            ) {
                 "unavailable"
             } else {
                 "available"
@@ -3278,7 +3445,7 @@ fn design_collaboration_is_a_complete_headless_project_surface() {
     let actual: BTreeSet<&str> = commands
         .iter()
         .map(|command| command["id"].as_str().expect("id"))
-        .filter(|id| !id.starts_with("design.lv."))
+        .filter(|id| !id.starts_with("design.lv.") && !id.starts_with("design.transformer."))
         .collect();
     let expected: BTreeSet<&str> = [
         "design.selection.list",
@@ -3341,7 +3508,9 @@ fn design_collaboration_is_a_complete_headless_project_surface() {
     .collect();
     for command in commands {
         let id = command["id"].as_str().expect("id");
-        if id.starts_with("design.lv.") {
+        // Offline LV compute and the headless transformer lifecycle are not
+        // bridge collaboration; their own tests pin their availability.
+        if id.starts_with("design.lv.") || id.starts_with("design.transformer.") {
             continue;
         }
         if id == "design.features.select" {

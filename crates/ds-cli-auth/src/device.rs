@@ -10,16 +10,19 @@ use ds_cli_contract::spec::{
 };
 use ds_cli_contract::{Context, Failure, Inputs};
 use ds_client_core::{
-    ClientError, ClientProfile, DeviceAccessSession, DeviceAuthContext, DeviceAuthorizationStatus,
+    ClientError, ClientProfile, CompoundedArchive, CompoundedReportReceipt,
+    CompoundedReportRequest, DeviceAccessSession, DeviceAuthContext, DeviceAuthorizationStatus,
     DeviceBeginPublic, DeviceBeginRequest, DeviceBinding, DeviceCredential, DeviceError,
     DevicePendingAuthorization, DevicePrivateKey, DeviceProtectedCall, DeviceProtectedOperation,
     DeviceSummary, DeviceTransport, ProjectDirectory, ProjectFormSettingsEditor,
-    ProjectFormsSnapshot, SecretRequestBody, SolarSnapshot, StoreError, SurveyEntriesChanges,
+    ProjectFormsSnapshot, RetirementAction, RetirementReceipt, RetirementRequest,
+    SecretRequestBody, SolarSnapshot, StoreError, SurveyEntriesChanges,
     SurveyEntriesChangesRequest, SurveyEntriesSelectRequest, SurveyEntriesSelection,
     SurveyEntryCreateReceipt, SurveyEntryCreateRequest, SurveyQueryRequest, SurveyQueryResult,
-    TileOperationResult, TilePreflight, TileType, TransformerContext, TransportError,
-    TransportResponse, device_secret_json, parse_device_begin, parse_device_list,
-    parse_device_read, parse_device_refresh, parse_device_revoke, parse_device_status,
+    TileOperationResult, TilePreflight, TileType, TransformerContext, TransformerInventory,
+    TransformerSet, TransportError, TransportResponse, device_secret_json, parse_device_begin,
+    parse_device_list, parse_device_read, parse_device_refresh, parse_device_revoke,
+    parse_device_status,
 };
 use serde_json::{Value, json};
 use zeroize::{Zeroize, Zeroizing};
@@ -567,6 +570,34 @@ impl DeviceSession {
         force: bool,
     ) -> Result<TileOperationResult, ClientError> {
         fixed_device_call!(self, tile_generate, project, tile_type, force)
+    }
+    pub fn compounded_report(
+        &mut self,
+        project: &str,
+        request: &CompoundedReportRequest,
+    ) -> Result<CompoundedReportReceipt, ClientError> {
+        fixed_device_call!(self, compounded_report, project, request)
+    }
+    pub fn compounded_report_list(
+        &mut self,
+        project: &str,
+    ) -> Result<Vec<CompoundedArchive>, ClientError> {
+        fixed_device_call!(self, compounded_report_list, project)
+    }
+    pub fn transformer_inventory(
+        &mut self,
+        project: &str,
+        requested: &TransformerSet,
+    ) -> Result<TransformerInventory, ClientError> {
+        fixed_device_call!(self, transformer_inventory, project, requested)
+    }
+    pub fn transformer_retirement(
+        &mut self,
+        project: &str,
+        action: RetirementAction,
+        request: &RetirementRequest,
+    ) -> Result<RetirementReceipt, ClientError> {
+        fixed_device_call!(self, transformer_retirement, project, action, request)
     }
 }
 

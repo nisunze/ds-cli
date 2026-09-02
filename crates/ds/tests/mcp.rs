@@ -1005,6 +1005,7 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
         "solar-run",
         "solar-delivery",
         "operations",
+        "project-operations",
     ] {
         let (responses, _) = mcp(
             &["--exposure", "commands", "--profile", profile],

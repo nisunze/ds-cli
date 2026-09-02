@@ -51,14 +51,17 @@ ds mcp serve --exposure commands --profile pls
 
 Profiles are `auth-context`, `grid`, `pls`, `pls-library`, `library-governance`, `survey`,
 `form-factory`, `survey-projects`, `survey-migration`, `design-edit`, `design-run`, `map`, `layers`,
-`tiling`, `project`, `solar-input`, `solar-run`, `solar-delivery`, and
-`operations`. `survey`
+`tiling`, `project`, `solar-input`, `solar-run`, `solar-delivery`,
+`operations`, and `project-operations`. `survey`
 retains map/local-data survey work;
 `form-factory` owns global schemas, while `survey-projects` owns governed
 aggregate/spatial/change-feed reads, project-form settings, reusable templates, and
 create-from-template. `layers` isolates
 project ordering and desktop-local remote overlays; `tiling` owns governed
-tile generation and catalogue membership. Each includes `ds_catalog`,
+tile generation and catalogue membership; `project-operations` owns the
+background work against the CLI-selected project — transformer inventory,
+reversible retirement and restoration, and the compounded report
+deliverable — with no map or Desktop. Each includes `ds_catalog`,
 `ds_diagnostics`, and a bounded leaf set. `survey-migration` deliberately
 contains only the governed import leaf in addition to those bootstrap tools.
 A profile is only an allowlist: omitted

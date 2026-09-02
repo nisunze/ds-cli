@@ -812,6 +812,7 @@ dependencies = [
 name = "ds-cli-report"
 version = "0.1.0"
 dependencies = [
+ "ds-cli-auth",
  "ds-cli-contract",
  "ds-cli-exec",
  "serde_json",
