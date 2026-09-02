@@ -41,6 +41,7 @@ struct App {
     frontend: String,
     project: String,
     map: String,
+    map_working_set: String,
     map_layers: String,
     survey: String,
     survey_forms: String,
@@ -76,6 +77,7 @@ fn app() -> Option<App> {
         frontend: read("src/lib/desktop/cli-bridge.ts")?,
         project: read("src/lib/desktop/cli-project.ts")?,
         map: read("src/lib/desktop/cli-map.ts")?,
+        map_working_set: read("src/lib/desktop/cli-map-working-set.ts")?,
         map_layers: read("src/lib/desktop/cli-map-layers.ts")?,
         survey: read("src/lib/desktop/cli-survey.ts")?,
         survey_forms: read("src/lib/desktop/cli-survey-forms.ts")?,
@@ -2038,6 +2040,50 @@ fn map_bounds_and_session_projection_match_the_desktop_owner() {
         app.transport.contains("MAX_MAP_LAYERS"),
         "the native bridge must bound the map session projection before returning it"
     );
+}
+
+#[test]
+fn map_working_set_stays_a_closed_projection_of_the_desktop_owner() {
+    let Some(app) = app() else {
+        skip("the ds-web sibling repository is not on disk");
+        return;
+    };
+
+    assert!(
+        app.map.contains("return applyCliWorkingSet(args"),
+        "the map bridge must delegate to the curated Working-set adapter"
+    );
+    for semantic in [
+        "loadPinnedTransformers",
+        "getPinnedTransformersForProject",
+        "resolvedSelectionLiveIds",
+        "removePinnedTransformers",
+        "clearAllPins",
+        "showWorkingSet",
+    ] {
+        assert!(
+            app.map_working_set.contains(semantic),
+            "the Working-set bridge no longer reuses Desktop-owned `{semantic}`"
+        );
+    }
+    for mode in ["read", "unpin", "clear", "load"] {
+        assert!(
+            app.map_working_set.contains(&format!("'{mode}'")),
+            "the Desktop bridge lost the `{mode}` Working-set intent"
+        );
+    }
+    for forbidden in [
+        "persistentGet",
+        "persistentSet",
+        "querySelector",
+        "dispatchEvent",
+        "invokeDesktop",
+    ] {
+        assert!(
+            !app.map_working_set.contains(forbidden),
+            "the curated Working-set adapter grew forbidden `{forbidden}` state/control access"
+        );
+    }
 }
 
 /// TypeScript writes large numeric literals with underscore separators.

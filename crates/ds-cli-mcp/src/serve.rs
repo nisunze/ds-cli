@@ -26,7 +26,7 @@ pub static COMMAND: Command = Command {
     path: &["mcp", "serve"],
     contract: 3,
     chapter: ds_cli_contract::spec::Chapter::Catalog,
-    summary: "Serve chapter or typed `ds` tools over MCP.",
+    summary: "Serve chapter or typed ds tools over MCP.",
     purpose: "\
 Serves live `ds` contracts over MCP stdio as compact chapters or bounded typed \
 profiles. Calls run the same `ds` command. Startup is headless; runtime \

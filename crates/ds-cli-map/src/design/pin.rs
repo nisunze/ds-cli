@@ -24,7 +24,7 @@ const TRANSFORMERS_ARG: Arg = Arg {
     required: false,
     default: None,
     choices: &[],
-    summary: "Exact transformer to pin or unpin. Repeat for a family.",
+    summary: "Exact transformer to pin or unpin. Repeatable.",
 };
 
 const SELECTION_ARG: Arg = Arg {
@@ -34,7 +34,7 @@ const SELECTION_ARG: Arg = Arg {
     required: false,
     default: None,
     choices: &[],
-    summary: "Saved Transformer Status selection whose present members to load.",
+    summary: "Saved Transformer Status selection to load.",
 };
 
 const MODE_ARG: Arg = Arg {
@@ -44,7 +44,7 @@ const MODE_ARG: Arg = Arg {
     required: false,
     default: Some("set"),
     choices: &["read", "set", "add", "remove", "unpin", "load", "clear"],
-    summary: "read inspects; load replaces from one selection; set/add pin; remove/unpin adjust; clear empties.",
+    summary: "read inspects; load replaces; set/add pin; remove/unpin adjust; clear empties.",
 };
 
 pub static COMMAND: Command = Command {
@@ -53,46 +53,42 @@ pub static COMMAND: Command = Command {
     contract: 2,
     summary: "Read, load, pin, unpin, or clear the visible map Working set.",
     purpose: "\
-Reads and manages the paired application's LV map Working set — the pinned read-only \
-transformer context the map paints. Pass exact transformer names, a saved \
-Transformer Status selection (its server-evaluated present members are \
-pinned; missing members are reported, never guessed), or both. The Working \
-set is local view state: nothing is staged into a room and nothing is \
-persisted to the project.",
+Manages the paired map's local LV Working set. Exact transformer names or a \
+saved Transformer Status selection select the pinned read-only context; \
+missing selection members are reported. No room or project data is staged or \
+persisted.",
     chapter: Chapter::Design,
     effect: Effect::LocalUi,
     authority: Authority::Project,
     execution: Execution::Sync,
     args: &[TRANSFORMERS_ARG, SELECTION_ARG, MODE_ARG, DESCRIPTOR_ARG],
     output: "\
-The project, the applied mode, the resulting pinned names and count, and — \
-when a selection was loaded — any members missing from the project. \
-`staged` and `persisted` are explicitly false: the Working set is view \
-state.",
+Project, mode, pinned names and count, missing selection members, and explicit \
+`staged: false` and `persisted: false` project-data facts.",
     examples: &[
         Example {
             command: "ds map design pin --mode read --output json",
-            note: "Reads the current Working set without loading or changing it.",
+            note: "Reads without loading or changing the set.",
             runnable: false,
         },
         Example {
             command: "ds map design pin --transformer agasharu --transformer gitega --output json",
-            note: "Replaces the Working set with exactly these two transformers and paints them.",
+            note: "Replaces and paints the set.",
             runnable: false,
         },
         Example {
             command: "ds map design pin --selection phase1-review --mode load --output json",
-            note: "Replaces the Working set with a saved selection's present members.",
+            note: "Loads the selection's present members.",
             runnable: false,
         },
         Example {
             command: "ds map design pin --transformer agasharu --mode unpin --output json",
-            note: "Unpins one exact transformer without disturbing the remaining Working set.",
+            note: "Unpins one name and keeps the rest.",
             runnable: false,
         },
         Example {
             command: "ds map design pin --mode clear --output json",
-            note: "Empties the Working set and hides the pinned context.",
+            note: "Empties and hides the set.",
             runnable: false,
         },
     ],
@@ -185,18 +181,84 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     )
     .map_err(crate::classify_design_failure)?;
 
+    receipt(mode, &result)
+}
+
+const MAX_WORKING_SET_NAMES: usize = 5_000;
+
+fn receipt(mode: &str, result: &Value) -> Result<Value, Failure> {
+    let project = result["project"]
+        .as_str()
+        .filter(|value| !value.trim().is_empty())
+        .ok_or_else(|| unreadable_reply("the application omitted the Working-set project"))?;
+    let returned_mode = result["mode"]
+        .as_str()
+        .ok_or_else(|| unreadable_reply("the application omitted the applied Working-set mode"))?;
+    if returned_mode != mode {
+        return Err(unreadable_reply(
+            "the application acknowledged a different Working-set mode",
+        ));
+    }
+    let pinned = bounded_names(result.get("pinned"), "pinned", true)?;
+    let pinned_count = result["pinnedCount"]
+        .as_u64()
+        .ok_or_else(|| unreadable_reply("the application omitted the Working-set count"))?;
+    if pinned_count != pinned.len() as u64 {
+        return Err(unreadable_reply(
+            "the application returned an inconsistent Working-set count",
+        ));
+    }
+    let missing = match result.get("missingSelectionMembers") {
+        None => Vec::new(),
+        value => bounded_names(value, "missing selection members", false)?,
+    };
+    if result["staged"].as_bool() != Some(false) || result["persisted"].as_bool() != Some(false) {
+        return Err(unreadable_reply(
+            "the application did not confirm that project data stayed unchanged",
+        ));
+    }
+
     Ok(json!({
-        "project": result["project"],
-        "mode": result["mode"],
-        "pinned_count": result["pinnedCount"].as_u64().unwrap_or(0),
-        "pinned": result["pinned"],
-        "missing_selection_members": result
-            .get("missingSelectionMembers")
-            .cloned()
-            .unwrap_or(Value::Array(Vec::new())),
+        "project": project,
+        "mode": returned_mode,
+        "pinned_count": pinned_count,
+        "pinned": pinned,
+        "missing_selection_members": missing,
         "staged": false,
         "persisted": false,
     }))
+}
+
+fn bounded_names(value: Option<&Value>, label: &str, unique: bool) -> Result<Vec<String>, Failure> {
+    let rows = value
+        .and_then(Value::as_array)
+        .ok_or_else(|| unreadable_reply(format!("the application omitted `{label}`")))?;
+    if rows.len() > MAX_WORKING_SET_NAMES {
+        return Err(unreadable_reply(format!(
+            "the application returned more than {MAX_WORKING_SET_NAMES} {label}"
+        )));
+    }
+    let mut names = Vec::with_capacity(rows.len());
+    for row in rows {
+        let name = row
+            .as_str()
+            .filter(|value| !value.trim().is_empty() && value.len() <= 160)
+            .ok_or_else(|| {
+                unreadable_reply(format!("the application returned an invalid {label} name"))
+            })?;
+        if unique && names.iter().any(|existing| existing == name) {
+            return Err(unreadable_reply(format!(
+                "the application returned duplicate {label} names"
+            )));
+        }
+        names.push(name.to_owned());
+    }
+    Ok(names)
+}
+
+fn unreadable_reply(message: impl Into<String>) -> Failure {
+    Failure::unavailable("desktop_unreadable", message)
+        .remedy("restart DS GridDesign, verify `ds desktop status`, and retry")
 }
 
 pub fn render(data: &Value) -> String {
@@ -324,5 +386,58 @@ mod tests {
         }));
         assert!(rendered.contains("2 transformer(s) pinned"));
         assert!(rendered.contains("1 selection member(s) missing"));
+    }
+
+    #[test]
+    fn receipt_is_bounded_and_keeps_project_data_facts_explicit() {
+        let raw = json!({
+            "project": "project-a",
+            "mode": "load",
+            "pinnedCount": 2,
+            "pinned": ["agasharu", "gitega"],
+            "missingSelectionMembers": ["retired-transformer"],
+            "staged": false,
+            "persisted": false,
+            "features": [{ "must": "not cross the CLI boundary" }],
+        });
+        assert_eq!(
+            receipt("load", &raw).expect("valid receipt"),
+            json!({
+                "project": "project-a",
+                "mode": "load",
+                "pinned_count": 2,
+                "pinned": ["agasharu", "gitega"],
+                "missing_selection_members": ["retired-transformer"],
+                "staged": false,
+                "persisted": false,
+            })
+        );
+    }
+
+    #[test]
+    fn receipt_refuses_malformed_or_mutating_desktop_claims() {
+        let valid = json!({
+            "project": "project-a",
+            "mode": "read",
+            "pinnedCount": 1,
+            "pinned": ["agasharu"],
+            "staged": false,
+            "persisted": false,
+        });
+        for malformed in [
+            json!({ "mode": "read", "pinnedCount": 1, "pinned": ["agasharu"], "staged": false, "persisted": false }),
+            json!({ "project": "project-a", "mode": "clear", "pinnedCount": 1, "pinned": ["agasharu"], "staged": false, "persisted": false }),
+            json!({ "project": "project-a", "mode": "read", "pinnedCount": 2, "pinned": ["agasharu"], "staged": false, "persisted": false }),
+            json!({ "project": "project-a", "mode": "read", "pinnedCount": 1, "pinned": ["agasharu"], "staged": true, "persisted": false }),
+            json!({ "project": "project-a", "mode": "read", "pinnedCount": 1, "pinned": ["agasharu", "agasharu"], "staged": false, "persisted": false }),
+        ] {
+            assert_eq!(
+                receipt("read", &malformed)
+                    .expect_err("malformed Desktop reply must refuse")
+                    .code(),
+                "desktop_unreadable"
+            );
+        }
+        assert!(receipt("read", &valid).is_ok());
     }
 }

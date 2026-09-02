@@ -51,7 +51,9 @@ one governed Transformer Status selection into its present members. The names
 survive locally in that desktop's IndexedDB, but no transformer room, project
 record, or feature is staged or persisted; `persisted: false` in the receipt is
 the project-data fact. Missing selection members are reported and never
-substituted.
+substituted. Unpin is a local, idempotent removal: it can remove a stale name
+after that transformer was retired or deleted and therefore does not require
+the name to remain in the live project catalogue.
 
 ```bash
 ds map design pin --mode read --output json

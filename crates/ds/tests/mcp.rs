@@ -867,6 +867,61 @@ fn map_design_open_is_projected_by_catalog_chapter_and_typed_profile() {
 }
 
 #[test]
+fn map_working_set_projects_one_closed_typed_mcp_tool() {
+    let (profile, _) = mcp(
+        &["--exposure", "commands", "--profile", "design-edit"],
+        &[json!({ "jsonrpc": "2.0", "id": 30, "method": "tools/list" })],
+    );
+    let tool = response(&profile, 30)["result"]["tools"]
+        .as_array()
+        .expect("tools")
+        .iter()
+        .find(|tool| tool["name"] == "map_design_pin")
+        .expect("map.design.pin typed leaf");
+    assert_eq!(tool["title"], "map.design.pin");
+    assert_eq!(tool["inputSchema"]["required"], json!([]));
+    assert_eq!(
+        tool["inputSchema"]["properties"]
+            .as_object()
+            .expect("properties")
+            .keys()
+            .map(String::as_str)
+            .collect::<BTreeSet<_>>(),
+        BTreeSet::from(["desktop-descriptor", "mode", "selection", "transformer"])
+    );
+    assert_eq!(
+        tool["inputSchema"]["properties"]["mode"]["enum"],
+        json!(["read", "set", "add", "remove", "unpin", "load", "clear"])
+    );
+    assert_eq!(tool["inputSchema"]["additionalProperties"], false);
+
+    // MCP keeps its bounded pairing gate in front of dispatch. Conditional
+    // mode shapes are enforced by the canonical command once paired; MCP does
+    // not grow a second Working-set schema or generic UI action.
+    let temp = TestDir::new("working-set-descriptor");
+    let missing = temp.0.join("no-desktop.json");
+    let missing = missing.to_string_lossy().into_owned();
+    let (invoked, _) = mcp(
+        &["--exposure", "commands", "--profile", "design-edit"],
+        &[json!({
+            "jsonrpc": "2.0",
+            "id": 31,
+            "method": "tools/call",
+            "params": {
+                "name": "map_design_pin",
+                "arguments": {
+                    "mode": "read",
+                    "desktop-descriptor": missing,
+                }
+            }
+        })],
+    );
+    let envelope = &response(&invoked, 31)["result"]["structuredContent"];
+    assert_eq!(envelope["command"], "map.design.pin");
+    assert_eq!(envelope["error"]["code"], "desktop_not_paired");
+}
+
+#[test]
 fn design_edit_profile_exposes_known_columns_as_the_external_field_authority() {
     let (responses, _) = mcp(
         &["--exposure", "commands", "--profile", "design-edit"],
