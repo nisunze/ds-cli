@@ -219,12 +219,26 @@ fn check_choice(command: &Command, arg: &Arg, value: &str) -> Result<(), Failure
         return Ok(());
     }
     Err(Failure::invalid(
-        "invalid_choice",
+        choice_refusal_code(command, arg.name),
         format!("`--{}` does not accept that value", arg.name),
     )
     .remedy(format!("use one of: {}", arg.choices.join(", ")))
     .detail(json!({ "flag": arg.name, "accepted": arg.choices }))
     .next(format!("ds {} --help", command.path.join(" "))))
+}
+
+/// Closed descriptor choices remain the parser's authority. These exact
+/// command/argument pairs refine the generic parser refusal into the stable
+/// domain scope code their command contracts declare.
+fn choice_refusal_code(command: &Command, arg_name: &str) -> &'static str {
+    let code = match (command.id, arg_name) {
+        ("data.admin-bounds.list", "country" | "level") | ("data.admin-bounds.read", "country") => {
+            Some("invalid_admin_scope")
+        }
+        _ => None,
+    };
+    code.filter(|code| command.refusals.iter().any(|refusal| refusal.code == *code))
+        .unwrap_or("invalid_choice")
 }
 
 fn unknown_flag(command: &Command, name: &str) -> Failure {

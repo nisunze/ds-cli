@@ -35,7 +35,7 @@ const COUNTRY_ARG: Arg = Arg {
     value: "<country>",
     required: false,
     default: Some("rwanda"),
-    choices: &[],
+    choices: &["rwanda"],
     summary: "Declared national boundary authority. Rwanda is the only installed authority.",
 };
 const LEVEL_ARG: Arg = Arg {
@@ -44,7 +44,7 @@ const LEVEL_ARG: Arg = Arg {
     value: "<level>",
     required: true,
     default: None,
-    choices: &[],
+    choices: &["province", "district", "sector", "cell", "village"],
     summary: "Exact hierarchy level to list.",
 };
 const PARENT_CODE_ARG: Arg = Arg::value(

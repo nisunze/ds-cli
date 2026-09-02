@@ -1541,6 +1541,7 @@ fn scope_headless_identity(
             lane: identity.lane().to_owned(),
             credential_audience_sha256: identity.credential_audience_sha256().to_owned(),
             project,
+            command_authority: command.authority,
         },
     );
     Ok(ds_cli_desktop::ops::scope_headless_identity(observed))

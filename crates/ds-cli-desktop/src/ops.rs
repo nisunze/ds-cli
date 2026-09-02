@@ -16,7 +16,7 @@ use std::cell::RefCell;
 use std::time::Duration;
 
 use ds_cli_contract::outcome::Failure;
-use ds_cli_contract::spec::{Arg, ArgKind, Availability, Refusal};
+use ds_cli_contract::spec::{Arg, ArgKind, Authority, Availability, Refusal};
 use serde_json::{Value, json};
 
 use crate::bridge;
@@ -33,6 +33,10 @@ pub struct HeadlessIdentity {
     pub lane: String,
     pub credential_audience_sha256: String,
     pub project: Option<String>,
+    /// The command contract whose invocation this observation fences.
+    /// DesktopUser proves user identity only; Project additionally requires
+    /// equality when both providers have selected projects.
+    pub command_authority: Authority,
 }
 
 pub struct HeadlessIdentityGuard(Option<HeadlessIdentity>);
@@ -108,17 +112,18 @@ fn validate_headless_match(
     let identity_mismatch = headless.uid != fence.uid
         || headless.lane != fence.lane
         || headless.credential_audience_sha256 != fence.credential_audience_sha256;
-    let project_mismatch = match (headless.project.as_deref(), fence.project.as_deref()) {
-        (Some(_), None) => true,
-        (Some(headless), Some(desktop)) => headless != desktop,
-        _ => false,
-    };
+    let project_mismatch = headless.command_authority == Authority::Project
+        && match (headless.project.as_deref(), fence.project.as_deref()) {
+            (Some(_), None) => true,
+            (Some(headless), Some(desktop)) => headless != desktop,
+            _ => false,
+        };
     if identity_mismatch || project_mismatch {
         return Err(Failure::conflict(
             "auth_context_mismatch",
             "the paired map and protected headless provider do not represent the same identity context",
         )
-        .remedy("use the matching lane, account, audience, and project, or run a map-independent headless command"));
+        .remedy("match lane, account and audience and, for project-authorized commands, the selected project"));
     }
     Ok(())
 }
@@ -469,6 +474,7 @@ mod tests {
             lane: "stable".to_owned(),
             credential_audience_sha256: "a".repeat(64),
             project: Some("project-1".to_owned()),
+            command_authority: Authority::Project,
         };
         {
             let _guard = scope_headless_identity(Some(identity.clone()));
@@ -485,6 +491,7 @@ mod tests {
             lane: "stable".to_owned(),
             credential_audience_sha256: "a".repeat(64),
             project: None,
+            command_authority: Authority::Project,
         };
         let mut fence = bridge::IdentityFence::from_session(&json!({
             "uid": "uid-1", "lane": "stable",
@@ -508,6 +515,51 @@ mod tests {
                 .unwrap_err()
                 .code(),
             "auth_context_mismatch"
+        );
+    }
+
+    #[test]
+    fn desktop_user_reference_reads_ignore_only_the_selected_project() {
+        let fence = bridge::IdentityFence::from_session(&json!({
+            "uid": "uid-1", "lane": "stable",
+            "credential_audience_sha256": "a".repeat(64),
+            "project": "desktop-project", "session_revision": 4,
+        }))
+        .unwrap();
+        let user_reference = HeadlessIdentity {
+            uid: "uid-1".to_owned(),
+            lane: "stable".to_owned(),
+            credential_audience_sha256: "a".repeat(64),
+            project: Some("unrelated-cli-project".to_owned()),
+            command_authority: Authority::DesktopUser,
+        };
+        for operation in ["data.admin_bounds.list", "data.admin_bounds.read"] {
+            validate_headless_match(operation, Some(&user_reference), &fence)
+                .expect("national-reference DesktopUser reads ignore project selection");
+        }
+
+        let project_bound = HeadlessIdentity {
+            command_authority: Authority::Project,
+            ..user_reference.clone()
+        };
+        assert_eq!(
+            validate_headless_match("data.admin_bounds.attach", Some(&project_bound), &fence)
+                .unwrap_err()
+                .code(),
+            "auth_context_mismatch",
+            "project-authorized operations must retain the project fence"
+        );
+
+        let wrong_user = HeadlessIdentity {
+            uid: "uid-2".to_owned(),
+            ..user_reference
+        };
+        assert_eq!(
+            validate_headless_match("data.admin_bounds.read", Some(&wrong_user), &fence)
+                .unwrap_err()
+                .code(),
+            "auth_context_mismatch",
+            "DesktopUser never means a different user may borrow the session"
         );
     }
 

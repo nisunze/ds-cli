@@ -62,6 +62,15 @@ fn cli_envelope(args: &[&str]) -> Value {
     })
 }
 
+fn capability_input<'a>(envelope: &'a Value, name: &str) -> &'a Value {
+    envelope["data"]["command"]["inputs"]
+        .as_array()
+        .expect("capability inputs")
+        .iter()
+        .find(|input| input["name"] == name)
+        .unwrap_or_else(|| panic!("capability has no `{name}` input"))
+}
+
 fn mcp(args: &[&str], requests: &[Value]) -> (Vec<Value>, String) {
     mcp_with_env(args, requests, &[])
 }
@@ -935,6 +944,66 @@ fn exact_admin_boundaries_are_projected_by_catalog_chapter_and_typed_profile() {
     // mutate Desktop-local state, so the leaf must stay conservatively false
     // even when this particular call omits that switch.
     assert_eq!(read["annotations"]["readOnlyHint"], false);
+}
+
+#[test]
+fn admin_scope_choices_remain_closed_in_capabilities_and_mcp() {
+    let levels = json!(["province", "district", "sector", "cell", "village"]);
+    let list_descriptor = cli(&["capabilities", "data.admin-bounds.list", "--output", "json"]);
+    let read_descriptor = cli(&["capabilities", "data.admin-bounds.read", "--output", "json"]);
+    assert_eq!(
+        capability_input(&list_descriptor, "country")["choices"],
+        json!(["rwanda"])
+    );
+    assert_eq!(
+        capability_input(&list_descriptor, "country")["default"],
+        "rwanda"
+    );
+    assert_eq!(
+        capability_input(&list_descriptor, "level")["choices"],
+        levels
+    );
+    assert_eq!(
+        capability_input(&read_descriptor, "country")["choices"],
+        json!(["rwanda"])
+    );
+    assert_eq!(
+        capability_input(&read_descriptor, "country")["default"],
+        "rwanda"
+    );
+
+    let (profile, _) = mcp(
+        &["--exposure", "commands", "--profile", "admin-bounds"],
+        &[json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/list" })],
+    );
+    let tools = response(&profile, 1)["result"]["tools"]
+        .as_array()
+        .expect("admin tools");
+    let list = tools
+        .iter()
+        .find(|tool| tool["name"] == "data_admin-bounds_list")
+        .expect("admin list leaf");
+    let read = tools
+        .iter()
+        .find(|tool| tool["name"] == "data_admin-bounds_read")
+        .expect("admin read leaf");
+    assert_eq!(
+        list["inputSchema"]["properties"]["country"]["enum"],
+        json!(["rwanda"])
+    );
+    assert_eq!(
+        list["inputSchema"]["properties"]["country"]["default"],
+        "rwanda"
+    );
+    assert_eq!(list["inputSchema"]["properties"]["level"]["enum"], levels);
+    assert_eq!(
+        read["inputSchema"]["properties"]["country"]["enum"],
+        json!(["rwanda"])
+    );
+    assert_eq!(
+        read["inputSchema"]["properties"]["country"]["default"],
+        "rwanda"
+    );
 }
 
 #[test]
