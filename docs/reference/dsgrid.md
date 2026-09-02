@@ -81,6 +81,25 @@ the same idea everywhere else and a caller should not learn a second one at a
 single command. And the three catalogs do not agree on how to spell an id
 (`operation_id`, `command_id`, `projection_id`), so `ds` normalizes to `id`.
 
+## Running native non-mutating operations
+
+`ds dsgrid run` executes the read, solve, and propose operations published by
+the native engine compiled into the CLI. It never admits journaled mutations,
+imports, or exports, and never writes the source `.dsgrid` package.
+
+Discover the exact operation and parameter contract before invoking it:
+
+```text
+ds dsgrid describe --kind operations --id project_profile
+ds dsgrid run --model model.dsgrid --operation project_profile --params profile.json --output json
+```
+
+Every response identifies the package bytes and authored revision that were
+read, reports `staged: false` and `persisted: false`, and recursively bounds
+large arrays with exact `more.truncated` receipts. `ds dsgrid validate` always
+reports the authored revision. The cheap inspect path exposes it on demand
+with `--include authored-revision`, which deliberately decodes the model.
+
 ## Applying one canonical revision
 
 `dsgrid apply` is the one file-writing command in this domain. It consumes the
@@ -126,6 +145,7 @@ identity still reaches it without loading exchange planning.
 | `inspect` | `ds_grid_exchange::dsgrid::inspect`, `package::unpack`, `ds_grid_model::GridModelSummary` |
 | `validate` | `ds_grid_exchange::package::unpack`, `ds_grid_model::validate_snapshot` |
 | `describe` | `ds_grid_engine::{describe_commands, describe_operations, describe_projections}` |
+| `run` | the operation selected from `ds_grid_engine::operation_descriptors` and its typed native engine API |
 | `apply` | `ds_grid_engine::GridSession`, `ds_grid_exchange::dsgrid::emit` |
 | `model list/create-local/import-external/set-active` | paired Desktop `dsgrid.model.*` operations |
 | `publish-version` | paired Desktop `dsgrid.model.publish`, composing its existing project version flow |

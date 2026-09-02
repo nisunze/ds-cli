@@ -730,6 +730,7 @@ dependencies = [
  "ds-grid-engine",
  "ds-grid-exchange",
  "ds-grid-model",
+ "serde",
  "serde_json",
  "sha2",
 ]

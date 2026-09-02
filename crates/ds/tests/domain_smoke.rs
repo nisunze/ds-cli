@@ -420,6 +420,95 @@ fn dsgrid_describe_returns_a_real_engine_catalog() {
 }
 
 #[test]
+fn dsgrid_run_executes_native_reads_and_never_admits_a_mutation() {
+    let model = common::fixture();
+    let data = ok(&[
+        "dsgrid",
+        "run",
+        "--model",
+        &model,
+        "--operation",
+        "project_plan",
+        "--limit",
+        "2",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(data["operation"]["id"], "project_plan");
+    assert_eq!(data["operation"]["effect"], "read");
+    assert_eq!(data["operation"]["journaled"], false);
+    assert_eq!(data["staged"], false);
+    assert_eq!(data["persisted"], false);
+    assert!(
+        data["source"]["authored_revision"]
+            .as_str()
+            .is_some_and(|value| !value.is_empty())
+    );
+    assert_eq!(data["result"].as_array().expect("plan rows").len(), 2);
+    assert!(data["result"].as_array().unwrap().iter().all(|row| {
+        row["entity_id"]
+            .as_str()
+            .is_some_and(|value| !value.is_empty())
+    }));
+    assert!(data["more"]["truncated"].as_array().is_some());
+
+    let feature_codes = ok(&[
+        "dsgrid",
+        "run",
+        "--model",
+        &model,
+        "--operation",
+        "feature_code_report",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(
+        feature_codes["operation"]["result_type"],
+        "FeatureCodeResolution"
+    );
+
+    let refused = ds(&[
+        "dsgrid",
+        "run",
+        "--model",
+        &model,
+        "--operation",
+        "create_alignment",
+        "--output",
+        "json",
+    ]);
+    assert_ne!(refused.code, 0);
+    assert_eq!(refused.envelope["error"]["code"], "operation_not_read_only");
+}
+
+#[test]
+fn dsgrid_inspect_and_validate_expose_the_authored_revision() {
+    let model = common::fixture();
+    let inspected = ok(&[
+        "dsgrid",
+        "inspect",
+        "--model",
+        &model,
+        "--include",
+        "authored-revision",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(inspected["decoded"], true);
+    assert!(
+        inspected["authored_revision"]
+            .as_str()
+            .is_some_and(|value| !value.is_empty())
+    );
+
+    let validated = ok(&["dsgrid", "validate", "--model", &model, "--output", "json"]);
+    assert_eq!(
+        validated["model"]["authored_revision"],
+        inspected["authored_revision"]
+    );
+}
+
+#[test]
 fn dsgrid_apply_dry_runs_then_writes_one_revision_without_overwriting_source() {
     let model = common::fixture();
     let bytes = std::fs::read(&model).expect("read fixture package");

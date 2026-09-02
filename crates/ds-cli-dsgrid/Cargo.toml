@@ -21,5 +21,6 @@ ds-cli-desktop = { workspace = true }
 ds-grid-model = { workspace = true }
 ds-grid-engine = { workspace = true }
 ds-grid-exchange = { workspace = true }
+serde = { workspace = true }
 serde_json = { workspace = true }
 sha2 = { workspace = true }

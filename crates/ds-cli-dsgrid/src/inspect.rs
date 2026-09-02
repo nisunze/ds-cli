@@ -20,12 +20,19 @@ use ds_cli_contract::spec::{
     Arg, Authority, Availability, Chapter, Command, Effect, Example, Execution, Refusal,
 };
 use ds_cli_contract::{Context, Inputs};
+use ds_grid_engine::GridSession;
 use ds_grid_model::GridModelSummary;
 
 use crate::package::{self, DEFAULT_LIMIT, parse_limit, table_token, take};
 use serde_json::{Map, Value, json};
 
-const INCLUDE_CHOICES: &[&str] = &["tables", "members", "library", "extent"];
+const INCLUDE_CHOICES: &[&str] = &[
+    "tables",
+    "members",
+    "library",
+    "extent",
+    "authored-revision",
+];
 
 pub static COMMAND: Command = Command {
     id: "dsgrid.inspect",
@@ -201,12 +208,23 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         note_truncation(&mut truncated, "members", withheld, limit);
     }
 
-    if requested.contains(&"library") || requested.contains(&"extent") {
+    if requested.contains(&"library")
+        || requested.contains(&"extent")
+        || requested.contains(&"authored-revision")
+    {
         // The expensive read. Only reached because the caller named a
         // projection that cannot be answered from the manifest.
         let package = package::decode(raw_path, &bytes)?;
         decoded = true;
         let summary = GridModelSummary::for_snapshot(&package.snapshot);
+
+        if requested.contains(&"authored-revision") {
+            let session = GridSession::open(package.snapshot.clone());
+            answer.insert(
+                "authored_revision".into(),
+                json!(session.current_revision().revision_id.as_str()),
+            );
+        }
 
         if requested.contains(&"library") {
             let (structures, structures_withheld) = take(summary.structure_type_names, limit);

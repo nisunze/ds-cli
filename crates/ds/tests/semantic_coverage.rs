@@ -103,6 +103,7 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("dsgrid.apply", "local_file_write", "none"),
     ("dsgrid.describe", "discovery", "none"),
     ("dsgrid.inspect", "discovery", "none"),
+    ("dsgrid.run", "read_only", "none"),
     ("dsgrid.validate", "discovery", "none"),
     // The paired application's local model lifecycle. `desktop_pairing` is
     // the exact authority and the load-bearing half of this family's

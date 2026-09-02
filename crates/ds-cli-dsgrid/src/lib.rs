@@ -27,6 +27,7 @@ pub mod describe;
 pub mod inspect;
 pub mod model;
 pub mod package;
+pub mod run;
 pub mod validate;
 
 use ds_cli_contract::spec::Domain;
@@ -38,6 +39,7 @@ pub static DOMAIN: Domain = Domain {
         &inspect::COMMAND,
         &validate::COMMAND,
         &describe::COMMAND,
+        &run::COMMAND,
         &apply::COMMAND,
         &model::list::COMMAND,
         &model::create_local::COMMAND,

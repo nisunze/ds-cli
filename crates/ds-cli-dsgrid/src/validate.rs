@@ -22,6 +22,7 @@ use ds_cli_contract::spec::{
     Arg, Authority, Availability, Chapter, Command, Effect, Example, Execution, Refusal,
 };
 use ds_cli_contract::{Context, Inputs};
+use ds_grid_engine::GridSession;
 use ds_grid_model::validate_snapshot;
 use serde_json::{Value, json};
 
@@ -122,6 +123,10 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     };
 
     let report = validate_snapshot(&package.snapshot);
+    let authored_revision = GridSession::open(package.snapshot.clone())
+        .current_revision()
+        .revision_id
+        .clone();
     let issues: Vec<Value> = report
         .issues
         .iter()
@@ -148,6 +153,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         "model": {
             "id": package.manifest.model.model_id.as_str(),
             "revision": package.manifest.model.model_revision,
+            "authored_revision": authored_revision.as_str(),
             "fingerprint": package.manifest.model.snapshot_fingerprint,
             "valid": total == 0,
             "issue_count": total,
