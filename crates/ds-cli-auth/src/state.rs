@@ -17,7 +17,14 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use zeroize::{Zeroize, Zeroizing};
 
+#[cfg(windows)]
+use crate::state_windows;
+
 const MAX_STATE_BYTES: u64 = 64 * 1024;
+#[cfg(windows)]
+const MAX_STORED_STATE_BYTES: u64 = 128 * 1024;
+#[cfg(not(windows))]
+const MAX_STORED_STATE_BYTES: u64 = MAX_STATE_BYTES;
 const CONTEXT_SCHEMA: &str = "ds-cli.project-context/v1";
 const LOCK_WAIT: Duration = Duration::from_secs(5);
 const LOCK_POLL: Duration = Duration::from_millis(25);
@@ -325,8 +332,10 @@ impl ProjectContextLease {
         project: &Project,
     ) -> Result<ProjectContext, Failure> {
         let context = ProjectContext::from_project(profile, uid, email, project);
-        let bytes = serde_json::to_vec(&context)
-            .map_err(|_| state_failure(StoreError::UnsafeOrUnreadable))?;
+        let bytes = Zeroizing::new(
+            serde_json::to_vec(&context)
+                .map_err(|_| state_failure(StoreError::UnsafeOrUnreadable))?,
+        );
         atomic_write(&self.path, &bytes).map_err(state_failure)?;
         Ok(context)
     }
@@ -340,6 +349,7 @@ impl ProjectContextLease {
         let Some(bytes) = protected_read(&self.path).map_err(state_failure)? else {
             return Ok(None);
         };
+        let bytes = Zeroizing::new(bytes);
         let context: ProjectContext = serde_json::from_slice(&bytes)
             .map_err(|_| state_failure(StoreError::UnsafeOrUnreadable))?;
         if !context.matches(profile, uid, email) {
@@ -371,6 +381,7 @@ impl ProjectContextLease {
         let Some(bytes) = protected_read(&lease.path).map_err(state_failure)? else {
             return Ok(None);
         };
+        let bytes = Zeroizing::new(bytes);
         let context: ProjectContext = serde_json::from_slice(&bytes)
             .map_err(|_| state_failure(StoreError::UnsafeOrUnreadable))?;
         if context.schema != CONTEXT_SCHEMA
@@ -398,6 +409,7 @@ impl ProjectContextLease {
         let Some(bytes) = protected_read(&self.path).map_err(state_failure)? else {
             return Ok(());
         };
+        let bytes = Zeroizing::new(bytes);
         let current: ProjectContext = serde_json::from_slice(&bytes)
             .map_err(|_| state_failure(StoreError::UnsafeOrUnreadable))?;
         if &current == expected {
@@ -479,11 +491,7 @@ fn context_paths(profile: &ClientProfile) -> Result<(PathBuf, PathBuf), Failure>
 fn state_root() -> Result<PathBuf, Failure> {
     #[cfg(windows)]
     {
-        return Err(Failure::unavailable(
-            "native_state_protection_unavailable",
-            "this Windows build has no DPAPI-backed native credential adapter",
-        )
-        .remedy("use a ds build that includes the Windows protected-state adapter"));
+        return state_windows::state_root().map_err(state_failure);
     }
     #[cfg(not(windows))]
     {
@@ -525,6 +533,21 @@ fn state_root() -> Result<PathBuf, Failure> {
     }
 }
 
+pub(crate) fn availability() -> ds_cli_contract::spec::Availability {
+    #[cfg(windows)]
+    let result = state_windows::probe();
+    #[cfg(not(windows))]
+    let result: Result<(), StoreError> = Ok(());
+    match result {
+        Ok(_) => ds_cli_contract::spec::Availability::Available,
+        Err(_) => ds_cli_contract::spec::Availability::unavailable(
+            "native_state_protection_unavailable",
+            "the protected native state adapter cannot safely initialize for this user",
+            "repair the current user's protected DS state root or reinstall this ds build",
+        ),
+    }
+}
+
 fn status_token(status: ProjectStatus) -> &'static str {
     match status {
         ProjectStatus::Active => "active",
@@ -559,30 +582,45 @@ fn protected_read(path: &Path) -> Result<Option<Vec<u8>>, StoreError> {
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
         Err(_) => return Err(StoreError::Unavailable),
     };
-    if metadata.file_type().is_symlink() || !metadata.is_file() || metadata.len() > MAX_STATE_BYTES
+    if metadata.file_type().is_symlink()
+        || !metadata.is_file()
+        || metadata.len() > MAX_STORED_STATE_BYTES
     {
         return Err(StoreError::UnsafeOrUnreadable);
     }
     validate_file_metadata(&metadata)?;
     let file = protected_open_read(path)?;
     let opened = file.metadata().map_err(|_| StoreError::Unavailable)?;
-    if !opened.is_file() || opened.len() > MAX_STATE_BYTES {
+    if !opened.is_file() || opened.len() > MAX_STORED_STATE_BYTES {
         return Err(StoreError::UnsafeOrUnreadable);
     }
     validate_file_metadata(&opened)?;
     let mut bytes = Vec::with_capacity(metadata.len() as usize);
     if file
-        .take(MAX_STATE_BYTES + 1)
+        .take(MAX_STORED_STATE_BYTES + 1)
         .read_to_end(&mut bytes)
         .is_err()
     {
         bytes.zeroize();
         return Err(StoreError::Unavailable);
     }
-    if bytes.len() as u64 > MAX_STATE_BYTES {
+    if bytes.len() as u64 > MAX_STORED_STATE_BYTES {
         bytes.zeroize();
         return Err(StoreError::UnsafeOrUnreadable);
     }
+    #[cfg(windows)]
+    {
+        let mut protected = Zeroizing::new(bytes);
+        let plaintext = state_windows::unprotect(path, &protected)?;
+        protected.zeroize();
+        if plaintext.len() as u64 > MAX_STATE_BYTES {
+            let mut plaintext = plaintext;
+            plaintext.zeroize();
+            return Err(StoreError::UnsafeOrUnreadable);
+        }
+        return Ok(Some(plaintext));
+    }
+    #[cfg(not(windows))]
     Ok(Some(bytes))
 }
 
@@ -599,14 +637,26 @@ fn atomic_write(path: &Path, bytes: &[u8]) -> Result<(), StoreError> {
         }
     }
     let temp = stage_path(path)?;
+    #[cfg(windows)]
+    let payload = state_windows::protect(path, bytes)?;
+    #[cfg(not(windows))]
+    let payload = bytes;
     let mut file = protected_create_new(&temp)?;
     let result = (|| {
-        file.write_all(bytes).map_err(|_| StoreError::Unavailable)?;
+        file.write_all(payload.as_ref())
+            .map_err(|_| StoreError::Unavailable)?;
         file.sync_all().map_err(|_| StoreError::Unavailable)?;
+        drop(file);
+        #[cfg(windows)]
+        state_windows::replace(&temp, path)?;
+        #[cfg(not(windows))]
         fs::rename(&temp, path).map_err(|_| StoreError::Unavailable)?;
         sync_dir(parent)
     })();
     if result.is_err() {
+        #[cfg(windows)]
+        let _ = state_windows::remove(&temp);
+        #[cfg(not(windows))]
         let _ = fs::remove_file(&temp);
     }
     result
@@ -628,6 +678,7 @@ fn cleanup_stage(path: &Path) -> Result<(), StoreError> {
     remove_and_sync(&stage_path(path)?)
 }
 
+#[cfg(unix)]
 fn remove_and_sync(path: &Path) -> Result<(), StoreError> {
     match fs::symlink_metadata(path) {
         Ok(metadata) => {
@@ -641,6 +692,15 @@ fn remove_and_sync(path: &Path) -> Result<(), StoreError> {
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
         Err(_) => Err(StoreError::Unavailable),
     }
+}
+
+#[cfg(windows)]
+fn remove_and_sync(path: &Path) -> Result<(), StoreError> {
+    let removed = state_windows::remove(path)?;
+    if removed {
+        sync_dir(path.parent().ok_or(StoreError::UnsafeOrUnreadable)?)?;
+    }
+    Ok(())
 }
 
 #[cfg(unix)]
@@ -677,8 +737,8 @@ fn secure_dir(path: &Path) -> Result<(), StoreError> {
 }
 
 #[cfg(windows)]
-fn secure_dir(_path: &Path) -> Result<(), StoreError> {
-    Err(StoreError::Unavailable)
+fn secure_dir(path: &Path) -> Result<(), StoreError> {
+    state_windows::ensure_directory(path)
 }
 
 #[cfg(unix)]
@@ -694,8 +754,8 @@ fn protected_create_new(path: &Path) -> Result<File, StoreError> {
 }
 
 #[cfg(windows)]
-fn protected_create_new(_path: &Path) -> Result<File, StoreError> {
-    Err(StoreError::Unavailable)
+fn protected_create_new(path: &Path) -> Result<File, StoreError> {
+    state_windows::create_new(path)
 }
 
 #[cfg(unix)]
@@ -709,8 +769,8 @@ fn protected_open_read(path: &Path) -> Result<File, StoreError> {
 }
 
 #[cfg(windows)]
-fn protected_open_read(_path: &Path) -> Result<File, StoreError> {
-    Err(StoreError::Unavailable)
+fn protected_open_read(path: &Path) -> Result<File, StoreError> {
+    state_windows::open_read(path)
 }
 
 #[cfg(unix)]
@@ -736,8 +796,8 @@ fn protected_open_lock(path: &Path) -> Result<File, StoreError> {
 }
 
 #[cfg(windows)]
-fn protected_open_lock(_path: &Path) -> Result<File, StoreError> {
-    Err(StoreError::Unavailable)
+fn protected_open_lock(path: &Path) -> Result<File, StoreError> {
+    state_windows::open_lock(path)
 }
 
 #[cfg(unix)]
@@ -755,7 +815,9 @@ fn validate_file_metadata(metadata: &fs::Metadata) -> Result<(), StoreError> {
 
 #[cfg(windows)]
 fn validate_file_metadata(_metadata: &fs::Metadata) -> Result<(), StoreError> {
-    Err(StoreError::Unavailable)
+    // Windows security properties are validated against the opened handle,
+    // after FILE_FLAG_OPEN_REPARSE_POINT prevents traversal.
+    Ok(())
 }
 
 #[cfg(unix)]
@@ -786,8 +848,8 @@ fn lock_exclusive_for(file: &File, wait: Duration, poll: Duration) -> Result<(),
 }
 
 #[cfg(windows)]
-fn lock_exclusive(_file: &File) -> Result<(), StoreError> {
-    Err(StoreError::Unavailable)
+fn lock_exclusive(file: &File) -> Result<(), StoreError> {
+    state_windows::lock_exclusive(file, LOCK_WAIT, LOCK_POLL)
 }
 
 #[cfg(unix)]
@@ -804,14 +866,55 @@ fn unlock(file: &File) -> Result<(), StoreError> {
 }
 
 #[cfg(windows)]
-fn unlock(_file: &File) -> Result<(), StoreError> {
-    Err(StoreError::Unavailable)
+fn unlock(file: &File) -> Result<(), StoreError> {
+    state_windows::unlock(file)
 }
 
+#[cfg(unix)]
 fn sync_dir(path: &Path) -> Result<(), StoreError> {
     File::open(path)
         .and_then(|file| file.sync_all())
         .map_err(|_| StoreError::Unavailable)
+}
+
+#[cfg(windows)]
+fn sync_dir(path: &Path) -> Result<(), StoreError> {
+    state_windows::sync_directory(path)
+}
+
+#[cfg(all(test, windows))]
+mod windows_tests {
+    use super::*;
+
+    #[test]
+    fn device_store_cas_is_dpapi_encrypted_and_durable() {
+        let key = format!("windows-cas-test-{}", std::process::id());
+        let first = b"pending-device-secret";
+        let second = b"durable-device-secret";
+        let mut store = NativeDeviceStore::open().expect("open Windows device store");
+        let (_, data_path, lock_path) = store.paths(&key).expect("bounded key");
+        store.acquire(&key).expect("acquire");
+        assert_eq!(store.load(&key).expect("empty load"), None);
+        store
+            .compare_and_swap(&key, None, Some(first))
+            .expect("initial CAS");
+        assert_eq!(store.load(&key).expect("first load"), Some(first.to_vec()));
+        let disk = Zeroizing::new(fs::read(&data_path).expect("encrypted disk state"));
+        assert!(!disk.windows(first.len()).any(|part| part == first));
+        store
+            .compare_and_swap(&key, Some(first), Some(second))
+            .expect("replacement CAS");
+        assert_eq!(
+            store.load(&key).expect("second load"),
+            Some(second.to_vec())
+        );
+        store
+            .compare_and_swap(&key, Some(second), None)
+            .expect("delete CAS");
+        store.release(&key).expect("release");
+        assert!(!data_path.exists());
+        state_windows::remove(&lock_path).expect("lock cleanup");
+    }
 }
 
 #[cfg(all(test, unix))]

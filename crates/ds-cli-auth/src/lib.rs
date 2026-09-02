@@ -9,6 +9,8 @@ pub mod device;
 pub mod link_approval;
 mod profile;
 mod state;
+#[cfg(windows)]
+mod state_windows;
 mod transport;
 
 use std::io::{self, BufRead, Read, Write};
@@ -387,7 +389,7 @@ pub static STATUS_COMMAND: Command = Command {
     }],
     refusals: STATUS_REFUSALS,
     reference: Some("docs/reference/auth.md"),
-    availability: profile::availability,
+    availability: native_availability,
 };
 
 pub static LOGIN_COMMAND: Command = Command {
@@ -409,7 +411,7 @@ pub static LOGIN_COMMAND: Command = Command {
     }],
     refusals: LOGIN_REFUSALS,
     reference: Some("docs/reference/auth.md"),
-    availability: profile::availability,
+    availability: native_availability,
 };
 
 pub static LOGOUT_COMMAND: Command = Command {
@@ -431,7 +433,7 @@ pub static LOGOUT_COMMAND: Command = Command {
     }],
     refusals: LOGOUT_REFUSALS,
     reference: Some("docs/reference/auth.md"),
-    availability: profile::availability,
+    availability: native_availability,
 };
 
 pub static PROJECT_LIST_COMMAND: Command = Command {
@@ -453,7 +455,7 @@ pub static PROJECT_LIST_COMMAND: Command = Command {
     }],
     refusals: PROJECT_LIST_REFUSALS,
     reference: Some("docs/reference/auth.md"),
-    availability: profile::availability,
+    availability: native_availability,
 };
 
 pub static PROJECT_USE_COMMAND: Command = Command {
@@ -475,7 +477,7 @@ pub static PROJECT_USE_COMMAND: Command = Command {
     }],
     refusals: PROJECT_USE_REFUSALS,
     reference: Some("docs/reference/auth.md"),
-    availability: profile::availability,
+    availability: native_availability,
 };
 
 pub static PROJECT_STATUS_COMMAND: Command = Command {
@@ -497,7 +499,7 @@ pub static PROJECT_STATUS_COMMAND: Command = Command {
     }],
     refusals: PROJECT_STATUS_REFUSALS,
     reference: Some("docs/reference/auth.md"),
-    availability: profile::availability,
+    availability: native_availability,
 };
 
 type NativeClient = Client<NativeTransport, NativeRefreshStore>;
@@ -869,10 +871,13 @@ impl HeadlessProjectForms {
     }
 }
 
-/// Availability of the exact packaged native profiles used by headless
-/// project commands.
+/// Availability of the exact packaged native profiles and the side-effect-free
+/// protected-state adapter probe used by headless commands.
 pub fn native_availability() -> ds_cli_contract::spec::Availability {
-    profile::availability()
+    match profile::availability() {
+        ds_cli_contract::spec::Availability::Available => state::availability(),
+        unavailable => unavailable,
+    }
 }
 
 fn restored_device_project(
@@ -2263,6 +2268,27 @@ pub fn render_project(data: &Value) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn every_native_state_auth_descriptor_uses_the_native_gate() {
+        let expected = native_availability as fn() -> ds_cli_contract::spec::Availability;
+        for command in [
+            &STATUS_COMMAND,
+            &LOGIN_COMMAND,
+            &LOGOUT_COMMAND,
+            &PROJECT_LIST_COMMAND,
+            &PROJECT_USE_COMMAND,
+            &PROJECT_STATUS_COMMAND,
+            &device::BEGIN_COMMAND,
+            &device::STATUS_COMMAND,
+            &device::COMPLETE_COMMAND,
+            &device::LIST_COMMAND,
+            &device::READ_COMMAND,
+            &device::REVOKE_COMMAND,
+        ] {
+            assert!(std::ptr::fn_addr_eq(command.availability, expected));
+        }
+    }
 
     #[test]
     fn mcp_child_cannot_open_the_hidden_prompt() {

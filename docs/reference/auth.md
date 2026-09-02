@@ -72,12 +72,22 @@ config, then an absolute `HOME` plus `.config`). Directories are owner-only,
 files are mode 0600, reads
 refuse symlinks/hard links/oversize data, writes are atomic and fsynced, and
 OS advisory locks serialize refresh rotation and context changes across
-processes. A crash-left plaintext stage has one destination-derived name and
-is removed only while the next process holds that destination's exact lease;
-unsafe stage links are refused untouched. Lock waits are bounded. The
-Linux-first slice explicitly refuses
-native state on Windows until a DPAPI plus `LockFileEx` adapter is shipped; it
-does not claim that ordinary plaintext files are protected there.
+processes. A crash-left stage has one destination-derived name and is removed
+only while the next process holds that destination's exact lease; unsafe stage
+links are refused untouched. Lock waits are bounded.
+
+On Windows, the state root is the current user's absolute LocalAppData
+directory plus `Data Solutions\\ds`. Refresh, device, and project-context
+bytes are encrypted by DPAPI in its current-user scope with UI forbidden. A
+versioned envelope and reproducible store/key entropy bind ciphertext to the
+opaque destination identity, which already contains lane and
+credential-audience separation where required. Reads and deletes use opened
+handles that refuse reparse points, directories, multiple hard links, and a
+non-current-user owner; `LockFileEx` serializes processes. Atomic replacement
+uses a same-directory encrypted stage, flushes it, then uses `ReplaceFileW`
+for an existing destination or a write-through `MoveFileExW` for first
+creation, followed by opened-handle destination and parent validation. No
+plaintext stage is written.
 
 `auth project list` refreshes all Active, Archived, and Testing buckets and
 emits a bounded projection (`--limit`, default 100, maximum 1000). `auth

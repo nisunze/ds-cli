@@ -260,3 +260,21 @@ pub const COMMON_REFUSALS: &[Refusal] = &[
     INVALID_DOCUMENT,
     MISSING_REQUIRED,
 ];
+
+#[cfg(test)]
+mod availability_tests {
+    use super::*;
+    use ds_cli_contract::spec::Availability;
+
+    #[test]
+    fn native_survey_descriptors_share_the_protected_state_gate() {
+        let expected = ds_cli_auth::native_availability as fn() -> Availability;
+        for command in [&entries::COMMAND, &changes::COMMAND, &create::COMMAND] {
+            assert!(std::ptr::fn_addr_eq(command.availability, expected));
+        }
+        assert!(!std::ptr::fn_addr_eq(
+            import::COMMAND.availability,
+            expected
+        ));
+    }
+}

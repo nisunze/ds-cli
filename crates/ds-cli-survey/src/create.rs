@@ -6,7 +6,7 @@ use std::path::Path;
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
-    Arg, Authority, Availability, Chapter, Command, Effect, Example, Execution, Refusal,
+    Arg, Authority, Chapter, Command, Effect, Example, Execution, Refusal,
 };
 use ds_cli_contract::{Context, Inputs};
 use ds_client_core::{
@@ -227,12 +227,8 @@ pub static COMMAND: Command = Command {
     }],
     refusals: REFUSALS,
     reference: Some("docs/reference/survey.md"),
-    availability: available,
+    availability: ds_cli_auth::native_availability,
 };
-
-fn available() -> Availability {
-    Availability::Available
-}
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     // The complete caller-controlled grammar, including the local file, is

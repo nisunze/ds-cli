@@ -133,7 +133,7 @@ pub const BEGIN_COMMAND: Command = Command {
     }],
     refusals: BEGIN_REFUSALS,
     reference: Some("docs/contracts/unified-identity.md"),
-    availability: profile::availability,
+    availability: super::native_availability,
 };
 
 pub const STATUS_COMMAND: Command = Command {
@@ -155,7 +155,7 @@ pub const STATUS_COMMAND: Command = Command {
     }],
     refusals: PENDING_REFUSALS,
     reference: Some("docs/contracts/unified-identity.md"),
-    availability: profile::availability,
+    availability: super::native_availability,
 };
 
 pub const COMPLETE_COMMAND: Command = Command {
@@ -177,7 +177,7 @@ pub const COMPLETE_COMMAND: Command = Command {
     }],
     refusals: PENDING_REFUSALS,
     reference: Some("docs/contracts/unified-identity.md"),
-    availability: profile::availability,
+    availability: super::native_availability,
 };
 
 pub const LIST_COMMAND: Command = Command {
@@ -199,7 +199,7 @@ pub const LIST_COMMAND: Command = Command {
     }],
     refusals: LINKED_REFUSALS,
     reference: Some("docs/contracts/unified-identity.md"),
-    availability: profile::availability,
+    availability: super::native_availability,
 };
 
 pub const READ_COMMAND: Command = Command {
@@ -221,7 +221,7 @@ pub const READ_COMMAND: Command = Command {
     }],
     refusals: LINKED_REFUSALS,
     reference: Some("docs/contracts/unified-identity.md"),
-    availability: profile::availability,
+    availability: super::native_availability,
 };
 
 pub const REVOKE_COMMAND: Command = Command {
@@ -243,7 +243,7 @@ pub const REVOKE_COMMAND: Command = Command {
     }],
     refusals: LINKED_REFUSALS,
     reference: Some("docs/contracts/unified-identity.md"),
-    availability: profile::availability,
+    availability: super::native_availability,
 };
 
 pub fn run_begin(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
