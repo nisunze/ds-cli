@@ -2709,13 +2709,18 @@ fn design_lv_project_export_refuses_an_existing_artifact_before_auth_or_desktop(
                 "path": "/api/v1/entries/mutate",
                 "operation": "create"
             },
+            "tiles": {
+                "method": "POST",
+                "path": "/api/v1/tiles",
+                "actions": ["status", "preflight", "generate"]
+            },
             "provenance": { "source_revision": "abc123", "descriptor_sha256": digest }
         })
     };
     std::fs::write(
         &profile_path,
         serde_json::to_vec(&json!({
-            "schema_version": "ds.native-client-profiles/v10",
+            "schema_version": "ds.native-client-profiles/v11",
             "development": true,
             "profiles": {
                 "stable": profile(

@@ -7,7 +7,8 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use ds_client_core::{
     ProjectFormEditorCall, ProjectFormsCall, ProjectListCall, RefreshCall, SignInCall,
     SolarSnapshotCall, SurveyEntriesChangesCall, SurveyEntriesSelectCall, SurveyEntryCreateCall,
-    SurveyQueryCall, TransformerContextCall, Transport, TransportError, TransportResponse,
+    SurveyQueryCall, TileCall, TransformerContextCall, Transport, TransportError,
+    TransportResponse,
 };
 use sha2::{Digest, Sha256};
 use zeroize::{Zeroize, Zeroizing};
@@ -348,6 +349,36 @@ impl Transport for NativeTransport {
         let response = result.map_err(classify)?;
         bounded(response, call.response_limit())
     }
+
+    fn tiles(&mut self, call: TileCall<'_>) -> Result<TransportResponse, TransportError> {
+        debug_assert_eq!(call.method(), "POST");
+        debug_assert_eq!(call.path(), "/api/v1/tiles");
+        debug_assert_eq!(call.timeout_seconds(), 120);
+        let (request_id, action_id) = correlation_headers();
+        let mut bearer = format!("Bearer {}", call.bearer_token());
+        let body = call.body();
+        let url = tiles_url(call.gateway_origin());
+        let result = ureq::post(url)
+            .header("Accept", call.content_type())
+            .header("Content-Type", call.content_type())
+            .header("X-App-Id", call.client_id())
+            .header("X-Request-Id", &request_id)
+            .header("X-DS-Action-Id", &action_id)
+            .header("X-User-Email", call.canonical_email())
+            .header("x-api-key", call.gateway_api_key())
+            .header("Authorization", &bearer)
+            .header("X-Forwarded-Authorization", &bearer)
+            .config()
+            .max_redirects(0)
+            .http_status_as_error(false)
+            .timeout_connect(Some(CONNECT_TIMEOUT))
+            .timeout_global(Some(Duration::from_secs(call.timeout_seconds())))
+            .build()
+            .send(body.as_bytes());
+        bearer.zeroize();
+        let response = result.map_err(classify)?;
+        bounded(response, call.response_limit())
+    }
 }
 
 fn transformer_context_url(origin: &str) -> String {
@@ -376,6 +407,10 @@ fn survey_entries_changes_url(origin: &str) -> String {
 
 fn survey_entry_create_url(origin: &str) -> String {
     format!("{origin}{}", ds_client_core::SURVEY_ENTRY_CREATE_PATH)
+}
+
+fn tiles_url(origin: &str) -> String {
+    format!("{origin}{}", ds_client_core::TILES_PATH)
 }
 
 fn bounded(
@@ -560,5 +595,16 @@ mod tests {
             ds_client_core::SURVEY_ENTRY_CREATE_RESPONSE_LIMIT,
             1024 * 1024
         );
+    }
+
+    #[test]
+    fn tiles_wire_target_and_limits_are_fixed() {
+        assert_eq!(
+            tiles_url("https://fixture.ue.gateway.dev"),
+            "https://fixture.ue.gateway.dev/api/v1/tiles"
+        );
+        assert_eq!(ds_client_core::TILES_METHOD, "POST");
+        assert_eq!(ds_client_core::TILE_TIMEOUT_SECONDS, 120);
+        assert_eq!(ds_client_core::TILE_RESPONSE_LIMIT, 32 * 1024 * 1024);
     }
 }

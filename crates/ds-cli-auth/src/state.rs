@@ -924,7 +924,7 @@ mod tests {
         CLIENT_PROFILE_SCHEMA, Client, ClientProfileInput, DeploymentLane, ProjectFormEditorCall,
         ProjectFormsCall, ProjectListCall, RefreshCall, SignInCall, SolarSnapshotCall,
         SurveyEntriesChangesCall, SurveyEntriesSelectCall, SurveyEntryCreateCall, SurveyQueryCall,
-        TransformerContextCall, Transport, TransportError, TransportResponse,
+        TileCall, TransformerContextCall, Transport, TransportError, TransportResponse,
     };
     use std::os::unix::fs::{PermissionsExt, symlink};
 
@@ -1019,6 +1019,10 @@ mod tests {
         ) -> Result<TransportResponse, TransportError> {
             Err(TransportError::Unreachable)
         }
+
+        fn tiles(&mut self, _call: TileCall<'_>) -> Result<TransportResponse, TransportError> {
+            Err(TransportError::Unreachable)
+        }
     }
 
     fn profile() -> ClientProfile {
@@ -1067,6 +1071,13 @@ mod tests {
             survey_entry_create_method: "POST".to_owned(),
             survey_entry_create_path: "/api/v1/entries/mutate".to_owned(),
             survey_entry_create_operation: "create".to_owned(),
+            tiles_method: "POST".to_owned(),
+            tiles_path: "/api/v1/tiles".to_owned(),
+            tiles_actions: vec![
+                "status".to_owned(),
+                "preflight".to_owned(),
+                "generate".to_owned(),
+            ],
         })
         .unwrap()
     }

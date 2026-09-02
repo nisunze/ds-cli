@@ -84,6 +84,7 @@ struct Entry {
     survey_entries_select: SurveyEntriesSelect,
     survey_entries_changes: SurveyEntriesChanges,
     survey_entry_create: SurveyEntryCreate,
+    tiles: Tiles,
     provenance: Provenance,
 }
 
@@ -175,6 +176,14 @@ struct SurveyEntryCreate {
     method: String,
     path: String,
     operation: String,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Tiles {
+    method: String,
+    path: String,
+    actions: Vec<String>,
 }
 
 #[derive(Deserialize)]
@@ -342,6 +351,9 @@ fn load_path(
         survey_entry_create_method: entry.survey_entry_create.method,
         survey_entry_create_path: entry.survey_entry_create.path,
         survey_entry_create_operation: entry.survey_entry_create.operation,
+        tiles_method: entry.tiles.method,
+        tiles_path: entry.tiles.path,
+        tiles_actions: entry.tiles.actions,
     })
     .map_err(|_| unsafe_catalog())
 }
@@ -400,6 +412,7 @@ mod tests {
                     "survey_entries_select": { "method": "POST", "path": "/api/v1/survey/entries/select" },
                     "survey_entries_changes": { "method": "POST", "path": "/api/v1/survey/entries/changes" },
                     "survey_entry_create": { "method": "POST", "path": "/api/v1/entries/mutate", "operation": "create" },
+                    "tiles": { "method": "POST", "path": "/api/v1/tiles", "actions": ["status", "preflight", "generate"] },
                     "provenance": { "source_revision": "abc123", "descriptor_sha256": "a".repeat(64) }
                 },
                 "canary": {
@@ -420,6 +433,7 @@ mod tests {
                     "survey_entries_select": { "method": "POST", "path": "/api/v1/survey/entries/select" },
                     "survey_entries_changes": { "method": "POST", "path": "/api/v1/survey/entries/changes" },
                     "survey_entry_create": { "method": "POST", "path": "/api/v1/entries/mutate", "operation": "create" },
+                    "tiles": { "method": "POST", "path": "/api/v1/tiles", "actions": ["status", "preflight", "generate"] },
                     "provenance": { "source_revision": "def456", "descriptor_sha256": "b".repeat(64) }
                 }
             }
@@ -546,7 +560,7 @@ mod tests {
     }
 
     #[test]
-    fn v10_fixed_calls_are_required_and_exact() {
+    fn v11_fixed_calls_are_required_and_exact() {
         let mut missing: serde_json::Value = serde_json::from_slice(&fixture(false)).unwrap();
         missing["profiles"]["stable"]
             .as_object_mut()
@@ -569,6 +583,24 @@ mod tests {
 
         let mut escaped: serde_json::Value = serde_json::from_slice(&fixture(false)).unwrap();
         escaped["profiles"]["stable"]["transformer_context"]["path"] = json!("/api/v1/anything");
+        let escaped = serde_json::to_vec(&escaped).unwrap();
+        with_fixture(&escaped, |path| {
+            assert_eq!(
+                load_path(
+                    path,
+                    Lane::Stable,
+                    false,
+                    format!("{:x}", Sha256::digest(&escaped))
+                )
+                .unwrap_err()
+                .code(),
+                "native_profile_unsafe"
+            );
+        });
+
+        let mut escaped: serde_json::Value = serde_json::from_slice(&fixture(false)).unwrap();
+        escaped["profiles"]["stable"]["tiles"]["actions"] =
+            json!(["status", "preflight", "generate", "delete"]);
         let escaped = serde_json::to_vec(&escaped).unwrap();
         with_fixture(&escaped, |path| {
             assert_eq!(

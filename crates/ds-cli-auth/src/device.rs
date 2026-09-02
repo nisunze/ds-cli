@@ -17,9 +17,9 @@ use ds_client_core::{
     ProjectFormsSnapshot, SecretRequestBody, SolarSnapshot, StoreError, SurveyEntriesChanges,
     SurveyEntriesChangesRequest, SurveyEntriesSelectRequest, SurveyEntriesSelection,
     SurveyEntryCreateReceipt, SurveyEntryCreateRequest, SurveyQueryRequest, SurveyQueryResult,
-    TransformerContext, TransportError, TransportResponse, device_secret_json, parse_device_begin,
-    parse_device_list, parse_device_read, parse_device_refresh, parse_device_revoke,
-    parse_device_status,
+    TileOperationResult, TilePreflight, TileType, TransformerContext, TransportError,
+    TransportResponse, device_secret_json, parse_device_begin, parse_device_list,
+    parse_device_read, parse_device_refresh, parse_device_revoke, parse_device_status,
 };
 use serde_json::{Value, json};
 use zeroize::{Zeroize, Zeroizing};
@@ -545,6 +545,28 @@ impl DeviceSession {
         request: &SurveyEntryCreateRequest,
     ) -> Result<SurveyEntryCreateReceipt, ClientError> {
         fixed_device_call!(self, survey_entry_create, project, request)
+    }
+    pub fn tile_status(
+        &mut self,
+        project: &str,
+        tile_type: TileType,
+    ) -> Result<TileOperationResult, ClientError> {
+        fixed_device_call!(self, tile_status, project, tile_type)
+    }
+    pub fn tile_preflight(
+        &mut self,
+        project: &str,
+        tile_type: TileType,
+    ) -> Result<TilePreflight, ClientError> {
+        fixed_device_call!(self, tile_preflight, project, tile_type)
+    }
+    pub fn tile_generate(
+        &mut self,
+        project: &str,
+        tile_type: TileType,
+        force: bool,
+    ) -> Result<TileOperationResult, ClientError> {
+        fixed_device_call!(self, tile_generate, project, tile_type, force)
     }
 }
 
