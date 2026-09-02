@@ -30,7 +30,7 @@ pub static COMMAND: Command = Command {
         .default("100"),
         DESCRIPTOR_ARG,
     ],
-    output: "Project id, whether the map is open, canonical layer count and bounded `layers`; plus `runtime_layer_count` and loaded `runtime_layers`, each with logical root, authority, source id, row/mapped/table-only counts, freshness, and only-present Point/LineString/Polygon children.",
+    output: "Project id, whether the map is open, canonical layer count and bounded `layers`; plus `runtime_layer_count` and loaded `runtime_layers`, each with logical root, authority, source id, row/mapped/table-only counts, freshness, and only-present Point/LineString/Polygon children whose `styleState` is pending, ready, or error.",
     examples: &[
         Example {
             command: "ds map layer list --output json",
@@ -120,9 +120,10 @@ pub fn render(data: &Value) -> String {
         ));
         for child in root["children"].as_array().into_iter().flatten() {
             out.push_str(&format!(
-                "    {:<12} {:>6}  {}\n",
+                "    {:<12} {:>6}  {:<8} {}\n",
                 child["geometry"].as_str().unwrap_or("?"),
                 child["featureCount"].as_u64().unwrap_or(0),
+                child["styleState"].as_str().unwrap_or("?"),
                 child["styleRef"].as_str().unwrap_or("—")
             ));
         }
@@ -147,12 +148,13 @@ mod tests {
                 "featureCount": 2,
                 "nonGeometricCount": 3,
                 "freshness": "fresh",
-                "children": [{ "geometry": "Point", "featureCount": 2, "styleRef": "ud/personal_notes_point" }]
+                "children": [{ "geometry": "Point", "featureCount": 2, "styleState": "ready", "styleRef": "ud/personal_notes_point" }]
             }]
         }));
         assert!(text.contains("1 canonical layers"));
         assert!(text.contains("1 loaded runtime roots (read-only)"));
         assert!(text.contains("personal_notes"));
         assert!(text.contains("ud/personal_notes_point"));
+        assert!(text.contains("ready"));
     }
 }

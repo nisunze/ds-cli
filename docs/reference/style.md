@@ -23,7 +23,9 @@ count, runtime ids, loaded timestamp, and freshness. `style read` and every
 guided plan/set command then use that same ref and safe scalar properties;
 private markdown, task descriptions, and project-record bodies never enter
 MapLibre or the CLI receipt. A Notes or PM ref absent from `style list` is not
-currently loaded—do not guess a child for an absent geometry.
+currently ready—inspect `ds map layer list --output json` to distinguish an
+absent geometry from `styleState: pending|error`, and never guess or publish
+either one.
 
 ## The three axes of a document
 

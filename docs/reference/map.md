@@ -106,8 +106,10 @@ logical roots: account-private `personal_notes` and project-owned
 mapped count, table-only/non-geometric count, authority, project (when
 applicable), and a freshness receipt. Its `children` contains only geometries
 actually present: `Point`, `LineString`, and single-ring `Polygon`, never an
-invented fourth geometry and never an empty child. Each child carries the
-same runtime id and governed style ref used by Style Center and `ds style`.
+invented fourth geometry and never an empty child. Each child carries its
+style hydration state plus the same runtime id and governed style ref used by
+Style Center and `ds style`. Only `styleState: ready` is renderable or
+saveable; `pending` and `error` are explicit refusals, never local defaults.
 Feature rows and private note/record bodies never cross this list receipt.
 
 `--refresh` refreshes canonical layer configuration only. It does not silently
