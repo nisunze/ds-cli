@@ -96,7 +96,11 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         "missing_individual_artifact_causes": receipt
             .missing_individual_artifact_causes()
             .iter()
-            .map(|(name, cause)| json!({"name": name, "cause": cause}))
+            .map(|cause| json!({
+                "transformer": cause.transformer(),
+                "code": cause.code(),
+                "detail": cause.detail(),
+            }))
             .collect::<Vec<_>>(),
         "errors": receipt.errors(),
         "registry_write_failed": receipt.registry_write_failed(),
@@ -133,8 +137,11 @@ pub fn render(data: &Value) -> String {
         for cause in causes {
             out.push_str(&format!(
                 "  missing {:<28} {}\n",
-                cause["name"].as_str().unwrap_or("?"),
-                cause["cause"].as_str().unwrap_or("?"),
+                cause["transformer"].as_str().unwrap_or("?"),
+                cause["detail"]
+                    .as_str()
+                    .or_else(|| cause["code"].as_str())
+                    .unwrap_or("?"),
             ));
         }
     }

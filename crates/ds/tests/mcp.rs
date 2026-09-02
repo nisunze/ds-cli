@@ -1018,7 +1018,10 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
             // The broad Grid profile carries the existing file/report tools
             // plus the five local-lifecycle/publication leaves. Agents that
             // need only that workflow use `grid-local-model` below.
-            "grid" => 18,
+            // The fifth local model lifecycle leaf made this 17 command
+            // tools plus the two mandatory bootstrap tools. The narrower
+            // grid-local-model profile remains available for focused agents.
+            "grid" => 19,
             "survey-projects" => 18,
             "design-edit" => 23,
             _ => 16,
@@ -1090,6 +1093,8 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
                         && matches!(
                             name.as_str(),
                             "design_features_select"
+                                | "design_known-columns_list"
+                                | "design_known-columns_set"
                                 | "design_lv_project-export"
                                 | "design_lv_process"
                         ))

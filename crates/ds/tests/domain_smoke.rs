@@ -2362,6 +2362,8 @@ fn background_project_operations_are_headless_and_map_independent() {
             .unwrap_or_default()
             .to_string()
     };
+    // Canonical aliases are de-duplicated before the request. Reaching the
+    // auth gate proves the duplicate did not become an ambiguous receipt.
     assert_eq!(
         headless(&[
             "design",
@@ -2390,7 +2392,7 @@ fn background_project_operations_are_headless_and_map_independent() {
             "--output",
             "json",
         ]),
-        "invalid_transformer_scope"
+        "headless_signed_out"
     );
     assert_eq!(
         headless(&[

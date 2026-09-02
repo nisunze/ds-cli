@@ -30,6 +30,7 @@ pub const PROFILE_IDS: &[&str] = &[
     "solar-run",
     "solar-delivery",
     "operations",
+    "project-operations",
 ];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -138,10 +139,10 @@ impl Profile {
         match self {
             // The broad Grid chapter router now also carries the paired
             // application's local model lifecycle and its one project
-            // publication. Sixteen leaves plus both bootstrap tools; the
+            // publication. Seventeen leaves plus both bootstrap tools; the
             // narrow `grid-local-model` profile exists for an agent that
             // wants only that workflow.
-            Self::Grid => 18,
+            Self::Grid => 19,
             // Query, spatial selection, fenced changes, and governed
             // single-entry create belong to the same selected-project Survey
             // workflow. The count includes both bootstrap tools.

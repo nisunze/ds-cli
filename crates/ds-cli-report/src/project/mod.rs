@@ -176,8 +176,8 @@ refusal!(
 refusal!(
     INVALID_SCOPE,
     "invalid_transformer_scope",
-    "a --transformer name is blank, untrimmed, repeated, or over 200 characters, or more than 500 were named",
-    "pass --transformer once per exact transformer name, or omit it for every active transformer"
+    "a --transformer name is blank, untrimmed, or over 200 characters, or more than 500 were named",
+    "pass bounded transformer names, or omit them for every active transformer; canonical aliases are de-duplicated"
 );
 refusal!(
     CONFIRMATION_REQUIRED,
