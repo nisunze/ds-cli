@@ -14,6 +14,17 @@ Second-dimension modules the UI uses and the same governed save payload its
 That is why there is no `--project` flag: the active project is the one the
 application has open.
 
+Account-private Notes and project-owned Project Work are runtime roots rather
+than backend configuration layers. Once a root is loaded, `style list` exposes
+only its geometry children that are actually present, under stable
+`ud/personal_notes_*` or `ud/project_work_*` refs. The row's `runtime` receipt
+names the logical root, authority, mixed-geometry source identity, feature
+count, runtime ids, loaded timestamp, and freshness. `style read` and every
+guided plan/set command then use that same ref and safe scalar properties;
+private markdown, task descriptions, and project-record bodies never enter
+MapLibre or the CLI receipt. A Notes or PM ref absent from `style list` is not
+currently loaded—do not guess a child for an absent geometry.
+
 ## The three axes of a document
 
 A style document carries three independent axes, and every command belongs to

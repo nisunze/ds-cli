@@ -25,6 +25,15 @@ GeoJSON keys, or an id remembered from another project. Review the complete
 set of overrides, then use `--yes`; the renderer still preserves its safe
 global/reference and geometry stack bands.
 
+The same list may also return read-only `runtime_layers` for the two loaded
+working-data roots: account-private `personal_notes` and project-owned
+`project_work`. Treat each root's `sourceId`, authority and freshness as one
+receipt. Its children are only the present Point, LineString and Polygon
+geometries; use their `styleRef` with `ds style`, but never pass a runtime root
+or child id to `map layer reorder`. Table-only rows are counted honestly and
+their bodies are intentionally absent. `--refresh` refreshes canonical layer
+configuration, not these runtime roots.
+
 Remote overlays are desktop-local references in IndexedDB, not project data.
 `add` accepts HTTP(S) XYZ templates containing all of `{z}`, `{x}`, and `{y}`
 or raster PMTiles archives; it refuses embedded credentials. Vector PMTiles

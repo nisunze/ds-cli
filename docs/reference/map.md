@@ -96,11 +96,24 @@ tile outputs have separate owners:
 | `map draw/remove` | current map session | yes |
 | `tile add/remove` | governed project tile catalogue | no |
 
-`map layer list` reports both canonical config ids and runtime MapLibre ids.
-Only the canonical `id` is accepted by `map layer reorder`; runtime ids may be
-suffixed to avoid collisions and are never stable ordering keys. Reordering is
-a confirmed project write and the renderer continues to preserve its global
-context and geometry safety bands.
+`map layer list` keeps canonical configuration and ephemeral working data in
+separate arrays. Only `layers[].id` is accepted by `map layer reorder`;
+`runtime_layers` is read-only discovery and is never an ordering input.
+
+When loaded in the paired application, runtime discovery has exactly two
+logical roots: account-private `personal_notes` and project-owned
+`project_work`. Each reports one stable mixed-geometry `sourceId`, row count,
+mapped count, table-only/non-geometric count, authority, project (when
+applicable), and a freshness receipt. Its `children` contains only geometries
+actually present: `Point`, `LineString`, and single-ring `Polygon`, never an
+invented fourth geometry and never an empty child. Each child carries the
+same runtime id and governed style ref used by Style Center and `ds style`.
+Feature rows and private note/record bodies never cross this list receipt.
+
+`--refresh` refreshes canonical layer configuration only. It does not silently
+reload Notes or PM, and listing loaded runtime roots does not invoke the broad
+project layer refresh. Reordering remains a confirmed project write and the
+renderer preserves its global context and geometry safety bands.
 
 Third-party overlays accept HTTP(S) XYZ templates with `{z}`, `{x}`, and `{y}`
 or raster PMTiles archives. They are local references, not uploads and not

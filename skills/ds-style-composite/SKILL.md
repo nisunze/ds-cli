@@ -29,6 +29,10 @@ Choosing wrong is the expensive mistake, because two of them cost a field.
 1. Find the ref: `ds style list --query <layer> --output json`. Tiled design
    layers are the `_vt` refs (`target: design_vt`); GeoJSON design layers are
    the bare `master/<layer>` refs. Style the one the user is looking at.
+   For a loaded Notes or Project Work root, choose only a ref listed under its
+   `runtime` receipt (`ud/personal_notes_*` or `ud/project_work_*`). The receipt's
+   source id, authority and freshness must match the map-layer receipt; never
+   guess a Point/LineString/Polygon child that is not present.
 2. Read it: `ds style read --ref <ref> --output json`. It reports the layer
    type, the fields, `.data.onMap.types` and the channels this layer offers.
 3. `plan` with the flags you intend, read the result back to the user, then
