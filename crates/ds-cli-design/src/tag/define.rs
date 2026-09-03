@@ -99,6 +99,49 @@ const MAX_LENGTH_ARG: Arg = Arg {
     summary: "Text limit (1-500). Omit for the server default of 500.",
 };
 
+/// A project's OWN hierarchy. `management` is deliberately not authorable
+/// here: only a governed authority creates a system definition, through its own
+/// action, so this door always writes `project` management.
+const PARENT_DEFINITION_ARG: Arg = Arg {
+    name: "parent-definition",
+    kind: ArgKind::Value,
+    value: "<definition-id>",
+    required: false,
+    default: None,
+    choices: &[],
+    summary: "Same-project parent in an explicit hierarchy. Every value then needs an id and a parent id.",
+};
+
+const SEMANTIC_NAMESPACE_ARG: Arg = Arg {
+    name: "semantic-namespace",
+    kind: ArgKind::Value,
+    value: "<namespace>",
+    required: false,
+    default: None,
+    choices: &[],
+    summary: "Stable namespace for this definition's role, e.g. administrative.",
+};
+
+const SEMANTIC_KEY_ARG: Arg = Arg {
+    name: "semantic-key",
+    kind: ArgKind::Value,
+    value: "<role>",
+    required: false,
+    default: None,
+    choices: &[],
+    summary: "Jurisdiction-neutral role, e.g. country or admin_level_1. Requires --semantic-namespace.",
+};
+
+const JURISDICTION_ARG: Arg = Arg {
+    name: "jurisdiction",
+    kind: ArgKind::Value,
+    value: "<code>",
+    required: false,
+    default: None,
+    choices: &[],
+    summary: "ISO 3166-1 alpha-2 code, optionally with a governed subdivision suffix.",
+};
+
 const DESCRIPTION_ARG: Arg = Arg {
     name: "description",
     kind: ArgKind::Value,
@@ -141,6 +184,10 @@ copy no longer says what that exact template version says.",
         MAX_ARG,
         MAX_LENGTH_ARG,
         DESCRIPTION_ARG,
+        PARENT_DEFINITION_ARG,
+        SEMANTIC_NAMESPACE_ARG,
+        SEMANTIC_KEY_ARG,
+        JURISDICTION_ARG,
         DESCRIPTOR_ARG,
     ],
     output: "The project, definition id, name, value type, input control, constraints, cardinality, version and stored exact-case choice vocabulary.",
@@ -231,6 +278,18 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             arguments.insert(flag.into(), json!(value));
         }
     }
+    // Hyphenated on the wire exactly as they are on the flag, so the adapter
+    // contract and the command surface cannot drift apart.
+    for flag in [
+        "parent-definition",
+        "semantic-namespace",
+        "semantic-key",
+        "jurisdiction",
+    ] {
+        if let Some(value) = inputs.value(flag) {
+            arguments.insert(flag.into(), json!(value));
+        }
+    }
     let descriptor = crate::paired(inputs.value("desktop-descriptor"))?;
     crate::invoke(
         &descriptor,
@@ -262,14 +321,29 @@ pub fn render(data: &Value) -> String {
         .flatten()
         .filter_map(Value::as_str)
         .collect();
-    format!(
+    let mut out = format!(
         "{} \"{}\" ({}/{}, {}) = {} · v{}\n",
         data["definition"].as_str().unwrap_or("?"),
         data["name"].as_str().unwrap_or("?"),
-        data["value_type"].as_str().unwrap_or("choice"),
-        data["input_control"].as_str().unwrap_or("?"),
+        data["valueType"].as_str().unwrap_or("choice"),
+        data["inputControl"].as_str().unwrap_or("?"),
         data["cardinality"].as_str().unwrap_or("?"),
         values.join(", "),
         data["version"].as_u64().unwrap_or(0),
-    )
+    );
+    if let Some(parent) = data["parentDefinition"].as_str() {
+        out.push_str(&format!("  under {parent}\n"));
+    }
+    if let Some(key) = data["semanticKey"].as_str() {
+        out.push_str(&format!(
+            "  role {}/{}{}\n",
+            data["semanticNamespace"].as_str().unwrap_or("?"),
+            key,
+            match data["jurisdiction"].as_str() {
+                Some(code) => format!(" · {code}"),
+                None => String::new(),
+            },
+        ));
+    }
+    out
 }

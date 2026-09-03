@@ -3213,6 +3213,82 @@ fn design_validates_its_own_inputs_before_it_opens_the_bridge() {
 }
 
 #[test]
+fn unified_tagging_commands_validate_their_own_inputs_before_the_bridge() {
+    // The grouping purpose is a CLOSED vocabulary. A consumer with a private
+    // grouping rule is what this contract removes, so an invented purpose is
+    // refused here rather than reaching a server that would refuse it anyway.
+    assert_eq!(
+        refusal(&[
+            "design",
+            "consumer-grouping",
+            "read",
+            "--purpose",
+            "district_sector",
+            "--output",
+            "json",
+        ]),
+        // The closed set is the argument's declared `choices`, enforced by the
+        // parser. A second runtime check here would be one more place to drift.
+        "invalid_choice",
+        "a purpose outside the closed set must be refused by the parser"
+    );
+    // Both real purposes get past local validation and reach the desktop, which
+    // owns the plan. Whether this machine has one paired decides WHICH pairing
+    // refusal comes back, so the assertion is that the bridge was opened at all.
+    for purpose in ["solar_report", "report_archive"] {
+        let code = refusal(&[
+            "design",
+            "consumer-grouping",
+            "read",
+            "--purpose",
+            purpose,
+            "--output",
+            "json",
+        ]);
+        assert!(
+            code.starts_with("desktop_"),
+            "`{purpose}` is a real purpose and must reach the paired project, got {code}"
+        );
+    }
+
+    // The enrichment bound is one transaction's write budget: 50 transformers
+    // times six administrative levels plus the definition upserts and the audit
+    // row. An over-large batch is refused locally, not by a rejected write.
+    let over_enrichment = (0..(ds_cli_design::tag::enrich::MAX_ENRICHMENT_TRANSFORMERS + 1))
+        .map(|index| format!("t{index}"))
+        .collect::<Vec<_>>()
+        .join(",");
+    assert_eq!(
+        refusal(&[
+            "design",
+            "tag",
+            "enrich-preview",
+            "--transformers",
+            &over_enrichment,
+            "--output",
+            "json",
+        ]),
+        "too_many_values",
+        "an over-large enrichment must be refused locally, not by a rejected write"
+    );
+    // A set within the bound reaches the paired project, which owns the governed
+    // location evidence. `ds` resolves no administrative anything.
+    let code = refusal(&[
+        "design",
+        "tag",
+        "enrich-preview",
+        "--transformers",
+        "kigali_a,kigali_b",
+        "--output",
+        "json",
+    ]);
+    assert!(
+        code.starts_with("desktop_"),
+        "the enrichment plan is the paired project's answer, never the CLI's, got {code}"
+    );
+}
+
+#[test]
 fn a_projection_covers_a_whole_project_where_a_batch_covers_one_transaction() {
     // A live project already carries 202 transformers. Bounding the export at
     // the batch's 200 would split the one report it exists to serve into two
@@ -3410,7 +3486,7 @@ fn every_design_command_is_discoverable_without_the_desktop_installed() {
     let commands = index["commands"].as_array().expect("commands");
     assert_eq!(
         commands.len(),
-        33,
+        37,
         "the design domain should expose its whole family: {commands:?}"
     );
     for command in commands {
@@ -3556,6 +3632,12 @@ fn design_collaboration_is_a_complete_headless_project_surface() {
         "design.group.export",
         "design.consumer-grouping.preview",
         "design.consumer-grouping.apply",
+        "design.consumer-grouping.read",
+        "design.consumer-grouping.archive",
+        // Governed administrative location: the preview plans, the apply
+        // commits exactly that plan.
+        "design.tag.enrich-preview",
+        "design.tag.enrich-apply",
         "design.comment.list",
         "design.comment.read",
         "design.comment.post",
@@ -3588,6 +3670,12 @@ fn design_collaboration_is_a_complete_headless_project_surface() {
         "design.group.apply",
         "design.group.unassign",
         "design.consumer-grouping.apply",
+        // Archiving a plan retires it; reading one does not.
+        "design.consumer-grouping.archive",
+        // The enrichment preview is a read for the same reason every other
+        // preview here is: it holds no write and works on a project that
+        // accepts no changes.
+        "design.tag.enrich-apply",
     ]
     .into_iter()
     .collect();
@@ -3735,6 +3823,24 @@ fn design_collaboration_is_a_complete_headless_project_surface() {
                     "design",
                     "consumer-grouping",
                     "apply",
+                    "--transformers",
+                    "T-smoke",
+                    "--digest",
+                    "digest-smoke",
+                ],
+                "design.consumer-grouping.archive" => {
+                    vec![
+                        "design",
+                        "consumer-grouping",
+                        "archive",
+                        "--purpose",
+                        "report_archive",
+                    ]
+                }
+                "design.tag.enrich-apply" => vec![
+                    "design",
+                    "tag",
+                    "enrich-apply",
                     "--transformers",
                     "T-smoke",
                     "--digest",

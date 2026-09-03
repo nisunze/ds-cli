@@ -1423,12 +1423,16 @@ fn every_design_collaboration_command_has_one_closed_operation_owner_and_exact_a
             "`{}` must have exactly one frontend handler",
             operation.operation
         );
-        let contract = operation_contract(&app.design_collaboration, operation.operation);
+        // Presence, not non-emptiness: `design.known-columns.list` takes no
+        // arguments and its contract is legitimately `[]`. Asserting the
+        // extracted text was non-empty made a zero-argument operation
+        // indistinguishable from a missing one.
         assert!(
-            !contract.is_empty(),
+            has_operation_contract(&app.design_collaboration, operation.operation),
             "`{}` has no typed design-collaboration adapter contract",
             operation.operation
         );
+        let contract = operation_contract(&app.design_collaboration, operation.operation);
         // Exact, not a subset: an argument the adapter accepts but `ds design`
         // never sends is a key nothing validates, and one `ds design` sends
         // that the adapter rejects is a command that cannot work.

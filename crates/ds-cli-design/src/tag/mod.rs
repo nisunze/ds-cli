@@ -2,6 +2,7 @@
 //!
 //! ```text
 //!   list → define | set
+//!   enrich-preview → enrich-apply       (governed administrative location)
 //! ```
 //!
 //! A definition is a closed value type, compatible input control, constraints,
@@ -13,6 +14,7 @@
 //! or coerces a type.
 
 pub mod define;
+pub mod enrich;
 pub mod list;
 pub mod query;
 pub mod set;
