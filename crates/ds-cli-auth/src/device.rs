@@ -1,8 +1,15 @@
 //! Native DS device authorization and inventory host.
 
+#[cfg(unix)]
 use std::fs::File;
+#[cfg(unix)]
 use std::io::Read;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
+#[cfg(windows)]
+use windows_sys::Win32::Security::Cryptography::{
+    BCRYPT_USE_SYSTEM_PREFERRED_RNG, BCryptGenRandom,
+};
 
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use ds_cli_contract::spec::{
@@ -760,7 +767,35 @@ fn random_bytes<const N: usize>() -> Result<[u8; N], Failure> {
             })?;
         Ok(bytes)
     }
-    #[cfg(not(unix))]
+    #[cfg(windows)]
+    {
+        let length = u32::try_from(N).map_err(|_| {
+            Failure::unavailable(
+                "device_rng_unavailable",
+                "the requested cryptographic random value is too large",
+            )
+        })?;
+        // SAFETY: a null algorithm handle is required with
+        // BCRYPT_USE_SYSTEM_PREFERRED_RNG; `bytes` is writable for exactly
+        // `length` bytes and remains alive for the duration of the call.
+        let status = unsafe {
+            BCryptGenRandom(
+                std::ptr::null_mut(),
+                bytes.as_mut_ptr(),
+                length,
+                BCRYPT_USE_SYSTEM_PREFERRED_RNG,
+            )
+        };
+        if status != 0 {
+            bytes.zeroize();
+            return Err(Failure::unavailable(
+                "device_rng_unavailable",
+                "the operating system cryptographic RNG is unavailable",
+            ));
+        }
+        Ok(bytes)
+    }
+    #[cfg(not(any(unix, windows)))]
     {
         Err(Failure::unavailable(
             "device_rng_unavailable",
