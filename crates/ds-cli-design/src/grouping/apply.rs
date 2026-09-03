@@ -14,6 +14,7 @@ pub static COMMAND: Command = Command {
     authority: Authority::Project,
     execution: Execution::Sync,
     args: &[
+        crate::grouping::PURPOSE_ARG,
         crate::group::PROJECTION_TRANSFORMERS_ARG,
         crate::group::PROJECTION_DEFINITION_IDS_ARG,
         crate::group::DIGEST_ARG,
@@ -27,7 +28,7 @@ pub static COMMAND: Command = Command {
 };
 pub fn run(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
     let descriptor = crate::paired(inputs.value("desktop-descriptor"))?;
-    crate::invoke(&descriptor,&CONSUMER_GROUPING_APPLY,json!({"transformers":crate::group::projection_transformers(inputs)?,"definition-ids":crate::group::projection_definition_ids(inputs)?,"bindings":inputs.value("bindings").unwrap_or("[]"),"digest":inputs.require("digest")?}),crate::READ_TIMEOUT).map_err(crate::classify_design_failure)
+    crate::invoke(&descriptor,&CONSUMER_GROUPING_APPLY,json!({"purpose":crate::grouping::purpose(inputs)?,"transformers":crate::group::projection_transformers(inputs)?,"definition-ids":crate::group::projection_definition_ids(inputs)?,"bindings":inputs.value("bindings").unwrap_or("[]"),"digest":inputs.require("digest")?}),crate::READ_TIMEOUT).map_err(crate::classify_design_failure)
 }
 pub fn render(data: &Value) -> String {
     format!(

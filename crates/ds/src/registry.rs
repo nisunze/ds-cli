@@ -1069,6 +1069,16 @@ static DESIGN_ENTRIES: &[Entry] = &[
         render: ds_cli_design::tag::set::render,
     },
     Entry {
+        command: &ds_cli_design::tag::enrich::PREVIEW_COMMAND,
+        handler: ds_cli_design::tag::enrich::run_preview,
+        render: ds_cli_design::tag::enrich::render,
+    },
+    Entry {
+        command: &ds_cli_design::tag::enrich::APPLY_COMMAND,
+        handler: ds_cli_design::tag::enrich::run_apply,
+        render: ds_cli_design::tag::enrich::render,
+    },
+    Entry {
         command: &ds_cli_design::known_columns::list::COMMAND,
         handler: ds_cli_design::known_columns::list::run,
         render: ds_cli_design::known_columns::list::render,
@@ -1112,6 +1122,16 @@ static DESIGN_ENTRIES: &[Entry] = &[
         command: &ds_cli_design::grouping::apply::COMMAND,
         handler: ds_cli_design::grouping::apply::run,
         render: ds_cli_design::grouping::apply::render,
+    },
+    Entry {
+        command: &ds_cli_design::grouping::read::READ_COMMAND,
+        handler: ds_cli_design::grouping::read::run_read,
+        render: ds_cli_design::grouping::read::render,
+    },
+    Entry {
+        command: &ds_cli_design::grouping::read::ARCHIVE_COMMAND,
+        handler: ds_cli_design::grouping::read::run_archive,
+        render: ds_cli_design::grouping::read::render,
     },
     Entry {
         command: &ds_cli_design::comment::list::COMMAND,

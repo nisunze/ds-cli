@@ -45,8 +45,9 @@
 //!   transformer inventory → retire | restore   (headless, reversible)
 //!   selection  list → read → save | archive | assign
 //!   attachment list → publish | download | retire
-//!   tag        list | query → define | set
+//!   tag        list | query → define | set; enrich-preview → enrich-apply
 //!   group      list → preview → apply | unassign; export
+//!   consumer-grouping preview → apply; read | archive
 //!   comment    list → read → post | resolve | promote
 //! ```
 //!
@@ -103,6 +104,8 @@ pub static DOMAIN: Domain = Domain {
         &tag::query::COMMAND,
         &tag::define::COMMAND,
         &tag::set::COMMAND,
+        &tag::enrich::PREVIEW_COMMAND,
+        &tag::enrich::APPLY_COMMAND,
         &known_columns::list::COMMAND,
         &known_columns::set::COMMAND,
         &group::list::COMMAND,
@@ -112,6 +115,8 @@ pub static DOMAIN: Domain = Domain {
         &group::export::COMMAND,
         &grouping::preview::COMMAND,
         &grouping::apply::COMMAND,
+        &grouping::read::READ_COMMAND,
+        &grouping::read::ARCHIVE_COMMAND,
         &comment::list::COMMAND,
         &comment::read::COMMAND,
         &comment::post::COMMAND,
@@ -188,6 +193,13 @@ pub const TAG_DEFINE: BridgeOp = BridgeOp {
         "value_type",
         "input_control",
         "constraints",
+        // A project's OWN hierarchy. `management` is deliberately absent: only
+        // a governed authority creates a system definition, through its own
+        // action, so this door can only ever author `project` management.
+        "parent-definition",
+        "semantic-namespace",
+        "semantic-key",
+        "jurisdiction",
     ],
 };
 pub const TAG_SET: BridgeOp = BridgeOp {
@@ -200,6 +212,14 @@ pub const TAG_SET: BridgeOp = BridgeOp {
         "values",
         "typed_values",
     ],
+};
+pub const TAG_ENRICH_PREVIEW: BridgeOp = BridgeOp {
+    operation: "design.tag.enrich-preview",
+    arguments: &["transformers", "reference-revision"],
+};
+pub const TAG_ENRICH_APPLY: BridgeOp = BridgeOp {
+    operation: "design.tag.enrich-apply",
+    arguments: &["transformers", "reference-revision", "digest"],
 };
 pub const TAG_QUERY: BridgeOp = BridgeOp {
     operation: "design.tag.query",
@@ -235,11 +255,25 @@ pub const GROUP_EXPORT: BridgeOp = BridgeOp {
 };
 pub const CONSUMER_GROUPING_PREVIEW: BridgeOp = BridgeOp {
     operation: "design.consumer-grouping.preview",
-    arguments: &["transformers", "definition-ids", "bindings"],
+    arguments: &["purpose", "transformers", "definition-ids", "bindings"],
 };
 pub const CONSUMER_GROUPING_APPLY: BridgeOp = BridgeOp {
     operation: "design.consumer-grouping.apply",
-    arguments: &["transformers", "definition-ids", "bindings", "digest"],
+    arguments: &[
+        "purpose",
+        "transformers",
+        "definition-ids",
+        "bindings",
+        "digest",
+    ],
+};
+pub const CONSUMER_GROUPING_READ: BridgeOp = BridgeOp {
+    operation: "design.consumer-grouping.read",
+    arguments: &["purpose"],
+};
+pub const CONSUMER_GROUPING_ARCHIVE: BridgeOp = BridgeOp {
+    operation: "design.consumer-grouping.archive",
+    arguments: &["purpose"],
 };
 pub const COMMENT_LIST: BridgeOp = BridgeOp {
     operation: "design.comment.list",
@@ -280,6 +314,8 @@ pub const BRIDGE_OPS: &[&BridgeOp] = &[
     &TAG_QUERY,
     &TAG_DEFINE,
     &TAG_SET,
+    &TAG_ENRICH_PREVIEW,
+    &TAG_ENRICH_APPLY,
     &KNOWN_COLUMNS_LIST,
     &KNOWN_COLUMNS_SET,
     &GROUP_LIST,
@@ -289,6 +325,8 @@ pub const BRIDGE_OPS: &[&BridgeOp] = &[
     &GROUP_EXPORT,
     &CONSUMER_GROUPING_PREVIEW,
     &CONSUMER_GROUPING_APPLY,
+    &CONSUMER_GROUPING_READ,
+    &CONSUMER_GROUPING_ARCHIVE,
     &COMMENT_LIST,
     &COMMENT_READ,
     &COMMENT_POST,
