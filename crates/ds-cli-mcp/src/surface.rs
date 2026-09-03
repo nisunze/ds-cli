@@ -394,13 +394,15 @@ const DESIGN_EDIT_COMMANDS: &[&str] = &[
     "map.design.upload.stage",
 ];
 
-// Background project operations against the CLI-selected project: no map,
-// room, or Desktop. Retirement is the reversible lifecycle of transformer
-// documents; the report family is the governed compounded deliverable. Kept
+// Background project operations: no map or room activation. Local-room
+// download reaches the paired application's cache and uses its visible
+// project; retirement and reports use the CLI-selected headless project.
+// Kept
 // out of `design-edit` (already at its bound) and out of the `grid` chapter
 // router so neither grows; an agent doing background delivery work gets this
 // narrow profile.
 const PROJECT_OPERATIONS_COMMANDS: &[&str] = &[
+    "design.transformer.download",
     "design.transformer.inventory",
     "design.transformer.retire",
     "design.transformer.restore",

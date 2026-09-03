@@ -42,7 +42,7 @@
 //!
 //! ```text
 //!   lv         project-export → process
-//!   transformer inventory → retire | restore   (headless, reversible)
+//!   transformer download local rooms (paired, no map) | inventory → retire | restore
 //!   selection  list → read → save | archive | assign
 //!   attachment list → publish | download | retire
 //!   tag        list | query → define | set; enrich-preview → enrich-apply
@@ -124,6 +124,7 @@ pub static DOMAIN: Domain = Domain {
         &comment::promote::COMMAND,
         &lv::project_export::COMMAND,
         &lv::process::COMMAND,
+        &transformer::download::COMMAND,
         &transformer::inventory::COMMAND,
         &transformer::retire::COMMAND,
         &transformer::restore::COMMAND,
@@ -295,6 +296,10 @@ pub const COMMENT_PROMOTE: BridgeOp = BridgeOp {
     operation: "design.comment.promote",
     arguments: &["thread", "title"],
 };
+pub const TRANSFORMER_DOWNLOAD: BridgeOp = BridgeOp {
+    operation: "design.transformer.download",
+    arguments: &["transformers", "force"],
+};
 
 /// Every operation this domain can send, for the parity test to walk. A new
 /// operation absent from this list cannot be sent: [`invoke`] takes a
@@ -332,6 +337,7 @@ pub const BRIDGE_OPS: &[&BridgeOp] = &[
     &COMMENT_POST,
     &COMMENT_RESOLVE,
     &COMMENT_PROMOTE,
+    &TRANSFORMER_DOWNLOAD,
 ];
 
 /// The largest page any design projection returns. The application bounds its
@@ -366,6 +372,9 @@ pub const WRITE_TIMEOUT: Duration = Duration::from_secs(3 * 60);
 /// Publishing carries the file. A native workspace over a field connection is
 /// the slow case this budget exists for.
 pub const PUBLISH_TIMEOUT: Duration = Duration::from_secs(20 * 60);
+/// A whole-project local-room materialization is bounded but may transfer
+/// hundreds of saved rooms over a field connection.
+pub const LOCAL_ROOM_DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(30 * 60);
 
 // ---------------------------------------------------------------------------
 // Shared inputs

@@ -1293,6 +1293,10 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
         published["design-edit"].contains("design_known-columns_set"),
         "the design-edit profile must expose the know_columns mutation"
     );
+    assert!(
+        published["project-operations"].contains("design_transformer_download"),
+        "the project-operations profile must expose background local-room materialization"
+    );
 
     let (compatibility, _) = mcp(
         &["--exposure", "commands"],

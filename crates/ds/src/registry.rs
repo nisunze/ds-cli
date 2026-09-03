@@ -1169,6 +1169,11 @@ static DESIGN_ENTRIES: &[Entry] = &[
         render: ds_cli_design::lv::process::render,
     },
     Entry {
+        command: &ds_cli_design::transformer::download::COMMAND,
+        handler: ds_cli_design::transformer::download::run,
+        render: ds_cli_design::transformer::download::render,
+    },
+    Entry {
         command: &ds_cli_design::transformer::inventory::COMMAND,
         handler: ds_cli_design::transformer::inventory::run,
         render: ds_cli_design::transformer::inventory::render,

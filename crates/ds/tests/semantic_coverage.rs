@@ -112,6 +112,7 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("design.tag.list", "read_only", "project"),
     ("design.tag.query", "read_only", "project"),
     ("design.tag.set", "global_write", "project"),
+    ("design.transformer.download", "local_ui", "project"),
     (
         "design.transformer.inventory",
         "local_auth_state",

@@ -2333,7 +2333,7 @@ fn tile_managed_outputs_are_headless_while_the_catalogue_stays_paired() {
 }
 
 #[test]
-fn background_project_operations_are_headless_and_map_independent() {
+fn background_project_operations_are_map_independent_and_use_the_declared_project_context() {
     for (id, effect, inputs) in [
         (
             "design.transformer.inventory",
@@ -2486,6 +2486,29 @@ fn background_project_operations_are_headless_and_map_independent() {
     assert_eq!(
         refusal(&["report", "project", "compounded", "--output", "json"]),
         "confirmation_required"
+    );
+
+    // Local-room materialization is background work but the destination is
+    // the paired application's IndexedDB cache, so it deliberately uses the
+    // visible Desktop project rather than the headless project context.
+    let descriptor = ok(&[
+        "capabilities",
+        "design.transformer.download",
+        "--output",
+        "json",
+    ]);
+    let command = &descriptor["command"];
+    assert_eq!(command["authority"], "project");
+    assert_eq!(command["effect"], "local_ui");
+    let inputs = command["inputs"]
+        .as_array()
+        .expect("inputs")
+        .iter()
+        .map(|input| input["name"].as_str().expect("input name"))
+        .collect::<BTreeSet<_>>();
+    assert_eq!(
+        inputs,
+        BTreeSet::from(["desktop-descriptor", "force", "transformer"])
     );
 }
 
@@ -3486,7 +3509,7 @@ fn every_design_command_is_discoverable_without_the_desktop_installed() {
     let commands = index["commands"].as_array().expect("commands");
     assert_eq!(
         commands.len(),
-        37,
+        38,
         "the design domain should expose its whole family: {commands:?}"
     );
     for command in commands {
@@ -3526,6 +3549,24 @@ fn every_design_command_is_discoverable_without_the_desktop_installed() {
         PAIRING_CODES.contains(&code.as_str()),
         "a well-formed design read ended in `{code}`, not a pairing state"
     );
+}
+
+#[test]
+fn capability_search_finds_local_room_materialization_by_operator_vocabulary() {
+    for query in [
+        "local transformer room",
+        "bulk download",
+        "background report",
+    ] {
+        let data = ok(&["capabilities", "--search", query, "--output", "json"]);
+        let results = data["results"].as_array().expect("search results");
+        assert!(
+            results
+                .iter()
+                .any(|row| row["id"] == "design.transformer.download"),
+            "`{query}` did not find design.transformer.download: {results:?}"
+        );
+    }
 }
 
 #[test]

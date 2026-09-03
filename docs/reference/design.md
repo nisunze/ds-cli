@@ -114,6 +114,30 @@ ds design features select --transformer T-1042 --layer lv_lines \
 The older `ds map design select` contract is unchanged for callers already
 using a paired application.
 
+## Local transformer rooms for background work
+
+`ds design transformer download` materializes saved transformer rooms into the
+paired application's local cache without opening a map or entering any
+transformer edit context. It is the preparation step for a local report when
+the room is not already on this device. Omit `--transformer` for every active
+ordinary transformer, or repeat the flag for an exact subset:
+
+```bash
+ds desktop status --output json
+ds design transformer download --transformer TX-1 --transformer TX-2 --output json
+ds design transformer download --output json
+```
+
+The paired application's visible project is authoritative because that
+application owns the destination cache. This differs deliberately from the
+CLI-selected headless project used by retirement and project-wide cloud
+reports. The operation does not navigate, process, renumber, stage, save,
+publish or version anything. A clean room already at the saved server version
+is reused. `--force` refreshes clean rooms, but never overwrites a dirty local
+room. The bounded receipt distinguishes downloaded, already-local,
+dirty-preserved, failed and cancelled names and states `staged: false`,
+`persisted: false`, and `context_changed: false`.
+
 ## Reversible transformer retirement
 
 `ds design transformer inventory|retire|restore` is the map-independent

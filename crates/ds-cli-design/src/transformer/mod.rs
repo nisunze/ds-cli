@@ -1,5 +1,6 @@
 //! `ds design transformer` — the map-independent lifecycle of a project's
-//! transformer documents: inventory (inspect and plan), retire, restore.
+//! transformer documents: download local rooms, inventory (inspect and plan),
+//! retire, restore.
 //!
 //! Retirement is reversible and non-destructive: it flips the document's
 //! soft-delete tombstone that every consumer already honours and records who,
@@ -11,6 +12,7 @@
 //!
 //! Contract: ds-brain `docs/contracts/transformer-retirement.md`.
 
+pub mod download;
 pub mod inventory;
 pub mod restore;
 pub mod retire;
@@ -176,8 +178,8 @@ refusal!(
 refusal!(
     INVALID_SCOPE,
     "invalid_transformer_scope",
-    "no transformer was named, a name is blank, untrimmed, or over 200 characters, or more than 500 were named",
-    "pass --transformer once per bounded transformer name; canonical aliases are de-duplicated"
+    "an explicitly named transformer is blank, untrimmed, or over 200 characters, or more than 500 were named",
+    "omit --transformer where the command permits the whole active project, or pass it once per bounded exact name; canonical aliases are de-duplicated"
 );
 refusal!(
     INVALID_REASON,

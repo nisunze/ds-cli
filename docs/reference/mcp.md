@@ -58,10 +58,12 @@ retains map/local-data survey work;
 aggregate/spatial/change-feed reads, project-form settings, reusable templates, and
 create-from-template. `layers` isolates
 project ordering and desktop-local remote overlays; `tiling` owns governed
-tile generation and catalogue membership; `project-operations` owns the
-background work against the CLI-selected project — transformer inventory,
-reversible retirement and restoration, and the compounded report
-deliverable — with no map or Desktop. Each includes `ds_catalog`,
+tile generation and catalogue membership; `project-operations` owns
+map-independent background work — paired local-room materialization plus
+headless transformer inventory, reversible retirement/restoration, and the
+compounded report deliverable. Room materialization uses the paired visible
+project because the application owns the cache, but never opens a map or edit
+context; the remaining commands use the CLI-selected project. Each includes `ds_catalog`,
 `ds_diagnostics`, and a bounded leaf set. `survey-migration` deliberately
 contains only the governed import leaf in addition to those bootstrap tools.
 A profile is only an allowlist: omitted
