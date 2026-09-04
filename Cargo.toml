@@ -106,6 +106,7 @@ ds-cli-shell = { path = "crates/ds-cli-shell" }
 ds-cli-workstation = { path = "crates/ds-cli-workstation" }
 ds-cli-mcp = { path = "crates/ds-cli-mcp" }
 ds-cli-skills = { path = "crates/ds-cli-skills" }
+ds-command-kernel = { path = "../ds-command-kernel" }
 
 # The authoritative engine crates, by path, exactly as ds-web/src-tauri
 # reaches them. `ds` links the same code the desktop links; it does not

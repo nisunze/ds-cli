@@ -1,7 +1,7 @@
 //! Closed read/import/status operations over the paired desktop Solar workflow.
 
+use std::path::PathBuf;
 use std::time::Duration;
-use std::{collections::BTreeSet, path::PathBuf};
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
@@ -26,12 +26,6 @@ const MAX_PORTFOLIO_PATH_KEY_CHARS: usize = 120;
 const PORTFOLIO_PROJECTION_BYTES: usize = 15_000;
 const PORTFOLIO_SERIES_EDGE_ITEMS: usize = 4;
 const PORTFOLIO_STRING_CHARS: usize = 400;
-const PORTFOLIO_RESULT_SCHEMA_V2: &str = "ds-solar.portfolio-result/v2";
-const PORTFOLIO_RESULT_SCHEMA_V3: &str = "ds-solar.portfolio-result/v3";
-const PORTFOLIO_ENGINE_BYTES: usize = 32 * 1024;
-const PORTFOLIO_ENGINE_LIST_ITEMS: usize = 64;
-const PORTFOLIO_ENGINE_TEXT_CHARS: usize = 4_096;
-const PORTFOLIO_ENGINE_LIST_TEXT_CHARS: usize = 512;
 const RESULT_SECTIONS: &[&str] = &[
     "config",
     "costs",
@@ -549,415 +543,40 @@ fn select_portfolio_path<'a>(document: &'a Value, path: &[&str]) -> Result<&'a V
 }
 
 fn portfolio_trace(document: &Value, expected_run_id: &str) -> Result<Map<String, Value>, Failure> {
-    let mismatch = |detail: &str| {
+    let encoded = serde_json::to_vec(document).map_err(|_| {
         Failure::unavailable(
             "desktop_contract_mismatch",
-            format!("the paired session returned an invalid sealed portfolio identity: {detail}"),
+            "the paired session returned a Solar portfolio result that cannot be encoded",
         )
         .remedy("update DS GridDesign and ds to matching releases")
-    };
-    let object = document
-        .as_object()
-        .ok_or_else(|| mismatch("the result root is not an object"))?;
-    let schema_version = object
-        .get("schema_version")
-        .and_then(Value::as_str)
-        .filter(|value| {
-            matches!(
-                *value,
-                PORTFOLIO_RESULT_SCHEMA_V2 | PORTFOLIO_RESULT_SCHEMA_V3
+    })?;
+    let validated = ds_command_kernel::validate_solar_portfolio_result(&encoded, expected_run_id)
+        .map_err(|error| {
+        Failure::unavailable(
+            "desktop_contract_mismatch",
+            format!("the paired session returned an invalid sealed portfolio identity: {error}"),
+        )
+        .remedy("update DS GridDesign and ds to matching releases")
+    })?;
+    let validated: Value = serde_json::from_str(&validated).map_err(|_| {
+        Failure::unavailable(
+            "desktop_contract_mismatch",
+            "the shared Solar portfolio projection could not be decoded",
+        )
+        .remedy("update DS GridDesign and ds to matching releases")
+    })?;
+    validated
+        .get("trace")
+        .and_then(Value::as_object)
+        .cloned()
+        .ok_or_else(|| {
+            Failure::unavailable(
+                "desktop_contract_mismatch",
+                "the shared Solar portfolio projection omitted its trace",
             )
+            .remedy("update DS GridDesign and ds to matching releases")
         })
-        .ok_or_else(|| mismatch("schema_version is not a supported v2 or v3 contract"))?;
-    let text = |key: &str| -> Result<&str, Failure> {
-        object
-            .get(key)
-            .and_then(Value::as_str)
-            .filter(|value| {
-                !value.is_empty()
-                    && value.trim() == *value
-                    && value.chars().count() <= PORTFOLIO_ENGINE_TEXT_CHARS
-            })
-            .ok_or_else(|| mismatch(&format!("{key} is missing or invalid")))
-    };
-    let digest = |key: &str| -> Result<&str, Failure> {
-        text(key).and_then(|value| {
-            (value.len() == 71
-                && value.starts_with("sha256:")
-                && value[7..]
-                    .bytes()
-                    .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte)))
-            .then_some(value)
-            .ok_or_else(|| mismatch(&format!("{key} is not a lowercase sha256 digest")))
-        })
-    };
-
-    let portfolio_run_id = text("run_id")?;
-    if portfolio_run_id != expected_run_id {
-        return Err(mismatch("run_id does not match the requested run"));
-    }
-    let portfolio_id = text("portfolio_id")?;
-    if portfolio_id.len() > 128 {
-        return Err(mismatch("portfolio_id exceeds its bounded identity"));
-    }
-    let portfolio_name = text("portfolio_name")?;
-    if portfolio_name.chars().count() > 512 {
-        return Err(mismatch("portfolio_name exceeds its bounded identity"));
-    }
-    let engine = bounded_engine_identity(object, &mismatch)?;
-    let membership_revision = digest("membership_revision")?;
-    let input_digest = digest("input_digest")?;
-    let result_digest = digest("portfolio_digest")?;
-    let cities = object
-        .get("cities")
-        .and_then(Value::as_array)
-        .filter(|cities| (2..=200).contains(&cities.len()))
-        .ok_or_else(|| mismatch("cities is not a bounded portfolio member array"))?;
-    let mut seen = BTreeSet::new();
-    let city_ids = cities
-        .iter()
-        .map(|city| {
-            city.as_object()
-                .and_then(|city| city.get("city_id"))
-                .and_then(Value::as_str)
-                .filter(|city_id| {
-                    !city_id.is_empty()
-                        && city_id.trim() == *city_id
-                        && city_id.len() <= 128
-                        && seen.insert((*city_id).to_string())
-                })
-                .map(str::to_string)
-                .ok_or_else(|| mismatch("cities contains a missing or duplicate city_id"))
-        })
-        .collect::<Result<Vec<_>, _>>()?;
-    if object.get("city_count").and_then(Value::as_u64) != Some(city_ids.len() as u64) {
-        return Err(mismatch("city_count does not match the ordered members"));
-    }
-    let assumptions = object
-        .get("assumptions")
-        .and_then(Value::as_object)
-        .ok_or_else(|| mismatch("assumptions is missing"))?;
-    let currency = assumptions
-        .get("currency")
-        .and_then(Value::as_str)
-        .filter(|value| value.len() == 3 && value.bytes().all(|byte| byte.is_ascii_uppercase()))
-        .ok_or_else(|| mismatch("assumptions.currency is invalid"))?;
-    let project_years = assumptions
-        .get("project_years")
-        .and_then(Value::as_u64)
-        .filter(|years| (1..=100).contains(years))
-        .ok_or_else(|| mismatch("assumptions.project_years is invalid"))?;
-    let discount_rate = assumptions
-        .get("discount_rate")
-        .and_then(Value::as_f64)
-        .filter(|rate| rate.is_finite() && *rate >= 0.0 && *rate < 1.0)
-        .ok_or_else(|| mismatch("assumptions.discount_rate is invalid"))?;
-    let representative =
-        portfolio_representative_trace(object, schema_version, &seen, city_ids.len(), &mismatch)?;
-
-    let mut trace = Map::from_iter([
-        ("schema_version".into(), json!(schema_version)),
-        ("engine".into(), engine),
-        ("portfolio_id".into(), json!(portfolio_id)),
-        ("portfolio_name".into(), json!(portfolio_name)),
-        ("membership_revision".into(), json!(membership_revision)),
-        ("city_ids".into(), json!(city_ids)),
-        ("portfolio_run_id".into(), json!(portfolio_run_id)),
-        ("input_digest".into(), json!(input_digest)),
-        ("result_digest".into(), json!(result_digest)),
-        ("currency".into(), json!(currency)),
-        ("project_years".into(), json!(project_years)),
-        ("discount_rate".into(), json!(discount_rate)),
-    ]);
-    trace.extend(representative);
-    Ok(trace)
 }
-
-fn portfolio_representative_trace(
-    portfolio: &Map<String, Value>,
-    schema_version: &str,
-    members: &BTreeSet<String>,
-    city_count: usize,
-    mismatch: &impl Fn(&str) -> Failure,
-) -> Result<Map<String, Value>, Failure> {
-    let representative = portfolio
-        .get("representative_city_id")
-        .ok_or_else(|| mismatch("representative_city_id is missing"))?;
-    if schema_version == PORTFOLIO_RESULT_SCHEMA_V2 {
-        let city_id = member_id(representative, "representative_city_id", members, mismatch)?;
-        return Ok(Map::from_iter([(
-            "representative_city".into(),
-            json!(city_id),
-        )]));
-    }
-
-    let graph_section = portfolio
-        .get("sections")
-        .and_then(Value::as_object)
-        .and_then(|sections| sections.get("representative_graphs"))
-        .and_then(Value::as_object)
-        .ok_or_else(|| mismatch("v3 sections.representative_graphs is missing or invalid"))?;
-    let strategy = graph_section
-        .get("_strategy")
-        .and_then(Value::as_str)
-        .filter(|strategy| {
-            matches!(
-                *strategy,
-                "first" | "round_robin" | "explicit" | "digest_seeded_random"
-            )
-        })
-        .ok_or_else(|| mismatch("v3 representative graph strategy is missing or unsupported"))?;
-
-    let representative_city = match strategy {
-        "round_robin" => {
-            if !representative.is_null() {
-                return Err(mismatch(
-                    "v3 round-robin representative_city_id must be null",
-                ));
-            }
-            Value::Null
-        }
-        _ => json!(member_id(
-            representative,
-            "representative_city_id",
-            members,
-            mismatch,
-        )?),
-    };
-
-    let start_index = match strategy {
-        "round_robin" => Some(
-            graph_section
-                .get("_start_index")
-                .and_then(Value::as_u64)
-                .filter(|index| *index < city_count as u64)
-                .ok_or_else(|| {
-                    mismatch(
-                        "v3 round-robin _start_index is missing or outside the ordered membership",
-                    )
-                })?,
-        ),
-        _ => {
-            if graph_section.contains_key("_start_index") {
-                return Err(mismatch(
-                    "v3 non-round-robin graph strategy cannot declare _start_index",
-                ));
-            }
-            None
-        }
-    };
-
-    let representative_cities = graph_section
-        .get("_representative_cities")
-        .and_then(Value::as_array)
-        .filter(|cities| (1..=18).contains(&cities.len()))
-        .ok_or_else(|| mismatch("v3 _representative_cities is not a bounded non-empty array"))?;
-    let mut seen_representatives = BTreeSet::new();
-    let representative_cities = representative_cities
-        .iter()
-        .map(|city| {
-            let city_id = member_id(city, "_representative_cities city", members, mismatch)?;
-            if !seen_representatives.insert(city_id.to_string()) {
-                return Err(mismatch("v3 _representative_cities repeats a member"));
-            }
-            Ok(city_id.to_string())
-        })
-        .collect::<Result<Vec<_>, Failure>>()?;
-
-    let graphs = graph_section
-        .get("graphs")
-        .and_then(Value::as_array)
-        .filter(|graphs| graphs.len() <= 18)
-        .ok_or_else(|| mismatch("v3 representative graphs is not a bounded array"))?;
-    if graph_section.get("graph_count").and_then(Value::as_u64) != Some(graphs.len() as u64) {
-        return Err(mismatch(
-            "v3 representative graph_count does not match the available graph rows",
-        ));
-    }
-    let available = graphs
-        .iter()
-        .map(|graph| {
-            let graph = graph
-                .as_object()
-                .ok_or_else(|| mismatch("v3 representative graph row is not an object"))?;
-            let graph_key = evidence_key(graph, "graph_key", mismatch)?;
-            let city_id = graph
-                .get("city_id")
-                .ok_or_else(|| mismatch("v3 representative graph row lacks city_id"))?;
-            let city_id = member_id(city_id, "representative graph city_id", members, mismatch)?;
-            let receipt_city_id = graph
-                .get("url")
-                .and_then(Value::as_object)
-                .and_then(|receipt| receipt.get("city_id"))
-                .ok_or_else(|| mismatch("v3 representative graph row lacks receipted city_id"))?;
-            let receipt_city_id = member_id(
-                receipt_city_id,
-                "representative graph receipt city_id",
-                members,
-                mismatch,
-            )?;
-            if receipt_city_id != city_id {
-                return Err(mismatch(
-                    "v3 representative graph city_id does not match its receipt",
-                ));
-            }
-            if !seen_representatives.contains(city_id) {
-                return Err(mismatch(
-                    "v3 representative graph city is absent from _representative_cities",
-                ));
-            }
-            Ok(json!({ "graph_key": graph_key, "city_id": city_id }))
-        })
-        .collect::<Result<Vec<_>, Failure>>()?;
-
-    let unavailable = graph_section
-        .get("_unavailable")
-        .and_then(Value::as_array)
-        .filter(|graphs| graphs.len() <= 18)
-        .ok_or_else(|| mismatch("v3 unavailable representative graphs is not a bounded array"))?
-        .iter()
-        .map(|graph| {
-            let graph = graph.as_object().ok_or_else(|| {
-                mismatch("v3 unavailable representative graph row is not an object")
-            })?;
-            let graph_key = evidence_key(graph, "kind", mismatch)?;
-            let city_id = graph
-                .get("city_id")
-                .ok_or_else(|| mismatch("v3 unavailable representative graph lacks city_id"))?;
-            let city_id = member_id(
-                city_id,
-                "unavailable representative graph city_id",
-                members,
-                mismatch,
-            )?;
-            if !seen_representatives.contains(city_id) {
-                return Err(mismatch(
-                    "v3 unavailable graph city is absent from _representative_cities",
-                ));
-            }
-            Ok(json!({ "graph_key": graph_key, "city_id": city_id }))
-        })
-        .collect::<Result<Vec<_>, Failure>>()?;
-
-    let mut graph_trace = json!({
-        "strategy": strategy,
-        "representative_cities": representative_cities,
-        "graph_count": graphs.len(),
-        "available": available,
-        "unavailable": unavailable,
-    });
-    if let Some(start_index) = start_index {
-        graph_trace["start_index"] = json!(start_index);
-    }
-    Ok(Map::from_iter([
-        ("representative_city".into(), representative_city),
-        ("representative_graphs".into(), graph_trace),
-    ]))
-}
-
-fn member_id<'a>(
-    value: &'a Value,
-    field: &str,
-    members: &BTreeSet<String>,
-    mismatch: &impl Fn(&str) -> Failure,
-) -> Result<&'a str, Failure> {
-    value
-        .as_str()
-        .filter(|city_id| {
-            !city_id.is_empty()
-                && city_id.trim() == *city_id
-                && city_id.len() <= 256
-                && members.contains(*city_id)
-        })
-        .ok_or_else(|| mismatch(&format!("{field} is not an ordered member")))
-}
-
-fn evidence_key<'a>(
-    row: &'a Map<String, Value>,
-    field: &str,
-    mismatch: &impl Fn(&str) -> Failure,
-) -> Result<&'a str, Failure> {
-    row.get(field)
-        .and_then(Value::as_str)
-        .filter(|value| !value.is_empty() && value.trim() == *value && value.len() <= 256)
-        .ok_or_else(|| mismatch(&format!("v3 representative graph {field} is invalid")))
-}
-
-fn bounded_engine_identity(
-    portfolio: &Map<String, Value>,
-    mismatch: &impl Fn(&str) -> Failure,
-) -> Result<Value, Failure> {
-    const STRING_FIELDS: &[&str] = &[
-        "schema",
-        "name",
-        "version",
-        "source_sha",
-        "cargo_lock_sha256",
-        "rustc",
-        "target",
-        "profile",
-        "build_manifest_sha256",
-    ];
-    const LIST_FIELDS: &[&str] = &["features", "schemas"];
-
-    let engine = portfolio
-        .get("engine")
-        .and_then(Value::as_object)
-        .ok_or_else(|| mismatch("engine identity is missing"))?;
-    if engine
-        .keys()
-        .any(|key| !STRING_FIELDS.contains(&key.as_str()) && !LIST_FIELDS.contains(&key.as_str()))
-    {
-        return Err(mismatch("engine identity contains an unknown field"));
-    }
-    for required in ["name", "version"] {
-        engine
-            .get(required)
-            .and_then(Value::as_str)
-            .filter(|value| {
-                !value.is_empty()
-                    && value.trim() == *value
-                    && value.chars().count() <= PORTFOLIO_ENGINE_TEXT_CHARS
-            })
-            .ok_or_else(|| mismatch(&format!("engine.{required} is missing or invalid")))?;
-    }
-    for field in STRING_FIELDS {
-        let Some(value) = engine.get(*field) else {
-            continue;
-        };
-        value
-            .as_str()
-            .filter(|value| {
-                !value.is_empty()
-                    && value.trim() == *value
-                    && value.chars().count() <= PORTFOLIO_ENGINE_TEXT_CHARS
-            })
-            .ok_or_else(|| mismatch(&format!("engine.{field} is invalid")))?;
-    }
-    for field in LIST_FIELDS {
-        let Some(value) = engine.get(*field) else {
-            continue;
-        };
-        let values = value
-            .as_array()
-            .filter(|values| values.len() <= PORTFOLIO_ENGINE_LIST_ITEMS)
-            .ok_or_else(|| mismatch(&format!("engine.{field} is not a bounded array")))?;
-        if values.iter().any(|value| {
-            value.as_str().is_none_or(|value| {
-                value.is_empty()
-                    || value.trim() != value
-                    || value.chars().count() > PORTFOLIO_ENGINE_LIST_TEXT_CHARS
-            })
-        }) {
-            return Err(mismatch(&format!("engine.{field} contains invalid text")));
-        }
-    }
-    if serde_json::to_vec(engine).map_or(true, |bytes| bytes.len() > PORTFOLIO_ENGINE_BYTES) {
-        return Err(mismatch("engine identity exceeds its byte bound"));
-    }
-    Ok(Value::Object(engine.clone()))
-}
-
 fn bounded_portfolio_projection(value: &Value) -> (Value, bool) {
     let (projected, mut complete) = elide_portfolio_value(value);
     if serde_json::to_vec(&projected).is_ok_and(|bytes| bytes.len() <= PORTFOLIO_PROJECTION_BYTES) {
