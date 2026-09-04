@@ -17,7 +17,8 @@ use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{Arg, Refusal};
 use ds_grid_exchange::conversion::{
     BatchMode, ConversionRequest, ExpectedWgs84Location, PlsContainer, PlsVersionIntent, SourceSet,
-    TargetFormat, gis_network_import_selection, resolve_pls_project_selection,
+    TargetFormat, gis_mv_import_selection, gis_network_import_selection,
+    resolve_pls_project_selection,
 };
 use serde_json::json;
 
@@ -100,6 +101,78 @@ pub const SHARED_ARGS: &[Arg] = &[
         "<metres>",
         "Metric tolerance for joining route endpoints and matching them to explicit source geometry (default 0.5).",
     ),
+    Arg::value(
+        "terrain-layer",
+        "<name>",
+        "Map this WGS84 Point layer to canonical terrain observations.",
+    ),
+    Arg::value(
+        "terrain-elevation-property",
+        "<field>",
+        "Source field carrying terrain elevation in metres.",
+    ),
+    Arg::value(
+        "terrain-feature-class-property",
+        "<field>",
+        "Optional source field carrying the terrain feature class.",
+    ),
+    Arg::value("terrain-provider", "<token>", "Terrain provider identity."),
+    Arg::value("terrain-dataset", "<name>", "Terrain dataset/version note."),
+    Arg::value(
+        "terrain-resolution-m",
+        "<metres>",
+        "Nominal terrain source resolution.",
+    ),
+    Arg::value(
+        "terrain-horizontal-crs",
+        "<code>",
+        "CRS in which the terrain samples were acquired.",
+    ),
+    Arg::value(
+        "terrain-acquired-at",
+        "<rfc3339>",
+        "Host-supplied terrain acquisition timestamp.",
+    ),
+    Arg::value(
+        "standards-source-index",
+        "<index>",
+        "Zero-based --source index of the native standards source used to complete the GIS model.",
+    ),
+    Arg::value("source-structure-type-id", "<id>", "Exact source support type id."),
+    Arg::value(
+        "transformer-structure-type-id",
+        "<id>",
+        "Exact transformer support type id.",
+    ),
+    Arg::value("tapping-structure-type-id", "<id>", "Exact tapping support type id."),
+    Arg::value("support-structure-type-id", "<id>", "Exact inline support type id."),
+    Arg::value(
+        "maximum-span-m",
+        "<metres>",
+        "Maximum conceptual support spacing used for deterministic intermediate placement.",
+    ),
+    Arg::value("phase-cable-id", "<id>", "Exact phase conductor definition id."),
+    Arg::value("criterion-set-id", "<id>", "Exact sag/tension criterion set id."),
+    Arg::value(
+        "sag-weather-state-id",
+        "<id>",
+        "Exact weather state for the authored initial sag reference.",
+    ),
+    Arg::value(
+        "phase-catenary-constant-m",
+        "<metres>",
+        "Explicit conceptual catenary constant; never presented as an AutoSag criterion result.",
+    ),
+    Arg::value(
+        "phase-attachment-set",
+        "<label>",
+        "Exact attachment set label shared by the selected structures.",
+    ),
+    Arg::value(
+        "phase-attachment-slots",
+        "<csv>",
+        "Comma-separated phase attachment slot ordinals.",
+    ),
     Arg::switch("swap-xy", "Treat source coordinates as (y, x)."),
     Arg::value(
         "expect-lon",
@@ -142,6 +215,16 @@ pub const REQUEST_REFUSALS: &[Refusal] = &[
         code: "invalid_network_snap_tolerance",
         when: "--network-snap-tolerance-m is not a finite positive number",
         remedy: "pass a positive distance in metres, normally 0.5",
+    },
+    Refusal {
+        code: "incomplete_gis_mv_selection",
+        when: "--standards-source-index is present without the complete explicit MV authoring selection",
+        remedy: "supply terrain provenance plus exact structure, conductor, criteria and attachment selections",
+    },
+    Refusal {
+        code: "invalid_gis_mv_selection",
+        when: "an MV source index, distance, or attachment slot is malformed",
+        remedy: "use a zero-based source index, finite positive metre values, and comma-separated slot ordinals",
     },
 ];
 
@@ -301,6 +384,75 @@ pub fn build(inputs: &Inputs, sources: SourceSet) -> Result<ConversionRequest, F
         None => None,
     };
 
+    let selection = if let Some(raw_index) = inputs.value("standards-source-index") {
+        let standards_source_index = raw_index.parse::<usize>().map_err(|_| {
+            Failure::invalid(
+                "invalid_gis_mv_selection",
+                format!("--standards-source-index `{raw_index}` is not a whole number"),
+            )
+            .remedy("pass the zero-based position of the standards --source")
+        })?;
+        let maximum_span_m =
+            positive_number(mv_required(inputs, "maximum-span-m")?, "maximum-span-m")?;
+        let terrain_resolution_m = inputs
+            .value("terrain-resolution-m")
+            .map(|raw| positive_number(raw, "terrain-resolution-m"))
+            .transpose()?;
+        let phase_catenary_constant_m = positive_number(
+            mv_required(inputs, "phase-catenary-constant-m")?,
+            "phase-catenary-constant-m",
+        )?;
+        let phase_attachment_slots = mv_required(inputs, "phase-attachment-slots")?
+            .split(',')
+            .map(|raw| {
+                raw.parse::<u32>().map_err(|_| {
+                    Failure::invalid(
+                        "invalid_gis_mv_selection",
+                        format!("phase attachment slot `{raw}` is not a whole number"),
+                    )
+                    .remedy("pass comma-separated slot ordinals such as 0,1,2")
+                })
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        gis_mv_import_selection(
+            mv_required(inputs, "alignment-layer")?,
+            inputs.value("alignment-label-property"),
+            mv_required(inputs, "network-source-layer")?,
+            mv_required(inputs, "network-source-role")?,
+            network_snap_tolerance_m,
+            mv_required(inputs, "terrain-layer")?,
+            mv_required(inputs, "terrain-elevation-property")?,
+            inputs.value("terrain-feature-class-property"),
+            mv_required(inputs, "terrain-provider")?,
+            inputs.value("terrain-dataset"),
+            terrain_resolution_m,
+            inputs.value("terrain-horizontal-crs"),
+            inputs.value("terrain-acquired-at"),
+            standards_source_index,
+            mv_required(inputs, "source-structure-type-id")?,
+            mv_required(inputs, "transformer-structure-type-id")?,
+            mv_required(inputs, "tapping-structure-type-id")?,
+            mv_required(inputs, "support-structure-type-id")?,
+            maximum_span_m,
+            mv_required(inputs, "phase-cable-id")?,
+            mv_required(inputs, "criterion-set-id")?,
+            mv_required(inputs, "sag-weather-state-id")?,
+            phase_catenary_constant_m,
+            mv_required(inputs, "phase-attachment-set")?,
+            &phase_attachment_slots,
+        )
+    } else {
+        alignment_layer.map_or_else(Vec::new, |layer| {
+            gis_network_import_selection(
+                layer,
+                inputs.value("alignment-label-property"),
+                network_source_layer,
+                network_source_role,
+                network_snap_tolerance_m,
+            )
+        })
+    };
+
     Ok(ConversionRequest {
         sources,
         batch_mode,
@@ -315,17 +467,37 @@ pub fn build(inputs: &Inputs, sources: SourceSet) -> Result<ConversionRequest, F
         declared_crs: inputs.value("crs").map(str::to_string),
         expected_location,
         swap_xy: inputs.switch("swap-xy"),
-        selection: alignment_layer.map_or_else(Vec::new, |layer| {
-            gis_network_import_selection(
-                layer,
-                inputs.value("alignment-label-property"),
-                network_source_layer,
-                network_source_role,
-                network_snap_tolerance_m,
-            )
-        }),
+        selection,
         pls_project,
     })
+}
+
+fn mv_required<'a>(inputs: &'a Inputs, name: &str) -> Result<&'a str, Failure> {
+    inputs.value(name).ok_or_else(|| {
+        Failure::invalid(
+            "incomplete_gis_mv_selection",
+            format!("--standards-source-index requires --{name}"),
+        )
+        .remedy("supply the complete explicit terrain, structure, conductor, criteria, and attachment selection")
+    })
+}
+
+fn positive_number(raw: &str, flag: &str) -> Result<f64, Failure> {
+    let value = raw.parse::<f64>().map_err(|_| {
+        Failure::invalid(
+            "invalid_gis_mv_selection",
+            format!("--{flag} `{raw}` is not a number"),
+        )
+        .remedy("pass a finite positive distance in metres")
+    })?;
+    if !value.is_finite() || value <= 0.0 {
+        return Err(Failure::invalid(
+            "invalid_gis_mv_selection",
+            format!("--{flag} must be finite and positive, found {raw}"),
+        )
+        .remedy("pass a finite positive distance in metres"));
+    }
+    Ok(value)
 }
 
 fn parse_network_snap_tolerance(raw: &str) -> Result<f64, Failure> {

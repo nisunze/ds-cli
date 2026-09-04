@@ -140,6 +140,56 @@ network distance to zero. Tree/non-tree edges and unreachable fragments remain
 explicit. The adapter does not guess a source or transformer from contextual
 service-area polygons.
 
+The same operation can complete that skeleton as a self-contained conceptual
+MV model when a second source is an exact native standards backup. Every
+engineering identity and every terrain provenance field is explicit:
+
+```bash
+ds dsgrid-exchange convert \
+  --source ./prepared-gis.zip --source ./huye-standards.bak \
+  --target dsgrid --crs EPSG:32633 \
+  --alignment-layer mv_lines --alignment-label-property node_id \
+  --network-source-layer site_solaires --network-source-role plant \
+  --network-snap-tolerance-m 0.5 \
+  --terrain-layer terrain --terrain-elevation-property z \
+  --terrain-feature-class-property feature_class \
+  --terrain-provider aws_terrarium \
+  --terrain-dataset elevation-tiles-prod/terrarium@z12 \
+  --terrain-resolution-m 30 --terrain-horizontal-crs EPSG:4326 \
+  --terrain-acquired-at 2026-09-04T00:00:00Z \
+  --standards-source-index 1 \
+  --source-structure-type-id <id> \
+  --transformer-structure-type-id <id> \
+  --tapping-structure-type-id <id> \
+  --support-structure-type-id <id> --maximum-span-m 99 \
+  --phase-cable-id <id> --criterion-set-id <id> \
+  --sag-weather-state-id <id> --phase-catenary-constant-m 1000 \
+  --phase-attachment-set PHASE --phase-attachment-slots 0,1,2 \
+  --out ./out
+```
+
+The standards source is translated by the existing native PLS-CADD-to-DS Grid
+adapter. The GIS completion code never writes native or `.dsgrid` bytes from
+scratch. It retypes the source, transformer, tapping and inserted support
+structures with the selected definitions, deterministically limits support
+spacing, and strings the selected phase cable through exact attachment slots.
+The selected criteria remain embedded and named in the section note, but the
+explicit catenary constant is a conceptual manual sag—not a claimed AutoSag or
+approved criteria result.
+
+`tag_city` and `tag_phasing` properties on the selected line layer become
+ordinary canonical granular tags. Split source-outward runs retain them, and
+the completion step carries unambiguous values to structures and tension
+sections. No project API, frontend state, or project-resource collection is
+consulted. A shared junction with conflicting scalar values retains the facts
+on its alignments and receives no invented structure tag.
+
+Terrain points become canonical `dem_raw` observations with the declared
+provider, dataset, nominal resolution, horizontal CRS, EGM96 orthometric
+vertical datum, and acquisition timestamp. This is provisional conceptual
+terrain; it remains distinguishable from surveyed ground and can later be
+superseded through the ordinary terrain lifecycle.
+
 Polygons, points and unselected lines do not silently become engineering
 tables. The exact complete source is embedded as a package asset, and
 `gis-context-manifest.json` records every layer and whether it is a canonical

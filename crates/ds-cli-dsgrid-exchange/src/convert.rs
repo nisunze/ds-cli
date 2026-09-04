@@ -86,10 +86,10 @@ the exchange report.",
 /// `plan`'s inputs plus the output directory. Declared by splicing rather
 /// than restating, because "convert takes exactly what plan takes" is the
 /// property that makes previewing worth doing.
-static ARGS: [Arg; 16] = args();
+static ARGS: [Arg; request::SHARED_ARGS.len() + 1] = args();
 
-const fn args() -> [Arg; 16] {
-    let mut out = [Arg::switch("", ""); 16];
+const fn args() -> [Arg; request::SHARED_ARGS.len() + 1] {
+    let mut out = [Arg::switch("", ""); request::SHARED_ARGS.len() + 1];
     let mut index = 0;
     while index < request::SHARED_ARGS.len() {
         out[index] = request::SHARED_ARGS[index];
@@ -104,7 +104,7 @@ const fn args() -> [Arg; 16] {
     out
 }
 
-static REFUSALS: [Refusal; 14] = refusals::splice(&[
+static REFUSALS: [Refusal; 16] = refusals::splice(&[
     sources::SHARED_REFUSALS,
     request::REQUEST_REFUSALS,
     CONVERT_REFUSALS,
