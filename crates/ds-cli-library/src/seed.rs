@@ -184,13 +184,21 @@ fn collect_tree(
 
 fn sources(inputs: &Inputs) -> Result<Vec<(String, Vec<u8>)>, Failure> {
     let mut out = Vec::new();
-    for raw in inputs.repeated("source") {
+    let declared_sources = inputs.repeated("source");
+    let multiple_sources = declared_sources.len() > 1;
+    for raw in declared_sources {
         let path = Path::new(raw);
         if path.is_dir() {
-            let prefix = path
-                .file_name()
-                .and_then(|name| name.to_str())
-                .unwrap_or("source");
+            // One directory is the library root, not another decorative
+            // namespace beneath it. Multiple explicit roots keep their leaf
+            // prefixes so equal relative paths cannot silently collide.
+            let prefix = if multiple_sources {
+                path.file_name()
+                    .and_then(|name| name.to_str())
+                    .unwrap_or("source")
+            } else {
+                ""
+            };
             collect_tree(path, path, prefix, &mut out)?;
         } else {
             let bytes = read(raw)?;

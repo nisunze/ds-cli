@@ -84,6 +84,20 @@ fn workspace_file(leaf: &str) -> String {
     path.display().to_string()
 }
 
+fn copy_tree(source: &std::path::Path, destination: &std::path::Path) {
+    std::fs::create_dir_all(destination).unwrap();
+    for entry in std::fs::read_dir(source).unwrap() {
+        let entry = entry.unwrap();
+        let source_path = entry.path();
+        let destination_path = destination.join(entry.file_name());
+        if entry.file_type().unwrap().is_dir() {
+            copy_tree(&source_path, &destination_path);
+        } else {
+            std::fs::copy(&source_path, &destination_path).unwrap();
+        }
+    }
+}
+
 fn ok(args: &[&str]) -> Value {
     let run = ds(args);
     assert_eq!(
@@ -306,7 +320,7 @@ fn library_seed_materializes_two_native_families_idempotently() {
         parse_standards_library_manifest(&std::fs::read(version.join("manifest.json")).unwrap())
             .unwrap();
     let native_path = manifest.members[0].pls_cadd_path.clone();
-    assert_eq!(native_path, "pls-cadd/structures/source/pole.012");
+    assert_eq!(native_path, "pls-cadd/structures/pole.012");
     assert!(version.join(&native_path).is_file());
     let release =
         unpack_library(&std::fs::read(version.join("dsgrid/library.dsgrid-library")).unwrap())
@@ -1110,6 +1124,124 @@ fn pls_backup_create_frames_every_real_workspace_member_and_refuses_overwrite() 
         "json",
     ]);
     assert_eq!(overwrite.envelope["error"]["code"], "output_exists");
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn pls_shading_variants_are_digest_pinned_properly_named_and_create_new() {
+    let root = temp_root("pls-shading-variants");
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&root).unwrap();
+    let source_workspace = root.join("source-workspace");
+    copy_tree(std::path::Path::new(&workspace()), &source_workspace);
+    let shaded_witness = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../../ds-network/crates/ds-io/assets/pls_cadd/witness/b-w-S190.012");
+    std::fs::copy(
+        shaded_witness,
+        source_workspace
+            .join("structures")
+            .join("b-w-S190-shaded.012"),
+    )
+    .unwrap();
+    let source = source_workspace.display().to_string();
+    let backup = root.join("Final Huye Gisagara.bak");
+    let backup_text = backup.display().to_string();
+    ok(&[
+        "pls",
+        "backup-create",
+        "--workspace",
+        &source,
+        "--out",
+        &backup_text,
+        "--yes",
+        "--output",
+        "json",
+    ]);
+
+    let variants = root.join("variants");
+    let variants_text = variants.display().to_string();
+    let unpinned = ds(&[
+        "pls",
+        "shading-variants",
+        "--backup",
+        &backup_text,
+        "--out",
+        &variants_text,
+        "--output",
+        "json",
+    ]);
+    assert_eq!(unpinned.code, 2);
+    assert_eq!(unpinned.envelope["error"]["code"], "missing_digest_pin");
+    let digest = unpinned.envelope["error"]["detail"]["observed"]
+        .as_str()
+        .expect("the refusal reports the source digest");
+    assert!(digest.starts_with("sha256:") && digest.len() == 71);
+    assert!(!variants.exists(), "an unpinned call must write nothing");
+
+    let unconfirmed = ds(&[
+        "pls",
+        "shading-variants",
+        "--backup",
+        &backup_text,
+        "--source-sha256",
+        digest,
+        "--out",
+        &variants_text,
+        "--output",
+        "json",
+    ]);
+    assert_eq!(unconfirmed.code, 2);
+    assert_eq!(
+        unconfirmed.envelope["error"]["code"],
+        "confirmation_required"
+    );
+    assert!(!variants.exists(), "an unconfirmed call must write nothing");
+
+    let created = ok(&[
+        "pls",
+        "shading-variants",
+        "--backup",
+        &backup_text,
+        "--source-sha256",
+        digest,
+        "--out",
+        &variants_text,
+        "--yes",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(created["project_name"], "Final Huye Gisagara");
+    assert!(created["model_count"].as_u64().unwrap_or(0) > 0);
+    assert!(created["changed_model_count"].as_u64().unwrap_or(0) > 0);
+    assert_eq!(
+        created["variant_difference_limited_to_shading_categories"],
+        true
+    );
+    assert_eq!(
+        created["engineering_bytes_preserved_outside_selected_categories"],
+        true
+    );
+    for variant in ["shaded", "unshaded"] {
+        let workspace = variants.join(variant);
+        assert!(workspace.join("Final Huye Gisagara.don").is_file());
+        assert!(!workspace.join("A Project.don").exists());
+    }
+    assert!(variants.join("shading-variants.json").is_file());
+
+    let replay = ds(&[
+        "pls",
+        "shading-variants",
+        "--backup",
+        &backup_text,
+        "--source-sha256",
+        digest,
+        "--out",
+        &variants_text,
+        "--yes",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(replay.envelope["error"]["code"], "output_exists");
     let _ = std::fs::remove_dir_all(&root);
 }
 

@@ -251,6 +251,11 @@ static LIBRARY_ENTRIES: &[Entry] = &[
         render: ds_cli_library::seed::render,
     },
     Entry {
+        command: &ds_cli_library::prepare_publication::COMMAND,
+        handler: ds_cli_library::prepare_publication::run,
+        render: ds_cli_library::prepare_publication::render,
+    },
+    Entry {
         command: &ds_cli_library::resolve_native::COMMAND,
         handler: ds_cli_library::resolve_native::run,
         render: ds_cli_library::resolve_native::render,
@@ -282,6 +287,11 @@ static PLS_ENTRIES: &[Entry] = &[
         command: &ds_cli_pls::compare_don::COMMAND,
         handler: ds_cli_pls::compare_don::run,
         render: ds_cli_pls::compare_don::render,
+    },
+    Entry {
+        command: &ds_cli_pls::shading_variants::COMMAND,
+        handler: ds_cli_pls::shading_variants::run,
+        render: ds_cli_pls::shading_variants::render,
     },
     Entry {
         command: &ds_cli_pls::terrain_reconcile::COMMAND,

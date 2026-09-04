@@ -24,6 +24,7 @@ pub mod deviation_labels;
 pub mod pole_capacity;
 pub mod reference_closure;
 pub mod section_orientation;
+pub mod shading_variants;
 pub mod terrain_reconcile;
 
 use ds_cli_contract::spec::Domain;
@@ -37,6 +38,7 @@ pub static DOMAIN: Domain = Domain {
         &reference_closure::COMMAND,
         &section_orientation::COMMAND,
         &compare_don::COMMAND,
+        &shading_variants::COMMAND,
         &terrain_reconcile::COMMAND,
         &deviation_labels::COMMAND,
         &delivery_verify::COMMAND,

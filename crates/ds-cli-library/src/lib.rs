@@ -8,6 +8,7 @@ pub mod catalog;
 pub mod global_catalog;
 pub mod open;
 pub mod pack;
+pub mod prepare_publication;
 pub mod resolve_native;
 pub mod seed;
 pub mod unpack;
@@ -39,6 +40,7 @@ pub static DOMAIN: Domain = Domain {
         &pack::COMMAND,
         &unpack::COMMAND,
         &seed::COMMAND,
+        &prepare_publication::COMMAND,
         &resolve_native::COMMAND,
     ],
 };

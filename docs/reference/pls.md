@@ -4,7 +4,7 @@ Tier-4 reference. `ds pls <command> --help` is the contract.
 
 ## What this domain is
 
-Seven of `ds-grid-tasks`' typed file tasks plus one exact-byte `ds-io` backup
+Eight of `ds-grid-tasks`' typed file tasks plus one exact-byte `ds-io` backup
 writer, exposed as commands. The task crate
 exists so a host does not have to know how a `.don`, a `.012` or a workspace's
 reference closure is read: it takes a typed request, loads the exact bytes,
@@ -13,6 +13,30 @@ result.
 
 So this domain is thin on purpose. It parses no PLS format, resolves no
 reference and compares no station. Those live behind the owner boundaries.
+
+## Shaded and unshaded workspace variants
+
+`shading-variants` takes one digest-pinned native backup and an absent output
+root. The backup filename is the delivery project name: `Final Huye
+Gisagara.bak` produces root project files named `Final Huye Gisagara.*`, even
+when the archived shell used a placeholder such as `A Project`.
+
+The output contains `shaded/`, `unshaded/`, and `shading-variants.json`.
+Both workspaces receive the same name and reference healing. The shaded copy
+preserves presentation bytes. The unshaded copy changes only characterized
+PLS-Pole attachment and drafting slots; structure, material, strength,
+capacity, and every byte outside those categories remain unchanged.
+
+Run once without `--source-sha256` to obtain the current digest, then pin it
+and confirm the create-new output:
+
+```bash
+ds pls shading-variants --backup './Final Huye Gisagara.bak' --out './Final Huye Gisagara variants' --output json
+ds pls shading-variants --backup './Final Huye Gisagara.bak' --source-sha256 'sha256:…' --out './Final Huye Gisagara variants' --yes --output json
+```
+
+The receipt proves the changed model set and carries before/after digests.
+Fresh native Restore/reopen remains a separate acceptance gate.
 
 ## Complete backup creation
 
@@ -237,6 +261,7 @@ Every command calls one function in `ds-grid-tasks`:
 | `reference-closure` | `inspect_pls_reference_closure` |
 | `section-orientation` | `diagnose_pls_section_orientation` |
 | `compare-don` | `compare_don_assignment` |
+| `shading-variants` | `create_pls_shading_variants` |
 | `terrain-reconcile` | `reconcile_pls_terrain` |
 | `deviation-labels` | `label_pls_deviations` |
 | `delivery-verify` | `verify_pls_delivery` |
