@@ -11,7 +11,16 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use zeroize::Zeroize;
 
+mod project_control;
 mod solar_portfolio;
+
+pub use project_control::{
+    plan_project_control_report_download, plan_project_control_rooms,
+    project_project_control_local_reports, ProjectControlError, RoomAvailability,
+    RoomMaterializationPlan, MAX_PROJECT_CONTROL_INPUT_BYTES, MAX_PROJECT_CONTROL_OUTBOX_ROWS,
+    MAX_PROJECT_CONTROL_ROOMS, PROJECT_CONTROL_REPORT_CATALOG_SCHEMA,
+    PROJECT_CONTROL_REPORT_PLAN_SCHEMA, PROJECT_CONTROL_ROOM_PLAN_SCHEMA,
+};
 
 pub use solar_portfolio::{
     plan_solar_portfolio_mutation, solar_portfolio_membership_identity,
@@ -491,10 +500,30 @@ mod wasm {
     use wasm_bindgen::prelude::*;
 
     use super::{
-        plan_solar_portfolio_mutation, solar_portfolio_membership_identity,
-        validate_firebase_id_token, validate_firebase_login_response,
-        validate_solar_portfolio_catalog, validate_solar_portfolio_result,
+        plan_project_control_report_download, plan_project_control_rooms,
+        plan_solar_portfolio_mutation, project_project_control_local_reports,
+        solar_portfolio_membership_identity, validate_firebase_id_token,
+        validate_firebase_login_response, validate_solar_portfolio_catalog,
+        validate_solar_portfolio_result,
     };
+
+    #[wasm_bindgen(js_name = planProjectControlRooms)]
+    pub fn project_control_rooms(input_json: &[u8]) -> Result<String, JsValue> {
+        plan_project_control_rooms(input_json)
+            .map_err(|error| JsValue::from_str(&error.to_string()))
+    }
+
+    #[wasm_bindgen(js_name = planProjectControlReportDownload)]
+    pub fn project_control_report_download(input_json: &[u8]) -> Result<String, JsValue> {
+        plan_project_control_report_download(input_json)
+            .map_err(|error| JsValue::from_str(&error.to_string()))
+    }
+
+    #[wasm_bindgen(js_name = projectProjectControlLocalReports)]
+    pub fn project_control_local_reports(input_json: &[u8]) -> Result<String, JsValue> {
+        project_project_control_local_reports(input_json)
+            .map_err(|error| JsValue::from_str(&error.to_string()))
+    }
 
     #[wasm_bindgen(js_name = validateFirebaseLogin)]
     pub fn validate_firebase_login(
@@ -804,8 +833,31 @@ mod wasm_tests {
     use wasm_bindgen_test::*;
 
     use super::wasm::{
-        solar_portfolio_membership, validate_firebase_login, validate_solar_portfolio,
+        project_control_rooms, solar_portfolio_membership, validate_firebase_login,
+        validate_solar_portfolio,
     };
+
+    #[wasm_bindgen_test]
+    fn browser_project_control_uses_the_native_room_plan() {
+        let input = serde_json::to_vec(&serde_json::json!({
+            "project": "project",
+            "heads": [{ "name": "clean", "version": 2 }, { "name": "dirty", "version": 3 }],
+            "rooms": [
+                { "name": "clean", "server_known": true, "server_version": 2 },
+                { "name": "dirty", "server_known": true, "server_version": 2, "local_dirty": true }
+            ],
+            "requested": ["clean", "dirty"],
+            "force": true,
+            "resident_cap": 8,
+            "max_parallel_requests": 4
+        }))
+        .unwrap();
+        let plan: Value = serde_json::from_str(&project_control_rooms(&input).unwrap()).unwrap();
+        assert_eq!(plan["schema"], "ds.project-control.room-plan/v1");
+        assert_eq!(plan["fetch"], serde_json::json!(["clean"]));
+        assert_eq!(plan["reuse"][0]["name"], "dirty");
+        assert_eq!(plan["reuse"][0]["provenance"], "local");
+    }
 
     #[wasm_bindgen_test]
     fn browser_membership_identity_uses_the_native_rust_contract() {
