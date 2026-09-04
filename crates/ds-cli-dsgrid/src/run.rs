@@ -17,8 +17,8 @@ use ds_grid_engine::descriptor::operation_descriptors;
 use ds_grid_engine::{
     EffectClass, GridSession, NetworkCalculationRequest, OperationDescriptor, ProfileAtlasOptions,
     ResultStore, SectionDemandsRequest, SpottingPlanRequest, StructureAnalysisRequest,
-    StructureUsageScreeningRequest, TerrainAnomalyOptions, calculate_stringing_and_structures,
-    structure_usage_screening,
+    StructureUsageScreeningRequest, TerrainAnomalyOptions, analyze_network_topology,
+    calculate_stringing_and_structures, structure_usage_screening,
 };
 use ds_grid_model::{AlignmentId, StructureTypeId, TableKind, TensionSectionId};
 use serde::Deserialize;
@@ -435,6 +435,11 @@ fn dispatch(operation_id: &str, params: &Value, session: &GridSession) -> Result
                     .map_err(|error| engine_error(operation_id, error))?,
             )
         }
+        "analyze_network_topology" => serialize(
+            operation_id,
+            analyze_network_topology(session.snapshot())
+                .map_err(|error| engine_error(operation_id, error))?,
+        ),
         "compute_support_demands" => {
             let request: SectionDemandsRequest = parse(operation_id, params)?;
             let mut store = ResultStore::new();

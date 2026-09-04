@@ -1220,6 +1220,32 @@ fn dsgrid_exchange_authors_source_rooted_mv_skeleton_from_gis() {
             .keys()
             .any(|name| name.ends_with("gis-network-analysis.json"))
     );
+    let topology = ok(&[
+        "dsgrid",
+        "run",
+        "--model",
+        &model_text,
+        "--operation",
+        "analyze_network_topology",
+        "--limit",
+        "5000",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(
+        topology["result"]["source_structure_ids"]
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+    assert_eq!(
+        topology["result"]["unreachable_route_node_ids"]
+            .as_array()
+            .unwrap()
+            .len(),
+        0
+    );
     let _ = std::fs::remove_dir_all(root);
 }
 
