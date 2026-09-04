@@ -23,6 +23,18 @@ operation. Hosts execute the plan: credentials, HTTP, IndexedDB, filesystem
 writes, browser downloads, progress rendering, and cancellation remain outside
 the kernel.
 
+The Solar network-seeding slice joins two deliberately separate fact
+authorities: DS Grid contributes revision-pinned MV alignment lengths and
+granular city/phase tags, while local reporter rooms contribute transformers,
+customers, and LV lengths. Explicit city bindings resolve different source
+spellings; no fuzzy name join is permitted. The LV tag projection remains its
+exact exported text and is verified against its supplied SHA-256 before use.
+The result is a deterministic,
+digest-pinned plan of complete Solar city documents. MV structure counts are
+outside this version and are rejected rather than silently consumed. Native
+`ds-report`/`ds solar` and browser WASM call this one operation; hosts retain
+file selection, IndexedDB, downloads, and background cloud publication.
+
 Expansion is evidence-gated. A new slice belongs here only when it immediately
 serves a native `ds` operation and removes duplicated TypeScript domain logic.
 Parallel mutable implementations are not allowed.
