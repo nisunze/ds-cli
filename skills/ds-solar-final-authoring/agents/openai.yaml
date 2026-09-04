@@ -1,0 +1,4 @@
+interface:
+  display_name: "DS Solar Final Authoring"
+  short_description: "Finalize governed Solar report drafts"
+  default_prompt: "Use $ds-solar-final-authoring to author, lint, import, and optionally render one governed Solar report draft."

@@ -68,20 +68,20 @@ component unless the operator requests it. Prefer:
 3. Microsoft Office, when installed, for operator visual review or a proven
    local bridge—not as an assumed unattended API.
 
-To keep images visible without modifying the reviewed source, use
-`scripts/materialize_report_media.py` from this skill against the bundle's
-`media-manifest.json`. It creates a separate rendering copy and refuses an
-existing destination or an incomplete mapping. Run Pandoc from the extracted
-bundle root so `media/` remains resolvable. Representative commands:
+Run Pandoc from the extracted bundle root so the preview copy's `media/` links
+remain resolvable. Keep the reviewed canonical Markdown unchanged; the preview
+copy is the rendering input. Representative commands:
 
 ```text
-python3 <skill>/scripts/materialize_report_media.py \
-  --final <final.md> --manifest <bundle>/media-manifest.json \
-  --out <bundle>/final.render.md
-pandoc <bundle>/final.render.md --from=gfm --resource-path=<bundle> \
+pandoc <bundle>/<preview.md> --from=gfm --resource-path=<bundle> \
   --standalone --output <bundle>/final.docx
 libreoffice --headless --convert-to pdf --outdir <bundle> <bundle>/final.docx
 ```
+
+If final narration exists only in the canonical source and the live `ds`
+surface exposes no governed rendering-copy operation, stop and report that
+confirmed gap. A skill must not ship or run a private executable that silently
+creates a second report transformation contract.
 
 Verify each produced file is non-empty and opens before calling it finished.
 Do not import the rendering copy as the final. Upload DOCX/PDF or another
