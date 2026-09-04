@@ -126,6 +126,7 @@ dependencies = [
  "ds-solar-contracts",
  "serde",
  "serde_json",
+ "sha2",
  "wasm-bindgen",
  "wasm-bindgen-test",
  "zeroize",

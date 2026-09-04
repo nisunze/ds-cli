@@ -11,6 +11,16 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use zeroize::Zeroize;
 
+mod solar_portfolio;
+
+pub use solar_portfolio::{
+    plan_solar_portfolio_mutation, solar_portfolio_membership_identity,
+    validate_solar_portfolio_catalog, SolarPortfolio, SolarPortfolioError, MAX_SOLAR_PORTFOLIOS,
+    MAX_SOLAR_PORTFOLIO_CATALOG_BYTES, MAX_SOLAR_PORTFOLIO_CITIES,
+    MAX_SOLAR_PORTFOLIO_MUTATION_BYTES, SOLAR_PORTFOLIO_CATALOG_SCHEMA,
+    SOLAR_PORTFOLIO_MEMBERSHIP_SCHEMA, SOLAR_PORTFOLIO_MUTATION_PLAN_SCHEMA,
+};
+
 pub const LOGIN_CONTRACT_SCHEMA: &str = "ds.auth.login-result/v1";
 pub const MAX_LOGIN_RESPONSE_BYTES: usize = 64 * 1024;
 pub const MAX_SOLAR_PORTFOLIO_RESULT_BYTES: usize = 4 * 1024 * 1024;
@@ -481,8 +491,9 @@ mod wasm {
     use wasm_bindgen::prelude::*;
 
     use super::{
+        plan_solar_portfolio_mutation, solar_portfolio_membership_identity,
         validate_firebase_id_token, validate_firebase_login_response,
-        validate_solar_portfolio_result,
+        validate_solar_portfolio_catalog, validate_solar_portfolio_result,
     };
 
     #[wasm_bindgen(js_name = validateFirebaseLogin)]
@@ -520,6 +531,24 @@ mod wasm {
         expected_run_id: &str,
     ) -> Result<String, JsValue> {
         validate_solar_portfolio_result(result_json, expected_run_id)
+            .map_err(|error| JsValue::from_str(&error.to_string()))
+    }
+
+    #[wasm_bindgen(js_name = validateSolarPortfolioCatalog)]
+    pub fn validate_solar_portfolios(catalog_json: &[u8]) -> Result<String, JsValue> {
+        validate_solar_portfolio_catalog(catalog_json)
+            .map_err(|error| JsValue::from_str(&error.to_string()))
+    }
+
+    #[wasm_bindgen(js_name = planSolarPortfolioMutation)]
+    pub fn plan_solar_portfolio(input_json: &[u8]) -> Result<String, JsValue> {
+        plan_solar_portfolio_mutation(input_json)
+            .map_err(|error| JsValue::from_str(&error.to_string()))
+    }
+
+    #[wasm_bindgen(js_name = solarPortfolioMembershipIdentity)]
+    pub fn solar_portfolio_membership(input_json: &[u8]) -> Result<String, JsValue> {
+        solar_portfolio_membership_identity(input_json)
             .map_err(|error| JsValue::from_str(&error.to_string()))
     }
 }
@@ -774,7 +803,25 @@ mod wasm_tests {
     use serde_json::Value;
     use wasm_bindgen_test::*;
 
-    use super::wasm::{validate_firebase_login, validate_solar_portfolio};
+    use super::wasm::{
+        solar_portfolio_membership, validate_firebase_login, validate_solar_portfolio,
+    };
+
+    #[wasm_bindgen_test]
+    fn browser_membership_identity_uses_the_native_rust_contract() {
+        let input = serde_json::to_vec(&serde_json::json!({
+            "portfolio_id": "pf_north",
+            "cities": ["rw_kigali", "rw_musanze"]
+        }))
+        .unwrap();
+        let identity: Value =
+            serde_json::from_str(&solar_portfolio_membership(&input).unwrap()).unwrap();
+        assert_eq!(identity["schema"], "ds-solar.portfolio-membership/v1");
+        assert_eq!(
+            identity["fingerprint"],
+            "a28725fa6d460cf2ed3fdda79a2fd9a712df29f8421b2609bdf74a716e59d92c"
+        );
+    }
 
     #[wasm_bindgen_test]
     fn browser_export_uses_the_native_login_contract() {

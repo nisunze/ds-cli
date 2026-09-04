@@ -18,6 +18,7 @@ base64 = "0.22"
 ds-solar-contracts = { path = "../ds-solar/crates/ds-solar-contracts", default-features = false }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+sha2 = "0.10"
 wasm-bindgen = { version = "0.2", optional = true }
 zeroize = "1"
 
