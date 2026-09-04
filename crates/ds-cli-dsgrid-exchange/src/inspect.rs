@@ -57,7 +57,7 @@ that decides whether a conversion is worth attempting.",
     output: "\
 One entry per source with its classification, digest, member count and any \
 version or units evidence the engine recovered; then the capabilities, \
-available ones by default.",
+available ones by default. GIS sources also list their layers, geometry, feature counts and CRS evidence.",
     examples: &[
         Example {
             command: "ds dsgrid-exchange inspect --source ./workspace --output json",
@@ -135,6 +135,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
                 "version_evidence": candidate.version_evidence,
                 "units_evidence": candidate.units_evidence,
                 "counts": candidate.counts,
+                "gis_layers": candidate.gis_layers,
             })
         })
         .collect();
@@ -183,6 +184,17 @@ pub fn render(data: &Value) -> String {
             if let Some(evidence) = source[key].as_str() {
                 out.push_str(&format!("  {:<28} {key}: {evidence}\n", ""));
             }
+        }
+        for layer in source["gis_layers"].as_array().into_iter().flatten() {
+            out.push_str(&format!(
+                "  {:<28} layer {:<24} {:>6} {:<10} {} → {}\n",
+                "",
+                layer["name"].as_str().unwrap_or(""),
+                layer["feature_count"],
+                layer["geometry_type"].as_str().unwrap_or("unknown"),
+                layer["source_crs"].as_str().unwrap_or("unknown"),
+                layer["normalized_crs"].as_str().unwrap_or("unknown"),
+            ));
         }
     }
 

@@ -72,6 +72,11 @@ its reason says so.
 
 Nothing is converted and nothing is written.
 
+For a characterized GIS archive/document, `inspect` also returns every layer's
+name, feature count, geometry type, source CRS and normalized CRS. A zipped
+Shapefile, GeoJSON, KML or KMZ is classified from its content as
+`GisLayerSource`; the filename is provenance, not the format proof.
+
 ### Disambiguation
 
 `ds capabilities --search inspect` returns two commands, and the distinction
@@ -104,11 +109,43 @@ with the withheld count reported and the full total in
 A plan carrying any blocker has **no executable stages at all** — that is the
 engine's rule, not a `ds` convention.
 
+### GIS to DS Grid
+
+GIS seeding is explicit. One declared `LineString` layer becomes canonical
+alignments, and an optional property supplies their labels:
+
+```bash
+ds dsgrid-exchange plan --source ./mv.zip --target dsgrid \
+  --alignment-layer mv_lines --alignment-label-property node_id \
+  --crs EPSG:32633
+```
+
+The source reader normalizes characterized GIS geometry to WGS84 and the
+exchange adapter projects the selected line layer into the declared metric
+model CRS. The current characterized targets are WGS84 UTM
+`EPSG:32601..32660` and `EPSG:32701..32760`; a geographic CRS is refused as a
+model CRS.
+
+Polygons, points and unselected lines do not silently become engineering
+tables. The exact complete source is embedded as a package asset, and
+`gis-context-manifest.json` records every layer and whether it is a canonical
+alignment source or contextual evidence. This preserves city limits, buffers,
+solar sites and similar layers without pretending the DS Grid schema has a
+canonical polygon table.
+
 ## `convert`
 
 ```bash
 ds dsgrid-exchange convert --source ./workspace --target dsgrid \
   --crs EPSG:32735 --out ./out
+```
+
+The corresponding GIS seed is:
+
+```bash
+ds dsgrid-exchange convert --source ./mv.zip --target dsgrid \
+  --alignment-layer mv_lines --alignment-label-property node_id \
+  --crs EPSG:32633 --out ./out
 ```
 
 Plans, refuses a blocked plan, executes, and writes every artifact under

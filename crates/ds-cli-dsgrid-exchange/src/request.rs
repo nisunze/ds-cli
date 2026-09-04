@@ -17,7 +17,7 @@ use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{Arg, Refusal};
 use ds_grid_exchange::conversion::{
     BatchMode, ConversionRequest, ExpectedWgs84Location, PlsContainer, PlsVersionIntent, SourceSet,
-    TargetFormat, resolve_pls_project_selection,
+    TargetFormat, gis_import_selection, resolve_pls_project_selection,
 };
 use serde_json::json;
 
@@ -71,7 +71,17 @@ pub const SHARED_ARGS: &[Arg] = &[
     Arg::value(
         "crs",
         "<code>",
-        "Declare the source CRS when the sources do not carry one.",
+        "Declare a native PLS source CRS, or the projected metric model CRS for GIS import.",
+    ),
+    Arg::value(
+        "alignment-layer",
+        "<name>",
+        "For GIS → .dsgrid, map this LineString layer to canonical alignments.",
+    ),
+    Arg::value(
+        "alignment-label-property",
+        "<field>",
+        "For GIS → .dsgrid, label alignments from this optional source field.",
     ),
     Arg::switch("swap-xy", "Treat source coordinates as (y, x)."),
     Arg::value(
@@ -255,7 +265,11 @@ pub fn build(inputs: &Inputs, sources: SourceSet) -> Result<ConversionRequest, F
         declared_crs: inputs.value("crs").map(str::to_string),
         expected_location,
         swap_xy: inputs.switch("swap-xy"),
-        selection: Vec::new(),
+        selection: inputs
+            .value("alignment-layer")
+            .map_or_else(Vec::new, |layer| {
+                gis_import_selection(layer, inputs.value("alignment-label-property"))
+            }),
         pls_project,
     })
 }

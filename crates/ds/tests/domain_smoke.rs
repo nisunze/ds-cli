@@ -1015,6 +1015,124 @@ fn dsgrid_exchange_inspect_is_deterministic_over_a_directory() {
     );
 }
 
+#[test]
+fn dsgrid_exchange_seeds_a_verified_alignment_model_from_gis() {
+    let root = temp_root("gis-dsgrid-seed");
+    std::fs::create_dir_all(&root).unwrap();
+    let source = root.join("routes.geojson");
+    std::fs::write(
+        &source,
+        serde_json::to_vec(&serde_json::json!({
+            "type": "FeatureCollection",
+            "features": [{
+                "type": "Feature",
+                "geometry": {
+                    "type": "LineString",
+                    "coordinates": [[16.154281, 9.312006], [16.156550, 9.327091]]
+                },
+                "properties": { "node_id": "MV_LINES_0000" }
+            }]
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+    let source_text = source.display().to_string();
+
+    let inspected = ok(&[
+        "dsgrid-exchange",
+        "inspect",
+        "--source",
+        &source_text,
+        "--output",
+        "json",
+    ]);
+    assert_eq!(inspected["sources"][0]["kind"], "GisLayerSource");
+    assert_eq!(inspected["sources"][0]["gis_layers"][0]["name"], "routes");
+    assert_eq!(
+        inspected["sources"][0]["gis_layers"][0]["geometry_type"],
+        "LineString"
+    );
+
+    let plan = ok(&[
+        "dsgrid-exchange",
+        "plan",
+        "--source",
+        &source_text,
+        "--target",
+        "dsgrid",
+        "--alignment-layer",
+        "routes",
+        "--alignment-label-property",
+        "node_id",
+        "--crs",
+        "EPSG:32633",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(plan["executable"], true, "{}", plan);
+    assert_eq!(
+        plan["chosen_capabilities"][0],
+        "convert.gis.ingest_alignments_to_dsgrid"
+    );
+
+    let out = root.join("out");
+    let out_text = out.display().to_string();
+    let converted = ok(&[
+        "dsgrid-exchange",
+        "convert",
+        "--source",
+        &source_text,
+        "--target",
+        "dsgrid",
+        "--alignment-layer",
+        "routes",
+        "--alignment-label-property",
+        "node_id",
+        "--crs",
+        "EPSG:32633",
+        "--out",
+        &out_text,
+        "--output",
+        "json",
+    ]);
+    assert_eq!(converted["status"], "completed", "{}", converted);
+
+    let model = out.join("routes.dsgrid");
+    let model_text = model.display().to_string();
+    let identity = ok(&[
+        "dsgrid",
+        "inspect",
+        "--model",
+        &model_text,
+        "--include",
+        "tables",
+        "--include",
+        "members",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(identity["model"]["crs"], "EPSG:32633");
+    assert_eq!(identity["tables"]["alignments"], 1);
+    assert_eq!(identity["tables"]["route_nodes"], 2);
+    assert!(
+        identity["members"]
+            .as_object()
+            .unwrap()
+            .keys()
+            .any(|name| name.ends_with("gis-context-manifest.json"))
+    );
+    let validated = ok(&[
+        "dsgrid",
+        "validate",
+        "--model",
+        &model_text,
+        "--output",
+        "json",
+    ]);
+    assert_eq!(validated["model"]["valid"], true, "{}", validated);
+    let _ = std::fs::remove_dir_all(root);
+}
+
 // ---------------------------------------------------------------------------
 // pls
 // ---------------------------------------------------------------------------

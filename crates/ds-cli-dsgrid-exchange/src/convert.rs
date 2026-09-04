@@ -72,6 +72,11 @@ the exchange report.",
             note: "Export a model for GIS, after reading the losses `plan` reported.",
             runnable: false,
         },
+        Example {
+            command: "ds dsgrid-exchange convert --source ./network.zip --target dsgrid --alignment-layer mv_lines --alignment-label-property node_id --crs EPSG:32633 --out ./out --output json",
+            note: "Create one canonical model from GIS and retain the complete source as package context.",
+            runnable: false,
+        },
     ],
     refusals: &REFUSALS,
     reference: Some("docs/reference/dsgrid-exchange.md"),
@@ -81,10 +86,10 @@ the exchange report.",
 /// `plan`'s inputs plus the output directory. Declared by splicing rather
 /// than restating, because "convert takes exactly what plan takes" is the
 /// property that makes previewing worth doing.
-static ARGS: [Arg; 11] = args();
+static ARGS: [Arg; 13] = args();
 
-const fn args() -> [Arg; 11] {
-    let mut out = [Arg::switch("", ""); 11];
+const fn args() -> [Arg; 13] {
+    let mut out = [Arg::switch("", ""); 13];
     let mut index = 0;
     while index < request::SHARED_ARGS.len() {
         out[index] = request::SHARED_ARGS[index];
