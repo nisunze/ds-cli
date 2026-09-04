@@ -61,8 +61,8 @@ full. Long lists are truncated and the withheld count reported.",
             runnable: false,
         },
         Example {
-            command: "ds dsgrid-exchange plan --source ./network.zip --target dsgrid --alignment-layer mv_lines --alignment-label-property node_id --crs EPSG:32633 --output json",
-            note: "Seed canonical alignments from one declared GIS line layer; retain all source layers as contextual evidence.",
+            command: "ds dsgrid-exchange plan --source ./network.zip --target dsgrid --alignment-layer mv_lines --alignment-label-property node_id --network-source-layer site_solaires --network-source-role plant --crs EPSG:32633 --output json",
+            note: "Plan a source-rooted MV skeleton from explicit route and source layers while retaining all GIS evidence.",
             runnable: false,
         },
     ],
@@ -73,7 +73,7 @@ full. Long lists are truncated and the withheld count reported.",
 
 /// The source refusals, then the request refusals. Spliced at compile time so
 /// the list cannot fall out of step with what the two modules actually emit.
-static REFUSALS: [Refusal; 6] =
+static REFUSALS: [Refusal; 8] =
     refusals::splice(&[sources::SHARED_REFUSALS, request::REQUEST_REFUSALS]);
 
 fn available() -> Availability {

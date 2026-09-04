@@ -17,7 +17,7 @@ use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{Arg, Refusal};
 use ds_grid_exchange::conversion::{
     BatchMode, ConversionRequest, ExpectedWgs84Location, PlsContainer, PlsVersionIntent, SourceSet,
-    TargetFormat, gis_import_selection, resolve_pls_project_selection,
+    TargetFormat, gis_network_import_selection, resolve_pls_project_selection,
 };
 use serde_json::json;
 
@@ -40,6 +40,7 @@ pub const TARGETS: &[&str] = &[
 
 pub const MODES: &[&str] = &["separate", "compose", "combine"];
 pub const CONTAINERS: &[&str] = &["folder", "bak"];
+pub const NETWORK_SOURCE_ROLES: &[&str] = &["tapping", "substation", "plant", "network_source"];
 
 /// The inputs `plan` and `convert` share. `convert` splices `--out` and
 /// `--yes` onto this; nothing else differs between them, which is the
@@ -83,6 +84,22 @@ pub const SHARED_ARGS: &[Arg] = &[
         "<field>",
         "For GIS → .dsgrid, label alignments from this optional source field.",
     ),
+    Arg::value(
+        "network-source-layer",
+        "<name>",
+        "For GIS → .dsgrid, select the Point/Polygon layer that identifies explicit source terminals.",
+    ),
+    Arg::value(
+        "network-source-role",
+        "<role>",
+        "Assign the selected GIS source as a tapping, substation, plant, or generic network_source.",
+    )
+    .choices(NETWORK_SOURCE_ROLES),
+    Arg::value(
+        "network-snap-tolerance-m",
+        "<metres>",
+        "Metric tolerance for joining route endpoints and matching them to explicit source geometry (default 0.5).",
+    ),
     Arg::switch("swap-xy", "Treat source coordinates as (y, x)."),
     Arg::value(
         "expect-lon",
@@ -115,6 +132,16 @@ pub const REQUEST_REFUSALS: &[Refusal] = &[
         code: "project_not_resolvable",
         when: "--select-project names a .don leaf the sources do not hold, or hold ambiguously",
         remedy: "run `ds dsgrid-exchange inspect` to list what the sources actually contain",
+    },
+    Refusal {
+        code: "incomplete_gis_network_selection",
+        when: "network source role/tolerance is supplied without a source layer, or network authoring is requested without an alignment layer",
+        remedy: "pass --alignment-layer and --network-source-layer together; role and tolerance are optional",
+    },
+    Refusal {
+        code: "invalid_network_snap_tolerance",
+        when: "--network-snap-tolerance-m is not a finite positive number",
+        remedy: "pass a positive distance in metres, normally 0.5",
     },
 ];
 
@@ -235,6 +262,29 @@ pub fn build(inputs: &Inputs, sources: SourceSet) -> Result<ConversionRequest, F
     let batch_mode = parse_mode(inputs.value("mode"))?;
     let pls_container = parse_container(inputs.value("container"))?;
     let expected_location = parse_expected_location(inputs)?;
+    let alignment_layer = inputs.value("alignment-layer");
+    let network_source_layer = inputs.value("network-source-layer");
+    let network_source_role = inputs.value("network-source-role");
+    let network_snap_tolerance_m = inputs
+        .value("network-snap-tolerance-m")
+        .map(parse_network_snap_tolerance)
+        .transpose()?;
+    if network_source_layer.is_some() && alignment_layer.is_none() {
+        return Err(Failure::invalid(
+            "incomplete_gis_network_selection",
+            "--network-source-layer requires --alignment-layer",
+        )
+        .remedy("pass both --alignment-layer and --network-source-layer"));
+    }
+    if network_source_layer.is_none()
+        && (network_source_role.is_some() || network_snap_tolerance_m.is_some())
+    {
+        return Err(Failure::invalid(
+            "incomplete_gis_network_selection",
+            "--network-source-role and --network-snap-tolerance-m require --network-source-layer",
+        )
+        .remedy("pass --network-source-layer, or remove the network-only option"));
+    }
 
     let pls_project = match inputs.value("select-project") {
         Some(leaf) => Some(
@@ -265,11 +315,33 @@ pub fn build(inputs: &Inputs, sources: SourceSet) -> Result<ConversionRequest, F
         declared_crs: inputs.value("crs").map(str::to_string),
         expected_location,
         swap_xy: inputs.switch("swap-xy"),
-        selection: inputs
-            .value("alignment-layer")
-            .map_or_else(Vec::new, |layer| {
-                gis_import_selection(layer, inputs.value("alignment-label-property"))
-            }),
+        selection: alignment_layer.map_or_else(Vec::new, |layer| {
+            gis_network_import_selection(
+                layer,
+                inputs.value("alignment-label-property"),
+                network_source_layer,
+                network_source_role,
+                network_snap_tolerance_m,
+            )
+        }),
         pls_project,
     })
+}
+
+fn parse_network_snap_tolerance(raw: &str) -> Result<f64, Failure> {
+    let value = raw.parse::<f64>().map_err(|_| {
+        Failure::invalid(
+            "invalid_network_snap_tolerance",
+            format!("--network-snap-tolerance-m `{raw}` is not a number"),
+        )
+        .remedy("pass a positive distance in metres, normally 0.5")
+    })?;
+    if !value.is_finite() || value <= 0.0 {
+        return Err(Failure::invalid(
+            "invalid_network_snap_tolerance",
+            format!("--network-snap-tolerance-m must be finite and positive, found {raw}"),
+        )
+        .remedy("pass a positive distance in metres, normally 0.5"));
+    }
+    Ok(value)
 }

@@ -112,11 +112,17 @@ engine's rule, not a `ds` convention.
 ### GIS to DS Grid
 
 GIS seeding is explicit. One declared `LineString` layer becomes canonical
-alignments, and an optional property supplies their labels:
+alignments, and an optional property supplies their labels. When an explicit
+Point/Polygon source layer is also selected, Rust nodes coincident route ends,
+requires exactly one terminal per source feature, assigns every other degree-1
+terminal as a conceptual transformer position, and assigns internal branch
+nodes as conceptual tappings:
 
 ```bash
 ds dsgrid-exchange plan --source ./mv.zip --target dsgrid \
   --alignment-layer mv_lines --alignment-label-property node_id \
+  --network-source-layer site_solaires --network-source-role plant \
+  --network-snap-tolerance-m 0.5 \
   --crs EPSG:32633
 ```
 
@@ -125,6 +131,14 @@ exchange adapter projects the selected line layer into the declared metric
 model CRS. The current characterized targets are WGS84 UTM
 `EPSG:32601..32660` and `EPSG:32701..32760`; a geographic CRS is refused as a
 model CRS.
+
+The network analysis is source-rooted and retained as
+`gis-network-analysis.json`. For every route position it carries both local
+`local_station_m` and cumulative `from_source_distance_m`; therefore a child
+alignment starts at its upstream graph distance rather than resetting the
+network distance to zero. Tree/non-tree edges and unreachable fragments remain
+explicit. The adapter does not guess a source or transformer from contextual
+service-area polygons.
 
 Polygons, points and unselected lines do not silently become engineering
 tables. The exact complete source is embedded as a package asset, and
@@ -145,6 +159,8 @@ The corresponding GIS seed is:
 ```bash
 ds dsgrid-exchange convert --source ./mv.zip --target dsgrid \
   --alignment-layer mv_lines --alignment-label-property node_id \
+  --network-source-layer site_solaires --network-source-role plant \
+  --network-snap-tolerance-m 0.5 \
   --crs EPSG:32633 --out ./out
 ```
 

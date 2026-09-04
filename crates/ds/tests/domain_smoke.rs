@@ -1147,6 +1147,82 @@ fn dsgrid_exchange_seeds_a_verified_alignment_model_from_gis() {
     let _ = std::fs::remove_dir_all(root);
 }
 
+#[test]
+fn dsgrid_exchange_authors_source_rooted_mv_skeleton_from_gis() {
+    let root = temp_root("gis-source-rooted-mv");
+    std::fs::create_dir_all(&root).unwrap();
+    let source = root.join("network.kml");
+    std::fs::write(
+        &source,
+        br#"<kml><Document>
+          <Folder><name>routes</name>
+            <Placemark><name>trunk</name><LineString><coordinates>16.002,9,0 16.001,9,0 16,9,0</coordinates></LineString></Placemark>
+            <Placemark><name>branch</name><LineString><coordinates>16.001,9,0 16.001,9.001,0</coordinates></LineString></Placemark>
+          </Folder>
+          <Folder><name>sources</name>
+            <Placemark><name>plant</name><Point><coordinates>16,9,0</coordinates></Point></Placemark>
+          </Folder>
+        </Document></kml>"#,
+    )
+    .unwrap();
+    let source_text = source.display().to_string();
+    let out = root.join("out");
+    let out_text = out.display().to_string();
+
+    let converted = ok(&[
+        "dsgrid-exchange",
+        "convert",
+        "--source",
+        &source_text,
+        "--target",
+        "dsgrid",
+        "--alignment-layer",
+        "routes",
+        "--alignment-label-property",
+        "name",
+        "--network-source-layer",
+        "sources",
+        "--network-source-role",
+        "plant",
+        "--network-snap-tolerance-m",
+        "0.5",
+        "--crs",
+        "EPSG:32633",
+        "--out",
+        &out_text,
+        "--output",
+        "json",
+    ]);
+    assert_eq!(converted["status"], "completed", "{}", converted);
+
+    let model = out.join("network.dsgrid");
+    let model_text = model.display().to_string();
+    let identity = ok(&[
+        "dsgrid",
+        "inspect",
+        "--model",
+        &model_text,
+        "--include",
+        "tables",
+        "--include",
+        "members",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(identity["tables"]["alignments"], 2);
+    assert_eq!(identity["tables"]["route_nodes"], 4);
+    assert_eq!(identity["tables"]["structures"], 4);
+    assert_eq!(identity["tables"]["spans"], 3);
+    assert!(
+        identity["members"]
+            .as_object()
+            .unwrap()
+            .keys()
+            .any(|name| name.ends_with("gis-network-analysis.json"))
+    );
+    let _ = std::fs::remove_dir_all(root);
+}
+
 // ---------------------------------------------------------------------------
 // pls
 // ---------------------------------------------------------------------------

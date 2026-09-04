@@ -73,8 +73,8 @@ the exchange report.",
             runnable: false,
         },
         Example {
-            command: "ds dsgrid-exchange convert --source ./network.zip --target dsgrid --alignment-layer mv_lines --alignment-label-property node_id --crs EPSG:32633 --out ./out --output json",
-            note: "Create one canonical model from GIS and retain the complete source as package context.",
+            command: "ds dsgrid-exchange convert --source ./network.zip --target dsgrid --alignment-layer mv_lines --alignment-label-property node_id --network-source-layer site_solaires --network-source-role plant --crs EPSG:32633 --out ./out --output json",
+            note: "Create a source-rooted MV skeleton from GIS and retain the complete source as package context.",
             runnable: false,
         },
     ],
@@ -86,10 +86,10 @@ the exchange report.",
 /// `plan`'s inputs plus the output directory. Declared by splicing rather
 /// than restating, because "convert takes exactly what plan takes" is the
 /// property that makes previewing worth doing.
-static ARGS: [Arg; 13] = args();
+static ARGS: [Arg; 16] = args();
 
-const fn args() -> [Arg; 13] {
-    let mut out = [Arg::switch("", ""); 13];
+const fn args() -> [Arg; 16] {
+    let mut out = [Arg::switch("", ""); 16];
     let mut index = 0;
     while index < request::SHARED_ARGS.len() {
         out[index] = request::SHARED_ARGS[index];
@@ -104,7 +104,7 @@ const fn args() -> [Arg; 13] {
     out
 }
 
-static REFUSALS: [Refusal; 12] = refusals::splice(&[
+static REFUSALS: [Refusal; 14] = refusals::splice(&[
     sources::SHARED_REFUSALS,
     request::REQUEST_REFUSALS,
     CONVERT_REFUSALS,
