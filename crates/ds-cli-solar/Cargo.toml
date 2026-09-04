@@ -17,6 +17,7 @@ ds-cli-contract = { workspace = true }
 # a JWT never crosses back.
 ds-cli-desktop = { workspace = true }
 ds-cli-exec = { workspace = true }
+ds-cli-report = { workspace = true }
 ds-command-kernel = { workspace = true }
 libc = { workspace = true }
 serde = { workspace = true }

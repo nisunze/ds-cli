@@ -311,6 +311,7 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     // exactly as ds-brain classifies `seed_preview`, so it stays usable on a
     // read-only project.
     ("solar.seed.apply", "global_write", "project"),
+    ("solar.seed.network-plan", "local_file_write", "none"),
     ("solar.seed.preview", "read_only", "project"),
     ("solar.sync.status", "read_only", "desktop_user"),
     ("solar.verify-weather", "read_only", "none"),

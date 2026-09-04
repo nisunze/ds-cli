@@ -13,6 +13,7 @@ use ds_cli_contract::spec::{
     Arg, Authority, Availability, Chapter, Command, Effect, Example, Execution, Refusal,
 };
 use ds_cli_contract::{Context, Inputs};
+use ds_grid_engine::TaggedAlignmentLengthsRequest;
 use ds_grid_engine::descriptor::operation_descriptors;
 use ds_grid_engine::{
     EffectClass, GridSession, NetworkCalculationRequest, OperationDescriptor, ProfileAtlasOptions,
@@ -371,6 +372,15 @@ fn dispatch(operation_id: &str, params: &Value, session: &GridSession) -> Result
         "project_table" => {
             let params: TableParams = parse(operation_id, params)?;
             serialize(operation_id, session.table_projection(params.table_kind))
+        }
+        "project_tagged_alignment_lengths" => {
+            let params: TaggedAlignmentLengthsRequest = parse(operation_id, params)?;
+            serialize(
+                operation_id,
+                session
+                    .tagged_alignment_lengths(&params)
+                    .map_err(|error| engine_error(operation_id, error))?,
+            )
         }
         "project_profile_atlas" => {
             let options: ProfileAtlasOptions = parse(operation_id, params)?;

@@ -480,6 +480,11 @@ static SOLAR_ENTRIES: &[Entry] = &[
         render: ds_cli_solar::seed::render,
     },
     Entry {
+        command: &ds_cli_solar::network_seed::COMMAND,
+        handler: ds_cli_solar::network_seed::run,
+        render: ds_cli_solar::network_seed::render,
+    },
+    Entry {
         command: &ds_cli_solar::weather::COMMAND,
         handler: ds_cli_solar::weather::run,
         render: ds_cli_solar::weather::render,

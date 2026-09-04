@@ -17,6 +17,7 @@ pub mod engine;
 pub mod exports;
 pub mod input_capture;
 pub mod input_prepare;
+pub mod network_seed;
 pub mod paired;
 pub mod paired_run;
 pub mod portfolio_management;
@@ -86,6 +87,7 @@ pub static DOMAIN: Domain = Domain {
         &exports::PORTFOLIO_EXPORT_COMMAND,
         &seed::PREVIEW_COMMAND,
         &seed::APPLY_COMMAND,
+        &network_seed::COMMAND,
         &weather::COMMAND,
     ],
 };

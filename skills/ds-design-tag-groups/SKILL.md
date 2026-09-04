@@ -52,6 +52,26 @@ not substitute a similarly named definition or fall back to a filename,
 coordinate, or consumer document. `.data.excluded` names values the projection
 could not carry, with the reason.
 
+## Purpose-scoped temporary tags
+
+An agent may propose a temporary choice definition when a one-off report needs
+a classification the project does not already govern. First list existing
+definitions and prefer a compatible one. If none exists:
+
+- choose a stable, purpose-specific definition id and explain its temporary
+  reporting purpose and intended retirement;
+- define an exact closed vocabulary with `ds design tag define`;
+- assign values through `ds design tag set`, or through the batch group surface
+  when that definition is offered there;
+- preview every mutation and obtain explicit user confirmation before `--yes`;
+- never reuse `city`, `phasing`, or an administrative semantic key for another
+  meaning.
+
+After publication, clear the temporary assignments and archive the applied
+consumer grouping. Do not delete or silently repurpose the definition: its
+stable identity remains provenance for the published artifact even when no
+active object carries it.
+
 ## Governed administrative location
 
 Administrative location is not something an operator retypes and not something
@@ -141,3 +161,8 @@ ds design consumer-grouping archive --purpose report_archive --yes
 - Report `member_count`, `unassigned_count` and the group keys as returned. The
   UI, the CLI, the report receipt and the archive manifest all state the same
   numbers because exactly one authority decides them.
+- Solar seeding/reporting consumes the applied `solar_report` plan. A combined
+  or compounded report archive consumes the applied `report_archive` plan and
+  the exact digest-pinned tag document for the same transformer inventory.
+  Refuse publication when either projection coverage or its digest is stale;
+  never regroup from administrative columns inside transformer data.

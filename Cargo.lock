@@ -846,6 +846,7 @@ dependencies = [
  "ds-cli-contract",
  "ds-cli-desktop",
  "ds-cli-exec",
+ "ds-cli-report",
  "ds-command-kernel",
  "libc",
  "serde",
