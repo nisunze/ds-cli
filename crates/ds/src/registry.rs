@@ -460,6 +460,11 @@ static SOLAR_ENTRIES: &[Entry] = &[
         render: ds_cli_solar::exports::render,
     },
     Entry {
+        command: &ds_cli_solar::exports::REPORT_BUNDLE_COMMAND,
+        handler: ds_cli_solar::exports::export_report_bundle,
+        render: ds_cli_solar::exports::render,
+    },
+    Entry {
         command: &ds_cli_solar::exports::PORTFOLIO_EXPORT_COMMAND,
         handler: ds_cli_solar::exports::export_portfolio,
         render: ds_cli_solar::exports::render,

@@ -82,6 +82,7 @@ pub static DOMAIN: Domain = Domain {
         &workflow::FINAL_IMPORT_COMMAND,
         &workflow::FINAL_SUBMIT_COMMAND,
         &exports::REPORT_EXPORT_COMMAND,
+        &exports::REPORT_BUNDLE_COMMAND,
         &exports::PORTFOLIO_EXPORT_COMMAND,
         &seed::PREVIEW_COMMAND,
         &seed::APPLY_COMMAND,

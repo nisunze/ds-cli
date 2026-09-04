@@ -40,5 +40,6 @@ serde_json = { workspace = true }
 [dev-dependencies]
 ds-grid-engine = { workspace = true }
 ds-grid-exchange = { workspace = true }
+ds-solar-contracts = { workspace = true }
 serde_json = { workspace = true }
 sha2 = { workspace = true }

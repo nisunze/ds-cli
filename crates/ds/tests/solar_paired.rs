@@ -102,7 +102,27 @@ fn portfolio_result(run_id: &str) -> Value {
                 "diesel_capacity_mw": 0.5,
             },
         },
-        "sections": {"investment": {"total": 42}},
+        "sections": {
+            "assumptions": {"available": true},
+            "site": {"available": true},
+            "maps": {"available": true},
+            "network": {"available": true},
+            "demand": {"available": true},
+            "scenarios": {"available": true},
+            "performance": {"available": true},
+            "investment": {"total": 42},
+            "financial_kpis": {"available": true},
+            "environmental": {"available": true},
+            "risk": {"available": true},
+            "representative_graphs": {
+                "_strategy": "first",
+                "_representative_cities": ["a"],
+                "graph_count": 0,
+                "graphs": [],
+                "_unavailable": [],
+            },
+            "system_rationale": {"available": true},
+        },
         "portfolio_digest": digest('c'),
     })
 }
@@ -132,7 +152,7 @@ fn portfolio_result_v3_round_robin(run_id: &str) -> Value {
             { "kind": "cash_flow", "city_id": "b" }
         ]
     });
-    document
+    seal_portfolio_result(document)
 }
 
 fn portfolio_result_v3_first(run_id: &str) -> Value {
@@ -149,6 +169,14 @@ fn portfolio_result_v3_first(run_id: &str) -> Value {
         }],
         "_unavailable": [{ "kind": "cash_flow", "city_id": "a" }]
     });
+    seal_portfolio_result(document)
+}
+
+fn seal_portfolio_result(mut document: Value) -> Value {
+    let result: ds_solar_contracts::SolarPortfolioResult =
+        serde_json::from_value(document.clone()).expect("valid typed portfolio fixture");
+    document["portfolio_digest"] =
+        json!(result.compute_digest().expect("sealed portfolio fixture"));
     document
 }
 
@@ -1025,6 +1053,17 @@ fn solar_city_report_and_portfolio_read_descriptors_expose_current_contracts() {
         json!(["apd", "draft", "network", "plant", "financial"])
     );
 
+    let (bundle, code, stdout, stderr) =
+        ds(&["capabilities", "solar.report.bundle", "--output", "json"]);
+    assert_eq!(code, 0, "{stdout}{stderr}");
+    assert_eq!(bundle["data"]["command"]["contract"], 1);
+    assert!(
+        bundle["data"]["command"]["purpose"]
+            .as_str()
+            .expect("bundle purpose")
+            .contains("complete fact packet")
+    );
+
     let (read, code, stdout, stderr) =
         ds(&["capabilities", "solar.portfolio.read", "--output", "json"]);
     assert_eq!(code, 0, "{stdout}{stderr}");
@@ -1043,6 +1082,72 @@ fn solar_city_report_and_portfolio_read_descriptors_expose_current_contracts() {
             "missing `{promised}` from {output}"
         );
     }
+}
+
+#[test]
+fn solar_report_bundle_pages_binary_without_exposing_media_credentials() {
+    let bytes = [0_u8, 1, 2, 3, 255];
+    let bridge = bridge(vec![(
+        "solar.report.bundle.read",
+        json!({
+            "status": "ok",
+            "run_id": "solar-run-123",
+            "context": "rw-kigali",
+            "document": "draft",
+            "name": "apd-draft-fr-prompt-bundle.zip",
+            "offset": 0,
+            "bytes_base64": "AAECA/8=",
+            "bytes_returned": bytes.len(),
+            "bytes_total": bytes.len(),
+            "content_digest": sha256_digest(&bytes),
+            "batch_id": BATCH_ID,
+            "batch_digest": BATCH_DIGEST,
+            "next_offset": bytes.len(),
+            "complete": true,
+        }),
+    )]);
+    let descriptor = bridge.descriptor.to_string_lossy().into_owned();
+    let out = std::env::temp_dir().join(format!(
+        "ds-solar-prompt-bundle-{}-{}.zip",
+        std::process::id(),
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock after epoch")
+            .as_nanos(),
+    ));
+    let out_string = out.to_string_lossy().into_owned();
+    let (envelope, code, stdout, stderr) = ds(&[
+        "solar",
+        "report",
+        "bundle",
+        "--run-id",
+        "solar-run-123",
+        "--city",
+        "rw-kigali",
+        "--variant",
+        "draft",
+        "--out",
+        &out_string,
+        "--desktop-descriptor",
+        &descriptor,
+        "--output",
+        "json",
+    ]);
+    assert_eq!(code, 0, "{stdout}{stderr}");
+    assert_eq!(envelope["data"]["content_digest"], sha256_digest(&bytes));
+    assert_eq!(std::fs::read(&out).expect("read prompt bundle"), bytes);
+    let requests = finish(bridge);
+    assert_eq!(requests.len(), 1);
+    assert_eq!(
+        requests[0]["arguments"],
+        json!({
+            "run_id": "solar-run-123",
+            "context": "rw-kigali",
+            "document": "draft",
+            "offset": 0,
+        })
+    );
+    let _ = std::fs::remove_file(out);
 }
 
 #[test]

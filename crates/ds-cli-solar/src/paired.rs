@@ -70,6 +70,10 @@ pub const DOCUMENT_READ_OP: BridgeOp = BridgeOp {
     operation: "solar.document.read",
     arguments: &["run_id", "context", "document", "offset"],
 };
+pub const REPORT_BUNDLE_READ_OP: BridgeOp = BridgeOp {
+    operation: "solar.report.bundle.read",
+    arguments: &["run_id", "context", "document", "offset"],
+};
 pub const PORTFOLIO_READ_OP: BridgeOp = BridgeOp {
     operation: "solar.portfolio.read",
     arguments: &["run_id", "artifact", "offset"],
@@ -105,6 +109,7 @@ pub const BRIDGE_OPS: &[&BridgeOp] = &[
     &FINAL_IMPORT_OP,
     &FINAL_SUBMIT_OP,
     &DOCUMENT_READ_OP,
+    &REPORT_BUNDLE_READ_OP,
     &PORTFOLIO_READ_OP,
     &PORTFOLIO_ANALYSIS_OP,
 ];

@@ -9,6 +9,7 @@ authors.workspace = true
 publish.workspace = true
 
 [dependencies]
+base64 = { workspace = true }
 ds-cli-auth = { workspace = true }
 ds-cli-contract = { workspace = true }
 # The paired desktop owns selected-project state, cache-first city capture and

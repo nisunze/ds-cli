@@ -294,9 +294,9 @@ pub static PORTFOLIO_READ_COMMAND: Command = Command {
 pub static FINAL_IMPORT_COMMAND: Command = Command {
     id: "solar.final.import",
     path: &["solar", "final", "import"],
-    contract: 1,
+    contract: 2,
     summary: "Import an externally interpreted Markdown final.",
-    purpose: "Hands one explicit Markdown source path to the paired native shell, which validates and stores it in the selected run/city final slot and optionally renders DOCX with the installed Pandoc. Import is local review state only; `solar final submit` is the separate publication authority. The app calls no model.",
+    purpose: "Hands one explicit externally interpreted Markdown source path to the paired native shell, which lints it against the run's authoring draft and stores the exact bytes in the selected run/city final slot. Import is local review state only; `solar final submit` is the separate publication authority. DS calls no model and performs no PDF/DOCX conversion.",
     chapter: Chapter::Solar,
     effect: Effect::ArtifactWrite,
     authority: Authority::DesktopUser,
@@ -315,7 +315,7 @@ pub static FINAL_IMPORT_COMMAND: Command = Command {
     output: "An imported or cancelled receipt naming the run and city. Import does not queue publication.",
     examples: &[Example {
         command: "ds solar final import --run-id run-123 --city kigali --file ./kigali-final.md --yes --output json",
-        note: "The source is interpreted externally; DS GridDesign validates, stores and optionally renders it for local review.",
+        note: "The source is interpreted externally; DS GridDesign validates and stores its exact Markdown bytes for local review.",
         runnable: false,
     }],
     refusals: paired::REFUSALS,

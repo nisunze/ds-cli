@@ -9,6 +9,7 @@ use std::io::Write as _;
 use std::path::Path;
 use std::time::Duration;
 
+use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
     Arg, Authority, Chapter, Command, Effect, Example, Execution, Refusal,
@@ -20,8 +21,10 @@ use sha2::{Digest, Sha256};
 use crate::paired;
 
 const DOCUMENT_READ_OPERATION: &str = "solar.document.read";
+const REPORT_BUNDLE_READ_OPERATION: &str = "solar.report.bundle.read";
 const PORTFOLIO_READ_OPERATION: &str = "solar.portfolio.read";
 const READ_TIMEOUT: Duration = Duration::from_secs(30);
+const REPORT_BUNDLE_TIMEOUT: Duration = Duration::from_secs(10 * 60);
 const MAX_EXPORT_BYTES: usize = 32 * 1024 * 1024;
 const MAX_EXPORT_PAGES: usize = 1_024;
 const REPORT_VARIANTS: &[&str] = &["apd", "draft", "network", "plant", "financial"];
@@ -150,6 +153,45 @@ pub static REPORT_EXPORT_COMMAND: Command = Command {
     availability: paired::available,
 };
 
+pub static REPORT_BUNDLE_COMMAND: Command = Command {
+    id: "solar.report.bundle",
+    path: &["solar", "report", "bundle"],
+    contract: 1,
+    summary: "Export one Solar prompting draft with its rendering media.",
+    purpose: "Pages one portable ZIP from the paired desktop. It contains the exact canonical authoring Markdown, a presentation-only Markdown copy with local media links, every referenced verified run figure or governed project image, a media manifest, and a boundary README; export refuses if any image is unavailable. Images are rendering inputs only; every narration block carries its own complete fact packet. The desktop retains credentials and cache paths.",
+    chapter: Chapter::Solar,
+    effect: Effect::LocalFileWrite,
+    authority: Authority::DesktopUser,
+    execution: Execution::Sync,
+    args: &[
+        Arg::value("run-id", "<id>", "Completed native Solar run id.").required(),
+        Arg::value("city", "<id>", "Canonical city context in that run.").required(),
+        Arg::value(
+            "variant",
+            "apd|draft|network|plant|financial",
+            "Exact prompting-document selector. draft is the APD authoring document; apd is its compatibility alias.",
+        )
+        .default("draft")
+        .choices(REPORT_VARIANTS),
+        Arg::value("out", "<file.zip>", "New ZIP file to create; never overwritten.")
+            .required(),
+        Arg::value(
+            "desktop-descriptor",
+            "<path>",
+            "Use this bridge descriptor instead of discovering one.",
+        ),
+    ],
+    output: "The created prompt-bundle ZIP, exact byte count/content digest, batch id/digest and source run/city/variant.",
+    examples: &[Example {
+        command: "ds solar report bundle --run-id run-123 --city kigali --variant draft --out ./kigali-prompt-bundle.zip --output json",
+        note: "Exports one self-contained authoring package; edit the canonical Markdown, never the preview copy.",
+        runnable: false,
+    }],
+    refusals: EXPORT_REFUSALS,
+    reference: Some("docs/reference/solar.md"),
+    availability: paired::available,
+};
+
 pub static PORTFOLIO_EXPORT_COMMAND: Command = Command {
     id: "solar.portfolio.export",
     path: &["solar", "portfolio", "export"],
@@ -225,6 +267,34 @@ pub fn export_report(inputs: &Inputs, _context: &Context) -> Result<Value, Failu
         arguments.insert("document".into(), json!(variant));
         arguments.insert("offset".into(), json!(offset));
         Value::Object(arguments)
+    })?;
+    let out = inputs.require("out")?;
+    write_new(out, &artifact.bytes)?;
+    Ok(json!({
+        "status": "exported",
+        "run_id": run_id,
+        "context": city,
+        "variant": variant,
+        "name": artifact.name,
+        "out": out,
+        "bytes": artifact.bytes.len(),
+        "content_digest": artifact.content_digest,
+        "batch_id": artifact.batch_id,
+        "batch_digest": artifact.batch_digest,
+    }))
+}
+
+pub fn export_report_bundle(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
+    let run_id = inputs.require("run-id")?;
+    let city = inputs.require("city")?;
+    let variant = inputs.value("variant").unwrap_or("draft");
+    let artifact = read_all_binary(inputs, REPORT_BUNDLE_READ_OPERATION, |offset| {
+        json!({
+            "run_id": run_id,
+            "context": city,
+            "document": variant,
+            "offset": offset,
+        })
     })?;
     let out = inputs.require("out")?;
     write_new(out, &artifact.bytes)?;
@@ -404,6 +474,118 @@ fn read_all(
         "the paired artifact did not complete within its page bound",
     )
     .remedy("update DS GridDesign and ds to matching releases"))
+}
+
+/// Page binary ZIP bytes encoded by the bridge. The base64 field is transport
+/// only; the digest is checked over decoded bytes before any destination is
+/// created.
+fn read_all_binary(
+    inputs: &Inputs,
+    operation: &'static str,
+    arguments: impl Fn(u64) -> Value,
+) -> Result<PagedArtifact, Failure> {
+    let mut offset = 0_u64;
+    let mut bytes = Vec::new();
+    let mut expected_metadata: Option<PageMetadata> = None;
+    for _ in 0..MAX_EXPORT_PAGES {
+        let request = arguments(offset);
+        let page = paired::invoke(inputs, operation, request.clone(), REPORT_BUNDLE_TIMEOUT)?;
+        for identity_key in ["run_id", "context", "document"] {
+            if let Some(expected) = request[identity_key].as_str()
+                && page[identity_key].as_str() != Some(expected)
+            {
+                return Err(contract_failure(operation));
+            }
+        }
+        let encoded = page["bytes_base64"]
+            .as_str()
+            .filter(|value| value.len() <= (1024 * 1024))
+            .ok_or_else(|| contract_failure(operation))?;
+        let page_bytes = BASE64
+            .decode(encoded)
+            .map_err(|_| contract_failure(operation))?;
+        let name = page["name"]
+            .as_str()
+            .filter(|name| {
+                !name.is_empty() && name.trim() == *name && name.len() <= MAX_ARTIFACT_NAME_BYTES
+            })
+            .ok_or_else(|| contract_failure(operation))?;
+        let page_offset = page["offset"]
+            .as_u64()
+            .ok_or_else(|| contract_failure(operation))?;
+        let bytes_returned = page["bytes_returned"]
+            .as_u64()
+            .ok_or_else(|| contract_failure(operation))?;
+        let bytes_total = page["bytes_total"]
+            .as_u64()
+            .filter(|total| *total > 0 && *total <= MAX_EXPORT_BYTES as u64)
+            .ok_or_else(|| contract_failure(operation))?;
+        let content_digest = page["content_digest"]
+            .as_str()
+            .filter(|digest| valid_sha256_digest(digest))
+            .ok_or_else(|| contract_failure(operation))?;
+        let batch_id = page["batch_id"]
+            .as_str()
+            .filter(|value| {
+                !value.is_empty() && value.trim() == *value && value.len() <= MAX_BATCH_ID_BYTES
+            })
+            .ok_or_else(|| contract_failure(operation))?;
+        let batch_digest = page["batch_digest"]
+            .as_str()
+            .filter(|digest| valid_sha256_digest(digest))
+            .ok_or_else(|| contract_failure(operation))?;
+        let next = page["next_offset"]
+            .as_u64()
+            .ok_or_else(|| contract_failure(operation))?;
+        let complete = page["complete"]
+            .as_bool()
+            .ok_or_else(|| contract_failure(operation))?;
+        let metadata = PageMetadata {
+            name: name.to_string(),
+            bytes_total,
+            content_digest: content_digest.to_string(),
+            batch_id: batch_id.to_string(),
+            batch_digest: batch_digest.to_string(),
+        };
+        if page_offset != offset
+            || bytes_returned != page_bytes.len() as u64
+            || next != offset.saturating_add(bytes_returned)
+            || next > bytes_total
+            || complete != (next == bytes_total)
+            || expected_metadata
+                .as_ref()
+                .is_some_and(|expected| expected != &metadata)
+            || bytes.len().saturating_add(page_bytes.len()) > MAX_EXPORT_BYTES
+        {
+            return Err(contract_failure(operation));
+        }
+        if expected_metadata.is_none() {
+            expected_metadata = Some(metadata);
+        }
+        bytes.extend_from_slice(&page_bytes);
+        if complete {
+            let metadata = expected_metadata
+                .take()
+                .ok_or_else(|| contract_failure(operation))?;
+            if bytes.len() as u64 != metadata.bytes_total
+                || sha256_digest(&bytes) != metadata.content_digest
+            {
+                return Err(contract_failure(operation));
+            }
+            return Ok(PagedArtifact {
+                bytes,
+                name: metadata.name,
+                content_digest: metadata.content_digest,
+                batch_id: metadata.batch_id,
+                batch_digest: metadata.batch_digest,
+            });
+        }
+        if next <= offset || next != bytes.len() as u64 {
+            return Err(contract_failure(operation));
+        }
+        offset = next;
+    }
+    Err(contract_failure(operation))
 }
 
 pub(crate) fn valid_sha256_digest(value: &str) -> bool {

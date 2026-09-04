@@ -456,6 +456,7 @@ const SOLAR_DELIVERY_COMMANDS: &[&str] = &[
     "solar.final.import",
     "solar.final.submit",
     "solar.report.export",
+    "solar.report.bundle",
     "solar.portfolio.export",
 ];
 

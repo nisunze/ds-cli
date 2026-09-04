@@ -651,6 +651,7 @@ dependencies = [
  "ds-cli-workstation",
  "ds-grid-engine",
  "ds-grid-exchange",
+ "ds-solar-contracts",
  "serde_json",
  "sha2",
 ]
@@ -840,6 +841,7 @@ dependencies = [
 name = "ds-cli-solar"
 version = "0.1.0"
 dependencies = [
+ "base64 0.22.1",
  "ds-cli-auth",
  "ds-cli-contract",
  "ds-cli-desktop",
@@ -1097,8 +1099,11 @@ dependencies = [
 name = "ds-solar-contracts"
 version = "0.1.0"
 dependencies = [
+ "arrow-array",
+ "bytes",
  "chrono",
  "hex",
+ "parquet",
  "serde",
  "serde_json",
  "sha2",
@@ -1970,6 +1975,7 @@ dependencies = [
  "snap",
  "thrift",
  "twox-hash",
+ "zstd",
 ]
 
 [[package]]

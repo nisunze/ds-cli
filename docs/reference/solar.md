@@ -16,6 +16,8 @@ ds solar result read --run-id <id> --city <context>
 ds solar results read --run-id <id> --city <context> --section <name>
 ds solar report export --run-id <id> --city <context> \
   --variant apd|draft|network|plant|financial --out <file>
+ds solar report bundle --run-id <id> --city <context> \
+  --variant apd|draft|network|plant|financial --out <prompt-bundle.zip>
 ds solar final import --run-id <id> --city <context> --file <final.md> --yes
 ds solar final submit --run-id <id> --city <context> --yes
 ds solar sync status --run-id <id>
@@ -99,9 +101,11 @@ repeated `--path` values are semantic result fields, never filesystem paths.
 section from canonical `report_input.json` through the same verified
 ProjectResultReceipt store used by Site, Plant, BOQ, Finance and unified views.
 
-`solar final import` accepts the explicit operator/LLM-produced Markdown path,
-but the native shell performs the bounded UTF-8 read, commits it into the
-selected run/city final slot, and optionally renders DOCX with Pandoc. Import is
+`solar final import` accepts the explicit externally interpreted Markdown path.
+The native shell performs the bounded UTF-8 read, lints it against that run's
+authoring draft, and commits those exact bytes into the selected run/city final
+slot. It calls no model and performs no
+PDF/DOCX conversion. Import is
 local review state and does not publish. `solar final submit` is the separate,
 explicit operation that queues that exact imported final. DS GridDesign does
 not call a model. `solar sync status` exposes the Sync Center's durable
@@ -121,7 +125,25 @@ every receipt written before it recorded the fact looks like.
 
 `solar report export` pages one exact `apd`/`draft`, `network`, `plant`, or
 `financial` Markdown document through the named `solar.document.read` bridge
-operation. `solar portfolio read` pages and
+operation. `solar report bundle` is the portable authoring path: it pages a ZIP
+through `solar.report.bundle.read` containing the exact canonical Markdown, a
+presentation-only Markdown copy with local links, every referenced verified
+figure, `media-manifest.json`, and a README. The export refuses rather than produce a bundle with a
+missing image. Each narration block is self-contained: its own `CONTEXT_DATA`
+repeats the facts, table rows and trend series it may summarize. Images are
+never evidence and their signed URLs never enter the canonical document. Edit
+the canonical Markdown only, then import that externally reviewed Markdown
+with `solar final import`.
+
+The bundled `ds-solar-final-authoring` skill owns the optional finishing step.
+After import lint passes, it may project bundle-local image links into a
+separate rendering copy and invoke installed Pandoc, LibreOffice, Microsoft
+Office, or a bounded bridge script. Those tools do not become Solar compute
+authority: the exact reviewed Markdown remains canonical, and converted bytes
+are uploaded only through an explicitly discovered `ds` report-attachment
+surface.
+
+`solar portfolio read` pages and
 verifies the sealed aggregate result JSON, then returns one bounded semantic
 projection. Repeated `--path` values descend through at most eight object keys;
 large arrays and strings are edge-sampled and reported with `complete: false`.
@@ -350,6 +372,7 @@ update it.
 | `solar final import` | `solar.final.import` | artifact write | committed interpreted final in local review state |
 | `solar final submit` | `solar.final.submit` | artifact write | explicit publication enqueue for that imported final |
 | `solar report export` | `solar.document.read` | local file write | one exact APD/draft/network/plant/financial Markdown file |
+| `solar report bundle` | `solar.report.bundle.read` | local file write | canonical prompting Markdown, rendering-only peer, verified media and boundary README in one ZIP |
 | `solar portfolio export` | `solar.portfolio.read` | local file write | one exact result/APD/network/plant/financial artifact |
 
 The operation name is fixed in source for each command. It is never an
@@ -367,7 +390,8 @@ set of product actions and never a generic desktop RPC.
 | `solar run start` | 30 s | creates a local run receipt; compute continues inside the paired application for as long as it runs — closing DS GridDesign ends the run and later reads settle it as abandoned |
 | lifecycle reads / cancel | 30 s | bounded local bridge replies |
 | results/sync/portfolio reads | 30 s | bounded local receipt/cache projections |
-| final import | 10 min | bounded source validation plus optional local Pandoc render |
+| report bundle | 10 min | downloads every referenced verified image, assembles the portable ZIP, then pages it without exposing credentials |
+| final import | 10 min | bounded source validation and exact-byte local import |
 | final submit | 30 s | exact imported-final lookup and publication enqueue |
 | headless `solar run` | 4 h | offline compute over a caller-supplied prepared batch |
 | `solar engine`, `solar verify-weather`, `solar result compare` | 20 s | external engine discovery or bounded verification |
