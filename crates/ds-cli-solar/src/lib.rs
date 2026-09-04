@@ -19,6 +19,7 @@ pub mod input_capture;
 pub mod input_prepare;
 pub mod paired;
 pub mod paired_run;
+pub mod portfolio_management;
 pub mod prepare;
 pub mod run;
 pub mod seed;
@@ -73,6 +74,9 @@ pub static DOMAIN: Domain = Domain {
         &workflow::RESULTS_READ_COMMAND,
         &workflow::SYNC_STATUS_COMMAND,
         &workflow::PORTFOLIO_LIST_COMMAND,
+        &portfolio_management::CREATE_COMMAND,
+        &portfolio_management::UPDATE_COMMAND,
+        &portfolio_management::DELETE_COMMAND,
         &workflow::PORTFOLIO_READ_COMMAND,
         &workflow::PORTFOLIO_ANALYSIS_COMMAND,
         &workflow::FINAL_IMPORT_COMMAND,

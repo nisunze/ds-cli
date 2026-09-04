@@ -420,6 +420,21 @@ static SOLAR_ENTRIES: &[Entry] = &[
         render: ds_cli_solar::workflow::render,
     },
     Entry {
+        command: &ds_cli_solar::portfolio_management::CREATE_COMMAND,
+        handler: ds_cli_solar::portfolio_management::create,
+        render: ds_cli_solar::workflow::render,
+    },
+    Entry {
+        command: &ds_cli_solar::portfolio_management::UPDATE_COMMAND,
+        handler: ds_cli_solar::portfolio_management::update,
+        render: ds_cli_solar::workflow::render,
+    },
+    Entry {
+        command: &ds_cli_solar::portfolio_management::DELETE_COMMAND,
+        handler: ds_cli_solar::portfolio_management::delete,
+        render: ds_cli_solar::workflow::render,
+    },
+    Entry {
         command: &ds_cli_solar::workflow::PORTFOLIO_READ_COMMAND,
         handler: ds_cli_solar::workflow::portfolio_read,
         render: ds_cli_solar::workflow::render,

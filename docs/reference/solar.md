@@ -20,6 +20,9 @@ ds solar final import --run-id <id> --city <context> --file <final.md> --yes
 ds solar final submit --run-id <id> --city <context> --yes
 ds solar sync status --run-id <id>
 ds solar portfolio list
+ds solar portfolio create --name "Northern portfolio" --city city_a --city city_b --yes
+ds solar portfolio update --portfolio <id> --membership-revision sha256:<digest> --city city_a --city city_c --yes
+ds solar portfolio delete --portfolio <id> --membership-revision sha256:<digest> --yes
 ds solar run start --portfolio <id> --membership-revision <sha256:digest> \
   --graph-strategy first|round-robin|city:<context>
 ds solar portfolio read --run-id <id> --path <field> ...

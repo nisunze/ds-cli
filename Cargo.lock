@@ -952,6 +952,7 @@ dependencies = [
  "ds-solar-contracts",
  "serde",
  "serde_json",
+ "sha2",
  "zeroize",
 ]
 

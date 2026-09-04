@@ -448,6 +448,9 @@ const SOLAR_INPUT_COMMANDS: &[&str] = &["solar.input.capture", "solar.input.prep
 
 const SOLAR_DELIVERY_COMMANDS: &[&str] = &[
     "solar.portfolio.list",
+    "solar.portfolio.create",
+    "solar.portfolio.update",
+    "solar.portfolio.delete",
     "solar.portfolio.read",
     "solar.portfolio.analysis",
     "solar.final.import",
