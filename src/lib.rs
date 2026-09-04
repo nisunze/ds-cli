@@ -13,6 +13,39 @@ use zeroize::Zeroize;
 
 pub const LOGIN_CONTRACT_SCHEMA: &str = "ds.auth.login-result/v1";
 pub const MAX_LOGIN_RESPONSE_BYTES: usize = 64 * 1024;
+pub const MAX_SOLAR_PORTFOLIO_RESULT_BYTES: usize = 4 * 1024 * 1024;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PortfolioReadError(String);
+
+impl fmt::Display for PortfolioReadError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(&self.0)
+    }
+}
+
+impl std::error::Error for PortfolioReadError {}
+
+/// Validate and project one sealed Solar portfolio result through the Solar
+/// domain contract used by both native `ds` and browser WASM hosts.
+pub fn validate_solar_portfolio_result(
+    result_json: &[u8],
+    expected_run_id: &str,
+) -> Result<String, PortfolioReadError> {
+    if result_json.is_empty() || result_json.len() > MAX_SOLAR_PORTFOLIO_RESULT_BYTES {
+        return Err(PortfolioReadError(
+            "the Solar portfolio result is outside the 4 MiB shared read bound".to_string(),
+        ));
+    }
+    let document = serde_json::from_slice(result_json).map_err(|_| {
+        PortfolioReadError("the Solar portfolio result is not valid JSON".to_string())
+    })?;
+    let validated = ds_solar_contracts::validate_portfolio_result_read(document, expected_run_id)
+        .map_err(|error| PortfolioReadError(error.to_string()))?;
+    serde_json::to_string(&validated).map_err(|_| {
+        PortfolioReadError("the validated Solar portfolio result could not be encoded".to_string())
+    })
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LoginErrorKind {
@@ -447,7 +480,10 @@ fn identity_mismatch() -> LoginError {
 mod wasm {
     use wasm_bindgen::prelude::*;
 
-    use super::{validate_firebase_id_token, validate_firebase_login_response};
+    use super::{
+        validate_firebase_id_token, validate_firebase_login_response,
+        validate_solar_portfolio_result,
+    };
 
     #[wasm_bindgen(js_name = validateFirebaseLogin)]
     pub fn validate_firebase_login(
@@ -475,6 +511,15 @@ mod wasm {
         now_epoch_seconds: u64,
     ) -> Result<u64, JsValue> {
         validate_firebase_id_token(token, uid, email, firebase_project_id, now_epoch_seconds)
+            .map_err(|error| JsValue::from_str(&error.to_string()))
+    }
+
+    #[wasm_bindgen(js_name = validateSolarPortfolioResult)]
+    pub fn validate_solar_portfolio(
+        result_json: &[u8],
+        expected_run_id: &str,
+    ) -> Result<String, JsValue> {
+        validate_solar_portfolio_result(result_json, expected_run_id)
             .map_err(|error| JsValue::from_str(&error.to_string()))
     }
 }
@@ -650,6 +695,77 @@ mod tests {
             FirebaseAuthFailureKind::UnreadableResponse,
         );
     }
+
+    #[test]
+    fn native_portfolio_read_uses_the_solar_contract_projection() {
+        let document = portfolio_v2_fixture();
+        let result = validate_solar_portfolio_result(&document, "run-1").unwrap();
+        let result: Value = serde_json::from_str(&result).unwrap();
+        assert_eq!(result["trace"]["city_ids"], serde_json::json!(["a", "b"]));
+        assert_eq!(result["trace"]["representative_city"], "a");
+    }
+
+    fn portfolio_v2_fixture() -> Vec<u8> {
+        let mut sections = ds_solar_contracts::portfolio::PORTFOLIO_RESULT_SECTIONS
+            .iter()
+            .map(|name| ((*name).to_string(), serde_json::json!({ "value": 1 })))
+            .collect::<serde_json::Map<_, _>>();
+        sections.insert(
+            "representative_graphs".to_string(),
+            serde_json::json!({ "_strategy": "first" }),
+        );
+        let city = |city_id: &str, selected_system: &str, customers: i64, energy: f64| {
+            serde_json::json!({
+                "city_id": city_id,
+                "display_name": city_id.to_ascii_uppercase(),
+                "city_run_id": format!("run-{city_id}"),
+                "input_digest": format!("sha256:{}", "d".repeat(64)),
+                "result_digest": format!("sha256:{}", "e".repeat(64)),
+                "contribution_digest": format!("sha256:{}", "f".repeat(64)),
+                "calculation_projection_digest": format!("sha256:{}", "1".repeat(64)),
+                "selected_system": selected_system,
+                "inverter_count": 1,
+                "pv_capacity_mw": 1.0,
+                "battery_capacity_mwh": 1.0,
+                "generator_count": 1.0,
+                "diesel_capacity_mw": 1.0,
+                "total_customers": customers,
+                "annual_energy_kwh": energy,
+            })
+        };
+        serde_json::to_vec(&serde_json::json!({
+            "schema_version": ds_solar_contracts::PORTFOLIO_SCHEMA_VERSION_V2,
+            "engine": { "name": "ds-solar", "version": "0.1.0" },
+            "project_id": "project",
+            "root": "root",
+            "portfolio_id": "portfolio",
+            "portfolio_name": "Portfolio",
+            "membership_revision": format!("sha256:{}", "a".repeat(64)),
+            "run_id": "run-1",
+            "input_digest": format!("sha256:{}", "b".repeat(64)),
+            "assumptions": { "currency": "XAF", "project_years": 25, "discount_rate": 0.1 },
+            "representative_city_id": "a",
+            "cities": [city("a", "hybrid", 10, 100.0), city("b", "solar_battery", 20, 200.0)],
+            "city_count": 2,
+            "total_customers": 30,
+            "annual_energy_kwh": 300.0,
+            "systems": {
+                "hybrid": {
+                    "cities": 1, "inverter_count": 1, "pv_capacity_mw": 1.0,
+                    "battery_capacity_mwh": 1.0, "generator_count": 1.0,
+                    "diesel_capacity_mw": 1.0
+                },
+                "solar_battery": {
+                    "cities": 1, "inverter_count": 1, "pv_capacity_mw": 1.0,
+                    "battery_capacity_mwh": 1.0, "generator_count": 1.0,
+                    "diesel_capacity_mw": 1.0
+                }
+            },
+            "sections": sections,
+            "portfolio_digest": format!("sha256:{}", "c".repeat(64)),
+        }))
+        .unwrap()
+    }
 }
 
 #[cfg(all(test, target_arch = "wasm32", feature = "wasm"))]
@@ -658,7 +774,7 @@ mod wasm_tests {
     use serde_json::Value;
     use wasm_bindgen_test::*;
 
-    use super::wasm::validate_firebase_login;
+    use super::wasm::{validate_firebase_login, validate_solar_portfolio};
 
     #[wasm_bindgen_test]
     fn browser_export_uses_the_native_login_contract() {
@@ -689,5 +805,71 @@ mod wasm_tests {
             validate_firebase_login(&response, Some(email.to_owned()), project, now).unwrap();
         let result: Value = serde_json::from_str(&result).unwrap();
         assert_eq!(result["user"]["uid"], uid);
+    }
+
+    #[wasm_bindgen_test]
+    fn browser_portfolio_export_uses_the_same_solar_projection() {
+        let mut sections = ds_solar_contracts::portfolio::PORTFOLIO_RESULT_SECTIONS
+            .iter()
+            .map(|name| ((*name).to_string(), serde_json::json!({ "value": 1 })))
+            .collect::<serde_json::Map<_, _>>();
+        sections.insert(
+            "representative_graphs".to_string(),
+            serde_json::json!({ "_strategy": "first" }),
+        );
+        let city = |city_id: &str, selected_system: &str, customers: i64, energy: f64| {
+            serde_json::json!({
+                "city_id": city_id,
+                "display_name": city_id.to_ascii_uppercase(),
+                "city_run_id": format!("run-{city_id}"),
+                "input_digest": format!("sha256:{}", "d".repeat(64)),
+                "result_digest": format!("sha256:{}", "e".repeat(64)),
+                "contribution_digest": format!("sha256:{}", "f".repeat(64)),
+                "calculation_projection_digest": format!("sha256:{}", "1".repeat(64)),
+                "selected_system": selected_system,
+                "inverter_count": 1,
+                "pv_capacity_mw": 1.0,
+                "battery_capacity_mwh": 1.0,
+                "generator_count": 1.0,
+                "diesel_capacity_mw": 1.0,
+                "total_customers": customers,
+                "annual_energy_kwh": energy,
+            })
+        };
+        let document = serde_json::to_vec(&serde_json::json!({
+            "schema_version": ds_solar_contracts::PORTFOLIO_SCHEMA_VERSION_V2,
+            "engine": { "name": "ds-solar", "version": "0.1.0" },
+            "project_id": "project",
+            "root": "root",
+            "portfolio_id": "portfolio",
+            "portfolio_name": "Portfolio",
+            "membership_revision": format!("sha256:{}", "a".repeat(64)),
+            "run_id": "run-1",
+            "input_digest": format!("sha256:{}", "b".repeat(64)),
+            "assumptions": { "currency": "XAF", "project_years": 25, "discount_rate": 0.1 },
+            "representative_city_id": "a",
+            "cities": [city("a", "hybrid", 10, 100.0), city("b", "solar_battery", 20, 200.0)],
+            "city_count": 2,
+            "total_customers": 30,
+            "annual_energy_kwh": 300.0,
+            "systems": {
+                "hybrid": {
+                    "cities": 1, "inverter_count": 1, "pv_capacity_mw": 1.0,
+                    "battery_capacity_mwh": 1.0, "generator_count": 1.0,
+                    "diesel_capacity_mw": 1.0
+                },
+                "solar_battery": {
+                    "cities": 1, "inverter_count": 1, "pv_capacity_mw": 1.0,
+                    "battery_capacity_mwh": 1.0, "generator_count": 1.0,
+                    "diesel_capacity_mw": 1.0
+                }
+            },
+            "sections": sections,
+            "portfolio_digest": format!("sha256:{}", "c".repeat(64)),
+        }))
+        .unwrap();
+        let result = validate_solar_portfolio(&document, "run-1").unwrap();
+        let result: Value = serde_json::from_str(&result).unwrap();
+        assert_eq!(result["trace"]["city_ids"], serde_json::json!(["a", "b"]));
     }
 }

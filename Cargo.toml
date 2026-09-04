@@ -3,7 +3,7 @@ name = "ds-command-kernel"
 description = "Shared deterministic DS command and state transitions for native and WASM clients."
 version = "0.1.0"
 edition = "2021"
-rust-version = "1.88"
+rust-version = "1.90"
 publish = false
 
 [lib]
@@ -15,6 +15,7 @@ wasm = ["dep:wasm-bindgen"]
 
 [dependencies]
 base64 = "0.22"
+ds-solar-contracts = { path = "../ds-solar/crates/ds-solar-contracts", default-features = false }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 wasm-bindgen = { version = "0.2", optional = true }

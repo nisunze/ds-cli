@@ -4,11 +4,16 @@ Shared deterministic command and state transitions used by native DS clients
 and browser WASM. Svelte remains the presentation owner; hosts retain network,
 credential storage, IndexedDB, OS, and rendering effects.
 
-The first deliberately small slice is Firebase login-response validation. It
+The first deliberately small slice was Firebase login-response validation. It
 allows `ds` and ds-web to bind UID, email, token subject, Firebase audience,
 issuer, and expiry with one implementation. Password collection, HTTP calls,
 refresh-token persistence, Google UI, and session side effects remain host
 adapters.
+
+The second slice admits and projects sealed Solar portfolio results by calling
+the canonical `ds-solar-contracts` read operation. Native `ds` and browser WASM
+therefore share schema, digest, totals, membership, and representative-graph
+validation while retaining their own file/session transport.
 
 Expansion is evidence-gated. A new slice belongs here only when it immediately
 serves a native `ds` operation and removes duplicated TypeScript domain logic.
