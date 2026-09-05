@@ -26,6 +26,7 @@
 //! say who is asking, and it can never authorize a project write on its own.
 
 pub mod bridge;
+pub mod connectivity;
 pub mod discover;
 pub mod ops;
 pub mod project;
@@ -37,6 +38,8 @@ pub static DOMAIN: Domain = Domain {
     id: "desktop",
     summary: "Paired DS GridDesign: pairing, project, active context.",
     commands: &[
+        &connectivity::STATUS,
+        &connectivity::SET,
         &status::COMMAND,
         &project::LIST_COMMAND,
         &project::SWITCH_COMMAND,

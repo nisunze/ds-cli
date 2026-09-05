@@ -74,6 +74,8 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("desktop.project.list", "read_only", "desktop_user"),
     ("desktop.project.switch", "local_ui", "desktop_user"),
     ("desktop.status", "discovery", "none"),
+    ("desktop.offline.status", "read_only", "desktop_user"),
+    ("desktop.offline.set", "local_file_write", "desktop_user"),
     ("design.attachment.download", "read_only", "project"),
     ("design.attachment.list", "read_only", "project"),
     ("design.attachment.publish", "global_write", "project"),

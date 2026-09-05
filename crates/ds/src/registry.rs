@@ -1430,6 +1430,16 @@ static DESKTOP_ENTRIES: &[Entry] = &[
         render: ds_cli_desktop::status::render,
     },
     Entry {
+        command: &ds_cli_desktop::connectivity::STATUS,
+        handler: ds_cli_desktop::connectivity::status,
+        render: ds_cli_desktop::connectivity::render,
+    },
+    Entry {
+        command: &ds_cli_desktop::connectivity::SET,
+        handler: ds_cli_desktop::connectivity::set,
+        render: ds_cli_desktop::connectivity::render,
+    },
+    Entry {
         command: &ds_cli_desktop::project::LIST_COMMAND,
         handler: ds_cli_desktop::project::list,
         render: ds_cli_desktop::project::render_list,
