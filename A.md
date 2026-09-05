@@ -307,6 +307,18 @@ Known from this session:
 
 Potential weak parts, **not investigated further**:
 
+- Solar processor utilization still needs sustained-load and Cloud Run quota
+  testing. A focused local follow-up moved city batches, nested charts and
+  portfolio drafts onto one shared Rust CPU pool, enabled optimized development
+  calculation/PNG builds, and added concurrent portfolio UI runs. On the local
+  16-logical-CPU workstation, the seven-city run with charts completed in 6.4 s
+  (an earlier local run took roughly 14 s), with a sampled native peak near
+  15 core equivalents. This is a local observation, not a controlled cloud
+  benchmark or a promise of continuous 100% utilization. Concurrency-invariant
+  outputs and the cloud adapter's compilation were checked; actual cloud
+  execution, memory pressure and sustained concurrent-request behavior remain
+  unverified because GCP billing is unavailable. Continue with pinned inputs,
+  per-stage timings and container CPU/memory limits when resources return.
 - Duplicate TypeScript settings, selection, edit, scheduling and state logic
   may remain reachable despite equivalent Rust behavior.
 - Domain-specific outboxes may disagree on identity binding, retries,
