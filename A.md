@@ -415,3 +415,41 @@ compute. Stop claiming completion at the exact boundary the evidence supports.
 
 Do not resume implementation, auditing, kill switches, deployment or broad
 scanning merely because this document exists. Wait for a new owner instruction.
+
+
+/////////////////////
+human observations
+
+network template settings should be offline first - that is it. offline first. understandable.
+LV poles assembly in project network settings is always dangling as unsaved in an unjustifiable way. 
+and Tchad_rule is not correctly using the tchad assemblies. check the seeding for the current project and tell me how to reconcile. 
+Transfoemrs page - navigation to it is not feelign like offline first. it takes tooooo much - normally it is better to navigate instantly and then fill the gaps with background sync. reconsiliation should not make it feel slow and should be not that costly.
+
+## Implemented offline version slice (2026-09-05)
+
+`design_versions` owns native/WASM capture, immutable room digests, fenced
+local catalog commits, retrieval and Data Factory (`ds-geo`) comparison. The
+UI and paired CLI call the same kernel path. Dirty/local-only transformers
+can be versioned without cloud registration or status refresh. Project settings
+are captured when cached; missing settings, stable identity, CRS and source/result
+fingerprints remain missing evidence, never invented defaults.
+
+Versions retain independent layer, metadata and optional project-config rooms.
+Local identities are `local-<digest>`; display order is not a server `vN`.
+Computed comparisons retain exact content pins, metadata differences and bounded
+review collections, can reopen offline, and project only into temporary layers.
+Named maps were explicitly deferred by the owner. This does not restore or edit
+a historical head.
+
+Synchronization is **pending_transport**, not delivered: the existing server
+version-create endpoint snapshots server head and cannot acknowledge offline
+bytes. Implement an authenticated exact-content admission/receipt lane before
+draining these intents. Do not replay create_version later against changed
+server head. Native workspace persistence is not yet connected to this browser
+archive; the CLI still uses the paired application's storage.
+
+Retention ruling: synchronization does not evict survey or local version data.
+Project storage UI reports indexed record counts and browser app usage/quota;
+it does not claim physical free disk measurement. Category cleanup currently
+removes explicitly downloaded cloud version copies only. Broader category
+inventories/cleanup need reviewed reference and pending-intent protection.

@@ -27,6 +27,7 @@ wasm-bindgen = { version = "0.2", optional = true }
 zeroize = "1"
 url = "2"
 regex = "1"
+ds-geo = { path = "../ds-network/crates/ds-geo" }
 ds-geo-ops = { path = "../ds-network/crates/ds-geo-ops" }
 
 [dev-dependencies]

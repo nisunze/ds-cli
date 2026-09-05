@@ -1109,3 +1109,10 @@ pub fn transform_style_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValu
 pub mod style_plan;
 
 pub mod report_formats;
+
+pub mod design_versions;
+#[cfg(feature = "wasm")]
+#[wasm_bindgen::prelude::wasm_bindgen(js_name = designVersionCommand)]
+pub fn design_version_command_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
+    design_versions::evaluate(input).map_err(|e| wasm_bindgen::JsValue::from_str(&e))
+}

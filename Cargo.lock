@@ -201,6 +201,7 @@ name = "ds-command-kernel"
 version = "0.1.0"
 dependencies = [
  "base64",
+ "ds-geo",
  "ds-geo-ops",
  "ds-solar-contracts",
  "regex",

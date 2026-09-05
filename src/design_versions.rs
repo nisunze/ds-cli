@@ -1,0 +1,652 @@
+//! Immutable offline version rooms. Hosts persist the returned manifest, rooms
+//! and outbox intent in one transaction; no command performs network IO.
+use serde::{Deserialize, Serialize};
+use serde_json::{json, Value};
+use sha2::{Digest, Sha256};
+use std::collections::BTreeMap;
+
+const SCHEMA: &str = "ds.design.version/v1";
+const MAX_BYTES: usize = 64 * 1024 * 1024;
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct Scope {
+    pub owner: String,
+    pub audience: String,
+    pub lane: String,
+    pub project: String,
+    pub object_kind: String,
+    pub object_id: String,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct Evidence {
+    pub stable_object_id: Option<String>,
+    pub crs: Option<String>,
+    pub location: Option<[f64; 2]>,
+    /// Explicit operator/project extent only, never a viewport-derived guess.
+    pub declared_bounds: Option<[f64; 4]>,
+    pub source_digest: Option<String>,
+    pub settings_digest: Option<String>,
+    pub result_input_digest: Option<String>,
+    pub current_input_digest: Option<String>,
+    pub replacement_of: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Manifest {
+    pub schema: String,
+    pub id: String,
+    pub scope: Scope,
+    pub operation: String,
+    pub parent: Option<String>,
+    /// Local display order. Never a server-assigned vN identity.
+    pub local_sequence: usize,
+    pub created_at: String,
+    pub reason: String,
+    pub rooms: BTreeMap<String, String>,
+    pub room_bytes: usize,
+    pub evidence: Evidence,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Bundle {
+    pub manifest: Manifest,
+    pub rooms: BTreeMap<String, Value>,
+}
+
+#[derive(Deserialize)]
+#[serde(tag = "action", rename_all = "snake_case", deny_unknown_fields)]
+pub enum Command {
+    Prepare {
+        scope: Scope,
+        operation: String,
+        parent: Option<String>,
+        local_sequence: usize,
+        created_at: String,
+        reason: String,
+        snapshot: Value,
+        project_config: Option<Value>,
+        #[serde(default)]
+        evidence: Evidence,
+    },
+    Read {
+        scope: Scope,
+        id: String,
+        bundle: Bundle,
+    },
+    Compare {
+        scope: Scope,
+        left: Bundle,
+        right: Bundle,
+        tolerance_m: f64,
+    },
+    ReadComparison {
+        scope: Scope,
+        artifact: Value,
+    },
+    ValidateTarget {
+        id: String,
+    },
+    Commit {
+        scope: Scope,
+        manifest: Manifest,
+        catalog: Vec<Manifest>,
+    },
+    Catalog {
+        scope: Scope,
+        catalog: Vec<Manifest>,
+    },
+}
+
+fn digest(value: &impl Serialize) -> Result<String, String> {
+    // Value normalizes all object-key ordering, including typed structs.
+    let mut value = serde_json::to_value(value).map_err(|e| e.to_string())?;
+    normalize_json_numbers(&mut value);
+    Ok(format!(
+        "{:x}",
+        Sha256::digest(serde_json::to_vec(&value).map_err(|e| e.to_string())?)
+    ))
+}
+// JSON hosts represent 30.0 and 30 identically. Hash the same mathematical
+// JSON number across Rust/JS round-trips, including negative zero.
+fn normalize_json_numbers(value: &mut Value) {
+    match value {
+        Value::Number(n) if n.is_f64() => {
+            if let Some(f) = n.as_f64() {
+                if f.fract() == 0.0 && f.abs() <= 9_007_199_254_740_991.0 {
+                    *value = json!(f as i64);
+                }
+            }
+        }
+        Value::Array(items) => items.iter_mut().for_each(normalize_json_numbers),
+        Value::Object(map) => map.values_mut().for_each(normalize_json_numbers),
+        _ => {}
+    }
+}
+fn exact(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 1024
+        && value.trim() == value
+        && !value.chars().any(char::is_control)
+}
+fn validate_scope(scope: &Scope) -> Result<(), String> {
+    if [
+        &scope.owner,
+        &scope.audience,
+        &scope.lane,
+        &scope.project,
+        &scope.object_kind,
+        &scope.object_id,
+    ]
+    .iter()
+    .any(|s| !exact(s))
+    {
+        return Err(
+            "version scope requires exact owner, audience, lane, project and object identity"
+                .into(),
+        );
+    }
+    Ok(())
+}
+pub fn valid_target(id: &str) -> bool {
+    if let Some(hash) = id.strip_prefix("local-") {
+        return hash.len() == 64
+            && hash
+                .bytes()
+                .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b));
+    }
+    id.strip_prefix('v')
+        .is_some_and(|n| !n.starts_with('0') && n.parse::<u64>().is_ok_and(|n| n > 0))
+}
+fn manifest_id(manifest: &Manifest) -> Result<String, String> {
+    let mut content = manifest.clone();
+    content.id.clear();
+    Ok(format!("local-{}", digest(&content)?))
+}
+fn layers(snapshot: &Value) -> Result<BTreeMap<String, Value>, String> {
+    if snapshot["schema"] != "ds.transformer-version-snapshot/v1" {
+        return Err("unsupported version snapshot schema".into());
+    }
+    let layers = snapshot["layers"]
+        .as_object()
+        .ok_or("snapshot layers are missing")?;
+    if layers.is_empty() || layers.len() > 256 {
+        return Err("snapshot requires 1..256 layer rooms".into());
+    }
+    for (name, layer) in layers {
+        if !exact(name) || layer["type"] != "FeatureCollection" || !layer["features"].is_array() {
+            return Err("snapshot has an invalid layer room".into());
+        }
+    }
+    if snapshot.get("metadata").is_some_and(|v| !v.is_object()) {
+        return Err("invalid snapshot metadata".into());
+    }
+    Ok(layers.iter().map(|(k, v)| (k.clone(), v.clone())).collect())
+}
+
+pub fn read(scope: &Scope, id: &str, bundle: &Bundle) -> Result<Value, String> {
+    validate_scope(scope)?;
+    let m = &bundle.manifest;
+    if &m.scope != scope || m.schema != SCHEMA || m.id != id || manifest_id(m)? != id {
+        return Err("version identity, scope or manifest digest mismatch".into());
+    }
+    let mut layers = serde_json::Map::new();
+    let mut metadata = json!({});
+    let mut total = 0;
+    let mut expected = std::collections::BTreeSet::new();
+    for (name, hash) in &m.rooms {
+        let room = bundle
+            .rooms
+            .get(hash)
+            .ok_or("version room is not available locally")?;
+        if digest(room)? != *hash {
+            return Err("version room digest mismatch".into());
+        }
+        if expected.insert(hash) {
+            total += serde_json::to_vec(room).map_err(|e| e.to_string())?.len();
+        }
+        if let Some(layer) = name.strip_prefix("layer:") {
+            layers.insert(layer.into(), room.clone());
+        } else if name == "metadata" {
+            metadata = room.clone();
+        } else if name != "project_config" {
+            return Err("unknown version room role".into());
+        }
+    }
+    if expected.len() != bundle.rooms.len() || total != m.room_bytes {
+        return Err("version room inventory mismatch".into());
+    }
+    metadata["version_evidence"] = serde_json::to_value(&m.evidence).map_err(|e| e.to_string())?;
+    let snapshot = json!({"schema":"ds.transformer-version-snapshot/v1", "layers":layers, "metadata":metadata});
+    self::layers(&snapshot)?;
+    Ok(snapshot)
+}
+
+pub fn evaluate(input: &[u8]) -> Result<String, String> {
+    if input.is_empty() || input.len() > MAX_BYTES {
+        return Err("version command exceeds 64 MiB bound".into());
+    }
+    let cmd: Command = serde_json::from_slice(input).map_err(|e| e.to_string())?;
+    let output = match cmd {
+        Command::Catalog { scope, catalog } => {
+            validate_catalog(&scope, &catalog)?;
+            json!(catalog.iter().rev().map(record).collect::<Vec<_>>())
+        }
+        Command::Commit {
+            scope,
+            manifest,
+            mut catalog,
+        } => {
+            validate_catalog(&scope, &catalog)?;
+            if manifest.scope != scope || manifest_id(&manifest)? != manifest.id {
+                return Err("invalid commit manifest".into());
+            }
+            if let Some(old) = catalog.iter().find(|m| m.operation == manifest.operation) {
+                if old.id != manifest.id {
+                    return Err("operation identity was reused with changed version content".into());
+                }
+                json!({"catalog":catalog,"record":record(&manifest),"replayed":true})
+            } else {
+                if catalog.last().map(|m| &m.id) != manifest.parent.as_ref()
+                    || manifest.local_sequence != catalog.len() + 1
+                {
+                    return Err("local version head moved; capture again".into());
+                }
+                if catalog.len() >= 10000 {
+                    return Err(
+                        "local version catalog reached its explicit 10000-version bound".into(),
+                    );
+                }
+                catalog.push(manifest.clone());
+                json!({"catalog":catalog,"record":record(&manifest),"replayed":false})
+            }
+        }
+        Command::ReadComparison {
+            scope,
+            mut artifact,
+        } => {
+            validate_scope(&scope)?;
+            let id = artifact
+                .get("id")
+                .and_then(Value::as_str)
+                .ok_or("comparison identity missing")?
+                .to_owned();
+            artifact
+                .as_object_mut()
+                .ok_or("invalid comparison room")?
+                .remove("id");
+            if artifact["schema"] != "ds.design.version-comparison/v1"
+                || artifact["scope"] != serde_json::to_value(scope).map_err(|e| e.to_string())?
+                || format!("comparison-{}", digest(&artifact)?) != id
+            {
+                return Err("comparison room identity or digest mismatch".into());
+            }
+            artifact["id"] = json!(id);
+            artifact
+        }
+        Command::ValidateTarget { id } => json!({"valid":valid_target(&id)}),
+        Command::Prepare {
+            scope,
+            operation,
+            parent,
+            local_sequence,
+            created_at,
+            reason,
+            snapshot,
+            project_config,
+            mut evidence,
+        } => {
+            validate_scope(&scope)?;
+            if !exact(&operation)
+                || !exact(&created_at)
+                || reason.trim().is_empty()
+                || reason.len() > 1120
+                || local_sequence == 0
+            {
+                return Err(
+                    "version requires operation identity, creation time, reason and local sequence"
+                        .into(),
+                );
+            }
+            if parent.as_ref().is_some_and(|id| !valid_target(id)) {
+                return Err("invalid parent version identity".into());
+            }
+            if evidence.settings_digest.is_none() {
+                evidence.settings_digest = project_config.as_ref().map(digest).transpose()?;
+            }
+            if evidence.location.is_none() {
+                if let Some(features) = snapshot["layers"]["tr"]["features"].as_array() {
+                    if features.len() == 1 && features[0]["geometry"]["type"] == "Point" {
+                        if let Some(c) = features[0]["geometry"]["coordinates"].as_array() {
+                            if c.len() >= 2 {
+                                evidence.location =
+                                    c[0].as_f64().zip(c[1].as_f64()).map(|(x, y)| [x, y]);
+                            }
+                        }
+                    }
+                }
+            }
+            let mut references = BTreeMap::new();
+            let mut rooms = BTreeMap::new();
+            let mut add = |name: String, mut value: Value| -> Result<(), String> {
+                normalize_json_numbers(&mut value);
+                let hash = digest(&value)?;
+                references.insert(name, hash.clone());
+                rooms.insert(hash, value);
+                Ok(())
+            };
+            for (name, layer) in layers(&snapshot)? {
+                add(format!("layer:{name}"), layer)?;
+            }
+            add(
+                "metadata".into(),
+                snapshot.get("metadata").cloned().unwrap_or(json!({})),
+            )?;
+            if let Some(config) = project_config {
+                add("project_config".into(), config)?;
+            }
+            let room_bytes = rooms.values().try_fold(0usize, |n, v| {
+                serde_json::to_vec(v)
+                    .map(|v| n + v.len())
+                    .map_err(|e| e.to_string())
+            })?;
+            let mut manifest = Manifest {
+                schema: SCHEMA.into(),
+                id: String::new(),
+                scope,
+                operation,
+                parent,
+                local_sequence,
+                created_at,
+                reason,
+                rooms: references,
+                room_bytes,
+                evidence,
+            };
+            manifest.id = manifest_id(&manifest)?;
+            serde_json::to_value(Bundle { manifest, rooms }).map_err(|e| e.to_string())?
+        }
+        Command::Read { scope, id, bundle } => read(&scope, &id, &bundle)?,
+        Command::Compare {
+            scope,
+            left,
+            right,
+            tolerance_m,
+        } => {
+            if !tolerance_m.is_finite() || tolerance_m < 0.0 {
+                return Err("comparison tolerance must be finite nonnegative metres".into());
+            }
+            let l = read(&scope, &left.manifest.id, &left)?;
+            let r = read(&scope, &right.manifest.id, &right)?;
+            let comparison = ds_geo::comparison::compare_geojson_layers(
+                ds_geo::comparison::GeoJsonLayerComparisonInput {
+                    local_layers: layers(&l)?,
+                    cloud_layers: layers(&r)?,
+                    layer_names: vec![],
+                    ignored_property_keys: vec!["v_first".into(), "v_last".into()],
+                    max_detail_features: 500,
+                    detail_change_classes: vec![],
+                },
+            )?;
+            let metadata_layer = |snapshot: &Value| {
+                BTreeMap::from([(
+                    "computation_metadata".into(),
+                    json!({"type":"FeatureCollection","features":[{
+                        "type":"Feature","id":"metadata","geometry":null,"properties":snapshot["metadata"]
+                    }]}),
+                )])
+            };
+            let metadata_comparison = ds_geo::comparison::compare_geojson_layers(
+                ds_geo::comparison::GeoJsonLayerComparisonInput {
+                    local_layers: metadata_layer(&l),
+                    cloud_layers: metadata_layer(&r),
+                    layer_names: vec![],
+                    ignored_property_keys: vec![
+                        "version_evidence".into(),
+                        "captured_from".into(),
+                        "source_server_version".into(),
+                    ],
+                    max_detail_features: 1,
+                    detail_change_classes: vec![],
+                },
+            )?;
+            let mut artifact = json!({"schema":"ds.design.version-comparison/v1","scope":scope,
+                "left_revision":left.manifest.id,"right_revision":right.manifest.id,
+                "comparison": comparison, "metadata_comparison":metadata_comparison, "consistency": consistency(&left.manifest.evidence, &right.manifest.evidence, tolerance_m)});
+            artifact["id"] = json!(format!("comparison-{}", digest(&artifact)?));
+            artifact
+        }
+    };
+    serde_json::to_string(&output).map_err(|e| e.to_string())
+}
+
+fn consistency(left: &Evidence, right: &Evidence, tolerance_m: f64) -> Value {
+    let mut findings = Vec::new();
+    let mut add = |code: &str, status: &str, detail: Value| {
+        findings.push(json!({"code":code,"status":status,"detail":detail}))
+    };
+    match (&left.stable_object_id, &right.stable_object_id) {
+        (Some(a), Some(b)) => add(
+            "object_identity",
+            if a == b { "consistent" } else { "inconsistent" },
+            json!({"from":a,"to":b}),
+        ),
+        _ => add(
+            "object_identity",
+            "unknown",
+            json!("Stable identity was not captured; equal names do not establish continuity."),
+        ),
+    }
+    let geographic =
+        left.crs.as_deref() == Some("EPSG:4326") && right.crs.as_deref() == Some("EPSG:4326");
+    let valid = |p: [f64; 2]| {
+        p[0].is_finite()
+            && p[1].is_finite()
+            && (-180.0..=180.0).contains(&p[0])
+            && (-90.0..=90.0).contains(&p[1])
+    };
+    match (left.location, right.location) {
+        (Some(a), Some(b)) if geographic && valid(a) && valid(b) => {
+            let distance = ds_geo_ops::haversine_m(a[0], a[1], b[0], b[1]);
+            add(
+                "relocation",
+                if distance > tolerance_m {
+                    "inconsistent"
+                } else {
+                    "consistent"
+                },
+                json!({"distance_m":distance,"tolerance_m":tolerance_m}),
+            );
+            match left.declared_bounds {
+                Some([west, south, east, north])
+                    if valid([west, south])
+                        && valid([east, north])
+                        && west <= east
+                        && south <= north =>
+                {
+                    let inside = b[0] >= west && b[0] <= east && b[1] >= south && b[1] <= north;
+                    add(
+                        "outside_original_bounds",
+                        if inside { "consistent" } else { "inconsistent" },
+                        json!({"bounds":[west,south,east,north]}),
+                    );
+                }
+                _ => add("outside_original_bounds", "unknown", Value::Null),
+            }
+        }
+        _ => {
+            add(
+                "relocation",
+                "unknown",
+                json!("Comparable locations and explicit EPSG:4326 are required."),
+            );
+            add("outside_original_bounds", "unknown", Value::Null);
+        }
+    }
+    for (code, a, b) in [
+        ("source_inputs", &left.source_digest, &right.source_digest),
+        (
+            "project_settings",
+            &left.settings_digest,
+            &right.settings_digest,
+        ),
+        (
+            "result_freshness",
+            &right.current_input_digest,
+            &right.result_input_digest,
+        ),
+    ] {
+        add(
+            code,
+            match (a, b) {
+                (Some(a), Some(b)) if !a.is_empty() && !b.is_empty() => {
+                    if a == b {
+                        "consistent"
+                    } else {
+                        "inconsistent"
+                    }
+                }
+                _ => "unknown",
+            },
+            Value::Null,
+        );
+    }
+    json!({"tolerance_m":tolerance_m,"findings":findings})
+}
+
+fn validate_catalog(scope: &Scope, catalog: &[Manifest]) -> Result<(), String> {
+    validate_scope(scope)?;
+    if catalog.len() > 10000
+        || catalog
+            .iter()
+            .any(|m| &m.scope != scope || m.schema != SCHEMA)
+    {
+        return Err("invalid local version catalog scope or bound".into());
+    }
+    Ok(())
+}
+fn record(m: &Manifest) -> Value {
+    json!({"project_id":m.scope.project,"transformer_id":m.scope.object_id,"version_id":m.id,
+        "version":m.local_sequence,"source_revision":m.parent,"reason":m.reason,"created_at":m.created_at,
+        "created_by":m.scope.owner,"playback_available":true,"storage":"local","sync_state":"pending_transport",
+        "room_count":m.rooms.len(),"room_bytes":m.room_bytes})
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    fn scope() -> Scope {
+        Scope {
+            owner: "owner".into(),
+            audience: "aud".into(),
+            lane: "local".into(),
+            project: "p".into(),
+            object_kind: "lv_transformer".into(),
+            object_id: "same-name".into(),
+        }
+    }
+    fn call(v: Value) -> Result<Value, String> {
+        serde_json::from_str(&evaluate(&serde_json::to_vec(&v).unwrap())?)
+            .map_err(|e| e.to_string())
+    }
+    fn prepare(operation: &str) -> Bundle {
+        serde_json::from_value(call(json!({"action":"prepare","scope":scope(),"operation":operation,"parent":null,"local_sequence":1,"created_at":"now","reason":"baseline",
+            "snapshot":{"schema":"ds.transformer-version-snapshot/v1","layers":{"tr":{"type":"FeatureCollection","features":[{"type":"Feature","id":"one","geometry":{"type":"Point","coordinates":[30,-2]},"properties":{"id":"one"}}]}}},
+            "project_config":{"actual":"prepared settings"}})).unwrap()).unwrap()
+    }
+    #[test]
+    fn commit_replay_and_parent_fence_are_exact() {
+        let a = prepare("operation");
+        let first =
+            call(json!({"action":"commit","scope":scope(),"manifest":a.manifest,"catalog":[]}))
+                .unwrap();
+        assert_eq!(first["record"]["sync_state"], "pending_transport");
+        let replay=call(json!({"action":"commit","scope":scope(),"manifest":a.manifest,"catalog":first["catalog"]})).unwrap();
+        assert_eq!(replay["replayed"], true);
+        let b = prepare("other");
+        assert!(call(json!({"action":"commit","scope":scope(),"manifest":b.manifest,"catalog":first["catalog"]})).unwrap_err().contains("head moved"));
+        let mut changed = a.manifest.clone();
+        changed.reason = "changed".into();
+        changed.id = manifest_id(&changed).unwrap();
+        assert!(call(
+            json!({"action":"commit","scope":scope(),"manifest":changed,"catalog":first["catalog"]})
+        )
+        .unwrap_err()
+        .contains("reused"));
+    }
+    #[test]
+    fn immutable_rooms_survive_json_numeric_roundtrips_and_reject_missing_or_foreign_data() {
+        let a = prepare("a");
+        assert!(a.manifest.rooms.contains_key("project_config"));
+        let mut other = scope();
+        other.owner = "another".into();
+        assert!(read(&other, &a.manifest.id, &a).is_err());
+        let mut missing = a.clone();
+        missing.rooms.clear();
+        assert!(read(&scope(), &a.manifest.id, &missing).is_err());
+        assert_eq!(
+            digest(&json!({"coordinates":[30.0,-2.0,-0.0]})).unwrap(),
+            digest(&json!({"coordinates":[30,-2,0]})).unwrap()
+        );
+        let compared =
+            call(json!({"action":"compare","scope":scope(),"left":a,"right":a,"tolerance_m":0}))
+                .unwrap();
+        assert_eq!(compared["comparison"]["totals"]["unchanged"], 1);
+        assert!(
+            call(json!({"action":"read_comparison","scope":scope(),"artifact":compared})).is_ok()
+        );
+        let mut corrupt = compared;
+        corrupt["comparison"]["totals"]["unchanged"] = json!(999);
+        assert!(
+            call(json!({"action":"read_comparison","scope":scope(),"artifact":corrupt})).is_err()
+        );
+    }
+    #[test]
+    fn spatial_policy_uses_existing_metric_and_distinguishes_unknown_from_safe() {
+        let a = Evidence {
+            stable_object_id: Some("one".into()),
+            crs: Some("EPSG:4326".into()),
+            location: Some([30.0, -2.0]),
+            declared_bounds: Some([29.9, -2.1, 30.1, -1.9]),
+            ..Default::default()
+        };
+        let b = Evidence {
+            stable_object_id: Some("two".into()),
+            location: Some([31.0, -2.0]),
+            current_input_digest: Some("new".into()),
+            result_input_digest: Some("old".into()),
+            ..a.clone()
+        };
+        let rows = consistency(&a, &b, 1.0);
+        for code in [
+            "object_identity",
+            "relocation",
+            "outside_original_bounds",
+            "result_freshness",
+        ] {
+            assert!(rows["findings"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|r| r["code"] == code && r["status"] == "inconsistent"));
+        }
+        let missing = consistency(&Evidence::default(), &Evidence::default(), 0.0);
+        assert!(missing["findings"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|r| r["status"] == "unknown"));
+        let tiny = Evidence {
+            location: Some([30.0000001, -2.0]),
+            ..a.clone()
+        };
+        assert_eq!(
+            consistency(&a, &tiny, 1.0)["findings"][1]["status"],
+            "consistent"
+        );
+    }
+}
