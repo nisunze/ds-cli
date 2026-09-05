@@ -59,7 +59,14 @@ fn condition(c: &Value, values: &Value) -> bool {
             let choices = c["values"]
                 .as_array()
                 .map(|a| a.iter().map(string).collect::<Vec<_>>())
-                .unwrap_or_else(|| target.split(',').map(|s| s.trim().into()).collect());
+                .unwrap_or_else(|| {
+                    target
+                        .split(',')
+                        .map(str::trim)
+                        .filter(|s| !s.is_empty())
+                        .map(str::to_owned)
+                        .collect()
+                });
             let found = choices.iter().any(|s| s.to_lowercase() == actual);
             if op == "in_array" {
                 found
@@ -202,11 +209,15 @@ pub(super) fn evaluate(request: &Value) -> Result<Value, String> {
     let values = request["values"]
         .as_object()
         .ok_or("Survey values must be an object")?;
+    let mut seen = std::collections::HashSet::new();
     let mut keys = Vec::new();
     let mut data = Map::new();
     let mut errors = Map::new();
     for field in fields {
         let key = field["key"].as_str().ok_or("Survey field has no key")?;
+        if key.is_empty() || !seen.insert(key) {
+            return Err("Survey field keys must be nonempty and unique".into());
+        }
         if request["visible_only"] != false && !visible(field, &request["values"]) {
             continue;
         }

@@ -1,6 +1,9 @@
 //! Offline survey semantics shared by native hosts and WASM. Hosts own IO only.
+mod draft;
 mod entry;
+mod factory;
 mod fields;
+mod policy;
 pub mod project_forms;
 
 use serde_json::{json, Value};
@@ -14,7 +17,12 @@ pub fn survey_evaluate(bytes: &[u8]) -> Result<Value, String> {
     let request: Value =
         serde_json::from_slice(bytes).map_err(|_| "Survey request must be JSON")?;
     match request["operation"].as_str() {
+        Some("policy") => policy::evaluate(&request),
+        Some("draft") => draft::evaluate(&request),
         Some("fields") => fields::evaluate(&request),
+        Some("defaults") => factory::default_values(&request["fields"]),
+        Some("new_field") => factory::create_field(&request),
+        Some("settings") => factory::settings(&request),
         Some("encode") => entry::encode(&request),
         Some("geometry") => entry::geometry(&request),
         Some("distance") => {

@@ -885,6 +885,22 @@ mod wasm_tests {
     };
 
     #[wasm_bindgen_test]
+    fn survey_native_and_wasm_share_validation_factory_and_conflict_policy() {
+        for request in [
+            serde_json::json!({"operation":"fields","fields":[{"key":"n","required":true,"type":"number","validation":{"min":1}}],"values":{"n":0}}),
+            serde_json::json!({"operation":"new_field","kind":"photos","id":"id1","metadata":{"type":"photos","label":"Photos"}}),
+            serde_json::json!({"operation":"policy","mode":"accuracy","input":{"enforceAccuracy":true,"requiredAccuracyM":10,"accuracyM":20}}),
+            serde_json::json!({"operation":"draft","mode":"conflict","cached":{"pole":{"settings":{"x":2},"baseSettings":{"x":1},"editorVersion":1}},"slug":"pole","revision":2,"latest":{"x":3},"now":0}),
+        ] {
+            let bytes = serde_json::to_vec(&request).unwrap();
+            let native = crate::survey::survey_evaluate(&bytes).unwrap();
+            let browser: Value =
+                serde_json::from_str(&super::survey_evaluate_wasm(&bytes).unwrap()).unwrap();
+            assert_eq!(browser, native);
+        }
+    }
+
+    #[wasm_bindgen_test]
     fn browser_project_control_uses_the_native_room_plan() {
         let input = serde_json::to_vec(&serde_json::json!({
             "project": "project",
