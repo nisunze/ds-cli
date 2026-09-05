@@ -519,9 +519,10 @@ pub fn plan_style_edit(
             if primary_style_field(style).as_deref() == Some(requested_field) {
                 return Err("field already drives primary colour; choose a second field".into());
             }
-            if editor["available_fields"].as_array().is_some_and(|fields| {
-                !fields.is_empty() && !fields.contains(&json!(requested_field))
-            }) {
+            if editor["available_fields"]
+                .as_array()
+                .is_some_and(|fields| !fields.contains(&json!(requested_field)))
+            {
                 return Err("field is absent from the published vocabulary".into());
             }
             let def = style_channels(kind)
@@ -541,16 +542,36 @@ pub fn plan_style_edit(
                 raw_values: Map::new(),
                 numbers: Map::new(),
                 colors: Map::new(),
-                fallback_number: other.unwrap_or(def.fallback).clamp(def.min, def.max),
+                fallback_number: bounded(
+                    other.unwrap_or(def.fallback),
+                    def.min,
+                    def.max,
+                    "fallback",
+                )?,
                 fallback_color: ring.clone(),
             };
             if other.is_some_and(|v| !v.is_finite()) {
                 return Err("fallback must be finite".into());
             }
             // Declared domain typing may replace a host map scan; observed values never define a domain.
-            let value_type = field_type
+            let declared_type = editor["field_domains"][requested_field]["type"].as_str();
+            if field_type
                 .as_deref()
-                .or_else(|| editor["field_domains"][requested_field]["type"].as_str());
+                .zip(declared_type)
+                .is_some_and(|(requested, declared)| {
+                    requested != declared && !(requested == "number" && declared == "numeric")
+                })
+            {
+                return Err("field type conflicts with published domain".into());
+            }
+            let value_type = declared_type.or(field_type.as_deref()).or(Some("string"));
+            if !matches!(
+                value_type,
+                Some("string" | "number" | "numeric" | "boolean")
+            ) {
+                return Err("unsupported match label type".into());
+            }
+            let mut labels = std::collections::HashSet::new();
             for value in values {
                 if value.value.is_empty()
                     || value.value.len() > 200
@@ -565,14 +586,18 @@ pub fn plan_style_edit(
                         .parse::<f64>()
                         .ok()
                         .filter(|v| v.is_finite())
-                        .map_or_else(|| json!(value.value), |v| json!(v)),
+                        .map(|v| json!(v))
+                        .ok_or("dimension value must be a finite number")?,
                     Some("boolean") => match value.value.as_str() {
                         "true" => json!(true),
                         "false" => json!(false),
-                        _ => json!(value.value),
+                        _ => return Err("dimension value must be true or false".into()),
                     },
                     _ => json!(value.value),
                 };
+                if !labels.insert(raw.to_string()) {
+                    return Err("duplicate typed match label".into());
+                }
                 state.raw_values.insert(value.value.clone(), raw);
                 if def.number_prop.is_some() {
                     state.numbers.insert(
@@ -630,8 +655,10 @@ pub fn plan_style_edit(
         StyleInstruction::Cartography { change } => {
             next = cartography(next, change, snapshot)?;
             receipt["changed"] = json!(["cartography"]);
+            receipt["requested"] = json!(change);
         }
     }
+    normalize_json_numbers(&mut next);
     let payload = style_save_payload(snapshot, reference, &next)?;
     let document = payload["style_data"].clone();
     receipt["document"] = document.clone();
