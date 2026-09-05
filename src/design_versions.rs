@@ -1,5 +1,6 @@
 //! Immutable offline version rooms. Hosts persist the returned manifest, rooms
 //! and outbox intent in one transaction; no command performs network IO.
+use crate::reconciliation as sync;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
@@ -56,6 +57,8 @@ pub struct Manifest {
 pub struct Bundle {
     pub manifest: Manifest,
     pub rooms: BTreeMap<String, Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub publication: Option<sync::Intent>,
 }
 
 #[derive(Deserialize)]
@@ -71,20 +74,24 @@ pub enum Command {
         snapshot: Value,
         project_config: Option<Value>,
         #[serde(default)]
-        evidence: Evidence,
+        evidence: Box<Evidence>,
     },
     Read {
         scope: Scope,
         id: String,
-        bundle: Bundle,
+        bundle: Box<Bundle>,
     },
     Compare {
         scope: Scope,
-        left: Bundle,
-        right: Bundle,
+        left: Box<Bundle>,
+        right: Box<Bundle>,
         tolerance_m: f64,
     },
     ReadComparison {
+        scope: Scope,
+        artifact: Value,
+    },
+    PrepareComparisonPublication {
         scope: Scope,
         artifact: Value,
     },
@@ -93,8 +100,11 @@ pub enum Command {
     },
     Commit {
         scope: Scope,
-        manifest: Manifest,
+        manifest: Box<Manifest>,
         catalog: Vec<Manifest>,
+        publication: Box<sync::Intent>,
+        queue: Option<Box<sync::Queue>>,
+        now_ms: u64,
     },
     Catalog {
         scope: Scope,
@@ -167,6 +177,73 @@ fn manifest_id(manifest: &Manifest) -> Result<String, String> {
     content.id.clear();
     Ok(format!("local-{}", digest(&content)?))
 }
+pub fn reconciliation_scope(value: &Scope) -> sync::Scope {
+    sync::Scope {
+        principal: value.owner.clone(),
+        audience: value.audience.clone(),
+        lane: value.lane.clone(),
+        project: value.project.clone(),
+    }
+}
+fn content_reference(value: &impl Serialize) -> Result<sync::Content, String> {
+    let mut value = serde_json::to_value(value).map_err(|e| e.to_string())?;
+    normalize_json_numbers(&mut value);
+    Ok(sync::Content {
+        sha256: digest(&value)?,
+        size: serde_json::to_vec(&value).map_err(|e| e.to_string())?.len() as u64,
+    })
+}
+fn publication(
+    manifest: &Manifest,
+    rooms: &BTreeMap<String, Value>,
+) -> Result<sync::Intent, String> {
+    let artifacts = rooms
+        .iter()
+        .map(|(hash, room)| Ok((hash.clone(), content_reference(room)?)))
+        .collect::<Result<_, String>>()?;
+    Ok(sync::Intent {
+        operation_id: format!("version:{}", manifest.operation),
+        domain: sync::Domain::Design,
+        object_id: manifest.scope.object_id.clone(),
+        command: sync::Operation::DesignVersion,
+        base: sync::BaseRevision::Immutable,
+        input_fingerprint: manifest.id.trim_start_matches("local-").into(),
+        payload: content_reference(manifest)?,
+        artifacts,
+        dependencies: Default::default(),
+        // This identifies local capture semantics, not a grant to upload.
+        policy_revision: "local-version-capture/v1".into(),
+        tombstone: false,
+    })
+}
+fn validate_publication(manifest: &Manifest, intent: &sync::Intent) -> Result<(), String> {
+    let hashes = manifest
+        .rooms
+        .values()
+        .collect::<std::collections::BTreeSet<_>>();
+    if intent.operation_id != format!("version:{}", manifest.operation)
+        || intent.command != sync::Operation::DesignVersion
+        || intent.object_id != manifest.scope.object_id
+        || intent.base != sync::BaseRevision::Immutable
+        || !intent.dependencies.is_empty()
+        || intent.policy_revision != "local-version-capture/v1"
+        || intent.input_fingerprint != manifest.id.trim_start_matches("local-")
+        || intent.payload != content_reference(manifest)?
+        || intent.artifacts.len() != hashes.len()
+        || intent
+            .artifacts
+            .iter()
+            .any(|(name, content)| !hashes.contains(name) || &content.sha256 != name)
+        || intent
+            .artifacts
+            .values()
+            .try_fold(0u64, |total, c| total.checked_add(c.size))
+            != Some(manifest.room_bytes as u64)
+    {
+        return Err("version publication does not pin its exact manifest and rooms".into());
+    }
+    Ok(())
+}
 fn layers(snapshot: &Value) -> Result<BTreeMap<String, Value>, String> {
     if snapshot["schema"] != "ds.transformer-version-snapshot/v1" {
         return Err("unsupported version snapshot schema".into());
@@ -226,6 +303,26 @@ pub fn read(scope: &Scope, id: &str, bundle: &Bundle) -> Result<Value, String> {
     Ok(snapshot)
 }
 
+fn read_comparison(scope: &Scope, mut artifact: Value) -> Result<Value, String> {
+    validate_scope(scope)?;
+    let id = artifact
+        .get("id")
+        .and_then(Value::as_str)
+        .ok_or("comparison identity missing")?
+        .to_owned();
+    artifact
+        .as_object_mut()
+        .ok_or("invalid comparison room")?
+        .remove("id");
+    if artifact["schema"] != "ds.design.version-comparison/v1"
+        || artifact["scope"] != serde_json::to_value(scope).map_err(|e| e.to_string())?
+        || format!("comparison-{}", digest(&artifact)?) != id
+    {
+        return Err("comparison room identity or digest mismatch".into());
+    }
+    artifact["id"] = json!(id);
+    Ok(artifact)
+}
 pub fn evaluate(input: &[u8]) -> Result<String, String> {
     if input.is_empty() || input.len() > MAX_BYTES {
         return Err("version command exceeds 64 MiB bound".into());
@@ -240,16 +337,39 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
             scope,
             manifest,
             mut catalog,
+            publication,
+            queue,
+            now_ms,
         } => {
+            let manifest = *manifest;
+            let publication = *publication;
+            let queue = queue.map(|q| *q);
             validate_catalog(&scope, &catalog)?;
             if manifest.scope != scope || manifest_id(&manifest)? != manifest.id {
                 return Err("invalid commit manifest".into());
             }
+            if catalog
+                .iter()
+                .any(|old| old.operation == manifest.operation && old.id != manifest.id)
+            {
+                return Err("operation identity was reused with changed version content".into());
+            }
+            validate_publication(&manifest, &publication)?;
+            let reconciled = sync::apply(sync::Request {
+                schema: sync::SCHEMA.into(),
+                scope: reconciliation_scope(&scope),
+                expected_revision: queue.as_ref().map_or(0, |q| q.revision),
+                now_ms,
+                queue,
+                command: sync::Action::Enqueue {
+                    intent: publication,
+                },
+            })?;
             if let Some(old) = catalog.iter().find(|m| m.operation == manifest.operation) {
                 if old.id != manifest.id {
                     return Err("operation identity was reused with changed version content".into());
                 }
-                json!({"catalog":catalog,"record":record(&manifest),"replayed":true})
+                json!({"catalog":catalog,"record":record(&manifest),"replayed":true,"queue":reconciled.queue})
             } else {
                 if catalog.last().map(|m| &m.id) != manifest.parent.as_ref()
                     || manifest.local_sequence != catalog.len() + 1
@@ -262,31 +382,29 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
                     );
                 }
                 catalog.push(manifest.clone());
-                json!({"catalog":catalog,"record":record(&manifest),"replayed":false})
+                json!({"catalog":catalog,"record":record(&manifest),"replayed":false,"queue":reconciled.queue})
             }
         }
-        Command::ReadComparison {
-            scope,
-            mut artifact,
-        } => {
-            validate_scope(&scope)?;
-            let id = artifact
-                .get("id")
-                .and_then(Value::as_str)
-                .ok_or("comparison identity missing")?
-                .to_owned();
-            artifact
-                .as_object_mut()
-                .ok_or("invalid comparison room")?
-                .remove("id");
-            if artifact["schema"] != "ds.design.version-comparison/v1"
-                || artifact["scope"] != serde_json::to_value(scope).map_err(|e| e.to_string())?
-                || format!("comparison-{}", digest(&artifact)?) != id
-            {
-                return Err("comparison room identity or digest mismatch".into());
-            }
-            artifact["id"] = json!(id);
-            artifact
+        Command::ReadComparison { scope, artifact } => read_comparison(&scope, artifact)?,
+        Command::PrepareComparisonPublication { scope, artifact } => {
+            let artifact = read_comparison(&scope, artifact)?;
+            let id = artifact["id"]
+                .as_str()
+                .ok_or("comparison identity missing")?;
+            let publication = sync::Intent {
+                operation_id: id.into(),
+                domain: sync::Domain::Design,
+                object_id: scope.object_id.clone(),
+                command: sync::Operation::DesignComparison,
+                base: sync::BaseRevision::Immutable,
+                input_fingerprint: id.trim_start_matches("comparison-").into(),
+                payload: content_reference(&artifact)?,
+                artifacts: Default::default(),
+                dependencies: Default::default(),
+                policy_revision: "local-comparison-capture/v1".into(),
+                tombstone: false,
+            };
+            json!({"intent":publication})
         }
         Command::ValidateTarget { id } => json!({"valid":valid_target(&id)}),
         Command::Prepare {
@@ -365,10 +483,16 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
                 reason,
                 rooms: references,
                 room_bytes,
-                evidence,
+                evidence: *evidence,
             };
             manifest.id = manifest_id(&manifest)?;
-            serde_json::to_value(Bundle { manifest, rooms }).map_err(|e| e.to_string())?
+            let publication = Some(publication(&manifest, &rooms)?);
+            serde_json::to_value(Bundle {
+                manifest,
+                rooms,
+                publication,
+            })
+            .map_err(|e| e.to_string())?
         }
         Command::Read { scope, id, bundle } => read(&scope, &id, &bundle)?,
         Command::Compare {
@@ -562,18 +686,18 @@ mod tests {
     fn commit_replay_and_parent_fence_are_exact() {
         let a = prepare("operation");
         let first =
-            call(json!({"action":"commit","scope":scope(),"manifest":a.manifest,"catalog":[]}))
+            call(json!({"action":"commit","scope":scope(),"manifest":a.manifest,"publication":a.publication,"queue":null,"now_ms":1000,"catalog":[]}))
                 .unwrap();
         assert_eq!(first["record"]["sync_state"], "pending_transport");
-        let replay=call(json!({"action":"commit","scope":scope(),"manifest":a.manifest,"catalog":first["catalog"]})).unwrap();
+        let replay=call(json!({"action":"commit","scope":scope(),"manifest":a.manifest,"publication":a.publication,"queue":first["queue"],"now_ms":1001,"catalog":first["catalog"]})).unwrap();
         assert_eq!(replay["replayed"], true);
         let b = prepare("other");
-        assert!(call(json!({"action":"commit","scope":scope(),"manifest":b.manifest,"catalog":first["catalog"]})).unwrap_err().contains("head moved"));
+        assert!(call(json!({"action":"commit","scope":scope(),"manifest":b.manifest,"publication":b.publication,"queue":first["queue"],"now_ms":1001,"catalog":first["catalog"]})).unwrap_err().contains("head moved"));
         let mut changed = a.manifest.clone();
         changed.reason = "changed".into();
         changed.id = manifest_id(&changed).unwrap();
         assert!(call(
-            json!({"action":"commit","scope":scope(),"manifest":changed,"catalog":first["catalog"]})
+            json!({"action":"commit","scope":scope(),"manifest":changed,"publication":a.publication,"queue":first["queue"],"now_ms":1001,"catalog":first["catalog"]})
         )
         .unwrap_err()
         .contains("reused"));

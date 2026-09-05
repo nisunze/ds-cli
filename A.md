@@ -1,9 +1,25 @@
 # A — next-session architecture and removal contract
 
-Owner directive: stop implementation and further code scanning. This document
-records the required destination and the known limits of the completed review.
-Read it before resuming Design or generalized reconciliation work. It is a
-contract, not evidence that the whole system already satisfies it.
+The owner resumed implementation on 2026-09-05. Project management and the
+architecture page are excluded. Use the source-backed DS GridDesign Dev CLI
+for iteration. Earlier resource-limit and pause statements below describe the
+original review, not the current authorization. This is an acceptance contract,
+not evidence that the whole system already satisfies it.
+
+## Current closure state
+
+The first reconciliation checkpoint connects immutable Design versions and
+comparison artifacts to one Rust lifecycle, atomically with local content.
+Sync Center and paired dev CLI inspection/cancellation/resumption use it.
+Unused automatic eviction of inactive design and Survey data is removed.
+See [the implementation contract and exact removal accounting](docs/reconciliation.md).
+
+**Not closed:** authenticated exact-content transport, migration of untouched
+legacy intents and other domain outboxes, standalone native/browser storage
+convergence, signed licensing/control enforcement, retention-authorized
+compaction, full offline physical printing and the remaining Design lifecycle
+removal. These remain required; passing the local queue tests does not close
+this document or establish cloud/edge deployment evidence.
 
 ## 1. Definition of completion: replace and remove
 
@@ -416,18 +432,6 @@ compute. Stop claiming completion at the exact boundary the evidence supports.
 Do not resume implementation, auditing, kill switches, deployment or broad
 scanning merely because this document exists. Wait for a new owner instruction.
 
-
-/////////////////////
-human observations
-
-network template settings should be offline first - that is it. offline first. understandable.
-LV poles assembly in project network settings is always dangling as unsaved in an unjustifiable way. 
-and Tchad_rule is not correctly using the tchad assemblies. check the seeding for the current project and tell me how to reconcile. 
-Transfoemrs page - navigation to it is not feelign like offline first. it takes tooooo much - normally it is better to navigate instantly and then fill the gaps with background sync. reconsiliation should not make it feel slow and should be not that costly.
-///////////////////////
-![alt text](image.png)
-Selection is not working on that page and that backup loading is not working and seems loading indefinetely and expensive. without intentional download no need for that play. and also, here u go, we need to show the last action on the deelete transformer and who conducted that action as a part of forensic.
-/////////////////////
 ## Implemented offline version slice (2026-09-05)
 
 `design_versions` owns native/WASM capture, immutable room digests, fenced
