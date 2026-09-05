@@ -9,6 +9,55 @@ pub const MAX_BYTES: usize = 64 * 1024 * 1024;
 pub const MAX_FEATURES: usize = 100_000;
 pub const MAX_EDITS: usize = 5_000;
 
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ProcessPlanRequest {
+    targets: Vec<String>,
+    workers: usize,
+    resident_limit: usize,
+}
+
+/// Offline processing scope and concurrency. Hosts supply measured worker
+/// capacity and perform IO; cloud synchronization is never a completion gate.
+pub fn process_plan(bytes: &[u8]) -> Result<Value, String> {
+    if bytes.len() > 512 * 1024 {
+        return Err("Design process plan exceeds 512 KiB".into());
+    }
+    let request: ProcessPlanRequest = serde_json::from_slice(bytes).map_err(|e| e.to_string())?;
+    if request.targets.len() > 2000
+        || request.workers == 0
+        || request.resident_limit == 0
+        || request.resident_limit > 100
+    {
+        return Err("Invalid design process scope or worker budget".into());
+    }
+    let mut seen = BTreeSet::new();
+    let mut names = Vec::new();
+    for target in request.targets {
+        let name = target.trim().to_ascii_lowercase();
+        if name.is_empty() {
+            continue;
+        }
+        transformer_name(&name)?;
+        if seen.insert(name.clone()) {
+            names.push(name);
+        }
+    }
+    let concurrency = names.len().min(request.workers).min(request.resident_limit);
+    Ok(
+        json!({"schema":"ds.design.process-plan/v1", "names":names, "concurrency":concurrency,
+        "input_source":"local", "completion":"local_commit", "cloud_save":"separate"}),
+    )
+}
+
+#[cfg(feature = "wasm")]
+#[wasm_bindgen::prelude::wasm_bindgen(js_name = designProcessPlan)]
+pub fn process_plan_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
+    process_plan(input)
+        .and_then(|v| serde_json::to_string(&v).map_err(|e| e.to_string()))
+        .map_err(|e| wasm_bindgen::JsValue::from_str(&e))
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct SourceSelection {
@@ -490,4 +539,23 @@ pub fn edit_json(snapshot: &[u8], request: &[u8]) -> Result<String, String> {
     let snapshot = decode(snapshot)?;
     let edit = serde_json::from_slice(request).map_err(|e| e.to_string())?;
     serde_json::to_string(&apply_edit(&snapshot, &edit)?).map_err(|e| e.to_string())
+}
+
+#[cfg(test)]
+mod process_plan_tests {
+    use super::*;
+    #[test]
+    fn local_plan_caps_workers_and_preserves_order_without_cloud_completion() {
+        let plan =
+            process_plan(br#"{"targets":["TX_B","tx_a","tx_b"],"workers":32,"resident_limit":2}"#)
+                .unwrap();
+        assert_eq!(plan["names"], json!(["tx_b", "tx_a"]));
+        assert_eq!(plan["concurrency"], 2);
+        assert_eq!(plan["completion"], "local_commit");
+        assert!(process_plan(
+            br#"{"targets":["combined_transformer"],"workers":2,"resident_limit":2}"#
+        )
+        .is_err());
+        assert!(process_plan(br#"{"targets":["tx_a"],"workers":0,"resident_limit":2}"#).is_err());
+    }
 }
