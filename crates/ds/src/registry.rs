@@ -528,6 +528,26 @@ static MAP_ENTRIES: &[Entry] = &[
         render: ds_cli_map::layer::remote_list::render,
     },
     Entry {
+        command: &ds_cli_map::data::remove::COMMAND,
+        handler: ds_cli_map::data::remove::run,
+        render: ds_cli_map::data::remove::render,
+    },
+    Entry {
+        command: &ds_cli_map::data::list::COMMAND,
+        handler: ds_cli_map::data::list::run,
+        render: ds_cli_map::data::list::render,
+    },
+    Entry {
+        command: &ds_cli_map::data::upload::COMMAND,
+        handler: ds_cli_map::data::upload::run,
+        render: ds_cli_map::data::upload::render,
+    },
+    Entry {
+        command: &ds_cli_map::data::inspect::COMMAND,
+        handler: ds_cli_map::data::inspect::run,
+        render: ds_cli_map::data::inspect::render,
+    },
+    Entry {
         command: &ds_cli_map::layer::add::COMMAND,
         handler: ds_cli_map::layer::add::run,
         render: ds_cli_map::layer::add::render,

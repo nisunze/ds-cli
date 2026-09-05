@@ -7,7 +7,7 @@ use ds_cli_contract::spec::{
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
 
-use crate::DESCRIPTOR_ARG;
+use crate::LANE_ARG;
 
 const QUERY_ARG: Arg = Arg {
     name: "query",
@@ -33,43 +33,24 @@ pub static COMMAND: Command = Command {
     path: &["style", "list"],
     contract: 2,
     summary: "Loaded style refs, including present Notes/PM geometry children.",
-    purpose: "\
-Start here. One row per style document the application has loaded for the \
-active project: the ref, MapLibre type, save target, layer, the field its \
-colour is categorical on, and every categorical dimension the legend reads. \
-Loaded Notes and PM children use the same governed refs and add a `runtime` \
-receipt with logical root, authority, stable source identity and freshness.",
+    purpose: "Reads a bounded backend catalogue of governed style editor refs through native project authentication. No desktop or map is required.",
     chapter: Chapter::MapPresentation,
-    effect: Effect::ReadOnly,
-    authority: Authority::Project,
+    effect: Effect::LocalAuthState,
+    authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[QUERY_ARG, LIMIT_ARG, DESCRIPTOR_ARG],
-    output: "\
-`project`, `total`, `truncated`, and `styles` rows with `ref`, `type`, \
-`target`, `layer`, `geometry`, `colorField`, `dimensions` (field, kind, \
-property, values), `secondDimension`, `layers` (render layers using the ref), \
-and nullable `runtime` source/freshness metadata.",
+    args: &[QUERY_ARG, LIMIT_ARG, LANE_ARG],
+    output: "Project, total, bounded styles with refs/type/target/colour field, and more.",
     examples: &[Example {
         command: "ds style list --query lv_poles --output json",
         note: "Pick the ref whose target is design_vt for tiled design layers.",
         runnable: false,
     }],
-    refusals: &[
-        crate::NOT_PAIRED,
-        crate::AMBIGUOUS,
-        crate::UNREACHABLE,
-        crate::PAIRING_REJECTED,
-        crate::STYLE_REFUSED,
-        crate::UNSUPPORTED,
-        crate::UNREADABLE,
-        crate::SIGNED_OUT,
-        crate::INVALID_NUMBER,
-    ],
+    refusals: crate::native::REFUSALS,
     reference: Some("docs/reference/style.md"),
-    availability: crate::paired_availability,
+    availability: ds_cli_auth::native_availability,
 };
 
-pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
+pub fn run(inputs: &Inputs, context: &Context) -> Result<Value, Failure> {
     let mut arguments = Map::new();
     if let Some(query) = inputs.value("query") {
         arguments.insert("query".into(), json!(query));
@@ -80,14 +61,12 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             json!(crate::integer(limit, "limit", 1, 200)?),
         );
     }
-    let descriptor = crate::paired(inputs.value("desktop-descriptor"))?;
-    crate::invoke(
-        &descriptor,
+    crate::native::execute(
+        inputs,
+        context,
         &crate::STYLE_LIST,
         Value::Object(arguments),
-        crate::READ_TIMEOUT,
     )
-    .map_err(crate::classify_style_failure)
 }
 
 pub fn render(data: &Value) -> String {

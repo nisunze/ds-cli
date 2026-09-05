@@ -7,7 +7,7 @@ use ds_cli_contract::spec::{
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
 
-use crate::DESCRIPTOR_ARG;
+use crate::LANE_ARG;
 
 const GLOBAL_ARG: Arg = Arg {
     name: "global",
@@ -25,23 +25,33 @@ const REFRESH_ARG: Arg = Arg {
     required: false,
     default: None,
     choices: &[],
-    summary: "Re-read from ds-brain instead of the application's session cache.",
+    summary: "Re-read from ds-brain; native catalogue reads are always fresh.",
 };
 
 pub static COMMAND: Command = Command {
     id: "tile.list",
     path: &["tile", "list"],
-    contract: 1,
+    contract: 2,
     summary: "The tile archives this project renders, own and added.",
     purpose: "\
 One row per tile archive the project's map can mount: its own outputs, \
 outputs added from other projects, and (with --global) the platform's \
 reference tiles. This is the catalogue `ds tile remove` takes ids from.",
     chapter: Chapter::VectorTiles,
-    effect: Effect::ReadOnly,
-    authority: Authority::Project,
+    effect: Effect::LocalAuthState,
+    authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[GLOBAL_ARG, REFRESH_ARG, DESCRIPTOR_ARG],
+    args: &[
+        GLOBAL_ARG,
+        REFRESH_ARG,
+        Arg::value(
+            "limit",
+            "<n>",
+            "Return at most 1..500 archives; more reports truncation.",
+        )
+        .default("100"),
+        LANE_ARG,
+    ],
     output: "\
 `project`, `total` and `tiles` rows with `id`, `name`, `tile_type`, `scope`, \
 `source_project_id`, `total_features`, `tiled_at`.",
@@ -50,29 +60,19 @@ reference tiles. This is the catalogue `ds tile remove` takes ids from.",
         note: "A row whose `source_project_id` is another project was added with `ds tile add`.",
         runnable: false,
     }],
-    refusals: &[
-        crate::NOT_PAIRED,
-        crate::AMBIGUOUS,
-        crate::UNREACHABLE,
-        crate::PAIRING_REJECTED,
-        crate::TILE_REFUSED,
-        crate::UNSUPPORTED,
-        crate::UNREADABLE,
-        crate::SIGNED_OUT,
-    ],
+    refusals: crate::NATIVE_LIST_REFUSALS,
     reference: Some("docs/reference/tile.md"),
-    availability: crate::paired_availability,
+    availability: ds_cli_auth::native_availability,
 };
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
-    let descriptor = crate::paired(inputs.value("desktop-descriptor"))?;
-    crate::invoke(
-        &descriptor,
-        &crate::TILE_LIST,
-        json!({ "global": inputs.switch("global"), "refresh": inputs.switch("refresh") }),
-        crate::READ_TIMEOUT,
+    let result = ds_cli_auth::tile_list(inputs.require("lane")?, inputs.switch("global"))?;
+    let limit = ds_cli_desktop::ops::integer(inputs.require("limit")?, "limit", 1, 500)? as usize;
+    let rows = &result.result().tiles;
+    Ok(
+        json!({"lane": result.lane(), "project": result.project_id(), "total": rows.len(),
+        "tiles": rows.iter().take(limit).collect::<Vec<_>>(), "more": rows.len() > limit}),
     )
-    .map_err(crate::classify_tile_failure)
 }
 
 pub fn render(data: &Value) -> String {

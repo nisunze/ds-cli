@@ -1,53 +1,10 @@
-//! `ds map` — map-local work, project-layer ordering, and design layers.
-//!
-//! Everything here happens *inside the running application*. The map is a
-//! MapLibre instance owned by a Tauri webview; its temporary layers are the
-//! same sketch layers a person draws by hand; its design layers are the
-//! project-backed transformer rooms the design tools edit. None of that is
-//! reachable from a file on disk, so this domain owns no engine and links
-//! none — every command is one named semantic operation over the paired
-//! loopback bridge, and the application performs it under the identity it
-//! already holds.
-//!
-//! ## Why this domain exists
-//!
-//! The application already publishes a closed set of map operations for a
-//! coding agent, and until now nothing in `ds` could reach them. An agent
-//! could inspect a `.dsgrid` on disk and could not put a single point on the
-//! screen the operator was looking at. That gap is what this domain fills:
-//! draw, look, measure, edit, and — for design layers — stage and commit,
-//! with the same tiering and the same typed refusals as the rest of the CLI.
-//!
-//! ## Three boundaries, deliberately not merged
-//!
-//! * **Local layers** (`view`, `draw`, `remove`, `zoom`, and the vector
-//!   tools) touch nothing but what the operator can see. They need the
-//!   application running and nothing else: no sign-in, no project, no
-//!   credential. `Effect::LocalUi`, `Authority::DesktopPairing`.
-//! * **Layer management** (`layer …`) reads canonical project ordering or
-//!   manages validated desktop-local XYZ/raster PMTiles references. Neither
-//!   needs the map page open; the former uses project authority, while the
-//!   latter remains desktop-local and works signed out.
-//! * **Design layers** (`design …`) read and stage project data, and one
-//!   command — `design save` — pushes it. They need a signed-in session with
-//!   a project selected, and the push is `Effect::ArtifactWrite`, so dispatch
-//!   requires `--yes` before it can run.
-//!
-//! Staging and pushing are separate commands because the application keeps
-//! them separate, and for the same reason: marking an as-built network
-//! approved is the most consequential property write in the product, and one
-//! sentence from a model must not be able to reach the project.
-//!
-//! ## The wire contract is declared, not assumed
-//!
-//! Every operation and every argument key this domain sends is declared once
-//! in [`BRIDGE_OPS`]. [`invoke`] refuses to send a key that is not declared,
-//! and `tests/bridge_parity.rs` proves the declaration matches the schemas
-//! the application actually validates against. That closes the loop
-//! `ds solar verify-weather` opened when it sent `--dataset` to an engine
-//! that only accepts `--file`: a hand-copied field name is checked against
-//! the real owner rather than read for plausibility.
+//! Map presentation, native layer management and project GIS uploads.
+//! Layer/catalogue, tile and style operations use native project authentication.
+//! Local overlays use ds-web's shared Rust filesystem store without a desktop.
+//! Rendering, sketch editing and interactive design commands retain their
+//! named desktop bridge operations. This crate is a host adapter, not an engine.
 
+pub mod data;
 pub mod design;
 pub mod draw;
 pub mod evidence;
@@ -87,6 +44,10 @@ pub static DOMAIN: Domain = Domain {
         &draw::COMMAND,
         &remove::COMMAND,
         &zoom::COMMAND,
+        &data::inspect::COMMAND,
+        &data::upload::COMMAND,
+        &data::list::COMMAND,
+        &data::remove::COMMAND,
         &layer::list::COMMAND,
         &layer::reorder::COMMAND,
         &layer::remote_list::COMMAND,
@@ -385,11 +346,6 @@ pub const SURVEY_WORKING_AREA_DOWNLOAD: BridgeOp = BridgeOp {
 pub const BRIDGE_OPS: &[&BridgeOp] = &[
     &LAYER_ADD,
     &LAYER_REMOVE,
-    &LAYERS_LIST,
-    &LAYERS_REORDER,
-    &REMOTE_LAYER_ADD,
-    &REMOTE_LAYER_REMOVE,
-    &REMOTE_LAYER_VISIBILITY,
     &ZOOM_TO,
     &UI_OPEN,
     &EVIDENCE_CAPTURE,

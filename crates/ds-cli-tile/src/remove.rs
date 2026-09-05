@@ -7,7 +7,7 @@ use ds_cli_contract::spec::{
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
 
-use crate::DESCRIPTOR_ARG;
+use crate::LANE_ARG;
 
 const TILE_ID_ARG: Arg = Arg {
     name: "tile-id",
@@ -31,52 +31,41 @@ const SCOPE_ARG: Arg = Arg {
 pub static COMMAND: Command = Command {
     id: "tile.remove",
     path: &["tile", "remove"],
-    contract: 1,
+    contract: 2,
     summary: "Remove one tile archive from the catalogue (needs --yes).",
     purpose: "\
 Removes one archive — an added reference or the project's own output — \
 through the same governed action the Pipeline panel uses. ds-brain \
-reclaims the storage of an owned output; an added reference is only \
-unlinked.",
+retires the catalogue row and reclaims owned cached storage. Native user \
+authority is restored without a desktop.",
     chapter: Chapter::VectorTiles,
     effect: Effect::GlobalWrite,
-    authority: Authority::Project,
+    authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[TILE_ID_ARG, SCOPE_ARG, DESCRIPTOR_ARG],
+    args: &[TILE_ID_ARG, SCOPE_ARG, LANE_ARG],
     output: "`project`, `tileId`, `scope`, `removed: true`.",
     examples: &[Example {
         command: "ds tile remove --tile-id neighbouring-district_design --yes",
         note: "Read the id from `ds tile list` first.",
         runnable: false,
     }],
-    refusals: &[
-        crate::NOT_PAIRED,
-        crate::AMBIGUOUS,
-        crate::UNREACHABLE,
-        crate::PAIRING_REJECTED,
-        crate::TILE_REFUSED,
-        crate::UNSUPPORTED,
-        crate::UNREADABLE,
-        crate::SIGNED_OUT,
-        crate::CONFIRMATION_REQUIRED,
-    ],
+    refusals: crate::NATIVE_WRITE_REFUSALS,
     reference: Some("docs/reference/tile.md"),
-    availability: crate::paired_availability,
+    availability: ds_cli_auth::native_availability,
 };
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
-    let descriptor = crate::paired(inputs.value("desktop-descriptor"))?;
-    crate::invoke(
-        &descriptor,
-        &crate::TILE_REMOVE,
-        json!({
-            "tile_id": inputs.require("tile-id")?,
-            "scope": inputs.value("scope").unwrap_or("project"),
-            "apply": true,
-        }),
-        crate::READ_TIMEOUT,
+    let scope = if inputs.require("scope")? == "global" {
+        ds_cli_auth::TileScope::Global
+    } else {
+        ds_cli_auth::TileScope::Project
+    };
+    let result =
+        ds_cli_auth::tile_remove(inputs.require("lane")?, inputs.require("tile-id")?, scope)?;
+    Ok(
+        json!({"lane": result.lane(), "project": result.project_id(), "tileId": result.result().tile_id,
+        "scope": result.result().scope, "removed": true}),
     )
-    .map_err(crate::classify_tile_failure)
 }
 
 pub fn render(data: &Value) -> String {

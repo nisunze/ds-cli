@@ -5,17 +5,17 @@ use ds_cli_contract::spec::{Arg, Authority, Chapter, Command, Effect, Example, E
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
 
-use crate::DESCRIPTOR_ARG;
+use super::native::LANE_ARG;
 
 pub static COMMAND: Command = Command {
     id: "map.layer.list",
     path: &["map", "layer", "list"],
-    contract: 2,
-    summary: "List canonical project layers and loaded Notes/PM map roots.",
-    purpose: "Reads the active project's assembled layer configuration through the signed-in desktop and separately reports any loaded account-private Notes and project-owned PM runtime roots. Only `layers[].id` is accepted by `map layer reorder`; runtime roots and their geometry children are read-only discovery. The map itself need not be open. Use --refresh to rebuild only canonical metadata and styles at the API boundary.",
+    contract: 3,
+    summary: "List canonical project layers through the native user client.",
+    purpose: "Reads the selected native project's assembled layer configuration without a desktop. Only layers[].id is accepted by map layer reorder. Map visibility and loaded Notes/PM roots belong to their runtime host and are not inferred by this headless read. Use --refresh to rebuild canonical metadata and styles at the API boundary.",
     chapter: Chapter::Survey,
-    effect: Effect::ReadOnly,
-    authority: Authority::Project,
+    effect: Effect::LocalAuthState,
+    authority: Authority::HeadlessProject,
     execution: Execution::Sync,
     args: &[
         Arg::switch(
@@ -28,9 +28,9 @@ pub static COMMAND: Command = Command {
             "Report at most this many canonical layers; 1..500.",
         )
         .default("100"),
-        DESCRIPTOR_ARG,
+        LANE_ARG,
     ],
-    output: "Project id, whether the map is open, canonical layer count and bounded `layers`; plus `runtime_layer_count` and loaded `runtime_layers`, each with logical root, authority, source id, row/mapped/table-only counts, freshness, and only-present Point/LineString/Polygon children whose `styleState` is pending, ready, or error.",
+    output: "Lane, selected project id, canonical layer_count and bounded layers with id, label, class, geometry, order, runtimeIds and styleRef; more reports truncation. No desktop runtime state is read.",
     examples: &[
         Example {
             command: "ds map layer list --output json",
@@ -43,45 +43,28 @@ pub static COMMAND: Command = Command {
             runnable: false,
         },
     ],
-    refusals: &[
-        crate::NOT_PAIRED,
-        crate::AMBIGUOUS,
-        crate::UNREACHABLE,
-        crate::PAIRING_REJECTED,
-        crate::REFUSED,
-        crate::UNSUPPORTED,
-        crate::UNREADABLE,
-        crate::SIGNED_OUT,
-        crate::INVALID_NUMBER,
-    ],
+    refusals: super::native::NATIVE_LIST_REFUSALS,
     reference: Some("docs/reference/map.md"),
-    availability: crate::paired_availability,
+    availability: ds_cli_auth::native_availability,
 };
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let limit = crate::integer(inputs.require("limit")?, "limit", 1, 500)?;
-    let descriptor = crate::paired(inputs.value("desktop-descriptor"))?;
-    let result = crate::invoke(
-        &descriptor,
-        &crate::LAYERS_LIST,
-        json!({
-            "scope": "project",
-            "refresh": inputs.switch("refresh"),
-            "limit": limit,
-        }),
-        crate::API_TIMEOUT,
-    )
-    .map_err(super::classify)?;
-    Ok(json!({
-        "project": result["project"],
-        "map_open": result["mapOpen"],
-        "layer_count": result["configuredTotal"],
-        "layers": result["configured"],
-        "runtime_layer_count": result["runtimeTotal"],
-        "runtime_layers": result["runtime"],
-        "runtime_layers_truncated": result["runtimeTruncated"],
-        "refreshed": result["refreshed"],
-    }))
+    let headless = ds_cli_auth::layer_config(inputs.require("lane")?, inputs.switch("refresh"))?;
+    let bytes = serde_json::to_vec(headless.result().document()).expect("validated layer document");
+    let projection =
+        ds_command_kernel::project_layer_catalog(&bytes, limit as usize).map_err(|_| {
+            Failure::invalid(
+                "auth_response_unreadable",
+                "layer catalogue violates its bounded projection",
+            )
+            .remedy("update ds and report the layer contract failure")
+        })?;
+    let mut result: Value = serde_json::from_str(&projection).expect("kernel projection is JSON");
+    result["project"] = json!(headless.project_id());
+    result["lane"] = json!(headless.lane());
+    result["refreshed"] = json!(inputs.switch("refresh"));
+    Ok(result)
 }
 
 pub fn render(data: &Value) -> String {

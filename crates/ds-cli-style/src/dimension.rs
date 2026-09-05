@@ -2,7 +2,7 @@
 //!
 //! `plan` and `set` send the same operation with `apply` false or true, so the
 //! expressions a caller reviews are the expressions that get published. Both
-//! run through the application's own pure module, which enforces what keeps a
+//! run through the shared Rust command kernel, which enforces what keeps a
 //! document renderable: one label type per match, no arm-less match, the
 //! channel's property pair for this layer type, and labels typed the way the
 //! map carries the field.
@@ -14,7 +14,7 @@ use ds_cli_contract::spec::{
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
 
-use crate::{DESCRIPTOR_ARG, REF_ARG};
+use crate::{LANE_ARG, REF_ARG};
 
 const FIELD_ARG: Arg = Arg {
     name: "field",
@@ -25,6 +25,12 @@ const FIELD_ARG: Arg = Arg {
     choices: &[],
     summary: "The second field, from `ds style read` .data.fields. Not the colour field.",
 };
+const FIELD_TYPE_ARG: Arg = Arg::value(
+    "field-type",
+    "<string|number|boolean>",
+    "Match label type when the backend has no field type; otherwise uses the published type.",
+)
+.choices(&["string", "number", "boolean"]);
 const CHANNEL_ARG: Arg = Arg {
     name: "channel",
     kind: ArgKind::Value,
@@ -142,24 +148,25 @@ pub mod plan {
     pub static COMMAND: Command = Command {
         id: "style.dimension.plan",
         path: &["style", "dimension", "plan"],
-        contract: 1,
+        contract: 2,
         summary: "The expressions a second dimension would write; publishes nothing.",
         purpose: "\
 Runs the exact authoring the Style Center's Second-dimension panel performs \
 and returns the match expressions and the whole resulting document, without \
 saving. Read it, then `ds style dimension set` with the same flags.",
         chapter: Chapter::MapPresentation,
-        effect: Effect::ReadOnly,
-        authority: Authority::Project,
+        effect: Effect::LocalAuthState,
+        authority: Authority::HeadlessProject,
         execution: Execution::Sync,
         args: &[
             REF_ARG,
             FIELD_ARG,
+            FIELD_TYPE_ARG,
             CHANNEL_ARG,
             VALUE_ARG,
             OTHER_ARG,
             COLOR_ARG,
-            DESCRIPTOR_ARG,
+            LANE_ARG,
         ],
         output: "\
 `ref`, `field`, `fieldType` (as the map carries it, or null), `channel`, \
@@ -170,33 +177,14 @@ value, `dryRun: true`, `published: false` and the full `document`.",
             note: "Draft poles in the bare Design GeoJSON layer get a 3px white ring; every other value gets none.",
             runnable: false,
         }],
-        refusals: &[
-            crate::NOT_PAIRED,
-            crate::AMBIGUOUS,
-            crate::UNREACHABLE,
-            crate::PAIRING_REJECTED,
-            crate::STYLE_REFUSED,
-            crate::UNSUPPORTED,
-            crate::UNREADABLE,
-            crate::SIGNED_OUT,
-            crate::INVALID_VALUE_SPEC,
-            crate::INVALID_COLOR,
-            crate::INVALID_NUMBER,
-        ],
+        refusals: crate::native::REFUSALS,
         reference: Some("docs/reference/style.md"),
-        availability: crate::paired_availability,
+        availability: ds_cli_auth::native_availability,
     };
 
-    pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
+    pub fn run(inputs: &Inputs, context: &Context) -> Result<Value, Failure> {
         let arguments = arguments(inputs, false)?;
-        let descriptor = crate::paired(inputs.value("desktop-descriptor"))?;
-        crate::invoke(
-            &descriptor,
-            &crate::DIMENSION_SET,
-            arguments,
-            crate::READ_TIMEOUT,
-        )
-        .map_err(crate::classify_style_failure)
+        crate::native::execute(inputs, context, &crate::DIMENSION_SET, arguments)
     }
 
     pub fn render(data: &Value) -> String {
@@ -210,7 +198,7 @@ pub mod set {
     pub static COMMAND: Command = Command {
         id: "style.dimension.set",
         path: &["style", "dimension", "set"],
-        contract: 1,
+        contract: 2,
         summary: "Publish a halo, opacity or size dimension by a second field.",
         purpose: "\
 Authors the same expressions `ds style dimension plan` shows and publishes \
@@ -219,16 +207,17 @@ validates it, the local map renders it, the legend reads it. Any other \
 second dimension on the ref is replaced; the colour dimension is untouched.",
         chapter: Chapter::MapPresentation,
         effect: Effect::GlobalWrite,
-        authority: Authority::Project,
+        authority: Authority::HeadlessProject,
         execution: Execution::Sync,
         args: &[
             REF_ARG,
             FIELD_ARG,
+            FIELD_TYPE_ARG,
             CHANNEL_ARG,
             VALUE_ARG,
             OTHER_ARG,
             COLOR_ARG,
-            DESCRIPTOR_ARG,
+            LANE_ARG,
         ],
         output: "\
 The plan receipt with `published: true`, ds-brain `warnings`, and the \
@@ -238,34 +227,14 @@ The plan receipt with `published: true`, ds-brain `warnings`, and the \
             note: "Symbol layers: the ring is baked into the raster icon by ds-brain.",
             runnable: false,
         }],
-        refusals: &[
-            crate::NOT_PAIRED,
-            crate::AMBIGUOUS,
-            crate::UNREACHABLE,
-            crate::PAIRING_REJECTED,
-            crate::STYLE_REFUSED,
-            crate::UNSUPPORTED,
-            crate::UNREADABLE,
-            crate::SIGNED_OUT,
-            crate::CONFIRMATION_REQUIRED,
-            crate::INVALID_VALUE_SPEC,
-            crate::INVALID_COLOR,
-            crate::INVALID_NUMBER,
-        ],
+        refusals: crate::native::REFUSALS,
         reference: Some("docs/reference/style.md"),
-        availability: crate::paired_availability,
+        availability: ds_cli_auth::native_availability,
     };
 
-    pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
+    pub fn run(inputs: &Inputs, context: &Context) -> Result<Value, Failure> {
         let arguments = arguments(inputs, true)?;
-        let descriptor = crate::paired(inputs.value("desktop-descriptor"))?;
-        crate::invoke(
-            &descriptor,
-            &crate::DIMENSION_SET,
-            arguments,
-            crate::WRITE_TIMEOUT,
-        )
-        .map_err(crate::classify_style_failure)
+        crate::native::execute(inputs, context, &crate::DIMENSION_SET, arguments)
     }
 
     pub fn render(data: &Value) -> String {
@@ -279,53 +248,41 @@ pub mod clear {
     pub static COMMAND: Command = Command {
         id: "style.dimension.clear",
         path: &["style", "dimension", "clear"],
-        contract: 1,
+        contract: 2,
         summary: "Remove the second dimension and publish the document.",
         purpose: "\
 Deletes the channel properties the second dimension wrote so the schema \
 defaults apply again, and publishes. The colour dimension is untouched.",
         chapter: Chapter::MapPresentation,
         effect: Effect::GlobalWrite,
-        authority: Authority::Project,
+        authority: Authority::HeadlessProject,
         execution: Execution::Sync,
-        args: &[REF_ARG, DESCRIPTOR_ARG],
+        args: &[REF_ARG, LANE_ARG],
         output: "`ref`, `cleared` (what was removed), `properties`, `published: true`, `warnings`, `document`.",
         examples: &[Example {
             command: "ds style dimension clear --ref master/lv_poles --yes",
             note: "Refused with desktop_refused when no second dimension is authored.",
             runnable: false,
         }],
-        refusals: &[
-            crate::NOT_PAIRED,
-            crate::AMBIGUOUS,
-            crate::UNREACHABLE,
-            crate::PAIRING_REJECTED,
-            crate::STYLE_REFUSED,
-            crate::UNSUPPORTED,
-            crate::UNREADABLE,
-            crate::SIGNED_OUT,
-            crate::CONFIRMATION_REQUIRED,
-        ],
+        refusals: crate::native::REFUSALS,
         reference: Some("docs/reference/style.md"),
-        availability: crate::paired_availability,
+        availability: ds_cli_auth::native_availability,
     };
 
-    pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
-        let descriptor = crate::paired(inputs.value("desktop-descriptor"))?;
-        crate::invoke(
-            &descriptor,
+    pub fn run(inputs: &Inputs, context: &Context) -> Result<Value, Failure> {
+        crate::native::execute(
+            inputs,
+            context,
             &crate::DIMENSION_CLEAR,
             json!({ "ref": inputs.require("ref")?, "apply": true }),
-            crate::WRITE_TIMEOUT,
         )
-        .map_err(crate::classify_style_failure)
     }
 
     pub fn render(data: &Value) -> String {
         format!(
             "{} · cleared {} ({})\n",
             data["ref"].as_str().unwrap_or("?"),
-            data["cleared"].as_str().unwrap_or("?"),
+            data["removed"].as_str().unwrap_or("?"),
             data["properties"]
                 .as_array()
                 .into_iter()

@@ -29,8 +29,7 @@ pub static COMMAND: Command = Command {
     summary: "Serve chapter or typed `ds` tools over MCP.",
     purpose: "\
 Serves live `ds` contracts over MCP stdio as compact chapters or bounded typed \
-profiles. Calls run the same `ds` command. Startup is headless; runtime \
-dependencies and skill content stay lazy. It owns no credential, listener, \
+profiles. Calls run `ds`. Startup is headless; dependencies and skills load on demand. It owns no credential, listener, \
 cache, project state, or authority.",
     effect: Effect::ReadOnly,
     authority: Authority::None,

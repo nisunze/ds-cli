@@ -7,10 +7,9 @@ metadata:
 
 # Batch-edit project tags
 
-`ds design group` discovers active, single-valued choice definitions that apply
-to LV transformers. Definition ids are project-authored metadata; do not infer
-special behavior from names such as `city` or `phasing`. Single-object edits may
-also use the ordinary `ds design tag set` path.
+`ds design group` discovers active single-choice definitions for LV transformers.
+Never infer behavior from names such as `city` or `phasing`. Single-object edits
+can use `ds design tag set`.
 
 1. Read the vocabulary: `ds design group list --transformers a,b --output json`.
    Per group: `defined`, `allowed`, `needsModel`, and what each transformer
@@ -23,9 +22,8 @@ also use the ordinary `ds design tag set` path.
    <digest> --yes`, or `ds design group unassign … --digest <digest> --yes`
    for a clearing (previewed with no `--value`).
 
-**Match the value, never repair it.** Take values from `allowed`. `Phase 1` and
-`phase 1` are different values and the server refuses the one the project did
-not define; do not lowercase, title-case or pluralise on the user's behalf.
+Use exact `allowed` values: `Phase 1` differs from `phase 1`. Never repair case
+or spelling.
 
 If a plan carries model evidence, report its returned model state and
 outstanding rows exactly. Never infer a model requirement from the definition
@@ -101,15 +99,11 @@ groups by its own authored `city` or `region` definition instead; do not invent
 administrative values, and do not create empty levels to make a schema look
 complete.
 
-**One value per level is where the TRANSFORMER is.** A transformer sited in one
-sector often serves customers across several; these tags do not say that and
-must not be read as saying it. Grouping by an administrative level groups
-objects by their own location. If the user asks which bounds a transformer's
-network covers, that is a spatial question about the entities and their
-geometry — answer it there, never by inventing a second administrative value.
+Each administrative value locates the transformer itself, not every customer
+it serves. Network coverage is a spatial question about entity geometry; never
+invent a second administrative value to answer it.
 
-**Re-running is the repair path.** A second apply of an applied plan is all
-`unchanged` and writes nothing.
+Reapplying an applied plan is `unchanged` and writes nothing.
 
 **System-managed values are read-only through every ordinary door.**
 `ds design tag set`, `ds design tag define` and `ds design group preview|apply`

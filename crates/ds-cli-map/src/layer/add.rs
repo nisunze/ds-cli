@@ -3,19 +3,17 @@
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{Arg, Authority, Chapter, Command, Effect, Example, Execution};
 use ds_cli_contract::{Context, Inputs};
-use serde_json::{Value, json};
-
-use crate::DESCRIPTOR_ARG;
+use serde_json::Value;
 
 pub static COMMAND: Command = Command {
     id: "map.layer.add",
     path: &["map", "layer", "add"],
-    contract: 1,
-    summary: "Add a desktop-local XYZ or raster PMTiles overlay.",
-    purpose: "Validates and persists one HTTP(S) third-party tile reference in this desktop's IndexedDB. XYZ requires {z}, {x}, and {y}; embedded credentials and non-HTTP schemes are refused. The map need not be open; if it is, the overlay mounts immediately. This never changes the governed project tile catalogue.",
+    contract: 2,
+    summary: "Add a machine-local XYZ or raster PMTiles overlay.",
+    purpose: "Validates and persists one HTTP(S) third-party tile reference in the shared native local store. XYZ requires {z}, {x}, and {y}; embedded credentials and non-HTTP schemes are refused. The map need not be open; the desktop reconciles this store when open. This never changes the governed project tile catalogue.",
     chapter: Chapter::Survey,
-    effect: Effect::LocalUi,
-    authority: Authority::DesktopPairing,
+    effect: Effect::LocalFileWrite,
+    authority: Authority::None,
     execution: Execution::Sync,
     args: &[
         Arg::value("name", "<text>", "Local display name.").required(),
@@ -33,9 +31,8 @@ pub static COMMAND: Command = Command {
             .choices(&["256", "512"]),
         Arg::value("attribution", "<text>", "Optional source attribution."),
         Arg::switch("hidden", "Store the overlay hidden instead of visible."),
-        DESCRIPTOR_ARG,
     ],
-    output: "Local layer id, normalized source fields, visibility, `persisted: desktop_local`, and whether an open map was updated.",
+    output: "Local layer id, normalized source fields, visibility, `persisted: native_local`, and whether the local registry was updated.",
     examples: &[
         Example {
             command: "ds map layer add --name OpenTopo --kind xyz --url 'https://a.tile.opentopomap.org/{z}/{x}/{y}.png'",
@@ -48,41 +45,35 @@ pub static COMMAND: Command = Command {
             runnable: false,
         },
     ],
-    refusals: &[
-        crate::NOT_PAIRED,
-        crate::AMBIGUOUS,
-        crate::UNREACHABLE,
-        crate::PAIRING_REJECTED,
-        crate::REFUSED,
-        crate::UNSUPPORTED,
-        crate::UNREADABLE,
-        crate::INVALID_NUMBER,
-    ],
+    refusals: &[super::LOCAL_STORE_REFUSAL, crate::INVALID_NUMBER],
     reference: Some("docs/reference/map.md"),
-    availability: crate::paired_availability,
+    availability: super::local_availability,
 };
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
-    let tile_size = crate::integer(inputs.require("tile-size")?, "tile-size", 256, 512)?;
-    let descriptor = crate::paired(inputs.value("desktop-descriptor"))?;
-    let result = crate::invoke(
-        &descriptor,
-        &crate::REMOTE_LAYER_ADD,
-        json!({
-            "name": inputs.require("name")?, "kind": inputs.require("kind")?, "url": inputs.require("url")?,
-            "tileSize": tile_size, "attribution": inputs.value("attribution"), "visible": !inputs.switch("hidden"),
-        }),
-        crate::UI_TIMEOUT,
-    )?;
+    let result = super::local_edit(ds_layer_store::OverlayEdit::Add {
+        layer: ds_layer_store::Overlay {
+            id: ds_layer_store::new_id(),
+            name: inputs.require("name")?.trim().into(),
+            kind: inputs.require("kind")?.into(),
+            url: inputs.require("url")?.trim().into(),
+            tile_size: crate::integer(inputs.require("tile-size")?, "tile-size", 256, 512)? as u16,
+            attribution: inputs
+                .value("attribution")
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(str::to_owned),
+            visible: !inputs.switch("hidden"),
+        },
+    })?;
     Ok(super::remote_result(result))
 }
 
 pub fn render(data: &Value) -> String {
     format!(
-        "added {} ({}) · {} · map updated: {}\n",
+        "added {} · {} ({})\n",
+        data["layer"].as_str().unwrap_or("?"),
         data["name"].as_str().unwrap_or("?"),
-        data["kind"].as_str().unwrap_or("?"),
-        data["persisted"].as_str().unwrap_or("?"),
-        data["map_updated"].as_bool().unwrap_or(false)
+        data["kind"].as_str().unwrap_or("?")
     )
 }

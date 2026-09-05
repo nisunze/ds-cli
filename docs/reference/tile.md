@@ -9,7 +9,7 @@ A project renders two vector-tile outputs: **survey** (its form entries) and
 **design** (its transformers and DS Grid models). Each is one PMTiles archive
 ds-brain builds with ds-vector-tiler, publishes under a lease, and records with
 its layers, feature counts and **tilestats** — the per-field values the tiles
-actually hold. `ds` holds no token and no second tiling model.
+actually hold. The native client owns authentication; tiling remains server-owned.
 
 Status, preflight, plan and generate are headless selected-project commands.
 They restore the native user for `--lane stable|canary` (Stable by default),
@@ -18,10 +18,10 @@ fixed ds-brain tile contracts. There is no `--project`, URL, body, action or
 Desktop descriptor override. Each receipt includes the lane and selected
 project id, name and lifecycle status.
 
-The catalogue commands — list, add and remove — remain paired for now because
-their public API contracts have not been extracted. For those commands the
-active project is the one the application has open, and `--desktop-descriptor`
-remains available.
+List, add and remove also execute through the native selected-project client.
+They require no desktop. Add asks the backend to copy a published source into
+destination-owned storage. Remove retires the catalogue row and cleans its owned
+storage; it requires `--yes`. List returns bounded metadata without signed URLs.
 
 ## When to re-tile
 

@@ -1,45 +1,13 @@
-//! `ds style` — read Style Center documents, author their guided base
-//! appearance, and add a SECOND categorical dimension by a second field.
-//!
-//! ## Why this domain is a bridge domain
-//!
-//! A style is one MapLibre document per style ref, validated and published by
-//! ds-brain. The paired application holds the `/layers` state those documents
-//! come from, the pure module that turns "halo by drafting_status" into match
-//! expressions, and the governed save payload its own *Save globally* button
-//! sends. `ds` reuses all three through one named operation each, so an agent
-//! and a person produce byte-identical documents and meet byte-identical
-//! validation. `ds` carries no token and no second styling model.
-//!
-//! ## What the family is
-//!
-//! ```text
-//!   list → read → appearance plan/set
-//!                 dimension  plan/set | dimension clear
-//!                 cartography plan/set
-//! ```
-//!
-//! `appearance` owns flat primary colour, catalog icon and base size through
-//! the Style Center's guided schema. `dimension` adds a second field on a
-//! channel the primary appearance does not use — halo, opacity, or size — as
-//! plain `["match", ["get", field], …]` expressions the legend reads back.
-//! `cartography` is the third, field-free axis: how the line or fill reads as
-//! a map — its line type, flow direction, contrast casing and hatching.
-//!
-//! ## What is deliberately absent
-//!
-//! Raw document writes. A command that accepted arbitrary paint JSON would
-//! bypass the guided invariants (one label type per match, no arm-less
-//! match, the halo channel per layer type) that keep a document renderable.
-//! The JSON tab of the Style Center remains the human escape hatch. For the
-//! same reason no command here composes a dash array, a marker image or a
-//! pattern tile: a caller names the cartographic instruction and the
-//! application, which owns the vocabulary ds-brain publishes, resolves it.
+//! Guided native style authoring over the selected project's backend catalogue.
+//! The shared command kernel owns transformations; native auth owns transport.
+//! The visual Style Center uses the same transformations through WASM.
 
+pub use native::LANE_ARG;
 pub mod appearance;
 pub mod cartography;
 pub mod dimension;
 pub mod list;
+pub mod native;
 pub mod read;
 
 use std::time::Duration;
@@ -120,14 +88,7 @@ pub const CARTOGRAPHY_SET: BridgeOp = BridgeOp {
 /// Every operation this domain can send, for the parity test to walk. `plan`
 /// and `set` are one operation — `apply` false or true — so the list is
 /// shorter than the command list.
-pub const BRIDGE_OPS: &[&BridgeOp] = &[
-    &STYLE_LIST,
-    &STYLE_READ,
-    &APPEARANCE_SET,
-    &DIMENSION_SET,
-    &DIMENSION_CLEAR,
-    &CARTOGRAPHY_SET,
-];
+pub const BRIDGE_OPS: &[&BridgeOp] = &[];
 
 /// The seamless pattern tile sizes. MapLibre repeats a pattern image by
 /// tiling it, so a size that is not a power of two seams visibly at every
@@ -301,7 +262,7 @@ mod tests {
         // Appearance, dimension and cartography each pair one plan with one
         // set over a single operation, so three commands have no operation of
         // their own.
-        assert_eq!(names.len(), DOMAIN.commands.len() - 3);
+        assert!(names.is_empty(), "guided styles execute natively");
         for op in BRIDGE_OPS {
             let mut keys = op.arguments.to_vec();
             keys.sort_unstable();

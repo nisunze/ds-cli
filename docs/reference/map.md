@@ -4,19 +4,15 @@ Tier-4 reference. `ds map <command> --help` is the contract; this document is
 the part that does not belong in any command's help because it is true of all
 of them.
 
-## Where the map is
+## Execution hosts
 
-Nowhere on disk. The map is a MapLibre instance inside the running DS
-GridDesign webview, its temporary layers are the sketch layers a person draws
-by hand, and its design layers are per-transformer rooms the design tools
-edit. There is no file this domain could open instead.
+The layer catalogue, governed tile references, style authoring and project GIS
+uploads use native authentication and work with the desktop closed. Local raster
+overlays use a Rust registry shared by CLI and desktop and work offline.
 
-So every command here is one named semantic operation over the paired loopback
-bridge, performed *by* the application under the identity it already holds.
-`ds` sends a request and receives an outcome. It never receives a credential,
-and it never runs code inside the application — the bridge accepts a closed
-set of operations and nothing else. `docs/reference/desktop.status.md` has the
-pairing argument in full.
+Map rendering, session sketches and interactive design commands still use the
+paired desktop bridge. The following sections describe those presentation and
+editing commands; native layer and GIS commands are described separately below.
 
 ## Two tiers, and why they are not one
 
@@ -27,7 +23,7 @@ pairing argument in full.
 | Reaches | what the operator can see | project data |
 | Survives the session | no | only through a confirmed push, `design save` being the common one |
 
-A local layer is never project data. `persisted` is reported on every command
+A session sketch is never project data. `persisted` is reported on every command
 that makes one, and it is always false. `map zoom --layer <id>` asks the
 application to fit a CLI-owned local layer; its geometry stays in the
 application and only the computed bounding box is returned.
@@ -84,49 +80,15 @@ installed transformer. Marking an as-built network approved is the most
 consequential property write in the product; one sentence from a model must
 not be able to reach the project.
 
-## Layer management without an open map
+## Layer management without a desktop
 
-Layer configuration, remote tile references, session GeoJSON, and governed
-tile outputs have separate owners:
+Canonical project layers use `map layer list/reorder`; take reorder IDs only from
+`layers[].id`. Local raster references use `map layer add/remote-list/visibility/remove`.
+Governed survey/design outputs use `tile add/remove`; raw project GIS uploads use
+`map data inspect/list/upload/remove`. Their storage and authentication differ;
+see Native layers and project GIS files below.
 
-| Operation | Persistence | Needs an open map |
-|---|---|---|
-| `map layer list/reorder` | project layer-order document | no |
-| `map layer add/remote-list/visibility/remove` | this desktop's IndexedDB | no; reconciles immediately if open |
-| `map draw/remove` | current map session | yes |
-| `tile add/remove` | governed project tile catalogue | no |
-
-`map layer list` keeps canonical configuration and ephemeral working data in
-separate arrays. Only `layers[].id` is accepted by `map layer reorder`;
-`runtime_layers` is read-only discovery and is never an ordering input.
-
-When loaded in the paired application, runtime discovery has exactly two
-logical roots: account-private `personal_notes` and project-owned
-`project_work`. Each reports one stable mixed-geometry `sourceId`, row count,
-mapped count, table-only/non-geometric count, authority, project (when
-applicable), and a freshness receipt. Its `children` contains only geometries
-actually present: `Point`, `LineString`, and single-ring `Polygon`, never an
-invented fourth geometry and never an empty child. Each child carries its
-style hydration state plus the same runtime id and governed style ref used by
-Style Center and `ds style`. Only `styleState: ready` is renderable or
-saveable; `pending` and `error` are explicit refusals, never local defaults.
-Feature rows and private note/record bodies never cross this list receipt.
-
-`--refresh` refreshes canonical layer configuration only. It does not silently
-reload Notes or PM, and listing loaded runtime roots does not invoke the broad
-project layer refresh. Reordering remains a confirmed project write and the
-renderer preserves its global context and geometry safety bands.
-
-Third-party overlays accept HTTP(S) XYZ templates with `{z}`, `{x}`, and `{y}`
-or raster PMTiles archives. They are local references, not uploads and not
-project data. Embedded URL credentials and malformed templates are refused.
-Vector PMTiles are not silently treated as raster: they need a governed source
-and style contract.
-
-`map draw` validates bounded, homogeneous GeoJSON but is not a data-cleaning
-pipeline. Contractor/network archives that need parsing, canonical header
-mapping, domains, or Rust cleaning belong to `map design upload inspect` then
-`map design upload stage`; neither operation needs the map open.
+Session-only GeoJSON still uses `map draw/remove` and needs an open map.
 
 ## Still evidence and semantic UI staging
 
@@ -503,3 +465,28 @@ malformed invocation refuses the same way whether or not an application is
 running. `tests/domain_smoke.rs` asserts that ordering command by command;
 without it, the input contract would be untestable everywhere the desktop is
 not installed, which is every CI machine.
+
+## Native layers and project GIS files
+
+`map layer list/reorder` use native sign-in and the selected project. Canonical
+IDs come from list; runtime MapLibre IDs are refused by reorder. No desktop is
+required. Governed tile references use `ds tile list/add/remove` on the same lane.
+
+`map layer add/remote-list/visibility/remove` work offline and signed out. They
+share a native overlay registry with the installed desktop, which imports its
+legacy IndexedDB rows once and reconciles later CLI edits. The default is the OS
+local data directory under `ds/layers`; `DS_LAYER_HOME` can select an absolute
+shared directory (set it for both hosts, including when bridging WSL/Windows).
+Browser-only overlays remain in that browser's IndexedDB. Native reads/writes
+serialize with an OS lock and replace the registry atomically. Only raster XYZ
+and raster PMTiles references are supported. The CLI reports stored visibility;
+it does not claim the pixels have been rendered.
+
+`map data inspect --path <file>` inventories bytes and SHA-256 entirely offline.
+`map data upload --path <file> [--sha256 <inspection-digest>] --yes` streams an
+immutable local snapshot to a backend-issued session, then registers project GIS
+data. It accepts files up to 1 GiB. Zip shapefile sidecars together. This is raw GIS
+ingestion; canonical design cleaning stays in `map design upload inspect/stage`.
+`map data list` reports upload and tiling status. `map data remove --upload <id>
+--yes` removes an exact project upload and its owned storage through the backend.
+These three project data commands need a reachable backend. A transfer receipt distinguishes registered from tiles ready.

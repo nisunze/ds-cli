@@ -1,5 +1,5 @@
 {
-  "schema_version": "ds.native-client-profiles/v12",
+  "schema_version": "ds.native-client-profiles/v15",
   "development": true,
   "profiles": {
     "stable": {
@@ -11,13 +11,34 @@
         "origin": "https://fixture.ue.gateway.dev",
         "api_key": "fixture-gateway-public-key"
       },
-      "auth_link_begin": { "method": "POST", "path": "/api/v1/auth/device/begin" },
-      "auth_link_status": { "method": "POST", "path": "/api/v1/auth/device/status" },
-      "auth_link_complete": { "method": "POST", "path": "/api/v1/auth/device/complete" },
-      "auth_device_refresh": { "method": "POST", "path": "/api/v1/auth/device/refresh" },
-      "auth_device_list": { "method": "GET", "path": "/api/v1/auth/devices" },
-      "auth_device_read": { "method": "GET", "path_template": "/api/v1/auth/devices/{device_id}" },
-      "auth_device_revoke": { "method": "DELETE", "path_template": "/api/v1/auth/devices/{device_id}" },
+      "auth_link_begin": {
+        "method": "POST",
+        "path": "/api/v1/auth/device/begin"
+      },
+      "auth_link_status": {
+        "method": "POST",
+        "path": "/api/v1/auth/device/status"
+      },
+      "auth_link_complete": {
+        "method": "POST",
+        "path": "/api/v1/auth/device/complete"
+      },
+      "auth_device_refresh": {
+        "method": "POST",
+        "path": "/api/v1/auth/device/refresh"
+      },
+      "auth_device_list": {
+        "method": "GET",
+        "path": "/api/v1/auth/devices"
+      },
+      "auth_device_read": {
+        "method": "GET",
+        "path_template": "/api/v1/auth/devices/{device_id}"
+      },
+      "auth_device_revoke": {
+        "method": "DELETE",
+        "path_template": "/api/v1/auth/devices/{device_id}"
+      },
       "projects_read": {
         "method": "GET",
         "path": "/api/v1/user/projects"
@@ -59,16 +80,53 @@
       "tiles": {
         "method": "POST",
         "path": "/api/v1/tiles",
-        "actions": ["status", "preflight", "generate"]
+        "actions": [
+          "status",
+          "preflight",
+          "generate",
+          "list",
+          "add",
+          "remove"
+        ]
       },
       "project_report": {
         "method": "POST",
         "path": "/report",
-        "actions": ["download_transfo", "list_compounded_reports", "transformer_inventory", "retire_transformer", "restore_transformer"]
+        "actions": [
+          "download_transfo",
+          "list_compounded_reports",
+          "transformer_inventory",
+          "retire_transformer",
+          "restore_transformer"
+        ]
       },
       "provenance": {
         "source_revision": "0123456789abcdef0123456789abcdef01234567",
         "descriptor_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "layers": {
+        "method": "POST",
+        "path": "/api/v1/layers",
+        "actions": [
+          "get_config",
+          "refresh",
+          "reorder"
+        ]
+      },
+      "styles": {
+        "method": "POST",
+        "path": "/api/v1/styles",
+        "action": "update_style"
+      },
+      "project_data": {
+        "method": "POST",
+        "path": "/api/v1/project_data",
+        "actions": [
+          "list",
+          "upload_start",
+          "upload",
+          "delete"
+        ]
       }
     },
     "canary": {
@@ -80,13 +138,34 @@
         "origin": "https://fixture-canary.ue.gateway.dev",
         "api_key": "fixture-gateway-public-key"
       },
-      "auth_link_begin": { "method": "POST", "path": "/api/v1/auth/device/begin" },
-      "auth_link_status": { "method": "POST", "path": "/api/v1/auth/device/status" },
-      "auth_link_complete": { "method": "POST", "path": "/api/v1/auth/device/complete" },
-      "auth_device_refresh": { "method": "POST", "path": "/api/v1/auth/device/refresh" },
-      "auth_device_list": { "method": "GET", "path": "/api/v1/auth/devices" },
-      "auth_device_read": { "method": "GET", "path_template": "/api/v1/auth/devices/{device_id}" },
-      "auth_device_revoke": { "method": "DELETE", "path_template": "/api/v1/auth/devices/{device_id}" },
+      "auth_link_begin": {
+        "method": "POST",
+        "path": "/api/v1/auth/device/begin"
+      },
+      "auth_link_status": {
+        "method": "POST",
+        "path": "/api/v1/auth/device/status"
+      },
+      "auth_link_complete": {
+        "method": "POST",
+        "path": "/api/v1/auth/device/complete"
+      },
+      "auth_device_refresh": {
+        "method": "POST",
+        "path": "/api/v1/auth/device/refresh"
+      },
+      "auth_device_list": {
+        "method": "GET",
+        "path": "/api/v1/auth/devices"
+      },
+      "auth_device_read": {
+        "method": "GET",
+        "path_template": "/api/v1/auth/devices/{device_id}"
+      },
+      "auth_device_revoke": {
+        "method": "DELETE",
+        "path_template": "/api/v1/auth/devices/{device_id}"
+      },
       "projects_read": {
         "method": "GET",
         "path": "/api/v1/user/projects"
@@ -128,16 +207,53 @@
       "tiles": {
         "method": "POST",
         "path": "/api/v1/tiles",
-        "actions": ["status", "preflight", "generate"]
+        "actions": [
+          "status",
+          "preflight",
+          "generate",
+          "list",
+          "add",
+          "remove"
+        ]
       },
       "project_report": {
         "method": "POST",
         "path": "/report",
-        "actions": ["download_transfo", "list_compounded_reports", "transformer_inventory", "retire_transformer", "restore_transformer"]
+        "actions": [
+          "download_transfo",
+          "list_compounded_reports",
+          "transformer_inventory",
+          "retire_transformer",
+          "restore_transformer"
+        ]
       },
       "provenance": {
         "source_revision": "0123456789abcdef0123456789abcdef01234567",
         "descriptor_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "layers": {
+        "method": "POST",
+        "path": "/api/v1/layers",
+        "actions": [
+          "get_config",
+          "refresh",
+          "reorder"
+        ]
+      },
+      "styles": {
+        "method": "POST",
+        "path": "/api/v1/styles",
+        "action": "update_style"
+      },
+      "project_data": {
+        "method": "POST",
+        "path": "/api/v1/project_data",
+        "actions": [
+          "list",
+          "upload_start",
+          "upload",
+          "delete"
+        ]
       }
     }
   }

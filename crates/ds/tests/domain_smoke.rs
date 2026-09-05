@@ -32,6 +32,14 @@ use serde_json::{Value, json};
 
 mod common;
 
+const NATIVE_AUTH_CODES: &[&str] = &[
+    "native_profile_not_configured",
+    "native_profile_unsafe",
+    "native_profile_digest_mismatch",
+    "headless_signed_out",
+    "headless_project_not_selected",
+];
+
 struct Run {
     envelope: Value,
     stdout: String,
@@ -40,11 +48,30 @@ struct Run {
 }
 
 fn ds(args: &[&str]) -> Run {
-    let output = Command::new(env!("CARGO_BIN_EXE_ds"))
-        .args(args)
-        .env("NO_COLOR", "1")
-        .output()
-        .expect("ds binary runs");
+    run_ds(args, false)
+}
+fn native_ds(args: &[&str]) -> Run {
+    run_ds(args, true)
+}
+fn native_refusal(args: &[&str]) -> String {
+    native_ds(args).envelope["error"]["code"]
+        .as_str()
+        .unwrap_or_default()
+        .to_owned()
+}
+fn run_ds(args: &[&str], native: bool) -> Run {
+    let config = temp_root("native-smoke-auth");
+    let bundle = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../ds-cli-auth/tests/fixtures/development-catalog.json");
+    let mut command = Command::new(env!("CARGO_BIN_EXE_ds"));
+    command.args(args).env("NO_COLOR", "1");
+    if native {
+        command
+            .env("DS_NATIVE_CLIENT_PROFILE_BUNDLE", &bundle)
+            .env("DS_CONFIG_HOME", &config);
+    }
+    let output = command.output().expect("ds binary runs");
+    let _ = std::fs::remove_dir_all(config);
     let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
     Run {
         envelope: serde_json::from_str(&stdout).unwrap_or(Value::Null),
@@ -2583,13 +2610,13 @@ fn map_ui_open_offers_three_panels_and_no_way_to_address_the_interface() {
 #[test]
 fn map_layer_management_keeps_project_and_desktop_local_effects_separate() {
     let add = ok(&["capabilities", "map.layer.add", "--output", "json"])["command"].clone();
-    assert_eq!(add["authority"], "desktop_pairing");
-    assert_eq!(add["effect"], "local_ui");
+    assert_eq!(add["authority"], "none");
+    assert_eq!(add["effect"], "local_file_write");
     let list = ok(&["capabilities", "map.layer.list", "--output", "json"])["command"].clone();
-    assert_eq!(list["authority"], "project");
-    assert_eq!(list["effect"], "read_only");
+    assert_eq!(list["authority"], "headless_project");
+    assert_eq!(list["effect"], "local_auth_state");
     let reorder = ok(&["capabilities", "map.layer.reorder", "--output", "json"])["command"].clone();
-    assert_eq!(reorder["authority"], "project");
+    assert_eq!(reorder["authority"], "headless_project");
     assert_eq!(reorder["effect"], "global_write");
 
     let confirmation = refusal(&[
@@ -2618,7 +2645,7 @@ fn map_layer_management_keeps_project_and_desktop_local_effects_separate() {
 }
 
 #[test]
-fn tile_managed_outputs_are_headless_while_the_catalogue_stays_paired() {
+fn tile_managed_outputs_are_headless_and_catalogue_are_headless() {
     for (id, effect, inputs) in [
         (
             "tile.status",
@@ -2665,14 +2692,14 @@ fn tile_managed_outputs_are_headless_while_the_catalogue_stays_paired() {
     for id in ["tile.list", "tile.add", "tile.remove"] {
         let descriptor = ok(&["capabilities", id, "--output", "json"]);
         let command = &descriptor["command"];
-        assert_eq!(command["authority"], "project", "{id}");
+        assert_eq!(command["authority"], "headless_project", "{id}");
         assert!(
-            command["inputs"]
+            !command["inputs"]
                 .as_array()
                 .expect("inputs")
                 .iter()
                 .any(|input| input["name"] == "desktop-descriptor"),
-            "{id} must remain paired until its catalogue contract is extracted"
+            "{id} must execute without Desktop"
         );
     }
 
@@ -2877,6 +2904,10 @@ fn every_map_command_is_reachable_without_the_desktop_installed() {
         .map(|command| command["id"].as_str().expect("command id"))
         .collect();
     let expected: BTreeSet<&str> = [
+        "map.data.inspect",
+        "map.data.list",
+        "map.data.upload",
+        "map.data.remove",
         "map.view",
         "map.draw",
         "map.remove",
@@ -2931,7 +2962,21 @@ fn every_map_command_is_reachable_without_the_desktop_installed() {
     );
     for command in commands {
         assert_eq!(
-            command["availability"], "available",
+            command["availability"],
+            if matches!(
+                command["id"].as_str(),
+                Some(
+                    "map.layer.list"
+                        | "map.layer.reorder"
+                        | "map.data.list"
+                        | "map.data.upload"
+                        | "map.data.remove"
+                )
+            ) {
+                "unavailable"
+            } else {
+                "available"
+            },
             "`{}` gates on discovery, which puts --desktop-descriptor out of reach",
             command["id"]
         );
@@ -3391,10 +3436,13 @@ fn design_lv_project_export_refuses_an_existing_artifact_before_auth_or_desktop(
                 "path": "/api/v1/entries/mutate",
                 "operation": "create"
             },
+            "layers":{"method":"POST","path":"/api/v1/layers","actions":["get_config","refresh","reorder"]},
+            "styles":{"method":"POST","path":"/api/v1/styles","action":"update_style"},
+            "project_data":{"method":"POST","path":"/api/v1/project_data","actions":["list","upload_start","upload","delete"]},
             "tiles": {
                 "method": "POST",
                 "path": "/api/v1/tiles",
-                "actions": ["status", "preflight", "generate"]
+                "actions": ["status", "preflight", "generate", "list", "add", "remove"]
             },
             "project_report": {
                 "method": "POST",
@@ -3407,7 +3455,7 @@ fn design_lv_project_export_refuses_an_existing_artifact_before_auth_or_desktop(
     std::fs::write(
         &profile_path,
         serde_json::to_vec(&json!({
-            "schema_version": "ds.native-client-profiles/v12",
+            "schema_version": "ds.native-client-profiles/v15",
             "development": true,
             "profiles": {
                 "stable": profile(
@@ -3531,20 +3579,22 @@ fn design_validates_its_own_inputs_before_it_opens_the_bridge() {
     // Group identifiers are governed project metadata, not a hardcoded City /
     // Phase vocabulary. A syntactically valid unknown id therefore reaches
     // the paired application, which resolves the live definitions.
-    assert_eq!(
-        refusal(&[
-            "design",
-            "group",
-            "preview",
-            "--group",
-            "region",
-            "--transformers",
-            "kigali_a",
-            "--output",
-            "json",
-        ]),
-        "desktop_refused",
-        "a dynamic group id must be resolved by the paired project"
+    assert!(
+        PAIRING_CODES.contains(
+            &refusal(&[
+                "design",
+                "group",
+                "preview",
+                "--group",
+                "region",
+                "--transformers",
+                "kigali_a",
+                "--output",
+                "json",
+            ])
+            .as_str()
+        ),
+        "a dynamic group id must reach the paired project"
     );
     // The batch bound is one transaction's write budget; the projection's is a
     // whole project's export. 300 is over the first and well inside the second,
@@ -5352,7 +5402,7 @@ fn style_cartography_validates_its_own_inputs_before_it_opens_the_bridge() {
         let mut args = args;
         args.extend(["--output", "json"]);
         assert_eq!(
-            refusal(&args),
+            native_refusal(&args),
             expected,
             "{case}: `ds {}` did not refuse with `{expected}`",
             args.join(" ")
@@ -5362,7 +5412,7 @@ fn style_cartography_validates_its_own_inputs_before_it_opens_the_bridge() {
     // Every seamless size is accepted, so the closed choice is a real bound
     // rather than one spelling that happens to work.
     for spacing in ["4", "8", "16", "32"] {
-        let code = refusal(&[
+        let code = native_refusal(&[
             "style",
             "cartography",
             "plan",
@@ -5376,7 +5426,7 @@ fn style_cartography_validates_its_own_inputs_before_it_opens_the_bridge() {
             "json",
         ]);
         assert!(
-            code.is_empty() || PAIRING_CODES.contains(&code.as_str()),
+            code.is_empty() || NATIVE_AUTH_CODES.contains(&code.as_str()),
             "`--pattern-spacing {spacing}` is seamless but was refused with `{code}`"
         );
     }
@@ -5385,7 +5435,7 @@ fn style_cartography_validates_its_own_inputs_before_it_opens_the_bridge() {
     // type is legitimate: `ds` has not read the document, so it must not
     // invent a contradiction. This one is well formed and may only end at the
     // bridge.
-    let adjust = refusal(&[
+    let adjust = native_refusal(&[
         "style",
         "cartography",
         "plan",
@@ -5397,7 +5447,7 @@ fn style_cartography_validates_its_own_inputs_before_it_opens_the_bridge() {
         "json",
     ]);
     assert!(
-        adjust.is_empty() || PAIRING_CODES.contains(&adjust.as_str()),
+        adjust.is_empty() || NATIVE_AUTH_CODES.contains(&adjust.as_str()),
         "adjusting arrow spacing alone failed with `{adjust}`, which is not a pairing outcome"
     );
 }
@@ -5480,7 +5530,7 @@ fn a_well_formed_cartography_call_stops_at_confirmation_or_pairing() {
     ] {
         let code = refusal(&args);
         assert!(
-            code.is_empty() || PAIRING_CODES.contains(&code.as_str()),
+            code.is_empty() || NATIVE_AUTH_CODES.contains(&code.as_str()),
             "`ds {}` failed with `{code}`, which is not a pairing outcome",
             args.join(" ")
         );
@@ -5674,7 +5724,7 @@ fn project_forms_native_reads_preserve_the_explicit_project_desktop_surface() {
             "survey.entries.select exposed --{forbidden}"
         );
     }
-    let invalid = ds(&[
+    let invalid = native_ds(&[
         "survey",
         "entries",
         "select",
@@ -5725,7 +5775,7 @@ fn project_forms_native_reads_preserve_the_explicit_project_desktop_surface() {
             "survey.entries.changes exposed --{forbidden}"
         );
     }
-    let invalid_changes = ds(&[
+    let invalid_changes = native_ds(&[
         "survey",
         "entries",
         "changes",
@@ -5747,7 +5797,7 @@ fn project_forms_native_reads_preserve_the_explicit_project_desktop_surface() {
     assert_eq!(create["command"]["effect"], "global_write");
     assert_eq!(create["command"]["execution"], "sync");
     assert_eq!(create["command"]["confirmation_required"], true);
-    let create_help = ds(&["survey", "entries", "create", "--help"]);
+    let create_help = native_ds(&["survey", "entries", "create", "--help"]);
     assert_eq!(create_help.code, 0);
     assert!(
         create_help
@@ -5796,7 +5846,7 @@ fn project_forms_native_reads_preserve_the_explicit_project_desktop_surface() {
             "survey.entries.create exposed --{forbidden}"
         );
     }
-    let unconfirmed_create = ds(&[
+    let unconfirmed_create = native_ds(&[
         "survey",
         "entries",
         "create",
@@ -5818,7 +5868,7 @@ fn project_forms_native_reads_preserve_the_explicit_project_desktop_surface() {
         unconfirmed_create.envelope["error"]["code"],
         "confirmation_required"
     );
-    let confirmed_invalid_create = ds(&[
+    let confirmed_invalid_create = native_ds(&[
         "survey",
         "entries",
         "create",
@@ -5882,7 +5932,7 @@ fn project_forms_native_reads_preserve_the_explicit_project_desktop_surface() {
     let missing = root.join("missing.ndjson").display().to_string();
     let checkpoint = root.join("state.json").display().to_string();
     let receipt = root.join("receipt.ndjson").display().to_string();
-    let invalid_import = ds(&[
+    let invalid_import = native_ds(&[
         "survey",
         "entries",
         "import",
@@ -5936,4 +5986,91 @@ fn project_forms_native_reads_preserve_the_explicit_project_desktop_surface() {
             .iter()
             .any(|arg| arg["name"] == "project" && arg["required"] == true)
     );
+}
+
+#[test]
+fn native_layers_persist_without_a_desktop_and_gis_inspection_pins_exact_bytes() {
+    let root = temp_root("headless-layers");
+    std::fs::create_dir_all(&root).unwrap();
+    let invoke = |args: &[&str]| {
+        let output = Command::new(env!("CARGO_BIN_EXE_ds"))
+            .args(args)
+            .args(["--output", "json"])
+            .env("DS_LAYER_HOME", root.join("layers"))
+            .env("DS_NATIVE_STATE_DIR", root.join("auth"))
+            .output()
+            .unwrap();
+        let value: Value = serde_json::from_slice(&output.stdout).unwrap();
+        assert!(output.status.success(), "{value}");
+        value["data"].clone()
+    };
+    let added = invoke(&[
+        "map",
+        "layer",
+        "add",
+        "--name",
+        "Offline imagery",
+        "--kind",
+        "xyz",
+        "--url",
+        "https://tiles.example/{z}/{x}/{y}.png",
+    ]);
+    assert_eq!(added["persisted"], "native_local");
+    let id = added["layer"].as_str().unwrap();
+    let hidden = invoke(&[
+        "map",
+        "layer",
+        "visibility",
+        "--layer",
+        id,
+        "--visible",
+        "false",
+    ]);
+    assert_eq!(hidden["visible"], false);
+    let listed = invoke(&["map", "layer", "remote-list"]);
+    assert_eq!(listed["layer_count"], 1);
+    assert_eq!(listed["layers"][0]["id"], id);
+    assert_eq!(listed["layers"][0]["visible"], false);
+    let removed = invoke(&["map", "layer", "remove", "--layer", id]);
+    assert_eq!(removed["removed"], true);
+    assert_eq!(invoke(&["map", "layer", "remote-list"])["layer_count"], 0);
+    let file = root.join("roads.geojson");
+    std::fs::write(&file, b"abc").unwrap();
+    let inspected = invoke(&["map", "data", "inspect", "--path", file.to_str().unwrap()]);
+    assert_eq!(inspected["bytes"], 3);
+    assert_eq!(
+        inspected["sha256"],
+        "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+    );
+    assert_eq!(inspected["uploaded"], false);
+    for id in ["map.data.list", "map.data.upload", "map.data.remove"] {
+        let descriptor = ok(&["capabilities", id, "--output", "json"]);
+        assert_eq!(descriptor["command"]["authority"], "headless_project");
+        assert!(
+            descriptor["command"]["inputs"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|a| a["name"] != "desktop-descriptor")
+        );
+    }
+    assert_eq!(
+        refusal(&[
+            "map",
+            "data",
+            "upload",
+            "--path",
+            file.to_str().unwrap(),
+            "--output",
+            "json"
+        ]),
+        "confirmation_required"
+    );
+    assert_eq!(
+        refusal(&[
+            "map", "data", "remove", "--upload", "roads", "--output", "json"
+        ]),
+        "confirmation_required"
+    );
+    std::fs::remove_dir_all(root).unwrap();
 }

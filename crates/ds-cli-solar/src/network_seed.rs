@@ -19,7 +19,7 @@ pub static COMMAND: Command = Command {
     id: "solar.seed.network-plan",
     path: &["solar", "seed", "network-plan"],
     contract: 1,
-    summary: "Plan Solar city network documents from tagged MV lengths and local LV rooms.",
+    summary: "Plan Solar networks from tagged MV lengths and local LV rooms.",
     purpose: "Calls the reporter's closed local task, which delegates unchanged request bytes to the same Rust command-kernel operation used by the UI. MV supplies alignment lengths only; LV rooms supply transformers, customers and LV lengths; MV structure counts are refused.",
     chapter: Chapter::Solar,
     effect: Effect::LocalFileWrite,

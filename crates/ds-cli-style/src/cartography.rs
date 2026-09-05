@@ -23,7 +23,7 @@ use ds_cli_contract::spec::{
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
 
-use crate::{DESCRIPTOR_ARG, REF_ARG};
+use crate::{LANE_ARG, REF_ARG};
 
 /// The one line type that draws markers instead of a dash pattern.
 const DIRECTIONAL: &str = "directional";
@@ -149,7 +149,7 @@ const ARGS: &[Arg] = &[
     PATTERN_BACKGROUND_ARG,
     PATTERN_SPACING_ARG,
     PATTERN_STROKE_ARG,
-    DESCRIPTOR_ARG,
+    LANE_ARG,
 ];
 
 const PLAN_REFUSALS: &[ds_cli_contract::spec::Refusal] = &[
@@ -390,7 +390,7 @@ pub mod plan {
     pub static COMMAND: Command = Command {
         id: "style.cartography.plan",
         path: &["style", "cartography", "plan"],
-        contract: 1,
+        contract: 2,
         summary: "Plan dashed line types, casing, direction or fill hatching.",
         purpose: "\
 Plans governed line presets, direction arrows, contrast casing and fill \
@@ -398,8 +398,8 @@ hatching. Crosshatch can mark proposed service areas. It returns the resulting \
 document without saving. Omitted flags leave those properties unchanged; \
 apply the reviewed flags with `set`.",
         chapter: Chapter::MapPresentation,
-        effect: Effect::ReadOnly,
-        authority: Authority::Project,
+        effect: Effect::LocalAuthState,
+        authority: Authority::HeadlessProject,
         execution: Execution::Sync,
         args: ARGS,
         output: "\
@@ -426,19 +426,12 @@ apply the reviewed flags with `set`.",
         ],
         refusals: PLAN_REFUSALS,
         reference: Some("docs/reference/style.md"),
-        availability: crate::paired_availability,
+        availability: ds_cli_auth::native_availability,
     };
 
-    pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
+    pub fn run(inputs: &Inputs, context: &Context) -> Result<Value, Failure> {
         let arguments = arguments(inputs, false)?;
-        let descriptor = crate::paired(inputs.value("desktop-descriptor"))?;
-        crate::invoke(
-            &descriptor,
-            &crate::CARTOGRAPHY_SET,
-            arguments,
-            crate::READ_TIMEOUT,
-        )
-        .map_err(crate::classify_style_failure)
+        crate::native::execute(inputs, context, &crate::CARTOGRAPHY_SET, arguments)
     }
 
     pub fn render(data: &Value) -> String {
@@ -452,7 +445,7 @@ pub mod set {
     pub static COMMAND: Command = Command {
         id: "style.cartography.set",
         path: &["style", "cartography", "set"],
-        contract: 1,
+        contract: 2,
         summary: "Publish a layer's line, direction, casing or fill hatch.",
         purpose: "\
 Publishes the cartography shown by `plan` through the governed save. ds-brain \
@@ -461,7 +454,7 @@ imagery. Colour and field-driven dimensions stay unchanged; omitted flags \
 leave their properties unchanged.",
         chapter: Chapter::MapPresentation,
         effect: Effect::GlobalWrite,
-        authority: Authority::Project,
+        authority: Authority::HeadlessProject,
         execution: Execution::Sync,
         args: ARGS,
         output: "The plan receipt with `published: true`, ds-brain `warnings`, and the `document` as persisted.",
@@ -484,19 +477,12 @@ leave their properties unchanged.",
         ],
         refusals: SET_REFUSALS,
         reference: Some("docs/reference/style.md"),
-        availability: crate::paired_availability,
+        availability: ds_cli_auth::native_availability,
     };
 
-    pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
+    pub fn run(inputs: &Inputs, context: &Context) -> Result<Value, Failure> {
         let arguments = arguments(inputs, true)?;
-        let descriptor = crate::paired(inputs.value("desktop-descriptor"))?;
-        crate::invoke(
-            &descriptor,
-            &crate::CARTOGRAPHY_SET,
-            arguments,
-            crate::WRITE_TIMEOUT,
-        )
-        .map_err(crate::classify_style_failure)
+        crate::native::execute(inputs, context, &crate::CARTOGRAPHY_SET, arguments)
     }
 
     pub fn render(data: &Value) -> String {
@@ -602,7 +588,7 @@ mod tests {
         );
 
         // A descriptor path is not a cartography change either.
-        let tokens = argv(&["--ref", "master/mv_lines", "--desktop-descriptor", "/tmp/x"]);
+        let tokens = argv(&["--ref", "master/mv_lines", "--lane", "canary"]);
         let inputs = parse(&plan::COMMAND, &tokens).expect("inputs");
         assert_eq!(
             arguments(&inputs, false).expect_err("must refuse").code(),

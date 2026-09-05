@@ -1021,6 +1021,30 @@ mod tests {
             Err(TransportError::Unreachable)
         }
 
+        fn project_data(
+            &mut self,
+            _call: ds_client_core::ProjectDataCall<'_>,
+        ) -> Result<TransportResponse, TransportError> {
+            panic!("project_data not expected")
+        }
+        fn upload_bytes(
+            &mut self,
+            _call: ds_client_core::UploadBytesCall<'_>,
+        ) -> Result<TransportResponse, TransportError> {
+            panic!("unexpected upload")
+        }
+        fn styles(
+            &mut self,
+            _call: ds_client_core::StylesCall<'_>,
+        ) -> Result<TransportResponse, TransportError> {
+            panic!("styles not expected")
+        }
+        fn layers(
+            &mut self,
+            _call: ds_client_core::LayersCall<'_>,
+        ) -> Result<TransportResponse, TransportError> {
+            panic!("layers not expected")
+        }
         fn tiles(&mut self, _call: TileCall<'_>) -> Result<TransportResponse, TransportError> {
             Err(TransportError::Unreachable)
         }
@@ -1079,12 +1103,30 @@ mod tests {
             survey_entry_create_method: "POST".to_owned(),
             survey_entry_create_path: "/api/v1/entries/mutate".to_owned(),
             survey_entry_create_operation: "create".to_owned(),
+            project_data_method: "POST".to_owned(),
+            project_data_path: "/api/v1/project_data".to_owned(),
+            project_data_actions: ["list", "upload_start", "upload", "delete"]
+                .map(str::to_owned)
+                .to_vec(),
+            styles_method: "POST".to_owned(),
+            styles_path: "/api/v1/styles".to_owned(),
+            styles_action: "update_style".to_owned(),
+            layers_method: "POST".to_owned(),
+            layers_path: "/api/v1/layers".to_owned(),
+            layers_actions: vec![
+                "get_config".to_owned(),
+                "refresh".to_owned(),
+                "reorder".to_owned(),
+            ],
             tiles_method: "POST".to_owned(),
             tiles_path: "/api/v1/tiles".to_owned(),
             tiles_actions: vec![
                 "status".to_owned(),
                 "preflight".to_owned(),
                 "generate".to_owned(),
+                "list".to_owned(),
+                "add".to_owned(),
+                "remove".to_owned(),
             ],
             project_report_method: "POST".to_owned(),
             project_report_path: "/report".to_owned(),

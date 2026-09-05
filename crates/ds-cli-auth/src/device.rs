@@ -556,6 +556,59 @@ impl DeviceSession {
     ) -> Result<SurveyEntryCreateReceipt, ClientError> {
         fixed_device_call!(self, survey_entry_create, project, request)
     }
+    pub fn tile_list(
+        &mut self,
+        project: &str,
+        include_global: bool,
+    ) -> Result<ds_client_core::TileCatalog, ClientError> {
+        fixed_device_call!(self, tile_list, project, include_global)
+    }
+    pub fn tile_add(
+        &mut self,
+        project: &str,
+        tile_type: TileType,
+        source_project: &str,
+    ) -> Result<ds_client_core::TileMutation, ClientError> {
+        fixed_device_call!(self, tile_add, project, tile_type, source_project)
+    }
+    pub fn tile_remove(
+        &mut self,
+        project: &str,
+        tile_id: &str,
+        scope: ds_client_core::TileScope,
+    ) -> Result<ds_client_core::TileMutation, ClientError> {
+        fixed_device_call!(self, tile_remove, project, tile_id, scope)
+    }
+    pub fn layer_config(
+        &mut self,
+        project: &str,
+        refresh: bool,
+    ) -> Result<ds_client_core::LayerSnapshot, ClientError> {
+        fixed_device_call!(self, layer_config, project, refresh)
+    }
+    pub fn layer_reorder(
+        &mut self,
+        project: &str,
+        orders: &[ds_client_core::LayerOrder],
+    ) -> Result<ds_client_core::LayerOrderReceipt, ClientError> {
+        fixed_device_call!(self, layer_reorder, project, orders)
+    }
+    pub fn project_data(
+        &mut self,
+        project: &str,
+        command: ds_client_core::ProjectDataCommand<'_>,
+    ) -> Result<ds_client_core::ProjectDataReceipt, ClientError> {
+        fixed_device_call!(self, project_data, project, command)
+    }
+    pub fn style_edit(
+        &mut self,
+        project: &str,
+        reference: &str,
+        instruction: &ds_client_core::StyleInstruction,
+        apply: bool,
+    ) -> Result<ds_client_core::StyleEditReceipt, ClientError> {
+        fixed_device_call!(self, style_edit, project, reference, instruction, apply)
+    }
     pub fn tile_status(
         &mut self,
         project: &str,

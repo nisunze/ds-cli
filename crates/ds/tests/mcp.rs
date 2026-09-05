@@ -377,7 +377,7 @@ fn a_map_refusal_is_lazy_and_does_not_end_the_headless_server() {
         &["--exposure", "chapters"],
         &[
             json!({ "jsonrpc": "2.0", "id": 1, "method": "initialize", "params": { "protocolVersion": "2025-06-18" } }),
-            json!({ "jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": { "name": "ds_survey", "arguments": { "operation": "invoke", "command": "map.layer.list", "arguments": { "desktop-descriptor": descriptor } } } }),
+            json!({ "jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": { "name": "ds_survey", "arguments": { "operation": "invoke", "command": "map.view", "arguments": { "desktop-descriptor": descriptor } } } }),
             json!({ "jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": { "name": "ds_diagnostics", "arguments": { "operation": "capabilities" } } }),
         ],
     );

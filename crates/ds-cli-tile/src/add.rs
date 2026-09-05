@@ -7,7 +7,7 @@ use ds_cli_contract::spec::{
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
 
-use crate::{DESCRIPTOR_ARG, TYPE_ARG};
+use crate::{LANE_ARG, TYPE_ARG};
 
 const SOURCE_PROJECT_ARG: Arg = Arg {
     name: "source-project",
@@ -22,52 +22,38 @@ const SOURCE_PROJECT_ARG: Arg = Arg {
 pub static COMMAND: Command = Command {
     id: "tile.add",
     path: &["tile", "add"],
-    contract: 1,
+    contract: 2,
     summary: "Add another project's published tiles to this project (needs --yes).",
     purpose: "\
-References another project's published output of the given type from this \
-project's catalogue, through the same governed action the Pipeline panel \
-uses. ds-brain checks membership on both projects. Nothing is copied or \
-re-tiled.",
+Imports another project's published output into destination-owned tile storage. \
+Restores the native user and selected project; ds-brain checks access to both \
+projects and performs the copy. No desktop is required.",
     chapter: Chapter::VectorTiles,
     effect: Effect::GlobalWrite,
-    authority: Authority::Project,
+    authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[TYPE_ARG, SOURCE_PROJECT_ARG, DESCRIPTOR_ARG],
+    args: &[TYPE_ARG, SOURCE_PROJECT_ARG, LANE_ARG],
     output: "`project`, `type`, `sourceProject`, `added: true`.",
     examples: &[Example {
         command: "ds tile add --type design --source-project neighbouring-district --yes",
         note: "Then `ds tile list` shows the row with its source project.",
         runnable: false,
     }],
-    refusals: &[
-        crate::NOT_PAIRED,
-        crate::AMBIGUOUS,
-        crate::UNREACHABLE,
-        crate::PAIRING_REJECTED,
-        crate::TILE_REFUSED,
-        crate::UNSUPPORTED,
-        crate::UNREADABLE,
-        crate::SIGNED_OUT,
-        crate::CONFIRMATION_REQUIRED,
-    ],
+    refusals: crate::NATIVE_WRITE_REFUSALS,
     reference: Some("docs/reference/tile.md"),
-    availability: crate::paired_availability,
+    availability: ds_cli_auth::native_availability,
 };
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
-    let descriptor = crate::paired(inputs.value("desktop-descriptor"))?;
-    crate::invoke(
-        &descriptor,
-        &crate::TILE_ADD,
-        json!({
-            "type": inputs.require("type")?,
-            "source_project": inputs.require("source-project")?,
-            "apply": true,
-        }),
-        crate::READ_TIMEOUT,
+    let result = ds_cli_auth::tile_add(
+        inputs.require("lane")?,
+        crate::tile_type(inputs.require("type")?),
+        inputs.require("source-project")?,
+    )?;
+    Ok(
+        json!({"lane": result.lane(), "project": result.project_id(), "type": inputs.require("type")?,
+        "sourceProject": inputs.require("source-project")?, "tileId": result.result().tile_id, "added": true}),
     )
-    .map_err(crate::classify_tile_failure)
 }
 
 pub fn render(data: &Value) -> String {

@@ -296,6 +296,7 @@ const PLS_LIBRARY_COMMANDS: &[&str] = &[
     "library.open",
     "library.catalog",
     "library.pack",
+    "library.prepare-publication",
     "library.unpack",
     "library.seed",
     "library.resolve-native",
@@ -332,6 +333,10 @@ const LAYER_COMMANDS: &[&str] = &[
     "map.layer.list",
     "map.layer.reorder",
     "map.layer.remote-list",
+    "map.data.inspect",
+    "map.data.list",
+    "map.data.upload",
+    "map.data.remove",
     "map.layer.add",
     "map.layer.remove",
     "map.layer.visibility",
@@ -444,7 +449,11 @@ const SOLAR_RUN_COMMANDS: &[&str] = &[
     "solar.verify-weather",
 ];
 
-const SOLAR_INPUT_COMMANDS: &[&str] = &["solar.input.capture", "solar.input.prepare"];
+const SOLAR_INPUT_COMMANDS: &[&str] = &[
+    "solar.input.capture",
+    "solar.input.prepare",
+    "solar.seed.network-plan",
+];
 
 const SOLAR_DELIVERY_COMMANDS: &[&str] = &[
     "solar.portfolio.list",

@@ -1,6 +1,6 @@
 ---
 name: ds-layer-management
-description: Inspect and order canonical DS project layers, or manage validated desktop-local XYZ and raster PMTiles overlays through `ds`; route GeoJSON, governed tiles, and cleaned design imports to their actual owners.
+description: Inspect and order canonical DS project layers, or manage validated machine-local XYZ and raster PMTiles overlays through `ds`; route GeoJSON, governed tiles, and cleaned design imports to their actual owners.
 metadata:
   ds-chapters: survey
   ds-mcp-profile: layers
@@ -14,7 +14,8 @@ the same kind of layer:
 | Intent | Owner | Map must be open? |
 |---|---|---|
 | Inspect or reorder canonical project layers | `ds map layer list/reorder` | No |
-| Add, hide, list, or remove a third-party XYZ/raster PMTiles overlay on this desktop | `ds map layer add/remote-list/visibility/remove` | No; an open map updates immediately |
+| Add, hide, list, or remove a third-party XYZ/raster PMTiles overlay in the shared native store | `ds map layer add/remote-list/visibility/remove` | No; an open map updates immediately |
+| Inspect, upload, list or remove project GIS files | `ds map data inspect/upload/list/remove` | No desktop; inspect is offline |
 | Add or remove session-only GeoJSON | `ds map draw/remove` | Yes |
 | Mount another project's published survey/design output | `ds tile add/remove` | No |
 | Parse, map canonical headers, and Rust-clean a design archive | `ds map design upload inspect/stage` | No map; signed-in project required |
@@ -36,7 +37,8 @@ Table-only rows are counted honestly and
 their bodies are intentionally absent. `--refresh` refreshes canonical layer
 configuration, not these runtime roots.
 
-Remote overlays are desktop-local references in IndexedDB, not project data.
+Remote overlays use a native registry shared with the installed desktop. They work
+offline without sign-in. Browser-only overlays remain in browser IndexedDB.
 `add` accepts HTTP(S) XYZ templates containing all of `{z}`, `{x}`, and `{y}`
 or raster PMTiles archives; it refuses embedded credentials. Vector PMTiles
 need a governed source/style contract and must not be described as supported

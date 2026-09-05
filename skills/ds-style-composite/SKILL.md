@@ -29,13 +29,8 @@ Choosing wrong is the expensive mistake, because two of them cost a field.
 1. Find the ref: `ds style list --query <layer> --output json`. Tiled design
    layers are the `_vt` refs (`target: design_vt`); GeoJSON design layers are
    the bare `master/<layer>` refs. Style the one the user is looking at.
-   For a loaded Notes or Project Work root, choose only a ref listed under its
-   `runtime` receipt (`ud/personal_notes_*` or `ud/project_work_*`). The receipt's
-   source id, authority and freshness must match the map-layer receipt, and its
-   `styleState` must be `ready`; never guess or publish a pending, failed, or
-   absent Point/LineString/Polygon child.
 2. Read it: `ds style read --ref <ref> --output json`. It reports the layer
-   type, the fields, `.data.onMap.types` and the channels this layer offers.
+   type, the fields, the published field domains and the channels this layer offers.
 3. `plan` with the flags you intend, read the result back to the user, then
    `set` with the *same flags* plus `--yes`. Plan and set are one operation
    with `apply` false or true, so what you reviewed is what publishes. Report
@@ -43,11 +38,15 @@ Choosing wrong is the expensive mistake, because two of them cost a field.
 4. `ds style <command> --help` is the contract: bounds, closed choices and
    refusals live there, not here.
 
+All operations use native sign-in and the selected project; no desktop is needed.
+Only backend-published editor refs can be authored. Reads and writes need the
+backend online. Use `--field-type` when a domain has no declared match-label type.
+
 ## Base appearance
 
 `ds style appearance plan --ref <ref> --color '<#hex>' [--icon <catalog-name>]
 [--size <number>]`. The application validates icon names and numeric bounds
-against its live schema — do not guess icon names. A flat colour or icon
+against the backend schema — do not guess icon names. A flat colour or icon
 replaces a field-driven colour expression, so plan first.
 
 ## Second dimension — a field
@@ -55,7 +54,7 @@ replaces a field-driven colour expression, so plan first.
 `ds style dimension plan --ref <ref> --field <field> --channel halo --value
 <highlight>=<px>:<#hex> --value <other>=0`. Take the field from
 `.data.fields`, never `.data.colorField`. Type the value labels the way
-`.data.onMap.types` says the map carries them.
+the published field domains says the map carries them.
 
 `halo` differentiates hardest (a ring; on lines a hollow casing, on fills the
 outline colour), `opacity` mutes, `size` scales. On raster symbol layers the

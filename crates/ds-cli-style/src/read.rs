@@ -5,58 +5,37 @@ use ds_cli_contract::spec::{Authority, Chapter, Command, Effect, Example, Execut
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
 
-use crate::{DESCRIPTOR_ARG, REF_ARG};
+use crate::{LANE_ARG, REF_ARG};
 
 pub static COMMAND: Command = Command {
     id: "style.read",
     path: &["style", "read"],
-    contract: 1,
+    contract: 2,
     summary: "One style document with its fields, on-map values and channels.",
-    purpose: "\
-Reads the authored MapLibre document for one ref, its guided base appearance, \
-the fields and values the \
-backend publishes for it, the fields and value TYPES the map currently \
-renders (so a numeric tile property gets numeric match labels), the second \
-dimension if one is authored, and the channels this layer type offers.",
+    purpose: "Reads one backend-published style editor and its full document, field vocabulary, property bounds, icon names and supported channels. Runtime presence is not inferred.",
     chapter: Chapter::MapPresentation,
-    effect: Effect::ReadOnly,
-    authority: Authority::Project,
+    effect: Effect::LocalAuthState,
+    authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[REF_ARG, DESCRIPTOR_ARG],
-    output: "\
-The `ds style list` row plus `document`, `appearance` (current primary colour, \
-icon quick picks/catalog count, base-size property and live bounds), `fields`, `fieldValues`, `onMap` \
-(features, fields, values, types — null when no map is mounted), `channels` \
-(channel, numberProperty, colorProperty, min, max, on, off), `second` and \
-`warnings` from ds-brain's expression validator.",
+    args: &[REF_ARG, LANE_ARG],
+    output: "Project, ref, type, target, document, fields, fieldValues, fieldDomains, propertySchema, icons, channels, second, colorField, onMap null, and more.",
     examples: &[Example {
         command: "ds style read --ref master/lv_poles --output json",
         note: "Read .data.channels and .data.onMap.types before `ds style dimension plan`.",
         runnable: false,
     }],
-    refusals: &[
-        crate::NOT_PAIRED,
-        crate::AMBIGUOUS,
-        crate::UNREACHABLE,
-        crate::PAIRING_REJECTED,
-        crate::STYLE_REFUSED,
-        crate::UNSUPPORTED,
-        crate::UNREADABLE,
-        crate::SIGNED_OUT,
-    ],
+    refusals: crate::native::REFUSALS,
     reference: Some("docs/reference/style.md"),
-    availability: crate::paired_availability,
+    availability: ds_cli_auth::native_availability,
 };
 
-pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
-    let descriptor = crate::paired(inputs.value("desktop-descriptor"))?;
-    crate::invoke(
-        &descriptor,
+pub fn run(inputs: &Inputs, context: &Context) -> Result<Value, Failure> {
+    crate::native::execute(
+        inputs,
+        context,
         &crate::STYLE_READ,
         json!({ "ref": inputs.require("ref")? }),
-        crate::READ_TIMEOUT,
     )
-    .map_err(crate::classify_style_failure)
 }
 
 pub fn render(data: &Value) -> String {

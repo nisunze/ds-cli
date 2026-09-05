@@ -35,15 +35,7 @@ pub static COMMAND: Command = Command {
     path: &["design", "transformer", "download"],
     contract: 1,
     summary: "Bulk-download saved transformer rooms into the paired local cache.",
-    purpose: "\
-Materializes saved transformer rooms in the paired application's local cache \
-for local reporting and other background work. Repeat --transformer for an \
-explicit set, or omit it for every active non-special transformer. This is \
-the canonical local transformer room, bulk download, and background report \
-preparation command. It does not open the map, activate a transformer edit \
-context, process geometry, stage edits, save, or create a version. Current \
-clean rooms are reused; a dirty local room is never overwritten, including \
-with --force.",
+    purpose: "Bulk download of saved local transformer rooms into the paired cache for background report preparation. Repeat --transformer for an explicit set or omit it for all active non-special transformers. Reuses current clean rooms and preserves dirty rooms even with --force. Keeps the visible editor context unchanged.",
     chapter: Chapter::Design,
     effect: Effect::LocalUi,
     authority: Authority::Project,

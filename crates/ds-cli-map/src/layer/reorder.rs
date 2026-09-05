@@ -2,12 +2,12 @@
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
-    Arg, ArgKind, Authority, Chapter, Command, Effect, Example, Execution, Refusal,
+    Arg, ArgKind, Authority, Chapter, Command, Effect, Example, Execution,
 };
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
 
-use crate::DESCRIPTOR_ARG;
+use super::native::LANE_ARG;
 
 const ORDER_ARG: Arg = Arg {
     name: "order",
@@ -22,42 +22,23 @@ const ORDER_ARG: Arg = Arg {
 pub static COMMAND: Command = Command {
     id: "map.layer.reorder",
     path: &["map", "layer", "reorder"],
-    contract: 1,
+    contract: 2,
     summary: "Save canonical project-layer order overrides (needs --yes).",
     purpose: "Validates every id against a fresh-enough assembled project layer response, then saves explicit order overrides through ds-brain. Runtime MapLibre ids are refused. Geometry and platform stack safety still govern final draw grouping.",
     chapter: Chapter::Survey,
     effect: Effect::GlobalWrite,
-    authority: Authority::Project,
+    authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[ORDER_ARG, DESCRIPTOR_ARG],
+    args: &[ORDER_ARG, LANE_ARG],
     output: "Project, the exact reviewed id/order pairs, and applied/persisted flags.",
     examples: &[Example {
         command: "ds map layer reorder --order gt/roads=120 --order gt/schools=220 --yes --output json",
         note: "Take ids from `ds map layer list`; never construct them.",
         runnable: false,
     }],
-    refusals: &[
-        crate::NOT_PAIRED,
-        crate::AMBIGUOUS,
-        crate::UNREACHABLE,
-        crate::PAIRING_REJECTED,
-        crate::REFUSED,
-        crate::UNSUPPORTED,
-        crate::UNREADABLE,
-        crate::SIGNED_OUT,
-        Refusal {
-            code: "confirmation_required",
-            when: "--yes was not supplied",
-            remedy: "review `ds map layer list`, then repeat the exact command with --yes",
-        },
-        Refusal {
-            code: "invalid_order",
-            when: "an item is not canonical-id=integer or repeats an id",
-            remedy: "copy ids from `ds map layer list --output json`",
-        },
-    ],
+    refusals: super::native::NATIVE_WRITE_REFUSALS,
     reference: Some("docs/reference/map.md"),
-    availability: crate::paired_availability,
+    availability: ds_cli_auth::native_availability,
 };
 
 fn parse_orders(values: &[String]) -> Result<Vec<Value>, Failure> {
@@ -100,21 +81,23 @@ fn parse_orders(values: &[String]) -> Result<Vec<Value>, Failure> {
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let orders = parse_orders(inputs.repeated("order"))?;
-    let descriptor = crate::paired(inputs.value("desktop-descriptor"))?;
-    crate::invoke(
-        &descriptor,
-        &crate::LAYERS_REORDER,
-        json!({ "orders": orders, "apply": true }),
-        crate::API_TIMEOUT,
+    let request: Vec<ds_cli_auth::LayerOrder> = orders
+        .iter()
+        .map(|row| ds_cli_auth::LayerOrder {
+            layer_id: row["layerId"].as_str().expect("parsed id").to_owned(),
+            order: row["order"].as_i64().expect("parsed order"),
+        })
+        .collect();
+    let result = ds_cli_auth::layer_reorder(inputs.require("lane")?, &request)?;
+    Ok(
+        json!({"lane": result.lane(), "project": result.project_id(), "orders": orders, "applied": true, "persisted": true}),
     )
-    .map_err(super::classify)
 }
 
 pub fn render(data: &Value) -> String {
     format!(
-        "saved {} layer-order overrides for {} · map updated: {}\n",
+        "saved {} layer-order overrides for {}\n",
         data["orders"].as_array().map_or(0, Vec::len),
         data["project"].as_str().unwrap_or("?"),
-        data["mapUpdated"].as_bool().unwrap_or(false),
     )
 }

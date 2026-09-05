@@ -350,6 +350,131 @@ impl Transport for NativeTransport {
         bounded(response, call.response_limit())
     }
 
+    fn upload_bytes(
+        &mut self,
+        mut call: ds_client_core::UploadBytesCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        let limit = call.response_limit();
+        let size = call.size();
+        let request = ureq::put(call.uri())
+            .header("Content-Type", "application/octet-stream")
+            .header("Content-Length", size.to_string())
+            .header("Content-Range", format!("bytes 0-{}/{size}", size - 1))
+            .config()
+            .max_redirects(0)
+            .http_status_as_error(false)
+            .timeout_connect(Some(CONNECT_TIMEOUT))
+            .timeout_global(Some(Duration::from_secs(1800)))
+            .build();
+        let response = request
+            .send(ureq::SendBody::from_reader(&mut call.reader().take(size)))
+            .map_err(classify)?;
+        bounded(response, limit)
+    }
+
+    fn project_data(
+        &mut self,
+        call: ds_client_core::ProjectDataCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        debug_assert_eq!(call.method(), "POST");
+        debug_assert_eq!(call.path(), "/api/v1/project_data");
+        debug_assert_eq!(call.timeout_seconds(), 120);
+        let (request_id, action_id) = correlation_headers();
+        let mut bearer = format!("Bearer {}", call.bearer_token());
+        let body = call.body();
+        let url = format!(
+            "{}{}",
+            call.gateway_origin(),
+            ds_client_core::PROJECT_DATA_PATH
+        );
+        let result = ureq::post(url)
+            .header("Accept", call.content_type())
+            .header("Content-Type", call.content_type())
+            .header("X-App-Id", call.client_id())
+            .header("X-Request-Id", &request_id)
+            .header("X-DS-Action-Id", &action_id)
+            .header("X-User-Email", call.canonical_email())
+            .header("x-api-key", call.gateway_api_key())
+            .header("Authorization", &bearer)
+            .header("X-Forwarded-Authorization", &bearer)
+            .config()
+            .max_redirects(0)
+            .http_status_as_error(false)
+            .timeout_connect(Some(CONNECT_TIMEOUT))
+            .timeout_global(Some(Duration::from_secs(call.timeout_seconds())))
+            .build()
+            .send(body.as_bytes());
+        bearer.zeroize();
+        let response = result.map_err(classify)?;
+        bounded(response, call.response_limit())
+    }
+
+    fn styles(
+        &mut self,
+        call: ds_client_core::StylesCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        debug_assert_eq!(call.method(), "POST");
+        debug_assert_eq!(call.path(), "/api/v1/styles");
+        debug_assert_eq!(call.timeout_seconds(), 120);
+        let (request_id, action_id) = correlation_headers();
+        let mut bearer = format!("Bearer {}", call.bearer_token());
+        let body = call.body();
+        let url = format!("{}{}", call.gateway_origin(), ds_client_core::STYLES_PATH);
+        let result = ureq::post(url)
+            .header("Accept", call.content_type())
+            .header("Content-Type", call.content_type())
+            .header("X-App-Id", call.client_id())
+            .header("X-Request-Id", &request_id)
+            .header("X-DS-Action-Id", &action_id)
+            .header("X-User-Email", call.canonical_email())
+            .header("x-api-key", call.gateway_api_key())
+            .header("Authorization", &bearer)
+            .header("X-Forwarded-Authorization", &bearer)
+            .config()
+            .max_redirects(0)
+            .http_status_as_error(false)
+            .timeout_connect(Some(CONNECT_TIMEOUT))
+            .timeout_global(Some(Duration::from_secs(call.timeout_seconds())))
+            .build()
+            .send(body.as_bytes());
+        bearer.zeroize();
+        let response = result.map_err(classify)?;
+        bounded(response, call.response_limit())
+    }
+
+    fn layers(
+        &mut self,
+        call: ds_client_core::LayersCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        debug_assert_eq!(call.method(), "POST");
+        debug_assert_eq!(call.path(), "/api/v1/layers");
+        debug_assert_eq!(call.timeout_seconds(), 120);
+        let (request_id, action_id) = correlation_headers();
+        let mut bearer = format!("Bearer {}", call.bearer_token());
+        let body = call.body();
+        let url = format!("{}{}", call.gateway_origin(), ds_client_core::LAYERS_PATH);
+        let result = ureq::post(url)
+            .header("Accept", call.content_type())
+            .header("Content-Type", call.content_type())
+            .header("X-App-Id", call.client_id())
+            .header("X-Request-Id", &request_id)
+            .header("X-DS-Action-Id", &action_id)
+            .header("X-User-Email", call.canonical_email())
+            .header("x-api-key", call.gateway_api_key())
+            .header("Authorization", &bearer)
+            .header("X-Forwarded-Authorization", &bearer)
+            .config()
+            .max_redirects(0)
+            .http_status_as_error(false)
+            .timeout_connect(Some(CONNECT_TIMEOUT))
+            .timeout_global(Some(Duration::from_secs(call.timeout_seconds())))
+            .build()
+            .send(body.as_bytes());
+        bearer.zeroize();
+        let response = result.map_err(classify)?;
+        bounded(response, call.response_limit())
+    }
+
     fn tiles(&mut self, call: TileCall<'_>) -> Result<TransportResponse, TransportError> {
         debug_assert_eq!(call.method(), "POST");
         debug_assert_eq!(call.path(), "/api/v1/tiles");

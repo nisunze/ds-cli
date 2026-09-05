@@ -2,6 +2,7 @@
 
 pub mod add;
 pub mod list;
+pub mod native;
 pub mod remote_list;
 pub mod remove;
 pub mod reorder;
@@ -39,4 +40,24 @@ pub fn remote_result(result: Value) -> Value {
         "persisted": result["persisted"].clone(),
         "map_updated": result["mapUpdated"].clone(),
     })
+}
+
+pub const LOCAL_STORE_REFUSAL: ds_cli_contract::spec::Refusal = ds_cli_contract::spec::Refusal {
+    code: "local_layer_refused",
+    when: "the overlay is invalid, missing, or its local store cannot be persisted",
+    remedy: "check the overlay and local data directory; DS_LAYER_HOME may name an absolute shared directory",
+};
+pub fn local_edit(edit: ds_layer_store::OverlayEdit) -> Result<Value, Failure> {
+    let result = ds_layer_store::execute(edit).map_err(|message| {
+        Failure::invalid("local_layer_refused", message).remedy(LOCAL_STORE_REFUSAL.remedy)
+    })?;
+    let mut receipt = result["receipt"].clone();
+    receipt["persisted"] = result["persisted"].clone();
+    receipt["revision"] = result["revision"].clone();
+    receipt["mapUpdated"] = Value::Null;
+    Ok(receipt)
+}
+
+pub fn local_availability() -> ds_cli_contract::spec::Availability {
+    ds_cli_contract::spec::Availability::Available
 }

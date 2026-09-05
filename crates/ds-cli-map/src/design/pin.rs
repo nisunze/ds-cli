@@ -52,13 +52,7 @@ pub static COMMAND: Command = Command {
     path: &["map", "design", "pin"],
     contract: 2,
     summary: "Read, load, pin, unpin, or clear the visible map Working set.",
-    purpose: "\
-Reads and manages the paired application's LV map Working set — the pinned read-only \
-transformer context the map paints. Pass exact transformer names, a saved \
-Transformer Status selection (its server-evaluated present members are \
-pinned; missing members are reported, never guessed), or both. The Working \
-set is local view state: nothing is staged into a room and nothing is \
-persisted to the project.",
+    purpose: "Manages the paired map's Working set. Pin exact transformers or a saved selection's present members; missing members are reported. No room or project data is changed.",
     chapter: Chapter::Design,
     effect: Effect::LocalUi,
     authority: Authority::Project,

@@ -15,4 +15,6 @@ ds-cli-contract = { workspace = true }
 # bridge operation the application performs under its own session with the
 # same pure module and the same save payload its human UI uses.
 ds-cli-desktop = { workspace = true }
+ds-cli-auth = { workspace = true }
+ds-command-kernel = { workspace = true }
 serde_json = { workspace = true }

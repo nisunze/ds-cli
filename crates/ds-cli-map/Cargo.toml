@@ -14,4 +14,10 @@ ds-cli-contract = { workspace = true }
 # named semantic operation over the paired loopback bridge — there is no
 # second route to a map here, and no engine to link.
 ds-cli-desktop = { workspace = true }
+ds-cli-auth = { workspace = true }
+ds-command-kernel = { workspace = true }
 serde_json = { workspace = true }
+ds-layer-store = { path = "../../../ds-web/crates/ds-layer-store" }
+
+sha2 = { workspace = true }
+tempfile = "3"

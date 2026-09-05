@@ -11,7 +11,7 @@ use ds_cli_contract::spec::{
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
 
-use crate::{DESCRIPTOR_ARG, REF_ARG};
+use crate::{LANE_ARG, REF_ARG};
 
 const COLOR_ARG: Arg = Arg {
     name: "color",
@@ -120,50 +120,31 @@ pub mod plan {
     pub static COMMAND: Command = Command {
         id: "style.appearance.plan",
         path: &["style", "appearance", "plan"],
-        contract: 1,
+        contract: 2,
         summary: "Plan a layer's flat colour, icon and base size; publishes nothing.",
         purpose: "\
 Uses the Style Center's guided property schema and returns the exact document \
 that colour, icon and base-size instructions would produce. A base size updates \
 the fallback when size already carries the second dimension. Nothing is saved.",
         chapter: Chapter::MapPresentation,
-        effect: Effect::ReadOnly,
-        authority: Authority::Project,
+        effect: Effect::LocalAuthState,
+        authority: Authority::HeadlessProject,
         execution: Execution::Sync,
-        args: &[REF_ARG, COLOR_ARG, ICON_ARG, SIZE_ARG, DESCRIPTOR_ARG],
+        args: &[REF_ARG, COLOR_ARG, ICON_ARG, SIZE_ARG, LANE_ARG],
         output: "`requested`, the resolved guided `appearance`, whether base size updated an existing fallback, `dryRun: true`, `published: false`, and the exact `document`.",
         examples: &[Example {
             command: "ds style appearance plan --ref gt/secondary_schools --color #008695 --icon school --size 1.2 --output json",
             note: "Plans a teal school icon without changing a second halo/opacity dimension.",
             runnable: false,
         }],
-        refusals: &[
-            crate::NOT_PAIRED,
-            crate::AMBIGUOUS,
-            crate::UNREACHABLE,
-            crate::PAIRING_REJECTED,
-            crate::STYLE_REFUSED,
-            crate::UNSUPPORTED,
-            crate::UNREADABLE,
-            crate::SIGNED_OUT,
-            crate::INVALID_APPEARANCE,
-            crate::INVALID_COLOR,
-            crate::INVALID_NUMBER,
-        ],
+        refusals: crate::native::REFUSALS,
         reference: Some("docs/reference/style.md"),
-        availability: crate::paired_availability,
+        availability: ds_cli_auth::native_availability,
     };
 
-    pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
+    pub fn run(inputs: &Inputs, context: &Context) -> Result<Value, Failure> {
         let arguments = arguments(inputs, false)?;
-        let descriptor = crate::paired(inputs.value("desktop-descriptor"))?;
-        crate::invoke(
-            &descriptor,
-            &crate::APPEARANCE_SET,
-            arguments,
-            crate::READ_TIMEOUT,
-        )
-        .map_err(crate::classify_style_failure)
+        crate::native::execute(inputs, context, &crate::APPEARANCE_SET, arguments)
     }
 
     pub fn render(data: &Value) -> String {
@@ -177,51 +158,31 @@ pub mod set {
     pub static COMMAND: Command = Command {
         id: "style.appearance.set",
         path: &["style", "appearance", "set"],
-        contract: 1,
-        summary: "Publish a layer's flat colour, icon or base size through Style Center.",
+        contract: 2,
+        summary: "Publish a layer's flat colour, icon or base size natively.",
         purpose: "\
 Applies the same guided colour, icon and size properties the Style Center owns, \
 then publishes through its governed global save. Only supplied properties move. \
 Flat colour or icon replaces a field-driven primary expression; plan first.",
         chapter: Chapter::MapPresentation,
         effect: Effect::GlobalWrite,
-        authority: Authority::Project,
+        authority: Authority::HeadlessProject,
         execution: Execution::Sync,
-        args: &[REF_ARG, COLOR_ARG, ICON_ARG, SIZE_ARG, DESCRIPTOR_ARG],
+        args: &[REF_ARG, COLOR_ARG, ICON_ARG, SIZE_ARG, LANE_ARG],
         output: "The plan receipt with `published: true`, ds-brain `warnings`, and the exact persisted `document`.",
         examples: &[Example {
             command: "ds style appearance set --ref gt/secondary_schools --color #008695 --icon school --size 1.2 --yes",
             note: "Publishes one governed base appearance; use `style dimension set` separately for a second field.",
             runnable: false,
         }],
-        refusals: &[
-            crate::NOT_PAIRED,
-            crate::AMBIGUOUS,
-            crate::UNREACHABLE,
-            crate::PAIRING_REJECTED,
-            crate::STYLE_REFUSED,
-            crate::UNSUPPORTED,
-            crate::UNREADABLE,
-            crate::SIGNED_OUT,
-            crate::CONFIRMATION_REQUIRED,
-            crate::INVALID_APPEARANCE,
-            crate::INVALID_COLOR,
-            crate::INVALID_NUMBER,
-        ],
+        refusals: crate::native::REFUSALS,
         reference: Some("docs/reference/style.md"),
-        availability: crate::paired_availability,
+        availability: ds_cli_auth::native_availability,
     };
 
-    pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
+    pub fn run(inputs: &Inputs, context: &Context) -> Result<Value, Failure> {
         let arguments = arguments(inputs, true)?;
-        let descriptor = crate::paired(inputs.value("desktop-descriptor"))?;
-        crate::invoke(
-            &descriptor,
-            &crate::APPEARANCE_SET,
-            arguments,
-            crate::WRITE_TIMEOUT,
-        )
-        .map_err(crate::classify_style_failure)
+        crate::native::execute(inputs, context, &crate::APPEARANCE_SET, arguments)
     }
 
     pub fn render(data: &Value) -> String {

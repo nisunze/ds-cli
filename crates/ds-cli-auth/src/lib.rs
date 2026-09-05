@@ -43,10 +43,12 @@ pub use context::{
 };
 pub use ds_client_core::{
     CompoundedArchive, CompoundedArchiveLayout, CompoundedReportReceipt, CompoundedReportRequest,
-    CompoundedReportStatus, PROJECT_REPORT_MAX_REASON_CHARS, PROJECT_REPORT_MAX_TRANSFORMER_CHARS,
+    CompoundedReportStatus, LayerOrder, LayerOrderReceipt, LayerSnapshot,
+    PROJECT_REPORT_MAX_REASON_CHARS, PROJECT_REPORT_MAX_TRANSFORMER_CHARS,
     PROJECT_REPORT_MAX_TRANSFORMERS, ReportFileLevel, RetirementAction, RetirementReceipt,
-    RetirementRecord, RetirementRefusal, RetirementRequest, RetirementResult, TileOperationResult,
-    TileOperationStatus, TilePreflight, TilePreflightLayer, TilePreflightStatus, TileType,
+    RetirementRecord, RetirementRefusal, RetirementRequest, RetirementResult, StyleEditReceipt,
+    StyleInstruction, TileCatalog, TileMutation, TileOperationResult, TileOperationStatus,
+    TilePreflight, TilePreflightLayer, TilePreflightStatus, TileScope, TileType,
     TransformerInventory, TransformerInventoryRow, TransformerKind, TransformerLifecycle,
     TransformerSet,
 };
@@ -587,6 +589,131 @@ pub struct HeadlessProjectForms {
 
 /// One closed tile status or generation result produced under the restored
 /// user and that user's audience-fenced selected project.
+pub struct HeadlessTileCatalog {
+    lane: &'static str,
+    project_id: String,
+    project_name: String,
+    project_status: String,
+    result: TileCatalog,
+}
+impl HeadlessTileCatalog {
+    pub const fn lane(&self) -> &'static str {
+        self.lane
+    }
+    pub fn project_id(&self) -> &str {
+        &self.project_id
+    }
+    pub fn project_name(&self) -> &str {
+        &self.project_name
+    }
+    pub fn project_status(&self) -> &str {
+        &self.project_status
+    }
+    pub const fn result(&self) -> &TileCatalog {
+        &self.result
+    }
+}
+
+pub struct HeadlessTileMutation {
+    lane: &'static str,
+    project_id: String,
+    project_name: String,
+    project_status: String,
+    result: TileMutation,
+}
+impl HeadlessTileMutation {
+    pub const fn lane(&self) -> &'static str {
+        self.lane
+    }
+    pub fn project_id(&self) -> &str {
+        &self.project_id
+    }
+    pub fn project_name(&self) -> &str {
+        &self.project_name
+    }
+    pub fn project_status(&self) -> &str {
+        &self.project_status
+    }
+    pub const fn result(&self) -> &TileMutation {
+        &self.result
+    }
+}
+
+pub struct HeadlessStyleEdit {
+    lane: &'static str,
+    project_id: String,
+    project_name: String,
+    project_status: String,
+    result: StyleEditReceipt,
+}
+impl HeadlessStyleEdit {
+    pub const fn lane(&self) -> &'static str {
+        self.lane
+    }
+    pub fn project_id(&self) -> &str {
+        &self.project_id
+    }
+    pub fn project_name(&self) -> &str {
+        &self.project_name
+    }
+    pub fn project_status(&self) -> &str {
+        &self.project_status
+    }
+    pub const fn result(&self) -> &StyleEditReceipt {
+        &self.result
+    }
+}
+
+pub struct HeadlessLayerSnapshot {
+    lane: &'static str,
+    project_id: String,
+    project_name: String,
+    project_status: String,
+    result: LayerSnapshot,
+}
+impl HeadlessLayerSnapshot {
+    pub const fn lane(&self) -> &'static str {
+        self.lane
+    }
+    pub fn project_id(&self) -> &str {
+        &self.project_id
+    }
+    pub fn project_name(&self) -> &str {
+        &self.project_name
+    }
+    pub fn project_status(&self) -> &str {
+        &self.project_status
+    }
+    pub const fn result(&self) -> &LayerSnapshot {
+        &self.result
+    }
+}
+
+pub struct HeadlessLayerOrderReceipt {
+    lane: &'static str,
+    project_id: String,
+    project_name: String,
+    project_status: String,
+    result: LayerOrderReceipt,
+}
+impl HeadlessLayerOrderReceipt {
+    pub const fn lane(&self) -> &'static str {
+        self.lane
+    }
+    pub fn project_id(&self) -> &str {
+        &self.project_id
+    }
+    pub fn project_name(&self) -> &str {
+        &self.project_name
+    }
+    pub fn project_status(&self) -> &str {
+        &self.project_status
+    }
+    pub const fn result(&self) -> &LayerOrderReceipt {
+        &self.result
+    }
+}
+
 pub struct HeadlessTileOperation {
     lane: &'static str,
     project_id: String,
@@ -1059,6 +1186,225 @@ pub fn transformer_context(
 
 /// Read the current managed tile state for only the saved, audience-fenced
 /// selected project. There is no project, URL, or action override.
+pub fn tile_list(lane_value: &str, include_global: bool) -> Result<HeadlessTileCatalog, Failure> {
+    let lane = Lane::parse(lane_value)?;
+    if let Some((mut device, selected)) = restored_device_project(lane)? {
+        let result = device
+            .tile_list(selected.project_id(), include_global)
+            .map_err(map_client)?;
+        return Ok(HeadlessTileCatalog {
+            lane: lane.token(),
+            project_id: selected.project_id().to_owned(),
+            project_name: selected.project_name().to_owned(),
+            project_status: selected.status().to_owned(),
+            result,
+        });
+    }
+    let profile = profile::load(lane)?;
+    let store = NativeRefreshStore::open()?;
+    let mut client = Client::new(profile, NativeTransport, store);
+    let user = require_restore_before_context(&mut client)?;
+    let selected = load_selected_project(client.profile(), &user)?;
+    let result = client.tile_list(selected.project_id(), include_global, now());
+    let result = with_released_context_disposition(client.profile(), &selected, result)?;
+    Ok(HeadlessTileCatalog {
+        lane: lane.token(),
+        project_id: selected.project_id().to_owned(),
+        project_name: selected.project_name().to_owned(),
+        project_status: selected.status().to_owned(),
+        result,
+    })
+}
+
+pub fn tile_add(
+    lane_value: &str,
+    tile_type: TileType,
+    source_project: &str,
+) -> Result<HeadlessTileMutation, Failure> {
+    let lane = Lane::parse(lane_value)?;
+    if let Some((mut device, selected)) = restored_device_project(lane)? {
+        let result = device
+            .tile_add(selected.project_id(), tile_type, source_project)
+            .map_err(map_client)?;
+        return Ok(HeadlessTileMutation {
+            lane: lane.token(),
+            project_id: selected.project_id().to_owned(),
+            project_name: selected.project_name().to_owned(),
+            project_status: selected.status().to_owned(),
+            result,
+        });
+    }
+    let profile = profile::load(lane)?;
+    let store = NativeRefreshStore::open()?;
+    let mut client = Client::new(profile, NativeTransport, store);
+    let user = require_restore_before_context(&mut client)?;
+    let selected = load_selected_project(client.profile(), &user)?;
+    let result = client.tile_add(selected.project_id(), tile_type, source_project, now());
+    let result = with_released_context_disposition(client.profile(), &selected, result)?;
+    Ok(HeadlessTileMutation {
+        lane: lane.token(),
+        project_id: selected.project_id().to_owned(),
+        project_name: selected.project_name().to_owned(),
+        project_status: selected.status().to_owned(),
+        result,
+    })
+}
+
+pub fn tile_remove(
+    lane_value: &str,
+    tile_id: &str,
+    scope: crate::TileScope,
+) -> Result<HeadlessTileMutation, Failure> {
+    let lane = Lane::parse(lane_value)?;
+    if let Some((mut device, selected)) = restored_device_project(lane)? {
+        let result = device
+            .tile_remove(selected.project_id(), tile_id, scope)
+            .map_err(map_client)?;
+        return Ok(HeadlessTileMutation {
+            lane: lane.token(),
+            project_id: selected.project_id().to_owned(),
+            project_name: selected.project_name().to_owned(),
+            project_status: selected.status().to_owned(),
+            result,
+        });
+    }
+    let profile = profile::load(lane)?;
+    let store = NativeRefreshStore::open()?;
+    let mut client = Client::new(profile, NativeTransport, store);
+    let user = require_restore_before_context(&mut client)?;
+    let selected = load_selected_project(client.profile(), &user)?;
+    let result = client.tile_remove(selected.project_id(), tile_id, scope, now());
+    let result = with_released_context_disposition(client.profile(), &selected, result)?;
+    Ok(HeadlessTileMutation {
+        lane: lane.token(),
+        project_id: selected.project_id().to_owned(),
+        project_name: selected.project_name().to_owned(),
+        project_status: selected.status().to_owned(),
+        result,
+    })
+}
+
+pub use ds_client_core::{MAX_UPLOAD_BYTES, ProjectDataCommand};
+pub fn project_data(lane_value: &str, command: ProjectDataCommand<'_>) -> Result<Value, Failure> {
+    let lane = Lane::parse(lane_value)?;
+    if let Some((mut device, selected)) = restored_device_project(lane)? {
+        let result = device
+            .project_data(selected.project_id(), command)
+            .map_err(map_client)?;
+        let mut data = result.data().clone();
+        data["lane"] = serde_json::json!(lane.token());
+        return Ok(data);
+    }
+    let profile = profile::load(lane)?;
+    let store = NativeRefreshStore::open()?;
+    let mut client = Client::new(profile, NativeTransport, store);
+    let user = require_restore_before_context(&mut client)?;
+    let selected = load_selected_project(client.profile(), &user)?;
+    let result = client.project_data(selected.project_id(), command, now());
+    let result = with_released_context_disposition(client.profile(), &selected, result)?;
+    let mut data = result.data().clone();
+    data["lane"] = serde_json::json!(lane.token());
+    Ok(data)
+}
+
+pub fn style_edit(
+    lane_value: &str,
+    reference: &str,
+    instruction: &StyleInstruction,
+    apply: bool,
+) -> Result<HeadlessStyleEdit, Failure> {
+    let lane = Lane::parse(lane_value)?;
+    if let Some((mut device, selected)) = restored_device_project(lane)? {
+        let result = device
+            .style_edit(selected.project_id(), reference, instruction, apply)
+            .map_err(map_client)?;
+        return Ok(HeadlessStyleEdit {
+            lane: lane.token(),
+            project_id: selected.project_id().to_owned(),
+            project_name: selected.project_name().to_owned(),
+            project_status: selected.status().to_owned(),
+            result,
+        });
+    }
+    let profile = profile::load(lane)?;
+    let store = NativeRefreshStore::open()?;
+    let mut client = Client::new(profile, NativeTransport, store);
+    let user = require_restore_before_context(&mut client)?;
+    let selected = load_selected_project(client.profile(), &user)?;
+    let result = client.style_edit(selected.project_id(), reference, instruction, apply, now());
+    let result = with_released_context_disposition(client.profile(), &selected, result)?;
+    Ok(HeadlessStyleEdit {
+        lane: lane.token(),
+        project_id: selected.project_id().to_owned(),
+        project_name: selected.project_name().to_owned(),
+        project_status: selected.status().to_owned(),
+        result,
+    })
+}
+
+pub fn layer_config(lane_value: &str, refresh: bool) -> Result<HeadlessLayerSnapshot, Failure> {
+    let lane = Lane::parse(lane_value)?;
+    if let Some((mut device, selected)) = restored_device_project(lane)? {
+        let result = device
+            .layer_config(selected.project_id(), refresh)
+            .map_err(map_client)?;
+        return Ok(HeadlessLayerSnapshot {
+            lane: lane.token(),
+            project_id: selected.project_id().to_owned(),
+            project_name: selected.project_name().to_owned(),
+            project_status: selected.status().to_owned(),
+            result,
+        });
+    }
+    let profile = profile::load(lane)?;
+    let store = NativeRefreshStore::open()?;
+    let mut client = Client::new(profile, NativeTransport, store);
+    let user = require_restore_before_context(&mut client)?;
+    let selected = load_selected_project(client.profile(), &user)?;
+    let result = client.layer_config(selected.project_id(), refresh, now());
+    let result = with_released_context_disposition(client.profile(), &selected, result)?;
+    Ok(HeadlessLayerSnapshot {
+        lane: lane.token(),
+        project_id: selected.project_id().to_owned(),
+        project_name: selected.project_name().to_owned(),
+        project_status: selected.status().to_owned(),
+        result,
+    })
+}
+
+pub fn layer_reorder(
+    lane_value: &str,
+    orders: &[crate::LayerOrder],
+) -> Result<HeadlessLayerOrderReceipt, Failure> {
+    let lane = Lane::parse(lane_value)?;
+    if let Some((mut device, selected)) = restored_device_project(lane)? {
+        let result = device
+            .layer_reorder(selected.project_id(), orders)
+            .map_err(map_client)?;
+        return Ok(HeadlessLayerOrderReceipt {
+            lane: lane.token(),
+            project_id: selected.project_id().to_owned(),
+            project_name: selected.project_name().to_owned(),
+            project_status: selected.status().to_owned(),
+            result,
+        });
+    }
+    let profile = profile::load(lane)?;
+    let store = NativeRefreshStore::open()?;
+    let mut client = Client::new(profile, NativeTransport, store);
+    let user = require_restore_before_context(&mut client)?;
+    let selected = load_selected_project(client.profile(), &user)?;
+    let result = client.layer_reorder(selected.project_id(), orders, now());
+    let result = with_released_context_disposition(client.profile(), &selected, result)?;
+    Ok(HeadlessLayerOrderReceipt {
+        lane: lane.token(),
+        project_id: selected.project_id().to_owned(),
+        project_name: selected.project_name().to_owned(),
+        project_status: selected.status().to_owned(),
+        result,
+    })
+}
+
 pub fn tile_status(
     lane_value: &str,
     tile_type: TileType,

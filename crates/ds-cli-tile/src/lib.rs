@@ -6,8 +6,7 @@
 //! A tile run is a governed project output: ds-brain owns preflight,
 //! dispatch, the lease and the publish behind one fixed endpoint. Status,
 //! preflight, plan and generate restore the native user and use only that
-//! user's audience-fenced selected project. Catalogue list/add/remove remain
-//! paired because their public contracts have not been extracted yet. `ds`
+//! user's audience-fenced selected project. Catalogue list/add/remove use that same protected native authority. `ds`
 //! carries no token and no second tiling model.
 //!
 //! ## Why tiling belongs next to styling
@@ -84,7 +83,7 @@ pub const TILE_REMOVE: BridgeOp = BridgeOp {
 
 /// Every operation this domain can still send to Desktop, for the parity test
 /// to walk. Managed output reads and generation must never be added here.
-pub const BRIDGE_OPS: &[&BridgeOp] = &[&TILE_LIST, &TILE_ADD, &TILE_REMOVE];
+pub const BRIDGE_OPS: &[&BridgeOp] = &[];
 
 pub const READ_TIMEOUT: Duration = Duration::from_secs(60);
 
@@ -235,6 +234,28 @@ native_refusal!(
 );
 
 pub const NATIVE_REFUSALS: &[Refusal] = &[
+    NATIVE_PROFILE,
+    NATIVE_PROFILE_DIGEST,
+    NATIVE_PROFILE_UNSAFE,
+    HEADLESS_SIGNED_OUT,
+    HEADLESS_NO_PROJECT,
+    PROJECT_CONTEXT_STALE,
+    NATIVE_STATE_UNSAFE,
+    NATIVE_STATE_UNAVAILABLE,
+    NATIVE_STATE_PROTECTION,
+    NATIVE_STATE_ROOT,
+    NATIVE_STATE_CONFLICT,
+    NATIVE_CLEANUP,
+    AUTH_CONTEXT_MISMATCH,
+    AUTH_INPUT,
+    AUTH_REJECTED,
+    AUTH_REVOKED,
+    AUTH_IDENTITY_MISMATCH,
+    AUTH_TRANSIENT,
+    AUTH_UNREADABLE,
+];
+pub const NATIVE_LIST_REFUSALS: &[Refusal] = &[
+    ds_cli_desktop::ops::INVALID_NUMBER,
     NATIVE_PROFILE,
     NATIVE_PROFILE_DIGEST,
     NATIVE_PROFILE_UNSAFE,
@@ -605,7 +626,7 @@ mod tests {
         let mut unique = names.clone();
         unique.dedup();
         assert_eq!(names, unique, "an operation is declared twice");
-        assert_eq!(names, ["tile.add", "tile.list", "tile.remove"]);
+        assert!(names.is_empty());
     }
 
     #[test]
