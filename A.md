@@ -533,3 +533,19 @@ an operation from `metadata.updated_at`, or replace an unknown actor with the
 deleter. Backend deployment is required for future deletion rows to carry the
 new evidence; existing historical rows are not automatically backfilled.
 See [the recovery command contract](docs/backup-ledger.md).
+
+## Governed offline switch — bounded implementation (2026-09-05)
+
+`connectivity::set_offline_mode` and WASM `connectivityCommand` own the strict
+`ds.connectivity/v1` admission contract. Settings and paired CLI use this same
+command. App-level all governance can enable; local reconnection grants no
+remote authority. The switch is directly in the Settings drawer in every lane;
+Language and Theme remain Profile preferences.
+
+The IO host, verification scope and outstanding transport isolation boundary
+are documented in `ds-web/docs/offline-mode.md`. Fetch/API refusal and paused
+outboxes are implemented; complete network isolation is **not proved**.
+Arbitrary WebView resources, independent workers/processes and already-running
+native providers still require transport enforcement and leakage tests. This
+checkpoint must not be represented as closing the full offline contract or
+product-control/licensing enforcement.
