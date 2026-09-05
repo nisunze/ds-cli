@@ -12,7 +12,7 @@ use crate::DESCRIPTOR_ARG;
 pub static COMMAND: Command = Command {
     id: "map.design.version.list",
     path: &["map", "design", "version", "list"],
-    contract: 1,
+    contract: 2,
     summary: "List a transformer's retained versions and playback availability.",
     purpose: "Lists bounded immutable version metadata for one exact transformer, newest first. Every row explicitly reports whether a playback snapshot exists. It never loads snapshot layers, opens a room, restores content, or changes the project.",
     chapter: Chapter::Design,

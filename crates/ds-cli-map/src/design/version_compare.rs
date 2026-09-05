@@ -11,29 +11,34 @@ use super::TRANSFORMER_ARG;
 use super::version_shared as shared;
 use crate::DESCRIPTOR_ARG;
 
-const FROM_ARG: Arg = Arg::value("from", "<vN>", "Pinned retained version on the left.").required();
+const FROM_ARG: Arg = Arg::value(
+    "from",
+    "<version-id>",
+    "Pinned retained version on the left.",
+)
+.required();
 const TO_ARG: Arg = Arg::value(
     "to",
-    "<vN|head>",
-    "Pinned retained version, or current saved head, on the right.",
+    "<version-id|head>",
+    "Pinned retained version, or current local head, on the right.",
 )
 .required();
 
 pub static COMMAND: Command = Command {
     id: "map.design.version.compare",
     path: &["map", "design", "version", "compare"],
-    contract: 1,
-    summary: "Compare one retained transformer version with another or saved head.",
-    purpose: "Asks the paired application and its deterministic kernel to open a visible bounded comparison between one pinned retained version and another retained version or the current saved head. Only descriptors and aggregate counts cross the CLI; no features, restore payload, or edit is transported.",
+    contract: 2,
+    summary: "Compare one retained transformer version with another or local head.",
+    purpose: "Asks the paired application and its deterministic kernel to open a visible bounded comparison between one pinned retained version and another retained version or the current local head. The bounded comparison room is retained offline. Only pinned descriptors, aggregate counts, consistency findings and its room identity cross the CLI; no feature or restore payload is transported.",
     chapter: Chapter::Design,
     effect: Effect::LocalUi,
     authority: Authority::Project,
     execution: Execution::Sync,
     args: &[TRANSFORMER_ARG, FROM_ARG, TO_ARG, DESCRIPTOR_ARG],
-    output: "Project and transformer; pinned left/right descriptors; observation time; exact aggregate and per-layer change counts; truncation; dialog readiness; staged=false and persisted=false.",
+    output: "Project and transformer; pinned left/right descriptors; observation time; exact aggregate and per-layer change counts; bounded consistency findings; retained comparison room identity; truncation; dialog readiness; staged=false and persisted=false.",
     examples: &[Example {
         command: "ds map design version compare --transformer agasharu --from v1 --to head --output json",
-        note: "Pins v1 against the observed saved-head generation and opens the read-only comparison dialog.",
+        note: "Pins v1 against the observed local content revision and opens the read-only comparison dialog.",
         runnable: false,
     }],
     refusals: &[
@@ -50,8 +55,8 @@ pub static COMMAND: Command = Command {
         },
         Refusal {
             code: "invalid_version",
-            when: "--from is not v<number>, or --to is neither v<number> nor head",
-            remedy: "list versions, then pass --from vN --to vM|head",
+            when: "a side is not an exact local-<digest> or v<number>, and --to is not head",
+            remedy: "list versions, then pass exact returned ids in --from and --to, or --to head",
         },
         Refusal {
             code: "invalid_comparison",
@@ -118,7 +123,7 @@ fn receipt(transformer: &str, from: &str, to: &str, result: &Value) -> Result<Va
     let left = shared::descriptor(&result["from"], "from")?;
     let right = shared::descriptor(&result["to"], "to")?;
     if left["version_id"] != from
-        || (to == "head" && right["kind"] != "saved_head")
+        || (to == "head" && right["kind"] != "local_head")
         || (to != "head" && right["version_id"] != to)
     {
         return Err(shared::unreadable(
@@ -128,6 +133,29 @@ fn receipt(transformer: &str, from: &str, to: &str, result: &Value) -> Result<Va
     shared::require_true(result, "dialogReady")?;
     shared::require_false(result, "staged")?;
     shared::require_false(result, "persisted")?;
+    let comparison_id = shared::nonempty_text(result, "comparisonId")?;
+    let digest = comparison_id.strip_prefix("comparison-").unwrap_or("");
+    if digest.len() != 64
+        || !digest
+            .bytes()
+            .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
+    {
+        return Err(shared::unreadable("comparison room identity is invalid"));
+    }
+    shared::require_true(result, "comparisonPersisted")?;
+    let consistency = &result["consistency"];
+    if !consistency["tolerance_m"]
+        .as_f64()
+        .is_some_and(|v| v.is_finite() && v >= 0.0)
+        || !consistency["findings"]
+            .as_array()
+            .is_some_and(|rows| rows.len() <= 10)
+        || serde_json::to_vec(consistency).map_or(true, |v| v.len() > 16_384)
+    {
+        return Err(shared::unreadable(
+            "comparison consistency summary exceeds its typed bounds",
+        ));
+    }
     let totals = shared::change_counts(&result["totals"])?;
     let layers = shared::comparison_layers(&result["layers"])?;
     Ok(json!({
@@ -137,6 +165,9 @@ fn receipt(transformer: &str, from: &str, to: &str, result: &Value) -> Result<Va
         "to": right,
         "observed_at": shared::nonempty_text(result, "observedAt")?,
         "dialog_ready": true,
+        "comparison_id": comparison_id,
+        "comparison_persisted": true,
+        "consistency": consistency,
         "totals": totals,
         "layers": layers,
         "details_truncated": shared::boolean(result, "detailsTruncated")?,
@@ -146,8 +177,8 @@ fn receipt(transformer: &str, from: &str, to: &str, result: &Value) -> Result<Va
 }
 
 pub fn render(data: &Value) -> String {
-    let right = if data["to"]["kind"] == "saved_head" {
-        format!("head@{}", data["to"]["generation"].as_u64().unwrap_or(0))
+    let right = if data["to"]["kind"] == "local_head" {
+        format!("head@{}", data["to"]["revision"].as_str().unwrap_or("?"))
     } else {
         data["to"]["version_id"].as_str().unwrap_or("?").to_string()
     };
@@ -177,15 +208,20 @@ mod tests {
         let raw = json!({
             "project":"p","transformer":"agasharu",
             "from":{"kind":"version","versionId":"v1"},
-            "to":{"kind":"saved_head","generation":8},
+            "to":{"kind":"local_head","revision":format!("local-{}", "a".repeat(64))},
             "observedAt":"2026-08-31T12:00:00Z","dialogReady":true,
+            "comparisonId":format!("comparison-{}", "b".repeat(64)),"comparisonPersisted":true,
+            "consistency":{"tolerance_m":0,"findings":[]},
             "totals":counts(10),
             "layers":[{"layerName":"lv_lines","counts":counts(1),"features":[{"must":"not cross"}]}],
             "detailsTruncated":true,"staged":false,"persisted":false,
             "details":[{"must":"not cross"}]
         });
         let shaped = receipt("agasharu", "v1", "head", &raw).expect("valid receipt");
-        assert_eq!(shaped["to"], json!({"kind":"saved_head","generation":8}));
+        assert_eq!(
+            shaped["to"],
+            json!({"kind":"local_head","revision":format!("local-{}", "a".repeat(64))})
+        );
         assert_eq!(shaped["layers"][0]["counts"]["local_only"], 2);
         assert!(shaped.get("details").is_none());
         assert!(shaped["layers"][0].get("features").is_none());

@@ -32,15 +32,15 @@ const REASON_ARG: Arg = Arg {
 pub static COMMAND: Command = Command {
     id: "map.design.version.begin",
     path: &["map", "design", "version", "begin"],
-    contract: 1,
+    contract: 2,
     summary: "Create a deliberate visible transformer version.",
-    purpose: "Asks ds-brain to assign the next Design Status version for each named transformer. Only transformer names and one required reason cross the bridge; no transformer or report data is sent. Ordinary design saves do not create versions. Dirty local rooms are refused because version intent must precede the engineering edits it governs.",
+    purpose: "Captures immutable offline version rooms through the paired application's shared Rust command kernel. Current local edits are included. Only names and one reason cross the bridge. Completion means durable local storage; cloud synchronization remains pending.",
     chapter: Chapter::Design,
     effect: Effect::ArtifactWrite,
     authority: Authority::Project,
     execution: Execution::Sync,
     args: &[TRANSFORMERS_ARG, REASON_ARG, DESCRIPTOR_ARG],
-    output: "The project, reason, created and failed counts, and one bounded metadata result per transformer with its assigned v<number>. persisted is true only for an accepted ds-brain version bump.",
+    output: "Project, reason, created and failed counts, and bounded metadata per transformer with exact local-<digest> version identity. persisted means durable local version rooms, not a cloud acknowledgement.",
     examples: &[Example {
         command: "ds map design version begin --transformer agasharu --reason \"Drafting baseline approved\" --yes --output json",
         note: "Advances the visible version once; later saves remain in that version until another explicit create.",
@@ -55,11 +55,6 @@ pub static COMMAND: Command = Command {
             code: "desktop_refused",
             when: "a transformer does not exist, or version creation was declined",
             remedy: "check the exact transformer names and read detail.detail",
-        },
-        Refusal {
-            code: "dirty_room",
-            when: "a named transformer has unsaved local edits",
-            remedy: "save or discard that exact transformer room, then begin the version before further engineering edits",
         },
         crate::UNSUPPORTED,
         crate::UNREADABLE,
@@ -106,8 +101,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         json!({ "transformers": transformers, "reason": reason }),
         crate::DESIGN_STAGE_TIMEOUT,
     )
-    .map_err(crate::classify_design_failure)
-    .map_err(classify_dirty_room)?;
+    .map_err(crate::classify_design_failure)?;
     Ok(json!({
         "project": result["project"],
         "reason": result["reason"],
@@ -116,25 +110,6 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         "failed": result["failed"],
         "results": result["results"],
     }))
-}
-
-fn classify_dirty_room(failure: Failure) -> Failure {
-    if failure.code() != "desktop_refused" {
-        return failure;
-    }
-    let detail = failure
-        .detail_value()
-        .and_then(|detail| detail["detail"].as_str())
-        .unwrap_or_default()
-        .to_ascii_lowercase();
-    if !detail.contains("unsaved local edits") {
-        return failure;
-    }
-    Failure::conflict(
-        "dirty_room",
-        "a transformer already has unsaved local edits",
-    )
-    .remedy("save or discard that exact transformer room, then begin the version before further engineering edits")
 }
 
 pub fn render(data: &Value) -> String {
@@ -146,8 +121,8 @@ pub fn render(data: &Value) -> String {
             let name = row["transformer"].as_str().unwrap_or("?");
             if row["ok"].as_bool().unwrap_or(false) {
                 output.push_str(&format!(
-                    "  {name}  v{}\n",
-                    row["version"].as_u64().unwrap_or(0)
+                    "  {name}  {}\n",
+                    row["versionId"].as_str().unwrap_or("?")
                 ));
             } else {
                 output.push_str(&format!(

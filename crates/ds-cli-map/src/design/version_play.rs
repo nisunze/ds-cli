@@ -11,13 +11,17 @@ use super::TRANSFORMER_ARG;
 use super::version_shared as shared;
 use crate::DESCRIPTOR_ARG;
 
-const VERSION_ARG: Arg =
-    Arg::value("version", "<vN>", "Exact playable retained version.").required();
+const VERSION_ARG: Arg = Arg::value(
+    "version",
+    "<version-id>",
+    "Exact playable retained version.",
+)
+.required();
 
 pub static COMMAND: Command = Command {
     id: "map.design.version.play",
     path: &["map", "design", "version", "play"],
-    contract: 1,
+    contract: 2,
     summary: "Open one retained transformer version read-only on the map.",
     purpose: "Asks the paired application to load one exact immutable transformer snapshot into its visible read-only playback context and waits for the map acknowledgement. No features cross the CLI. It never stages, restores, saves, or replaces working truth.",
     chapter: Chapter::Design,
@@ -45,8 +49,8 @@ pub static COMMAND: Command = Command {
         },
         Refusal {
             code: "invalid_version",
-            when: "--version is not canonical v<number>",
-            remedy: "list versions and pass one exact v<number>",
+            when: "--version is not a canonical local-<digest> or v<number>",
+            remedy: "list versions and pass one exact returned version id",
         },
         Refusal {
             code: "version_not_found",

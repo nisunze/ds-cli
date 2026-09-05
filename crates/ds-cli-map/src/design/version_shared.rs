@@ -19,14 +19,7 @@ pub fn canonical_version(raw: &str, allow_head: bool) -> Result<&str, Failure> {
     if allow_head && raw == "head" {
         return Ok(raw);
     }
-    let Some(digits) = raw.strip_prefix('v') else {
-        return Err(invalid_version(raw, allow_head));
-    };
-    if digits.is_empty()
-        || digits.starts_with('0')
-        || !digits.bytes().all(|byte| byte.is_ascii_digit())
-        || digits.parse::<u64>().is_err()
-    {
+    if !ds_command_kernel::design_versions::valid_target(raw) {
         return Err(invalid_version(raw, allow_head));
     }
     Ok(raw)
@@ -34,9 +27,9 @@ pub fn canonical_version(raw: &str, allow_head: bool) -> Result<&str, Failure> {
 
 fn invalid_version(raw: &str, allow_head: bool) -> Failure {
     let expected = if allow_head {
-        "v<number> or head"
+        "local-<digest>, v<number> or head"
     } else {
-        "v<number>"
+        "local-<digest> or v<number>"
     };
     Failure::invalid(
         "invalid_version",
@@ -143,7 +136,7 @@ pub fn version_row(raw: &Value) -> Result<Value, Failure> {
     let version_id = nonempty_text(raw, "versionId")?;
     canonical_version(version_id, false)?;
     let version = count(raw, "version")?;
-    if version == 0 || version_id != format!("v{version}") {
+    if version == 0 || (!version_id.starts_with("local-") && version_id != format!("v{version}")) {
         return Err(unreadable(
             "the version id and assigned ordinal do not describe the same version",
         ));
@@ -166,17 +159,16 @@ pub fn descriptor(raw: &Value, side: &str) -> Result<Value, Failure> {
             canonical_version(version_id, false)?;
             Ok(json!({ "kind": "version", "version_id": version_id }))
         }
-        "saved_head" if side == "to" => {
-            let generation = count(raw, "generation")?;
-            if generation == 0 {
+        "local_head" if side == "to" => {
+            let revision = nonempty_text(raw, "revision")?;
+            if !revision.starts_with("local-")
+                || !ds_command_kernel::design_versions::valid_target(revision)
+            {
                 return Err(unreadable(
-                    "the saved-head comparison generation must be positive",
+                    "local head requires an immutable content revision",
                 ));
             }
-            Ok(json!({
-                "kind": "saved_head",
-                "generation": generation,
-            }))
+            Ok(json!({"kind":"local_head","revision":revision}))
         }
         _ => Err(unreadable(format!(
             "the application returned an unsupported {side} comparison descriptor"
