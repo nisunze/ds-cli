@@ -424,7 +424,10 @@ network template settings should be offline first - that is it. offline first. u
 LV poles assembly in project network settings is always dangling as unsaved in an unjustifiable way. 
 and Tchad_rule is not correctly using the tchad assemblies. check the seeding for the current project and tell me how to reconcile. 
 Transfoemrs page - navigation to it is not feelign like offline first. it takes tooooo much - normally it is better to navigate instantly and then fill the gaps with background sync. reconsiliation should not make it feel slow and should be not that costly.
-
+///////////////////////
+![alt text](image.png)
+Selection is not working on that page and that backup loading is not working and seems loading indefinetely and expensive. without intentional download no need for that play. and also, here u go, we need to show the last action on the deelete transformer and who conducted that action as a part of forensic.
+/////////////////////
 ## Implemented offline version slice (2026-09-05)
 
 `design_versions` owns native/WASM capture, immutable room digests, fenced
@@ -453,3 +456,40 @@ Project storage UI reports indexed record counts and browser app usage/quota;
 it does not claim physical free disk measurement. Category cleanup currently
 removes explicitly downloaded cloud version copies only. Broader category
 inventories/cleanup need reviewed reference and pending-intent protection.
+
+
+## Settings, Fast export policy and Tchad investigation (2026-09-05)
+
+Prepared project settings now load from cache; untouched placeholder rows no
+longer make an assembly sheet dirty. Transformer navigation can paint the
+prepared inventory and local headers before cloud reconciliation completes,
+and retains those rows on cloud failure. Export dispatch no longer substitutes
+an XLSX/SHP/GPKG default when the caller omitted formats: the report owner
+resolves project-selected outputs. Cloud design save itself persists data and
+marks generated outputs stale; it does not produce those formats.
+
+`ds map design setup --config-only` inspects the cached project through a bounded
+kernel command without map or processor initialization. The live local project
+`arjgpydw_aderm_loc7` selects `rule_tchd`, whose nine rows reference seven distinct
+assembly strings. All seven occur in its 17-row cleaning catalog, including
+`EAD 54-10`, `EAS 54-10`, `EAT 54-10`, `ES 54-14` and their listed composites.
+This proves availability in the inspected cache, not current cloud seed freshness
+or which bytes an earlier computation consumed.
+
+The owner reports **Rwandan assembly names in computed transformer output**.
+This is a computation correctness investigation, separate from sheet dirty
+state, saving, and the saved Sketch preset. It remains unresolved: do not
+recommend a save or preset change as a proven fix. Inspection found Rust's
+`pole_attribution` still falls back to `rule_edcl`/another set when the requested
+set is missing, defaults empty tapping assemblies to `ABC Terminal Assembly`,
+and has Rwanda-specific suspension/strain constants. These paths are not yet
+corrected or proven to be the path that affected the reported transformer.
+Trace the affected result's actual/recommended assembly, assignment and lock
+state, and exact consumed rule selection before reseeding or replacing values.
+Preserve authored/surveyed/installed component authority.
+
+Remaining offline boundary: publishing edited network-setting sheets still
+requires cloud writes and a newly minted reporter input receipt. Cached reads
+are not proof of offline settings publication. A durable local edit transaction
+and an authenticated exact-content reconciliation contract remain required;
+never reuse a server receipt with mutated settings bytes.

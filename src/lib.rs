@@ -1116,3 +1116,10 @@ pub mod design_versions;
 pub fn design_version_command_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
     design_versions::evaluate(input).map_err(|e| wasm_bindgen::JsValue::from_str(&e))
 }
+
+pub mod design_config;
+#[cfg(feature = "wasm")]
+#[wasm_bindgen::prelude::wasm_bindgen(js_name = designConfigInspect)]
+pub fn design_config_inspect_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
+    design_config::inspect(input).map_err(|e| wasm_bindgen::JsValue::from_str(&e))
+}
