@@ -3512,6 +3512,39 @@ fn design_lv_project_export_refuses_an_existing_artifact_before_auth_or_desktop(
 fn design_validates_its_own_inputs_before_it_opens_the_bridge() {
     assert_eq!(
         refusal(&[
+            "design", "sync", "status", "--limit", "0", "--output", "json"
+        ]),
+        "invalid_number"
+    );
+    for action in ["cancel", "resume"] {
+        assert_eq!(
+            refusal(&[
+                "design",
+                "sync",
+                action,
+                "--operation",
+                "version:one",
+                "--output",
+                "json"
+            ]),
+            "confirmation_required"
+        );
+        let code = refusal(&[
+            "design",
+            "sync",
+            action,
+            "--operation",
+            "version:one",
+            "--yes",
+            "--output",
+            "json",
+        ]);
+        assert!(PAIRING_CODES.contains(&code.as_str()), "{action}: {code}");
+    }
+    let code = refusal(&["design", "sync", "status", "--output", "json"]);
+    assert!(PAIRING_CODES.contains(&code.as_str()), "status: {code}");
+    assert_eq!(
+        refusal(&[
             "design",
             "tag",
             "define",

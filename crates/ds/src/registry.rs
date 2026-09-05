@@ -1359,6 +1359,21 @@ static DESIGN_ENTRIES: &[Entry] = &[
         render: ds_cli_design::project::render,
     },
     Entry {
+        command: &ds_cli_design::sync::STATUS,
+        handler: ds_cli_design::sync::status,
+        render: ds_cli_design::sync::render,
+    },
+    Entry {
+        command: &ds_cli_design::sync::CANCEL,
+        handler: ds_cli_design::sync::cancel,
+        render: ds_cli_design::sync::render,
+    },
+    Entry {
+        command: &ds_cli_design::sync::RESUME,
+        handler: ds_cli_design::sync::resume,
+        render: ds_cli_design::sync::render,
+    },
+    Entry {
         command: &ds_cli_design::project::OUTBOX,
         handler: ds_cli_design::project::outbox,
         render: ds_cli_design::project::render,

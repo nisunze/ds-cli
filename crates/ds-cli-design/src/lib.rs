@@ -68,6 +68,7 @@ pub mod known_columns;
 pub mod lv;
 pub mod project;
 pub mod selection;
+pub mod sync;
 pub mod tag;
 pub mod transformer;
 
@@ -91,6 +92,9 @@ pub static DOMAIN: Domain = Domain {
     id: "design",
     summary: "Headless reads, offline LV compute, and governed collaboration.",
     commands: &[
+        &sync::STATUS,
+        &sync::CANCEL,
+        &sync::RESUME,
         &project::SOURCES,
         &project::INIT,
         &project::WRITE,
@@ -319,6 +323,9 @@ pub const TRANSFORMER_DOWNLOAD: BridgeOp = BridgeOp {
 /// [`BridgeOp`], and the test requires each one to be an operation the
 /// application actually implements.
 pub const BRIDGE_OPS: &[&BridgeOp] = &[
+    &sync::STATUS_OP,
+    &sync::CANCEL_OP,
+    &sync::RESUME_OP,
     &SELECTION_LIST,
     &SELECTION_READ,
     &SELECTION_SAVE,
