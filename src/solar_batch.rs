@@ -492,6 +492,87 @@ mod tests {
         assert!(request().validate_catalog(&changed).is_err());
         assert!(request().validate_catalog(&request().portfolios).is_ok());
     }
+    // Migrated from ds-web/solar/portfolio-source-run.test.ts. Source selection
+    // has one implementation and test authority for native CLI and WASM hosts.
+    #[test]
+    fn source_selection_rejects_ineligible_runs_and_uses_newest_exact_membership() {
+        let mut candidates = vec![
+            Source {
+                run_id: "running".into(),
+                city_ids: vec!["a".into(), "b".into()],
+                status: "running".into(),
+            },
+            Source {
+                run_id: "partial".into(),
+                city_ids: vec!["a".into()],
+                status: "succeeded".into(),
+            },
+            Source {
+                run_id: "reordered".into(),
+                city_ids: vec!["b".into(), "a".into()],
+                status: "succeeded".into(),
+            },
+            Source {
+                run_id: " padded ".into(),
+                city_ids: vec!["a".into(), "b".into()],
+                status: "succeeded".into(),
+            },
+        ];
+        // Each negative control must be ineligible on its own too.
+        for candidate in &candidates {
+            let output = start(request(), std::slice::from_ref(candidate), 1).unwrap();
+            assert!(output
+                .state
+                .rows
+                .iter()
+                .all(|row| row.source_run_id.is_none()));
+            assert!(output
+                .effects
+                .iter()
+                .all(|effect| matches!(effect, Effect::Source { .. })));
+        }
+        let output = start(request(), &candidates, 1).unwrap();
+        assert!(output
+            .state
+            .rows
+            .iter()
+            .all(|row| row.source_run_id.is_none()));
+        for run_id in ["newest-exact", "older-exact"] {
+            candidates.push(Source {
+                run_id: run_id.into(),
+                city_ids: vec!["a".into(), "b".into()],
+                status: "succeeded".into(),
+            });
+        }
+        let output = start(request(), &candidates, 1).unwrap();
+        assert!(output
+            .state
+            .rows
+            .iter()
+            .all(|row| row.source_run_id.as_deref() == Some("newest-exact")));
+        assert_eq!(output.effects.len(), 2);
+        assert!(output
+            .effects
+            .iter()
+            .all(|effect| matches!(effect, Effect::Portfolio { .. })));
+        assert_eq!(output.state.rows[2].phase, Phase::Queued);
+    }
+
+    #[test]
+    fn graph_city_must_belong_to_every_selected_portfolio() {
+        let mut req = request();
+        req.graph_strategy = "city:a".into();
+        assert!(req.validate().is_ok());
+        req.portfolios[1].cities = vec!["b".into(), "c".into()];
+        assert_eq!(
+            req.validate().unwrap_err(),
+            "graph strategy must apply to every selected portfolio"
+        );
+        req.graph_strategy = "city:b".into();
+        assert!(req.validate().is_ok());
+        req.graph_strategy = "made_up".into();
+        assert!(req.validate().is_err());
+    }
     #[test]
     fn cancellation_waits_for_registration_without_spinning_and_commit_wins() {
         let started = start(request(), &sources(), 1).unwrap();
