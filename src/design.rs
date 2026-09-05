@@ -15,6 +15,10 @@ struct ProcessPlanRequest {
     targets: Vec<String>,
     workers: usize,
     resident_limit: usize,
+    #[serde(default)]
+    settings: Map<String, Value>,
+    #[serde(default)]
+    overrides: Map<String, Value>,
 }
 
 /// Offline processing scope and concurrency. Hosts supply measured worker
@@ -24,6 +28,19 @@ pub fn process_plan(bytes: &[u8]) -> Result<Value, String> {
         return Err("Design process plan exceeds 512 KiB".into());
     }
     let request: ProcessPlanRequest = serde_json::from_slice(bytes).map_err(|e| e.to_string())?;
+    for (key, value) in request.settings.iter().chain(request.overrides.iter()) {
+        if key.is_empty()
+            || key.len() > 128
+            || !key.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_')
+            || !(value.is_boolean() || value.is_number())
+        {
+            return Err(
+                "Process settings must have bounded names and boolean or numeric values".into(),
+            );
+        }
+    }
+    let mut settings = request.settings;
+    settings.extend(request.overrides);
     if request.targets.len() > 2000
         || request.workers == 0
         || request.resident_limit == 0
@@ -46,7 +63,8 @@ pub fn process_plan(bytes: &[u8]) -> Result<Value, String> {
     let concurrency = names.len().min(request.workers).min(request.resident_limit);
     Ok(
         json!({"schema":"ds.design.process-plan/v1", "names":names, "concurrency":concurrency,
-        "input_source":"local", "completion":"local_commit", "cloud_save":"separate"}),
+        "input_source":"local", "completion":"local_commit", "cloud_save":"separate",
+        "config_source":"cached_project", "settings":settings}),
     )
 }
 
@@ -544,6 +562,21 @@ pub fn edit_json(snapshot: &[u8], request: &[u8]) -> Result<String, String> {
 #[cfg(test)]
 mod process_plan_tests {
     use super::*;
+    #[test]
+    fn overrides_preserve_unmentioned_settings_and_false_values() {
+        let input = json!({"targets":["tx_a"],"workers":2,"resident_limit":2,
+            "settings":{"build_network":true,"assign_assemblies":true,"weld_tolerance":0.1},
+            "overrides":{"build_network":false}});
+        let plan = process_plan(input.to_string().as_bytes()).unwrap();
+        assert_eq!(
+            plan["settings"],
+            json!({"build_network":false,"assign_assemblies":true,"weld_tolerance":0.1})
+        );
+        assert_eq!(plan["config_source"], "cached_project");
+        let mut invalid = input;
+        invalid["overrides"]["build_network"] = json!("false");
+        assert!(process_plan(invalid.to_string().as_bytes()).is_err());
+    }
     #[test]
     fn local_plan_caps_workers_and_preserves_order_without_cloud_completion() {
         let plan =

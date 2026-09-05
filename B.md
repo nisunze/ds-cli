@@ -11,7 +11,7 @@ implemented work awaiting its remaining acceptance evidence.
 - [ ] [Offline startup, settings and delivery](#remaining-offline-startup-settings-and-delivery-closure)
 - [ ] [Version retrieval, comparison and location consistency](#remaining-version-retrieval-comparison-and-location-consistency)
 - [ ] [Solar IO and performance](#remaining-solar-io-and-performance-closure)
-- [ ] [Tchad investigation](#remaining-tchad-investigation) — material alias defect fixed and tested; live rebuild/reprocessing and earlier assembly report remain.
+- [ ] [Tchad investigation](#remaining-tchad-investigation) — material regression verified live; scoped propagation and earlier assembly report remain.
 - [ ] [Uninvestigated risks](#uninvestigated-risks-requiring-bounded-verification)
 - [ ] [Release verification](#outstanding-release-verification)
 
@@ -73,7 +73,7 @@ persistence or cross-repository integration. Split L items before starting.
 | Priority / size | Remaining outcome | Evidence and next step | Command / authority owner |
 | --- | --- | --- | --- |
 | P0 / M | Explain and fix the two unconnected customers | Owner reports higher-wattage customers excluded in `beinamar_02`, project `arjgpydw_aderm_loc7`. Paired dev inspection confirms two retained diagnostics: `customers_34425407` (Grand Marche) and `customers_29255932` (Health Post). They lack specific rejection reasons and retain old pole labels. The `max_service_length=37m` message does not prove the cause. Capture pinned geometry/config, candidate connections and actual rejection reasons; no connection fix is claimed. Do not raise the length limit or change demand to make the warning disappear. | `ds-network` connection engine; bounded CLI inspection and processing |
-| P0 / M | Correct, understandable pole-material warnings | Warning names `9m 150daN`, `9m 300daN`, `9m 650daN`. Current cached catalog inspected and fingerprinted: all three types have explicit concrete aliases stored in `##` cells. Shared Rust alias decoding is fixed in `ds-network` `3a1fdf4`, with failing-before/passing-after native and single/batch WASM evidence. Rebuild the running compute owner and verify a real transformer run; this does not prove the original run consumed identical bytes. | Existing engineering-standards/catalog authority in `ds-network`; project config IO |
+| P0 / M | Correct, understandable pole-material warnings | Warning names `9m 150daN`, `9m 300daN`, `9m 650daN`. Current cached catalog inspected and fingerprinted: all three types have explicit concrete aliases stored in `##` cells. Shared Rust alias decoding is fixed in `ds-network` `3a1fdf4`, with failing-before/passing-after native and single/batch WASM evidence. Live rebuilt dev UI/CLI batch replay now returns 230 concrete poles on beinamar_02, no warnings. This does not prove the original run consumed identical bytes. | Existing engineering-standards/catalog authority in `ds-network`; project config IO |
 | P0 / M | Attribute-table viewport filtering and sorting | Both are reported broken. Viewport filtering intersects row-index sets in `AttributeTable.svelte`; the failure has not been reproduced. Check stable feature identity across sorting, filtering, paging, vector-tile fragments and map movement. Sorting must cover the dataset, not just rendered rows. | Existing Data Factory/vector/table Rust query owner; UI only projects query results |
 | P0 / M | Valid MV profile scenes | Reported failure: `scene.conductor_spans[123].junction_hint` is not exactly one hint for the physical tap-off attachment set. The web validator was located; the failing engine scene has not been captured. Compare engine grouping with consumer grouping and preserve one engine-owned physical-junction identity. Do not disable validation or invent a second geometry algorithm in TypeScript. | `ds-network` profile/grid engine; existing CLI scene projections and web consumer |
 | P0 / M, externally blocked | Seed the requested MV design | Target project: `arjgpydw_aderm_loc7`. Sources on `magese@ds-server`: `~/data-solutions/artifacts/ader-projet-7-gis-complete` and `ader-projet-7-gis-seed`. SSH returned `Permission denied (publickey,password)` before listing either directory. Exact model filename, digest and tag contents remain unknown. After access is available, inspect the actual model, preserve granular tags, validate it, then import/associate it through the declared project/MV command. No seed has been performed. | Existing DS Grid exchange/import and project model authority; `ds-cli` |
@@ -338,8 +338,20 @@ for arrays, serialized arrays and `##` cells, preserving literal punctuation.
 It also fixes blank default-material cells hiding explicit material values.
 The captured-row and blank-default regressions failed before their fixes;
 308 network unit tests, 33 processing contracts, 3 real WASM authority tests and
-Clippy passed afterward. A live transformer reprocess on the rebuilt owner is
-still required; no reseed or inferred material was used.
+Clippy passed afterward. Live dev batch replay verified all 230 beinamar_02 poles
+as concrete, with no warnings and unchanged layer/feature counts (1641). This
+required deleting the TypeScript shortcut that omitted cached config when
+explicit toggles were disabled. Shared kernel planning now merges explicit
+overrides over saved settings for both UI and CLI; 59 kernel tests and 15 web
+integration/bridge tests passed. The original local version was retained;
+results remain staged locally, without a cloud save or inferred material.
+
+Remaining scoped data operation: the owner authorized global master plus every
+project selecting exactly rule_tchd. Propagate explicit catalog rows only,
+with preview/revision fencing; the legacy whole-config/all-project overwrite
+is unsuitable. Source cached material values are present, but authoritative
+cloud/global seed freshness has not yet been verified. Investigate legacy
+unnamed-table and missing-selection defaults that still inject rule_edcl.
 
 The original report of Rwandan assembly names in computed output remains
 unreproduced. Inspected local `beinamar_01`, `_02` and `_04` histograms had Tchad
