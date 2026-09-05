@@ -94,6 +94,9 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("design.project.cancel", "local_file_write", "none"),
     ("design.project.result", "local_file_write", "none"),
     ("design.project.outbox", "read_only", "none"),
+    ("design.sync.status", "read_only", "project"),
+    ("design.sync.cancel", "global_write", "project"),
+    ("design.sync.resume", "global_write", "project"),
     ("design.project.report", "local_file_write", "none"),
     ("design.project.resolve-sources", "local_file_write", "none"),
     (
