@@ -305,22 +305,39 @@ Known from this session:
   jobs, captured inputs, native processing, background launch and actual
   XLSX/PDF generation. Those tests do not prove the entire hybrid architecture.
 
-Confirmed Solar command-boundary gap from the bounded follow-up:
+Solar portfolio batch command boundary — implemented:
 
-- Portfolio catalog validation, mutation planning and sealed-result validation
-  use this kernel's native/WASM exports. Calculation, chart rendering and CPU
-  workers correctly remain owned by `ds-solar`.
-- The new `ds-web/src/lib/solar/portfolio-batch.ts` still owns multi-portfolio
-  queuing, lifecycle/cancellation coordination and graph-strategy checks in
-  TypeScript. UI and CLI share `native-batch.ts` for individual native runs,
-  but do not yet submit the same typed multi-portfolio kernel command. This
-  is incomplete adoption of the required command-center boundary; reduced
-  TypeScript line counts and Rust computation do not close that gap.
-- Move the batch request, planning and lifecycle transitions into the command
-  kernel, expose identical parameters to UI and CLI, and delete the replaced
-  TypeScript decisions. Keep host IO, subscriptions and rendering as adapters;
-  keep the calculation engine in `ds-solar`. Prove parity for ordered membership
-  pins, defaults, queued cancellation, independent failures and restart recovery.
+- `src/solar_batch.rs` owns the strict `ds-solar.portfolio-batch/v1` request,
+  ordered catalog membership checks, bounded scheduling, exact source reuse,
+  lifecycle, cancellation acknowledgement/retry and interruption recovery.
+  `solarPortfolioBatch` exposes the same command through WASM. Unknown fields,
+  invalid settings and unavailable hosted overrides are refused.
+- UI and `ds solar portfolio batch start --request` submit identical required
+  parameters to one effect host. Status/cancel share the same kernel state.
+  The old single-portfolio CLI spelling is a one-row request adapter; its
+  separate completion/replay coordinator and the UI's worker loop are removed.
+  The remaining TypeScript performs IO, durable storage, events and rendering;
+  it does not replace the Rust scheduler if WASM fails.
+- Owner/project-fenced state is persisted before effects. Batch ids cannot be
+  replayed. Queued work stops on cancel; native cancellation retries until
+  acknowledgement without overlapping requests. Committed results win races.
+  Restart inspection marks unfinished work interrupted and never auto-runs it;
+  sealed per-row artifacts remain readable/exportable by their exact run ids.
+- Calculation and processor allocation remain in `ds-solar`. This change does
+  not make the paired batch effect host a standalone headless daemon. Native
+  batches use prepared offline inputs; the browser retains hosted calculation.
+  Hosted active cancellation and custom source/draft overrides are unavailable
+  and explicitly identified, not emulated with TypeScript. GCP was not tested.
+- Verification covers real WASM scheduling, source ordering, membership pins,
+  independent failures, queued/native cancellation, duplicate ids, recovery,
+  UI terminal-state retention and CLI parity. A live dev CLI batch completed
+  offline; a second batch cancelled during source calculation without starting
+  aggregation. CLI artifact reads address the successful row directly. The dev
+  build's missing exact release manifest still prevents publication admission;
+  local artifacts remain valid and this change does not weaken that check.
+- Production TypeScript/Svelte accounting for this slice in `ds-web`: 424 lines
+  removed, 311 added, **113 fewer** overall (tests and Rust excluded). This
+  includes the new IO interpreter and wire types, not just deleted schedulers.
 
 Potential weak parts, **not investigated further**:
 

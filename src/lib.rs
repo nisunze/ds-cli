@@ -13,8 +13,15 @@ use zeroize::Zeroize;
 
 pub mod design;
 mod project_control;
+pub mod solar_batch;
 mod solar_network_seed;
 mod solar_portfolio;
+
+#[cfg(feature = "wasm")]
+#[wasm_bindgen::prelude::wasm_bindgen(js_name = solarPortfolioBatch)]
+pub fn solar_portfolio_batch_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
+    solar_batch::evaluate(input).map_err(|error| wasm_bindgen::JsValue::from_str(&error))
+}
 pub mod survey;
 
 #[cfg(feature = "wasm")]
