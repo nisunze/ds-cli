@@ -9,6 +9,7 @@ authors.workspace = true
 publish.workspace = true
 
 [dependencies]
+ds-survey-store = { workspace = true }
 ds-cli-contract = { workspace = true }
 ds-cli-auth = { workspace = true }
 ds-cli-desktop = { workspace = true }

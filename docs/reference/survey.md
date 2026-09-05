@@ -1,16 +1,47 @@
 # Survey control plane
 
-`ds survey` manages the API-backed survey lifecycle without requiring an open
-map. Existing control-plane commands retain their explicit project ids and
-paired Desktop authority. `survey project-forms list` and `survey project-form
-settings` are separate native reads: they restore `ds auth` identity and use
-only the UID/email/lane/audience-
-fenced project selected by `ds auth project use`. It has no project override or
-Desktop descriptor, and ds-brain rechecks membership on the fixed
-`POST /api/v1/project-forms` actions `activate` and `settings_editor`. The
-settings command accepts one form slug but no project override; ds-brain
-rechecks project-form admin authority before returning the backend-owned legal
-settings vocabulary and optimistic revision.
+`ds survey` runs natively without Desktop. Form Factory schemas, project form
+bindings/settings, reusable templates and project creation use fixed typed
+`ds-client-core` routes. Global schemas/templates use restored user authority;
+project commands also require the selected project from `ds auth project use`.
+An explicit `--project` must match that selection. `--lane` selects stable or
+canary; no survey command accepts a Desktop descriptor. Server operations still
+require service access and current permissions. Profile catalog schema v16 must
+advertise the exact survey control routes; older catalogs fail closed.
+
+Offline capture uses a native SQLite workspace:
+
+```sh
+ds survey workspace init --workspace ./survey-local --snapshot ./resolved-forms.json
+ds survey workspace collect --workspace ./survey-local --form poles \
+  --document ./point.json --doc-id source-123 --created-at 2026-09-05T10:00:00Z
+ds survey workspace list --workspace ./survey-local --limit 20
+# Once service access is available, explicitly publish a bounded batch:
+ds survey workspace sync --workspace ./survey-local --limit 10 --yes
+```
+
+For a completely disconnected demonstration from this repository, use
+`examples/survey/offline-snapshot.json` as the snapshot and
+`examples/survey/entry.json` as the document. They define a synthetic local
+project for exercising capture; replace them with an actual resolved project
+snapshot before preparing a real migration.
+
+`init`, `collect`, and `list` never contact the network or require sign-in.
+The snapshot is `{ "project_id": "…", "forms": […] }` with full resolved enabled
+forms, field definitions and entry document schemas. A collection document has
+`data` and optional canonical `geometry`, `connectivity`, `detailed_location`,
+and `context_key`. Unknown or hidden fields are refused without insertion;
+source ids and capture times are retained for migration. The SQLite row and
+stable replay key commit together. Reopening does not invent a new replay key.
+
+When online, `survey workspace prepare --workspace ./survey-local` obtains the
+selected project's full form snapshot instead of reading a supplied file.
+Sync binds the workspace to the restored principal, project, lane and audience
+before sending any entry. It stops on the first error and retains pending rows
+for exact idempotent retry. A committed receipt confirms Firestore acceptance,
+not BigQuery mirror visibility. Cached form metadata never grants authority.
+No GCP access is needed for local preparation and capture; no sync was exercised
+against a live service in the offline implementation tests.
 
 `survey query` is the selected-project aggregate data plane. It restores the
 same native identity, releases the audience-fenced project-context lease before
@@ -250,7 +281,7 @@ Four related objects have separate lifecycles:
    native project's bounded summary and `survey project-form settings` for one
    selected-project editor. Use `survey project-forms read`, `survey
    project-form editor`, `survey project-forms plan`, and `survey project-forms
-   apply` for the existing explicit-project Desktop workflow.
+   apply` for explicit-project native planning and apply. The project must match the selected project.
 3. A **project template** is a reusable snapshot containing project-form
    configuration. Use `survey templates list`, `survey template read`, `survey
    template create`, `survey template apply`, and `survey template lifecycle`.
@@ -329,11 +360,6 @@ archive or delete only with the exact dependency result the backend returns.
 `survey form lifecycle` is the master transition door; `project-forms plan` /
 `apply` are the project-settings door; neither creates a project template or a
 new project instance.
-
-The native settings read intentionally does not replace the existing Desktop
-editor command yet. It proves a selected-project, no-map authority path for
-read and planning consumers; mutation parity and an explicit safe handoff must
-land before the paired editor/plan/apply route can be retired.
 
 Every transition can refuse. A stale `--expect-version` is a concurrency
 refusal; archive/delete can refuse live bindings unless an operator explicitly

@@ -1,0 +1,4 @@
+{
+  "data": { "name": "Example pole" },
+  "geometry": { "type": "Point", "coordinates": [30.06, -1.94] }
+}

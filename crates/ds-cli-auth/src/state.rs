@@ -944,6 +944,13 @@ mod tests {
     }
 
     impl Transport for FixtureTransport {
+        fn survey_control(
+            &mut self,
+            _call: ds_client_core::SurveyControlCall<'_>,
+        ) -> Result<TransportResponse, TransportError> {
+            Err(TransportError::Unreachable)
+        }
+
         fn sign_in(&mut self, _call: SignInCall<'_>) -> Result<TransportResponse, TransportError> {
             self.sign_in
                 .take()
@@ -1106,6 +1113,9 @@ mod tests {
             project_data_method: "POST".to_owned(),
             project_data_path: "/api/v1/project_data".to_owned(),
             project_data_actions: ["list", "upload_start", "upload", "delete"]
+                .map(str::to_owned)
+                .to_vec(),
+            survey_control_routes: ds_client_core::SURVEY_CONTROL_ROUTES
                 .map(str::to_owned)
                 .to_vec(),
             styles_method: "POST".to_owned(),

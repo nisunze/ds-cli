@@ -2,9 +2,9 @@
 //!
 //! Global Form Factory schemas, project-form bindings/settings, reusable
 //! project templates, and project creation from a template are related but
-//! distinct lifecycle layers. Desktop control-plane commands call one closed
-//! application operation. The selected-project list uses the fixed native
-//! client; this crate never owns form validation or topology.
+//! distinct lifecycle layers. Every control-plane operation uses the fixed
+//! native client. Offline workspaces use their Rust domain owner; this crate
+//! owns argument parsing and IO, never form validation or topology.
 
 pub mod changes;
 pub mod create;
@@ -14,20 +14,25 @@ pub mod import;
 pub mod project_forms;
 pub mod query;
 pub mod templates;
+pub mod workspace;
 
 use std::io::Read;
-use std::time::Duration;
 
 use ds_cli_contract::Inputs;
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{Domain, Refusal};
-use ds_cli_desktop::ops::{self, BridgeOp};
+use ds_cli_desktop::ops::BridgeOp;
 use serde_json::{Map, Value, json};
 
 pub static DOMAIN: Domain = Domain {
     id: "survey",
     summary: "Survey control plane: forms, project settings, templates, projects.",
     commands: &[
+        &workspace::INIT,
+        &workspace::PREPARE,
+        &workspace::COLLECT,
+        &workspace::LIST,
+        &workspace::SYNC,
         &forms::LIST_COMMAND,
         &forms::READ_COMMAND,
         &forms::TYPES_COMMAND,
@@ -54,105 +59,26 @@ pub static DOMAIN: Domain = Domain {
     ],
 };
 
-pub const TIMEOUT: Duration = Duration::from_secs(120);
 const MAX_JSON_BYTES: u64 = 2 * 1024 * 1024;
 
-pub const FORM_LIST: BridgeOp = BridgeOp {
-    operation: "survey.forms.list",
-    arguments: &["status", "query", "limit", "detail"],
-};
-pub const FORM_READ: BridgeOp = BridgeOp {
-    operation: "survey.form.read",
-    arguments: &["slug", "fieldOffset", "fieldLimit"],
-};
-pub const FORM_TYPES: BridgeOp = BridgeOp {
-    operation: "survey.form.types",
-    arguments: &[],
-};
-pub const FORM_CREATE: BridgeOp = BridgeOp {
-    operation: "survey.form.create",
-    arguments: &["schema"],
-};
-pub const FORM_UPDATE: BridgeOp = BridgeOp {
-    operation: "survey.form.update",
-    arguments: &["slug", "expectedVersion", "schema"],
-};
-pub const FORM_LIFECYCLE: BridgeOp = BridgeOp {
-    operation: "survey.form.lifecycle",
-    arguments: &[
-        "action",
-        "slug",
-        "newDisplayName",
-        "force",
-        "expectedVersion",
-    ],
-};
-pub const PROJECT_FORMS_READ: BridgeOp = BridgeOp {
-    operation: "survey.project_forms.read",
-    arguments: &["project", "status", "query", "limit", "detail"],
-};
-pub const PROJECT_FORM_EDITOR: BridgeOp = BridgeOp {
-    operation: "survey.project_form.editor",
-    arguments: &["project", "form"],
-};
-pub const PROJECT_FORMS_PLAN: BridgeOp = BridgeOp {
-    operation: "survey.project_forms.plan",
-    arguments: &["project", "changes"],
-};
-pub const PROJECT_FORMS_APPLY: BridgeOp = BridgeOp {
-    operation: "survey.project_forms.apply",
-    arguments: &["project", "changes"],
-};
-pub const TEMPLATE_LIST: BridgeOp = BridgeOp {
-    operation: "survey.templates.list",
-    arguments: &["query", "limit", "detail"],
-};
-pub const TEMPLATE_READ: BridgeOp = BridgeOp {
-    operation: "survey.template.read",
-    arguments: &["template", "formOffset", "formLimit"],
-};
-pub const TEMPLATE_CREATE: BridgeOp = BridgeOp {
-    operation: "survey.template.create",
-    arguments: &[
-        "project",
-        "name",
-        "slug",
-        "description",
-        "category",
-        "visibility",
-    ],
-};
-pub const TEMPLATE_APPLY: BridgeOp = BridgeOp {
-    operation: "survey.template.apply",
-    arguments: &["project", "template", "mergeStrategy"],
-};
-pub const TEMPLATE_LIFECYCLE: BridgeOp = BridgeOp {
-    operation: "survey.template.lifecycle",
-    arguments: &["action", "template"],
-};
-pub const CREATE_PROJECT: BridgeOp = BridgeOp {
-    operation: "survey.project.create_from_template",
-    arguments: &["template", "projectName", "projectId"],
-};
+pub const FORM_LIST: &str = "survey.forms.list";
+pub const FORM_READ: &str = "survey.form.read";
+pub const FORM_TYPES: &str = "survey.form.types";
+pub const FORM_CREATE: &str = "survey.form.create";
+pub const FORM_UPDATE: &str = "survey.form.update";
+pub const FORM_LIFECYCLE: &str = "survey.form.lifecycle";
+pub const PROJECT_FORMS_READ: &str = "survey.project_forms.read";
+pub const PROJECT_FORM_EDITOR: &str = "survey.project_form.editor";
+pub const PROJECT_FORMS_PLAN: &str = "survey.project_forms.plan";
+pub const PROJECT_FORMS_APPLY: &str = "survey.project_forms.apply";
+pub const TEMPLATE_LIST: &str = "survey.templates.list";
+pub const TEMPLATE_READ: &str = "survey.template.read";
+pub const TEMPLATE_CREATE: &str = "survey.template.create";
+pub const TEMPLATE_APPLY: &str = "survey.template.apply";
+pub const TEMPLATE_LIFECYCLE: &str = "survey.template.lifecycle";
+pub const CREATE_PROJECT: &str = "survey.project.create_from_template";
 
-pub const BRIDGE_OPS: &[&BridgeOp] = &[
-    &FORM_LIST,
-    &FORM_READ,
-    &FORM_TYPES,
-    &FORM_CREATE,
-    &FORM_UPDATE,
-    &FORM_LIFECYCLE,
-    &PROJECT_FORMS_READ,
-    &PROJECT_FORM_EDITOR,
-    &PROJECT_FORMS_PLAN,
-    &PROJECT_FORMS_APPLY,
-    &TEMPLATE_LIST,
-    &TEMPLATE_READ,
-    &TEMPLATE_CREATE,
-    &TEMPLATE_APPLY,
-    &TEMPLATE_LIFECYCLE,
-    &CREATE_PROJECT,
-];
+pub const BRIDGE_OPS: &[&BridgeOp] = &[];
 
 pub const INVALID_TEXT: Refusal = Refusal {
     code: "invalid_text",
@@ -236,30 +162,35 @@ pub fn load_json(raw: &str, flag: &str, array: bool) -> Result<Value, Failure> {
     Ok(value)
 }
 
-pub fn invoke(
-    inputs: &Inputs,
-    op: &BridgeOp,
-    arguments: Map<String, Value>,
-) -> Result<Value, Failure> {
-    let descriptor = ops::paired(inputs.value("desktop-descriptor"))?;
-    ops::invoke(&descriptor, op, Value::Object(arguments), TIMEOUT)
-        .map_err(ops::classify_signed_out)
+pub fn invoke(inputs: &Inputs, op: &str, arguments: Map<String, Value>) -> Result<Value, Failure> {
+    let command: ds_client_core::SurveyControlCommand =
+        serde_json::from_value(json!({"operation":op,"arguments":arguments})).map_err(|_| {
+            Failure::invalid(
+                "invalid_document",
+                "Survey arguments violate the typed native contract",
+            )
+            .remedy(INVALID_DOCUMENT.remedy)
+        })?;
+    ds_cli_auth::survey_control(inputs.value("lane").unwrap_or("stable"), &command)
 }
 
-pub const COMMON_REFUSALS: &[Refusal] = &[
-    ops::NOT_PAIRED,
-    ops::AMBIGUOUS,
-    ops::UNREACHABLE,
-    ops::PAIRING_REJECTED,
-    ops::REFUSED,
-    ops::UNSUPPORTED,
-    ops::UNREADABLE,
-    ops::INVALID_NUMBER,
-    ops::SIGNED_OUT,
-    INVALID_TEXT,
-    INVALID_DOCUMENT,
-    MISSING_REQUIRED,
-];
+pub const LANE: ds_cli_contract::spec::Arg =
+    ds_cli_contract::spec::Arg::value("lane", "<stable|canary>", "Native deployment lane.")
+        .default("stable")
+        .choices(&["stable", "canary"]);
+pub const COMMON_REFUSALS: &[Refusal] = &{
+    const BASE: &[Refusal] = project_forms::LIST_COMMAND.refusals;
+    let mut list = [INVALID_TEXT; BASE.len() + 3];
+    let mut i = 0;
+    while i < BASE.len() {
+        list[i] = BASE[i];
+        i += 1;
+    }
+    list[BASE.len()] = INVALID_TEXT;
+    list[BASE.len() + 1] = INVALID_DOCUMENT;
+    list[BASE.len() + 2] = MISSING_REQUIRED;
+    list
+};
 
 #[cfg(test)]
 mod availability_tests {

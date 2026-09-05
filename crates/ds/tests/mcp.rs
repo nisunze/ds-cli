@@ -706,8 +706,8 @@ fn form_factory_and_survey_projects_keep_their_distinct_mapless_contracts() {
         .expect("survey-migration tools");
     assert_eq!(
         migration.len(),
-        3,
-        "catalog and diagnostics plus one bounded import leaf"
+        8,
+        "catalog and diagnostics, bounded import and five offline workspace leaves"
     );
     assert_eq!(migration[0]["name"], "ds_catalog");
     assert_eq!(migration[1]["name"], "ds_diagnostics");

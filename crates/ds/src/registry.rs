@@ -741,6 +741,31 @@ static MAP_ENTRIES: &[Entry] = &[
 
 static SURVEY_ENTRIES: &[Entry] = &[
     Entry {
+        command: &ds_cli_survey::workspace::INIT,
+        handler: ds_cli_survey::workspace::init,
+        render: ds_cli_survey::workspace::render,
+    },
+    Entry {
+        command: &ds_cli_survey::workspace::PREPARE,
+        handler: ds_cli_survey::workspace::prepare,
+        render: ds_cli_survey::workspace::render,
+    },
+    Entry {
+        command: &ds_cli_survey::workspace::COLLECT,
+        handler: ds_cli_survey::workspace::collect,
+        render: ds_cli_survey::workspace::render,
+    },
+    Entry {
+        command: &ds_cli_survey::workspace::LIST,
+        handler: ds_cli_survey::workspace::list,
+        render: ds_cli_survey::workspace::render,
+    },
+    Entry {
+        command: &ds_cli_survey::workspace::SYNC,
+        handler: ds_cli_survey::workspace::sync,
+        render: ds_cli_survey::workspace::render,
+    },
+    Entry {
         command: &ds_cli_survey::forms::LIST_COMMAND,
         handler: ds_cli_survey::forms::list,
         render: ds_cli_survey::forms::render_list,

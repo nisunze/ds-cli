@@ -12,10 +12,17 @@ the base `ds` skill: discover the installed command and obey its live contract.
 Never call the API directly, inspect IndexedDB, extract a JWT, or implement a
 missing command inside the skill.
 
-The paired MCP may start the matching Stable or Canary application when a
-signed-in desktop authority is required. That does not mean the map must be
-open. Every command here takes explicit project or template identity and works
-quietly through the app-owned API session.
+Survey commands use native `ds auth` identity and fixed Rust client routes.
+Project-bound commands must match the selected native project. No Desktop is
+required. Discover the installed contract: stale profile catalogs can refuse new
+native routes and must never be bypassed with raw HTTP or desktop operations.
+
+Offline collection uses `survey workspace init`, `collect`, and `list` without
+sign-in or service access. Initialize from a full resolved local form snapshot;
+when services are available, `prepare` fetches one. Publish only with explicit
+`workspace sync --yes`; pending entries remain local and retain stable replay
+keys after errors. Never interpret a cached schema as permission or a committed
+Firestore receipt as proof of BigQuery visibility.
 
 ## Keep the four objects distinct
 

@@ -1,5 +1,5 @@
 {
-  "schema_version": "ds.native-client-profiles/v15",
+  "schema_version": "ds.native-client-profiles/v16",
   "development": true,
   "profiles": {
     "stable": {
@@ -127,7 +127,15 @@
           "upload",
           "delete"
         ]
-      }
+      },
+      "survey_control": [
+        "POST /api/v1/form-factory: list,get,get_field_types,create,update,duplicate,publish,unpublish,archive,restore,delete",
+        "POST /api/v1/project-forms: activate,settings_editor,bulk_save",
+        "POST /api/v1/projects/templates: list,create,set_public,delete",
+        "GET /api/v1/projects/templates/{slug}",
+        "POST /api/v1/projects: apply_template",
+        "POST /api/v1/projects/from-template"
+      ]
     },
     "canary": {
       "firebase": {
@@ -254,7 +262,15 @@
           "upload",
           "delete"
         ]
-      }
+      },
+      "survey_control": [
+        "POST /api/v1/form-factory: list,get,get_field_types,create,update,duplicate,publish,unpublish,archive,restore,delete",
+        "POST /api/v1/project-forms: activate,settings_editor,bulk_save",
+        "POST /api/v1/projects/templates: list,create,set_public,delete",
+        "GET /api/v1/projects/templates/{slug}",
+        "POST /api/v1/projects: apply_template",
+        "POST /api/v1/projects/from-template"
+      ]
     }
   }
 }

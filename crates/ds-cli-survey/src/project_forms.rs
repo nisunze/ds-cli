@@ -23,7 +23,7 @@ const LANE: Arg = Arg::value(
 pub static LIST_COMMAND: Command = Command {
     id: "survey.project-forms.list",
     path: &["survey", "project-forms", "list"],
-    contract: 1,
+    contract: 2,
     summary: "List the selected project's form bindings headlessly.",
     purpose: "Restores the native user, loads only its UID/email/lane/audience-fenced selected project, and performs the fixed project-forms activate read. The gateway rechecks membership. It accepts no project id, Desktop descriptor, arbitrary request field, or mutation action.",
     chapter: Chapter::Survey,
@@ -140,12 +140,12 @@ pub static LIST_COMMAND: Command = Command {
 pub static READ_COMMAND: Command = Command {
     id: "survey.project-forms.read",
     path: &["survey", "project-forms", "read"],
-    contract: 1,
+    contract: 2,
     summary: "Read one project's form bindings and effective settings.",
     purpose: "Activates the canonical project-forms resolution through the signed-in API session. It returns enabled and disabled bindings, orphan status, permissions, revisions and optionally bounded effective settings; no map is opened.",
     chapter: Chapter::Survey,
-    effect: Effect::ReadOnly,
-    authority: Authority::DesktopUser,
+    effect: Effect::LocalAuthState,
+    authority: Authority::HeadlessProject,
     execution: Execution::Sync,
     args: &[
         Arg::value(
@@ -163,7 +163,7 @@ pub static READ_COMMAND: Command = Command {
             "detail",
             "Include project settings, capabilities and permissions.",
         ),
-        ops::DESCRIPTOR_ARG,
+        crate::LANE,
     ],
     output: "The exact project id, matching total, bounded project-form rows, orphan bindings, field vocabulary metadata, and omitted count.",
     examples: &[Example {
@@ -173,13 +173,13 @@ pub static READ_COMMAND: Command = Command {
     }],
     refusals: COMMON_REFUSALS,
     reference: Some("docs/reference/survey.md"),
-    availability: ops::paired_availability,
+    availability: ds_cli_auth::native_availability,
 };
 
 pub static SETTINGS_COMMAND: Command = Command {
     id: "survey.project-form.settings",
     path: &["survey", "project-form", "settings"],
-    contract: 1,
+    contract: 2,
     summary: "Read the selected project's form settings headlessly.",
     purpose: "Restores the native user and reads one backend-owned settings editor through the fixed project-forms settings_editor action. The project comes only from audience-fenced auth state; ds-brain rechecks membership and project-form admin authority. No project id, Desktop descriptor, URL, body, or action override is accepted.",
     chapter: Chapter::Survey,
@@ -204,12 +204,12 @@ pub static SETTINGS_COMMAND: Command = Command {
 pub static EDITOR_COMMAND: Command = Command {
     id: "survey.project-form.editor",
     path: &["survey", "project-form", "editor"],
-    contract: 1,
+    contract: 2,
     summary: "Read the backend-owned settings editor for one project form.",
     purpose: "Returns current and effective settings, typed editor sections, field state, capabilities and the optimistic settings revision. Unavailable master forms remain readable for cleanup.",
     chapter: Chapter::Survey,
-    effect: Effect::ReadOnly,
-    authority: Authority::DesktopUser,
+    effect: Effect::LocalAuthState,
+    authority: Authority::HeadlessProject,
     execution: Execution::Sync,
     args: &[
         Arg::value(
@@ -219,7 +219,7 @@ pub static EDITOR_COMMAND: Command = Command {
         )
         .required(),
         Arg::value("form", "<form-slug>", "Exact project-form slug.").required(),
-        ops::DESCRIPTOR_ARG,
+        crate::LANE,
     ],
     output: "The canonical settings editor, including current/effective settings and version for a later plan or apply.",
     examples: &[Example {
@@ -229,18 +229,18 @@ pub static EDITOR_COMMAND: Command = Command {
     }],
     refusals: COMMON_REFUSALS,
     reference: Some("docs/reference/survey.md"),
-    availability: ops::paired_availability,
+    availability: ds_cli_auth::native_availability,
 };
 
 pub static PLAN_COMMAND: Command = Command {
     id: "survey.project-forms.plan",
     path: &["survey", "project-forms", "plan"],
-    contract: 1,
+    contract: 2,
     summary: "Validate a staged project-form settings batch without saving.",
     purpose: "Compares a bounded JSON change array with live bindings and settings editors. It checks identities, editable keys and optimistic revisions but performs no bulk-save mutation.",
     chapter: Chapter::Survey,
-    effect: Effect::Proposal,
-    authority: Authority::DesktopUser,
+    effect: Effect::LocalAuthState,
+    authority: Authority::HeadlessProject,
     execution: Execution::Sync,
     args: &[
         Arg::value(
@@ -255,7 +255,7 @@ pub static PLAN_COMMAND: Command = Command {
             "JSON array of form_slug, optional enabled, settings, and expected_version.",
         )
         .required(),
-        ops::DESCRIPTOR_ARG,
+        crate::LANE,
     ],
     output: "A non-writing plan naming every requested form, validation result, revision comparison, changed setting keys, and whether apply is ready.",
     examples: &[Example {
@@ -265,18 +265,18 @@ pub static PLAN_COMMAND: Command = Command {
     }],
     refusals: COMMON_REFUSALS,
     reference: Some("docs/reference/survey.md"),
-    availability: ops::paired_availability,
+    availability: ds_cli_auth::native_availability,
 };
 
 pub static APPLY_COMMAND: Command = Command {
     id: "survey.project-forms.apply",
     path: &["survey", "project-forms", "apply"],
-    contract: 1,
+    contract: 2,
     summary: "Atomically save a planned project-form settings batch.",
     purpose: "Uses the canonical bulk-save transaction. Every settings-bearing row must carry the editor revision it was based on; enable-only rows preserve settings and do not manufacture settings conflicts.",
     chapter: Chapter::Survey,
     effect: Effect::GlobalWrite,
-    authority: Authority::DesktopUser,
+    authority: Authority::HeadlessProject,
     execution: Execution::Sync,
     args: &[
         Arg::value(
@@ -291,7 +291,7 @@ pub static APPLY_COMMAND: Command = Command {
             "The same JSON change array reviewed with project-forms plan.",
         )
         .required(),
-        ops::DESCRIPTOR_ARG,
+        crate::LANE,
     ],
     output: "The verified bulk-save receipt: saved rows, normalized/effective settings, cleanup outcomes, and refreshed bindings when available.",
     examples: &[Example {
@@ -301,7 +301,7 @@ pub static APPLY_COMMAND: Command = Command {
     }],
     refusals: COMMON_REFUSALS,
     reference: Some("docs/reference/survey.md"),
-    availability: ops::paired_availability,
+    availability: ds_cli_auth::native_availability,
 };
 
 fn base(inputs: &Inputs) -> Result<Map<String, Value>, Failure> {
@@ -322,7 +322,7 @@ pub fn read(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     if inputs.switch("detail") {
         args.insert("detail".into(), json!(true));
     }
-    crate::invoke(inputs, &PROJECT_FORMS_READ, args)
+    crate::invoke(inputs, PROJECT_FORMS_READ, args)
 }
 
 pub fn list(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
@@ -389,7 +389,7 @@ pub fn editor(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         "form".into(),
         json!(crate::text(inputs.require("form")?, "form", 160)?),
     );
-    crate::invoke(inputs, &PROJECT_FORM_EDITOR, args)
+    crate::invoke(inputs, PROJECT_FORM_EDITOR, args)
 }
 
 pub fn settings(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
@@ -408,7 +408,7 @@ pub fn settings(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     }))
 }
 
-fn changes(inputs: &Inputs, op: &ds_cli_desktop::ops::BridgeOp) -> Result<Value, Failure> {
+fn changes(inputs: &Inputs, op: &str) -> Result<Value, Failure> {
     let mut args = base(inputs)?;
     args.insert(
         "changes".into(),
@@ -418,11 +418,11 @@ fn changes(inputs: &Inputs, op: &ds_cli_desktop::ops::BridgeOp) -> Result<Value,
 }
 
 pub fn plan(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
-    changes(inputs, &PROJECT_FORMS_PLAN)
+    changes(inputs, PROJECT_FORMS_PLAN)
 }
 
 pub fn apply(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
-    changes(inputs, &PROJECT_FORMS_APPLY)
+    changes(inputs, PROJECT_FORMS_APPLY)
 }
 
 pub fn render_read(data: &Value) -> String {
@@ -483,7 +483,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn native_reads_are_selected_project_only_and_legacy_reads_are_unchanged() {
+    fn all_project_form_reads_use_native_project_authority() {
         assert_eq!(LIST_COMMAND.authority, Authority::HeadlessProject);
         assert_eq!(LIST_COMMAND.effect, Effect::LocalAuthState);
         assert!(LIST_COMMAND.arg("project").is_none());
@@ -491,9 +491,9 @@ mod tests {
         assert!(LIST_COMMAND.arg("url").is_none());
         assert!(LIST_COMMAND.arg("action").is_none());
 
-        assert_eq!(READ_COMMAND.authority, Authority::DesktopUser);
+        assert_eq!(READ_COMMAND.authority, Authority::HeadlessProject);
         assert!(READ_COMMAND.arg("project").is_some());
-        assert!(READ_COMMAND.arg("desktop-descriptor").is_some());
+        assert!(READ_COMMAND.arg("desktop-descriptor").is_none());
 
         assert_eq!(SETTINGS_COMMAND.authority, Authority::HeadlessProject);
         assert_eq!(SETTINGS_COMMAND.effect, Effect::LocalAuthState);
@@ -502,7 +502,7 @@ mod tests {
         assert!(SETTINGS_COMMAND.arg("desktop-descriptor").is_none());
         assert!(SETTINGS_COMMAND.arg("url").is_none());
         assert!(SETTINGS_COMMAND.arg("action").is_none());
-        assert_eq!(EDITOR_COMMAND.authority, Authority::DesktopUser);
+        assert_eq!(EDITOR_COMMAND.authority, Authority::HeadlessProject);
         assert!(EDITOR_COMMAND.arg("project").is_some());
     }
 }

@@ -13,12 +13,12 @@ use crate::{
 pub static LIST_COMMAND: Command = Command {
     id: "survey.forms.list",
     path: &["survey", "forms", "list"],
-    contract: 1,
+    contract: 2,
     summary: "List global Form Factory schemas without opening the map.",
     purpose: "Reads the governed Form Factory catalogue through the signed-in API session. Returns bounded schema summaries by default; --detail adds authoring metadata without returning every field.",
     chapter: Chapter::Survey,
-    effect: Effect::ReadOnly,
-    authority: Authority::DesktopUser,
+    effect: Effect::LocalAuthState,
+    authority: Authority::HeadlessUser,
     execution: Execution::Sync,
     args: &[
         Arg::value("status", "<status>", "Filter the global catalogue.")
@@ -31,7 +31,7 @@ pub static LIST_COMMAND: Command = Command {
         ),
         Arg::value("limit", "<n>", "Return at most 1..500 schemas.").default("50"),
         Arg::switch("detail", "Include bounded schema metadata in each row."),
-        ops::DESCRIPTOR_ARG,
+        crate::LANE,
     ],
     output: "The filter, matching total, bounded form rows, and omitted count. Rows name slug, display name, version, visibility, geometry, and field count.",
     examples: &[Example {
@@ -41,24 +41,24 @@ pub static LIST_COMMAND: Command = Command {
     }],
     refusals: COMMON_REFUSALS,
     reference: Some("docs/reference/survey.md"),
-    availability: ops::paired_availability,
+    availability: ds_cli_auth::native_availability,
 };
 
 pub static READ_COMMAND: Command = Command {
     id: "survey.form.read",
     path: &["survey", "form", "read"],
-    contract: 1,
+    contract: 2,
     summary: "Read one Form Factory schema and a bounded field page.",
     purpose: "Reads one global master form, including its drawing, visibility, validation and field definitions. Field pagination keeps complex forms discoverable without flooding one response.",
     chapter: Chapter::Survey,
-    effect: Effect::ReadOnly,
-    authority: Authority::DesktopUser,
+    effect: Effect::LocalAuthState,
+    authority: Authority::HeadlessUser,
     execution: Execution::Sync,
     args: &[
         Arg::value("slug", "<form-slug>", "Exact global form slug.").required(),
         Arg::value("field-offset", "<n>", "Zero-based field offset.").default("0"),
         Arg::value("field-limit", "<n>", "Return 1..100 fields.").default("50"),
-        ops::DESCRIPTOR_ARG,
+        crate::LANE,
     ],
     output: "The canonical form schema with one ordered field page, total field count, next offset, and completeness flag.",
     examples: &[Example {
@@ -68,20 +68,20 @@ pub static READ_COMMAND: Command = Command {
     }],
     refusals: COMMON_REFUSALS,
     reference: Some("docs/reference/survey.md"),
-    availability: ops::paired_availability,
+    availability: ds_cli_auth::native_availability,
 };
 
 pub static TYPES_COMMAND: Command = Command {
     id: "survey.form.types",
     path: &["survey", "form", "types"],
-    contract: 1,
+    contract: 2,
     summary: "Read the Form Factory field-type and condition registry.",
     purpose: "Returns the backend-owned authoring vocabulary an LLM needs before proposing a form schema. It does not infer types from existing forms.",
     chapter: Chapter::Survey,
-    effect: Effect::ReadOnly,
-    authority: Authority::DesktopUser,
+    effect: Effect::LocalAuthState,
+    authority: Authority::HeadlessUser,
     execution: Execution::Sync,
-    args: &[ops::DESCRIPTOR_ARG],
+    args: &[crate::LANE],
     output: "Field types, categories, condition operators and type aliases from Form Factory.",
     examples: &[Example {
         command: "ds survey form types --output json",
@@ -90,18 +90,18 @@ pub static TYPES_COMMAND: Command = Command {
     }],
     refusals: COMMON_REFUSALS,
     reference: Some("docs/reference/survey.md"),
-    availability: ops::paired_availability,
+    availability: ds_cli_auth::native_availability,
 };
 
 pub static CREATE_COMMAND: Command = Command {
     id: "survey.form.create",
     path: &["survey", "form", "create"],
-    contract: 1,
+    contract: 2,
     summary: "Create one global Form Factory schema from bounded JSON.",
     purpose: "Sends one explicit schema document to Form Factory. ds-brain remains the authority for slug normalization, field validation, geometry rules and authoring permission.",
     chapter: Chapter::Survey,
     effect: Effect::GlobalWrite,
-    authority: Authority::DesktopUser,
+    authority: Authority::HeadlessUser,
     execution: Execution::Sync,
     args: &[
         Arg::value(
@@ -110,7 +110,7 @@ pub static CREATE_COMMAND: Command = Command {
             "UTF-8 JSON object containing the proposed form schema.",
         )
         .required(),
-        ops::DESCRIPTOR_ARG,
+        crate::LANE,
     ],
     output: "The created canonical form with its assigned slug and version.",
     examples: &[Example {
@@ -120,18 +120,18 @@ pub static CREATE_COMMAND: Command = Command {
     }],
     refusals: COMMON_REFUSALS,
     reference: Some("docs/reference/survey.md"),
-    availability: ops::paired_availability,
+    availability: ds_cli_auth::native_availability,
 };
 
 pub static UPDATE_COMMAND: Command = Command {
     id: "survey.form.update",
     path: &["survey", "form", "update"],
-    contract: 1,
+    contract: 2,
     summary: "Update one global form with an optimistic version.",
     purpose: "Applies one schema patch to the named Form Factory master. The expected version prevents silently replacing a form changed since it was read.",
     chapter: Chapter::Survey,
     effect: Effect::GlobalWrite,
-    authority: Authority::DesktopUser,
+    authority: Authority::HeadlessUser,
     execution: Execution::Sync,
     args: &[
         Arg::value("slug", "<form-slug>", "Exact global form slug.").required(),
@@ -147,7 +147,7 @@ pub static UPDATE_COMMAND: Command = Command {
             "UTF-8 JSON object containing the intended schema patch.",
         )
         .required(),
-        ops::DESCRIPTOR_ARG,
+        crate::LANE,
     ],
     output: "The updated canonical form and its advanced version.",
     examples: &[Example {
@@ -157,18 +157,18 @@ pub static UPDATE_COMMAND: Command = Command {
     }],
     refusals: COMMON_REFUSALS,
     reference: Some("docs/reference/survey.md"),
-    availability: ops::paired_availability,
+    availability: ds_cli_auth::native_availability,
 };
 
 pub static LIFECYCLE_COMMAND: Command = Command {
     id: "survey.form.lifecycle",
     path: &["survey", "form", "lifecycle"],
-    contract: 1,
+    contract: 2,
     summary: "Duplicate, publish, archive, restore, or delete one master form.",
     purpose: "Projects one closed Form Factory lifecycle action. Archive and delete remain dependency-aware and refuse live project or template bindings unless --force expresses that exact destructive intent.",
     chapter: Chapter::Survey,
     effect: Effect::GlobalWrite,
-    authority: Authority::DesktopUser,
+    authority: Authority::HeadlessUser,
     execution: Execution::Sync,
     args: &[
         Arg::value("action", "<action>", "The one lifecycle transition.")
@@ -192,7 +192,7 @@ pub static LIFECYCLE_COMMAND: Command = Command {
             "force",
             "Allow archive/delete to leave project or template bindings unavailable.",
         ),
-        ops::DESCRIPTOR_ARG,
+        crate::LANE,
     ],
     output: "The lifecycle action and the backend's canonical resulting form or mutation receipt.",
     examples: &[Example {
@@ -202,7 +202,7 @@ pub static LIFECYCLE_COMMAND: Command = Command {
     }],
     refusals: COMMON_REFUSALS,
     reference: Some("docs/reference/survey.md"),
-    availability: ops::paired_availability,
+    availability: ds_cli_auth::native_availability,
 };
 
 pub fn list(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
@@ -217,7 +217,7 @@ pub fn list(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     if inputs.switch("detail") {
         args.insert("detail".into(), json!(true));
     }
-    crate::invoke(inputs, &FORM_LIST, args)
+    crate::invoke(inputs, FORM_LIST, args)
 }
 
 pub fn read(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
@@ -245,18 +245,18 @@ pub fn read(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             )?),
         ),
     ]);
-    crate::invoke(inputs, &FORM_READ, args)
+    crate::invoke(inputs, FORM_READ, args)
 }
 
 pub fn types(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
-    crate::invoke(inputs, &FORM_TYPES, Map::new())
+    crate::invoke(inputs, FORM_TYPES, Map::new())
 }
 
 pub fn create(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let schema = crate::load_json(inputs.require("schema")?, "schema", false)?;
     crate::invoke(
         inputs,
-        &FORM_CREATE,
+        FORM_CREATE,
         Map::from_iter([("schema".into(), schema)]),
     )
 }
@@ -281,7 +281,7 @@ pub fn update(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             crate::load_json(inputs.require("schema")?, "schema", false)?,
         ),
     ]);
-    crate::invoke(inputs, &FORM_UPDATE, args)
+    crate::invoke(inputs, FORM_UPDATE, args)
 }
 
 pub fn lifecycle(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
@@ -309,7 +309,7 @@ pub fn lifecycle(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> 
     if inputs.switch("force") {
         args.insert("force".into(), json!(true));
     }
-    crate::invoke(inputs, &FORM_LIFECYCLE, args)
+    crate::invoke(inputs, FORM_LIFECYCLE, args)
 }
 
 pub fn render_list(data: &Value) -> String {

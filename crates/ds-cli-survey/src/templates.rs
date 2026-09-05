@@ -15,12 +15,12 @@ use crate::{
 pub static LIST_COMMAND: Command = Command {
     id: "survey.templates.list",
     path: &["survey", "templates", "list"],
-    contract: 1,
+    contract: 2,
     summary: "List reusable project templates and their form counts.",
     purpose: "Reads reusable project-configuration snapshots. These are not Form Factory masters and are not projects created from them.",
     chapter: Chapter::Survey,
-    effect: Effect::ReadOnly,
-    authority: Authority::DesktopUser,
+    effect: Effect::LocalAuthState,
+    authority: Authority::HeadlessUser,
     execution: Execution::Sync,
     args: &[
         Arg::value(
@@ -30,7 +30,7 @@ pub static LIST_COMMAND: Command = Command {
         ),
         Arg::value("limit", "<n>", "Return at most 1..500 templates.").default("50"),
         Arg::switch("detail", "Include bounded template metadata."),
-        ops::DESCRIPTOR_ARG,
+        crate::LANE,
     ],
     output: "Matching total, bounded template rows, form counts, visibility, source project, and omitted count.",
     examples: &[Example {
@@ -40,18 +40,18 @@ pub static LIST_COMMAND: Command = Command {
     }],
     refusals: COMMON_REFUSALS,
     reference: Some("docs/reference/survey.md"),
-    availability: ops::paired_availability,
+    availability: ds_cli_auth::native_availability,
 };
 
 pub static READ_COMMAND: Command = Command {
     id: "survey.template.read",
     path: &["survey", "template", "read"],
-    contract: 1,
+    contract: 2,
     summary: "Read one project template and a bounded project-form page.",
     purpose: "Returns the reusable template snapshot, including its network summary and paged per-form settings. It does not activate or create a project.",
     chapter: Chapter::Survey,
-    effect: Effect::ReadOnly,
-    authority: Authority::DesktopUser,
+    effect: Effect::LocalAuthState,
+    authority: Authority::HeadlessUser,
     execution: Execution::Sync,
     args: &[
         Arg::value(
@@ -62,7 +62,7 @@ pub static READ_COMMAND: Command = Command {
         .required(),
         Arg::value("form-offset", "<n>", "Zero-based template-form offset.").default("0"),
         Arg::value("form-limit", "<n>", "Return 1..100 template forms.").default("50"),
-        ops::DESCRIPTOR_ARG,
+        crate::LANE,
     ],
     output: "The template metadata and one ordered project-form settings page with total, next offset and completeness.",
     examples: &[Example {
@@ -72,18 +72,18 @@ pub static READ_COMMAND: Command = Command {
     }],
     refusals: COMMON_REFUSALS,
     reference: Some("docs/reference/survey.md"),
-    availability: ops::paired_availability,
+    availability: ds_cli_auth::native_availability,
 };
 
 pub static CREATE_COMMAND: Command = Command {
     id: "survey.template.create",
     path: &["survey", "template", "create"],
-    contract: 1,
+    contract: 2,
     summary: "Create a reusable project template from one project's forms.",
     purpose: "Snapshots the named project's canonical project-form configuration into a distinct reusable template. It does not create another project.",
     chapter: Chapter::Survey,
     effect: Effect::GlobalWrite,
-    authority: Authority::DesktopUser,
+    authority: Authority::HeadlessProject,
     execution: Execution::Sync,
     args: &[
         Arg::value(
@@ -99,7 +99,7 @@ pub static CREATE_COMMAND: Command = Command {
         Arg::value("visibility", "<visibility>", "Initial template visibility.")
             .choices(&["private", "organization", "public"])
             .default("private"),
-        ops::DESCRIPTOR_ARG,
+        crate::LANE,
     ],
     output: "The created template slug and canonical template snapshot.",
     examples: &[Example {
@@ -109,18 +109,18 @@ pub static CREATE_COMMAND: Command = Command {
     }],
     refusals: COMMON_REFUSALS,
     reference: Some("docs/reference/survey.md"),
-    availability: ops::paired_availability,
+    availability: ds_cli_auth::native_availability,
 };
 
 pub static APPLY_COMMAND: Command = Command {
     id: "survey.template.apply",
     path: &["survey", "template", "apply"],
-    contract: 1,
+    contract: 2,
     summary: "Apply a project template to an existing project.",
     purpose: "Writes template-contained project-form settings into the explicitly named existing project. This is not new-project creation.",
     chapter: Chapter::Survey,
     effect: Effect::GlobalWrite,
-    authority: Authority::DesktopUser,
+    authority: Authority::HeadlessProject,
     execution: Execution::Sync,
     args: &[
         Arg::value("project", "<project-id>", "Existing target project id.").required(),
@@ -132,7 +132,7 @@ pub static APPLY_COMMAND: Command = Command {
         )
         .choices(&["overwrite", "preserve"])
         .default("overwrite"),
-        ops::DESCRIPTOR_ARG,
+        crate::LANE,
     ],
     output: "The target project, forms applied/skipped, and refreshed project-form state when available.",
     examples: &[Example {
@@ -142,18 +142,18 @@ pub static APPLY_COMMAND: Command = Command {
     }],
     refusals: COMMON_REFUSALS,
     reference: Some("docs/reference/survey.md"),
-    availability: ops::paired_availability,
+    availability: ds_cli_auth::native_availability,
 };
 
 pub static LIFECYCLE_COMMAND: Command = Command {
     id: "survey.template.lifecycle",
     path: &["survey", "template", "lifecycle"],
-    contract: 1,
+    contract: 2,
     summary: "Publish, privatize, or delete one reusable project template.",
     purpose: "Changes only the template catalogue object. Projects previously created from or updated by it remain independent project instances.",
     chapter: Chapter::Survey,
     effect: Effect::GlobalWrite,
-    authority: Authority::DesktopUser,
+    authority: Authority::HeadlessUser,
     execution: Execution::Sync,
     args: &[
         Arg::value("action", "<action>", "The one template transition.")
@@ -165,7 +165,7 @@ pub static LIFECYCLE_COMMAND: Command = Command {
             "Exact reusable template slug.",
         )
         .required(),
-        ops::DESCRIPTOR_ARG,
+        crate::LANE,
     ],
     output: "The requested transition and backend mutation receipt.",
     examples: &[Example {
@@ -175,18 +175,18 @@ pub static LIFECYCLE_COMMAND: Command = Command {
     }],
     refusals: COMMON_REFUSALS,
     reference: Some("docs/reference/survey.md"),
-    availability: ops::paired_availability,
+    availability: ds_cli_auth::native_availability,
 };
 
 pub static CREATE_PROJECT_COMMAND: Command = Command {
     id: "survey.project.create-from-template",
     path: &["survey", "project", "create-from-template"],
-    contract: 1,
+    contract: 2,
     summary: "Create a new project instance from a reusable project template.",
     purpose: "Creates a distinct project and copies the template's project-form configuration into it. It does not modify the template and does not require a map or active project.",
     chapter: Chapter::Survey,
     effect: Effect::GlobalWrite,
-    authority: Authority::DesktopUser,
+    authority: Authority::HeadlessUser,
     execution: Execution::Sync,
     args: &[
         Arg::value(
@@ -206,7 +206,7 @@ pub static CREATE_PROJECT_COMMAND: Command = Command {
             "<project-id>",
             "Optional exact id for the new project.",
         ),
-        ops::DESCRIPTOR_ARG,
+        crate::LANE,
     ],
     output: "The new project id and name, source template slug, and number of project forms enabled.",
     examples: &[Example {
@@ -216,7 +216,7 @@ pub static CREATE_PROJECT_COMMAND: Command = Command {
     }],
     refusals: COMMON_REFUSALS,
     reference: Some("docs/reference/survey.md"),
-    availability: ops::paired_availability,
+    availability: ds_cli_auth::native_availability,
 };
 
 pub fn list(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
@@ -228,7 +228,7 @@ pub fn list(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     if inputs.switch("detail") {
         args.insert("detail".into(), json!(true));
     }
-    crate::invoke(inputs, &TEMPLATE_LIST, args)
+    crate::invoke(inputs, TEMPLATE_LIST, args)
 }
 
 pub fn read(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
@@ -256,7 +256,7 @@ pub fn read(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             )?),
         ),
     ]);
-    crate::invoke(inputs, &TEMPLATE_READ, args)
+    crate::invoke(inputs, TEMPLATE_READ, args)
 }
 
 pub fn create(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
@@ -274,7 +274,7 @@ pub fn create(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     crate::optional_text(inputs, "slug", "slug", 160, &mut args)?;
     crate::optional_text(inputs, "description", "description", 2_000, &mut args)?;
     crate::optional_text(inputs, "category", "category", 100, &mut args)?;
-    crate::invoke(inputs, &TEMPLATE_CREATE, args)
+    crate::invoke(inputs, TEMPLATE_CREATE, args)
 }
 
 pub fn apply(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
@@ -292,7 +292,7 @@ pub fn apply(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             json!(inputs.require("merge-strategy")?),
         ),
     ]);
-    crate::invoke(inputs, &TEMPLATE_APPLY, args)
+    crate::invoke(inputs, TEMPLATE_APPLY, args)
 }
 
 pub fn lifecycle(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
@@ -303,7 +303,7 @@ pub fn lifecycle(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> 
             json!(crate::text(inputs.require("template")?, "template", 160)?),
         ),
     ]);
-    crate::invoke(inputs, &TEMPLATE_LIFECYCLE, args)
+    crate::invoke(inputs, TEMPLATE_LIFECYCLE, args)
 }
 
 pub fn create_project(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
@@ -322,7 +322,7 @@ pub fn create_project(inputs: &Inputs, _context: &Context) -> Result<Value, Fail
         ),
     ]);
     crate::optional_text(inputs, "project-id", "projectId", 160, &mut args)?;
-    crate::invoke(inputs, &CREATE_PROJECT, args)
+    crate::invoke(inputs, CREATE_PROJECT, args)
 }
 
 pub fn render_list(data: &Value) -> String {

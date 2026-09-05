@@ -3438,6 +3438,7 @@ fn design_lv_project_export_refuses_an_existing_artifact_before_auth_or_desktop(
             },
             "layers":{"method":"POST","path":"/api/v1/layers","actions":["get_config","refresh","reorder"]},
             "styles":{"method":"POST","path":"/api/v1/styles","action":"update_style"},
+            "survey_control":["POST /api/v1/form-factory: list,get,get_field_types,create,update,duplicate,publish,unpublish,archive,restore,delete", "POST /api/v1/project-forms: activate,settings_editor,bulk_save", "POST /api/v1/projects/templates: list,create,set_public,delete", "GET /api/v1/projects/templates/{slug}", "POST /api/v1/projects: apply_template", "POST /api/v1/projects/from-template"],
             "project_data":{"method":"POST","path":"/api/v1/project_data","actions":["list","upload_start","upload","delete"]},
             "tiles": {
                 "method": "POST",
@@ -3455,7 +3456,7 @@ fn design_lv_project_export_refuses_an_existing_artifact_before_auth_or_desktop(
     std::fs::write(
         &profile_path,
         serde_json::to_vec(&json!({
-            "schema_version": "ds.native-client-profiles/v15",
+            "schema_version": "ds.native-client-profiles/v16",
             "development": true,
             "profiles": {
                 "stable": profile(
@@ -5607,7 +5608,7 @@ fn every_cartography_scenario_is_a_declared_example_of_its_own_command() {
 }
 
 #[test]
-fn project_forms_native_reads_preserve_the_explicit_project_desktop_surface() {
+fn project_forms_native_reads_include_explicit_selected_project_commands() {
     let native = ok(&[
         "capabilities",
         "survey.project-forms.list",
@@ -5963,7 +5964,7 @@ fn project_forms_native_reads_preserve_the_explicit_project_desktop_surface() {
         "--output",
         "json",
     ]);
-    assert_eq!(legacy["command"]["authority"], "desktop_user");
+    assert_eq!(legacy["command"]["authority"], "headless_project");
     assert!(
         legacy["command"]["inputs"]
             .as_array()
@@ -5978,7 +5979,7 @@ fn project_forms_native_reads_preserve_the_explicit_project_desktop_surface() {
         "--output",
         "json",
     ]);
-    assert_eq!(legacy_editor["command"]["authority"], "desktop_user");
+    assert_eq!(legacy_editor["command"]["authority"], "headless_project");
     assert!(
         legacy_editor["command"]["inputs"]
             .as_array()
@@ -6072,5 +6073,69 @@ fn native_layers_persist_without_a_desktop_and_gis_inspection_pins_exact_bytes()
         ]),
         "confirmation_required"
     );
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn survey_capture_survives_separate_cli_processes_without_auth_or_desktop() {
+    let root = temp_root("survey-workspace");
+    std::fs::create_dir_all(&root).unwrap();
+    let workspace = root.join("offline");
+    let snapshot = root.join("snapshot.json");
+    let document = root.join("point.json");
+    std::fs::write(&snapshot, serde_json::to_vec(&json!({"project_id":"migration","forms":[{"slug":"poles","enabled":true,"fields":[{"key":"name","type":"text","required":true}],"entry_document_schema":{"top_level_keys":[{"key":"data"},{"key":"geometry"}]}}]})).unwrap()).unwrap();
+    std::fs::write(
+        &document,
+        r#"{"data":{"name":"Legacy pole"},"geometry":{"type":"Point","coordinates":[30,-2]}}"#,
+    )
+    .unwrap();
+    let invoke = |args: &[&str]| {
+        let result = Command::new(env!("CARGO_BIN_EXE_ds"))
+            .args(args)
+            .args(["--output", "json"])
+            .env("DS_NATIVE_STATE_DIR", root.join("no-auth"))
+            .env("DS_DESKTOP_DESCRIPTOR", root.join("no-desktop"))
+            .output()
+            .unwrap();
+        let envelope: Value = serde_json::from_slice(&result.stdout).unwrap();
+        (result.status.success(), envelope)
+    };
+    let path = workspace.to_str().unwrap();
+    let (ok, receipt) = invoke(&[
+        "survey",
+        "workspace",
+        "init",
+        "--workspace",
+        path,
+        "--snapshot",
+        snapshot.to_str().unwrap(),
+    ]);
+    assert!(ok, "{receipt}");
+    let (ok, receipt) = invoke(&[
+        "survey",
+        "workspace",
+        "collect",
+        "--workspace",
+        path,
+        "--form",
+        "poles",
+        "--document",
+        document.to_str().unwrap(),
+        "--created-at",
+        "2026-09-05T10:00:00Z",
+        "--doc-id",
+        "legacy-123",
+    ]);
+    assert!(ok, "{receipt}");
+    assert_eq!(receipt["data"]["uploaded"], false);
+    let (ok, inventory) = invoke(&["survey", "workspace", "list", "--workspace", path]);
+    assert!(ok, "{inventory}");
+    assert_eq!(inventory["data"]["pending"], 1);
+    assert_eq!(inventory["data"]["entries"][0]["doc_id"], "legacy-123");
+    let (ok, refusal) = invoke(&["survey", "workspace", "sync", "--workspace", path]);
+    assert!(!ok, "sync must require confirmation: {refusal}");
+    let (_, inventory) = invoke(&["survey", "workspace", "list", "--workspace", path]);
+    assert_eq!(inventory["data"]["pending"], 1);
+    assert!(!root.join("no-auth").exists());
     std::fs::remove_dir_all(root).unwrap();
 }

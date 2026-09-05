@@ -370,10 +370,15 @@ const SURVEY_PROJECT_COMMANDS: &[&str] = &[
     "survey.project.create-from-template",
 ];
 
-// Bulk migration is intentionally isolated from the ordinary Survey project
-// profile: one high-blast-radius leaf plus ds_catalog is the whole typed MCP
-// surface an import agent receives.
-const SURVEY_MIGRATION_COMMANDS: &[&str] = &["survey.entries.import"];
+// Offline capture and explicit bulk publication share the migration workflow.
+const SURVEY_MIGRATION_COMMANDS: &[&str] = &[
+    "survey.entries.import",
+    "survey.workspace.init",
+    "survey.workspace.prepare",
+    "survey.workspace.collect",
+    "survey.workspace.list",
+    "survey.workspace.sync",
+];
 
 const DESIGN_EDIT_COMMANDS: &[&str] = &[
     "design.features.select",

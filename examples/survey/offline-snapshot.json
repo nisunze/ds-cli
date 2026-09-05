@@ -1,0 +1,17 @@
+{
+  "project_id": "offline-demo",
+  "forms": [
+    {
+      "slug": "poles",
+      "display_name": "Offline demonstration poles",
+      "version": 1,
+      "enabled": true,
+      "fields": [
+        { "key": "name", "label": "Name", "type": "text", "required": true }
+      ],
+      "entry_document_schema": {
+        "top_level_keys": [ { "key": "data" }, { "key": "geometry" } ]
+      }
+    }
+  ]
+}

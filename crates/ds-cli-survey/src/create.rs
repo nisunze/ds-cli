@@ -52,7 +52,7 @@ const LANE: Arg = Arg::value(
 .default("stable")
 .choices(&["stable", "canary"]);
 
-const REFUSALS: &[Refusal] = &[
+pub(crate) const REFUSALS: &[Refusal] = &[
     Refusal {
         code: "survey_entry_create_invalid",
         when: "the form, document id, replay key, timestamp, context, or typed JSON values violate the closed create grammar",

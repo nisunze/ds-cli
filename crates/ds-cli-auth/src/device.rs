@@ -600,6 +600,13 @@ impl DeviceSession {
     ) -> Result<ds_client_core::ProjectDataReceipt, ClientError> {
         fixed_device_call!(self, project_data, project, command)
     }
+    pub fn survey_control(
+        &mut self,
+        project: Option<&str>,
+        command: &ds_client_core::SurveyControlCommand,
+    ) -> Result<Value, ClientError> {
+        fixed_device_call!(self, survey_control, project, command)
+    }
     pub fn style_edit(
         &mut self,
         project: &str,

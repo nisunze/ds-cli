@@ -41,6 +41,7 @@ authors = ["Data Solutions Engineering"]
 publish = false
 
 [workspace.dependencies]
+ds-survey-store = { path = "../ds-web/crates/ds-survey-store" }
 base64 = "0.22.1"
 # The whole third-party surface. Every entry is already load-bearing in a
 # sibling workspace, so this repository introduces no new dependency class.

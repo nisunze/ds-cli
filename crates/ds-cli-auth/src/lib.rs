@@ -2925,6 +2925,70 @@ pub fn render_project(data: &Value) -> String {
     }
 }
 
+pub use ds_client_core::SurveyControlCommand;
+pub fn survey_control(lane_value: &str, command: &SurveyControlCommand) -> Result<Value, Failure> {
+    command.validate().map_err(map_client)?;
+    let lane = Lane::parse(lane_value)?;
+    let _ = probe_headless_identity(lane.token())?;
+    if let Some(mut device) = device::restore_session(lane)? {
+        let selected = if command.project_hint().is_some() {
+            let identity = device.context();
+            Some(
+                ProjectContextLease::acquire(device.profile())?
+                    .load_snapshot(device.profile(), identity.uid(), identity.email())?
+                    .ok_or_else(|| {
+                        Failure::conflict(
+                            "headless_project_not_selected",
+                            "Select a native project before changing its forms",
+                        )
+                        .remedy("run ds auth project use")
+                    })?,
+            )
+        } else {
+            None
+        };
+        return device
+            .survey_control(selected.as_ref().map(|s| s.project_id()), command)
+            .map_err(map_client);
+    }
+    let profile = profile::load(lane)?;
+    let store = NativeRefreshStore::open()?;
+    let mut client = Client::new(profile, NativeTransport, store);
+    let user = require_restore_before_context(&mut client)?;
+    let selected = if command.project_hint().is_some() {
+        Some(load_selected_project(client.profile(), &user)?)
+    } else {
+        None
+    };
+    let result = client.survey_control(selected.as_ref().map(|s| s.project_id()), command, now());
+    match selected {
+        Some(selected) => with_released_context_disposition(client.profile(), &selected, result),
+        None => result.map_err(map_client),
+    }
+}
+
+pub fn survey_workspace_snapshot(lane_value: &str) -> Result<Value, Failure> {
+    let lane = Lane::parse(lane_value)?;
+    if let Some((mut device, selected)) = restored_device_project(lane)? {
+        let command = SurveyControlCommand::WorkspaceSnapshot {
+            project: selected.project_id().into(),
+        };
+        return device
+            .survey_control(Some(selected.project_id()), &command)
+            .map_err(map_client);
+    }
+    let profile = profile::load(lane)?;
+    let store = NativeRefreshStore::open()?;
+    let mut client = Client::new(profile, NativeTransport, store);
+    let user = require_restore_before_context(&mut client)?;
+    let selected = load_selected_project(client.profile(), &user)?;
+    let command = SurveyControlCommand::WorkspaceSnapshot {
+        project: selected.project_id().into(),
+    };
+    let result = client.survey_control(Some(selected.project_id()), &command, now());
+    with_released_context_disposition(client.profile(), &selected, result)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
