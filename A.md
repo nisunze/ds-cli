@@ -478,18 +478,37 @@ or which bytes an earlier computation consumed.
 
 The owner reports **Rwandan assembly names in computed transformer output**.
 This is a computation correctness investigation, separate from sheet dirty
-state, saving, and the saved Sketch preset. It remains unresolved: do not
-recommend a save or preset change as a proven fix. Inspection found Rust's
-`pole_attribution` still falls back to `rule_edcl`/another set when the requested
-set is missing, defaults empty tapping assemblies to `ABC Terminal Assembly`,
-and has Rwanda-specific suspension/strain constants. These paths are not yet
-corrected or proven to be the path that affected the reported transformer.
-Trace the affected result's actual/recommended assembly, assignment and lock
-state, and exact consumed rule selection before reseeding or replacing values.
-Preserve authored/surveyed/installed component authority.
+state, saving, and the saved Sketch preset. The original visible mismatch has
+not been reproduced: current local `beinamar_01`, `_02`, and `_04` assembly
+histograms contain Tchad codes. Do not present a save, preset change or reseed
+as a proven fix for that earlier output.
+
+The focused `ds-network` correction removes the different-country rule fallback
+and the hardcoded tapping assembly. Named tables require an explicit selector;
+missing/empty selected tables refuse attribution. Legacy flat EDCL rows cannot
+satisfy an explicit Tchad selector. The legacy suspension-break rewrite requires
+both names in the selected table. Cell locks and authored tapping values retain
+actual values with computed recommendations; an unassigned/unmatched blank
+assembly stays blank. Native/WASM hosts consume the same Rust implementation;
+no TypeScript compute path was added. See ds-network's
+`docs/contracts/lv-poles-rules-family-contract.md` for regression scope.
+
+Follow-up still needed: identify the originally affected output and its actual
+versus recommended values, run settings, locks, and exact consumed config bytes.
+Suspension/earthing policy still needs explicit standard-level data; no Tchad
+engineering equivalents were guessed. Cloud deployment/legacy Standard routes
+were not validated during the local correction. Preserve authored/surveyed/
+installed component authority when reconciling existing data.
 
 Remaining offline boundary: publishing edited network-setting sheets still
 requires cloud writes and a newly minted reporter input receipt. Cached reads
 are not proof of offline settings publication. A durable local edit transaction
 and an authenticated exact-content reconciliation contract remain required;
 never reuse a server receipt with mutated settings bytes.
+
+Validation for this correction: 439 native tests passed in `ds-network` and
+`ds-network-wasm` with all features; affected-crate Clippy and formatting passed.
+WASM single/batch regression tests passed in Node. Five regression cases fail
+against the previous implementation and pass against the correction. The full
+workspace release gate remains blocked by pre-existing `ds-grid-exchange`
+Clippy errors; it was not represented as green. No GCP operation was needed.
