@@ -148,6 +148,10 @@ inside DS GridDesign. No design features or cloud data are changed.",
         SETTING_ARG,
         RESET_SETTINGS_ARG,
         DRY_RUN_ARG,
+        Arg::switch(
+            "config-only",
+            "Inspect cached project rule sets and assemblies only; no map, processor startup or network wait.",
+        ),
         Arg::value(
             "limit",
             "<n>",
@@ -156,7 +160,7 @@ inside DS GridDesign. No design features or cloud data are changed.",
         .default(DEFAULT_LIMIT),
         DESCRIPTOR_ARG,
     ],
-    output: "The selected preset, effective typed processor settings, and bounded customer-source inventories.",
+    output: "The selected preset, effective typed processor settings, bounded customer-source inventories, and a bounded inspection of cached rule-set and assembly references.",
     examples: &[
         Example {
             command: "ds map design setup --output json",
@@ -220,6 +224,9 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         .remedy("name a Point source layer, or omit --survey-only to retain design customers"));
     }
     let mut arguments = Map::new();
+    if inputs.switch("config-only") {
+        arguments.insert("configOnly".into(), json!(true));
+    }
     if !survey_layers.is_empty() || !temporary_layers.is_empty() {
         arguments.insert("surveyLayers".into(), json!(survey_layers));
         arguments.insert("temporaryLayers".into(), json!(temporary_layers));
@@ -262,6 +269,9 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
 }
 
 fn project_result(result: &Value, limit: usize) -> Value {
+    if result["inspectionOnly"] == true {
+        return json!({"project":result["project"],"inspection_only":true,"project_config_summary":result["projectConfigSummary"]});
+    }
     let empty = Vec::new();
     let temporary = result["availableTemporaryLayers"]
         .as_array()
@@ -347,6 +357,13 @@ fn parse_settings(raw: &[String]) -> Result<Map<String, Value>, Failure> {
 }
 
 pub fn render(data: &Value) -> String {
+    if data["inspection_only"] == true {
+        return format!(
+            "Cached network settings for {}\n{}\n",
+            data["project"].as_str().unwrap_or("project"),
+            serde_json::to_string_pretty(&data["project_config_summary"]).unwrap_or_default(),
+        );
+    }
     let surveys = data["survey_layers"].as_array().map_or(0, Vec::len);
     let temporary = data["temporary_layers"].as_array().map_or(0, Vec::len);
     let available = data["available_survey_layers"]
@@ -379,6 +396,23 @@ pub fn render(data: &Value) -> String {
 mod tests {
     use super::{parse_settings, project_result};
     use serde_json::json;
+
+    #[test]
+    fn cached_inspection_does_not_invent_processor_defaults() {
+        let result = project_result(
+            &json!({
+                "project": "p", "inspectionOnly": true,
+                "projectConfigSummary": {"cached": true, "selected_rule_set": "rule_tchd"},
+                "availableSurveyLayers": [{"private": "not part of inspection"}]
+            }),
+            20,
+        );
+        assert!(result.get("preset").is_none());
+        assert!(result.get("available_survey_layers").is_none());
+        let rendered = super::render(&result);
+        assert!(rendered.contains("rule_tchd"));
+        assert!(!rendered.contains("sketch"));
+    }
 
     #[test]
     fn parses_typed_processor_overrides() {

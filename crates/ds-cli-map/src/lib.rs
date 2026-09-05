@@ -235,6 +235,7 @@ pub const DESIGN_PROCESS: BridgeOp = BridgeOp {
 pub const DESIGN_PROCESS_CONFIGURE: BridgeOp = BridgeOp {
     operation: "design.process.configure",
     arguments: &[
+        "configOnly",
         "surveyLayers",
         "temporaryLayers",
         "includeDesignCustomers",
