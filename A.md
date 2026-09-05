@@ -6,6 +6,9 @@ for iteration. Earlier resource-limit and pause statements below describe the
 original review, not the current authorization. This is an acceptance contract,
 not evidence that the whole system already satisfies it.
 
+Use [B.md](B.md) for the prioritized remaining slices, known blockers and
+CLI/kernel acceptance requirements. This document remains the broader contract.
+
 ## Current closure state
 
 The first reconciliation checkpoint connects immutable Design versions and
