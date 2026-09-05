@@ -78,9 +78,11 @@ coverage without applicable permission and working tests. See the
 
 ## Small slice delivered with this plan
 
-Governance's Architecture, System, Project, Desktop installations and Users
-navigation moves into the existing application drawer. The duplicate Map
-shortcut is removed from the page; the normal application navigation remains.
+Governance navigation uses the existing application drawer in this order:
+System, Project, Desktop installations, Users, Architecture. Architecture keeps
+that drawer populated and places its own chapters in a horizontal bar above
+the canvas. The duplicate Map shortcut is removed from the page; the normal
+application navigation remains.
 This is presentation work, not a new domain command or a CLI migration.
 
 The Windows release's browser-WASM cache builder also omitted Solar provenance
@@ -90,6 +92,14 @@ active kernel lockfile to the build (converting the path for native Windows
 Cargo). The missing-SHA panic was reproduced locally; the corrected contracts
 release check and Linux/simulated-Windows cache regression pass. A native
 Windows installer build still requires operator verification.
+
+The web release's Grid exchange validation also exposed an obsolete expectation
+for reconstructed STRUCT/PRT headers and a portable-projection rewrite of an
+embedded PRT path. Production now verifies the actual emitted library member
+against its retained digest before preserving those exact bytes through path
+projection; it does not substitute an older asset for an edited export. The
+regression checks exact retained library bytes, and all 34 conversion-planner
+tests pass locally. This does not claim a new native PLS-CADD acceptance run.
 
 ## Acceptance for every implementation slice
 
