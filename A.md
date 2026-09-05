@@ -305,6 +305,23 @@ Known from this session:
   jobs, captured inputs, native processing, background launch and actual
   XLSX/PDF generation. Those tests do not prove the entire hybrid architecture.
 
+Confirmed Solar command-boundary gap from the bounded follow-up:
+
+- Portfolio catalog validation, mutation planning and sealed-result validation
+  use this kernel's native/WASM exports. Calculation, chart rendering and CPU
+  workers correctly remain owned by `ds-solar`.
+- The new `ds-web/src/lib/solar/portfolio-batch.ts` still owns multi-portfolio
+  queuing, lifecycle/cancellation coordination and graph-strategy checks in
+  TypeScript. UI and CLI share `native-batch.ts` for individual native runs,
+  but do not yet submit the same typed multi-portfolio kernel command. This
+  is incomplete adoption of the required command-center boundary; reduced
+  TypeScript line counts and Rust computation do not close that gap.
+- Move the batch request, planning and lifecycle transitions into the command
+  kernel, expose identical parameters to UI and CLI, and delete the replaced
+  TypeScript decisions. Keep host IO, subscriptions and rendering as adapters;
+  keep the calculation engine in `ds-solar`. Prove parity for ordered membership
+  pins, defaults, queued cancellation, independent failures and restart recovery.
+
 Potential weak parts, **not investigated further**:
 
 - Solar processor utilization still needs sustained-load and Cloud Run quota
