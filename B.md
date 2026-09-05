@@ -1,5 +1,34 @@
 # B — unfinished work and acceptance requirements
 
+## Contents and completion tracker
+
+**9 work chapters remain open; 0 are closed.** Open includes partially
+implemented work awaiting its remaining acceptance evidence.
+
+- [ ] [Command and Rust migration](#remaining-command-and-rust-migration-closure)
+- [ ] [Reconciliation and storage](#remaining-reconciliation-and-storage-closure)
+- [ ] [Desktop governance and recovery](#remaining-desktop-governance-and-recovery-closure)
+- [ ] [Offline startup, settings and delivery](#remaining-offline-startup-settings-and-delivery-closure)
+- [ ] [Version retrieval, comparison and location consistency](#remaining-version-retrieval-comparison-and-location-consistency)
+- [ ] [Solar IO and performance](#remaining-solar-io-and-performance-closure)
+- [ ] [Tchad investigation](#remaining-tchad-investigation)
+- [ ] [Uninvestigated risks](#uninvestigated-risks-requiring-bounded-verification)
+- [ ] [Release verification](#outstanding-release-verification)
+
+Reference sections: [Direction](#required-direction-for-unfinished-slices) ·
+[Priorities and blockers](#prioritized-work) ·
+[Acceptance rules](#acceptance-for-closing-any-item).
+
+**Update this tracker after every implementation slice.** Cross-check the
+chapter's remaining requirements and acceptance evidence before checking its
+box. Partial progress leaves the box open; add a short remaining-work note to
+its entry so the owner can assess progress here. For closure, add the commit
+and verification evidence beside the checked entry, update the counts above,
+and retain the linked chapter heading with a brief closure receipt. Tests,
+pushes and deployment are distinct; unchecked required verification keeps the
+chapter open. Uninvestigated risks close only after investigation and resolution
+or an explicit owner decision to defer them, recorded here.
+
 This is the single remaining-work register. It replaces A.md. Items below need
 implementation, integration, deployment or verification as stated; a partially
 implemented foundation is not a request to rebuild it. Completed checkpoints
