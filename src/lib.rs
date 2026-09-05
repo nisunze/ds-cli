@@ -11,10 +11,25 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use zeroize::Zeroize;
 
+pub mod design;
 mod project_control;
 mod solar_network_seed;
 mod solar_portfolio;
 pub mod survey;
+
+#[cfg(feature = "wasm")]
+#[wasm_bindgen::prelude::wasm_bindgen(js_name = resolveDesignSources)]
+pub fn resolve_design_sources_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
+    design::resolve_sources(input)
+        .and_then(|v| serde_json::to_string(&v).map_err(|e| e.to_string()))
+        .map_err(|e| wasm_bindgen::JsValue::from_str(&e))
+}
+
+#[cfg(feature = "wasm")]
+#[wasm_bindgen::prelude::wasm_bindgen(js_name = designEdit)]
+pub fn design_edit_wasm(snapshot: &[u8], request: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
+    design::edit_json(snapshot, request).map_err(|error| wasm_bindgen::JsValue::from_str(&error))
+}
 
 #[cfg(feature = "wasm")]
 #[wasm_bindgen::prelude::wasm_bindgen(js_name = surveyEvaluate)]

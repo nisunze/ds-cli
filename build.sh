@@ -3,7 +3,7 @@ set -euo pipefail
 
 cd "$(dirname "$0")"
 
-cargo test
+cargo test --workspace
 wasm-pack test --node --features wasm
 solar_source_sha="$(git -C ../ds-solar rev-parse HEAD)"
 DS_SOLAR_SOURCE_SHA="$solar_source_sha" \

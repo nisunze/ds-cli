@@ -4,6 +4,12 @@ Shared deterministic command and state transitions used by native DS clients
 and browser WASM. Svelte remains the presentation owner; hosts retain network,
 credential storage, IndexedDB, OS, and rendering effects.
 
+The [offline Design workspace](docs/design-workspace.md) adds shared source
+authority and version-fenced feature transitions. Its separate native
+`ds-design-workspace` crate owns durable revisions, background jobs, report
+inputs and pending publication. Network computation and rendering remain with
+their existing owners. Browser source precedence has no TypeScript fallback.
+
 The first deliberately small slice was Firebase login-response validation. It
 allows `ds` and ds-web to bind UID, email, token subject, Firebase audience,
 issuer, and expiry with one implementation. Password collection, HTTP calls,

@@ -1,0 +1,18 @@
+[package]
+name = "ds-design-workspace"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Native offline Design persistence and job lifecycle; no renderer or network transport."
+
+[dependencies]
+ds-command-kernel = { path = "../.." }
+ds-network = { path = "../../../ds-network/crates/ds-network" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+rusqlite = { version = "0.32", features = ["bundled"] }
+rayon = "1"
+fs2 = "0.4"
+tempfile = "3"
+thiserror = "2"
