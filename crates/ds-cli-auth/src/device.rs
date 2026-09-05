@@ -600,6 +600,13 @@ impl DeviceSession {
     ) -> Result<ds_client_core::ProjectDataReceipt, ClientError> {
         fixed_device_call!(self, project_data, project, command)
     }
+    pub fn solar_project(
+        &mut self,
+        project: &str,
+        command: &ds_client_core::solar_project::Command,
+    ) -> Result<Value, ClientError> {
+        fixed_device_call!(self, solar_project, project, command)
+    }
     pub fn survey_control(
         &mut self,
         project: Option<&str>,

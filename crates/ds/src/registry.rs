@@ -350,6 +350,56 @@ static REPORT_ENTRIES: &[Entry] = &[
 
 static SOLAR_ENTRIES: &[Entry] = &[
     Entry {
+        command: &ds_cli_solar::project::REBASE,
+        handler: ds_cli_solar::project::rebase,
+        render: ds_cli_solar::project::render,
+    },
+    Entry {
+        command: &ds_cli_solar::project::CITY_READ,
+        handler: ds_cli_solar::project::city_read,
+        render: ds_cli_solar::project::render,
+    },
+    Entry {
+        command: &ds_cli_solar::project::CITY_WRITE,
+        handler: ds_cli_solar::project::city_write,
+        render: ds_cli_solar::project::render,
+    },
+    Entry {
+        command: &ds_cli_solar::project_sync::COMMAND,
+        handler: ds_cli_solar::project_sync::run,
+        render: ds_cli_solar::project_sync::render_sync,
+    },
+    Entry {
+        command: &ds_cli_solar::project::INIT,
+        handler: ds_cli_solar::project::init,
+        render: ds_cli_solar::project::render,
+    },
+    Entry {
+        command: &ds_cli_solar::project::SEED,
+        handler: ds_cli_solar::project::seed,
+        render: ds_cli_solar::project::render,
+    },
+    Entry {
+        command: &ds_cli_solar::project::RUN,
+        handler: ds_cli_solar::project::run,
+        render: ds_cli_solar::project::render,
+    },
+    Entry {
+        command: &ds_cli_solar::project::STATUS,
+        handler: ds_cli_solar::project::status,
+        render: ds_cli_solar::project::render,
+    },
+    Entry {
+        command: &ds_cli_solar::project::RESULT,
+        handler: ds_cli_solar::project::result,
+        render: ds_cli_solar::project::render,
+    },
+    Entry {
+        command: &ds_cli_solar::project::OUTBOX,
+        handler: ds_cli_solar::project::outbox,
+        render: ds_cli_solar::project::render,
+    },
+    Entry {
         command: &ds_cli_solar::engine::COMMAND,
         handler: ds_cli_solar::engine::run,
         render: ds_cli_solar::engine::render,

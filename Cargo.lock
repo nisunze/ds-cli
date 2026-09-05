@@ -874,10 +874,12 @@ dependencies = [
  "ds-cli-exec",
  "ds-cli-report",
  "ds-command-kernel",
+ "fs2",
  "libc",
  "serde",
  "serde_json",
  "sha2",
+ "tempfile",
 ]
 
 [[package]]

@@ -440,3 +440,29 @@ project membership nor authorizes publication or mutation.
 - `skills/ds-solar-workflow/` — single-city and explicit city-batch lifecycle guidance
 - `skills/ds-solar-portfolio/` — exact governed portfolio lifecycle guidance
 - [`../contracts/cli-output-contract.md`](../contracts/cli-output-contract.md)
+
+## Offline project workspace
+
+`ds solar project init --workspace DIR --project ID` creates local project
+attribution without signing in. `project seed --input FILE` imports complete
+local city inputs or previously captured intakes. `project city write --city ID
+--snapshot FILE` creates a city from a complete snapshot; add `--expected DIGEST`
+to replace an existing revision. `project city read --city ID --out FILE` exports
+a snapshot for editing. Every command takes `--workspace DIR`.
+
+`project run --cache DIR --run-id ID --city CITY --charts --draft apd` prepares,
+calculates and produces drafts offline. Repeat `--city` and `--draft`; supported
+drafts are apd, network, plant and financial. The cache must already contain the
+exact reference data. `project result --run-id ID`, `project status` and
+`project outbox` inspect local state without Desktop or authentication.
+
+`project sync --lane stable --background --yes` launches the fixed native
+uploader. It binds to the signed-in selected project, principal and audience;
+queues survive failure. Omit `--background` to drain once or use `--watch` to
+watch for new work. The worker exits after 12 hours or a permanent refusal.
+A reviewed city conflict can be rebased with `project sync rebase --sequence N
+--expected-cloud FINGERPRINT`; this does not publish until `sync --yes`.
+
+Cloud publication needs the server's `project_commit` route and admitted Solar
+release build. It never gates local drafts. Existing paired commands and
+governed portfolio membership are separate from this explicit local workspace.

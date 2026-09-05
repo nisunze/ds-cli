@@ -158,3 +158,9 @@ situations a test cannot reliably produce — a full disk, a killed engine, a
 corrupted package. A code that is genuinely unreachable by a caller goes in
 `NOT_A_REFUSAL` with the reason; that list is the escape hatch and is
 deliberately short.
+
+The fixed Solar background sender may re-invoke the current `ds` executable
+only as `solar project sync --workspace <absolute path> --lane <stable|canary>
+--watch --yes --output json`. `ds-cli-exec::start_solar_project_sync` owns this
+closed process boundary after the initiating command's governed-write gate.
+It accepts no arbitrary executable, subcommand, URL or argument vector.

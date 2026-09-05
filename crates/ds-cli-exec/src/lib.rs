@@ -540,3 +540,6 @@ mod tests {
         fs::remove_dir(root).unwrap();
     }
 }
+
+mod solar_worker;
+pub use solar_worker::start_solar_project_sync;

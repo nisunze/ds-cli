@@ -25,6 +25,10 @@ use std::path::{Path, PathBuf};
 /// from constants and typed inputs, never from a caller's string.
 const SPAWN_OWNERS: &[(&str, &str)] = &[
     (
+        "crates/ds-cli-exec/src/solar_worker.rs",
+        "re-invokes only the current ds executable with the fixed Solar project sync command, absolute workspace and validated deployment lane after the caller governed-write gate",
+    ),
+    (
         "crates/ds-cli-exec/src/lib.rs",
         "the audited engine boundary: one named `&'static str` subcommand per call, \
          for the owners that chose process separation (ds-report, ds-solar)",
@@ -199,4 +203,25 @@ fn the_engine_boundary_still_takes_a_static_subcommand() {
         !shipped.contains("pub fn run("),
         "`run(binary, argv)` is the shape this crate exists to not have"
     );
+}
+
+#[test]
+fn solar_background_worker_has_a_closed_self_invocation() {
+    let source =
+        std::fs::read_to_string(workspace_root().join("crates/ds-cli-exec/src/solar_worker.rs"))
+            .unwrap();
+    assert!(source.contains("std::env::current_exe()"));
+    assert!(source.contains("!workspace.is_absolute()"));
+    assert!(source.contains("matches!(lane, \"stable\" | \"canary\")"));
+    for flag in [
+        "solar",
+        "project",
+        "sync",
+        "--workspace",
+        "--watch",
+        "--yes",
+    ] {
+        assert!(source.contains(&format!("\"{flag}\"")));
+    }
+    assert!(!source.contains("args: &["));
 }

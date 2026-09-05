@@ -2989,6 +2989,95 @@ pub fn survey_workspace_snapshot(lane_value: &str) -> Result<Value, Failure> {
     with_released_context_disposition(client.profile(), &selected, result)
 }
 
+pub fn solar_project_session(lane_value: &str) -> Result<HeadlessSolarProjectSession, Failure> {
+    let lane = Lane::parse(lane_value)?;
+    if let Some((device, selected)) = restored_device_project(lane)? {
+        let identity = device.context();
+        let principal_sha256 = solar_principal_binding_sha256(identity.uid(), identity.email());
+        let credential_audience_sha256 = device.profile().credential_audience_sha256().to_owned();
+        return Ok(HeadlessSolarProjectSession {
+            lane: lane.token(),
+            project_id: selected.project_id().to_owned(),
+            project_name: selected.project_name().to_owned(),
+            project_status: selected.status().to_owned(),
+            principal_sha256,
+            credential_audience_sha256,
+            selected,
+            provider: SolarProjectProvider::Device(Box::new(device)),
+        });
+    }
+    let profile = profile::load(lane)?;
+    let store = NativeRefreshStore::open()?;
+    let mut client = Client::new(profile, NativeTransport, store);
+    let user = require_restore_before_context(&mut client)?;
+    let selected = ProjectContextLease::acquire(client.profile())?
+        .load_snapshot(client.profile(), user.uid(), user.email())?
+        .ok_or_else(|| {
+            Failure::conflict(
+                "headless_project_not_selected",
+                "no project is selected for this native user, lane, and credential audience",
+            )
+            .remedy("run ds auth project use --project <exact-id>")
+            .next("ds auth project status")
+        })?;
+    let principal_sha256 = solar_principal_binding_sha256(user.uid(), user.email());
+    Ok(HeadlessSolarProjectSession {
+        lane: lane.token(),
+        project_id: selected.project_id().to_owned(),
+        project_name: selected.project_name().to_owned(),
+        project_status: selected.status().to_owned(),
+        principal_sha256,
+        credential_audience_sha256: client.profile().credential_audience_sha256().to_owned(),
+        selected,
+        provider: SolarProjectProvider::Firebase(Box::new(client)),
+    })
+}
+
+fn solar_principal_binding_sha256(uid: &str, email: &str) -> String {
+    let mut hash = Sha256::new();
+    hash.update(b"ds.solar.project.principal/v1\0");
+    hash.update(uid.as_bytes());
+    hash.update(b"\0");
+    hash.update(email.as_bytes());
+    format!("{:x}", hash.finalize())
+}
+pub use ds_client_core::solar_project::{
+    Command as SolarProjectCommand, Output as SolarProjectOutput,
+};
+pub struct HeadlessSolarProjectSession {
+    lane: &'static str,
+    project_id: String,
+    project_name: String,
+    project_status: String,
+    principal_sha256: String,
+    credential_audience_sha256: String,
+    selected: state::ProjectContext,
+    provider: SolarProjectProvider,
+}
+enum SolarProjectProvider {
+    Firebase(Box<NativeClient>),
+    Device(Box<device::DeviceSession>),
+}
+impl HeadlessSolarProjectSession {
+    pub fn binding(&self) -> Value {
+        json!({"project":self.project_id,"lane":self.lane,"principal":self.principal_sha256,"audience":self.credential_audience_sha256,"project_name":self.project_name,"project_status":self.project_status})
+    }
+    pub fn execute(&mut self, command: &SolarProjectCommand) -> Result<Value, Failure> {
+        command.validate(&self.project_id).map_err(map_client)?;
+        let (profile, result) = match &mut self.provider {
+            SolarProjectProvider::Firebase(client) => {
+                let result = client.solar_project(&self.project_id, command, now());
+                (client.profile(), result)
+            }
+            SolarProjectProvider::Device(device) => {
+                let result = device.solar_project(&self.project_id, command);
+                (device.profile(), result)
+            }
+        };
+        with_released_context_disposition(profile, &self.selected, result)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

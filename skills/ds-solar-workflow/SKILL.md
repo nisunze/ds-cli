@@ -113,3 +113,15 @@ preparation as a complete fresh-server route.
 When live discovery proves a needed operation is absent, follow the `ds`
 skill's feedback procedure. Do not compensate with direct bridge calls or a
 skill-local program.
+
+## Offline project work
+
+For headless local authoring and draft delivery, discover `solar.project.init`
+and `solar.project.city.write` (or `solar.project.seed` for complete intakes),
+then `solar.project.run`. These use a private local workspace and existing
+verified reference cache; no Desktop or cloud access is required. Inspect
+`solar.project.result` and `solar.project.outbox` before discussing publication.
+Discover `solar.project.sync` for native authenticated background publication;
+follow its exact selected-project and confirmation contract. Never treat a
+local result as published, substitute current inputs for a captured run, or
+automatically rebase a cloud conflict.

@@ -22,6 +22,8 @@ pub mod paired;
 pub mod paired_run;
 pub mod portfolio_management;
 pub mod prepare;
+pub mod project;
+pub mod project_sync;
 pub mod run;
 pub mod seed;
 pub mod weather;
@@ -61,6 +63,16 @@ pub static DOMAIN: Domain = Domain {
     id: "solar",
     summary: "Solar preparation, local run lifecycle and artifact execution.",
     commands: &[
+        &project::REBASE,
+        &project::CITY_READ,
+        &project::CITY_WRITE,
+        &project_sync::COMMAND,
+        &project::INIT,
+        &project::SEED,
+        &project::RUN,
+        &project::STATUS,
+        &project::RESULT,
+        &project::OUTBOX,
         &engine::COMMAND,
         &compare::COMMAND,
         &input_capture::COMMAND,

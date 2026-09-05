@@ -455,12 +455,22 @@ const SOLAR_RUN_COMMANDS: &[&str] = &[
 ];
 
 const SOLAR_INPUT_COMMANDS: &[&str] = &[
+    "solar.project.run",
+    "solar.project.result",
+    "solar.project.status",
+    "solar.project.outbox",
+    "solar.project.init",
+    "solar.project.seed",
+    "solar.project.city.read",
+    "solar.project.city.write",
     "solar.input.capture",
     "solar.input.prepare",
     "solar.seed.network-plan",
 ];
 
 const SOLAR_DELIVERY_COMMANDS: &[&str] = &[
+    "solar.project.sync",
+    "solar.project.sync.rebase",
     "solar.portfolio.list",
     "solar.portfolio.create",
     "solar.portfolio.update",
