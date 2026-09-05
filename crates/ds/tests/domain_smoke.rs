@@ -3945,7 +3945,7 @@ fn every_design_command_is_discoverable_without_the_desktop_installed() {
     let commands = index["commands"].as_array().expect("commands");
     assert_eq!(
         commands.len(),
-        50,
+        53,
         "the design domain should expose its whole family: {commands:?}"
     );
     for command in commands {
@@ -4090,6 +4090,9 @@ fn design_collaboration_is_a_complete_headless_project_surface() {
         })
         .collect();
     let expected: BTreeSet<&str> = [
+        "design.sync.status",
+        "design.sync.cancel",
+        "design.sync.resume",
         "design.selection.list",
         "design.features.select",
         "design.selection.read",
@@ -4133,6 +4136,8 @@ fn design_collaboration_is_a_complete_headless_project_surface() {
     );
 
     let writes: BTreeSet<&str> = [
+        "design.sync.cancel",
+        "design.sync.resume",
         "design.selection.save",
         "design.selection.archive",
         "design.selection.assign",
@@ -4190,6 +4195,12 @@ fn design_collaboration_is_a_complete_headless_project_surface() {
         );
         if writes.contains(id) {
             let mut args = match id {
+                "design.sync.cancel" => {
+                    vec!["design", "sync", "cancel", "--operation", "version:smoke"]
+                }
+                "design.sync.resume" => {
+                    vec!["design", "sync", "resume", "--operation", "version:smoke"]
+                }
                 "design.selection.save" => vec![
                     "design",
                     "selection",
