@@ -601,6 +601,25 @@ pub fn wasm_style_channels(kind: &str) -> String {
         .expect("static channel definitions")
 }
 
+pub mod overlays;
+#[cfg(feature = "wasm")]
+#[wasm_bindgen::prelude::wasm_bindgen(js_name=editOverlays)]
+pub fn wasm_edit_overlays(input: &[u8]) -> Result<String, String> {
+    if input.len() > 1024 * 1024 {
+        return Err("overlay request exceeds 1 MiB".into());
+    }
+    #[derive(serde::Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct Request {
+        registry: overlays::OverlayRegistry,
+        edit: overlays::OverlayEdit,
+    }
+    let mut r: Request = serde_json::from_slice(input).map_err(|_| "invalid overlay request")?;
+    let result = r.registry.apply(r.edit)?;
+    serde_json::to_string(&serde_json::json!({"registry":r.registry,"result":result}))
+        .map_err(|_| "invalid overlay result".into())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
