@@ -61,6 +61,44 @@ Recovery Center evidence. Real-WASM/IndexedDB tests prove transaction rollback,
 retention after cancellation/restart, offline version batches and comparison
 reopening without downloading source versions.
 
+Local validation on 2026-09-05: kernel workspace tests (62), the five targeted
+web suites (65 tests), Svelte checking (zero errors/warnings), the complete CLI
+workspace suite with all features, and kernel/CLI Clippy gates passed. The
+native desktop operation allowlist and CLI semantic inventory both include the
+three reconciliation commands; tests now check those inventories explicitly.
+The official local sidecar preparation completed. The source-backed dev CLI
+successfully invoked `design sync status --limit 5 --output json` against the
+running DS GridDesign Dev application. Its active-project queue was empty;
+this proves live dispatch and local inspection, not legacy queue migration or
+authenticated publication. No cloud deployment or GCP outage experiment was
+performed.
+
+## Next transport boundary: confirmed Solar findings
+
+Read-only tracing of the Solar input consumer confirmed these remaining gaps:
+
+- `ds-web/src/lib/solar/input-mutations.ts` coalesces pending edits by changing
+  their payload under the existing operation ID. Its sender returns `void`,
+  and completion of that call marks the row synchronized. It retains only the
+  newest 100 synchronized rows without exact publication receipts.
+- `ds-brain/internal/handlers/solar.go` / `SolarService.SaveInput` return target
+  identifiers, not an operation-bound publication receipt. Regular documents
+  use Firestore merge; `network_data` uses its own media-validation transaction
+  and whole-value replacement of `maps`. The local recursive patch must not
+  resurrect omitted media references when this path is migrated.
+- The existing `CommitProjectCity` already has a server-observed fingerprint
+  check and transactional writes for a complete project city. Reuse that
+  admission foundation where applicable; do not turn a locally derived hash
+  into evidence of a server base or replay an editor patch as an unconditional
+  write. Global templates and the special network-media path require their
+  own explicit coverage.
+
+No Solar production code was changed in this checkpoint. Its queue migration,
+retained legacy evidence, immutable dependent edits, exact authenticated
+receipts and server transaction tests remain required. These are inspected
+findings; they must not be reported as already fixed or as a verified outage
+test.
+
 Against `ds-web` baseline `cc1bb5b2`, affected production TypeScript/Svelte:
 
 | File under `src/lib/` | Before | After | Added | Deleted | Net |
