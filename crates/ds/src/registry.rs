@@ -470,6 +470,21 @@ static SOLAR_ENTRIES: &[Entry] = &[
         render: ds_cli_solar::workflow::render,
     },
     Entry {
+        command: &ds_cli_solar::portfolio_batch::START_COMMAND,
+        handler: ds_cli_solar::portfolio_batch::start,
+        render: ds_cli_solar::workflow::render,
+    },
+    Entry {
+        command: &ds_cli_solar::portfolio_batch::STATUS_COMMAND,
+        handler: ds_cli_solar::portfolio_batch::status,
+        render: ds_cli_solar::workflow::render,
+    },
+    Entry {
+        command: &ds_cli_solar::portfolio_batch::CANCEL_COMMAND,
+        handler: ds_cli_solar::portfolio_batch::cancel,
+        render: ds_cli_solar::workflow::render,
+    },
+    Entry {
         command: &ds_cli_solar::portfolio_management::CREATE_COMMAND,
         handler: ds_cli_solar::portfolio_management::create,
         render: ds_cli_solar::workflow::render,

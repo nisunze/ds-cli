@@ -54,7 +54,7 @@ pub static START_COMMAND: Command = Command {
     path: &["solar", "run", "start"],
     contract: 4,
     summary: "Start an explicit paired city or Solar portfolio run.",
-    purpose: "Starts the paired application's local native Solar lifecycle after city inputs have been prepared. A city run names one or more prepared contexts. A portfolio run names one governed portfolio, pins the exact ordered membership returned by portfolio list, and chooses only how representative graphs use that membership: first member, round-robin, or one exact member. Currency, project horizon and discount rate remain governed prepared-input facts; language and report intent belong to later report generation rather than calculation launch. It returns a run id immediately, while the desktop retains ownership of the selected project, cached inputs and output workspace.",
+    purpose: "Starts the paired application's local native Solar lifecycle after city inputs have been prepared. A city run names one or more prepared contexts. A portfolio run names one governed portfolio, pins the exact ordered membership returned by portfolio list, and chooses only how representative graphs use that membership: first member, round-robin, or one exact member. Currency, project horizon and discount rate remain governed prepared-input facts. A single portfolio is adapted to the shared kernel batch command with French APD defaults; use solar portfolio batch start --request for explicit batch settings. City concurrency flags do not apply to portfolios. It returns a run id immediately, while the desktop retains ownership of the selected project, cached inputs and output workspace.",
     chapter: Chapter::Solar,
     effect: Effect::LocalFileWrite,
     authority: Authority::DesktopUser,

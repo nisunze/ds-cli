@@ -60,37 +60,72 @@ contexts and the shared execution controls:
 }
 ```
 
-Portfolio launch resolves the same exact refreshed/cache-retained membership
-used by the Pipeline page, but it is not just an id alias. The caller freezes
-the ordered membership and chooses the legacy-compatible representative graph
-strategy:
+Portfolio runs use the shared `ds-command-kernel` batch command. Both the UI
+and CLI pass the same complete request. There is no JavaScript scheduler or
+native-compute fallback when the WASM command cannot load.
+
+```sh
+ds solar portfolio batch start --request batch.json --output json
+ds solar portfolio batch status --run-id batch-example --output json
+ds solar portfolio batch cancel --run-id batch-example --output json
+```
+
+`batch.json` (replace the project, portfolio and revision with your exact catalog):
 
 ```json
 {
-  "portfolio": "portfolio-id",
-  "membership_revision": "sha256:<digest returned by portfolio list>",
-  "graph_strategy": "city:rw-kigali",
-  "concurrency": 4
+  "schema": "ds-solar.portfolio-batch/v1",
+  "batch_id": "batch-example",
+  "root": "eds_project/project-id/eds_solar",
+  "portfolios": [{
+    "id": "portfolio-id", "name": "Portfolio",
+    "cities": ["city_a", "city_b"],
+    "membership_revision": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  }],
+  "parallel": 4,
+  "graph_strategy": "round_robin",
+  "force": false,
+  "render_charts": true,
+  "report_drafts": ["apd"],
+  "language": "fr",
+  "placement": "native"
 }
 ```
 
-`--membership-revision` is the exact lowercase SHA-256 revision returned with
-the selected portfolio row. The desktop recomputes it from the current ordered
-membership and refuses if the portfolio changed after listing.
-`--graph-strategy` is required and accepts `first`, `round-robin`, or
-`city:<exact-member-id>`. The CLI sends those as `first`, `round_robin`, or the
-exact `city:<id>` binding; the desktop refuses a named city outside the frozen
-membership. The membership revision and graph strategy are portfolio-only and
-are rejected with `--city`.
+Every field is required. Bounds are 1 MiB, 1..100 portfolios and 1..16 concurrent
+portfolio pipelines. Rust validates exact ordered membership against the
+project's offline governed catalog before starting any effects. Request names
+are canonical `name` values, not edited display labels. `batch_id` is single-use;
+a timed-out submission must be inspected with status before any new submission.
+`graph_strategy` is `first`, `round_robin`, or `city:<member common to every selection>`.
+`force` disables exact successful source-run reuse. Drafts are a unique selection
+of `apd`, `network`, `plant`, `financial`; language is `fr` or `en`.
+Currency, lifetime and discount rate remain governed prepared-city facts.
 
-Currency, project lifetime and discount rate are governed prepared-city facts.
-The native portfolio calculation derives and validates them across every
-sealed member instead of accepting operator overrides at launch. Language and
-report intents are document-generation choices and therefore do not belong to
-this calculation command. Until a separate digest-bound portfolio reporting
-operation is published, the paired application may use bounded internal
-document defaults for compatibility; the CLI neither exposes nor claims those
-defaults as calculation inputs.
+`native` runs offline against prepared inputs, through the paired local host.
+`cloud` uses the browser's existing hosted endpoint. The requested placement
+must match the host. Hosted source-refresh and custom draft options have no
+implemented endpoint contract: overrides are explicitly refused. Hosted work
+already submitted cannot be cancelled remotely; queued work stops and active
+calls settle normally. This does not claim headless standalone batch execution
+or cloud cancellation support.
+
+Status returns the exact request, `complete`, `cancelled`, and ordered `rows`.
+Each row has its phase, source/run ids, timestamps and detail. `complete` does
+not mean every portfolio succeeded. Cancellation stops queued work and retries
+active native cancellation until registration is acknowledged; a committed result
+wins a cancellation race. Status after a host restart durably marks unfinished
+rows interrupted, never replays them. Inspect sealed per-row artifacts before
+rerunning. Status therefore has a local-file-write effect for recovery.
+Use a ready native row's `run_id` with `solar portfolio read` or `export`; only
+the drafts selected in the request exist. Owner and project fence every read.
+
+The older `solar run start --portfolio` spelling is a single-row request adapter:
+parallel 1, source reuse, French APD, native placement. It uses the same kernel
+and its returned batch id works with `solar run progress/result/cancel`.
+Use the batch request for explicit settings. Retired calculation assertions and
+city-only concurrency flags are refused for portfolios. Historical completed
+portfolio receipts remain readable; their retired completion coordinator is gone.
 
 It returns a run receipt rather than waiting for calculation. The remaining
 commands call the paired lifecycle operations `solar.run.progress`,

@@ -51,7 +51,7 @@ ds mcp serve --exposure commands --profile pls
 
 Profiles are `auth-context`, `grid`, `pls`, `pls-library`, `library-governance`, `survey`,
 `form-factory`, `survey-projects`, `survey-migration`, `design-edit`, `design-run`, `map`, `layers`,
-`tiling`, `project`, `solar-input`, `solar-run`, `solar-delivery`,
+`tiling`, `project`, `solar-input`, `solar-run`, `solar-delivery`, `solar-portfolio-batch`,
 `operations`, and `project-operations`. `survey`
 retains map/local-data survey work;
 `form-factory` owns global schemas, while `survey-projects` owns governed

@@ -321,6 +321,21 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ),
     ("solar.input.prepare", "local_file_write", "none"),
     ("solar.portfolio.analysis", "read_only", "desktop_user"),
+    (
+        "solar.portfolio.batch.start",
+        "local_file_write",
+        "desktop_user",
+    ),
+    (
+        "solar.portfolio.batch.status",
+        "local_file_write",
+        "desktop_user",
+    ),
+    (
+        "solar.portfolio.batch.cancel",
+        "local_file_write",
+        "desktop_user",
+    ),
     ("solar.portfolio.create", "global_write", "desktop_user"),
     ("solar.portfolio.delete", "global_write", "desktop_user"),
     ("solar.portfolio.export", "local_file_write", "desktop_user"),

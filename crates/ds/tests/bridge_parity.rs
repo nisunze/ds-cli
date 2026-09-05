@@ -69,6 +69,7 @@ struct App {
     solar_seed_pure: String,
     solar_seed_adapter: String,
     solar_portfolio_run: String,
+    solar_batch_adapter: String,
     solar_portfolio_receipt: String,
 }
 
@@ -107,6 +108,7 @@ fn app() -> Option<App> {
         solar_seed_client: read("src/lib/api/solar-seed.ts")?,
         solar_seed_pure: read("src/lib/solar/seed.ts")?,
         solar_seed_adapter: read("src/lib/desktop/cli-solar-seed.ts")?,
+        solar_batch_adapter: read("src/lib/desktop/cli-solar-portfolio-batch.ts")?,
         solar_portfolio_run: read("src/lib/solar/native-batch.ts")?,
         solar_portfolio_receipt: read("src/lib/solar/native-portfolio-batches.ts")?,
     })
@@ -507,9 +509,14 @@ fn every_solar_command_has_one_closed_operation_owner_and_exact_arguments() {
                 operation.operation
             );
         } else {
+            let adapter = if operation.operation.starts_with("solar.portfolio.batch.") {
+                &app.solar_batch_adapter
+            } else {
+                &app.frontend
+            };
             for argument in operation.arguments {
                 assert!(
-                    app.frontend.contains(&format!("args.{argument}")),
+                    adapter.contains(&format!("args.{argument}")),
                     "ds solar sends `{argument}` to `{}`, but the paired adapter does not read that exact key",
                     operation.operation,
                 );
@@ -543,7 +550,7 @@ fn every_solar_command_has_one_closed_operation_owner_and_exact_arguments() {
                     .copied()
                     .collect::<BTreeSet<_>>(),
                 legacy,
-                "solar.run.start may retain only the pinned v3 rolling-upgrade assertions beyond the v4 CLI contract",
+                "solar.run.start may name only the retired assertion keys for an explicit refusal beyond the v4 CLI contract",
             );
         }
     }

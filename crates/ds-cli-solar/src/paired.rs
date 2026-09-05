@@ -14,6 +14,18 @@ use ds_cli_contract::spec::{Availability, Refusal};
 use ds_cli_desktop::ops::{self, BridgeOp};
 use serde_json::Value;
 
+pub const PORTFOLIO_BATCH_START_OP: BridgeOp = BridgeOp {
+    operation: "solar.portfolio.batch.start",
+    arguments: &["request"],
+};
+pub const PORTFOLIO_BATCH_STATUS_OP: BridgeOp = BridgeOp {
+    operation: "solar.portfolio.batch.status",
+    arguments: &["run_id"],
+};
+pub const PORTFOLIO_BATCH_CANCEL_OP: BridgeOp = BridgeOp {
+    operation: "solar.portfolio.batch.cancel",
+    arguments: &["run_id"],
+};
 pub const PREPARE_OP: BridgeOp = BridgeOp {
     operation: "solar.prepare",
     arguments: &["contexts", "overwrite", "language"],
@@ -97,6 +109,9 @@ pub const PORTFOLIO_ANALYSIS_OP: BridgeOp = BridgeOp {
 pub const BRIDGE_OPS: &[&BridgeOp] = &[
     &crate::seed::PREVIEW_OP,
     &crate::seed::APPLY_OP,
+    &PORTFOLIO_BATCH_START_OP,
+    &PORTFOLIO_BATCH_STATUS_OP,
+    &PORTFOLIO_BATCH_CANCEL_OP,
     &PREPARE_OP,
     &RUN_START_OP,
     &RUN_PROGRESS_OP,

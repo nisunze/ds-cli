@@ -30,6 +30,7 @@ pub const PROFILE_IDS: &[&str] = &[
     "solar-input",
     "solar-run",
     "solar-delivery",
+    "solar-portfolio-batch",
     "operations",
     "project-operations",
 ];
@@ -79,6 +80,7 @@ pub enum Profile {
     SolarInput,
     SolarRun,
     SolarDelivery,
+    SolarPortfolioBatch,
     Operations,
     ProjectOperations,
 }
@@ -106,6 +108,7 @@ impl Profile {
             "solar-input" => Some(Self::SolarInput),
             "solar-run" => Some(Self::SolarRun),
             "solar-delivery" => Some(Self::SolarDelivery),
+            "solar-portfolio-batch" => Some(Self::SolarPortfolioBatch),
             "operations" => Some(Self::Operations),
             "project-operations" => Some(Self::ProjectOperations),
             _ => None,
@@ -134,6 +137,7 @@ impl Profile {
             Self::SolarInput => "solar-input",
             Self::SolarRun => "solar-run",
             Self::SolarDelivery => "solar-delivery",
+            Self::SolarPortfolioBatch => "solar-portfolio-batch",
             Self::Operations => "operations",
             Self::ProjectOperations => "project-operations",
         }
@@ -189,6 +193,7 @@ impl Profile {
             Self::SolarInput => SOLAR_INPUT_COMMANDS.contains(&tool.id.as_str()),
             Self::SolarRun => SOLAR_RUN_COMMANDS.contains(&tool.id.as_str()),
             Self::SolarDelivery => SOLAR_DELIVERY_COMMANDS.contains(&tool.id.as_str()),
+            Self::SolarPortfolioBatch => SOLAR_PORTFOLIO_BATCH_COMMANDS.contains(&tool.id.as_str()),
             Self::ProjectOperations => PROJECT_OPERATIONS_COMMANDS.contains(&tool.id.as_str()),
         }
     }
@@ -216,6 +221,7 @@ impl Profile {
             Self::SolarInput => SOLAR_INPUT_COMMANDS,
             Self::SolarRun => SOLAR_RUN_COMMANDS,
             Self::SolarDelivery => SOLAR_DELIVERY_COMMANDS,
+            Self::SolarPortfolioBatch => SOLAR_PORTFOLIO_BATCH_COMMANDS,
             Self::PlsLibrary => PLS_LIBRARY_COMMANDS,
             Self::LibraryGovernance => LIBRARY_GOVERNANCE_COMMANDS,
             Self::ProjectOperations => PROJECT_OPERATIONS_COMMANDS,
@@ -244,7 +250,9 @@ impl Profile {
             Self::Map => chapter == Chapter::MapPresentation,
             Self::Tiling => chapter == Chapter::VectorTiles,
             Self::Project => chapter == Chapter::Project,
-            Self::SolarInput | Self::SolarRun | Self::SolarDelivery => chapter == Chapter::Solar,
+            Self::SolarInput | Self::SolarRun | Self::SolarDelivery | Self::SolarPortfolioBatch => {
+                chapter == Chapter::Solar
+            }
             Self::Operations => chapter == Chapter::Operations,
             Self::ProjectOperations => matches!(chapter, Chapter::Design | Chapter::Reports),
         }
@@ -466,6 +474,12 @@ const SOLAR_INPUT_COMMANDS: &[&str] = &[
     "solar.input.capture",
     "solar.input.prepare",
     "solar.seed.network-plan",
+];
+
+const SOLAR_PORTFOLIO_BATCH_COMMANDS: &[&str] = &[
+    "solar.portfolio.batch.start",
+    "solar.portfolio.batch.status",
+    "solar.portfolio.batch.cancel",
 ];
 
 const SOLAR_DELIVERY_COMMANDS: &[&str] = &[

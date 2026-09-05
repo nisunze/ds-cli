@@ -566,6 +566,7 @@ fn by_command_profiles_still_partition_the_live_registry() {
                 Profile::SolarInput,
                 Profile::SolarRun,
                 Profile::SolarDelivery,
+                Profile::SolarPortfolioBatch,
             ][..],
         ),
     ] {
@@ -1231,6 +1232,7 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
         "solar-input",
         "solar-run",
         "solar-delivery",
+        "solar-portfolio-batch",
         "operations",
         "project-operations",
     ] {
@@ -1312,7 +1314,12 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
         ("map_design_", &["design-edit", "design-run"][..]),
         (
             "solar_",
-            &["solar-input", "solar-run", "solar-delivery"][..],
+            &[
+                "solar-input",
+                "solar-run",
+                "solar-delivery",
+                "solar-portfolio-batch",
+            ][..],
         ),
         ("pls_", &["pls", "pls-library", "library-governance"][..]),
     ] {
