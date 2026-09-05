@@ -363,6 +363,10 @@ WASM plus replay/bridge tests; full CLI workspace tests/Clippy and skill gates;
 local Firestore emulator scope, stale-plan/no-partial-write, actor and replay
 checks. See `ds-brain/docs/contracts/material-propagation.md` for the IO contract.
 No cloud build or deployment was performed.
+Production TypeScript in this material slice: 36 lines removed, 46 added
+(net +10 for the new command adapters). The omitted-config shortcut and
+duplicate scalar-setting validation were deleted; Rust owns override merging
+and value validation. This is not a claim of net TypeScript removal.
 
 Remaining:
 - Investigate legacy unnamed-table and missing-selection defaults that inject
