@@ -1,47 +1,39 @@
-# B — remaining work and next slices
+# B — unfinished work and acceptance requirements
 
-This is the working plan accompanying [A.md](A.md), not a completion claim.
-It records the owner's requests and the evidence already collected; it is not
-a new all-repository audit. Uninvestigated items remain uninvestigated. Project
-management and Architecture internals stay outside scope. Moving their existing
-Governance navigation entries does not authorize redesigning those domains.
+This is the single remaining-work register. It replaces A.md. Items below need
+implementation, integration, deployment or verification as stated; a partially
+implemented foundation is not a request to rebuild it. Completed checkpoints
+and obsolete pause instructions are omitted. Git history and the owning
+contracts retain implementation history.
 
-## Direction
+This consolidation uses existing observations only; no new product-code audit
+was performed. Uninvestigated risks remain hypotheses, not confirmed defects.
+Project management and Architecture internals remain outside scope. Their
+completed navigation changes do not authorize a domain redesign. Use the
+source-backed DS GridDesign Dev CLI and local development launcher for future
+implementation. This document alone does not launch work or deployment.
 
-- Put product operations in typed, discoverable CLI commands backed by the
-  command kernel and the relevant Rust engine. UI and CLI use the same inputs,
-  decisions, permissions, durable states and receipts. A map is a projection,
-  never a prerequisite for an operation that can run headlessly.
-- TypeScript may render, collect events and adapt host IO. Remove superseded
-  TypeScript domain implementations and fallbacks; report actual deletion
-  counts separately from generated bindings, tests and formatting.
-- The offline switch is an isolation/stress-testing control, available in dev
-  and production with the existing governance. It is not itself a license.
-  Start from local data, perform useful work without contact, then reconcile
-  in the background when online. Do not turn routine navigation into a renewal
-  or upload workflow.
-- Desktop installation policy, web-account access, project authorization and
-  compute placement are distinct. The existing signed desktop control work
-  must not become a browser license requirement or an excuse for blocking
-  offline testing. Conditional upgrades must preserve data and recovery.
+## Required direction for unfinished slices
 
-## Saved checkpoint and evidence limits
-
-Pushed to `run`: kernel `b6b668f`, backend `29bb025`, web `e33c2fcc`.
-These contain desktop policy evaluation, installation inventory/history,
-Governance controls, retained signature verification, desktop/web separation
-and quieter intentional-offline notifications. They do **not** establish
-complete blackout, complete CLI control parity or production deployment.
-
-Checkpoint verification: 48 focused frontend tests, kernel workspace tests,
-backend edge/handler/router tests, 22 native authority tests, Svelte checks and
-native host compilation passed. Firestore verification used a local emulator.
-No Windows blackout test or cloud deployment was performed.
-
-The Linux `ds-web/crates/ds-blackout` experiment is local and uncommitted. Its
-socket-denial tests passed, but it is not wired into application startup and
-does not prove isolation of the running product. Existing sockets, external IPC
-brokers, child processes, WebViews and other operating systems need evidence.
+- Expose product operations through typed, discoverable CLI commands backed by
+  the command kernel and owning Rust engines. UI and CLI use the same named
+  commands, versioned parameters, permissions, state transitions and receipts.
+  A map supplies explicit identities or geometry; it is never hidden process
+  input or project authority. Scope is project, with map state as presentation.
+- Remove superseded TypeScript decisions, transformations, stores, scheduling
+  and computational fallbacks once the Rust owner takes over. Keep only host
+  adapters for rendering, events, files/storage, transport, workers and platform
+  effects. An unavailable/incompatible Rust or WASM owner returns a typed
+  refusal; it must not silently run the old implementation.
+- Keep domain algorithms and report production separate from IO and command
+  admission. Preserve permanent browser/cloud, desktop/edge and supported local
+  WASM/native execution. Placement changes are explicit, policy-controlled and
+  visible; they cannot silently change inputs, algorithms or credentials.
+- Treat the offline switch as an isolation control in dev and production,
+  governed by the existing app-level all-governance permission. It is not a
+  license. Start with local data and reconcile in the background when online.
+  Desktop licensing, browser access, project authorization and compute policy
+  remain separate authorities. Language and Theme remain profile preferences.
 
 ## Prioritized work
 
@@ -64,60 +56,301 @@ persistence or cross-repository integration. Split L items before starting.
 | P1 / L | Secure shared-device attribution and control | Current authenticated heartbeat can change the registry's latest principal when the caller knows its UUID; device-held transfer proof is not implemented. This can interfere with outstanding work's registry binding. Separate observation from grant ownership, prove device possession where required, preserve original work-grant identity, and test account switching and revocation without affecting unrelated browser accounts. | Backend installation/work authority and native identity verifier |
 | P1 / L | Generalized durable reconciliation | Design's local lifecycle is a foundation, not stack-wide closure. Complete exact-content authenticated edge/cloud transport, legacy queue migration, leases/claims/retries/cancellation/auth-refusal states, local queue inspection and acknowledgement-gated compaction. Offline UI/CLI must never pretend to upload. | Kernel lifecycle, native/browser storage hosts, authenticated transport owners |
 | P1 / L | Offline Design completion and reporting | Finish project-settings local edits, version retrieval/comparison, single/batch/combined/compounded reports and physical printing from available resources. Use existing Data Factory/vector mathematics; comparison layers are temporary, named maps remain deferred. Preserve transformer history, source location changes and pending recovery evidence. | Kernel/workspace, `ds-network`, reporter and printing IO owners |
-| P2 / L | Prove useful parallelism | Status-page batches were reported serial/cloud-bound; Solar and other workloads do not yet have proof of effective processor use. Profile scheduling, IO waits, worker limits, cancellation and memory. Benchmark identical semantics on desktop and quota-limited Cloud Run containers; 100% CPU is not itself the acceptance criterion. | Rust scheduling/engine owners and shared batch commands |
+| P2 / L | Prove useful parallelism | Status-page batches were reported serial/cloud-bound; Sustained desktop and quota-limited cloud utilization remain unverified; a prior local Solar sample reached roughly 15 core equivalents on 16 logical CPUs, which is not a controlled cross-host benchmark. Profile scheduling, IO waits, worker limits, cancellation and memory. Benchmark identical semantics on desktop and quota-limited Cloud Run containers; 100% CPU is not itself the acceptance criterion. | Rust scheduling/engine owners and shared batch commands |
 
-## Basemap constraints
+## Remaining command and Rust migration closure
 
-Google's standard Map Tiles API policy restricts unauthorized caching and
-offline use; its HTTP cache directives are not permission to build an arbitrary
-3 GB offline archive. Check the actual provider agreement before adding a
-Google download pack. Support governed/owned or explicitly offline-permitted
-basemap sources and preserve attribution. Do not advertise Google offline
-coverage without applicable permission and working tests. See the
+- Complete UI edit lifecycle, project/design settings transformations, source
+  and selection semantics, persistence and remaining scheduling convergence
+  behind the kernel. Source precedence and some batch/version commands already
+  have Rust owners; verify their consumers before replacing anything.
+- Keep domain parameters (identities, immutable revisions, source manifests,
+  settings and operation) separate from execution context (host capabilities,
+  placement, resource budget, progress, cancellation and policy/grant revision).
+  Results must expose typed outcomes, input fingerprints, implementation
+  identity, artifacts, revision changes and pending reconciliation state.
+- An operation ID pins one immutable request. Changed inputs/settings require
+  new work identity, not a retry. Do not expose arbitrary URLs, SQL, shell
+  arguments, generic engine opcodes or caller-authored transport bodies as the
+  product command interface.
+- Record production TypeScript before/after counts, deletions, additions and
+  net change against an exact baseline and file set. Identify removed behavior
+  and callers; justify each remaining adapter. Count bindings, tests, docs,
+  formatting and renames separately. Prove both UI and CLI reach the Rust owner
+  and the old implementation is unreachable; no full removal inventory exists.
+
+## Remaining reconciliation and storage closure
+
+The local Design lifecycle and version archive are foundations; exact-content
+transport and stack-wide convergence remain open. Follow
+[the reconciliation contract](docs/reconciliation.md) rather than building a
+second queue. Required consumers are Design, Solar, Survey, settings,
+layers/styles, portfolios, reports and attachments.
+
+- Complete authenticated exact-content admission and acknowledgement. The
+  server version-create endpoint snapshots server head; it cannot acknowledge
+  retained offline bytes. Do not replay that endpoint later against a changed
+  head or label `pending_transport` as delivered.
+- Migrate untouched legacy intents and domain outboxes; connect standalone
+  native persistence with browser/paired storage semantics. The paired CLI's
+  access to application storage does not prove standalone convergence.
+- Settle the shared versioned envelope against actual consumers: operation,
+  project/actor and object identity, server base revision, input fingerprint,
+  dependencies, policy revision and typed immutable payload reference. Keep
+  domain validation, authorization and conflict rules with their owners; a
+  shared protocol is not a generic write endpoint or shared raw database.
+- Commit local changes, immutable payload references and outbox intents
+  atomically. Fence work to project, principal, credential audience and lane.
+  Ambient ADC/service accounts, borrowed credentials or project labels do not
+  establish remote authority. Local hashes cannot fabricate server revisions.
+- Make delivery idempotent under duplicate, delayed and out-of-order attempts.
+  Changed input under a repeated operation conflicts. Preserve dependency order
+  and bounded per-item partial outcomes; do not claim exactly-once networking.
+- Verify immutable artifacts by size/digest. Distinguish upload completion from
+  governed publication. Acknowledgements must identify the exact operation,
+  input revision and artifact set before clearing an intent. Missing report
+  media stays explicit.
+- Preserve conflicts and local work. Geometry/topology and engineering settings
+  do not default to last-writer-wins. Domain owners specify automatic merges
+  and human-resolution cases.
+- Close durable tombstone, retry, worker lease/claim, interruption, cancellation,
+  credential-expiry and authorization-refusal states. Queue inspection must
+  remain local, without attempts to upload while intentionally offline.
+- Gate compaction and garbage collection on retained acknowledgement/history
+  and references. Closing a UI or a transient upload error cannot prune pending
+  inputs or artifacts. Synchronization alone never evicts Survey/version data.
+- Finish category-level storage inventory and explicit cleanup with pending
+  intent/reference protection. Show project data and actual available disk
+  where measurable; browser usage/quota is not physical free disk. Existing
+  cleanup covers downloaded cloud version copies only.
+
+## Remaining desktop governance and recovery closure
+
+Inventory, signed desktop policy and some enforcement already exist. Finish
+shared CLI/UI control and verify end-to-end enforcement rather than declaring
+all licensing absent or complete.
+
+- Complete governed installation metadata: stable device/installation identity,
+  product/build, OS, organization/project association, entitlements, install and
+  last-seen times, install path/site, and current/past authenticated users with
+  dated associations. Distinguish reported geographic location from install
+  path/site; retain provenance and freshness and leave unavailable data unknown.
+- Define bounded feature/session/placement/failure observations, authorized
+  access, retention and audit. Last seen is not live knowledge of offline
+  devices, and observed user history grants no account or project rights.
+- Complete multi-device selection and settings popup, backed by the same typed
+  list/detail/change CLI commands. Support assignment/revocation, scoped user
+  blocks, installation disabling, minimum versions/forced upgrades and
+  product/operation/placement controls. Fence per-target revisions and retain
+  partial-success/retry receipts, actor, reason, policy revision and target.
+  Distinguish requested, delivered and enforced action.
+- Preserve the initially-allowed installation policy. Verify seven-day signed
+  offline validity and daily handshake when used online, explicit clock rollback,
+  expiry and revocation behavior. Intentional offline mode makes no renewal or
+  expiry contact; a new remote block is learned at the next online handshake.
+  Offline mode/grants confer no remote API or project authority.
+- Keep an installation block/expiry separate from that user's browser access
+  and other devices; web account blocks require separate governed action.
+  Web administrators need no desktop license to manage installations. Define
+  user blocking on a shared device without blocking unrelated users.
+- Prove device possession/transfer where required. Separate heartbeat observation
+  from grant ownership; knowing an installation UUID must not rebind outstanding
+  work authority. Preserve original grant identity across account switching.
+- Finish recovery-only read/export/sync behavior under expiry, revocation and
+  required upgrades. Block new governed work as policy requires while retaining
+  drafts, queued evidence and an available update/recovery route. A policy
+  change must never erase data or falsely acknowledge pending work.
+- Gate final transformer deletion on authenticated Recovery Center acknowledgement
+  of the exact recoverable revision and record, including offline-created
+  transformers. An offline delete atomically retains revision, required inputs,
+  artifacts and pending intent; it may hide the active item with visible pending
+  recovery. Publish creation/history/recovery in dependency order. Transport
+  success alone cannot authorize purge. Preserve evidence across restart,
+  retries, upgrades, expiry and blocking, then apply retention policy.
+- Deploy/verify the existing recovery activity capture for new deletion rows:
+  previous activity and deletion have separate actor/time evidence. Historical
+  rows without evidence remain “Not recorded”; do not infer prior action from
+  updated timestamps or automatically download backups to invent it. See
+  [the recovery command contract](docs/backup-ledger.md). The previous session
+  did not verify backend deployment or backfill.
+
+Remote control cannot provide instant revocation to a disconnected device, or
+recover storage externally erased before any synchronization. Verify bounded
+offline authorization and application-controlled deletion against those limits.
+
+## Remaining offline startup, settings and delivery closure
+
+- Prove cold restart with no network contact using prepared/bundled routing and
+  assets. Central fetch/API guards and paused outboxes are insufficient: cover
+  WebViews, tiles, workers, native providers, child processes, external brokers
+  and already-open sockets. Include gateway, ds-brain and token refresh, with
+  no blackout exceptions. Prevent repeated background attempts and notification
+  floods; reserve useful hints for deliberate user actions.
+- Decide integration or removal of the uncommitted Linux `ds-blackout`
+  experiment. Its isolated socket-denial tests do not prove product isolation;
+  Windows and other shipping hosts still need enforcement and leakage evidence.
+- Complete explicit project/data preparation and first activation from a local
+  pack. Pin minimum viable resources, manifests, digests, coverage and freshness;
+  expose missing data without guessing. Use project network settings, not
+  invented global network defaults. Navigation should immediately present
+  prepared local data and fill gaps through bounded background reconciliation.
+- Complete offline network-setting sheet edits with a durable local transaction
+  and authenticated exact-content reconciliation. Cached reads are not offline
+  publication; never reuse a server reporter receipt with mutated settings.
+  Verify assembly dirty state and Fast/Standard output selection through the
+  actual saved project configuration, without hardcoded export substitutes.
+- Prove a transformer can be created/imported, edited, processed and reported
+  using explicit local inputs with no map or desktop dependency for headless
+  commands. Pin project config, libraries, templates, fonts, images and reference
+  data required by the operation. Missing references or unsupported configured
+  output formats must produce visible blockers, not apparent completion.
+- Close single, batch, combined and compounded reporting, media retrieval and
+  physical printing on supported hosts. Native PDF creation is not printer
+  spooling. Preserve report export policy, multi-format/page selections, retained
+  artifact bytes and queued reconciliation; partial delivery is not complete.
+- Complete transparent caches with at least 2 GB vector-tile and 3 GB basemap
+  budgets as requested: explicit units/budgets, bounded disk use, eviction,
+  coverage/freshness and per-category clear operations. Separate evictable cache
+  from retained project/Survey work. Test restart, partial downloads, low disk
+  and offline misses without network attempts.
+
+Google offline caching requires applicable provider permission. Verify the
+actual agreement before adding download packs; do not advertise coverage from
+ordinary cache headers. Use governed/owned or explicitly offline-permitted
+sources, retain attribution and consult the
 [Google Map Tiles policy](https://developers.google.com/maps/documentation/tile/policies).
 
-## Small slice delivered with this plan
+## Remaining version retrieval, comparison and location consistency
 
-Governance navigation uses the existing application drawer in this order:
-System, Project, Desktop installations, Users, Architecture. Architecture keeps
-that drawer populated and places its own chapters in a horizontal bar above
-the canvas. The duplicate Map shortcut is removed from the page; the normal
-application navigation remains.
-This is presentation work, not a new domain command or a CLI migration.
+Build on existing `design_versions` native/WASM capture, room digests, local
+catalog, retrieval and Data Factory (`ds-geo`) comparisons. Local versions use
+`local-<digest>` identities, not invented server `vN` labels. Extend and verify
+these foundations; do not introduce parallel geometry mathematics.
 
-The Windows release's browser-WASM cache builder also omitted Solar provenance
-when compiling the command kernel. It now verifies the pinned sibling Solar
-checkout, includes its SHA in the cache identity, and passes that SHA plus the
-active kernel lockfile to the build (converting the path for native Windows
-Cargo). The missing-SHA panic was reproduced locally; the corrected contracts
-release check and Linux/simulated-Windows cache regression pass. A native
-Windows installer build still requires operator verification.
+- Complete cross-host storage and exact-content transport above. Preserve
+  independent layer/metadata/config rooms and explicit missing settings,
+  identity, CRS or source/result evidence. Comparisons/results may occupy their
+  own room; expose before/after findings through UI and CLI and temporary layers.
+  Named maps remain explicitly deferred.
+- Retain stable transformer identity, immutable revision IDs, replacement/import
+  lineage, location/CRS, declared design area, input fingerprints and processing
+  revision. A name is a label; the viewport is not a declared design boundary.
+- Detect relocation, same-name replacement, departure from the retained boundary
+  and input/result-location mismatches. Use normalized coordinates, explicit
+  units and versioned tolerance policy. Record before/after location, displacement,
+  boundary relationship, affected revisions/results and the triggering rule.
+  Missing identity/CRS/boundary evidence yields unknown, never a clean finding.
+- Expose consistent Design status/comparison results headlessly. Retain detection
+  and resolution history; acknowledgement/replacement reasons cannot erase
+  original evidence or make old computation current.
+- Retrieve exact authored geometry, settings, pinned inputs, provenance and
+  result references offline when available. Report missing local dependencies.
+  Retrieval cannot move current head. Restoration creates a new revision with
+  recorded lineage and expected-head fencing; do not rewrite history or reuse
+  results from a different input/location fingerprint.
+- Prove a transformer designed inside a rectangle then replaced far away under
+  the same name retains both versions and exposes discontinuity/stale results
+  through offline retrieval and reconciliation. Also test small tolerated
+  corrections, acknowledged relocation and insufficient spatial evidence.
 
-The web release's Grid exchange validation also exposed an obsolete expectation
-for reconstructed STRUCT/PRT headers and a portable-projection rewrite of an
-embedded PRT path. Production now verifies the actual emitted library member
-against its retained digest before preserving those exact bytes through path
-projection; it does not substitute an older asset for an edited export. The
-regression checks exact retained library bytes, and all 34 conversion-planner
-tests pass locally. This does not claim a new native PLS-CADD acceptance run.
+## Remaining Solar IO and performance closure
 
-## Acceptance for every implementation slice
+- Keep `ds-solar-weather` at the IO boundary: reusable versioned weather input
+  pinned by dataset identity, digest, spatial/temporal coverage and preparation
+  version. Repeated city iterations reuse matching local input; acquisition or
+  refresh is explicit. Missing/incompatible data must not trigger silent
+  download, substitution or regeneration inside computation/report production.
+- Close seeding-to-draft/result/artifact offline IO and background publication,
+  including report/web images and portfolio IO. Verify manifests, media and
+  report input completeness without changing computation/report accuracy scope.
+- Preserve the existing kernel portfolio batch command and removed TypeScript
+  coordinator. Remaining limitations include paired effect-host dependence
+  rather than a standalone daemon, unavailable hosted active cancellation and
+  hosted custom source/draft overrides, and dev publication admission blocked
+  by a missing exact release manifest in the recorded run. Verify/fix each
+  supported path explicitly, without TypeScript emulation or relaxed provenance.
+- Benchmark sustained parallel city/portfolio/Design jobs on desktop and
+  quota-limited Cloud Run with pinned inputs, per-stage timings and CPU/memory
+  budgets. A prior 6.4-second seven-city local sample and near-15-core peak are
+  observations, not proof of sustained utilization or cloud equivalence.
+  GCP execution, memory pressure and concurrent-request behavior were unverified
+  because billing was unavailable; no cloud capability is assumed here.
+- Use a shared CPU/memory budget rather than nested pools claiming all cores.
+  Verify actual progress, cancellation acknowledgement, interruption/restart,
+  deterministic outcomes and resource limits. Rust compilation alone does not
+  prove performance, and input/result bounds are not an OS memory cap.
 
-1. Discover the dev CLI contract; add the missing typed command before relying
-   on a UI-only action. UI and CLI must consume the same domain implementation.
-2. Capture a reproducible fixture or exact artifact/config digests. For customer
-   and profile defects, prove the reproduction fails before the fix and passes
-   after it, retaining unrelated electrical and geometry constraints.
-3. For offline claims, reboot offline and run through completion with network
-   observation. Include images, tiles, workers, native children, authentication
-   and cancellation. Local request-guard unit tests alone are insufficient.
-4. Reconnect and prove background synchronization, conflict handling, restart
-   recovery and no loss of Survey data, drafts, artifacts or deletion evidence.
-5. Report implementation/deletion counts, meaningful tests, platform coverage,
-   remaining limitations and exact commits. Keep implemented, locally tested,
-   deployed and operator-validated as separate states.
+## Remaining Tchad investigation
 
-Start with dev CLI readiness and the three reproducible product surfaces
-(customers/materials, attribute table, profile scene). Seeding depends on server
-access. Treat caching, isolation and fleet control as separate bounded slices;
-do not reopen every part of A.md in one mixed checkpoint.
+The original report of Rwandan assembly names in computed output remains
+unreproduced. Inspected local `beinamar_01`, `_02` and `_04` histograms had Tchad
+codes; the inspected cache selected `rule_tchd` and contained its referenced
+assemblies. That does not prove cloud seed freshness or earlier consumed bytes.
+
+- Identify the originally affected output and exact run configuration, catalog
+  bytes, locks, authored values and computed recommendations. Do not present a
+  sheet-save, preset change or reseed as a demonstrated computation fix.
+- Preserve the existing Rust rule-family correction, selected-table refusal and
+  authored/surveyed/installed component authority. See the owning
+  `ds-network/docs/contracts/lv-poles-rules-family-contract.md`.
+- Define suspension/earthing policy as explicit standard-level data; do not
+  guess Tchad equivalents. Verify cloud deployment and legacy Standard routes.
+  The earlier full release gate also reported exchange Clippy failures; those
+  were not revalidated by the subsequent conversion test fix.
+
+## Uninvestigated risks requiring bounded verification
+
+The earlier resource limit prevented investigation of these hypotheses; this
+document consolidation did not investigate them either:
+
+- Reachable duplicate TypeScript settings, selection, edits or state decisions
+  despite equivalent Rust paths; mismatched browser/native/cloud defaults,
+  refusals, cancellation and result revisions.
+- Domain outboxes with incompatible identity, dependency, retry, acknowledgement,
+  conflict or cleanup assumptions; Solar/Survey reuse cannot be assumed.
+- Incompletely pinned source manifests, forms, libraries, configuration and media.
+- Main-thread work, full-snapshot copies, nested concurrency, cache lifetime or
+  oversized intermediate results limiting speed and memory.
+- Executable-hash fencing for native resumption being costly on debug binaries
+  or too coarse for upgrade-compatible recovery.
+- Signed media references, printing settings or unavailable local assets blocking
+  real offline delivery despite passing basic PDF tests.
+- Multi-device geometry edits, actor changes, grant expiry, tombstones and policy
+  revocation leaving unresolved recovery/reconciliation cases.
+
+## Outstanding release verification
+
+- Rerun the Windows installer locally with the pushed Solar provenance fix;
+  Linux and simulated Windows build-cache tests are not native Windows proof.
+- Rerun the web dev release gate with the pushed exact-library export correction.
+  Passing 34 planner and 146 library tests does not prove the entire release gate,
+  deployment or a fresh native PLS-CADD reopen.
+- Verify intended installations/backend deployments before relying on locally
+  tested control/recovery changes. No cloud deployment or Windows blackout run
+  was established by the preceding checkpoints.
+
+## Acceptance for closing any item
+
+1. Select one bounded slice and inspect the live dev CLI contract. Add the
+   missing typed command before relying on a UI-only operation. UI and CLI must
+   call the same domain implementation with the same parameters.
+2. Capture reproducible fixtures or exact artifact/configuration digests. Prove
+   relevant failures before and after the fix, retaining unrelated engineering,
+   identity, authority and geometry constraints.
+3. For offline claims, reboot offline and complete the operation under network
+   observation, including media, tiles, workers, authentication, native children
+   and cancellation. Request-guard unit tests alone do not establish blackout.
+4. Reconnect and prove background sync, conflicts, interrupted work and recovery
+   without losing Survey data, drafts, artifacts, versions or deletion evidence.
+5. Publish exact production removal/addition/net counts, meaningful test results,
+   platform coverage and remaining limitations. Distinguish implemented, tested,
+   pushed, deployed and operator-validated; remove an item only at its declared
+   acceptance boundary or restate its genuinely remaining part.
+
+Start with dev CLI readiness and the customer/material, attribute-table and
+profile failures. Seeding depends on server access. Keep isolation, caching,
+fleet governance and reconciliation in separate coherent implementation slices.
+Assisted drafting from roads/buildings/contours/imagery remains future context:
+versioned evidence, reversible proposals and human validation must remain
+possible, but autonomous routing inference and DSGrid physics accuracy are not
+part of this backlog's current implementation scope.
