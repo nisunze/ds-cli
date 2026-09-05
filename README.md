@@ -72,3 +72,22 @@ Solar report image discovery and presentation projection use the shared
 `ds-solar-contracts::report_media` parser through `solarReportImages` and
 `projectSolarReportImages`. Native and WASM callers share Markdown semantics;
 the browser has no secondary parser.
+
+### Offline report commands
+
+`report::evaluate` / WASM `reportCommand` owns the closed
+`ds.report.command/v1` decisions used by installed UI and CLI report operations:
+
+- `plan`: exact explicit scope, or complete prepared project inventory plus
+  local dirty rooms; missing rooms remain named. Processor count and a resident
+  job limit determine concurrency. A targeted cache never proves full inventory.
+- `archive`: applied `report_archive` group coverage and deterministic safe
+  ordinal folders. Missing, duplicate, foreign or archived membership refuses.
+- `publication`: verified release output is `pending`, `queued`, or `composed`;
+  the explicit development engine is `local_only`. Unknown engine identities
+  refuse. Native Tauri consumes this same Rust policy when sealing its receipt.
+
+Hosts own prepared-input storage, native execution, byte delivery and outbox IO.
+Neither export nor scope planning requests cloud admission, saves dirty rooms,
+refreshes project inputs, or replaces a failed WASM decision with TypeScript.
+Publication failure cannot invalidate a successfully committed local artifact.

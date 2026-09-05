@@ -13,6 +13,7 @@ use zeroize::Zeroize;
 
 pub mod design;
 mod project_control;
+pub mod report;
 pub mod solar_batch;
 mod solar_network_seed;
 mod solar_portfolio;
