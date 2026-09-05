@@ -61,3 +61,8 @@ casing and fill recipes across native and WASM. The native guided planner reads
 backend editor vocabulary and bounds, preserves the complete authored document,
 and resolves its save target. It performs no HTTP or rendering. Captured legacy
 TypeScript fixtures verify 47 authoring cases against the same Rust operation.
+
+Solar report image discovery and presentation projection use the shared
+`ds-solar-contracts::report_media` parser through `solarReportImages` and
+`projectSolarReportImages`. Native and WASM callers share Markdown semantics;
+the browser has no secondary parser.

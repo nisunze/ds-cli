@@ -523,6 +523,35 @@ mod wasm {
         validate_solar_portfolio_result,
     };
 
+    #[wasm_bindgen(js_name = solarReportImages)]
+    pub fn solar_report_images(markdown: &str) -> Result<String, JsValue> {
+        let images = ds_solar_contracts::report_media::images(markdown)
+            .map_err(|error| JsValue::from_str(&error.message))?;
+        serde_json::to_string(&images).map_err(|error| JsValue::from_str(&error.to_string()))
+    }
+
+    #[wasm_bindgen(js_name = projectSolarReportImages)]
+    pub fn project_solar_report_images(
+        markdown: &str,
+        resolved_json: &str,
+    ) -> Result<String, JsValue> {
+        if resolved_json.len() > 8 * 1024 * 1024 {
+            return Err(JsValue::from_str(
+                "Solar media projection exceeds its byte bound",
+            ));
+        }
+        let resolved: std::collections::BTreeMap<String, String> =
+            serde_json::from_str(resolved_json)
+                .map_err(|error| JsValue::from_str(&error.to_string()))?;
+        if resolved.len() > 512 {
+            return Err(JsValue::from_str(
+                "Solar media projection exceeds 512 images",
+            ));
+        }
+        ds_solar_contracts::report_media::project(markdown, &resolved)
+            .map_err(|error| JsValue::from_str(&error.message))
+    }
+
     #[wasm_bindgen(js_name = planProjectControlRooms)]
     pub fn project_control_rooms(input_json: &[u8]) -> Result<String, JsValue> {
         plan_project_control_rooms(input_json)
