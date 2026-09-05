@@ -14,6 +14,15 @@ use zeroize::Zeroize;
 mod project_control;
 mod solar_network_seed;
 mod solar_portfolio;
+pub mod survey;
+
+#[cfg(feature = "wasm")]
+#[wasm_bindgen::prelude::wasm_bindgen(js_name = surveyEvaluate)]
+pub fn survey_evaluate_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
+    survey::survey_evaluate(input)
+        .and_then(|v| serde_json::to_string(&v).map_err(|_| "Survey result encoding failed".into()))
+        .map_err(|e| wasm_bindgen::JsValue::from_str(&e))
+}
 
 pub use project_control::{
     plan_project_control_report_download, plan_project_control_rooms,
