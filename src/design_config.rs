@@ -153,3 +153,99 @@ mod tests {
         assert!(result["rows"][0].get("private_extra").is_none());
     }
 }
+
+/// Canonical UI/CLI envelope for the authenticated catalog IO owner. This does
+/// not resolve aliases or calculate material; ds-network owns that meaning.
+pub fn material_propagation_request(input: &[u8]) -> Result<String, String> {
+    #[derive(serde::Deserialize, serde::Serialize)]
+    #[serde(deny_unknown_fields)]
+    struct Request {
+        schema: String,
+        source_project: String,
+        template: String,
+        rule_set: String,
+        rows: Vec<String>,
+        mode: String,
+        #[serde(default, skip_serializing_if = "String::is_empty")]
+        expected_digest: String,
+    }
+    if input.len() > 32 * 1024 {
+        return Err("material propagation request exceeds 32 KiB".into());
+    }
+    let mut request: Request = serde_json::from_slice(input).map_err(|e| e.to_string())?;
+    if request.schema != "ds.design.material-propagation/v1"
+        || !matches!(request.mode.as_str(), "preview" | "apply")
+    {
+        return Err("invalid material propagation schema or mode".into());
+    }
+    for id in [
+        &request.source_project,
+        &request.template,
+        &request.rule_set,
+    ] {
+        if id.is_empty()
+            || id.len() > 128
+            || id.trim() != id
+            || id.chars().any(|c| c.is_control() || c == '/' || c == '\\')
+        {
+            return Err(
+                "source project, template and rule set must be explicit identifiers".into(),
+            );
+        }
+    }
+    let mut seen = BTreeSet::new();
+    if request.rows.is_empty()
+        || request.rows.len() > 64
+        || request.rows.iter().any(|s| {
+            s.is_empty()
+                || s.len() > 128
+                || s.trim() != s
+                || s.chars().any(char::is_control)
+                || !seen.insert(s.clone())
+        })
+    {
+        return Err("provide 1-64 unique explicit catalog row names".into());
+    }
+    request.rows.sort();
+    if request.mode == "apply" {
+        if request.expected_digest.len() != 64
+            || !request
+                .expected_digest
+                .bytes()
+                .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+        {
+            return Err("apply requires the preview digest".into());
+        }
+    } else if !request.expected_digest.is_empty() {
+        return Err("preview cannot carry an apply digest".into());
+    }
+    serde_json::to_string(&request).map_err(|e| e.to_string())
+}
+
+#[cfg(feature = "wasm")]
+#[wasm_bindgen::prelude::wasm_bindgen(js_name = designMaterialPropagationRequest)]
+pub fn material_propagation_request_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
+    material_propagation_request(input).map_err(|e| wasm_bindgen::JsValue::from_str(&e))
+}
+
+#[cfg(test)]
+mod material_request_tests {
+    use super::*;
+    #[test]
+    fn country_independent_and_explicit_with_digest_fence() {
+        let request = json!({"schema":"ds.design.material-propagation/v1", "source_project":"p", "template":"master", "rule_set":"rule_x", "rows":["pole_z","pole_a"], "mode":"preview"});
+        let result: Value = serde_json::from_str(
+            &material_propagation_request(request.to_string().as_bytes()).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(result["rule_set"], "rule_x");
+        assert_eq!(result["rows"], json!(["pole_a", "pole_z"]));
+        let mut apply = request.clone();
+        apply["mode"] = json!("apply");
+        assert!(material_propagation_request(apply.to_string().as_bytes()).is_err());
+        apply["expected_digest"] = json!("a".repeat(64));
+        assert!(material_propagation_request(apply.to_string().as_bytes()).is_ok());
+        apply["all_projects"] = json!(true);
+        assert!(material_propagation_request(apply.to_string().as_bytes()).is_err());
+    }
+}

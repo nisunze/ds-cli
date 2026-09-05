@@ -11,7 +11,7 @@ implemented work awaiting its remaining acceptance evidence.
 - [ ] [Offline startup, settings and delivery](#remaining-offline-startup-settings-and-delivery-closure)
 - [ ] [Version retrieval, comparison and location consistency](#remaining-version-retrieval-comparison-and-location-consistency)
 - [ ] [Solar IO and performance](#remaining-solar-io-and-performance-closure)
-- [ ] [Tchad investigation](#remaining-tchad-investigation) — material regression verified live; scoped propagation and earlier assembly report remain.
+- [ ] [Tchad investigation](#remaining-tchad-investigation) — material regression and scoped catalog audit verified live; legacy rule defaults and earlier assembly report remain.
 - [ ] [Uninvestigated risks](#uninvestigated-risks-requiring-bounded-verification)
 - [ ] [Release verification](#outstanding-release-verification)
 
@@ -346,12 +346,41 @@ overrides over saved settings for both UI and CLI; 59 kernel tests and 15 web
 integration/bridge tests passed. The original local version was retained;
 results remain staged locally, without a cloud save or inferred material.
 
-Remaining scoped data operation: the owner authorized global master plus every
-project selecting exactly rule_tchd. Propagate explicit catalog rows only,
-with preview/revision fencing; the legacy whole-config/all-project overwrite
-is unsuitable. Source cached material values are present, but authoritative
-cloud/global seed freshness has not yet been verified. Investigate legacy
-unnamed-table and missing-selection defaults that still inject rule_edcl.
+The parameterized `design materials preview/apply` command now uses the shared
+kernel envelope and authenticated Go catalog IO owner. Live dev execution
+verified global master plus every project selecting exactly `rule_tchd`:
+master and `arjgpydw_aderm_loc7` already have concrete for `150daN`, `300daN`,
+`500daN`, `650daN`; **zero catalog edits** were needed. Sixty other projects were
+skipped by the exact rule-selection scope. The authorized apply retained the
+actor audit receipt for digest
+`3bbe39a805b0046fc17a2f59233ab9230a8fa608c795f99b577ed7e8024a349c`.
+This establishes current authoritative seed contents, not earlier run inputs.
+The operation is parameterized, not a Tchad-specific code branch. Existing rows
+change only material/default_material; missing explicit rows copy source data.
+
+Verification: 60 kernel tests and Clippy; 44 API routing tests with real kernel
+WASM plus replay/bridge tests; full CLI workspace tests/Clippy and skill gates;
+local Firestore emulator scope, stale-plan/no-partial-write, actor and replay
+checks. See `ds-brain/docs/contracts/material-propagation.md` for the IO contract.
+No cloud build or deployment was performed.
+
+Remaining:
+- Investigate legacy unnamed-table and missing-selection defaults that inject
+  `rule_edcl`. Some skipped project names suggest Tchad but names are not rule
+  authority; inspect their stored selection before proposing any migration.
+- Migrate the separate legacy full-config propagation UI to a reviewed scoped
+  workflow. New CLI/API capability does not mean that old action was removed.
+- The retained before/after local version comparison reported 292 geometry
+  differences (110 geometry-only, 182 geometry plus attributes), despite
+  unchanged counts and build_network=false. Determine precision/CRS normalization
+  versus real movement before claiming geometry preservation. Original version
+  `local-5412ffa4806e91b1d9a5b3538792aaadcff9718b9366635d94320ca54e18bf1e`
+  and the comparison are retained; the result remains local and unsaved remotely.
+- Local sidecar preparation staged the new CLI, but its subsequent unchanged
+  Solar build failed because its target/debug directory disappeared mid-build.
+  Cause not investigated. Check ownership of build cleanup and isolate dev
+  target directories from concurrent cleanup. Tauri also rebuilds when staging
+  temporary sidecar files; investigate ignoring those temporary files.
 
 The original report of Rwandan assembly names in computed output remains
 unreproduced. Inspected local `beinamar_01`, `_02` and `_04` histograms had Tchad
@@ -419,7 +448,7 @@ document consolidation did not investigate them either:
    acceptance boundary or restate its genuinely remaining part.
 
 Continue with the customer, attribute-table and profile failures, and verify
-the material correction in the running product. Seeding depends on server access. Keep isolation, caching,
+the material correction in the running product. The scoped material audit now has live server evidence; broader migrations still require their own reviewed scope. Keep isolation, caching,
 fleet governance and reconciliation in separate coherent implementation slices.
 Assisted drafting from roads/buildings/contours/imagery remains future context:
 versioned evidence, reversible proposals and human validation must remain
