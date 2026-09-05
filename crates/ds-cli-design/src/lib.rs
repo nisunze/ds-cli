@@ -66,6 +66,7 @@ pub mod group;
 pub mod grouping;
 pub mod known_columns;
 pub mod lv;
+pub mod materials;
 pub mod project;
 pub mod selection;
 pub mod sync;
@@ -123,6 +124,8 @@ pub static DOMAIN: Domain = Domain {
         &tag::set::COMMAND,
         &tag::enrich::PREVIEW_COMMAND,
         &tag::enrich::APPLY_COMMAND,
+        &materials::PREVIEW,
+        &materials::APPLY,
         &known_columns::list::COMMAND,
         &known_columns::set::COMMAND,
         &group::list::COMMAND,
@@ -341,6 +344,8 @@ pub const BRIDGE_OPS: &[&BridgeOp] = &[
     &TAG_SET,
     &TAG_ENRICH_PREVIEW,
     &TAG_ENRICH_APPLY,
+    &materials::PREVIEW_OP,
+    &materials::APPLY_OP,
     &KNOWN_COLUMNS_LIST,
     &KNOWN_COLUMNS_SET,
     &GROUP_LIST,

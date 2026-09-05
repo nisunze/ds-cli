@@ -116,6 +116,8 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ),
     ("design.tag.enrich-preview", "read_only", "project"),
     ("design.tag.enrich-apply", "global_write", "project"),
+    ("design.materials.preview", "read_only", "project"),
+    ("design.materials.apply", "global_write", "project"),
     ("design.known-columns.list", "read_only", "project"),
     ("design.known-columns.set", "global_write", "project"),
     ("design.selection.archive", "global_write", "project"),

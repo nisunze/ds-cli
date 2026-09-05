@@ -1224,6 +1224,16 @@ static DESIGN_ENTRIES: &[Entry] = &[
         render: ds_cli_design::tag::enrich::render,
     },
     Entry {
+        command: &ds_cli_design::materials::PREVIEW,
+        handler: ds_cli_design::materials::preview,
+        render: ds_cli_design::materials::render,
+    },
+    Entry {
+        command: &ds_cli_design::materials::APPLY,
+        handler: ds_cli_design::materials::apply,
+        render: ds_cli_design::materials::render,
+    },
+    Entry {
         command: &ds_cli_design::known_columns::list::COMMAND,
         handler: ds_cli_design::known_columns::list::run,
         render: ds_cli_design::known_columns::list::render,

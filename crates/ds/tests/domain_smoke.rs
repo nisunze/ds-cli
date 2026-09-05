@@ -3945,7 +3945,7 @@ fn every_design_command_is_discoverable_without_the_desktop_installed() {
     let commands = index["commands"].as_array().expect("commands");
     assert_eq!(
         commands.len(),
-        53,
+        55,
         "the design domain should expose its whole family: {commands:?}"
     );
     for command in commands {
@@ -4107,6 +4107,8 @@ fn design_collaboration_is_a_complete_headless_project_surface() {
         "design.tag.query",
         "design.tag.define",
         "design.tag.set",
+        "design.materials.preview",
+        "design.materials.apply",
         "design.known-columns.list",
         "design.known-columns.set",
         "design.group.list",
@@ -4136,6 +4138,7 @@ fn design_collaboration_is_a_complete_headless_project_surface() {
     );
 
     let writes: BTreeSet<&str> = [
+        "design.materials.apply",
         "design.sync.cancel",
         "design.sync.resume",
         "design.selection.save",
@@ -4261,6 +4264,19 @@ fn design_collaboration_is_a_complete_headless_project_surface() {
                     "T-smoke",
                     "--definition",
                     "scope",
+                ],
+                "design.materials.apply" => vec![
+                    "design",
+                    "materials",
+                    "apply",
+                    "--template",
+                    "master",
+                    "--rule-set",
+                    "rule_x",
+                    "--row",
+                    "pole-x",
+                    "--digest",
+                    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
                 ],
                 "design.known-columns.set" => vec![
                     "design",
