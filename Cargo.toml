@@ -108,6 +108,7 @@ ds-cli-workstation = { path = "crates/ds-cli-workstation" }
 ds-cli-mcp = { path = "crates/ds-cli-mcp" }
 ds-cli-skills = { path = "crates/ds-cli-skills" }
 ds-command-kernel = { path = "../ds-command-kernel" }
+ds-design-workspace = { path = "../ds-command-kernel/crates/ds-design-workspace" }
 ds-solar-contracts = { path = "../ds-solar/crates/ds-solar-contracts" }
 
 # The authoritative engine crates, by path, exactly as ds-web/src-tauri

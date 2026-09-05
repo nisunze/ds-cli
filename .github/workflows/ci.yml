@@ -206,6 +206,12 @@ jobs:
             exit 1
           fi
 
+      - name: Prove offline Design draft and PDF production
+        working-directory: data-solutions/ds-cli
+        env:
+          DS_REPORT_BIN: ${{ github.workspace }}/data-solutions/ds-network-reporter/target/debug/ds-report
+        run: cargo test --locked -p ds --test design_project_offline -- --ignored
+
       - name: Release build
         working-directory: data-solutions/ds-cli
         run: cargo build --locked --release

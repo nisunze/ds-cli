@@ -3912,7 +3912,7 @@ fn every_design_command_is_discoverable_without_the_desktop_installed() {
     let commands = index["commands"].as_array().expect("commands");
     assert_eq!(
         commands.len(),
-        38,
+        50,
         "the design domain should expose its whole family: {commands:?}"
     );
     for command in commands {
@@ -4050,7 +4050,11 @@ fn design_collaboration_is_a_complete_headless_project_surface() {
     let actual: BTreeSet<&str> = commands
         .iter()
         .map(|command| command["id"].as_str().expect("id"))
-        .filter(|id| !id.starts_with("design.lv.") && !id.starts_with("design.transformer."))
+        .filter(|id| {
+            !id.starts_with("design.lv.")
+                && !id.starts_with("design.transformer.")
+                && !id.starts_with("design.project.")
+        })
         .collect();
     let expected: BTreeSet<&str> = [
         "design.selection.list",
@@ -4127,7 +4131,10 @@ fn design_collaboration_is_a_complete_headless_project_surface() {
         let id = command["id"].as_str().expect("id");
         // Offline LV compute and the headless transformer lifecycle are not
         // bridge collaboration; their own tests pin their availability.
-        if id.starts_with("design.lv.") || id.starts_with("design.transformer.") {
+        if id.starts_with("design.lv.")
+            || id.starts_with("design.transformer.")
+            || id.starts_with("design.project.")
+        {
             continue;
         }
         if id == "design.features.select" {

@@ -1,5 +1,9 @@
 # `ds design` — reference
 
+The [offline project workspace](design-project.md) owns local transformer
+snapshots, version-fenced edits, native background processing, report/PDF
+production and pending publication without a paired application.
+
 Tier-4 reference. `ds design <command> --help` is the contract; this document
 is the part that does not belong in any command's help because it is true of
 all of them.

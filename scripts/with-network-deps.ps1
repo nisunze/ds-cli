@@ -90,7 +90,7 @@ $CommandKernelSha = (& git -C $CommandKernelCheckout rev-parse HEAD).Trim()
 if ($LASTEXITCODE -ne 0 -or $CommandKernelSha -ne $ExpectedCommandKernelSha) {
     throw "with-network-deps: ds-command-kernel must be pinned to $ExpectedCommandKernelSha"
 }
-$CommandKernelStatus = @(& git -C $CommandKernelCheckout status --porcelain --untracked-files=normal -- Cargo.toml Cargo.lock src)
+$CommandKernelStatus = @(& git -C $CommandKernelCheckout status --porcelain --untracked-files=normal -- Cargo.toml Cargo.lock src crates)
 if ($LASTEXITCODE -ne 0 -or $CommandKernelStatus.Count -ne 0) {
     throw 'with-network-deps: ds-command-kernel native inputs differ from its pinned commit'
 }

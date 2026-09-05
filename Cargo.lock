@@ -728,6 +728,10 @@ dependencies = [
  "ds-cli-auth",
  "ds-cli-contract",
  "ds-cli-desktop",
+ "ds-cli-exec",
+ "ds-cli-report",
+ "ds-command-kernel",
+ "ds-design-workspace",
  "ds-geo",
  "ds-network",
  "serde_json",
@@ -991,6 +995,22 @@ dependencies = [
  "sha2",
  "url",
  "zeroize",
+]
+
+[[package]]
+name = "ds-design-workspace"
+version = "0.1.0"
+dependencies = [
+ "ds-command-kernel",
+ "ds-network",
+ "fs2",
+ "rayon",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "thiserror",
 ]
 
 [[package]]

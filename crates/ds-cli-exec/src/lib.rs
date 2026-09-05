@@ -543,3 +543,5 @@ mod tests {
 
 mod solar_worker;
 pub use solar_worker::start_solar_project_sync;
+mod design_worker;
+pub use design_worker::start_design_project_process;

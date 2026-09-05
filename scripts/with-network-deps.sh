@@ -92,7 +92,7 @@ if [[ "$(git -C "$command_kernel_checkout" rev-parse HEAD)" != "$expected_comman
     echo "with-network-deps: ds-command-kernel must be pinned to $expected_command_kernel_sha" >&2
     exit 66
 fi
-if [[ -n "$(git -C "$command_kernel_checkout" status --porcelain --untracked-files=normal -- Cargo.toml Cargo.lock src)" ]]; then
+if [[ -n "$(git -C "$command_kernel_checkout" status --porcelain --untracked-files=normal -- Cargo.toml Cargo.lock src crates)" ]]; then
     echo "with-network-deps: ds-command-kernel native inputs differ from its pinned commit" >&2
     exit 66
 fi

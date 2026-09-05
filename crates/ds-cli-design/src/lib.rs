@@ -66,6 +66,7 @@ pub mod group;
 pub mod grouping;
 pub mod known_columns;
 pub mod lv;
+pub mod project;
 pub mod selection;
 pub mod tag;
 pub mod transformer;
@@ -90,6 +91,18 @@ pub static DOMAIN: Domain = Domain {
     id: "design",
     summary: "Headless reads, offline LV compute, and governed collaboration.",
     commands: &[
+        &project::SOURCES,
+        &project::INIT,
+        &project::WRITE,
+        &project::EDIT,
+        &project::READ,
+        &project::RESTORE,
+        &project::STATUS,
+        &project::PROCESS,
+        &project::CANCEL,
+        &project::RESULT,
+        &project::OUTBOX,
+        &project::REPORT,
         &features::COMMAND,
         &selection::list::COMMAND,
         &selection::read::COMMAND,

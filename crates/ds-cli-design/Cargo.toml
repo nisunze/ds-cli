@@ -19,3 +19,8 @@ ds-geo = { workspace = true }
 ds-network = { workspace = true }
 serde_json = { workspace = true }
 sha2 = { workspace = true }
+ds-design-workspace = { workspace = true }
+ds-cli-exec = { workspace = true }
+ds-cli-report = { workspace = true }
+
+ds-command-kernel = { workspace = true }

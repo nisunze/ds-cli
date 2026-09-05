@@ -1294,6 +1294,66 @@ static DESIGN_ENTRIES: &[Entry] = &[
         render: ds_cli_design::lv::project_export::render,
     },
     Entry {
+        command: &ds_cli_design::project::SOURCES,
+        handler: ds_cli_design::project::sources,
+        render: ds_cli_design::project::render,
+    },
+    Entry {
+        command: &ds_cli_design::project::INIT,
+        handler: ds_cli_design::project::init,
+        render: ds_cli_design::project::render,
+    },
+    Entry {
+        command: &ds_cli_design::project::WRITE,
+        handler: ds_cli_design::project::write,
+        render: ds_cli_design::project::render,
+    },
+    Entry {
+        command: &ds_cli_design::project::EDIT,
+        handler: ds_cli_design::project::edit,
+        render: ds_cli_design::project::render,
+    },
+    Entry {
+        command: &ds_cli_design::project::READ,
+        handler: ds_cli_design::project::read,
+        render: ds_cli_design::project::render,
+    },
+    Entry {
+        command: &ds_cli_design::project::RESTORE,
+        handler: ds_cli_design::project::restore,
+        render: ds_cli_design::project::render,
+    },
+    Entry {
+        command: &ds_cli_design::project::STATUS,
+        handler: ds_cli_design::project::status,
+        render: ds_cli_design::project::render,
+    },
+    Entry {
+        command: &ds_cli_design::project::PROCESS,
+        handler: ds_cli_design::project::process,
+        render: ds_cli_design::project::render,
+    },
+    Entry {
+        command: &ds_cli_design::project::CANCEL,
+        handler: ds_cli_design::project::cancel,
+        render: ds_cli_design::project::render,
+    },
+    Entry {
+        command: &ds_cli_design::project::RESULT,
+        handler: ds_cli_design::project::result,
+        render: ds_cli_design::project::render,
+    },
+    Entry {
+        command: &ds_cli_design::project::OUTBOX,
+        handler: ds_cli_design::project::outbox,
+        render: ds_cli_design::project::render,
+    },
+    Entry {
+        command: &ds_cli_design::project::REPORT,
+        handler: ds_cli_design::project::report,
+        render: ds_cli_design::project::render,
+    },
+    Entry {
         command: &ds_cli_design::lv::process::COMMAND,
         handler: ds_cli_design::lv::process::run,
         render: ds_cli_design::lv::process::render,
