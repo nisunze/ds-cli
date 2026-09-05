@@ -55,3 +55,9 @@ native/browser parity.
 The layer catalogue slice projects canonical backend IDs and their runtime
 companions for the native CLI and browser bridge. It preserves server order,
 reports truncation, and does not invent host visibility or backend assembly.
+
+Style authoring now shares appearance, categorical second dimensions, line types,
+casing and fill recipes across native and WASM. The native guided planner reads
+backend editor vocabulary and bounds, preserves the complete authored document,
+and resolves its save target. It performs no HTTP or rendering. Captured legacy
+TypeScript fixtures verify 47 authoring cases against the same Rust operation.

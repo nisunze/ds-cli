@@ -594,6 +594,13 @@ mod wasm {
     }
 }
 
+#[cfg(feature = "wasm")]
+#[wasm_bindgen::prelude::wasm_bindgen(js_name = styleChannels)]
+pub fn wasm_style_channels(kind: &str) -> String {
+    serde_json::to_string(&style_authoring::style_channels(kind))
+        .expect("static channel definitions")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -995,3 +1002,12 @@ pub fn project_layer_catalog_wasm(
 ) -> Result<String, wasm_bindgen::JsValue> {
     project_layer_catalog(input, limit).map_err(|error| wasm_bindgen::JsValue::from_str(&error))
 }
+
+pub mod style_authoring;
+#[cfg(feature = "wasm")]
+#[wasm_bindgen::prelude::wasm_bindgen(js_name = transformStyle)]
+pub fn transform_style_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
+    style_authoring::transform_style(input).map_err(|error| wasm_bindgen::JsValue::from_str(&error))
+}
+
+pub mod style_plan;
