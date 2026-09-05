@@ -512,3 +512,20 @@ WASM single/batch regression tests passed in Node. Five regression cases fail
 against the previous implementation and pass against the correction. The full
 workspace release gate remains blocked by pre-existing `ds-grid-exchange`
 Clippy errors; it was not represented as green. No GCP operation was needed.
+
+## Recovery page repair (2026-09-05)
+
+The screenshot's disabled selection and idle spinners came from a JSON-only
+consumer after the writer moved to `.dsgrid`, plus `null === null` in the busy
+indicator. The page now uses the shared kernel backup-ledger projection/download
+plan, supports both stored formats and fetches archive bytes only on explicit
+click. Metadata caching is fenced by gateway/principal/window, requests have
+deadlines, and page exit cancels work.
+
+Previous activity and deletion are separate actor/time records. The backend
+captures retained source activity stamps in new ledger rows; old records display
+“Not recorded” without automatically downloading backups. This does not fabricate
+an operation from `metadata.updated_at`, or replace an unknown actor with the
+deleter. Backend deployment is required for future deletion rows to carry the
+new evidence; existing historical rows are not automatically backfilled.
+See [the recovery command contract](docs/backup-ledger.md).

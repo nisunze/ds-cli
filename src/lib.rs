@@ -1123,3 +1123,10 @@ pub mod design_config;
 pub fn design_config_inspect_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
     design_config::inspect(input).map_err(|e| wasm_bindgen::JsValue::from_str(&e))
 }
+
+pub mod backup_ledger;
+#[cfg(feature = "wasm")]
+#[wasm_bindgen::prelude::wasm_bindgen(js_name = backupLedgerCommand)]
+pub fn backup_ledger_command(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
+    backup_ledger::evaluate(input).map_err(|error| wasm_bindgen::JsValue::from_str(&error))
+}
