@@ -5,13 +5,13 @@
 **9 work chapters remain open; 0 are closed.** Open includes partially
 implemented work awaiting its remaining acceptance evidence.
 
-- [ ] [Command and Rust migration](#remaining-command-and-rust-migration-closure)
+- [ ] [Command and Rust migration](#remaining-command-and-rust-migration-closure) — dev CLI entry point verified; broader lifecycle migration remains.
 - [ ] [Reconciliation and storage](#remaining-reconciliation-and-storage-closure)
 - [ ] [Desktop governance and recovery](#remaining-desktop-governance-and-recovery-closure)
 - [ ] [Offline startup, settings and delivery](#remaining-offline-startup-settings-and-delivery-closure)
 - [ ] [Version retrieval, comparison and location consistency](#remaining-version-retrieval-comparison-and-location-consistency)
 - [ ] [Solar IO and performance](#remaining-solar-io-and-performance-closure)
-- [ ] [Tchad investigation](#remaining-tchad-investigation)
+- [ ] [Tchad investigation](#remaining-tchad-investigation) — material alias defect fixed and tested; live rebuild/reprocessing and earlier assembly report remain.
 - [ ] [Uninvestigated risks](#uninvestigated-risks-requiring-bounded-verification)
 - [ ] [Release verification](#outstanding-release-verification)
 
@@ -72,9 +72,8 @@ persistence or cross-repository integration. Split L items before starting.
 
 | Priority / size | Remaining outcome | Evidence and next step | Command / authority owner |
 | --- | --- | --- | --- |
-| P0 / M | Reliable dev CLI inspection | The bundled dev CLI reports missing native client profile catalog for several commands; paired/local commands and native commands have different availability. Discover the exact live contract, repair the supported dev build where needed, and verify the active project without borrowing another lane's identity. | `ds-cli`, existing dev launcher and native client profile owners |
-| P0 / M | Explain and fix the two unconnected customers | Owner reports higher-wattage customers excluded in `beinamar_02`, project `arjgpydw_aderm_loc7`. The current warning says only `max_service_length=37m`; that does not prove the reason. Capture exact cached inputs/config, customer IDs, category/wattage, candidate connections and actual rejection reasons. Do not raise the length limit or change demand to make the warning disappear. | `ds-network` connection engine; bounded CLI inspection and processing |
-| P0 / M | Correct, understandable pole-material warnings | Warning names `9m 150daN`, `9m 300daN`, `9m 650daN`. The warning producer reads `lv_poles_struct_type`; the exact consumed project catalog has not been inspected for this run. Compare selected Tchad rules, normalized catalog keys, materials, authored values and config freshness. Repair proven data/contract mismatch; present actionable user wording without guessed materials. | Existing engineering-standards/catalog authority in `ds-network`; project config IO |
+| P0 / M | Explain and fix the two unconnected customers | Owner reports higher-wattage customers excluded in `beinamar_02`, project `arjgpydw_aderm_loc7`. Paired dev inspection confirms two retained diagnostics: `customers_34425407` (Grand Marche) and `customers_29255932` (Health Post). They lack specific rejection reasons and retain old pole labels. The `max_service_length=37m` message does not prove the cause. Capture pinned geometry/config, candidate connections and actual rejection reasons; no connection fix is claimed. Do not raise the length limit or change demand to make the warning disappear. | `ds-network` connection engine; bounded CLI inspection and processing |
+| P0 / M | Correct, understandable pole-material warnings | Warning names `9m 150daN`, `9m 300daN`, `9m 650daN`. Current cached catalog inspected and fingerprinted: all three types have explicit concrete aliases stored in `##` cells. Shared Rust alias decoding is fixed in `ds-network` `3a1fdf4`, with failing-before/passing-after native and single/batch WASM evidence. Rebuild the running compute owner and verify a real transformer run; this does not prove the original run consumed identical bytes. | Existing engineering-standards/catalog authority in `ds-network`; project config IO |
 | P0 / M | Attribute-table viewport filtering and sorting | Both are reported broken. Viewport filtering intersects row-index sets in `AttributeTable.svelte`; the failure has not been reproduced. Check stable feature identity across sorting, filtering, paging, vector-tile fragments and map movement. Sorting must cover the dataset, not just rendered rows. | Existing Data Factory/vector/table Rust query owner; UI only projects query results |
 | P0 / M | Valid MV profile scenes | Reported failure: `scene.conductor_spans[123].junction_hint` is not exactly one hint for the physical tap-off attachment set. The web validator was located; the failing engine scene has not been captured. Compare engine grouping with consumer grouping and preserve one engine-owned physical-junction identity. Do not disable validation or invent a second geometry algorithm in TypeScript. | `ds-network` profile/grid engine; existing CLI scene projections and web consumer |
 | P0 / M, externally blocked | Seed the requested MV design | Target project: `arjgpydw_aderm_loc7`. Sources on `magese@ds-server`: `~/data-solutions/artifacts/ader-projet-7-gis-complete` and `ader-projet-7-gis-seed`. SSH returned `Permission denied (publickey,password)` before listing either directory. Exact model filename, digest and tag contents remain unknown. After access is available, inspect the actual model, preserve granular tags, validate it, then import/associate it through the declared project/MV command. No seed has been performed. | Existing DS Grid exchange/import and project model authority; `ds-cli` |
@@ -88,6 +87,24 @@ persistence or cross-repository integration. Split L items before starting.
 | P2 / L | Prove useful parallelism | Status-page batches were reported serial/cloud-bound; Sustained desktop and quota-limited cloud utilization remain unverified; a prior local Solar sample reached roughly 15 core equivalents on 16 logical CPUs, which is not a controlled cross-host benchmark. Profile scheduling, IO waits, worker limits, cancellation and memory. Benchmark identical semantics on desktop and quota-limited Cloud Run containers; 100% CPU is not itself the acceptance criterion. | Rust scheduling/engine owners and shared batch commands |
 
 ## Remaining command and Rust migration closure
+
+The verified local entry point is
+`ds-web/run-linux-desktop.sh --cli <command>`. Web commit `64d1c9a6` pins the
+staged executable and local-dev descriptor, refuses descriptor overrides, and
+removes inherited native release profile configuration. Argument/exit-code,
+identity-isolation and missing-build checks pass. Paired inspection confirmed
+`arjgpydw_aderm_loc7`; the missing native catalog is intentional, not a reason
+to borrow a Stable/Canary identity. Standalone native-client convergence remains
+in scope below.
+
+The shared `designConfigInspect` command now projects bounded raw material rows,
+selected structure names and an exact input SHA-256. All 58 kernel tests and
+real debug/release WASM inspection checks pass; the live dev CLI also returned
+the new fields. Generated running assets were restored after inspection; the
+next supported dev rebuild must stage the committed kernel and network fixes.
+A hot-reload module import failed transiently during inspection, then recovered;
+this is not proof of offline cold-start readiness. No TypeScript domain code
+was added or removed in this slice (production TS delta: 0).
 
 - Complete UI edit lifecycle, project/design settings transformations, source
   and selection semantics, persistence and remaining scheduling convergence
@@ -311,6 +328,19 @@ these foundations; do not introduce parallel geometry mathematics.
 
 ## Remaining Tchad investigation
 
+Material lookup has a confirmed, corrected cause separate from assembly
+attribution. Cached configuration SHA-256
+`060708ab1a668ea07667c8b0903a2171435678b7170a75d3b0e6b92472c45aa9`
+contains explicit concrete materials for aliases `9m 150daN`, `9m 300daN` and
+`9m 650daN`. The Rust decoder treated `##`-separated cells as single aliases.
+Commit `ds-network` `3a1fdf4` corrects the shared cleaning/sizing/material decoder
+for arrays, serialized arrays and `##` cells, preserving literal punctuation.
+It also fixes blank default-material cells hiding explicit material values.
+The captured-row and blank-default regressions failed before their fixes;
+308 network unit tests, 33 processing contracts, 3 real WASM authority tests and
+Clippy passed afterward. A live transformer reprocess on the rebuilt owner is
+still required; no reseed or inferred material was used.
+
 The original report of Rwandan assembly names in computed output remains
 unreproduced. Inspected local `beinamar_01`, `_02` and `_04` histograms had Tchad
 codes; the inspected cache selected `rule_tchd` and contained its referenced
@@ -376,8 +406,8 @@ document consolidation did not investigate them either:
    pushed, deployed and operator-validated; remove an item only at its declared
    acceptance boundary or restate its genuinely remaining part.
 
-Start with dev CLI readiness and the customer/material, attribute-table and
-profile failures. Seeding depends on server access. Keep isolation, caching,
+Continue with the customer, attribute-table and profile failures, and verify
+the material correction in the running product. Seeding depends on server access. Keep isolation, caching,
 fleet governance and reconciliation in separate coherent implementation slices.
 Assisted drafting from roads/buildings/contours/imagery remains future context:
 versioned evidence, reversible proposals and human validation must remain
