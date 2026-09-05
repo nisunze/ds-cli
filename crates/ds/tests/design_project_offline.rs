@@ -38,7 +38,7 @@ fn full_offline_flow_keeps_pinned_results_and_print_bytes_without_desktop() {
     std::fs::write(&input,serde_json::to_vec(&json!({"schema":"ds.design.snapshot/v1","transformer":"T1","crs":"EPSG:4326",
         "layers":{"tr":{"type":"FeatureCollection","features":[{"type":"Feature","id":"tr","geometry":{"type":"Point","coordinates":[30.0,-2.0]},"properties":{"name":"T1","names":"T1"}}]},
         "lv_lines":{"type":"FeatureCollection","features":[{"type":"Feature","id":"line","geometry":{"type":"LineString","coordinates":[[30.0,-2.0],[30.0004,-2.0]]},"properties":{}}]}},
-        "settings":{},"network_config":{"sheets":{"project_settings":[{"parameter":"print_individual_page_sizes","value":"a3"}]}},"sources":[],"include_design_customers":true})).unwrap()).unwrap();
+        "settings":{},"network_config":{"sheets":{"project_settings":[{"parameter":"design_export_format","value":["xlsx","pdf_a3"]}]}},"sources":[],"include_design_customers":true})).unwrap()).unwrap();
     let written = call(&[
         "design",
         "project",
@@ -150,7 +150,7 @@ fn full_offline_flow_keeps_pinned_results_and_print_bytes_without_desktop() {
         "--format",
         "pdf_a3",
     ]);
-    assert_eq!(report["report"]["status"], "completed");
+    assert_eq!(report["report"]["status"], "completed", "{report:#}");
     assert_eq!(report["delivery"]["artifact_count"], 2);
     let artifacts = report["report"]["artifacts"].as_array().unwrap();
     let pdf = artifacts.iter().find(|a| a["format"] == "pdf_a3").unwrap();
