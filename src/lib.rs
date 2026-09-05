@@ -13,6 +13,7 @@ use zeroize::Zeroize;
 
 pub mod connectivity;
 pub mod design;
+pub mod installation;
 #[cfg(feature = "wasm")]
 #[wasm_bindgen::prelude::wasm_bindgen(js_name = connectivityCommand)]
 pub fn connectivity_command_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {

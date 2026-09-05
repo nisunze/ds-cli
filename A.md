@@ -185,6 +185,22 @@ The owner retains permanent control of installed desktop products and their
 capabilities. Policy must be able to disable a product/version, operation or
 compute placement independently of releasing another desktop.
 
+Desktop installation licensing is a separate authority from browser access,
+account authentication, project authorization and compute placement. A blocked
+installation or expired desktop lease does not block that user's browser
+account or other installations. A web account block requires its own explicit
+governed action. Installation user history records observations; it grants no
+account or project rights. Authorized administrators can manage desktop
+installations from the web without possessing a desktop license themselves.
+
+New desktop installations are initially allowed. The signed offline lease is
+bounded to seven days, with a daily handshake when the desktop is used online.
+Intentional offline mode never contacts the server, even for renewal or expiry.
+An offline desktop learns a remote block on its next online handshake; expiry
+does not renew itself. Cached web navigation and offline project data are
+independent of this desktop licensing window. Neither a lease nor switching
+offline grants remote API access, project permission or cloud compute authority.
+
 The Governance tab must expose an authorized installation and licensing
 inventory: stable installation/device identity, product/build, operating system,
 organization/project association, license and entitlement status, installation
