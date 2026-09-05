@@ -51,3 +51,7 @@ native/browser parity.
 ```bash
 ./build.sh
 ```
+
+The layer catalogue slice projects canonical backend IDs and their runtime
+companions for the native CLI and browser bridge. It preserves server order,
+reports truncation, and does not invent host visibility or backend assembly.

@@ -984,3 +984,14 @@ mod wasm_tests {
         assert_eq!(result["trace"]["city_ids"], serde_json::json!(["a", "b"]));
     }
 }
+
+mod layer_catalog;
+pub use layer_catalog::{project_layer_catalog, MAX_LAYER_CATALOG_BYTES};
+#[cfg(feature = "wasm")]
+#[wasm_bindgen::prelude::wasm_bindgen(js_name = projectLayerCatalog)]
+pub fn project_layer_catalog_wasm(
+    input: &[u8],
+    limit: usize,
+) -> Result<String, wasm_bindgen::JsValue> {
+    project_layer_catalog(input, limit).map_err(|error| wasm_bindgen::JsValue::from_str(&error))
+}
