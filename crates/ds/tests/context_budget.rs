@@ -379,3 +379,22 @@ fn default_results_are_bounded() {
         stdout.len()
     );
 }
+
+#[test]
+fn survey_workspace_group_help_is_bounded_and_never_requires_auth() {
+    for args in [
+        vec!["survey", "workspace"],
+        vec!["survey", "workspace", "--help"],
+        vec!["help", "survey", "workspace"],
+    ] {
+        let (stdout, stderr, code) = ds(&args);
+        assert_eq!(code, 0, "{stderr}");
+        assert!(stdout.contains("collect"));
+        assert!(stdout.contains("sync"));
+        assert!(!stdout.contains("survey form create"));
+        assert!(stdout.len() < 1500);
+    }
+    let descriptor = json(&["survey", "workspace", "--help", "--output", "json"]);
+    assert_eq!(descriptor["data"]["commands"].as_array().unwrap().len(), 5);
+    assert_ne!(ds(&["survey", "workspace", "misspelled", "--help"]).2, 0);
+}

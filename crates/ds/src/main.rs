@@ -246,6 +246,11 @@ fn run(argv: &[String]) -> Result<(), (ExitClass, ())> {
     };
 
     let Some((entry, consumed)) = registry::find_by_path(&rest) else {
+        if registered.domain.commands.iter().any(|command| {
+            command.path.len() > rest.len() && command.path.iter().zip(&rest).all(|(a, b)| *a == b)
+        }) {
+            return show_help(globals.output, &domains, &rest);
+        }
         return emit_failure(
             globals.output,
             "ds",
@@ -303,7 +308,51 @@ fn show_help(
             Some((entry, _)) => show_command_help(output, entry.command),
             None => match registry::find_domain(one) {
                 Some(registered) => {
-                    emit_failure(output, "ds", 1, &unknown_command(registered.domain, two))
+                    let commands: Vec<_> = registered.domain.commands.iter().filter(|command| command.path.len() > path.len() && command.path.iter().zip(path).all(|(a,b)| *a == b)).map(|command| serde_json::json!({"id":command.id,"path":command.path,"summary":command.summary})).collect();
+                    if commands.is_empty() {
+                        return emit_failure(
+                            output,
+                            "ds",
+                            1,
+                            &unknown_command(registered.domain, two),
+                        );
+                    }
+                    output
+                        .success(
+                            "ds.help",
+                            1,
+                            serde_json::json!({"path":path,"commands":commands}),
+                            |data| {
+                                let prefix = data["path"].as_array().unwrap();
+                                let mut text = format!(
+                                    "ds {}\n\nCOMMANDS\n",
+                                    prefix
+                                        .iter()
+                                        .filter_map(|v| v.as_str())
+                                        .collect::<Vec<_>>()
+                                        .join(" ")
+                                );
+                                for command in data["commands"].as_array().unwrap() {
+                                    let leaf = command["path"]
+                                        .as_array()
+                                        .unwrap()
+                                        .iter()
+                                        .skip(prefix.len())
+                                        .filter_map(|v| v.as_str())
+                                        .collect::<Vec<_>>()
+                                        .join(" ");
+                                    text.push_str(&format!(
+                                        "  {leaf}  {}\n",
+                                        command["summary"].as_str().unwrap()
+                                    ));
+                                }
+                                text.push_str(
+                                    "\nAppend --help to a command for its exact inputs.\n",
+                                );
+                                text
+                            },
+                        )
+                        .map_err(|_| (ExitClass::Internal, ()))
                 }
                 None => emit_failure(output, "ds", 1, &unknown_domain(one, domains)),
             },
