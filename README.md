@@ -91,3 +91,9 @@ Hosts own prepared-input storage, native execution, byte delivery and outbox IO.
 Neither export nor scope planning requests cloud admission, saves dirty rooms,
 refreshes project inputs, or replaces a failed WASM decision with TypeScript.
 Publication failure cannot invalidate a successfully committed local artifact.
+
+Report format policy lives in `report_formats`: `reportCommand` exposes
+`formats` (exact outputs for pinned sheets and report shape) and `format_options`
+(available presets and formats). PDF preset selection is additive and multiple
+presets may be selected. Native and reporter consumers compile the same policy;
+the UI has no format-selection fallback. `PrintPageSize` owns renderer dimensions.

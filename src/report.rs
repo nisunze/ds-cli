@@ -44,6 +44,11 @@ pub fn publication_state(
 #[derive(Deserialize)]
 #[serde(tag = "command", rename_all = "snake_case", deny_unknown_fields)]
 enum Command {
+    FormatOptions,
+    Formats {
+        sheets: serde_json::Value,
+        combined: bool,
+    },
     Publication {
         engine: String,
         enqueue: bool,
@@ -107,6 +112,10 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
     }
     let command: Command = serde_json::from_slice(input).map_err(|e| e.to_string())?;
     let result = match command {
+        Command::FormatOptions => serde_json::json!({"options": crate::report_formats::options()}),
+        Command::Formats { sheets, combined } => {
+            serde_json::json!({"outputs": crate::report_formats::plan(&sheets, combined)?})
+        }
         Command::Publication {
             engine,
             enqueue,

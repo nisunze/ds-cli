@@ -1107,3 +1107,5 @@ pub fn transform_style_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValu
 }
 
 pub mod style_plan;
+
+pub mod report_formats;
