@@ -2,7 +2,6 @@
 
 #[cfg(unix)]
 use std::fs::File;
-#[cfg(unix)]
 use std::io::Read;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 

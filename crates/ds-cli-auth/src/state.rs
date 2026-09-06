@@ -1,9 +1,13 @@
 //! Protected host state: leased refresh bytes and UID/audience-fenced context.
 
-use std::fs::{self, File, OpenOptions};
+#[cfg(unix)]
+use std::fs::OpenOptions;
+use std::fs::{self, File};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
-use std::time::{Duration, Instant};
+use std::time::Duration;
+#[cfg(unix)]
+use std::time::Instant;
 
 #[cfg(test)]
 use std::sync::atomic::{AtomicU64, Ordering};

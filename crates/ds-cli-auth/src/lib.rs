@@ -13,7 +13,9 @@ mod state;
 mod state_windows;
 mod transport;
 
-use std::io::{self, BufRead, Read, Write};
+#[cfg(unix)]
+use std::io::Write;
+use std::io::{self, BufRead, Read};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use context::CredentialProvider;
