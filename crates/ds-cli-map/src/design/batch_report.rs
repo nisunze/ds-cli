@@ -79,6 +79,21 @@ artifact coverage, missing artifacts, report errors, and registry status.",
         crate::UNSUPPORTED,
         crate::UNREADABLE,
         crate::SIGNED_OUT,
+        crate::OFFLINE,
+        // Raised by the application when the prepared report resources this
+        // operation reads are absent. They were untyped until now, so the
+        // headless caller saw only `desktop_refused` and had to re-run the
+        // operation in the desktop lane to learn which preparation was missing.
+        Refusal {
+            code: "report_grouping_not_prepared",
+            when: "no applied report_archive grouping is retained for this project",
+            remedy: "run `ds report consumer-grouping apply` while online, then retry",
+        },
+        Refusal {
+            code: "report_projection_not_prepared",
+            when: "the retained tag projection does not match the applied grouping's digest",
+            remedy: "re-run `ds report consumer-grouping apply` while online to retain the exact projection",
+        },
         Refusal {
             code: "invalid_transformer_scope",
             when: "the explicit report scope contains fewer than 2 transformers",

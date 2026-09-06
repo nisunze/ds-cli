@@ -154,9 +154,20 @@ fn constructed_codes(dir: &Path) -> BTreeSet<String> {
                 // Slice on a char boundary: these sources contain em dashes
                 // and arrows, and a byte-index cut lands inside one.
                 let window = &scan[..char_boundary(scan, 300)];
-                let Some(open) = window.find('"') else {
+                // The code argument itself must be the literal. Only leading
+                // whitespace may precede it, which is what keeps the wrapped
+                // form above working. Searching the whole window for the first
+                // quote instead would read a *later* literal — the next
+                // argument, or the next statement's map key — as this call's
+                // code, and report a word like `remedy` as an undocumented
+                // refusal. A constructor given a variable has no literal code
+                // to document, and the code it does carry is covered from its
+                // own side by `every_application_refusal_code_is_documented`.
+                let trimmed = window.trim_start();
+                if !trimmed.starts_with('"') {
                     continue;
-                };
+                }
+                let open = window.len() - trimmed.len();
                 let after = &window[open + 1..];
                 let Some(close) = after.find('"') else {
                     continue;
@@ -311,6 +322,126 @@ fn every_constructible_refusal_code_is_documented() {
          Add each to the REFUSALS of the command that emits it — with the \
          situation and a remedy — or, if a caller truly cannot reach it, list \
          it in NOT_A_REFUSAL with the reason.",
+        undocumented.join("\n")
+    );
+}
+
+/// The paired application's half of the same invariant.
+///
+/// A refusal raised in DS GridDesign now reaches the caller with its own class,
+/// code and remedy for *every* operation, not just an allowlisted two (see
+/// `structured_desktop_refusal` in `ds-cli-desktop`). The allowlist was what
+/// used to guarantee that a code crossing the bridge was one `ds` documents;
+/// removing it without replacing that guarantee would let the application mint
+/// codes no `--help` mentions. This test is the replacement: the *declaration*
+/// is the contract, and an undeclared code is a failing build rather than a
+/// surprise in production.
+///
+/// Source analysis, like the Rust half above, and for the same reason: these
+/// refusals are reached only in situations a test cannot reliably produce.
+fn ds_web() -> Option<PathBuf> {
+    let root = match std::env::var_os("DS_WEB_DIR") {
+        Some(explicit) => PathBuf::from(explicit),
+        None => PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../ds-web"),
+    };
+    let root = root.canonicalize().unwrap_or(root);
+    root.is_dir().then_some(root)
+}
+
+/// Every code the application can hand the bridge, read from its `cliRefusal`
+/// call sites. The class is the first argument and the code the second.
+fn application_refusal_codes(root: &Path) -> BTreeSet<String> {
+    let mut codes = BTreeSet::new();
+    let mut files = Vec::new();
+    typescript_files(&root.join("src"), &mut files);
+    for file in files {
+        // A test may construct a refusal to assert the bridge's own behaviour;
+        // that is not a code the product can emit.
+        if file
+            .to_str()
+            .is_some_and(|path| path.contains(".test.") || path.contains("/tests/"))
+        {
+            continue;
+        }
+        let source = std::fs::read_to_string(&file).expect("read application source");
+        let mut rest = source.as_str();
+        while let Some(at) = rest.find("cliRefusal(") {
+            rest = &rest[at + "cliRefusal(".len()..];
+            let window = &rest[..char_boundary(rest, 300)];
+            // Skip the class argument, then read the code literal.
+            let Some(comma) = window.find(',') else {
+                continue;
+            };
+            let after_class = &window[comma + 1..];
+            let Some(open) = after_class.find('\'').or_else(|| after_class.find('"')) else {
+                continue;
+            };
+            let quote = after_class.as_bytes()[open] as char;
+            let after = &after_class[open + 1..];
+            let Some(close) = after.find(quote) else {
+                continue;
+            };
+            let code = &after[..close];
+            if !code.is_empty()
+                && code
+                    .chars()
+                    .all(|character| character.is_ascii_lowercase() || character == '_')
+            {
+                codes.insert(code.to_string());
+            }
+        }
+    }
+    codes
+}
+
+fn typescript_files(dir: &Path, out: &mut Vec<PathBuf>) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            typescript_files(&path, out);
+        } else if path.extension().is_some_and(|extension| extension == "ts") {
+            out.push(path);
+        }
+    }
+}
+
+#[test]
+fn every_application_refusal_code_is_documented() {
+    let Some(root) = ds_web() else {
+        eprintln!(
+            "SKIPPED: this check proves every refusal DS GridDesign can send \
+             across the bridge is one `ds` documents.\n  Set DS_WEB_DIR to the \
+             ds-web checkout to run it."
+        );
+        return;
+    };
+    let codes = application_refusal_codes(&root);
+    assert!(
+        !codes.is_empty(),
+        "no `cliRefusal` call sites were found in {}. The scan is matching \
+         nothing, which would make this check vacuous — confirm the helper is \
+         still named `cliRefusal` before trusting a pass.",
+        root.display()
+    );
+
+    let (_, all_declared) = declared_codes();
+    let undocumented: Vec<String> = codes
+        .iter()
+        .filter(|code| !all_declared.contains(*code))
+        .map(|code| format!("  `{code}`"))
+        .collect();
+
+    assert!(
+        undocumented.is_empty(),
+        "DS GridDesign can refuse with these codes, but no `ds` command \
+         declares them:\n{}\n\n\
+         The bridge now preserves an application refusal's own class, code and \
+         remedy for every operation, so an undeclared code would reach a \
+         caller that cannot look it up. Add each to the REFUSALS of the \
+         command whose operation raises it.",
         undocumented.join("\n")
     );
 }

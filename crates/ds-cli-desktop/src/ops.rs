@@ -232,6 +232,16 @@ pub const SIGNED_OUT: Refusal = Refusal {
     when: "the application is running but signed out, or has no project selected",
     remedy: "sign in and select a project in DS GridDesign",
 };
+/// Offline mode reaches every bridge operation that needs the network, so it is
+/// declared once here rather than repeated in each command that can meet it.
+///
+/// It is `unavailable`, not `failed`: the work is refused by a switch the
+/// operator set, and it will succeed unchanged once that switch is off.
+pub const OFFLINE: Refusal = Refusal {
+    code: "offline_mode_enabled",
+    when: "offline mode is on and the operation needs the network",
+    remedy: "turn offline mode off, or run a command that works from prepared local data",
+};
 
 /// What the application says when a project operation is asked for without a
 /// project session. Matched case-insensitively against its own message.
