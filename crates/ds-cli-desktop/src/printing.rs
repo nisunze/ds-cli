@@ -11,7 +11,87 @@ pub const PREPARE_OP: BridgeOp = BridgeOp {
     operation: "printing.prepare",
     arguments: &["request"],
 };
-pub static COMMAND: Command = Command {
+pub const LIST_OP: BridgeOp = BridgeOp {
+    operation: "printing.list",
+    arguments: &["scope"],
+};
+pub const GET_OP: BridgeOp = BridgeOp {
+    operation: "printing.get",
+    arguments: &["scope", "id"],
+};
+
+const SCOPE_ARG: Arg = Arg::value(
+    "scope",
+    "<project|global>",
+    "Read the active project's catalog or the shared global samples.",
+)
+.choices(&["project", "global"])
+.default("project");
+
+pub static LIST_COMMAND: Command = Command {
+    id: "desktop.printing.list",
+    path: &["desktop", "printing", "list"],
+    contract: 1,
+    summary: "List named printing setups from Brain through the paired desktop.",
+    purpose: "Returns the dynamic named printing catalog for the active project or the shared global samples. Project scope uses the paired application's exact active project; global scope is shared across projects.",
+    chapter: Chapter::Reports,
+    effect: Effect::ReadOnly,
+    authority: Authority::DesktopUser,
+    execution: Execution::Sync,
+    args: &[SCOPE_ARG, DESCRIPTOR_ARG],
+    output: "Scope, active project when applicable, cache status and bounded setup summaries including their revision tokens.",
+    examples: &[],
+    refusals: &[
+        ops::NOT_PAIRED,
+        ops::AMBIGUOUS,
+        ops::UNREACHABLE,
+        ops::PAIRING_REJECTED,
+        ops::REFUSED,
+        ops::UNSUPPORTED,
+        ops::UNREADABLE,
+        ops::SIGNED_OUT,
+    ],
+    reference: Some("docs/reference/desktop.printing.md"),
+    availability: ops::paired_availability,
+};
+
+pub static GET_COMMAND: Command = Command {
+    id: "desktop.printing.get",
+    path: &["desktop", "printing", "get"],
+    contract: 1,
+    summary: "Read one named printing setup and its authored layout.",
+    purpose: "Reads one exact setup from the active project or global sample catalog through Brain. Its revision is the required optimistic token for a later prepare update.",
+    chapter: Chapter::Reports,
+    effect: Effect::ReadOnly,
+    authority: Authority::DesktopUser,
+    execution: Execution::Sync,
+    args: &[
+        SCOPE_ARG,
+        Arg::value(
+            "id",
+            "<setup-id>",
+            "Exact id returned by desktop printing list.",
+        )
+        .required(),
+        DESCRIPTOR_ARG,
+    ],
+    output: "Scope, project when applicable, cache status and the exact setup with layout and revision.",
+    examples: &[],
+    refusals: &[
+        ops::NOT_PAIRED,
+        ops::AMBIGUOUS,
+        ops::UNREACHABLE,
+        ops::PAIRING_REJECTED,
+        ops::REFUSED,
+        ops::UNSUPPORTED,
+        ops::UNREADABLE,
+        ops::SIGNED_OUT,
+    ],
+    reference: Some("docs/reference/desktop.printing.md"),
+    availability: ops::paired_availability,
+};
+
+pub static PREPARE_COMMAND: Command = Command {
     id: "desktop.printing.prepare",
     path: &["desktop", "printing", "prepare"],
     contract: 1,
@@ -79,6 +159,40 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         json!({"request":request}),
         Duration::from_secs(600),
     )
+}
+
+pub fn list(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
+    let descriptor = ops::paired(inputs.value("desktop-descriptor"))?;
+    ops::invoke(
+        &descriptor,
+        &LIST_OP,
+        json!({"scope": inputs.require("scope")?}),
+        Duration::from_secs(120),
+    )
+    .map_err(ops::classify_signed_out)
+}
+
+pub fn get(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
+    let id = inputs.require("id")?;
+    if id.is_empty()
+        || id.len() > 80
+        || !id
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_' || byte == b'-')
+    {
+        return Err(Failure::invalid(
+            "printing_request_invalid",
+            "invalid printing setup id",
+        ));
+    }
+    let descriptor = ops::paired(inputs.value("desktop-descriptor"))?;
+    ops::invoke(
+        &descriptor,
+        &GET_OP,
+        json!({"scope": inputs.require("scope")?, "id": id}),
+        Duration::from_secs(120),
+    )
+    .map_err(ops::classify_signed_out)
 }
 pub fn render(data: &Value) -> String {
     format!("{data}\n")

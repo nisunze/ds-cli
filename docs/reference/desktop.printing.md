@@ -1,5 +1,10 @@
 # Project printing preparation
 
+Use `ds desktop printing list --scope project --output json` to inspect the
+active project's dynamic catalog, or `--scope global` for shared samples. Read
+one exact authored document and its current optimistic revision with
+`ds desktop printing get --scope project --id <id> --output json`.
+
 `ds desktop printing prepare --request setup.json --yes --output json`
 uses the paired application's active project and normal Brain-authorized saves.
 It is also available through the generated MCP surface. It does not use a
