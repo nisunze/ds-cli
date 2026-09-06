@@ -2059,8 +2059,14 @@ mod tests {
         let dir = temp_dir();
         let receipt = dir.join("receipt.ndjson");
         let checkpoint_path = dir.join("checkpoint.json");
-        let checkpoint_path_sha256 = digest_text(&checkpoint_path.to_string_lossy());
-        let receipt_path_sha256 = digest_text(&receipt.to_string_lossy());
+        let original_paths = resolve_paths(
+            dir.join("source.ndjson").to_str().unwrap(),
+            checkpoint_path.to_str().unwrap(),
+            receipt.to_str().unwrap(),
+        )
+        .unwrap();
+        let checkpoint_path_sha256 = digest_text(&original_paths.checkpoint.to_string_lossy());
+        let receipt_path_sha256 = digest_text(&original_paths.receipt.to_string_lossy());
         let manifest = ReceiptLine::Manifest {
             schema: RECEIPT_SCHEMA.into(),
             source_sha256: "a".repeat(64),
@@ -2119,12 +2125,6 @@ mod tests {
             committed: 0,
             refused: 0,
         };
-        let original_paths = resolve_paths(
-            dir.join("source.ndjson").to_str().unwrap(),
-            checkpoint_path.to_str().unwrap(),
-            receipt.to_str().unwrap(),
-        )
-        .unwrap();
         validate_checkpoint_pre_auth(&checkpoint, &plan, "f", "stable", &original_paths).unwrap();
         validate_manifest_pre_auth(&manifest, &plan, "f", "stable", &original_paths).unwrap();
         let copied_paths = resolve_paths(
