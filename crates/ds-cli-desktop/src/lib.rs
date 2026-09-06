@@ -29,6 +29,7 @@ pub mod bridge;
 pub mod connectivity;
 pub mod discover;
 pub mod ops;
+pub mod printing;
 pub mod project;
 pub mod status;
 
@@ -43,5 +44,6 @@ pub static DOMAIN: Domain = Domain {
         &status::COMMAND,
         &project::LIST_COMMAND,
         &project::SWITCH_COMMAND,
+        &printing::COMMAND,
     ],
 };

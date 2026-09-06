@@ -1167,6 +1167,7 @@ pub const fn chapter_description(chapter: Chapter) -> &'static str {
 }
 
 const PRINTING_COMMANDS: &[&str] = &[
+    "desktop.printing.prepare",
     "report.layout.new",
     "report.layout.edit",
     "report.layout.schema",
