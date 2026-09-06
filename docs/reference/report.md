@@ -205,3 +205,15 @@ Published setup reads use Brain; a held layout/render file prints offline.
 commands together. The grid profile keeps its existing report-export workflow.
 Reference A3/A4 layouts and runnable synthetic-data proofs live in
 `ds-network-reporter/examples/printing/`; importing them never publishes them.
+
+Create a named portrait template through the same closed authoring evaluator:
+
+```json
+{"op":"new","id":"a0-survey-portrait","name":"Survey · A0 portrait","paper":"A0","orientation":"portrait"}
+```
+
+Pass that JSON to `report.layout.edit --request FILE`. Other paper presets are
+A1–A5. `{"op":"rename","layout":{...},"name":"New name"}` preserves identity;
+`{"op":"duplicate","layout":{...},"id":"new-id","name":"Copy"}` requires a
+new identity. Shared saves still require an expected revision and explicit
+confirmation. Rendering a held layout does not mutate its shared template.
