@@ -305,13 +305,100 @@ pub fn default_layout() -> Layout {
         ],
     }
 }
+#[derive(Clone, Copy, Default, Deserialize, JsonSchema)]
+pub enum Paper {
+    A0,
+    A1,
+    A2,
+    #[default]
+    A3,
+    A4,
+    A5,
+}
+#[derive(Clone, Copy, Default, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum Orientation {
+    Portrait,
+    #[default]
+    Landscape,
+}
+
+pub fn named_layout(
+    id: Option<String>,
+    name: Option<String>,
+    paper: Paper,
+    orientation: Orientation,
+) -> Result<Layout, String> {
+    let [short, long] = match paper {
+        Paper::A0 => [841., 1189.],
+        Paper::A1 => [594., 841.],
+        Paper::A2 => [420., 594.],
+        Paper::A3 => [297., 420.],
+        Paper::A4 => [210., 297.],
+        Paper::A5 => [148., 210.],
+    };
+    let page = match orientation {
+        Orientation::Portrait => [short, long],
+        Orientation::Landscape => [long, short],
+    };
+    let mut layout = default_layout();
+    // One authored composition is fitted uniformly; paper choices never stretch symbols or type.
+    let scale = f64::min(page[0] / layout.page_mm[0], page[1] / layout.page_mm[1]);
+    let dx = (page[0] - layout.page_mm[0] * scale) / 2.;
+    let dy = (page[1] - layout.page_mm[1] * scale) / 2.;
+    for e in &mut layout.elements {
+        e.rect = [
+            dx + e.rect[0] * scale,
+            dy + e.rect[1] * scale,
+            e.rect[2] * scale,
+            e.rect[3] * scale,
+        ];
+        e.font_pt = (e.font_pt * scale).clamp(4., 144.);
+    }
+    layout.page_mm = page;
+    if let Some(id) = id {
+        layout.id = id;
+    }
+    if let Some(name) = name {
+        layout.name = name;
+    }
+    validate(&layout)?;
+    Ok(layout)
+}
+
 #[derive(Deserialize, JsonSchema)]
 #[serde(tag = "op", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Command {
-    New {},
-    Validate { layout: Layout },
-    Edit { layout: Layout, element: Element },
-    Remove { layout: Layout, id: String },
+    New {
+        #[serde(default)]
+        id: Option<String>,
+        #[serde(default)]
+        name: Option<String>,
+        #[serde(default)]
+        paper: Paper,
+        #[serde(default)]
+        orientation: Orientation,
+    },
+    Rename {
+        layout: Layout,
+        name: String,
+    },
+    Duplicate {
+        layout: Layout,
+        id: String,
+        name: String,
+    },
+    Validate {
+        layout: Layout,
+    },
+    Edit {
+        layout: Layout,
+        element: Element,
+    },
+    Remove {
+        layout: Layout,
+        id: String,
+    },
 }
 pub fn evaluate(input: &[u8]) -> Result<String, String> {
     if input.len() > MAX_INPUT_BYTES {
@@ -320,7 +407,30 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
     let command: Command =
         serde_json::from_slice(input).map_err(|e| format!("invalid printing request: {e}"))?;
     let value = match command {
-        Command::New {} => json!({"layout":default_layout()}),
+        Command::New {
+            id,
+            name,
+            paper,
+            orientation,
+        } => json!({"layout":named_layout(id,name,paper,orientation)?}),
+        Command::Rename { mut layout, name } => {
+            layout.name = name;
+            validate(&layout)?;
+            json!({"layout":layout})
+        }
+        Command::Duplicate {
+            mut layout,
+            id,
+            name,
+        } => {
+            if layout.id == id {
+                return Err("A duplicate requires a new template id".into());
+            }
+            layout.id = id;
+            layout.name = name;
+            validate(&layout)?;
+            json!({"layout":layout})
+        }
         Command::Validate { layout } => {
             validate(&layout)?;
             json!({"layout":layout,"valid":true})
@@ -369,6 +479,46 @@ mod tests {
         assert_eq!(layout_schema()["additionalProperties"], false);
     }
     #[test]
+    fn named_paper_templates_and_copies_keep_identity_explicit() {
+        for paper in [
+            Paper::A0,
+            Paper::A1,
+            Paper::A2,
+            Paper::A3,
+            Paper::A4,
+            Paper::A5,
+        ] {
+            for orientation in [Orientation::Portrait, Orientation::Landscape] {
+                let layout = named_layout(
+                    Some("sample".into()),
+                    Some("My template".into()),
+                    paper,
+                    orientation,
+                )
+                .unwrap();
+                validate(&layout).unwrap();
+                assert_eq!(layout.name, "My template");
+            }
+        }
+        let layout = default_layout();
+        assert!(
+            evaluate(
+                &serde_json::to_vec(
+                    &json!({"op":"duplicate","layout":layout,"id":layout.id,"name":"Copy"})
+                )
+                .unwrap()
+            )
+            .is_err()
+        );
+        let result = evaluate(
+            &serde_json::to_vec(&json!({"op":"rename","layout":layout,"name":"Renamed"})).unwrap(),
+        )
+        .unwrap();
+        let result: serde_json::Value = serde_json::from_str(&result).unwrap();
+        assert_eq!(result["layout"]["id"], layout.id);
+        assert_eq!(result["layout"]["name"], "Renamed");
+    }
+    #[test]
     fn invalid_frames_and_unheld_logos_refuse() {
         let mut layout = default_layout();
         layout.elements[0].rect[2] = 1000.;
@@ -408,10 +558,12 @@ mod tests {
             result["layout"]["elements"][0]["rect"],
             serde_json::json!([12., 32., 300., 235.])
         );
-        assert!(evaluate(
-            &serde_json::to_vec(&serde_json::json!({"op":"remove","layout":layout,"id":"map"}))
-                .unwrap()
-        )
-        .is_err());
+        assert!(
+            evaluate(
+                &serde_json::to_vec(&serde_json::json!({"op":"remove","layout":layout,"id":"map"}))
+                    .unwrap()
+            )
+            .is_err()
+        );
     }
 }

@@ -15,3 +15,9 @@ Spatial hit testing, snapping and retained camera sessions remain in ds-network;
 they are not command-kernel WASM exports. PDF/SVG formatting, GeoJSON projection
 and legend rendering belong to ds-network-reporter. Brain owns global/project
 sharing and expected-revision saves. This module owns no storage or network IO.
+
+`new` accepts optional `id`, `name`, `paper` (A0–A5, default A3) and
+`orientation` (portrait/landscape, default landscape). Paper presets uniformly
+fit the initial composition. `rename` changes only the name; `duplicate`
+requires a different ID and carries the composition into an independent layout.
+CLI `report.layout.edit --request FILE` and web authoring use these same intents.
