@@ -26,6 +26,7 @@ pub fn reconciliation_command_wasm(input: &[u8]) -> Result<String, wasm_bindgen:
     reconciliation::evaluate(input).map_err(|error| wasm_bindgen::JsValue::from_str(&error))
 }
 mod project_control;
+pub mod reference_cache;
 pub mod report;
 pub mod solar_batch;
 mod solar_network_seed;
