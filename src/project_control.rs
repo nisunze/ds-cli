@@ -362,6 +362,8 @@ pub fn plan_project_control_report_download(
 #[serde(deny_unknown_fields)]
 struct ReportCatalogInput {
     project: String,
+    #[serde(default)]
+    transformer: Option<String>,
     rows: Vec<OutboxRow>,
 }
 
@@ -443,15 +445,38 @@ pub fn project_project_control_local_reports(
     if input.rows.len() > MAX_PROJECT_CONTROL_OUTBOX_ROWS {
         return Err(error("local-report-catalog exceeds the 4096-row bound"));
     }
+    if let Some(name) = &input.transformer {
+        bounded_text(name, "transformer", MAX_ID_CHARS)?;
+        if !name
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_')
+            || is_special_status_row(name)
+        {
+            return Err(error(
+                "local-report-catalog requires one canonical transformer",
+            ));
+        }
+    }
+    let requested_operation = input
+        .transformer
+        .as_ref()
+        .map(|name| format!("export-{name}"));
     let mut reports = Vec::new();
     for row in input.rows {
         if row.project_id != input.project || row.engine != "network_reporter" {
             continue;
         }
-        let kind = match row.operation.as_str() {
-            "export-combined_transformer" => "combined",
-            "export-compounded_report" => "compounded",
-            _ => continue,
+        let kind = if let Some(operation) = &requested_operation {
+            if &row.operation != operation {
+                continue;
+            }
+            "transformer"
+        } else {
+            match row.operation.as_str() {
+                "export-combined_transformer" => "combined",
+                "export-compounded_report" => "compounded",
+                _ => continue,
+            }
         };
         for value in [
             row.id.as_str(),
@@ -467,9 +492,14 @@ pub fn project_project_control_local_reports(
         }
         let mut files = Vec::new();
         for output in row.outputs {
-            let sha256 = output.sha256.or(output.expected_sha256).unwrap_or_default();
+            let sha256 = output
+                .sha256
+                .filter(|value| !value.is_empty())
+                .or(output.expected_sha256)
+                .unwrap_or_default();
             let size_bytes = output
                 .size_bytes
+                .filter(|size| *size > 0)
                 .or(output.expected_size_bytes)
                 .unwrap_or(0);
             let Some(local_path) = output.local_path else {
@@ -483,7 +513,18 @@ pub fn project_project_control_local_reports(
             bounded_text(&output.content_type, "output content_type", MAX_ID_CHARS)?;
             bounded_text(&local_path, "local report locator", MAX_PATH_CHARS)?;
             files.push(ProjectedReportFile {
-                filename: output_filename(kind, &output.output_id, &output.format),
+                filename: if let Some(transformer) = &input.transformer {
+                    let definition = crate::report_formats::output(&output.output_id)
+                        .map_err(|_| error("unknown transformer report output"))?;
+                    if definition.content_type != output.content_type
+                        || definition.format != output.format
+                    {
+                        return Err(error("transformer report output metadata mismatch"));
+                    }
+                    format!("{transformer}{}", definition.suffix)
+                } else {
+                    output_filename(kind, &output.output_id, &output.format)
+                },
                 output_id: output.output_id,
                 format: output.format,
                 content_type: output.content_type,
@@ -574,7 +615,7 @@ fn error(message: &str) -> ProjectControlError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json::{json, Value};
+    use serde_json::{Value, json};
 
     fn room_plan(overrides: Value) -> Vec<u8> {
         let mut value = json!({
@@ -670,6 +711,52 @@ mod tests {
             }))["reason"],
             "forced"
         );
+    }
+
+    #[test]
+    fn transformer_catalog_is_exact_scoped_and_names_all_produced_formats() {
+        let outputs: Vec<Value> = ["xlsx", "shp", "gpkg", "pdf_a0", "geojson"].iter().map(|format| {
+            let output = crate::report_formats::output(format).unwrap();
+            json!({"output_id":output.output_id,"format":output.format,"content_type":output.content_type,
+                "local_path":format!("ds-reporter:v1:{}", "a".repeat(64)),"sha256":"", "expected_sha256":"b".repeat(64),"size_bytes":0,"expected_size_bytes":42})
+        }).collect();
+        let row = json!({"id":"held", "project_id":"project-a", "engine":"network_reporter",
+            "operation":"export-agasharu", "variant":"default", "client_run_id":"run", "created_at":1,
+            "phase":"pending", "status":"pending", "outputs":outputs});
+        let mut other_project = row.clone();
+        other_project["project_id"] = json!("project-b");
+        let mut other_transformer = row.clone();
+        other_transformer["operation"] = json!("export-agasharu_1");
+        let mut incomplete = row.clone();
+        incomplete["outputs"][0]["local_path"] = Value::Null;
+        let input = json!({"project":"project-a", "transformer":"agasharu", "rows":[row, other_project, other_transformer]});
+        let value: Value = serde_json::from_str(
+            &project_project_control_local_reports(&serde_json::to_vec(&input).unwrap()).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(value["reports"].as_array().unwrap().len(), 1);
+        let names: Vec<&str> = value["reports"][0]["files"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|file| file["filename"].as_str().unwrap())
+            .collect();
+        assert_eq!(
+            names,
+            [
+                "agasharu.xlsx",
+                "agasharu.shp.zip",
+                "agasharu.gpkg",
+                "agasharu.a0.pdf",
+                "agasharu_geojson.zip"
+            ]
+        );
+        let input = json!({"project":"project-a", "transformer":"agasharu", "rows":[incomplete]});
+        let value: Value = serde_json::from_str(
+            &project_project_control_local_reports(&serde_json::to_vec(&input).unwrap()).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(value["reports"][0]["files"].as_array().unwrap().len(), 4);
     }
 
     #[test]
