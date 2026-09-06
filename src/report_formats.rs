@@ -311,7 +311,7 @@ mod tests {
     use serde_json::json;
     #[test]
     fn named_setups_keep_identity_across_renames_and_require_sealed_layouts() {
-        use crate::printing::{Orientation, Paper, named_layout};
+        use crate::printing::{named_layout, Orientation, Paper};
         let layout = named_layout(
             Some("detail".into()),
             Some("Detail portrait".into()),
@@ -339,11 +339,9 @@ mod tests {
         assert!(plan(&sheets, false).unwrap_err().contains("missing"));
         assert!(named_setup_id("pdf__../outside").is_none());
         let options = options(&[json!({"id":"detail","name":"Renamed"})]).unwrap();
-        assert!(
-            options
-                .iter()
-                .any(|o| o["value"] == "pdf__detail" && o["label"] == "PDF · Renamed")
-        );
+        assert!(options
+            .iter()
+            .any(|o| o["value"] == "pdf__detail" && o["label"] == "PDF · Renamed"));
         assert!(!options.iter().any(|o| o["value"] == "pdf_a0"));
     }
 

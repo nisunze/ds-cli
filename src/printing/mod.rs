@@ -31,6 +31,16 @@ pub enum ElementKind {
     NorthArrow,
     Logo,
     Rectangle,
+    Table,
+}
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct TableBinding {
+    pub layer: String,
+    /// Ordered property keys; headings and widths follow the same order.
+    pub columns: Vec<String>,
+    pub headings: Vec<String>,
+    pub widths: Vec<f64>,
 }
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
 #[serde(deny_unknown_fields)]
@@ -48,6 +58,8 @@ pub struct Element {
     pub color: String,
     #[serde(default = "white")]
     pub fill: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub table: Option<TableBinding>,
 }
 fn font() -> f64 {
     10.
@@ -170,6 +182,22 @@ pub fn validate(layout: &Layout) -> Result<(), String> {
         if element.kind == ElementKind::Map {
             maps += 1;
         }
+        if element.kind == ElementKind::Table {
+            let table = element.table.as_ref().ok_or("table needs a data binding")?;
+            if !identifier(&table.layer)
+                || table.columns.is_empty()
+                || table.columns.len() > 12
+                || table.columns.len() != table.headings.len()
+                || table.columns.len() != table.widths.len()
+                || table.columns.iter().any(|v| v.is_empty() || v.len() > 160)
+                || table.headings.iter().any(|v| v.len() > 160)
+                || table.widths.iter().any(|v| !bounded(*v, 0.1, 1000.))
+            {
+                return Err("invalid table binding, headings or column widths".into());
+            }
+        } else if element.table.is_some() {
+            return Err("only table elements can bind tabular data".into());
+        }
         if element.kind == ElementKind::Logo && !layout.assets.contains_key(&element.asset) {
             return Err(format!(
                 "logo {} needs a held project/global asset",
@@ -242,6 +270,7 @@ pub fn validate(layout: &Layout) -> Result<(), String> {
 }
 pub fn default_layout() -> Layout {
     let element = |id: &str, kind, rect, text: &str, font_pt| Element {
+        table: None,
         id: id.into(),
         kind,
         rect,
@@ -501,15 +530,13 @@ mod tests {
             }
         }
         let layout = default_layout();
-        assert!(
-            evaluate(
-                &serde_json::to_vec(
-                    &json!({"op":"duplicate","layout":layout,"id":layout.id,"name":"Copy"})
-                )
-                .unwrap()
+        assert!(evaluate(
+            &serde_json::to_vec(
+                &json!({"op":"duplicate","layout":layout,"id":layout.id,"name":"Copy"})
             )
-            .is_err()
-        );
+            .unwrap()
+        )
+        .is_err());
         let result = evaluate(
             &serde_json::to_vec(&json!({"op":"rename","layout":layout,"name":"Renamed"})).unwrap(),
         )
@@ -558,12 +585,10 @@ mod tests {
             result["layout"]["elements"][0]["rect"],
             serde_json::json!([12., 32., 300., 235.])
         );
-        assert!(
-            evaluate(
-                &serde_json::to_vec(&serde_json::json!({"op":"remove","layout":layout,"id":"map"}))
-                    .unwrap()
-            )
-            .is_err()
-        );
+        assert!(evaluate(
+            &serde_json::to_vec(&serde_json::json!({"op":"remove","layout":layout,"id":"map"}))
+                .unwrap()
+        )
+        .is_err());
     }
 }
