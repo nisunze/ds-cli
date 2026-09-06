@@ -675,6 +675,15 @@ dependencies = [
  "ds-solar-contracts",
  "serde_json",
  "sha2",
+ "tempfile",
+]
+
+[[package]]
+name = "ds-canvas"
+version = "0.1.0"
+dependencies = [
+ "rstar",
+ "serde",
 ]
 
 [[package]]
@@ -987,6 +996,7 @@ name = "ds-command-kernel"
 version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
+ "ds-canvas",
  "ds-geo",
  "ds-geo-ops",
  "ds-solar-contracts",
