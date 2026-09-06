@@ -683,6 +683,48 @@ mod tests {
             "project_config":{"actual":"prepared settings"}})).unwrap()).unwrap()
     }
     #[test]
+    fn version_creation_requires_reason_and_exact_scope_without_a_server_revision() {
+        let prepared = prepare("offline-capture");
+        let snapshot = read(&scope(), &prepared.manifest.id, &prepared).unwrap();
+        let request = json!({"action":"prepare","scope":scope(),"operation":"offline-capture",
+            "parent":null,"local_sequence":1,"created_at":"now","reason":"Before site visit",
+            "snapshot":snapshot,"project_config":null});
+        let bundle: Bundle = serde_json::from_value(call(request.clone()).unwrap()).unwrap();
+        assert_eq!(bundle.manifest.scope, scope());
+        assert_eq!(bundle.manifest.reason, "Before site visit");
+        assert_eq!(bundle.manifest.parent, None);
+        let committed = call(
+            json!({"action":"commit","scope":scope(),"manifest":bundle.manifest,
+            "publication":bundle.publication,"queue":null,"now_ms":1000,"catalog":[]}),
+        )
+        .unwrap();
+        assert_eq!(committed["record"]["transformer_id"], "same-name");
+        assert_eq!(committed["record"]["reason"], "Before site visit");
+        assert_eq!(committed["record"]["sync_state"], "pending_transport");
+        for reason in ["", " \t\n"] {
+            let mut invalid = request.clone();
+            invalid["reason"] = json!(reason);
+            assert!(call(invalid).unwrap_err().contains("reason"));
+        }
+        for field in [
+            "owner",
+            "audience",
+            "lane",
+            "project",
+            "object_kind",
+            "object_id",
+        ] {
+            for value in ["", " padded "] {
+                let mut invalid = request.clone();
+                invalid["scope"][field] = json!(value);
+                assert!(call(invalid).unwrap_err().contains("exact"), "{field}");
+            }
+        }
+        let mut legacy = request;
+        legacy["version"] = json!({"reason":"legacy cloud payload"});
+        assert!(call(legacy).unwrap_err().contains("unknown field"));
+    }
+    #[test]
     fn commit_replay_and_parent_fence_are_exact() {
         let a = prepare("operation");
         let first =
