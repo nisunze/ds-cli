@@ -4,6 +4,7 @@
 //! Rendering, sketch editing and interactive design commands retain their
 //! named desktop bridge operations. This crate is a host adapter, not an engine.
 
+pub mod canvas;
 pub mod data;
 pub mod design;
 pub mod draw;
@@ -40,6 +41,7 @@ pub static DOMAIN: Domain = Domain {
     id: "map",
     summary: "Local data, layer ordering, remote overlays, and design edits.",
     commands: &[
+        &canvas::COMMAND,
         &view::COMMAND,
         &draw::COMMAND,
         &remove::COMMAND,
