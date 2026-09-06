@@ -312,6 +312,41 @@ static PLS_ENTRIES: &[Entry] = &[
 
 static REPORT_ENTRIES: &[Entry] = &[
     Entry {
+        command: &ds_cli_report::layout::NEW,
+        handler: ds_cli_report::layout::new,
+        render: ds_cli_report::layout::render_text,
+    },
+    Entry {
+        command: &ds_cli_report::layout::EDIT,
+        handler: ds_cli_report::layout::edit,
+        render: ds_cli_report::layout::render_text,
+    },
+    Entry {
+        command: &ds_cli_report::layout::SCHEMA,
+        handler: ds_cli_report::layout::schema,
+        render: ds_cli_report::layout::render_text,
+    },
+    Entry {
+        command: &ds_cli_report::layout::RENDER,
+        handler: ds_cli_report::layout::render,
+        render: ds_cli_report::layout::render_text,
+    },
+    Entry {
+        command: &ds_cli_report::layout::LIST,
+        handler: ds_cli_report::layout::list,
+        render: ds_cli_report::layout::render_text,
+    },
+    Entry {
+        command: &ds_cli_report::layout::GET,
+        handler: ds_cli_report::layout::get,
+        render: ds_cli_report::layout::render_text,
+    },
+    Entry {
+        command: &ds_cli_report::layout::SAVE,
+        handler: ds_cli_report::layout::save,
+        render: ds_cli_report::layout::render_text,
+    },
+    Entry {
         command: &ds_cli_report::engine::COMMAND,
         handler: ds_cli_report::engine::run,
         render: ds_cli_report::engine::render,

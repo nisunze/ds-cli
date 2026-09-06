@@ -1,5 +1,5 @@
 {
-  "schema_version": "ds.native-client-profiles/v16",
+  "schema_version": "ds.native-client-profiles/v17",
   "development": true,
   "profiles": {
     "stable": {
@@ -135,7 +135,16 @@
         "GET /api/v1/projects/templates/{slug}",
         "POST /api/v1/projects: apply_template",
         "POST /api/v1/projects/from-template"
-      ]
+      ],
+      "printing": {
+        "method": "POST",
+        "path": "/api/v1/printing",
+        "actions": [
+          "list",
+          "get",
+          "save"
+        ]
+      }
     },
     "canary": {
       "firebase": {
@@ -270,7 +279,16 @@
         "GET /api/v1/projects/templates/{slug}",
         "POST /api/v1/projects: apply_template",
         "POST /api/v1/projects/from-template"
-      ]
+      ],
+      "printing": {
+        "method": "POST",
+        "path": "/api/v1/printing",
+        "actions": [
+          "list",
+          "get",
+          "save"
+        ]
+      }
     }
   }
 }

@@ -1125,6 +1125,9 @@ mod tests {
             styles_method: "POST".to_owned(),
             styles_path: "/api/v1/styles".to_owned(),
             styles_action: "update_style".to_owned(),
+            printing_method: "POST".into(),
+            printing_path: "/api/v1/printing".into(),
+            printing_actions: vec!["list".into(), "get".into(), "save".into()],
             layers_method: "POST".to_owned(),
             layers_path: "/api/v1/layers".to_owned(),
             layers_actions: vec![

@@ -3443,6 +3443,7 @@ fn design_lv_project_export_refuses_an_existing_artifact_before_auth_or_desktop(
                 "path": "/api/v1/entries/mutate",
                 "operation": "create"
             },
+            "printing":{"method":"POST","path":"/api/v1/printing","actions":["list","get","save"]},
             "layers":{"method":"POST","path":"/api/v1/layers","actions":["get_config","refresh","reorder"]},
             "styles":{"method":"POST","path":"/api/v1/styles","action":"update_style"},
             "survey_control":["POST /api/v1/form-factory: list,get,get_field_types,create,update,duplicate,publish,unpublish,archive,restore,delete", "POST /api/v1/project-forms: activate,settings_editor,bulk_save", "POST /api/v1/projects/templates: list,create,set_public,delete", "GET /api/v1/projects/templates/{slug}", "POST /api/v1/projects: apply_template", "POST /api/v1/projects/from-template"],
@@ -3463,7 +3464,7 @@ fn design_lv_project_export_refuses_an_existing_artifact_before_auth_or_desktop(
     std::fs::write(
         &profile_path,
         serde_json::to_vec(&json!({
-            "schema_version": "ds.native-client-profiles/v16",
+            "schema_version": "ds.native-client-profiles/v17",
             "development": true,
             "profiles": {
                 "stable": profile(

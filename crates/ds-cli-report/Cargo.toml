@@ -15,3 +15,5 @@ ds-cli-auth = { workspace = true }
 ds-cli-contract = { workspace = true }
 ds-cli-exec = { workspace = true }
 serde_json = { workspace = true }
+ds-command-kernel = { workspace = true }
+tempfile = "3"

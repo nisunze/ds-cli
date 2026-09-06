@@ -175,3 +175,33 @@ headless read — they may rotate the native credential, and write nothing else.
 
 - `ds-network-reporter/src/bin/ds-report.rs` — the contract, in its own words
 - [`../contracts/cli-output-contract.md`](../contracts/cli-output-contract.md)
+
+## Printing layouts
+
+`report.layout.new` returns an A3 page document; `report.layout.schema` describes
+its physical units, allowed elements and closed edit intents. `report.layout.edit
+--request edit.json` evaluates `{op:"edit",layout,element}` (or validate/remove)
+through command-kernel. It never changes an open desktop canvas.
+
+`report.layout.list --scope global` browses published samples. `report.layout.get
+--scope global --id network-a3` returns a layout with its revision. Use
+`--scope project` for the native selected project's independent customizations.
+Both scope variants use the same protected native identity and accept no URL,
+token or project override. `--lane canary|stable` selects its credential lane.
+
+To publish, `report.layout.save --scope global|project --request save.json --yes`
+accepts `{action:"save",layout,expected_revision}`. Use the exact revision from
+get, or an empty string only for creation. Global writes require
+`map.defaults.edit`; project writes require `printing.setup.edit`, membership
+and an open project lifecycle. A conflict never becomes an unconditional save.
+
+`report.layout.render --request render.json` calls the installed reporter's
+fixed `render-print-layout` task with held GeoJSON. Discover that task's complete
+schema with `report.tasks --task render_print_layout`. It writes SVG/PDF to a
+fresh directory and returns paths and hashes. No network or desktop is required.
+Published setup reads use Brain; a held layout/render file prints offline.
+
+`ds mcp serve --exposure commands --profile printing` exposes these seven
+commands together. The grid profile keeps its existing report-export workflow.
+Reference A3/A4 layouts and runnable synthetic-data proofs live in
+`ds-network-reporter/examples/printing/`; importing them never publishes them.

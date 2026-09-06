@@ -578,6 +578,13 @@ impl DeviceSession {
     ) -> Result<ds_client_core::TileMutation, ClientError> {
         fixed_device_call!(self, tile_remove, project, tile_id, scope)
     }
+    pub fn printing(
+        &mut self,
+        project: &str,
+        request: &ds_client_core::PrintingRequest,
+    ) -> Result<serde_json::Value, ClientError> {
+        fixed_device_call!(self, printing, project, request)
+    }
     pub fn layer_config(
         &mut self,
         project: &str,

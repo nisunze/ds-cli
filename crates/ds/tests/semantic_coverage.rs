@@ -310,6 +310,13 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("pls.terrain-reconcile", "local_file_write", "none"),
     ("report.bundle", "local_file_write", "none"),
     ("report.engine", "discovery", "none"),
+    ("report.layout.new", "discovery", "none"),
+    ("report.layout.edit", "read_only", "none"),
+    ("report.layout.schema", "discovery", "none"),
+    ("report.layout.render", "local_file_write", "none"),
+    ("report.layout.list", "local_auth_state", "headless_user"),
+    ("report.layout.get", "local_auth_state", "headless_user"),
+    ("report.layout.save", "global_write", "headless_user"),
     ("report.export", "local_file_write", "none"),
     ("report.tasks", "discovery", "none"),
     (

@@ -30,6 +30,7 @@
 pub mod bundle;
 pub mod engine;
 pub mod export;
+pub mod layout;
 pub mod project;
 pub mod tasks;
 
@@ -60,6 +61,13 @@ pub static DOMAIN: Domain = Domain {
     id: "report",
     summary: "Deliverables: transformer and combined report artifacts.",
     commands: &[
+        &layout::NEW,
+        &layout::EDIT,
+        &layout::SCHEMA,
+        &layout::RENDER,
+        &layout::LIST,
+        &layout::GET,
+        &layout::SAVE,
         &engine::COMMAND,
         &tasks::COMMAND,
         &export::COMMAND,
