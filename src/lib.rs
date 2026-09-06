@@ -1146,3 +1146,10 @@ pub fn backup_ledger_command(input: &[u8]) -> Result<String, wasm_bindgen::JsVal
 }
 
 pub mod canvas;
+
+pub mod printing;
+#[cfg(feature = "wasm")]
+#[wasm_bindgen::prelude::wasm_bindgen(js_name = printingCommand)]
+pub fn printing_command(input: &[u8]) -> Result<String, String> {
+    printing::evaluate(input)
+}

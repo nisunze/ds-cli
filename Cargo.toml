@@ -18,6 +18,7 @@ default = []
 wasm = ["dep:wasm-bindgen"]
 
 [dependencies]
+schemars = "1.2.2"
 base64 = "0.22"
 ds-solar-contracts = { path = "../ds-solar/crates/ds-solar-contracts", default-features = false }
 serde = { version = "1", features = ["derive"] }
