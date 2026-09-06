@@ -64,7 +64,13 @@ fn run_ds(args: &[&str], native: bool) -> Run {
     let bundle = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../ds-cli-auth/tests/fixtures/development-catalog.json");
     let mut command = Command::new(env!("CARGO_BIN_EXE_ds"));
-    command.args(args).env("NO_COLOR", "1");
+    // Smoke tests must never discover or contact the operator's running app.
+    // Valid bridge inputs reach a deliberately absent descriptor; invalid
+    // inputs must still be refused before discovery.
+    command
+        .args(args)
+        .env("NO_COLOR", "1")
+        .env("DS_DESKTOP_DESCRIPTOR", config.join("no-desktop.json"));
     if native {
         command
             .env("DS_NATIVE_CLIENT_PROFILE_BUNDLE", &bundle)
@@ -3691,9 +3697,8 @@ fn unified_tagging_commands_validate_their_own_inputs_before_the_bridge() {
         "invalid_choice",
         "a purpose outside the closed set must be refused by the parser"
     );
-    // Both real purposes get past local validation and reach the desktop, which
-    // owns the plan. Whether this machine has one paired decides WHICH pairing
-    // refusal comes back, so the assertion is that the bridge was opened at all.
+    // Both real purposes get past local validation and reach the isolated
+    // descriptor boundary. The operator's actual pairing is irrelevant.
     for purpose in ["solar_report", "report_archive"] {
         let code = refusal(&[
             "design",
