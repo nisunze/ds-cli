@@ -19,6 +19,10 @@ pub const GET_OP: BridgeOp = BridgeOp {
     operation: "printing.get",
     arguments: &["scope", "id"],
 };
+pub const SAVE_OP: BridgeOp = BridgeOp {
+    operation: "printing.save",
+    arguments: &["request"],
+};
 
 const SCOPE_ARG: Arg = Arg::value(
     "scope",
@@ -91,6 +95,46 @@ pub static GET_COMMAND: Command = Command {
     availability: ops::paired_availability,
 };
 
+pub static SAVE_COMMAND: Command = Command {
+    id: "desktop.printing.save",
+    path: &["desktop", "printing", "save"],
+    contract: 1,
+    summary: "Save one project or global named printing setup through Brain.",
+    purpose: "Publishes one authored layout into the active project's catalog or the shared global sample catalog. The request carries scope, layout and the exact expectedRevision returned by desktop printing get; an empty revision creates a new setup.",
+    chapter: Chapter::Reports,
+    effect: Effect::GlobalWrite,
+    authority: Authority::DesktopUser,
+    execution: Execution::Sync,
+    args: &[
+        Arg::value(
+            "request",
+            "<json-file>",
+            "Scope, authored layout and expectedRevision; at most 800 KB.",
+        )
+        .required(),
+        DESCRIPTOR_ARG,
+    ],
+    output: "Scope, project when applicable, and the saved setup id, name and new revision.",
+    examples: &[],
+    refusals: &[
+        ops::NOT_PAIRED,
+        ops::AMBIGUOUS,
+        ops::UNREACHABLE,
+        ops::PAIRING_REJECTED,
+        ops::REFUSED,
+        ops::UNSUPPORTED,
+        ops::UNREADABLE,
+        ops::SIGNED_OUT,
+        Refusal {
+            code: "printing_request_invalid",
+            when: "the request file cannot be read or is not a bounded JSON object",
+            remedy: "provide scope, layout and expectedRevision, at most 800 KB",
+        },
+    ],
+    reference: Some("docs/reference/desktop.printing.md"),
+    availability: ops::paired_availability,
+};
+
 pub static PREPARE_COMMAND: Command = Command {
     id: "desktop.printing.prepare",
     path: &["desktop", "printing", "prepare"],
@@ -131,12 +175,9 @@ pub static PREPARE_COMMAND: Command = Command {
     availability: ops::paired_availability,
 };
 
-fn read_request(path: &str) -> Result<Value, Failure> {
-    let invalid = |message: String| {
-        Failure::invalid("printing_request_invalid", message).remedy(
-            "provide a JSON object containing layout, expectedRevision and formats, at most 800 KB",
-        )
-    };
+fn read_request(path: &str, remedy: &'static str) -> Result<Value, Failure> {
+    let invalid =
+        |message: String| Failure::invalid("printing_request_invalid", message).remedy(remedy);
     let mut bytes = Vec::new();
     std::fs::File::open(path)
         .and_then(|file| file.take(800_001).read_to_end(&mut bytes))
@@ -151,13 +192,30 @@ fn read_request(path: &str) -> Result<Value, Failure> {
     Ok(value)
 }
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
-    let request = read_request(inputs.require("request")?)?;
+    let request = read_request(
+        inputs.require("request")?,
+        "provide a JSON object containing layout, expectedRevision and formats, at most 800 KB",
+    )?;
     let descriptor = ops::paired(inputs.value("desktop-descriptor"))?;
     ops::invoke(
         &descriptor,
         &PREPARE_OP,
         json!({"request":request}),
         Duration::from_secs(600),
+    )
+}
+
+pub fn save(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
+    let request = read_request(
+        inputs.require("request")?,
+        "provide scope, layout and expectedRevision, at most 800 KB",
+    )?;
+    let descriptor = ops::paired(inputs.value("desktop-descriptor"))?;
+    ops::invoke(
+        &descriptor,
+        &SAVE_OP,
+        json!({"request":request}),
+        Duration::from_secs(180),
     )
 }
 
@@ -204,7 +262,7 @@ mod tests {
     #[test]
     fn missing_input_is_a_named_refusal_before_pairing() {
         assert_eq!(
-            read_request("/nonexistent/printing-request.json")
+            read_request("/nonexistent/printing-request.json", "remedy")
                 .unwrap_err()
                 .code(),
             "printing_request_invalid"

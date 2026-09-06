@@ -46,6 +46,7 @@ pub static DOMAIN: Domain = Domain {
         &project::SWITCH_COMMAND,
         &printing::LIST_COMMAND,
         &printing::GET_COMMAND,
+        &printing::SAVE_COMMAND,
         &printing::PREPARE_COMMAND,
     ],
 };
