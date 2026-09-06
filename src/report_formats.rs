@@ -37,9 +37,67 @@ impl PrintPageSize {
     }
 }
 
-pub fn options() -> Vec<Value> {
-    PrintPageSize::ALL.iter().map(|p| serde_json::json!({"value":p.format(),"label":p.label()}))
-        .chain(INDIVIDUAL.iter().filter(|f| !f.starts_with("pdf_")).map(|f| serde_json::json!({"value":f,"label":if *f == "geojson" { "GeoJSON".into() } else { f.to_ascii_uppercase() }}))).collect()
+pub fn named_setup_id(format: &str) -> Option<&str> {
+    format
+        .strip_prefix("pdf__")
+        .filter(|id| crate::printing::identifier(id))
+}
+
+pub fn options(setups: &[Value]) -> Result<Vec<Value>, String> {
+    if setups.len() > 200 {
+        return Err("Printing setup catalog exceeds 200 entries".into());
+    }
+    let mut result: Vec<Value> = INDIVIDUAL.iter().filter(|f| !f.starts_with("pdf_")).map(|f|
+        serde_json::json!({"value":f,"label":if *f == "geojson" { "GeoJSON".into() } else { f.to_ascii_uppercase() }})
+    ).collect();
+    let mut ids = std::collections::BTreeSet::new();
+    for setup in setups {
+        let id = setup["id"]
+            .as_str()
+            .ok_or("Printing setup ID is required")?;
+        let name = setup["name"]
+            .as_str()
+            .ok_or("Printing setup name is required")?;
+        if !crate::printing::identifier(id)
+            || !ids.insert(id)
+            || name.trim().is_empty()
+            || name.len() > 160
+        {
+            return Err("Invalid or duplicate printing setup".into());
+        }
+        result.push(
+            serde_json::json!({"value":format!("pdf__{id}"),"label":format!("PDF · {name}")}),
+        );
+    }
+    Ok(result)
+}
+
+pub fn named_layouts(
+    sheets: &Value,
+) -> Result<std::collections::BTreeMap<String, crate::printing::Layout>, String> {
+    let mut layouts = std::collections::BTreeMap::new();
+    if let Some(raw) = sheets.get("printing_setups") {
+        let rows = raw.as_array().ok_or("printing_setups must be an array")?;
+        if rows.len() > 200 {
+            return Err("Printing setup catalog exceeds 200 entries".into());
+        }
+        for row in rows {
+            let layout: crate::printing::Layout =
+                serde_json::from_value(row["layout"].clone()).map_err(|e| e.to_string())?;
+            crate::printing::validate(&layout)?;
+            if row["id"].as_str() != Some(layout.id.as_str())
+                || row["revision"]
+                    .as_str()
+                    .is_none_or(|r| r.len() != 64 || !r.bytes().all(|c| c.is_ascii_hexdigit()))
+            {
+                return Err("Printing setup identity or revision is invalid".into());
+            }
+            if layouts.insert(layout.id.clone(), layout).is_some() {
+                return Err("Duplicate printing setup".into());
+            }
+        }
+    }
+    Ok(layouts)
 }
 pub const SETTING_ALIASES: &[&str] = &[
     "design_export_format",
@@ -55,10 +113,18 @@ pub struct Output {
     pub output_id: String,
     pub format: String,
     pub content_type: &'static str,
-    pub suffix: &'static str,
+    pub suffix: String,
 }
 
 pub fn output(format: &str) -> Result<Output, String> {
+    if let Some(id) = named_setup_id(format) {
+        return Ok(Output {
+            output_id: format.into(),
+            format: format.into(),
+            content_type: "application/pdf",
+            suffix: format!(".{id}.pdf"),
+        });
+    }
     let (content_type, suffix) = match format {
         "shp" => ("application/zip", ".shp.zip"),
         "kmz" => ("application/vnd.google-earth.kmz", ".kmz"),
@@ -82,7 +148,7 @@ pub fn output(format: &str) -> Result<Output, String> {
             format.into()
         },
         content_type,
-        suffix,
+        suffix: suffix.into(),
     })
 }
 
@@ -90,6 +156,9 @@ pub fn normalize(values: &[String]) -> Vec<String> {
     let selected: Vec<_> = values
         .iter()
         .map(|value| {
+            if named_setup_id(value.trim()).is_some() {
+                return value.trim().to_string();
+            }
             let lower = value.trim().to_ascii_lowercase();
             match lower.as_str() {
                 "shp.zip" | "shapefile" => "shp".into(),
@@ -101,11 +170,17 @@ pub fn normalize(values: &[String]) -> Vec<String> {
             }
         })
         .collect();
-    let ordered: Vec<_> = INDIVIDUAL
+    let mut ordered: Vec<_> = INDIVIDUAL
         .iter()
         .filter(|format| selected.iter().any(|v| v == **format))
         .map(|s| s.to_string())
         .collect();
+    let named: std::collections::BTreeSet<_> = selected
+        .iter()
+        .filter(|f| named_setup_id(f).is_some())
+        .cloned()
+        .collect();
+    ordered.extend(named);
     // Preserve the established absent/empty policy default. PDF is always opt-in.
     if ordered.is_empty() {
         DEFAULT_INDIVIDUAL.iter().map(|s| s.to_string()).collect()
@@ -114,7 +189,7 @@ pub fn normalize(values: &[String]) -> Vec<String> {
     }
 }
 
-pub fn combined(selected: &[String]) -> Vec<&'static str> {
+pub fn combined(selected: &[String]) -> Vec<&str> {
     COMBINED
         .iter()
         .copied()
@@ -123,6 +198,12 @@ pub fn combined(selected: &[String]) -> Vec<&'static str> {
                 .iter()
                 .copied()
                 .filter(|f| selected.iter().any(|s| s == f)),
+        )
+        .chain(
+            selected
+                .iter()
+                .filter(|f| named_setup_id(f).is_some())
+                .map(String::as_str),
         )
         .collect()
 }
@@ -203,11 +284,24 @@ pub fn plan(sheets: &Value, is_combined: bool) -> Result<Vec<Output>, String> {
         .map(|row| string_list(&row["value"]))
         .unwrap_or_default();
     let selected = normalize(&raw);
+    let layouts = named_layouts(sheets)?;
+    for format in &selected {
+        if let Some(id) = named_setup_id(format) {
+            if !layouts.contains_key(id) {
+                return Err(format!(
+                    "Selected printing setup {id} is missing; refresh project printing inputs"
+                ));
+            }
+        }
+    }
     let formats = if is_combined {
         combined(&selected).iter().map(|s| s.to_string()).collect()
     } else {
         selected
     };
+    if formats.len() > 32 {
+        return Err("Report exceeds 32 selected output artifacts".into());
+    }
     formats.iter().map(|f| output(f)).collect()
 }
 
@@ -215,6 +309,44 @@ pub fn plan(sheets: &Value, is_combined: bool) -> Result<Vec<Output>, String> {
 mod tests {
     use super::*;
     use serde_json::json;
+    #[test]
+    fn named_setups_keep_identity_across_renames_and_require_sealed_layouts() {
+        use crate::printing::{Orientation, Paper, named_layout};
+        let layout = named_layout(
+            Some("detail".into()),
+            Some("Detail portrait".into()),
+            Paper::A4,
+            Orientation::Portrait,
+        )
+        .unwrap();
+        let mut sheets = json!({"project_settings":[{"parameter":"design_export_format","value":["xlsx","pdf__detail"]}],"printing_setups":[{"id":"detail","revision":"a".repeat(64),"layout":layout}]});
+        let outputs = plan(&sheets, false).unwrap();
+        assert_eq!(
+            outputs
+                .iter()
+                .map(|o| o.output_id.as_str())
+                .collect::<Vec<_>>(),
+            ["xlsx", "pdf__detail"]
+        );
+        assert_eq!(outputs[1].suffix, ".detail.pdf");
+        sheets["printing_setups"][0]["layout"]["name"] = json!("Renamed");
+        assert_eq!(plan(&sheets, false).unwrap(), outputs);
+        assert_eq!(
+            named_layouts(&sheets).unwrap()["detail"].page_mm,
+            [210., 297.]
+        );
+        sheets["printing_setups"] = json!([]);
+        assert!(plan(&sheets, false).unwrap_err().contains("missing"));
+        assert!(named_setup_id("pdf__../outside").is_none());
+        let options = options(&[json!({"id":"detail","name":"Renamed"})]).unwrap();
+        assert!(
+            options
+                .iter()
+                .any(|o| o["value"] == "pdf__detail" && o["label"] == "PDF · Renamed")
+        );
+        assert!(!options.iter().any(|o| o["value"] == "pdf_a0"));
+    }
+
     #[test]
     fn pdf_selection_controls_both_report_shapes_and_disabled_legacy_settings_cannot_enable_it() {
         let sheets = json!({"project_settings":[
