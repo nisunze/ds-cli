@@ -48,7 +48,7 @@ pub fn validate_page(
     page: &Page,
 ) -> Result<Vec<Value>, String> {
     identity.validate()?;
-    if offset % PAGE_ROWS != 0
+    if !offset.is_multiple_of(PAGE_ROWS)
         || offset / PAGE_ROWS >= MAX_PAGES
         || page.offset != offset
         || page.bounds.is_some()

@@ -97,3 +97,10 @@ Report format policy lives in `report_formats`: `reportCommand` exposes
 (available presets and formats). PDF preset selection is additive and multiple
 presets may be selected. Native and reporter consumers compile the same policy;
 the UI has no format-selection fallback. `PrintPageSize` owns renderer dimensions.
+
+Headless Canvas2D intents live in `src/canvas.rs` and dispatch to
+`ds-network/crates/ds-canvas`. `canvas::evaluate` accepts a bounded, closed
+JSON camera intent. The CLI registers this as `map.canvas.camera`, including
+MCP discovery. Spatial algorithms, numeric buffers and live pointer sessions
+remain in ds-network, exported through ds-network-wasm; the command kernel
+does not own interactive hit testing or snapping.

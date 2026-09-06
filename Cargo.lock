@@ -188,6 +188,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "ds-canvas"
+version = "0.1.0"
+dependencies = [
+ "rstar",
+ "serde",
+]
+
+[[package]]
 name = "ds-cleaning"
 version = "0.1.0"
 dependencies = [
@@ -201,6 +209,7 @@ name = "ds-command-kernel"
 version = "0.1.0"
 dependencies = [
  "base64",
+ "ds-canvas",
  "ds-geo",
  "ds-geo-ops",
  "ds-solar-contracts",
