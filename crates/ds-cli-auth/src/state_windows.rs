@@ -181,15 +181,15 @@ pub(super) fn unlock(file: &File) -> Result<(), StoreError> {
 pub(super) fn protect(path: &Path, plaintext: &[u8]) -> Result<Zeroizing<Vec<u8>>, StoreError> {
     let identity = identity(path)?;
     let mut entropy = entropy(&identity);
-    let mut input = blob(plaintext)?;
-    let mut entropy_blob = blob(&entropy)?;
+    let input = blob(plaintext)?;
+    let entropy_blob = blob(&entropy)?;
     let mut output = CRYPT_INTEGER_BLOB::default();
     let description = wide("DS CLI protected state");
     let success = unsafe {
         CryptProtectData(
-            &mut input,
+            &input,
             description.as_ptr(),
-            &mut entropy_blob,
+            &entropy_blob,
             null(),
             null(),
             CRYPTPROTECT_UI_FORBIDDEN,
@@ -242,15 +242,15 @@ pub(super) fn unprotect(path: &Path, envelope: &[u8]) -> Result<Vec<u8>, StoreEr
         return Err(StoreError::UnsafeOrUnreadable);
     }
     let mut entropy = entropy(&identity);
-    let mut input = blob(&envelope[ENVELOPE_HEADER..])?;
-    let mut entropy_blob = blob(&entropy)?;
+    let input = blob(&envelope[ENVELOPE_HEADER..])?;
+    let entropy_blob = blob(&entropy)?;
     let mut output = CRYPT_INTEGER_BLOB::default();
     let mut description = null_mut();
     let success = unsafe {
         CryptUnprotectData(
-            &mut input,
+            &input,
             &mut description,
-            &mut entropy_blob,
+            &entropy_blob,
             null(),
             null(),
             CRYPTPROTECT_UI_FORBIDDEN,

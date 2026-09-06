@@ -352,6 +352,8 @@ fn open_no_follow(path: &Path) -> Result<File, Failure> {
 }
 
 fn same_file_identity(path: &Path, handle_metadata: &fs::Metadata) -> Result<(), Failure> {
+    #[cfg(not(unix))]
+    let _ = handle_metadata;
     let path_metadata = fs::symlink_metadata(path).map_err(|_| unsafe_output())?;
     if path_metadata.file_type().is_symlink() || !path_metadata.is_file() {
         return Err(unsafe_output());

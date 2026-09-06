@@ -3950,7 +3950,7 @@ fn every_design_command_is_discoverable_without_the_desktop_installed() {
     let commands = index["commands"].as_array().expect("commands");
     assert_eq!(
         commands.len(),
-        55,
+        60,
         "the design domain should expose its whole family: {commands:?}"
     );
     for command in commands {
@@ -3960,6 +3960,11 @@ fn every_design_command_is_discoverable_without_the_desktop_installed() {
             if matches!(
                 id,
                 "design.features.select"
+                    | "design.feeder-limits.read"
+                    | "design.feeder-limits.set"
+                    | "design.categories.read"
+                    | "design.meter-types.ensure"
+                    | "design.customer-categories.alias"
                     | "design.lv.project-export"
                     | "design.transformer.inventory"
                     | "design.transformer.retire"
@@ -4092,6 +4097,10 @@ fn design_collaboration_is_a_complete_headless_project_surface() {
             !id.starts_with("design.lv.")
                 && !id.starts_with("design.transformer.")
                 && !id.starts_with("design.project.")
+                && !id.starts_with("design.feeder-limits.")
+                && !id.starts_with("design.categories.")
+                && !id.starts_with("design.meter-types.")
+                && !id.starts_with("design.customer-categories.")
         })
         .collect();
     let expected: BTreeSet<&str> = [
@@ -4180,6 +4189,10 @@ fn design_collaboration_is_a_complete_headless_project_surface() {
         if id.starts_with("design.lv.")
             || id.starts_with("design.transformer.")
             || id.starts_with("design.project.")
+            || id.starts_with("design.feeder-limits.")
+            || id.starts_with("design.categories.")
+            || id.starts_with("design.meter-types.")
+            || id.starts_with("design.customer-categories.")
         {
             continue;
         }
@@ -6021,11 +6034,23 @@ fn project_forms_native_reads_include_explicit_selected_project_commands() {
         "--output",
         "json",
     ]);
-    assert_eq!(invalid_import.code, 2);
-    assert_eq!(
-        invalid_import.envelope["error"]["code"], "survey_entries_import_source_invalid",
-        "the complete local source contract must fail before profile or auth access"
-    );
+    #[cfg(not(windows))]
+    {
+        assert_eq!(invalid_import.code, 2);
+        assert_eq!(
+            invalid_import.envelope["error"]["code"], "survey_entries_import_source_invalid",
+            "the complete local source contract must fail before profile or auth access"
+        );
+    }
+    #[cfg(windows)]
+    {
+        assert_eq!(invalid_import.code, 3);
+        assert_eq!(
+            invalid_import.envelope["error"]["code"],
+            "survey_entries_import_windows_state_unavailable",
+            "Windows must retain the protected-state refusal before import or auth"
+        );
+    }
     assert!(!PathBuf::from(checkpoint).exists());
     assert!(!PathBuf::from(receipt).exists());
     std::fs::remove_dir_all(root).unwrap();

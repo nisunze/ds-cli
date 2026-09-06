@@ -424,7 +424,9 @@ mod tests {
         );
         // The exchange boundary's sources, refused here by name rather than
         // quietly becoming a second conversion verb.
-        for foreign in ["/work/project.bak", "/work/workspace", "/work/line.don"] {
+        for filename in ["project.bak", "workspace", "line.don"] {
+            let foreign = std::env::temp_dir().join(filename);
+            let foreign = foreign.to_str().expect("test path is UTF-8");
             assert_eq!(
                 external_dsgrid_path(foreign, "path")
                     .expect_err("must refuse")

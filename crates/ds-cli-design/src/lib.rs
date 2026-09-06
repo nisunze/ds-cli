@@ -60,8 +60,10 @@
 //! read what they are removing before they remove it.
 
 pub mod attachment;
+pub mod category_catalog;
 pub mod comment;
 pub mod features;
+pub mod feeder_limits;
 pub mod group;
 pub mod grouping;
 pub mod known_columns;
@@ -125,6 +127,11 @@ pub static DOMAIN: Domain = Domain {
         &tag::enrich::PREVIEW_COMMAND,
         &tag::enrich::APPLY_COMMAND,
         &materials::PREVIEW,
+        &feeder_limits::READ,
+        &feeder_limits::SET,
+        &category_catalog::METER,
+        &category_catalog::READ,
+        &category_catalog::ALIAS_SET,
         &materials::APPLY,
         &known_columns::list::COMMAND,
         &known_columns::set::COMMAND,

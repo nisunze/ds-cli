@@ -1516,6 +1516,55 @@ pub fn tile_generate(
 /// refresh session. There is no project, URL, lane-header, or action
 /// override; the core owns the grammar and the caller only chooses the
 /// typed operation.
+pub fn feeder_configuration(
+    lane: &str,
+    bounds: Option<(f64, f64)>,
+) -> Result<ds_client_core::FeederConfiguration, Failure> {
+    let change =
+        bounds.map(
+            |(minimum, maximum)| ds_client_core::ProjectConfigurationChange::FeederLimits {
+                minimum,
+                maximum,
+            },
+        );
+    headless_project_report(
+        lane,
+        |device, project| device.feeder_configuration(project, change.as_ref()),
+        |client, project| client.feeder_configuration(project, change.as_ref(), now()),
+    )
+    .map(|receipt| receipt.result)
+}
+
+pub fn ensure_meter_type(
+    lane: &str,
+    name: &str,
+) -> Result<ds_client_core::FeederConfiguration, Failure> {
+    let change = ds_client_core::ProjectConfigurationChange::EnsureMeterType { name: name.into() };
+    headless_project_report(
+        lane,
+        |device, project| device.feeder_configuration(project, Some(&change)),
+        |client, project| client.feeder_configuration(project, Some(&change), now()),
+    )
+    .map(|receipt| receipt.result)
+}
+
+pub fn customer_category_alias(
+    lane: &str,
+    alias: &str,
+    category: &str,
+) -> Result<ds_client_core::FeederConfiguration, Failure> {
+    let change = ds_client_core::ProjectConfigurationChange::CustomerCategoryAlias {
+        alias: alias.into(),
+        category: category.into(),
+    };
+    headless_project_report(
+        lane,
+        |device, project| device.feeder_configuration(project, Some(&change)),
+        |client, project| client.feeder_configuration(project, Some(&change), now()),
+    )
+    .map(|receipt| receipt.result)
+}
+
 fn headless_project_report<T>(
     lane_value: &str,
     device_call: impl FnOnce(&mut device::DeviceSession, &str) -> Result<T, ClientError>,
@@ -2695,7 +2744,18 @@ fn now() -> u64 {
 }
 
 fn map_client(error: ClientError) -> Failure {
-    map_client_kind(error.kind(), error.to_string())
+    let message = error.to_string();
+    let failure = map_client_kind(error.kind(), message.clone());
+    // ClientError messages are static, owner-authored text, never response
+    // bodies. Preserve these bounded route diagnostics for data/config calls.
+    if message.starts_with("the transformer context route")
+        || message.starts_with("project configuration")
+        || message.starts_with("feeder settings were saved")
+    {
+        failure.detail(serde_json::json!({"owner_message":message}))
+    } else {
+        failure
+    }
 }
 
 fn map_client_kind(kind: ErrorKind, message: String) -> Failure {
@@ -2860,6 +2920,7 @@ fn password_failure() -> Failure {
     )
 }
 
+#[cfg(unix)]
 fn password_tty_failure() -> Failure {
     Failure::unavailable(
         "password_tty_unavailable",

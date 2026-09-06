@@ -12,6 +12,7 @@ use sha2::{Digest, Sha256};
 const MAX_CATALOG_BYTES: u64 = 64 * 1024;
 const CATALOG_RELATIVE: &str = "ds-client-profiles/catalog.json";
 const PINNED_DIGEST: Option<&str> = option_env!("DS_NATIVE_CLIENT_PROFILE_SHA256");
+#[cfg(not(windows))]
 const PRODUCT_ROOT: Option<&str> = option_env!("DS_NATIVE_CLIENT_PRODUCT_ROOT");
 #[cfg(debug_assertions)]
 const DEV_BUNDLE_ENV: &str = "DS_NATIVE_CLIENT_PROFILE_BUNDLE";

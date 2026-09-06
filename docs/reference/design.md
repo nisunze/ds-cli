@@ -304,6 +304,35 @@ Values the closed document shape cannot carry — one under an archived
 definition, or a cleared assignment — come back in `excluded` with the reason,
 so nothing is dropped in silence.
 
+## Feeder cable limits
+
+`ds design categories read --kind customer` or `--kind meter` reads fresh
+canonical names, aliases and catalog metadata with bounded pagination.
+Use the `ds-dirty-categories` skill when a report flags unknown values:
+missing or newly introduced categories generally require a seed correction;
+code should change only when it fails to honor a valid seed.
+
+`ds design meter-types ensure --name Readyboard --yes` preserves Readyboard
+as its own meter category alongside Single Phase and Three Phase.
+`ds design customer-categories alias --alias Productive --category Commercial --yes`
+seeds an explicit source-label mapping while preserving Commercial's demand
+settings. Both commands use the native selected project, retain unrelated
+catalog rows, and verify fresh saved configuration without Desktop.
+
+`ds design feeder-limits read` reads the native selected project's feeder
+bounds, LV cable bounds and transformer cable catalog from fresh configuration,
+without Desktop. Optional `--out` retains this configuration at a new JSON path.
+`ds design feeder-limits set --minimum 25 --maximum 95 --yes` updates only
+`minimum_feeder_cable_size` and `max_feeder_cable_size` (mm²), preserves other
+project settings, and verifies the saved values with a fresh read. The report
+matches transformer kVA → outgoing LV bundle → feeder catalog designation,
+then applies these limits within that bundle's available feeder choices.
+For example, a 70 mm² ABC bundle can use a 70 or 95 mm² feeder according to
+transformer size. This does not assign all transformer current to one feeder
+or resize design geometry. The minimum LV cable also uses its catalog match,
+not automatically the minimum feeder: 50 mm² ABC maps to a 35 mm² feeder even
+when the feeder minimum is 25 mm².
+
 ## Internal properties versus external publication
 
 `tag_<definition_id>` is an ordinary property in Properties and Attribute

@@ -75,7 +75,9 @@ value — the reporter writes no formulas, so nothing needs recalculating.
    Fill-in transformers are excluded from `Transfo Size` on purpose.
 4. **Treat `Dirty Categories` as unresolved quantity.** The sheet exists
    (red tab) only when category validation excluded or fallback-mapped a
-   value. Surface every row; never fold one silently into a total.
+   value. Surface every row; never fold one silently into a total. Use
+   `ds-dirty-categories` to trace it to the effective project seed before
+   proposing a data correction or code change.
 5. **Units live in the section, not the row.** `pce` counts and `m` lengths.
    InfoTable quantities are rounded to two decimals, so re-summing a raw
    sheet can differ by a few centimetres — rounding, not a discrepancy.

@@ -8,6 +8,7 @@ pub(crate) enum RuntimePlatform {
     Windows,
     Macos,
     Linux,
+    #[cfg_attr(not(any(target_os = "linux", test)), allow(dead_code))]
     Wsl,
 }
 

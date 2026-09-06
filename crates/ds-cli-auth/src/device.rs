@@ -644,6 +644,14 @@ impl DeviceSession {
     ) -> Result<TileOperationResult, ClientError> {
         fixed_device_call!(self, tile_generate, project, tile_type, force)
     }
+    pub fn feeder_configuration(
+        &mut self,
+        project: &str,
+        bounds: Option<&ds_client_core::ProjectConfigurationChange>,
+    ) -> Result<ds_client_core::FeederConfiguration, ClientError> {
+        fixed_device_call!(self, feeder_configuration, project, bounds)
+    }
+
     pub fn compounded_report(
         &mut self,
         project: &str,

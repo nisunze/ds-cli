@@ -1,0 +1,4 @@
+interface:
+  display_name: "DS Dirty Categories"
+  short_description: "Check project seeds before changing category code"
+  default_prompt: "Use $ds-dirty-categories to trace workbook diagnostics to the live project catalog, correct authorized seed gaps, and verify regenerated reports."

@@ -9,7 +9,7 @@ use std::time::Duration;
 #[cfg(unix)]
 use std::time::Instant;
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use ds_cli_contract::Failure;
@@ -32,7 +32,7 @@ const MAX_STORED_STATE_BYTES: u64 = MAX_STATE_BYTES;
 const CONTEXT_SCHEMA: &str = "ds-cli.project-context/v1";
 const LOCK_WAIT: Duration = Duration::from_secs(5);
 const LOCK_POLL: Duration = Duration::from_millis(25);
-#[cfg(test)]
+#[cfg(all(test, unix))]
 static TEMP_SEQUENCE: AtomicU64 = AtomicU64::new(1);
 
 pub struct NativeRefreshStore {
@@ -495,7 +495,7 @@ fn context_paths(profile: &ClientProfile) -> Result<(PathBuf, PathBuf), Failure>
 fn state_root() -> Result<PathBuf, Failure> {
     #[cfg(windows)]
     {
-        return state_windows::state_root().map_err(state_failure);
+        state_windows::state_root().map_err(state_failure)
     }
     #[cfg(not(windows))]
     {
@@ -622,7 +622,7 @@ fn protected_read(path: &Path) -> Result<Option<Vec<u8>>, StoreError> {
             plaintext.zeroize();
             return Err(StoreError::UnsafeOrUnreadable);
         }
-        return Ok(Some(plaintext));
+        Ok(Some(plaintext))
     }
     #[cfg(not(windows))]
     Ok(Some(bytes))

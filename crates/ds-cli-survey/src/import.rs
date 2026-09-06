@@ -273,7 +273,7 @@ pub static COMMAND: Command = Command {
     contract: 1,
     chapter: Chapter::Survey,
     summary: "Import bounded canonical Survey entry NDJSON headlessly.",
-    purpose: "Validates all NDJSON twice before auth, freezes project/form, then runs sequential governed creates. Syncs a redacted receipt before checkpoint; resume never auto-retries. Caller owns data and created_at; authority owns identity and audit. No provenance, override, concurrency, fallback, Desktop, or transport escape.",
+    purpose: "Validates NDJSON before auth and sequential creates. Syncs redacted receipts before checkpoints; resume never auto-retries. The reference defines ownership and import restrictions.",
     effect: Effect::GlobalWrite,
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
@@ -917,7 +917,7 @@ fn acquire_import_lock(path: &Path) -> Result<ImportLock, Failure> {
         if !safe_regular(&metadata, 0, true) || !windows_opened_link_count_is_one(&file) {
             return Err(checkpoint_unsafe());
         }
-        return Ok(ImportLock { _file: file });
+        Ok(ImportLock { _file: file })
     }
     #[cfg(not(any(unix, windows)))]
     {
@@ -1039,7 +1039,7 @@ fn windows_leaf_is_ads_like(leaf: &str) -> bool {
     leaf.contains(':')
 }
 
-#[cfg(any(windows, test))]
+#[cfg(test)]
 fn windows_file_identity_alias(
     left: (Option<u32>, Option<u64>),
     right: (Option<u32>, Option<u64>),
@@ -1635,6 +1635,8 @@ fn configure_no_follow(options: &mut OpenOptions) {
 }
 
 fn safe_regular(metadata: &Metadata, max: u64, private: bool) -> bool {
+    #[cfg(not(unix))]
+    let _ = private;
     if metadata.file_type().is_symlink()
         || !metadata.is_file()
         || metadata.len() > max

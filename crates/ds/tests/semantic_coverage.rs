@@ -80,6 +80,27 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("design.attachment.list", "read_only", "project"),
     ("design.attachment.publish", "global_write", "project"),
     ("design.attachment.retire", "global_write", "project"),
+    ("design.categories.read", "read_only", "headless_project"),
+    (
+        "design.meter-types.ensure",
+        "global_write",
+        "headless_project",
+    ),
+    (
+        "design.customer-categories.alias",
+        "global_write",
+        "headless_project",
+    ),
+    (
+        "design.feeder-limits.read",
+        "local_file_write",
+        "headless_project",
+    ),
+    (
+        "design.feeder-limits.set",
+        "global_write",
+        "headless_project",
+    ),
     ("design.comment.list", "read_only", "project"),
     ("design.comment.post", "global_write", "project"),
     ("design.comment.promote", "global_write", "project"),

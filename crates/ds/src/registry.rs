@@ -1239,6 +1239,31 @@ static DESIGN_ENTRIES: &[Entry] = &[
         render: ds_cli_design::known_columns::list::render,
     },
     Entry {
+        command: &ds_cli_design::feeder_limits::READ,
+        handler: ds_cli_design::feeder_limits::read,
+        render: ds_cli_design::feeder_limits::render,
+    },
+    Entry {
+        command: &ds_cli_design::feeder_limits::SET,
+        handler: ds_cli_design::feeder_limits::set,
+        render: ds_cli_design::feeder_limits::render,
+    },
+    Entry {
+        command: &ds_cli_design::category_catalog::METER,
+        handler: ds_cli_design::category_catalog::meter,
+        render: ds_cli_design::category_catalog::render,
+    },
+    Entry {
+        command: &ds_cli_design::category_catalog::READ,
+        handler: ds_cli_design::category_catalog::read,
+        render: ds_cli_design::category_catalog::render,
+    },
+    Entry {
+        command: &ds_cli_design::category_catalog::ALIAS_SET,
+        handler: ds_cli_design::category_catalog::alias,
+        render: ds_cli_design::category_catalog::render,
+    },
+    Entry {
         command: &ds_cli_design::known_columns::set::COMMAND,
         handler: ds_cli_design::known_columns::set::run,
         render: ds_cli_design::known_columns::set::render,
