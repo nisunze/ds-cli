@@ -40,13 +40,17 @@ pub const MAX_GROUP_BATCH: usize = 200;
 /// What one group LISTING covers: the batch's number, held for a different
 /// reason.
 ///
-/// `ListTagGroups` writes nothing, but ds-brain bounds it by the batch constant
-/// all the same — "a group listing covers at most 200 transformers" — so a
-/// wider bound here would only buy the server's refusal one round trip later.
-/// It is named apart from the batch because it is a separate decision of
-/// ds-brain's: if the listing bound moves, this moves and the transaction's
-/// write budget does not.
-pub const MAX_GROUP_LISTING: usize = MAX_GROUP_BATCH;
+/// `ListTagGroups` writes nothing, and ds-brain no longer charges it a write
+/// budget: `designTagGroupListingLimit` is 2,000 against the batch's 200,
+/// separated there for the same reason it is separated here — borrowing the
+/// transaction's write budget as a read bound made a whole-project listing
+/// impossible for exactly the projects the feature exists for. A live project
+/// already carries 202 transformers.
+///
+/// This tracks that constant, not the batch. It was equal to the batch while
+/// the server bounded both the same way; when the server's listing bound moved
+/// this moved with it, and the transaction's write budget did not.
+pub const MAX_GROUP_LISTING: usize = 2_000;
 
 /// ds-brain's bound for the report projection, which is a READ and much
 /// larger.
@@ -93,7 +97,7 @@ pub const LISTING_TRANSFORMERS_ARG: Arg = Arg {
     required: true,
     default: None,
     choices: &[],
-    summary: "Comma-separated transformer names (1-200, one listing's bound). A whole project is read with `ds design group export`.",
+    summary: "Comma-separated transformer names (1-2000, one listing's bound).",
 };
 
 /// The same flag on `export`, which is a read over a whole project rather than
@@ -252,4 +256,33 @@ pub fn render_plan(data: &Value) -> String {
         out.push('\n');
     }
     out
+}
+
+#[cfg(test)]
+mod bound_tests {
+    use super::{MAX_GROUP_BATCH, MAX_GROUP_LISTING};
+
+    /// The two bounds answer to two different server constants and must not be
+    /// collapsed back into one.
+    ///
+    /// `MAX_GROUP_BATCH` tracks ds-brain's `designTagGroupBatchLimit` (200) — one
+    /// Firestore transaction's WRITE budget. `MAX_GROUP_LISTING` tracks
+    /// `designTagGroupListingLimit` (2,000) — a read that writes nothing.
+    ///
+    /// They were equal while ds-brain bounded both by the batch, and a stress
+    /// session found that made a whole-project listing impossible for a project
+    /// already carrying 202 transformers. If a future edit sets them equal again,
+    /// that regression is back.
+    #[test]
+    fn a_listing_is_not_charged_a_transaction_s_write_budget() {
+        assert_eq!(MAX_GROUP_BATCH, 200, "ds-brain designTagGroupBatchLimit");
+        assert_eq!(
+            MAX_GROUP_LISTING, 2_000,
+            "ds-brain designTagGroupListingLimit"
+        );
+        assert!(
+            MAX_GROUP_LISTING > MAX_GROUP_BATCH,
+            "a read must not be bounded by a write budget"
+        );
+    }
 }
