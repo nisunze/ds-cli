@@ -140,7 +140,7 @@ pub static PREPARE_COMMAND: Command = Command {
     path: &["desktop", "printing", "prepare"],
     contract: 1,
     summary: "Save a project print layout, select exports and prepare inputs.",
-    purpose: "Runs the paired application's printing preparation under its signed-in active project. The request names layout, expectedRevision (empty for create) and formats including pdf__<layout-id>. Brain validates and saves the layout and project settings; the app then refreshes the sealed receipt and installs required reference data. These are sequential durable actions: a later preparation failure does not roll back a saved layout. Use the returned revision for further edits. This does not export a report; follow with map design report.",
+    purpose: "Runs the paired application's printing preparation under its signed-in active project. The request names layout, expectedRevision (empty for create) and a ds.design-output-selection/v1 paper-by-format selection. Brain validates and saves the layout and project settings; the app then refreshes the sealed receipt and installs required reference data. These are sequential durable actions: a later preparation failure does not roll back a saved layout. Use the returned revision for further edits. This does not export a report; follow with map design report.",
     chapter: Chapter::Reports,
     effect: Effect::GlobalWrite,
     authority: Authority::DesktopUser,
@@ -149,12 +149,12 @@ pub static PREPARE_COMMAND: Command = Command {
         Arg::value(
             "request",
             "<json-file>",
-            "Authored layout, expectedRevision and formats; at most 800 KB.",
+            "Authored layout, expectedRevision, versioned output selection and optional transformer views; at most 800 KB.",
         )
         .required(),
         DESCRIPTOR_ARG,
     ],
-    output: "Active project, saved setup id/name/revision, selected formats and ready=true; no raw design features or credentials.",
+    output: "Active project, saved setup id/name/revision, selected output matrix and ready=true; no raw design features or credentials.",
     examples: &[],
     refusals: &[
         ops::NOT_PAIRED,
@@ -168,7 +168,7 @@ pub static PREPARE_COMMAND: Command = Command {
         Refusal {
             code: "printing_request_invalid",
             when: "the request file cannot be read or is not a bounded JSON object",
-            remedy: "provide a JSON object containing layout, expectedRevision and formats, at most 800 KB",
+            remedy: "provide a JSON object containing layout, expectedRevision and selection, at most 800 KB",
         },
     ],
     reference: Some("docs/reference/desktop.printing.md"),
@@ -194,7 +194,7 @@ fn read_request(path: &str, remedy: &'static str) -> Result<Value, Failure> {
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let request = read_request(
         inputs.require("request")?,
-        "provide a JSON object containing layout, expectedRevision and formats, at most 800 KB",
+        "provide a JSON object containing layout, expectedRevision and selection, at most 800 KB",
     )?;
     let descriptor = ops::paired(inputs.value("desktop-descriptor"))?;
     ops::invoke(

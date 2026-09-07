@@ -14,9 +14,28 @@ It is also available through the generated MCP surface. It does not use a
 native-client profile or change another command's authentication requirements.
 
 The request contains `layout` (the `ds.print-layout/v2` document),
-`expectedRevision` (empty when creating), and `formats` (for example
-`["pdf__huye-cjic", "xlsx", "gpkg"]`). The named PDF must match the layout id.
-Use `ds report layout schema` for the document grammar.
+`expectedRevision` (empty when creating), and a versioned `selection`. Paper
+and file format are independent:
+
+```json
+{
+  "schema": "ds.design-output-selection/v1",
+  "prints": [{"layout_id":"huye-cjic","enabled":true,"formats":["pdf","jpeg"]}],
+  "geospatial": ["gpkg"],
+  "tabular": ["xlsx"]
+}
+```
+
+At least one selected print must match the saved layout id. Legacy `formats`
+tokens remain readable and are upgraded to this document on save. Use
+`ds report layout schema` for both the layout and output-selection grammar.
+
+An optional `views` object binds transformers to this layout's named viewport
+slots. For example, `{"agasharu":{"primary_map":{"mode":"camera",
+"center_wgs84":[29.7,-2.5],"scale_denominator":1000,"rotation_deg":4}}}`
+pins Agasharu while other transformers continue to fit automatically. These
+bindings are merged under the saved layout id; they do not clone or mutate the
+paper template.
 
 Preparation saves the project layout and export selection, refreshes sealed
 inputs, and prepares the reference/photo caches. Saves are durable even if a

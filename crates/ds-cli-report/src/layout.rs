@@ -112,7 +112,7 @@ pub static RENDER: Command = Command {
     id: "report.layout.render",
     path: &["report", "layout", "render"],
     contract: 1,
-    summary: "Produce vector PDF and SVG from a layout and held GeoJSON.",
+    summary: "Produce PDF, SVG, PNG or JPEG from a layout and held GeoJSON.",
     purpose: "Printing commands delegate to their owning Rust and native client contracts. Shared templates live in ds-brain; project scope requires a held selected-project context. Geometry stays in ds-network and document validation in ds-command-kernel.",
     chapter: Chapter::Reports,
     effect: Effect::LocalFileWrite,
@@ -283,7 +283,7 @@ pub fn new(_i: &Inputs, _c: &Context) -> Result<Value, Failure> {
 }
 pub fn schema(_i: &Inputs, _c: &Context) -> Result<Value, Failure> {
     Ok(
-        json!({"layout":ds_command_kernel::printing::layout_schema(),"edit":ds_command_kernel::printing::command_schema(),"transactions":{"create":{"action":"create","layout":"<layout document>"},"update":{"action":"update","layout":"<layout document>","expected_revision":"<exact revision>"},"delete":"use --id and --expected-revision","copy":{"action":"copy","source":{"scope":"global|project","id":"<id>","revision":"<exact revision>"},"destination":{"scope":"global|project","id":"<new id>","name":"<optional name>","expected_revision":"<empty for create or exact revision>"}}},"render":"ds report tasks --task render_print_layout --output json"}),
+        json!({"layout":ds_command_kernel::printing::layout_schema(),"edit":ds_command_kernel::printing::command_schema(),"output_selection":ds_command_kernel::report_formats::output_selection_schema(),"transactions":{"create":{"action":"create","layout":"<layout document>"},"update":{"action":"update","layout":"<layout document>","expected_revision":"<exact revision>"},"delete":"use --id and --expected-revision","copy":{"action":"copy","source":{"scope":"global|project","id":"<id>","revision":"<exact revision>"},"destination":{"scope":"global|project","id":"<new id>","name":"<optional name>","expected_revision":"<empty for create or exact revision>"}}},"render":"ds report tasks --task render_print_layout --output json"}),
     )
 }
 pub fn edit(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
