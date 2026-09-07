@@ -26,7 +26,8 @@ use ds_cli_contract::spec::{
 use ds_cli_contract::{Context, Inputs};
 use ds_client_core::{
     Client, ClientError, ErrorKind, Project, ProjectFormSettingsEditor, ProjectFormsSnapshot,
-    ProjectStatus, SolarSnapshot, SurveyEntriesChanges, SurveyEntriesChangesRequest,
+    ProjectReportServiceCode, ProjectStatus, SolarSnapshot, SurveyEntriesChanges,
+    SurveyEntriesChangesRequest,
     SurveyEntriesChangesServiceCode, SurveyEntriesSelectRequest, SurveyEntriesSelectServiceCode,
     SurveyEntriesSelection, SurveyEntryCreateReceipt, SurveyEntryCreateRequest,
     SurveyEntryCreateServiceCode, SurveyQueryRequest, SurveyQueryResult, TransformerContext,
@@ -2785,7 +2786,41 @@ fn now() -> u64 {
         .as_secs()
 }
 
+/// The governed report route's own refusal, when it named one.
+///
+/// The route is the only place these causes exist, and the status code cannot
+/// separate them: `409` carries two unrelated causes and `424` is the one a
+/// whole compounded run ends on. Before this they all reached the caller as
+/// `auth_input_invalid` with no detail and no remedy, so a blocked reporting
+/// session was unreadable from the headless lane while the desktop lane showed
+/// the cause plainly.
+fn map_project_report_service_code(code: ProjectReportServiceCode) -> Failure {
+    match code {
+        ProjectReportServiceCode::NoIndividualArtifacts => Failure::conflict(
+            "report_no_individual_artifacts",
+            "No selected transformer had an individual report to package, so no archive was published.",
+        )
+        .remedy("generate the individual reports first, then retry this command")
+        .next("ds report project scope"),
+        ProjectReportServiceCode::GroupingStale => Failure::conflict(
+            "report_grouping_stale",
+            "The applied report grouping changed after this request pinned its digest.",
+        )
+        .remedy("re-read the applied grouping and retry with the digest it reports now")
+        .next("ds design consumer-grouping read"),
+        ProjectReportServiceCode::GroupingIncomplete => Failure::conflict(
+            "report_grouping_incomplete",
+            "The applied report grouping does not cover every requested transformer.",
+        )
+        .remedy("apply a grouping that covers the requested transformers, or narrow the scope")
+        .next("ds design consumer-grouping apply"),
+    }
+}
+
 fn map_client(error: ClientError) -> Failure {
+    if let Some(code) = error.project_report_service_code() {
+        return map_project_report_service_code(code);
+    }
     let message = error.to_string();
     let failure = map_client_kind(error.kind(), message.clone());
     // ClientError messages are static, owner-authored text, never response

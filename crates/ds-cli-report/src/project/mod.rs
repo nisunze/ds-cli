@@ -215,7 +215,30 @@ pub const NATIVE_READ_REFUSALS: &[Refusal] = &[
     NOT_FOUND,
     INVALID_SCOPE,
     RESERVED_IDENTITY,
+    REPORT_NO_INDIVIDUAL_ARTIFACTS,
+    REPORT_GROUPING_STALE,
+    REPORT_GROUPING_INCOMPLETE,
 ];
+
+/// The governed report route names these itself. They were previously
+/// indistinguishable — every one arrived as `auth_input_invalid` with no
+/// detail and no remedy, because the client classified on the HTTP status
+/// alone and `409` covers two of them.
+const REPORT_NO_INDIVIDUAL_ARTIFACTS: Refusal = Refusal {
+    code: "report_no_individual_artifacts",
+    when: "the run finished but no selected transformer had an individual report to package",
+    remedy: "generate the individual reports first, then retry",
+};
+const REPORT_GROUPING_STALE: Refusal = Refusal {
+    code: "report_grouping_stale",
+    when: "the applied grouping changed after this request pinned its digest",
+    remedy: "re-read the applied grouping and retry with the digest it reports now",
+};
+const REPORT_GROUPING_INCOMPLETE: Refusal = Refusal {
+    code: "report_grouping_incomplete",
+    when: "the applied grouping does not cover every requested transformer",
+    remedy: "apply a grouping that covers them, or narrow the requested scope",
+};
 
 pub const NATIVE_WRITE_REFUSALS: &[Refusal] = &[
     NATIVE_PROFILE,
@@ -241,6 +264,9 @@ pub const NATIVE_WRITE_REFUSALS: &[Refusal] = &[
     INVALID_SCOPE,
     RESERVED_IDENTITY,
     CONFIRMATION_REQUIRED,
+    REPORT_NO_INDIVIDUAL_ARTIFACTS,
+    REPORT_GROUPING_STALE,
+    REPORT_GROUPING_INCOMPLETE,
 ];
 
 pub fn transformer_set(inputs: &ds_cli_contract::Inputs) -> Result<TransformerSet, Failure> {
