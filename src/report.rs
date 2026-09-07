@@ -44,7 +44,10 @@ pub fn publication_state(
 #[derive(Deserialize)]
 #[serde(tag = "command", rename_all = "snake_case", deny_unknown_fields)]
 enum Command {
-    FormatOptions,
+    FormatOptions {
+        #[serde(default)]
+        setups: Vec<serde_json::Value>,
+    },
     Formats {
         sheets: serde_json::Value,
         combined: bool,
@@ -124,12 +127,14 @@ fn names(values: Vec<String>) -> Result<BTreeSet<String>, String> {
     Ok(result)
 }
 pub fn evaluate(input: &[u8]) -> Result<String, String> {
-    if input.len() > 2 * 1024 * 1024 {
-        return Err("Report command exceeds 2 MiB".into());
+    if input.len() > 64 * 1024 * 1024 {
+        return Err("Report command exceeds 64 MiB".into());
     }
     let command: Command = serde_json::from_slice(input).map_err(|e| e.to_string())?;
     let result = match command {
-        Command::FormatOptions => serde_json::json!({"options": crate::report_formats::options()}),
+        Command::FormatOptions { setups } => {
+            serde_json::json!({"options": crate::report_formats::options(&setups)?})
+        }
         Command::Formats { sheets, combined } => {
             serde_json::json!({"outputs": crate::report_formats::plan(&sheets, combined)?})
         }

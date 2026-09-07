@@ -1,5 +1,6 @@
 //! Report output policy shared by native, WASM and the reporter. No IO.
-use serde::Serialize;
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 pub const DEFAULT_INDIVIDUAL: &[&str] = &["shp", "kmz", "xlsx"];
@@ -37,9 +38,187 @@ impl PrintPageSize {
     }
 }
 
-pub fn options() -> Vec<Value> {
-    PrintPageSize::ALL.iter().map(|p| serde_json::json!({"value":p.format(),"label":p.label()}))
-        .chain(INDIVIDUAL.iter().filter(|f| !f.starts_with("pdf_")).map(|f| serde_json::json!({"value":f,"label":if *f == "geojson" { "GeoJSON".into() } else { f.to_ascii_uppercase() }}))).collect()
+pub fn named_setup_id(format: &str) -> Option<&str> {
+    format
+        .strip_prefix("pdf__")
+        .filter(|id| crate::printing::identifier(id))
+}
+
+#[derive(
+    Debug, Clone, Copy, Deserialize, Serialize, JsonSchema, PartialEq, Eq, PartialOrd, Ord,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum PrintArtifactFormat {
+    Pdf,
+    Png,
+    Jpeg,
+}
+
+impl PrintArtifactFormat {
+    fn prefix(self) -> &'static str {
+        match self {
+            Self::Pdf => "pdf",
+            Self::Png => "png",
+            Self::Jpeg => "jpeg",
+        }
+    }
+}
+
+/// Decode a named print artifact token while keeping the stable layout id
+/// independent from file format. `jpg__id` is read as a JPEG alias but new
+/// settings always serialize as `jpeg__id`.
+pub fn named_print_output(format: &str) -> Option<(PrintArtifactFormat, &str)> {
+    let (kind, id) = [
+        (PrintArtifactFormat::Pdf, "pdf__"),
+        (PrintArtifactFormat::Png, "png__"),
+        (PrintArtifactFormat::Jpeg, "jpeg__"),
+        (PrintArtifactFormat::Jpeg, "jpg__"),
+    ]
+    .into_iter()
+    .find_map(|(kind, prefix)| format.strip_prefix(prefix).map(|id| (kind, id)))?;
+    crate::printing::identifier(id).then_some((kind, id))
+}
+
+pub const OUTPUT_SELECTION_SCHEMA: &str = "ds.design-output-selection/v1";
+
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct NamedPrintSelection {
+    pub layout_id: String,
+    #[serde(default = "enabled")]
+    pub enabled: bool,
+    pub formats: Vec<PrintArtifactFormat>,
+}
+
+fn enabled() -> bool {
+    true
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct DesignOutputSelection {
+    pub schema: String,
+    #[serde(default)]
+    pub prints: Vec<NamedPrintSelection>,
+    #[serde(default)]
+    pub geospatial: Vec<String>,
+    #[serde(default)]
+    pub tabular: Vec<String>,
+}
+
+impl DesignOutputSelection {
+    pub fn tokens(&self) -> Result<Vec<String>, String> {
+        if self.schema != OUTPUT_SELECTION_SCHEMA
+            || self.prints.len() > 32
+            || self.geospatial.len() > 8
+            || self.tabular.len() > 8
+        {
+            return Err("invalid design output selection".into());
+        }
+        let mut tokens = Vec::new();
+        tokens.extend(self.geospatial.iter().cloned());
+        tokens.extend(self.tabular.iter().cloned());
+        let mut layouts = std::collections::BTreeSet::new();
+        for print in &self.prints {
+            if !crate::printing::identifier(&print.layout_id)
+                || !layouts.insert(&print.layout_id)
+                || print.formats.is_empty()
+                || print.formats.len() > 3
+            {
+                return Err("invalid or duplicate named print selection".into());
+            }
+            let formats = print
+                .formats
+                .iter()
+                .copied()
+                .collect::<std::collections::BTreeSet<_>>();
+            if formats.len() != print.formats.len() {
+                return Err("named print formats must be unique".into());
+            }
+            if print.enabled {
+                tokens.extend(
+                    formats
+                        .into_iter()
+                        .map(|format| format!("{}__{}", format.prefix(), print.layout_id)),
+                );
+            }
+        }
+        Ok(tokens)
+    }
+}
+
+pub fn output_selection_schema() -> Value {
+    serde_json::to_value(schemars::schema_for!(DesignOutputSelection))
+        .expect("output selection schema")
+}
+
+pub fn options(setups: &[Value]) -> Result<Vec<Value>, String> {
+    if setups.len() > 200 {
+        return Err("Printing setup catalog exceeds 200 entries".into());
+    }
+    let mut result: Vec<Value> = INDIVIDUAL.iter().filter(|f| !f.starts_with("pdf_")).map(|f|
+        serde_json::json!({"value":f,"label":if *f == "geojson" { "GeoJSON".into() } else { f.to_ascii_uppercase() }})
+    ).collect();
+    let mut ids = std::collections::BTreeSet::new();
+    for setup in setups {
+        let id = setup["id"]
+            .as_str()
+            .ok_or("Printing setup ID is required")?;
+        let name = setup["name"]
+            .as_str()
+            .ok_or("Printing setup name is required")?;
+        if !crate::printing::identifier(id)
+            || !ids.insert(id)
+            || name.trim().is_empty()
+            || name.len() > 160
+        {
+            return Err("Invalid or duplicate printing setup".into());
+        }
+        let mut option = serde_json::json!({
+            "value":format!("pdf__{id}"),
+            "label":format!("PDF · {name}"),
+            "layout_id":id,
+            "formats":["pdf","png","jpeg"]
+        });
+        if !setup["layout"].is_null() {
+            let layout: crate::printing::Layout =
+                serde_json::from_value(setup["layout"].clone())
+                    .map_err(|e| format!("Invalid printing setup layout: {e}"))?;
+            crate::printing::validate(&layout)?;
+            option["paper"] = serde_json::to_value(layout.paper).map_err(|e| e.to_string())?;
+            option["page_mm"] = serde_json::json!(layout.page_mm);
+        }
+        result.push(option);
+    }
+    Ok(result)
+}
+
+pub fn named_layouts(
+    sheets: &Value,
+) -> Result<std::collections::BTreeMap<String, crate::printing::Layout>, String> {
+    let mut layouts = std::collections::BTreeMap::new();
+    if let Some(raw) = sheets.get("printing_setups") {
+        let rows = raw.as_array().ok_or("printing_setups must be an array")?;
+        if rows.len() > 200 {
+            return Err("Printing setup catalog exceeds 200 entries".into());
+        }
+        for row in rows {
+            let layout: crate::printing::Layout =
+                serde_json::from_value(row["layout"].clone()).map_err(|e| e.to_string())?;
+            crate::printing::validate(&layout)?;
+            if row["id"].as_str() != Some(layout.id.as_str())
+                || row["revision"]
+                    .as_str()
+                    .is_none_or(|r| r.len() != 64 || !r.bytes().all(|c| c.is_ascii_hexdigit()))
+            {
+                return Err("Printing setup identity or revision is invalid".into());
+            }
+            if layouts.insert(layout.id.clone(), layout).is_some() {
+                return Err("Duplicate printing setup".into());
+            }
+        }
+    }
+    Ok(layouts)
 }
 pub const SETTING_ALIASES: &[&str] = &[
     "design_export_format",
@@ -55,10 +234,23 @@ pub struct Output {
     pub output_id: String,
     pub format: String,
     pub content_type: &'static str,
-    pub suffix: &'static str,
+    pub suffix: String,
 }
 
 pub fn output(format: &str) -> Result<Output, String> {
+    if let Some((kind, id)) = named_print_output(format) {
+        let (content_type, suffix) = match kind {
+            PrintArtifactFormat::Pdf => ("application/pdf", format!(".{id}.pdf")),
+            PrintArtifactFormat::Png => ("image/png", format!(".{id}.png")),
+            PrintArtifactFormat::Jpeg => ("image/jpeg", format!(".{id}.jpg")),
+        };
+        return Ok(Output {
+            output_id: format!("{}__{id}", kind.prefix()),
+            format: format!("{}__{id}", kind.prefix()),
+            content_type,
+            suffix,
+        });
+    }
     let (content_type, suffix) = match format {
         "shp" => ("application/zip", ".shp.zip"),
         "kmz" => ("application/vnd.google-earth.kmz", ".kmz"),
@@ -82,7 +274,7 @@ pub fn output(format: &str) -> Result<Output, String> {
             format.into()
         },
         content_type,
-        suffix,
+        suffix: suffix.into(),
     })
 }
 
@@ -90,6 +282,9 @@ pub fn normalize(values: &[String]) -> Vec<String> {
     let selected: Vec<_> = values
         .iter()
         .map(|value| {
+            if let Some((kind, id)) = named_print_output(value.trim()) {
+                return format!("{}__{id}", kind.prefix());
+            }
             let lower = value.trim().to_ascii_lowercase();
             match lower.as_str() {
                 "shp.zip" | "shapefile" => "shp".into(),
@@ -101,11 +296,17 @@ pub fn normalize(values: &[String]) -> Vec<String> {
             }
         })
         .collect();
-    let ordered: Vec<_> = INDIVIDUAL
+    let mut ordered: Vec<_> = INDIVIDUAL
         .iter()
         .filter(|format| selected.iter().any(|v| v == **format))
         .map(|s| s.to_string())
         .collect();
+    let named: std::collections::BTreeSet<_> = selected
+        .iter()
+        .filter(|f| named_print_output(f).is_some())
+        .cloned()
+        .collect();
+    ordered.extend(named);
     // Preserve the established absent/empty policy default. PDF is always opt-in.
     if ordered.is_empty() {
         DEFAULT_INDIVIDUAL.iter().map(|s| s.to_string()).collect()
@@ -114,7 +315,7 @@ pub fn normalize(values: &[String]) -> Vec<String> {
     }
 }
 
-pub fn combined(selected: &[String]) -> Vec<&'static str> {
+pub fn combined(selected: &[String]) -> Vec<&str> {
     COMBINED
         .iter()
         .copied()
@@ -123,6 +324,12 @@ pub fn combined(selected: &[String]) -> Vec<&'static str> {
                 .iter()
                 .copied()
                 .filter(|f| selected.iter().any(|s| s == f)),
+        )
+        .chain(
+            selected
+                .iter()
+                .filter(|f| named_setup_id(f).is_some())
+                .map(String::as_str),
         )
         .collect()
 }
@@ -200,14 +407,36 @@ pub fn plan(sheets: &Value, is_combined: bool) -> Result<Vec<Output>, String> {
                 })
             })
         })
-        .map(|row| string_list(&row["value"]))
+        .map(|row| {
+            if row["value"]["schema"] == OUTPUT_SELECTION_SCHEMA {
+                serde_json::from_value::<DesignOutputSelection>(row["value"].clone())
+                    .map_err(|error| format!("Invalid design output selection: {error}"))?
+                    .tokens()
+            } else {
+                Ok(string_list(&row["value"]))
+            }
+        })
+        .transpose()?
         .unwrap_or_default();
     let selected = normalize(&raw);
+    let layouts = named_layouts(sheets)?;
+    for format in &selected {
+        if let Some((_, id)) = named_print_output(format) {
+            if !layouts.contains_key(id) {
+                return Err(format!(
+                    "Selected printing setup {id} is missing; refresh project printing inputs"
+                ));
+            }
+        }
+    }
     let formats = if is_combined {
         combined(&selected).iter().map(|s| s.to_string()).collect()
     } else {
         selected
     };
+    if formats.len() > 32 {
+        return Err("Report exceeds 32 selected output artifacts".into());
+    }
     formats.iter().map(|f| output(f)).collect()
 }
 
@@ -215,6 +444,42 @@ pub fn plan(sheets: &Value, is_combined: bool) -> Result<Vec<Output>, String> {
 mod tests {
     use super::*;
     use serde_json::json;
+    #[test]
+    fn named_setups_keep_identity_across_renames_and_require_sealed_layouts() {
+        use crate::printing::{named_layout, Orientation, Paper};
+        let layout = named_layout(
+            Some("detail".into()),
+            Some("Detail portrait".into()),
+            Paper::A4,
+            Orientation::Portrait,
+        )
+        .unwrap();
+        let mut sheets = json!({"project_settings":[{"parameter":"design_export_format","value":["xlsx","pdf__detail"]}],"printing_setups":[{"id":"detail","revision":"a".repeat(64),"layout":layout}]});
+        let outputs = plan(&sheets, false).unwrap();
+        assert_eq!(
+            outputs
+                .iter()
+                .map(|o| o.output_id.as_str())
+                .collect::<Vec<_>>(),
+            ["xlsx", "pdf__detail"]
+        );
+        assert_eq!(outputs[1].suffix, ".detail.pdf");
+        sheets["printing_setups"][0]["layout"]["name"] = json!("Renamed");
+        assert_eq!(plan(&sheets, false).unwrap(), outputs);
+        assert_eq!(
+            named_layouts(&sheets).unwrap()["detail"].page_mm,
+            [210., 297.]
+        );
+        sheets["printing_setups"] = json!([]);
+        assert!(plan(&sheets, false).unwrap_err().contains("missing"));
+        assert!(named_setup_id("pdf__../outside").is_none());
+        let options = options(&[json!({"id":"detail","name":"Renamed"})]).unwrap();
+        assert!(options
+            .iter()
+            .any(|o| o["value"] == "pdf__detail" && o["label"] == "PDF · Renamed"));
+        assert!(!options.iter().any(|o| o["value"] == "pdf_a0"));
+    }
+
     #[test]
     fn pdf_selection_controls_both_report_shapes_and_disabled_legacy_settings_cannot_enable_it() {
         let sheets = json!({"project_settings":[
@@ -258,5 +523,36 @@ mod tests {
             );
         }
         assert!(plan(&json!({"project_settings":{}}), false).is_err());
+    }
+
+    #[test]
+    fn versioned_output_matrix_selects_rasters_from_one_named_layout() {
+        use crate::printing::{named_layout, Orientation, Paper};
+        let layout = named_layout(
+            Some("aderm-a3".into()),
+            Some("ADERM A3".into()),
+            Paper::A3,
+            Orientation::Landscape,
+        )
+        .unwrap();
+        let sheets = json!({
+            "project_settings":[{"parameter":"design_export_format","value":{
+                "schema":"ds.design-output-selection/v1",
+                "prints":[{"layout_id":"aderm-a3","enabled":true,"formats":["pdf","jpeg"]}],
+                "geospatial":["gpkg"],
+                "tabular":["xlsx"]
+            }}],
+            "printing_setups":[{"id":"aderm-a3","revision":"a".repeat(64),"layout":layout}]
+        });
+        let outputs = plan(&sheets, false).unwrap();
+        assert_eq!(
+            outputs
+                .iter()
+                .map(|item| item.output_id.as_str())
+                .collect::<Vec<_>>(),
+            ["xlsx", "gpkg", "jpeg__aderm-a3", "pdf__aderm-a3"]
+        );
+        assert_eq!(outputs[2].content_type, "image/jpeg");
+        assert_eq!(outputs[2].suffix, ".aderm-a3.jpg");
     }
 }
