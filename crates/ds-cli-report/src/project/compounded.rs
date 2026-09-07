@@ -16,9 +16,9 @@ const FILE_LEVEL_ARG: Arg = Arg::value(
 )
 .default("transformer")
 .choices(&["transformer", "sector", "district", "root"]);
-const COMBINE_PER_DISTRICT_ARG: Arg = Arg::switch(
-    "combine-per-district",
-    "Also file one district-scoped combined set per district folder.",
+const COMBINE_PER_GROUP_ARG: Arg = Arg::switch(
+    "combine-per-group",
+    "Also file one combined set for each first-level applied report group.",
 );
 const FORCE_ARG: Arg = Arg::switch(
     "force",
@@ -45,7 +45,7 @@ minutes). No project, URL, body or action override is accepted.",
     args: &[
         TRANSFORMER_ARG,
         FILE_LEVEL_ARG,
-        COMBINE_PER_DISTRICT_ARG,
+        COMBINE_PER_GROUP_ARG,
         FORCE_ARG,
         LANE_ARG,
     ],
@@ -70,10 +70,9 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let transformers = super::transformer_set(inputs)?;
     let file_level = ReportFileLevel::parse(inputs.require("file-level")?)
         .expect("the command parser enforces the file-level choices");
-    let combine_per_district = inputs.switch("combine-per-district");
+    let combine_per_group = inputs.switch("combine-per-group");
     let force = inputs.switch("force");
-    let request =
-        CompoundedReportRequest::new(transformers, file_level, combine_per_district, force);
+    let request = CompoundedReportRequest::new(transformers, file_level, combine_per_group, force);
     let headless = ds_cli_auth::compounded_report(inputs.require("lane")?, &request)?;
     let receipt = headless.result();
     let mut output = super::project_receipt(&headless);
@@ -84,7 +83,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         },
         "archive_layout": {
             "file_level": file_level.token(),
-            "combine_per_district": combine_per_district,
+            "combine_per_group": combine_per_group,
         },
         "force": force,
         "status": receipt.status().token(),

@@ -57,6 +57,26 @@ const LANE: Arg = Arg::value(
 
 const QUERY_REFUSALS: &[Refusal] = &[
     Refusal {
+        code: "survey_project_access_denied",
+        when: "the verified user is not a member of the selected project",
+        remedy: "select a project whose mirrored membership grants this account",
+    },
+    Refusal {
+        code: "survey_form_access_denied",
+        when: "the form is outside this user's explicit project grant",
+        remedy: "ask a project manager to add the exact form to this user's grant",
+    },
+    Refusal {
+        code: "survey_form_binding_not_found",
+        when: "the form slug is not bound to the selected project",
+        remedy: "pass one exact bound slug from `ds survey project-forms read`",
+    },
+    Refusal {
+        code: "survey_form_not_participating",
+        when: "the bound form is disabled, hidden, or withdrawn from Survey reads",
+        remedy: "enable the project form for Survey participation before retrying",
+    },
+    Refusal {
         code: "survey_query_invalid",
         when: "the aggregate flags violate the closed metric, grouping, field, order, or limit grammar",
         remedy: "correct the declared flags before retrying",

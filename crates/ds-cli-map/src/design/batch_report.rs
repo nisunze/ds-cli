@@ -31,14 +31,14 @@ const FILE_LEVEL_ARG: Arg = Arg {
     summary: "Folder level for individual artifacts inside the archive.",
 };
 
-const COMBINE_PER_DISTRICT_ARG: Arg = Arg {
-    name: "combine-per-district",
+const COMBINE_PER_GROUP_ARG: Arg = Arg {
+    name: "combine-per-group",
     kind: ArgKind::Value,
     value: "<true|false>",
     required: false,
     default: Some("false"),
     choices: BOOL_CHOICES,
-    summary: "Also include one district-scoped combined set in each district folder.",
+    summary: "Also include one combined set per first-level applied report group.",
 };
 
 pub static COMMAND: Command = Command {
@@ -59,14 +59,14 @@ replay those internal API phases.",
     args: &[
         TRANSFORMER_ARG,
         FILE_LEVEL_ARG,
-        COMBINE_PER_DISTRICT_ARG,
+        COMBINE_PER_GROUP_ARG,
         DESCRIPTOR_ARG,
     ],
     output: "\
 Project, resolved transformer count, archive layout, archive URL, individual \
 artifact coverage, missing artifacts, report errors, and registry status.",
     examples: &[Example {
-        command: "ds map design batch report --transformer TX-1 --transformer TX-2 --file-level sector --combine-per-district false --yes --output json",
+        command: "ds map design batch report --transformer TX-1 --transformer TX-2 --file-level sector --combine-per-group false --yes --output json",
         note: "One declaration produces the composed cloud deliverable; it does not loop report commands.",
         runnable: false,
     }],
@@ -127,8 +127,8 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         json!(inputs.value("file-level").unwrap_or("transformer")),
     );
     arguments.insert(
-        "combinePerDistrict".into(),
-        json!(crate::boolean(inputs.value("combine-per-district"), false)),
+        "combinePerGroup".into(),
+        json!(crate::boolean(inputs.value("combine-per-group"), false)),
     );
 
     let descriptor = crate::paired(inputs.value("desktop-descriptor"))?;

@@ -34,7 +34,7 @@ ones this skill was written against.
   artifact and syncs it to the project; take the file from the project's
   report artifacts and check its SHA-256 against the receipt before reading.
 - `ds report project compounded [--transformer …] --file-level
-  transformer|sector|district|root [--combine-per-district] --yes --output json`
+  transformer|sector|district|root [--combine-per-group] --yes --output json`
   — the same compounded archive without a map or paired application, against
   the project selected by `ds auth project use`. Plan with `ds report project
   scope` and list the registry with `ds report project archives`; read the

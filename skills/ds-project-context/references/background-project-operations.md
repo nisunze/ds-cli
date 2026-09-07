@@ -37,7 +37,7 @@ switch either context merely to make a refusal disappear.
    exact participating set and every excluded name with its state. Report
    `compounded_ready` and the exclusions to the user before generating.
 6. Publish: `ds report project compounded [--transformer …] --file-level
-   <transformer|sector|district|root> [--combine-per-district] [--force]
+   <transformer|sector|district|root> [--combine-per-group] [--force]
    --yes --output json`. The call blocks until the service answers (up to
    ten minutes). Return `status`, `prefix`, the archive locators, individual
    coverage, the missing individuals with their causes, and

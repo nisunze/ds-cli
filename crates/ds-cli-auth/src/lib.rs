@@ -27,10 +27,10 @@ use ds_cli_contract::{Context, Inputs};
 use ds_client_core::{
     Client, ClientError, ErrorKind, Project, ProjectFormSettingsEditor, ProjectFormsSnapshot,
     ProjectReportServiceCode, ProjectStatus, SolarSnapshot, SurveyEntriesChanges,
-    SurveyEntriesChangesRequest,
-    SurveyEntriesChangesServiceCode, SurveyEntriesSelectRequest, SurveyEntriesSelectServiceCode,
-    SurveyEntriesSelection, SurveyEntryCreateReceipt, SurveyEntryCreateRequest,
-    SurveyEntryCreateServiceCode, SurveyQueryRequest, SurveyQueryResult, TransformerContext,
+    SurveyEntriesChangesRequest, SurveyEntriesChangesServiceCode, SurveyEntriesSelectRequest,
+    SurveyEntriesSelectServiceCode, SurveyEntriesSelection, SurveyEntryCreateReceipt,
+    SurveyEntryCreateRequest, SurveyEntryCreateServiceCode, SurveyFormReadServiceCode,
+    SurveyQueryRequest, SurveyQueryResult, TransformerContext,
 };
 use profile::Lane;
 use serde_json::{Value, json};
@@ -1851,6 +1851,11 @@ pub fn survey_query(
     if let Some((mut device, selected)) = restored_device_project(lane)? {
         let result = device.survey_query(selected.project_id(), query);
         let result = match result {
+            Err(error) if error.survey_form_read_service_code().is_some() => {
+                return Err(map_survey_form_read_service_code(
+                    error.survey_form_read_service_code().unwrap(),
+                ));
+            }
             Err(error) if error.kind() == ErrorKind::ResourceNotFound => {
                 // The same refusal as the headless branch below, remedy
                 // included: which lane answered is not something the caller
@@ -1888,6 +1893,11 @@ pub fn survey_query(
         })?;
     let result = client.survey_query(selected.project_id(), query, now());
     let result = match result {
+        Err(error) if error.survey_form_read_service_code().is_some() => {
+            return Err(map_survey_form_read_service_code(
+                error.survey_form_read_service_code().unwrap(),
+            ));
+        }
         Err(error) if error.kind() == ErrorKind::ResourceNotFound => {
             return Err(Failure::invalid(
                 "survey_scope_not_found",
@@ -2228,6 +2238,9 @@ fn map_survey_entry_create_service_code(code: SurveyEntryCreateServiceCode) -> F
 /// same reason the selection branch did; see
 /// [`map_survey_entries_select_error`].
 fn map_survey_entries_changes_error(error: ClientError) -> Failure {
+    if let Some(code) = error.survey_form_read_service_code() {
+        return map_survey_form_read_service_code(code);
+    }
     if let Some(code) = error.survey_entries_changes_service_code() {
         return map_survey_entries_changes_service_code(code);
     }
@@ -2236,7 +2249,8 @@ fn map_survey_entries_changes_error(error: ClientError) -> Failure {
 
 /// Whether the changes route speaks for this error itself.
 fn survey_entries_changes_speaks_for(error: &ClientError) -> bool {
-    error.survey_entries_changes_service_code().is_some()
+    error.survey_form_read_service_code().is_some()
+        || error.survey_entries_changes_service_code().is_some()
         || survey_entries_changes_kind(error.kind()).is_some()
 }
 
@@ -2346,6 +2360,9 @@ fn map_survey_entries_changes_service_code(code: SurveyEntriesChangesServiceCode
 /// headlessly and as `transformer_not_found` beside a running application,
 /// which is one operation with two vocabularies. Both branches now call this.
 fn map_survey_entries_select_error(error: ClientError) -> Failure {
+    if let Some(code) = error.survey_form_read_service_code() {
+        return map_survey_form_read_service_code(code);
+    }
     if let Some(code) = error.survey_entries_select_service_code() {
         return map_survey_entries_service_code(code);
     }
@@ -2358,8 +2375,34 @@ fn map_survey_entries_select_error(error: ClientError) -> Failure {
 /// decides and the mapper that answers must agree, so they read the same
 /// function.
 fn survey_entries_select_speaks_for(error: &ClientError) -> bool {
-    error.survey_entries_select_service_code().is_some()
+    error.survey_form_read_service_code().is_some()
+        || error.survey_entries_select_service_code().is_some()
         || survey_entries_select_kind(error.kind()).is_some()
+}
+
+fn map_survey_form_read_service_code(code: SurveyFormReadServiceCode) -> Failure {
+    match code {
+        SurveyFormReadServiceCode::ProjectAccessDenied => Failure::unauthorized(
+            "survey_project_access_denied",
+            "the verified user does not have access to the selected project",
+        )
+        .remedy("select a project whose mirrored membership grants this account"),
+        SurveyFormReadServiceCode::FormAccessDenied => Failure::unauthorized(
+            "survey_form_access_denied",
+            "the governed form is outside this user's project grant",
+        )
+        .remedy("ask a project manager to add the exact form to this user's grant"),
+        SurveyFormReadServiceCode::FormBindingNotFound => Failure::invalid(
+            "survey_form_binding_not_found",
+            "the governed form is not bound to the selected project",
+        )
+        .remedy("pass an exact bound slug from `ds survey project-forms read`"),
+        SurveyFormReadServiceCode::FormNotParticipating => Failure::conflict(
+            "survey_form_not_participating",
+            "the bound project form is disabled, hidden, or withdrawn from Survey reads",
+        )
+        .remedy("enable the project form for Survey participation before retrying"),
+    }
 }
 
 /// The selection route's own refusal for one transport kind, or `None` when
@@ -3383,6 +3426,39 @@ mod tests {
         // shared mapping, which is what the disposition arm still handles.
         assert!(survey_entries_select_kind(ErrorKind::SignedOut).is_none());
         assert!(survey_entries_changes_kind(ErrorKind::SignedOut).is_none());
+    }
+
+    #[test]
+    fn survey_form_authority_conditions_keep_distinct_cli_repairs() {
+        use ds_cli_contract::outcome::ExitClass;
+        let cases = [
+            (
+                SurveyFormReadServiceCode::ProjectAccessDenied,
+                "survey_project_access_denied",
+                ExitClass::Unauthorized,
+            ),
+            (
+                SurveyFormReadServiceCode::FormAccessDenied,
+                "survey_form_access_denied",
+                ExitClass::Unauthorized,
+            ),
+            (
+                SurveyFormReadServiceCode::FormBindingNotFound,
+                "survey_form_binding_not_found",
+                ExitClass::InvalidInput,
+            ),
+            (
+                SurveyFormReadServiceCode::FormNotParticipating,
+                "survey_form_not_participating",
+                ExitClass::Conflict,
+            ),
+        ];
+        for (service_code, code, class) in cases {
+            let failure = map_survey_form_read_service_code(service_code);
+            assert_eq!(failure.code(), code);
+            assert_eq!(failure.class(), class);
+            assert!(failure.remedy_text().is_some());
+        }
     }
 
     #[test]

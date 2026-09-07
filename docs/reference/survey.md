@@ -54,8 +54,9 @@ whose dry-run estimate exceeds the 256 MiB billed-byte ceiling.
 
 `<form-slug>` in every example below is a placeholder, never a deployment's
 actual slug. Read the exact one for the selected project with
-`ds survey forms list --query <word>`; a governed form that is not bound to the
-selection refuses as `survey_scope_not_found`.
+`ds survey project-forms read`; a refused read names whether project access,
+the user's form grant, the project binding, or Survey participation must be
+repaired.
 
 The aggregate grammar is deliberately closed:
 
@@ -123,7 +124,10 @@ maps that enum as follows:
 | Bounded request rejected | `survey_entries_invalid` | Recheck the exact form, bbox, and limit. |
 | Route unavailable | `survey_entries_unavailable` | Retry later. |
 | Service failed temporarily | `survey_entries_failed` | Retry; report repeated failures. |
-| Project or form scope unavailable | `survey_entries_scope_not_found` | Verify the selected project and an exact available form; the response does not reveal which scope was absent. |
+| Project access absent | `survey_project_access_denied` | Select a project whose mirrored membership grants this account. |
+| Form outside the user's grant | `survey_form_access_denied` | Ask a project manager to grant that exact form. |
+| Form binding absent | `survey_form_binding_not_found` | Pass a bound slug from `ds survey project-forms read`. |
+| Bound form withdrawn | `survey_form_not_participating` | Enable it for Survey participation. |
 
 If an older or unrecognized response has no typed service code, ds-cli retains
 the coarse status-class fallback without inspecting response bodies.
@@ -175,7 +179,7 @@ backend response text:
 | Route or durable cursor signing is unconfigured | `survey_entries_changes_unavailable` | Configure the governed deployment and durable changes cursor signing key, then restart from the last completed checkpoint. |
 | Mirror synchronization failed | `survey_entries_changes_sync_failed` | Retry the identical page; report repeated failures. |
 | Service failed temporarily | `survey_entries_changes_failed` | Retry the identical page; report repeated failures. |
-| Project or form scope unavailable | `survey_entries_scope_not_found` | Verify the selected project and exact form; the response does not reveal which scope was absent. |
+| Survey authority refused | `survey_project_access_denied`, `survey_form_access_denied`, `survey_form_binding_not_found`, or `survey_form_not_participating` | Follow the returned project, grant, binding, or participation repair. |
 
 Malformed, unknown, contradictory, or oversized service envelopes retain a
 coarse status-class refusal. The CLI never parses backend response bodies or

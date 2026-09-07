@@ -129,7 +129,7 @@ where it is inspected, re-planned and applied, and a project without it is one
 of the causes the service reports here as `auth_input_invalid`.
 
 The receipt does not confirm the foldering. `--file-level sector|district` and
-`--combine-per-district` are a request: when no administrative value resolves,
+`--combine-per-group` are a request: when no administrative value resolves,
 the requested layout silently collapses to `_unassigned` folders while the run
 still reports `success`, which the archives registry row exposes as
 `district_count: 0` and `ds` derives there as `layout_collapsed`.

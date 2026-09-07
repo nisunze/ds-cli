@@ -300,7 +300,7 @@ pub const DESIGN_REPORT: BridgeOp = BridgeOp {
 };
 pub const DESIGN_REPORT_BATCH: BridgeOp = BridgeOp {
     operation: "design.report.export_batch",
-    arguments: &["transformers", "fileLevel", "combinePerDistrict"],
+    arguments: &["transformers", "fileLevel", "combinePerGroup"],
 };
 pub const DESIGN_ATTACH_PRINT: BridgeOp = BridgeOp {
     operation: "design.report.attach_print",
