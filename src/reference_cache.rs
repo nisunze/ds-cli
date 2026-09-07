@@ -98,15 +98,6 @@ pub fn intersects_area(feature: &Value, area: &Value) -> Result<bool, String> {
     ds_geo::spatial_predicate::intersects_area(feature, area)
 }
 
-pub fn intersects_bounds(feature: &Value, bounds: [f64; 4]) -> bool {
-    feature_bounds(feature).is_some_and(|extent| {
-        extent[0] <= bounds[2]
-            && extent[2] >= bounds[0]
-            && extent[1] <= bounds[3]
-            && extent[3] >= bounds[1]
-    })
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -154,11 +145,9 @@ mod tests {
         assert!(validate_page(&identity, PAGE_ROWS, &page).is_err());
     }
     #[test]
-    fn area_validation_and_envelope_compatibility() {
+    fn area_validation_is_polygonal() {
         let (identity, page) = fixture();
-        let rows = validate_page(&identity, 0, &page).unwrap();
-        assert!(intersects_bounds(&rows[0], [29., -3., 31., -1.]));
-        assert!(!intersects_bounds(&rows[0], [0., 0., 1., 1.]));
+        assert_eq!(validate_page(&identity, 0, &page).unwrap().len(), 1);
         assert!(validate_area(&json!({"type":"Point","coordinates":[0.,0.]})).is_err());
     }
 }
