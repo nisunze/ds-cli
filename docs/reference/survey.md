@@ -52,10 +52,15 @@ view-blocked authority before executing the question. The CLI returns at most
 override, or an arbitrary request body. The governed backend rejects questions
 whose dry-run estimate exceeds the 256 MiB billed-byte ceiling.
 
+`<form-slug>` in every example below is a placeholder, never a deployment's
+actual slug. Read the exact one for the selected project with
+`ds survey forms list --query <word>`; a governed form that is not bound to the
+selection refuses as `survey_scope_not_found`.
+
 The aggregate grammar is deliberately closed:
 
 ```text
-ds survey query --form lv_poles_survey --metric count \
+ds survey query --form <form-slug> --metric count \
   --group-by created_by \
   --filter '{"field":"created_by","op":"eq","value":"operator@example.com"}' \
   --order desc --limit 50 --output json
@@ -84,7 +89,7 @@ selected-project lease before calling only
 `POST /api/v1/survey/entries/select`.
 
 ```text
-ds survey entries select --form lv_poles_survey \
+ds survey entries select --form <form-slug> \
   --bbox '29.70,-2.05,29.80,-1.95' --limit 100 --output json
 ```
 
@@ -133,7 +138,7 @@ selected-project lease before one fixed
 `POST /api/v1/survey/entries/changes` call and never auto-paginates.
 
 ```text
-ds survey entries changes --form lv_poles_survey \
+ds survey entries changes --form <form-slug> \
   --updated-after 2026-08-30T00:00:00Z --limit 100 --output json
 ```
 
@@ -187,7 +192,7 @@ create-bound `POST /api/v1/entries/mutate` native-core contract. It never
 retries or falls back automatically.
 
 ```text
-ds survey entries create --form lv_poles_survey --doc-id pole-104 \
+ds survey entries create --form <form-slug> --doc-id pole-104 \
   --idempotency-key '<opaque-key>' --created-at 2026-08-30T12:00:00Z \
   --document ./pole-104.json --yes --output json
 ```
@@ -217,7 +222,7 @@ sequentially. There is no concurrency, automatic retry, source-format parser,
 project override, per-row form, or transport fallback.
 
 ```text
-ds survey entries import --form lv_poles_survey \
+ds survey entries import --form <form-slug> \
   --file ./survey123.ndjson \
   --checkpoint ./survey123.checkpoint.json \
   --receipt ./survey123.receipt.ndjson --yes --output json

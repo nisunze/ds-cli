@@ -332,6 +332,66 @@ fn command_help_matches_its_descriptor() {
 }
 
 #[test]
+fn every_gated_command_names_the_flag_that_confirms_it() {
+    // The walker above can only check *declared* inputs, and `--yes` is a
+    // global flag: it is in no command's `inputs`, so nothing there sees it.
+    // Yet it is the one flag an effectful command cannot run without. A
+    // caller that reads either tier of the contract must learn the gate from
+    // the contract, not from being refused — so both tiers have to name it,
+    // and the machine tier has to say which flag it is.
+    for command in descriptors() {
+        let path: Vec<String> = command["path"]
+            .as_array()
+            .expect("path")
+            .iter()
+            .map(|part| part.as_str().expect("part").to_string())
+            .collect();
+
+        if command["confirmation_required"] != true {
+            assert!(
+                command.get("confirmation_flag").is_none(),
+                "`ds {}` needs no confirmation, so naming a confirming flag \
+                 would advertise a gate that does not exist",
+                path.join(" ")
+            );
+            continue;
+        }
+
+        assert_eq!(
+            command["confirmation_flag"],
+            "--yes",
+            "`ds {}` requires confirmation but its descriptor does not name \
+             the flag that gives it",
+            path.join(" ")
+        );
+
+        let mut args: Vec<&str> = path.iter().map(String::as_str).collect();
+        args.push("--help");
+        let output = Command::new(env!("CARGO_BIN_EXE_ds"))
+            .args(&args)
+            .env("NO_COLOR", "1")
+            .output()
+            .expect("help runs");
+        let help = String::from_utf8_lossy(&output.stdout);
+
+        // The USAGE block specifically, not the screen: an example that
+        // happens to pass `--yes` documents one invocation, while the grammar
+        // is what a caller copies for every other one.
+        let usage = help
+            .split_once("USAGE\n")
+            .and_then(|(_, rest)| rest.split("\n\n").next())
+            .unwrap_or("");
+        assert!(
+            usage.contains("--yes"),
+            "`ds {} --help` declares that confirmation is required, but its \
+             USAGE grammar is `{}` — an invocation the command will refuse.",
+            path.join(" "),
+            usage.trim()
+        );
+    }
+}
+
+#[test]
 fn every_command_reachable_by_id_and_by_path() {
     for command in descriptors() {
         let id = command["id"].as_str().expect("id");

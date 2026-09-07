@@ -31,8 +31,8 @@ use serde_json::{Map, Value, json};
 // in `ds-cli-desktop` and re-exported here so a caller of this domain — and
 // every command in it — keeps naming them as `crate::…`.
 pub use ds_cli_desktop::ops::{
-    AMBIGUOUS, BridgeOp, DESCRIPTOR_ARG, INVALID_NUMBER, NOT_PAIRED, PAIRING_REJECTED, REFUSED,
-    SIGNED_OUT, SIGNED_OUT_MARKERS, UNREACHABLE, UNREADABLE, UNSUPPORTED,
+    AMBIGUOUS, BridgeOp, DESCRIPTOR_ARG, INVALID_NUMBER, NOT_PAIRED, OFFLINE, PAIRING_REJECTED,
+    REFUSED, SIGNED_OUT, SIGNED_OUT_MARKERS, UNREACHABLE, UNREADABLE, UNSUPPORTED,
     classify_signed_out as classify_design_failure, integer, invoke, paired, paired_availability,
     plural,
 };

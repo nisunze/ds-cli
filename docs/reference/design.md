@@ -369,6 +369,15 @@ infer it:
 --number completion:gte:80
 ```
 
+**A read matches the same way a write does.** A `--choice` predicate is matched
+against the definition's stored vocabulary byte for byte, and a value that is
+not in it is refused: `tag_value_case_mismatch` names the stored spelling when
+only case differs, `tag_value_not_in_vocabulary` lists the allowed values when
+the value was never authored. `--choice phasing:equals:initial` against a
+vocabulary storing `Initial` therefore refuses instead of reporting zero
+transformers — and `not_equals` refuses instead of reporting all of them.
+Definitions the project does not carry stay the server's refusal to make.
+
 Use `--match all` (the default) or `--match any`. One call accepts at most 20
 predicates and scans at most 2,000 current LV transformers. `--limit` is not a
 page: if the complete match set is larger, the server refuses and asks for a
@@ -414,12 +423,19 @@ A comma-separated list flag is bounded locally as well as on the server, so an
 over-long `--transformers` or `--values` is refused before a round trip that
 would have been rejected anyway.
 
-Two of those bounds differ on purpose. A tag group batch takes at most
-200 transformers, because 200 is one Firestore transaction's write budget on
-the server. `ds design group export` takes 2,000, because it is a read whose
-unit is a whole project: a live project already carries 202 transformers, and
-splitting one export would produce two documents with two digests that a report
-pins separately and will not join.
+Two of those bounds differ on purpose, and the difference is not read versus
+write. The 200 is one Firestore transaction's write budget on the server, so
+`ds design group preview`, `apply` and `unassign` take at most 200
+transformers. `ds design group list` takes 200 as well — a read has no writes
+to budget, but ds-brain bounds a group listing by that same constant, so
+carrying it locally refuses in one place instead of one round trip later.
+
+`ds design group export` takes 2,000, because it is the read whose unit is a
+whole project: a live project already carries 202 transformers, and splitting
+one export would produce two documents with two digests that a report pins
+separately and will not join. So a listing over its bound is refused with the
+whole-project reads named — `ds design group export`, or `ds design tag query`
+for the same project by predicate — rather than with "pass fewer values".
 
 ## Where `ds` deliberately stops
 
@@ -445,6 +461,10 @@ belongs to the governance surface, not to a headless command.
 | `design_not_permitted` | the signed-in user may read but not change these records |
 | `design_version_conflict` | the record moved while the command was in flight; re-read and retry |
 | `design_project_read_only` | the project is archived or expired and accepts no changes |
+| `design_request_invalid` | ds-brain refused the request's own shape, or a bound it exceeded |
+| `design_record_not_found` | the named definition, selection, attachment or thread does not exist |
+| `design_service_failed` | the design collaboration service faulted; the request itself is sound |
+| `backend_unreachable` | the Data Solutions API did not answer the request the command needs |
 | `invalid_design_anchor` | the anchor names a reserved document or a kind that does not exist |
 | `attachment_too_large` | the file exceeds the desktop's bounded path reader |
 | `invalid_value_list` | a comma-separated flag was given but carries no values |
@@ -454,6 +474,14 @@ belongs to the governance surface, not to a headless command.
 | `design_plan_stale` | the project moved after the plan was previewed; preview again |
 | `invalid_transformer_scope` | no transformer named, or a name is blank, repeated or over 200 characters, or over 500 named |
 | `invalid_reason` | `--reason` is blank, untrimmed or over 512 characters |
+
+Those four replace what `desktop_refused` used to carry for the collaboration
+surfaces, and the class is what a caller acts on: an exceeded bound and an
+unknown record are `invalid_input`, so the identical call can never succeed,
+while a service fault and an unreachable API are `unavailable` and the same
+call works once the service answers. A write that never answered may still
+have been applied, so `backend_unreachable` asks for a re-read before a retry
+rather than a blind repeat.
 
 The headless `transformer` family adds the native-profile, headless-session
 and `auth_*` codes `ds tile --help` documents once; `auth_rejected` there also

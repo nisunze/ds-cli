@@ -69,7 +69,7 @@ const QUERY_REFUSALS: &[Refusal] = &[
     Refusal {
         code: "survey_scope_not_found",
         when: "the selected project or governed form is unavailable to the verified user",
-        remedy: "verify the selected project and pass one exact available form slug",
+        remedy: "verify the selected project and pass one exact slug from `ds survey forms list`",
     },
     Refusal {
         code: "survey_query_refused",
@@ -186,12 +186,12 @@ pub static COMMAND: Command = Command {
     output: "Lane, selected-project identity, echoed form/metric/grouping, at most 200 aggregate rows, and truncation; never raw entries, billing claims, or credentials.",
     examples: &[
         Example {
-            command: "ds survey query --form lv_poles_survey --metric count --group-by created_by --filter '{\"field\":\"created_by\",\"op\":\"eq\",\"value\":\"operator@example.com\"}' --output json",
-            note: "Counts the selected project's governed rows by the public created_by field.",
+            command: "ds survey query --form <form-slug> --metric count --group-by created_by --filter '{\"field\":\"created_by\",\"op\":\"eq\",\"value\":\"operator@example.com\"}' --output json",
+            note: "Counts the selected project's governed rows by the public created_by field. Read the exact slug from `ds survey forms list`.",
             runnable: false,
         },
         Example {
-            command: "ds survey query --form customers --metric count_distinct --distinct-field created_by --limit 50 --output json",
+            command: "ds survey query --form <form-slug> --metric count_distinct --distinct-field created_by --limit 50 --output json",
             note: "Counts distinct public creators without returning any Survey entry.",
             runnable: false,
         },

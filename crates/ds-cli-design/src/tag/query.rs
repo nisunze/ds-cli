@@ -100,7 +100,9 @@ Status projection. Each filter names its type explicitly, so a numeric \
 comparison cannot turn into lexical string ordering and free text is never \
 mistaken for a choice vocabulary. The server scans transformers once and \
 assignments once per referenced definition. --limit is an admission bound: \
-if more rows match, the call refuses rather than returning a partial selection.",
+if more rows match, the call refuses rather than returning a partial selection. \
+A choice predicate is matched against the stored vocabulary byte for byte and \
+refuses, never returning an empty set for a value the project never authored.",
     chapter: Chapter::Design,
     effect: Effect::ReadOnly,
     authority: Authority::Project,
@@ -148,6 +150,12 @@ if more rows match, the call refuses rather than returning a partial selection."
         crate::TOO_MANY,
         crate::TOO_MANY_TAG_FILTERS,
         crate::INVALID_NUMBER,
+        crate::TAG_VALUE_CASE_MISMATCH,
+        crate::TAG_VALUE_NOT_IN_VOCABULARY,
+        crate::INVALID_DESIGN_REQUEST,
+        crate::DESIGN_RECORD_NOT_FOUND,
+        crate::DESIGN_SERVICE_FAILED,
+        crate::BACKEND_UNREACHABLE,
     ],
     reference: Some("docs/reference/design.md"),
     availability: crate::paired_availability,

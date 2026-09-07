@@ -6,7 +6,7 @@ use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
 
 use crate::DESCRIPTOR_ARG;
-use crate::group::TRANSFORMERS_ARG;
+use crate::group::LISTING_TRANSFORMERS_ARG;
 
 pub static COMMAND: Command = Command {
     id: "design.group.list",
@@ -25,7 +25,7 @@ state, not an error — it is defined in the application's Tags surface.",
     effect: Effect::ReadOnly,
     authority: Authority::Project,
     execution: Execution::Sync,
-    args: &[TRANSFORMERS_ARG, DESCRIPTOR_ARG],
+    args: &[LISTING_TRANSFORMERS_ARG, DESCRIPTOR_ARG],
     output: "\
 The project and one row per group: `group`, `defined`, `cardinality`, the \
 `allowed` vocabulary, optional model-evidence state, and each named \
@@ -46,7 +46,7 @@ transformer's current `value` and `modelState`.",
         crate::SIGNED_OUT,
         crate::NOT_PERMITTED,
         crate::INVALID_VALUE_LIST,
-        crate::TOO_MANY,
+        crate::group::LISTING_TOO_MANY,
     ],
     reference: Some("docs/reference/design.md"),
     availability: crate::paired_availability,
@@ -56,7 +56,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let mut arguments = Map::new();
     arguments.insert(
         "transformers".into(),
-        json!(crate::group::transformers(inputs)?),
+        json!(crate::group::listing_transformers(inputs)?),
     );
     let descriptor = crate::paired(inputs.value("desktop-descriptor"))?;
     crate::invoke(

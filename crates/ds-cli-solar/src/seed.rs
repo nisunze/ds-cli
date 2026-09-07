@@ -537,10 +537,12 @@ pub fn classify_seed_failure(failure: Failure) -> Failure {
         .iter()
         .find(|refusal| refusal.code == *code)
         .expect("every mapped server code has a declared refusal");
-    // Built before the match so no bare string literal sits behind a
-    // constructor whose code is a variable: `refusal_coverage.rs` reads the
-    // first literal after each `Failure::…(` as that call's code, and a detail
-    // KEY caught there would be reported as an undocumented refusal.
+    // `refusal_coverage.rs` resolves a constructor's code from the code
+    // argument itself — a literal, or a declared `Refusal` constant — and,
+    // where that argument is a variable as it is here, from the match arm
+    // pattern immediately before the call. Built before the match so nothing
+    // stands between an arm's pattern and its constructor, which is what keeps
+    // the two named codes below visible to that scan.
     let detail = json!({ SERVER_CODE_DETAIL: server_code });
     let named = match *code {
         "solar_seed_digest_mismatch" => Failure::conflict(*code, refusal.when),

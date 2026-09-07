@@ -100,12 +100,16 @@ contract. ds-brain owns everything that follows — it resolves the exact scope
 fresh individual report artifacts, regenerates missing or stale ones with the
 cloud reporter, composes the overall and optional per-district combined sets,
 streams one ZIP with its manifest and writes a registry row. Retired
-transformers (`ds design transformer retire`) are never in scope.
+transformers (`ds design transformer retire`) are never in scope. The reserved
+computed identities — `collisions`, `combined_transformer` and its aliases
+(`all_transformers`, `combined_transformers`) — are report output, never
+participants: `scope` and `compounded` refuse them locally with
+`reserved_transformer_identity` before any credential is restored.
 
 ```bash
 ds report project scope --output json                      # the plan: who participates, who is excluded and why
 ds report project compounded --file-level sector --yes     # publish; blocks until the service answers (≤ 10 min)
-ds report project archives --output json                   # the registry, newest first, with signed downloads
+ds report project archives --output json                   # the registry, newest first: achieved foldering and short-lived signed downloads
 ```
 
 `compounded` is `artifact_write` and needs `--yes`: it publishes a durable
@@ -117,6 +121,26 @@ artifacts is refused as unreadable, as the application refuses it. The scope
 rules, layout vocabulary and archive tree are ds-brain's
 `docs/contracts/compounded-reports.md`; this is the same deliverable the paired
 `ds map design batch report` requests through the application's session.
+
+A compounded archive consumes the project's applied `report_archive` consumer
+grouping: that plan, not this request, is the folder and section authority.
+`ds design consumer-grouping read|preview|apply --purpose report_archive` is
+where it is inspected, re-planned and applied, and a project without it is one
+of the causes the service reports here as `auth_input_invalid`.
+
+The receipt does not confirm the foldering. `--file-level sector|district` and
+`--combine-per-district` are a request: when no administrative value resolves,
+the requested layout silently collapses to `_unassigned` folders while the run
+still reports `success`, which the archives registry row exposes as
+`district_count: 0` and `ds` derives there as `layout_collapsed`.
+
+The registry's `download_url` is freshly signed by the service with about an
+hour of validity, but has been observed arriving with seconds left, so a caller
+must never assume a returned URL is still usable. `ds` reads each URL's own
+expiry out of its signature (`Expires`, or `X-Goog-Date` plus
+`X-Goog-Expires`) and reports it as `download_url_expires_at`,
+`download_url_seconds_remaining` and `download_url_expired`; check that before
+fetching, and list again for a fresh signature.
 
 ## Compounded desktop reports
 

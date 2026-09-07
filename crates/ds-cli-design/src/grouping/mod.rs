@@ -50,3 +50,48 @@ pub fn purpose(inputs: &ds_cli_contract::Inputs) -> Result<String, Failure> {
         .trim()
         .to_string())
 }
+
+/// The plan digest, which only `consumer-grouping preview` can mint.
+///
+/// `crate::group::DIGEST_ARG` is the same flag for a different family: it
+/// fences an assignment batch and names `ds design group preview` as its
+/// producer. Borrowing it here printed that producer in `--help`, sending the
+/// operator to a command whose digest this one cannot accept.
+pub const PLAN_DIGEST_ARG: Arg = Arg {
+    name: "digest",
+    kind: ArgKind::Value,
+    value: "<plan-digest>",
+    required: true,
+    default: None,
+    choices: &[],
+    summary: "The plan_digest `ds design consumer-grouping preview` returned for this exact plan.",
+};
+
+/// The grouping dimensions, which a consumer plan must actually carry.
+///
+/// `crate::group::PROJECTION_DEFINITION_IDS_ARG` is optional and reads an
+/// omitted flag as one untagged group. That is TRUE of the projection it was
+/// authored for — `design group export` deliberately exports a single untagged
+/// group — and FALSE here: a consumer grouping is 1-16 ordered definitions and
+/// the server rejects an empty selection. So this family declares its own
+/// required flag rather than inheriting a promise it cannot keep.
+pub const DEFINITION_IDS_ARG: Arg = Arg {
+    name: "definition-ids",
+    kind: ArgKind::Value,
+    value: "<ids>",
+    required: true,
+    default: None,
+    choices: &[],
+    summary: "Ordered comma-separated typed tag definition IDs (1-16). Order is identity; there is no untagged-only plan.",
+};
+
+/// Read the grouping dimensions.
+///
+/// Deliberately not [`crate::group::projection_definition_ids`]: that reader
+/// turns an omitted flag into an empty selection because the projection
+/// genuinely accepts one. A consumer grouping does not, so the omission is a
+/// `missing_input` from the parser here, with a remedy naming the flag,
+/// instead of a server string arriving after the round trip.
+pub fn definition_ids(inputs: &ds_cli_contract::Inputs) -> Result<Vec<String>, Failure> {
+    crate::list_values(inputs.require("definition-ids")?, "definition-ids", 16)
+}

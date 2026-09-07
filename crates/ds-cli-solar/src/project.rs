@@ -16,6 +16,18 @@ const WORKSPACE: Arg = Arg::value(
     "Private local Solar project workspace.",
 )
 .required();
+
+/// The local owner's own bounds, held here so a selection outside them is
+/// refused before a request file and an engine process exist, with the code
+/// and remedy `--help` documents — not returned as `engine_refused` carrying
+/// the owner's prose after the round trip. `ds-solar-project` seeds 1..64
+/// cities atomically, computes 1..64 explicitly selected cities per run and
+/// accepts concurrency 1..32; this is the same reasoning as
+/// `crate::seed::MAX_CITIES` on the governed lane.
+const MAX_PROJECT_SEED_INPUTS: usize = 64;
+const MAX_PROJECT_RUN_CITIES: usize = MAX_PROJECT_SEED_INPUTS;
+const MAX_PROJECT_CONCURRENCY: usize = 32;
+
 const fn command(
     id: &'static str,
     path: &'static [&'static str],
@@ -48,8 +60,18 @@ const fn command(
                 remedy: "verify private writable directories and matching Solar releases",
             },
             Refusal {
+                code: "solar_project_inputs",
+                when: "a seed carries no --input, or more than 64",
+                remedy: "pass one --input per city, 1 through 64",
+            },
+            Refusal {
+                code: "solar_project_cities",
+                when: "a run selects no city, or more than 64",
+                remedy: "select 1 through 64 cities, one per --city",
+            },
+            Refusal {
                 code: "solar_project_concurrency",
-                when: "the concurrency argument is not an integer",
+                when: "the concurrency argument is not an integer from 1 through 32",
                 remedy: "use a concurrency from 1 through 32",
             },
             Refusal {
@@ -122,7 +144,7 @@ pub static RUN: Command = command(
             "Stable identity for restart-safe execution.",
         )
         .required(),
-        Arg::repeated("city", "<id>", "Explicit city selection."),
+        Arg::repeated("city", "<id>", "Explicit city selection, 1..64."),
         Arg::value(
             "concurrency",
             "<count>",
@@ -169,6 +191,25 @@ pub fn init(i: &Inputs, _: &Context) -> Result<Value, Failure> {
     )
 }
 pub fn seed(i: &Inputs, _: &Context) -> Result<Value, Failure> {
+    let files = i.repeated("input");
+    if files.is_empty() {
+        return Err(
+            Failure::invalid("solar_project_inputs", "seed requires at least one --input").remedy(
+                "pass one --input per complete city input or governed intake, 1 through 64",
+            ),
+        );
+    }
+    if files.len() > MAX_PROJECT_SEED_INPUTS {
+        return Err(Failure::invalid(
+            "solar_project_inputs",
+            format!(
+                "{} inputs were given; one seed carries at most {MAX_PROJECT_SEED_INPUTS} cities",
+                files.len()
+            ),
+        )
+        .remedy("seed in sets of at most 64 cities")
+        .detail(json!({ "given": files.len(), "max": MAX_PROJECT_SEED_INPUTS })));
+    }
     let mut expected = serde_json::Map::new();
     for entry in i.repeated("expected") {
         let (city, digest) = entry.split_once('=').ok_or_else(|| {
@@ -185,7 +226,7 @@ pub fn seed(i: &Inputs, _: &Context) -> Result<Value, Failure> {
         }
     }
     invoke(
-        json!({"operation":"seed","workspace":i.require("workspace")?,"inputs":i.repeated("input"),"expected":expected}),
+        json!({"operation":"seed","workspace":i.require("workspace")?,"inputs":files,"expected":expected}),
     )
 }
 pub fn run(i: &Inputs, _: &Context) -> Result<Value, Failure> {
@@ -193,14 +234,43 @@ pub fn run(i: &Inputs, _: &Context) -> Result<Value, Failure> {
         .value("concurrency")
         .unwrap_or("2")
         .parse::<usize>()
-        .map_err(|_| Failure::invalid("solar_project_concurrency", "concurrency must be 1..32"))?;
+        .map_err(|_| {
+            Failure::invalid("solar_project_concurrency", "concurrency must be 1..32")
+                .remedy("use a concurrency from 1 through 32")
+        })?;
+    if !(1..=MAX_PROJECT_CONCURRENCY).contains(&concurrency) {
+        return Err(Failure::invalid(
+            "solar_project_concurrency",
+            format!("concurrency {concurrency} is outside 1..{MAX_PROJECT_CONCURRENCY}"),
+        )
+        .remedy("use a concurrency from 1 through 32")
+        .detail(json!({ "given": concurrency, "max": MAX_PROJECT_CONCURRENCY })));
+    }
+    let cities = i.repeated("city");
+    if cities.is_empty() {
+        return Err(
+            Failure::invalid("solar_project_cities", "run requires at least one --city")
+                .remedy("pass one --city per seeded city this run computes, 1 through 64"),
+        );
+    }
+    if cities.len() > MAX_PROJECT_RUN_CITIES {
+        return Err(Failure::invalid(
+            "solar_project_cities",
+            format!(
+                "{} cities were selected; one run selects at most {MAX_PROJECT_RUN_CITIES}",
+                cities.len()
+            ),
+        )
+        .remedy("select at most 64 cities in one run")
+        .detail(json!({ "given": cities.len(), "max": MAX_PROJECT_RUN_CITIES })));
+    }
     let drafts = if i.repeated("draft").is_empty() {
         vec!["apd".to_owned()]
     } else {
         i.repeated("draft").to_vec()
     };
     invoke(
-        json!({"operation":"run","workspace":i.require("workspace")?,"cache":i.require("cache")?,"request":{"run_id":i.require("run-id")?,"cities":i.repeated("city"),"concurrency":concurrency,"charts":i.switch("charts"),"drafts":drafts}}),
+        json!({"operation":"run","workspace":i.require("workspace")?,"cache":i.require("cache")?,"request":{"run_id":i.require("run-id")?,"cities":cities,"concurrency":concurrency,"charts":i.switch("charts"),"drafts":drafts}}),
     )
 }
 pub fn status(i: &Inputs, _: &Context) -> Result<Value, Failure> {
@@ -350,4 +420,153 @@ pub fn rebase(i: &Inputs, _: &Context) -> Result<Value, Failure> {
     invoke(
         json!({"operation":"sync_rebase","workspace":i.require("workspace")?,"sequence":sequence,"expected_cloud":i.require("expected-cloud")?}),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ds_cli_contract::spec::Command;
+    use ds_cli_contract::{ExitClass, Format, Output, parse};
+
+    fn inputs(command: &'static Command, tokens: &[String]) -> Inputs {
+        parse(command, tokens).expect("declared tokens parse")
+    }
+
+    fn context() -> Context {
+        Context {
+            confirmed: true,
+            output: Output::resolve(Format::Json, false, true),
+        }
+    }
+
+    fn workspace() -> Vec<String> {
+        vec![
+            "--workspace".to_owned(),
+            "/nonexistent/ds-solar-project".to_owned(),
+        ]
+    }
+
+    fn repeat(tokens: &mut Vec<String>, flag: &str, count: usize) {
+        for index in 0..count {
+            tokens.push(flag.to_owned());
+            tokens.push(format!("city-{index:03}"));
+        }
+    }
+
+    // These call the handlers directly on purpose. Dispatch applies the
+    // availability gate first, so an end-to-end `ds solar project seed` on a
+    // box without ds-solar refuses as unavailable and never reaches the
+    // bound. Reaching it here also proves the refusal arrives before
+    // `invoke`, which is the whole point: no request file, no engine process,
+    // no `engine_refused` carrying the owner's prose.
+    #[test]
+    fn seed_refuses_an_empty_input_set_before_reaching_the_owner() {
+        let error = seed(&inputs(&SEED, &workspace()), &context())
+            .expect_err("a seed with no --input is refused");
+        assert_eq!(error.class(), ExitClass::InvalidInput);
+        assert_eq!(error.code(), "solar_project_inputs");
+        assert!(
+            error.remedy_text().is_some_and(|remedy| remedy.len() > 10),
+            "the refusal must say how to get out of it"
+        );
+    }
+
+    #[test]
+    fn seed_refuses_more_inputs_than_one_atomic_import_carries() {
+        let mut tokens = workspace();
+        repeat(&mut tokens, "--input", MAX_PROJECT_SEED_INPUTS + 1);
+        let error = seed(&inputs(&SEED, &tokens), &context())
+            .expect_err("65 inputs exceed the owner's atomic seed");
+        assert_eq!(error.class(), ExitClass::InvalidInput);
+        assert_eq!(error.code(), "solar_project_inputs");
+        assert_eq!(
+            error.detail_value(),
+            Some(&json!({ "given": MAX_PROJECT_SEED_INPUTS + 1, "max": MAX_PROJECT_SEED_INPUTS }))
+        );
+    }
+
+    #[test]
+    fn run_refuses_a_concurrency_outside_the_range_its_help_states() {
+        let mut tokens = workspace();
+        tokens.extend([
+            "--cache".to_owned(),
+            "/nonexistent/cache".to_owned(),
+            "--run-id".to_owned(),
+            "r1".to_owned(),
+            "--concurrency".to_owned(),
+            "0".to_owned(),
+        ]);
+        let error =
+            run(&inputs(&RUN, &tokens), &context()).expect_err("0 is not a concurrency of 1..32");
+        assert_eq!(error.class(), ExitClass::InvalidInput);
+        assert_eq!(error.code(), "solar_project_concurrency");
+    }
+
+    // Both branches of `solar_project_concurrency` are the same code to a
+    // caller, so both have to hand back the same way out. The non-integer
+    // branch predates the range check and carried none.
+    #[test]
+    fn every_concurrency_refusal_carries_the_remedy_its_help_declares() {
+        for given in ["0", "33", "abc"] {
+            let mut tokens = workspace();
+            tokens.extend([
+                "--cache".to_owned(),
+                "/nonexistent/cache".to_owned(),
+                "--run-id".to_owned(),
+                "r1".to_owned(),
+                "--city".to_owned(),
+                "city-000".to_owned(),
+                "--concurrency".to_owned(),
+                given.to_owned(),
+            ]);
+            let error = run(&inputs(&RUN, &tokens), &context())
+                .err()
+                .unwrap_or_else(|| panic!("`--concurrency {given}` is not a concurrency"));
+            assert_eq!(
+                error.class(),
+                ExitClass::InvalidInput,
+                "--concurrency {given}"
+            );
+            assert_eq!(
+                error.code(),
+                "solar_project_concurrency",
+                "--concurrency {given}"
+            );
+            assert!(
+                error.remedy_text().is_some_and(|remedy| remedy.len() > 10),
+                "`--concurrency {given}` refuses with no way out"
+            );
+        }
+    }
+
+    #[test]
+    fn run_refuses_a_run_that_selects_no_city_at_all() {
+        let mut tokens = workspace();
+        tokens.extend([
+            "--cache".to_owned(),
+            "/nonexistent/cache".to_owned(),
+            "--run-id".to_owned(),
+            "r1".to_owned(),
+        ]);
+        let error = run(&inputs(&RUN, &tokens), &context())
+            .expect_err("a run without an explicit city has nothing to compute");
+        assert_eq!(error.class(), ExitClass::InvalidInput);
+        assert_eq!(error.code(), "solar_project_cities");
+    }
+
+    #[test]
+    fn run_refuses_more_selected_cities_than_the_owner_accepts() {
+        let mut tokens = workspace();
+        tokens.extend([
+            "--cache".to_owned(),
+            "/nonexistent/cache".to_owned(),
+            "--run-id".to_owned(),
+            "r1".to_owned(),
+        ]);
+        repeat(&mut tokens, "--city", MAX_PROJECT_RUN_CITIES + 1);
+        let error = run(&inputs(&RUN, &tokens), &context())
+            .expect_err("65 cities exceed the owner's selection");
+        assert_eq!(error.class(), ExitClass::InvalidInput);
+        assert_eq!(error.code(), "solar_project_cities");
+    }
 }

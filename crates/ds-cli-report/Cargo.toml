@@ -15,5 +15,8 @@ ds-cli-auth = { workspace = true }
 ds-cli-contract = { workspace = true }
 ds-cli-exec = { workspace = true }
 serde_json = { workspace = true }
+
+# The reserved computed report identities are the kernel's rule; the headless
+# scope lane applies the same predicate the offline lane already enforces.
 ds-command-kernel = { workspace = true }
 tempfile = "3"

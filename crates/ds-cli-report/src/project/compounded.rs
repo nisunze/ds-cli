@@ -12,13 +12,13 @@ use super::{LANE_ARG, TRANSFORMER_ARG};
 const FILE_LEVEL_ARG: Arg = Arg::value(
     "file-level",
     "<transformer|sector|district|root>",
-    "Folder level for individual transformer artifacts inside the archive.",
+    "Requested folder level; district/sector folders need resolved administrative values.",
 )
 .default("transformer")
 .choices(&["transformer", "sector", "district", "root"]);
 const COMBINE_PER_DISTRICT_ARG: Arg = Arg::switch(
     "combine-per-district",
-    "Also file one district-scoped combined set under each district folder.",
+    "Also file one district-scoped combined set per district folder.",
 );
 const FORCE_ARG: Arg = Arg::switch(
     "force",
@@ -32,13 +32,12 @@ pub static COMMAND: Command = Command {
     summary: "Publish one compounded report archive in the background (needs --yes).",
     purpose: "\
 After CLI confirmation, restores the native user and asks the governed report \
-service to produce one compounded archive for only its audience-fenced \
-selected project. The service resolves the exact scope (every active saved \
-transformer, or the names given), reuses fresh individual artifacts, \
-regenerates the rest, composes the combined sets, and publishes one ZIP with \
-a registry row. Retired transformers are never in scope. Blocks until the \
-service answers (up to ten minutes). No map, Desktop descriptor, project, \
-URL, body or action override is accepted.",
+service for one compounded archive over its audience-fenced selected \
+project: it resolves the scope, composes the combined sets and publishes one \
+ZIP with a registry row. District and sector folders come from the project's \
+applied `report_archive` grouping, not from this request. Retired \
+transformers are never in scope. Blocks until the service answers (up to ten \
+minutes). No project, URL, body or action override is accepted.",
     chapter: Chapter::Reports,
     effect: Effect::ArtifactWrite,
     authority: Authority::HeadlessProject,
@@ -51,13 +50,15 @@ URL, body or action override is accepted.",
         LANE_ARG,
     ],
     output: "\
-Lane and selected-project identity/status, the requested scope and layout, \
-then the receipt: `status` (success or partial), archive `prefix`, cloud \
-locators, individual coverage, missing individuals with typed causes, bounded \
-errors, and registry-write failure.",
+Lane and selected-project identity/status, the requested scope, and \
+`archive_layout` — the layout asked for, never the tree achieved: \
+unresolved administrative values collapse to `_unassigned/`, and `ds report \
+project archives` confirms the tree built. Then the receipt: status, \
+`prefix`, cloud locators, individual coverage, missing individuals with \
+causes, bounded errors and registry-write failure.",
     examples: &[Example {
-        command: "ds report project compounded --file-level sector --combine-per-district --yes --output json",
-        note: "Read `.data.prefix` and `.data.archives`; `ds report project archives` lists the signed download afterwards.",
+        command: "ds report project compounded --file-level sector --yes --output json",
+        note: "`ds report project archives` then confirms the foldering built.",
         runnable: false,
     }],
     refusals: super::NATIVE_WRITE_REFUSALS,
@@ -149,4 +150,45 @@ pub fn render(data: &Value) -> String {
         out.push_str("  registry row not written; future runs will not see this archive\n");
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The `archive_layout` key is pinned by the contract, so the honesty has
+    /// to live in the prose beside it: the receipt reports what was asked
+    /// for, and only the registry says what was built.
+    #[test]
+    fn the_descriptor_calls_archive_layout_a_request_not_a_tree() {
+        assert!(
+            COMMAND
+                .output
+                .contains("the layout asked for, never the tree achieved"),
+            "{}",
+            COMMAND.output
+        );
+        assert!(
+            COMMAND.output.contains("`_unassigned/`"),
+            "{}",
+            COMMAND.output
+        );
+        assert!(
+            COMMAND.output.contains("ds report project archives"),
+            "{}",
+            COMMAND.output
+        );
+        assert!(
+            COMMAND
+                .purpose
+                .contains("applied `report_archive` grouping"),
+            "{}",
+            COMMAND.purpose
+        );
+        assert!(
+            FILE_LEVEL_ARG.summary.starts_with("Requested folder level"),
+            "{}",
+            FILE_LEVEL_ARG.summary
+        );
+    }
 }

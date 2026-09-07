@@ -88,7 +88,7 @@ const REFUSALS: &[Refusal] = &[
     Refusal {
         code: "survey_entries_scope_not_found",
         when: "the selected project or form is unavailable to this user",
-        remedy: "verify the selected project and exact available form slug",
+        remedy: "verify the selected project and pass one exact slug from `ds survey forms list`",
     },
     Refusal {
         code: "survey_entries_changes_refused",
@@ -211,12 +211,12 @@ pub static COMMAND: Command = Command {
     output: "Selected project/form, canonical lower clock and limit, rows with optional geometry and tombstones, upper fence, cursor/completion, and immutable mirror consistency. For an incomplete page, retain the prior checkpoint and reuse the same clock/limit with its cursor; only a complete upper fence advances it.",
     examples: &[
         Example {
-            command: "ds survey entries changes --form lv_poles_survey --updated-after 2026-08-30T00:00:00Z --output json",
-            note: "Reads one page; an incomplete result does not advance the checkpoint.",
+            command: "ds survey entries changes --form <form-slug> --updated-after 2026-08-30T00:00:00Z --output json",
+            note: "Reads one page; an incomplete result does not advance the checkpoint. The exact slug comes from `ds survey forms list`.",
             runnable: false,
         },
         Example {
-            command: "ds survey entries changes --form lv_poles_survey --updated-after 2026-08-30T00:00:00Z --limit 500 --cursor '<exact-next-cursor>' --output json",
+            command: "ds survey entries changes --form <form-slug> --updated-after 2026-08-30T00:00:00Z --limit 500 --cursor '<exact-next-cursor>' --output json",
             note: "Continues the prior immutable fence without auto-looping.",
             runnable: false,
         },
@@ -343,12 +343,12 @@ mod tests {
     fn exact_clock_and_default_bound_parse_before_auth() {
         let parsed = super::parse(&inputs(&[
             "--form",
-            "lv_poles_survey",
+            "poles",
             "--updated-after",
             "2026-08-30T02:00:00.120000000+02:00",
         ]))
         .unwrap();
-        assert_eq!(parsed.form(), "lv_poles_survey");
+        assert_eq!(parsed.form(), "poles");
         assert_eq!(parsed.updated_after(), "2026-08-30T00:00:00.12Z");
         assert_eq!(parsed.limit(), 100);
         assert_eq!(parsed.cursor(), None);

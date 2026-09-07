@@ -25,7 +25,7 @@ use std::process::ExitCode;
 
 use ds_cli_contract::outcome::{ExitClass, Failure};
 use ds_cli_contract::output::{Format, Output};
-use ds_cli_contract::spec::Domain;
+use ds_cli_contract::spec::{Domain, Refusal};
 use ds_cli_contract::{Context, help};
 
 fn main() -> ExitCode {
@@ -174,7 +174,7 @@ fn run(argv: &[String]) -> Result<(), (ExitClass, ())> {
         Ok(parsed) => parsed,
         Err(failure) => {
             let output = Output::resolve(Format::Human, false, false);
-            return emit_failure(output, "ds", 1, &failure);
+            return emit_failure(output, "ds", 1, &[], &failure);
         }
     };
 
@@ -228,13 +228,20 @@ fn run(argv: &[String]) -> Result<(), (ExitClass, ())> {
                 globals.output,
                 entry.command.id,
                 entry.command.contract,
+                entry.command.refusals,
                 &failure,
             ),
         };
     }
 
     let Some(registered) = registry::find_domain(first) else {
-        return emit_failure(globals.output, "ds", 1, &unknown_domain(first, &domains));
+        return emit_failure(
+            globals.output,
+            "ds",
+            1,
+            &[],
+            &unknown_domain(first, &domains),
+        );
     };
 
     // `ds <domain>` with nothing after it is a question, not a mistake.
@@ -255,6 +262,7 @@ fn run(argv: &[String]) -> Result<(), (ExitClass, ())> {
             globals.output,
             "ds",
             1,
+            &[],
             &unknown_command(registered.domain, second),
         );
     };
@@ -273,6 +281,7 @@ fn run(argv: &[String]) -> Result<(), (ExitClass, ())> {
             globals.output,
             entry.command.id,
             entry.command.contract,
+            entry.command.refusals,
             &failure,
         ),
     }
@@ -301,7 +310,7 @@ fn show_help(
                 Some(registered) => output
                     .text(&help::domain(registered.domain))
                     .map_err(|_| (ExitClass::Internal, ())),
-                None => emit_failure(output, "ds", 1, &unknown_domain(one, domains)),
+                None => emit_failure(output, "ds", 1, &[], &unknown_domain(one, domains)),
             }
         }
         [one, two, ..] => match registry::find_by_path(path) {
@@ -314,6 +323,7 @@ fn show_help(
                             output,
                             "ds",
                             1,
+                            &[],
                             &unknown_command(registered.domain, two),
                         );
                     }
@@ -354,7 +364,7 @@ fn show_help(
                         )
                         .map_err(|_| (ExitClass::Internal, ()))
                 }
-                None => emit_failure(output, "ds", 1, &unknown_domain(one, domains)),
+                None => emit_failure(output, "ds", 1, &[], &unknown_domain(one, domains)),
             },
         },
     }
@@ -408,10 +418,34 @@ fn emit_failure(
     output: Output,
     command: &str,
     contract: u32,
+    refusals: &'static [Refusal],
     failure: &Failure,
 ) -> Result<(), (ExitClass, ())> {
+    let joined = declared_remedy(refusals, failure);
+    let failure = joined.as_ref().unwrap_or(failure);
     let _ = output.failure(command, contract, failure);
     Err((failure.class(), ()))
+}
+
+/// A refusal a command declares but constructs bare still has a way out: it
+/// is written down in that command's own contract, and this is the only place
+/// that knows which command answered.
+///
+/// A shared mapper cannot do this join. `auth_input_invalid` comes out of one
+/// function in `ds-cli-auth` that serves `report project compounded` and
+/// `auth login` alike, and the two need different sentences — so no
+/// construction site can make that code truthful, and the declaration is the
+/// only text that is right for the caller who met it.
+///
+/// A site-specific remedy always wins; only silence is filled.
+fn declared_remedy(refusals: &'static [Refusal], failure: &Failure) -> Option<Failure> {
+    if failure.remedy_text().is_some() {
+        return None;
+    }
+    refusals
+        .iter()
+        .find(|refusal| refusal.code == failure.code())
+        .map(|refusal| failure.clone().remedy(refusal.remedy))
 }
 
 fn unknown_domain(name: &str, domains: &[&'static Domain]) -> Failure {
@@ -459,13 +493,53 @@ fn unknown_command(domain: &'static Domain, name: &str) -> Failure {
 
 #[cfg(test)]
 mod tests {
-    use super::{split_globals, version_is_global};
+    use super::{declared_remedy, split_globals, version_is_global};
     use crate::{meta, registry};
     use ds_cli_contract::args::parse;
-    use ds_cli_contract::spec::{ArgKind, Effect};
+    use ds_cli_contract::outcome::Failure;
+    use ds_cli_contract::spec::{ArgKind, Effect, Refusal};
 
     fn argv(parts: &[&str]) -> Vec<String> {
         parts.iter().map(|part| (*part).to_string()).collect()
+    }
+
+    const DECLARED: &[Refusal] = &[Refusal {
+        code: "scope_unknown",
+        when: "the named scope is not one this project publishes",
+        remedy: "run `ds report project scope` and correct the named transformers",
+    }];
+
+    #[test]
+    fn a_declared_refusal_constructed_bare_still_leaves_with_its_remedy() {
+        let bare = Failure::invalid("scope_unknown", "the scope was refused");
+        assert!(bare.remedy_text().is_none());
+        let joined = declared_remedy(DECLARED, &bare).expect("the declaration is joined in");
+        assert_eq!(joined.code(), "scope_unknown");
+        assert_eq!(joined.class(), bare.class());
+        assert_eq!(joined.message(), bare.message());
+        assert_eq!(
+            joined.remedy_text(),
+            Some("run `ds report project scope` and correct the named transformers")
+        );
+    }
+
+    #[test]
+    fn a_refusal_that_already_knows_the_way_out_keeps_its_own_words() {
+        // The construction site saw more than the declaration can: whatever it
+        // said is the specific answer, and the join must not overwrite it.
+        let specific = Failure::invalid("scope_unknown", "the scope was refused")
+            .remedy("drop --transformer agatare; it was retired");
+        assert!(declared_remedy(DECLARED, &specific).is_none());
+    }
+
+    #[test]
+    fn an_undeclared_code_is_left_exactly_as_it_was() {
+        // Filling here would be inventing a remedy. The refusal-coverage suite
+        // is what makes an undeclared code a build failure; this only refuses
+        // to paper over one.
+        let stranger = Failure::invalid("something_new", "not in any REFUSALS");
+        assert!(declared_remedy(DECLARED, &stranger).is_none());
+        assert!(declared_remedy(&[], &stranger).is_none());
     }
 
     /// Every registered command that declares its own `--version` input.

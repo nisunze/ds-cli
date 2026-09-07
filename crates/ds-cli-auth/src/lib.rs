@@ -55,6 +55,17 @@ pub use ds_client_core::{
     TransformerSet,
 };
 
+/// The remedy the transformer-context route's own rejection carries.
+///
+/// Attached by [`route_diagnostic`] only when the route itself answered, which
+/// is the one case where re-authenticating is pointless. It is deliberately
+/// *not* what the commands on that route declare: the same `auth_rejected`
+/// code is also minted when the Firebase refresh ahead of the call is
+/// rejected, and there the credential was never verified. A declaration is
+/// read without knowing which happened, so it stays general and this stays the
+/// runtime specialisation. Published so a caller can recognise the text.
+pub const TRANSFORMER_CONTEXT_ROUTE_REMEDY: &str = "this lane's credential was verified for this call and the transformer-context route rejected it anyway; confirm the same credential still reads the project, then report a route-only rejection that no local change fixes";
+
 /// Observe all durable headless providers without network or token output.
 /// Two providers may coexist only when they name one exact canonical UID,
 /// lane, audience and selected project.
@@ -1840,10 +1851,14 @@ pub fn survey_query(
         let result = device.survey_query(selected.project_id(), query);
         let result = match result {
             Err(error) if error.kind() == ErrorKind::ResourceNotFound => {
+                // The same refusal as the headless branch below, remedy
+                // included: which lane answered is not something the caller
+                // chose, so it cannot be why one of them is a dead end.
                 return Err(Failure::invalid(
                     "survey_scope_not_found",
                     "the selected project or governed form is unavailable to this verified user",
-                ));
+                )
+                .remedy("verify the selected project and pass one exact available form slug"));
             }
             Err(error) => return Err(map_client(error)),
             Ok(result) => result,
@@ -1908,12 +1923,7 @@ pub fn survey_entries_select(
     let lane = Lane::parse(lane_value)?;
     if let Some((mut device, selected)) = restored_device_project(lane)? {
         let selection = match device.survey_entries_select(selected.project_id(), request) {
-            Err(error) if error.survey_entries_select_service_code().is_some() => {
-                return Err(map_survey_entries_service_code(
-                    error.survey_entries_select_service_code().unwrap(),
-                ));
-            }
-            Err(error) => return Err(map_client(error)),
+            Err(error) => return Err(map_survey_entries_select_error(error)),
             Ok(selection) => selection,
         };
         return Ok(HeadlessSurveyEntriesSelection {
@@ -1940,47 +1950,11 @@ pub fn survey_entries_select(
         })?;
     let selection = client.survey_entries_select(selected.project_id(), request, now());
     let selection = match selection {
-        Err(error) if error.survey_entries_select_service_code().is_some() => {
-            return Err(map_survey_entries_service_code(
-                error
-                    .survey_entries_select_service_code()
-                    .expect("the guarded Survey selection service code is present"),
-            ));
-        }
-        Err(error) if error.kind() == ErrorKind::ResourceNotFound => {
-            return Err(Failure::invalid(
-                "survey_entries_scope_not_found",
-                "the selected project or governed form is unavailable to this verified user",
-            )
-            .remedy("verify the selected project and pass one exact available form slug"));
-        }
-        Err(error) if error.kind() == ErrorKind::InvalidInput => {
-            return Err(Failure::conflict(
-                "survey_entries_refused",
-                "the backend refused the already validated bounded Survey entry selection",
-            )
-            .remedy("narrow --bbox or lower --limit, then verify the governed form state"));
-        }
-        Err(error) if error.kind() == ErrorKind::AuthenticationRejected => {
-            return Err(Failure::unauthorized(
-                "survey_entries_auth_rejected",
-                "the fixed selection route rejected the verified identity or form authority",
-            )
-            .remedy("verify account and form authority in the selected project"));
-        }
-        Err(error) if error.kind() == ErrorKind::Transient => {
-            return Err(Failure::unavailable(
-                "survey_entries_transient",
-                "the fixed selection service or its required mirror sync is temporarily unavailable",
-            )
-            .remedy("retry without changing local state"));
-        }
-        Err(error) if error.kind() == ErrorKind::UnreadableResponse => {
-            return Err(Failure::unavailable(
-                "survey_entries_unreadable",
-                "the selection response violated its closed identity, geometry, consistency, order, or digest contract",
-            )
-            .remedy("retry once, then update ds if it persists"));
+        // The same mapper the paired branch above uses. Kinds this route has
+        // no word of its own for fall through to the disposition arm, which
+        // still has to release the context lease before it maps them.
+        Err(error) if survey_entries_select_speaks_for(&error) => {
+            return Err(map_survey_entries_select_error(error));
         }
         other => with_released_context_disposition(client.profile(), &selected, other)?,
     };
@@ -2003,12 +1977,7 @@ pub fn survey_entries_changes(
     let lane = Lane::parse(lane_value)?;
     if let Some((mut device, selected)) = restored_device_project(lane)? {
         let changes = match device.survey_entries_changes(selected.project_id(), request) {
-            Err(error) if error.survey_entries_changes_service_code().is_some() => {
-                return Err(map_survey_entries_changes_service_code(
-                    error.survey_entries_changes_service_code().unwrap(),
-                ));
-            }
-            Err(error) => return Err(map_client(error)),
+            Err(error) => return Err(map_survey_entries_changes_error(error)),
             Ok(changes) => changes,
         };
         return Ok(HeadlessSurveyEntriesChanges {
@@ -2035,43 +2004,10 @@ pub fn survey_entries_changes(
         })?;
     let changes = client.survey_entries_changes(selected.project_id(), request, now());
     let changes = match changes {
-        Err(error) if error.survey_entries_changes_service_code().is_some() => {
-            return Err(map_survey_entries_changes_service_code(
-                error
-                    .survey_entries_changes_service_code()
-                    .expect("the guarded Survey changes service code is present"),
-            ));
-        }
-        Err(error) if error.kind() == ErrorKind::ResourceNotFound => {
-            return Err(Failure::invalid(
-                "survey_entries_scope_not_found",
-                "the selected project or governed form is unavailable to this verified user",
-            )
-            .remedy("verify the selected project and pass one exact available form slug"));
-        }
-        Err(error) if error.kind() == ErrorKind::InvalidInput => {
-            return Err(survey_entries_changes_refused());
-        }
-        Err(error) if error.kind() == ErrorKind::AuthenticationRejected => {
-            return Err(Failure::unauthorized(
-                "survey_entries_changes_auth_rejected",
-                "the fixed changes route rejected the verified identity or form authority",
-            )
-            .remedy("verify account and form authority in the selected project"));
-        }
-        Err(error) if error.kind() == ErrorKind::Transient => {
-            return Err(Failure::unavailable(
-                "survey_entries_changes_transient",
-                "the fixed changes service is temporarily unavailable without a recognized service code",
-            )
-            .remedy("retry the identical page request without advancing its checkpoint"));
-        }
-        Err(error) if error.kind() == ErrorKind::UnreadableResponse => {
-            return Err(Failure::unavailable(
-                "survey_entries_changes_unreadable",
-                "the changes response violated its closed identity, clocks, geometry, ordering, paging, or consistency contract",
-            )
-            .remedy("retry once without advancing the checkpoint, then update ds if it persists"));
+        // The same mapper the paired branch above uses; see
+        // [`map_survey_entries_changes_error`].
+        Err(error) if survey_entries_changes_speaks_for(&error) => {
+            return Err(map_survey_entries_changes_error(error));
         }
         other => with_released_context_disposition(client.profile(), &selected, other)?,
     };
@@ -2286,6 +2222,52 @@ fn map_survey_entry_create_service_code(code: SurveyEntryCreateServiceCode) -> F
     }
 }
 
+/// One error vocabulary for the coalesced Survey changes page, whichever lane
+/// answered. The paired branch fell through to [`map_client`] for exactly the
+/// same reason the selection branch did; see
+/// [`map_survey_entries_select_error`].
+fn map_survey_entries_changes_error(error: ClientError) -> Failure {
+    if let Some(code) = error.survey_entries_changes_service_code() {
+        return map_survey_entries_changes_service_code(code);
+    }
+    survey_entries_changes_kind(error.kind()).unwrap_or_else(|| map_client(error))
+}
+
+/// Whether the changes route speaks for this error itself.
+fn survey_entries_changes_speaks_for(error: &ClientError) -> bool {
+    error.survey_entries_changes_service_code().is_some()
+        || survey_entries_changes_kind(error.kind()).is_some()
+}
+
+/// The changes route's own refusal for one transport kind, or `None` when it
+/// has nothing to add.
+fn survey_entries_changes_kind(kind: ErrorKind) -> Option<Failure> {
+    Some(match kind {
+        ErrorKind::ResourceNotFound => Failure::invalid(
+            "survey_entries_scope_not_found",
+            "the selected project or governed form is unavailable to this verified user",
+        )
+        .remedy("verify the selected project and pass one exact available form slug"),
+        ErrorKind::InvalidInput => survey_entries_changes_refused(),
+        ErrorKind::AuthenticationRejected => Failure::unauthorized(
+            "survey_entries_changes_auth_rejected",
+            "the fixed changes route rejected the verified identity or form authority",
+        )
+        .remedy("verify account and form authority in the selected project"),
+        ErrorKind::Transient => Failure::unavailable(
+            "survey_entries_changes_transient",
+            "the fixed changes service is temporarily unavailable without a recognized service code",
+        )
+        .remedy("retry the identical page request without advancing its checkpoint"),
+        ErrorKind::UnreadableResponse => Failure::unavailable(
+            "survey_entries_changes_unreadable",
+            "the changes response violated its closed identity, clocks, geometry, ordering, paging, or consistency contract",
+        )
+        .remedy("retry once without advancing the checkpoint, then update ds if it persists"),
+        _ => return None,
+    })
+}
+
 fn survey_entries_changes_refused() -> Failure {
     Failure::invalid(
         "survey_entries_changes_refused",
@@ -2352,6 +2334,66 @@ fn map_survey_entries_changes_service_code(code: SurveyEntriesChangesServiceCode
         )
         .remedy("verify the selected project and pass one exact available form slug"),
     }
+}
+
+/// One error vocabulary for the bounded Survey selection, whichever lane
+/// answered.
+///
+/// The paired-device branch used to fall through to [`map_client`], whose
+/// `ResourceNotFound` arm names a transformer — a word this route never says.
+/// The same absent form therefore refused as `survey_entries_scope_not_found`
+/// headlessly and as `transformer_not_found` beside a running application,
+/// which is one operation with two vocabularies. Both branches now call this.
+fn map_survey_entries_select_error(error: ClientError) -> Failure {
+    if let Some(code) = error.survey_entries_select_service_code() {
+        return map_survey_entries_service_code(code);
+    }
+    // Only the kinds this route has a word of its own for; anything else is
+    // the shared native mapping, unchanged.
+    survey_entries_select_kind(error.kind()).unwrap_or_else(|| map_client(error))
+}
+
+/// Whether the selection route speaks for this error itself. The guard that
+/// decides and the mapper that answers must agree, so they read the same
+/// function.
+fn survey_entries_select_speaks_for(error: &ClientError) -> bool {
+    error.survey_entries_select_service_code().is_some()
+        || survey_entries_select_kind(error.kind()).is_some()
+}
+
+/// The selection route's own refusal for one transport kind, or `None` when
+/// it has nothing to add. Split out from [`map_survey_entries_select_error`]
+/// so it can be exercised without a `ClientError`, which no caller of this
+/// crate can construct.
+fn survey_entries_select_kind(kind: ErrorKind) -> Option<Failure> {
+    Some(match kind {
+        ErrorKind::ResourceNotFound => Failure::invalid(
+            "survey_entries_scope_not_found",
+            "the selected project or governed form is unavailable to this verified user",
+        )
+        .remedy("verify the selected project and pass one exact available form slug"),
+        ErrorKind::InvalidInput => Failure::conflict(
+            "survey_entries_refused",
+            "the backend refused the already validated bounded Survey entry selection",
+        )
+        .remedy("narrow --bbox or lower --limit, then verify the governed form state"),
+        ErrorKind::AuthenticationRejected => Failure::unauthorized(
+            "survey_entries_auth_rejected",
+            "the fixed selection route rejected the verified identity or form authority",
+        )
+        .remedy("verify account and form authority in the selected project"),
+        ErrorKind::Transient => Failure::unavailable(
+            "survey_entries_transient",
+            "the fixed selection service or its required mirror sync is temporarily unavailable",
+        )
+        .remedy("retry without changing local state"),
+        ErrorKind::UnreadableResponse => Failure::unavailable(
+            "survey_entries_unreadable",
+            "the selection response violated its closed identity, geometry, consistency, order, or digest contract",
+        )
+        .remedy("retry once, then update ds if it persists"),
+        _ => return None,
+    })
 }
 
 fn map_survey_entries_service_code(code: SurveyEntriesSelectServiceCode) -> Failure {
@@ -2752,10 +2794,35 @@ fn map_client(error: ClientError) -> Failure {
         || message.starts_with("project configuration")
         || message.starts_with("feeder settings were saved")
     {
-        failure.detail(serde_json::json!({"owner_message":message}))
+        let diagnostic = route_diagnostic(&message);
+        let mut failure = failure.detail(serde_json::json!({"owner_message":message}));
+        // The shared kind mapping has nothing to say about a route that
+        // rejects a credential this lane just verified, and a named refusal
+        // with no way out is a dead end. Only fill the silence: a code that
+        // brought its own remedy — `transformer_not_found` on the same route,
+        // for one — keeps it.
+        if failure.remedy_text().is_none()
+            && let Some((remedy, next)) = diagnostic
+        {
+            failure = failure.remedy(remedy).next(next);
+        }
+        failure
     } else {
         failure
     }
+}
+
+/// What a caller can do about one preserved route diagnostic, as
+/// `(remedy, next)`.
+///
+/// Only the transformer-context route has an answer today, and it is not the
+/// obvious one: the credential was verified for this very call, so
+/// re-authenticating changes nothing. Taking the message as the input keeps
+/// this testable — `ClientError` is `pub(crate)` to construct.
+fn route_diagnostic(message: &str) -> Option<(&'static str, &'static str)> {
+    message
+        .starts_with("the transformer context route")
+        .then_some((TRANSFORMER_CONTEXT_ROUTE_REMEDY, "ds auth project status"))
 }
 
 fn map_client_kind(kind: ErrorKind, message: String) -> Failure {
@@ -3251,6 +3318,53 @@ mod tests {
                 "project_limit_invalid"
             );
         }
+    }
+
+    #[test]
+    fn survey_entries_absence_never_borrows_the_transformer_vocabulary() {
+        // Both lanes of both Survey entries reads now map through these, so a
+        // missing form is one refusal whichever lane answered. Before this,
+        // the paired branch fell through to the transformer mapper and the
+        // same absent form came back as `transformer_not_found`.
+        for failure in [
+            survey_entries_select_kind(ErrorKind::ResourceNotFound)
+                .expect("the selection route speaks for an absent scope"),
+            survey_entries_changes_kind(ErrorKind::ResourceNotFound)
+                .expect("the changes route speaks for an absent scope"),
+        ] {
+            assert_eq!(failure.code(), "survey_entries_scope_not_found");
+            assert_eq!(
+                failure.class(),
+                ds_cli_contract::outcome::ExitClass::InvalidInput
+            );
+            let remedy = failure.remedy_text().expect("a way out");
+            assert!(
+                !remedy.contains("transformer"),
+                "a Survey read must not send the caller after a transformer: {remedy}"
+            );
+            assert!(!failure.message().contains("transformer"));
+        }
+        // Kinds these routes have no word of their own for stay with the
+        // shared mapping, which is what the disposition arm still handles.
+        assert!(survey_entries_select_kind(ErrorKind::SignedOut).is_none());
+        assert!(survey_entries_changes_kind(ErrorKind::SignedOut).is_none());
+    }
+
+    #[test]
+    fn a_route_only_rejection_says_so_and_names_the_check() {
+        let (remedy, next) =
+            route_diagnostic("the transformer context route rejected authentication (HTTP 401)")
+                .expect("the transformer-context route carries its own way out");
+        assert_eq!(remedy, TRANSFORMER_CONTEXT_ROUTE_REMEDY);
+        assert_eq!(next, "ds auth project status");
+        assert!(
+            !remedy.contains("verify the account"),
+            "the credential was already verified for this call: {remedy}"
+        );
+        // The other preserved diagnostics have no route-specific answer, and
+        // must not be given this one.
+        assert!(route_diagnostic("project configuration could not be read").is_none());
+        assert!(route_diagnostic("feeder settings were saved").is_none());
     }
 
     #[test]

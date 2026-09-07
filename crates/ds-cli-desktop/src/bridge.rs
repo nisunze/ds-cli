@@ -18,7 +18,7 @@
 
 use std::time::Duration;
 
-use ds_cli_contract::outcome::Failure;
+use ds_cli_contract::outcome::{ExitClass, Failure};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
@@ -166,13 +166,21 @@ fn desktop_error_code(parsed: &Value) -> Option<&str> {
 /// Preserve the application's typed refusal instead of turning every HTTP
 /// 422 into `desktop_refused`. Invalid or legacy payloads deliberately fall
 /// back to the old conservative classification in [`invoke`].
-fn structured_desktop_refusal(operation: &str, parsed: &Value, status: u16) -> Option<Failure> {
-    if !matches!(
-        operation,
-        "data.admin_bounds.list" | "data.admin_bounds.read"
-    ) {
-        return None;
-    }
+///
+/// This used to allowlist two operations by name, on the reasoning that "a new
+/// frontend code is not automatically a CLI contract". The reasoning was right
+/// and the mechanism was wrong: it made *every other* operation's refusal
+/// arrive as `desktop_refused` / class `failed` / no remedy, so an input error
+/// and a server fault were indistinguishable and a caller was told to retry
+/// something that could never succeed. The contract is now enforced where it
+/// belongs — `refusal_codes_are_declared` in `ds/tests/bridge_parity.rs`
+/// requires every code the application can emit to be declared in a command's
+/// `Refusal` table, which `ds capabilities` publishes.
+///
+/// What still falls back: anything that is not a complete, well-formed
+/// structured refusal. A legacy string error, an unknown class, a malformed
+/// code and an empty message are all left to `desktop_refused`.
+fn structured_desktop_refusal(_operation: &str, parsed: &Value, status: u16) -> Option<Failure> {
     let error = parsed["error"].as_object()?;
     let class = error.get("class")?.as_str()?;
     let code = error.get("code")?.as_str()?;
@@ -188,25 +196,24 @@ fn structured_desktop_refusal(operation: &str, parsed: &Value, status: u16) -> O
     if message.is_empty() {
         return None;
     }
-    // A new frontend code is not automatically a CLI contract. Preserve only
-    // the exact structured refusals declared by these operations; everything
-    // else keeps the conservative `desktop_refused` fallback until its owning
-    // command explicitly adds it to the contract.
-    let mut failure = match (class, code) {
-        ("invalid_input", "invalid_admin_scope") => {
-            Failure::invalid("invalid_admin_scope", message)
-        }
-        ("unavailable", "admin_authority_unavailable") => {
-            Failure::unavailable("admin_authority_unavailable", message)
-        }
-        ("unavailable", "admin_authority_unreadable") => {
-            Failure::unavailable("admin_authority_unreadable", message)
-        }
-        ("conflict", "auth_context_mismatch") => {
-            Failure::conflict("auth_context_mismatch", message)
-        }
+    // The class decides how a caller must react, so an unrecognized one is
+    // refused rather than guessed: classing an input error as `failed` tells a
+    // caller to retry work that can never succeed.
+    //
+    // Carried as `ExitClass` rather than the per-class `Failure::invalid` and
+    // friends because the code is the application's, not a literal here. The
+    // constructor helpers would read as if this file owned six codes, and
+    // `refusal_coverage`'s source scan would report exactly that.
+    let class = match class {
+        "invalid_input" => ExitClass::InvalidInput,
+        "unavailable" => ExitClass::Unavailable,
+        "unauthorized" => ExitClass::Unauthorized,
+        "conflict" => ExitClass::Conflict,
+        "failed" => ExitClass::Failed,
+        "internal" => ExitClass::Internal,
         _ => return None,
     };
+    let mut failure = Failure::new(class, code, message);
     if let Some(remedy) = error.get("remedy").and_then(Value::as_str) {
         let remedy = bounded(remedy);
         if !remedy.is_empty() {
@@ -369,11 +376,15 @@ mod tests {
 
     #[test]
     fn malformed_structured_desktop_refusals_do_not_invent_codes() {
+        // Shape, not membership, is what disqualifies a refusal now. An
+        // unknown class is still refused rather than guessed, because the
+        // class is what tells a caller whether retrying can ever work.
         for error in [
             json!({"class": "success", "code": "admin_authority_unavailable", "message": "bad class"}),
             json!({"class": "unavailable", "code": "NOT-STABLE", "message": "bad code"}),
-            json!({"class": "unavailable", "code": "future_uncontracted_code", "message": "unknown code"}),
             json!({"class": "unavailable", "code": "admin_authority_unavailable", "message": ""}),
+            json!({"code": "admin_authority_unavailable", "message": "no class"}),
+            json!("a legacy string error"),
         ] {
             assert!(
                 structured_desktop_refusal(
@@ -384,18 +395,58 @@ mod tests {
                 .is_none()
             );
         }
-        assert!(
-            structured_desktop_refusal(
-                "map.layer.list",
+    }
+
+    /// Any operation may now carry a typed refusal, and every class maps.
+    ///
+    /// This replaces an allowlist of two operations. It was there so the
+    /// application could not mint a code `ds` does not document; that
+    /// guarantee now lives in `every_application_refusal_code_is_documented`,
+    /// which fails the build instead of silently degrading the refusal. The
+    /// old behaviour is what a stress session met as `desktop_refused` for six
+    /// unrelated causes, including an input error reported as class `failed`.
+    #[test]
+    fn any_operation_may_carry_a_typed_refusal_and_every_class_maps() {
+        for (class, expected) in [
+            ("invalid_input", "invalid_input"),
+            ("unavailable", "unavailable"),
+            ("unauthorized", "unauthorized"),
+            ("conflict", "conflict"),
+            ("failed", "failed"),
+            ("internal", "internal"),
+        ] {
+            let failure = structured_desktop_refusal(
+                "design.process.batch",
                 &json!({"error": {
-                    "class": "unavailable",
-                    "code": "admin_authority_unavailable",
-                    "message": "wrong owner"
+                    "class": class,
+                    "code": "report_grouping_not_prepared",
+                    "message": "prepare the applied grouping first",
+                    "remedy": "run consumer-grouping apply while online"
                 }}),
                 422,
             )
-            .is_none()
-        );
+            .expect("typed refusal for a non-allowlisted operation");
+            assert_eq!(failure.code(), "report_grouping_not_prepared");
+            assert_eq!(failure.class().token(), expected);
+            assert_eq!(
+                failure.remedy_text(),
+                Some("run consumer-grouping apply while online")
+            );
+        }
+    }
+
+    /// A refusal without a remedy stays a refusal, and says nothing it cannot.
+    #[test]
+    fn a_missing_or_empty_remedy_is_omitted_rather_than_invented() {
+        for error in [
+            json!({"class": "conflict", "code": "report_grouping_not_prepared", "message": "m"}),
+            json!({"class": "conflict", "code": "report_grouping_not_prepared", "message": "m", "remedy": ""}),
+        ] {
+            let failure =
+                structured_desktop_refusal("design.process.batch", &json!({"error": error}), 422)
+                    .expect("typed refusal");
+            assert_eq!(failure.remedy_text(), None);
+        }
     }
 
     #[test]

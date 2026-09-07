@@ -37,6 +37,17 @@ use serde_json::Value;
 /// refused with a remedy instead of by a rejected write.
 pub const MAX_GROUP_BATCH: usize = 200;
 
+/// What one group LISTING covers: the batch's number, held for a different
+/// reason.
+///
+/// `ListTagGroups` writes nothing, but ds-brain bounds it by the batch constant
+/// all the same — "a group listing covers at most 200 transformers" — so a
+/// wider bound here would only buy the server's refusal one round trip later.
+/// It is named apart from the batch because it is a separate decision of
+/// ds-brain's: if the listing bound moves, this moves and the transaction's
+/// write budget does not.
+pub const MAX_GROUP_LISTING: usize = MAX_GROUP_BATCH;
+
 /// ds-brain's bound for the report projection, which is a READ and much
 /// larger.
 ///
@@ -44,6 +55,10 @@ pub const MAX_GROUP_BATCH: usize = 200;
 /// a whole project's export, and a live project already carries 202
 /// transformers — splitting one produces two documents with two digests, which
 /// a report pins separately and will not join.
+///
+/// It is the projection's bound, not every read's: `list` is a read the server
+/// still holds at `MAX_GROUP_LISTING`, so widening `list` to this number would
+/// trade a local refusal for the same refusal one round trip later.
 pub const MAX_PROJECTION_TRANSFORMERS: usize = 2_000;
 
 pub const GROUP_ARG: Arg = Arg {
@@ -63,7 +78,22 @@ pub const TRANSFORMERS_ARG: Arg = Arg {
     required: true,
     default: None,
     choices: &[],
-    summary: "Comma-separated transformer names (1-200). Repeats are reported, not dropped.",
+    summary: "Comma-separated transformer names (1-200, one transaction's batch). Repeats are reported, not dropped.",
+};
+
+/// The same flag on `list`, bounded by `MAX_GROUP_LISTING`: the server's own
+/// listing bound, not a transaction budget a read has no writes to spend.
+///
+/// What the listing owes a caller over it is where the whole-project read
+/// actually is, which the summary and `LISTING_TOO_MANY` both name.
+pub const LISTING_TRANSFORMERS_ARG: Arg = Arg {
+    name: "transformers",
+    kind: ArgKind::Value,
+    value: "<names>",
+    required: true,
+    default: None,
+    choices: &[],
+    summary: "Comma-separated transformer names (1-200, one listing's bound). A whole project is read with `ds design group export`.",
 };
 
 /// The same flag on `export`, which is a read over a whole project rather than
@@ -105,6 +135,19 @@ pub const DIGEST_ARG: Arg = Arg {
     summary: "The digest `ds design group preview` returned for this exact plan.",
 };
 
+/// The listing's own over-long selection.
+///
+/// The shared `TOO_MANY` remedy — split the work, or pass fewer values — is a
+/// dead end for the caller who asked the question `list` looks like it answers:
+/// what does this whole project carry. That read exists, under two other
+/// commands, so the refusal names them rather than sending the caller back to
+/// count.
+pub const LISTING_TOO_MANY: Refusal = Refusal {
+    code: "too_many_values",
+    when: "--transformers names more than one group listing covers",
+    remedy: "list them in parts, or read a whole project with `ds design group export` or `ds design tag query`",
+};
+
 /// A plan whose digest no longer describes the project.
 pub const PLAN_STALE: Refusal = Refusal {
     code: "design_plan_stale",
@@ -120,6 +163,25 @@ pub fn transformers(inputs: &ds_cli_contract::Inputs) -> Result<Vec<String>, Fai
 /// The same flag under the projection's larger read bound.
 pub fn projection_transformers(inputs: &ds_cli_contract::Inputs) -> Result<Vec<String>, Failure> {
     bounded_transformers(inputs, MAX_PROJECTION_TRANSFORMERS)
+}
+
+/// The same flag on the listing: the server's listing bound, the read's remedy.
+///
+/// The bound is `MAX_GROUP_LISTING` rather than the batch constant it equals
+/// today, so a listing can never inherit a write budget it does not spend —
+/// refusing here saves the round trip the server would reject anyway. What
+/// changes is the way out: a caller over the bound is pointed at the reads
+/// whose unit is a whole project instead of at "pass fewer values".
+pub fn listing_transformers(inputs: &ds_cli_contract::Inputs) -> Result<Vec<String>, Failure> {
+    bounded_transformers(inputs, MAX_GROUP_LISTING).map_err(|failure| {
+        if failure.code() == LISTING_TOO_MANY.code {
+            failure
+                .remedy(LISTING_TOO_MANY.remedy)
+                .next("ds design group export --transformers <names> --output json")
+        } else {
+            failure
+        }
+    })
 }
 
 fn bounded_transformers(

@@ -49,8 +49,11 @@ For a complex new master form, read the backend vocabulary first:
 ```text
 ds survey form types --output json
 ds survey forms list --query pole --detail --output json
-ds survey form read --slug lv_poles_survey --output json
+ds survey form read --slug <form-slug> --output json
 ```
+
+`<form-slug>` is a placeholder. Take the exact slug from the `forms list` line
+above; never guess one from a domain word.
 
 Hypothetical requests that should route here include:
 

@@ -192,8 +192,8 @@ pub static SETTINGS_COMMAND: Command = Command {
     ],
     output: "The selected project identity and one closed backend-owned editor: current/effective settings, legal sections, field state, capabilities, optimistic revision, and explicit unavailable/read-only state.",
     examples: &[Example {
-        command: "ds survey project-form settings --form lv_poles_survey --output json",
-        note: "Reads the Stable native user's selected-project editor without opening Desktop.",
+        command: "ds survey project-form settings --form <form-slug> --output json",
+        note: "Reads the Stable native user's selected-project editor without opening Desktop; `ds survey forms list` names the slug.",
         runnable: false,
     }],
     refusals: LIST_COMMAND.refusals,
@@ -223,8 +223,8 @@ pub static EDITOR_COMMAND: Command = Command {
     ],
     output: "The canonical settings editor, including current/effective settings and version for a later plan or apply.",
     examples: &[Example {
-        command: "ds survey project-form editor --project nyamata --form lv_poles_survey --output json",
-        note: "Learn the legal network-setting keys and current revision before drafting changes.",
+        command: "ds survey project-form editor --project nyamata --form <form-slug> --output json",
+        note: "Learn the legal network-setting keys and current revision before drafting changes; `ds survey forms list` names the slug.",
         runnable: false,
     }],
     refusals: COMMON_REFUSALS,

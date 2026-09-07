@@ -34,6 +34,12 @@ fn canonical_runnable_example(command: &Command) -> Option<String> {
     Some(format!("ds {} --help", command.path.join(" ")))
 }
 
+/// The flag that pre-confirms an effectful command. It is global — stripped
+/// before a command ever sees its inputs — so it can never be a declared
+/// [`Arg`], and root help, a gated command's usage grammar and the machine
+/// descriptor all render this one constant rather than three spellings.
+pub const CONFIRMATION_FLAG: &str = "--yes";
+
 /// Global flags. Printed once at the root and never repeated per command:
 /// repeating them would multiply the most-read text in the product by the
 /// number of commands.
@@ -41,7 +47,7 @@ pub const GLOBAL_FLAGS: &[(&str, &str)] = &[
     ("--output human|json", "stdout format (default: human)"),
     ("--pretty", "indent JSON; costs bytes, aids humans"),
     ("--no-color", "never emit ANSI (also honours NO_COLOR)"),
-    ("--yes", "pre-confirm an effectful command"),
+    (CONFIRMATION_FLAG, "pre-confirm an effectful command"),
     ("--version", "build identity"),
 ];
 
@@ -133,17 +139,23 @@ pub fn command(command: &Command) -> String {
     let _ = writeln!(out, "ds {path} — {}\n", command.summary);
     let _ = writeln!(out, "{}\n", wrap(command.purpose, 76, "  "));
 
-    let _ = writeln!(out, "USAGE\n  ds {path}{}\n", usage_tail(command.args));
+    let _ = writeln!(
+        out,
+        "USAGE\n  ds {path}{}{}\n",
+        usage_tail(command.args),
+        confirmation_usage(command)
+    );
 
     let _ = writeln!(
         out,
         "CONTRACT\n  \
-         effect     {}  ({})\n  \
+         effect     {}  ({})\n{}  \
          authority  {}  ({})\n  \
          execution  {}\n  \
          id         {}   contract v{}",
         command.effect,
         command.effect.gloss(),
+        confirmation_contract_line(command),
         command.authority,
         command.authority.gloss(),
         command.execution.token(),
@@ -289,6 +301,15 @@ fn command_json_with_availability(
         })).collect::<Vec<_>>(),
     });
 
+    if command.effect.needs_confirmation() {
+        // *Which* flag confirms, which a caller reading only the descriptor
+        // cannot otherwise learn: the flag is global, so it is in no
+        // command's `inputs`. Deliberately separate from
+        // `confirmation_trigger`, which answers the narrower question of
+        // whether the gate is conditional at all.
+        descriptor["confirmation_flag"] = json!(CONFIRMATION_FLAG);
+    }
+
     if let Some(trigger) = command.confirmation_trigger() {
         descriptor["confirmation_trigger"] = json!(trigger);
     }
@@ -337,6 +358,34 @@ fn flag_form(arg: &Arg) -> String {
         ArgKind::Positional => arg.value.to_string(),
         _ => format!("--{} {}", arg.name, arg.value),
     }
+}
+
+/// The confirmation gate, appended to the usage grammar. `--yes` is global
+/// and so is absent from `args`; without this a gated command's USAGE line
+/// shows an invocation that the command will refuse. Bracketed when a
+/// declared `--write` switch makes the gate conditional, bare when the
+/// command cannot run any other way.
+fn confirmation_usage(command: &Command) -> &'static str {
+    if !command.effect.needs_confirmation() {
+        return "";
+    }
+    if command.confirmation_trigger().is_some() {
+        return " [--yes]";
+    }
+    " --yes"
+}
+
+/// One CONTRACT row, spent only where the grammar cannot carry the meaning.
+/// A bare `--yes` in USAGE already reads as required, exactly like any other
+/// required flag, so an unconditional gate buys nothing by saying it twice —
+/// and `command_help_is_bounded` prices every gated command for the line. A
+/// bracketed `[--yes]` reads as *optional*, which is wrong: it is conditional.
+/// That one word is worth a row.
+fn confirmation_contract_line(command: &Command) -> &'static str {
+    if command.confirmation_trigger().is_some() {
+        return "  confirm    --yes  (required with --write)\n";
+    }
+    ""
 }
 
 fn usage_tail(args: &[Arg]) -> String {

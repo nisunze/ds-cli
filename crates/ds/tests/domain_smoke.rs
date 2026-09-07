@@ -2914,6 +2914,39 @@ fn background_project_operations_are_map_independent_and_use_the_declared_projec
         ]),
         "invalid_transformer_scope"
     );
+    // The computed identities a report produces are refused with their own
+    // code, under every alias, and — like the scope bound above — before any
+    // credential restore, so the plan and the publish cannot disagree about
+    // who may participate.
+    for reserved in ["collisions", "combined_transformer", "all_transformers"] {
+        assert_eq!(
+            headless(&[
+                "report",
+                "project",
+                "scope",
+                "--transformer",
+                reserved,
+                "--output",
+                "json"
+            ]),
+            "reserved_transformer_identity",
+            "`--transformer {reserved}` must refuse locally"
+        );
+        assert_eq!(
+            headless(&[
+                "report",
+                "project",
+                "compounded",
+                "--transformer",
+                reserved,
+                "--yes",
+                "--output",
+                "json"
+            ]),
+            "reserved_transformer_identity",
+            "`compounded --transformer {reserved}` must refuse locally"
+        );
+    }
     // Confirmation is decided by dispatch before any availability or input check.
     assert_eq!(
         refusal(&[
@@ -3776,6 +3809,76 @@ fn unified_tagging_commands_validate_their_own_inputs_before_the_bridge() {
         );
     }
 
+    // A consumer grouping IS its ordered definition ids. The flag borrowed
+    // from `design group export` was optional and read an omission as one
+    // untagged group — true of the projection, false here, so the documented
+    // invocation reached the bridge and came back with a server string. It is
+    // now the parser's answer, before any round trip.
+    assert_eq!(
+        refusal(&[
+            "design",
+            "consumer-grouping",
+            "preview",
+            "--transformers",
+            "T-smoke",
+            "--output",
+            "json",
+        ]),
+        "missing_input",
+        "a grouping with no definitions must be refused locally, not by the server"
+    );
+    assert_eq!(
+        refusal(&[
+            "design",
+            "consumer-grouping",
+            "preview",
+            "--transformers",
+            "T-smoke",
+            "--definition-ids",
+            " , ",
+            "--output",
+            "json",
+        ]),
+        "invalid_value_list",
+        "an empty definition list must be refused locally"
+    );
+    let over_definitions = (0..17)
+        .map(|index| format!("d{index}"))
+        .collect::<Vec<_>>()
+        .join(",");
+    assert_eq!(
+        refusal(&[
+            "design",
+            "consumer-grouping",
+            "preview",
+            "--transformers",
+            "T-smoke",
+            "--definition-ids",
+            &over_definitions,
+            "--output",
+            "json",
+        ]),
+        "too_many_values",
+        "more than 16 grouping dimensions must be refused locally"
+    );
+    // The digest this command fences on is minted by `consumer-grouping
+    // preview`. Help that named `design group preview` sent the operator to a
+    // command whose assignment-batch digest apply cannot accept.
+    let apply_help = native_ds(&["design", "consumer-grouping", "apply", "--help"]);
+    assert_eq!(apply_help.code, 0);
+    assert!(
+        apply_help
+            .stdout
+            .contains("`ds design consumer-grouping preview`"),
+        "apply --help does not name the producer of its digest:\n{}",
+        apply_help.stdout
+    );
+    assert!(
+        !apply_help.stdout.contains("design group preview"),
+        "apply --help still sends the operator to the assignment-batch preview:\n{}",
+        apply_help.stdout
+    );
+
     // The enrichment bound is one transaction's write budget: 50 transformers
     // times six administrative levels plus the definition upserts and the audit
     // row. An over-large batch is refused locally, not by a rejected write.
@@ -3850,6 +3953,62 @@ fn a_projection_covers_a_whole_project_where_a_batch_covers_one_transaction() {
             "a {count}-transformer export ended in `{code}`, not a pairing state"
         );
     }
+
+    // `list` is a read too, but ds-brain bounds a group listing by the BATCH's
+    // number — "a group listing covers at most 200 transformers" — so widening
+    // it here would only buy the same refusal one round trip later. The bound
+    // stays; what the refusal owes an operator who wanted the whole project is
+    // the command that reads one, not "pass fewer values". It is carried as the
+    // LISTING's own constant so the read cannot inherit a write budget: the two
+    // numbers agree today because ds-brain says so, not because a read spends
+    // transactions.
+    let listing = ds_cli_design::group::MAX_GROUP_LISTING;
+    assert_eq!(
+        listing, batch,
+        "the listing bound is ds-brain's own; it equals the batch's number today"
+    );
+    let over_listing = (0..(listing + 1))
+        .map(|index| format!("t{index}"))
+        .collect::<Vec<_>>()
+        .join(",");
+    let run = ds(&[
+        "design",
+        "group",
+        "list",
+        "--transformers",
+        &over_listing,
+        "--output",
+        "json",
+    ]);
+    assert_eq!(
+        run.envelope["error"]["code"], "too_many_values",
+        "an over-long listing must be refused locally, not by the server that bounds it the same"
+    );
+    let remedy = run.envelope["error"]["remedy"].as_str().unwrap_or_default();
+    assert!(
+        remedy.contains("ds design group export"),
+        "the listing's refusal must name the read that covers a whole project, got `{remedy}`"
+    );
+
+    // And the bound is the server's, not one short of it: a full listing gets
+    // past local validation to the bridge.
+    let full_listing = (0..listing)
+        .map(|index| format!("t{index}"))
+        .collect::<Vec<_>>()
+        .join(",");
+    let code = refusal(&[
+        "design",
+        "group",
+        "list",
+        "--transformers",
+        &full_listing,
+        "--output",
+        "json",
+    ]);
+    assert!(
+        PAIRING_CODES.contains(&code.as_str()),
+        "a {listing}-transformer listing ended in `{code}`, not a pairing state"
+    );
 }
 
 #[test]
@@ -4409,12 +4568,18 @@ fn design_collaboration_is_a_complete_headless_project_surface() {
                     "--digest",
                     "digest-smoke",
                 ],
+                // --definition-ids is required here, unlike the projection
+                // flag this command used to borrow: a consumer grouping has
+                // no untagged-only plan, so an omission never reaches
+                // confirmation.
                 "design.consumer-grouping.apply" => vec![
                     "design",
                     "consumer-grouping",
                     "apply",
                     "--transformers",
                     "T-smoke",
+                    "--definition-ids",
+                    "city",
                     "--digest",
                     "digest-smoke",
                 ],
@@ -6144,6 +6309,80 @@ fn project_forms_native_reads_include_explicit_selected_project_commands() {
             .unwrap()
             .iter()
             .any(|arg| arg["name"] == "project" && arg["required"] == true)
+    );
+}
+
+#[test]
+fn no_survey_example_names_a_deployment_form_slug() {
+    // A form slug belongs to one deployment, so an example cannot carry a real
+    // one — and the Survey chapter carried `lv_poles_survey`, a slug nothing in
+    // this repository defines, in nine examples plus its reference and skill.
+    // It read as real, so the first attempt spent a round trip on
+    // `survey_scope_not_found`. `contract.rs` only executes examples marked
+    // runnable, which none of these are, so no other suite can see it. What is
+    // checkable is the convention the chapter already uses for every other
+    // caller-supplied value — `<opaque-key>`, `<exact-next-cursor>` — plus the
+    // one command that turns the placeholder into a real slug.
+    let index = ok(&["capabilities", "survey", "--output", "json"]);
+    let ids: Vec<String> = index["commands"]
+        .as_array()
+        .expect("commands")
+        .iter()
+        .map(|command| command["id"].as_str().expect("id").to_owned())
+        .collect();
+    assert!(!ids.is_empty(), "the survey chapter declares no command");
+
+    let mut placeholders = 0usize;
+    for id in ids {
+        let descriptor = ok(&["capabilities", &id, "--output", "json"]);
+        let examples = descriptor["command"]["examples"]
+            .as_array()
+            .expect("examples")
+            .clone();
+        let mut names_a_form = false;
+        for example in &examples {
+            let text = example["command"].as_str().expect("example command");
+            let words: Vec<&str> = text.split_whitespace().collect();
+            for (position, word) in words.iter().enumerate() {
+                let value = match *word {
+                    "--form" | "--slug" => words.get(position + 1).copied().unwrap_or_default(),
+                    _ => match word
+                        .strip_prefix("--form=")
+                        .or_else(|| word.strip_prefix("--slug="))
+                    {
+                        Some(value) => value,
+                        None => continue,
+                    },
+                };
+                names_a_form = true;
+                placeholders += 1;
+                assert!(
+                    value.starts_with('<') && value.ends_with('>'),
+                    "`{id}` example `{text}` names the form `{value}`. A slug is \
+                     per-deployment: examples carry a `<form-slug>` placeholder and \
+                     send the reader to `ds survey forms list`."
+                );
+            }
+        }
+        // The placeholder is only honest if the example also says where the real
+        // slug comes from; otherwise it trades one guess for another.
+        if names_a_form {
+            assert!(
+                examples.iter().any(|example| {
+                    example["note"]
+                        .as_str()
+                        .unwrap_or_default()
+                        .contains("ds survey forms list")
+                }),
+                "`{id}` documents a `<form-slug>` placeholder but no example names \
+                 the discovery command that resolves it"
+            );
+        }
+    }
+    assert!(
+        placeholders >= 9,
+        "only {placeholders} survey examples were checked; the nine that carried a \
+         fabricated slug must all still be inspected here"
     );
 }
 

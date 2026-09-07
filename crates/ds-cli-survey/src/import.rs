@@ -280,8 +280,8 @@ pub static COMMAND: Command = Command {
     args: &[FORM, FILE, CHECKPOINT, RECEIPT, ON_ERROR, LANE],
     output: "Bounded progress/state/mirror summary and digest receipts; no payload, fields, coordinates, keys, token, or email.",
     examples: &[Example {
-        command: "ds survey entries import --form lv_poles_survey --file ./survey123.ndjson --checkpoint ./survey123.checkpoint.json --receipt ./survey123.receipt.ndjson --yes --output json",
-        note: "Imports one immutable canonical source sequentially.",
+        command: "ds survey entries import --form <form-slug> --file ./survey123.ndjson --checkpoint ./survey123.checkpoint.json --receipt ./survey123.receipt.ndjson --yes --output json",
+        note: "Imports one immutable canonical source sequentially into the slug `ds survey forms list` names.",
         runnable: false,
     }],
     refusals: REFUSALS,

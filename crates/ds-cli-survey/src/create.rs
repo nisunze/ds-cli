@@ -221,8 +221,8 @@ pub static COMMAND: Command = Command {
     ],
     output: "Receipt only: lane, selected project identity, form and document identity, client version, Firestore committed, BigQuery mirror unconfirmed, and the verified replication clock/authority. It never returns request data or the idempotency key.",
     examples: &[Example {
-        command: "ds survey entries create --form lv_poles_survey --doc-id pole-104 --idempotency-key '<opaque-key>' --created-at 2026-08-30T12:00:00Z --document ./pole-104.json --yes --output json",
-        note: "Creates exactly one entry in the selected project after explicit confirmation.",
+        command: "ds survey entries create --form <form-slug> --doc-id pole-104 --idempotency-key '<opaque-key>' --created-at 2026-08-30T12:00:00Z --document ./pole-104.json --yes --output json",
+        note: "Creates exactly one entry in the selected project after explicit confirmation; the exact slug comes from `ds survey forms list`.",
         runnable: false,
     }],
     refusals: REFUSALS,
@@ -475,7 +475,7 @@ mod tests {
     fn valid_args(path: &str) -> Vec<&str> {
         vec![
             "--form",
-            "lv_poles_survey",
+            "poles",
             "--doc-id",
             "pole-104",
             "--idempotency-key",
@@ -494,7 +494,7 @@ mod tests {
         );
         let raw = path.to_string_lossy();
         let request = super::parse(&inputs(&valid_args(&raw))).unwrap();
-        assert_eq!(request.form(), "lv_poles_survey");
+        assert_eq!(request.form(), "poles");
         assert_eq!(request.doc_id(), "pole-104");
         assert_eq!(request.created_at(), "2026-08-30T12:00:00Z");
         assert_eq!(request.origin(), SurveyEntryCreateOrigin::Unknown);

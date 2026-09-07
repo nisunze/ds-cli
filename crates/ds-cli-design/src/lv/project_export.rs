@@ -126,10 +126,18 @@ pub static COMMAND: Command = Command {
             "the transformer or bound identity input is invalid",
             "pass one exact bounded transformer name"
         ),
+        // Two different rejections mint this one code. The Firebase refresh
+        // that runs before the call can be rejected, and then the credential
+        // is not verified at all; the transformer-context route can also
+        // reject one that this same call just verified. A declaration is read
+        // without knowing which happened, so it must hold for both. The
+        // route-only case is answered at runtime with
+        // `ds_cli_auth::TRANSFORMER_CONTEXT_ROUTE_REMEDY`, which is more
+        // specific than this and wins wherever it applies.
         refusal!(
             "auth_rejected",
-            "the fixed gateway rejects the verified request",
-            "verify the account and its project access"
+            "the authentication service, or the transformer-context route, rejected this request",
+            "confirm this lane still authenticates with `ds auth status`; if it does, the transformer-context route rejected a credential this call already verified, and no local change fixes that"
         ),
         refusal!(
             "auth_revoked",
