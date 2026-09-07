@@ -10,7 +10,7 @@
 //!   tier 4  reference a path to a versioned document, never inlined
 //!
 //! No tier prints the tier below it. A caller looking for a solar command
-//! must never pay for the PLS, QGIS or reporting contracts, and adding a
+//! must never pay for the PLS or reporting contracts, and adding a
 //! domain must cost root help exactly one line. `tests/context_budget.rs`
 //! asserts both, in bytes.
 

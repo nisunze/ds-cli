@@ -2472,7 +2472,7 @@ fn map_design_attach_print_validates_before_pairing() {
     ]);
     assert_eq!(
         unconfirmed.envelope["error"]["code"], "confirmation_required",
-        "a durable QGIS attachment must require --yes"
+        "a durable cartographic attachment must require --yes"
     );
 
     assert_eq!(

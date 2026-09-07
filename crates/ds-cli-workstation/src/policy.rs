@@ -414,7 +414,6 @@ mod tests {
             "libreoffice",
             "TheDocumentFoundation.LibreOffice"
         ));
-        assert!(!uninstall_authorized(&receipt, "qgis", "QGIS.QGIS"));
         let preexisting = InstallReceipt {
             preexisting: true,
             ..receipt

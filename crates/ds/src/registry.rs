@@ -1574,6 +1574,16 @@ static DESKTOP_ENTRIES: &[Entry] = &[
         handler: ds_cli_desktop::printing::run,
         render: ds_cli_desktop::printing::render,
     },
+    Entry {
+        command: &ds_cli_desktop::reference::STATUS_COMMAND,
+        handler: ds_cli_desktop::reference::status,
+        render: ds_cli_desktop::reference::render,
+    },
+    Entry {
+        command: &ds_cli_desktop::reference::SEED_COMMAND,
+        handler: ds_cli_desktop::reference::seed,
+        render: ds_cli_desktop::reference::render,
+    },
 ];
 
 /// Feedback is a loop: report a gap, find it again once a session has fixed

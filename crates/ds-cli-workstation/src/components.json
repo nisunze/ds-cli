@@ -4,24 +4,32 @@
     "required": true,
     "purpose": "Edit delivered documents and perform governed headless report conversion.",
     "provenance": "The Document Foundation official distribution",
-    "linux_executables": ["libreoffice", "soffice"],
-    "macos_executables": ["libreoffice", "soffice"],
-    "windows_executables": ["soffice.exe", "libreoffice.exe"],
-    "linux_plan": ["Use the distribution package manager and its signed repository metadata.", "Verify the executable version and a harmless task-owned headless conversion."],
-    "macos_plan": ["Use the conventional trusted package mechanism or The Document Foundation official distribution.", "Verify the executable version and a harmless task-owned headless conversion."],
-    "windows_plan": ["Prefer the platform package manager and The Document Foundation package identity.", "Only after a verified package-manager transport failure, resolve an installer through the official Metalink response.", "Require the selected URL to be listed by that Metalink and require the published SHA-256 to match before execution.", "Verify package registration, executable version, a harmless task-owned headless conversion, and exact cleanup; record task ownership only for installations made by this command."]
-  },
-  {
-    "id": "qgis",
-    "required": false,
-    "purpose": "Inspect and prepare GIS desktop work that is not owned by the DS map surface.",
-    "provenance": "QGIS project official distribution or the platform's trusted repository",
-    "linux_executables": ["qgis"],
-    "macos_executables": ["qgis"],
-    "windows_executables": ["qgis.exe", "qgis-bin.exe"],
-    "linux_plan": ["Planning only: prove the distribution package-manager or QGIS documented-repository lifecycle before implementing an explicit install request."],
-    "macos_plan": ["Planning only: prove the trusted package or official QGIS distribution lifecycle before implementing an explicit install request."],
-    "windows_plan": ["Planning only: prove the platform package-manager or official QGIS installer lifecycle before implementing an explicit install request."]
+    "linux_executables": [
+      "libreoffice",
+      "soffice"
+    ],
+    "macos_executables": [
+      "libreoffice",
+      "soffice"
+    ],
+    "windows_executables": [
+      "soffice.exe",
+      "libreoffice.exe"
+    ],
+    "linux_plan": [
+      "Use the distribution package manager and its signed repository metadata.",
+      "Verify the executable version and a harmless task-owned headless conversion."
+    ],
+    "macos_plan": [
+      "Use the conventional trusted package mechanism or The Document Foundation official distribution.",
+      "Verify the executable version and a harmless task-owned headless conversion."
+    ],
+    "windows_plan": [
+      "Prefer the platform package manager and The Document Foundation package identity.",
+      "Only after a verified package-manager transport failure, resolve an installer through the official Metalink response.",
+      "Require the selected URL to be listed by that Metalink and require the published SHA-256 to match before execution.",
+      "Verify package registration, executable version, a harmless task-owned headless conversion, and exact cleanup; record task ownership only for installations made by this command."
+    ]
   },
   {
     "id": "git-bash",
@@ -30,10 +38,19 @@
     "provenance": "Git for Windows official distribution or the platform's trusted package catalog",
     "linux_executables": [],
     "macos_executables": [],
-    "windows_executables": ["bash.exe"],
-    "linux_plan": ["Use the native Bash or selected login shell; Git Bash is a Windows product and is not emulated here."],
-    "macos_plan": ["Use the native shell and conventional package manager; Git Bash is a Windows product and is not emulated here."],
-    "windows_plan": ["Detect a suitable existing Git for Windows Bash first and leave it untouched when present.", "Acquisition is planning-only until its exact lifecycle is proven; VS Code configuration is a separate implemented intent."]
+    "windows_executables": [
+      "bash.exe"
+    ],
+    "linux_plan": [
+      "Use the native Bash or selected login shell; Git Bash is a Windows product and is not emulated here."
+    ],
+    "macos_plan": [
+      "Use the native shell and conventional package manager; Git Bash is a Windows product and is not emulated here."
+    ],
+    "windows_plan": [
+      "Detect a suitable existing Git for Windows Bash first and leave it untouched when present.",
+      "Acquisition is planning-only until its exact lifecycle is proven; VS Code configuration is a separate implemented intent."
+    ]
   },
   {
     "id": "rwanda-reference",
@@ -46,8 +63,17 @@
     "linux_executables": [],
     "macos_executables": [],
     "windows_executables": [],
-    "linux_plan": ["After explicit confirmation, acquire the fixed official NISR Village Boundary 2022 Open Data layer in bounded, low-bandwidth-tolerant pages without geometry simplification.", "Persist source-precision GeoJSON plus provenance, version, license, ownership, and SHA-256 receipt; re-verify before returning."],
-    "macos_plan": ["After explicit confirmation, acquire the fixed official NISR Village Boundary 2022 Open Data layer in bounded, low-bandwidth-tolerant pages without geometry simplification.", "Persist source-precision GeoJSON plus provenance, version, license, ownership, and SHA-256 receipt; re-verify before returning."],
-    "windows_plan": ["After explicit confirmation, acquire the fixed official NISR Village Boundary 2022 Open Data layer in bounded, low-bandwidth-tolerant pages without geometry simplification.", "Persist source-precision GeoJSON plus provenance, version, license, ownership, and SHA-256 receipt; re-verify before returning."]
+    "linux_plan": [
+      "After explicit confirmation, acquire the fixed official NISR Village Boundary 2022 Open Data layer in bounded, low-bandwidth-tolerant pages without geometry simplification.",
+      "Persist source-precision GeoJSON plus provenance, version, license, ownership, and SHA-256 receipt; re-verify before returning."
+    ],
+    "macos_plan": [
+      "After explicit confirmation, acquire the fixed official NISR Village Boundary 2022 Open Data layer in bounded, low-bandwidth-tolerant pages without geometry simplification.",
+      "Persist source-precision GeoJSON plus provenance, version, license, ownership, and SHA-256 receipt; re-verify before returning."
+    ],
+    "windows_plan": [
+      "After explicit confirmation, acquire the fixed official NISR Village Boundary 2022 Open Data layer in bounded, low-bandwidth-tolerant pages without geometry simplification.",
+      "Persist source-precision GeoJSON plus provenance, version, license, ownership, and SHA-256 receipt; re-verify before returning."
+    ]
   }
 ]

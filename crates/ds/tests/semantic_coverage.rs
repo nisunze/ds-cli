@@ -80,6 +80,16 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("desktop.printing.get", "read_only", "desktop_user"),
     ("desktop.printing.save", "global_write", "desktop_user"),
     ("desktop.printing.prepare", "global_write", "desktop_user"),
+    (
+        "desktop.reference.rwanda.status",
+        "read_only",
+        "desktop_user",
+    ),
+    (
+        "desktop.reference.rwanda.seed",
+        "local_file_write",
+        "desktop_user",
+    ),
     ("design.attachment.download", "read_only", "project"),
     ("design.attachment.list", "read_only", "project"),
     ("design.attachment.publish", "global_write", "project"),

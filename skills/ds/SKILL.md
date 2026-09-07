@@ -84,7 +84,6 @@ acceptance. Never create a gap file, call the API, or bypass `ds`.
 - `ds-style-composite` — two-field cartography.
 - `ds-report-consumption` — obtain and read delivered workbooks.
 - `ds-dirty-categories` — diagnose category seeds before changing code.
-- `ds-qgis-print-delivery` — governed multi-layout print delivery.
 - `ds-boq-staking-table` — staking tables against a BOQ.
 - `ds-boq-combined-report` — combined workbook against a BOQ.
 - `ds-mcp-host` — compact chapters and typed MCP profiles.

@@ -31,6 +31,7 @@ pub mod discover;
 pub mod ops;
 pub mod printing;
 pub mod project;
+pub mod reference;
 pub mod status;
 
 use ds_cli_contract::spec::Domain;
@@ -48,5 +49,7 @@ pub static DOMAIN: Domain = Domain {
         &printing::GET_COMMAND,
         &printing::SAVE_COMMAND,
         &printing::PREPARE_COMMAND,
+        &reference::STATUS_COMMAND,
+        &reference::SEED_COMMAND,
     ],
 };

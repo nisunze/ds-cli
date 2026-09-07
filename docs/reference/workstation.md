@@ -21,8 +21,6 @@ paths. All other acquisition and settings paths fail closed.
 
 - `libreoffice` — required for document/report work. Verification includes a
   harmless task-owned HTML-to-PDF conversion and exact temporary cleanup.
-- `qgis` — optional GIS desktop prerequisite. Installation always needs an
-  explicit request for that run.
 - `git-bash` — Windows-only. A detected suitable copy is preserved. Native
   macOS/Linux shells are reported instead of pretending Git Bash applies.
 - `rwanda-reference` — governed official NISR Village Boundary 2022 Open Data.

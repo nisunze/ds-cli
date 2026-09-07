@@ -149,11 +149,9 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             "never_reinstall_detected_suitable_component": true,
             "never_remove_preexisting_component": true,
             "task_owned_cleanup_only": true,
-            "qgis_install_requires_explicit_request": component_id == "qgis",
             "rwanda_download_requires_explicit_request_and_receipt": component_id == "rwanda-reference",
             "windows_libreoffice_lifecycle_proven": component_id == "libreoffice" && platform == Platform::Windows,
             "libreoffice_mcp_required": false,
-            "third_party_qgis_mcp_allowed": false,
         },
         "evidence": if component_id == "libreoffice" && platform == Platform::Windows { json!({
             "state": "proven",

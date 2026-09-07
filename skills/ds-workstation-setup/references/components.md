@@ -17,13 +17,6 @@ package registration, executable/version, harmless headless conversion, and
 task-owned cleanup. Never remove a pre-existing installation. LibreOffice has
 no separate MCP.
 
-## QGIS
-
-Purpose: GIS desktop work outside the DS map surface. Status, planning, and a
-fixed version probe are safe. Installation is not implemented and fails closed.
-Never infer install intent from a print or map task or install a third-party
-QGIS MCP.
-
 ## Git Bash
 
 Git Bash is a Windows component. Detect it first; an existing suitable copy is

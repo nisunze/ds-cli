@@ -55,9 +55,8 @@ To select an already-defined suitable Git Bash profile in VS Code:
 ds workstation configure --component git-bash --target vscode --yes --output json
 ```
 
-QGIS and Git Bash acquisition remain unimplemented and fail closed; do not
-install a third-party QGIS MCP. Discovery or planning is not permission.
-Detect a suitable Git Bash before configuration and never reinstall or remove a
+Git Bash acquisition remains unimplemented and fails closed. Discovery or
+planning is not permission. Detect a suitable Git Bash before configuration and never reinstall or remove a
 pre-existing copy. Cleanup may name only files recorded as task-owned by the
 same governed run.
 

@@ -587,10 +587,6 @@ mod tests {
             Err("unsupported")
         );
         assert_eq!(
-            decision(Platform::Windows, "qgis", "absent", Some("interactive")),
-            Err("unsupported")
-        );
-        assert_eq!(
             decision(Platform::Windows, "libreoffice", "absent", None),
             Err("approval")
         );
