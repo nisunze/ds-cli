@@ -11,6 +11,25 @@ property bounds, a bounded icon list and supported second-dimension channels.
 `more` reports truncation; runtime feature counts and map visibility are not inferred.
 Only backend-published editor refs can be authored from the headless catalogue.
 
+`ds style print plan --ref <screen-ref>` derives the predictable
+`<screen-ref>_print` identity and shows the exact create-only clone. `ds style
+print create --ref <screen-ref> --yes` publishes it. Catalog sprite names are
+preserved; runtime image IDs are normalized back to their authored icon names.
+The print editor adds the reserved string field `print_paper_size` with
+`print_a0` through `print_a5` and `print_custom`. Use ordinary `style dimension`
+or Style Center controls to make widths, sizes, opacity or halos paper-aware.
+The reporter injects this field from the selected layout; geographic source
+attributes never need to carry it.
+
+For example, the same governed line can be 0.60 mm on A0 and 0.35 mm on A3:
+
+```sh
+ds style dimension plan --ref master/lv_lines_print --field print_paper_size --channel size \
+  --value print_a0=0.60 --value print_a3=0.35 --other 0.30 --output json
+ds style dimension set --ref master/lv_lines_print --field print_paper_size --channel size \
+  --value print_a0=0.60 --value print_a3=0.35 --other 0.30 --yes
+```
+
 The shared Rust command kernel owns these transformations for native CLI and the
 visual Style Center (WASM):
 

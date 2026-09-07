@@ -1,4 +1,4 @@
-//! `ds map design attach-print` — attach one completed QGIS page.
+//! `ds map design attach-print` — attach one completed cartographic page.
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
@@ -18,9 +18,9 @@ pub static COMMAND: Command = Command {
     id: "map.design.attach-print",
     path: &["map", "design", "attach-print"],
     contract: 1,
-    summary: "Attach one completed QGIS PDF or image to report delivery.",
+    summary: "Attach one completed cartographic PDF or image to report delivery.",
     purpose: "\
-Uploads one operator-reviewed QGIS/PyQGIS output and attaches its immutable \
+Uploads one operator-reviewed cartographic output and attaches its immutable \
 digest, LV-atlas/MV-map/custom-map family, layout, paper size, orientation and page role to an individual \
 transformer or the combined report. Repeat the command for multiple paper \
 sizes or image variants. It never renders a page and never enters report \
@@ -56,11 +56,11 @@ transformer's files and combined atlas/joined pages at archive root.",
         )
         .required()
         .choices(MAP_FAMILIES),
-        Arg::value("layout", "<name>", "Exact approved QGIS layout name.").required(),
+        Arg::value("layout", "<name>", "Exact governed DS layout name.").required(),
         Arg::value(
             "paper-size",
             "<size>",
-            "QGIS paper size, e.g. A0, A1, A3, A4 or 841x1189mm.",
+            "Paper size, e.g. A0, A1, A3, A4 or 841x1189mm.",
         )
         .required(),
         Arg::value("orientation", "<orientation>", "Rendered page orientation.")
@@ -76,7 +76,7 @@ transformer's files and combined atlas/joined pages at archive root.",
         Arg::value(
             "source-receipt-sha256",
             "<sha256>",
-            "Optional digest of the exact DS export receipt rendered by QGIS.",
+            "Optional digest of the exact DS export receipt used for rendering.",
         ),
         DESCRIPTOR_ARG,
     ],
@@ -105,7 +105,7 @@ transformer's files and combined atlas/joined pages at archive root.",
         Refusal {
             code: "confirmation_required",
             when: "--yes was not given for a project artifact upload",
-            remedy: "review the QGIS output and re-run with --yes to attach it",
+            remedy: "review the rendered output and re-run with --yes to attach it",
         },
         Refusal {
             code: "transformer_required",
@@ -171,7 +171,9 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
 pub fn render(data: &Value) -> String {
     format!(
         "{} attached to {}\n  {} · {} · {} {} · {}\n  sha256 {}\n",
-        data["file_name"].as_str().unwrap_or("QGIS artifact"),
+        data["file_name"]
+            .as_str()
+            .unwrap_or("cartographic artifact"),
         data["transformer"].as_str().unwrap_or("report"),
         data["map_family"].as_str().unwrap_or("map"),
         data["layout"].as_str().unwrap_or("layout"),

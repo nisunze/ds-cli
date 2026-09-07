@@ -866,7 +866,7 @@ fn chapter_describe_and_invoke_return_the_exact_cli_envelopes() {
             json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": { "name": "ds_operations", "arguments": { "operation": "describe", "command": "shell.status" } } }),
             json!({ "jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": { "name": "ds_operations", "arguments": { "operation": "invoke", "command": "shell.status", "arguments": {} } } }),
             json!({ "jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": { "name": "ds_workstation", "arguments": { "operation": "describe", "command": "workstation.plan" } } }),
-            json!({ "jsonrpc": "2.0", "id": 4, "method": "tools/call", "params": { "name": "ds_workstation", "arguments": { "operation": "invoke", "command": "workstation.plan", "arguments": { "component": "qgis", "platform": "windows" } } } }),
+            json!({ "jsonrpc": "2.0", "id": 4, "method": "tools/call", "params": { "name": "ds_workstation", "arguments": { "operation": "invoke", "command": "workstation.plan", "arguments": { "component": "libreoffice", "platform": "windows" } } } }),
         ],
     );
     assert_eq!(
@@ -887,7 +887,7 @@ fn chapter_describe_and_invoke_return_the_exact_cli_envelopes() {
             "workstation",
             "plan",
             "--component",
-            "qgis",
+            "libreoffice",
             "--platform",
             "windows",
             "--output",

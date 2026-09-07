@@ -19,3 +19,4 @@ serde_json = { workspace = true }
 # The reserved computed report identities are the kernel's rule; the headless
 # scope lane applies the same predicate the offline lane already enforces.
 ds-command-kernel = { workspace = true }
+tempfile = "3"

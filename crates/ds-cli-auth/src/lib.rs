@@ -3208,6 +3208,41 @@ impl HeadlessSolarProjectSession {
     }
 }
 
+pub use ds_client_core::PrintingRequest;
+/// Global templates need identity but no selected project. Project requests
+/// can only address the principal's held, verified project context.
+pub fn printing(
+    lane_value: &str,
+    global: bool,
+    request: &PrintingRequest,
+) -> Result<serde_json::Value, Failure> {
+    request.validate().map_err(map_client)?;
+    let lane = Lane::parse(lane_value)?;
+    let needs_project = request.needs_project(global);
+    if needs_project {
+        if let Some((mut device, selected)) = restored_device_project(lane)? {
+            return device
+                .printing(selected.project_id(), request)
+                .map_err(map_client);
+        }
+    } else {
+        let _ = probe_headless_identity(lane.token())?;
+        if let Some(mut device) = device::restore_session(lane)? {
+            return device.printing("", request).map_err(map_client);
+        }
+    }
+    let profile = profile::load(lane)?;
+    let store = NativeRefreshStore::open()?;
+    let mut client = Client::new(profile, NativeTransport, store);
+    let user = require_restore_before_context(&mut client)?;
+    if !needs_project {
+        return client.printing("", request, now()).map_err(map_client);
+    }
+    let selected = load_selected_project(client.profile(), &user)?;
+    let result = client.printing(selected.project_id(), request, now());
+    with_released_context_disposition(client.profile(), &selected, result)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

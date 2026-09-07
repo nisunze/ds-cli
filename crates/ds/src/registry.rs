@@ -312,6 +312,61 @@ static PLS_ENTRIES: &[Entry] = &[
 
 static REPORT_ENTRIES: &[Entry] = &[
     Entry {
+        command: &ds_cli_report::layout::NEW,
+        handler: ds_cli_report::layout::new,
+        render: ds_cli_report::layout::render_text,
+    },
+    Entry {
+        command: &ds_cli_report::layout::EDIT,
+        handler: ds_cli_report::layout::edit,
+        render: ds_cli_report::layout::render_text,
+    },
+    Entry {
+        command: &ds_cli_report::layout::SCHEMA,
+        handler: ds_cli_report::layout::schema,
+        render: ds_cli_report::layout::render_text,
+    },
+    Entry {
+        command: &ds_cli_report::layout::RENDER,
+        handler: ds_cli_report::layout::render,
+        render: ds_cli_report::layout::render_text,
+    },
+    Entry {
+        command: &ds_cli_report::layout::LIST,
+        handler: ds_cli_report::layout::list,
+        render: ds_cli_report::layout::render_text,
+    },
+    Entry {
+        command: &ds_cli_report::layout::GET,
+        handler: ds_cli_report::layout::get,
+        render: ds_cli_report::layout::render_text,
+    },
+    Entry {
+        command: &ds_cli_report::layout::CREATE,
+        handler: ds_cli_report::layout::create,
+        render: ds_cli_report::layout::render_text,
+    },
+    Entry {
+        command: &ds_cli_report::layout::UPDATE,
+        handler: ds_cli_report::layout::update,
+        render: ds_cli_report::layout::render_text,
+    },
+    Entry {
+        command: &ds_cli_report::layout::SAVE,
+        handler: ds_cli_report::layout::save,
+        render: ds_cli_report::layout::render_text,
+    },
+    Entry {
+        command: &ds_cli_report::layout::DELETE,
+        handler: ds_cli_report::layout::delete,
+        render: ds_cli_report::layout::render_text,
+    },
+    Entry {
+        command: &ds_cli_report::layout::COPY,
+        handler: ds_cli_report::layout::copy,
+        render: ds_cli_report::layout::render_text,
+    },
+    Entry {
         command: &ds_cli_report::engine::COMMAND,
         handler: ds_cli_report::engine::run,
         render: ds_cli_report::engine::render,
@@ -953,7 +1008,7 @@ static SURVEY_ENTRIES: &[Entry] = &[
 ];
 
 /// Map styling. Ordered as a session uses it: list the refs, read one, author
-/// guided base appearance, then plan, publish or clear a second dimension, and
+/// guided base appearance, create a print variant, then plan, publish or clear a second dimension, and
 /// last the cartography — line type, direction, casing and hatching — which
 /// needs no field and so is reached once the field-driven axes are settled.
 static STYLE_ENTRIES: &[Entry] = &[
@@ -966,6 +1021,16 @@ static STYLE_ENTRIES: &[Entry] = &[
         command: &ds_cli_style::read::COMMAND,
         handler: ds_cli_style::read::run,
         render: ds_cli_style::read::render,
+    },
+    Entry {
+        command: &ds_cli_style::print_variant::plan::COMMAND,
+        handler: ds_cli_style::print_variant::plan::run,
+        render: ds_cli_style::print_variant::plan::render,
+    },
+    Entry {
+        command: &ds_cli_style::print_variant::create::COMMAND,
+        handler: ds_cli_style::print_variant::create::run,
+        render: ds_cli_style::print_variant::create::render,
     },
     Entry {
         command: &ds_cli_style::appearance::plan::COMMAND,
@@ -1488,6 +1553,56 @@ static DESKTOP_ENTRIES: &[Entry] = &[
         command: &ds_cli_desktop::project::SWITCH_COMMAND,
         handler: ds_cli_desktop::project::switch,
         render: ds_cli_desktop::project::render_switch,
+    },
+    Entry {
+        command: &ds_cli_desktop::printing::LIST_COMMAND,
+        handler: ds_cli_desktop::printing::list,
+        render: ds_cli_desktop::printing::render,
+    },
+    Entry {
+        command: &ds_cli_desktop::printing::GET_COMMAND,
+        handler: ds_cli_desktop::printing::get,
+        render: ds_cli_desktop::printing::render,
+    },
+    Entry {
+        command: &ds_cli_desktop::printing::SAVE_COMMAND,
+        handler: ds_cli_desktop::printing::save,
+        render: ds_cli_desktop::printing::render,
+    },
+    Entry {
+        command: &ds_cli_desktop::printing::PREPARE_COMMAND,
+        handler: ds_cli_desktop::printing::run,
+        render: ds_cli_desktop::printing::render,
+    },
+    Entry {
+        command: &ds_cli_desktop::data::STATUS_COMMAND,
+        handler: ds_cli_desktop::data::status,
+        render: ds_cli_desktop::data::render,
+    },
+    Entry {
+        command: &ds_cli_desktop::data::CATALOG_COMMAND,
+        handler: ds_cli_desktop::data::catalog,
+        render: ds_cli_desktop::data::render,
+    },
+    Entry {
+        command: &ds_cli_desktop::data::PUBLISH_COMMAND,
+        handler: ds_cli_desktop::data::publish,
+        render: ds_cli_desktop::data::render,
+    },
+    Entry {
+        command: &ds_cli_desktop::data::INSTALL_COMMAND,
+        handler: ds_cli_desktop::data::install,
+        render: ds_cli_desktop::data::render,
+    },
+    Entry {
+        command: &ds_cli_desktop::data::STORAGE_COMMAND,
+        handler: ds_cli_desktop::data::storage,
+        render: ds_cli_desktop::data::render,
+    },
+    Entry {
+        command: &ds_cli_desktop::data::REMOVE_COMMAND,
+        handler: ds_cli_desktop::data::remove,
+        render: ds_cli_desktop::data::render,
     },
 ];
 

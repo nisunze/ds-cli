@@ -206,6 +206,7 @@ pub fn execute(
     let reference = inputs.require("ref")?;
     let apply = args["apply"].as_bool().unwrap_or(false);
     let instruction = match operation.operation {
+        "style.print.create" => ds_cli_auth::StyleInstruction::PrintVariant,
         "style.appearance.set" => ds_cli_auth::StyleInstruction::Appearance {
             color: args["color"].as_str().map(str::to_owned),
             icon: args["icon"].as_str().map(str::to_owned),

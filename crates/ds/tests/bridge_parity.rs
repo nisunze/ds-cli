@@ -250,6 +250,26 @@ fn every_project_context_command_has_one_closed_operation_owner() {
 }
 
 #[test]
+fn printing_preparation_has_one_closed_application_owner() {
+    let Some(app) = app() else {
+        return;
+    };
+    let op = &ds_cli_desktop::printing::PREPARE_OP;
+    let allowlist = between(
+        &app.transport,
+        "pub const CLI_OPERATIONS: &[&str] = &[",
+        "];",
+    );
+    assert_eq!(count(allowlist, &format!("\"{}\"", op.operation)), 1);
+    assert_eq!(switch_case_count(&app.frontend, op.operation), 1);
+    let source =
+        std::fs::read_to_string(ds_web().unwrap().join("src/lib/printing/prepare.ts")).unwrap();
+    let contract = operation_contract(&source, op.operation);
+    assert!(contract.contains("'request'"));
+    assert_eq!(op.arguments, &["request"]);
+}
+
+#[test]
 fn every_map_command_has_one_closed_operation_owner() {
     let Some(app) = app() else {
         skip("the ds-web sibling repository is not on disk");

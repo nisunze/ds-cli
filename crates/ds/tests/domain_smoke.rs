@@ -87,6 +87,65 @@ fn run_ds(args: &[&str], native: bool) -> Run {
     }
 }
 
+#[test]
+fn printing_lifecycle_writes_are_registered_and_stop_before_native_authority() {
+    for args in [
+        vec![
+            "report",
+            "layout",
+            "create",
+            "--scope",
+            "global",
+            "--request",
+            "missing.json",
+            "--output",
+            "json",
+        ],
+        vec![
+            "report",
+            "layout",
+            "update",
+            "--scope",
+            "project",
+            "--request",
+            "missing.json",
+            "--output",
+            "json",
+        ],
+        vec![
+            "report",
+            "layout",
+            "delete",
+            "--scope",
+            "global",
+            "--id",
+            "sample",
+            "--expected-revision",
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "--output",
+            "json",
+        ],
+        vec![
+            "report",
+            "layout",
+            "copy",
+            "--request",
+            "missing.json",
+            "--output",
+            "json",
+        ],
+    ] {
+        let run = native_ds(&args);
+        assert_eq!(run.code, 2, "{}", args.join(" "));
+        assert_eq!(
+            run.envelope["error"]["code"],
+            "confirmation_required",
+            "{} crossed confirmation into file or native authority",
+            args.join(" ")
+        );
+    }
+}
+
 /// The real PLS-CADD workspace that ships with `ds-network`.
 fn workspace() -> String {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -2413,7 +2472,7 @@ fn map_design_attach_print_validates_before_pairing() {
     ]);
     assert_eq!(
         unconfirmed.envelope["error"]["code"], "confirmation_required",
-        "a durable QGIS attachment must require --yes"
+        "a durable cartographic attachment must require --yes"
     );
 
     assert_eq!(
@@ -3476,6 +3535,7 @@ fn design_lv_project_export_refuses_an_existing_artifact_before_auth_or_desktop(
                 "path": "/api/v1/entries/mutate",
                 "operation": "create"
             },
+            "printing":{"method":"POST","path":"/api/v1/printing","actions":["list","get","create","update","save","delete","copy"]},
             "layers":{"method":"POST","path":"/api/v1/layers","actions":["get_config","refresh","reorder"]},
             "styles":{"method":"POST","path":"/api/v1/styles","action":"update_style"},
             "survey_control":["POST /api/v1/form-factory: list,get,get_field_types,create,update,duplicate,publish,unpublish,archive,restore,delete", "POST /api/v1/project-forms: activate,settings_editor,bulk_save", "POST /api/v1/projects/templates: list,create,set_public,delete", "GET /api/v1/projects/templates/{slug}", "POST /api/v1/projects: apply_template", "POST /api/v1/projects/from-template"],
@@ -3496,7 +3556,7 @@ fn design_lv_project_export_refuses_an_existing_artifact_before_auth_or_desktop(
     std::fs::write(
         &profile_path,
         serde_json::to_vec(&json!({
-            "schema_version": "ds.native-client-profiles/v16",
+            "schema_version": "ds.native-client-profiles/v18",
             "development": true,
             "profiles": {
                 "stable": profile(

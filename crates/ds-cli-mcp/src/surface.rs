@@ -13,6 +13,7 @@ pub const PROFILE_IDS: &[&str] = &[
     "auth-context",
     "admin-bounds",
     "grid",
+    "printing",
     "grid-local-model",
     "pls",
     "pls-library",
@@ -63,6 +64,7 @@ pub enum Profile {
     AuthContext,
     AdminBounds,
     Grid,
+    Printing,
     GridLocalModel,
     Pls,
     PlsLibrary,
@@ -91,6 +93,7 @@ impl Profile {
             "auth-context" => Some(Self::AuthContext),
             "admin-bounds" => Some(Self::AdminBounds),
             "grid" => Some(Self::Grid),
+            "printing" => Some(Self::Printing),
             "grid-local-model" => Some(Self::GridLocalModel),
             "pls" => Some(Self::Pls),
             "pls-library" => Some(Self::PlsLibrary),
@@ -120,6 +123,7 @@ impl Profile {
             Self::AuthContext => "auth-context",
             Self::AdminBounds => "admin-bounds",
             Self::Grid => "grid",
+            Self::Printing => "printing",
             Self::GridLocalModel => "grid-local-model",
             Self::Pls => "pls",
             Self::PlsLibrary => "pls-library",
@@ -171,7 +175,9 @@ impl Profile {
             Self::Grid => {
                 matches!(tool.chapter, Chapter::GridModel | Chapter::Reports)
                     && !PROJECT_OPERATIONS_COMMANDS.contains(&tool.id.as_str())
+                    && !PRINTING_COMMANDS.contains(&tool.id.as_str())
             }
+            Self::Printing => PRINTING_COMMANDS.contains(&tool.id.as_str()),
             Self::GridLocalModel => GRID_LOCAL_MODEL_COMMANDS.contains(&tool.id.as_str()),
             Self::Pls => tool.chapter == Chapter::PlsCadd && tool.id.starts_with("pls."),
             Self::PlsLibrary => PLS_LIBRARY_COMMANDS.contains(&tool.id.as_str()),
@@ -210,6 +216,7 @@ impl Profile {
         match self {
             Self::AuthContext => AUTH_CONTEXT_COMMANDS,
             Self::AdminBounds => ADMIN_BOUNDS_COMMANDS,
+            Self::Printing => PRINTING_COMMANDS,
             Self::GridLocalModel => GRID_LOCAL_MODEL_COMMANDS,
             Self::Survey => SURVEY_MAP_COMMANDS,
             Self::FormFactory => FORM_FACTORY_COMMANDS,
@@ -239,6 +246,7 @@ impl Profile {
             Self::AuthContext => chapter == Chapter::Project,
             Self::AdminBounds => chapter == Chapter::Data,
             Self::Grid => matches!(chapter, Chapter::GridModel | Chapter::Reports),
+            Self::Printing => chapter == Chapter::Reports,
             Self::GridLocalModel => chapter == Chapter::GridModel,
             Self::Pls | Self::PlsLibrary | Self::LibraryGovernance => chapter == Chapter::PlsCadd,
             Self::Survey
@@ -1157,6 +1165,24 @@ pub const fn chapter_description(chapter: Chapter) -> &'static str {
         }
     }
 }
+
+const PRINTING_COMMANDS: &[&str] = &[
+    "desktop.printing.list",
+    "desktop.printing.get",
+    "desktop.printing.save",
+    "desktop.printing.prepare",
+    "report.layout.new",
+    "report.layout.edit",
+    "report.layout.schema",
+    "report.layout.render",
+    "report.layout.list",
+    "report.layout.get",
+    "report.layout.create",
+    "report.layout.update",
+    "report.layout.save",
+    "report.layout.delete",
+    "report.layout.copy",
+];
 
 #[cfg(test)]
 mod tests {

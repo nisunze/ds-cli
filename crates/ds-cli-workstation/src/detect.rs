@@ -142,18 +142,6 @@ fn conventional_locations(component: &str, platform: Platform) -> Vec<PathBuf> {
                         );
                     }
                 }
-                "qgis" => {
-                    for root in program_files {
-                        if let Ok(entries) = std::fs::read_dir(root) {
-                            for entry in entries.flatten() {
-                                let name = entry.file_name().to_string_lossy().to_ascii_lowercase();
-                                if name == "qgis" || name.starts_with("qgis ") {
-                                    candidates.push(entry.path().join("bin").join("qgis-bin.exe"));
-                                }
-                            }
-                        }
-                    }
-                }
                 _ => {}
             }
         }
@@ -161,7 +149,6 @@ fn conventional_locations(component: &str, platform: Platform) -> Vec<PathBuf> {
             "libreoffice" => candidates.push(PathBuf::from(
                 "/Applications/LibreOffice.app/Contents/MacOS/soffice",
             )),
-            "qgis" => candidates.push(PathBuf::from("/Applications/QGIS.app/Contents/MacOS/QGIS")),
             _ => {}
         },
         Platform::Linux => {}
@@ -172,7 +159,7 @@ fn conventional_locations(component: &str, platform: Platform) -> Vec<PathBuf> {
 pub fn version(path: &Path, component: &str) -> Result<String, String> {
     let args: &[&str] = match component {
         "libreoffice" => &["--headless", "--version"],
-        "qgis" | "git-bash" | "git" => &["--version"],
+        "git-bash" | "git" => &["--version"],
         _ => return Err("this component has no executable version probe".to_string()),
     };
     let mut child = ProcessCommand::new(path)
