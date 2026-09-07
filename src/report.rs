@@ -81,6 +81,29 @@ struct Group {
     group_key: String,
     transformers: Vec<String>,
 }
+/// Names a report *produces*: the collision document and the combined set
+/// under any of its spellings. They are output, never a participant, so no
+/// lane may take one as a requested transformer. Canonicalized the way
+/// `project_control` canonicalizes a status row, so an alias or a cased
+/// spelling cannot smuggle one in.
+pub fn is_reserved_report_identity(name: &str) -> bool {
+    let canonical = name
+        .trim()
+        .to_ascii_lowercase()
+        .chars()
+        .map(|character| {
+            if character.is_ascii_lowercase() || character.is_ascii_digit() || character == '_' {
+                character
+            } else {
+                '_'
+            }
+        })
+        .collect::<String>();
+    matches!(
+        canonical.as_str(),
+        "collisions" | "combined_transformer" | "all_transformers" | "combined_transformers"
+    )
+}
 fn names(values: Vec<String>) -> Result<BTreeSet<String>, String> {
     if values.len() > 2000 {
         return Err("Report scope exceeds 2000 rooms".into());
@@ -92,13 +115,7 @@ fn names(values: Vec<String>) -> Result<BTreeSet<String>, String> {
             || !name
                 .bytes()
                 .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_')
-            || [
-                "combined_transformer",
-                "all_transformers",
-                "combined_transformers",
-                "collisions",
-            ]
-            .contains(&name.as_str())
+            || is_reserved_report_identity(&name)
         {
             return Err(format!("Invalid report transformer: {name}"));
         }
@@ -224,6 +241,15 @@ mod tests {
             PublicationState::LocalOnly
         );
         assert!(publication_state("unknown", true, false).is_err());
+    }
+    #[test]
+    fn computed_identities_are_reserved_under_any_spelling() {
+        assert!(is_reserved_report_identity("Collisions"));
+        assert!(is_reserved_report_identity("all_transformers"));
+        assert!(is_reserved_report_identity(" Combined-Transformers "));
+        assert!(!is_reserved_report_identity("tx_a"));
+        let input = serde_json::json!({"command":"plan","requested":["collisions"],"inventory":null,"rooms":[],"processors":32,"resident_limit":4});
+        assert!(evaluate(&serde_json::to_vec(&input).unwrap()).is_err());
     }
     #[test]
     fn offline_inventory_never_silently_shrinks() {
