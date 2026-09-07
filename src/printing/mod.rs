@@ -181,8 +181,14 @@ pub struct Asset {
 pub struct PrintStyle {
     pub stroke: String,
     pub width_mm: f64,
+    /// Opacity of strokes, casings and point outlines in physical output.
+    #[serde(default = "opaque", skip_serializing_if = "is_opaque")]
+    pub stroke_opacity: f64,
     #[serde(default = "white")]
     pub fill: String,
+    /// Opacity of polygon and point fills in physical output.
+    #[serde(default = "opaque", skip_serializing_if = "is_opaque")]
+    pub fill_opacity: f64,
     #[serde(default)]
     pub casing: String,
     #[serde(default)]
@@ -207,12 +213,17 @@ pub struct PrintStyle {
 fn radius() -> f64 {
     1.2
 }
+fn is_opaque(value: &f64) -> bool {
+    (*value - 1.).abs() < f64::EPSILON
+}
 impl Default for PrintStyle {
     fn default() -> Self {
         Self {
             stroke: ink(),
             width_mm: 0.35,
+            stroke_opacity: 1.,
             fill: white(),
+            fill_opacity: 1.,
             casing: String::new(),
             casing_mm: 0.,
             dash_mm: vec![],
@@ -367,6 +378,8 @@ pub fn validate(layout: &Layout) -> Result<(), String> {
             || !color(&style.fill)
             || (!style.casing.is_empty() && !color(&style.casing))
             || !bounded(style.width_mm, 0.05, 10.)
+            || !bounded(style.stroke_opacity, 0., 1.)
+            || !bounded(style.fill_opacity, 0., 1.)
             || !bounded(style.casing_mm, 0., 10.)
             || !bounded(style.radius_mm, 0.1, 20.)
             || !bounded(style.label_pt, 4., 40.)
