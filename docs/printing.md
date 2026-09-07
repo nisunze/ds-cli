@@ -1,12 +1,22 @@
 # Printing document authority
 
-`printing::Layout` is a closed `ds.print-layout/v1` document. Page dimensions and
-frames use millimetres; typography uses points. It contains one map frame,
+`printing::Layout` is a closed `ds.print-layout/v2` document. Page dimensions and
+frames use millimetres; typography uses points. It persists paper size and
+orientation and contains one named, clipped print viewport,
 text/legend/scale/north/logo/rectangle elements, held PNG assets and keyed
 physical cartographic styles. The generated JSON schema is `layout_schema()`.
+The map element's rectangle is the physical viewport. Its `view_slot` is bound
+to a project named geographic view when an export is prepared; editor pan/zoom
+is not part of this document.
 
-`printing::evaluate` evaluates New, Validate, Edit (upsert one element), or
-Remove. Every result contains `layout`; validation additionally returns
+`elements` is the canonical back-to-front sheet stack. The final element is
+front-most. `bring_to_front`, `send_to_back`, `move_above` and `move_below`
+change only this order. Map-layer ordering inside the print viewport is a
+separate reporter input.
+
+`printing::evaluate` evaluates New, Validate, Edit (upsert one element),
+Remove, SetPaper, SetViewport and the four stack-order commands. Every result
+contains `layout`; validation additionally returns
 `valid:true`. Invalid edits produce no partial document. CLI and the web WASM
 export `printingCommand` call the same evaluator. `command_schema()` describes
 the closed intent grammar. The native renderer can validate the same Layout.
@@ -16,8 +26,14 @@ they are not command-kernel WASM exports. PDF/SVG formatting, GeoJSON projection
 and legend rendering belong to ds-network-reporter. Brain owns global/project
 sharing and expected-revision saves. This module owns no storage or network IO.
 
-`new` accepts optional `id`, `name`, `paper` (A0–A5, default A3) and
+`new` accepts optional `id`, `name`, `paper` (A0–A5 or bounded custom paper,
+default A3) and
 `orientation` (portrait/landscape, default landscape). Paper presets uniformly
 fit the initial composition. `rename` changes only the name; `duplicate`
 requires a different ID and carries the composition into an independent layout.
 CLI `report.layout.edit --request FILE` and web authoring use these same intents.
+
+`ds.print-layout/v1` remains an accepted input only. Every evaluated V1 command
+returns V2: standard paper is inferred from exact dimensions, other bounded
+dimensions become custom paper, and the legacy map frame becomes the clipped
+`primary_map` viewport. New output is never V1.
