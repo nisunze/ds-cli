@@ -80,13 +80,29 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("desktop.printing.get", "read_only", "desktop_user"),
     ("desktop.printing.save", "global_write", "desktop_user"),
     ("desktop.printing.prepare", "global_write", "desktop_user"),
+    ("desktop.data.rwanda.status", "read_only", "desktop_user"),
     (
-        "desktop.reference.rwanda.status",
-        "read_only",
+        "desktop.data.rwanda.catalog",
+        "global_write",
         "desktop_user",
     ),
     (
-        "desktop.reference.rwanda.seed",
+        "desktop.data.rwanda.publish",
+        "global_write",
+        "desktop_user",
+    ),
+    (
+        "desktop.data.rwanda.install",
+        "local_file_write",
+        "desktop_user",
+    ),
+    (
+        "desktop.data.rwanda.storage",
+        "local_file_write",
+        "desktop_user",
+    ),
+    (
+        "desktop.data.rwanda.remove",
         "local_file_write",
         "desktop_user",
     ),

@@ -1575,14 +1575,34 @@ static DESKTOP_ENTRIES: &[Entry] = &[
         render: ds_cli_desktop::printing::render,
     },
     Entry {
-        command: &ds_cli_desktop::reference::STATUS_COMMAND,
-        handler: ds_cli_desktop::reference::status,
-        render: ds_cli_desktop::reference::render,
+        command: &ds_cli_desktop::data::STATUS_COMMAND,
+        handler: ds_cli_desktop::data::status,
+        render: ds_cli_desktop::data::render,
     },
     Entry {
-        command: &ds_cli_desktop::reference::SEED_COMMAND,
-        handler: ds_cli_desktop::reference::seed,
-        render: ds_cli_desktop::reference::render,
+        command: &ds_cli_desktop::data::CATALOG_COMMAND,
+        handler: ds_cli_desktop::data::catalog,
+        render: ds_cli_desktop::data::render,
+    },
+    Entry {
+        command: &ds_cli_desktop::data::PUBLISH_COMMAND,
+        handler: ds_cli_desktop::data::publish,
+        render: ds_cli_desktop::data::render,
+    },
+    Entry {
+        command: &ds_cli_desktop::data::INSTALL_COMMAND,
+        handler: ds_cli_desktop::data::install,
+        render: ds_cli_desktop::data::render,
+    },
+    Entry {
+        command: &ds_cli_desktop::data::STORAGE_COMMAND,
+        handler: ds_cli_desktop::data::storage,
+        render: ds_cli_desktop::data::render,
+    },
+    Entry {
+        command: &ds_cli_desktop::data::REMOVE_COMMAND,
+        handler: ds_cli_desktop::data::remove,
+        render: ds_cli_desktop::data::render,
     },
 ];
 

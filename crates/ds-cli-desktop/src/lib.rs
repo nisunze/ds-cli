@@ -27,11 +27,11 @@
 
 pub mod bridge;
 pub mod connectivity;
+pub mod data;
 pub mod discover;
 pub mod ops;
 pub mod printing;
 pub mod project;
-pub mod reference;
 pub mod status;
 
 use ds_cli_contract::spec::Domain;
@@ -49,7 +49,11 @@ pub static DOMAIN: Domain = Domain {
         &printing::GET_COMMAND,
         &printing::SAVE_COMMAND,
         &printing::PREPARE_COMMAND,
-        &reference::STATUS_COMMAND,
-        &reference::SEED_COMMAND,
+        &data::STATUS_COMMAND,
+        &data::CATALOG_COMMAND,
+        &data::PUBLISH_COMMAND,
+        &data::INSTALL_COMMAND,
+        &data::STORAGE_COMMAND,
+        &data::REMOVE_COMMAND,
     ],
 };
