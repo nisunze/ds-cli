@@ -64,6 +64,12 @@ pub enum PrintContextSource {
         index_interval_m: u16,
         sample_spacing_m: f64,
     },
+    /// Every governed MV model in the active project's DS Grid catalogue.
+    /// Desktop resolves exact heads through its immutable model cache and
+    /// projects them one at a time; the layout only owns the spatial margin.
+    ProjectDsgridMv {
+        buffer_m: f64,
+    },
 }
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
 #[serde(rename_all = "snake_case")]
@@ -491,6 +497,11 @@ pub fn validate(layout: &Layout) -> Result<(), String> {
                     || !bounded(*sample_spacing_m, 5., 250.)
                 {
                     return Err("invalid elevation contour print context parameters".into());
+                }
+            }
+            PrintContextSource::ProjectDsgridMv { buffer_m } => {
+                if !bounded(*buffer_m, 0., 5_000.) {
+                    return Err("invalid project DS Grid MV print context parameters".into());
                 }
             }
         }
@@ -999,10 +1010,11 @@ mod tests {
             "context_layers":[
                 {"id":"roads","label":"Roads","source":{"kind":"catalog","country":"Rwanda","layer":"roads"}},
                 {"id":"buildings_context","label":"Building footprints","source":{"kind":"google_open_buildings","buffer_m":200.0,"min_area_m2":25.0,"min_confidence":0.7}},
-                {"id":"elevation_contours","label":"10 m contours","source":{"kind":"elevation_contours","buffer_m":200.0,"minor_interval_m":10,"index_interval_m":50,"sample_spacing_m":10.0}}
+                {"id":"elevation_contours","label":"10 m contours","source":{"kind":"elevation_contours","buffer_m":200.0,"minor_interval_m":10,"index_interval_m":50,"sample_spacing_m":10.0}},
+                {"id":"project_dsgrid_mv","label":"Project MV models","source":{"kind":"project_dsgrid_mv","buffer_m":200.0}}
             ]
         }));
-        assert_eq!(result.context_layers.len(), 3);
+        assert_eq!(result.context_layers.len(), 4);
         let mut invalid = result;
         invalid.context_layers[2].source = PrintContextSource::ElevationContours {
             buffer_m: 200.,
