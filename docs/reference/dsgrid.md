@@ -14,9 +14,10 @@ The local-model commands have a different owner. A browser-local DS Grid model
 is a live worker session and durable application store, not a file the CLI can
 open. `model list`, `model create-local`, `model import-external`, and `model
 set-active` therefore ask the paired Desktop through one named operation each.
-They are project-independent; a projectless paired session is valid. Only
-`publish-version` needs project authority, because it registers one immutable
-revision in the paired session's selected project.
+They are project-independent; a projectless paired session is valid.
+`model prepare-project` and `publish-version` need project authority: the first
+resolves and caches exact project MV heads, while the second registers one
+immutable revision in the paired session's selected project.
 
 This split is visible in availability. The four file commands remain available
 without a Desktop, sidecar, or populated `PATH`. The local-model family needs a
@@ -33,6 +34,7 @@ These words are deliberately not interchangeable:
 | `ds dsgrid model create-local` | Create one empty local model; the application opens it as active. | paired Desktop |
 | `ds dsgrid model import-external` | Acquire one external `.dsgrid`; it does not become active. | paired Desktop |
 | `ds dsgrid model set-active` | Open one existing local model in Profile; idempotent when already active. | paired Desktop |
+| `ds dsgrid model prepare-project` | Show exact governed MV heads and, with `--download-missing`, fill their shared verified cache sequentially for Design and printing. | project |
 | `ds dsgrid publish-version` | Register one immutable revision in the selected project's catalogue; never changes local activity. | project + `--yes` |
 
 The local commands never accept a project. Publication never accepts arbitrary

@@ -1029,14 +1029,17 @@ fn every_work_command_has_one_closed_operation_owner() {
 // here proves `ds` still says the same three things it does.
 
 /// The four operations that must remain reachable without any project, and the
-/// one that must not be among them.
+/// project operations that must not be among them.
 const DSGRID_LOCAL_OPERATIONS: &[&str] = &[
     "dsgrid.model.list",
     "dsgrid.model.create",
     "dsgrid.model.import",
     "dsgrid.model.set_active",
 ];
-const DSGRID_PROJECT_OPERATION: &str = "dsgrid.model.publish";
+const DSGRID_PROJECT_OPERATIONS: &[&str] = &[
+    "dsgrid.model.prepare_project",
+    "dsgrid.model.publish",
+];
 
 #[test]
 fn every_dsgrid_model_command_has_one_closed_operation_owner_and_exact_arguments() {
@@ -1091,8 +1094,8 @@ fn every_dsgrid_model_command_has_one_closed_operation_owner_and_exact_arguments
     }
     assert_eq!(
         seen.len(),
-        DSGRID_LOCAL_OPERATIONS.len() + 1,
-        "the family sends exactly the four local operations and the one project operation"
+        DSGRID_LOCAL_OPERATIONS.len() + DSGRID_PROJECT_OPERATIONS.len(),
+        "the family sends exactly the four local operations and two project operations"
     );
 }
 
@@ -1133,10 +1136,12 @@ fn the_dsgrid_local_family_is_project_independent_on_both_sides() {
             "`{operation}` is no longer project-independent in the frontend fence"
         );
     }
-    assert!(
-        !native.contains(DSGRID_PROJECT_OPERATION) && !frontend.contains(DSGRID_PROJECT_OPERATION),
-        "publication resolves an exact catalogue revision; it must stay project-fenced"
-    );
+    for operation in DSGRID_PROJECT_OPERATIONS {
+        assert!(
+            !native.contains(operation) && !frontend.contains(operation),
+            "`{operation}` resolves project state and must stay project-fenced"
+        );
+    }
     assert!(
         app.frontend
             .contains("isProjectIndependentCliDsgridOperation(request.operation)"),
@@ -1176,6 +1181,10 @@ fn the_dsgrid_local_family_is_project_independent_on_both_sides() {
     }
     let publish = &ds_cli_dsgrid::model::publish_version::COMMAND;
     assert_eq!(publish.authority, Authority::Project);
+    assert_eq!(
+        ds_cli_dsgrid::model::prepare_project::COMMAND.authority,
+        Authority::Project,
+    );
     assert!(
         publish.arg("project").is_none(),
         "the destination is the paired session's own selected project; \

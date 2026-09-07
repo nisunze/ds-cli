@@ -1245,11 +1245,10 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
             .expect("tools");
         let maximum = match profile {
             // The broad Grid profile carries the existing file/report tools
-            // plus the five local-lifecycle/publication leaves. Agents that
+            // plus the existing local-lifecycle/publication leaves. Agents that
             // need only that workflow use `grid-local-model` below.
-            // The fifth local model lifecycle leaf made this 17 command
-            // tools plus the two mandatory bootstrap tools. The narrower
-            // grid-local-model profile remains available for focused agents.
+            // Project cache preparation stays in the narrower
+            // grid-local-model profile so this broad router remains bounded.
             "grid" => 19,
             "survey-projects" => 18,
             "design-edit" => 23,
@@ -1276,8 +1275,9 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
             && published["grid-local-model"].contains("dsgrid_model_create-local")
             && published["grid-local-model"].contains("dsgrid_model_import-external")
             && published["grid-local-model"].contains("dsgrid_model_set-active")
+            && published["grid-local-model"].contains("dsgrid_model_prepare-project")
             && published["grid-local-model"].contains("dsgrid_publish-version"),
-        "the grid-local-model profile must project the complete five-command lifecycle"
+        "the grid-local-model profile must project the complete model and project-cache lifecycle"
     );
     assert!(
         published["pls"].contains("pls_backup-create"),

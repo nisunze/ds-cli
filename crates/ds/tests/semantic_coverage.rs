@@ -228,6 +228,7 @@ const EXPECTED: &[(&str, &str, &str)] = &[
         "desktop_pairing",
     ),
     ("dsgrid.model.list", "read_only", "desktop_pairing"),
+    ("dsgrid.model.prepare-project", "local_ui", "project"),
     ("dsgrid.model.set-active", "local_ui", "desktop_pairing"),
     // The one project act, and the only command in the family that carries
     // `project` authority: it registers one immutable revision in the paired

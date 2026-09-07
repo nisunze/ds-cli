@@ -176,6 +176,10 @@ impl Profile {
                 matches!(tool.chapter, Chapter::GridModel | Chapter::Reports)
                     && !PROJECT_OPERATIONS_COMMANDS.contains(&tool.id.as_str())
                     && !PRINTING_COMMANDS.contains(&tool.id.as_str())
+                    // Project cache preparation belongs to the focused model
+                    // lifecycle surface. Keeping it out of this broad router
+                    // preserves the profile's bounded tool budget.
+                    && tool.id != "dsgrid.model.prepare-project"
             }
             Self::Printing => PRINTING_COMMANDS.contains(&tool.id.as_str()),
             Self::GridLocalModel => GRID_LOCAL_MODEL_COMMANDS.contains(&tool.id.as_str()),
@@ -304,6 +308,7 @@ const GRID_LOCAL_MODEL_COMMANDS: &[&str] = &[
     "dsgrid.model.create-local",
     "dsgrid.model.import-external",
     "dsgrid.model.set-active",
+    "dsgrid.model.prepare-project",
     "dsgrid.publish-version",
 ];
 

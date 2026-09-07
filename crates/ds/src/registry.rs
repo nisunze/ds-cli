@@ -151,6 +151,11 @@ static DSGRID_ENTRIES: &[Entry] = &[
         render: ds_cli_dsgrid::model::set_active::render,
     },
     Entry {
+        command: &ds_cli_dsgrid::model::prepare_project::COMMAND,
+        handler: ds_cli_dsgrid::model::prepare_project::run,
+        render: ds_cli_dsgrid::model::prepare_project::render,
+    },
+    Entry {
         command: &ds_cli_dsgrid::model::publish_version::COMMAND,
         handler: ds_cli_dsgrid::model::publish_version::run,
         render: ds_cli_dsgrid::model::publish_version::render,

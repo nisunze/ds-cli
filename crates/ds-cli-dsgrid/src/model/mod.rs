@@ -50,6 +50,7 @@
 pub mod create_local;
 pub mod import_external;
 pub mod list;
+pub mod prepare_project;
 pub mod publish_version;
 pub mod set_active;
 
@@ -90,6 +91,10 @@ pub const MODEL_SET_ACTIVE: BridgeOp = BridgeOp {
     operation: "dsgrid.model.set_active",
     arguments: &["model"],
 };
+pub const MODEL_PREPARE_PROJECT: BridgeOp = BridgeOp {
+    operation: "dsgrid.model.prepare_project",
+    arguments: &["downloadMissing"],
+};
 pub const MODEL_PUBLISH: BridgeOp = BridgeOp {
     operation: "dsgrid.model.publish",
     arguments: &[
@@ -111,6 +116,7 @@ pub const BRIDGE_OPS: &[&BridgeOp] = &[
     &MODEL_CREATE,
     &MODEL_IMPORT,
     &MODEL_SET_ACTIVE,
+    &MODEL_PREPARE_PROJECT,
     &MODEL_PUBLISH,
 ];
 
