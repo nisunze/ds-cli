@@ -342,9 +342,12 @@ mod tests {
         let mut unique = names.clone();
         unique.dedup();
         assert_eq!(names, unique, "an operation is declared twice");
+        // Six since `dsgrid.model.prepare-project` joined in 7a92551. BRIDGE_OPS
+        // already carried its operation and the dedup check above passed; only
+        // this count was left behind.
         assert_eq!(
             names.len(),
-            5,
+            6,
             "the family sends exactly one operation per command"
         );
         assert!(

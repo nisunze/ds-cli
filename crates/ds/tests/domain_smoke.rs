@@ -1036,9 +1036,13 @@ fn no_dsgrid_model_command_can_carry_model_content() {
             );
         }
     }
+    // Six since `dsgrid.model.prepare-project` joined the family in 7a92551.
+    // The count is here so a new command cannot join unexamined — it did its
+    // job: the command above was read against the content rule before this
+    // number moved.
     assert_eq!(
-        checked, 5,
-        "the DS Grid model family must be five commands; this check would \
+        checked, 6,
+        "the DS Grid model family must be six commands; this check would \
          otherwise silently stop covering one"
     );
 }
@@ -3954,18 +3958,20 @@ fn a_projection_covers_a_whole_project_where_a_batch_covers_one_transaction() {
         );
     }
 
-    // `list` is a read too, but ds-brain bounds a group listing by the BATCH's
-    // number — "a group listing covers at most 200 transformers" — so widening
-    // it here would only buy the same refusal one round trip later. The bound
-    // stays; what the refusal owes an operator who wanted the whole project is
-    // the command that reads one, not "pass fewer values". It is carried as the
-    // LISTING's own constant so the read cannot inherit a write budget: the two
-    // numbers agree today because ds-brain says so, not because a read spends
-    // transactions.
+    // `list` is a read, and ds-brain stopped charging it a transaction's write
+    // budget: `designTagGroupListingLimit` is 2,000 against the batch's 200.
+    // Carrying it as the LISTING's own constant is what made that a one-line
+    // change here rather than a second stress finding — the two numbers were
+    // equal only because ds-brain said so, never because a read spends
+    // transactions, and when the server separated them this followed.
     let listing = ds_cli_design::group::MAX_GROUP_LISTING;
     assert_eq!(
-        listing, batch,
-        "the listing bound is ds-brain's own; it equals the batch's number today"
+        listing, 2_000,
+        "the listing bound tracks ds-brain's designTagGroupListingLimit"
+    );
+    assert!(
+        listing > batch,
+        "a read must not be bounded by a transaction's write budget"
     );
     let over_listing = (0..(listing + 1))
         .map(|index| format!("t{index}"))
