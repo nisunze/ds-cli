@@ -6,6 +6,10 @@ use serde_json::{json, Map, Value};
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum StyleInstruction {
+    /// Clone the authenticated screen style into its predictable `_print`
+    /// variant. The clone is create-only; later guided edits address the new
+    /// ref through the ordinary Style Center path.
+    PrintVariant,
     Appearance {
         color: Option<String>,
         icon: Option<String>,
@@ -431,6 +435,7 @@ pub fn style_save_payload(
         "project_data",
         "global_tile",
         "ds_grid",
+        "print",
     ]
     .contains(&target)
     {
@@ -452,6 +457,62 @@ pub fn plan_style_edit(
         .filter(|v| v.is_object())
         .ok_or("no backend document for this style ref")?;
     let kind = style["type"].as_str().ok_or("missing style type")?;
+
+    if matches!(instruction, StyleInstruction::PrintVariant) {
+        if reference.ends_with("_print") {
+            return Err("source style is already a print variant".into());
+        }
+        let print_ref = format!("{reference}_print");
+        if print_ref.len() > 500 {
+            return Err("print style ref exceeds 500 characters".into());
+        }
+        // Reuse the existing authored-save normalization so a runtime sprite
+        // id is converted back to its catalog icon name before cloning.
+        let source_payload = style_save_payload(snapshot, reference, style)?;
+        let document = source_payload["style_data"].clone();
+        let mut fields = editor["available_fields"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default();
+        if !fields.contains(&json!("print_paper_size")) {
+            fields.push(json!("print_paper_size"));
+        }
+        let mut field_values = editor["field_values"]
+            .as_object()
+            .cloned()
+            .unwrap_or_default();
+        field_values.insert(
+            "print_paper_size".into(),
+            json!([
+                "print_a0",
+                "print_a1",
+                "print_a2",
+                "print_a3",
+                "print_a4",
+                "print_a5",
+                "print_custom"
+            ]),
+        );
+        let payload = json!({
+            "style_ref": print_ref,
+            "style_target": "print",
+            "layer_name": print_ref,
+            "style_data": document,
+            "available_fields": fields,
+            "field_values": field_values,
+            "create_only": true,
+        });
+        return Ok(StylePlan {
+            document: document.clone(),
+            receipt: json!({
+                "project": snapshot["project_id"], "ref": print_ref,
+                "sourceRef": reference, "type": kind, "paperField": "print_paper_size",
+                "paperValues": ["print_a0", "print_a1", "print_a2", "print_a3", "print_a4", "print_a5", "print_custom"],
+                "document": document, "published": false, "dryRun": true,
+            }),
+            payload,
+        });
+    }
     let mut next = style.clone();
     let mut receipt = json!({"project":snapshot["project_id"],"ref":reference,"type":kind,"published":false,"dryRun":true,"onMap":null});
     match instruction {
@@ -657,6 +718,7 @@ pub fn plan_style_edit(
             receipt["changed"] = json!(["cartography"]);
             receipt["requested"] = json!(change);
         }
+        StyleInstruction::PrintVariant => unreachable!("handled before guided edits"),
     }
     normalize_json_numbers(&mut next);
     let payload = style_save_payload(snapshot, reference, &next)?;
@@ -783,6 +845,35 @@ mod tests {
         assert!(plan.payload.get("project_id").is_none());
         assert_eq!(plan.payload["style_target"], "design");
         assert_eq!(plan.receipt["published"], false);
+    }
+
+    #[test]
+    fn print_variant_is_create_only_and_keeps_catalog_icon_authorship() {
+        let mut state = snapshot(json!({
+            "type":"symbol", "paint":{"icon-color":"#123456"},
+            "layout":{"icon-image":"runtime/icon/school"}
+        }));
+        state["required_images"] = json!([{
+            "id":"runtime/icon/school", "source":"school", "color":"#123456"
+        }]);
+        let plan =
+            plan_style_edit(&state, "master/poles", &StyleInstruction::PrintVariant).unwrap();
+        assert_eq!(plan.receipt["ref"], "master/poles_print");
+        assert_eq!(plan.receipt["paperField"], "print_paper_size");
+        assert_eq!(plan.payload["style_target"], "print");
+        assert_eq!(plan.payload["layer_name"], "master/poles_print");
+        assert_eq!(plan.payload["create_only"], true);
+        assert_eq!(plan.document["layout"]["icon-image"], "school");
+        assert!(plan.payload["available_fields"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("print_paper_size")));
+        assert!(plan_style_edit(
+            &state,
+            "master/poles_print",
+            &StyleInstruction::PrintVariant
+        )
+        .is_err());
     }
     #[test]
     fn guided_appearance_changes_only_size_fallback_and_checks_server_bounds() {

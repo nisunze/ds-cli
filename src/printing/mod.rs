@@ -26,6 +26,11 @@ pub struct Layout {
     pub assets: BTreeMap<String, Asset>,
     #[serde(default)]
     pub styles: BTreeMap<String, PrintStyle>,
+    /// Logical print layer id -> governed Style Center ref. Every value is a
+    /// predictable `_print` variant. The renderer receives resolved documents
+    /// separately, so a template never embeds mutable global style JSON.
+    #[serde(default)]
+    pub style_refs: BTreeMap<String, String>,
 }
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
 #[serde(rename_all = "snake_case")]
@@ -386,6 +391,16 @@ pub fn validate(layout: &Layout) -> Result<(), String> {
             return Err("style field or category is too long".into());
         }
     }
+    if layout.style_refs.len() > 100
+        || layout.style_refs.iter().any(|(layer, reference)| {
+            !identifier(layer)
+                || reference.len() > 500
+                || reference.len() <= "_print".len()
+                || !reference.ends_with("_print")
+        })
+    {
+        return Err("invalid print style references".into());
+    }
     Ok(())
 }
 pub fn default_layout() -> Layout {
@@ -410,6 +425,7 @@ pub fn default_layout() -> Layout {
         page_mm: [420., 297.],
         assets: BTreeMap::new(),
         styles: BTreeMap::new(),
+        style_refs: BTreeMap::new(),
         elements: vec![
             Element {
                 viewport: Some(PrintViewport {
@@ -503,6 +519,18 @@ impl Default for PaperSpec {
 }
 
 impl PaperSpec {
+    pub fn expression_value(self) -> &'static str {
+        match self.size {
+            Paper::A0 => "print_a0",
+            Paper::A1 => "print_a1",
+            Paper::A2 => "print_a2",
+            Paper::A3 => "print_a3",
+            Paper::A4 => "print_a4",
+            Paper::A5 => "print_a5",
+            Paper::Custom { .. } => "print_custom",
+        }
+    }
+
     pub fn page_mm(self) -> Result<[f64; 2], String> {
         let [short, long] = match self.size {
             Paper::A0 => [841., 1189.],
