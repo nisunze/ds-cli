@@ -60,6 +60,68 @@ pub struct PrintViewport {
     pub clip: bool,
 }
 
+/// One reproducible geographic view bound to a layout viewport at render time.
+/// The layout owns physical millimetres; this value owns map pan, zoom and
+/// rotation. It can therefore vary by transformer without cloning the paper.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, JsonSchema, PartialEq)]
+#[serde(tag = "mode", rename_all = "snake_case", deny_unknown_fields)]
+pub enum GeographicView {
+    /// Fit these WGS84 bounds into the physical viewport. `padding_percent`
+    /// expands the bounds before fitting and is applied on all four sides.
+    Fit {
+        extent_wgs84: [f64; 4],
+        #[serde(default)]
+        padding_percent: f64,
+        #[serde(default)]
+        rotation_deg: f64,
+    },
+    /// Pin the exact map camera. Scale denominator is ground millimetres per
+    /// paper millimetre, so 1000.0 means 1:1000.
+    Camera {
+        center_wgs84: [f64; 2],
+        scale_denominator: f64,
+        #[serde(default)]
+        rotation_deg: f64,
+    },
+}
+
+impl GeographicView {
+    pub fn validate(self) -> Result<(), String> {
+        let valid_point =
+            |point: [f64; 2]| bounded(point[0], -180., 180.) && bounded(point[1], -85., 85.);
+        match self {
+            Self::Fit {
+                extent_wgs84,
+                padding_percent,
+                rotation_deg,
+            } => {
+                if !valid_point([extent_wgs84[0], extent_wgs84[1]])
+                    || !valid_point([extent_wgs84[2], extent_wgs84[3]])
+                    || extent_wgs84[0] >= extent_wgs84[2]
+                    || extent_wgs84[1] >= extent_wgs84[3]
+                    || !bounded(padding_percent, 0., 100.)
+                    || !bounded(rotation_deg, -180., 180.)
+                {
+                    return Err("invalid fitted geographic print view".into());
+                }
+            }
+            Self::Camera {
+                center_wgs84,
+                scale_denominator,
+                rotation_deg,
+            } => {
+                if !valid_point(center_wgs84)
+                    || !bounded(scale_denominator, 10., 100_000_000.)
+                    || !bounded(rotation_deg, -180., 180.)
+                {
+                    return Err("invalid geographic print camera".into());
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
 fn yes() -> bool {
     true
 }
@@ -80,6 +142,10 @@ pub struct Element {
     pub color: String,
     #[serde(default = "white")]
     pub fill: String,
+    /// Whole-element opacity. Opaque frames use 1.0 and therefore fully mask
+    /// a map placed below them in the canonical sheet order.
+    #[serde(default = "opaque")]
+    pub opacity: f64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub table: Option<TableBinding>,
     /// Present only for map elements. The element rectangle is the physical
@@ -95,6 +161,9 @@ fn ink() -> String {
 }
 fn white() -> String {
     "#ffffff".into()
+}
+fn opaque() -> f64 {
+    1.
 }
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
 #[serde(deny_unknown_fields)]
@@ -212,6 +281,7 @@ pub fn validate(layout: &Layout) -> Result<(), String> {
         if !bounded(element.font_pt, 4., 144.)
             || !color(&element.color)
             || !color(&element.fill)
+            || !bounded(element.opacity, 0., 1.)
             || element.text.len() > 4000
         {
             return Err("invalid element typography or color".into());
@@ -330,6 +400,7 @@ pub fn default_layout() -> Layout {
         font_pt,
         color: ink(),
         fill: white(),
+        opacity: opaque(),
     };
     Layout {
         schema: SCHEMA.into(),
