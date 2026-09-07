@@ -8,6 +8,7 @@ pub mod cartography;
 pub mod dimension;
 pub mod list;
 pub mod native;
+pub mod print_variant;
 pub mod read;
 
 use std::time::Duration;
@@ -28,6 +29,8 @@ pub static DOMAIN: Domain = Domain {
     commands: &[
         &list::COMMAND,
         &read::COMMAND,
+        &print_variant::plan::COMMAND,
+        &print_variant::create::COMMAND,
         &appearance::plan::COMMAND,
         &appearance::set::COMMAND,
         &dimension::plan::COMMAND,
@@ -53,6 +56,10 @@ pub const STYLE_READ: BridgeOp = BridgeOp {
 pub const APPEARANCE_SET: BridgeOp = BridgeOp {
     operation: "style.appearance.set",
     arguments: &["ref", "color", "icon", "size", "apply"],
+};
+pub const PRINT_VARIANT_CREATE: BridgeOp = BridgeOp {
+    operation: "style.print.create",
+    arguments: &["ref", "apply"],
 };
 pub const DIMENSION_SET: BridgeOp = BridgeOp {
     operation: "style.dimension.set",

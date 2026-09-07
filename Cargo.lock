@@ -1032,6 +1032,7 @@ name = "ds-geo"
 version = "0.1.0"
 dependencies = [
  "ds-geo-ops",
+ "geo",
  "regex",
  "rstar",
  "serde",
@@ -1145,6 +1146,7 @@ dependencies = [
  "dirs",
  "ds-command-kernel",
  "fs2",
+ "rusqlite",
  "serde_json",
  "tempfile",
  "uuid",
