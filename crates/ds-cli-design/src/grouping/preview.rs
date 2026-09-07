@@ -16,18 +16,38 @@ pub static COMMAND: Command = Command {
     args: &[
         crate::grouping::PURPOSE_ARG,
         crate::group::PROJECTION_TRANSFORMERS_ARG,
-        crate::group::PROJECTION_DEFINITION_IDS_ARG,
+        crate::grouping::DEFINITION_IDS_ARG,
         DESCRIPTOR_ARG,
     ],
     output: "The server plan including tuple groups, source suggestions and plan_digest.",
     examples: &[],
-    refusals: &[crate::NOT_PAIRED, crate::REFUSED],
+    refusals: &[
+        crate::NOT_PAIRED,
+        crate::REFUSED,
+        crate::INVALID_VALUE_LIST,
+        crate::TOO_MANY,
+    ],
     reference: Some("docs/reference/design.md"),
     availability: crate::paired_availability,
 };
 pub fn run(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
+    // Every caller-controlled list is bounded before pairing: an empty or
+    // over-long selection is the caller's own answer, and discovering the
+    // application first would report it as a pairing state instead.
+    let arguments = json!({
+        "purpose": crate::grouping::purpose(inputs)?,
+        "transformers": crate::group::projection_transformers(inputs)?,
+        "definition-ids": crate::grouping::definition_ids(inputs)?,
+        "bindings": inputs.value("bindings").unwrap_or("[]"),
+    });
     let descriptor = crate::paired(inputs.value("desktop-descriptor"))?;
-    crate::invoke(&descriptor,&CONSUMER_GROUPING_PREVIEW,json!({"purpose":crate::grouping::purpose(inputs)?,"transformers":crate::group::projection_transformers(inputs)?,"definition-ids":crate::group::projection_definition_ids(inputs)?,"bindings":inputs.value("bindings").unwrap_or("[]")}),crate::READ_TIMEOUT).map_err(crate::classify_design_failure)
+    crate::invoke(
+        &descriptor,
+        &CONSUMER_GROUPING_PREVIEW,
+        arguments,
+        crate::READ_TIMEOUT,
+    )
+    .map_err(crate::classify_design_failure)
 }
 pub fn render(data: &Value) -> String {
     format!(

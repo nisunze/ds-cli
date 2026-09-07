@@ -62,8 +62,8 @@ pub static READ_COMMAND: Command = Command {
     ],
     output: "The canonical form schema with one ordered field page, total field count, next offset, and completeness flag.",
     examples: &[Example {
-        command: "ds survey form read --slug lv_poles_survey --field-limit 25 --output json",
-        note: "Inspect the master schema before changing a project binding or template.",
+        command: "ds survey form read --slug <form-slug> --field-limit 25 --output json",
+        note: "Inspect the master schema before changing a project binding or template; `ds survey forms list` names the slug.",
         runnable: false,
     }],
     refusals: COMMON_REFUSALS,
@@ -151,8 +151,8 @@ pub static UPDATE_COMMAND: Command = Command {
     ],
     output: "The updated canonical form and its advanced version.",
     examples: &[Example {
-        command: "ds survey form update --slug valve_inspection --expect-version 4 --schema ./valve-patch.json --yes --output json",
-        note: "A hypothetical modification; read version 4 immediately before applying it.",
+        command: "ds survey form update --slug <form-slug> --expect-version 4 --schema ./valve-patch.json --yes --output json",
+        note: "A hypothetical modification; read the slug and its exact version with `ds survey forms list` and `ds survey form read` immediately before applying it.",
         runnable: false,
     }],
     refusals: COMMON_REFUSALS,
@@ -196,8 +196,8 @@ pub static LIFECYCLE_COMMAND: Command = Command {
     ],
     output: "The lifecycle action and the backend's canonical resulting form or mutation receipt.",
     examples: &[Example {
-        command: "ds survey form lifecycle --action duplicate --slug pole_survey --new-display-name 'Pole Survey Trial' --yes --output json",
-        note: "Duplicate before experimenting with a complex production form.",
+        command: "ds survey form lifecycle --action duplicate --slug <form-slug> --new-display-name '<display-name>' --yes --output json",
+        note: "Duplicate before experimenting with a complex production form; `ds survey forms list` names the slug.",
         runnable: false,
     }],
     refusals: COMMON_REFUSALS,

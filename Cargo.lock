@@ -856,6 +856,7 @@ dependencies = [
  "ds-cli-auth",
  "ds-cli-contract",
  "ds-cli-exec",
+ "ds-command-kernel",
  "serde_json",
 ]
 

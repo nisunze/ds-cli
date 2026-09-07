@@ -199,6 +199,33 @@ fn error_envelope_is_stable() {
 }
 
 #[test]
+fn a_declared_refusal_leaves_with_the_remedy_its_help_promises() {
+    // `error_envelope_is_stable` above asserts that a refusal without a remedy
+    // is a dead end, on a command that happens to build one at the point of
+    // failure. This asserts the harder half: `ds map zoom` constructs
+    // `zoom_target` bare, and the way out lives only in that command's own
+    // contract. Help and envelope are two readings of one promise, so the text
+    // must be identical — not merely present.
+    let run = ds(&["map", "zoom", "--output", "json"]);
+    let error = &run.envelope["error"];
+    assert_eq!(error["code"], "zoom_target", "{}{}", run.stdout, run.stderr);
+
+    let help = ds(&["map", "zoom", "--help", "--output", "json"]);
+    let declared = help.envelope["data"]["refusals"]
+        .as_array()
+        .expect("the descriptor lists refusals")
+        .iter()
+        .find(|refusal| refusal["code"] == "zoom_target")
+        .expect("`ds map zoom` declares `zoom_target`")["remedy"]
+        .clone();
+    assert!(declared.is_string(), "the declaration has no remedy");
+    assert_eq!(
+        error["remedy"], declared,
+        "the envelope and `--help` disagree about the way out of `zoom_target`"
+    );
+}
+
+#[test]
 fn machine_output_is_stdout_and_diagnostics_are_stderr() {
     let model = common::fixture();
     let run = ds(&["dsgrid", "inspect", "--model", &model, "--output", "json"]);

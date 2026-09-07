@@ -147,11 +147,16 @@ refusal!(
     "the transformer or bound identity input is invalid",
     "pass one exact bounded transformer name"
 );
+// This code covers more than one rejection: the Firebase refresh that runs
+// before the call can also be rejected, and then the credential is *not*
+// verified. The declaration therefore has to hold for both. The route-only
+// case is answered at runtime with `ds_cli_auth::TRANSFORMER_CONTEXT_ROUTE_REMEDY`,
+// which is more specific than this and wins where it applies.
 refusal!(
     AUTH_REJECTED,
     "auth_rejected",
-    "the fixed gateway rejects the verified request",
-    "verify the account and its project access"
+    "the authentication service, or the transformer-context route, rejected this request",
+    "confirm this lane still authenticates with `ds auth status`; if it does, the transformer-context route rejected a credential this call already verified, and no local change fixes that"
 );
 refusal!(
     AUTH_REVOKED,

@@ -38,7 +38,7 @@ const REFUSALS: &[Refusal] = &[
     Refusal {
         code: "survey_entries_scope_not_found",
         when: "the selected project or governed form is unavailable to the verified user",
-        remedy: "verify the selected project and pass one exact available form slug",
+        remedy: "verify the selected project and pass one exact slug from `ds survey forms list`",
     },
     Refusal {
         code: "survey_entries_too_expensive",
@@ -191,12 +191,12 @@ pub static COMMAND: Command = Command {
     output: "Lane, selected-project identity, exact form and bounding box, at most 500 typed geometry rows, truncation/completeness, a selection digest, and explicit mutable-mirror consistency. A truncated result requires a narrower --bbox; no cursor or mutable apply is provided.",
     examples: &[
         Example {
-            command: "ds survey entries select --form lv_poles_survey --bbox '29.70,-2.05,29.80,-1.95' --output json",
-            note: "Returns at most 100 spatially intersecting rows from the selected project's governed form.",
+            command: "ds survey entries select --form <form-slug> --bbox '29.70,-2.05,29.80,-1.95' --output json",
+            note: "Returns at most 100 spatially intersecting rows from the selected project's governed form; read the exact slug from `ds survey forms list`.",
             runnable: false,
         },
         Example {
-            command: "ds survey entries select --form customers --bbox '30.00,-1.99,30.02,-1.97' --limit 500 --output json",
+            command: "ds survey entries select --form <form-slug> --bbox '30.00,-1.99,30.02,-1.97' --limit 500 --output json",
             note: "Raises the row bound; if truncated, narrow the bounding box instead of expecting pagination.",
             runnable: false,
         },
@@ -317,12 +317,12 @@ mod tests {
     fn exact_bbox_and_default_bound_parse_before_auth() {
         let parsed = super::parse(&inputs(&[
             "--form",
-            "lv_poles_survey",
+            "poles",
             "--bbox",
             "29.7,-2.05,29.8,-1.95",
         ]))
         .unwrap();
-        assert_eq!(parsed.form(), "lv_poles_survey");
+        assert_eq!(parsed.form(), "poles");
         assert_eq!(parsed.bbox(), [29.7, -2.05, 29.8, -1.95]);
         assert_eq!(
             parsed.limit(),

@@ -33,7 +33,7 @@ use serde_json::{Value, json};
 pub const TRANSFORMER_ARG: Arg = Arg::repeated(
     "transformer",
     "<name>",
-    "Explicit transformer scope; repeat per name. Omit for every active saved transformer.",
+    "Explicit scope; repeat per name. Omit for every active saved transformer.",
 );
 pub const LANE_ARG: Arg = Arg::value(
     "lane",
@@ -134,14 +134,14 @@ refusal!(
 refusal!(
     AUTH_INPUT,
     "auth_input_invalid",
-    "the report service refused the bounded request: an unknown transformer, a blocked collision policy, or a malformed scope",
-    "run `ds report project scope` and correct the named transformers"
+    "the report service refused the request: an unknown or excluded transformer, no applied `report_archive` grouping, or a malformed scope or layout",
+    "run `ds report project scope`, and `ds design consumer-grouping read --purpose report_archive`"
 );
 refusal!(
     AUTH_REJECTED,
     "auth_rejected",
     "the fixed gateway rejects the verified request, the user lacks design.compounded_report, or the project is archived or expired",
-    "verify the account, its project access and capabilities, and the project lifecycle state"
+    "verify the account, its project access and capabilities, and the project lifecycle"
 );
 refusal!(
     AUTH_REVOKED,
@@ -158,13 +158,13 @@ refusal!(
 refusal!(
     AUTH_TRANSIENT,
     "auth_transient",
-    "the governed report service is temporarily unavailable, or transformer freshness could not be verified",
+    "the report service is temporarily unavailable, or transformer freshness could not be verified",
     "retry without changing local state; no artifact was regenerated"
 );
 refusal!(
     AUTH_UNREADABLE,
     "auth_response_unreadable",
-    "the response violates its closed bounded contract, including an archive advertised for zero individual artifacts",
+    "the response violates its closed bounded contract, e.g. an archive advertised for zero individual artifacts",
     "retry once, then update ds if it persists"
 );
 refusal!(
@@ -177,12 +177,18 @@ refusal!(
     INVALID_SCOPE,
     "invalid_transformer_scope",
     "a --transformer name is blank, untrimmed, or over 200 characters, or more than 500 were named",
-    "pass bounded transformer names, or omit them for every active transformer; canonical aliases are de-duplicated"
+    "pass bounded transformer names, or omit them for every active transformer"
+);
+refusal!(
+    RESERVED_IDENTITY,
+    "reserved_transformer_identity",
+    "a --transformer name is a reserved computed identity (collisions, combined_transformer and its aliases): report output, never a participant",
+    "drop the reserved name; `ds report project scope` lists the real participants"
 );
 refusal!(
     CONFIRMATION_REQUIRED,
     "confirmation_required",
-    "--yes was not given for a command that publishes a durable report archive",
+    "--yes was not given for a command that publishes a durable archive",
     "run `ds report project scope` first, then re-run with --yes"
 );
 
@@ -208,6 +214,7 @@ pub const NATIVE_READ_REFUSALS: &[Refusal] = &[
     AUTH_UNREADABLE,
     NOT_FOUND,
     INVALID_SCOPE,
+    RESERVED_IDENTITY,
 ];
 
 pub const NATIVE_WRITE_REFUSALS: &[Refusal] = &[
@@ -232,6 +239,7 @@ pub const NATIVE_WRITE_REFUSALS: &[Refusal] = &[
     AUTH_UNREADABLE,
     NOT_FOUND,
     INVALID_SCOPE,
+    RESERVED_IDENTITY,
     CONFIRMATION_REQUIRED,
 ];
 
@@ -248,10 +256,34 @@ pub fn transformer_set(inputs: &ds_cli_contract::Inputs) -> Result<TransformerSe
         )
         .remedy(INVALID_SCOPE.remedy));
     }
-    TransformerSet::new(names.iter().cloned()).map_err(|error| {
+    let requested = TransformerSet::new(names.iter().cloned()).map_err(|error| {
         Failure::invalid("invalid_transformer_scope", error.to_string())
             .remedy(INVALID_SCOPE.remedy)
-    })
+    })?;
+    // The reserved identities are what a compounded run produces, not who it
+    // runs over. The offline lane already refuses them, so the same kernel
+    // predicate answers here and the plan cannot admit a participant the
+    // publish would have to invent. Both the name as given and its canonical
+    // form are checked: canonicalization folds several spellings onto one key.
+    let mut reserved: Vec<String> = names
+        .iter()
+        .chain(requested.names())
+        .filter(|name| ds_command_kernel::report::is_reserved_report_identity(name))
+        .cloned()
+        .collect();
+    reserved.sort();
+    reserved.dedup();
+    if !reserved.is_empty() {
+        return Err(Failure::invalid(
+            "reserved_transformer_identity",
+            format!(
+                "reserved computed identity in scope: {}",
+                reserved.join(", ")
+            ),
+        )
+        .remedy(RESERVED_IDENTITY.remedy));
+    }
+    Ok(requested)
 }
 
 pub fn project_receipt<T>(headless: &HeadlessProjectReport<T>) -> Value {
@@ -299,4 +331,59 @@ pub fn scope_json(requested: &TransformerSet, inventory: &TransformerInventory) 
         "project_level": project_level,
         "compounded_ready": participating.len() >= 2,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The refusal every `report project` help screen carries has to name
+    /// causes an operator can reach through `ds`. A blocked collision policy
+    /// is not one: no command here models a collision — it is a GUI Analysis
+    /// concept — and `ds report project scope` ran green before every failure
+    /// of the stress session, so it cannot be the whole remedy either.
+    #[test]
+    fn auth_input_names_reachable_causes_and_both_doors() {
+        assert!(
+            !AUTH_INPUT.when.contains("collision"),
+            "phantom cause is back: {}",
+            AUTH_INPUT.when
+        );
+        assert!(
+            AUTH_INPUT.when.contains("transformer"),
+            "{}",
+            AUTH_INPUT.when
+        );
+        assert!(
+            AUTH_INPUT.when.contains("`report_archive` grouping"),
+            "{}",
+            AUTH_INPUT.when
+        );
+        assert!(
+            AUTH_INPUT.remedy.contains("ds report project scope"),
+            "{}",
+            AUTH_INPUT.remedy
+        );
+        assert!(
+            AUTH_INPUT
+                .remedy
+                .contains("ds design consumer-grouping read --purpose report_archive"),
+            "the grouping door is missing: {}",
+            AUTH_INPUT.remedy
+        );
+    }
+
+    /// Both lanes carry it, so `scope`, `compounded` and `archives` all state
+    /// the same prerequisite.
+    #[test]
+    fn auth_input_reaches_every_report_project_help_screen() {
+        for refusals in [NATIVE_READ_REFUSALS, NATIVE_WRITE_REFUSALS] {
+            assert!(
+                refusals
+                    .iter()
+                    .any(|refusal| refusal.code == AUTH_INPUT.code),
+                "auth_input_invalid left a report project lane"
+            );
+        }
+    }
 }

@@ -17,8 +17,11 @@ Start here. Restores the native user and reads only its audience-fenced \
 selected project's transformer lifecycle inventory. Without --transformer the \
 scope is every active saved transformer, which is exactly what `compounded` \
 resolves; with names it checks each one, so a retired, deleted or missing \
-name is reported before any artifact is produced. Nothing is generated. No \
-project, Desktop descriptor, URL, body or action override is accepted.",
+name is reported before any artifact is produced. A reserved computed \
+identity — `collisions`, `combined_transformer` and its aliases — is what a \
+report produces, never a participant, and is refused outright. Nothing is \
+generated. No project, Desktop descriptor, URL, body or action override is \
+accepted.",
     chapter: Chapter::Reports,
     effect: Effect::LocalAuthState,
     authority: Authority::HeadlessProject,

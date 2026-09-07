@@ -86,9 +86,9 @@ use serde_json::{Map, Value, json};
 // learned `--desktop-descriptor` and the pairing refusals from `ds map` has
 // learned them here too.
 pub use ds_cli_desktop::ops::{
-    AMBIGUOUS, BridgeOp, DESCRIPTOR_ARG, INVALID_NUMBER, NOT_PAIRED, PAIRING_REJECTED, REFUSED,
-    SIGNED_OUT, UNREACHABLE, UNREADABLE, UNSUPPORTED, classify_signed_out, integer, invoke, paired,
-    paired_availability, plural,
+    AMBIGUOUS, BACKEND_UNREACHABLE, BridgeOp, DESCRIPTOR_ARG, INVALID_NUMBER, NOT_PAIRED,
+    PAIRING_REJECTED, REFUSED, SIGNED_OUT, UNREACHABLE, UNREADABLE, UNSUPPORTED,
+    classify_signed_out, integer, invoke, paired, paired_availability, plural,
 };
 
 pub static DOMAIN: Domain = Domain {
@@ -461,6 +461,29 @@ pub const DESIGN_REFUSED: Refusal = Refusal {
     when: "no such record, or ds-brain declined the request",
     remedy: "check the id with the matching `list` command; read detail.detail for its message",
 };
+/// What `desktop_refused` used to hide. ds-brain answers a rejected bound, an
+/// absent record and a fault of its own with three different HTTP statuses,
+/// and all three arrived as one code of class `failed` — which tells a caller
+/// to retry the first two, though the identical call can never succeed.
+///
+/// The class is the point of separating them: the first two are
+/// `invalid_input` and want a different request, the third is `unavailable`
+/// and wants the same one later.
+pub const INVALID_DESIGN_REQUEST: Refusal = Refusal {
+    code: "design_request_invalid",
+    when: "ds-brain refused the request's own shape, or a bound it exceeded",
+    remedy: "the message names the bound or the field; change the request rather than repeating it",
+};
+pub const DESIGN_RECORD_NOT_FOUND: Refusal = Refusal {
+    code: "design_record_not_found",
+    when: "the named design record — a definition, selection, attachment or thread — does not exist",
+    remedy: "read the available ids with the matching `list` command",
+};
+pub const DESIGN_SERVICE_FAILED: Refusal = Refusal {
+    code: "design_service_failed",
+    when: "the design service faulted; the request itself is sound",
+    remedy: "retry unchanged once; changing the request cannot help a service fault",
+};
 pub const NOT_PERMITTED: Refusal = Refusal {
     code: "design_not_permitted",
     when: "the signed-in user may read this project's design records but not change them",
@@ -510,6 +533,14 @@ pub const TAG_VALUE_CASE_MISMATCH: Refusal = Refusal {
     when: "a choice value differs from one stored vocabulary token only by case",
     remedy: "read the vocabulary and repeat its authored spelling exactly",
 };
+/// The read path's half of the same rule: a predicate value the project never
+/// authored is refused rather than answered with an empty — or, for
+/// `not_equals`, a complete — row set the caller would read as a fact.
+pub const TAG_VALUE_NOT_IN_VOCABULARY: Refusal = Refusal {
+    code: "tag_value_not_in_vocabulary",
+    when: "a choice predicate names a value the definition's stored vocabulary does not contain",
+    remedy: "read the vocabulary with `ds design tag list` and pass one of its values",
+};
 pub const TOO_MANY_TAG_FILTERS: Refusal = Refusal {
     code: "too_many_tag_filters",
     when: "a project tag query carries more than 20 predicates",
@@ -544,24 +575,51 @@ pub const TAG_VALUE_CASE_MISMATCH_MARKERS: &[&str] =
 /// What the application says when a file exceeds its bounded path reader.
 pub const TOO_LARGE_MARKERS: &[&str] = &["path reader is bounded"];
 
-/// Give this domain's three named conditions their own codes.
+/// The identities still open to refinement by [`classify_design_failure`].
 ///
-/// All three arrive as ordinary operation refusals — the application answered,
-/// and what it answered was "you may not", "you were too late", or "this
-/// project is closed". Letting them through as `desktop_refused` would send a
-/// caller to read `detail` for three conditions that have a name, a remedy and
-/// a *different next step*: one needs an admin, one needs a re-read and retry,
-/// and one is not going to succeed today at all. Telling them apart is the
-/// whole reason an unattended caller can act on a refusal.
+/// `desktop_refused` is the untyped one. The rest are what the paired
+/// application now mints from an HTTP status alone, and a status is a starting
+/// point rather than an answer: an archived project and a missing capability
+/// are the same 403, and a case-mismatched tag value and an exceeded bound are
+/// the same 400. So the branches below refine those exactly as they have
+/// always refined `desktop_refused` — the narrower code, its remedy and its
+/// next step are what an unattended caller acts on.
+///
+/// Nothing else is touched. An `unavailable` identity in particular is never
+/// refined into an authority answer: the service did not speak, so its message
+/// carries no condition to read.
+const REFINABLE_CODES: &[&str] = &[
+    "desktop_refused",
+    "design_request_invalid",
+    "design_record_not_found",
+    "design_not_permitted",
+    "design_version_conflict",
+];
+
+/// Give this domain's named conditions their own codes.
+///
+/// They arrive as ordinary operation refusals — the application answered, and
+/// what it answered was "you may not", "you were too late", or "this project is
+/// closed". Letting them through as the coarse code they arrive with would send
+/// a caller to read a message for conditions that have a name, a remedy and a
+/// *different next step*: one needs an admin, one needs a re-read and retry, and
+/// one is not going to succeed today at all. Telling them apart is the whole
+/// reason an unattended caller can act on a refusal.
 pub fn classify_design_failure(failure: Failure) -> Failure {
     let failure = classify_signed_out(failure);
-    if failure.code() != "desktop_refused" {
+    if !REFINABLE_CODES.contains(&failure.code()) {
         return failure;
     }
+    // `desktop_refused` carries the application's own message in
+    // `detail.detail`; a structured refusal carries `http_status` there and
+    // that same message in `message`. Read whichever is present, because an
+    // unmatched branch below is indistinguishable from "no condition applies"
+    // — and reading an empty string would silently retire every named code
+    // this domain declares.
     let detail = failure
         .detail_value()
         .and_then(|detail| detail["detail"].as_str())
-        .unwrap_or_default()
+        .unwrap_or_else(|| failure.message())
         .to_ascii_lowercase();
 
     // Size is checked FIRST and on its own: it is a fact about the file, not
@@ -695,5 +753,59 @@ mod tag_value_case_tests {
             .detail(json!({ "detail": "the transformer does not exist" }));
 
         assert_eq!(classify_design_failure(failure).code(), "desktop_refused");
+    }
+
+    /// The paired application now types a refused envelope from its HTTP
+    /// status before the bridge sees it, so this domain's conditions no longer
+    /// arrive as `desktop_refused` carrying their prose in `detail.detail` —
+    /// they arrive with a coarse code and the same prose in `message`. They are
+    /// still the same conditions, and their remedies are not interchangeable:
+    /// no admin can grant a capability on an archived project.
+    #[test]
+    fn a_status_typed_refusal_is_still_refined_to_its_own_condition() {
+        let archived = Failure::unauthorized(
+            "design_not_permitted",
+            "this project is archived and accepts no design changes (403)",
+        )
+        .detail(json!({ "http_status": 422 }));
+        let archived = classify_design_failure(archived);
+        assert_eq!(archived.code(), "design_project_read_only");
+        assert_eq!(archived.remedy_text(), Some(READ_ONLY.remedy));
+
+        let case_only = Failure::invalid(
+            "design_request_invalid",
+            "city allows \"Kigali\", not \"kigali\"; use the authored spelling exactly (400)",
+        )
+        .detail(json!({ "http_status": 422 }));
+        let case_only = classify_design_failure(case_only);
+        assert_eq!(case_only.code(), "tag_value_case_mismatch");
+        assert_eq!(
+            case_only.remedy_text(),
+            Some(TAG_VALUE_CASE_MISMATCH.remedy)
+        );
+
+        // An API that never answered says nothing about authority, so it is
+        // never refined into one — even when its message happens to carry a
+        // word one of the branches reads.
+        let unreachable = Failure::unavailable(
+            "backend_unreachable",
+            "the Data Solutions API did not answer; the project may be archived",
+        );
+        assert_eq!(
+            classify_design_failure(unreachable).code(),
+            "backend_unreachable"
+        );
+
+        // A status-typed refusal with no condition in it keeps the identity the
+        // application gave it, rather than being renamed for want of a match.
+        let plain = Failure::invalid(
+            "design_request_invalid",
+            "tag query matched more than limit 200; raise limit explicitly (400)",
+        )
+        .detail(json!({ "http_status": 422 }));
+        assert_eq!(
+            classify_design_failure(plain).code(),
+            "design_request_invalid"
+        );
     }
 }

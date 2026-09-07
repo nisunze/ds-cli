@@ -240,7 +240,20 @@ pub const SIGNED_OUT: Refusal = Refusal {
 pub const OFFLINE: Refusal = Refusal {
     code: "offline_mode_enabled",
     when: "offline mode is on and the operation needs the network",
-    remedy: "turn offline mode off, or run a command that works from prepared local data",
+    remedy: "run `ds desktop offline set --enabled false`, or run a command that works from prepared local data",
+};
+/// The API itself did not answer, which reaches every bridge operation that
+/// needs the network for the same reason [`OFFLINE`] does — so it is declared
+/// once here too.
+///
+/// It is `unavailable`, not `failed`: nothing about the request is wrong and
+/// the identical call succeeds once the service answers. The re-read is not
+/// caution for its own sake — a request that never answered may still have
+/// been applied, so repeating a write blind is how a duplicate is made.
+pub const BACKEND_UNREACHABLE: Refusal = Refusal {
+    code: "backend_unreachable",
+    when: "the Data Solutions API did not answer",
+    remedy: "restore the connection and retry; re-read first, because an unanswered write may already have been applied",
 };
 
 /// What the application says when a project operation is asked for without a
@@ -570,6 +583,31 @@ mod tests {
                 .code(),
             "auth_context_mismatch",
             "DesktopUser never means a different user may borrow the session"
+        );
+    }
+
+    #[test]
+    fn the_offline_remedy_names_the_command_that_turns_the_switch_off() {
+        // A remedy is only actionable if the command it names exists, so the
+        // expected text is built from the registered command rather than
+        // retyped: a rename of the path or the flag fails here instead of
+        // reaching a caller as advice that cannot be run.
+        let path = crate::connectivity::SET.path.join(" ");
+        let flag = crate::connectivity::SET
+            .args
+            .iter()
+            .find(|arg| arg.name == "enabled")
+            .expect("the offline switch is set through --enabled");
+        assert!(
+            OFFLINE
+                .remedy
+                .contains(&format!("`ds {path} --{} false`", flag.name)),
+            "OFFLINE.remedy must name the real command, not describe it: {}",
+            OFFLINE.remedy
+        );
+        assert!(
+            flag.choices.contains(&"false"),
+            "the remedy tells a caller to pass false; the command must accept it"
         );
     }
 

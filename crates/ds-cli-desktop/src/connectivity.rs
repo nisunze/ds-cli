@@ -1,4 +1,5 @@
-//! Same device-local offline command as Settings. No alternate policy in CLI.
+//! Same device-local offline command as Settings. No alternate policy in CLI,
+//! and no reach beyond the application: headless `ds` keeps its own network.
 use crate::ops::{self, BridgeOp, DESCRIPTOR_ARG};
 use ds_cli_contract::{
     Context, Failure, Inputs,
@@ -27,13 +28,20 @@ const fn command(
         path,
         contract: 1,
         summary,
-        purpose: "Use the paired application's shared command-kernel offline test policy. Enabling requires app-level all governance. Disabling remains available to recover connectivity. Local data is retained and ordinary remote authorization still applies after reconnecting.",
+        purpose: "\
+Use the paired DS GridDesign application's offline test switch. It isolates that \
+application's own network IO only: while it is on, headless `ds` commands that reach \
+the DS API (auth, report, survey, tile) still use the network, so the switch does not \
+simulate a disconnected product. Enabling requires app-level all governance. Disabling \
+remains available to recover connectivity. Local data is retained and ordinary remote \
+authorization still applies after reconnecting.",
         chapter: Chapter::Project,
         effect,
         authority: Authority::DesktopUser,
         execution: Execution::Sync,
         args,
-        output: "enabled (explicit offline mode), online (effective connectivity).",
+        output: "enabled (the application's explicit offline switch), online (that \
+application's effective connectivity, never this CLI process's).",
         examples: &[],
         refusals: &[
             ops::NOT_PAIRED,
@@ -64,7 +72,7 @@ pub static STATUS: Command = command(
 pub static SET: Command = command(
     "desktop.offline.set",
     &["desktop", "offline", "set"],
-    "Enable or disable the governed offline test switch.",
+    "Enable or disable the paired application's offline test switch.",
     Effect::LocalFileWrite,
     &[
         Arg::value("enabled", "<true|false>", "Enable isolation or reconnect.")
@@ -98,4 +106,35 @@ pub fn set(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
 }
 pub fn render(data: &Value) -> String {
     serde_json::to_string_pretty(data).unwrap_or_default()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn contract_scopes_the_switch_to_the_application_not_the_whole_product() {
+        // The switch was measured isolating the application while every
+        // headless command still reached the DS API. "shared command-kernel"
+        // read as a policy this process honours; the kernel only adjudicates
+        // who may enable it. The extent has to be in the contract text, or the
+        // next caller validates offline behaviour against a false result.
+        for command in [&STATUS, &SET] {
+            assert!(
+                !command.purpose.contains("shared"),
+                "the purpose must not claim a policy shared with this process"
+            );
+            assert!(command.purpose.contains("headless"));
+            assert!(command.purpose.contains("still use the network"));
+            assert!(
+                command
+                    .purpose
+                    .contains("does not simulate a disconnected product")
+            );
+            assert!(command.summary.contains("paired application's"));
+            assert!(command.summary.len() <= 70, "index summaries stay under 70");
+        }
+        // `online` is the application's connectivity, not the caller's.
+        assert!(STATUS.output.contains("never this CLI process's"));
+    }
 }
