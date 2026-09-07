@@ -96,6 +96,23 @@ ds dsgrid describe --kind operations --id project_profile
 ds dsgrid run --model model.dsgrid --operation project_profile --params profile.json --output json
 ```
 
+Optimum structure spotting uses the same mapless path. Discover the exact
+request first, then provide only authored ids and bounds from that model
+revision:
+
+```text
+ds dsgrid describe --kind operations --id plan_optimum_spotting --output json
+ds dsgrid run --model model.dsgrid --operation plan_optimum_spotting --params spotting.json --output json
+```
+
+A successful proposal includes the objective, structures, spans, per-span and
+per-structure engineering evidence, bounded rejected alternatives,
+infeasibility when applicable, and atomic canonical commands. A planning
+refusal keeps a stable reason at `error.detail.refusal.code` with the exact
+missing or rejected facts under `error.detail.refusal.detail`; callers do not
+need to parse the human-readable `error.detail.engine` sentence. Rendering the
+proposal on a map is optional and contributes no engineering authority.
+
 Every response identifies the package bytes and authored revision that were
 read, reports `staged: false` and `persisted: false`, and recursively bounds
 large arrays with exact `more.truncated` receipts. `ds dsgrid validate` always

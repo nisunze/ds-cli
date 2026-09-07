@@ -17,9 +17,9 @@ use ds_grid_engine::TaggedAlignmentLengthsRequest;
 use ds_grid_engine::descriptor::operation_descriptors;
 use ds_grid_engine::{
     EffectClass, GridSession, NetworkCalculationRequest, OperationDescriptor, ProfileAtlasOptions,
-    ResultStore, SectionDemandsRequest, SpottingPlanRequest, StructureAnalysisRequest,
-    StructureUsageScreeningRequest, TerrainAnomalyOptions, analyze_network_topology,
-    calculate_stringing_and_structures, structure_usage_screening,
+    ResultStore, SectionDemandsRequest, SpottingPlanError, SpottingPlanRequest,
+    StructureAnalysisRequest, StructureUsageScreeningRequest, TerrainAnomalyOptions,
+    analyze_network_topology, calculate_stringing_and_structures, structure_usage_screening,
 };
 use ds_grid_model::{AlignmentId, StructureTypeId, TableKind, TensionSectionId};
 use serde::Deserialize;
@@ -137,7 +137,7 @@ descriptor identity, a typed bounded result, staged:false and persisted:false. \
         Refusal {
             code: "operation_failed",
             when: "the native engine refuses the typed request against this authored revision",
-            remedy: "read detail.engine and use ids from a projection of this exact package revision",
+            remedy: "read detail.refusal when present, then use ids and authored values from this exact package revision",
         },
         Refusal {
             code: "invalid_limit",
@@ -477,7 +477,7 @@ fn dispatch(operation_id: &str, params: &Value, session: &GridSession) -> Result
                 operation_id,
                 session
                     .plan_optimum_spotting(&request)
-                    .map_err(|error| engine_error(operation_id, error))?,
+                    .map_err(|error| spotting_error(operation_id, error))?,
             )
         }
         // The descriptor admission check makes this unreachable. Keep the
@@ -508,6 +508,29 @@ fn engine_error(operation_id: &str, error: impl std::fmt::Display) -> Failure {
     )
     .remedy("use ids and authored values from this exact package revision")
     .detail(json!({ "engine": error.to_string() }))
+}
+
+/// Preserve the planner's stable refusal variant and exact fields for a
+/// headless caller. The human-readable engine message remains alongside it,
+/// but automation never has to parse that prose to decide what authoring or
+/// search input is missing.
+fn spotting_error(operation_id: &str, error: SpottingPlanError) -> Failure {
+    let message = error.to_string();
+    let refusal = serde_json::to_value(&error).unwrap_or_else(|serialization_error| {
+        json!({
+            "code": "serialization_failed",
+            "detail": serialization_error.to_string(),
+        })
+    });
+    Failure::failed(
+        "operation_failed",
+        format!("the native engine refused `{operation_id}`"),
+    )
+    .remedy("read detail.refusal and author or adjust only the facts it identifies")
+    .detail(json!({
+        "engine": message,
+        "refusal": refusal,
+    }))
 }
 
 fn bound_result(mut result: Value, limit: usize) -> (Value, Vec<Value>) {
@@ -596,5 +619,43 @@ mod tests {
             .expect("rows truncation is explicit");
         assert_eq!(rows["total"], 3);
         assert_eq!(rows["withheld"], 1);
+    }
+
+    #[test]
+    fn spotting_refusals_keep_a_machine_readable_reason() {
+        let failure = spotting_error(
+            "plan_optimum_spotting",
+            SpottingPlanError::ClearanceAuthorityMissing {
+                section: "section-17".to_string(),
+            },
+        );
+        let detail = failure.detail_value().expect("structured detail");
+        assert_eq!(detail["refusal"]["code"], "clearance_authority_missing");
+        assert_eq!(detail["refusal"]["detail"]["section"], "section-17");
+        assert_eq!(
+            detail["engine"],
+            "section section-17 has no authored minimum-clearance rule; spotting has no clearance authority and will not assume one"
+        );
+
+        let failure = spotting_error(
+            "plan_optimum_spotting",
+            SpottingPlanError::NoEligibleCandidate {
+                catalog: "catalog-4".to_string(),
+                rejected: vec![ds_grid_engine::SpottingCandidateRejection {
+                    catalog_sequence: 3,
+                    structure_resource_id: ds_grid_model::ResourceId::new("resource-3")
+                        .expect("test id is valid"),
+                    ineligibility:
+                        ds_grid_engine::SpottingCandidateIneligibility::NotFlaggedForAutomaticSpotting,
+                }],
+            },
+        );
+        let detail = failure.detail_value().expect("structured detail");
+        assert_eq!(detail["refusal"]["code"], "no_eligible_candidate");
+        assert_eq!(detail["refusal"]["detail"]["catalog"], "catalog-4");
+        assert_eq!(
+            detail["refusal"]["detail"]["rejected"][0]["reason"],
+            "not_flagged_for_automatic_spotting"
+        );
     }
 }
