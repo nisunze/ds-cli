@@ -47,6 +47,14 @@ CPU budget and job count. `--workers` lowers memory/CPU pressure. These are
 input/result bounds, not an operating-system RSS limit. Complete job outputs
 are persisted atomically, capped at 256 MiB each, and never inlined in status.
 
+The plan's `concurrency` is an upper bound supplied to the execution host. On
+Desktop, the native host applies a second, mandatory resident-memory admission
+gate before a transformer starts; queued transformers do not own a WASM heap.
+The host may therefore execute fewer jobs at once than this plan permits. On
+hosted web, the bounded Web Worker pool is the resident-memory envelope. Both
+hosts run the same `ds-network` transformer kernel and neither may fall back to
+cloud processing after local admission fails.
+
 Killed workers leave unfinished jobs pending/running. After obtaining the
 workspace lock, restarting the same run recovers interrupted running jobs and
 retries only unfinished jobs. Cancellation is sticky and stops new jobs at boundaries;

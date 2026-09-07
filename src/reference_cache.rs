@@ -7,8 +7,8 @@ use sha2::{Digest, Sha256};
 
 pub const PAGE_ROWS: usize = 1000;
 pub const MAX_PAGE_BYTES: usize = 16 * 1024 * 1024;
-pub const MAX_RESOURCE_BYTES: usize = 1024 * 1024 * 1024;
-pub const MAX_PAGES: usize = 10_000;
+pub const MAX_RESOURCE_BYTES: usize = 64 * 1024 * 1024 * 1024;
+pub const MAX_PAGES: usize = 100_000;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
