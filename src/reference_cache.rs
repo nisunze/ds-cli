@@ -34,7 +34,7 @@ pub struct Page {
     pub resource_id: String,
     pub version: String,
     pub offset: usize,
-    pub bounds: Option<[f64; 4]>,
+    pub area: Option<Value>,
     pub feature_json: String,
     pub feature_count: usize,
     pub next_offset: Option<usize>,
@@ -51,7 +51,7 @@ pub fn validate_page(
     if !offset.is_multiple_of(PAGE_ROWS)
         || offset / PAGE_ROWS >= MAX_PAGES
         || page.offset != offset
-        || page.bounds.is_some()
+        || page.area.is_some()
         || page.resource_id != identity.resource_id
         || page.version != identity.version
     {
@@ -81,23 +81,25 @@ pub fn validate_page(
     }
     Ok(rows)
 }
-pub fn validate_bounds(bounds: [f64; 4]) -> Result<(), String> {
-    if bounds.iter().any(|v| !v.is_finite())
-        || bounds[0] < -180.
-        || bounds[2] > 180.
-        || bounds[1] < -90.
-        || bounds[3] > 90.
-        || bounds[0] >= bounds[2]
-        || bounds[1] >= bounds[3]
-    {
-        return Err("invalid WGS84 query bounds".into());
-    }
-    Ok(())
+/// Feature envelope used while building a native spatial index.
+pub fn feature_bounds(feature: &Value) -> Option<[f64; 4]> {
+    ds_geo::viewport::geojson_bounds(feature)
 }
-/// Envelope candidates, for maps/printing; callers needing exact spatial
-/// predicates must apply their domain's geometry operation to these candidates.
+
+pub fn validate_area(area: &Value) -> Result<(), String> {
+    ds_geo::spatial_predicate::validate_area(area)
+}
+
+pub fn area_bounds(area: &Value) -> Result<[f64; 4], String> {
+    ds_geo::spatial_predicate::area_bounds(area)
+}
+
+pub fn intersects_area(feature: &Value, area: &Value) -> Result<bool, String> {
+    ds_geo::spatial_predicate::intersects_area(feature, area)
+}
+
 pub fn intersects_bounds(feature: &Value, bounds: [f64; 4]) -> bool {
-    ds_geo::viewport::geojson_bounds(feature).is_some_and(|extent| {
+    feature_bounds(feature).is_some_and(|extent| {
         extent[0] <= bounds[2]
             && extent[2] >= bounds[0]
             && extent[1] <= bounds[3]
@@ -117,7 +119,7 @@ mod tests {
         let text=json!([{"type":"Feature","properties":{"label":"école <A>"},"geometry":{"type":"Point","coordinates":[30.,-2.]}}]).to_string();
         let page = Page {
             offset: 0,
-            bounds: None,
+            area: None,
             resource_id: identity.resource_id.clone(),
             version: identity.version.clone(),
             sha256: format!("{:x}", Sha256::digest(text.as_bytes())),
@@ -142,25 +144,21 @@ mod tests {
         assert!(validate_page(&identity, 0, &page).is_err());
     }
     #[test]
-    fn bounded_or_relocated_pages_cannot_declare_a_complete_install() {
+    fn area_selected_or_relocated_pages_cannot_declare_a_complete_install() {
         let (identity, mut page) = fixture();
-        page.bounds = Some([29., -3., 31., -1.]);
+        page.area = Some(
+            json!({"type":"Polygon","coordinates":[[[29.,-3.],[31.,-3.],[31.,-1.],[29.,-1.],[29.,-3.]]]}),
+        );
         assert!(validate_page(&identity, 0, &page).is_err());
-        page.bounds = None;
+        page.area = None;
         assert!(validate_page(&identity, PAGE_ROWS, &page).is_err());
     }
     #[test]
-    fn envelope_candidates_and_invalid_bounds() {
+    fn area_validation_and_envelope_compatibility() {
         let (identity, page) = fixture();
         let rows = validate_page(&identity, 0, &page).unwrap();
         assert!(intersects_bounds(&rows[0], [29., -3., 31., -1.]));
         assert!(!intersects_bounds(&rows[0], [0., 0., 1., 1.]));
-        for bounds in [
-            [f64::NAN, 0., 1., 1.],
-            [-181., 0., 1., 1.],
-            [2., 0., 1., 1.],
-        ] {
-            assert!(validate_bounds(bounds).is_err());
-        }
+        assert!(validate_area(&json!({"type":"Point","coordinates":[0.,0.]})).is_err());
     }
 }
