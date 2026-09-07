@@ -34,7 +34,16 @@ pub mod open {
     /// The panels the application publishes to the CLI. A closed set, because
     /// the alternative to a closed set is a selector. Held to the adapter's own
     /// `UI_TARGETS` by `tests/bridge_parity.rs`.
-    pub const TARGETS: &[&str] = &["attribute-table", "style-center", "selection-properties"];
+    pub const TARGETS: &[&str] = &[
+        "attribute-table",
+        "style-center",
+        "selection-properties",
+        "data",
+        "software",
+        "project-printing",
+        "transformers",
+        "report-preview",
+    ];
 
     /// The application's own bound on a reference, hand-copied from the
     /// `exactText` default the adapter validates `ref` with, and checked
@@ -54,7 +63,7 @@ pub mod open {
         contract: 1,
         summary: "Open one named panel of the paired application over a ref.",
         purpose: "\
-Asks the running application to show one of three panels it publishes — the \
+Asks the running application to show one of its named panels — the \
 attribute table, the Style Center, or selection properties — over the thing \
 --ref names. This is how a frame is staged before `ds map evidence capture`, \
 and it is the whole of what it does: there is no selector, click, keystroke or \
@@ -71,7 +80,7 @@ published. Navigate with `ds map zoom`; edit with `ds map design set`.",
             Arg::value(
                 "ref",
                 "<ref>",
-                "What the panel opens over: a style ref or layer id, or a feature id for selection-properties.",
+                "A style/layer/feature ref, active project ID for project pages, or transformer/outputId for report-preview.",
             )
             .required(),
             DESCRIPTOR_ARG,
@@ -280,10 +289,9 @@ published. Navigate with `ds map zoom`; edit with `ds map design set`.",
         #[test]
         fn the_declared_targets_are_the_only_ones_the_operation_can_carry() {
             // `choices` is enforced by the parser, so this pins the other half:
-            // the closed set is three panels, and the operation declares only
-            // the two keys that carry them. A fourth target or a third key is a
-            // deliberate change, not a drift.
-            assert_eq!(TARGETS.len(), 3);
+            // The closed set includes panels, project pages and the committed
+            // report preview. New targets remain deliberate contract changes.
+            assert_eq!(TARGETS.len(), 8);
             assert_eq!(crate::UI_OPEN.arguments, &["target", "ref"]);
             assert_eq!(COMMAND.arg("target").expect("declared").choices, TARGETS);
         }

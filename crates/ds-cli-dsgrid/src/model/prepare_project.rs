@@ -1,15 +1,13 @@
 //! `ds dsgrid model prepare-project` — verify and fill governed MV heads.
 
 use ds_cli_contract::outcome::Failure;
-use ds_cli_contract::spec::{
-    Arg, ArgKind, Authority, Chapter, Command, Effect, Execution,
-};
+use ds_cli_contract::spec::{Arg, ArgKind, Authority, Chapter, Command, Effect, Execution};
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
 
 use crate::model::{
-    AMBIGUOUS, AUTH_CONTEXT_MISMATCH, DESCRIPTOR_ARG, LOCAL_TIMEOUT, NOT_PAIRED,
-    PAIRING_REJECTED, REFUSED, SIGNED_OUT, UNREACHABLE, UNREADABLE, UNSUPPORTED,
+    AMBIGUOUS, AUTH_CONTEXT_MISMATCH, DESCRIPTOR_ARG, LOCAL_TIMEOUT, NOT_PAIRED, PAIRING_REJECTED,
+    REFUSED, SIGNED_OUT, UNREACHABLE, UNREADABLE, UNSUPPORTED,
 };
 
 const DOWNLOAD_MISSING_ARG: Arg = Arg {
@@ -76,7 +74,11 @@ pub fn render(data: &Value) -> String {
             row["name"].as_str().unwrap_or("unnamed"),
             row["revision"].as_str().unwrap_or("unknown revision"),
             row["byte_length"].as_u64().unwrap_or(0),
-            if row["cached"].as_bool().unwrap_or(false) { "ready offline" } else { "missing" },
+            if row["cached"].as_bool().unwrap_or(false) {
+                "ready offline"
+            } else {
+                "missing"
+            },
         ));
     }
     out

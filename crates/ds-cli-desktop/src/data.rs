@@ -10,7 +10,7 @@ use std::time::Duration;
 
 pub const STATUS_OP: BridgeOp = BridgeOp {
     operation: "data.rwanda.status",
-    arguments: &[],
+    arguments: &["resources"],
 };
 pub const CATALOG_OP: BridgeOp = BridgeOp {
     operation: "data.rwanda.catalog",
@@ -35,8 +35,8 @@ pub const REMOVE_OP: BridgeOp = BridgeOp {
 
 const RESOURCE_ARG: Arg = Arg::repeated(
     "resource",
-    "<sha256-id>",
-    "Exact governed dataset ID; repeat for install or remove.",
+    "<dataset-id>",
+    "Dataset ID from status; repeat for install/remove. Calculation data also accepts rw-admin-villages and rwanda-dem-10m.",
 );
 const REQUIRED_RESOURCE_ARG: Arg = Arg::value(
     "resource",
@@ -97,12 +97,12 @@ pub static STATUS_COMMAND: Command = Command {
     path: &["desktop", "data", "rwanda", "status"],
     contract: 1,
     summary: "List Rwanda datasets and prove their exact local install state.",
-    purpose: "Reads the active project's governed Firestore catalog and reports source rows/bytes, compressed transfer bytes, expanded bytes and local spatial-index disk use. Missing bundles remain explicit and never block printing.",
+    purpose: "Reads the governed dataset catalog and local install sizes. With --resource, reads durable publication status for each selected dataset without starting another job. Missing bundles never block printing.",
     chapter: Chapter::Data,
     effect: Effect::ReadOnly,
     authority: Authority::DesktopUser,
     execution: Execution::Sync,
-    args: &[DESCRIPTOR_ARG],
+    args: &[RESOURCE_ARG, DESCRIPTOR_ARG],
     output: "Project, dataset counts, aggregate sizes and exact per-dataset publication and install state.",
     examples: &[],
     refusals: REFUSALS,
@@ -211,10 +211,13 @@ fn valid_id(value: &str) -> bool {
 }
 fn ids(inputs: &Inputs) -> Result<Vec<String>, Failure> {
     let values = inputs.repeated("resource");
-    if values.iter().any(|value| !valid_id(value)) {
+    if values
+        .iter()
+        .any(|value| !valid_id(value) && value != "rw-admin-villages" && value != "rwanda-dem-10m")
+    {
         return Err(Failure::invalid(
             "invalid_dataset",
-            "--resource must be a 64-character lowercase SHA-256 dataset ID",
+            "--resource must name a dataset returned by status",
         ));
     }
     Ok(values.to_vec())
@@ -223,7 +226,19 @@ fn invoke_empty(inputs: &Inputs, op: &BridgeOp, timeout: Duration) -> Result<Val
     ops::invoke(&descriptor(inputs)?, op, json!({}), timeout).map_err(ops::classify_signed_out)
 }
 pub fn status(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
-    invoke_empty(inputs, &STATUS_OP, Duration::from_secs(180))
+    let values = ids(inputs)?;
+    let args = if values.is_empty() {
+        json!({})
+    } else {
+        json!({"resources": values})
+    };
+    ops::invoke(
+        &descriptor(inputs)?,
+        &STATUS_OP,
+        args,
+        Duration::from_secs(180),
+    )
+    .map_err(ops::classify_signed_out)
 }
 pub fn catalog(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
     invoke_empty(inputs, &CATALOG_OP, Duration::from_secs(300))
@@ -317,7 +332,7 @@ mod tests {
     use super::*;
     #[test]
     fn operations_are_closed_and_size_limit_is_explicit() {
-        assert_eq!(STATUS_OP.arguments, &[] as &[&str]);
+        assert_eq!(STATUS_OP.arguments, &["resources"]);
         assert_eq!(CATALOG_OP.arguments, &[] as &[&str]);
         assert_eq!(PUBLISH_OP.arguments, &["resources"]);
         assert_eq!(INSTALL_OP.arguments, &["resources", "max_download_mib"]);

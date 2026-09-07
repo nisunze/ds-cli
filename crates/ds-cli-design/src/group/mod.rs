@@ -280,9 +280,9 @@ mod bound_tests {
             MAX_GROUP_LISTING, 2_000,
             "ds-brain designTagGroupListingLimit"
         );
-        assert!(
+        const { assert!(
             MAX_GROUP_LISTING > MAX_GROUP_BATCH,
             "a read must not be bounded by a write budget"
-        );
+        ); }
     }
 }

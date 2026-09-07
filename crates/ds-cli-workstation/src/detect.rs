@@ -145,12 +145,13 @@ fn conventional_locations(component: &str, platform: Platform) -> Vec<PathBuf> {
                 _ => {}
             }
         }
-        Platform::Macos => match component {
-            "libreoffice" => candidates.push(PathBuf::from(
-                "/Applications/LibreOffice.app/Contents/MacOS/soffice",
-            )),
-            _ => {}
-        },
+        Platform::Macos => {
+            if component == "libreoffice" {
+                candidates.push(PathBuf::from(
+                    "/Applications/LibreOffice.app/Contents/MacOS/soffice",
+                ));
+            }
+        }
         Platform::Linux => {}
     }
     candidates

@@ -1036,10 +1036,8 @@ const DSGRID_LOCAL_OPERATIONS: &[&str] = &[
     "dsgrid.model.import",
     "dsgrid.model.set_active",
 ];
-const DSGRID_PROJECT_OPERATIONS: &[&str] = &[
-    "dsgrid.model.prepare_project",
-    "dsgrid.model.publish",
-];
+const DSGRID_PROJECT_OPERATIONS: &[&str] =
+    &["dsgrid.model.prepare_project", "dsgrid.model.publish"];
 
 #[test]
 fn every_dsgrid_model_command_has_one_closed_operation_owner_and_exact_arguments() {

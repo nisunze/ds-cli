@@ -2622,11 +2622,11 @@ fn map_evidence_capture_declares_a_fixed_receipt_and_no_way_to_record() {
 }
 
 #[test]
-fn map_ui_open_offers_three_panels_and_no_way_to_address_the_interface() {
+fn map_ui_open_offers_named_panels_and_no_way_to_address_the_interface() {
     // The reason this command is safe to have at all: the target is a closed
     // set of published panels, and there is no second input that could carry a
-    // selector, a coordinate or a script. If a fourth target or a new flag
-    // appears, someone is turning a panel door into a UI driver.
+    // selector, a coordinate or a script. New destinations stay semantic and
+    // must be explicitly declared on both sides of the bridge.
     let command = ok(&["capabilities", "map.ui.open", "--output", "json"])["command"].clone();
     let inputs: BTreeSet<&str> = command["inputs"]
         .as_array()
@@ -2655,7 +2655,16 @@ fn map_ui_open_offers_three_panels_and_no_way_to_address_the_interface() {
         .collect();
     assert_eq!(
         targets,
-        vec!["attribute-table", "style-center", "selection-properties"],
+        vec![
+            "attribute-table",
+            "style-center",
+            "selection-properties",
+            "data",
+            "software",
+            "project-printing",
+            "transformers",
+            "report-preview"
+        ],
     );
 
     // A ref the application publishes reaches the bridge; a selector does not.
