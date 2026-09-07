@@ -196,6 +196,84 @@ pub static SAVE: Command = Command {
     reference: Some("docs/reference/report.md"),
     availability: ds_cli_auth::native_availability,
 };
+pub static CREATE: Command = Command {
+    id: "report.layout.create",
+    path: &["report", "layout", "create"],
+    contract: 1,
+    summary: "Create one global or project printing setup.",
+    purpose: "Publishes a validated layout as a new stable setup ID. Project scope is the held selected project; global scope requires global printing authority.",
+    chapter: Chapter::Reports,
+    effect: Effect::GlobalWrite,
+    authority: Authority::HeadlessUser,
+    execution: Execution::Sync,
+    args: &[SCOPE, LANE, REQUEST],
+    output: "The created setup, including its stable ID and first revision.",
+    examples: &[],
+    refusals: REFUSALS,
+    reference: Some("docs/reference/report.md"),
+    availability: ds_cli_auth::native_availability,
+};
+pub static UPDATE: Command = Command {
+    id: "report.layout.update",
+    path: &["report", "layout", "update"],
+    contract: 1,
+    summary: "Update one exact global or project printing revision.",
+    purpose: "Publishes a validated layout only when expected_revision still names the current setup. It never retries a conflict as an overwrite.",
+    chapter: Chapter::Reports,
+    effect: Effect::GlobalWrite,
+    authority: Authority::HeadlessUser,
+    execution: Execution::Sync,
+    args: &[SCOPE, LANE, REQUEST],
+    output: "The updated setup and its new revision.",
+    examples: &[],
+    refusals: REFUSALS,
+    reference: Some("docs/reference/report.md"),
+    availability: ds_cli_auth::native_availability,
+};
+pub static DELETE: Command = Command {
+    id: "report.layout.delete",
+    path: &["report", "layout", "delete"],
+    contract: 1,
+    summary: "Delete one exact global or project printing revision.",
+    purpose: "Deletes the named setup only when expected_revision is current. Brain retains the audited tombstone; copied templates remain independent.",
+    chapter: Chapter::Reports,
+    effect: Effect::GlobalWrite,
+    authority: Authority::HeadlessUser,
+    execution: Execution::Sync,
+    args: &[
+        SCOPE,
+        LANE,
+        Arg::value("id", "<id>", "Stable setup ID returned by layout list.").required(),
+        Arg::value(
+            "expected-revision",
+            "<sha256>",
+            "Exact current revision returned by layout get.",
+        )
+        .required(),
+    ],
+    output: "The deleted setup ID and exact removed revision.",
+    examples: &[],
+    refusals: REFUSALS,
+    reference: Some("docs/reference/report.md"),
+    availability: ds_cli_auth::native_availability,
+};
+pub static COPY: Command = Command {
+    id: "report.layout.copy",
+    path: &["report", "layout", "copy"],
+    contract: 1,
+    summary: "Copy an exact printing revision between libraries.",
+    purpose: "Performs global adoption, global promotion or same-library duplication as one Brain transaction. Project locations always mean the held selected project. The source remains unchanged.",
+    chapter: Chapter::Reports,
+    effect: Effect::GlobalWrite,
+    authority: Authority::HeadlessUser,
+    execution: Execution::Sync,
+    args: &[LANE, REQUEST],
+    output: "The independent destination setup, its revision and pinned source lineage.",
+    examples: &[],
+    refusals: REFUSALS,
+    reference: Some("docs/reference/report.md"),
+    availability: ds_cli_auth::native_availability,
+};
 
 fn reporter() -> Availability {
     crate::DS_REPORT.availability()
@@ -205,7 +283,7 @@ pub fn new(_i: &Inputs, _c: &Context) -> Result<Value, Failure> {
 }
 pub fn schema(_i: &Inputs, _c: &Context) -> Result<Value, Failure> {
     Ok(
-        json!({"layout":ds_command_kernel::printing::layout_schema(),"edit":ds_command_kernel::printing::command_schema(),"save":{"action":"save","layout":"<layout document>","expected_revision":"<revision from get; empty string for create>"},"render":"ds report tasks --task render_print_layout --output json"}),
+        json!({"layout":ds_command_kernel::printing::layout_schema(),"edit":ds_command_kernel::printing::command_schema(),"transactions":{"create":{"action":"create","layout":"<layout document>"},"update":{"action":"update","layout":"<layout document>","expected_revision":"<exact revision>"},"delete":"use --id and --expected-revision","copy":{"action":"copy","source":{"scope":"global|project","id":"<id>","revision":"<exact revision>"},"destination":{"scope":"global|project","id":"<new id>","name":"<optional name>","expected_revision":"<empty for create or exact revision>"}}},"render":"ds report tasks --task render_print_layout --output json"}),
     )
 }
 pub fn edit(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
@@ -243,6 +321,40 @@ pub fn save(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
         i.require("scope")? == "global",
         &request,
     )
+}
+fn typed_request(i: &Inputs) -> Result<ds_cli_auth::PrintingRequest, Failure> {
+    serde_json::from_slice(&bytes(i.require("request")?, 800_000)?).map_err(invalid)
+}
+fn scoped(i: &Inputs, request: &ds_cli_auth::PrintingRequest) -> Result<Value, Failure> {
+    ds_cli_auth::printing(i.require("lane")?, i.require("scope")? == "global", request)
+}
+pub fn create(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
+    let request = typed_request(i)?;
+    if !matches!(request, ds_cli_auth::PrintingRequest::Create { .. }) {
+        return Err(invalid("create requires a create request"));
+    }
+    scoped(i, &request)
+}
+pub fn update(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
+    let request = typed_request(i)?;
+    if !matches!(request, ds_cli_auth::PrintingRequest::Update { .. }) {
+        return Err(invalid("update requires an update request"));
+    }
+    scoped(i, &request)
+}
+pub fn delete(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
+    let request = ds_cli_auth::PrintingRequest::Delete {
+        id: i.require("id")?.into(),
+        expected_revision: i.require("expected-revision")?.into(),
+    };
+    scoped(i, &request)
+}
+pub fn copy(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
+    let request = typed_request(i)?;
+    if !matches!(request, ds_cli_auth::PrintingRequest::Copy { .. }) {
+        return Err(invalid("copy requires a copy request"));
+    }
+    ds_cli_auth::printing(i.require("lane")?, true, &request)
 }
 pub fn render(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
     // Copy input to a private scratch file so the bytes cannot change between validation and dispatch.

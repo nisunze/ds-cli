@@ -13,7 +13,7 @@ uses the paired application's active project and normal Brain-authorized saves.
 It is also available through the generated MCP surface. It does not use a
 native-client profile or change another command's authentication requirements.
 
-The request contains `layout` (the `ds.print-layout/v1` document),
+The request contains `layout` (the `ds.print-layout/v2` document),
 `expectedRevision` (empty when creating), and `formats` (for example
 `["pdf__huye-cjic", "xlsx", "gpkg"]`). The named PDF must match the layout id.
 Use `ds report layout schema` for the document grammar.

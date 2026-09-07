@@ -342,8 +342,28 @@ static REPORT_ENTRIES: &[Entry] = &[
         render: ds_cli_report::layout::render_text,
     },
     Entry {
+        command: &ds_cli_report::layout::CREATE,
+        handler: ds_cli_report::layout::create,
+        render: ds_cli_report::layout::render_text,
+    },
+    Entry {
+        command: &ds_cli_report::layout::UPDATE,
+        handler: ds_cli_report::layout::update,
+        render: ds_cli_report::layout::render_text,
+    },
+    Entry {
         command: &ds_cli_report::layout::SAVE,
         handler: ds_cli_report::layout::save,
+        render: ds_cli_report::layout::render_text,
+    },
+    Entry {
+        command: &ds_cli_report::layout::DELETE,
+        handler: ds_cli_report::layout::delete,
+        render: ds_cli_report::layout::render_text,
+    },
+    Entry {
+        command: &ds_cli_report::layout::COPY,
+        handler: ds_cli_report::layout::copy,
         render: ds_cli_report::layout::render_text,
     },
     Entry {

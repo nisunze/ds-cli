@@ -1,5 +1,5 @@
 {
-  "schema_version": "ds.native-client-profiles/v17",
+  "schema_version": "ds.native-client-profiles/v18",
   "development": true,
   "profiles": {
     "stable": {
@@ -142,7 +142,11 @@
         "actions": [
           "list",
           "get",
-          "save"
+          "create",
+          "update",
+          "save",
+          "delete",
+          "copy"
         ]
       }
     },
@@ -286,7 +290,11 @@
         "actions": [
           "list",
           "get",
-          "save"
+          "create",
+          "update",
+          "save",
+          "delete",
+          "copy"
         ]
       }
     }

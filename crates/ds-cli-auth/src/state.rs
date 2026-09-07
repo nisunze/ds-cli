@@ -1127,7 +1127,7 @@ mod tests {
             styles_action: "update_style".to_owned(),
             printing_method: "POST".into(),
             printing_path: "/api/v1/printing".into(),
-            printing_actions: vec!["list".into(), "get".into(), "save".into()],
+            printing_actions: ds_client_core::PRINTING_ACTIONS.map(str::to_owned).to_vec(),
             layers_method: "POST".to_owned(),
             layers_path: "/api/v1/layers".to_owned(),
             layers_actions: vec![

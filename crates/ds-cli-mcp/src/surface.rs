@@ -1177,7 +1177,11 @@ const PRINTING_COMMANDS: &[&str] = &[
     "report.layout.render",
     "report.layout.list",
     "report.layout.get",
+    "report.layout.create",
+    "report.layout.update",
     "report.layout.save",
+    "report.layout.delete",
+    "report.layout.copy",
 ];
 
 #[cfg(test)]

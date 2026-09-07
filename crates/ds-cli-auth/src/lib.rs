@@ -3151,7 +3151,8 @@ pub fn printing(
 ) -> Result<serde_json::Value, Failure> {
     request.validate().map_err(map_client)?;
     let lane = Lane::parse(lane_value)?;
-    if !global {
+    let needs_project = request.needs_project(global);
+    if needs_project {
         if let Some((mut device, selected)) = restored_device_project(lane)? {
             return device
                 .printing(selected.project_id(), request)
@@ -3167,7 +3168,7 @@ pub fn printing(
     let store = NativeRefreshStore::open()?;
     let mut client = Client::new(profile, NativeTransport, store);
     let user = require_restore_before_context(&mut client)?;
-    if global {
+    if !needs_project {
         return client.printing("", request, now()).map_err(map_client);
     }
     let selected = load_selected_project(client.profile(), &user)?;
