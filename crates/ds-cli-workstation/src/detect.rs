@@ -273,7 +273,12 @@ mod tests {
     #[test]
     fn catalogue_is_unique_and_complete() {
         let catalog = catalog();
-        assert_eq!(catalog.len(), 4);
+        // Name the components rather than counting them. `qgis` was dropped
+        // from components.json in 436fc98 and only a bare `len() == 4` caught
+        // it, which says a number changed but not which component left — the
+        // question an operator actually has when a probe stops finding a tool.
+        let ids: Vec<&str> = catalog.iter().map(|c| c.id.as_str()).collect();
+        assert_eq!(ids, ["libreoffice", "git-bash", "rwanda-reference"]);
         for (index, component) in catalog.iter().enumerate() {
             assert!(!component.purpose.is_empty());
             assert!(!component.provenance.is_empty());

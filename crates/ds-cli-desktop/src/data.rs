@@ -3,7 +3,7 @@ use crate::discover::Descriptor;
 use crate::ops::{self, BridgeOp, DESCRIPTOR_ARG};
 use ds_cli_contract::{
     Context, Failure, Inputs,
-    spec::{Arg, ArgKind, Authority, Chapter, Command, Effect, Execution},
+    spec::{Arg, ArgKind, Authority, Chapter, Command, Effect, Execution, Refusal},
 };
 use serde_json::{Map, Value, json};
 use std::time::Duration;
@@ -68,6 +68,28 @@ const REFUSALS: &[ds_cli_contract::spec::Refusal] = &[
     ops::UNSUPPORTED,
     ops::UNREADABLE,
     ops::SIGNED_OUT,
+    // Constructed by the input guards below; declared so `--help` can predict
+    // them and the refusal contract can see them.
+    Refusal {
+        code: "dataset_required",
+        when: "the command needs at least one dataset and none was named",
+        remedy: "repeat --dataset for each dataset, or run `ds desktop data rwanda status` to list them",
+    },
+    Refusal {
+        code: "invalid_dataset",
+        when: "a named dataset is not one this build offers",
+        remedy: "run `ds desktop data rwanda status` and use a name it lists",
+    },
+    Refusal {
+        code: "invalid_size_limit",
+        when: "--max-size is outside 1-102400 MiB",
+        remedy: "pass a whole number of MiB within that range, or omit it",
+    },
+    Refusal {
+        code: "invalid_storage_path",
+        when: "the storage root is not an absolute path this computer can use",
+        remedy: "pass an absolute directory path",
+    },
 ];
 
 pub static STATUS_COMMAND: Command = Command {
@@ -92,7 +114,7 @@ pub static CATALOG_COMMAND: Command = Command {
     id: "desktop.data.rwanda.catalog",
     path: &["desktop", "data", "rwanda", "catalog"],
     contract: 1,
-    summary: "Reconcile Rwanda geographic sources into Firestore (needs --yes).",
+    summary: "Reconcile Rwanda geographic sources (needs --yes).",
     purpose: "Discovers geographic BigQuery sources only from governed global-tile publication workspaces, reads stable source metadata, and writes the authoritative Firestore data catalog with any verified compressed and expanded desktop bundle sizes.",
     chapter: Chapter::Data,
     effect: Effect::GlobalWrite,
