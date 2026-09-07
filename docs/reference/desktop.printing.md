@@ -42,6 +42,8 @@ inputs, and prepares the reference/photo caches. Saves are durable even if a
 subsequent cache installation fails; a revision conflict is never overwritten.
 The shared Printing setup page can inspect and edit the resulting layout.
 
-Then use `ds map design report --transformer agasharu --yes --output json`.
+Then use `ds map design report --transformer agasharu --force --yes --output json`
+to replace the current committed artifact batch from the Desktop's local room.
+Local force does not require the Cloud Run force password.
 Outputs appear in the transformer's Report Files inventory and PDF preview.
 The CLI returns artifact evidence without downloading a ZIP.

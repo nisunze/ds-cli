@@ -296,7 +296,7 @@ pub const DESIGN_PIN: BridgeOp = BridgeOp {
 };
 pub const DESIGN_REPORT: BridgeOp = BridgeOp {
     operation: "design.report.export",
-    arguments: &["transformer"],
+    arguments: &["transformer", "force"],
 };
 pub const DESIGN_REPORT_BATCH: BridgeOp = BridgeOp {
     operation: "design.report.export_batch",

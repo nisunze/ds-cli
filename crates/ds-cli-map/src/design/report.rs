@@ -6,18 +6,25 @@
 //! sizes and SHA-256 digests — never a filesystem path. Publication to the
 //! project continues through the application's ordinary sync drain.
 //!
-//! Deliberately absent: `--force`. Forcing bypasses the freshness gate behind
-//! an operator password prompt in the application, and a password prompt
-//! raised by a background CLI call is an interruption nobody asked for. A
-//! stale report says so in its result.
-
 use ds_cli_contract::outcome::Failure;
-use ds_cli_contract::spec::{Authority, Chapter, Command, Effect, Example, Execution, Refusal};
+use ds_cli_contract::spec::{
+    Arg, ArgKind, Authority, Chapter, Command, Effect, Example, Execution, Refusal,
+};
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
 
 use crate::DESCRIPTOR_ARG;
 use crate::design::TRANSFORMER_ARG;
+
+const FORCE_ARG: Arg = Arg {
+    name: "force",
+    kind: ArgKind::Switch,
+    value: "",
+    required: false,
+    default: None,
+    choices: &[],
+    summary: "Regenerate from the current local room even when the existing report is fresh.",
+};
 
 pub static COMMAND: Command = Command {
     id: "map.design.report",
@@ -29,13 +36,13 @@ Runs the local Network Reporter export for one transformer — the same lane \
 the design Status surface uses — and reports each committed artifact's output \
 id, filename, content type, size and SHA-256. Compute is local; publication \
 to the project continues through the application's ordinary artifact sync. \
-There is no --force: a report the freshness gate holds back reports that \
-instead of silently regenerating.",
+Use --force to replace the current committed artifact batch from local inputs. \
+Installed compute consumes no shared cloud resources and requires no force password.",
     chapter: Chapter::Design,
     effect: Effect::ArtifactWrite,
     authority: Authority::Project,
     execution: Execution::Sync,
-    args: &[TRANSFORMER_ARG, DESCRIPTOR_ARG],
+    args: &[TRANSFORMER_ARG, FORCE_ARG, DESCRIPTOR_ARG],
     output: "\
 Whether the export regenerated or was already fresh, the artifact count, and \
 per artifact: outputId, filename, contentType, sizeBytes, sha256, locator.",
@@ -68,6 +75,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
 
     let mut arguments = Map::new();
     arguments.insert("transformer".into(), json!(transformer));
+    arguments.insert("force".into(), json!(inputs.switch("force")));
 
     let descriptor = crate::paired(inputs.value("desktop-descriptor"))?;
     let result = crate::invoke(
