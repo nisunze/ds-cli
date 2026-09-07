@@ -31,6 +31,39 @@ pub struct Layout {
     /// separately, so a template never embeds mutable global style JSON.
     #[serde(default)]
     pub style_refs: BTreeMap<String, String>,
+    /// Context requested by this named layout. Desktop resolves exact locally
+    /// installed catalog versions and may retain bounded derived sources with
+    /// the transformer room. Hosted rendering deliberately ignores this list.
+    #[serde(default)]
+    pub context_layers: Vec<PrintContextLayer>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct PrintContextLayer {
+    pub id: String,
+    pub label: String,
+    pub source: PrintContextSource,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum PrintContextSource {
+    Catalog {
+        country: String,
+        layer: String,
+    },
+    GoogleOpenBuildings {
+        buffer_m: f64,
+        min_area_m2: f64,
+        min_confidence: f64,
+    },
+    ElevationContours {
+        buffer_m: f64,
+        minor_interval_m: u16,
+        index_interval_m: u16,
+        sample_spacing_m: f64,
+    },
 }
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
 #[serde(rename_all = "snake_case")]
@@ -414,6 +447,54 @@ pub fn validate(layout: &Layout) -> Result<(), String> {
     {
         return Err("invalid print style references".into());
     }
+    if layout.context_layers.len() > 64 {
+        return Err("a print layout cannot request more than 64 context layers".into());
+    }
+    let mut context_ids = BTreeSet::new();
+    for context in &layout.context_layers {
+        if !identifier(&context.id)
+            || !context_ids.insert(&context.id)
+            || context.label.trim().is_empty()
+            || context.label.len() > 160
+        {
+            return Err("invalid or duplicate print context layer identity".into());
+        }
+        match &context.source {
+            PrintContextSource::Catalog { country, layer } => {
+                if country.trim().is_empty() || country.len() > 80 || !identifier(layer) {
+                    return Err("invalid print catalog layer selector".into());
+                }
+            }
+            PrintContextSource::GoogleOpenBuildings {
+                buffer_m,
+                min_area_m2,
+                min_confidence,
+            } => {
+                if !bounded(*buffer_m, 0., 5_000.)
+                    || !bounded(*min_area_m2, 1., 100_000.)
+                    || !bounded(*min_confidence, 0., 1.)
+                {
+                    return Err("invalid Open Buildings print context parameters".into());
+                }
+            }
+            PrintContextSource::ElevationContours {
+                buffer_m,
+                minor_interval_m,
+                index_interval_m,
+                sample_spacing_m,
+            } => {
+                if !bounded(*buffer_m, 0., 5_000.)
+                    || *minor_interval_m == 0
+                    || *index_interval_m < *minor_interval_m
+                    || *index_interval_m % *minor_interval_m != 0
+                    || *index_interval_m > 1_000
+                    || !bounded(*sample_spacing_m, 5., 250.)
+                {
+                    return Err("invalid elevation contour print context parameters".into());
+                }
+            }
+        }
+    }
     Ok(())
 }
 pub fn default_layout() -> Layout {
@@ -439,6 +520,7 @@ pub fn default_layout() -> Layout {
         assets: BTreeMap::new(),
         styles: BTreeMap::new(),
         style_refs: BTreeMap::new(),
+        context_layers: Vec::new(),
         elements: vec![
             Element {
                 viewport: Some(PrintViewport {
@@ -751,6 +833,10 @@ pub enum Command {
         name: String,
         view_slot: String,
     },
+    SetContextLayers {
+        layout: Layout,
+        context_layers: Vec<PrintContextLayer>,
+    },
     BringToFront {
         layout: Layout,
         id: String,
@@ -849,6 +935,15 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
             validate(&layout)?;
             json!({"layout":layout})
         }
+        Command::SetContextLayers {
+            mut layout,
+            context_layers,
+        } => {
+            layout = upgrade(layout)?;
+            layout.context_layers = context_layers;
+            validate(&layout)?;
+            json!({"layout":layout})
+        }
         Command::BringToFront { layout, id } => {
             json!({"layout":move_to_edge(upgrade(layout)?, &id, true)?})
         }
@@ -894,6 +989,28 @@ mod tests {
         assert!(evaluate(&encoded).unwrap().contains("\"valid\":true"));
         assert!(evaluate(br#"{"op":"new","unknown":true}"#).is_err());
         assert_eq!(layout_schema()["additionalProperties"], false);
+    }
+    #[test]
+    fn context_layers_are_explicit_and_parameter_bounded() {
+        let layout = default_layout();
+        let result = evaluated_layout(json!({
+            "op":"set_context_layers",
+            "layout":layout,
+            "context_layers":[
+                {"id":"roads","label":"Roads","source":{"kind":"catalog","country":"Rwanda","layer":"roads"}},
+                {"id":"buildings_context","label":"Building footprints","source":{"kind":"google_open_buildings","buffer_m":200.0,"min_area_m2":25.0,"min_confidence":0.7}},
+                {"id":"elevation_contours","label":"10 m contours","source":{"kind":"elevation_contours","buffer_m":200.0,"minor_interval_m":10,"index_interval_m":50,"sample_spacing_m":10.0}}
+            ]
+        }));
+        assert_eq!(result.context_layers.len(), 3);
+        let mut invalid = result;
+        invalid.context_layers[2].source = PrintContextSource::ElevationContours {
+            buffer_m: 200.,
+            minor_interval_m: 10,
+            index_interval_m: 55,
+            sample_spacing_m: 10.,
+        };
+        assert!(validate(&invalid).is_err());
     }
     #[test]
     fn named_paper_templates_and_copies_keep_identity_explicit() {
