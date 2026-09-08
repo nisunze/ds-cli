@@ -90,7 +90,8 @@ pub static STATUS_COMMAND: Command = Command {
     path: &["data", "project-cache", "status"],
     contract: 1,
     summary: "Report the project's held extracts of canonical geographic datasets.",
-    purpose: "Reads what this project actually holds locally, per dataset: the coverage it requested, the coverage that completed, feature count, spatial-index state, source version, buffer policy and last error. Requested and completed are separate on purpose — an acquisition that failed leaves a request behind and must never read as a holding. Coverage held under a source version the provider has since replaced is reported as stale rather than quietly reused, and nothing is deleted to make that point: stale data is data this project paid for. Abandoned acquisitions are reported as expired instead of pending, so a killed session never leaves a dataset reading as permanently preparing. One dataset\'s coverage never speaks for another\'s. This reads local state only: no provider, no BigQuery, no cost, and no map.",
+    purpose: "Reads what this project holds locally, per dataset: requested and completed coverage (kept separate, so a failed acquisition never reads as a holding), feature count, index state, held and available source versions, buffer policy and last error. Coverage held under a replaced source version is reported stale, never deleted or quietly reused; abandoned acquisitions read as expired, not pending. Local state only: no provider, no BigQuery, no cost.",
+
     chapter: Chapter::Data,
     effect: Effect::ReadOnly,
     authority: Authority::DesktopUser,
