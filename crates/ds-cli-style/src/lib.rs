@@ -6,6 +6,7 @@ pub use native::{HOST_ARG, LANE_ARG, PROJECT_ARG};
 pub mod appearance;
 pub mod cartography;
 pub mod dimension;
+pub mod label;
 pub mod list;
 pub mod native;
 pub mod print_variant;
@@ -25,7 +26,7 @@ pub use ds_cli_desktop::ops::{
 
 pub static DOMAIN: Domain = Domain {
     id: "style",
-    summary: "Guided appearance, a second field dimension, and cartography.",
+    summary: "Guided appearance, labels, a second field dimension, and cartography.",
     commands: &[
         &list::COMMAND,
         &read::COMMAND,
@@ -33,6 +34,8 @@ pub static DOMAIN: Domain = Domain {
         &print_variant::create::COMMAND,
         &appearance::plan::COMMAND,
         &appearance::set::COMMAND,
+        &label::plan::COMMAND,
+        &label::set::COMMAND,
         &dimension::plan::COMMAND,
         &dimension::set::COMMAND,
         &dimension::clear::COMMAND,
@@ -55,6 +58,10 @@ pub const STYLE_READ: BridgeOp = BridgeOp {
 };
 pub const APPEARANCE_SET: BridgeOp = BridgeOp {
     operation: "style.appearance.set",
+    arguments: &["project", "ref", "instruction", "apply"],
+};
+pub const LABEL_SET: BridgeOp = BridgeOp {
+    operation: "style.label.set",
     arguments: &["project", "ref", "instruction", "apply"],
 };
 pub const PRINT_VARIANT_CREATE: BridgeOp = BridgeOp {
@@ -84,6 +91,7 @@ pub const BRIDGE_OPS: &[&BridgeOp] = &[
     &STYLE_LIST,
     &STYLE_READ,
     &APPEARANCE_SET,
+    &LABEL_SET,
     &PRINT_VARIANT_CREATE,
     &DIMENSION_SET,
     &DIMENSION_CLEAR,
@@ -134,6 +142,11 @@ pub const INVALID_APPEARANCE: Refusal = Refusal {
     code: "invalid_appearance",
     when: "no colour, icon or size was supplied",
     remedy: "pass at least one of --color, --icon or --size",
+};
+pub const INVALID_LABEL: Refusal = Refusal {
+    code: "invalid_label",
+    when: "--field is empty, has surrounding whitespace, or exceeds the shared field-name bound",
+    remedy: "copy one exact field from `ds style read <ref>` .data.fields",
 };
 pub const INVALID_CARTOGRAPHY: Refusal = Refusal {
     code: "invalid_cartography",
@@ -266,7 +279,7 @@ mod tests {
         // their own.
         assert_eq!(
             names.len(),
-            7,
+            8,
             "every desktop-host style operation is bridged"
         );
         for op in BRIDGE_OPS {
@@ -283,6 +296,7 @@ mod tests {
         let envelope = ["project", "ref", "instruction", "apply"];
         for other in [
             &APPEARANCE_SET,
+            &LABEL_SET,
             &PRINT_VARIANT_CREATE,
             &DIMENSION_SET,
             &DIMENSION_CLEAR,

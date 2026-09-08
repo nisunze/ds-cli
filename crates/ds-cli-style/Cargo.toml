@@ -1,6 +1,6 @@
 [package]
 name = "ds-cli-style"
-description = "The `ds style` domain: read Style Center documents and author guided colour, icon, base size, halo, opacity and size dimensions."
+description = "The `ds style` domain: read Style Center documents and author guided appearance, labels, dimensions and cartography."
 version.workspace = true
 edition.workspace = true
 license.workspace = true

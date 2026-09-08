@@ -511,6 +511,8 @@ const EXPECTED: &[(&str, &str, &str)] = &[
         "headless_project",
     ),
     ("style.appearance.set", "global_write", "headless_project"),
+    ("style.label.plan", "local_auth_state", "headless_project"),
+    ("style.label.set", "global_write", "headless_project"),
     (
         "style.cartography.plan",
         "local_auth_state",

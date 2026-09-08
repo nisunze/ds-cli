@@ -189,6 +189,7 @@ pub const REFUSALS: &[Refusal] = &[
     crate::INVALID_VALUE_SPEC,
     crate::INVALID_COLOR,
     crate::INVALID_APPEARANCE,
+    crate::INVALID_LABEL,
     crate::INVALID_CARTOGRAPHY,
     STYLE_REFUSED,
     crate::CONFIRMATION_REQUIRED,
@@ -245,6 +246,9 @@ pub fn execute(
             color: args["color"].as_str().map(str::to_owned),
             icon: args["icon"].as_str().map(str::to_owned),
             size: args["size"].as_f64(),
+        },
+        "style.label.set" => ds_cli_auth::StyleInstruction::Label {
+            field: args["field"].as_str().unwrap_or_default().to_owned(),
         },
         "style.dimension.set" => ds_cli_auth::StyleInstruction::Dimension {
             field: args["field"].as_str().unwrap_or_default().to_owned(),

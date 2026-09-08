@@ -43,14 +43,17 @@ visual Style Center (WASM):
 | Command family | Authoring |
 |---|---|
 | `appearance plan/set` | Flat colour, symbol icon and base size |
+| `label plan/set` | Label text from one exact published field |
 | `dimension plan/set/clear` | A second field on halo, opacity or size |
 | `cartography plan/set` | Line type, direction, casing and fill hatching |
 
 `plan` returns the complete proposed document and publishes nothing. `set` and
 `clear` require `--yes`. The publish operation reads a fresh backend snapshot and
-uses its save target. Existing filters, zooms, labels, metadata and unrelated paint
-survive. Style targets may be global: changing one can affect other projects that
-share it, exactly as saving globally in Style Center does.
+uses its save target. Existing filters, zooms, metadata and unrequested label and
+paint properties survive. `style label` checks `--field` against the fields from
+`style read`; when a style has no label, it starts from the backend's published
+label model. Style targets may be global: changing one can affect other projects
+that share it, exactly as saving globally in Style Center does.
 
 Dimension labels use the backend domain type. If the backend has no type,
 `--field-type string|number|boolean` makes it explicit; the default is string.
