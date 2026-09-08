@@ -5,7 +5,7 @@ use ds_cli_contract::spec::{
     Arg, ArgKind, Authority, Chapter, Command, Effect, Example, Execution,
 };
 use ds_cli_contract::{Context, Inputs};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use crate::{DESCRIPTOR_ARG, HOST_ARG, LANE_ARG, PROJECT_ARG, REF_ARG};
 
@@ -36,6 +36,24 @@ const SIZE_ARG: Arg = Arg {
     default: None,
     choices: &[],
     summary: "Label text size in the style's units; bounds are in style read .data.labelSchema.numerics.text-size.",
+};
+const FONT_ARG: Arg = Arg {
+    name: "font",
+    kind: ArgKind::Value,
+    value: "<font>",
+    required: false,
+    default: None,
+    choices: &[],
+    summary: "Font from style read .data.labelSchema.fonts, including italic and bold faces.",
+};
+const COLOR_ARG: Arg = Arg {
+    name: "color",
+    kind: ArgKind::Value,
+    value: "<#RRGGBB>",
+    required: false,
+    default: None,
+    choices: &[],
+    summary: "Label text color as a six-digit hexadecimal value.",
 };
 const PAPER_ARG: Arg = Arg {
     name: "paper",
@@ -86,12 +104,16 @@ fn arguments(inputs: &Inputs, apply: bool) -> Result<Value, Failure> {
     });
     if inputs.value("visible").is_some()
         || size.is_some()
+        || inputs.value("font").is_some()
+        || inputs.value("color").is_some()
         || !papers.is_empty()
         || inputs.value("placement").is_some()
     {
         result["options"] = json!({
             "visible": inputs.value("visible").map(|v| v == "on"),
             "size": size,
+            "font": inputs.value("font"),
+            "color": inputs.value("color"),
             "papers": if papers.is_empty() { None } else { Some(papers) },
             "automatic_placement": inputs.value("placement").map(|v| v == "auto"),
         });
@@ -124,9 +146,9 @@ pub mod plan {
     pub static COMMAND: Command = Command {
         id: "style.label.plan",
         path: &["style", "label", "plan"],
-        contract: 2,
+        contract: 3,
         summary: "Preview binding a label to one declared data field.",
-        purpose: "Uses the shared Style Center planner to bind a label field and optionally set visibility, size, paper scope and automatic point placement. Omitted options preserve existing authorship. A missing label starts from the backend label model; style read includes its live numeric bounds.",
+        purpose: "Uses the shared Style Center planner to bind a label field and optionally set visibility, size, font, text color, paper scope and automatic point placement. Omitted options preserve existing authorship. A missing label starts from the backend label model; style read includes its live numeric bounds.",
         chapter: Chapter::MapPresentation,
         effect: Effect::LocalAuthState,
         authority: Authority::HeadlessProject,
@@ -136,6 +158,8 @@ pub mod plan {
             FIELD_ARG,
             VISIBLE_ARG,
             SIZE_ARG,
+            FONT_ARG,
+            COLOR_ARG,
             PAPER_ARG,
             PLACEMENT_ARG,
             HOST_ARG,
@@ -174,7 +198,7 @@ pub mod set {
     pub static COMMAND: Command = Command {
         id: "style.label.set",
         path: &["style", "label", "set"],
-        contract: 2,
+        contract: 3,
         summary: "Publish a governed label bound to one declared data field.",
         purpose: "Publishes the exact document returned by `ds style label plan` through the Style Center save route. The shared Rust planner owns the field validation and label transformation.",
         chapter: Chapter::MapPresentation,
@@ -186,6 +210,8 @@ pub mod set {
             FIELD_ARG,
             VISIBLE_ARG,
             SIZE_ARG,
+            FONT_ARG,
+            COLOR_ARG,
             PAPER_ARG,
             PLACEMENT_ARG,
             HOST_ARG,
@@ -267,7 +293,7 @@ mod tests {
         let value = arguments(&input, false).unwrap();
         assert_eq!(
             value["options"],
-            json!({"visible":true,"size":8.,"papers":["A0"],"automatic_placement":true})
+            json!({"visible":true,"size":8.,"font":null,"color":null,"papers":["A0"],"automatic_placement":true})
         );
         let set_input = parse(&set::COMMAND, &tokens).unwrap();
         assert_eq!(

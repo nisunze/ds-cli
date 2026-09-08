@@ -263,7 +263,7 @@ pub static EXPORT_COMMAND: Command = Command {
         Arg::value(
             "transformer",
             "<name>",
-            "One canonical transformer name in the held project room.",
+            "One canonical transformer name, or combined_transformer for held project rooms. A layout with project_overview=true produces one project-wide sheet; otherwise combined prints are an atlas.",
         )
         .required(),
         FORCE_ARG,

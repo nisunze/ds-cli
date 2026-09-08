@@ -139,6 +139,24 @@ const PATTERN_STROKE_ARG: Arg = Arg {
 /// commands, so the two cannot drift into accepting different flags.
 const ARGS: &[Arg] = &[
     REF_ARG,
+    Arg::value(
+        "visible",
+        "<on|off>",
+        "Show or hide the geometry; label visibility is independent.",
+    )
+    .choices(&["on", "off"]),
+    Arg::value(
+        "opacity",
+        "<0..1>",
+        "Geometry opacity, from transparent to opaque.",
+    ),
+    Arg::value("boundary-color", "<#hex>", "Polygon boundary stroke color."),
+    Arg::value(
+        "boundary-width",
+        "<px>",
+        "Polygon boundary width, 0..20 px.",
+    ),
+    Arg::value("boundary-opacity", "<0..1>", "Polygon boundary opacity."),
     LINE_TYPE_ARG,
     DIRECTION_SIZE_ARG,
     DIRECTION_SPACING_ARG,
@@ -309,6 +327,24 @@ fn arguments(inputs: &Inputs, apply: bool) -> Result<Value, Failure> {
         arguments.insert("patternStroke".into(), json!(value));
     }
 
+    if let Some(v) = inputs.value("visible") {
+        arguments.insert("visible".into(), json!(v == "on"));
+    }
+    for (flag, key, max) in [
+        ("opacity", "opacity", 1.),
+        ("boundary-width", "boundaryWidth", 20.),
+        ("boundary-opacity", "boundaryOpacity", 1.),
+    ] {
+        if let Some(v) = inputs.value(flag) {
+            arguments.insert(key.into(), json!(bounded(v, flag, 0., max)?));
+        }
+    }
+    if let Some(v) = inputs.value("boundary-color") {
+        arguments.insert(
+            "boundaryColor".into(),
+            json!(crate::color(v, "boundary-color")?),
+        );
+    }
     // `ref` is the subject, not a change; `apply` is not yet inserted.
     if arguments.len() == 1 {
         return Err(refuse("no cartography change was requested"));
@@ -393,7 +429,7 @@ pub mod plan {
     pub static COMMAND: Command = Command {
         id: "style.cartography.plan",
         path: &["style", "cartography", "plan"],
-        contract: 2,
+        contract: 3,
         summary: "Plan dashed line types, casing, direction or fill hatching.",
         purpose: "\
 Plans governed line presets, direction arrows, contrast casing and fill \
@@ -448,7 +484,7 @@ pub mod set {
     pub static COMMAND: Command = Command {
         id: "style.cartography.set",
         path: &["style", "cartography", "set"],
-        contract: 2,
+        contract: 3,
         summary: "Publish a layer's line, direction, casing or fill hatch.",
         purpose: "\
 Publishes the cartography shown by `plan` through the governed save. ds-brain \
