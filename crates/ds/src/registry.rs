@@ -1133,6 +1133,11 @@ static TILE_ENTRIES: &[Entry] = &[
         render: ds_cli_tile::global::render,
     },
     Entry {
+        command: &ds_cli_tile::global::LIST,
+        handler: ds_cli_tile::global::list,
+        render: ds_cli_tile::global::render,
+    },
+    Entry {
         command: &ds_cli_tile::global::GENERATE,
         handler: ds_cli_tile::global::generate,
         render: ds_cli_tile::global::render,

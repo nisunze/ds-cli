@@ -529,6 +529,7 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("tile.generate", "global_write", "headless_project"),
     ("tile.global.catalog", "read_only", "desktop_user"),
     ("tile.global.generate", "global_write", "desktop_user"),
+    ("tile.global.list", "read_only", "desktop_user"),
     ("tile.global.status", "read_only", "desktop_user"),
     ("tile.list", "local_auth_state", "headless_project"),
     ("tile.plan", "local_auth_state", "headless_project"),

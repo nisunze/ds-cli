@@ -63,6 +63,7 @@ pub static DOMAIN: Domain = Domain {
         &add::COMMAND,
         &remove::COMMAND,
         &global::CATALOG,
+        &global::LIST,
         &global::GENERATE,
         &global::STATUS,
     ],
@@ -89,6 +90,7 @@ pub const TILE_REMOVE: BridgeOp = BridgeOp {
 /// to walk. Managed output reads and generation must never be added here.
 pub const BRIDGE_OPS: &[&BridgeOp] = &[
     &global::CATALOG_OP,
+    &global::LIST_OP,
     &global::GENERATE_OP,
     &global::STATUS_OP,
 ];
@@ -639,6 +641,7 @@ mod tests {
             [
                 "tile.global.catalog",
                 "tile.global.generate",
+                "tile.global.list",
                 "tile.global.status"
             ]
         );

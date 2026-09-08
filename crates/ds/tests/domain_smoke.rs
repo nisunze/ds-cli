@@ -2837,6 +2837,35 @@ fn tile_managed_outputs_are_headless_and_catalogue_are_headless() {
 }
 
 #[test]
+fn global_tile_list_is_a_domain_bounded_paired_recovery_read() {
+    let descriptor = ok(&["capabilities", "tile.global.list", "--output", "json"]);
+    let command = &descriptor["command"];
+    assert_eq!(command["authority"], "desktop_user");
+    assert_eq!(command["effect"], "read_only");
+    let inputs = command["inputs"]
+        .as_array()
+        .expect("inputs")
+        .iter()
+        .map(|input| input["name"].as_str().expect("input name"))
+        .collect::<BTreeSet<_>>();
+    assert_eq!(inputs, BTreeSet::from(["desktop-descriptor", "domain"]));
+
+    let code = refusal(&[
+        "tile",
+        "global",
+        "list",
+        "--domain",
+        "network_template",
+        "--output",
+        "json",
+    ]);
+    assert!(
+        PAIRING_CODES.contains(&code.as_str()),
+        "a valid recovery read stopped at `{code}`, not the paired Reference Layers owner"
+    );
+}
+
+#[test]
 fn background_project_operations_are_map_independent_and_use_the_declared_project_context() {
     for (id, effect, inputs) in [
         (

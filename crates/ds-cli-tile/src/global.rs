@@ -11,6 +11,10 @@ pub const CATALOG_OP: BridgeOp = BridgeOp {
     operation: "tile.global.catalog",
     arguments: &["domain", "search", "limit", "page_token"],
 };
+pub const LIST_OP: BridgeOp = BridgeOp {
+    operation: "tile.global.list",
+    arguments: &["domain"],
+};
 pub const GENERATE_OP: BridgeOp = BridgeOp {
     operation: "tile.global.generate",
     arguments: &["domain", "name", "country", "sources", "maxzoom", "apply"],
@@ -64,6 +68,23 @@ pub static CATALOG: Command = Command {
         DESCRIPTOR_ARG,
     ],
     output: "Catalog datasets and exact source table identities, row counts, geography columns, and has_more/next_page_token when another page exists.",
+    examples: &[],
+    refusals: REFUSALS,
+    reference: Some("docs/reference/tile.md"),
+    availability: ops::paired_availability,
+};
+pub static LIST: Command = Command {
+    id: "tile.global.list",
+    path: &["tile", "global", "list"],
+    contract: 1,
+    summary: "List active governed reference publications.",
+    purpose: "Reads the same active global publication list as Reference Layers for one domain. It preserves each durable tile identity and its published layer metadata, so a caller can recover the exact tile_id after an ambiguous generation response without starting or retrying a write.",
+    chapter: Chapter::VectorTiles,
+    effect: Effect::ReadOnly,
+    authority: Authority::DesktopUser,
+    execution: Execution::Sync,
+    args: &[DOMAIN, DESCRIPTOR_ARG],
+    output: "All active publications visible in the selected domain, preserving exact tile ids, names, layer names, feature counts, archive locations and access policy.",
     examples: &[],
     refusals: REFUSALS,
     reference: Some("docs/reference/tile.md"),
@@ -153,6 +174,13 @@ pub fn catalog(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
         args["page_token"] = json!(value);
     }
     invoke(inputs, &CATALOG_OP, args)
+}
+pub fn list(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
+    invoke(
+        inputs,
+        &LIST_OP,
+        json!({"domain": inputs.require("domain")?}),
+    )
 }
 pub fn generate(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
     let maxzoom = ops::integer(inputs.require("maxzoom")?, "maxzoom", 1, 22)?;
