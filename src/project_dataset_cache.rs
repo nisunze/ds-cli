@@ -93,6 +93,29 @@ pub struct BufferPolicy {
     pub provisional: bool,
 }
 
+impl Default for BufferPolicy {
+    fn default() -> Self {
+        Self {
+            design_buffer_m: 500.,
+            isolated_buffer_m: 1000.,
+            isolated_rule: IsolatedRule::PointOnly,
+            provisional: false,
+        }
+    }
+}
+
+pub fn buffer_policy(requested: &[f64]) -> Result<BufferPolicy, String> {
+    let mut policy = BufferPolicy::default();
+    for value in requested {
+        if !value.is_finite() || !(0.0..=50_000.0).contains(value) {
+            return Err("requested buffer must be between 0 and 50000 metres".into());
+        }
+        policy.design_buffer_m = policy.design_buffer_m.max(*value);
+    }
+    policy.isolated_buffer_m = policy.isolated_buffer_m.max(policy.design_buffer_m);
+    Ok(policy)
+}
+
 impl BufferPolicy {
     fn validate(&self) -> Result<(), String> {
         for meters in [self.design_buffer_m, self.isolated_buffer_m] {
@@ -641,7 +664,7 @@ pub fn plan(
         match extent.bounds {
             Some(bounds) => {
                 let rect = Rect::from_bounds(bounds)?;
-                let designed = !rect.degenerate();
+                let designed = bounds[0] != bounds[2] || bounds[1] != bounds[3];
                 named.push((extent.name.clone(), rect, designed));
             }
             None => skipped.push(extent.name.clone()),
@@ -760,9 +783,77 @@ pub fn extend(held: &Coverage, completed: &Coverage) -> Result<Coverage, String>
     Ok(Coverage::from_rects(merged))
 }
 
+/// Decode a complete source-quality building acquisition before it can extend coverage.
+/// Provider coverage uncertainty is retained, including a complete empty response.
+pub fn decode_buildings(response: &Value, area: &Value) -> Result<Value, String> {
+    crate::reference_cache::validate_area(area)?;
+    if response["status"] != "success" || response["provider"] != "google" {
+        return Err("building acquisition did not return the requested provider".into());
+    }
+    if response["coverage"]["truncated"].as_bool() != Some(false) {
+        return Err("building acquisition is incomplete or has no completeness receipt".into());
+    }
+    let collection = &response["layers"]["buildings_context"];
+    let features = collection["features"]
+        .as_array()
+        .ok_or("building acquisition has no footprint collection")?;
+    if collection["type"] != "FeatureCollection"
+        || response["counts"]["buildings_context"].as_u64() != Some(features.len() as u64)
+    {
+        return Err("building acquisition count does not match its footprint collection".into());
+    }
+    for feature in features {
+        if feature["type"] != "Feature"
+            || !feature["properties"].is_object()
+            || !matches!(
+                feature["geometry"]["type"].as_str(),
+                Some("Polygon" | "MultiPolygon")
+            )
+            || crate::reference_cache::feature_bounds(feature).is_none()
+            || !crate::reference_cache::intersects_area(feature, area)?
+        {
+            return Err("building acquisition contains an invalid or out-of-area footprint".into());
+        }
+    }
+    let receipt = response["source_receipt"]
+        .as_object()
+        .ok_or("building acquisition has no source receipt")?;
+    if serde_json::to_vec(receipt)
+        .map_err(|e| e.to_string())?
+        .len()
+        > 64 * 1024
+    {
+        return Err("building source receipt exceeds its bound".into());
+    }
+    let version = ["dataset_version", "asset"]
+        .iter()
+        .find_map(|key| {
+            receipt
+                .get(*key)
+                .and_then(Value::as_str)
+                .filter(|v| !v.is_empty())
+        })
+        .unwrap_or("");
+    if version.len() > 512 {
+        return Err("building source version exceeds its bound".into());
+    }
+    Ok(json!({"features": features, "sourceVersion":version,
+        "sourceReceipt":{"provider":receipt,"coverage":response["coverage"]}}))
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(tag = "action", rename_all = "snake_case", deny_unknown_fields)]
 enum Request {
+    BufferPolicy {
+        schema: String,
+        #[serde(default)]
+        requested_buffers_m: Vec<f64>,
+    },
+    DecodeBuildings {
+        schema: String,
+        response: Value,
+        area: Value,
+    },
     Plan {
         schema: String,
         scope: Scope,
@@ -800,6 +891,21 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
     let request: Request =
         serde_json::from_slice(input).map_err(|error| format!("invalid request: {error}"))?;
     let value = match request {
+        Request::BufferPolicy {
+            schema,
+            requested_buffers_m,
+        } => {
+            require_schema(&schema)?;
+            serde_json::to_value(buffer_policy(&requested_buffers_m)?)
+        }
+        Request::DecodeBuildings {
+            schema,
+            response,
+            area,
+        } => {
+            require_schema(&schema)?;
+            Ok(decode_buildings(&response, &area)?)
+        }
         Request::Plan {
             schema,
             scope,
@@ -859,6 +965,41 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn shared_buffers_never_shrink_below_project_acquisition_defaults() {
+        assert_eq!(buffer_policy(&[200.]).unwrap().design_buffer_m, 500.);
+        assert_eq!(buffer_policy(&[200.]).unwrap().isolated_buffer_m, 1000.);
+        assert_eq!(buffer_policy(&[1500.]).unwrap().isolated_buffer_m, 1500.);
+        assert!(buffer_policy(&[f64::NAN]).is_err());
+        assert!(!buffer_policy(&[]).unwrap().provisional);
+    }
+
+    #[test]
+    fn building_decoder_rejects_partial_and_malformed_results() {
+        let area = json!({"type":"Polygon","coordinates":[[[29.,-3.],[31.,-3.],[31.,-1.],[29.,-1.],[29.,-3.]]]});
+        let valid = json!({"status":"success","provider":"google",
+            "layers":{"buildings_context":{"type":"FeatureCollection","features":[]}},
+            "counts":{"buildings_context":0},"coverage":{"truncated":false,"dataset_covers_area":null},
+            "source_receipt":{"dataset_version":"v3","asset":"provider asset","elapsed_ms":77}});
+        let result = decode_buildings(&valid, &area).unwrap();
+        assert_eq!(result["sourceVersion"], "v3");
+        assert_eq!(
+            result["sourceReceipt"]["coverage"]["dataset_covers_area"],
+            Value::Null
+        );
+        let mut partial = valid.clone();
+        partial["coverage"]["truncated"] = json!(true);
+        assert!(decode_buildings(&partial, &area).is_err());
+        let mut absent = valid.clone();
+        absent["layers"] = json!({});
+        assert!(decode_buildings(&absent, &area).is_err());
+        let mut malformed = valid.clone();
+        malformed["layers"]["buildings_context"]["features"] =
+            json!([{"type":"Feature","geometry":null,"properties":{}}]);
+        malformed["counts"]["buildings_context"] = json!(1);
+        assert!(decode_buildings(&malformed, &area).is_err());
+    }
 
     fn scope() -> Scope {
         Scope {
