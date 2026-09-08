@@ -755,6 +755,7 @@ dependencies = [
  "ds-command-kernel",
  "serde",
  "serde_json",
+ "tempfile",
  "ureq",
 ]
 

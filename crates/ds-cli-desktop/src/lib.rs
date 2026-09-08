@@ -25,6 +25,7 @@
 //! more. It says a process on this machine may talk to the app. It does not
 //! say who is asking, and it can never authorize a project write on its own.
 
+pub mod artifact;
 pub mod bridge;
 pub mod connectivity;
 pub mod data;
@@ -54,6 +55,8 @@ pub static DOMAIN: Domain = Domain {
         &printing::SAVE_COMMAND,
         &printing::PREPARE_COMMAND,
         &printing::SEED_CONTEXT_COMMAND,
+        &artifact::READ_COMMAND,
+        &artifact::COPY_COMMAND,
         &data::STATUS_COMMAND,
         &data::CATALOG_COMMAND,
         &data::PUBLISH_COMMAND,
