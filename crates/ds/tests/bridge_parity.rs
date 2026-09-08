@@ -248,23 +248,43 @@ fn every_project_context_command_has_one_closed_operation_owner() {
 }
 
 #[test]
-fn printing_preparation_has_one_closed_application_owner() {
-    let Some(app) = app() else {
+fn printing_preparation_and_context_seeding_have_one_closed_application_owner() {
+    let Some(root) = ds_web() else {
+        skip("the ds-web sibling repository is not on disk");
         return;
     };
-    let op = &ds_cli_desktop::printing::PREPARE_OP;
-    let allowlist = between(
-        &app.transport,
-        "pub const CLI_OPERATIONS: &[&str] = &[",
-        "];",
-    );
-    assert_eq!(count(allowlist, &format!("\"{}\"", op.operation)), 1);
-    assert_eq!(switch_case_count(&app.frontend, op.operation), 1);
-    let source =
-        std::fs::read_to_string(ds_web().unwrap().join("src/lib/printing/prepare.ts")).unwrap();
-    let contract = operation_contract(&source, op.operation);
-    assert!(contract.contains("'request'"));
-    assert_eq!(op.arguments, &["request"]);
+    let transport = std::fs::read_to_string(root.join("src-tauri/src/cli_bridge.rs")).unwrap();
+    let frontend = std::fs::read_to_string(root.join("src/lib/desktop/cli-bridge.ts")).unwrap();
+    let source = std::fs::read_to_string(root.join("src/lib/printing/prepare.ts")).unwrap();
+    let allowlist = between(&transport, "pub const CLI_OPERATIONS: &[&str] = &[", "];");
+    for op in [
+        &ds_cli_desktop::printing::PREPARE_OP,
+        &ds_cli_desktop::printing::SEED_CONTEXT_OP,
+    ] {
+        assert_eq!(
+            count(allowlist, &format!("\"{}\"", op.operation)),
+            1,
+            "{} must appear exactly once in the native allowlist",
+            op.operation
+        );
+        assert_eq!(
+            switch_case_count(&frontend, op.operation),
+            1,
+            "{} must have exactly one frontend handler",
+            op.operation
+        );
+        let accepted = quoted_contract_items(operation_contract(&source, op.operation));
+        let declared = op
+            .arguments
+            .iter()
+            .map(|argument| (*argument).to_string())
+            .collect::<BTreeSet<_>>();
+        assert_eq!(
+            accepted, declared,
+            "{} arguments drifted between ds and the desktop",
+            op.operation
+        );
+    }
 }
 
 #[test]

@@ -176,6 +176,10 @@ impl Profile {
                 matches!(tool.chapter, Chapter::GridModel | Chapter::Reports)
                     && !PROJECT_OPERATIONS_COMMANDS.contains(&tool.id.as_str())
                     && !PRINTING_COMMANDS.contains(&tool.id.as_str())
+                    // Acquiring print context is an explicit desktop seeding
+                    // workflow, not part of the broad grid-model surface.
+                    // It remains discoverable through the Reports chapter.
+                    && tool.id != "desktop.printing.seed-context"
                     // Project cache preparation belongs to the focused model
                     // lifecycle surface. Keeping it out of this broad router
                     // preserves the profile's bounded tool budget.

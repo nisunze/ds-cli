@@ -11,6 +11,53 @@ pub const PREPARE_OP: BridgeOp = BridgeOp {
     operation: "printing.prepare",
     arguments: &["request"],
 };
+pub const SEED_CONTEXT_OP: BridgeOp = BridgeOp {
+    operation: "printing.seed_context",
+    arguments: &["transformer"],
+};
+pub static SEED_CONTEXT_COMMAND: Command = Command {
+    id: "desktop.printing.seed-context",
+    path: &["desktop", "printing", "seed-context"],
+    contract: 1,
+    summary: "Seed selected geographic context before a transformer is printed.",
+    purpose: "Runs the explicit acquisition stage for one transformer's selected printing setups: downloads missing indexed geographic datasets, caches current project MV models and retains bounded derived building/contour context. Source queries belong to this seeding operation; report export only reads prepared geographic data. No template, design geometry or project version is changed.",
+    chapter: Chapter::Reports,
+    effect: Effect::LocalFileWrite,
+    authority: Authority::DesktopUser,
+    execution: Execution::Sync,
+    args: &[
+        Arg::value(
+            "transformer",
+            "<name>",
+            "One exact project transformer name.",
+        )
+        .required(),
+        DESCRIPTOR_ARG,
+    ],
+    output: "Project, transformer, complete, named warnings and actual cached feature counts per layer.",
+    examples: &[],
+    refusals: &[
+        ops::NOT_PAIRED,
+        ops::AMBIGUOUS,
+        ops::UNREACHABLE,
+        ops::PAIRING_REJECTED,
+        ops::REFUSED,
+        ops::UNSUPPORTED,
+        ops::UNREADABLE,
+        ops::SIGNED_OUT,
+    ],
+    reference: Some("docs/reference/desktop.printing.md"),
+    availability: ops::paired_availability,
+};
+pub fn seed_context(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
+    ops::invoke(
+        &ops::paired(inputs.value("desktop-descriptor"))?,
+        &SEED_CONTEXT_OP,
+        json!({"transformer": inputs.require("transformer")?}),
+        Duration::from_secs(30 * 60),
+    )
+    .map_err(ops::classify_signed_out)
+}
 pub const LIST_OP: BridgeOp = BridgeOp {
     operation: "printing.list",
     arguments: &["scope"],

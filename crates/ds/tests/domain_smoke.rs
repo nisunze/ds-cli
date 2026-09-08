@@ -146,6 +146,53 @@ fn printing_lifecycle_writes_are_registered_and_stop_before_native_authority() {
     }
 }
 
+#[test]
+fn printing_context_seeding_is_bound_to_one_visible_desktop_project() {
+    let descriptor = ok(&[
+        "capabilities",
+        "desktop.printing.seed-context",
+        "--output",
+        "json",
+    ]);
+    let command = &descriptor["command"];
+    assert_eq!(command["authority"], "desktop_user");
+    assert_eq!(command["effect"], "local_file_write");
+    let inputs = command["inputs"]
+        .as_array()
+        .expect("inputs")
+        .iter()
+        .map(|input| input["name"].as_str().expect("input name"))
+        .collect::<BTreeSet<_>>();
+    assert_eq!(
+        inputs,
+        BTreeSet::from(["desktop-descriptor", "transformer"])
+    );
+    assert!(
+        !inputs.contains("project"),
+        "printing context seeding must use the paired desktop's visible project"
+    );
+
+    let descriptor_path = temp_root("printing-seed-unreachable")
+        .join("session.json")
+        .display()
+        .to_string();
+    let code = refusal(&[
+        "desktop",
+        "printing",
+        "seed-context",
+        "--transformer",
+        "T-1042",
+        "--desktop-descriptor",
+        &descriptor_path,
+        "--output",
+        "json",
+    ]);
+    assert!(
+        PAIRING_CODES.contains(&code.as_str()),
+        "a valid seed request must reach the paired project's owner, got `{code}`"
+    );
+}
+
 /// The real PLS-CADD workspace that ships with `ds-network`.
 fn workspace() -> String {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
