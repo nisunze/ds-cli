@@ -501,7 +501,7 @@ pub fn plan(sheets: &Value, is_combined: bool) -> Result<Vec<Output>, String> {
         if let Some((_, id)) = named_print_output(format) {
             if !layouts.contains_key(id) {
                 return Err(format!(
-                    "Selected printing setup {id} is missing; refresh project printing inputs"
+                    "Selected printing setup {id} is not in the sealed project printing inputs"
                 ));
             }
         }
@@ -583,7 +583,7 @@ mod tests {
             [210., 297.]
         );
         sheets["printing_setups"] = json!([]);
-        assert!(plan(&sheets, false).unwrap_err().contains("missing"));
+        assert!(plan(&sheets, false).unwrap_err().contains("not in the sealed project printing inputs"));
         assert!(named_setup_id("pdf__../outside").is_none());
         let options = options(&[json!({"id":"detail","name":"Renamed"})]).unwrap();
         assert!(options
