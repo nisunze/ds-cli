@@ -882,7 +882,7 @@ pub enum Command {
     },
     Edit {
         layout: Layout,
-        element: Element,
+        element: Box<Element>,
     },
     Remove {
         layout: Layout,
@@ -1009,6 +1009,7 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
         }
         Command::Edit { layout, element } => {
             let mut layout = upgrade(layout)?;
+            let element = *element;
             if let Some(existing) = layout.elements.iter_mut().find(|e| e.id == element.id) {
                 *existing = element
             } else {
