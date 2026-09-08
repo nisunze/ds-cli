@@ -304,6 +304,7 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("map.design.upload.stage", "local_ui", "project"),
     ("map.design.version.begin", "artifact_write", "project"),
     ("map.canvas.camera", "read_only", "none"),
+    ("map.scene.build", "local_file_write", "none"),
     ("map.data.inspect", "read_only", "none"),
     ("map.data.upload", "global_write", "headless_project"),
     ("map.data.list", "local_auth_state", "headless_project"),

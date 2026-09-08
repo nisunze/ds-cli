@@ -3092,6 +3092,7 @@ fn every_map_command_is_reachable_without_the_desktop_installed() {
         .collect();
     let expected: BTreeSet<&str> = [
         "map.canvas.camera",
+        "map.scene.build",
         "map.data.inspect",
         "map.data.list",
         "map.data.upload",

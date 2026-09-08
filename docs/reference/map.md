@@ -6,6 +6,55 @@ of them.
 
 ## Execution hosts
 
+`ds map scene build` prepares a Cesium display scene **headlessly**. It needs no
+Desktop, login, network or selected project and never switches the UI context.
+The CLI reads/writes files; `ds-command-kernel` owns admission, composition,
+the SHA-256 and the same layer visibility/order/budget plan used by the live map.
+
+```powershell
+ds map scene build --request scene-request.json --out C:\work\site.scene.json --output json
+```
+
+Minimal `scene-request.json` (all fields explicit):
+
+```json
+{
+  "schema": "ds.map.scene.request/v1",
+  "name": "Streetlight context",
+  "view": { "center": [30.1, -2.1], "zoom": 15, "bearing": 0, "pitch": 50 },
+  "sources": {
+    "survey": { "type": "geojson", "data": { "type": "FeatureCollection", "features": [
+      { "type": "Feature", "id": "example-pole", "geometry": { "type": "Point", "coordinates": [30.1, -2.1] }, "properties": {} }
+    ] } },
+    "context": { "type": "google-3d" }
+  },
+  "layers": [
+    { "id": "context", "type": "3d-tiles", "source": "context" },
+    { "id": "poles", "type": "circle", "source": "survey", "paint": { "circle-color": "#ffcc00", "circle-radius": 5 } }
+  ]
+}
+```
+
+The example point is illustrative, not surveyed data. Embed actual GeoJSON or
+reference vector/raster PMTiles with `url: "pmtiles://https://..."`.
+Vector layers require `source-layer`. XYZ raster uses `tiles: ["https://.../{z}/{x}/{y}.png"]`.
+Generic 3D Tiles use `type: "3d-tiles", url: "https://.../tileset.json"`.
+Google resolves through the viewer's authenticated configuration at runtime.
+Never embed keys, headers, signed query URLs or local provider paths.
+
+Bounds: 32 MiB artifact, 256 sources/layers, 20,000 features per GeoJSON source,
+50,000 total features, 500,000 geographic positions. Coordinates are retained,
+not reprojected or upgraded to engineering precision. Layer types are circle,
+line, fill, fill-extrusion, symbol, raster and 3d-tiles; paint/layout/filter
+definitions use the existing Styles API language. Unsupported renderer
+properties are visible warnings, not promised visual parity.
+
+Output must be a new absolute file in an existing directory. Writes are atomic
+and refuse overwrite. The receipt reports path, SHA-256, bytes and counts.
+Open it using **Open CLI scene** in the main map's Cesium view. This is headless
+scene preparation, not a screenshot renderer or a new project-data transport.
+The renderer requires the matching updated kernel WASM; there is no JS fallback.
+
 The layer catalogue, governed tile references, style authoring and project GIS
 uploads use native authentication and work with the desktop closed. Local raster
 overlays use a Rust registry shared by CLI and desktop and work offline.
