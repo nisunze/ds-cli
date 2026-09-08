@@ -750,7 +750,13 @@ pub fn assess(held: &Coverage, wanted: &Coverage) -> Result<Assessment, String> 
 pub fn extend(held: &Coverage, completed: &Coverage) -> Result<Coverage, String> {
     let mut rects = held.rects()?;
     rects.extend(completed.rects()?);
-    let (merged, _) = decompose(&rects, &[])?;
+    let (merged, simplified) = decompose(&rects, &[])?;
+    if simplified {
+        return Err(
+            "exact completed coverage exceeds its bounded representation; split or compact the project dataset room"
+                .into(),
+        );
+    }
     Ok(Coverage::from_rects(merged))
 }
 
@@ -1083,6 +1089,32 @@ mod tests {
         let result = assess(&merged, &centre).unwrap();
         assert!(!result.covered);
         assert_eq!(result.gaps.cells, vec![[1.4, 1.4, 1.6, 1.6]]);
+    }
+
+    #[test]
+    fn extending_exact_coverage_refuses_to_replace_many_cells_with_their_envelope() {
+        let held = Coverage {
+            cells: (0..MAX_COVERAGE_CELLS)
+                .map(|index| {
+                    let west = index as f64 * 0.002;
+                    [west, 0.0, west + 0.001, 0.001]
+                })
+                .collect(),
+        };
+        let west = MAX_COVERAGE_CELLS as f64 * 0.002;
+        let completed = Coverage {
+            cells: vec![[west, 0.0, west + 0.001, 0.001]],
+        };
+
+        let error = extend(&held, &completed).unwrap_err();
+        assert!(error.contains("exact completed coverage"), "{error}");
+
+        // The refusal matters because the envelope would claim an unpaid hole
+        // between every pair of cells.
+        let hole = Coverage {
+            cells: vec![[0.00125, 0.00025, 0.00175, 0.00075]],
+        };
+        assert!(!assess(&held, &hole).unwrap().covered);
     }
 
     #[test]
