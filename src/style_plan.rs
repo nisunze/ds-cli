@@ -15,6 +15,12 @@ pub enum StyleInstruction {
         icon: Option<String>,
         size: Option<f64>,
     },
+    /// Point a style's governed label at one exact declared data field. The
+    /// backend-provided label model supplies defaults only when the style has
+    /// no label yet; existing label authorship is otherwise preserved.
+    Label {
+        field: String,
+    },
     Dimension {
         field: String,
         channel: String,
@@ -615,6 +621,43 @@ pub fn plan_style_edit(
             receipt["requested"] = json!({"color":color,"icon":icon,"size":size});
             receipt["baseSizeUpdatedAsFallback"] = json!(size_is_second);
         }
+        StyleInstruction::Label {
+            field: requested_field,
+        } => {
+            if requested_field.is_empty()
+                || requested_field.len() > 120
+                || requested_field.trim() != requested_field
+            {
+                return Err("label needs one bounded field without surrounding whitespace".into());
+            }
+            let supports_field = snapshot["label_editor"]["field_part_types"]
+                .as_array()
+                .is_some_and(|parts| parts.contains(&json!("field")));
+            if !supports_field {
+                return Err("backend label editor does not publish field labels".into());
+            }
+            if !editor["available_fields"]
+                .as_array()
+                .is_some_and(|fields| fields.contains(&json!(requested_field)))
+            {
+                return Err("label field is absent from the published vocabulary".into());
+            }
+            let mut label = if style["label"].is_object() {
+                style["label"].clone()
+            } else {
+                editor["label_model"]
+                    .as_object()
+                    .map(|_| editor["label_model"].clone())
+                    .ok_or("backend label model is unavailable for this ref")?
+            };
+            if !label["layout"].is_object() {
+                return Err("backend label model has no layout".into());
+            }
+            label["layout"]["text-field"] = json!(["get", requested_field]);
+            next["label"] = label;
+            receipt["labelField"] = json!(requested_field);
+            receipt["changed"] = json!(["label"]);
+        }
         StyleInstruction::Dimension {
             field: requested_field,
             channel,
@@ -913,7 +956,24 @@ mod tests {
         }
     }
     fn snapshot(style: Value) -> Value {
-        json!({"project_id":"p","styles":{"master/poles":style},"style_editors":[{"style_ref":"master/poles","style_target":"design","layer_name":"poles","available_fields":["status","kind"],"field_domains":{"status":{"type":"boolean"}}}],"style_properties":{"circle":[{"key":"circle-radius","type":"number","min":1,"max":30}]}})
+        json!({
+            "project_id":"p",
+            "styles":{"master/poles":style},
+            "style_editors":[{
+                "style_ref":"master/poles",
+                "style_target":"design",
+                "layer_name":"poles",
+                "available_fields":["status","kind","road_no"],
+                "field_domains":{"status":{"type":"boolean"}},
+                "label_model":{
+                    "type":"symbol",
+                    "paint":{"text-color":"#333333","text-halo-width":1},
+                    "layout":{"text-field":["get","status"],"text-size":12,"visibility":"visible"}
+                }
+            }],
+            "label_editor":{"field_part_types":["literal","field"]},
+            "style_properties":{"circle":[{"key":"circle-radius","type":"number","min":1,"max":30}]}
+        })
     }
     #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
     #[cfg_attr(not(target_arch = "wasm32"), test)]
@@ -939,6 +999,93 @@ mod tests {
         assert!(plan.payload.get("project_id").is_none());
         assert_eq!(plan.payload["style_target"], "design");
         assert_eq!(plan.receipt["published"], false);
+    }
+
+    #[test]
+    fn guided_label_changes_only_the_field_and_preserves_print_authorship() {
+        let before = json!({
+            "type":"line",
+            "paint":{"line-color":"#7F3C8D","line-width":3},
+            "layout":{"line-cap":"round","visibility":"visible"},
+            "filter":["has","road_no"],
+            "metadata":{
+                "geometry_type":"line",
+                "print_scaling":{"reference_paper":"A3","units":"css_px","factors":{"A0":2.8284271247461903,"A3":1}}
+            },
+            "label":{
+                "type":"symbol",
+                "minzoom":15,
+                "paint":{"text-color":"#333333","text-halo-width":1},
+                "layout":{
+                    "symbol-placement":"line",
+                    "text-field":["get","name"],
+                    "text-font":["Open Sans Regular"],
+                    "text-size":12,
+                    "visibility":"visible"
+                }
+            }
+        });
+        let plan = plan_style_edit(
+            &snapshot(before.clone()),
+            "master/poles",
+            &StyleInstruction::Label {
+                field: "road_no".into(),
+            },
+        )
+        .unwrap();
+        let mut expected = before.clone();
+        expected["label"]["layout"]["text-field"] = json!(["get", "road_no"]);
+        assert_eq!(plan.document, expected);
+        assert_eq!(plan.receipt["labelField"], "road_no");
+        assert_eq!(plan.receipt["changed"], json!(["label"]));
+        assert_eq!(plan.payload["style_data"], expected);
+    }
+
+    #[test]
+    fn guided_label_uses_backend_model_when_absent_and_refuses_unknown_fields() {
+        let state = snapshot(json!({
+            "type":"line",
+            "paint":{"line-color":"#7F3C8D"},
+            "metadata":{"custom":"retained"}
+        }));
+        let plan = plan_style_edit(
+            &state,
+            "master/poles",
+            &StyleInstruction::Label {
+                field: "road_no".into(),
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            plan.document["label"]["layout"]["text-field"],
+            json!(["get", "road_no"])
+        );
+        assert_eq!(plan.document["label"]["layout"]["text-size"], 12);
+        assert_eq!(plan.document["label"]["paint"]["text-halo-width"], 1);
+        assert_eq!(plan.document["metadata"]["custom"], "retained");
+
+        for field in ["name", " road_no", ""] {
+            assert!(plan_style_edit(
+                &state,
+                "master/poles",
+                &StyleInstruction::Label {
+                    field: field.into()
+                },
+            )
+            .is_err());
+        }
+        let held = json!({
+            "snapshot":state,
+            "reference":"master/poles",
+            "instruction":{"kind":"label","field":"road_no"}
+        });
+        let output: Value =
+            serde_json::from_str(&plan_style_request(&serde_json::to_vec(&held).unwrap()).unwrap())
+                .unwrap();
+        assert_eq!(
+            output["document"]["label"]["layout"]["text-field"],
+            json!(["get", "road_no"])
+        );
     }
 
     #[test]
