@@ -469,7 +469,10 @@ pub fn plan_style_edit(
         // Reuse the existing authored-save normalization so a runtime sprite
         // id is converted back to its catalog icon name before cloning.
         let source_payload = style_save_payload(snapshot, reference, style)?;
-        let document = source_payload["style_data"].clone();
+        let document = crate::print_scaling::apply_print_scaling(
+            source_payload["style_data"].clone(),
+            crate::print_scaling::PrintScaling::default(),
+        )?;
         let mut fields = editor["available_fields"]
             .as_array()
             .cloned()

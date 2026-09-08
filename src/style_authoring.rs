@@ -51,6 +51,11 @@ pub struct DimensionState {
 #[derive(Debug, Deserialize)]
 #[serde(tag = "operation", rename_all = "snake_case", deny_unknown_fields)]
 pub enum StyleTransform {
+    PrintScaling {
+        style: Value,
+        #[serde(default)]
+        scaling: crate::print_scaling::PrintScaling,
+    },
     Appearance {
         style: Value,
         change: Value,
@@ -457,6 +462,9 @@ pub fn transform_style(input: &[u8]) -> Result<String, String> {
     let request: StyleTransform =
         serde_json::from_slice(input).map_err(|e| format!("invalid style request: {e}"))?;
     let mut style = match request {
+        StyleTransform::PrintScaling { style, scaling } => {
+            crate::print_scaling::apply_print_scaling(style, scaling)?
+        }
         StyleTransform::Appearance { style, change } => apply_appearance(style, &change)?,
         StyleTransform::Dimension {
             style,
