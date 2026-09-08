@@ -14,7 +14,32 @@ use zeroize::Zeroize;
 pub mod connectivity;
 pub mod design;
 pub mod installation;
+pub mod map_scene;
 pub mod project_context;
+#[cfg(feature = "wasm")]
+#[wasm_bindgen::prelude::wasm_bindgen(js_name = mapSceneCommand)]
+pub fn map_scene_command_wasm(
+    input: &[u8],
+    artifact: bool,
+) -> Result<String, wasm_bindgen::JsValue> {
+    let result = if artifact {
+        map_scene::validate_artifact(input)
+    } else {
+        map_scene::build(input)
+    };
+    result
+        .and_then(|value| serde_json::to_string(&value).map_err(|_| "scene encoding failed".into()))
+        .map_err(|error| wasm_bindgen::JsValue::from_str(&error))
+}
+#[cfg(feature = "wasm")]
+#[wasm_bindgen::prelude::wasm_bindgen(js_name = mapSceneRenderPlan)]
+pub fn map_scene_render_plan_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
+    map_scene::render_plan(input)
+        .and_then(|value| {
+            serde_json::to_string(&value).map_err(|_| "scene plan encoding failed".into())
+        })
+        .map_err(|error| wasm_bindgen::JsValue::from_str(&error))
+}
 #[cfg(feature = "wasm")]
 #[wasm_bindgen::prelude::wasm_bindgen(js_name = connectivityCommand)]
 pub fn connectivity_command_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
