@@ -20,24 +20,60 @@ pub enum PrintUnits {
     Physical,
 }
 
+/// Every ISO paper keeps symbology at its authored physical size: one CSS
+/// pixel is 1/96 inch on A5 and on A0 alike. Line widths, dashes, symbols and
+/// text therefore measure the same millimetres on every sheet, and a larger
+/// sheet shows the same extent at a larger map scale with *finer* relative
+/// detail, which is what a large-format map is for.
+///
+/// The earlier table scaled by the ISO linear ratio (A0 = √8 ≈ 2.83): an A0
+/// sheet then read as a photocopy-enlarged A3. Owner ruling 2026-09-08: A3 is
+/// near right, A0 far too big; the morning A0 prints with unscaled symbology
+/// were right. Authors may still record deliberate factors in metadata.
+pub const PAPERS: [&str; 7] = ["A0", "A1", "A2", "A3", "A4", "A5", "Custom"];
+
 impl Default for PrintScaling {
     fn default() -> Self {
         Self {
             reference_paper: "A3".into(),
             units: PrintUnits::CssPx,
-            factors: [
-                ("A0", 8_f64.sqrt()),
-                ("A1", 2.),
-                ("A2", 2_f64.sqrt()),
-                ("A3", 1.),
-                ("A4", 0.5_f64.sqrt()),
-                ("A5", 0.5),
-                ("Custom", 1.),
-            ]
-            .into_iter()
-            .map(|(paper, scale)| (paper.into(), scale))
-            .collect(),
+            factors: PAPERS.iter().map(|paper| ((*paper).into(), 1.)).collect(),
         }
+    }
+}
+
+/// The superseded ISO-area table that every `_print` style created before
+/// 2026-09-08 carries. Reading it yields the identity policy above so those
+/// styles print at the ruled size without a hand-edited document.
+fn legacy_iso_area_table() -> PrintScaling {
+    PrintScaling {
+        reference_paper: "A3".into(),
+        units: PrintUnits::CssPx,
+        factors: [
+            ("A0", 8_f64.sqrt()),
+            ("A1", 2.),
+            ("A2", 2_f64.sqrt()),
+            ("A3", 1.),
+            ("A4", 0.5_f64.sqrt()),
+            ("A5", 0.5),
+            ("Custom", 1.),
+        ]
+        .into_iter()
+        .map(|(paper, scale)| (paper.into(), scale))
+        .collect(),
+    }
+}
+
+impl PrintScaling {
+    fn is_legacy_iso_area_table(&self) -> bool {
+        let legacy = legacy_iso_area_table();
+        self.reference_paper == legacy.reference_paper
+            && self.units == legacy.units
+            && self.factors.len() == legacy.factors.len()
+            && legacy
+                .factors
+                .iter()
+                .all(|(paper, factor)| self.factors.get(paper).is_some_and(|f| (f - factor).abs() < 1e-9))
     }
 }
 
@@ -88,6 +124,9 @@ pub fn scaling_from_style(document: &Value) -> Result<Option<PrintScaling>, Stri
     let scaling: PrintScaling =
         serde_json::from_value(value.clone()).map_err(|e| format!("Invalid print scaling: {e}"))?;
     scaling.validate()?;
+    if scaling.is_legacy_iso_area_table() {
+        return Ok(Some(PrintScaling::default()));
+    }
     Ok(Some(scaling))
 }
 
@@ -120,9 +159,22 @@ mod tests {
         assert_eq!(style["layout"], original["layout"]);
         assert_eq!(style["metadata"]["source"], "catalog");
         assert_eq!(scaling.factor("print_a3").unwrap(), 1.);
-        assert_eq!(scaling.factor("print_a0").unwrap(), 8_f64.sqrt());
-        assert_eq!(scaling.factor("print_a5").unwrap(), 0.5);
+        assert_eq!(scaling.factor("print_a0").unwrap(), 1.);
+        assert_eq!(scaling.factor("print_a5").unwrap(), 1.);
         assert!(scaling_from_style(&original).unwrap().is_none());
+    }
+
+    #[test]
+    fn the_legacy_iso_area_table_reads_as_the_identity_policy() {
+        let legacy = json!({"type":"line","metadata":{"print_scaling":{"reference_paper":"A3","units":"css_px",
+            "factors":{"A0":2.8284271247461903,"A1":2,"A2":1.4142135623730951,"A3":1,"A4":0.7071067811865476,"A5":0.5,"Custom":1}}}});
+        let scaling = scaling_from_style(&legacy).unwrap().unwrap();
+        assert_eq!(scaling, PrintScaling::default());
+        assert_eq!(scaling.factor("A0").unwrap(), 1.);
+        // A deliberately authored table is honoured as written.
+        let authored = json!({"type":"line","metadata":{"print_scaling":{"reference_paper":"A3","units":"css_px",
+            "factors":{"A0":1.5,"A1":1.25,"A2":1.1,"A3":1,"A4":1,"A5":1,"Custom":1}}}});
+        assert_eq!(scaling_from_style(&authored).unwrap().unwrap().factor("A0").unwrap(), 1.5);
     }
 
     #[test]
