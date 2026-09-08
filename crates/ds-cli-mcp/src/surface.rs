@@ -373,6 +373,8 @@ const LIBRARY_GOVERNANCE_COMMANDS: &[&str] = &[
 
 const SURVEY_MAP_COMMANDS: &[&str] = &[
     "map.view",
+    "map.camera.set",
+    "map.renderer.configure",
     "map.draw",
     "map.remove",
     "map.zoom",

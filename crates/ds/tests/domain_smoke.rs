@@ -3130,6 +3130,8 @@ fn every_map_command_is_reachable_without_the_desktop_installed() {
         "map.data.upload",
         "map.data.remove",
         "map.view",
+        "map.camera.set",
+        "map.renderer.configure",
         "map.draw",
         "map.remove",
         "map.zoom",

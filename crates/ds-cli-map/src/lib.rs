@@ -4,6 +4,7 @@
 //! Rendering, sketch editing and interactive design commands retain their
 //! named desktop bridge operations. This crate is a host adapter, not an engine.
 
+pub mod camera_set;
 pub mod canvas;
 pub mod data;
 pub mod design;
@@ -15,6 +16,7 @@ pub mod outliers;
 pub mod points_along;
 pub mod random_points;
 pub mod remove;
+pub mod renderer_configure;
 pub mod scene;
 pub mod survey;
 pub mod ui;
@@ -45,6 +47,8 @@ pub static DOMAIN: Domain = Domain {
         &canvas::COMMAND,
         &scene::COMMAND,
         &view::COMMAND,
+        &camera_set::COMMAND,
+        &renderer_configure::COMMAND,
         &draw::COMMAND,
         &remove::COMMAND,
         &zoom::COMMAND,
@@ -131,6 +135,14 @@ pub const REMOTE_LAYER_VISIBILITY: BridgeOp = BridgeOp {
 pub const ZOOM_TO: BridgeOp = BridgeOp {
     operation: "map.zoom_to",
     arguments: &["bbox", "layerId", "padding"],
+};
+pub const CAMERA_SET: BridgeOp = BridgeOp {
+    operation: "map.camera.set",
+    arguments: &["center", "zoom", "pitch", "bearing"],
+};
+pub const RENDERER_CONFIGURE: BridgeOp = BridgeOp {
+    operation: "map.renderer.configure",
+    arguments: &["mode", "provider"],
 };
 pub const UI_OPEN: BridgeOp = BridgeOp {
     operation: "map.ui.open",
@@ -352,6 +364,8 @@ pub const BRIDGE_OPS: &[&BridgeOp] = &[
     &LAYER_ADD,
     &LAYER_REMOVE,
     &ZOOM_TO,
+    &CAMERA_SET,
+    &RENDERER_CONFIGURE,
     &UI_OPEN,
     &EVIDENCE_CAPTURE,
     &POINTS_ALONG,
