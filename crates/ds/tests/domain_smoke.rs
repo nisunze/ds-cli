@@ -193,6 +193,38 @@ fn printing_context_seeding_is_bound_to_one_visible_desktop_project() {
     );
 }
 
+#[test]
+fn desktop_sync_exposes_path_free_status_and_guards_exact_row_retry() {
+    let status = ok(&["capabilities", "desktop.sync.status", "--output", "json"]);
+    let command = &status["command"];
+    assert_eq!(command["authority"], "desktop_user");
+    assert_eq!(command["effect"], "read_only");
+    let inputs = command["inputs"]
+        .as_array()
+        .expect("inputs")
+        .iter()
+        .map(|input| input["name"].as_str().expect("input name"))
+        .collect::<BTreeSet<_>>();
+    assert_eq!(
+        inputs,
+        BTreeSet::from(["desktop-descriptor", "limit", "project"])
+    );
+
+    let run = native_ds(&[
+        "desktop",
+        "sync",
+        "retry",
+        "--project",
+        "project-1",
+        "--row",
+        "compute:uid-1:network_reporter:batch-1:default",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(run.code, 2);
+    assert_eq!(run.envelope["error"]["code"], "confirmation_required");
+}
+
 /// The real PLS-CADD workspace that ships with `ds-network`.
 fn workspace() -> String {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))

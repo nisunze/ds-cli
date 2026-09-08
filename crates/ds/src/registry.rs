@@ -1659,6 +1659,16 @@ static DESKTOP_ENTRIES: &[Entry] = &[
         handler: ds_cli_desktop::data::remove,
         render: ds_cli_desktop::data::render,
     },
+    Entry {
+        command: &ds_cli_desktop::sync::STATUS_COMMAND,
+        handler: ds_cli_desktop::sync::status,
+        render: ds_cli_desktop::sync::render,
+    },
+    Entry {
+        command: &ds_cli_desktop::sync::RETRY_COMMAND,
+        handler: ds_cli_desktop::sync::retry,
+        render: ds_cli_desktop::sync::render,
+    },
 ];
 
 /// Feedback is a loop: report a gap, find it again once a session has fixed

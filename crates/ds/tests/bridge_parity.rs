@@ -61,6 +61,7 @@ struct App {
     style: String,
     style_fill_pattern: String,
     style_line_type: String,
+    sync_center: String,
     feedback: String,
     catalog: String,
     feedback_submit: String,
@@ -100,6 +101,7 @@ fn app() -> Option<App> {
         style: read("src/lib/desktop/cli-style.ts")?,
         style_fill_pattern: read("src/lib/styles/fill-pattern.ts")?,
         style_line_type: read("src/lib/styles/line-type.ts")?,
+        sync_center: read("src/lib/desktop/cli-sync-center.ts")?,
         feedback: read("src/lib/desktop/cli-feedback.ts")?,
         catalog: read("src/lib/desktop/cli-catalog.ts")?,
         feedback_submit: read("src/lib/feedback/submit.ts")?,
@@ -110,6 +112,46 @@ fn app() -> Option<App> {
         solar_portfolio_run: read("src/lib/solar/native-batch.ts")?,
         solar_portfolio_receipt: read("src/lib/solar/native-portfolio-batches.ts")?,
     })
+}
+
+#[test]
+fn every_sync_center_command_has_one_closed_operation_owner() {
+    let Some(app) = app() else {
+        skip("the ds-web sibling repository is not on disk");
+        return;
+    };
+    let allowlist = between(
+        &app.transport,
+        "pub const CLI_OPERATIONS: &[&str] = &[",
+        "];",
+    );
+    for operation in ds_cli_desktop::sync::BRIDGE_OPS {
+        assert_eq!(
+            count(allowlist, &format!("\"{}\"", operation.operation)),
+            1,
+            "`{}` must appear exactly once in the desktop allowlist",
+            operation.operation
+        );
+        assert_eq!(
+            switch_case_count(&app.frontend, operation.operation),
+            1,
+            "`{}` must have exactly one frontend handler",
+            operation.operation
+        );
+        let contract = operation_contract(&app.sync_center, operation.operation);
+        assert!(
+            !contract.is_empty(),
+            "`{}` has no typed Sync Center adapter argument contract",
+            operation.operation
+        );
+        for argument in operation.arguments {
+            assert!(
+                contract.contains(&format!("'{argument}'")),
+                "desktop sync sends `{argument}` to `{}`, but the adapter does not accept it",
+                operation.operation
+            );
+        }
+    }
 }
 
 fn count(source: &str, needle: &str) -> usize {

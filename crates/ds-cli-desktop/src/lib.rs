@@ -33,6 +33,7 @@ pub mod ops;
 pub mod printing;
 pub mod project;
 pub mod status;
+pub mod sync;
 
 use ds_cli_contract::spec::Domain;
 
@@ -58,5 +59,7 @@ pub static DOMAIN: Domain = Domain {
         &data::INSTALL_COMMAND,
         &data::STORAGE_COMMAND,
         &data::REMOVE_COMMAND,
+        &sync::STATUS_COMMAND,
+        &sync::RETRY_COMMAND,
     ],
 };
