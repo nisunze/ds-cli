@@ -179,16 +179,10 @@ impl Profile {
             Self::Grid => {
                 matches!(tool.chapter, Chapter::GridModel | Chapter::Reports)
                     && !PROJECT_OPERATIONS_COMMANDS.contains(&tool.id.as_str())
-                    && !PRINTING_COMMANDS.contains(&tool.id.as_str())
-                    // Acquiring print context is an explicit desktop seeding
-                    // workflow, not part of the broad grid-model surface.
-                    // It remains discoverable through the Reports chapter.
-                    && tool.id != "desktop.printing.seed-context"
-                    // Held-room printing is a focused artifact workflow, not
-                    // part of the broad grid-model profile. It remains
-                    // discoverable through the Reports chapter router.
-                    && tool.id != "desktop.printing.export"
-                    && tool.id != "desktop.printing.transformers"
+                    // Printing has its own workflow profile and Reports router;
+                    // changing that profile must not expand the Grid surface.
+                    && !tool.id.starts_with("desktop.printing.")
+                    && !tool.id.starts_with("report.layout.")
                     // Project cache preparation belongs to the focused model
                     // lifecycle surface. Keeping it out of this broad router
                     // preserves the profile's bounded tool budget.
@@ -373,8 +367,6 @@ const LIBRARY_GOVERNANCE_COMMANDS: &[&str] = &[
 
 const SURVEY_MAP_COMMANDS: &[&str] = &[
     "map.view",
-    "map.camera.set",
-    "map.renderer.configure",
     "map.draw",
     "map.remove",
     "map.zoom",
