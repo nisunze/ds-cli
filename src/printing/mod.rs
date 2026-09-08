@@ -196,6 +196,17 @@ pub struct Element {
     /// print viewport; geographic bounds are supplied by the runtime binding.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub viewport: Option<PrintViewport>,
+    /// Place this content-sized table/legend below an earlier table/legend,
+    /// sharing its right edge. Authored rect dimensions remain upper bounds.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub flow: Option<ContentFlow>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct ContentFlow {
+    pub after: String,
+    pub gap_mm: f64,
 }
 fn font() -> f64 {
     10.
@@ -320,6 +331,21 @@ pub fn validate(layout: &Layout) -> Result<(), String> {
     let mut ids = BTreeSet::new();
     let mut maps = 0;
     for element in &layout.elements {
+        if let Some(flow) = &element.flow {
+            if !matches!(element.kind, ElementKind::Table | ElementKind::Legend)
+                || !bounded(flow.gap_mm, 0., 50.)
+                || !ids.contains(&flow.after)
+                || !layout.elements.iter().any(|previous| {
+                    previous.id == flow.after
+                        && matches!(previous.kind, ElementKind::Table | ElementKind::Legend)
+                })
+            {
+                return Err(
+                    "content flow must follow an earlier table or legend with a 0..50 mm gap"
+                        .into(),
+                );
+            }
+        }
         if !identifier(&element.id) || !ids.insert(&element.id) {
             return Err("page element ids must be unique".into());
         }
@@ -512,6 +538,7 @@ pub fn default_layout() -> Layout {
     let element = |id: &str, kind, rect, text: &str, font_pt| Element {
         table: None,
         viewport: None,
+        flow: None,
         id: id.into(),
         kind,
         rect,
@@ -984,6 +1011,40 @@ pub fn command_schema() -> serde_json::Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn content_flow_requires_an_earlier_content_frame() {
+        let mut layout = default_layout();
+        let legend = layout
+            .elements
+            .iter()
+            .position(|e| e.kind == ElementKind::Legend)
+            .unwrap();
+        let mut table = layout.elements[legend].clone();
+        table.id = "quantities".into();
+        table.kind = ElementKind::Table;
+        table.table = Some(TableBinding {
+            layer: "info".into(),
+            columns: vec!["quantity".into()],
+            headings: vec!["Quantity".into()],
+            widths: vec![10.],
+        });
+        layout.elements.insert(legend, table);
+        layout.elements[legend + 1].flow = Some(ContentFlow {
+            after: "quantities".into(),
+            gap_mm: 5.,
+        });
+        validate(&layout).unwrap();
+        let encoded = serde_json::to_vec(&layout).unwrap();
+        assert_eq!(serde_json::from_slice::<Layout>(&encoded).unwrap(), layout);
+        layout.elements[legend + 1].flow.as_mut().unwrap().after = "legend".into();
+        assert!(validate(&layout).unwrap_err().contains("earlier"));
+        layout.elements[legend + 1].flow.as_mut().unwrap().after = "map".into();
+        assert!(validate(&layout).is_err());
+        layout.elements[legend + 1].flow.as_mut().unwrap().after = "quantities".into();
+        layout.elements[legend + 1].flow.as_mut().unwrap().gap_mm = -1.;
+        assert!(validate(&layout).is_err());
+    }
 
     fn evaluated_layout(request: serde_json::Value) -> Layout {
         let result = evaluate(&serde_json::to_vec(&request).unwrap()).unwrap();
