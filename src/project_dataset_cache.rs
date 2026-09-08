@@ -34,6 +34,12 @@ pub const SCHEMA: &str = "ds.project-dataset-cache/v1";
 pub const MAX_EXTENTS: usize = 5_000;
 pub const MAX_GRID_CELLS: usize = 4_000_000;
 pub const MAX_COVERAGE_CELLS: usize = 4_096;
+/// A fused cluster is queried as one envelope only while that envelope stays
+/// under this area. Above it the plan queries the members' own buffered
+/// rectangles instead: a district of chained sites must never become one
+/// district-sized provider request, which a paid or page-bounded source
+/// answers with a bill, a truncation, or both.
+pub const MAX_ENVELOPE_M2: f64 = 25_000_000.0;
 /// Per-source receipt ceiling. A receipt is provenance, not payload: one over
 /// this size is refused whole rather than trimmed to fit, because a truncated
 /// receipt no longer proves what it claims.
@@ -618,6 +624,11 @@ pub struct Cluster {
     pub buffer_m: f64,
     pub envelope: [f64; 4],
     pub isolated: bool,
+    /// True when the envelope exceeded `MAX_ENVELOPE_M2` and the plan queries
+    /// the members' own rectangles instead.
+    pub split: bool,
+    /// Query cells this cluster contributed after any focus narrowing.
+    pub cells: usize,
 }
 
 #[derive(Debug, Serialize)]
@@ -664,6 +675,26 @@ pub fn plan(
     dataset: &Dataset,
     policy: &BufferPolicy,
     extents: &[Extent],
+) -> Result<Plan, String> {
+    plan_focused(scope, dataset, policy, extents, &[])
+}
+
+fn rect_area_m2(rect: Rect) -> f64 {
+    let mid = ((rect.s + rect.n) / 2.0).abs();
+    let height = (rect.n - rect.s).max(0.0) * metres_per_degree_latitude(mid);
+    let width = (rect.e - rect.w).max(0.0) * metres_per_degree_longitude(mid);
+    height * width
+}
+
+/// `plan`, narrowed to the clusters that contain a transformer named in
+/// `focus`. A print asks for its own transformer only: it must not pay for,
+/// or wait on, the rest of the project. An empty `focus` keeps everything.
+pub fn plan_focused(
+    scope: &Scope,
+    dataset: &Dataset,
+    policy: &BufferPolicy,
+    extents: &[Extent],
+    focus: &[String],
 ) -> Result<Plan, String> {
     scope.validate()?;
     dataset.validate()?;
@@ -712,22 +743,29 @@ pub fn plan(
     let groups = clusters(&expanded);
     let mut cells: Vec<Rect> = Vec::new();
     let mut reported: Vec<Cluster> = Vec::new();
+    let in_focus = |index: usize| focus.is_empty() || focus.iter().any(|name| *name == named[index].0);
     for group in groups {
         let envelope = group
             .iter()
             .map(|&index| expanded[index])
             .reduce(Rect::union)
             .expect("a cluster always holds at least one rectangle");
-        // One query area per fused cluster.
-        //
-        // The exact rectilinear union of a cluster's buffered members would
-        // avoid the concave over-fetch, but it splits into O(members)
-        // rectangles — so a district of 200 transformers would become hundreds
-        // of provider round trips, which is the cost this whole design exists
-        // to avoid. Fusing to the cluster's envelope keeps the query count at
-        // one per site. Cross-cluster fusion is what must never happen, and
-        // `clusters` guarantees these envelopes are disjoint.
-        cells.push(envelope);
+        let wanted: Vec<usize> = group.iter().copied().filter(|&index| in_focus(index)).collect();
+        if wanted.is_empty() {
+            continue;
+        }
+        // One query area per fused cluster while its envelope stays small: the
+        // concave over-fetch is cheaper than O(members) provider round trips.
+        // Past MAX_ENVELOPE_M2 that trade inverts — chained sites would turn
+        // into one district-sized request — so the members' own rectangles
+        // become the cells. Cross-cluster fusion never happens either way;
+        // `clusters` guarantees disjoint envelopes.
+        let split = rect_area_m2(envelope) > MAX_ENVELOPE_M2;
+        let cluster_cells: Vec<Rect> = if split {
+            wanted.iter().map(|&index| expanded[index]).collect()
+        } else {
+            vec![envelope]
+        };
         reported.push(Cluster {
             members: group.iter().map(|&index| named[index].0.clone()).collect(),
             buffer_m: group
@@ -736,7 +774,10 @@ pub fn plan(
                 .fold(0.0_f64, f64::max),
             envelope: envelope.bounds(),
             isolated: group.len() == 1,
+            split,
+            cells: cluster_cells.len(),
         });
+        cells.extend(cluster_cells);
     }
     // Clusters are disjoint by construction, so no cross-cluster merge is
     // needed; a final canonicalisation keeps the digest order-independent.
@@ -1049,6 +1090,8 @@ enum Request {
         dataset: Dataset,
         policy: BufferPolicy,
         extents: Vec<Extent>,
+        #[serde(default)]
+        focus: Vec<String>,
     },
     Assess {
         schema: String,
@@ -1108,9 +1151,10 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
             dataset,
             policy,
             extents,
+            focus,
         } => {
             require_schema(&schema)?;
-            serde_json::to_value(plan(&scope, &dataset, &policy, &extents)?)
+            serde_json::to_value(plan_focused(&scope, &dataset, &policy, &extents, &focus)?)
         }
         Request::Assess {
             schema,
@@ -1169,6 +1213,43 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_district_sized_chain_queries_member_rectangles_and_focus_narrows_them() {
+        // Forty designed sites chained 350 m apart along two 7 km legs: every
+        // 200 m buffer overlaps its neighbour, so they fuse into one cluster
+        // whose envelope (~7 km x 7 km) is far past MAX_ENVELOPE_M2.
+        let step = 0.00315; // ~350 m
+        let mut extents = Vec::new();
+        for i in 0..20 {
+            let x = 30.0 + step * i as f64;
+            extents.push(extent(&format!("x{i}"), Some([x, -2.0, x + 0.0001, -1.9999])));
+            let y = -2.0 + step * i as f64;
+            extents.push(extent(&format!("y{i}"), Some([30.0, y, 30.0001, y + 0.0001])));
+        }
+        let whole = plan(&scope(), &buildings(), &policy(), &extents).unwrap();
+        assert_eq!(whole.clusters.len(), 1);
+        assert!(whole.clusters[0].split);
+        assert_eq!(whole.clusters[0].members.len(), 40);
+        assert_eq!(whole.coverage.cells.len(), 40);
+        for &[w, s, e, n] in &whole.coverage.cells {
+            assert!(rect_area_m2(Rect { w, s, e, n }) < 1_000_000.0);
+        }
+        let one = plan_focused(&scope(), &buildings(), &policy(), &extents, &["x7".to_string()]).unwrap();
+        assert_eq!(one.coverage.cells.len(), 1);
+        assert_eq!(one.clusters[0].cells, 1);
+        assert_eq!(one.clusters[0].members.len(), 40);
+        let none = plan_focused(&scope(), &buildings(), &policy(), &extents, &["absent".to_string()]).unwrap();
+        assert!(none.empty);
+        // A small pair keeps its single envelope and is not split.
+        let pair = [
+            extent("a", Some([30.5, -2.5, 30.501, -2.499])),
+            extent("b", Some([30.5012, -2.5, 30.5022, -2.499])),
+        ];
+        let small = plan(&scope(), &buildings(), &policy(), &pair).unwrap();
+        assert_eq!(small.coverage.cells.len(), 1);
+        assert!(!small.clusters[0].split);
+    }
 
     #[test]
     fn shared_buffers_never_shrink_below_project_acquisition_defaults() {
