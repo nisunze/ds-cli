@@ -6,6 +6,9 @@ use serde_json::{json, Map, Value};
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum StyleInstruction {
+    /// Persist one backend-declared print-context source style exactly once.
+    /// The backend snapshot owns its palette, schema and save routing.
+    Seed,
     /// Clone the authenticated screen style into its predictable `_print`
     /// variant. The clone is create-only; later guided edits address the new
     /// ref through the ordinary Style Center path.
@@ -491,6 +494,7 @@ pub fn style_save_payload(
         "project_data",
         "global_tile",
         "ds_grid",
+        "print_context",
         "print",
     ]
     .contains(&target)
@@ -513,6 +517,24 @@ pub fn plan_style_edit(
         .filter(|v| v.is_object())
         .ok_or("no backend document for this style ref")?;
     let kind = style["type"].as_str().ok_or("missing style type")?;
+
+    if matches!(instruction, StyleInstruction::Seed) {
+        if editor["style_target"] != "print_context" {
+            return Err("style seed is limited to declared print context sources".into());
+        }
+        let mut payload = style_save_payload(snapshot, reference, style)?;
+        payload["create_only"] = json!(true);
+        let document = payload["style_data"].clone();
+        return Ok(StylePlan {
+            document: document.clone(),
+            receipt: json!({
+                "project": snapshot["project_id"], "ref": reference,
+                "type": kind, "document": document,
+                "published": false, "dryRun": true, "createOnly": true,
+            }),
+            payload,
+        });
+    }
 
     if matches!(instruction, StyleInstruction::PrintVariant) {
         if reference.ends_with("_print") {
@@ -814,7 +836,9 @@ pub fn plan_style_edit(
             receipt["changed"] = json!(["cartography"]);
             receipt["requested"] = json!(change);
         }
-        StyleInstruction::PrintVariant => unreachable!("handled before guided edits"),
+        StyleInstruction::Seed | StyleInstruction::PrintVariant => {
+            unreachable!("handled before guided edits")
+        }
     }
     normalize_json_numbers(&mut next);
     let payload = style_save_payload(snapshot, reference, &next)?;
@@ -1115,6 +1139,38 @@ mod tests {
             &StyleInstruction::PrintVariant
         )
         .is_err());
+    }
+    #[test]
+    fn seed_is_create_only_and_limited_to_backend_declared_print_context() {
+        let mut state = snapshot(json!({
+            "type":"line", "paint":{"line-color":"#725c48","line-width":1.058},
+            "metadata":{"geometry_type":"line"}
+        }));
+        state["style_editors"][0]["style_ref"] = json!("print_context/contours_index");
+        state["style_editors"][0]["style_target"] = json!("print_context");
+        state["style_editors"][0]["layer_name"] = json!("contours_index");
+        let style = state["styles"]["master/poles"].take();
+        state["styles"] = json!({"print_context/contours_index":style});
+
+        let plan = plan_style_edit(
+            &state,
+            "print_context/contours_index",
+            &StyleInstruction::Seed,
+        )
+        .unwrap();
+        assert_eq!(plan.payload["style_target"], "print_context");
+        assert_eq!(plan.payload["layer_name"], "contours_index");
+        assert_eq!(plan.payload["create_only"], true);
+        assert_eq!(plan.receipt["createOnly"], true);
+        assert!(plan.payload.get("project_id").is_none());
+
+        assert!(plan_style_edit(
+            &snapshot(json!({"type":"line"})),
+            "master/poles",
+            &StyleInstruction::Seed
+        )
+        .unwrap_err()
+        .contains("limited to declared print context"));
     }
     #[test]
     fn guided_appearance_changes_only_size_fallback_and_checks_server_bounds() {
