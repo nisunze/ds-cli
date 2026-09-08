@@ -102,6 +102,10 @@ pub struct PrintViewport {
     /// Geographic drawing is clipped to the owning map element's rectangle.
     #[serde(default = "yes")]
     pub clip: bool,
+    /// Fit the design around these page elements using their rendered bounds.
+    /// Explicit geographic cameras keep their authored scale and centre.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub fit_around: Vec<String>,
 }
 
 /// One reproducible geographic view bound to a layout viewport at render time.
@@ -380,6 +384,17 @@ pub fn validate(layout: &Layout) -> Result<(), String> {
             {
                 return Err("invalid or unclipped print viewport".into());
             }
+            let mut obstacles = BTreeSet::new();
+            if viewport.fit_around.len() > 32
+                || viewport.fit_around.iter().any(|id| {
+                    !obstacles.insert(id)
+                        || !layout.elements.iter().any(|candidate| {
+                            &candidate.id == id && candidate.kind != ElementKind::Map
+                        })
+                })
+            {
+                return Err("viewport fit-around must name up to 32 distinct page elements".into());
+            }
         } else if element.viewport.is_some() {
             return Err("only map elements can define print viewports".into());
         }
@@ -565,6 +580,7 @@ pub fn default_layout() -> Layout {
                     name: "Primary map".into(),
                     view_slot: "primary_map".into(),
                     clip: true,
+                    fit_around: Vec::new(),
                 }),
                 ..element("map", ElementKind::Map, [12., 32., 300., 235.], "", 10.)
             },
@@ -734,6 +750,7 @@ pub fn upgrade(mut layout: Layout) -> Result<Layout, String> {
                 name: "Primary map".into(),
                 view_slot: "primary_map".into(),
                 clip: true,
+                fit_around: Vec::new(),
             });
         }
     }
@@ -969,6 +986,11 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
                 name,
                 view_slot,
                 clip: true,
+                fit_around: layout.elements[index]
+                    .viewport
+                    .as_ref()
+                    .map(|v| v.fit_around.clone())
+                    .unwrap_or_default(),
             });
             validate(&layout)?;
             json!({"layout":layout})
@@ -1011,6 +1033,25 @@ pub fn command_schema() -> serde_json::Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn viewport_fit_around_roundtrips_and_rejects_missing_or_duplicate_elements() {
+        let mut layout = default_layout();
+        let anchor = layout.elements[1].id.clone();
+        layout.elements[0].viewport.as_mut().unwrap().fit_around = vec![anchor.clone()];
+        validate(&layout).unwrap();
+        let decoded: Layout =
+            serde_json::from_value(serde_json::to_value(&layout).unwrap()).unwrap();
+        assert_eq!(decoded, layout);
+        for ids in [
+            vec!["missing".into()],
+            vec!["map".into()],
+            vec![anchor.clone(), anchor],
+        ] {
+            layout.elements[0].viewport.as_mut().unwrap().fit_around = ids;
+            assert!(validate(&layout).unwrap_err().contains("fit-around"));
+        }
+    }
 
     #[test]
     fn content_flow_requires_an_earlier_content_frame() {
@@ -1268,6 +1309,7 @@ mod tests {
             name: "Wrong".into(),
             view_slot: "wrong".into(),
             clip: true,
+            fit_around: Vec::new(),
         });
         assert!(validate(&layout).is_err());
         assert!(evaluate(
