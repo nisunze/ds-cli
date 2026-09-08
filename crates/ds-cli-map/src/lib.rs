@@ -5,7 +5,6 @@
 //! named desktop bridge operations. This crate is a host adapter, not an engine.
 
 pub mod canvas;
-pub mod scene;
 pub mod data;
 pub mod design;
 pub mod draw;
@@ -16,6 +15,7 @@ pub mod outliers;
 pub mod points_along;
 pub mod random_points;
 pub mod remove;
+pub mod scene;
 pub mod survey;
 pub mod ui;
 pub mod view;
