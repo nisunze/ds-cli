@@ -155,12 +155,21 @@ pub static STATUS: Command = Command {
     availability: ops::paired_availability,
 };
 
-fn invoke(inputs: &Inputs, operation: &BridgeOp, args: Value) -> Result<Value, Failure> {
+const READ_TIMEOUT: Duration = Duration::from_secs(180);
+const GENERATE_TIMEOUT: Duration = Duration::from_secs(240);
+const CATALOG_TIMEOUT: Duration = Duration::from_secs(360);
+
+fn invoke(
+    inputs: &Inputs,
+    operation: &BridgeOp,
+    args: Value,
+    timeout: Duration,
+) -> Result<Value, Failure> {
     ops::invoke(
         &ops::paired(inputs.value("desktop-descriptor"))?,
         operation,
         args,
-        Duration::from_secs(180),
+        timeout,
     )
     .map_err(ops::classify_signed_out)
 }
@@ -173,13 +182,14 @@ pub fn catalog(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
     if let Some(value) = inputs.value("page-token") {
         args["page_token"] = json!(value);
     }
-    invoke(inputs, &CATALOG_OP, args)
+    invoke(inputs, &CATALOG_OP, args, CATALOG_TIMEOUT)
 }
 pub fn list(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
     invoke(
         inputs,
         &LIST_OP,
         json!({"domain": inputs.require("domain")?}),
+        READ_TIMEOUT,
     )
 }
 pub fn generate(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
@@ -188,6 +198,7 @@ pub fn generate(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
         inputs,
         &GENERATE_OP,
         json!({"domain": inputs.require("domain")?, "name": inputs.require("name")?, "country": inputs.require("country")?, "sources": inputs.repeated("source"), "maxzoom": maxzoom, "apply": true}),
+        GENERATE_TIMEOUT,
     )
 }
 pub fn status(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
@@ -195,6 +206,7 @@ pub fn status(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
         inputs,
         &STATUS_OP,
         json!({"tile_id": inputs.require("tile")?}),
+        READ_TIMEOUT,
     )
 }
 pub fn render(value: &Value) -> String {
