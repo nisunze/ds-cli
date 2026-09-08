@@ -852,6 +852,8 @@ pub enum Command {
         selection: Option<crate::report_formats::DesignOutputSelection>,
         #[serde(default)]
         legacy_formats: Option<Vec<String>>,
+        #[serde(default)]
+        required_layout: Option<String>,
     },
     TransformerViews {
         views: BTreeMap<String, BTreeMap<String, GeographicView>>,
@@ -930,15 +932,38 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
         Command::OutputSelection {
             selection,
             legacy_formats,
+            required_layout,
         } => {
-            json!({"selection":crate::report_formats::normalize_output_selection(selection, legacy_formats)?})
+            let selection =
+                crate::report_formats::normalize_output_selection(selection, legacy_formats)?;
+            if let Some(layout) = required_layout {
+                if !identifier(&layout)
+                    || !selection.prints.iter().any(|print| {
+                        print.enabled && print.layout_id == layout && !print.formats.is_empty()
+                    })
+                {
+                    return Err(
+                        "the selected outputs must include the required named layout".into(),
+                    );
+                }
+            }
+            json!({"selection":selection})
         }
         Command::TransformerViews { views } => {
             if views.len() > 10_000 {
                 return Err("transformer print views exceed 10,000 transformers".into());
             }
             for (transformer, slots) in &views {
-                if !identifier(transformer) || slots.len() > 64 {
+                let bytes = transformer.as_bytes();
+                if bytes.is_empty()
+                    || bytes.len() > 121
+                    || !((bytes[0].is_ascii_lowercase())
+                        || (bytes[0] == b'_' && bytes.get(1).is_some_and(u8::is_ascii_digit)))
+                    || !bytes[1..].iter().all(|byte| {
+                        byte.is_ascii_lowercase() || byte.is_ascii_digit() || *byte == b'_'
+                    })
+                    || slots.len() > 64
+                {
                     return Err("invalid transformer print view map".into());
                 }
                 for (slot, view) in slots {
@@ -1146,7 +1171,20 @@ mod tests {
         let result = evaluate(br#"{"op":"transformer_views","views":{"tx_1":{"primary_map":{"mode":"camera","center_wgs84":[29.7,-2.5],"scale_denominator":1000}}}}"#).unwrap();
         assert!(result.contains("\"scale_denominator\":1000.0"));
         assert!(evaluate(br#"{"op":"transformer_views","views":{"TX 1":{}}}"#).is_err());
+        assert!(evaluate(br#"{"op":"transformer_views","views":{"TX_1":{}}}"#).is_err());
         assert!(evaluate(br#"{"op":"transformer_views","views":{"tx_1":{"map":{"mode":"fit","extent_wgs84":[30,-2,29,-1]}}}}"#).is_err());
+    }
+
+    #[test]
+    fn output_selection_can_require_the_layout_being_authored() {
+        assert!(evaluate(
+            br#"{"op":"output_selection","legacy_formats":["pdf__a3"],"required_layout":"a3"}"#
+        )
+        .is_ok());
+        assert!(evaluate(
+            br#"{"op":"output_selection","legacy_formats":["xlsx"],"required_layout":"a3"}"#
+        )
+        .is_err());
     }
     #[test]
     fn context_layers_are_explicit_and_parameter_bounded() {
