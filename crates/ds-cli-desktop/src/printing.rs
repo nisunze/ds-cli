@@ -82,7 +82,7 @@ pub const SAVE_OP: BridgeOp = BridgeOp {
 const SCOPE_ARG: Arg = Arg::value(
     "scope",
     "<project|global>",
-    "Read the active project's catalog or the shared global samples.",
+    "Read one explicitly named project's catalog or the shared global samples.",
 )
 .choices(&["project", "global"])
 .default("project");
@@ -90,7 +90,7 @@ const SCOPE_ARG: Arg = Arg::value(
 const PROJECT_ARG: Arg = Arg::value(
     "project",
     "<exact-id>",
-    "Read this exact project without changing the paired Desktop project; valid only with project scope. Omit it to use the active project.",
+    "Exact project to read without changing the paired Desktop project; required with project scope and invalid with global scope.",
 );
 
 const FORCE_ARG: Arg = Arg {
@@ -114,7 +114,7 @@ pub static LIST_COMMAND: Command = Command {
     path: &["desktop", "printing", "list"],
     contract: 1,
     summary: "List named printing setups from Brain through the paired desktop.",
-    purpose: "Returns the dynamic named printing catalog for one explicit project, the active project when --project is omitted, or the shared global samples. An explicit project is read under the paired user's Brain permissions and does not change the Desktop map project.",
+    purpose: "Returns the dynamic named printing catalog for the exact --project under the paired user's Brain permissions, or the shared global samples. Project scope requires --project and does not read or change the Desktop map project.",
     chapter: Chapter::Reports,
     effect: Effect::ReadOnly,
     authority: Authority::DesktopUser,
@@ -142,7 +142,7 @@ pub static GET_COMMAND: Command = Command {
     path: &["desktop", "printing", "get"],
     contract: 1,
     summary: "Read one named printing setup and its authored layout.",
-    purpose: "Reads one exact setup from an explicit project, the active project when --project is omitted, or the global sample catalog through Brain. An explicit project does not change the Desktop map project. The setup revision is the required optimistic token for a later update.",
+    purpose: "Reads one exact setup from the required --project or the global sample catalog through Brain. Project scope does not read or change the Desktop map project. The setup revision is the required optimistic token for a later update.",
     chapter: Chapter::Reports,
     effect: Effect::ReadOnly,
     authority: Authority::DesktopUser,
@@ -271,7 +271,7 @@ pub static SAVE_COMMAND: Command = Command {
     path: &["desktop", "printing", "save"],
     contract: 1,
     summary: "Save one project or global named printing setup through Brain.",
-    purpose: "Publishes one authored layout into an explicit project's catalog, the active project when project is omitted, or the shared global sample catalog. The request carries scope, optional project, layout and the exact expectedRevision returned by desktop printing get; an empty revision creates a new setup. An explicit project does not change the Desktop map project.",
+    purpose: "Publishes one authored layout into the request's exact project catalog or the shared global sample catalog. Project scope requires project; global scope forbids it. The request also carries layout and the exact expectedRevision returned by desktop printing get; an empty revision creates a new setup. This does not read or change the Desktop map project.",
     chapter: Chapter::Reports,
     effect: Effect::GlobalWrite,
     authority: Authority::DesktopUser,
@@ -280,7 +280,7 @@ pub static SAVE_COMMAND: Command = Command {
         Arg::value(
             "request",
             "<json-file>",
-            "Scope, optional explicit project, authored layout and expectedRevision; at most 800 KB.",
+            "Scope, required project for project scope, authored layout and expectedRevision; at most 800 KB.",
         )
         .required(),
         DESCRIPTOR_ARG,
@@ -311,7 +311,7 @@ pub static PREPARE_COMMAND: Command = Command {
     path: &["desktop", "printing", "prepare"],
     contract: 1,
     summary: "Save a project print layout, select exports and prepare inputs.",
-    purpose: "Runs printing preparation for an optional explicit project under the paired signed-in user without changing the Desktop map project. The request names project, layout, expectedRevision (empty for create) and a ds.design-output-selection/v1 paper-by-format selection. Brain validates and saves the layout and project settings; the app then refreshes the sealed receipt and installs required reference data. These are sequential durable actions: a later preparation failure does not roll back a saved layout. Use the returned revision for further edits. This does not export a report; follow with desktop printing export.",
+    purpose: "Runs printing preparation for the request's required exact project under the paired signed-in user without reading or changing the Desktop map project. The request names project, layout, expectedRevision (empty for create) and a ds.design-output-selection/v1 paper-by-format selection. Brain validates and saves the layout and project settings; the app then refreshes the sealed receipt and installs required reference data. These are sequential durable actions: a later preparation failure does not roll back a saved layout. Use the returned revision for further edits. This does not export a report; follow with desktop printing export.",
     chapter: Chapter::Reports,
     effect: Effect::GlobalWrite,
     authority: Authority::DesktopUser,
@@ -320,7 +320,7 @@ pub static PREPARE_COMMAND: Command = Command {
         Arg::value(
             "request",
             "<json-file>",
-            "Optional explicit project, authored layout, expectedRevision, versioned output selection and optional transformer views; at most 800 KB.",
+            "Required exact project, authored layout, expectedRevision, versioned output selection and optional transformer views; at most 800 KB.",
         )
         .required(),
         DESCRIPTOR_ARG,
@@ -367,6 +367,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         inputs.require("request")?,
         "provide a JSON object containing layout, expectedRevision and selection, at most 800 KB",
     )?;
+    require_request_project(&request, "printing.prepare")?;
     let descriptor = ops::paired(inputs.value("desktop-descriptor"))?;
     ops::invoke(
         &descriptor,
@@ -381,6 +382,7 @@ pub fn save(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         inputs.require("request")?,
         "provide scope, layout and expectedRevision, at most 800 KB",
     )?;
+    validate_save_scope_project(&request)?;
     let descriptor = ops::paired(inputs.value("desktop-descriptor"))?;
     ops::invoke(
         &descriptor,
@@ -460,6 +462,30 @@ fn invalid_read(message: impl Into<String>) -> Failure {
     Failure::invalid("printing_request_invalid", message).remedy(PRINTING_READ_INVALID.remedy)
 }
 
+fn require_request_project<'a>(request: &'a Value, operation: &str) -> Result<&'a str, Failure> {
+    let project = request
+        .get("project")
+        .and_then(Value::as_str)
+        .ok_or_else(|| invalid_read(format!("{operation} requires one explicit project id")))?;
+    bounded_project(project)
+}
+
+fn validate_save_scope_project(request: &Value) -> Result<(), Failure> {
+    match request.get("scope").and_then(Value::as_str) {
+        Some("project") => {
+            require_request_project(request, "printing.save")?;
+            Ok(())
+        }
+        Some("global") if request.get("project").is_some() => Err(invalid_read(
+            "printing.save forbids project with global scope",
+        )),
+        Some("global") => Ok(()),
+        _ => Err(invalid_read(
+            "printing.save requires scope project or global",
+        )),
+    }
+}
+
 fn read_arguments(inputs: &Inputs, id: Option<&str>) -> Result<Value, Failure> {
     let scope = inputs.require("scope")?;
     let project = inputs.value("project");
@@ -472,6 +498,11 @@ fn read_arguments(inputs: &Inputs, id: Option<&str>) -> Result<Value, Failure> {
     }
     if scope == "global" && project.is_some() {
         return Err(invalid_read("`--project` is only valid with project scope"));
+    }
+    if scope == "project" && project.is_none() {
+        return Err(invalid_read(
+            "project scope requires one explicit `--project`",
+        ));
     }
     let mut arguments = serde_json::Map::new();
     arguments.insert("scope".into(), Value::String(scope.into()));
@@ -515,5 +546,33 @@ mod tests {
         assert_eq!(GET_OP.arguments, ["scope", "project", "id"]);
         assert_eq!(TRANSFORMERS_OP.arguments, ["project", "limit"]);
         assert_eq!(EXPORT_OP.arguments, ["project", "transformer", "force"]);
+    }
+
+    #[test]
+    fn project_reads_and_request_writes_require_the_exact_project_locally() {
+        let tokens = ["--scope", "project"]
+            .into_iter()
+            .map(str::to_string)
+            .collect::<Vec<_>>();
+        let inputs = ds_cli_contract::parse(&LIST_COMMAND, &tokens).expect("list inputs");
+        let failure = read_arguments(&inputs, None).expect_err("project is required");
+        assert_eq!(failure.code(), "printing_request_invalid");
+        assert!(failure.message().contains("explicit `--project`"));
+
+        let prepare = json!({"layout": {}, "expectedRevision": "", "selection": {}});
+        assert!(
+            require_request_project(&prepare, "printing.prepare")
+                .expect_err("prepare project is required")
+                .message()
+                .contains("explicit project")
+        );
+
+        let project_save = json!({"scope":"project", "layout":{}, "expectedRevision":""});
+        assert!(validate_save_scope_project(&project_save).is_err());
+        let global_save =
+            json!({"scope":"global", "project":"huye", "layout":{}, "expectedRevision":""});
+        assert!(validate_save_scope_project(&global_save).is_err());
+        assert!(validate_save_scope_project(&json!({"scope":"global"})).is_ok());
+        assert!(validate_save_scope_project(&json!({"scope":"project", "project":"huye"})).is_ok());
     }
 }

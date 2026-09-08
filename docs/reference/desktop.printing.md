@@ -1,19 +1,21 @@
 # Project printing preparation
 
-Use `ds desktop printing list --scope project --output json` to inspect the
-active project's dynamic catalog, or `--scope global` for shared samples. Read
-one exact authored document and its current optimistic revision with
-`ds desktop printing get --scope project --id <id> --output json`.
+Use `ds desktop printing list --scope project --project <exact-id> --output
+json` to inspect one project's dynamic catalog, or `--scope global` for shared
+samples. Read one exact authored document and its current optimistic revision
+with `ds desktop printing get --scope project --project <exact-id> --id <id>
+--output json`.
 Publish a shared sample or a project-only layout with
 `ds desktop printing save --request setup-save.json --yes --output json`; the
 request contains `scope`, `layout`, and `expectedRevision`.
 
 `ds desktop printing prepare --request setup.json --yes --output json`
-uses the paired application's active project and normal Brain-authorized saves.
-It is also available through the generated MCP surface. It does not use a
-native-client profile or change another command's authentication requirements.
+requires `project` in the request and uses normal Brain-authorized saves without
+reading or switching the project shown in the paired application. It is also
+available through the generated MCP surface. It does not use a native-client
+profile or change another command's authentication requirements.
 
-The request contains `layout` (the `ds.print-layout/v2` document),
+The request contains `project`, `layout` (the `ds.print-layout/v2` document),
 `expectedRevision` (empty when creating), and a versioned `selection`. Paper
 and file format are independent:
 
