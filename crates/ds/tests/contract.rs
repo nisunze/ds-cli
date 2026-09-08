@@ -501,7 +501,11 @@ fn chapters_follow_intent_where_it_parts_from_the_domain() {
         };
         let expected = if rest.starts_with("design.") {
             "design"
-        } else if rest.starts_with("canvas.") || rest.starts_with("scene.") {
+        } else if rest.starts_with("canvas.")
+            || rest.starts_with("scene.")
+            || rest.starts_with("camera.")
+            || rest.starts_with("renderer.")
+        {
             "map-presentation"
         } else {
             "survey"
