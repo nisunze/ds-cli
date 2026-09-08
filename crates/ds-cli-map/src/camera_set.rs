@@ -16,7 +16,7 @@ pub static COMMAND: Command = Command {
     contract: 1,
     summary: "Set the paired map's active 2D or 3D camera.",
     purpose: "Moves the renderer already selected in the paired application to an exact WGS84 center, zoom, pitch and bearing. The shared command kernel validates the same camera contract for native and browser callers.",
-    chapter: Chapter::Survey,
+    chapter: Chapter::MapPresentation,
     effect: Effect::LocalUi,
     authority: Authority::DesktopPairing,
     execution: Execution::Sync,

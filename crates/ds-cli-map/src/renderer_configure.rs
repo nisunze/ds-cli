@@ -16,7 +16,7 @@ pub static COMMAND: Command = Command {
     contract: 1,
     summary: "Select the paired map's active 2D or 3D renderer.",
     purpose: "Selects 2D, AWS terrain 3D, or Google Photorealistic 3D through the application-owned renderer lifecycle. Three-dimensional mode always requires an explicit provider; provider auto-selection is refused.",
-    chapter: Chapter::Survey,
+    chapter: Chapter::MapPresentation,
     effect: Effect::LocalUi,
     authority: Authority::DesktopPairing,
     execution: Execution::Sync,
