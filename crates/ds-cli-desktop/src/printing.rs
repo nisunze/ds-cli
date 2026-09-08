@@ -66,6 +66,10 @@ pub const GET_OP: BridgeOp = BridgeOp {
     operation: "printing.get",
     arguments: &["scope", "project", "id"],
 };
+pub const TRANSFORMERS_OP: BridgeOp = BridgeOp {
+    operation: "printing.transformers",
+    arguments: &["project", "limit"],
+};
 pub const EXPORT_OP: BridgeOp = BridgeOp {
     operation: "printing.export",
     arguments: &["project", "transformer", "force"],
@@ -165,6 +169,49 @@ pub static GET_COMMAND: Command = Command {
         ops::UNSUPPORTED,
         ops::UNREADABLE,
         ops::SIGNED_OUT,
+        PRINTING_READ_INVALID,
+    ],
+    reference: Some("docs/reference/desktop.printing.md"),
+    availability: ops::paired_availability,
+};
+
+pub static TRANSFORMERS_COMMAND: Command = Command {
+    id: "desktop.printing.transformers",
+    path: &["desktop", "printing", "transformers"],
+    contract: 1,
+    summary: "List printable transformers in one explicit project.",
+    purpose: "Reads the fresh bounded transformer inventory for one explicit project under the paired user's Brain permissions. It reports only transformer identity and local-room readiness needed to choose a print target; it does not open or switch the Desktop map project.",
+    chapter: Chapter::Reports,
+    effect: Effect::ReadOnly,
+    authority: Authority::DesktopUser,
+    execution: Execution::Sync,
+    args: &[
+        Arg::value(
+            "project",
+            "<exact-id>",
+            "Exact project to inspect without changing the Desktop map project.",
+        )
+        .required(),
+        Arg::value(
+            "limit",
+            "<n>",
+            "Return at most this many transformers; 1..500.",
+        )
+        .default("100"),
+        DESCRIPTOR_ARG,
+    ],
+    output: "Explicit project, total printable transformer count, bounded name/kind/cache/version rows, and omitted count.",
+    examples: &[],
+    refusals: &[
+        ops::NOT_PAIRED,
+        ops::AMBIGUOUS,
+        ops::UNREACHABLE,
+        ops::PAIRING_REJECTED,
+        ops::REFUSED,
+        ops::UNSUPPORTED,
+        ops::UNREADABLE,
+        ops::SIGNED_OUT,
+        ops::INVALID_NUMBER,
         PRINTING_READ_INVALID,
     ],
     reference: Some("docs/reference/desktop.printing.md"),
@@ -366,6 +413,19 @@ pub fn get(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         .map_err(ops::classify_signed_out)
 }
 
+pub fn transformers(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
+    let project = bounded_project(inputs.require("project")?)?;
+    let limit = ops::integer(inputs.require("limit")?, "limit", 1, 500)?;
+    let descriptor = ops::paired(inputs.value("desktop-descriptor"))?;
+    ops::invoke(
+        &descriptor,
+        &TRANSFORMERS_OP,
+        json!({"project": project, "limit": limit}),
+        Duration::from_secs(120),
+    )
+    .map_err(ops::classify_signed_out)
+}
+
 pub fn export(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let project = bounded_project(inputs.require("project")?)?;
     let transformer = inputs.require("transformer")?;
@@ -453,6 +513,7 @@ mod tests {
     fn read_operations_declare_explicit_project_without_a_switch_operation() {
         assert_eq!(LIST_OP.arguments, ["scope", "project"]);
         assert_eq!(GET_OP.arguments, ["scope", "project", "id"]);
+        assert_eq!(TRANSFORMERS_OP.arguments, ["project", "limit"]);
         assert_eq!(EXPORT_OP.arguments, ["project", "transformer", "force"]);
     }
 }

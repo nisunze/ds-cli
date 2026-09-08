@@ -184,6 +184,7 @@ impl Profile {
                     // part of the broad grid-model profile. It remains
                     // discoverable through the Reports chapter router.
                     && tool.id != "desktop.printing.export"
+                    && tool.id != "desktop.printing.transformers"
                     // Project cache preparation belongs to the focused model
                     // lifecycle surface. Keeping it out of this broad router
                     // preserves the profile's bounded tool budget.
