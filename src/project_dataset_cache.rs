@@ -823,11 +823,19 @@ pub const CONTOURS_DATASET_ID: &str = "elevation_contours";
 /// A provider that selects by centre — Microsoft's building index does, and
 /// records `region_predicate: "centroid inside AOI"` — must be registered here
 /// as `CentroidInside` before any of its rows may enter a room.
-pub fn acquisition_selection(dataset_id: &str) -> Result<AreaSelection, String> {
-    match dataset_id {
-        BUILDINGS_DATASET_ID | CONTOURS_DATASET_ID => Ok(AreaSelection::Intersects),
-        other => Err(format!(
-            "dataset `{other}` does not record the area rule its provider selects with; register it in acquisition_selection before a room may hold or refresh it"
+///
+/// National reference subsets are addressed by per-resource digests, so their
+/// rule is recorded against the *provider*: the desktop reference cache selects
+/// rows whose bounds intersect the area (`reference_cache::intersects_area`),
+/// which is the same rule its subsets are admitted and refreshed under.
+pub const REFERENCE_CACHE_PROVIDER: &str = "desktop:reference_resource_cache";
+
+pub fn acquisition_selection(dataset_id: &str, provider: &str) -> Result<AreaSelection, String> {
+    match (dataset_id, provider) {
+        (BUILDINGS_DATASET_ID | CONTOURS_DATASET_ID, _) => Ok(AreaSelection::Intersects),
+        (_, REFERENCE_CACHE_PROVIDER) => Ok(AreaSelection::Intersects),
+        (other, provider) => Err(format!(
+            "dataset `{other}` from provider `{provider}` does not record the area rule its provider selects with; register it in acquisition_selection before a room may hold or refresh it"
         )),
     }
 }
@@ -838,10 +846,11 @@ pub fn acquisition_selection(dataset_id: &str) -> Result<AreaSelection, String> 
 /// question, so they are the same call. Nothing may re-answer it locally.
 pub fn acquisition_selects(
     dataset_id: &str,
+    provider: &str,
     feature: &Value,
     area: &Value,
 ) -> Result<bool, String> {
-    crate::reference_cache::selects_area(feature, area, acquisition_selection(dataset_id)?)
+    crate::reference_cache::selects_area(feature, area, acquisition_selection(dataset_id, provider)?)
 }
 
 /// Reject an oversized or malformed source receipt outright.
@@ -995,7 +1004,7 @@ pub fn decode_buildings(response: &Value, area: &Value) -> Result<Value, String>
                 Some("Polygon" | "MultiPolygon")
             )
             || crate::reference_cache::feature_bounds(feature).is_none()
-            || !acquisition_selects(BUILDINGS_DATASET_ID, feature, area)?
+            || !acquisition_selects(BUILDINGS_DATASET_ID, "", feature, area)?
         {
             return Err("building acquisition contains an invalid or out-of-area footprint".into());
         }
@@ -1551,18 +1560,22 @@ mod tests {
         // question through the same call — there is no second predicate to
         // drift.
         assert_eq!(
-            acquisition_selection(BUILDINGS_DATASET_ID).unwrap(),
+            acquisition_selection(BUILDINGS_DATASET_ID, "").unwrap(),
             AreaSelection::Intersects
         );
         let area = json!({"type":"Polygon","coordinates":[[[0.,0.],[1.,0.],[1.,1.],[0.,1.],[0.,0.]]]});
         let crossing = json!({"type":"Feature","properties":{},
             "geometry":{"type":"Polygon","coordinates":[[[0.9,0.4],[1.3,0.4],[1.3,0.6],[0.9,0.6],[0.9,0.4]]]}});
-        assert!(acquisition_selects(BUILDINGS_DATASET_ID, &crossing, &area).unwrap());
+        assert!(acquisition_selects(BUILDINGS_DATASET_ID, "", &crossing, &area).unwrap());
+        assert_eq!(
+            acquisition_selection("4eebae72digest", REFERENCE_CACHE_PROVIDER).unwrap(),
+            AreaSelection::Intersects
+        );
         // An unregistered dataset has no rule, and a room may not invent a
         // destructive one for it.
-        let refused = acquisition_selection("some_new_dataset").unwrap_err();
+        let refused = acquisition_selection("some_new_dataset", "some-provider").unwrap_err();
         assert!(refused.contains("acquisition_selection"), "{refused}");
-        assert!(acquisition_selects("some_new_dataset", &crossing, &area).is_err());
+        assert!(acquisition_selects("some_new_dataset", "some-provider", &crossing, &area).is_err());
     }
 
     #[test]
