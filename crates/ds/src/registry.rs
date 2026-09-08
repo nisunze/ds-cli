@@ -1590,6 +1590,11 @@ static DESKTOP_ENTRIES: &[Entry] = &[
         render: ds_cli_desktop::printing::render,
     },
     Entry {
+        command: &ds_cli_desktop::printing::EXPORT_COMMAND,
+        handler: ds_cli_desktop::printing::export,
+        render: ds_cli_desktop::printing::render,
+    },
+    Entry {
         command: &ds_cli_desktop::printing::SAVE_COMMAND,
         handler: ds_cli_desktop::printing::save,
         render: ds_cli_desktop::printing::render,

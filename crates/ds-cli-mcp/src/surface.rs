@@ -180,6 +180,10 @@ impl Profile {
                     // workflow, not part of the broad grid-model surface.
                     // It remains discoverable through the Reports chapter.
                     && tool.id != "desktop.printing.seed-context"
+                    // Held-room printing is a focused artifact workflow, not
+                    // part of the broad grid-model profile. It remains
+                    // discoverable through the Reports chapter router.
+                    && tool.id != "desktop.printing.export"
                     // Project cache preparation belongs to the focused model
                     // lifecycle surface. Keeping it out of this broad router
                     // preserves the profile's bounded tool budget.

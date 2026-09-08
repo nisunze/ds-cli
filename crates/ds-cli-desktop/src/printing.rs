@@ -2,7 +2,7 @@
 use crate::ops::{self, BridgeOp, DESCRIPTOR_ARG};
 use ds_cli_contract::{
     Context, Failure, Inputs,
-    spec::{Arg, Authority, Chapter, Command, Effect, Execution, Refusal},
+    spec::{Arg, ArgKind, Authority, Chapter, Command, Effect, Execution, Refusal},
 };
 use serde_json::{Value, json};
 use std::{io::Read, time::Duration};
@@ -66,6 +66,10 @@ pub const GET_OP: BridgeOp = BridgeOp {
     operation: "printing.get",
     arguments: &["scope", "project", "id"],
 };
+pub const EXPORT_OP: BridgeOp = BridgeOp {
+    operation: "printing.export",
+    arguments: &["project", "transformer", "force"],
+};
 pub const SAVE_OP: BridgeOp = BridgeOp {
     operation: "printing.save",
     arguments: &["request"],
@@ -84,6 +88,16 @@ const PROJECT_ARG: Arg = Arg::value(
     "<exact-id>",
     "Read this exact project without changing the paired Desktop project; valid only with project scope. Omit it to use the active project.",
 );
+
+const FORCE_ARG: Arg = Arg {
+    name: "force",
+    kind: ArgKind::Switch,
+    value: "",
+    required: false,
+    default: None,
+    choices: &[],
+    summary: "Regenerate from the held local room even when the current report is fresh.",
+};
 
 const PRINTING_READ_INVALID: Refusal = Refusal {
     code: "printing_request_invalid",
@@ -157,12 +171,60 @@ pub static GET_COMMAND: Command = Command {
     availability: ops::paired_availability,
 };
 
+pub static EXPORT_COMMAND: Command = Command {
+    id: "desktop.printing.export",
+    path: &["desktop", "printing", "export"],
+    contract: 1,
+    summary: "Export one transformer's selected prints from its held local room.",
+    purpose: "Runs the desktop-native Network Reporter for one explicit project and transformer. It reads the project-keyed held room, cached indexed geographic context, printing setup, Style Center references and sealed project configuration without opening or switching the map. Local artifacts are queued through the ordinary report publication outbox.",
+    chapter: Chapter::Reports,
+    effect: Effect::ArtifactWrite,
+    authority: Authority::DesktopUser,
+    execution: Execution::Sync,
+    args: &[
+        Arg::value(
+            "project",
+            "<exact-id>",
+            "Exact project whose held local transformer room will be printed; never changes the Desktop map project.",
+        )
+        .required(),
+        Arg::value(
+            "transformer",
+            "<name>",
+            "One canonical transformer name in the held project room.",
+        )
+        .required(),
+        FORCE_ARG,
+        DESCRIPTOR_ARG,
+    ],
+    output: "Explicit project and transformer, artifact count, exact filenames/sizes/SHA-256/locators, context warnings and cached layer feature counts, and publication state.",
+    examples: &[],
+    refusals: &[
+        ops::NOT_PAIRED,
+        ops::AMBIGUOUS,
+        ops::UNREACHABLE,
+        ops::PAIRING_REJECTED,
+        ops::REFUSED,
+        ops::UNSUPPORTED,
+        ops::UNREADABLE,
+        ops::SIGNED_OUT,
+        PRINTING_READ_INVALID,
+        Refusal {
+            code: "confirmation_required",
+            when: "--yes was not given for a command that writes report artifacts",
+            remedy: "re-run with --yes once you intend the local export",
+        },
+    ],
+    reference: Some("docs/reference/desktop.printing.md"),
+    availability: ops::paired_availability,
+};
+
 pub static SAVE_COMMAND: Command = Command {
     id: "desktop.printing.save",
     path: &["desktop", "printing", "save"],
     contract: 1,
     summary: "Save one project or global named printing setup through Brain.",
-    purpose: "Publishes one authored layout into the active project's catalog or the shared global sample catalog. The request carries scope, layout and the exact expectedRevision returned by desktop printing get; an empty revision creates a new setup.",
+    purpose: "Publishes one authored layout into an explicit project's catalog, the active project when project is omitted, or the shared global sample catalog. The request carries scope, optional project, layout and the exact expectedRevision returned by desktop printing get; an empty revision creates a new setup. An explicit project does not change the Desktop map project.",
     chapter: Chapter::Reports,
     effect: Effect::GlobalWrite,
     authority: Authority::DesktopUser,
@@ -171,7 +233,7 @@ pub static SAVE_COMMAND: Command = Command {
         Arg::value(
             "request",
             "<json-file>",
-            "Scope, authored layout and expectedRevision; at most 800 KB.",
+            "Scope, optional explicit project, authored layout and expectedRevision; at most 800 KB.",
         )
         .required(),
         DESCRIPTOR_ARG,
@@ -202,7 +264,7 @@ pub static PREPARE_COMMAND: Command = Command {
     path: &["desktop", "printing", "prepare"],
     contract: 1,
     summary: "Save a project print layout, select exports and prepare inputs.",
-    purpose: "Runs the paired application's printing preparation under its signed-in active project. The request names layout, expectedRevision (empty for create) and a ds.design-output-selection/v1 paper-by-format selection. Brain validates and saves the layout and project settings; the app then refreshes the sealed receipt and installs required reference data. These are sequential durable actions: a later preparation failure does not roll back a saved layout. Use the returned revision for further edits. This does not export a report; follow with map design report.",
+    purpose: "Runs printing preparation for an optional explicit project under the paired signed-in user without changing the Desktop map project. The request names project, layout, expectedRevision (empty for create) and a ds.design-output-selection/v1 paper-by-format selection. Brain validates and saves the layout and project settings; the app then refreshes the sealed receipt and installs required reference data. These are sequential durable actions: a later preparation failure does not roll back a saved layout. Use the returned revision for further edits. This does not export a report; follow with desktop printing export.",
     chapter: Chapter::Reports,
     effect: Effect::GlobalWrite,
     authority: Authority::DesktopUser,
@@ -211,12 +273,12 @@ pub static PREPARE_COMMAND: Command = Command {
         Arg::value(
             "request",
             "<json-file>",
-            "Authored layout, expectedRevision, versioned output selection and optional transformer views; at most 800 KB.",
+            "Optional explicit project, authored layout, expectedRevision, versioned output selection and optional transformer views; at most 800 KB.",
         )
         .required(),
         DESCRIPTOR_ARG,
     ],
-    output: "Active project, saved setup id/name/revision, selected output matrix and ready=true; no raw design features or credentials.",
+    output: "Resolved project, saved setup id/name/revision, selected output matrix and ready=true; no raw design features or credentials.",
     examples: &[],
     refusals: &[
         ops::NOT_PAIRED,
@@ -304,6 +366,36 @@ pub fn get(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         .map_err(ops::classify_signed_out)
 }
 
+pub fn export(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
+    let project = bounded_project(inputs.require("project")?)?;
+    let transformer = inputs.require("transformer")?;
+    if transformer.is_empty()
+        || transformer.len() > 121
+        || !transformer.bytes().enumerate().all(|(index, byte)| {
+            byte.is_ascii_lowercase()
+                || byte.is_ascii_digit()
+                || byte == b'_'
+                || (index == 0 && byte == b'_')
+        })
+        || (!transformer.as_bytes()[0].is_ascii_lowercase()
+            && !(transformer.starts_with('_')
+                && transformer
+                    .as_bytes()
+                    .get(1)
+                    .is_some_and(u8::is_ascii_digit)))
+    {
+        return Err(invalid_read("invalid canonical transformer name"));
+    }
+    let descriptor = ops::paired(inputs.value("desktop-descriptor"))?;
+    ops::invoke(
+        &descriptor,
+        &EXPORT_OP,
+        json!({"project": project, "transformer": transformer, "force": inputs.switch("force")}),
+        Duration::from_secs(30 * 60),
+    )
+    .map_err(ops::classify_signed_out)
+}
+
 fn invalid_read(message: impl Into<String>) -> Failure {
     Failure::invalid("printing_request_invalid", message).remedy(PRINTING_READ_INVALID.remedy)
 }
@@ -331,6 +423,15 @@ fn read_arguments(inputs: &Inputs, id: Option<&str>) -> Result<Value, Failure> {
     }
     Ok(Value::Object(arguments))
 }
+
+fn bounded_project(value: &str) -> Result<&str, Failure> {
+    if value.is_empty() || value.trim() != value || value.chars().count() > 160 {
+        return Err(invalid_read(
+            "`--project` must be non-empty, trimmed, and at most 160 characters",
+        ));
+    }
+    Ok(value)
+}
 pub fn render(data: &Value) -> String {
     format!("{data}\n")
 }
@@ -352,5 +453,6 @@ mod tests {
     fn read_operations_declare_explicit_project_without_a_switch_operation() {
         assert_eq!(LIST_OP.arguments, ["scope", "project"]);
         assert_eq!(GET_OP.arguments, ["scope", "project", "id"]);
+        assert_eq!(EXPORT_OP.arguments, ["project", "transformer", "force"]);
     }
 }
