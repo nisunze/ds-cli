@@ -90,13 +90,13 @@ pub static STATUS_COMMAND: Command = Command {
     path: &["data", "project-cache", "status"],
     contract: 1,
     summary: "Report the project's held extracts of canonical geographic datasets.",
-    purpose: "Reads what this project actually holds locally, per dataset: the coverage it requested, the coverage that completed, feature count, spatial-index state, source version, buffer policy and last error. Requested and completed are separate on purpose — an acquisition that failed leaves a request behind and must never read as a holding. One dataset's coverage never speaks for another's. This reads local state only: no provider, no BigQuery, no cost, and no map.",
+    purpose: "Reads what this project actually holds locally, per dataset: the coverage it requested, the coverage that completed, feature count, spatial-index state, source version, buffer policy and last error. Requested and completed are separate on purpose — an acquisition that failed leaves a request behind and must never read as a holding. Coverage held under a source version the provider has since replaced is reported as stale rather than quietly reused, and nothing is deleted to make that point: stale data is data this project paid for. Abandoned acquisitions are reported as expired instead of pending, so a killed session never leaves a dataset reading as permanently preparing. One dataset\'s coverage never speaks for another\'s. This reads local state only: no provider, no BigQuery, no cost, and no map.",
     chapter: Chapter::Data,
     effect: Effect::ReadOnly,
     authority: Authority::DesktopUser,
     execution: Execution::Sync,
     args: &[PROJECT_ARG, DATASET_ARG, DESCRIPTOR_ARG],
-    output: "Per dataset: id, provider, quality, source version, buffer policy, requested and completed coverage, feature count, index state, timestamps and last error.",
+    output: "Per dataset: id, provider, quality, held and available source versions, stale coverage, buffer policy, requested and completed coverage, feature count, index state, pending and expired acquisitions, timestamps and last error.",
     examples: &[
         Example {
             command: "ds data project-cache status --project my-project --output json",
@@ -229,6 +229,27 @@ fn dataset_lines(dataset: &Value) -> String {
     );
     if let Some(version) = dataset["source_version"].as_str().filter(|v| !v.is_empty()) {
         line.push_str(&format!("\n    source version {version}"));
+    }
+    // Freshness is reported, never acted on. Naming the stale areas is what
+    // lets an operator decide to spend money on a refresh; saying nothing
+    // would let obsolete rows pass for current ones.
+    let stale = coverage_cells(&dataset["stale"]);
+    if stale > 0 {
+        let available = dataset["available_version"].as_str().unwrap_or("");
+        line.push_str(&format!(
+            "\n    {stale} held area(s) completed under a superseded version{}; refresh to re-acquire, nothing is removed until it lands",
+            if available.is_empty() {
+                String::new()
+            } else {
+                format!(" (provider now publishes {available})")
+            },
+        ));
+    }
+    let expired = dataset["expired_queries"].as_u64().unwrap_or(0);
+    if expired > 0 {
+        line.push_str(&format!(
+            "\n    {expired} abandoned acquisition(s) expired and no longer count as pending"
+        ));
     }
     if let Some(policy) = dataset["buffer_policy"].as_object() {
         line.push_str(&format!(
@@ -370,5 +391,41 @@ mod tests {
         assert!(rendered.contains("1 covered area(s) of 2 requested"));
         assert!(rendered.contains("(provisional)"));
         assert!(rendered.contains("last error: the provider was unreachable"));
+    }
+
+    #[test]
+    fn status_render_names_obsolete_coverage_and_abandoned_acquisitions() {
+        let rendered = render_status(&json!({
+            "project": "p",
+            "datasets": [{
+                "dataset_id": "google_open_buildings",
+                "feature_count": 12,
+                "index_state": "ready",
+                "requested": {"cells": [[0,0,1,1]]},
+                "completed": {"cells": [[0,0,1,1]]},
+                "source_version": "v1",
+                "available_version": "v2",
+                "stale": {"cells": [[0,0,1,1]]},
+                "expired_queries": 2,
+            }]
+        }));
+        // The operator is told what is out of date and what it would cost to
+        // fix, and told plainly that reading this destroys nothing.
+        assert!(rendered.contains("1 held area(s) completed under a superseded version"));
+        assert!(rendered.contains("provider now publishes v2"));
+        assert!(rendered.contains("nothing is removed until it lands"));
+        // An abandoned attempt is reported as expired, never as pending work.
+        assert!(rendered.contains("2 abandoned acquisition(s) expired"));
+
+        // A room holding one current version says none of that.
+        let current = render_status(&json!({
+            "project": "p",
+            "datasets": [{"dataset_id": "google_open_buildings", "feature_count": 1,
+                "index_state": "ready", "requested": {"cells": []}, "completed": {"cells": []},
+                "source_version": "v2", "available_version": "v2", "stale": {"cells": []},
+                "expired_queries": 0}]
+        }));
+        assert!(!current.contains("superseded"));
+        assert!(!current.contains("expired"));
     }
 }
