@@ -501,7 +501,7 @@ fn chapters_follow_intent_where_it_parts_from_the_domain() {
         };
         let expected = if rest.starts_with("design.") {
             "design"
-        } else if rest.starts_with("canvas.") {
+        } else if rest.starts_with("canvas.") || rest.starts_with("scene.") {
             "map-presentation"
         } else {
             "survey"
@@ -509,8 +509,8 @@ fn chapters_follow_intent_where_it_parts_from_the_domain() {
         assert_eq!(
             command["chapter"].as_str(),
             Some(expected),
-            "`{id}` is in chapter {:?}; every `map.design.*` command is \
-             `design` and every other `map.*` command is `survey`",
+            "`{id}` is in chapter {:?}; design, presentation, and survey map \
+             operations must follow their operator-intent chapters",
             command["chapter"]
         );
     }
