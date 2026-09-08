@@ -17,6 +17,7 @@ use std::time::Duration;
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{Arg, ArgKind, Authority, Availability, Refusal};
+use ds_command_kernel::project_context::{self, Context as ProjectContext, Requirement, Route};
 use serde_json::{Value, json};
 
 use crate::bridge;
@@ -35,7 +36,7 @@ pub struct HeadlessIdentity {
     pub project: Option<String>,
     /// The command contract whose invocation this observation fences.
     /// DesktopUser proves user identity only; Project additionally requires
-    /// equality when both providers have selected projects.
+    /// switching the UI to the CLI target before executing map work.
     pub command_authority: Authority,
 }
 
@@ -90,42 +91,96 @@ pub fn invoke(
     }
     // Only this shared seam is map-attached. Pure ds-brain/device operations
     // never reach it and therefore never acquire a Desktop dependency.
-    let session = bridge::session(descriptor)?;
-    let fence = bridge::IdentityFence::from_session(&session)?;
     HEADLESS_IDENTITY.with(|headless| {
-        validate_headless_match(op.operation, headless.borrow().as_ref(), &fence)?;
-        bridge::invoke(descriptor, op.operation, arguments, &fence, timeout)
+        invoke_routed(
+            op,
+            arguments,
+            timeout,
+            headless.borrow().as_ref(),
+            || bridge::session(descriptor),
+            |operation, arguments, fence, timeout| {
+                bridge::invoke(descriptor, operation, arguments, fence, timeout)
+            },
+        )
     })
 }
 
-fn validate_headless_match(
+fn invocation_route<'a>(
     operation: &str,
-    headless: Option<&HeadlessIdentity>,
-    fence: &bridge::IdentityFence,
-) -> Result<(), Failure> {
+    headless: Option<&'a HeadlessIdentity>,
+    fence: &'a bridge::IdentityFence,
+) -> Result<Route<'a>, Failure> {
     if operation == "auth.link.approve" {
-        return Ok(());
+        return Ok(Route::CurrentDesktop);
     }
-    let Some(headless) = headless else {
-        return Ok(());
+    let requirement = if headless.is_some_and(|h| h.command_authority == Authority::Project) {
+        Requirement::MapProject
+    } else {
+        Requirement::DesktopUser
     };
-    let identity_mismatch = headless.uid != fence.uid
-        || headless.lane != fence.lane
-        || headless.credential_audience_sha256 != fence.credential_audience_sha256;
-    let project_mismatch = headless.command_authority == Authority::Project
-        && match (headless.project.as_deref(), fence.project.as_deref()) {
-            (Some(_), None) => true,
-            (Some(headless), Some(desktop)) => headless != desktop,
-            _ => false,
-        };
-    if identity_mismatch || project_mismatch {
-        return Err(Failure::conflict(
-            "auth_context_mismatch",
-            "the paired map and protected headless provider do not represent the same identity context",
-        )
-        .remedy("match lane, account and audience and, for project-authorized commands, the selected project"));
+    project_context::route(
+        requirement,
+        headless.map(|h| ProjectContext {
+            uid: &h.uid,
+            lane: &h.lane,
+            audience: &h.credential_audience_sha256,
+            project: h.project.as_deref(),
+        }),
+        fence_context(fence),
+    )
+    .map_err(|_| context_mismatch())
+}
+
+fn fence_context(fence: &bridge::IdentityFence) -> ProjectContext<'_> {
+    ProjectContext {
+        uid: &fence.uid,
+        lane: &fence.lane,
+        audience: &fence.credential_audience_sha256,
+        project: fence.project.as_deref(),
     }
-    Ok(())
+}
+
+fn context_mismatch() -> Failure {
+    Failure::conflict(
+        "auth_context_mismatch",
+        "the paired runtime identity or project changed during command routing",
+    )
+    .remedy("verify the paired account and lane, then retry the intended command")
+}
+
+/// Host effects for the kernel's routing decision. Never recurse through
+/// dispatch or change the CLI's durable project selection. Each operation is
+/// fenced, including the switch; an interrupted switch cannot run the command.
+fn invoke_routed(
+    op: &BridgeOp,
+    arguments: Value,
+    timeout: Duration,
+    headless: Option<&HeadlessIdentity>,
+    mut observe: impl FnMut() -> Result<Value, Failure>,
+    mut send: impl FnMut(
+        &'static str,
+        Value,
+        &bridge::IdentityFence,
+        Duration,
+    ) -> Result<Value, Failure>,
+) -> Result<Value, Failure> {
+    let mut fence = bridge::IdentityFence::from_session(&observe()?)?;
+    if let Route::SwitchDesktop { project } = invocation_route(op.operation, headless, &fence)? {
+        let target = project.to_owned();
+        send(
+            crate::project::SWITCH_OP.operation,
+            json!({ "project": target }),
+            &fence,
+            Duration::from_secs(30),
+        )?;
+        let after = bridge::IdentityFence::from_session(&observe()?)?;
+        if !project_context::switch_completed(fence_context(&fence), fence_context(&after), &target)
+        {
+            return Err(context_mismatch());
+        }
+        fence = after;
+    }
+    send(op.operation, arguments, &fence, timeout)
 }
 
 /// The first key in `arguments` the operation does not declare, if any.
@@ -522,11 +577,11 @@ mod tests {
             "project": "map-project", "session_revision": 4,
         }))
         .unwrap();
-        validate_headless_match("map.zoom_to", Some(&headless), &fence)
+        invocation_route("map.zoom_to", Some(&headless), &fence)
             .expect("map project supplies authority when headless project is absent");
         fence.uid = "uid-2".to_owned();
         assert_eq!(
-            validate_headless_match("map.zoom_to", Some(&headless), &fence)
+            invocation_route("map.zoom_to", Some(&headless), &fence)
                 .unwrap_err()
                 .code(),
             "auth_context_mismatch"
@@ -534,7 +589,7 @@ mod tests {
         fence.uid = "uid-1".to_owned();
         fence.lane = "canary".to_owned();
         assert_eq!(
-            validate_headless_match("map.zoom_to", Some(&headless), &fence)
+            invocation_route("map.zoom_to", Some(&headless), &fence)
                 .unwrap_err()
                 .code(),
             "auth_context_mismatch"
@@ -557,7 +612,7 @@ mod tests {
             command_authority: Authority::DesktopUser,
         };
         for operation in ["data.admin_bounds.list", "data.admin_bounds.read"] {
-            validate_headless_match(operation, Some(&user_reference), &fence)
+            invocation_route(operation, Some(&user_reference), &fence)
                 .expect("national-reference DesktopUser reads ignore project selection");
         }
 
@@ -566,11 +621,11 @@ mod tests {
             ..user_reference.clone()
         };
         assert_eq!(
-            validate_headless_match("data.admin_bounds.attach", Some(&project_bound), &fence)
-                .unwrap_err()
-                .code(),
-            "auth_context_mismatch",
-            "project-authorized operations must retain the project fence"
+            invocation_route("data.admin_bounds.attach", Some(&project_bound), &fence).unwrap(),
+            Route::SwitchDesktop {
+                project: "unrelated-cli-project"
+            },
+            "project work switches to the CLI target before attaching"
         );
 
         let wrong_user = HeadlessIdentity {
@@ -578,12 +633,101 @@ mod tests {
             ..user_reference
         };
         assert_eq!(
-            validate_headless_match("data.admin_bounds.read", Some(&wrong_user), &fence)
+            invocation_route("data.admin_bounds.read", Some(&wrong_user), &fence)
                 .unwrap_err()
                 .code(),
             "auth_context_mismatch",
             "DesktopUser never means a different user may borrow the session"
         );
+    }
+
+    #[test]
+    fn map_project_switch_is_verified_before_sending_the_operation() {
+        let headless = HeadlessIdentity {
+            uid: "uid-1".into(),
+            lane: "stable".into(),
+            credential_audience_sha256: "a".repeat(64),
+            project: Some("cli-project".into()),
+            command_authority: Authority::Project,
+        };
+        let before = json!({ "uid": "uid-1", "lane": "stable",
+            "credential_audience_sha256": "a".repeat(64),
+            "project": "ui-project", "session_revision": 4 });
+        let mut switched = before.clone();
+        switched["project"] = json!("cli-project");
+        switched["session_revision"] = json!(5);
+        let mut wrong_user = switched.clone();
+        wrong_user["uid"] = json!("uid-2");
+        let op = BridgeOp {
+            operation: "survey.working_area.download",
+            arguments: &["entireProject"],
+        };
+        for (after, succeeds) in [
+            (switched, true),
+            (before.clone(), false),
+            (wrong_user, false),
+        ] {
+            let mut observations = vec![before.clone(), after].into_iter();
+            let mut sent = Vec::new();
+            let result = invoke_routed(
+                &op,
+                json!({"entireProject": true}),
+                Duration::from_secs(60),
+                Some(&headless),
+                || Ok(observations.next().expect("bounded session observations")),
+                |name, args, fence, _| {
+                    sent.push((name, args, fence.clone()));
+                    Ok(json!({"ok": true}))
+                },
+            );
+            assert_eq!(sent[0].0, "project.switch");
+            assert_eq!(sent[0].1, json!({"project": "cli-project"}));
+            assert_eq!(sent[0].2.project.as_deref(), Some("ui-project"));
+            if succeeds {
+                assert!(result.is_ok());
+                assert_eq!(sent.len(), 2);
+                assert_eq!(sent[1].0, op.operation);
+                assert_eq!(sent[1].2.project.as_deref(), Some("cli-project"));
+                assert_eq!(sent[1].2.session_revision, 5);
+            } else {
+                assert_eq!(result.unwrap_err().code(), "auth_context_mismatch");
+                assert_eq!(
+                    sent.len(),
+                    1,
+                    "failed handoff must not run the survey operation"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn refused_project_switch_never_runs_the_map_operation() {
+        let headless = HeadlessIdentity {
+            uid: "uid-1".into(),
+            lane: "stable".into(),
+            credential_audience_sha256: "a".repeat(64),
+            project: Some("cli-project".into()),
+            command_authority: Authority::Project,
+        };
+        let mut calls = 0;
+        let result = invoke_routed(
+            &crate::project::LIST_OP,
+            json!({}),
+            Duration::from_secs(30),
+            Some(&headless),
+            || {
+                Ok(json!({ "uid": "uid-1", "lane": "stable",
+                "credential_audience_sha256": "a".repeat(64),
+                "project": "ui-project", "session_revision": 4 }))
+            },
+            |name, _, _, _| {
+                calls += 1;
+                assert_eq!(name, "project.switch");
+                Err(Failure::failed("desktop_refused", "switch refused"))
+            },
+        );
+        assert_eq!(result.unwrap_err().code(), "desktop_refused");
+        assert_eq!(calls, 1);
     }
 
     #[test]

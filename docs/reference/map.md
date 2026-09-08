@@ -212,6 +212,12 @@ authentication, Working Area state, API calls, IndexedDB and feature rows. The
 CLI sends only `{ entireProject: true }` and returns bounded cache counts; it
 never receives raw rows.
 
+The CLI's selected project is the target when present; otherwise the paired
+desktop supplies its active project. If the UI is showing another project,
+the command switches that UI to the target before loading, preserving cached
+rooms under their project keys. Both providers must have the same UID, lane
+and credential audience. Background headless commands never switch the UI.
+
 This is distinct from `map survey migrate` above: migration copies governed
 survey records between projects, while download materializes the *active*
 project's records into its local desktop cache for map and WASM processing.

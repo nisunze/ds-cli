@@ -145,8 +145,8 @@ fence.
 
 When there is no exact Desktop match, the operation uses the durable headless
 device provider. A valid headless project operation therefore remains valid
-when Desktop is closed, signed out, or showing another project. A mismatch is
-never repaired by switching an account or project, and map availability is
+when Desktop is closed, signed out, or showing another project. An identity mismatch is
+never repaired by switching accounts, and map availability is
 never treated as a limit on headless authority. Same lane/audience with a
 different UID, or any different lane/audience, prevents Desktop arbitration.
 An explicit map-independent operation proceeds through its own device
@@ -180,18 +180,34 @@ For an eligible typed operation, precedence is exact matching map runtime
 first, executed inside that runtime through the closed bridge without
 exporting its Firebase token; otherwise a valid protected headless-device
 credential; otherwise the command returns the typed link/login remedy. A
-project-bound operation adds exact selected-project equality to the
-lane/audience/UID match. Exact map authority therefore reduces or eliminates a
+project-bound operation verifies exact selected-project equality before
+dispatch (after a UI switch when required). Exact map authority reduces or eliminates a
 second CLI sign-in, while a different map account, lane, audience, or project
 never steals or limits an explicit headless operation.
 
 Map and headless project selections remain separate. For a map-attached
 operation, an exact-identity map may supply its own active project when the
 headless provider has no selected project; the CLI must not force `auth project
-use` first. When both selections exist they must be equal or the map-attached
-operation refuses. A `HeadlessProject` operation may intentionally use its own
+use` first. When both selections exist and differ, a legacy `Project` command
+switches the current UI to the CLI's selected project through the existing
+`project.switch` operation before doing its map work. The switch verifies
+visible-project access and retains local rooms under their project keys.
+A fresh session observation must prove the same UID/lane/audience and the
+exact target project; its revision fences the subsequent operation. Refused
+or interrupted switches stop the command. A `HeadlessProject` operation uses its own
 selected project independently and must not attach to or mutate a different
 open map.
+
+`map survey download` retains legacy `Project` authority while it depends on
+the UI's survey loader and IndexedDB. It follows the same target selection
+and UI-switch rule as other project commands using that runtime.
+`DesktopUser` operations (such as project listing) do not switch projects.
+
+`ds-command-kernel::project_context` owns the deterministic routing decision;
+the CLI bridge executes the admitted UI effects. The long-term destination is
+map-independent commands through the shared kernel, with JavaScript reduced
+to host effects and presentation. Migration proceeds one operation at a time;
+this change does not migrate survey loading or other existing UI owners.
 
 Registry dispatch scopes one non-network observation of every protected
 headless provider. Only the shared typed Desktop invocation seam consumes it:

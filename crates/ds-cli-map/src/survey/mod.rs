@@ -150,9 +150,9 @@ pub mod download {
     pub static COMMAND: Command = Command {
         id: "map.survey.download",
         path: &["map", "survey", "download"],
-        contract: 1,
+        contract: 2,
         summary: "Materialize survey data through the active Working Area.",
-        purpose: "Asks the paired desktop to apply its existing full-project Working Area and sequentially materialize every survey form into the desktop-owned IndexedDB cache. Rust sends only explicit intent and receives bounded counts; it never queries or interprets survey rows.",
+        purpose: "Materializes the CLI-selected project, or the desktop's active project when no CLI project is selected. The shared kernel routes this map-dependent operation through a verified UI project switch when needed. The desktop applies its full-project Working Area and sequential survey loader; only bounded cache counts return.",
         chapter: Chapter::Survey,
         effect: Effect::LocalUi,
         authority: Authority::Project,
@@ -321,6 +321,7 @@ mod tests {
     #[test]
     fn working_area_download_declares_only_explicit_intent() {
         assert_eq!(download::COMMAND.effect, Effect::LocalUi);
+        assert_eq!(download::COMMAND.authority, Authority::Project);
         assert!(download::COMMAND.args[0].required);
         assert_eq!(
             crate::SURVEY_WORKING_AREA_DOWNLOAD.arguments,

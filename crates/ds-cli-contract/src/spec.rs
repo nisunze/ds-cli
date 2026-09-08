@@ -99,7 +99,9 @@ pub enum Authority {
     DesktopPairing,
     /// Requires the paired desktop plus its current signed-in user.
     DesktopUser,
-    /// Requires a verified principal bound to a confirmed project.
+    /// Requires a verified principal and the existing UI project runtime.
+    /// The kernel routes a differing CLI target through a verified UI switch;
+    /// without a CLI selection the current UI project supplies the target.
     Project,
     /// Requires a restored native user session; never implies a desktop.
     HeadlessUser,

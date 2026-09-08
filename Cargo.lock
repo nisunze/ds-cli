@@ -752,6 +752,7 @@ name = "ds-cli-desktop"
 version = "0.1.0"
 dependencies = [
  "ds-cli-contract",
+ "ds-command-kernel",
  "serde",
  "serde_json",
  "ureq",
