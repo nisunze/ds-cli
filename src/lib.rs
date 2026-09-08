@@ -1129,6 +1129,12 @@ pub fn style_plan_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
     style_plan::plan_style_request(input).map_err(|e| wasm_bindgen::JsValue::from_str(&e))
 }
 
+#[cfg(feature = "wasm")]
+#[wasm_bindgen::prelude::wasm_bindgen(js_name = styleCatalog)]
+pub fn style_catalog_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
+    style_plan::style_catalog_request(input).map_err(|e| wasm_bindgen::JsValue::from_str(&e))
+}
+
 pub mod report_formats;
 
 pub mod design_versions;

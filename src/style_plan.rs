@@ -75,6 +75,38 @@ pub fn plan_style_request(input: &[u8]) -> Result<String, String> {
     serde_json::to_string(&plan).map_err(|e| e.to_string())
 }
 
+pub fn style_catalog_request(input: &[u8]) -> Result<String, String> {
+    if input.is_empty() || input.len() > 16 * 1024 * 1024 {
+        return Err("style catalog input must contain 1 byte through 16 MiB".into());
+    }
+    #[derive(Deserialize)]
+    #[serde(tag = "operation", rename_all = "snake_case", deny_unknown_fields)]
+    enum Request {
+        List {
+            snapshot: Value,
+            query: Option<String>,
+            limit: usize,
+        },
+        Read {
+            snapshot: Value,
+            reference: String,
+        },
+    }
+    let request: Request = serde_json::from_slice(input).map_err(|e| e.to_string())?;
+    let result = match request {
+        Request::List {
+            snapshot,
+            query,
+            limit,
+        } => list_styles(&snapshot, query.as_deref(), limit)?,
+        Request::Read {
+            snapshot,
+            reference,
+        } => describe_style(&snapshot, &reference)?,
+    };
+    serde_json::to_string(&result).map_err(|e| e.to_string())
+}
+
 fn field(value: &Value) -> Option<String> {
     let expr = value.as_array()?;
     if expr.first()?.as_str()? != "match" {
@@ -855,6 +887,30 @@ mod tests {
         invalid["map"] = json!({});
         assert!(plan_style_request(&serde_json::to_vec(&invalid).unwrap()).is_err());
         assert!(plan_style_request(&[]).is_err());
+    }
+
+    #[test]
+    fn held_catalog_matches_native_without_map_or_silent_extra_arguments() {
+        let state = snapshot(json!({"type":"line","paint":{"line-width":3}}));
+        for (request, expected) in [
+            (
+                json!({"operation":"list","snapshot":state,"limit":10}),
+                list_styles(&state, None, 10).unwrap(),
+            ),
+            (
+                json!({"operation":"read","snapshot":state,"reference":"master/poles"}),
+                describe_style(&state, "master/poles").unwrap(),
+            ),
+        ] {
+            let output: Value = serde_json::from_str(
+                &style_catalog_request(&serde_json::to_vec(&request).unwrap()).unwrap(),
+            )
+            .unwrap();
+            assert_eq!(output, expected);
+            let mut invalid = request;
+            invalid["map"] = json!({});
+            assert!(style_catalog_request(&serde_json::to_vec(&invalid).unwrap()).is_err());
+        }
     }
     fn snapshot(style: Value) -> Value {
         json!({"project_id":"p","styles":{"master/poles":style},"style_editors":[{"style_ref":"master/poles","style_target":"design","layer_name":"poles","available_fields":["status","kind"],"field_domains":{"status":{"type":"boolean"}}}],"style_properties":{"circle":[{"key":"circle-radius","type":"number","min":1,"max":30}]}})
