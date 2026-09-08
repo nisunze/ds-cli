@@ -80,7 +80,7 @@ pub static READ_COMMAND: Command = Command {
     authority: Authority::DesktopUser,
     execution: Execution::Sync,
     args: &[PROJECT_ARG, TRANSFORMER_ARG, OUTPUT_ARG, DESCRIPTOR_ARG],
-    output: "Exact project, transformer, output id, filename, format, content type, byte count, SHA-256 and opaque locator with verified=true.",
+    output: "Exact project, transformer, output id, filename, format, recorded paper size when available, content type, byte count, SHA-256 and opaque locator with verified=true.",
     examples: &[Example {
         command: "ds desktop printing artifact read --project survey_test --transformer agasharu --output-id pdf__a3 --output json",
         note: "Verify the locally committed A3 PDF before copying it.",
@@ -108,7 +108,7 @@ pub static COPY_COMMAND: Command = Command {
         Arg::value("out", "<file>", "New destination file; never overwritten.").required(),
         DESCRIPTOR_ARG,
     ],
-    output: "Destination plus the exact project, transformer, output id, filename, content type, byte count and SHA-256 copied.",
+    output: "Destination plus the exact project, transformer, output id, filename, recorded paper size when available, content type, byte count and SHA-256 copied.",
     examples: &[Example {
         command: "ds desktop printing artifact copy --project survey_test --transformer agasharu --output-id pdf__a3 --out ./agasharu-a3.pdf --output json",
         note: "Create one verified local copy for inspection or Drive synchronization.",
