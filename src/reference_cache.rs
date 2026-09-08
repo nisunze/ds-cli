@@ -104,6 +104,12 @@ pub fn intersects_area(feature: &Value, area: &Value) -> Result<bool, String> {
     ds_geo::spatial_predicate::intersects_area(feature, area)
 }
 
+/// The one area predicate, applied under an explicitly named rule.
+///
+/// Re-exported here so every consumer of this contract reaches the same
+/// implementation the geometry crate proves, rather than writing a second one.
+pub use ds_geo::spatial_predicate::{AreaSelection, selects_area};
+
 #[cfg(test)]
 mod tests {
     use super::*;

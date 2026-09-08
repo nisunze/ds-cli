@@ -76,6 +76,12 @@ pub mod project_dataset_cache;
 pub fn project_dataset_cache_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
     project_dataset_cache::evaluate(input).map_err(|error| wasm_bindgen::JsValue::from_str(&error))
 }
+pub mod project_design_extent;
+#[cfg(feature = "wasm")]
+#[wasm_bindgen::prelude::wasm_bindgen(js_name = projectDesignExtentCommand)]
+pub fn project_design_extent_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
+    project_design_extent::evaluate(input).map_err(|error| wasm_bindgen::JsValue::from_str(&error))
+}
 pub mod reference_cache;
 pub mod report;
 pub mod solar_batch;

@@ -19,11 +19,13 @@
 //! * **Dataset independence.** Coverage answers are computed per dataset. There
 //!   is no operation here that can make one dataset's extent speak for another.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
+
+use crate::reference_cache::AreaSelection;
 
 pub const SCHEMA: &str = "ds.project-dataset-cache/v1";
 
@@ -32,6 +34,19 @@ pub const SCHEMA: &str = "ds.project-dataset-cache/v1";
 pub const MAX_EXTENTS: usize = 5_000;
 pub const MAX_GRID_CELLS: usize = 4_000_000;
 pub const MAX_COVERAGE_CELLS: usize = 4_096;
+/// Per-source receipt ceiling. A receipt is provenance, not payload: one over
+/// this size is refused whole rather than trimmed to fit, because a truncated
+/// receipt no longer proves what it claims.
+pub const MAX_SOURCE_RECEIPT_BYTES: usize = 64 * 1024;
+/// How long a recorded acquisition may stay pending before it is treated as
+/// abandoned.
+///
+/// It has to be bounded. Pending work suppresses a dataset's readiness and
+/// fences its area against a retry, so a killed tab or a lost worker would
+/// otherwise leave a room "preparing" for ever. Thirty minutes is several times
+/// the longest a governed acquisition can run — the tiler's own building fetch
+/// deadline is four minutes — so expiry only ever lands on work that is gone.
+pub const ACQUISITION_TICKET_TTL_MS: i64 = 30 * 60 * 1_000;
 /// 1e-9° is ~0.1 mm. Rounding inputs once keeps every downstream decomposition
 /// exact on the rounded values and makes digests reproducible across hosts.
 const QUANTUM: f64 = 1e9;
@@ -96,7 +111,7 @@ pub struct BufferPolicy {
 impl Default for BufferPolicy {
     fn default() -> Self {
         Self {
-            design_buffer_m: 500.,
+            design_buffer_m: 200.,
             isolated_buffer_m: 1000.,
             isolated_rule: IsolatedRule::PointOnly,
             provisional: false,
@@ -322,7 +337,7 @@ fn metres_per_degree_longitude(latitude: f64) -> f64 {
 /// nearest the equator for the north/south growth (where a degree is shortest)
 /// and the highest latitude reached for east/west (where a degree is
 /// narrowest). The result is guaranteed to be at least `metres` wide.
-fn buffered(rect: Rect, metres: f64) -> Rect {
+pub(crate) fn buffered(rect: Rect, metres: f64) -> Rect {
     if metres <= 0.0 {
         return rect;
     }
@@ -783,6 +798,176 @@ pub fn extend(held: &Coverage, completed: &Coverage) -> Result<Coverage, String>
     Ok(Coverage::from_rects(merged))
 }
 
+/// Canonical dataset ids a room knows how to acquire and refresh.
+pub const BUILDINGS_DATASET_ID: &str = "google_open_buildings";
+pub const CONTOURS_DATASET_ID: &str = "elevation_contours";
+
+/// The area rule this dataset's provider selects features with.
+///
+/// A refresh removes the rows an area already holds before the replacement
+/// lands, so it MUST remove them under the same rule the provider fetches
+/// under. Removing more than the provider will return loses a real building —
+/// a footprint crossing the edge of the area is exactly that case — and
+/// removing less leaves a duplicate of one behind. There is therefore no
+/// default here: a dataset whose rule is not recorded cannot be held or
+/// refreshed, and refusing is better than guessing at something destructive.
+///
+/// * `google_open_buildings` selects by **intersection**. Its governed door is
+///   Earth Engine `listFeatures`, whose `region` is an intersects predicate,
+///   and no further centre test is applied downstream — the provider's own
+///   receipt records `region_predicate: "upstream listFeatures region
+///   (intersects)"`.
+/// * `elevation_contours` selects by **intersection**: contours are generated
+///   for the area and clipped to it.
+///
+/// A provider that selects by centre — Microsoft's building index does, and
+/// records `region_predicate: "centroid inside AOI"` — must be registered here
+/// as `CentroidInside` before any of its rows may enter a room.
+pub fn acquisition_selection(dataset_id: &str) -> Result<AreaSelection, String> {
+    match dataset_id {
+        BUILDINGS_DATASET_ID | CONTOURS_DATASET_ID => Ok(AreaSelection::Intersects),
+        other => Err(format!(
+            "dataset `{other}` does not record the area rule its provider selects with; register it in acquisition_selection before a room may hold or refresh it"
+        )),
+    }
+}
+
+/// Does this dataset's acquisition select `feature` for `area`?
+///
+/// Admitting an acquired row and deleting the row it replaces are the same
+/// question, so they are the same call. Nothing may re-answer it locally.
+pub fn acquisition_selects(
+    dataset_id: &str,
+    feature: &Value,
+    area: &Value,
+) -> Result<bool, String> {
+    crate::reference_cache::selects_area(feature, area, acquisition_selection(dataset_id)?)
+}
+
+/// Reject an oversized or malformed source receipt outright.
+///
+/// A refusal, never a truncation: half a receipt would still be stored beside
+/// the rows as though it accounted for them.
+pub fn validate_source_receipt(receipt: &Value) -> Result<(), String> {
+    if !receipt.is_object() {
+        return Err("a source receipt must be a JSON object".into());
+    }
+    let bytes = serde_json::to_vec(receipt)
+        .map_err(|error| error.to_string())?
+        .len();
+    if bytes > MAX_SOURCE_RECEIPT_BYTES {
+        return Err(format!(
+            "source receipt is {bytes} bytes, over the {MAX_SOURCE_RECEIPT_BYTES}-byte bound; record a reference to the provider response rather than the response"
+        ));
+    }
+    Ok(())
+}
+
+/// Whether a pending acquisition recorded at `requested_at` has been abandoned.
+pub fn acquisition_expired(requested_at: i64, now: i64) -> bool {
+    now.saturating_sub(requested_at) > ACQUISITION_TICKET_TTL_MS
+}
+
+/// Reported state of one recorded acquisition.
+///
+/// `expired` is deliberately not `failed`: nothing is known to have gone wrong
+/// and nothing was written — the attempt simply stopped answering. Reporting it
+/// as pending is what makes a count spin for ever.
+pub fn acquisition_state(
+    status: &str,
+    requested_at: i64,
+    now: i64,
+) -> Result<&'static str, String> {
+    match status {
+        "requested" if acquisition_expired(requested_at, now) => Ok("expired"),
+        "requested" => Ok("requested"),
+        "completed" => Ok("completed"),
+        "failed" => Ok("failed"),
+        other => Err(format!("unknown acquisition status `{other}`")),
+    }
+}
+
+/// One completed acquisition's provenance: the coverage it still accounts for,
+/// and the source version it completed under.
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct HeldVersion {
+    #[serde(default)]
+    pub source_version: String,
+    #[serde(default)]
+    pub coverage: Coverage,
+}
+
+#[derive(Debug, Serialize)]
+pub struct Freshness {
+    pub schema: &'static str,
+    /// The newest source version this room has observed from the provider.
+    pub current: String,
+    /// Every distinct recorded version still accounted for by held coverage.
+    pub versions: Vec<String>,
+    /// Held coverage completed under a version the provider has since replaced.
+    /// This is what an explicit refresh re-acquires; it is never deleted here.
+    pub stale: Coverage,
+    pub stale_geometry: Option<Value>,
+    pub stale_count: usize,
+    /// Held coverage carrying no recorded version. Not obsolete: there is no
+    /// evidence either way, and inventing some would spend provider money.
+    pub unattributed: Coverage,
+    pub unattributed_count: usize,
+    /// True when nothing held is known to have been superseded.
+    pub fresh: bool,
+    pub simplified: bool,
+}
+
+/// Report which held coverage was completed under an obsolete source version.
+///
+/// Freshness is a property of held rows, never an instruction. This returns the
+/// coverage an explicit refresh would re-acquire and destroys nothing: a room
+/// that is out of date still answers every read it could answer before, because
+/// stale data is data the project paid for and a deleted row helps nobody.
+///
+/// Two abstentions are deliberate. With no `current` version known there is no
+/// evidence of a newer publication, so nothing is obsolete; and a holding with
+/// no recorded version is reported `unattributed` rather than assumed stale.
+pub fn freshness(current: &str, held: &[HeldVersion]) -> Result<Freshness, String> {
+    if current.len() > 512 {
+        return Err("dataset source version is too long".into());
+    }
+    let mut versions: BTreeSet<String> = BTreeSet::new();
+    let mut stale_rects: Vec<Rect> = Vec::new();
+    let mut unattributed_rects: Vec<Rect> = Vec::new();
+    for holding in held {
+        let rects = holding.coverage.rects()?;
+        if rects.is_empty() {
+            continue;
+        }
+        if holding.source_version.is_empty() {
+            unattributed_rects.extend(rects);
+            continue;
+        }
+        versions.insert(holding.source_version.clone());
+        if !current.is_empty() && holding.source_version != current {
+            stale_rects.extend(rects);
+        }
+    }
+    let (stale, stale_simplified) = decompose(&stale_rects, &[])?;
+    let (unattributed, unattributed_simplified) = decompose(&unattributed_rects, &[])?;
+    let stale = Coverage::from_rects(stale);
+    let unattributed = Coverage::from_rects(unattributed);
+    Ok(Freshness {
+        schema: SCHEMA,
+        current: current.to_owned(),
+        versions: versions.into_iter().collect(),
+        stale_geometry: stale.geometry(),
+        stale_count: stale.cells.len(),
+        unattributed_count: unattributed.cells.len(),
+        fresh: stale.is_empty(),
+        simplified: stale_simplified || unattributed_simplified,
+        stale,
+        unattributed,
+    })
+}
+
 /// Decode a complete source-quality building acquisition before it can extend coverage.
 /// Provider coverage uncertainty is retained, including a complete empty response.
 pub fn decode_buildings(response: &Value, area: &Value) -> Result<Value, String> {
@@ -810,21 +995,16 @@ pub fn decode_buildings(response: &Value, area: &Value) -> Result<Value, String>
                 Some("Polygon" | "MultiPolygon")
             )
             || crate::reference_cache::feature_bounds(feature).is_none()
-            || !crate::reference_cache::intersects_area(feature, area)?
+            || !acquisition_selects(BUILDINGS_DATASET_ID, feature, area)?
         {
             return Err("building acquisition contains an invalid or out-of-area footprint".into());
         }
     }
+    validate_source_receipt(&response["source_receipt"])
+        .map_err(|error| format!("building acquisition receipt: {error}"))?;
     let receipt = response["source_receipt"]
         .as_object()
         .ok_or("building acquisition has no source receipt")?;
-    if serde_json::to_vec(receipt)
-        .map_err(|e| e.to_string())?
-        .len()
-        > 64 * 1024
-    {
-        return Err("building source receipt exceeds its bound".into());
-    }
     let version = ["dataset_version", "asset"]
         .iter()
         .find_map(|key| {
@@ -870,6 +1050,13 @@ enum Request {
         schema: String,
         held: Coverage,
         completed: Coverage,
+    },
+    Freshness {
+        schema: String,
+        #[serde(default)]
+        current: String,
+        #[serde(default)]
+        held: Vec<HeldVersion>,
     },
     Identity {
         schema: String,
@@ -938,6 +1125,14 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
                 "coverage": coverage,
             }))
         }
+        Request::Freshness {
+            schema,
+            current,
+            held,
+        } => {
+            require_schema(&schema)?;
+            serde_json::to_value(freshness(&current, &held)?)
+        }
         Request::Identity {
             schema,
             scope,
@@ -968,8 +1163,9 @@ mod tests {
 
     #[test]
     fn shared_buffers_never_shrink_below_project_acquisition_defaults() {
-        assert_eq!(buffer_policy(&[200.]).unwrap().design_buffer_m, 500.);
-        assert_eq!(buffer_policy(&[200.]).unwrap().isolated_buffer_m, 1000.);
+        assert_eq!(buffer_policy(&[100.]).unwrap().design_buffer_m, 200.);
+        assert_eq!(buffer_policy(&[100.]).unwrap().isolated_buffer_m, 1000.);
+        assert_eq!(buffer_policy(&[500.]).unwrap().design_buffer_m, 500.);
         assert_eq!(buffer_policy(&[1500.]).unwrap().isolated_buffer_m, 1500.);
         assert!(buffer_policy(&[f64::NAN]).is_err());
         assert!(!buffer_policy(&[]).unwrap().provisional);
@@ -1024,7 +1220,7 @@ mod tests {
 
     fn policy() -> BufferPolicy {
         BufferPolicy {
-            design_buffer_m: 500.0,
+            design_buffer_m: 200.0,
             isolated_buffer_m: 1_000.0,
             isolated_rule: IsolatedRule::PointOnly,
             provisional: true,
@@ -1142,10 +1338,10 @@ mod tests {
         assert!((2_000.0..2_005.0).contains(&easting(-2.0, w, e)));
 
         // A designed single transformer separates the two candidate rules:
-        // point-only keeps it at 500 m, single-cluster widens it to 1 km.
+        // point-only keeps it at 200 m, single-cluster widens it to 1 km.
         let designed = [extent("solo", Some([30.0, -2.0, 30.002, -1.998]))];
         let narrow = plan(&scope(), &buildings(), &policy(), &designed).unwrap();
-        assert_eq!(narrow.clusters[0].buffer_m, 500.0);
+        assert_eq!(narrow.clusters[0].buffer_m, 200.0);
         let by_cluster = BufferPolicy {
             isolated_rule: IsolatedRule::SingleTransformerCluster,
             ..policy()
@@ -1346,6 +1542,102 @@ mod tests {
             &[]
         )
         .is_err());
+    }
+
+    #[test]
+    fn one_named_rule_governs_both_acquisition_and_the_deletion_that_replaces_it() {
+        // The buildings door fetches by intersection, so a footprint crossing
+        // the edge of an area belongs to that area. Deletion asks the same
+        // question through the same call — there is no second predicate to
+        // drift.
+        assert_eq!(
+            acquisition_selection(BUILDINGS_DATASET_ID).unwrap(),
+            AreaSelection::Intersects
+        );
+        let area = json!({"type":"Polygon","coordinates":[[[0.,0.],[1.,0.],[1.,1.],[0.,1.],[0.,0.]]]});
+        let crossing = json!({"type":"Feature","properties":{},
+            "geometry":{"type":"Polygon","coordinates":[[[0.9,0.4],[1.3,0.4],[1.3,0.6],[0.9,0.6],[0.9,0.4]]]}});
+        assert!(acquisition_selects(BUILDINGS_DATASET_ID, &crossing, &area).unwrap());
+        // An unregistered dataset has no rule, and a room may not invent a
+        // destructive one for it.
+        let refused = acquisition_selection("some_new_dataset").unwrap_err();
+        assert!(refused.contains("acquisition_selection"), "{refused}");
+        assert!(acquisition_selects("some_new_dataset", &crossing, &area).is_err());
+    }
+
+    #[test]
+    fn an_oversized_or_malformed_source_receipt_is_refused_not_trimmed() {
+        assert!(validate_source_receipt(&json!({"dataset_version": "v3"})).is_ok());
+        assert!(validate_source_receipt(&json!("v3")).is_err());
+        let huge = json!({"body": "x".repeat(MAX_SOURCE_RECEIPT_BYTES)});
+        let error = validate_source_receipt(&huge).unwrap_err();
+        assert!(error.contains("over the"), "{error}");
+        // The building decoder shares the one bound rather than repeating it.
+        let area = json!({"type":"Polygon","coordinates":[[[29.,-3.],[31.,-3.],[31.,-1.],[29.,-1.],[29.,-3.]]]});
+        let response = json!({"status":"success","provider":"google",
+            "layers":{"buildings_context":{"type":"FeatureCollection","features":[]}},
+            "counts":{"buildings_context":0},"coverage":{"truncated":false},
+            "source_receipt": huge});
+        assert!(
+            decode_buildings(&response, &area)
+                .unwrap_err()
+                .contains("receipt")
+        );
+    }
+
+    #[test]
+    fn an_abandoned_acquisition_expires_at_a_bounded_age_and_is_never_pending() {
+        let now = 10 * ACQUISITION_TICKET_TTL_MS;
+        assert_eq!(
+            acquisition_state("requested", now - ACQUISITION_TICKET_TTL_MS, now).unwrap(),
+            "requested"
+        );
+        assert_eq!(
+            acquisition_state("requested", now - ACQUISITION_TICKET_TTL_MS - 1, now).unwrap(),
+            "expired"
+        );
+        // Expiry is not failure: nothing went wrong and nothing was written.
+        assert_eq!(acquisition_state("failed", 0, now).unwrap(), "failed");
+        assert_eq!(acquisition_state("completed", 0, now).unwrap(), "completed");
+        assert!(acquisition_state("half-done", 0, now).is_err());
+        // A clock that moves backwards must not resurrect an old ticket as
+        // fresh work, nor overflow.
+        assert!(!acquisition_expired(now, 0));
+        assert!(!acquisition_expired(i64::MIN, i64::MIN));
+    }
+
+    #[test]
+    fn freshness_reports_obsolete_coverage_and_never_removes_it() {
+        let held = |version: &str, cells: Vec<[f64; 4]>| HeldVersion {
+            source_version: version.into(),
+            coverage: Coverage { cells },
+        };
+        let rows = [
+            held("v1", vec![[0.0, 0.0, 1.0, 1.0]]),
+            held("v2", vec![[2.0, 0.0, 3.0, 1.0]]),
+            held("", vec![[5.0, 0.0, 6.0, 1.0]]),
+        ];
+        let report = freshness("v2", &rows).unwrap();
+        assert!(!report.fresh);
+        assert_eq!(report.stale.cells, vec![[0.0, 0.0, 1.0, 1.0]]);
+        assert_eq!(report.unattributed.cells, vec![[5.0, 0.0, 6.0, 1.0]]);
+        assert_eq!(report.versions, vec!["v1".to_string(), "v2".to_string()]);
+        assert_eq!(report.stale_geometry.as_ref().unwrap()["type"], "MultiPolygon");
+
+        // Coverage that is stale is still coverage: this reports it, and the
+        // caller still holds every cell it held before.
+        let all = Coverage {
+            cells: vec![[0.0, 0.0, 1.0, 1.0], [2.0, 0.0, 3.0, 1.0]],
+        };
+        assert!(assess(&all, &Coverage { cells: vec![[0.0, 0.0, 1.0, 1.0]] })
+            .unwrap()
+            .covered);
+
+        // No known current version is no evidence of obsolescence.
+        assert!(freshness("", &rows).unwrap().fresh);
+        // And once everything is re-acquired under v2, nothing is stale.
+        let refreshed = [held("v2", vec![[0.0, 0.0, 1.0, 1.0], [2.0, 0.0, 3.0, 1.0]])];
+        assert!(freshness("v2", &refreshed).unwrap().fresh);
     }
 
     #[test]
