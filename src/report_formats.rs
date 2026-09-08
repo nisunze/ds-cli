@@ -418,7 +418,7 @@ pub fn string_list(value: &Value) -> Vec<String> {
     }
 }
 
-pub fn plan(sheets: &Value, is_combined: bool) -> Result<Vec<Output>, String> {
+fn project_output_setting(sheets: &Value) -> Result<Option<&Value>, String> {
     if !sheets.is_object() {
         return Err("Report sheets must be an object".into());
     }
@@ -449,15 +449,32 @@ pub fn plan(sheets: &Value, is_combined: bool) -> Result<Vec<Output>, String> {
         .and_then(Value::as_array)
         .filter(|rows| !rows.is_empty())
         .or_else(|| nested.and_then(Value::as_array));
-    let raw = rows
-        .and_then(|rows| {
-            rows.iter().find(|row| {
-                row["parameter"].as_str().is_some_and(|s| {
-                    SETTING_ALIASES
-                        .contains(&s.trim().to_ascii_lowercase().replace('-', "_").as_str())
-                })
+    Ok(rows.and_then(|rows| {
+        rows.iter().find(|row| {
+            row["parameter"].as_str().is_some_and(|s| {
+                SETTING_ALIASES.contains(&s.trim().to_ascii_lowercase().replace('-', "_").as_str())
             })
         })
+    }))
+}
+
+pub fn inspect_project_settings(sheets: &Value) -> Result<Value, String> {
+    let setting = project_output_setting(sheets)?;
+    let outputs = plan(sheets, false)?;
+    let layouts = named_layouts(sheets)?;
+    let papers = outputs.iter().filter_map(|output| {
+        let (_, id) = named_print_output(&output.format)?;
+        let layout = layouts.get(id)?;
+        Some(serde_json::json!({"output_id":output.output_id,"layout_id":id,"name":layout.name,"paper":layout.paper}))
+    }).collect::<Vec<_>>();
+    Ok(
+        serde_json::json!({"source":if setting.is_some(){"project_settings"}else{"report_defaults"},
+        "setting":setting,"outputs":outputs,"papers":papers}),
+    )
+}
+
+pub fn plan(sheets: &Value, is_combined: bool) -> Result<Vec<Output>, String> {
+    let raw = project_output_setting(sheets)?
         .map(|row| {
             if row["value"]["schema"] == OUTPUT_SELECTION_SCHEMA {
                 serde_json::from_value::<DesignOutputSelection>(row["value"].clone())
@@ -495,6 +512,41 @@ pub fn plan(sheets: &Value, is_combined: bool) -> Result<Vec<Output>, String> {
 mod tests {
     use super::*;
     use serde_json::json;
+    #[test]
+    fn settings_inspection_uses_saved_selection_and_actual_paper_not_names() {
+        use crate::printing::{named_layout, Orientation, Paper};
+        let layout = named_layout(
+            Some("a0-looking-name".into()),
+            None,
+            Paper::A3,
+            Orientation::Landscape,
+        )
+        .unwrap();
+        let selection = json!({"schema":OUTPUT_SELECTION_SCHEMA,"prints":[
+            {"layout_id":"a0-looking-name","enabled":true,"formats":["pdf"]},
+            {"layout_id":"disabled","enabled":false,"formats":["pdf"]}],"geospatial":["gpkg"],"tabular":["xlsx"]});
+        let sheets = json!({"project_settings":[{"parameter":"REPORT-FORMATS","value":selection}],
+            "printing_setups":[{"id":layout.id,"revision":"a".repeat(64),"layout":layout}]});
+        let result = inspect_project_settings(&sheets).unwrap();
+        assert_eq!(result["setting"]["value"], selection);
+        assert_eq!(
+            result["outputs"],
+            serde_json::to_value(plan(&sheets, false).unwrap()).unwrap()
+        );
+        assert_eq!(result["papers"].as_array().unwrap().len(), 1);
+        assert_eq!(result["papers"][0]["paper"]["size"], "A3");
+        assert_eq!(result["source"], "project_settings");
+        let defaults = inspect_project_settings(&json!({})).unwrap();
+        assert_eq!(defaults["source"], "report_defaults");
+        assert!(defaults["setting"].is_null());
+        assert_eq!(defaults["papers"], json!([]));
+        let mut broken = sheets;
+        broken["printing_setups"] = json!([]);
+        assert!(inspect_project_settings(&broken)
+            .unwrap_err()
+            .contains("missing"));
+    }
+
     #[test]
     fn named_setups_keep_identity_across_renames_and_require_sealed_layouts() {
         use crate::printing::{named_layout, Orientation, Paper};

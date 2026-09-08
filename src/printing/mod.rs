@@ -847,6 +847,9 @@ pub fn named_layout(
 #[derive(Deserialize, JsonSchema)]
 #[serde(tag = "op", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Command {
+    ProjectSettings {
+        sheets: serde_json::Value,
+    },
     OutputSelection {
         #[serde(default)]
         selection: Option<crate::report_formats::DesignOutputSelection>,
@@ -929,6 +932,9 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
     let command: Command =
         serde_json::from_slice(input).map_err(|e| format!("invalid printing request: {e}"))?;
     let value = match command {
+        Command::ProjectSettings { sheets } => {
+            crate::report_formats::inspect_project_settings(&sheets)?
+        }
         Command::OutputSelection {
             selection,
             legacy_formats,
