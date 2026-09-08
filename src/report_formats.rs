@@ -2,6 +2,7 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::collections::{BTreeMap, BTreeSet};
 
 pub const DEFAULT_INDIVIDUAL: &[&str] = &["shp", "kmz", "xlsx"];
 pub const INDIVIDUAL: &[&str] = &["shp", "kmz", "xlsx", "gpkg", "pdf_a0", "pdf_a3", "geojson"];
@@ -145,6 +146,56 @@ impl DesignOutputSelection {
         }
         Ok(tokens)
     }
+}
+
+/// Normalize the two accepted authoring inputs into the one durable selection.
+/// Hosts pass bytes through; format aliases and bounds live here with report
+/// planning rather than being reimplemented in TypeScript.
+pub fn normalize_output_selection(
+    selection: Option<DesignOutputSelection>,
+    legacy_formats: Option<Vec<String>>,
+) -> Result<DesignOutputSelection, String> {
+    if let Some(selection) = selection {
+        if legacy_formats.is_some() {
+            return Err("pass a versioned selection or legacy formats, not both".into());
+        }
+        selection.tokens()?;
+        return Ok(selection);
+    }
+    let formats = legacy_formats.ok_or("output selection is required")?;
+    if formats.is_empty() || formats.len() > 32 {
+        return Err("legacy output formats must contain 1..32 tokens".into());
+    }
+    let mut prints: BTreeMap<String, BTreeSet<PrintArtifactFormat>> = BTreeMap::new();
+    let mut geospatial = Vec::new();
+    let mut tabular = Vec::new();
+    for raw in formats {
+        let token = raw.to_ascii_lowercase();
+        if let Some((format, id)) = named_print_output(&token) {
+            prints.entry(id.into()).or_default().insert(format);
+        } else if token == "xlsx" {
+            tabular.push(token);
+        } else if token.contains("__") {
+            return Err(format!("invalid named print output: {raw}"));
+        } else {
+            geospatial.push(token);
+        }
+    }
+    let selection = DesignOutputSelection {
+        schema: OUTPUT_SELECTION_SCHEMA.into(),
+        prints: prints
+            .into_iter()
+            .map(|(layout_id, formats)| NamedPrintSelection {
+                layout_id,
+                enabled: true,
+                formats: formats.into_iter().collect(),
+            })
+            .collect(),
+        geospatial,
+        tabular,
+    };
+    selection.tokens()?;
+    Ok(selection)
 }
 
 pub fn output_selection_schema() -> Value {
@@ -554,5 +605,29 @@ mod tests {
         );
         assert_eq!(outputs[2].content_type, "image/jpeg");
         assert_eq!(outputs[2].suffix, ".aderm-a3.jpg");
+    }
+
+    #[test]
+    fn output_selection_normalization_has_one_alias_and_bound_policy() {
+        let selection = normalize_output_selection(
+            None,
+            Some(vec![
+                "PDF__ADERM-A3".into(),
+                "jpg__aderm-a3".into(),
+                "gpkg".into(),
+                "xlsx".into(),
+            ]),
+        )
+        .unwrap();
+        assert_eq!(selection.schema, OUTPUT_SELECTION_SCHEMA);
+        assert_eq!(selection.prints[0].layout_id, "aderm-a3");
+        assert_eq!(
+            selection.prints[0].formats,
+            vec![PrintArtifactFormat::Pdf, PrintArtifactFormat::Jpeg]
+        );
+        assert_eq!(selection.geospatial, ["gpkg"]);
+        assert_eq!(selection.tabular, ["xlsx"]);
+        assert!(normalize_output_selection(None, Some(vec![])).is_err());
+        assert!(normalize_output_selection(None, Some(vec!["gif__a3".into()])).is_err());
     }
 }

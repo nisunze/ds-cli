@@ -847,6 +847,15 @@ pub fn named_layout(
 #[derive(Deserialize, JsonSchema)]
 #[serde(tag = "op", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Command {
+    OutputSelection {
+        #[serde(default)]
+        selection: Option<crate::report_formats::DesignOutputSelection>,
+        #[serde(default)]
+        legacy_formats: Option<Vec<String>>,
+    },
+    TransformerViews {
+        views: BTreeMap<String, BTreeMap<String, GeographicView>>,
+    },
     New {
         #[serde(default)]
         id: Option<String>,
@@ -918,6 +927,34 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
     let command: Command =
         serde_json::from_slice(input).map_err(|e| format!("invalid printing request: {e}"))?;
     let value = match command {
+        Command::OutputSelection {
+            selection,
+            legacy_formats,
+        } => {
+            json!({"selection":crate::report_formats::normalize_output_selection(selection, legacy_formats)?})
+        }
+        Command::TransformerViews { views } => {
+            if views.len() > 10_000 {
+                return Err("transformer print views exceed 10,000 transformers".into());
+            }
+            for (transformer, slots) in &views {
+                if !identifier(transformer) || slots.len() > 64 {
+                    return Err("invalid transformer print view map".into());
+                }
+                for (slot, view) in slots {
+                    if slot.is_empty()
+                        || slot.len() > 80
+                        || !slot.bytes().all(|byte| {
+                            byte.is_ascii_alphanumeric() || byte == b'_' || byte == b'-'
+                        })
+                    {
+                        return Err("invalid print viewport slot".into());
+                    }
+                    view.validate()?;
+                }
+            }
+            json!({"views":views})
+        }
         Command::New {
             id,
             name,
@@ -1102,6 +1139,14 @@ mod tests {
         assert!(evaluate(&encoded).unwrap().contains("\"valid\":true"));
         assert!(evaluate(br#"{"op":"new","unknown":true}"#).is_err());
         assert_eq!(layout_schema()["additionalProperties"], false);
+    }
+
+    #[test]
+    fn transformer_views_validate_in_the_shared_printing_kernel() {
+        let result = evaluate(br#"{"op":"transformer_views","views":{"tx_1":{"primary_map":{"mode":"camera","center_wgs84":[29.7,-2.5],"scale_denominator":1000}}}}"#).unwrap();
+        assert!(result.contains("\"scale_denominator\":1000.0"));
+        assert!(evaluate(br#"{"op":"transformer_views","views":{"TX 1":{}}}"#).is_err());
+        assert!(evaluate(br#"{"op":"transformer_views","views":{"tx_1":{"map":{"mode":"fit","extent_wgs84":[30,-2,29,-1]}}}}"#).is_err());
     }
     #[test]
     fn context_layers_are_explicit_and_parameter_bounded() {
