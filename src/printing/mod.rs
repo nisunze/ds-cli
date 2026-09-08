@@ -39,6 +39,19 @@ pub struct Layout {
     /// the transformer room. Hosted rendering deliberately ignores this list.
     #[serde(default)]
     pub context_layers: Vec<PrintContextLayer>,
+    /// Optional measured-content placement; authored rectangles remain preferred positions.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub composition: Option<Composition>,
+    /// Combined exports: render all held project features on one sheet instead of an atlas.
+    #[serde(default)]
+    pub project_overview: bool,
+}
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct Composition {
+    /// Up to four independent table/legend elements to arrange around fixed furniture.
+    pub movable: Vec<String>,
+    pub gap_mm: f64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
@@ -110,6 +123,74 @@ pub struct TableBinding {
     pub columns: Vec<String>,
     pub headings: Vec<String>,
     pub widths: Vec<f64>,
+    /// Maximum side-by-side panels, with repeated headings and no omitted rows.
+    #[serde(default = "one_panel")]
+    pub panels: usize,
+    #[serde(default = "panel_gap")]
+    pub gap_mm: f64,
+    /// Ordered row sort keys; does not affect the authored column order.
+    #[serde(default)]
+    pub sort_by: Vec<String>,
+    /// Workbook InfoTable preserves its shared section bands and totals.
+    #[serde(default)]
+    pub presentation: TablePresentation,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub row_mm: Option<f64>,
+    #[serde(default)]
+    pub align: TableAlignment,
+}
+impl Default for TableBinding {
+    fn default() -> Self {
+        Self {
+            layer: String::new(),
+            columns: vec![],
+            headings: vec![],
+            widths: vec![],
+            panels: 1,
+            gap_mm: 3.,
+            sort_by: vec![],
+            presentation: TablePresentation::Plain,
+            row_mm: None,
+            align: TableAlignment::Right,
+        }
+    }
+}
+#[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum TableAlignment {
+    Left,
+    #[default]
+    Right,
+}
+fn one_panel() -> usize {
+    1
+}
+fn panel_gap() -> f64 {
+    3.
+}
+#[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum TablePresentation {
+    #[default]
+    Plain,
+    WorkbookInfo,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct LegendBinding {
+    /// Logical layer IDs in the desired order; empty selects all geometry layers.
+    #[serde(default)]
+    pub layers: Vec<String>,
+    #[serde(default)]
+    pub titles: BTreeMap<String, String>,
+    #[serde(default = "yes")]
+    pub categorical: bool,
+    #[serde(default = "legend_row")]
+    pub row_mm: f64,
+}
+fn legend_row() -> f64 {
+    6.
 }
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
 #[serde(deny_unknown_fields)]
@@ -215,6 +296,8 @@ pub struct Element {
     pub opacity: f64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub table: Option<TableBinding>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub legend: Option<LegendBinding>,
     /// Present only for map elements. The element rectangle is the physical
     /// print viewport; geographic bounds are supplied by the runtime binding.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -421,6 +504,11 @@ pub fn validate(layout: &Layout) -> Result<(), String> {
             let table = element.table.as_ref().ok_or("table needs a data binding")?;
             if !identifier(&table.layer)
                 || table.columns.is_empty()
+                || !(1..=8).contains(&table.panels)
+                || !bounded(table.gap_mm, 0., 30.)
+                || table.row_mm.is_some_and(|v| !bounded(v, 2., 30.))
+                || table.sort_by.len() > 12
+                || table.sort_by.iter().any(|v| v.is_empty() || v.len() > 160)
                 || table.columns.len() > 12
                 || table.columns.len() != table.headings.len()
                 || table.columns.len() != table.widths.len()
@@ -433,11 +521,53 @@ pub fn validate(layout: &Layout) -> Result<(), String> {
         } else if element.table.is_some() {
             return Err("only table elements can bind tabular data".into());
         }
+        if let Some(legend) = &element.legend {
+            if element.kind != ElementKind::Legend
+                || legend.layers.len() > 128
+                || legend.layers.iter().any(|v| v.is_empty() || v.len() > 160)
+                || legend.titles.len() > 128
+                || legend
+                    .titles
+                    .iter()
+                    .any(|(k, v)| k.len() > 160 || v.len() > 160)
+                || !bounded(legend.row_mm, 3., 30.)
+            {
+                return Err("invalid legend controls".into());
+            }
+        }
         if element.kind == ElementKind::Logo && !layout.assets.contains_key(&element.asset) {
             return Err(format!(
                 "logo {} needs a held project/global asset",
                 element.id
             ));
+        }
+    }
+    if let Some(composition) = &layout.composition {
+        let map = layout.elements.iter().find(|e| e.kind == ElementKind::Map);
+        let mut seen = BTreeSet::new();
+        if composition.movable.is_empty()
+            || composition.movable.len() > 4
+            || !bounded(composition.gap_mm, 0., 30.)
+            || composition.movable.iter().any(|id| {
+                !seen.insert(id)
+                    || !layout.elements.iter().any(|e| {
+                        &e.id == id
+                            && matches!(e.kind, ElementKind::Table | ElementKind::Legend)
+                            && e.flow.is_none()
+                    })
+                    || layout
+                        .elements
+                        .iter()
+                        .any(|e| e.flow.as_ref().is_some_and(|flow| &flow.after == id))
+                    || !map
+                        .and_then(|e| e.viewport.as_ref())
+                        .is_some_and(|v| v.fit_around.contains(id))
+            })
+        {
+            return Err(
+                "composition needs unique independent content elements in the map fit-around list"
+                    .into(),
+            );
         }
     }
     if maps != 1 {
@@ -584,6 +714,7 @@ pub fn default_layout() -> Layout {
         table: None,
         viewport: None,
         flow: None,
+        legend: None,
         id: id.into(),
         kind,
         rect,
@@ -595,6 +726,8 @@ pub fn default_layout() -> Layout {
         opacity: opaque(),
     };
     Layout {
+        composition: None,
+        project_overview: false,
         schema: SCHEMA.into(),
         id: "network-map".into(),
         name: "Network map · A3 landscape".into(),
@@ -1194,6 +1327,9 @@ mod tests {
             columns: vec!["quantity".into()],
             headings: vec!["Quantity".into()],
             widths: vec![10.],
+            panels: 1,
+            gap_mm: 3.,
+            ..Default::default()
         });
         layout.elements.insert(legend, table);
         layout.elements[legend + 1].flow = Some(ContentFlow {
@@ -1209,6 +1345,68 @@ mod tests {
         assert!(validate(&layout).is_err());
         layout.elements[legend + 1].flow.as_mut().unwrap().after = "quantities".into();
         layout.elements[legend + 1].flow.as_mut().unwrap().gap_mm = -1.;
+        assert!(validate(&layout).is_err());
+    }
+
+    #[test]
+    fn measured_schedule_and_overview_controls_roundtrip_and_refuse_conflicts() {
+        let mut layout = default_layout();
+        let mut table = layout
+            .elements
+            .iter()
+            .find(|e| e.kind == ElementKind::Legend)
+            .unwrap()
+            .clone();
+        table.id = "schedule".into();
+        table.kind = ElementKind::Table;
+        table.legend = None;
+        table.table = Some(TableBinding {
+            layer: "lv_poles".into(),
+            columns: vec!["pole_number".into(), "struct_type".into()],
+            headings: vec!["Pole".into(), "Type".into()],
+            widths: vec![20., 40.],
+            panels: 3,
+            row_mm: Some(3.5),
+            sort_by: vec!["pole_number".into()],
+            ..Default::default()
+        });
+        layout.elements.push(table);
+        layout
+            .elements
+            .iter_mut()
+            .find(|e| e.kind == ElementKind::Map)
+            .unwrap()
+            .viewport
+            .as_mut()
+            .unwrap()
+            .fit_around
+            .push("schedule".into());
+        layout.composition = Some(Composition {
+            movable: vec!["schedule".into()],
+            gap_mm: 5.,
+        });
+        layout.project_overview = true;
+        validate(&layout).unwrap();
+        assert_eq!(
+            serde_json::from_slice::<Layout>(&serde_json::to_vec(&layout).unwrap()).unwrap(),
+            layout
+        );
+        layout
+            .composition
+            .as_mut()
+            .unwrap()
+            .movable
+            .push("schedule".into());
+        assert!(validate(&layout).is_err());
+        layout.composition.as_mut().unwrap().movable.pop();
+        layout
+            .elements
+            .last_mut()
+            .unwrap()
+            .table
+            .as_mut()
+            .unwrap()
+            .panels = 0;
         assert!(validate(&layout).is_err());
     }
 

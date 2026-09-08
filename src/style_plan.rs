@@ -50,6 +50,11 @@ pub struct DimensionValue {
 #[derive(Debug, Clone, Deserialize, Serialize, Default)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct CartographyChange {
+    pub visible: Option<bool>,
+    pub opacity: Option<f64>,
+    pub boundary_color: Option<String>,
+    pub boundary_width: Option<f64>,
+    pub boundary_opacity: Option<f64>,
     pub line_type: Option<String>,
     pub direction_size: Option<f64>,
     pub direction_spacing: Option<f64>,
@@ -269,8 +274,49 @@ fn cartography(
         || change.pattern_background.is_some()
         || change.pattern_spacing.is_some()
         || change.pattern_stroke.is_some();
-    if !wants_line && !wants_casing && !wants_pattern {
+    let wants_boundary = change.boundary_color.is_some()
+        || change.boundary_width.is_some()
+        || change.boundary_opacity.is_some();
+    if !wants_line
+        && !wants_casing
+        && !wants_pattern
+        && !wants_boundary
+        && change.visible.is_none()
+        && change.opacity.is_none()
+    {
         return Err("choose a line type, casing or hatch".into());
+    }
+    if let Some(visible) = change.visible {
+        style["layout"]["visibility"] = json!(if visible { "visible" } else { "none" });
+    }
+    if let Some(opacity) = change.opacity {
+        let key = match kind.as_str() {
+            "fill" => "fill-opacity",
+            "line" => "line-opacity",
+            "circle" => "circle-opacity",
+            "symbol" => "icon-opacity",
+            _ => return Err("opacity requires a supported geometry style".into()),
+        };
+        style["paint"][key] = json!(bounded(opacity, 0., 1., "opacity")?);
+    }
+    if wants_boundary {
+        if kind != "fill" {
+            return Err("polygon boundary controls require a fill layer".into());
+        }
+        if !style["boundary"].is_object() {
+            style["boundary"] = json!({"paint":{"line-color":"#64748B","line-width":1,"line-opacity":1},"layout":{"visibility":"visible"}});
+        }
+        if let Some(color) = &change.boundary_color {
+            style["boundary"]["paint"]["line-color"] = json!(checked_color(color)?);
+        }
+        if let Some(width) = change.boundary_width {
+            style["boundary"]["paint"]["line-width"] =
+                json!(bounded(width, 0., 20., "boundary width")?);
+        }
+        if let Some(opacity) = change.boundary_opacity {
+            style["boundary"]["paint"]["line-opacity"] =
+                json!(bounded(opacity, 0., 1., "boundary opacity")?);
+        }
     }
     if wants_line {
         if kind != "line" {
@@ -738,7 +784,13 @@ pub fn plan_style_edit(
                 return Err("fallback must be finite".into());
             }
             // Declared domain typing may replace a host map scan; observed values never define a domain.
-            let declared_type = editor["field_domains"][requested_field]["type"].as_str();
+            let declared_type = editor["field_domains"][requested_field]["type"]
+                .as_str()
+                .map(|kind| match kind {
+                    "categorical_string" => "string",
+                    "categorical_number" | "numeric" => "number",
+                    other => other,
+                });
             if field_type
                 .as_deref()
                 .zip(declared_type)
@@ -945,6 +997,33 @@ mod tests {
     use super::*;
 
     #[test]
+    fn polygon_boundary_is_independent_and_opacity_is_bounded() {
+        let style = json!({"type":"fill","layout":{"visibility":"none"},"paint":{"fill-color":"#ffffff","fill-opacity":0.3}});
+        let change = CartographyChange {
+            visible: Some(true),
+            opacity: Some(0.),
+            boundary_color: Some("#7C8792".into()),
+            boundary_width: Some(0.7),
+            boundary_opacity: Some(0.5),
+            ..Default::default()
+        };
+        let out = cartography(style, &change, &json!({})).unwrap();
+        assert_eq!(out["paint"]["fill-opacity"], 0.);
+        assert_eq!(out["boundary"]["paint"]["line-width"], 0.7);
+        assert_eq!(out["layout"]["visibility"], "visible");
+        assert!(cartography(json!({"type":"line"}), &change, &json!({})).is_err());
+        assert!(cartography(
+            out,
+            &CartographyChange {
+                opacity: Some(1.1),
+                ..Default::default()
+            },
+            &json!({})
+        )
+        .is_err());
+    }
+
+    #[test]
     fn held_request_matches_native_plan_without_map_state() {
         let state = snapshot(json!({"type":"line","paint":{"line-width":3}}));
         let request = json!({"snapshot":state,"reference":"master/poles","instruction":{"kind":"print_variant"}});
@@ -1028,6 +1107,32 @@ mod tests {
         assert!(plan.payload.get("project_id").is_none());
         assert_eq!(plan.payload["style_target"], "design");
         assert_eq!(plan.receipt["published"], false);
+    }
+
+    #[test]
+    fn categorical_string_domains_accept_black_draft_halos() {
+        let mut source =
+            snapshot(json!({"type":"circle","paint":{"circle-color":"#123456"},"layout":{}}));
+        source["style_editors"][0]["field_domains"]["status"]["type"] = json!("categorical_string");
+        let plan = plan_style_edit(
+            &source,
+            "master/poles",
+            &StyleInstruction::Dimension {
+                field: "status".into(),
+                channel: "halo".into(),
+                values: vec![DimensionValue {
+                    value: "draft".into(),
+                    amount: Some(1.5),
+                    color: Some("#000000".into()),
+                }],
+                other: Some(0.),
+                color: Some("#000000".into()),
+                field_type: Some("string".into()),
+            },
+        )
+        .unwrap();
+        assert_eq!(plan.document["paint"]["circle-stroke-color"][3], "#000000");
+        assert_eq!(plan.document["paint"]["circle-stroke-width"][2], "draft");
     }
 
     #[test]

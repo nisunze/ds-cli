@@ -7,6 +7,8 @@ use serde_json::{json, Value};
 pub struct LabelOptions {
     pub visible: Option<bool>,
     pub size: Option<f64>,
+    pub font: Option<String>,
+    pub color: Option<String>,
     /// Paper names, or the single value `all` to remove the paper restriction.
     pub papers: Option<Vec<String>>,
     /// Try the backend's non-central point anchors to avoid collisions.
@@ -34,6 +36,27 @@ pub fn apply_options(
             return Err(format!("label size must be between {low} and {high}"));
         }
         label["layout"]["text-size"] = json!(size);
+    }
+    if let Some(font) = &options.font {
+        let fonts = snapshot["label_editor"]["fonts"]
+            .as_array()
+            .ok_or("backend label font vocabulary is missing")?;
+        if !fonts.contains(&json!(font)) {
+            return Err("label font must be from the published font vocabulary".into());
+        }
+        label["layout"]["text-font"] = json!([font]);
+    }
+    if let Some(color) = &options.color {
+        if color.len() != 7
+            || !color.starts_with('#')
+            || !color[1..].bytes().all(|b| b.is_ascii_hexdigit())
+        {
+            return Err("label color must be a six-digit hexadecimal color".into());
+        }
+        if !label["paint"].is_object() {
+            label["paint"] = json!({});
+        }
+        label["paint"]["text-color"] = json!(color);
     }
     if let Some(automatic) = options.automatic_placement {
         if automatic {
@@ -117,6 +140,25 @@ pub fn apply_options(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn fonts_are_governed_and_text_color_is_validated() {
+        let schema = json!({"label_editor":{"fonts":["Open Sans Italic"]}});
+        let mut label = json!({"layout":{}});
+        let mut options = LabelOptions {
+            font: Some("Open Sans Italic".into()),
+            color: Some("#52646B".into()),
+            ..Default::default()
+        };
+        apply_options(&mut label, &options, &schema, &json!({})).unwrap();
+        assert_eq!(label["layout"]["text-font"], json!(["Open Sans Italic"]));
+        assert_eq!(label["paint"]["text-color"], "#52646B");
+        options.color = Some("white".into());
+        assert!(apply_options(&mut label, &options, &schema, &json!({})).is_err());
+        options.color = None;
+        options.font = Some("Unknown".into());
+        assert!(apply_options(&mut label, &options, &schema, &json!({})).is_err());
+    }
 
     #[test]
     fn paper_scope_round_trips_without_losing_opacity_or_filter() {
