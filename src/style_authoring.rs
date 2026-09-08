@@ -401,7 +401,8 @@ pub fn apply_casing(mut style: Value, color: &str, width: f64) -> Result<Value, 
         .filter(|v| v.is_object())
         .cloned()
         .unwrap_or_else(|| json!({}));
-    boundary["type"] = json!("line");
+    // Boundaries have an implicit line type in the governed style document.
+    boundary.as_object_mut().expect("object").remove("type");
     boundary["paint"] = json!({"line-color":color,"line-width":widened});
     let layout = bucket(&mut boundary, "layout")?;
     let visibility = if layout.get("visibility") == Some(&json!("none")) {
@@ -526,6 +527,22 @@ mod tests {
             );
         }
     }
+    #[test]
+    fn casing_uses_the_implicit_boundary_line_schema() {
+        let result = apply_casing(
+            json!({
+                "type":"line", "paint":{"line-width":4},
+                "boundary":{"type":"line","layout":{"visibility":"visible"}}
+            }),
+            "#8B8175",
+            0.5,
+        )
+        .unwrap();
+        assert!(result["boundary"].get("type").is_none());
+        assert_eq!(result["boundary"]["paint"]["line-width"], 5.0);
+        assert_eq!(result["boundary"]["layout"]["line-join"], "round");
+    }
+
     #[test]
     fn casing_refuses_unsupported_arithmetic_instead_of_flattening() {
         assert!(widen_line_width(&json!(["*", ["get", "width"], 2]), 3.).is_err());

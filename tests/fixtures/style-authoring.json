@@ -2882,7 +2882,6 @@
       "minzoom": 4,
       "maxzoom": 19,
       "boundary": {
-        "type": "line",
         "paint": {
           "line-color": "#FFFFFF",
           "line-width": 6
@@ -2975,7 +2974,6 @@
       "minzoom": 4,
       "maxzoom": 19,
       "boundary": {
-        "type": "line",
         "paint": {
           "line-color": "#FFFFFF",
           "line-width": [
@@ -3074,7 +3072,6 @@
       "minzoom": 4,
       "maxzoom": 19,
       "boundary": {
-        "type": "line",
         "paint": {
           "line-color": "#FFFFFF",
           "line-width": [
@@ -3176,7 +3173,6 @@
       "minzoom": 4,
       "maxzoom": 19,
       "boundary": {
-        "type": "line",
         "paint": {
           "line-color": "#FFFFFF",
           "line-width": [
@@ -3273,7 +3269,6 @@
       "minzoom": 4,
       "maxzoom": 19,
       "boundary": {
-        "type": "line",
         "paint": {
           "line-color": "#FFFFFF",
           "line-width": [
