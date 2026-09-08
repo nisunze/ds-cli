@@ -5,6 +5,34 @@ use std::collections::BTreeSet;
 pub const DEVELOPMENT_ENGINE: &str = "ds-network-reporter@0.1.0+development";
 pub const LOCAL_ONLY_SCHEMA: u32 = 4;
 
+fn valid_semver_core(value: &str) -> bool {
+    let mut parts = value.split('.');
+    (0..3).all(|_| {
+        parts.next().is_some_and(|part| {
+            !part.is_empty()
+                && part.bytes().all(|byte| byte.is_ascii_digit())
+                && (part == "0" || !part.starts_with('0'))
+        })
+    }) && parts.next().is_none()
+}
+
+/// Exact immutable Network Reporter identity: package semantic version plus
+/// the producing source commit. Package upgrades must not strand retained
+/// publications merely because they no longer use the current version.
+pub fn valid_network_reporter_engine_identity(engine: &str) -> bool {
+    let Some(identity) = engine.strip_prefix("ds-network-reporter@") else {
+        return false;
+    };
+    let Some((version, source)) = identity.split_once('+') else {
+        return false;
+    };
+    valid_semver_core(version)
+        && source.len() == 40
+        && source
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+}
+
 #[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum PublicationState {
@@ -22,14 +50,7 @@ pub fn publication_state(
     if engine == DEVELOPMENT_ENGINE {
         return Ok(PublicationState::LocalOnly);
     }
-    let release = engine
-        .strip_prefix("ds-network-reporter@0.1.0+")
-        .unwrap_or("");
-    if release.len() != 40
-        || !release
-            .bytes()
-            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
-    {
+    if !valid_network_reporter_engine_identity(engine) {
         return Err("Report engine identity is invalid".into());
     }
     Ok(if !enqueue {
@@ -245,7 +266,22 @@ mod tests {
             publication_state(DEVELOPMENT_ENGINE, true, true).unwrap(),
             PublicationState::LocalOnly
         );
+        assert_eq!(
+            publication_state(
+                &format!("ds-network-reporter@0.2.1+{}", "b".repeat(40)),
+                true,
+                false,
+            )
+            .unwrap(),
+            PublicationState::Pending,
+        );
         assert!(publication_state("unknown", true, false).is_err());
+        assert!(publication_state(
+            &format!("ds-network-reporter@01.2.1+{}", "b".repeat(40)),
+            true,
+            false,
+        )
+        .is_err());
     }
     #[test]
     fn computed_identities_are_reserved_under_any_spelling() {

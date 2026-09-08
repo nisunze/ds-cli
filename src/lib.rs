@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use zeroize::Zeroize;
 
+pub mod compute_artifact_sync;
 pub mod connectivity;
 pub mod design;
 pub mod installation;
@@ -44,6 +45,13 @@ pub fn map_scene_render_plan_wasm(input: &[u8]) -> Result<String, wasm_bindgen::
 #[wasm_bindgen::prelude::wasm_bindgen(js_name = connectivityCommand)]
 pub fn connectivity_command_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
     connectivity::evaluate(input).map_err(|error| wasm_bindgen::JsValue::from_str(&error))
+}
+#[cfg(feature = "wasm")]
+#[wasm_bindgen::prelude::wasm_bindgen(js_name = computeArtifactRetryAssessment)]
+pub fn compute_artifact_retry_assessment_wasm(
+    input: &[u8],
+) -> Result<String, wasm_bindgen::JsValue> {
+    compute_artifact_sync::evaluate(input).map_err(|error| wasm_bindgen::JsValue::from_str(&error))
 }
 pub mod reconciliation;
 #[cfg(feature = "wasm")]
