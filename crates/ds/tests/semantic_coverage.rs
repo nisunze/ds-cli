@@ -63,6 +63,8 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     // plan is a map-independent preview; extraction writes only local files
     // through the paired Desktop's governed Rwanda DEM component.
     ("data.elevation.plan", "read_only", "desktop_pairing"),
+    ("data.project-cache.status", "read_only", "desktop_user"),
+    ("data.project-cache.seed", "artifact_write", "project"),
     (
         "data.elevation.extract",
         "local_file_write",
