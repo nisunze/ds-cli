@@ -64,7 +64,7 @@ pub const SETTINGS_OP: BridgeOp = BridgeOp {
 };
 pub static SETTINGS_COMMAND: Command = Command {
  id: "desktop.printing.settings", path: &["desktop", "printing", "settings"], contract: 1,
- summary: "Read project settings: selected printing outputs, A3/A0 papers and templates.",
+ summary: "Read project print settings, selected outputs and template papers.",
  purpose: "Read the saved design output selection for one exact project through Brain and the shared Rust report planner. Returns the authored setting, effective outputs and selected template paper metadata; never guesses from filenames, changes settings, runs an export, or switches the GUI map. Start here before printing. Use printing list/get to inspect templates, printing prepare to save an authorized selection, then read settings again and use printing export for a transformer. Available identically through the printing MCP profile.",
  chapter: Chapter::Reports, effect: Effect::ReadOnly, authority: Authority::DesktopUser, execution: Execution::Sync,
  args: &[Arg::value("project", "<exact-id>", "Exact project whose saved printing output settings should be read; no GUI project switch.").required(), DESCRIPTOR_ARG],
