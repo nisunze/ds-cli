@@ -4,6 +4,14 @@ Shared deterministic command and state transitions used by native DS clients
 and browser WASM. Svelte remains the presentation owner; hosts retain network,
 credential storage, IndexedDB, OS, and rendering effects.
 
+`project_context` owns routing for commands still attached to the UI runtime.
+The CLI project takes precedence for map work; if absent, the UI supplies its
+current project. A project difference requests a switch of the existing UI,
+followed by identity and target verification. Background commands keep their
+independent project and never enter this UI boundary. This is an incremental
+step toward map-independent commands through the kernel, not a survey-loader
+or application-wide migration.
+
 The [offline Design workspace](docs/design-workspace.md) adds shared source
 authority and version-fenced feature transitions. Its separate native
 `ds-design-workspace` crate owns durable revisions, background jobs, report
