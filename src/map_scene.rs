@@ -4,6 +4,8 @@ use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 
+use crate::map_active_view::{validate_camera, Camera};
+
 pub const MAX_BYTES: usize = 32 * 1024 * 1024;
 pub const REQUEST_SCHEMA: &str = "ds.map.scene.request/v1";
 pub const SCENE_SCHEMA: &str = "ds.map.scene/v1";
@@ -168,20 +170,13 @@ pub fn build(input: &[u8]) -> Result<Value, String> {
         return Err(invalid());
     }
     let view = &request.view;
-    if ![
-        view.center[0],
-        view.center[1],
-        view.zoom,
-        view.bearing,
-        view.pitch,
-    ]
-    .iter()
-    .all(|v| v.is_finite())
-        || !(-180.0..=180.0).contains(&view.center[0])
-        || !(-85.0..=85.0).contains(&view.center[1])
-        || !(0.0..=24.0).contains(&view.zoom)
-        || !(0.0..=85.0).contains(&view.pitch)
-        || !(-360.0..=360.0).contains(&view.bearing)
+    if validate_camera(&Camera {
+        center: view.center,
+        zoom: view.zoom,
+        bearing: view.bearing,
+        pitch: view.pitch,
+    })
+    .is_err()
     {
         return Err(invalid());
     }

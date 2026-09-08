@@ -15,6 +15,7 @@ pub mod compute_artifact_sync;
 pub mod connectivity;
 pub mod design;
 pub mod installation;
+pub mod map_active_view;
 pub mod map_scene;
 pub mod project_context;
 #[cfg(feature = "wasm")]
@@ -38,6 +39,15 @@ pub fn map_scene_render_plan_wasm(input: &[u8]) -> Result<String, wasm_bindgen::
     map_scene::render_plan(input)
         .and_then(|value| {
             serde_json::to_string(&value).map_err(|_| "scene plan encoding failed".into())
+        })
+        .map_err(|error| wasm_bindgen::JsValue::from_str(&error))
+}
+#[cfg(feature = "wasm")]
+#[wasm_bindgen::prelude::wasm_bindgen(js_name = mapActiveView)]
+pub fn map_active_view_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
+    map_active_view::evaluate(input)
+        .and_then(|value| {
+            serde_json::to_string(&value).map_err(|_| "active map plan encoding failed".into())
         })
         .map_err(|error| wasm_bindgen::JsValue::from_str(&error))
 }
