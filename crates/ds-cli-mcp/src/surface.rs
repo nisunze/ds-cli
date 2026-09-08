@@ -1226,6 +1226,8 @@ const PRINTING_COMMANDS: &[&str] = &[
     "desktop.printing.prepare",
     "desktop.printing.transformers",
     "desktop.printing.export",
+    "desktop.printing.artifact.read",
+    "desktop.printing.artifact.copy",
     "desktop.printing.seed-context",
     "report.layout.new",
     "report.layout.edit",

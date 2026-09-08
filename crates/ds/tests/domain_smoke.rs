@@ -194,6 +194,42 @@ fn printing_context_seeding_is_bound_to_one_visible_desktop_project() {
 }
 
 #[test]
+fn printing_artifact_access_is_exact_project_owned_and_copy_only_creates_a_new_file() {
+    let read = ok(&[
+        "capabilities",
+        "desktop.printing.artifact.read",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(read["command"]["authority"], "desktop_user");
+    assert_eq!(read["command"]["effect"], "read_only");
+    let copy = ok(&[
+        "capabilities",
+        "desktop.printing.artifact.copy",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(copy["command"]["authority"], "desktop_user");
+    assert_eq!(copy["command"]["effect"], "local_file_write");
+    let names = copy["command"]["inputs"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|value| value["name"].as_str().unwrap())
+        .collect::<BTreeSet<_>>();
+    assert_eq!(
+        names,
+        BTreeSet::from([
+            "desktop-descriptor",
+            "out",
+            "output-id",
+            "project",
+            "transformer"
+        ])
+    );
+}
+
+#[test]
 fn desktop_sync_exposes_path_free_status_and_guards_exact_row_retry() {
     let status = ok(&["capabilities", "desktop.sync.status", "--output", "json"]);
     let command = &status["command"];

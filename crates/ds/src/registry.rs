@@ -1667,6 +1667,16 @@ static DESKTOP_ENTRIES: &[Entry] = &[
         render: ds_cli_desktop::printing::render,
     },
     Entry {
+        command: &ds_cli_desktop::artifact::READ_COMMAND,
+        handler: ds_cli_desktop::artifact::read,
+        render: ds_cli_desktop::artifact::render,
+    },
+    Entry {
+        command: &ds_cli_desktop::artifact::COPY_COMMAND,
+        handler: ds_cli_desktop::artifact::copy,
+        render: ds_cli_desktop::artifact::render,
+    },
+    Entry {
         command: &ds_cli_desktop::data::STATUS_COMMAND,
         handler: ds_cli_desktop::data::status,
         render: ds_cli_desktop::data::render,

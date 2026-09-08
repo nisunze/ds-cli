@@ -269,7 +269,7 @@ pub static EXPORT_COMMAND: Command = Command {
         FORCE_ARG,
         DESCRIPTOR_ARG,
     ],
-    output: "Explicit project and transformer, artifact count, exact filenames/sizes/SHA-256/locators, context warnings and cached layer feature counts, and publication state.",
+    output: "Explicit project and transformer, artifact count, exact filenames/formats/sizes/SHA-256/locators and recorded layout/paper/orientation/dimensions, context warnings and cached layer feature counts, and publication state.",
     examples: &[],
     refusals: &[
         ops::NOT_PAIRED,

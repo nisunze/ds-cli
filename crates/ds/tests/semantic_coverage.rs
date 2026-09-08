@@ -81,6 +81,16 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("desktop.printing.get", "read_only", "desktop_user"),
     ("desktop.printing.transformers", "read_only", "desktop_user"),
     ("desktop.printing.export", "artifact_write", "desktop_user"),
+    (
+        "desktop.printing.artifact.read",
+        "read_only",
+        "desktop_user",
+    ),
+    (
+        "desktop.printing.artifact.copy",
+        "local_file_write",
+        "desktop_user",
+    ),
     ("desktop.printing.save", "global_write", "desktop_user"),
     ("desktop.printing.prepare", "global_write", "desktop_user"),
     (
