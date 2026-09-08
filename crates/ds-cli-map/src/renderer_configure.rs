@@ -21,7 +21,9 @@ pub static COMMAND: Command = Command {
     authority: Authority::DesktopPairing,
     execution: Execution::Sync,
     args: &[
-        Arg::value("mode", "<2d|3d>", "Active renderer dimension."),
+        Arg::value("mode", "<2d|3d>", "Active renderer dimension.")
+            .choices(&["2d", "3d"])
+            .required(),
         Arg::value(
             "provider",
             "<aws-terrain|google>",

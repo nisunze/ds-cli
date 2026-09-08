@@ -21,10 +21,10 @@ pub static COMMAND: Command = Command {
     authority: Authority::DesktopPairing,
     execution: Execution::Sync,
     args: &[
-        Arg::value("center", "<lon,lat>", "WGS84 longitude and latitude."),
-        Arg::value("zoom", "<level>", "Map zoom, 0..24."),
-        Arg::value("pitch", "<degrees>", "Camera pitch, 0..85."),
-        Arg::value("bearing", "<degrees>", "Camera bearing, -360..360."),
+        Arg::value("center", "<lon,lat>", "WGS84 longitude and latitude.").required(),
+        Arg::value("zoom", "<level>", "Map zoom, 0..24.").required(),
+        Arg::value("pitch", "<degrees>", "Camera pitch, 0..85.").required(),
+        Arg::value("bearing", "<degrees>", "Camera bearing, -360..360.").required(),
         DESCRIPTOR_ARG,
     ],
     output: "The exact camera applied and the active renderer mode/provider that received it.",
@@ -46,6 +46,11 @@ pub static COMMAND: Command = Command {
         crate::UNSUPPORTED,
         crate::UNREADABLE,
         crate::INVALID_NUMBER,
+        Refusal {
+            code: "invalid_camera",
+            when: "the center or camera violates the shared camera contract",
+            remedy: "supply --center longitude,latitude, --zoom 0..24, --pitch 0..85 and --bearing -360..360",
+        },
     ],
     reference: Some("docs/reference/map.md"),
     availability: crate::paired_availability,
@@ -62,7 +67,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         "bearing": crate::number(inputs.require("bearing")?, "bearing", -360.0, 360.0)?,
     });
     let plan = map_active_view::evaluate(&serde_json::to_vec(&request).unwrap())
-        .map_err(|error| Failure::invalid("camera", error))?;
+        .map_err(|error| Failure::invalid("invalid_camera", error))?;
     let descriptor = crate::paired(inputs.value("desktop-descriptor"))?;
     crate::invoke(
         &descriptor,
@@ -76,7 +81,7 @@ fn center(raw: &str) -> Result<[f64; 2], Failure> {
     let values: Vec<&str> = raw.split(',').map(str::trim).collect();
     if values.len() != 2 || values.iter().any(|value| value.is_empty()) {
         return Err(Failure::invalid(
-            "camera",
+            "invalid_camera",
             "--center must be longitude,latitude",
         ));
     }
