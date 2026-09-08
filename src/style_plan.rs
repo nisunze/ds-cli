@@ -57,6 +57,24 @@ pub struct StylePlan {
     pub payload: Value,
 }
 
+/// Shared native/WASM request boundary. The host acquires the authenticated
+/// snapshot and publishes the returned payload; planning has no map dependency.
+pub fn plan_style_request(input: &[u8]) -> Result<String, String> {
+    if input.is_empty() || input.len() > 16 * 1024 * 1024 {
+        return Err("style plan input must contain 1 byte through 16 MiB".into());
+    }
+    #[derive(Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct Request {
+        snapshot: Value,
+        reference: String,
+        instruction: StyleInstruction,
+    }
+    let request: Request = serde_json::from_slice(input).map_err(|e| e.to_string())?;
+    let plan = plan_style_edit(&request.snapshot, &request.reference, &request.instruction)?;
+    serde_json::to_string(&plan).map_err(|e| e.to_string())
+}
+
 fn field(value: &Value) -> Option<String> {
     let expr = value.as_array()?;
     if expr.first()?.as_str()? != "match" {
@@ -821,6 +839,23 @@ pub fn list_styles(snapshot: &Value, query: Option<&str>, limit: usize) -> Resul
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn held_request_matches_native_plan_without_map_state() {
+        let state = snapshot(json!({"type":"line","paint":{"line-width":3}}));
+        let request = json!({"snapshot":state,"reference":"master/poles","instruction":{"kind":"print_variant"}});
+        let held: Value = serde_json::from_str(
+            &plan_style_request(&serde_json::to_vec(&request).unwrap()).unwrap(),
+        )
+        .unwrap();
+        let native =
+            plan_style_edit(&state, "master/poles", &StyleInstruction::PrintVariant).unwrap();
+        assert_eq!(held, serde_json::to_value(native).unwrap());
+        let mut invalid = request;
+        invalid["map"] = json!({});
+        assert!(plan_style_request(&serde_json::to_vec(&invalid).unwrap()).is_err());
+        assert!(plan_style_request(&[]).is_err());
+    }
     fn snapshot(style: Value) -> Value {
         json!({"project_id":"p","styles":{"master/poles":style},"style_editors":[{"style_ref":"master/poles","style_target":"design","layer_name":"poles","available_fields":["status","kind"],"field_domains":{"status":{"type":"boolean"}}}],"style_properties":{"circle":[{"key":"circle-radius","type":"number","min":1,"max":30}]}})
     }
