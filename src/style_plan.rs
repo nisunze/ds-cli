@@ -23,6 +23,8 @@ pub enum StyleInstruction {
     /// no label yet; existing label authorship is otherwise preserved.
     Label {
         field: String,
+        #[serde(default)]
+        options: crate::style_label::LabelOptions,
     },
     Dimension {
         field: String,
@@ -645,6 +647,7 @@ pub fn plan_style_edit(
         }
         StyleInstruction::Label {
             field: requested_field,
+            options,
         } => {
             if requested_field.is_empty()
                 || requested_field.len() > 120
@@ -676,8 +679,10 @@ pub fn plan_style_edit(
                 return Err("backend label model has no layout".into());
             }
             label["layout"]["text-field"] = json!(["get", requested_field]);
+            crate::style_label::apply_options(&mut label, options, snapshot, editor)?;
             next["label"] = label;
             receipt["labelField"] = json!(requested_field);
+            receipt["labelOptions"] = json!(options);
             receipt["changed"] = json!(["label"]);
         }
         StyleInstruction::Dimension {
@@ -905,7 +910,7 @@ pub fn describe_style(snapshot: &Value, reference: &str) -> Result<Value, String
         json!({"field":f,"channel":c.key})
     });
     Ok(
-        json!({"project":snapshot["project_id"],"ref":reference,"type":kind,"target":editor["style_target"],"document":document,"fields":fields,"fieldValues":values,"channels":channels,"propertySchema":snapshot["style_properties"][kind],"icons":icon_names(snapshot).into_iter().take(200).collect::<Vec<_>>(),"fieldDomains":editor["field_domains"],"second":second,"colorField":primary_style_field(document),"onMap":null,"more":more}),
+        json!({"project":snapshot["project_id"],"ref":reference,"type":kind,"target":editor["style_target"],"document":document,"fields":fields,"fieldValues":values,"channels":channels,"propertySchema":snapshot["style_properties"][kind],"labelSchema":snapshot["label_editor"],"icons":icon_names(snapshot).into_iter().take(200).collect::<Vec<_>>(),"fieldDomains":editor["field_domains"],"second":second,"colorField":primary_style_field(document),"onMap":null,"more":more}),
     )
 }
 pub fn list_styles(snapshot: &Value, query: Option<&str>, limit: usize) -> Result<Value, String> {
@@ -1054,6 +1059,7 @@ mod tests {
             "master/poles",
             &StyleInstruction::Label {
                 field: "road_no".into(),
+                options: Default::default(),
             },
         )
         .unwrap();
@@ -1077,6 +1083,7 @@ mod tests {
             "master/poles",
             &StyleInstruction::Label {
                 field: "road_no".into(),
+                options: Default::default(),
             },
         )
         .unwrap();
@@ -1093,7 +1100,8 @@ mod tests {
                 &state,
                 "master/poles",
                 &StyleInstruction::Label {
-                    field: field.into()
+                    field: field.into(),
+                    options: Default::default(),
                 },
             )
             .is_err());

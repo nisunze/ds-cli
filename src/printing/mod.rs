@@ -72,7 +72,23 @@ pub enum PrintContextSource {
     /// projects them one at a time; the layout only owns the spatial margin.
     ProjectDsgridMv {
         buffer_m: f64,
+        /// Optional metric corridor drawn around the model routes. Independent
+        /// of buffer_m, which selects nearby models for the print context.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        corridor: Option<PrintCorridor>,
     },
+}
+
+/// Physical appearance and ground distance of a model-route corridor.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct PrintCorridor {
+    /// Distance on each side of the route, in ground metres.
+    pub distance_m: f64,
+    pub color: String,
+    pub width_mm: f64,
+    pub opacity: f64,
+    pub dash_mm: Vec<f64>,
 }
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
 #[serde(rename_all = "snake_case")]
@@ -543,9 +559,20 @@ pub fn validate(layout: &Layout) -> Result<(), String> {
                     return Err("invalid elevation contour print context parameters".into());
                 }
             }
-            PrintContextSource::ProjectDsgridMv { buffer_m } => {
+            PrintContextSource::ProjectDsgridMv { buffer_m, corridor } => {
                 if !bounded(*buffer_m, 0., 5_000.) {
                     return Err("invalid project DS Grid MV print context parameters".into());
+                }
+                if let Some(corridor) = corridor {
+                    if !bounded(corridor.distance_m, 0.1, 1_000.)
+                        || !bounded(corridor.width_mm, 0.01, 5.)
+                        || !bounded(corridor.opacity, 0., 1.)
+                        || !color(&corridor.color)
+                        || corridor.dash_mm.len() > 8
+                        || corridor.dash_mm.iter().any(|v| !bounded(*v, 0.1, 100.))
+                    {
+                        return Err("invalid project DS Grid MV corridor parameters".into());
+                    }
                 }
             }
         }
@@ -1105,6 +1132,32 @@ pub fn command_schema() -> serde_json::Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn metric_corridor_roundtrips_and_rejects_invalid_distance() {
+        let mut layout = default_layout();
+        let source = serde_json::json!({"kind":"project_dsgrid_mv","buffer_m":200.,
+            "corridor":{"distance_m":6.,"color":"#957197","width_mm":0.15,"opacity":0.3,"dash_mm":[2.,1.]}});
+        layout.context_layers.push(PrintContextLayer {
+            id: "mv".into(),
+            label: "MV".into(),
+            source: serde_json::from_value(source.clone()).unwrap(),
+        });
+        validate(&layout).unwrap();
+        assert_eq!(
+            serde_json::to_value(&layout.context_layers[0].source).unwrap(),
+            source
+        );
+        for invalid in [0., -6., 1001.] {
+            if let PrintContextSource::ProjectDsgridMv {
+                corridor: Some(c), ..
+            } = &mut layout.context_layers[0].source
+            {
+                c.distance_m = invalid;
+            }
+            assert!(validate(&layout).unwrap_err().contains("corridor"));
+        }
+    }
 
     #[test]
     fn viewport_fit_around_roundtrips_and_rejects_missing_or_duplicate_elements() {

@@ -1176,6 +1176,7 @@ pub fn transform_style_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValu
     style_authoring::transform_style(input).map_err(|error| wasm_bindgen::JsValue::from_str(&error))
 }
 
+pub mod style_label;
 pub mod style_plan;
 
 #[cfg(feature = "wasm")]
