@@ -1043,6 +1043,16 @@ static STYLE_ENTRIES: &[Entry] = &[
         render: ds_cli_style::read::render,
     },
     Entry {
+        command: &ds_cli_style::seed::plan::COMMAND,
+        handler: ds_cli_style::seed::plan::run,
+        render: ds_cli_style::seed::plan::render,
+    },
+    Entry {
+        command: &ds_cli_style::seed::create::COMMAND,
+        handler: ds_cli_style::seed::create::run,
+        render: ds_cli_style::seed::create::render,
+    },
+    Entry {
         command: &ds_cli_style::print_variant::plan::COMMAND,
         handler: ds_cli_style::print_variant::plan::run,
         render: ds_cli_style::print_variant::plan::render,

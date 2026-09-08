@@ -18,6 +18,14 @@ property bounds, a bounded icon list and supported second-dimension channels.
 `more` reports truncation; runtime feature counts and map visibility are not inferred.
 Only backend-published editor refs can be authored from the headless catalogue.
 
+Renderer-only buildings and contour sources are declared by the backend under the
+closed `print_context/*` family. `ds style seed plan --ref <declared-ref>` returns
+that exact backend document and create-only payload; `ds style seed create
+--ref <declared-ref> --yes` publishes it once. Arbitrary refs and every other style
+target are refused by the shared Rust planner. After seeding, use the ordinary
+guided commands to edit the source and `ds style print` to create its `_print`
+variant.
+
 `ds style print plan --ref <screen-ref>` derives the predictable
 `<screen-ref>_print` identity and shows the exact create-only clone. `ds style
 print create --ref <screen-ref> --yes` publishes it. Catalog sprite names are

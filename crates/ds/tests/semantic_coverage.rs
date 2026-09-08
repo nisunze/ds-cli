@@ -534,6 +534,8 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("style.print.create", "global_write", "headless_project"),
     ("style.print.plan", "local_auth_state", "headless_project"),
     ("style.read", "local_auth_state", "headless_project"),
+    ("style.seed.create", "global_write", "headless_project"),
+    ("style.seed.plan", "local_auth_state", "headless_project"),
     ("tile.add", "global_write", "headless_project"),
     ("tile.generate", "global_write", "headless_project"),
     ("tile.global.catalog", "read_only", "desktop_user"),

@@ -26,6 +26,7 @@ pub const PROFILE_IDS: &[&str] = &[
     "design-run",
     "map",
     "styles",
+    "print-styles",
     "layers",
     "tiling",
     "project",
@@ -78,6 +79,7 @@ pub enum Profile {
     DesignRun,
     Map,
     Styles,
+    PrintStyles,
     Layers,
     Tiling,
     Project,
@@ -108,6 +110,7 @@ impl Profile {
             "design-run" => Some(Self::DesignRun),
             "map" => Some(Self::Map),
             "styles" => Some(Self::Styles),
+            "print-styles" => Some(Self::PrintStyles),
             "layers" => Some(Self::Layers),
             "tiling" => Some(Self::Tiling),
             "project" => Some(Self::Project),
@@ -139,6 +142,7 @@ impl Profile {
             Self::DesignRun => "design-run",
             Self::Map => "map",
             Self::Styles => "styles",
+            Self::PrintStyles => "print-styles",
             Self::Layers => "layers",
             Self::Tiling => "tiling",
             Self::Project => "project",
@@ -200,8 +204,10 @@ impl Profile {
             Self::Map => {
                 tool.chapter == Chapter::MapPresentation
                     && !STYLE_COMMANDS.contains(&tool.id.as_str())
+                    && !PRINT_STYLE_COMMANDS.contains(&tool.id.as_str())
             }
             Self::Styles => STYLE_COMMANDS.contains(&tool.id.as_str()),
+            Self::PrintStyles => PRINT_STYLE_COMMANDS.contains(&tool.id.as_str()),
             Self::Layers => LAYER_COMMANDS.contains(&tool.id.as_str()),
             Self::Tiling => tool.chapter == Chapter::VectorTiles,
             // Native account bootstrap is available on the broad live surface
@@ -239,6 +245,7 @@ impl Profile {
             Self::SurveyMigration => SURVEY_MIGRATION_COMMANDS,
             Self::Layers => LAYER_COMMANDS,
             Self::Styles => STYLE_COMMANDS,
+            Self::PrintStyles => PRINT_STYLE_COMMANDS,
             Self::DesignEdit => DESIGN_EDIT_COMMANDS,
             Self::DesignRun => DESIGN_RUN_COMMANDS,
             Self::SolarInput => SOLAR_INPUT_COMMANDS,
@@ -271,7 +278,7 @@ impl Profile {
             | Self::SurveyMigration
             | Self::Layers => chapter == Chapter::Survey,
             Self::DesignEdit | Self::DesignRun => chapter == Chapter::Design,
-            Self::Map | Self::Styles => chapter == Chapter::MapPresentation,
+            Self::Map | Self::Styles | Self::PrintStyles => chapter == Chapter::MapPresentation,
             Self::Tiling => chapter == Chapter::VectorTiles,
             Self::Project => chapter == Chapter::Project,
             Self::SolarInput | Self::SolarRun | Self::SolarDelivery | Self::SolarPortfolioBatch => {
@@ -315,8 +322,6 @@ const ADMIN_BOUNDS_COMMANDS: &[&str] = &[
 const STYLE_COMMANDS: &[&str] = &[
     "style.list",
     "style.read",
-    "style.print.plan",
-    "style.print.create",
     "style.appearance.plan",
     "style.appearance.set",
     "style.label.plan",
@@ -326,6 +331,15 @@ const STYLE_COMMANDS: &[&str] = &[
     "style.dimension.clear",
     "style.cartography.plan",
     "style.cartography.set",
+];
+
+/// Create-only source seeding and print cloning are one small publication
+/// workflow, kept separate from ordinary Style Center edits.
+const PRINT_STYLE_COMMANDS: &[&str] = &[
+    "style.seed.plan",
+    "style.seed.create",
+    "style.print.plan",
+    "style.print.create",
 ];
 
 // The paired application's DS Grid model lifecycle, in the order the work

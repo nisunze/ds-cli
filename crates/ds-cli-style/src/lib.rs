@@ -11,6 +11,7 @@ pub mod list;
 pub mod native;
 pub mod print_variant;
 pub mod read;
+pub mod seed;
 
 use std::time::Duration;
 
@@ -30,6 +31,8 @@ pub static DOMAIN: Domain = Domain {
     commands: &[
         &list::COMMAND,
         &read::COMMAND,
+        &seed::plan::COMMAND,
+        &seed::create::COMMAND,
         &print_variant::plan::COMMAND,
         &print_variant::create::COMMAND,
         &appearance::plan::COMMAND,
@@ -68,6 +71,10 @@ pub const PRINT_VARIANT_CREATE: BridgeOp = BridgeOp {
     operation: "style.print.create",
     arguments: &["project", "ref", "instruction", "apply"],
 };
+pub const STYLE_SEED_CREATE: BridgeOp = BridgeOp {
+    operation: "style.seed.create",
+    arguments: &["project", "ref", "instruction", "apply"],
+};
 pub const DIMENSION_SET: BridgeOp = BridgeOp {
     operation: "style.dimension.set",
     arguments: &["project", "ref", "instruction", "apply"],
@@ -90,6 +97,7 @@ pub const CARTOGRAPHY_SET: BridgeOp = BridgeOp {
 pub const BRIDGE_OPS: &[&BridgeOp] = &[
     &STYLE_LIST,
     &STYLE_READ,
+    &STYLE_SEED_CREATE,
     &APPEARANCE_SET,
     &LABEL_SET,
     &PRINT_VARIANT_CREATE,
@@ -279,7 +287,7 @@ mod tests {
         // their own.
         assert_eq!(
             names.len(),
-            8,
+            9,
             "every desktop-host style operation is bridged"
         );
         for op in BRIDGE_OPS {
@@ -297,6 +305,7 @@ mod tests {
         for other in [
             &APPEARANCE_SET,
             &LABEL_SET,
+            &STYLE_SEED_CREATE,
             &PRINT_VARIANT_CREATE,
             &DIMENSION_SET,
             &DIMENSION_CLEAR,

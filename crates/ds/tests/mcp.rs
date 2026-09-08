@@ -569,7 +569,7 @@ fn by_command_profiles_still_partition_the_live_registry() {
                 Profile::SolarPortfolioBatch,
             ][..],
         ),
-        ("style.", &[Profile::Styles][..]),
+        ("style.", &[Profile::Styles, Profile::PrintStyles][..]),
     ] {
         let expected: BTreeSet<String> = live
             .iter()
@@ -1228,6 +1228,7 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
         "design-run",
         "map",
         "styles",
+        "print-styles",
         "layers",
         "tiling",
         "project",
@@ -1303,8 +1304,20 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
         "the styles profile must expose reviewed label planning and publication"
     );
     assert!(
+        published["print-styles"].contains("style_seed_plan")
+            && published["print-styles"].contains("style_seed_create")
+            && published["print-styles"].contains("style_print_plan")
+            && published["print-styles"].contains("style_print_create"),
+        "the print-styles profile must expose create-only source and print workflows"
+    );
+    assert!(
         published["map"].is_disjoint(&published["styles"]),
         "map navigation and style authoring must remain separate profiles"
+    );
+    assert!(
+        published["map"].is_disjoint(&published["print-styles"])
+            && published["styles"].is_disjoint(&published["print-styles"]),
+        "print style creation must stay separate from map navigation and ordinary style edits"
     );
     assert!(
         published["project-operations"].contains("design_transformer_download"),

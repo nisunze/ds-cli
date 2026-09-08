@@ -48,7 +48,7 @@ pub static COMMAND: Command = Command {
             required: false,
             default: None,
             choices: crate::surface::PROFILE_IDS,
-            summary: "Filter typed tools to one operator workflow.",
+            summary: "Filter typed tools to one workflow.",
         },
     ],
     output: "MCP responses on stdout; an exit summary on stderr.",
