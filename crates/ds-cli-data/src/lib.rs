@@ -19,6 +19,7 @@ pub mod convert;
 pub mod elevation;
 pub mod inspect;
 pub mod point_cloud;
+pub mod project_cache;
 
 pub static DOMAIN: Domain = Domain {
     id: "data",
@@ -33,6 +34,8 @@ pub static DOMAIN: Domain = Domain {
         &admin_bounds::COMMAND,
         &admin_bounds::LIST_COMMAND,
         &admin_bounds::READ_COMMAND,
+        &project_cache::STATUS_COMMAND,
+        &project_cache::SEED_COMMAND,
     ],
 };
 
@@ -46,6 +49,8 @@ pub const BRIDGE_OPS: &[&ds_cli_desktop::ops::BridgeOp] = &[
     &admin_bounds::OPERATION,
     &admin_bounds::LIST_OPERATION,
     &admin_bounds::READ_OPERATION,
+    &project_cache::STATUS_OPERATION,
+    &project_cache::SEED_OPERATION,
 ];
 
 pub const SOURCE_ARG: Arg = Arg {

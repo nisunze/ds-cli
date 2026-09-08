@@ -1157,6 +1157,18 @@ static DATA_ENTRIES: &[Entry] = &[
         handler: ds_cli_data::admin_bounds::run_read,
         render: ds_cli_data::admin_bounds::render_read,
     },
+    // The project's own extracts of canonical datasets. Reading is free;
+    // acquiring is the one command here that reaches a geographic source.
+    Entry {
+        command: &ds_cli_data::project_cache::STATUS_COMMAND,
+        handler: ds_cli_data::project_cache::run_status,
+        render: ds_cli_data::project_cache::render_status,
+    },
+    Entry {
+        command: &ds_cli_data::project_cache::SEED_COMMAND,
+        handler: ds_cli_data::project_cache::run_seed,
+        render: ds_cli_data::project_cache::render_seed,
+    },
 ];
 
 /// Tiling. Ordered as a session uses it: read the state, look at the
