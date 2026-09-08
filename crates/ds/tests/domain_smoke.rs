@@ -5941,6 +5941,56 @@ fn a_well_formed_cartography_call_stops_at_confirmation_or_pairing() {
     }
 }
 
+#[test]
+fn label_field_is_exact_and_a_valid_plan_reaches_project_authority() {
+    let valid = native_refusal(&[
+        "style",
+        "label",
+        "plan",
+        "--ref",
+        "gt/roads_print",
+        "--field",
+        "road_no",
+        "--output",
+        "json",
+    ]);
+    assert!(
+        valid.is_empty() || NATIVE_AUTH_CODES.contains(&valid.as_str()),
+        "a valid label field stopped before project authority with `{valid}`"
+    );
+
+    assert_eq!(
+        native_refusal(&[
+            "style",
+            "label",
+            "plan",
+            "--ref",
+            "gt/roads_print",
+            "--field",
+            " road_no",
+            "--output",
+            "json",
+        ]),
+        "invalid_label",
+        "surrounding whitespace must not silently select another field"
+    );
+    assert_eq!(
+        native_refusal(&[
+            "style",
+            "label",
+            "set",
+            "--ref",
+            "gt/roads_print",
+            "--field",
+            "road_no",
+            "--output",
+            "json",
+        ]),
+        "confirmation_required",
+        "label publication must require review and confirmation"
+    );
+}
+
 /// The three scenarios are what an operator says, not what the flags are
 /// called. Discovery has to survive that gap, or the axis stays unreachable
 /// to anyone who did not already know it exists.
