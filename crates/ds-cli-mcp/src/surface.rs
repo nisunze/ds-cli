@@ -1208,22 +1208,21 @@ pub const fn chapter_description(chapter: Chapter) -> &'static str {
     }
 }
 
+// One bounded end-to-end printing workflow. Native template CRUD remains
+// available through the Reports chapter; it does not duplicate these paired leaves.
 const PRINTING_COMMANDS: &[&str] = &[
+    "desktop.printing.settings",
     "desktop.printing.list",
     "desktop.printing.get",
     "desktop.printing.save",
     "desktop.printing.prepare",
+    "desktop.printing.transformers",
+    "desktop.printing.export",
+    "desktop.printing.seed-context",
     "report.layout.new",
     "report.layout.edit",
     "report.layout.schema",
     "report.layout.render",
-    "report.layout.list",
-    "report.layout.get",
-    "report.layout.create",
-    "report.layout.update",
-    "report.layout.save",
-    "report.layout.delete",
-    "report.layout.copy",
 ];
 
 #[cfg(test)]

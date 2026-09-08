@@ -58,6 +58,31 @@ pub fn seed_context(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
     )
     .map_err(ops::classify_signed_out)
 }
+pub const SETTINGS_OP: BridgeOp = BridgeOp {
+    operation: "printing.settings",
+    arguments: &["project"],
+};
+pub static SETTINGS_COMMAND: Command = Command {
+ id: "desktop.printing.settings", path: &["desktop", "printing", "settings"], contract: 1,
+ summary: "Read project settings: selected printing outputs, A3/A0 papers and templates.",
+ purpose: "Read the saved design output selection for one exact project through Brain and the shared Rust report planner. Returns the authored setting, effective outputs and selected template paper metadata; never guesses from filenames, changes settings, runs an export, or switches the GUI map. Start here before printing. Use printing list/get to inspect templates, printing prepare to save an authorized selection, then read settings again and use printing export for a transformer. Available identically through the printing MCP profile.",
+ chapter: Chapter::Reports, effect: Effect::ReadOnly, authority: Authority::DesktopUser, execution: Execution::Sync,
+ args: &[Arg::value("project", "<exact-id>", "Exact project whose saved printing output settings should be read; no GUI project switch.").required(), DESCRIPTOR_ARG],
+ output: "Exact project, selection source, authored setting, planned outputs, selected template papers and receipt SHA-256. No design features or credentials.", examples: &[],
+ refusals: &[ops::NOT_PAIRED,ops::AMBIGUOUS,ops::UNREACHABLE,ops::PAIRING_REJECTED,ops::REFUSED,ops::UNSUPPORTED,ops::UNREADABLE,ops::SIGNED_OUT,PRINTING_READ_INVALID],
+ reference: Some("docs/reference/desktop.printing.md"), availability: ops::paired_availability,
+};
+pub fn settings(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
+    let project = bounded_project(inputs.require("project")?)?;
+    ops::invoke(
+        &ops::paired(inputs.value("desktop-descriptor"))?,
+        &SETTINGS_OP,
+        json!({"project":project}),
+        Duration::from_secs(240),
+    )
+    .map_err(ops::classify_signed_out)
+}
+
 pub const LIST_OP: BridgeOp = BridgeOp {
     operation: "printing.list",
     arguments: &["scope", "project"],

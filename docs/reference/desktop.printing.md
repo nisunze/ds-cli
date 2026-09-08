@@ -1,5 +1,10 @@
 # Project printing preparation
 
+Start with `ds desktop printing settings --project <exact-id> --output json`.
+It reads project settings and reports the saved selection, planned output IDs
+and the actual selected template papers. It never infers paper from a filename.
+The same leaf is exposed by `ds mcp serve --exposure commands --profile printing`.
+
 Use `ds desktop printing list --scope project --project <exact-id> --output
 json` to inspect one project's dynamic catalog, or `--scope global` for shared
 samples. Read one exact authored document and its current optimistic revision
@@ -44,7 +49,9 @@ inputs, and prepares the reference/photo caches. Saves are durable even if a
 subsequent cache installation fails; a revision conflict is never overwritten.
 The shared Printing setup page can inspect and edit the resulting layout.
 
-Then use `ds map design report --transformer agasharu --force --yes --output json`
+Read `ds desktop printing settings --project <exact-id> --output json` again
+to verify the saved selection. Then use `ds desktop printing export --project
+<exact-id> --transformer agasharu --force --yes --output json`
 to replace the current committed artifact batch from the Desktop's local room.
 Local force does not require the Cloud Run force password.
 Outputs appear in the transformer's Report Files inventory and PDF preview.
