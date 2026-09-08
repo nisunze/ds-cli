@@ -100,9 +100,11 @@ pub const PATTERN_SPACINGS: &[i64] = &[4, 8, 16, 32];
 /// over-long list is refused once, locally.
 pub const MAX_VALUES: usize = 50;
 
-pub const READ_TIMEOUT: Duration = Duration::from_secs(60);
-/// A publish is one governed round trip to ds-brain plus a local cache write.
-pub const WRITE_TIMEOUT: Duration = Duration::from_secs(2 * 60);
+/// The metadata host has a 120-second API deadline; leave time to return its
+/// typed failure rather than misreporting a responsive desktop as unreachable.
+pub const READ_TIMEOUT: Duration = Duration::from_secs(150);
+/// One metadata read followed by the governed style publication.
+pub const WRITE_TIMEOUT: Duration = Duration::from_secs(240);
 
 // ---------------------------------------------------------------------------
 // Refusals this domain adds to the shared pairing set

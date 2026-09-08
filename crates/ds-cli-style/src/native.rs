@@ -216,7 +216,7 @@ pub fn execute(
             return ds_cli_desktop::ops::invoke(&descriptor, operation, args, crate::READ_TIMEOUT)
                 .map_err(crate::classify_style_failure);
         }
-        let snapshot = ds_cli_auth::layer_config(lane, false)?;
+        let snapshot = ds_cli_auth::style_catalog(lane)?;
         let result = if operation.operation == "style.list" {
             ds_command_kernel::style_plan::list_styles(
                 snapshot.result().document(),
@@ -232,6 +232,7 @@ pub fn execute(
         return result
             .map(|mut data| {
                 data["lane"] = json!(snapshot.lane());
+                data["warnings"] = snapshot.result().document()["warnings"].clone();
                 data
             })
             .map_err(refused);

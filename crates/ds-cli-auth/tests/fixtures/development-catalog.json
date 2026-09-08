@@ -109,6 +109,7 @@
         "path": "/api/v1/layers",
         "actions": [
           "get_config",
+          "get_style_catalog",
           "refresh",
           "reorder"
         ]
@@ -257,6 +258,7 @@
         "path": "/api/v1/layers",
         "actions": [
           "get_config",
+          "get_style_catalog",
           "refresh",
           "reorder"
         ]

@@ -1132,6 +1132,7 @@ mod tests {
             layers_path: "/api/v1/layers".to_owned(),
             layers_actions: vec![
                 "get_config".to_owned(),
+                "get_style_catalog".to_owned(),
                 "refresh".to_owned(),
                 "reorder".to_owned(),
             ],

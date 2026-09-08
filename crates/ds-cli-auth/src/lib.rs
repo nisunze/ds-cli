@@ -50,9 +50,9 @@ pub use ds_client_core::{
     PROJECT_REPORT_MAX_REASON_CHARS, PROJECT_REPORT_MAX_TRANSFORMER_CHARS,
     PROJECT_REPORT_MAX_TRANSFORMERS, ReportFileLevel, RetirementAction, RetirementReceipt,
     RetirementRecord, RetirementRefusal, RetirementRequest, RetirementResult, StyleEditReceipt,
-    StyleInstruction, TileCatalog, TileMutation, TileOperationResult, TileOperationStatus,
-    TilePreflight, TilePreflightLayer, TilePreflightStatus, TileScope, TileType,
-    TransformerInventory, TransformerInventoryRow, TransformerKind, TransformerLifecycle,
+    StyleInstruction, StyleSnapshot, TileCatalog, TileMutation, TileOperationResult,
+    TileOperationStatus, TilePreflight, TilePreflightLayer, TilePreflightStatus, TileScope,
+    TileType, TransformerInventory, TransformerInventoryRow, TransformerKind, TransformerLifecycle,
     TransformerSet,
 };
 
@@ -699,6 +699,31 @@ impl HeadlessLayerSnapshot {
         &self.project_status
     }
     pub const fn result(&self) -> &LayerSnapshot {
+        &self.result
+    }
+}
+
+pub struct HeadlessStyleSnapshot {
+    lane: &'static str,
+    project_id: String,
+    project_name: String,
+    project_status: String,
+    result: StyleSnapshot,
+}
+impl HeadlessStyleSnapshot {
+    pub const fn lane(&self) -> &'static str {
+        self.lane
+    }
+    pub fn project_id(&self) -> &str {
+        &self.project_id
+    }
+    pub fn project_name(&self) -> &str {
+        &self.project_name
+    }
+    pub fn project_status(&self) -> &str {
+        &self.project_status
+    }
+    pub const fn result(&self) -> &StyleSnapshot {
         &self.result
     }
 }
@@ -1378,6 +1403,36 @@ pub fn layer_config(lane_value: &str, refresh: bool) -> Result<HeadlessLayerSnap
     let result = client.layer_config(selected.project_id(), refresh, now());
     let result = with_released_context_disposition(client.profile(), &selected, result)?;
     Ok(HeadlessLayerSnapshot {
+        lane: lane.token(),
+        project_id: selected.project_id().to_owned(),
+        project_name: selected.project_name().to_owned(),
+        project_status: selected.status().to_owned(),
+        result,
+    })
+}
+
+pub fn style_catalog(lane_value: &str) -> Result<HeadlessStyleSnapshot, Failure> {
+    let lane = Lane::parse(lane_value)?;
+    if let Some((mut device, selected)) = restored_device_project(lane)? {
+        let result = device
+            .style_catalog(selected.project_id())
+            .map_err(map_client)?;
+        return Ok(HeadlessStyleSnapshot {
+            lane: lane.token(),
+            project_id: selected.project_id().to_owned(),
+            project_name: selected.project_name().to_owned(),
+            project_status: selected.status().to_owned(),
+            result,
+        });
+    }
+    let profile = profile::load(lane)?;
+    let store = NativeRefreshStore::open()?;
+    let mut client = Client::new(profile, NativeTransport, store);
+    let user = require_restore_before_context(&mut client)?;
+    let selected = load_selected_project(client.profile(), &user)?;
+    let result = client.style_catalog(selected.project_id(), now());
+    let result = with_released_context_disposition(client.profile(), &selected, result)?;
+    Ok(HeadlessStyleSnapshot {
         lane: lane.token(),
         project_id: selected.project_id().to_owned(),
         project_name: selected.project_name().to_owned(),

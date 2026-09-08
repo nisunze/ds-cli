@@ -447,7 +447,7 @@ mod tests {
                     "project_data": {"method":"POST","path":"/api/v1/project_data","actions":["list","upload_start","upload","delete"]},
                     "styles": { "method": "POST", "path": "/api/v1/styles", "action": "update_style" },
                     "printing": {"method":"POST","path":"/api/v1/printing","actions":["list","get","create","update","save","delete","copy"]},
-                    "layers": { "method": "POST", "path": "/api/v1/layers", "actions": ["get_config", "refresh", "reorder"] },
+                    "layers": { "method": "POST", "path": "/api/v1/layers", "actions": ["get_config", "get_style_catalog", "refresh", "reorder"] },
                     "tiles": { "method": "POST", "path": "/api/v1/tiles", "actions": ["status", "preflight", "generate", "list", "add", "remove"] },
                     "project_report": { "method": "POST", "path": "/report", "actions": ["download_transfo", "list_compounded_reports", "transformer_inventory", "retire_transformer", "restore_transformer"] },
                     "provenance": { "source_revision": "abc123", "descriptor_sha256": "a".repeat(64) }
@@ -474,7 +474,7 @@ mod tests {
                     "project_data": {"method":"POST","path":"/api/v1/project_data","actions":["list","upload_start","upload","delete"]},
                     "styles": { "method": "POST", "path": "/api/v1/styles", "action": "update_style" },
                     "printing": {"method":"POST","path":"/api/v1/printing","actions":["list","get","create","update","save","delete","copy"]},
-                    "layers": { "method": "POST", "path": "/api/v1/layers", "actions": ["get_config", "refresh", "reorder"] },
+                    "layers": { "method": "POST", "path": "/api/v1/layers", "actions": ["get_config", "get_style_catalog", "refresh", "reorder"] },
                     "tiles": { "method": "POST", "path": "/api/v1/tiles", "actions": ["status", "preflight", "generate", "list", "add", "remove"] },
                     "project_report": { "method": "POST", "path": "/report", "actions": ["download_transfo", "list_compounded_reports", "transformer_inventory", "retire_transformer", "restore_transformer"] },
                     "provenance": { "source_revision": "def456", "descriptor_sha256": "b".repeat(64) }

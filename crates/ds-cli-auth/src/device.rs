@@ -592,6 +592,12 @@ impl DeviceSession {
     ) -> Result<ds_client_core::LayerSnapshot, ClientError> {
         fixed_device_call!(self, layer_config, project, refresh)
     }
+    pub fn style_catalog(
+        &mut self,
+        project: &str,
+    ) -> Result<ds_client_core::StyleSnapshot, ClientError> {
+        fixed_device_call!(self, style_catalog, project)
+    }
     pub fn layer_reorder(
         &mut self,
         project: &str,

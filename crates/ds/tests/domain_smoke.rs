@@ -3625,7 +3625,7 @@ fn design_lv_project_export_refuses_an_existing_artifact_before_auth_or_desktop(
                 "operation": "create"
             },
             "printing":{"method":"POST","path":"/api/v1/printing","actions":["list","get","create","update","save","delete","copy"]},
-            "layers":{"method":"POST","path":"/api/v1/layers","actions":["get_config","refresh","reorder"]},
+            "layers":{"method":"POST","path":"/api/v1/layers","actions":["get_config","get_style_catalog","refresh","reorder"]},
             "styles":{"method":"POST","path":"/api/v1/styles","action":"update_style"},
             "survey_control":["POST /api/v1/form-factory: list,get,get_field_types,create,update,duplicate,publish,unpublish,archive,restore,delete", "POST /api/v1/project-forms: activate,settings_editor,bulk_save", "POST /api/v1/projects/templates: list,create,set_public,delete", "GET /api/v1/projects/templates/{slug}", "POST /api/v1/projects: apply_template", "POST /api/v1/projects/from-template"],
             "project_data":{"method":"POST","path":"/api/v1/project_data","actions":["list","upload_start","upload","delete"]},
