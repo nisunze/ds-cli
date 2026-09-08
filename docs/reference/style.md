@@ -51,7 +51,7 @@ visual Style Center (WASM):
 | Command family | Authoring |
 |---|---|
 | `appearance plan/set` | Flat colour, symbol icon and base size |
-| `label plan/set` | Label text from one exact published field |
+| `label plan/set` | Label field, visibility, size, print papers and point placement |
 | `dimension plan/set/clear` | A second field on halo, opacity or size |
 | `cartography plan/set` | Line type, direction, casing and fill hatching |
 
@@ -62,6 +62,19 @@ paint properties survive. `style label` checks `--field` against the fields from
 `style read`; when a style has no label, it starts from the backend's published
 label model. Style targets may be global: changing one can affect other projects
 that share it, exactly as saving globally in Style Center does.
+
+Label options include `--visible on|off`, `--size` within the backend's published
+bounds, repeatable `--paper A0` (or `--paper all` to clear paper restrictions),
+and `--placement auto|fixed`. Paper restrictions require a print style. Automatic
+placement tries the backend's point anchors and respects label collisions.
+Omitted options preserve existing settings. For example:
+
+```sh
+ds style label plan --ref master/lv_poles_print --field pole_number --visible on --size 8 --paper A0 --placement auto --host desktop --project PROJECT
+```
+
+After reviewing the plan, use the same arguments with `set --yes`. The live
+command contract also exposes these parameters through MCP.
 
 Dimension labels use the backend domain type. If the backend has no type,
 `--field-type string|number|boolean` makes it explicit; the default is string.

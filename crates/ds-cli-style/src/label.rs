@@ -5,7 +5,7 @@ use ds_cli_contract::spec::{
     Arg, ArgKind, Authority, Chapter, Command, Effect, Example, Execution,
 };
 use ds_cli_contract::{Context, Inputs};
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 
 use crate::{DESCRIPTOR_ARG, HOST_ARG, LANE_ARG, PROJECT_ARG, REF_ARG};
 
@@ -19,6 +19,43 @@ const FIELD_ARG: Arg = Arg {
     summary: "Exact label field from `ds style read <ref>` .data.fields.",
 };
 
+const VISIBLE_ARG: Arg = Arg {
+    name: "visible",
+    kind: ArgKind::Value,
+    value: "<on|off>",
+    required: false,
+    default: None,
+    choices: &["on", "off"],
+    summary: "Enable or hide the label without deleting its content.",
+};
+const SIZE_ARG: Arg = Arg {
+    name: "size",
+    kind: ArgKind::Value,
+    value: "<number>",
+    required: false,
+    default: None,
+    choices: &[],
+    summary: "Label text size in the style's units; bounds are in style read .data.labelSchema.numerics.text-size.",
+};
+const PAPER_ARG: Arg = Arg {
+    name: "paper",
+    kind: ArgKind::Repeated,
+    value: "<paper>",
+    required: false,
+    default: None,
+    choices: &["A0", "A1", "A2", "A3", "A4", "A5", "Custom", "all"],
+    summary: "Print labels only on these papers; repeat for several. Use all alone to clear the restriction. Other opacity authorship is retained.",
+};
+const PLACEMENT_ARG: Arg = Arg {
+    name: "placement",
+    kind: ArgKind::Value,
+    value: "<auto|fixed>",
+    required: false,
+    default: None,
+    choices: &["auto", "fixed"],
+    summary: "Auto tries backend-declared point anchors with collision checks. Fixed restores the authored single anchor.",
+};
+
 fn arguments(inputs: &Inputs, apply: bool) -> Result<Value, Failure> {
     let raw = inputs.require("field")?;
     if raw.is_empty() || raw.len() > 120 || raw.trim() != raw {
@@ -29,11 +66,37 @@ fn arguments(inputs: &Inputs, apply: bool) -> Result<Value, Failure> {
         .remedy(crate::INVALID_LABEL.remedy)
         .detail(json!({ "given": raw })));
     }
-    Ok(json!({
+    let size = inputs
+        .value("size")
+        .map(|raw| {
+            raw.parse::<f64>()
+                .ok()
+                .filter(|n| n.is_finite())
+                .ok_or_else(|| {
+                    Failure::invalid("invalid_number", "label size must be finite")
+                        .remedy("read style read .data.labelSchema for label numeric bounds")
+                })
+        })
+        .transpose()?;
+    let papers = inputs.repeated("paper");
+    let mut result = json!({
         "ref": inputs.require("ref")?,
         "field": raw,
         "apply": apply,
-    }))
+    });
+    if inputs.value("visible").is_some()
+        || size.is_some()
+        || !papers.is_empty()
+        || inputs.value("placement").is_some()
+    {
+        result["options"] = json!({
+            "visible": inputs.value("visible").map(|v| v == "on"),
+            "size": size,
+            "papers": if papers.is_empty() { None } else { Some(papers) },
+            "automatic_placement": inputs.value("placement").map(|v| v == "auto"),
+        });
+    }
+    Ok(result)
 }
 
 fn render_label(data: &Value) -> String {
@@ -61,9 +124,9 @@ pub mod plan {
     pub static COMMAND: Command = Command {
         id: "style.label.plan",
         path: &["style", "label", "plan"],
-        contract: 1,
+        contract: 2,
         summary: "Preview binding a label to one declared data field.",
-        purpose: "Uses the shared Style Center planner to change only the label's text field. Existing placement, font, scale, halo, visibility, print scaling and symbols are preserved; a missing label starts from the backend's label model.",
+        purpose: "Uses the shared Style Center planner to bind a label field and optionally set visibility, size, paper scope and automatic point placement. Omitted options preserve existing authorship. A missing label starts from the backend label model; style read includes its live numeric bounds.",
         chapter: Chapter::MapPresentation,
         effect: Effect::LocalAuthState,
         authority: Authority::HeadlessProject,
@@ -71,6 +134,10 @@ pub mod plan {
         args: &[
             REF_ARG,
             FIELD_ARG,
+            VISIBLE_ARG,
+            SIZE_ARG,
+            PAPER_ARG,
+            PLACEMENT_ARG,
             HOST_ARG,
             PROJECT_ARG,
             LANE_ARG,
@@ -107,7 +174,7 @@ pub mod set {
     pub static COMMAND: Command = Command {
         id: "style.label.set",
         path: &["style", "label", "set"],
-        contract: 1,
+        contract: 2,
         summary: "Publish a governed label bound to one declared data field.",
         purpose: "Publishes the exact document returned by `ds style label plan` through the Style Center save route. The shared Rust planner owns the field validation and label transformation.",
         chapter: Chapter::MapPresentation,
@@ -117,6 +184,10 @@ pub mod set {
         args: &[
             REF_ARG,
             FIELD_ARG,
+            VISIBLE_ARG,
+            SIZE_ARG,
+            PAPER_ARG,
+            PLACEMENT_ARG,
             HOST_ARG,
             PROJECT_ARG,
             LANE_ARG,
@@ -173,5 +244,35 @@ mod tests {
                 "invalid_label"
             );
         }
+    }
+
+    #[test]
+    fn paper_visibility_and_placement_are_typed_for_both_hosts() {
+        let tokens = [
+            "--ref",
+            "master/lv_poles_print",
+            "--field",
+            "pole_number",
+            "--visible",
+            "on",
+            "--size",
+            "8",
+            "--paper",
+            "A0",
+            "--placement",
+            "auto",
+        ]
+        .map(str::to_string);
+        let input = parse(&plan::COMMAND, &tokens).unwrap();
+        let value = arguments(&input, false).unwrap();
+        assert_eq!(
+            value["options"],
+            json!({"visible":true,"size":8.,"papers":["A0"],"automatic_placement":true})
+        );
+        let set_input = parse(&set::COMMAND, &tokens).unwrap();
+        assert_eq!(
+            arguments(&set_input, true).unwrap()["options"],
+            value["options"]
+        );
     }
 }

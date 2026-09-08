@@ -2,7 +2,7 @@ use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{Arg, Refusal};
 use ds_cli_contract::{Context, Inputs};
 use ds_cli_desktop::ops::BridgeOp;
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 pub const LANE_ARG: Arg = Arg::value(
     "lane",
     "<stable|canary>",
@@ -250,6 +250,12 @@ pub fn execute(
         },
         "style.label.set" => ds_cli_auth::StyleInstruction::Label {
             field: args["field"].as_str().unwrap_or_default().to_owned(),
+            options: if args["options"].is_null() {
+                Default::default()
+            } else {
+                serde_json::from_value(args["options"].clone())
+                    .map_err(|_| refused("invalid label options"))?
+            },
         },
         "style.dimension.set" => ds_cli_auth::StyleInstruction::Dimension {
             field: args["field"].as_str().unwrap_or_default().to_owned(),
