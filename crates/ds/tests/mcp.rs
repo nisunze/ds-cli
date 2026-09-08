@@ -569,6 +569,7 @@ fn by_command_profiles_still_partition_the_live_registry() {
                 Profile::SolarPortfolioBatch,
             ][..],
         ),
+        ("style.", &[Profile::Styles][..]),
     ] {
         let expected: BTreeSet<String> = live
             .iter()
@@ -1226,6 +1227,7 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
         "design-edit",
         "design-run",
         "map",
+        "styles",
         "layers",
         "tiling",
         "project",
@@ -1294,6 +1296,15 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
     assert!(
         published["design-edit"].contains("design_known-columns_set"),
         "the design-edit profile must expose the know_columns mutation"
+    );
+    assert!(
+        published["styles"].contains("style_label_plan")
+            && published["styles"].contains("style_label_set"),
+        "the styles profile must expose reviewed label planning and publication"
+    );
+    assert!(
+        published["map"].is_disjoint(&published["styles"]),
+        "map navigation and style authoring must remain separate profiles"
     );
     assert!(
         published["project-operations"].contains("design_transformer_download"),

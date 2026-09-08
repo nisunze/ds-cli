@@ -25,6 +25,7 @@ pub const PROFILE_IDS: &[&str] = &[
     "design-edit",
     "design-run",
     "map",
+    "styles",
     "layers",
     "tiling",
     "project",
@@ -76,6 +77,7 @@ pub enum Profile {
     DesignEdit,
     DesignRun,
     Map,
+    Styles,
     Layers,
     Tiling,
     Project,
@@ -105,6 +107,7 @@ impl Profile {
             "design-edit" => Some(Self::DesignEdit),
             "design-run" => Some(Self::DesignRun),
             "map" => Some(Self::Map),
+            "styles" => Some(Self::Styles),
             "layers" => Some(Self::Layers),
             "tiling" => Some(Self::Tiling),
             "project" => Some(Self::Project),
@@ -135,6 +138,7 @@ impl Profile {
             Self::DesignEdit => "design-edit",
             Self::DesignRun => "design-run",
             Self::Map => "map",
+            Self::Styles => "styles",
             Self::Layers => "layers",
             Self::Tiling => "tiling",
             Self::Project => "project",
@@ -199,7 +203,11 @@ impl Profile {
             Self::FormFactory => FORM_FACTORY_COMMANDS.contains(&tool.id.as_str()),
             Self::SurveyProjects => SURVEY_PROJECT_COMMANDS.contains(&tool.id.as_str()),
             Self::SurveyMigration => SURVEY_MIGRATION_COMMANDS.contains(&tool.id.as_str()),
-            Self::Map => tool.chapter == Chapter::MapPresentation,
+            Self::Map => {
+                tool.chapter == Chapter::MapPresentation
+                    && !STYLE_COMMANDS.contains(&tool.id.as_str())
+            }
+            Self::Styles => STYLE_COMMANDS.contains(&tool.id.as_str()),
             Self::Layers => LAYER_COMMANDS.contains(&tool.id.as_str()),
             Self::Tiling => tool.chapter == Chapter::VectorTiles,
             // Native account bootstrap is available on the broad live surface
@@ -236,6 +244,7 @@ impl Profile {
             Self::SurveyProjects => SURVEY_PROJECT_COMMANDS,
             Self::SurveyMigration => SURVEY_MIGRATION_COMMANDS,
             Self::Layers => LAYER_COMMANDS,
+            Self::Styles => STYLE_COMMANDS,
             Self::DesignEdit => DESIGN_EDIT_COMMANDS,
             Self::DesignRun => DESIGN_RUN_COMMANDS,
             Self::SolarInput => SOLAR_INPUT_COMMANDS,
@@ -268,7 +277,7 @@ impl Profile {
             | Self::SurveyMigration
             | Self::Layers => chapter == Chapter::Survey,
             Self::DesignEdit | Self::DesignRun => chapter == Chapter::Design,
-            Self::Map => chapter == Chapter::MapPresentation,
+            Self::Map | Self::Styles => chapter == Chapter::MapPresentation,
             Self::Tiling => chapter == Chapter::VectorTiles,
             Self::Project => chapter == Chapter::Project,
             Self::SolarInput | Self::SolarRun | Self::SolarDelivery | Self::SolarPortfolioBatch => {
@@ -304,6 +313,25 @@ const ADMIN_BOUNDS_COMMANDS: &[&str] = &[
     "data.admin-bounds.list",
     "data.admin-bounds.read",
     "data.admin-bounds.attach",
+];
+
+/// Guided Style Center workflows have their own bounded MCP profile. Keeping
+/// them out of the general map profile prevents each authoring axis from
+/// silently widening map navigation and evidence tooling.
+const STYLE_COMMANDS: &[&str] = &[
+    "style.list",
+    "style.read",
+    "style.print.plan",
+    "style.print.create",
+    "style.appearance.plan",
+    "style.appearance.set",
+    "style.label.plan",
+    "style.label.set",
+    "style.dimension.plan",
+    "style.dimension.set",
+    "style.dimension.clear",
+    "style.cartography.plan",
+    "style.cartography.set",
 ];
 
 // The paired application's DS Grid model lifecycle, in the order the work
