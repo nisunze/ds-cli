@@ -248,7 +248,7 @@ fn every_project_context_command_has_one_closed_operation_owner() {
 }
 
 #[test]
-fn printing_preparation_and_context_seeding_have_one_closed_application_owner() {
+fn printing_operations_have_one_closed_application_owner() {
     let Some(root) = ds_web() else {
         skip("the ds-web sibling repository is not on disk");
         return;
@@ -258,6 +258,8 @@ fn printing_preparation_and_context_seeding_have_one_closed_application_owner() 
     let source = std::fs::read_to_string(root.join("src/lib/printing/prepare.ts")).unwrap();
     let allowlist = between(&transport, "pub const CLI_OPERATIONS: &[&str] = &[", "];");
     for op in [
+        &ds_cli_desktop::printing::LIST_OP,
+        &ds_cli_desktop::printing::GET_OP,
         &ds_cli_desktop::printing::PREPARE_OP,
         &ds_cli_desktop::printing::SEED_CONTEXT_OP,
     ] {

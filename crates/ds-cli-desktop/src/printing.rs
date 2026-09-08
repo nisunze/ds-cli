@@ -60,11 +60,11 @@ pub fn seed_context(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
 }
 pub const LIST_OP: BridgeOp = BridgeOp {
     operation: "printing.list",
-    arguments: &["scope"],
+    arguments: &["scope", "project"],
 };
 pub const GET_OP: BridgeOp = BridgeOp {
     operation: "printing.get",
-    arguments: &["scope", "id"],
+    arguments: &["scope", "project", "id"],
 };
 pub const SAVE_OP: BridgeOp = BridgeOp {
     operation: "printing.save",
@@ -79,18 +79,30 @@ const SCOPE_ARG: Arg = Arg::value(
 .choices(&["project", "global"])
 .default("project");
 
+const PROJECT_ARG: Arg = Arg::value(
+    "project",
+    "<exact-id>",
+    "Read this exact project without changing the paired Desktop project; valid only with project scope. Omit it to use the active project.",
+);
+
+const PRINTING_READ_INVALID: Refusal = Refusal {
+    code: "printing_request_invalid",
+    when: "the setup id or explicit project is invalid, or --project is combined with global scope",
+    remedy: "use one exact bounded project id with project scope and an exact setup id returned by printing list",
+};
+
 pub static LIST_COMMAND: Command = Command {
     id: "desktop.printing.list",
     path: &["desktop", "printing", "list"],
     contract: 1,
     summary: "List named printing setups from Brain through the paired desktop.",
-    purpose: "Returns the dynamic named printing catalog for the active project or the shared global samples. Project scope uses the paired application's exact active project; global scope is shared across projects.",
+    purpose: "Returns the dynamic named printing catalog for one explicit project, the active project when --project is omitted, or the shared global samples. An explicit project is read under the paired user's Brain permissions and does not change the Desktop map project.",
     chapter: Chapter::Reports,
     effect: Effect::ReadOnly,
     authority: Authority::DesktopUser,
     execution: Execution::Sync,
-    args: &[SCOPE_ARG, DESCRIPTOR_ARG],
-    output: "Scope, active project when applicable, cache status and bounded setup summaries including their revision tokens.",
+    args: &[SCOPE_ARG, PROJECT_ARG, DESCRIPTOR_ARG],
+    output: "Scope, resolved project when applicable, cache status and bounded setup summaries including their revision tokens.",
     examples: &[],
     refusals: &[
         ops::NOT_PAIRED,
@@ -101,6 +113,7 @@ pub static LIST_COMMAND: Command = Command {
         ops::UNSUPPORTED,
         ops::UNREADABLE,
         ops::SIGNED_OUT,
+        PRINTING_READ_INVALID,
     ],
     reference: Some("docs/reference/desktop.printing.md"),
     availability: ops::paired_availability,
@@ -111,13 +124,14 @@ pub static GET_COMMAND: Command = Command {
     path: &["desktop", "printing", "get"],
     contract: 1,
     summary: "Read one named printing setup and its authored layout.",
-    purpose: "Reads one exact setup from the active project or global sample catalog through Brain. Its revision is the required optimistic token for a later prepare update.",
+    purpose: "Reads one exact setup from an explicit project, the active project when --project is omitted, or the global sample catalog through Brain. An explicit project does not change the Desktop map project. The setup revision is the required optimistic token for a later update.",
     chapter: Chapter::Reports,
     effect: Effect::ReadOnly,
     authority: Authority::DesktopUser,
     execution: Execution::Sync,
     args: &[
         SCOPE_ARG,
+        PROJECT_ARG,
         Arg::value(
             "id",
             "<setup-id>",
@@ -137,6 +151,7 @@ pub static GET_COMMAND: Command = Command {
         ops::UNSUPPORTED,
         ops::UNREADABLE,
         ops::SIGNED_OUT,
+        PRINTING_READ_INVALID,
     ],
     reference: Some("docs/reference/desktop.printing.md"),
     availability: ops::paired_availability,
@@ -267,14 +282,10 @@ pub fn save(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
 }
 
 pub fn list(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
+    let arguments = read_arguments(inputs, None)?;
     let descriptor = ops::paired(inputs.value("desktop-descriptor"))?;
-    ops::invoke(
-        &descriptor,
-        &LIST_OP,
-        json!({"scope": inputs.require("scope")?}),
-        Duration::from_secs(120),
-    )
-    .map_err(ops::classify_signed_out)
+    ops::invoke(&descriptor, &LIST_OP, arguments, Duration::from_secs(120))
+        .map_err(ops::classify_signed_out)
 }
 
 pub fn get(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
@@ -285,19 +296,40 @@ pub fn get(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             .bytes()
             .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_' || byte == b'-')
     {
-        return Err(Failure::invalid(
-            "printing_request_invalid",
-            "invalid printing setup id",
+        return Err(invalid_read("invalid printing setup id"));
+    }
+    let arguments = read_arguments(inputs, Some(id))?;
+    let descriptor = ops::paired(inputs.value("desktop-descriptor"))?;
+    ops::invoke(&descriptor, &GET_OP, arguments, Duration::from_secs(120))
+        .map_err(ops::classify_signed_out)
+}
+
+fn invalid_read(message: impl Into<String>) -> Failure {
+    Failure::invalid("printing_request_invalid", message).remedy(PRINTING_READ_INVALID.remedy)
+}
+
+fn read_arguments(inputs: &Inputs, id: Option<&str>) -> Result<Value, Failure> {
+    let scope = inputs.require("scope")?;
+    let project = inputs.value("project");
+    if project.is_some_and(|value| {
+        value.is_empty() || value.trim() != value || value.chars().count() > 160
+    }) {
+        return Err(invalid_read(
+            "`--project` must be non-empty, trimmed, and at most 160 characters",
         ));
     }
-    let descriptor = ops::paired(inputs.value("desktop-descriptor"))?;
-    ops::invoke(
-        &descriptor,
-        &GET_OP,
-        json!({"scope": inputs.require("scope")?, "id": id}),
-        Duration::from_secs(120),
-    )
-    .map_err(ops::classify_signed_out)
+    if scope == "global" && project.is_some() {
+        return Err(invalid_read("`--project` is only valid with project scope"));
+    }
+    let mut arguments = serde_json::Map::new();
+    arguments.insert("scope".into(), Value::String(scope.into()));
+    if let Some(project) = project {
+        arguments.insert("project".into(), Value::String(project.into()));
+    }
+    if let Some(id) = id {
+        arguments.insert("id".into(), Value::String(id.into()));
+    }
+    Ok(Value::Object(arguments))
 }
 pub fn render(data: &Value) -> String {
     format!("{data}\n")
@@ -314,5 +346,11 @@ mod tests {
                 .code(),
             "printing_request_invalid"
         );
+    }
+
+    #[test]
+    fn read_operations_declare_explicit_project_without_a_switch_operation() {
+        assert_eq!(LIST_OP.arguments, ["scope", "project"]);
+        assert_eq!(GET_OP.arguments, ["scope", "project", "id"]);
     }
 }
