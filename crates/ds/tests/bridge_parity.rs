@@ -61,7 +61,6 @@ struct App {
     style: String,
     style_fill_pattern: String,
     style_line_type: String,
-    tile: String,
     feedback: String,
     catalog: String,
     feedback_submit: String,
@@ -101,7 +100,6 @@ fn app() -> Option<App> {
         style: read("src/lib/desktop/cli-style.ts")?,
         style_fill_pattern: read("src/lib/styles/fill-pattern.ts")?,
         style_line_type: read("src/lib/styles/line-type.ts")?,
-        tile: read("src/lib/desktop/cli-tile.ts")?,
         feedback: read("src/lib/desktop/cli-feedback.ts")?,
         catalog: read("src/lib/desktop/cli-catalog.ts")?,
         feedback_submit: read("src/lib/feedback/submit.ts")?,
@@ -1805,16 +1803,17 @@ fn style_cartography_sends_exactly_the_arguments_and_bounds_the_desktop_owns() {
 
 #[test]
 fn every_paired_tile_catalogue_command_has_one_closed_operation_owner() {
-    let Some(app) = app() else {
+    let Some(root) = ds_web() else {
         skip("the ds-web sibling repository is not on disk");
         return;
     };
+    // Do not let an unrelated retired adapter silently skip global tile parity.
+    let transport = std::fs::read_to_string(root.join("src-tauri/src/cli_bridge.rs")).unwrap();
+    let frontend = std::fs::read_to_string(root.join("src/lib/desktop/cli-bridge.ts")).unwrap();
+    let adapter =
+        std::fs::read_to_string(root.join("src/lib/desktop/cli-global-tiles.ts")).unwrap();
     let mut seen = BTreeSet::new();
-    let allowlist = between(
-        &app.transport,
-        "pub const CLI_OPERATIONS: &[&str] = &[",
-        "];",
-    );
+    let allowlist = between(&transport, "pub const CLI_OPERATIONS: &[&str] = &[", "];");
     assert!(
         !allowlist.is_empty(),
         "the desktop CLI operation allowlist is absent"
@@ -1832,12 +1831,12 @@ fn every_paired_tile_catalogue_command_has_one_closed_operation_owner() {
             operation.operation
         );
         assert_eq!(
-            switch_case_count(&app.frontend, operation.operation),
+            switch_case_count(&frontend, operation.operation),
             1,
             "`{}` must have exactly one frontend handler",
             operation.operation
         );
-        let contract = operation_contract(&app.tile, operation.operation);
+        let contract = operation_contract(&adapter, operation.operation);
         assert!(
             !contract.is_empty(),
             "`{}` has no typed tile adapter argument contract",

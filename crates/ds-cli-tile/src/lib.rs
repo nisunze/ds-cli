@@ -28,6 +28,7 @@
 
 pub mod add;
 pub mod generate;
+pub mod global;
 pub mod list;
 pub mod plan;
 pub mod preflight;
@@ -61,6 +62,9 @@ pub static DOMAIN: Domain = Domain {
         &list::COMMAND,
         &add::COMMAND,
         &remove::COMMAND,
+        &global::CATALOG,
+        &global::GENERATE,
+        &global::STATUS,
     ],
 };
 
@@ -83,7 +87,11 @@ pub const TILE_REMOVE: BridgeOp = BridgeOp {
 
 /// Every operation this domain can still send to Desktop, for the parity test
 /// to walk. Managed output reads and generation must never be added here.
-pub const BRIDGE_OPS: &[&BridgeOp] = &[];
+pub const BRIDGE_OPS: &[&BridgeOp] = &[
+    &global::CATALOG_OP,
+    &global::GENERATE_OP,
+    &global::STATUS_OP,
+];
 
 pub const READ_TIMEOUT: Duration = Duration::from_secs(60);
 
@@ -626,7 +634,14 @@ mod tests {
         let mut unique = names.clone();
         unique.dedup();
         assert_eq!(names, unique, "an operation is declared twice");
-        assert!(names.is_empty());
+        assert_eq!(
+            names,
+            [
+                "tile.global.catalog",
+                "tile.global.generate",
+                "tile.global.status"
+            ]
+        );
     }
 
     #[test]

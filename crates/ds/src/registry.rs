@@ -1128,6 +1128,21 @@ static DATA_ENTRIES: &[Entry] = &[
 /// sources, decide, run; then the catalogue.
 static TILE_ENTRIES: &[Entry] = &[
     Entry {
+        command: &ds_cli_tile::global::CATALOG,
+        handler: ds_cli_tile::global::catalog,
+        render: ds_cli_tile::global::render,
+    },
+    Entry {
+        command: &ds_cli_tile::global::GENERATE,
+        handler: ds_cli_tile::global::generate,
+        render: ds_cli_tile::global::render,
+    },
+    Entry {
+        command: &ds_cli_tile::global::STATUS,
+        handler: ds_cli_tile::global::status,
+        render: ds_cli_tile::global::render,
+    },
+    Entry {
         command: &ds_cli_tile::status::COMMAND,
         handler: ds_cli_tile::status::run,
         render: ds_cli_tile::status::render,
