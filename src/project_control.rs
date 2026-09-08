@@ -400,6 +400,10 @@ struct OutboxOutput {
     size_bytes: Option<u64>,
     #[serde(default)]
     expected_size_bytes: Option<u64>,
+    #[serde(default)]
+    paper_size: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    presentation: Option<crate::printing::ArtifactPresentation>,
 }
 
 #[derive(Debug, Serialize)]
@@ -411,6 +415,10 @@ struct ProjectedReportFile {
     local_path: String,
     sha256: String,
     size_bytes: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    paper_size: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    presentation: Option<crate::printing::ArtifactPresentation>,
 }
 
 #[derive(Debug, Serialize)]
@@ -492,6 +500,12 @@ pub fn project_project_control_local_reports(
         }
         let mut files = Vec::new();
         for output in row.outputs {
+            crate::printing::validate_artifact_presentation(
+                &output.format,
+                output.paper_size.as_deref(),
+                output.presentation.as_ref(),
+            )
+            .map_err(|message| error(&message))?;
             let sha256 = output
                 .sha256
                 .filter(|value| !value.is_empty())
@@ -531,6 +545,8 @@ pub fn project_project_control_local_reports(
                 local_path,
                 sha256,
                 size_bytes,
+                paper_size: output.paper_size,
+                presentation: output.presentation,
             });
         }
         if !files.is_empty() {
@@ -723,11 +739,17 @@ mod tests {
         let outputs: Vec<Value> = ["xlsx", "shp", "gpkg", "pdf_a0", "geojson"].iter().map(|format| {
             let output = crate::report_formats::output(format).unwrap();
             json!({"output_id":output.output_id,"format":output.format,"content_type":output.content_type,
-                "local_path":format!("ds-reporter:v1:{}", "a".repeat(64)),"sha256":"", "expected_sha256":"b".repeat(64),"size_bytes":0,"expected_size_bytes":42})
+                "local_path":format!("ds-reporter:v1:{}", "a".repeat(64)),"sha256":"", "expected_sha256":"b".repeat(64),"size_bytes":0,"expected_size_bytes":42,
+                "paper_size": if *format == "pdf_a0" { json!("A0") } else { Value::Null }})
         }).collect();
         let row = json!({"id":"held", "project_id":"project-a", "engine":"network_reporter",
             "operation":"export-agasharu", "variant":"default", "client_run_id":"run", "created_at":1,
             "phase":"pending", "status":"pending", "outputs":outputs});
+        let mut row = row;
+        row["outputs"][3]["presentation"] = json!({
+            "layout_id":"overview", "layout_name":"Project overview", "paper_name":"A0",
+            "orientation":"landscape", "page_mm":[1189,841]
+        });
         let mut other_project = row.clone();
         other_project["project_id"] = json!("project-b");
         let mut other_transformer = row.clone();
@@ -755,6 +777,11 @@ mod tests {
                 "agasharu.a0.pdf",
                 "agasharu_geojson.zip"
             ]
+        );
+        assert_eq!(value["reports"][0]["files"][3]["paper_size"], "A0");
+        assert_eq!(
+            value["reports"][0]["files"][3]["presentation"]["page_mm"],
+            json!([1189.0, 841.0])
         );
         let input = json!({"project":"project-a", "transformer":"agasharu", "rows":[incomplete]});
         let value: Value = serde_json::from_str(
