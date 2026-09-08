@@ -2,7 +2,7 @@
 //! The shared command kernel owns transformations; native auth owns transport.
 //! The visual Style Center uses the same transformations through WASM.
 
-pub use native::LANE_ARG;
+pub use native::{HOST_ARG, LANE_ARG, PROJECT_ARG};
 pub mod appearance;
 pub mod cartography;
 pub mod dimension;
@@ -47,55 +47,48 @@ pub static DOMAIN: Domain = Domain {
 
 pub const STYLE_LIST: BridgeOp = BridgeOp {
     operation: "style.list",
-    arguments: &["query", "limit"],
+    arguments: &["project", "query", "limit"],
 };
 pub const STYLE_READ: BridgeOp = BridgeOp {
     operation: "style.read",
-    arguments: &["ref"],
+    arguments: &["project", "ref"],
 };
 pub const APPEARANCE_SET: BridgeOp = BridgeOp {
     operation: "style.appearance.set",
-    arguments: &["ref", "color", "icon", "size", "apply"],
+    arguments: &["project", "ref", "instruction", "apply"],
 };
 pub const PRINT_VARIANT_CREATE: BridgeOp = BridgeOp {
     operation: "style.print.create",
-    arguments: &["ref", "apply"],
+    arguments: &["project", "ref", "instruction", "apply"],
 };
 pub const DIMENSION_SET: BridgeOp = BridgeOp {
     operation: "style.dimension.set",
-    arguments: &[
-        "ref", "field", "channel", "values", "other", "color", "apply",
-    ],
+    arguments: &["project", "ref", "instruction", "apply"],
 };
 pub const DIMENSION_CLEAR: BridgeOp = BridgeOp {
     operation: "style.dimension.clear",
-    arguments: &["ref", "apply"],
+    arguments: &["project", "ref", "instruction", "apply"],
 };
 /// Line type, flow direction, contrast casing and fill hatching — the
 /// cartographic axis, which carries no field and so shares no key with the
 /// second dimension.
 pub const CARTOGRAPHY_SET: BridgeOp = BridgeOp {
     operation: "style.cartography.set",
-    arguments: &[
-        "ref",
-        "lineType",
-        "directionSize",
-        "directionSpacing",
-        "casingColor",
-        "casingWidth",
-        "fillPattern",
-        "patternColor",
-        "patternBackground",
-        "patternSpacing",
-        "patternStroke",
-        "apply",
-    ],
+    arguments: &["project", "ref", "instruction", "apply"],
 };
 
 /// Every operation this domain can send, for the parity test to walk. `plan`
 /// and `set` are one operation — `apply` false or true — so the list is
 /// shorter than the command list.
-pub const BRIDGE_OPS: &[&BridgeOp] = &[];
+pub const BRIDGE_OPS: &[&BridgeOp] = &[
+    &STYLE_LIST,
+    &STYLE_READ,
+    &APPEARANCE_SET,
+    &PRINT_VARIANT_CREATE,
+    &DIMENSION_SET,
+    &DIMENSION_CLEAR,
+    &CARTOGRAPHY_SET,
+];
 
 /// The seamless pattern tile sizes. MapLibre repeats a pattern image by
 /// tiling it, so a size that is not a power of two seams visibly at every
@@ -269,7 +262,11 @@ mod tests {
         // Appearance, dimension and cartography each pair one plan with one
         // set over a single operation, so three commands have no operation of
         // their own.
-        assert!(names.is_empty(), "guided styles execute natively");
+        assert_eq!(
+            names.len(),
+            7,
+            "every desktop-host style operation is bridged"
+        );
         for op in BRIDGE_OPS {
             let mut keys = op.arguments.to_vec();
             keys.sort_unstable();
@@ -280,26 +277,16 @@ mod tests {
     }
 
     #[test]
-    fn cartography_shares_no_argument_key_with_the_field_driven_axes() {
-        // Cartography carries no field, so nothing it sends can be mistaken
-        // for a colour or a second-dimension instruction. `appearance` and
-        // `dimension` do legitimately share `color` — a primary fill and a
-        // ring on two different operations — which is why this holds the new
-        // axis against them rather than asserting three disjoint sets.
-        for other in [&APPEARANCE_SET, &DIMENSION_SET] {
-            let shared: Vec<&str> = CARTOGRAPHY_SET
-                .arguments
-                .iter()
-                .copied()
-                .filter(|key| other.arguments.contains(key))
-                .filter(|key| *key != "ref" && *key != "apply")
-                .collect();
-            assert!(
-                shared.is_empty(),
-                "`style.cartography.set` and `{}` share {shared:?}; publishing one \
-                 axis must not silently carry another",
-                other.operation
-            );
+    fn desktop_edits_share_only_the_closed_kernel_instruction_envelope() {
+        let envelope = ["project", "ref", "instruction", "apply"];
+        for other in [
+            &APPEARANCE_SET,
+            &PRINT_VARIANT_CREATE,
+            &DIMENSION_SET,
+            &DIMENSION_CLEAR,
+            &CARTOGRAPHY_SET,
+        ] {
+            assert_eq!(other.arguments, envelope);
         }
         // The seamless tile sizes and the flag's closed choices are one list.
         let declared: Vec<String> = PATTERN_SPACINGS

@@ -11,7 +11,7 @@ use ds_cli_contract::spec::{
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
 
-use crate::{LANE_ARG, REF_ARG};
+use crate::{DESCRIPTOR_ARG, HOST_ARG, LANE_ARG, PROJECT_ARG, REF_ARG};
 
 const COLOR_ARG: Arg = Arg {
     name: "color",
@@ -130,7 +130,16 @@ the fallback when size already carries the second dimension. Nothing is saved.",
         effect: Effect::LocalAuthState,
         authority: Authority::HeadlessProject,
         execution: Execution::Sync,
-        args: &[REF_ARG, COLOR_ARG, ICON_ARG, SIZE_ARG, LANE_ARG],
+        args: &[
+            REF_ARG,
+            COLOR_ARG,
+            ICON_ARG,
+            SIZE_ARG,
+            HOST_ARG,
+            PROJECT_ARG,
+            LANE_ARG,
+            DESCRIPTOR_ARG,
+        ],
         output: "`requested`, the resolved guided `appearance`, whether base size updated an existing fallback, `dryRun: true`, `published: false`, and the exact `document`.",
         examples: &[Example {
             command: "ds style appearance plan --ref gt/secondary_schools --color #008695 --icon school --size 1.2 --output json",
@@ -139,7 +148,7 @@ the fallback when size already carries the second dimension. Nothing is saved.",
         }],
         refusals: crate::native::REFUSALS,
         reference: Some("docs/reference/style.md"),
-        availability: ds_cli_auth::native_availability,
+        availability: crate::paired_availability,
     };
 
     pub fn run(inputs: &Inputs, context: &Context) -> Result<Value, Failure> {
@@ -168,7 +177,16 @@ Flat colour or icon replaces a field-driven primary expression; plan first.",
         effect: Effect::GlobalWrite,
         authority: Authority::HeadlessProject,
         execution: Execution::Sync,
-        args: &[REF_ARG, COLOR_ARG, ICON_ARG, SIZE_ARG, LANE_ARG],
+        args: &[
+            REF_ARG,
+            COLOR_ARG,
+            ICON_ARG,
+            SIZE_ARG,
+            HOST_ARG,
+            PROJECT_ARG,
+            LANE_ARG,
+            DESCRIPTOR_ARG,
+        ],
         output: "The plan receipt with `published: true`, ds-brain `warnings`, and the exact persisted `document`.",
         examples: &[Example {
             command: "ds style appearance set --ref gt/secondary_schools --color #008695 --icon school --size 1.2 --yes",
@@ -177,7 +195,7 @@ Flat colour or icon replaces a field-driven primary expression; plan first.",
         }],
         refusals: crate::native::REFUSALS,
         reference: Some("docs/reference/style.md"),
-        availability: ds_cli_auth::native_availability,
+        availability: crate::paired_availability,
     };
 
     pub fn run(inputs: &Inputs, context: &Context) -> Result<Value, Failure> {

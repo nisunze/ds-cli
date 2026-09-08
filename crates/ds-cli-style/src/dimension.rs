@@ -14,7 +14,7 @@ use ds_cli_contract::spec::{
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
 
-use crate::{LANE_ARG, REF_ARG};
+use crate::{DESCRIPTOR_ARG, HOST_ARG, LANE_ARG, PROJECT_ARG, REF_ARG};
 
 const FIELD_ARG: Arg = Arg {
     name: "field",
@@ -166,7 +166,10 @@ saving. Read it, then `ds style dimension set` with the same flags.",
             VALUE_ARG,
             OTHER_ARG,
             COLOR_ARG,
+            HOST_ARG,
+            PROJECT_ARG,
             LANE_ARG,
+            DESCRIPTOR_ARG,
         ],
         output: "\
 `ref`, `field`, `fieldType` (as the map carries it, or null), `channel`, \
@@ -179,7 +182,7 @@ value, `dryRun: true`, `published: false` and the full `document`.",
         }],
         refusals: crate::native::REFUSALS,
         reference: Some("docs/reference/style.md"),
-        availability: ds_cli_auth::native_availability,
+        availability: crate::paired_availability,
     };
 
     pub fn run(inputs: &Inputs, context: &Context) -> Result<Value, Failure> {
@@ -217,7 +220,10 @@ second dimension on the ref is replaced; the colour dimension is untouched.",
             VALUE_ARG,
             OTHER_ARG,
             COLOR_ARG,
+            HOST_ARG,
+            PROJECT_ARG,
             LANE_ARG,
+            DESCRIPTOR_ARG,
         ],
         output: "\
 The plan receipt with `published: true`, ds-brain `warnings`, and the \
@@ -229,7 +235,7 @@ The plan receipt with `published: true`, ds-brain `warnings`, and the \
         }],
         refusals: crate::native::REFUSALS,
         reference: Some("docs/reference/style.md"),
-        availability: ds_cli_auth::native_availability,
+        availability: crate::paired_availability,
     };
 
     pub fn run(inputs: &Inputs, context: &Context) -> Result<Value, Failure> {
@@ -257,7 +263,7 @@ defaults apply again, and publishes. The colour dimension is untouched.",
         effect: Effect::GlobalWrite,
         authority: Authority::HeadlessProject,
         execution: Execution::Sync,
-        args: &[REF_ARG, LANE_ARG],
+        args: &[REF_ARG, HOST_ARG, PROJECT_ARG, LANE_ARG, DESCRIPTOR_ARG],
         output: "`ref`, `cleared` (what was removed), `properties`, `published: true`, `warnings`, `document`.",
         examples: &[Example {
             command: "ds style dimension clear --ref master/lv_poles --yes",
@@ -266,7 +272,7 @@ defaults apply again, and publishes. The colour dimension is untouched.",
         }],
         refusals: crate::native::REFUSALS,
         reference: Some("docs/reference/style.md"),
-        availability: ds_cli_auth::native_availability,
+        availability: crate::paired_availability,
     };
 
     pub fn run(inputs: &Inputs, context: &Context) -> Result<Value, Failure> {

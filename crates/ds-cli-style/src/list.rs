@@ -7,7 +7,7 @@ use ds_cli_contract::spec::{
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
 
-use crate::LANE_ARG;
+use crate::{DESCRIPTOR_ARG, HOST_ARG, LANE_ARG, PROJECT_ARG};
 
 const QUERY_ARG: Arg = Arg {
     name: "query",
@@ -33,21 +33,35 @@ pub static COMMAND: Command = Command {
     path: &["style", "list"],
     contract: 2,
     summary: "Loaded style refs, including present Notes/PM geometry children.",
-    purpose: "Reads a bounded backend catalogue of governed style editor refs through native project authentication. No desktop or map is required.",
+    purpose: "Reads a bounded backend catalogue of governed style editor refs. Native project authentication is the default; --host desktop uses one explicit project through the paired application without switching its GUI.",
     chapter: Chapter::MapPresentation,
     effect: Effect::LocalAuthState,
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[QUERY_ARG, LIMIT_ARG, LANE_ARG],
+    args: &[
+        QUERY_ARG,
+        LIMIT_ARG,
+        HOST_ARG,
+        PROJECT_ARG,
+        LANE_ARG,
+        DESCRIPTOR_ARG,
+    ],
     output: "Project, total, bounded styles with refs/type/target/colour field, and more.",
-    examples: &[Example {
-        command: "ds style list --query lv_poles --output json",
-        note: "Pick the ref whose target is design_vt for tiled design layers.",
-        runnable: false,
-    }],
+    examples: &[
+        Example {
+            command: "ds style list --query lv_poles --output json",
+            note: "Pick the ref whose target is design_vt for tiled design layers.",
+            runnable: false,
+        },
+        Example {
+            command: "ds style list --host desktop --project PROJECT --query roads --output json",
+            note: "Use the paired signed-in application for this exact project without changing the GUI project.",
+            runnable: false,
+        },
+    ],
     refusals: crate::native::REFUSALS,
     reference: Some("docs/reference/style.md"),
-    availability: ds_cli_auth::native_availability,
+    availability: crate::paired_availability,
 };
 
 pub fn run(inputs: &Inputs, context: &Context) -> Result<Value, Failure> {
@@ -116,7 +130,7 @@ pub fn render(data: &Value) -> String {
             runtime.unwrap_or_default(),
         ));
     }
-    if data["truncated"].as_bool().unwrap_or(false) {
+    if data["more"].as_bool().unwrap_or(false) || data["truncated"].as_bool().unwrap_or(false) {
         out.push_str("  … more; narrow with --query or raise --limit\n");
     }
     out
@@ -125,7 +139,19 @@ pub fn render(data: &Value) -> String {
 #[cfg(test)]
 mod tests {
     use super::render;
+    use ds_cli_contract::{Context, Format, Output, parse};
     use serde_json::json;
+
+    fn context() -> Context {
+        Context {
+            confirmed: false,
+            output: Output {
+                format: Format::Json,
+                pretty: false,
+                color: false,
+            },
+        }
+    }
 
     #[test]
     fn renders_runtime_source_freshness_without_changing_the_style_ref() {
@@ -143,5 +169,32 @@ mod tests {
         }));
         assert!(text.contains("ud/project_work_polygon"));
         assert!(text.contains("project_work / partial"));
+    }
+
+    #[test]
+    fn desktop_host_requires_an_explicit_project_and_never_becomes_a_native_fallback() {
+        let desktop = parse(
+            &super::COMMAND,
+            &["--host", "desktop"]
+                .into_iter()
+                .map(str::to_string)
+                .collect::<Vec<_>>(),
+        )
+        .expect("desktop inputs");
+        let failure = super::run(&desktop, &context()).expect_err("project is required");
+        assert_eq!(failure.code(), "style_refused");
+        assert!(failure.message().contains("requires --project"));
+
+        let native = parse(
+            &super::COMMAND,
+            &["--project", "huye"]
+                .into_iter()
+                .map(str::to_string)
+                .collect::<Vec<_>>(),
+        )
+        .expect("native inputs");
+        let failure = super::run(&native, &context()).expect_err("project is desktop-only");
+        assert_eq!(failure.code(), "style_refused");
+        assert!(failure.message().contains("requires --host desktop"));
     }
 }

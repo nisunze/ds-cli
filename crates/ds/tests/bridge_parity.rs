@@ -1754,12 +1754,18 @@ fn every_style_command_has_one_closed_operation_owner() {
             );
         }
     }
-    // The value bound is one number on both sides of the bridge.
+    // The host adapter must delegate every edit to the shared Rust/WASM
+    // planner. It owns transport validation only; style grammar and bounds do
+    // not get a second TypeScript implementation.
     assert!(
         app.style
-            .contains(&format!("const MAX_VALUES = {};", ds_cli_style::MAX_VALUES)),
-        "ds style's MAX_VALUES must equal the adapter's MAX_VALUES"
+            .contains("planStyle({ snapshot, reference, instruction:")
+            || app
+                .style
+                .contains("planStyle({snapshot, reference, instruction:"),
+        "the paired style adapter must delegate edits to the shared WASM planner"
     );
+    assert!(!app.style.contains("const MAX_VALUES"));
 }
 
 #[test]

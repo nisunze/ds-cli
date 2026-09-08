@@ -1,9 +1,16 @@
 # Style authoring
 
-`ds style` reads and writes governed style documents through the native client.
-It requires a native sign-in and selected project; no desktop or map is required.
-Use `--lane stable|canary` to choose the deployment. Catalogue reads and publication
-need the backend to be reachable. Local overlay commands remain usable offline.
+`ds style` reads and writes governed style documents through the native client by
+default. It requires a native sign-in and selected project; no desktop or map is
+required. Use `--lane stable|canary` to choose the deployment. Catalogue reads and
+publication need the backend to be reachable.
+
+When the native profile is intentionally unavailable, choose the paired host
+explicitly with `--host desktop --project <exact-id>`. The signed-in application
+loads that project's governed layer snapshot without changing the project shown in
+the GUI. There is no automatic fallback between hosts. The paired adapter delegates
+catalogue and authoring to the same Rust command kernel used by the native client
+and Style Center.
 
 Start with `ds style list`, then `ds style read --ref <returned-ref> --output json`.
 Read returns the complete authored document, backend field vocabulary and domains,

@@ -5,7 +5,7 @@ use ds_cli_contract::spec::{Authority, Chapter, Command, Effect, Example, Execut
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
 
-use crate::{LANE_ARG, REF_ARG};
+use crate::{DESCRIPTOR_ARG, HOST_ARG, LANE_ARG, PROJECT_ARG, REF_ARG};
 
 pub static COMMAND: Command = Command {
     id: "style.read",
@@ -17,7 +17,7 @@ pub static COMMAND: Command = Command {
     effect: Effect::LocalAuthState,
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[REF_ARG, LANE_ARG],
+    args: &[REF_ARG, HOST_ARG, PROJECT_ARG, LANE_ARG, DESCRIPTOR_ARG],
     output: "Project, ref, type, target, document, fields, fieldValues, fieldDomains, propertySchema, icons, channels, second, colorField, onMap null, and more.",
     examples: &[Example {
         command: "ds style read --ref master/lv_poles --output json",
@@ -26,7 +26,7 @@ pub static COMMAND: Command = Command {
     }],
     refusals: crate::native::REFUSALS,
     reference: Some("docs/reference/style.md"),
-    availability: ds_cli_auth::native_availability,
+    availability: crate::paired_availability,
 };
 
 pub fn run(inputs: &Inputs, context: &Context) -> Result<Value, Failure> {

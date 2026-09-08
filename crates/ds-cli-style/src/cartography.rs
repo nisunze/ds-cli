@@ -23,7 +23,7 @@ use ds_cli_contract::spec::{
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
 
-use crate::{LANE_ARG, REF_ARG};
+use crate::{DESCRIPTOR_ARG, HOST_ARG, LANE_ARG, PROJECT_ARG, REF_ARG};
 
 /// The one line type that draws markers instead of a dash pattern.
 const DIRECTIONAL: &str = "directional";
@@ -149,7 +149,10 @@ const ARGS: &[Arg] = &[
     PATTERN_BACKGROUND_ARG,
     PATTERN_SPACING_ARG,
     PATTERN_STROKE_ARG,
+    HOST_ARG,
+    PROJECT_ARG,
     LANE_ARG,
+    DESCRIPTOR_ARG,
 ];
 
 const PLAN_REFUSALS: &[ds_cli_contract::spec::Refusal] = &[
@@ -426,7 +429,7 @@ apply the reviewed flags with `set`.",
         ],
         refusals: PLAN_REFUSALS,
         reference: Some("docs/reference/style.md"),
-        availability: ds_cli_auth::native_availability,
+        availability: crate::paired_availability,
     };
 
     pub fn run(inputs: &Inputs, context: &Context) -> Result<Value, Failure> {
@@ -477,7 +480,7 @@ leave their properties unchanged.",
         ],
         refusals: SET_REFUSALS,
         reference: Some("docs/reference/style.md"),
-        availability: ds_cli_auth::native_availability,
+        availability: crate::paired_availability,
     };
 
     pub fn run(inputs: &Inputs, context: &Context) -> Result<Value, Failure> {
@@ -529,11 +532,7 @@ mod tests {
     }
 
     #[test]
-    fn every_declared_bridge_key_is_produced_and_plan_set_differ_only_by_apply() {
-        // The hand copy that matters: a flag whose camelCase key is misspelled
-        // compiles, helps correctly, and is refused by the application at
-        // runtime. Prove the produced keys are exactly the declared ones here,
-        // where no paired desktop is needed to find out.
+    fn every_cartography_flag_is_typed_before_the_closed_instruction_envelope() {
         let tokens = argv(EVERY_FLAG);
         let plan_inputs = parse(&plan::COMMAND, &tokens).expect("plan inputs");
         let set_inputs = parse(&set::COMMAND, &tokens).expect("set inputs");
@@ -546,10 +545,30 @@ mod tests {
             .keys()
             .map(String::as_str)
             .collect();
-        let declared: BTreeSet<&str> = crate::CARTOGRAPHY_SET.arguments.iter().copied().collect();
+        let expected_keys: BTreeSet<&str> = [
+            "apply",
+            "casingColor",
+            "casingWidth",
+            "directionSize",
+            "directionSpacing",
+            "fillPattern",
+            "lineType",
+            "patternBackground",
+            "patternColor",
+            "patternSpacing",
+            "patternStroke",
+            "ref",
+        ]
+        .into_iter()
+        .collect();
         assert_eq!(
-            produced, declared,
-            "the flags a caller can pass must produce exactly the keys `style.cartography.set` declares"
+            produced, expected_keys,
+            "every cartography flag must enter the typed Rust instruction builder"
+        );
+        assert_eq!(
+            crate::CARTOGRAPHY_SET.arguments,
+            ["project", "ref", "instruction", "apply"],
+            "the desktop receives only the shared kernel instruction envelope"
         );
 
         assert_eq!(

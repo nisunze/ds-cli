@@ -10,6 +10,18 @@ pub const LANE_ARG: Arg = Arg::value(
 )
 .default("stable")
 .choices(&["stable", "canary"]);
+pub const HOST_ARG: Arg = Arg::value(
+    "host",
+    "<native|desktop>",
+    "Execution host; native uses protected headless auth, desktop uses the paired signed-in application.",
+)
+.default("native")
+.choices(&["native", "desktop"]);
+pub const PROJECT_ARG: Arg = Arg::value(
+    "project",
+    "<project-id>",
+    "Exact project used by --host desktop. It does not switch the GUI project.",
+);
 pub const STYLE_REFUSED: Refusal = Refusal {
     code: "style_refused",
     when: "the guided style instruction violates the backend document contract",
@@ -147,6 +159,13 @@ native_refusal!(
 );
 
 pub const REFUSALS: &[Refusal] = &[
+    ds_cli_desktop::ops::NOT_PAIRED,
+    ds_cli_desktop::ops::AMBIGUOUS,
+    ds_cli_desktop::ops::UNREACHABLE,
+    ds_cli_desktop::ops::PAIRING_REJECTED,
+    ds_cli_desktop::ops::UNSUPPORTED,
+    ds_cli_desktop::ops::UNREADABLE,
+    ds_cli_desktop::ops::SIGNED_OUT,
     NATIVE_PROFILE,
     NATIVE_PROFILE_DIGEST,
     NATIVE_PROFILE_UNSAFE,
@@ -181,8 +200,22 @@ pub fn execute(
     operation: &BridgeOp,
     mut args: Value,
 ) -> Result<Value, Failure> {
+    let host = inputs.value("host").unwrap_or("native");
+    let desktop = host == "desktop";
+    if !desktop && inputs.value("project").is_some() {
+        return Err(refused("--project requires --host desktop"));
+    }
     let lane = inputs.require("lane")?;
     if operation.operation == "style.list" || operation.operation == "style.read" {
+        if desktop {
+            let project = inputs
+                .value("project")
+                .ok_or_else(|| refused("--host desktop requires --project <exact-id>"))?;
+            args["project"] = json!(project);
+            let descriptor = ds_cli_desktop::ops::paired(inputs.value("desktop-descriptor"))?;
+            return ds_cli_desktop::ops::invoke(&descriptor, operation, args, crate::READ_TIMEOUT)
+                .map_err(crate::classify_style_failure);
+        }
         let snapshot = ds_cli_auth::layer_config(lane, false)?;
         let result = if operation.operation == "style.list" {
             ds_command_kernel::style_plan::list_styles(
@@ -235,6 +268,29 @@ pub fn execute(
         }
         _ => return Err(refused("unsupported guided style operation")),
     };
+    if desktop {
+        let project = inputs
+            .value("project")
+            .ok_or_else(|| refused("--host desktop requires --project <exact-id>"))?;
+        let descriptor = ds_cli_desktop::ops::paired(inputs.value("desktop-descriptor"))?;
+        return ds_cli_desktop::ops::invoke(
+            &descriptor,
+            operation,
+            json!({
+                "project": project,
+                "ref": reference,
+                "instruction": serde_json::to_value(&instruction)
+                    .map_err(|_| refused("style instruction could not be encoded"))?,
+                "apply": apply,
+            }),
+            if apply {
+                crate::WRITE_TIMEOUT
+            } else {
+                crate::READ_TIMEOUT
+            },
+        )
+        .map_err(crate::classify_style_failure);
+    }
     let receipt = ds_cli_auth::style_edit(lane, reference, &instruction, apply)?;
     let mut data = receipt.result().data().clone();
     data["lane"] = json!(receipt.lane());

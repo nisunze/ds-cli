@@ -5,7 +5,7 @@ use ds_cli_contract::spec::{Authority, Chapter, Command, Effect, Example, Execut
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
 
-use crate::{LANE_ARG, REF_ARG};
+use crate::{DESCRIPTOR_ARG, HOST_ARG, LANE_ARG, PROJECT_ARG, REF_ARG};
 
 fn run_with(inputs: &Inputs, context: &Context, apply: bool) -> Result<Value, Failure> {
     crate::native::execute(
@@ -42,7 +42,7 @@ pub mod plan {
         effect: Effect::LocalAuthState,
         authority: Authority::HeadlessProject,
         execution: Execution::Sync,
-        args: &[REF_ARG, LANE_ARG],
+        args: &[REF_ARG, HOST_ARG, PROJECT_ARG, LANE_ARG, DESCRIPTOR_ARG],
         output: "Source ref, `_print` ref, exact cloned document, paper expression vocabulary and create-only payload receipt.",
         examples: &[Example {
             command: "ds style print plan --ref master/lv_lines --output json",
@@ -51,7 +51,7 @@ pub mod plan {
         }],
         refusals: crate::native::REFUSALS,
         reference: Some("docs/reference/style.md"),
-        availability: ds_cli_auth::native_availability,
+        availability: crate::paired_availability,
     };
 
     pub fn run(inputs: &Inputs, context: &Context) -> Result<Value, Failure> {
@@ -75,7 +75,7 @@ pub mod create {
         effect: Effect::GlobalWrite,
         authority: Authority::HeadlessProject,
         execution: Execution::Sync,
-        args: &[REF_ARG, LANE_ARG],
+        args: &[REF_ARG, HOST_ARG, PROJECT_ARG, LANE_ARG, DESCRIPTOR_ARG],
         output: "The print clone receipt with `published: true` and the exact persisted document.",
         examples: &[Example {
             command: "ds style print create --ref master/lv_lines --yes --output json",
@@ -84,7 +84,7 @@ pub mod create {
         }],
         refusals: crate::native::REFUSALS,
         reference: Some("docs/reference/style.md"),
-        availability: ds_cli_auth::native_availability,
+        availability: crate::paired_availability,
     };
 
     pub fn run(inputs: &Inputs, context: &Context) -> Result<Value, Failure> {
