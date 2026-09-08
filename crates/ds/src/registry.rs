@@ -618,6 +618,11 @@ static SOLAR_ENTRIES: &[Entry] = &[
 
 static MAP_ENTRIES: &[Entry] = &[
     Entry {
+        command: &ds_cli_map::scene::COMMAND,
+        handler: ds_cli_map::scene::run,
+        render: ds_cli_map::scene::render,
+    },
+    Entry {
         command: &ds_cli_map::canvas::COMMAND,
         handler: ds_cli_map::canvas::run,
         render: ds_cli_map::canvas::render,
