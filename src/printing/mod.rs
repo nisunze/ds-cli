@@ -5,6 +5,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::collections::{BTreeMap, BTreeSet};
 
+mod artifact;
+pub use artifact::{validate_artifact_presentation, ArtifactPresentation};
+
 pub const SCHEMA: &str = "ds.print-layout/v2";
 pub const LEGACY_SCHEMA: &str = "ds.print-layout/v1";
 pub const MAX_LAYOUT_BYTES: usize = 750_000;
