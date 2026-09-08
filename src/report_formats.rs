@@ -460,8 +460,17 @@ fn project_output_setting(sheets: &Value) -> Result<Option<&Value>, String> {
 
 pub fn inspect_project_settings(sheets: &Value) -> Result<Value, String> {
     let setting = project_output_setting(sheets)?;
-    let outputs = plan(sheets, false)?;
-    let layouts = named_layouts(sheets)?;
+    let prepared = plan(sheets, false)
+        .and_then(|outputs| named_layouts(sheets).map(|layouts| (outputs, layouts)));
+    let (outputs, layouts) = match prepared {
+        Ok(prepared) => prepared,
+        Err(issue) => {
+            return Ok(
+                serde_json::json!({"source":if setting.is_some(){"project_settings"}else{"report_defaults"},
+            "setting":setting,"ready":false,"issues":[issue],"outputs":[],"papers":[]}),
+            )
+        }
+    };
     let papers = outputs.iter().filter_map(|output| {
         let (_, id) = named_print_output(&output.format)?;
         let layout = layouts.get(id)?;
@@ -469,7 +478,7 @@ pub fn inspect_project_settings(sheets: &Value) -> Result<Value, String> {
     }).collect::<Vec<_>>();
     Ok(
         serde_json::json!({"source":if setting.is_some(){"project_settings"}else{"report_defaults"},
-        "setting":setting,"outputs":outputs,"papers":papers}),
+        "setting":setting,"ready":true,"issues":[],"outputs":outputs,"papers":papers}),
     )
 }
 
@@ -542,9 +551,9 @@ mod tests {
         assert_eq!(defaults["papers"], json!([]));
         let mut broken = sheets;
         broken["printing_setups"] = json!([]);
-        assert!(inspect_project_settings(&broken)
-            .unwrap_err()
-            .contains("missing"));
+        let unreadied = inspect_project_settings(&broken).unwrap();
+        assert_eq!(unreadied["ready"], false);
+        assert_eq!(unreadied["setting"], broken["project_settings"][0]);
     }
 
     #[test]
