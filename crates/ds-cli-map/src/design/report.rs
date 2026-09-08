@@ -45,7 +45,9 @@ Installed compute consumes no shared cloud resources and requires no force passw
     args: &[TRANSFORMER_ARG, FORCE_ARG, DESCRIPTOR_ARG],
     output: "\
 Whether the export regenerated or was already fresh, the artifact count, and \
-per artifact: outputId, filename, contentType, sizeBytes, sha256, locator.",
+per artifact: outputId, filename, contentType, sizeBytes, sha256, locator. \
+Also contextWarnings and contextLayers (up to 100 layer names and feature counts); \
+publicationState and attachmentWarnings retain the application's outcome.",
     examples: &[Example {
         command: "ds map design report --transformer T-1042 --yes --output json",
         note: "Read .data.artifacts[].sha256 as the evidence of what was produced.",
@@ -86,14 +88,22 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     )
     .map_err(crate::classify_design_failure)?;
 
-    Ok(json!({
+    Ok(project_result(transformer, &result))
+}
+
+fn project_result(transformer: &str, result: &Value) -> Value {
+    json!({
         "transformer": transformer,
         "project": result["project"],
         "regenerated": result["regenerated"].as_bool().unwrap_or(false),
         "skipped_fresh": result["skippedFresh"].as_bool().unwrap_or(false),
         "artifact_count": result["artifactCount"].as_u64().unwrap_or(0),
         "artifacts": result["artifacts"],
-    }))
+        "contextWarnings": result.get("contextWarnings").cloned().unwrap_or(json!([])),
+        "contextLayers": result.get("contextLayers").cloned().unwrap_or(json!([])),
+        "publicationState": result["publicationState"],
+        "attachmentWarnings": result.get("attachmentWarnings").cloned().unwrap_or(json!([])),
+    })
 }
 
 pub fn render(data: &Value) -> String {
@@ -118,6 +128,44 @@ pub fn render(data: &Value) -> String {
             ));
         }
     }
+    if let Some(warnings) = data["contextWarnings"].as_array() {
+        for warning in warnings {
+            out.push_str(&format!(
+                "  Context warning: {}\n",
+                warning.as_str().unwrap_or("unreadable warning")
+            ));
+        }
+    }
+    if let Some(layers) = data["contextLayers"].as_array() {
+        for layer in layers {
+            out.push_str(&format!(
+                "  Context: {} · {} features\n",
+                layer["layer"].as_str().unwrap_or("?"),
+                layer["features"]
+            ));
+        }
+    }
     out.push_str("\npublication continues through the application's artifact sync\n");
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn successful_artifacts_do_not_hide_missing_context() {
+        let response = project_result(
+            "T1",
+            &json!({
+                "artifacts":[], "artifactCount":0,
+                "contextWarnings":["Roads: dataset unavailable"],
+                "contextLayers":[{"layer":"buildings_context","features":123}],
+                "publicationState":"pending"
+            }),
+        );
+        assert_eq!(response["contextWarnings"][0], "Roads: dataset unavailable");
+        assert_eq!(response["contextLayers"][0]["features"], 123);
+        assert!(render(&response).contains("Roads: dataset unavailable"));
+        assert!(render(&response).contains("123 features"));
+    }
 }
