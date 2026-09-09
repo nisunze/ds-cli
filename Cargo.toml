@@ -31,6 +31,10 @@ regex = "1"
 ds-geo = { path = "../ds-network/crates/ds-geo" }
 ds-canvas = { path = "../ds-network/crates/ds-canvas" }
 ds-geo-ops = { path = "../ds-network/crates/ds-geo-ops" }
+zip = { version = "2", default-features = false, features = ["deflate"] }
+quick-xml = { version = "0.41", default-features = false, features = ["encoding"] }
+csv = "1.4"
+imagesize = "0.13"
 
 [dev-dependencies]
 wasm-bindgen-test = "0.3"
