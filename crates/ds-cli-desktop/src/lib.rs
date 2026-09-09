@@ -28,11 +28,13 @@
 pub mod artifact;
 pub mod bridge;
 pub mod connectivity;
+pub mod custom_print;
 pub mod data;
 pub mod discover;
 pub mod ops;
 pub mod printing;
 pub mod project;
+pub mod published;
 pub mod status;
 pub mod sync;
 
@@ -55,6 +57,9 @@ pub static DOMAIN: Domain = Domain {
         &printing::SAVE_COMMAND,
         &printing::PREPARE_COMMAND,
         &printing::SEED_CONTEXT_COMMAND,
+        &custom_print::AREA_COMMAND,
+        &custom_print::EXPORT_COMMAND,
+        &custom_print::LIST_COMMAND,
         &artifact::READ_COMMAND,
         &artifact::COPY_COMMAND,
         &data::STATUS_COMMAND,
@@ -63,7 +68,10 @@ pub static DOMAIN: Domain = Domain {
         &data::INSTALL_COMMAND,
         &data::STORAGE_COMMAND,
         &data::REMOVE_COMMAND,
+        &published::COMMAND,
         &sync::STATUS_COMMAND,
         &sync::RETRY_COMMAND,
+        &sync::SANITIZE_PREVIEW_COMMAND,
+        &sync::SANITIZE_APPLY_COMMAND,
     ],
 };

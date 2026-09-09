@@ -17,7 +17,21 @@ pub const RETRY_OP: BridgeOp = BridgeOp {
     operation: "compute.sync.retry",
     arguments: &["project", "row"],
 };
-pub const BRIDGE_OPS: &[&BridgeOp] = &[&STATUS_OP, &RETRY_OP];
+pub const SANITIZE_PREVIEW_OP: BridgeOp = BridgeOp {
+    operation: "compute.sync.sanitize.preview",
+    arguments: &["project", "limit"],
+};
+pub const SANITIZE_APPLY_OP: BridgeOp = BridgeOp {
+    operation: "compute.sync.sanitize.apply",
+    arguments: &["project", "digest"],
+};
+pub const BRIDGE_OPS: &[&BridgeOp] = &[
+    &crate::published::OP,
+    &STATUS_OP,
+    &RETRY_OP,
+    &SANITIZE_PREVIEW_OP,
+    &SANITIZE_APPLY_OP,
+];
 
 const PROJECT_ARG: Arg = Arg::value(
     "project",
@@ -47,6 +61,11 @@ const LIMIT_ARG: Arg = Arg {
 };
 
 const REFUSALS: &[Refusal] = &[
+    Refusal {
+        code: "sync_sanitation_refused",
+        when: "the inspected queue changed, the owner changed, or its bounded plan is unavailable",
+        remedy: "inspect sanitation again under the intended account/project, then apply its exact unchanged digest",
+    },
     ops::NOT_PAIRED,
     ops::AMBIGUOUS,
     ops::UNREACHABLE,
@@ -77,8 +96,8 @@ const REFUSALS: &[Refusal] = &[
     },
     Refusal {
         code: "sync_row_not_retryable",
-        when: "the row is not a retained Network Reporter engine-build admission failure",
-        remedy: "repair exact build admission before retry; create a fresh export for stale or integrity failures",
+        when: "the row is not an eligible retained Network Reporter admission or storage-comparison failure",
+        remedy: "follow status guidance: repair exact build admission or install the server storage-comparison fix; stale or integrity failures remain blocked",
     },
 ];
 
@@ -104,14 +123,59 @@ pub static RETRY_COMMAND: Command = Command {
     id: "desktop.sync.retry",
     path: &["desktop", "sync", "retry"],
     contract: 1,
-    summary: "Retry one retained Network Reporter admission failure (needs --yes).",
-    purpose: "Requeues only the exact account- and project-fenced row after its producer release and build-manifest digest have been admitted by the server. The same client run, native batch, output declarations, byte digests and resumable progress are preserved; this command never relabels or regenerates old work.",
+    summary: "Retry one recoverable retained Network Reporter failure (needs --yes).",
+    purpose: "Requeues only the exact account- and project-fenced row after its exact producer build has been admitted or the server storage-comparison bug has been repaired. The server rechecks immutable declarations and publication authority. The same client run, native batch, output declarations, byte digests and resumable progress are preserved; this command never relabels or regenerates old work.",
     chapter: Chapter::Operations,
     effect: Effect::GlobalWrite,
     authority: Authority::DesktopUser,
     execution: Execution::Sync,
     args: &[REQUIRED_PROJECT_ARG, ROW_ARG, DESCRIPTOR_ARG],
     output: "The exact requeued receipt and the current post-drain row when retained; an explicit unknown-status note is returned if the row was removed.",
+    examples: &[],
+    refusals: REFUSALS,
+    reference: None,
+    availability: ops::paired_availability,
+};
+
+pub static SANITIZE_PREVIEW_COMMAND: Command = Command {
+    id: "desktop.sync.sanitize.preview",
+    path: &["desktop", "sync", "sanitize", "preview"],
+    contract: 1,
+    summary: "Inspect recovery and archival of one project’s retained reports.",
+    purpose: "Uses the same sanitation owner as Sync Center. Published history and superseded terminal Network Reporter rows may be archived while all immutable local files, producer identities and queue receipts remain. Current known admission/storage-comparison failures may be requeued; active uploads, unrelated workflows and unresolved current failures remain unchanged. At most 4096 retained project rows are inspected; applying the digest covers the complete plan even when the display is truncated.",
+    chapter: Chapter::Operations,
+    effect: Effect::ReadOnly,
+    authority: Authority::DesktopUser,
+    execution: Execution::Sync,
+    args: &[REQUIRED_PROJECT_ARG, LIMIT_ARG, DESCRIPTOR_ARG],
+    output: "Digest for the complete queue snapshot, total/more, action counts and bounded decisions. No rows or files change.",
+    examples: &[],
+    refusals: REFUSALS,
+    reference: None,
+    availability: ops::paired_availability,
+};
+
+pub static SANITIZE_APPLY_COMMAND: Command = Command {
+    id: "desktop.sync.sanitize.apply",
+    path: &["desktop", "sync", "sanitize", "apply"],
+    contract: 1,
+    summary: "Apply inspected sync sanitation without deleting files (needs --yes).",
+    purpose: "Uses the same sanitation owner as Sync Center. Published history and superseded terminal Network Reporter rows may be archived while all immutable local files, producer identities and queue receipts remain. Current known admission/storage-comparison failures may be requeued; active uploads, unrelated workflows and unresolved current failures remain unchanged. At most 4096 retained project rows are inspected; applying the digest covers the complete plan even when the display is truncated.",
+    chapter: Chapter::Operations,
+    effect: Effect::GlobalWrite,
+    authority: Authority::DesktopUser,
+    execution: Execution::Sync,
+    args: &[
+        REQUIRED_PROJECT_ARG,
+        Arg::value(
+            "digest",
+            "<sha256>",
+            "Exact complete preview digest; refuses any changed queue.",
+        )
+        .required(),
+        DESCRIPTOR_ARG,
+    ],
+    output: "Applied decision counts and bounded rows. Recovery is queued, not reported as published; archived rows and bytes remain in history.",
     examples: &[],
     refusals: REFUSALS,
     reference: None,
@@ -175,6 +239,44 @@ pub fn retry(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
     .map_err(ops::classify_signed_out)
 }
 
+pub fn sanitize_preview(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
+    let project = text(inputs.require("project")?, "project", 128)?;
+    let limit = inputs
+        .value("limit")
+        .unwrap_or("50")
+        .parse::<u16>()
+        .ok()
+        .filter(|v| (1..=200).contains(v))
+        .ok_or_else(|| Failure::invalid("sync_invalid_input", "--limit must be 1-200"))?;
+    ops::invoke(
+        &descriptor(inputs)?,
+        &SANITIZE_PREVIEW_OP,
+        json!({"project":project,"limit":limit}),
+        Duration::from_secs(60),
+    )
+    .map_err(ops::classify_signed_out)
+}
+pub fn sanitize_apply(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
+    let project = text(inputs.require("project")?, "project", 128)?;
+    let digest = text(inputs.require("digest")?, "digest", 64)?;
+    if digest.len() != 64
+        || !digest
+            .bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+    {
+        return Err(Failure::invalid(
+            "sync_invalid_input",
+            "--digest must be the exact preview SHA-256",
+        ));
+    }
+    ops::invoke(
+        &descriptor(inputs)?,
+        &SANITIZE_APPLY_OP,
+        json!({"project":project,"digest":digest}),
+        Duration::from_secs(60),
+    )
+    .map_err(ops::classify_signed_out)
+}
 pub fn render(data: &Value) -> String {
     serde_json::to_string_pretty(data).unwrap_or_default()
 }

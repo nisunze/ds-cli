@@ -88,6 +88,80 @@ fn run_ds(args: &[&str], native: bool) -> Run {
 }
 
 #[test]
+fn published_read_checks_selectors_and_never_falls_back_to_local_files() {
+    let invalid = ds(&[
+        "desktop",
+        "sync",
+        "published",
+        "--project",
+        &"p".repeat(129),
+        "--operation",
+        "export-agasharu",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(invalid.envelope["error"]["code"], "sync_invalid_input");
+    let absent = ds(&[
+        "desktop",
+        "sync",
+        "published",
+        "--project",
+        "project",
+        "--operation",
+        "export-agasharu",
+        "--output-id",
+        "pdf__huye",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(absent.envelope["error"]["code"], "desktop_unreachable");
+}
+
+#[test]
+fn sync_sanitation_bounds_and_digest_are_checked_before_pairing() {
+    let preview = ds(&[
+        "desktop",
+        "sync",
+        "sanitize",
+        "preview",
+        "--project",
+        "project",
+        "--limit",
+        "201",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(preview.envelope["error"]["code"], "sync_invalid_input");
+    let apply = ds(&[
+        "desktop",
+        "sync",
+        "sanitize",
+        "apply",
+        "--project",
+        "project",
+        "--digest",
+        "not-a-digest",
+        "--yes",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(apply.envelope["error"]["code"], "sync_invalid_input");
+    let confirm = ds(&[
+        "desktop",
+        "sync",
+        "sanitize",
+        "apply",
+        "--project",
+        "project",
+        "--digest",
+        &"a".repeat(64),
+        "--output",
+        "json",
+    ]);
+    assert_eq!(confirm.envelope["error"]["code"], "confirmation_required");
+}
+
+#[test]
 fn printing_lifecycle_writes_are_registered_and_stop_before_native_authority() {
     for args in [
         vec![
@@ -2777,6 +2851,8 @@ fn map_ui_open_offers_named_panels_and_no_way_to_address_the_interface() {
             "data",
             "software",
             "project-printing",
+            "project-control",
+            "sync-center",
             "transformers",
             "report-preview"
         ],
@@ -7266,4 +7342,60 @@ fn survey_capture_survives_separate_cli_processes_without_auth_or_desktop() {
     assert_eq!(inventory["data"]["pending"], 1);
     assert!(!root.join("no-auth").exists());
     std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn custom_print_area_refuses_bad_selection_before_pairing() {
+    for codes in [vec!["24"], vec!["2401", "2401"]] {
+        let mut args = vec![
+            "desktop",
+            "printing",
+            "custom",
+            "area",
+            "--project",
+            "p1",
+            "--id",
+            "huye",
+            "--output",
+            "json",
+        ];
+        for code in codes {
+            args.extend(["--sector", code]);
+        }
+        assert_eq!(refusal(&args), "custom_print_area_invalid");
+    }
+    let descriptor = ok(&[
+        "capabilities",
+        "desktop.printing.custom.area",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(descriptor["command"]["effect"], "read_only");
+    assert_eq!(descriptor["command"]["authority"], "desktop_user");
+}
+
+#[test]
+fn map_export_and_catalog_contracts_keep_native_render_and_project_attachment_distinct() {
+    let export = ok(&[
+        "capabilities",
+        "desktop.printing.map.export",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(export["command"]["effect"], "artifact_write");
+    assert_eq!(export["command"]["confirmation_required"], true);
+    let list = ok(&[
+        "capabilities",
+        "desktop.printing.map.list",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(list["command"]["effect"], "read_only");
+    assert!(
+        list["command"]["inputs"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|a| a["name"] == "project" && a["required"] == true)
+    );
 }

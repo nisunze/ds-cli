@@ -20,7 +20,7 @@ pub static SEED_CONTEXT_COMMAND: Command = Command {
     path: &["desktop", "printing", "seed-context"],
     contract: 1,
     summary: "Seed selected geographic context before a transformer is printed.",
-    purpose: "Runs the explicit acquisition stage for one transformer's selected printing setups: downloads missing indexed geographic datasets, caches current project MV models and retains bounded derived building/contour context. Source queries belong to this seeding operation; report export only reads prepared geographic data. No template, design geometry or project version is changed.",
+    purpose: "Runs the explicit acquisition stage for one transformer's selected printing setups: downloads missing indexed geographic datasets, caches current project MV models and retains bounded derived building/contour context. Report export performs this same preparation automatically when selected context is missing; offline export reads held data and names missing coverage. No template, design geometry or project version is changed.",
     chapter: Chapter::Reports,
     effect: Effect::LocalFileWrite,
     authority: Authority::DesktopUser,
@@ -97,7 +97,13 @@ pub const TRANSFORMERS_OP: BridgeOp = BridgeOp {
 };
 pub const EXPORT_OP: BridgeOp = BridgeOp {
     operation: "printing.export",
-    arguments: &["project", "transformer", "force"],
+    arguments: &[
+        "project",
+        "transformer",
+        "transformers",
+        "force",
+        "selection",
+    ],
 };
 pub const SAVE_OP: BridgeOp = BridgeOp {
     operation: "printing.save",
@@ -246,9 +252,9 @@ pub static TRANSFORMERS_COMMAND: Command = Command {
 pub static EXPORT_COMMAND: Command = Command {
     id: "desktop.printing.export",
     path: &["desktop", "printing", "export"],
-    contract: 1,
-    summary: "Export one transformer's selected prints from its held local room.",
-    purpose: "Runs the desktop-native Network Reporter for one explicit project and transformer. It reads the project-keyed held room, cached indexed geographic context, printing setup, Style Center references and sealed project configuration without opening or switching the map. Local artifacts are queued through the ordinary report publication outbox.",
+    contract: 2,
+    summary: "Export selected formats for one or more held transformers.",
+    purpose: "Runs the desktop-native Network Reporter for one explicit project and transformer. Repeat --transformer for a batch. Optional --selection reads a ds.design-output-selection/v1 matrix for this local run, leaving project settings unchanged. Selected canonical outputs are overwritten; unselected artifacts keep their producing provenance. Missing selected map context is acquired automatically when online; offline execution uses held data. Local artifacts are queued through the ordinary report publication outbox.",
     chapter: Chapter::Reports,
     effect: Effect::ArtifactWrite,
     authority: Authority::DesktopUser,
@@ -260,16 +266,17 @@ pub static EXPORT_COMMAND: Command = Command {
             "Exact project whose held local transformer room will be printed; never changes the Desktop map project.",
         )
         .required(),
-        Arg::value(
+        Arg::repeated(
             "transformer",
             "<name>",
-            "One canonical transformer name, or combined_transformer for held project rooms. A layout with project_overview=true produces one project-wide sheet; otherwise combined prints are an atlas.",
+            "Canonical transformer name; repeat for a batch. combined_transformer is accepted only alone without a local selection override.",
         )
         .required(),
+        Arg::value("selection", "<json-file>", "Local ds.design-output-selection/v1 matrix. Only selected outputs are regenerated; no project settings are saved."),
         FORCE_ARG,
         DESCRIPTOR_ARG,
     ],
-    output: "Explicit project and transformer, artifact count, exact filenames/formats/sizes/SHA-256/locators and recorded layout/paper/orientation/dimensions, context warnings and cached layer feature counts, and publication state.",
+    output: "For one transformer: explicit project and transformer, artifact count, exact filenames/formats/sizes/SHA-256/locators and recorded layout/paper/orientation/dimensions, context warnings and cached layer feature counts, and publication state. A batch returns per-transformer receipts and a failed count.",
     examples: &[],
     refusals: &[
         ops::NOT_PAIRED,
@@ -336,7 +343,7 @@ pub static PREPARE_COMMAND: Command = Command {
     path: &["desktop", "printing", "prepare"],
     contract: 1,
     summary: "Save a project print layout, select exports and prepare inputs.",
-    purpose: "Runs printing preparation for the request's required exact project under the paired signed-in user without reading or changing the Desktop map project. The request names project, layout, expectedRevision (empty for create) and a ds.design-output-selection/v1 paper-by-format selection. Brain validates and saves the layout and project settings; the app then refreshes the sealed receipt and installs required reference data. These are sequential durable actions: a later preparation failure does not roll back a saved layout. Use the returned revision for further edits. This does not export a report; follow with desktop printing export.",
+    purpose: "Runs printing preparation for the request's required exact project under the paired signed-in user without reading or changing the Desktop map project. The request names project, layout, expectedRevision (empty for create) and a ds.design-output-selection/v1 paper-by-format selection. Optional overrides map canonical transformer names to kernel-validated element/table/legend/style instructions for this layout; null removes the exception. Project settings are saved only if their read base is still current. Brain validates and saves the layout and project settings; the app then refreshes the sealed receipt and installs required reference data. These are sequential durable actions: a later preparation failure does not roll back a saved layout. Use the returned revision for further edits. This does not export a report; follow with desktop printing export.",
     chapter: Chapter::Reports,
     effect: Effect::GlobalWrite,
     authority: Authority::DesktopUser,
@@ -345,7 +352,7 @@ pub static PREPARE_COMMAND: Command = Command {
         Arg::value(
             "request",
             "<json-file>",
-            "Required exact project, authored layout, expectedRevision, versioned output selection and optional transformer views; at most 800 KB.",
+            "Required exact project, authored layout, expectedRevision, versioned output selection, optional transformer views, and overrides keyed by transformer; null removes that layout exception. At most 800 KB.",
         )
         .required(),
         DESCRIPTOR_ARG,
@@ -455,29 +462,44 @@ pub fn transformers(inputs: &Inputs, _context: &Context) -> Result<Value, Failur
 
 pub fn export(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let project = bounded_project(inputs.require("project")?)?;
-    let transformer = inputs.require("transformer")?;
-    if transformer.is_empty()
-        || transformer.len() > 121
-        || !transformer.bytes().enumerate().all(|(index, byte)| {
-            byte.is_ascii_lowercase()
-                || byte.is_ascii_digit()
-                || byte == b'_'
-                || (index == 0 && byte == b'_')
-        })
-        || (!transformer.as_bytes()[0].is_ascii_lowercase()
-            && !(transformer.starts_with('_')
-                && transformer
-                    .as_bytes()
-                    .get(1)
-                    .is_some_and(u8::is_ascii_digit)))
-    {
-        return Err(invalid_read("invalid canonical transformer name"));
+    let transformers = inputs.repeated("transformer");
+    if transformers.is_empty() || transformers.len() > 2000 {
+        return Err(invalid_read("select 1..2000 transformers"));
+    }
+    for transformer in transformers {
+        if transformer.is_empty()
+            || transformer.len() > 121
+            || !transformer.bytes().enumerate().all(|(index, byte)| {
+                byte.is_ascii_lowercase()
+                    || byte.is_ascii_digit()
+                    || byte == b'_'
+                    || (index == 0 && byte == b'_')
+            })
+            || (!transformer.as_bytes()[0].is_ascii_lowercase()
+                && !(transformer.starts_with('_')
+                    && transformer
+                        .as_bytes()
+                        .get(1)
+                        .is_some_and(u8::is_ascii_digit)))
+        {
+            return Err(invalid_read("invalid canonical transformer name"));
+        }
+    }
+    let mut arguments = json!({"project": project, "force": inputs.switch("force")});
+    if transformers.len() == 1 {
+        arguments["transformer"] = json!(transformers[0]);
+    } else {
+        arguments["transformers"] = json!(transformers);
+    }
+    if let Some(path) = inputs.value("selection") {
+        arguments["selection"] =
+            read_request(path, "provide a ds.design-output-selection/v1 JSON matrix")?;
     }
     let descriptor = ops::paired(inputs.value("desktop-descriptor"))?;
     ops::invoke(
         &descriptor,
         &EXPORT_OP,
-        json!({"project": project, "transformer": transformer, "force": inputs.switch("force")}),
+        arguments,
         Duration::from_secs(30 * 60),
     )
     .map_err(ops::classify_signed_out)
@@ -570,7 +592,16 @@ mod tests {
         assert_eq!(LIST_OP.arguments, ["scope", "project"]);
         assert_eq!(GET_OP.arguments, ["scope", "project", "id"]);
         assert_eq!(TRANSFORMERS_OP.arguments, ["project", "limit"]);
-        assert_eq!(EXPORT_OP.arguments, ["project", "transformer", "force"]);
+        assert_eq!(
+            EXPORT_OP.arguments,
+            [
+                "project",
+                "transformer",
+                "transformers",
+                "force",
+                "selection"
+            ]
+        );
     }
 
     #[test]

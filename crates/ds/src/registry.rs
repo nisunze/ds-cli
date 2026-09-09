@@ -1713,6 +1713,21 @@ static DESKTOP_ENTRIES: &[Entry] = &[
         render: ds_cli_desktop::printing::render,
     },
     Entry {
+        command: &ds_cli_desktop::custom_print::AREA_COMMAND,
+        handler: ds_cli_desktop::custom_print::area,
+        render: ds_cli_desktop::printing::render,
+    },
+    Entry {
+        command: &ds_cli_desktop::custom_print::EXPORT_COMMAND,
+        handler: ds_cli_desktop::custom_print::export,
+        render: ds_cli_desktop::printing::render,
+    },
+    Entry {
+        command: &ds_cli_desktop::custom_print::LIST_COMMAND,
+        handler: ds_cli_desktop::custom_print::list,
+        render: ds_cli_desktop::printing::render,
+    },
+    Entry {
         command: &ds_cli_desktop::printing::SEED_CONTEXT_COMMAND,
         handler: ds_cli_desktop::printing::seed_context,
         render: ds_cli_desktop::printing::render,
@@ -1756,6 +1771,21 @@ static DESKTOP_ENTRIES: &[Entry] = &[
         command: &ds_cli_desktop::data::REMOVE_COMMAND,
         handler: ds_cli_desktop::data::remove,
         render: ds_cli_desktop::data::render,
+    },
+    Entry {
+        command: &ds_cli_desktop::sync::SANITIZE_PREVIEW_COMMAND,
+        handler: ds_cli_desktop::sync::sanitize_preview,
+        render: ds_cli_desktop::sync::render,
+    },
+    Entry {
+        command: &ds_cli_desktop::sync::SANITIZE_APPLY_COMMAND,
+        handler: ds_cli_desktop::sync::sanitize_apply,
+        render: ds_cli_desktop::sync::render,
+    },
+    Entry {
+        command: &ds_cli_desktop::published::COMMAND,
+        handler: ds_cli_desktop::published::run,
+        render: ds_cli_desktop::sync::render,
     },
     Entry {
         command: &ds_cli_desktop::sync::STATUS_COMMAND,
