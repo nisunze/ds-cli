@@ -6,7 +6,7 @@ use serde_json::json;
 use std::collections::{BTreeMap, BTreeSet};
 
 mod artifact;
-pub use artifact::{validate_artifact_presentation, ArtifactPresentation};
+pub use artifact::{ArtifactPresentation, validate_artifact_presentation};
 
 pub const SCHEMA: &str = "ds.print-layout/v2";
 pub const LEGACY_SCHEMA: &str = "ds.print-layout/v1";
@@ -177,6 +177,9 @@ pub enum ElementKind {
 #[serde(deny_unknown_fields)]
 pub struct TableBinding {
     pub layer: String,
+    /// Optional companion layers, concatenated before sorting; absent companions add no rows.
+    #[serde(default)]
+    pub additional_layers: Vec<String>,
     /// Ordered property keys; headings and widths follow the same order.
     pub columns: Vec<String>,
     pub headings: Vec<String>,
@@ -204,6 +207,7 @@ impl Default for TableBinding {
     fn default() -> Self {
         Self {
             layer: String::new(),
+            additional_layers: vec![],
             columns: vec![],
             headings: vec![],
             widths: vec![],
@@ -496,7 +500,10 @@ pub fn validate(layout: &Layout) -> Result<(), String> {
     {
         return Err("paper properties and resolved page dimensions disagree".into());
     }
-    if layout.scale_rounding.is_some_and(|step| !bounded(step, 1., 1_000_000.)) {
+    if layout
+        .scale_rounding
+        .is_some_and(|step| !bounded(step, 1., 1_000_000.))
+    {
         return Err("scale rounding increment must be 1..1000000".into());
     }
     let mut ids = BTreeSet::new();
@@ -568,6 +575,12 @@ pub fn validate(layout: &Layout) -> Result<(), String> {
         if element.kind == ElementKind::Table {
             let table = element.table.as_ref().ok_or("table needs a data binding")?;
             if !identifier(&table.layer)
+                || table.additional_layers.len() > 16
+                || table.additional_layers.iter().enumerate().any(|(i, id)| {
+                    !identifier(id)
+                        || id == &table.layer
+                        || table.additional_layers[..i].contains(id)
+                })
                 || table.columns.is_empty()
                 || !(1..=8).contains(&table.panels)
                 || !bounded(table.gap_mm, 0., 30.)
@@ -725,10 +738,14 @@ pub fn validate(layout: &Layout) -> Result<(), String> {
                         || l.color.as_ref().is_some_and(|c| !color(c))
                         || l.halo_color.as_ref().is_some_and(|c| !color(c))
                 })
-                || o.field.as_ref().is_some_and(|field| field.is_empty() || field.len() > 160 || field.trim() != field)
+                || o.field.as_ref().is_some_and(|field| {
+                    field.is_empty() || field.len() > 160 || field.trim() != field
+                })
                 || (!o.size_by_value.is_empty() && o.field.is_none())
                 || o.size_by_value.len() > 128
-                || o.size_by_value.iter().any(|(key, size)| key.len() > 160 || !bounded(*size, 0., 48.))
+                || o.size_by_value
+                    .iter()
+                    .any(|(key, size)| key.len() > 160 || !bounded(*size, 0., 48.))
                 || o.palette.len() > 128
                 || o.palette.iter().any(|(k, v)| k.len() > 160 || !color(v))
                 || (o.color.is_some() && !o.palette.is_empty())
@@ -1447,6 +1464,7 @@ mod tests {
         table.kind = ElementKind::Table;
         table.table = Some(TableBinding {
             layer: "info".into(),
+            additional_layers: vec!["tapping_poles".into()],
             columns: vec!["quantity".into()],
             headings: vec!["Quantity".into()],
             widths: vec![10.],
@@ -1462,6 +1480,19 @@ mod tests {
         validate(&layout).unwrap();
         let encoded = serde_json::to_vec(&layout).unwrap();
         assert_eq!(serde_json::from_slice::<Layout>(&encoded).unwrap(), layout);
+        for invalid in [
+            vec!["info".into()],
+            vec!["a".into(), "a".into()],
+            vec!["../bad".into()],
+        ] {
+            let mut invalid_layout = layout.clone();
+            invalid_layout.elements[legend]
+                .table
+                .as_mut()
+                .unwrap()
+                .additional_layers = invalid;
+            assert!(validate(&invalid_layout).is_err());
+        }
         layout.elements[legend + 1].flow.as_mut().unwrap().after = "legend".into();
         assert!(validate(&layout).unwrap_err().contains("earlier"));
         layout.elements[legend + 1].flow.as_mut().unwrap().after = "map".into();
@@ -1600,14 +1631,18 @@ mod tests {
 
     #[test]
     fn output_selection_can_require_the_layout_being_authored() {
-        assert!(evaluate(
-            br#"{"op":"output_selection","legacy_formats":["pdf__a3"],"required_layout":"a3"}"#
-        )
-        .is_ok());
-        assert!(evaluate(
-            br#"{"op":"output_selection","legacy_formats":["xlsx"],"required_layout":"a3"}"#
-        )
-        .is_err());
+        assert!(
+            evaluate(
+                br#"{"op":"output_selection","legacy_formats":["pdf__a3"],"required_layout":"a3"}"#
+            )
+            .is_ok()
+        );
+        assert!(
+            evaluate(
+                br#"{"op":"output_selection","legacy_formats":["xlsx"],"required_layout":"a3"}"#
+            )
+            .is_err()
+        );
     }
     #[test]
     fn context_layers_are_explicit_and_parameter_bounded() {
@@ -1655,13 +1690,15 @@ mod tests {
             }
         }
         let layout = default_layout();
-        assert!(evaluate(
-            &serde_json::to_vec(
-                &json!({"op":"duplicate","layout":layout,"id":layout.id,"name":"Copy"})
+        assert!(
+            evaluate(
+                &serde_json::to_vec(
+                    &json!({"op":"duplicate","layout":layout,"id":layout.id,"name":"Copy"})
+                )
+                .unwrap()
             )
-            .unwrap()
-        )
-        .is_err());
+            .is_err()
+        );
         let result = evaluate(
             &serde_json::to_vec(&json!({"op":"rename","layout":layout,"name":"Renamed"})).unwrap(),
         )
@@ -1710,11 +1747,13 @@ mod tests {
             result["layout"]["elements"][0]["rect"],
             serde_json::json!([12., 32., 300., 235.])
         );
-        assert!(evaluate(
-            &serde_json::to_vec(&serde_json::json!({"op":"remove","layout":layout,"id":"map"}))
-                .unwrap()
-        )
-        .is_err());
+        assert!(
+            evaluate(
+                &serde_json::to_vec(&serde_json::json!({"op":"remove","layout":layout,"id":"map"}))
+                    .unwrap()
+            )
+            .is_err()
+        );
     }
 
     #[test]
@@ -1818,22 +1857,26 @@ mod tests {
             fit_around: Vec::new(),
         });
         assert!(validate(&layout).is_err());
-        assert!(evaluate(
-            &serde_json::to_vec(&json!({
-                "op":"set_viewport",
-                "layout":default_layout(),
-                "id":"title",
-                "name":"Wrong",
-                "view_slot":"wrong"
-            }))
-            .unwrap()
-        )
-        .is_err());
+        assert!(
+            evaluate(
+                &serde_json::to_vec(&json!({
+                    "op":"set_viewport",
+                    "layout":default_layout(),
+                    "id":"title",
+                    "name":"Wrong",
+                    "view_slot":"wrong"
+                }))
+                .unwrap()
+            )
+            .is_err()
+        );
     }
     #[test]
     fn category_sizes_need_a_field_and_scale_rounding_is_bounded() {
         let mut layout = default_layout();
-        layout.style_refs.insert("roads".into(), "gt/roads_print".into());
+        layout
+            .style_refs
+            .insert("roads".into(), "gt/roads_print".into());
         let mut change = PrintStyleOverride::default();
         change.size_by_value.insert("National Road".into(), 4.4);
         layout.style_overrides.insert("roads".into(), change);
