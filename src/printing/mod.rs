@@ -1209,6 +1209,11 @@ pub enum Command {
         #[serde(default)]
         required_layout: Option<String>,
     },
+    TransformerInstructions {
+        layout: Layout,
+        current: Vec<serde_json::Value>,
+        instructions: BTreeMap<String, Option<overrides::PrintOverride>>,
+    },
     TransformerOverride {
         layout: Layout,
         instructions: overrides::PrintOverride,
@@ -1288,7 +1293,16 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
         serde_json::from_slice(input).map_err(|e| format!("invalid printing request: {e}"))?;
     let value = match command {
         Command::ProjectSettings { sheets } => {
-            crate::report_formats::inspect_project_settings(&sheets)?
+            let mut result = crate::report_formats::inspect_project_settings(&sheets)?;
+            result["transformer_instructions"] = sheets["project_settings"]
+                .as_array()
+                .and_then(|rows| {
+                    rows.iter()
+                        .find(|row| row["parameter"] == "printing_overrides")
+                })
+                .map(|row| row["value"].clone())
+                .unwrap_or_else(|| json!({}));
+            result
         }
         Command::OutputSelection {
             selection,
@@ -1309,6 +1323,14 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
                 }
             }
             json!({"selection":selection})
+        }
+        Command::TransformerInstructions {
+            layout,
+            current,
+            instructions,
+        } => {
+            let layout = upgrade(layout)?;
+            json!({"project_settings": overrides::update_settings(&layout, &current, &instructions)?})
         }
         Command::TransformerOverride {
             layout,

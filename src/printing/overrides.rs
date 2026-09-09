@@ -143,3 +143,97 @@ mod tests {
         assert!(apply(&base, &bad).is_err());
     }
 }
+
+/// Apply a bounded transformer patch to one named layout in project settings.
+/// Other transformers, layouts and unrelated parameters retain their values.
+pub fn update_settings(
+    layout: &Layout,
+    current: &[serde_json::Value],
+    instructions: &BTreeMap<String, Option<PrintOverride>>,
+) -> Result<Vec<serde_json::Value>, String> {
+    if instructions.len() > 10_000 {
+        return Err("Too many transformer print instructions.".into());
+    }
+    let mut next = current.to_vec();
+    let positions: Vec<_> = next
+        .iter()
+        .enumerate()
+        .filter(|(_, row)| row["parameter"] == "printing_overrides")
+        .map(|(i, _)| i)
+        .collect();
+    if positions.len() > 1 {
+        return Err("Project settings contain duplicate printing_overrides parameters.".into());
+    }
+    let mut inventory: TransformerOverrides = serde_json::from_value(
+        positions
+            .first()
+            .map(|i| next[*i]["value"].clone())
+            .unwrap_or_else(|| serde_json::json!({})),
+    )
+    .map_err(|e| format!("Invalid stored print instructions: {e}"))?;
+    for (transformer, patch) in instructions {
+        let check = BTreeMap::from([(transformer.clone(), BTreeMap::new())]);
+        validate_inventory(&check, &BTreeMap::new())?;
+        if let Some(patch) = patch {
+            apply(layout, patch)?;
+            inventory
+                .entry(transformer.clone())
+                .or_default()
+                .insert(layout.id.clone(), patch.clone());
+        } else if let Some(layouts) = inventory.get_mut(transformer) {
+            layouts.remove(&layout.id);
+            if layouts.is_empty() {
+                inventory.remove(transformer);
+            }
+        }
+    }
+    if inventory.len() > 10_000 || inventory.values().any(|layouts| layouts.len() > 32) {
+        return Err("Print instructions exceed their inventory bound.".into());
+    }
+    let value = serde_json::to_value(inventory).map_err(|e| e.to_string())?;
+    if let Some(i) = positions.first() {
+        next[*i]["value"] = value;
+    } else {
+        next.push(serde_json::json!({"parameter":"printing_overrides","value":value}));
+    }
+    Ok(next)
+}
+
+#[cfg(test)]
+mod settings_tests {
+    use super::*;
+    use serde_json::json;
+    #[test]
+    fn outlier_edits_and_removal_preserve_other_transformers_and_parameters() {
+        let layout = super::super::default_layout();
+        let original = vec![json!({"parameter":"design_export_format","value":["xlsx"]})];
+        let patch = PrintOverride {
+            note: "Outlier schedule".into(),
+            ..Default::default()
+        };
+        let first = update_settings(
+            &layout,
+            &original,
+            &BTreeMap::from([
+                ("agatare".into(), Some(patch.clone())),
+                ("akaderege_kigoma".into(), Some(patch)),
+            ]),
+        )
+        .unwrap();
+        assert_eq!(first[0], original[0]);
+        assert_eq!(original.len(), 1);
+        let second =
+            update_settings(&layout, &first, &BTreeMap::from([("agatare".into(), None)])).unwrap();
+        assert!(second[1]["value"].get("agatare").is_none());
+        assert_eq!(
+            second[1]["value"]["akaderege_kigoma"],
+            first[1]["value"]["akaderege_kigoma"]
+        );
+        assert!(update_settings(
+            &layout,
+            &original,
+            &BTreeMap::from([("../other".into(), None)])
+        )
+        .is_err());
+    }
+}
