@@ -82,7 +82,7 @@ published. Navigate with `ds map zoom`; edit with `ds map design set`.",
             Arg::value(
                 "ref",
                 "<ref>",
-                "A style/layer/feature ref, active project ID for project pages, or transformer/outputId for report-preview.",
+                "A style/layer/feature ref, active project ID for project pages, or transformer/outputId or printout/filename.pdf for report-preview.",
             )
             .required(),
             DESCRIPTOR_ARG,
