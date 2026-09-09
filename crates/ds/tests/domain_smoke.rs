@@ -88,6 +88,36 @@ fn run_ds(args: &[&str], native: bool) -> Run {
 }
 
 #[test]
+fn published_read_checks_selectors_and_never_falls_back_to_local_files() {
+    let invalid = ds(&[
+        "desktop",
+        "sync",
+        "published",
+        "--project",
+        &"p".repeat(129),
+        "--operation",
+        "export-agasharu",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(invalid.envelope["error"]["code"], "sync_invalid_input");
+    let absent = ds(&[
+        "desktop",
+        "sync",
+        "published",
+        "--project",
+        "project",
+        "--operation",
+        "export-agasharu",
+        "--output-id",
+        "pdf__huye",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(absent.envelope["error"]["code"], "desktop_unreachable");
+}
+
+#[test]
 fn sync_sanitation_bounds_and_digest_are_checked_before_pairing() {
     let preview = ds(&[
         "desktop",

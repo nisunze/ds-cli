@@ -1717,6 +1717,11 @@ static DESKTOP_ENTRIES: &[Entry] = &[
         render: ds_cli_desktop::sync::render,
     },
     Entry {
+        command: &ds_cli_desktop::published::COMMAND,
+        handler: ds_cli_desktop::published::run,
+        render: ds_cli_desktop::sync::render,
+    },
+    Entry {
         command: &ds_cli_desktop::sync::STATUS_COMMAND,
         handler: ds_cli_desktop::sync::status,
         render: ds_cli_desktop::sync::render,

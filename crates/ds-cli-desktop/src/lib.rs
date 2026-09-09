@@ -33,6 +33,7 @@ pub mod discover;
 pub mod ops;
 pub mod printing;
 pub mod project;
+pub mod published;
 pub mod status;
 pub mod sync;
 
@@ -63,6 +64,7 @@ pub static DOMAIN: Domain = Domain {
         &data::INSTALL_COMMAND,
         &data::STORAGE_COMMAND,
         &data::REMOVE_COMMAND,
+        &published::COMMAND,
         &sync::STATUS_COMMAND,
         &sync::RETRY_COMMAND,
         &sync::SANITIZE_PREVIEW_COMMAND,

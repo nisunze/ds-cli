@@ -42,7 +42,15 @@ fn main() {
 
     println!("cargo:rustc-env=DS_BUILD_SHA={sha}");
     println!("cargo:rustc-env=DS_BUILD_DIRTY={}", u8::from(dirty));
-    let native_client_core_sha = include_str!("../../pins/ds-client-core.rev").trim();
+    // Cargo reruns a cached build-script executable when a pin changes. Read
+    // the pin at execution time: include_str! can retain the previous pin in
+    // that executable even while downstream tests see the new file.
+    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").expect("Cargo manifest directory");
+    let native_pin = std::fs::read_to_string(
+        std::path::Path::new(&manifest_dir).join("../../pins/ds-client-core.rev"),
+    )
+    .expect("native client source pin");
+    let native_client_core_sha = native_pin.trim();
     let native_client_core_sha = if native_client_core_sha.len() == 40
         && native_client_core_sha
             .bytes()
@@ -53,8 +61,11 @@ fn main() {
         "unknown"
     };
     println!("cargo:rustc-env=DS_NATIVE_CLIENT_CORE_SHA={native_client_core_sha}");
-    let command_kernel_sha =
-        exact_source_pin(include_str!("../../pins/ds-command-kernel.rev")).unwrap_or("unknown");
+    let kernel_pin = std::fs::read_to_string(
+        std::path::Path::new(&manifest_dir).join("../../pins/ds-command-kernel.rev"),
+    )
+    .expect("command kernel source pin");
+    let command_kernel_sha = exact_source_pin(&kernel_pin).unwrap_or("unknown");
     println!("cargo:rustc-env=DS_COMMAND_KERNEL_SHA={command_kernel_sha}");
     let native_client_profile_sha256 = std::env::var("DS_NATIVE_CLIENT_PROFILE_SHA256")
         .ok()

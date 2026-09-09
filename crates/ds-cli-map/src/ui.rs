@@ -293,7 +293,7 @@ published. Navigate with `ds map zoom`; edit with `ds map design set`.",
             // `choices` is enforced by the parser, so this pins the other half:
             // The closed set includes panels, project pages and the committed
             // report preview. New targets remain deliberate contract changes.
-            assert_eq!(TARGETS.len(), 8);
+            assert_eq!(TARGETS.len(), 10);
             assert_eq!(crate::UI_OPEN.arguments, &["target", "ref"]);
             assert_eq!(COMMAND.arg("target").expect("declared").choices, TARGETS);
         }

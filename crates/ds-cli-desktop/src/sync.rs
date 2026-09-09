@@ -26,6 +26,7 @@ pub const SANITIZE_APPLY_OP: BridgeOp = BridgeOp {
     arguments: &["project", "digest"],
 };
 pub const BRIDGE_OPS: &[&BridgeOp] = &[
+    &crate::published::OP,
     &STATUS_OP,
     &RETRY_OP,
     &SANITIZE_PREVIEW_OP,
