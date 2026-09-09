@@ -213,3 +213,16 @@ A template override may supply `field`, `palette` and `size_by_value` to classif
 For independent draft body transparency, keep the authored halo and add an opacity dimension: `style dimension plan --ref master/lv_poles_print --field drafting_status --channel opacity --value draft=0.5 --other 1 --keep-other-channels`. Review, then use `set --yes`. The same flag works for screen styles. Sprite body opacity is baked independently of the halo, so zero hides the body while retaining the ring. Halo colour can carry alpha when the ring itself should fade. Print and live raster symbols remove the interior from the halo before painting the body, avoiding a black silhouette beneath a translucent sprite.
 
 For a generalized overview, `style_overrides.LAYER.visible: false` hides all geometry, including its halo, while leaving input coordinates available for fitting. Label visibility remains independently controlled by `label.visible`. `opacity: 0` on a sprite intentionally retains its halo.
+
+
+Print label placement and depth are separate controls. Line and line-centre
+labels use the arclength midpoint of the longest part, with map-aligned rotation
+following the local segment. `style_overrides.LAYER.label.below_geometry: true`
+places background labels (including their halos) beneath all map geometry;
+foreground labels retain the ordinary final pass. Use this for contours.
+
+`focus.border_opacity` controls the temporary focus outline independently. If
+omitted, it follows `focus.outside_opacity`. An opacity of `0.2` means 80 percent
+transparent for both. These affect only print composition, never design geometry.
+Preserve the authored tapping-pole symbol and colour when tuning physical size
+or halo opacity; tapping poles have their own style reference and legend entry.
