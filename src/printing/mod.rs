@@ -194,6 +194,9 @@ pub struct TableBinding {
     /// Ordered maximum column widths in mm; auto-fit and truncate outliers.
     #[serde(default)]
     pub max_widths_mm: Vec<f64>,
+    /// Optional ordered minimum widths in mm, independent of heading length.
+    #[serde(default)]
+    pub min_widths_mm: Vec<f64>,
     /// Include headings when measuring column widths. False measures data only;
     /// headings still render, truncated within their columns without wrapping.
     #[serde(default = "table_measure_headings_default")]
@@ -223,6 +226,7 @@ impl Default for TableBinding {
             headings: vec![],
             widths: vec![],
             max_widths_mm: vec![],
+            min_widths_mm: vec![],
             measure_headings: true,
             panels: 1,
             gap_mm: 3.,
@@ -611,6 +615,10 @@ pub fn validate(layout: &Layout) -> Result<(), String> {
                 || (!table.max_widths_mm.is_empty()
                     && (table.max_widths_mm.len() != table.columns.len()
                         || table.max_widths_mm.iter().any(|v| !bounded(*v, 3., 1000.))))
+                || (!table.min_widths_mm.is_empty()
+                    && (table.min_widths_mm.len() != table.columns.len()
+                        || table.min_widths_mm.iter().enumerate().any(|(i,v)|
+                            !bounded(*v, 0., 1000.) || table.max_widths_mm.get(i).is_some_and(|max| v > max))))
             {
                 return Err("invalid table binding, headings or column widths".into());
             }
@@ -1665,6 +1673,18 @@ mod tests {
             .is_err()
         );
     }
+    #[test]
+    fn minimum_column_widths_are_ordered_and_bounded_by_caps() {
+        let mut layout=default_layout();
+        layout.elements.push(serde_json::from_value(serde_json::json!({"id":"info","kind":"table","rect":[20,20,100,100],
+            "table":{"layer":"info","columns":["quantity"],"headings":["Quantity"],"widths":[1],"min_widths_mm":[6],"max_widths_mm":[10]}})).unwrap());
+        validate(&layout).unwrap();
+        for invalid in [vec![11.],vec![-1.],vec![f64::NAN],vec![6.,6.]] {
+            layout.elements.last_mut().unwrap().table.as_mut().unwrap().min_widths_mm=invalid;
+            assert!(validate(&layout).is_err());
+        }
+    }
+
     #[test]
     fn table_heading_measurement_is_optional_and_roundtrips() {
         let mut value = serde_json::json!({"layer":"customers","columns":["service_length"],"headings":["Service length"],"widths":[1]});
