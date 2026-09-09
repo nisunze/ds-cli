@@ -192,9 +192,10 @@ pub const MAX_LINKS: usize = 32;
 // Timeouts
 // ---------------------------------------------------------------------------
 
-/// A read paints from the application's cached catalogue and reconciles once;
-/// a preview may fetch the bytes first.
-pub const READ_TIMEOUT: Duration = Duration::from_secs(60);
+/// Inventory joins the existing project source readers; preview may acquire
+/// a large document first. Let those owners finish within the same bridge
+/// budget as asset ingestion rather than abandoning a healthy read at 60s.
+pub const READ_TIMEOUT: Duration = INGEST_TIMEOUT;
 /// A write is one governed round trip to ds-brain, or one local file write.
 pub const WRITE_TIMEOUT: Duration = Duration::from_secs(120);
 /// An ingest streams the file through the resumable uploader; a field
