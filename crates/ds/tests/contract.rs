@@ -509,6 +509,7 @@ fn chapters_follow_intent_where_it_parts_from_the_domain() {
             || rest.starts_with("scene.")
             || rest.starts_with("camera.")
             || rest.starts_with("renderer.")
+            || rest.starts_with("print.")
         {
             "map-presentation"
         } else {

@@ -1224,6 +1224,7 @@ pub const fn chapter_description(chapter: Chapter) -> &'static str {
 // One bounded end-to-end printing workflow. Native template CRUD remains
 // available through the Reports chapter; it does not duplicate these paired leaves.
 const PRINTING_COMMANDS: &[&str] = &[
+    "map.print.schema",
     "desktop.printing.settings",
     "desktop.printing.list",
     "desktop.printing.get",

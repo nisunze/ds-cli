@@ -13,6 +13,18 @@ scale rather than discarding every point-of-interest layer or naming special
 cases in code. A district overview and an urban four-sector composition need
 different density even on the same paper.
 
+Choose sheet coverage from network shape and paper aspect ratio. Administrative
+boundaries provide context; they need not impose one page each. An overview may
+combine adjacent districts while retaining their individual boundaries, followed
+by separate sheets only where detail warrants them. Keep project identification
+in a compact shared strip instead of repeating a large title block.
+
+Begin an overview with few layers. Ordinary poles, customer status marks and
+contours can overwhelm a reduced network. Omit them explicitly in the overview
+recipe and restore useful classes gradually after viewing the actual PDF. Symbol
+size and geographic scale are distinct: shrinking symbols must not silently
+change the camera or make engineering labels unreadable.
+
 Give the map the largest useful frame. Put compact legends, tables, scale and
 provenance at an edge; do not park a table over central geography just because
 label placement found a gap. Judge both actual paper size and a page overview:

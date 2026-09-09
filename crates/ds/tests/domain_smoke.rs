@@ -3235,6 +3235,7 @@ fn every_map_command_is_reachable_without_the_desktop_installed() {
         .map(|command| command["id"].as_str().expect("command id"))
         .collect();
     let expected: BTreeSet<&str> = [
+        "map.print.schema",
         "map.canvas.camera",
         "map.scene.build",
         "map.data.inspect",
@@ -3295,6 +3296,8 @@ fn every_map_command_is_reachable_without_the_desktop_installed() {
         actual, expected,
         "map command coverage list changed; add a specific smoke assertion for the new command before accepting it"
     );
+    let printing = ok(&["map", "print", "schema", "--output", "json"]);
+    assert!(printing["sections"].as_array().is_some_and(|s| s.len() == 4));
     for command in commands {
         assert_eq!(
             command["availability"],

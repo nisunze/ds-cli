@@ -14,6 +14,7 @@ pub mod layer;
 pub mod line_difference;
 pub mod outliers;
 pub mod points_along;
+pub mod print_schema;
 pub mod random_points;
 pub mod remove;
 pub mod renderer_configure;
@@ -44,6 +45,7 @@ pub static DOMAIN: Domain = Domain {
     id: "map",
     summary: "Local data, layer ordering, remote overlays, and design edits.",
     commands: &[
+        &print_schema::COMMAND,
         &canvas::COMMAND,
         &scene::COMMAND,
         &view::COMMAND,

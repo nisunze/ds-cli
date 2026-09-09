@@ -623,6 +623,11 @@ static MAP_ENTRIES: &[Entry] = &[
         render: ds_cli_map::scene::render,
     },
     Entry {
+        command: &ds_cli_map::print_schema::COMMAND,
+        handler: ds_cli_map::print_schema::run,
+        render: ds_cli_map::print_schema::render,
+    },
+    Entry {
         command: &ds_cli_map::canvas::COMMAND,
         handler: ds_cli_map::canvas::run,
         render: ds_cli_map::canvas::render,
