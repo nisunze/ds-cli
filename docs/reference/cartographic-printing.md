@@ -80,6 +80,11 @@ print resolution. Keep its workbook row order. For compact A3 summaries choose
 `layer: "lv_print_info"`, `presentation: "plain"`, and the desired ordered
 summary columns. Pole and house schedules are optional page elements.
 
+Use `additional_layers: ["tapping_poles"]` alongside `layer: "lv_poles"`
+to include tapping poles in the same sorted pole schedule. The primary layer
+is required; absent companion layers add no rows. Up to 16 distinct companions
+are allowed. This affects table rows only, not map geometry or layer order.
+
 Add an optional layout-level composition instruction:
 
 ```json
@@ -122,8 +127,22 @@ layout JSON, style commands, selection and artifact receipts together as the
 reusable recipe. MCP profiles expose the same typed commands and request schema.
 
 Composition principles: [Ordnance Survey map layout guidance](https://docs.os.uk/more-than-maps/geographic-data-visualisation/guide-to-cartography/map-layout).
-The measured packing approach is informed by [absolute-placement rectangle
-packing](https://arxiv.org/abs/1402.0557); it is a smaller bounded implementation.
+The rectangle-placement problem is discussed by Huang and Korf in
+[Optimal Rectangle Packing: An Absolute Placement Approach](https://arxiv.org/abs/1402.0557).
+Our edge/shelf beam search is a bounded heuristic, not their optimal solver.
+
+### Cartographic rationale and references
+
+| Decision | Reference and application |
+| --- | --- |
+| Give the map visual priority; balance tables and surrounding space | [Ordnance Survey: Map layout](https://docs.os.uk/more-than-maps/geographic-data-visualisation/guide-to-cartography/map-layout). Measured furniture and fit-around placement preserve readable tables while maximizing the network view. The outside focus wash is a visual cue; the current packing score uses free rectangles, not an ink-density or mask-overlap score. |
+| Reduce detail when the sheet covers more ground | [Ordnance Survey: Scale](https://docs.os.uk/more-than-maps/geographic-data-visualisation/guide-to-cartography/scale). A0 carries engineering labels and schedules; A3 and project overviews use independent label/visibility controls. Scale rounding and 1/2/5 bar divisions are our implementation choices. |
+| Make the key explain the map's actual symbols | [Ordnance Survey: Map legends](https://docs.os.uk/more-than-maps/geographic-data-visualisation/guide-to-cartography/map-legends). The renderer evaluates the same category pens for map and legend, including unfilled polygons, dashed boundaries and draft halos. |
+
+A0 and A3 are composed separately. Aesthetic balance and the cartographer’s
+judgment take precedence over mechanically copying reference layouts.
+These references support design principles. They do not certify the software,
+prove optimal placement, or replace visual review of dense and sparse examples.
 
 ## Source selection, print focus and hierarchy
 
@@ -189,7 +208,7 @@ Polygon outlines can be styled independently: `style cartography set --ref gt/rw
 
 Automatic fitting accepts `scale_rounding: 100` on a layout to round the actual scale denominator upward to the next hundred without cropping. Explicit camera scales remain exact. Scale bars measure their frame, choose a 1/2/5 ground distance, and draw alternating segments with zero, midpoint and unit-bearing endpoint labels; remove a separate `scale-background` rectangle for a clean unboxed bar.
 
-A template override may supply `field`, `palette` and `size_by_value` to classify a previously flat style. For example `{"field":"type","size":2.8,"palette":{"District Road":"#D6D5D1"},"size_by_value":{"National Road":4.4,"District Road":3.4}}`. Inspect the exact values through `desktop printing seed-context`: its bounded `propertySample` reports up to 16 values per field from the first 1000 features, not a complete domain. Shared pens remain inherited for unspecified categories. Polygon labels search within the visible polygon, keeping their full text box outside holes and furniture.
+A template override may supply `field`, `palette` and `size_by_value` to classify a previously flat style. For example `{"field":"type","size":2.8,"palette":{"District road":"#D6D5D1"},"size_by_value":{"National road":4.4,"District road":3.4}}`. Inspect the exact values through `desktop printing seed-context`: its bounded `propertySample` reports up to 16 values per field from the first 1000 features, not a complete domain. Shared pens remain inherited for unspecified categories. Polygon labels search within the visible polygon, keeping their full text box outside holes and furniture.
 
 For independent draft body transparency, keep the authored halo and add an opacity dimension: `style dimension plan --ref master/lv_poles_print --field drafting_status --channel opacity --value draft=0.5 --other 1 --keep-other-channels`. Review, then use `set --yes`. The same flag works for screen styles. Sprite body opacity is baked independently of the halo, so zero hides the body while retaining the ring. Halo colour can carry alpha when the ring itself should fade. Print and live raster symbols remove the interior from the halo before painting the body, avoiding a black silhouette beneath a translucent sprite.
 
