@@ -176,3 +176,17 @@ colours change; other categories and icons are inherited. Fields are `color`,
 a primary categorical match/get colour style. These overrides apply to both
 map and legend. A global default, project override and personal render can
 therefore keep different pens without repeatedly editing shared styles.
+
+Per-template label overrides are independent of shared Style Center settings:
+`{"tr":{"label":{"size_pt":8,"allow_overlap":false,"priority":-1000}},"spans":{"label":{"visible":false}}}`.
+`label` also accepts `color`, `halo_color`, and `halo_mm`. Point sizes and halo
+millimetres are physical and stay fixed across the inherited paper factors.
+Use this for a generalized project overview while detailed network sheets keep
+all span lengths and their engineering labels. Geometry remains in the input
+and therefore still contributes to the full project extent.
+
+Polygon outlines can be styled independently: `style cartography set --ref gt/rwanda_villages_print --boundary-line-type dashed --host desktop --project PROJECT --yes`. Use `solid` to clear boundary dashes; fill opacity remains independent.
+
+Automatic fitting accepts `scale_rounding: 100` on a layout to round the actual scale denominator upward to the next hundred without cropping. Explicit camera scales remain exact. Scale bars measure their frame, choose a 1/2/5 ground distance, and draw alternating segments with zero, midpoint and unit-bearing endpoint labels; remove a separate `scale-background` rectangle for a clean unboxed bar.
+
+A template override may supply `field`, `palette` and `size_by_value` to classify a previously flat style. For example `{"field":"type","size":2.8,"palette":{"District Road":"#D6D5D1"},"size_by_value":{"National Road":4.4,"District Road":3.4}}`. Inspect the exact values through `desktop printing seed-context`: its bounded `propertySample` reports up to 16 values per field from the first 1000 features, not a complete domain. Shared pens remain inherited for unspecified categories. Polygon labels search within the visible polygon, keeping their full text box outside holes and furniture.

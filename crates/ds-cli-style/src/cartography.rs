@@ -157,6 +157,19 @@ const ARGS: &[Arg] = &[
         "Polygon boundary width, 0..20 px.",
     ),
     Arg::value("boundary-opacity", "<0..1>", "Polygon boundary opacity."),
+    Arg::value(
+        "boundary-line-type",
+        "<line-type>",
+        "Polygon boundary dash preset; solid clears dashes.",
+    )
+    .choices(&[
+        "solid",
+        "dashed",
+        "dotted",
+        "dash-dot",
+        "long-dash",
+        "dash-dot-dot",
+    ]),
     LINE_TYPE_ARG,
     DIRECTION_SIZE_ARG,
     DIRECTION_SPACING_ARG,
@@ -345,6 +358,9 @@ fn arguments(inputs: &Inputs, apply: bool) -> Result<Value, Failure> {
             json!(crate::color(v, "boundary-color")?),
         );
     }
+    if let Some(value) = inputs.value("boundary-line-type") {
+        arguments.insert("boundaryLineType".into(), json!(value));
+    }
     // `ref` is the subject, not a change; `apply` is not yet inserted.
     if arguments.len() == 1 {
         return Err(refuse("no cartography change was requested"));
@@ -358,6 +374,9 @@ fn arguments(inputs: &Inputs, apply: bool) -> Result<Value, Failure> {
 fn render_cartography(data: &Value) -> String {
     let requested = &data["requested"];
     let mut changes = Vec::new();
+    if let Some(value) = requested["boundaryLineType"].as_str() {
+        changes.push(format!("boundary {value}"));
+    }
     if let Some(value) = requested["lineType"].as_str() {
         changes.push(format!("line {value}"));
     }
@@ -786,6 +805,20 @@ mod tests {
                 && FILL_PATTERN_ARG.choices.contains(&UNPATTERNED),
             "`solid` is how a caller removes a dash or a hatch on either flag"
         );
+    }
+
+    #[test]
+    fn boundary_dash_is_independent_of_fill_and_line_controls() {
+        for command in [&plan::COMMAND, &set::COMMAND] {
+            let tokens = argv(&["--ref", "r", "--boundary-line-type", "dashed"]);
+            let inputs = parse(command, &tokens).expect("inputs");
+            let value = arguments(&inputs, false).expect("boundary change");
+            assert_eq!(value["boundaryLineType"], "dashed");
+            assert!(value.get("lineType").is_none());
+            assert!(value.get("fillPattern").is_none());
+        }
+        let tokens = argv(&["--ref", "r", "--boundary-line-type", "directional"]);
+        assert!(parse(&plan::COMMAND, &tokens).is_err());
     }
 
     #[test]
