@@ -1237,3 +1237,10 @@ pub mod compute_artifact_inventory;
 pub fn compute_artifact_inventory_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
     compute_artifact_inventory::evaluate(input).map_err(|error| wasm_bindgen::JsValue::from_str(&error))
 }
+
+pub mod compute_artifact_engine;
+#[cfg(feature = "wasm")]
+#[wasm_bindgen::prelude::wasm_bindgen(js_name = computeArtifactTransition)]
+pub fn compute_artifact_transition_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
+    compute_artifact_engine::evaluate(input).map_err(|error| wasm_bindgen::JsValue::from_str(&error))
+}
