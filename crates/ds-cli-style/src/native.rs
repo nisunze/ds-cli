@@ -2,7 +2,7 @@ use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{Arg, Refusal};
 use ds_cli_contract::{Context, Inputs};
 use ds_cli_desktop::ops::BridgeOp;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 pub const LANE_ARG: Arg = Arg::value(
     "lane",
     "<stable|canary>",
@@ -265,6 +265,7 @@ pub fn execute(
             other: args["other"].as_f64(),
             color: args["color"].as_str().map(str::to_owned),
             field_type: inputs.value("field-type").map(str::to_owned),
+            keep_other_channels: inputs.switch("keep-other-channels"),
         },
         "style.dimension.clear" => ds_cli_auth::StyleInstruction::ClearDimension,
         "style.cartography.set" => {
