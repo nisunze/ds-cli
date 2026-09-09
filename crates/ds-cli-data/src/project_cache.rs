@@ -171,10 +171,11 @@ pub static SEED_COMMAND: Command = Command {
 fn arguments(inputs: &Inputs) -> Result<Map<String, Value>, Failure> {
     let project = inputs.require("project")?.trim().to_owned();
     if project.is_empty() || project.len() > 128 {
-        return Err(
-            Failure::invalid("project_dataset_scope_invalid", "`--project` must be one exact project id")
-                .remedy(INVALID_SCOPE.remedy),
-        );
+        return Err(Failure::invalid(
+            "project_dataset_scope_invalid",
+            "`--project` must be one exact project id",
+        )
+        .remedy(INVALID_SCOPE.remedy));
     }
     let mut arguments = Map::new();
     arguments.insert("project".into(), json!(project));

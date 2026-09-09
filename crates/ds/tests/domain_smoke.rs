@@ -88,6 +88,50 @@ fn run_ds(args: &[&str], native: bool) -> Run {
 }
 
 #[test]
+fn sync_sanitation_bounds_and_digest_are_checked_before_pairing() {
+    let preview = ds(&[
+        "desktop",
+        "sync",
+        "sanitize",
+        "preview",
+        "--project",
+        "project",
+        "--limit",
+        "201",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(preview.envelope["error"]["code"], "sync_invalid_input");
+    let apply = ds(&[
+        "desktop",
+        "sync",
+        "sanitize",
+        "apply",
+        "--project",
+        "project",
+        "--digest",
+        "not-a-digest",
+        "--yes",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(apply.envelope["error"]["code"], "sync_invalid_input");
+    let confirm = ds(&[
+        "desktop",
+        "sync",
+        "sanitize",
+        "apply",
+        "--project",
+        "project",
+        "--digest",
+        &"a".repeat(64),
+        "--output",
+        "json",
+    ]);
+    assert_eq!(confirm.envelope["error"]["code"], "confirmation_required");
+}
+
+#[test]
 fn printing_lifecycle_writes_are_registered_and_stop_before_native_authority() {
     for args in [
         vec![
@@ -2777,6 +2821,8 @@ fn map_ui_open_offers_named_panels_and_no_way_to_address_the_interface() {
             "data",
             "software",
             "project-printing",
+            "project-control",
+            "sync-center",
             "transformers",
             "report-preview"
         ],

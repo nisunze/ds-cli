@@ -41,6 +41,8 @@ pub mod open {
         "data",
         "software",
         "project-printing",
+        "project-control",
+        "sync-center",
         "transformers",
         "report-preview",
     ];

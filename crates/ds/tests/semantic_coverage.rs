@@ -100,6 +100,12 @@ const EXPECTED: &[(&str, &str, &str)] = &[
         "local_file_write",
         "desktop_user",
     ),
+    ("desktop.sync.sanitize.preview", "read_only", "desktop_user"),
+    (
+        "desktop.sync.sanitize.apply",
+        "global_write",
+        "desktop_user",
+    ),
     ("desktop.sync.status", "read_only", "desktop_user"),
     ("desktop.sync.retry", "global_write", "desktop_user"),
     ("desktop.data.rwanda.status", "read_only", "desktop_user"),

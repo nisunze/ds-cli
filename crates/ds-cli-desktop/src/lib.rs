@@ -65,5 +65,7 @@ pub static DOMAIN: Domain = Domain {
         &data::REMOVE_COMMAND,
         &sync::STATUS_COMMAND,
         &sync::RETRY_COMMAND,
+        &sync::SANITIZE_PREVIEW_COMMAND,
+        &sync::SANITIZE_APPLY_COMMAND,
     ],
 };
