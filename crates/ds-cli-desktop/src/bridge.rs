@@ -152,7 +152,7 @@ pub fn invoke(
         .remedy("read detail for the application's own message")
         .detail(json!({
             "http_status": status,
-            "detail": bounded(parsed["error"].as_str().unwrap_or(&body))
+            "detail": operation_error_detail(operation, parsed["error"].as_str().unwrap_or(&body))
         }))),
     }
 }
@@ -276,6 +276,20 @@ impl IdentityFence {
             .remedy("update DS GridDesign, sign in, and retry"));
         }
         Ok(fence)
+    }
+}
+
+/// Print failures carry a bounded per-format receipt after the headline.
+/// Preserve it so a CLI caller can correct the failing template.
+fn operation_error_detail(operation: &str, detail: &str) -> String {
+    if operation == "printing.export" {
+        detail
+            .chars()
+            .filter(|c| !c.is_control() || *c == '\n')
+            .take(2_000)
+            .collect()
+    } else {
+        bounded(detail)
     }
 }
 
@@ -458,6 +472,25 @@ mod tests {
         assert_eq!(
             desktop_error_code(&json!({"error": {"code": "auth_context_mismatch"}})),
             Some("auth_context_mismatch")
+        );
+    }
+    #[test]
+    fn printing_keeps_bounded_per_format_failure_reasons() {
+        let receipt =
+            "Combined report not published\n- xlsx: built\n- pdf__a0: failed — table does not fit";
+        assert_eq!(operation_error_detail("printing.export", receipt), receipt);
+        assert_eq!(
+            operation_error_detail("map.view", receipt),
+            "Combined report not published"
+        );
+        assert_eq!(
+            operation_error_detail("printing.export", &"é".repeat(3_000))
+                .chars()
+                .count(),
+            2_000
+        );
+        assert!(
+            !operation_error_detail("printing.export", "bad\u{001b}message").contains('\u{001b}')
         );
     }
 }

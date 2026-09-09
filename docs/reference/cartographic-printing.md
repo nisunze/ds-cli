@@ -226,3 +226,15 @@ omitted, it follows `focus.outside_opacity`. An opacity of `0.2` means 80 percen
 transparent for both. These affect only print composition, never design geometry.
 Preserve the authored tapping-pole symbol and colour when tuning physical size
 or halo opacity; tapping poles have their own style reference and legend entry.
+
+
+Use `style_overrides.LAYER.label.offset_mm: [0, -1.4]` for a small physical
+gap beside a span or contour. The offset rotates with the line label; negative
+Y places it above the local text baseline. Zero returns it to the line. Authored
+line `text-offset` values are honoured when no physical template override is
+provided. These units are distinct from MapLibre's em-based offsets; see the
+[MapLibre text-offset specification](https://maplibre.org/maplibre-style-spec/layers/#text-offset).
+Disable service length labels with the governed label visibility control.
+Use the village suffix and italic font through label controls, and a dash-dot
+boundary preset to distinguish villages from settlement boundaries. River
+arrow direction requires a reliable flow-direction source.
