@@ -65,6 +65,16 @@ pub fn publication_state(
 #[derive(Deserialize)]
 #[serde(tag = "command", rename_all = "snake_case", deny_unknown_fields)]
 enum Command {
+    Export {
+        project: String,
+        transformer: String,
+        #[serde(default)]
+        force: bool,
+        #[serde(default)]
+        report_type: Option<String>,
+        #[serde(default)]
+        transformers: Vec<String>,
+    },
     FormatOptions {
         #[serde(default)]
         setups: Vec<serde_json::Value>,
@@ -153,6 +163,45 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
     }
     let command: Command = serde_json::from_slice(input).map_err(|e| e.to_string())?;
     let result = match command {
+        Command::Export {
+            project,
+            transformer,
+            force,
+            report_type,
+            transformers,
+        } => {
+            if project.is_empty()
+                || project.len() > 128
+                || project.trim() != project
+                || !project
+                    .bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
+            {
+                return Err("Report export requires one exact project id.".into());
+            }
+            let kind = if transformer == "combined_transformer" {
+                match report_type.as_deref() {
+                    None | Some("combined") => "combined",
+                    Some("compounded_reports") => "compounded",
+                    _ => return Err("Unsupported report type.".into()),
+                }
+            } else {
+                names(vec![transformer.clone()])?;
+                if report_type.is_some() || !transformers.is_empty() {
+                    return Err("A transformer export cannot also name a combined scope.".into());
+                }
+                "transformer"
+            };
+            if names(transformers.clone())?.len() != transformers.len() {
+                return Err("Report scope repeats a transformer.".into());
+            }
+            let label = match kind {
+                "combined" => "Combined report".into(),
+                "compounded" => "Compounded report".into(),
+                _ => format!("Report · {transformer}"),
+            };
+            serde_json::json!({"project":project,"transformer":transformer,"force":force,"transformers":transformers,"kind":kind,"label":label,"reuse_prepared":true})
+        }
         Command::FormatOptions { setups } => {
             serde_json::json!({"options": crate::report_formats::options(&setups)?})
         }
@@ -308,5 +357,31 @@ mod tests {
         assert!(evaluate(&serde_json::to_vec(&absent).unwrap()).is_err());
         absent["requested"] = serde_json::json!(["tx_a"]);
         assert!(evaluate(&serde_json::to_vec(&absent).unwrap()).is_ok());
+    }
+}
+
+#[cfg(test)]
+mod export_tests {
+    use super::*;
+    use serde_json::json;
+    #[test]
+    fn gui_and_cli_export_selection_use_the_same_closed_command() {
+        let value = json!({"command":"export","project":"p","transformer":"agatare"});
+        let output: serde_json::Value =
+            serde_json::from_str(&evaluate(&serde_json::to_vec(&value).unwrap()).unwrap()).unwrap();
+        assert_eq!(output["result"]["kind"], "transformer");
+        assert_eq!(output["result"]["reuse_prepared"], true);
+        for bad in [
+            json!({"transformer":"collisions"}),
+            json!({"report_type":"compounded_reports"}),
+            json!({"transformers":["another"]}),
+            json!({"project":"../p"}),
+        ] {
+            let mut changed = value.clone();
+            for (k, v) in bad.as_object().unwrap() {
+                changed[k] = v.clone();
+            }
+            assert!(evaluate(&serde_json::to_vec(&changed).unwrap()).is_err());
+        }
     }
 }
