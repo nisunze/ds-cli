@@ -45,7 +45,34 @@ pub struct Layout {
     /// Combined exports: render all held project features on one sheet instead of an atlas.
     #[serde(default)]
     pub project_overview: bool,
+    /// Back-to-front layer IDs. Unlisted layers follow in their input order.
+    #[serde(default)]
+    pub layer_order: Vec<String>,
+    #[serde(default)]
+    pub style_overrides: BTreeMap<String, PrintStyleOverride>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub focus: Option<PrintFocus>,
 }
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Default)]
+#[serde(deny_unknown_fields)]
+pub struct PrintStyleOverride {
+    pub color: Option<String>,
+    pub size: Option<f64>,
+    pub opacity: Option<f64>,
+    #[serde(default)]
+    pub palette: BTreeMap<String, String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct PrintFocus {
+    pub buffer_m: f64,
+    pub outside_color: String,
+    pub outside_opacity: f64,
+    pub border_color: String,
+    pub border_width_mm: f64,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct Composition {
@@ -65,6 +92,14 @@ pub struct PrintContextLayer {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum PrintContextSource {
+    /// Explicit locally synchronized survey form, independent of visibility.
+    Survey {
+        form: String,
+    },
+    /// Explicit complete local layer, including map.draw imports.
+    LocalLayer {
+        layer_id: String,
+    },
     Catalog {
         country: String,
         layer: String,
@@ -123,6 +158,9 @@ pub struct TableBinding {
     pub columns: Vec<String>,
     pub headings: Vec<String>,
     pub widths: Vec<f64>,
+    /// Ordered maximum column widths in mm; auto-fit and truncate outliers.
+    #[serde(default)]
+    pub max_widths_mm: Vec<f64>,
     /// Maximum side-by-side panels, with repeated headings and no omitted rows.
     #[serde(default = "one_panel")]
     pub panels: usize,
@@ -146,6 +184,7 @@ impl Default for TableBinding {
             columns: vec![],
             headings: vec![],
             widths: vec![],
+            max_widths_mm: vec![],
             panels: 1,
             gap_mm: 3.,
             sort_by: vec![],
@@ -515,6 +554,9 @@ pub fn validate(layout: &Layout) -> Result<(), String> {
                 || table.columns.iter().any(|v| v.is_empty() || v.len() > 160)
                 || table.headings.iter().any(|v| v.len() > 160)
                 || table.widths.iter().any(|v| !bounded(*v, 0.1, 1000.))
+                || (!table.max_widths_mm.is_empty()
+                    && (table.max_widths_mm.len() != table.columns.len()
+                        || table.max_widths_mm.iter().any(|v| !bounded(*v, 3., 1000.))))
             {
                 return Err("invalid table binding, headings or column widths".into());
             }
@@ -643,6 +685,36 @@ pub fn validate(layout: &Layout) -> Result<(), String> {
     {
         return Err("invalid print style references".into());
     }
+    if layout.style_overrides.len() > 100
+        || layout.style_overrides.iter().any(|(id, o)| {
+            !identifier(id)
+                || !layout.style_refs.contains_key(id)
+                || o.color.as_ref().is_some_and(|c| !color(c))
+                || o.size.is_some_and(|v| !bounded(v, 0., 100.))
+                || o.opacity.is_some_and(|v| !bounded(v, 0., 1.))
+                || o.palette.len() > 128
+                || o.palette.iter().any(|(k, v)| k.len() > 160 || !color(v))
+                || (o.color.is_some() && !o.palette.is_empty())
+        })
+    {
+        return Err("invalid template style override; select a referenced layer and either a flat color or categorical palette".into());
+    }
+    if layout.layer_order.len() > 100
+        || layout.layer_order.iter().any(|id| !identifier(id))
+        || layout.layer_order.iter().collect::<BTreeSet<_>>().len() != layout.layer_order.len()
+    {
+        return Err("layer order needs up to 100 unique layer IDs".into());
+    }
+    if let Some(focus) = &layout.focus {
+        if !bounded(focus.buffer_m, 0., 5000.)
+            || !color(&focus.outside_color)
+            || !color(&focus.border_color)
+            || !bounded(focus.outside_opacity, 0., 1.)
+            || !bounded(focus.border_width_mm, 0., 5.)
+        {
+            return Err("invalid print-time focus parameters".into());
+        }
+    }
     if layout.context_layers.len() > 64 {
         return Err("a print layout cannot request more than 64 context layers".into());
     }
@@ -656,6 +728,16 @@ pub fn validate(layout: &Layout) -> Result<(), String> {
             return Err("invalid or duplicate print context layer identity".into());
         }
         match &context.source {
+            PrintContextSource::Survey { form } => {
+                if !identifier(form) {
+                    return Err("invalid survey form selector".into());
+                }
+            }
+            PrintContextSource::LocalLayer { layer_id } => {
+                if layer_id.is_empty() || layer_id.len() > 160 || layer_id.trim() != layer_id {
+                    return Err("invalid local layer selector".into());
+                }
+            }
             PrintContextSource::Catalog { country, layer } => {
                 if country.trim().is_empty() || country.len() > 80 || !identifier(layer) {
                     return Err("invalid print catalog layer selector".into());
@@ -728,6 +810,9 @@ pub fn default_layout() -> Layout {
     Layout {
         composition: None,
         project_overview: false,
+        layer_order: Vec::new(),
+        style_overrides: BTreeMap::new(),
+        focus: None,
         schema: SCHEMA.into(),
         id: "network-map".into(),
         name: "Network map · A3 landscape".into(),
@@ -1408,6 +1493,45 @@ mod tests {
             .unwrap()
             .panels = 0;
         assert!(validate(&layout).is_err());
+    }
+
+    #[test]
+    fn print_sources_focus_and_order_are_closed_and_bounded() {
+        let mut l = default_layout();
+        l.context_layers = vec![
+            PrintContextLayer {
+                id: "survey_poles".into(),
+                label: "Surveyed poles".into(),
+                source: PrintContextSource::Survey {
+                    form: "lv_poles_as_built".into(),
+                },
+            },
+            PrintContextLayer {
+                id: "local".into(),
+                label: "Local geometry".into(),
+                source: PrintContextSource::LocalLayer {
+                    layer_id: "local-123".into(),
+                },
+            },
+        ];
+        l.layer_order = vec!["contours".into(), "roads".into(), "lv_lines".into()];
+        l.focus = Some(PrintFocus {
+            buffer_m: 35.,
+            outside_color: "#E4E7E9".into(),
+            outside_opacity: 0.6,
+            border_color: "#7C8792".into(),
+            border_width_mm: 0.25,
+        });
+        validate(&l).unwrap();
+        assert_eq!(
+            serde_json::from_slice::<Layout>(&serde_json::to_vec(&l).unwrap()).unwrap(),
+            l
+        );
+        l.layer_order.push("roads".into());
+        assert!(validate(&l).is_err());
+        l.layer_order.pop();
+        l.focus.as_mut().unwrap().buffer_m = -1.;
+        assert!(validate(&l).is_err());
     }
 
     fn evaluated_layout(request: serde_json::Value) -> Layout {

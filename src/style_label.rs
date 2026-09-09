@@ -9,6 +9,16 @@ pub struct LabelOptions {
     pub size: Option<f64>,
     pub font: Option<String>,
     pub color: Option<String>,
+    #[serde(default)]
+    pub numerics: std::collections::BTreeMap<String, f64>,
+    #[serde(default)]
+    pub append_fields: Vec<String>,
+    pub separator: Option<String>,
+    pub suffix: Option<String>,
+    pub format: Option<String>,
+    pub halo_color: Option<String>,
+    pub allow_overlap: Option<bool>,
+    pub alignment: Option<String>,
     /// Paper names, or the single value `all` to remove the paper restriction.
     pub papers: Option<Vec<String>>,
     /// Try the backend's non-central point anchors to avoid collisions.
@@ -21,6 +31,92 @@ pub fn apply_options(
     snapshot: &Value,
     editor: &Value,
 ) -> Result<(), String> {
+    if options.size.is_some() && options.numerics.contains_key("text-size") {
+        return Err("use size or numeric text-size, not both".into());
+    }
+    if options.append_fields.len() > 8
+        || options.separator.as_ref().is_some_and(|s| s.len() > 80)
+        || options.suffix.as_ref().is_some_and(|s| s.len() > 80)
+    {
+        return Err("composed labels exceed the bounded part length".into());
+    }
+    if options.separator.is_some() && options.append_fields.is_empty() {
+        return Err("a label separator requires append fields".into());
+    }
+    for field in &options.append_fields {
+        if !editor["available_fields"]
+            .as_array()
+            .is_some_and(|a| a.contains(&json!(field)))
+        {
+            return Err("appended label field is absent from the published vocabulary".into());
+        }
+    }
+    let format = options.format.as_deref().unwrap_or("raw");
+    if options.format.is_some()
+        && !snapshot["label_editor"]["field_formats"]
+            .as_array()
+            .is_some_and(|a| a.contains(&json!(format)))
+    {
+        return Err("label format is not published by the backend".into());
+    }
+    let mut primary = label["layout"]["text-field"].clone();
+    if format != "raw" {
+        primary = match format {
+            "round" => json!(["round", ["to-number", primary, 0]]),
+            "int" => json!(["floor", ["to-number", primary, 0]]),
+            _ => return Err("unsupported published field format".into()),
+        };
+    }
+    if !options.append_fields.is_empty() || options.suffix.is_some() {
+        if !snapshot["label_editor"]["field_part_types"]
+            .as_array()
+            .is_some_and(|a| a.contains(&json!("literal")))
+        {
+            return Err("backend does not support literal label parts".into());
+        }
+        let mut parts = vec![json!("concat"), json!(["to-string", primary])];
+        for field in &options.append_fields {
+            parts.extend([
+                json!(options.separator.as_deref().unwrap_or(" · ")),
+                json!(["to-string", ["coalesce", ["get", field], ""]]),
+            ]);
+        }
+        if let Some(suffix) = &options.suffix {
+            parts.push(json!(suffix));
+        }
+        primary = json!(parts);
+    }
+    if options.format.is_some() || !options.append_fields.is_empty() || options.suffix.is_some() {
+        label["layout"]["text-field"] = primary;
+    }
+    if let Some(alignment) = &options.alignment {
+        if !snapshot["label_editor"]["placements"]
+            .as_array()
+            .is_some_and(|a| a.contains(&json!(alignment)))
+        {
+            return Err("label alignment must be a published placement".into());
+        }
+        label["layout"]["symbol-placement"] = json!(alignment);
+        if alignment != "point" {
+            label["layout"]["text-rotation-alignment"] = json!("map");
+            label["layout"]["text-keep-upright"] = json!(true);
+        }
+    }
+    if let Some(allow) = options.allow_overlap {
+        label["layout"]["text-allow-overlap"] = json!(allow);
+    }
+    if let Some(color) = &options.halo_color {
+        if color.len() != 7
+            || !color.starts_with('#')
+            || !color[1..].bytes().all(|b| b.is_ascii_hexdigit())
+        {
+            return Err("label halo color must be a six-digit hexadecimal color".into());
+        }
+        if !label["paint"].is_object() {
+            label["paint"] = json!({});
+        }
+        label["paint"]["text-halo-color"] = json!(color);
+    }
     if let Some(visible) = options.visible {
         label["layout"]["visibility"] = json!(if visible { "visible" } else { "none" });
     }
@@ -58,6 +154,27 @@ pub fn apply_options(
         }
         label["paint"]["text-color"] = json!(color);
     }
+    for (key, value) in &options.numerics {
+        let range = &snapshot["label_editor"]["numerics"][key];
+        let low = range["min"]
+            .as_f64()
+            .ok_or("label numeric property is not published")?;
+        let high = range["max"]
+            .as_f64()
+            .ok_or("label numeric bounds are missing")?;
+        if !value.is_finite() || !(low..=high).contains(value) {
+            return Err(format!("label {key} must be between {low} and {high}"));
+        }
+        let group = if key == "text-opacity" || key.starts_with("text-halo-") {
+            "paint"
+        } else {
+            "layout"
+        };
+        if !label[group].is_object() {
+            label[group] = json!({});
+        }
+        label[group][key] = json!(value);
+    }
     if let Some(automatic) = options.automatic_placement {
         if automatic {
             if label["layout"]["symbol-placement"]
@@ -77,7 +194,7 @@ pub fn apply_options(
                 return Err("backend point label anchors are invalid".into());
             }
             label["layout"]["text-variable-anchor"] = json!(anchors);
-            label["layout"]["text-allow-overlap"] = json!(false);
+            label["layout"]["text-allow-overlap"] = json!(options.allow_overlap.unwrap_or(false));
             label["layout"]["text-ignore-placement"] = json!(false);
         } else {
             label["layout"]
@@ -140,6 +257,43 @@ pub fn apply_options(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn composed_labels_use_declared_fields_and_line_alignment() {
+        let schema = json!({"label_editor":{"field_part_types":["literal","field"],"field_formats":["round","raw"],"placements":["point","line"]}});
+        let editor = json!({"available_fields":["size"]});
+        let mut label = json!({"layout":{"text-field":["get","name"]}});
+        let mut options = LabelOptions {
+            append_fields: vec!["size".into()],
+            suffix: Some(" kVA".into()),
+            alignment: Some("line".into()),
+            allow_overlap: Some(true),
+            ..Default::default()
+        };
+        apply_options(&mut label, &options, &schema, &editor).unwrap();
+        assert_eq!(label["layout"]["text-field"][0], "concat");
+        assert_eq!(
+            label["layout"]["text-field"][3],
+            json!(["to-string", ["coalesce", ["get", "size"], ""]])
+        );
+        assert_eq!(label["layout"]["text-rotation-alignment"], "map");
+        options.append_fields = vec!["unknown".into()];
+        assert!(apply_options(&mut label, &options, &schema, &editor).is_err());
+    }
+
+    #[test]
+    fn numeric_label_controls_use_the_backend_bounds_and_property_groups() {
+        let schema = json!({"label_editor":{"numerics":{"symbol-sort-key":{"min":-1000,"max":1000},"text-halo-width":{"min":0,"max":10}}}});
+        let mut label = json!({"layout":{},"paint":{}});
+        let mut options = LabelOptions::default();
+        options.numerics.insert("symbol-sort-key".into(), -1000.);
+        options.numerics.insert("text-halo-width".into(), 1.5);
+        apply_options(&mut label, &options, &schema, &json!({})).unwrap();
+        assert_eq!(label["layout"]["symbol-sort-key"], -1000.);
+        assert_eq!(label["paint"]["text-halo-width"], 1.5);
+        options.numerics.insert("arbitrary".into(), 1.);
+        assert!(apply_options(&mut label, &options, &schema, &json!({})).is_err());
+    }
 
     #[test]
     fn fonts_are_governed_and_text_color_is_validated() {
