@@ -21,7 +21,7 @@ ds style label plan --ref master/lv_poles_print --field pole_number --visible on
 ds style label plan --ref master/customers_print --field house_number --visible on --size 8 --paper A0 --placement auto
 ds style label plan --ref master/tr_print --field transfo --visible on --size 10 --font 'Open Sans Bold' --color '#78350F' --paper all --placement auto
 ds style label plan --ref gt/rwanda_villages_print --field village --visible on --size 9 --font 'Open Sans Italic' --color '#64748B' --paper all --placement auto
-ds style cartography plan --ref gt/rwanda_villages_print --visible on --opacity 0 --boundary-color '#7C8792' --boundary-width 0.7 --boundary-opacity 0.5
+ds style cartography plan --ref gt/rwanda_villages_print --visible on --opacity 0 --boundary-color '#7C8792' --boundary-width 0.7 --boundary-opacity 0.5 --boundary-line-type dashed
 ds style cartography plan --ref gt/wetlands_print --fill-pattern diagonal-forward --pattern-color '#669C9B' --pattern-background '#EAF4F2' --pattern-spacing 16 --pattern-stroke 1
 ```
 
@@ -146,14 +146,14 @@ when a strict hierarchy is needed. Label priorities are separately authored:
 `style label set --number symbol-sort-key=-1000` reserves transformer labels
 first. `--overlap on` tries clear positions then allows an overlap if necessary.
 
-A template `focus` such as `{"buffer_m":35,"outside_color":"#E1E5E8","outside_opacity":0.55,"border_color":"#9AA5AE","border_width_mm":0.15}` derives
+A template `focus` such as `{"buffer_m":35,"outside_color":"#E1E5E8","outside_opacity":0.28,"border_color":"#9AA5AE","border_width_mm":0.15}` derives
 an expanded area from the current transformer's bounding geometry and washes
 the outside. Both buffer and fit exist only for that export. Saved transformer
 boundaries and other transformers are never changed.
 
 Span-only labels use `style cartography set --ref master/spans_print --opacity 0`
 and `style label set --ref master/spans_print --field length --format round
---suffix ' m' --alignment line-center --overlap on --number symbol-sort-key=-500`.
+--suffix ' m' --paper A0 --alignment line-center --overlap on --number symbol-sort-key=-500`.
 The separate LV conductor layer keeps its own pens. Labels are aligned to the
 span and kept upright. To label transformer name and rating, use `--field
 transfo --append-field tr_size --separator ' · ' --suffix ' kVA'`.
@@ -170,10 +170,10 @@ projects' selections. Local one-off rendering can read a request file through
 `report layout render` without publishing a template.
 
 `style_overrides` provides per-template pens over shared governed symbols:
-`{"lv_lines":{"size":2.3,"palette":{"35":"#A88D00"}}}`. Only selected category
+`{"lv_lines":{"size":2.3,"palette":{"3 x 35 + 54.6mm² ABC":"#A88D00"}}}`. Only selected category
 colours change; other categories and icons are inherited. Fields are `color`,
 `size`, `opacity`, and `palette` (category value to colour). A palette requires
-a primary categorical match/get colour style. These overrides apply to both
+a primary categorical match/get colour style, or an explicit `field`. These overrides apply to both
 map and legend. A global default, project override and personal render can
 therefore keep different pens without repeatedly editing shared styles.
 
@@ -182,7 +182,7 @@ Per-template label overrides are independent of shared Style Center settings:
 `label` also accepts `color`, `halo_color`, and `halo_mm`. Point sizes and halo
 millimetres are physical and stay fixed across the inherited paper factors.
 Use this for a generalized project overview while detailed network sheets keep
-all span lengths and their engineering labels. Geometry remains in the input
+A0 span lengths and their engineering labels. A3 omits span labels. Geometry remains in the input
 and therefore still contributes to the full project extent.
 
 Polygon outlines can be styled independently: `style cartography set --ref gt/rwanda_villages_print --boundary-line-type dashed --host desktop --project PROJECT --yes`. Use `solid` to clear boundary dashes; fill opacity remains independent.
