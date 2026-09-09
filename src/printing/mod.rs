@@ -1,5 +1,6 @@
 //! Print-layout authority shared by CLI, Canvas2D preview and vector delivery.
 //! Flat page elements in physical millimetres; no tile, HTML or remote-image IO.
+pub mod overrides;
 pub mod table_rows;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -202,6 +203,9 @@ pub struct TableBinding {
     /// headings still render, truncated within their columns without wrapping.
     #[serde(default = "table_measure_headings_default")]
     pub measure_headings: bool,
+    /// Explicitly allow a visibly warned incomplete table for an outlier.
+    #[serde(default)]
+    pub overflow: TableOverflow,
     /// Maximum side-by-side panels, with repeated headings and no omitted rows.
     #[serde(default = "one_panel")]
     pub panels: usize,
@@ -229,6 +233,7 @@ impl Default for TableBinding {
             max_widths_mm: vec![],
             min_widths_mm: vec![],
             measure_headings: true,
+            overflow: TableOverflow::TruncateWarn,
             panels: 1,
             gap_mm: 3.,
             sort_by: vec![],
@@ -237,6 +242,13 @@ impl Default for TableBinding {
             align: TableAlignment::Right,
         }
     }
+}
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum TableOverflow {
+    Error,
+    #[default]
+    TruncateWarn,
 }
 #[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema, PartialEq)]
 #[serde(rename_all = "snake_case")]
@@ -265,6 +277,9 @@ pub enum TablePresentation {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct LegendBinding {
+    /// Physical indentation of category swatches and labels under their layer.
+    #[serde(default = "legend_indent")]
+    pub indent_mm: f64,
     /// Logical layer IDs in the desired order; empty selects all geometry layers.
     #[serde(default)]
     pub layers: Vec<String>,
@@ -274,6 +289,9 @@ pub struct LegendBinding {
     pub categorical: bool,
     #[serde(default = "legend_row")]
     pub row_mm: f64,
+}
+fn legend_indent() -> f64 {
+    4.
 }
 fn legend_row() -> f64 {
     6.
@@ -638,6 +656,7 @@ pub fn validate(layout: &Layout) -> Result<(), String> {
                     .iter()
                     .any(|(k, v)| k.len() > 160 || v.len() > 160)
                 || !bounded(legend.row_mm, 3., 30.)
+                || !bounded(legend.indent_mm, 0., 20.)
             {
                 return Err("invalid legend controls".into());
             }
@@ -1190,6 +1209,10 @@ pub enum Command {
         #[serde(default)]
         required_layout: Option<String>,
     },
+    TransformerOverride {
+        layout: Layout,
+        instructions: overrides::PrintOverride,
+    },
     TransformerViews {
         views: BTreeMap<String, BTreeMap<String, GeographicView>>,
     },
@@ -1286,6 +1309,13 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
                 }
             }
             json!({"selection":selection})
+        }
+        Command::TransformerOverride {
+            layout,
+            instructions,
+        } => {
+            let layout = overrides::apply(&upgrade(layout)?, &instructions)?;
+            json!({"layout": layout, "instructions": instructions})
         }
         Command::TransformerViews { views } => {
             if views.len() > 10_000 {
