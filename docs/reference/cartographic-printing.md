@@ -238,3 +238,16 @@ Disable service length labels with the governed label visibility control.
 Use the village suffix and italic font through label controls, and a dash-dot
 boundary preset to distinguish villages from settlement boundaries. River
 arrow direction requires a reliable flow-direction source.
+
+For data-led schedules, set `table.measure_headings: false` with
+`max_widths_mm`. Only cell values determine column measurements; headings
+truncate within those widths and never wrap. Columns containing no data keep a
+3 mm minimum. Omission retains the previous heading-inclusive measurement.
+This is independent of `columns`, `headings` and their order, so additional
+meter, identification or phone columns need no renderer changes. Service cable
+map labels can be hidden while customer `service_length` remains a table column.
+
+Project overview collection and rendering share a 200,000-feature ceiling;
+collection also retains its 128 MiB bound. The public render task schema reports
+`x-max-total-features`. A failure above that ceiling requires a smaller explicit
+scope; the renderer does not silently discard features or outliers.
