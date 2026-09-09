@@ -78,6 +78,8 @@ pub struct PrintStyleOverride {
 #[serde(deny_unknown_fields)]
 pub struct PrintLabelOverride {
     pub visible: Option<bool>,
+    /// Paint placed labels below all map geometry, for background reference layers.
+    pub below_geometry: Option<bool>,
     pub size_pt: Option<f64>,
     pub color: Option<String>,
     pub halo_color: Option<String>,
@@ -94,6 +96,9 @@ pub struct PrintFocus {
     pub outside_opacity: f64,
     pub border_color: String,
     pub border_width_mm: f64,
+    /// Independent outline alpha; omission follows the outside shade's opacity.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub border_opacity: Option<f64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
@@ -765,6 +770,7 @@ pub fn validate(layout: &Layout) -> Result<(), String> {
             || !color(&focus.border_color)
             || !bounded(focus.outside_opacity, 0., 1.)
             || !bounded(focus.border_width_mm, 0., 5.)
+            || focus.border_opacity.is_some_and(|v| !bounded(v, 0., 1.))
         {
             return Err("invalid print-time focus parameters".into());
         }
@@ -1590,6 +1596,7 @@ mod tests {
             outside_opacity: 0.6,
             border_color: "#7C8792".into(),
             border_width_mm: 0.25,
+            border_opacity: Some(0.2),
         });
         validate(&l).unwrap();
         assert_eq!(
@@ -1599,6 +1606,9 @@ mod tests {
         l.layer_order.push("roads".into());
         assert!(validate(&l).is_err());
         l.layer_order.pop();
+        l.focus.as_mut().unwrap().border_opacity = Some(1.1);
+        assert!(validate(&l).is_err());
+        l.focus.as_mut().unwrap().border_opacity = None;
         l.focus.as_mut().unwrap().buffer_m = -1.;
         assert!(validate(&l).is_err());
     }
