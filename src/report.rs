@@ -83,6 +83,10 @@ enum Command {
         sheets: serde_json::Value,
         combined: bool,
     },
+    ContextPreparation {
+        sheets: serde_json::Value,
+        online: bool,
+    },
     Publication {
         engine: String,
         enqueue: bool,
@@ -207,6 +211,26 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
         }
         Command::Formats { sheets, combined } => {
             serde_json::json!({"outputs": crate::report_formats::plan(&sheets, combined)?})
+        }
+        Command::ContextPreparation { sheets, online } => {
+            let sheets = sheets.get("sheets").unwrap_or(&sheets);
+            let outputs = crate::report_formats::plan(sheets, false)?;
+            let layouts = crate::report_formats::named_layouts(sheets)?;
+            let mut seen = BTreeSet::new();
+            let mut contexts = Vec::new();
+            for output in outputs {
+                if let Some((_, id)) = crate::report_formats::named_print_output(&output.format) {
+                    for context in &layouts[id].context_layers {
+                        let value = serde_json::to_value(context).map_err(|e| e.to_string())?;
+                        if seen.insert(serde_json::to_string(&value).map_err(|e| e.to_string())?) {
+                            contexts.push(value);
+                        }
+                    }
+                }
+            }
+            // Every export ensures its selected inputs. Acquisition happens
+            // before the renderer; offline hosts can only inspect held data.
+            serde_json::json!({"contexts": contexts, "acquire_missing": online})
         }
         Command::Publication {
             engine,
@@ -364,6 +388,53 @@ mod tests {
 mod export_tests {
     use super::*;
     use serde_json::json;
+    #[test]
+    fn printing_ensures_selected_context_once_and_acquires_only_online() {
+        let mut first = crate::printing::default_layout();
+        first.id = "a3".into();
+        first
+            .context_layers
+            .push(crate::printing::PrintContextLayer {
+                id: "roads".into(),
+                label: "Roads".into(),
+                source: crate::printing::PrintContextSource::Catalog {
+                    country: "Rwanda".into(),
+                    layer: "roads".into(),
+                },
+            });
+        let mut second = first.clone();
+        second.id = "a0".into();
+        let mut unused = first.clone();
+        unused.id = "unused".into();
+        unused.context_layers[0].id = "not-selected".into();
+        let setups = [first, second, unused]
+            .map(|layout| json!({"id":layout.id,"revision":"a".repeat(64),"layout":layout}));
+        let sheets = json!({"project_settings":[{"parameter":"design_export_format","value":["pdf__a3","png__a3","pdf__a0"]}], "printing_setups":setups});
+        for online in [true, false] {
+            let output: serde_json::Value = serde_json::from_str(
+                &evaluate(
+                    &serde_json::to_vec(
+                        &json!({"command":"context_preparation","sheets":sheets,"online":online}),
+                    )
+                    .unwrap(),
+                )
+                .unwrap(),
+            )
+            .unwrap();
+            assert_eq!(output["result"]["acquire_missing"], online);
+            assert_eq!(output["result"]["contexts"].as_array().unwrap().len(), 1);
+            assert_eq!(output["result"]["contexts"][0]["id"], "roads");
+        }
+        let mut missing = sheets;
+        missing["printing_setups"] = json!([]);
+        assert!(evaluate(
+            &serde_json::to_vec(
+                &json!({"command":"context_preparation","sheets":missing,"online":true})
+            )
+            .unwrap()
+        )
+        .is_err());
+    }
     #[test]
     fn gui_and_cli_export_selection_use_the_same_closed_command() {
         let value = json!({"command":"export","project":"p","transformer":"agatare"});
