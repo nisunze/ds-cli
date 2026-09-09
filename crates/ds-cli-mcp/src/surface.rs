@@ -564,6 +564,7 @@ const SOLAR_DELIVERY_COMMANDS: &[&str] = &[
 const ROUTED_CHAPTERS: &[Chapter] = &[
     Chapter::Data,
     Chapter::Project,
+    Chapter::Assets,
     Chapter::GridModel,
     Chapter::PlsCadd,
     Chapter::Survey,
@@ -1099,7 +1100,7 @@ fn catalog_tool_json() -> Value {
             "type": "object",
             "properties": {
                 "query": { "type": ["string", "null"], "description": "Words to match against command ids and descriptions; at most ten summaries return." },
-                "chapter": { "type": ["string", "null"], "enum": ["project", "grid-model", "pls-cadd", "survey", "design", "map-presentation", "vector-tiles", "solar", "reports", "operations", "workstation", null], "description": "Restrict discovery to one operator-intent chapter." },
+                "chapter": { "type": ["string", "null"], "enum": ["project", "assets", "grid-model", "pls-cadd", "survey", "design", "map-presentation", "vector-tiles", "solar", "reports", "operations", "workstation", null], "description": "Restrict discovery to one operator-intent chapter." },
                 "command": { "type": ["string", "null"], "description": "Route one exact canonical command id to its chapter describe call." }
             },
             "additionalProperties": false
@@ -1161,6 +1162,7 @@ pub const fn chapter_tool_name(chapter: Chapter) -> &'static str {
         Chapter::Catalog => "ds_catalog",
         Chapter::Data => "ds_data",
         Chapter::Project => "ds_project",
+        Chapter::Assets => "ds_assets",
         Chapter::GridModel => "ds_grid_model",
         Chapter::PlsCadd => "ds_pls_cadd",
         Chapter::Survey => "ds_survey",
@@ -1182,6 +1184,9 @@ pub const fn chapter_description(chapter: Chapter) -> &'static str {
         }
         Chapter::Project => {
             "Establish project context and manage project plans, tasks, assignments, and records. Describe a command before invoking it."
+        }
+        Chapter::Assets => {
+            "Browse, preview, classify, promote, link and ingest the documents a project holds, in declared and auto-indexed folders. Describe a command before invoking it."
         }
         Chapter::GridModel => {
             "Inspect, validate, project, revise, import, and export canonical grid models. Describe a command before invoking it."

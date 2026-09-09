@@ -1282,6 +1282,57 @@ static WORK_ENTRIES: &[Entry] = &[
     },
 ];
 
+/// Project Assets lists its commands in the order a session uses them: find
+/// the asset, look at it, then act on it. Domain help prints this order
+/// verbatim, so the index doubles as the procedure.
+static ASSETS_ENTRIES: &[Entry] = &[
+    Entry {
+        command: &ds_cli_assets::list::COMMAND,
+        handler: ds_cli_assets::list::run,
+        render: ds_cli_assets::list::render,
+    },
+    Entry {
+        command: &ds_cli_assets::tree::COMMAND,
+        handler: ds_cli_assets::tree::run,
+        render: ds_cli_assets::tree::render,
+    },
+    Entry {
+        command: &ds_cli_assets::read::COMMAND,
+        handler: ds_cli_assets::read::run,
+        render: ds_cli_assets::read::render,
+    },
+    Entry {
+        command: &ds_cli_assets::preview::COMMAND,
+        handler: ds_cli_assets::preview::run,
+        render: ds_cli_assets::preview::render,
+    },
+    Entry {
+        command: &ds_cli_assets::classify::COMMAND,
+        handler: ds_cli_assets::classify::run,
+        render: ds_cli_assets::classify::render,
+    },
+    Entry {
+        command: &ds_cli_assets::promote::COMMAND,
+        handler: ds_cli_assets::promote::run,
+        render: ds_cli_assets::promote::render,
+    },
+    Entry {
+        command: &ds_cli_assets::attach::COMMAND,
+        handler: ds_cli_assets::attach::run,
+        render: ds_cli_assets::attach::render,
+    },
+    Entry {
+        command: &ds_cli_assets::ingest::COMMAND,
+        handler: ds_cli_assets::ingest::run,
+        render: ds_cli_assets::ingest::render,
+    },
+    Entry {
+        command: &ds_cli_assets::folder::COMMAND,
+        handler: ds_cli_assets::folder::run,
+        render: ds_cli_assets::folder::render,
+    },
+];
+
 /// Design collaboration is durable project metadata, not map-owned local
 /// state. It is available through a paired desktop without an open map.
 static DESIGN_ENTRIES: &[Entry] = &[
@@ -1871,6 +1922,10 @@ static DOMAINS: &[Registered] = &[
     Registered {
         domain: &ds_cli_work::DOMAIN,
         entries: WORK_ENTRIES,
+    },
+    Registered {
+        domain: &ds_cli_assets::DOMAIN,
+        entries: ASSETS_ENTRIES,
     },
     Registered {
         domain: &ds_cli_design::DOMAIN,

@@ -1,0 +1,19 @@
+[package]
+name = "ds-cli-assets"
+description = "The `ds assets` domain: Project Assets — the documents a project holds, in folders, with previews, classification and links to the work they belong to."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[dependencies]
+ds-cli-contract = { workspace = true }
+# Project Assets live behind the running application: ds-brain is the
+# authority on who may see a row, the kernel inside the webview decodes the
+# previews and holds the offline catalogue, and the desktop writes files. Every
+# command here is one named bridge operation on the printing chain, and there
+# is no engine to link.
+ds-cli-desktop = { workspace = true }
+serde_json = { workspace = true }

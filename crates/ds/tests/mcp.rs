@@ -898,6 +898,67 @@ fn chapter_describe_and_invoke_return_the_exact_cli_envelopes() {
 }
 
 #[test]
+fn the_assets_chapter_is_routed_and_describes_the_live_command() {
+    // A new chapter is only worth its root-help line if an agent can actually
+    // reach it: the router must be advertised, the catalogue must answer for
+    // it, and `describe` must return the live descriptor rather than a second
+    // schema written by hand.
+    let (responses, _) = mcp(
+        &["--exposure", "chapters"],
+        &[
+            json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/list" }),
+            json!({ "jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": { "name": "ds_catalog", "arguments": { "chapter": "assets" } } }),
+            json!({ "jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": { "name": "ds_assets", "arguments": { "operation": "describe", "command": "assets.list" } } }),
+        ],
+    );
+
+    let router = ds_cli_mcp::surface::chapter_tool_name(Chapter::Assets);
+    assert_eq!(router, "ds_assets");
+    let tools = response(&responses, 1)["result"]["tools"]
+        .as_array()
+        .expect("tools");
+    assert!(
+        tools.iter().any(|tool| tool["name"] == router),
+        "the assets chapter publishes no router; `ds assets` would be unreachable over MCP"
+    );
+
+    let catalogue = &response(&responses, 2)["result"]["structuredContent"];
+    assert_eq!(catalogue["chapter"], "assets");
+    assert_eq!(catalogue["tool"], router);
+    let published: BTreeSet<&str> = catalogue["commands"]
+        .as_array()
+        .expect("chapter commands")
+        .iter()
+        .map(|command| command["id"].as_str().expect("command id"))
+        .collect();
+    let expected: BTreeSet<&str> = [
+        "assets.list",
+        "assets.tree",
+        "assets.read",
+        "assets.preview",
+        "assets.classify",
+        "assets.promote",
+        "assets.attach",
+        "assets.ingest",
+        "assets.folder",
+    ]
+    .into_iter()
+    .collect();
+    assert_eq!(
+        published, expected,
+        "the assets chapter must project exactly the registered assets commands"
+    );
+
+    // The one rule this whole suite exists to hold: MCP is a projection of the
+    // live CLI, so `describe` is byte-for-byte the descriptor `ds capabilities`
+    // prints.
+    assert_eq!(
+        response(&responses, 3)["result"]["structuredContent"],
+        cli(&["capabilities", "assets.list", "--output", "json"])
+    );
+}
+
+#[test]
 fn map_design_open_is_projected_by_catalog_chapter_and_typed_profile() {
     let (responses, _) = mcp(
         &["--exposure", "chapters"],

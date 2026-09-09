@@ -5420,6 +5420,525 @@ fn a_well_formed_work_call_only_ever_fails_on_the_pairing_state() {
 }
 
 // ---------------------------------------------------------------------------
+// assets
+// ---------------------------------------------------------------------------
+
+#[test]
+fn assets_validates_its_own_inputs_before_it_opens_the_bridge() {
+    // Every refusal below must be reachable on a machine with no application
+    // running, because that is every CI machine — and because a caller who
+    // pasted half an asset id should hear which flag was wrong, not that no
+    // session was found. A handler that resolved the desktop first would
+    // answer `desktop_not_paired` for every row here.
+    let long_query = "contract ".repeat(30); // 270 characters; the bound is 200
+    let long_layer = "L".repeat(96); // the local layer name is bounded at 80, as the desktop bounds it
+    let missing_file = temp_root("assets-ingest-missing").display().to_string();
+    let new_file = temp_root("assets-read-out").display().to_string();
+    // An existing path — the temp directory itself — and a path under a
+    // directory that does not exist. The desktop shares this filesystem, so
+    // both are known here, before any round trip.
+    let existing_path = std::env::temp_dir().display().to_string();
+    let orphan_file = temp_root("assets-read-no-such-dir")
+        .join("lot3.pdf")
+        .display()
+        .to_string();
+    let projected = "sys:transformer_report:AGASHARU/2026-08-report.pdf";
+    let minted = "a_7kq3nr2v0b1c";
+
+    let cases: Vec<(Vec<&str>, &str)> = vec![
+        // A page larger than the application returns must be refused by the
+        // bound it names, not one round trip later.
+        (vec!["assets", "list", "--limit", "500"], "invalid_number"),
+        // A transposed day and month is the commonest filter mistake there
+        // is, and `2026-01-09` for the ninth of September is a valid date
+        // that quietly lists the wrong eight months.
+        (
+            vec!["assets", "list", "--since", "01-09-2026"],
+            "invalid_date",
+        ),
+        (
+            vec!["assets", "list", "--folder", "/contracts"],
+            "invalid_folder_path",
+        ),
+        // The kind vocabulary is closed at the parser, so a plausible synonym
+        // never reaches the catalogue as an empty result.
+        (
+            vec!["assets", "list", "--kind", "spreadsheet"],
+            "invalid_choice",
+        ),
+        (vec!["assets", "tree", "--depth", "40"], "invalid_number"),
+        // A truncated paste of a minted id.
+        (
+            vec!["assets", "tree", "--into", "a_7kq3nr2v"],
+            "invalid_asset_id",
+        ),
+        (vec!["assets", "tree", "--link", "t_4812"], "invalid_link"),
+        // A tree read filters on one link; a second is refused rather than
+        // folded or dropped, and by this domain's code rather than the
+        // parser's `repeated_flag`.
+        (
+            vec![
+                "assets",
+                "tree",
+                "--link",
+                "pm_task:t_1",
+                "--link",
+                "pm_task:t_2",
+            ],
+            "invalid_link",
+        ),
+        (
+            vec!["assets", "tree", "--query", &long_query],
+            "invalid_query",
+        ),
+        // A relative destination: the desktop writes this file, so a path
+        // relative to *this* process's directory means nothing there.
+        (
+            vec![
+                "assets",
+                "read",
+                "--asset",
+                minted,
+                "--out",
+                "Downloads/lot3.pdf",
+            ],
+            "invalid_out_path",
+        ),
+        (
+            vec!["assets", "read", "--asset", "lot3.pdf", "--out", &new_file],
+            "invalid_asset_id",
+        ),
+        // An existing destination is never overwritten, and it is refused
+        // here rather than after a project round trip.
+        (
+            vec!["assets", "read", "--asset", minted, "--out", &existing_path],
+            "invalid_out_path",
+        ),
+        (
+            vec!["assets", "read", "--asset", minted, "--out", &orphan_file],
+            "invalid_out_path",
+        ),
+        // A link with a segment too many is a mistake, not an odd id; the
+        // desktop adapter reads it the same way.
+        (
+            vec!["assets", "tree", "--link", "pm_task:t_4812:extra"],
+            "invalid_link",
+        ),
+        (
+            vec!["assets", "preview", "--asset", minted, "--pages", "9"],
+            "invalid_number",
+        ),
+        (
+            vec!["assets", "preview", "--asset", minted, "--rows", "5000"],
+            "invalid_number",
+        ),
+        // A classify with no change flag is a round trip that could not have
+        // changed anything.
+        (
+            vec!["assets", "classify", "--asset", minted, "--yes"],
+            "nothing_to_update",
+        ),
+        (
+            vec![
+                "assets",
+                "classify",
+                "--asset",
+                minted,
+                "--sensitivity",
+                "secret",
+                "--yes",
+            ],
+            "invalid_choice",
+        ),
+        // A projected row is the kernel's reading of something the project
+        // already owns. Classifying it would be classifying a view.
+        (
+            vec![
+                "assets", "classify", "--asset", projected, "--status", "durable", "--yes",
+            ],
+            "projected_asset_read_only",
+        ),
+        (
+            vec![
+                "assets",
+                "promote",
+                "--asset",
+                minted,
+                "--as-layer",
+                &long_layer,
+            ],
+            "invalid_layer_name",
+        ),
+        // Linking to nothing has no intent to send.
+        (
+            vec!["assets", "attach", "--asset", minted, "--yes"],
+            "invalid_attachment",
+        ),
+        // A task and a DS object are two different links.
+        (
+            vec![
+                "assets",
+                "attach",
+                "--asset",
+                minted,
+                "--task",
+                "t_4812",
+                "--object-type",
+                "transformer",
+                "--entity-id",
+                "TX-104",
+                "--yes",
+            ],
+            "invalid_attachment",
+        ),
+        (
+            vec![
+                "assets", "attach", "--asset", projected, "--task", "t_4812", "--yes",
+            ],
+            "projected_asset_read_only",
+        ),
+        (
+            vec!["assets", "ingest", "--path", "lot3.pdf", "--yes"],
+            "invalid_source_path",
+        ),
+        (
+            vec!["assets", "ingest", "--path", &missing_file, "--yes"],
+            "invalid_source_path",
+        ),
+        (
+            vec!["assets", "folder", "--path", "/contracts", "--yes"],
+            "invalid_folder_path",
+        ),
+        (
+            vec![
+                "assets",
+                "folder",
+                "--path",
+                "contracts/2026",
+                "--rename-to",
+                "../elsewhere",
+                "--yes",
+            ],
+            "invalid_folder_path",
+        ),
+        // A declaration under a projected root would be a second folder
+        // authority, and it would vanish on the next refresh.
+        (
+            vec![
+                "assets",
+                "folder",
+                "--path",
+                "Transformers/AGASHARU",
+                "--yes",
+            ],
+            "projected_asset_read_only",
+        ),
+    ];
+
+    for (args, expected) in cases {
+        let mut argv = args.clone();
+        argv.extend(["--output", "json"]);
+        assert_eq!(
+            refusal(&argv),
+            expected,
+            "`ds {}` must be refused locally as `{expected}`, before any project round trip",
+            args.join(" ")
+        );
+    }
+}
+
+#[test]
+fn every_assets_write_refuses_without_confirmation() {
+    // The catalogue is shared, governed state: a classification drives who may
+    // read the bytes, an ingest publishes a file to everyone on the project,
+    // and a folder default is inherited by everything filed under it. Each is
+    // `global_write`, so dispatch must stop it before the bridge opens.
+    for args in [
+        vec![
+            "assets",
+            "classify",
+            "--asset",
+            "a_7kq3nr2v0b1c",
+            "--status",
+            "durable",
+        ],
+        vec![
+            "assets",
+            "attach",
+            "--asset",
+            "a_7kq3nr2v0b1c",
+            "--task",
+            "t_4812",
+        ],
+        vec!["assets", "ingest", "--path", "/tmp/lot3.pdf"],
+        vec!["assets", "folder", "--path", "contracts/2026"],
+    ] {
+        let mut argv = args.clone();
+        argv.extend(["--output", "json"]);
+        assert_eq!(
+            refusal(&argv),
+            "confirmation_required",
+            "`ds {}` reached past the confirmation gate",
+            args.join(" ")
+        );
+    }
+
+    // And the other way round, which is the half that fails silently: reading
+    // an asset to a new file and promoting one to a local layer change nothing
+    // anyone else can see, so neither may sit behind a gate that would stop an
+    // unattended session from ever reading a document.
+    let out = temp_root("assets-unconfirmed-read").display().to_string();
+    for args in [
+        vec![
+            "assets",
+            "read",
+            "--asset",
+            "a_7kq3nr2v0b1c",
+            "--out",
+            out.as_str(),
+        ],
+        vec![
+            "assets",
+            "promote",
+            "--asset",
+            "a_7kq3nr2v0b1c",
+            "--as-layer",
+            "Lot3-poles",
+        ],
+    ] {
+        let mut argv = args.clone();
+        argv.extend(["--output", "json"]);
+        assert_ne!(
+            refusal(&argv),
+            "confirmation_required",
+            "`ds {}` is behind the confirmation gate, but it writes nothing anyone else can see",
+            args.join(" ")
+        );
+    }
+}
+
+#[test]
+fn every_assets_command_is_reachable_without_the_desktop_installed() {
+    // Same reasoning as the map and work domains: dispatch checks availability
+    // before parsing, so a discovery gate would put `--desktop-descriptor` and
+    // every input refusal above out of reach on a machine with no application.
+    let index = ok(&["capabilities", "assets", "--output", "json"]);
+    let commands = index["commands"].as_array().expect("commands");
+    let actual: BTreeSet<&str> = commands
+        .iter()
+        .map(|command| command["id"].as_str().expect("command id"))
+        .collect();
+    let expected: BTreeSet<&str> = [
+        "assets.list",
+        "assets.tree",
+        "assets.read",
+        "assets.preview",
+        "assets.classify",
+        "assets.promote",
+        "assets.attach",
+        "assets.ingest",
+        "assets.folder",
+    ]
+    .into_iter()
+    .collect();
+    assert_eq!(
+        actual, expected,
+        "assets command coverage list changed; add a specific smoke assertion for the new command before accepting it"
+    );
+    for command in commands {
+        assert_eq!(
+            command["availability"], "available",
+            "`{}` gates on discovery, which puts --desktop-descriptor out of reach",
+            command["id"]
+        );
+    }
+    // The effect class is what decides whether an unattended session may run
+    // the command at all, and it is invisible until one does. `read` writes
+    // one local file, `promote` adds a layer to the running map, and the four
+    // catalogue writes change what everyone on the project sees.
+    for command in commands {
+        let id = command["id"].as_str().expect("id");
+        let expected = match id {
+            "assets.list" | "assets.tree" | "assets.preview" => "read_only",
+            "assets.read" => "local_file_write",
+            "assets.promote" => "local_ui",
+            _ => "global_write",
+        };
+        assert_eq!(
+            command["effect"].as_str().expect("effect"),
+            expected,
+            "`{id}` declares the wrong effect class for its blast radius"
+        );
+    }
+}
+
+#[test]
+fn a_well_formed_assets_call_only_ever_fails_on_the_pairing_state() {
+    // Whatever this machine's desktop situation, a correct invocation must end
+    // in a pairing outcome — never an input refusal, and never an internal
+    // error. `undeclared_bridge_argument` in particular would mean a handler
+    // built an argument key its own BridgeOp does not declare, which no other
+    // suite can see: bridge_parity holds the declaration against the
+    // application, and only this holds the handler against the declaration.
+    let descriptor = temp_root("assets-smoke-unreachable")
+        .join("session.json")
+        .display()
+        .to_string();
+    let out = temp_root("assets-smoke-out").display().to_string();
+    let source = temp_root("assets-smoke-source.pdf");
+    std::fs::write(&source, b"%PDF-1.7 smoke\n").expect("temp ingest source is writable");
+    let source = source.display().to_string();
+
+    for args in [
+        vec!["assets", "list"],
+        vec![
+            "assets",
+            "list",
+            "--folder",
+            "contracts/2026",
+            "--kind",
+            "doc",
+            "--status",
+            "durable",
+            "--sensitivity",
+            "internal",
+            "--since",
+            "2026-09-01",
+            "--limit",
+            "25",
+        ],
+        vec![
+            "assets",
+            "tree",
+            "--folder",
+            "contracts",
+            "--depth",
+            "2",
+            "--kind",
+            "user",
+            "--query",
+            "lot3",
+            "--link",
+            "pm_task:t_4812",
+        ],
+        vec!["assets", "tree", "--into", "a_7kq3nr2v0b1c"],
+        vec![
+            "assets",
+            "read",
+            "--asset",
+            "a_7kq3nr2v0b1c",
+            "--member",
+            "Lot3/gis/poles.shp",
+            "--out",
+            out.as_str(),
+        ],
+        vec![
+            "assets",
+            "preview",
+            "--asset",
+            "a_7kq3nr2v0b1c",
+            "--member",
+            "Lot3/gis/poles.shp",
+            "--pages",
+            "2",
+            "--rows",
+            "50",
+        ],
+        vec![
+            "assets",
+            "classify",
+            "--asset",
+            "a_7kq3nr2v0b1c",
+            "--kind",
+            "doc",
+            "--status",
+            "durable",
+            "--folder",
+            "contracts/2026/epc",
+            "--sensitivity",
+            "restricted",
+            "--reason",
+            "signed original",
+            "--yes",
+        ],
+        vec![
+            "assets",
+            "promote",
+            "--asset",
+            "a_7kq3nr2v0b1c",
+            "--member",
+            "Lot3/gis/poles.shp",
+            "--as-layer",
+            "Lot3-poles",
+        ],
+        vec![
+            "assets",
+            "attach",
+            "--asset",
+            "a_7kq3nr2v0b1c",
+            "--task",
+            "t_4812",
+            "--yes",
+        ],
+        vec![
+            "assets",
+            "attach",
+            "--asset",
+            "a_7kq3nr2v0b1c",
+            "--object-type",
+            "transformer",
+            "--entity-id",
+            "TX-104",
+            "--detach",
+            "--yes",
+        ],
+        vec![
+            "assets",
+            "ingest",
+            "--path",
+            source.as_str(),
+            "--folder",
+            "contracts/2026",
+            "--sensitivity",
+            "internal",
+            "--yes",
+        ],
+        vec![
+            "assets",
+            "folder",
+            "--path",
+            "contracts/2026/epc",
+            "--sensitivity",
+            "internal",
+            "--status",
+            "fresh",
+            "--yes",
+        ],
+        vec![
+            "assets",
+            "folder",
+            "--path",
+            "contracts/2026/epc",
+            "--rename-to",
+            "epc-signed",
+            "--yes",
+        ],
+    ] {
+        let mut argv = args.clone();
+        argv.extend(["--desktop-descriptor", &descriptor, "--output", "json"]);
+        let code = refusal(&argv);
+        assert!(
+            code.is_empty() || PAIRING_CODES.contains(&code.as_str()),
+            "`ds {}` failed with `{code}`, which is not a pairing outcome. \
+             A well-formed call must reach the bridge and stop there.",
+            args.join(" ")
+        );
+    }
+
+    let _ = std::fs::remove_file(&source);
+}
+
+// ---------------------------------------------------------------------------
 // sre
 // ---------------------------------------------------------------------------
 

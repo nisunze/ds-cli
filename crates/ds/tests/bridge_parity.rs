@@ -43,18 +43,17 @@ struct App {
     map: String,
     map_layers: String,
     survey: String,
-    survey_forms: String,
-    survey_project_forms: String,
-    survey_templates: String,
     design: String,
     design_collaboration: String,
     data: String,
+    project_data: String,
     admin_boundary: String,
     cli_errors: String,
     materialize: String,
     sketches: String,
     analysis: String,
     work: String,
+    assets: String,
     dsgrid: String,
     dsgrid_contract: String,
     sre: String,
@@ -83,18 +82,17 @@ fn app() -> Option<App> {
         map: read("src/lib/desktop/cli-map.ts")?,
         map_layers: read("src/lib/desktop/cli-map-layers.ts")?,
         survey: read("src/lib/desktop/cli-survey.ts")?,
-        survey_forms: read("src/lib/desktop/cli-survey-forms.ts")?,
-        survey_project_forms: read("src/lib/desktop/cli-survey-project-forms.ts")?,
-        survey_templates: read("src/lib/desktop/cli-survey-templates.ts")?,
         design: read("src/lib/desktop/cli-map-design.ts")?,
         design_collaboration: read("src/lib/desktop/cli-design.ts")?,
         data: read("src/lib/desktop/cli-data.ts")?,
+        project_data: read("src/lib/desktop/cli-project-data.ts")?,
         admin_boundary: read("src/lib/search-place/cli-boundary.ts")?,
         cli_errors: read("src/lib/desktop/cli-errors.ts")?,
         materialize: read("src/lib/search-place/materialize.ts")?,
         sketches: read("src/lib/stores/sketches.ts")?,
         analysis: read("src/lib/analysis/outliers.ts")?,
         work: read("src/lib/desktop/cli-work.ts")?,
+        assets: read("src/lib/desktop/cli-assets.ts")?,
         dsgrid: read("src/lib/desktop/cli-dsgrid.ts")?,
         dsgrid_contract: read("docs/dsgrid-local-model-and-project-publication-contract.md")?,
         sre: read("src/lib/desktop/cli-sre.ts")?,
@@ -484,72 +482,47 @@ fn every_survey_control_plane_command_has_one_api_only_owner_and_exact_arguments
         skip("the ds-web sibling repository is not on disk");
         return;
     };
+
+    // The survey control plane no longer has a paired door. Survey semantics
+    // moved into the kernel and the desktop deleted its three typed control
+    // plane adapters (`cli-survey-forms.ts`, `cli-survey-project-forms.ts`,
+    // `cli-survey-templates.ts`) on 2026-09-05; `ds survey` declares no bridge
+    // operation at all. This suite read those three files until 2026-09-09, so
+    // one absent file skipped every check in it — a skipped parity suite being
+    // exactly what this file says is worse than no parity suite.
+    //
+    // What is left to hold is the door itself: the moment `ds survey` declares
+    // a bridge operation again, it needs a named adapter owner and the
+    // argument-contract assertions that used to live here, not an empty loop
+    // that keeps reporting green.
+    assert!(
+        ds_cli_survey::BRIDGE_OPS.is_empty(),
+        "`ds survey` declares {} bridge operation(s) again; give each one a typed \
+         desktop adapter owner, add that file to `App`, and restore the \
+         allowlist/handler/argument assertions here",
+        ds_cli_survey::BRIDGE_OPS.len()
+    );
+
+    // The three survey operations that do cross the bridge belong to `ds map
+    // survey`, and their owner is the map's own adapter. They are checked with
+    // the rest of that family; what must not happen is a control-plane
+    // operation reappearing in the desktop allowlist with nothing on this side
+    // declaring it.
     let allowlist = between(
         &app.transport,
         "pub const CLI_OPERATIONS: &[&str] = &[",
         "];",
     );
-    let adapters = [
-        &app.survey_forms,
-        &app.survey_project_forms,
-        &app.survey_templates,
-    ];
-    let mut seen = BTreeSet::new();
-    for operation in ds_cli_survey::BRIDGE_OPS {
+    for retired in [
+        "survey.form.create",
+        "survey.form.publish",
+        "survey.template.create",
+        "survey.project_form.attach",
+    ] {
         assert!(
-            seen.insert(operation.operation),
-            "`{}` is declared twice by ds survey",
-            operation.operation
+            !allowlist.contains(retired),
+            "the desktop allowlist admits `{retired}`, but no ds command declares it"
         );
-        assert_eq!(
-            count(allowlist, &format!("\"{}\"", operation.operation)),
-            1,
-            "`{}` must appear exactly once in the native allowlist",
-            operation.operation
-        );
-        assert_eq!(
-            switch_case_count(&app.frontend, operation.operation),
-            1,
-            "`{}` must have exactly one frontend handler",
-            operation.operation
-        );
-        let owners = adapters
-            .iter()
-            .filter(|source| has_operation_contract(source, operation.operation))
-            .collect::<Vec<_>>();
-        assert_eq!(
-            owners.len(),
-            1,
-            "`{}` must have exactly one typed survey adapter owner",
-            operation.operation
-        );
-        let accepted = quoted_contract_items(operation_contract(owners[0], operation.operation));
-        let declared = operation
-            .arguments
-            .iter()
-            .map(|argument| (*argument).to_string())
-            .collect::<BTreeSet<_>>();
-        assert_eq!(
-            accepted, declared,
-            "`{}` arguments drifted between ds and the desktop",
-            operation.operation
-        );
-    }
-
-    for source in adapters {
-        for forbidden in [
-            "$lib/stores/map",
-            "mapInstance",
-            "activeProject",
-            "editSession",
-            "indexedDB",
-            "bearer token",
-        ] {
-            assert!(
-                !source.contains(forbidden),
-                "survey control-plane adapters must not depend on map or credential state: {forbidden}"
-            );
-        }
     }
 }
 
@@ -1087,6 +1060,127 @@ fn every_work_command_has_one_closed_operation_owner() {
 }
 
 // ---------------------------------------------------------------------------
+// Project Assets
+// ---------------------------------------------------------------------------
+//
+// The assets family reaches the same closed door as Project Work. Its nine
+// operations and their exact argument keys are pinned by the campaign
+// contract on both sides, so a key that drifts here is a key the application
+// silently ignores: `invoke` refuses an undeclared key before it is sent, but
+// nothing refuses a declared key the adapter never reads.
+
+#[test]
+fn every_assets_command_has_one_closed_operation_owner() {
+    let Some(app) = app() else {
+        skip("the ds-web sibling repository is not on disk");
+        return;
+    };
+
+    let mut seen = BTreeSet::new();
+    let allowlist = between(
+        &app.transport,
+        "pub const CLI_OPERATIONS: &[&str] = &[",
+        "];",
+    );
+    assert!(
+        !allowlist.is_empty(),
+        "the desktop CLI operation allowlist is absent"
+    );
+    for operation in ds_cli_assets::BRIDGE_OPS {
+        assert!(
+            seen.insert(operation.operation),
+            "`{}` is declared twice by ds assets; one semantic operation has one owner",
+            operation.operation
+        );
+        assert_eq!(
+            count(allowlist, &format!("\"{}\"", operation.operation)),
+            1,
+            "`{}` must appear exactly once in the desktop allowlist",
+            operation.operation
+        );
+        assert_eq!(
+            switch_case_count(&app.frontend, operation.operation),
+            1,
+            "`{}` must have exactly one frontend handler",
+            operation.operation
+        );
+
+        let contract = operation_contract(&app.assets, operation.operation);
+        assert!(
+            !contract.is_empty(),
+            "`{}` has no typed Project Assets adapter argument contract",
+            operation.operation
+        );
+        let accepted = quoted_contract_items(contract);
+        for argument in operation.arguments {
+            let mut parts = argument.split('.');
+            let top = parts.next().expect("declared argument is non-empty");
+            assert!(
+                accepted.contains(top),
+                "ds assets sends `{argument}` to `{}`, but its typed adapter does not accept `{top}`",
+                operation.operation
+            );
+            for nested in parts {
+                assert!(
+                    app.assets.contains(&format!("'{nested}'")),
+                    "ds assets sends `{argument}` to `{}`, but the adapter does not validate `{nested}`",
+                    operation.operation
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn assets_bounds_and_refusals_match_the_desktop_owner() {
+    let Some(app) = app() else {
+        skip("the ds-web sibling repository is not on disk");
+        return;
+    };
+
+    // A bound enforced in two places must be the SAME bound. A `--limit` this
+    // CLI accepts and the application refuses is a round trip spent to learn
+    // a number both sides already knew; a `--depth` this CLI accepts and the
+    // kernel quietly cuts is worse, because the answer still looks complete.
+    for (constant, value) in [
+        ("MAX_PAGE_SIZE", ds_cli_assets::MAX_PAGE_SIZE),
+        ("MAX_TREE_DEPTH", ds_cli_assets::MAX_TREE_DEPTH),
+        ("MAX_QUERY_CHARS", ds_cli_assets::MAX_QUERY_CHARS as i64),
+        (
+            "MAX_CONTAINER_MEMBERS",
+            ds_cli_assets::MAX_CONTAINER_MEMBERS as i64,
+        ),
+        (
+            "MAX_LAYER_NAME_CHARS",
+            ds_cli_assets::MAX_LAYER_NAME_CHARS as i64,
+        ),
+        (
+            "MAX_FOLDER_SEGMENTS",
+            ds_cli_assets::MAX_FOLDER_SEGMENTS as i64,
+        ),
+        ("MAX_SEGMENT_CHARS", ds_cli_assets::MAX_SEGMENT_CHARS as i64),
+    ] {
+        assert!(
+            app.assets.contains(&format!("const {constant} = {value}")),
+            "the desktop must bound Project Assets `{constant}` at {value}, exactly as ds assets does"
+        );
+    }
+
+    // `classify`, `attach` and `folder` refuse a projected `sys:` row by name.
+    // Only the application knows which rows are projections, so it is the side
+    // that constructs the refusal; `ds assets` declares the code and the
+    // remedy. If the marker leaves the adapter, a write to a system row comes
+    // back as `desktop_refused` with nothing to do about it.
+    assert!(
+        app.assets
+            .contains(ds_cli_assets::PROJECTED_ASSET_READ_ONLY.code),
+        "no `{}` marker remains in the desktop Project Assets adapter; a write to a \
+         projected row would report desktop_refused instead of its named refusal",
+        ds_cli_assets::PROJECTED_ASSET_READ_ONLY.code
+    );
+}
+
+// ---------------------------------------------------------------------------
 // DS Grid local model lifecycle and project publication
 // ---------------------------------------------------------------------------
 //
@@ -1449,13 +1543,32 @@ fn admin_boundaries_have_one_closed_typed_desktop_operation_each() {
             "the native allowlist must own the data operation exactly once"
         );
         assert_eq!(switch_case_count(&app.frontend, operation.operation), 1);
-        let accepted = quoted_contract_items(operation_contract(&app.data, operation.operation));
+        // The data family has two typed adapters — local source work in
+        // `cli-data.ts`, the project dataset rooms in `cli-project-data.ts` —
+        // and exactly one of them owns each operation. Reading only the first
+        // reported `data.project_cache.*` as having no contract at all, which
+        // is the opposite of what is true.
+        let owners = [&app.data, &app.project_data]
+            .into_iter()
+            .filter(|source| has_operation_contract(source, operation.operation))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            owners.len(),
+            1,
+            "`{}` must have exactly one typed data adapter owner",
+            operation.operation
+        );
+        let accepted = quoted_contract_items(operation_contract(owners[0], operation.operation));
         let declared: BTreeSet<String> = operation
             .arguments
             .iter()
             .map(|argument| (*argument).to_string())
             .collect();
-        assert_eq!(accepted, declared);
+        assert_eq!(
+            accepted, declared,
+            "`{}` arguments drifted between ds and the desktop",
+            operation.operation
+        );
     }
     assert!(!app.data.contains("mapInstance"));
     assert!(!app.data.contains("maplibre-gl"));
@@ -1803,12 +1916,12 @@ fn every_style_command_has_one_closed_operation_owner() {
     // The host adapter must delegate every edit to the shared Rust/WASM
     // planner. It owns transport validation only; style grammar and bounds do
     // not get a second TypeScript implementation.
+    // Whitespace-insensitive on purpose: the previous marker was a one-line
+    // spelling of this call, so reformatting the adapter — which is all that
+    // happened — read as the planner having been abandoned.
+    let style_call_sites: String = app.style.chars().filter(|c| !c.is_whitespace()).collect();
     assert!(
-        app.style
-            .contains("planStyle({ snapshot, reference, instruction:")
-            || app
-                .style
-                .contains("planStyle({snapshot, reference, instruction:"),
+        style_call_sites.contains("planStyle({snapshot,reference,instruction:"),
         "the paired style adapter must delegate edits to the shared WASM planner"
     );
     assert!(!app.style.contains("const MAX_VALUES"));

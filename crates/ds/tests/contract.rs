@@ -75,6 +75,10 @@ const CHAPTERS: &[&str] = &[
     // it is not looking for either of those.
     "data",
     "project",
+    // 2026-09-09: Project Assets. Its own chapter rather than a corner of
+    // `project`, because an agent asked for a contract, a preview or a folder
+    // is not asking about the plan, and the family is nine commands wide.
+    "assets",
     "grid-model",
     "pls-cadd",
     "survey",
