@@ -64,6 +64,11 @@ pub struct PrintStyleOverride {
     pub opacity: Option<f64>,
     #[serde(default)]
     pub palette: BTreeMap<String, String>,
+    /// Optional explicit category field for palette and size overrides.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub field: Option<String>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub size_by_value: BTreeMap<String, f64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub label: Option<PrintLabelOverride>,
 }
@@ -719,6 +724,10 @@ pub fn validate(layout: &Layout) -> Result<(), String> {
                         || l.color.as_ref().is_some_and(|c| !color(c))
                         || l.halo_color.as_ref().is_some_and(|c| !color(c))
                 })
+                || o.field.as_ref().is_some_and(|field| field.is_empty() || field.len() > 160 || field.trim() != field)
+                || (!o.size_by_value.is_empty() && o.field.is_none())
+                || o.size_by_value.len() > 128
+                || o.size_by_value.iter().any(|(key, size)| key.len() > 160 || !bounded(*size, 0., 48.))
                 || o.palette.len() > 128
                 || o.palette.iter().any(|(k, v)| k.len() > 160 || !color(v))
                 || (o.color.is_some() && !o.palette.is_empty())
@@ -1820,6 +1829,21 @@ mod tests {
         )
         .is_err());
     }
+    #[test]
+    fn category_sizes_need_a_field_and_scale_rounding_is_bounded() {
+        let mut layout = default_layout();
+        layout.style_refs.insert("roads".into(), "gt/roads_print".into());
+        let mut change = PrintStyleOverride::default();
+        change.size_by_value.insert("National Road".into(), 4.4);
+        layout.style_overrides.insert("roads".into(), change);
+        assert!(validate(&layout).is_err());
+        layout.style_overrides.get_mut("roads").unwrap().field = Some("type".into());
+        layout.scale_rounding = Some(100.);
+        validate(&layout).unwrap();
+        layout.scale_rounding = Some(0.);
+        assert!(validate(&layout).is_err());
+    }
+
     #[test]
     fn template_label_overrides_validate_physical_limits() {
         let mut layout = default_layout();
