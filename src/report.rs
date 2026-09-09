@@ -73,6 +73,11 @@ enum Command {
     MapRequest {
         request: crate::printing::map::Request,
     },
+    MapModelRoom {
+        owner: String,
+        project: String,
+        model: crate::printing::map::Model,
+    },
     MapMvLayers {
         projection: serde_json::Value,
         model: crate::printing::map::Model,
@@ -227,6 +232,11 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
     }
     let command: Command = serde_json::from_slice(input).map_err(|e| e.to_string())?;
     let result = match command {
+        Command::MapModelRoom {
+            owner,
+            project,
+            model,
+        } => crate::printing::map::model_room(&owner, &project, model)?,
         Command::MapMvLayers {
             projection,
             model,

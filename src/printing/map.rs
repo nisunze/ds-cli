@@ -361,6 +361,36 @@ pub struct Model {
     pub revision_id: String,
     pub digest: String,
 }
+/// A style-independent room for one exact geographic MV projection. Bump the
+/// room version whenever the native projection contract changes. Paper, camera
+/// and output format intentionally do not participate in its identity.
+pub fn model_room(owner: &str, project: &str, model: Model) -> Result<Value, String> {
+    if owner.is_empty() || owner.len() > 128 || !identifier(project) {
+        return Err("Print input rooms require an exact owner and project".into());
+    }
+    if model.id.is_empty()
+        || model.revision_id.is_empty()
+        || model.digest.len() != 64
+        || !model.digest.bytes().all(|b| b.is_ascii_hexdigit())
+    {
+        // Mutable or unverified local models remain usable, but never cacheable.
+        return Ok(Value::Null);
+    }
+    use sha2::{Digest, Sha256};
+    let identity = serde_json::to_vec(&(
+        owner,
+        project,
+        model.id,
+        model.revision_id,
+        model.digest.to_lowercase(),
+    ))
+    .map_err(|e| e.to_string())?;
+    Ok(json!(format!(
+        "print-input-room/mv-projection/v1:{:x}",
+        Sha256::digest(identity)
+    )))
+}
+
 pub fn mv_layers(projection: Value, model: Model, bounds: [f64; 4]) -> Result<Value, String> {
     let [w, s, e, n] = bounds;
     let area = json!({"type":"Polygon","coordinates":[[[w,s],[e,s],[e,n],[w,n],[w,s]]]});
@@ -434,6 +464,41 @@ mod tests {
             layout: None,
         }
     }
+    #[test]
+    fn print_input_room_is_fenced_to_owner_project_and_immutable_model() {
+        let model = |rev: &str, digest: &str| Model {
+            id: "model".into(),
+            label: "Display".into(),
+            revision_id: rev.into(),
+            digest: digest.into(),
+        };
+        let a = "a".repeat(64);
+        let key = model_room("owner", "project", model("rev1", &a)).unwrap();
+        assert_eq!(
+            key,
+            model_room("owner", "project", model("rev1", &a)).unwrap()
+        );
+        assert_ne!(
+            key,
+            model_room("other", "project", model("rev1", &a)).unwrap()
+        );
+        assert_ne!(
+            key,
+            model_room("owner", "other", model("rev1", &a)).unwrap()
+        );
+        assert_ne!(
+            key,
+            model_room("owner", "project", model("rev2", &a)).unwrap()
+        );
+        assert_ne!(
+            key,
+            model_room("owner", "project", model("rev1", &"b".repeat(64))).unwrap()
+        );
+        assert!(model_room("owner", "project", model("rev1", "unverified"))
+            .unwrap()
+            .is_null());
+    }
+
     #[test]
     fn mv_print_preserves_canonical_angle_point_roles_and_numbers() {
         let features = json!({"features":[{"type":"Feature","id":"node-a","geometry":{"type":"Point","coordinates":[29.5,-2.]},"properties":{"_layer":"angle_points","point_role":"angle","number":"PI-17","tap_type":"transformer","tr_name":"Agatare","struct_no":"TR-4"}}]});
