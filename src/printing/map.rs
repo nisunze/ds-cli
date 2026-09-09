@@ -12,9 +12,15 @@ pub struct Request {
     pub family: String,
     pub codes: Vec<String>,
     pub paper: Paper,
+    #[serde(default = "default_dpi")]
+    pub dpi: u16,
     #[serde(default)]
     pub layout: Option<Layout>,
 }
+pub fn default_dpi() -> u16 {
+    300
+}
+
 pub fn validate_request(r: &Request) -> Result<(), String> {
     if !identifier(&r.project) || !identifier(&r.id) || r.project.len() > 128 || r.id.len() > 80 {
         return Err("Map printing requires exact bounded project and map identifiers".into());
@@ -38,6 +44,9 @@ pub fn validate_request(r: &Request) -> Result<(), String> {
     }
     if !matches!(r.paper, Paper::A0 | Paper::A3) {
         return Err("Local map printing supports A0 or A3".into());
+    }
+    if !(72..=1200).contains(&r.dpi) {
+        return Err("Print DPI must be between 72 and 1200".into());
     }
     if let Some(layout) = &r.layout {
         validate(layout)?;
@@ -377,7 +386,26 @@ mod tests {
             family: family.into(),
             codes: codes.iter().map(|s| s.to_string()).collect(),
             paper: Paper::A3,
+            dpi: default_dpi(),
             layout: None,
+        }
+    }
+    #[test]
+    fn dpi_defaults_and_roundtrips_without_changing_output_identity() {
+        let mut raw =
+            json!({"project":"project","id":"map","family":"mv-map","codes":["24"],"paper":"A3"});
+        let r: Request = serde_json::from_value(raw.clone()).unwrap();
+        assert_eq!(r.dpi, 300);
+        for dpi in [72, 150, 300, 600, 1200] {
+            raw["dpi"] = json!(dpi);
+            let r: Request = serde_json::from_value(raw.clone()).unwrap();
+            let p = plan(&r, vec![boundary("24", "district", 29.)], &json!({})).unwrap();
+            assert_eq!(p["request"]["dpi"], dpi);
+            assert_eq!(p["filename"], "map.a3-landscape.pdf");
+        }
+        for dpi in [0, 71, 1201] {
+            raw["dpi"] = json!(dpi);
+            assert!(validate_request(&serde_json::from_value(raw.clone()).unwrap()).is_err());
         }
     }
     #[test]
