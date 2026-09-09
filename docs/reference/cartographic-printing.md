@@ -94,8 +94,11 @@ Add an optional layout-level composition instruction:
 Movable IDs must name independent tables or legends in the map viewport's
 `fit_around` list. Flow-linked groups stay fixed. The renderer measures contents,
 tries bounded edge and shelf placements, and ranks them by the largest free
-map scale for the actual geographic aspect ratio. It preserves the authored
-location when equally good. This is a deterministic bounded search, not a
+map scale for the actual geographic aspect ratio. When map scale is equal, it
+minimizes unused area inside the movable furniture's shared bounding box, then
+prefers the authored locations. This groups tables with the requested clearance
+without preventing opposite-side placement when that improves map fit. Omit
+composition for explicit placement. This is a deterministic bounded search, not a
 claim of globally optimal packing. Fixed-scale cameras require fixed furniture;
 automatic composition uses a fitted view. Impossible arrangements produce a
 specific refusal so the cartographer can change columns, area or panel limits.
