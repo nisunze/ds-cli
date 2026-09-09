@@ -193,6 +193,14 @@ fn start(row: &mut Value) -> Result<()> {
     Ok(())
 }
 fn opening(row: &mut Value) -> Result<Effect> {
+    // Validate through the same declaration owner used by downloaded heads.
+    for output in outputs(row)? {
+        let declaration: crate::compute_artifact_inventory::Declaration =
+            serde_json::from_value(declaration(output))
+                .map_err(|_| failed("Publication output declaration is incomplete."))?;
+        crate::compute_artifact_inventory::validate(text(row, "engine"), &declaration)
+            .map_err(failed)?;
+    }
     row["phase"] = json!("opening");
     let mut request = json!({});
     for key in [
