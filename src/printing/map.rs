@@ -12,11 +12,22 @@ pub struct Request {
     pub family: String,
     pub codes: Vec<String>,
     pub paper: Paper,
+    /// MV sheets may share one viewport while retaining each district boundary.
+    #[serde(default)]
+    pub page_mode: PageMode,
     #[serde(default = "default_dpi")]
     pub dpi: u16,
     #[serde(default)]
     pub layout: Option<Layout>,
 }
+#[derive(Debug, Clone, Copy, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum PageMode {
+    #[default]
+    PerArea,
+    Combined,
+}
+
 pub fn default_dpi() -> u16 {
     300
 }
@@ -100,6 +111,34 @@ pub fn plan(r: &Request, boundaries: Vec<Boundary>, sheets: &Value) -> Result<Va
                 .join(" · "),
             full["area"].clone(),
             full["sectors"].clone(),
+        )]
+    } else if r.page_mode == PageMode::Combined {
+        // Keep the exact polygon rings and individual administrative identities.
+        // Combining sheets changes the camera, never the source geometry.
+        let mut polygons = Vec::new();
+        let mut features = Vec::new();
+        let mut names = Vec::new();
+        for b in captured.into_values() {
+            match b.geometry["type"].as_str() {
+                Some("Polygon") => polygons.push(b.geometry["coordinates"].clone()),
+                Some("MultiPolygon") => polygons.extend(
+                    b.geometry["coordinates"]
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .cloned(),
+                ),
+                _ => return Err("Map boundaries must be polygonal".into()),
+            }
+            names.push(b.name.clone());
+            features.push(json!({"type":"Feature","id":b.code,
+                "properties":{"name":b.name,"code":b.code},"geometry":b.geometry}));
+        }
+        vec![(
+            codes.join("-"),
+            names.join(" · "),
+            json!({"type":"MultiPolygon","coordinates":polygons}),
+            json!({"type":"FeatureCollection","features":features}),
         )]
     } else {
         captured.into_values().map(|b| (b.code.clone(),b.name.clone(),b.geometry.clone(),json!({"type":"FeatureCollection","features":[{"type":"Feature","properties":{"name":b.name,"code":b.code},"geometry":b.geometry}]}))).collect()
@@ -390,6 +429,7 @@ mod tests {
             family: family.into(),
             codes: codes.iter().map(|s| s.to_string()).collect(),
             paper: Paper::A3,
+            page_mode: PageMode::default(),
             dpi: default_dpi(),
             layout: None,
         }
@@ -495,6 +535,43 @@ mod tests {
         )
         .is_err());
     }
+    #[test]
+    fn combined_mv_sheet_preserves_boundaries_holes_and_canonical_identity() {
+        let mut r = request("mv-map", &["24", "22"]);
+        r.page_mode = PageMode::Combined;
+        let mut first = boundary("22", "district", 29.);
+        let hole = json!([
+            [29.02, -1.98],
+            [29.02, -1.96],
+            [29.04, -1.96],
+            [29.04, -1.98],
+            [29.02, -1.98]
+        ]);
+        first.geometry["coordinates"]
+            .as_array_mut()
+            .unwrap()
+            .push(hole.clone());
+        let p = plan(&r, vec![boundary("24", "district", 30.), first], &json!({})).unwrap();
+        assert_eq!(p["pages"].as_array().unwrap().len(), 1);
+        let page = &p["pages"][0];
+        assert_eq!(page["code"], "22-24");
+        assert_eq!(page["name"], "Area 22 · Area 24");
+        assert_eq!(page["boundaries"]["features"].as_array().unwrap().len(), 2);
+        assert_eq!(page["area"]["coordinates"][0][1], hole);
+        assert_eq!(
+            page["boundaries"]["features"][1]["properties"]["code"],
+            "24"
+        );
+        assert!(page["extent"][0].as_f64().unwrap() < 29.);
+        assert!(page["extent"][2].as_f64().unwrap() > 30.1);
+        assert_eq!(p["filename"], "map.a3-landscape.pdf");
+        assert_eq!(p["family"], "mv-map");
+        assert!(plan(&r, vec![boundary("24", "district", 30.)], &json!({})).is_err());
+        let mut raw = serde_json::to_value(&r).unwrap();
+        raw["page_mode"] = json!("guess");
+        assert!(serde_json::from_value::<Request>(raw).is_err());
+    }
+
     #[test]
     fn custom_scope_preserves_connected_sector_membership() {
         let p = plan(
