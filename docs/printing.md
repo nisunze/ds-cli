@@ -52,3 +52,17 @@ This is area preparation, not a rendered report or an offline-readiness claim.
 The host fetches through existing reference authority; it cannot replace missing
 boundaries with a rectangle. Custom print output remains local until the project
 asset lifecycle is implemented.
+
+## Indexed table headings
+
+`table.heading_mode` is `literal` (default), `auto_index`, or `indexed`.
+`auto_index` chooses indices when any authored heading exceeds its data-sized,
+minimum/maximum-constrained column. Indexed tables use stable column-order
+letters A–L for every column and an untruncated explanatory key above each
+panel. Full headings remain in the document; columns and values never change.
+The key wraps at the authored type size and consumes actual table height;
+row omission warnings must use that same remaining height. `measure_headings`
+continues to govern literal headings; indexed headings measure the letters.
+Per-transformer `table.heading_mode` overrides the project layout through the
+same existing print-instruction command. Old documents omit the default field
+when serialized, preserving compatibility and their existing presentation.

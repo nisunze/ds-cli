@@ -11,6 +11,8 @@ pub struct TableOverride {
     pub panels: Option<usize>,
     pub row_mm: Option<f64>,
     pub overflow: Option<TableOverflow>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub heading_mode: Option<super::table_headings::HeadingMode>,
 }
 #[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema, PartialEq)]
 #[serde(deny_unknown_fields)]
@@ -67,6 +69,9 @@ pub fn apply(layout: &Layout, patch: &PrintOverride) -> Result<Layout, String> {
             }
             if let Some(row_mm) = table.row_mm {
                 binding.row_mm = Some(row_mm);
+            }
+            if let Some(mode) = table.heading_mode {
+                binding.heading_mode = mode;
             }
             if let Some(overflow) = table.overflow {
                 binding.overflow = overflow;

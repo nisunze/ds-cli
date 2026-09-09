@@ -2,6 +2,7 @@
 //! Flat page elements in physical millimetres; no tile, HTML or remote-image IO.
 pub mod custom;
 pub mod overrides;
+pub mod table_headings;
 pub mod table_rows;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -204,6 +205,12 @@ pub struct TableBinding {
     /// headings still render, truncated within their columns without wrapping.
     #[serde(default = "table_measure_headings_default")]
     pub measure_headings: bool,
+    /// Keep literal headings, or index them with a full key above each panel.
+    #[serde(
+        default,
+        skip_serializing_if = "table_headings::HeadingMode::is_literal"
+    )]
+    pub heading_mode: table_headings::HeadingMode,
     /// Explicitly allow a visibly warned incomplete table for an outlier.
     #[serde(default)]
     pub overflow: TableOverflow,
@@ -234,6 +241,7 @@ impl Default for TableBinding {
             max_widths_mm: vec![],
             min_widths_mm: vec![],
             measure_headings: true,
+            heading_mode: table_headings::HeadingMode::Literal,
             overflow: TableOverflow::TruncateWarn,
             panels: 1,
             gap_mm: 3.,
