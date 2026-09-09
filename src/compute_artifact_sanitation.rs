@@ -24,6 +24,8 @@ struct Row {
     created_at: u64,
     archived: bool,
     outputs: usize,
+    #[serde(default)]
+    output_ids: Vec<String>,
     held_outputs: usize,
     engine_version: String,
     engine_build_manifest_sha256: Option<String>,
@@ -54,7 +56,7 @@ pub fn evaluate(bytes: &[u8]) -> Result<String, String> {
     }
     input.rows.sort_by(|a, b| a.id.cmp(&b.id));
     let mut ids = BTreeSet::new();
-    let mut latest = BTreeMap::<(&str, &str), &Row>::new();
+    let mut latest = BTreeMap::<(&str, &str, &str), u64>::new();
     for row in &input.rows {
         if !ids.insert(&row.id)
             || row.id.is_empty()
@@ -63,6 +65,13 @@ pub fn evaluate(bytes: &[u8]) -> Result<String, String> {
             || row.operation.len() > 128
             || row.variant.len() > 128
             || row.outputs > 32
+            || (!row.output_ids.is_empty()
+                && (row.output_ids.len() != row.outputs
+                    || row.output_ids.iter().collect::<BTreeSet<_>>().len() != row.outputs
+                    || row
+                        .output_ids
+                        .iter()
+                        .any(|id| id.is_empty() || id.len() > 128)))
             || row.fingerprint.len() != 64
             || !row
                 .fingerprint
@@ -73,9 +82,11 @@ pub fn evaluate(bytes: &[u8]) -> Result<String, String> {
             return Err("Invalid sanitation row identity or inventory".into());
         }
         if row.engine == "network_reporter" && row.outputs > 0 && row.held_outputs == row.outputs {
-            let entry = latest.entry((&row.operation, &row.variant)).or_insert(row);
-            if row.created_at > entry.created_at {
-                *entry = row;
+            for id in &row.output_ids {
+                let entry = latest
+                    .entry((&row.operation, &row.variant, id))
+                    .or_insert(0);
+                *entry = (*entry).max(row.created_at);
             }
         }
     }
@@ -85,9 +96,12 @@ pub fn evaluate(bytes: &[u8]) -> Result<String, String> {
     );
     let mut decisions = Vec::new();
     for row in &input.rows {
-        let superseded = latest
-            .get(&(row.operation.as_str(), row.variant.as_str()))
-            .is_some_and(|newer| newer.created_at > row.created_at);
+        let superseded = !row.output_ids.is_empty()
+            && row.output_ids.iter().all(|id| {
+                latest
+                    .get(&(row.operation.as_str(), row.variant.as_str(), id.as_str()))
+                    .is_some_and(|newer| *newer > row.created_at)
+            });
         let retry = crate::compute_artifact_sync::assess(
             &serde_json::to_vec(&serde_json::json!({
                 "schema": crate::compute_artifact_sync::SCHEMA, "engine": row.engine,
@@ -142,7 +156,7 @@ mod tests {
             "id": id, "fingerprint": "c".repeat(64), "engine": "network_reporter",
             "operation": "export-agasharu", "variant": "default", "status": "conflict",
             "phase": "pending", "created_at": created, "archived": false,
-            "outputs": 2, "held_outputs": 2,
+            "outputs": 2, "output_ids":["pdf__a3", "xlsx"], "held_outputs": 2,
             "engine_version": format!("ds-network-reporter@0.1.0+{}", "a".repeat(40)),
             "engine_build_manifest_sha256": "b".repeat(64), "failure_code": null,
             "error": "compute artifact conflict: stored work changed before finalize"
@@ -158,6 +172,31 @@ mod tests {
         )
         .unwrap()
     }
+    #[test]
+    fn partial_iteration_cannot_archive_an_unselected_output() {
+        let old = row("old", 1);
+        let mut new = row("new", 2);
+        new["output_ids"] = json!(["pdf__a3"]);
+        new["outputs"] = json!(1);
+        new["held_outputs"] = json!(1);
+        let result: Value = serde_json::from_str(
+            &evaluate(
+                &serde_json::to_vec(&json!({"owner":"u","project":"p","rows":[old,new]})).unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        assert_ne!(
+            result["decisions"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|d| d["id"] == "old")
+                .unwrap()["action"],
+            "archive"
+        );
+    }
+
     #[test]
     fn archives_superseded_failure_and_recovers_current_without_deleting_bytes() {
         let p = plan(vec![row("old", 1), row("new", 2)]);
