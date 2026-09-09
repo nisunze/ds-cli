@@ -1,0 +1,4 @@
+interface:
+  display_name: "DS Map Composition"
+  short_description: "Compose readable engineering print maps through DS"
+  default_prompt: "Use $ds-map-composition to refine a DS engineering print recipe and verify its rendered map."
