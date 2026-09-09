@@ -271,7 +271,7 @@ pub fn plan(r: &Request, boundaries: Vec<Boundary>, sheets: &Value) -> Result<Va
         })
         .collect::<Result<Vec<_>, String>>()?;
     Ok(
-        json!({"request":r,"layout":layout,"pages":pages,"filename":format!("{}.{}-landscape.pdf",r.id,if r.paper==Paper::A0 {"a0"} else {"a3"}),"family":r.family}),
+        json!({"request":r,"layout":layout,"pages":pages,"design_layers":if r.family == "mv-map" {json!(["tr"])} else {Value::Null},"filename":format!("{}.{}-landscape.pdf",r.id,if r.paper==Paper::A0 {"a0"} else {"a3"}),"family":r.family}),
     )
 }
 
@@ -591,6 +591,7 @@ mod tests {
             &json!({}),
         )
         .unwrap();
+        assert_eq!(p["design_layers"], json!(["tr"]));
         assert_eq!(p["pages"][0]["code"], "24");
         assert_eq!(p["pages"][1]["code"], "25");
         assert_eq!(p["filename"], "map.a3-landscape.pdf");
