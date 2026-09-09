@@ -20,7 +20,7 @@ pub static SEED_CONTEXT_COMMAND: Command = Command {
     path: &["desktop", "printing", "seed-context"],
     contract: 1,
     summary: "Seed selected geographic context before a transformer is printed.",
-    purpose: "Runs the explicit acquisition stage for one transformer's selected printing setups: downloads missing indexed geographic datasets, caches current project MV models and retains bounded derived building/contour context. Source queries belong to this seeding operation; report export only reads prepared geographic data. No template, design geometry or project version is changed.",
+    purpose: "Runs the explicit acquisition stage for one transformer's selected printing setups: downloads missing indexed geographic datasets, caches current project MV models and retains bounded derived building/contour context. Report export performs this same preparation automatically when selected context is missing; offline export reads held data and names missing coverage. No template, design geometry or project version is changed.",
     chapter: Chapter::Reports,
     effect: Effect::LocalFileWrite,
     authority: Authority::DesktopUser,
@@ -336,7 +336,7 @@ pub static PREPARE_COMMAND: Command = Command {
     path: &["desktop", "printing", "prepare"],
     contract: 1,
     summary: "Save a project print layout, select exports and prepare inputs.",
-    purpose: "Runs printing preparation for the request's required exact project under the paired signed-in user without reading or changing the Desktop map project. The request names project, layout, expectedRevision (empty for create) and a ds.design-output-selection/v1 paper-by-format selection. Brain validates and saves the layout and project settings; the app then refreshes the sealed receipt and installs required reference data. These are sequential durable actions: a later preparation failure does not roll back a saved layout. Use the returned revision for further edits. This does not export a report; follow with desktop printing export.",
+    purpose: "Runs printing preparation for the request's required exact project under the paired signed-in user without reading or changing the Desktop map project. The request names project, layout, expectedRevision (empty for create) and a ds.design-output-selection/v1 paper-by-format selection. Optional overrides map canonical transformer names to kernel-validated element/table/legend/style instructions for this layout; null removes the exception. Project settings are saved only if their read base is still current. Brain validates and saves the layout and project settings; the app then refreshes the sealed receipt and installs required reference data. These are sequential durable actions: a later preparation failure does not roll back a saved layout. Use the returned revision for further edits. This does not export a report; follow with desktop printing export.",
     chapter: Chapter::Reports,
     effect: Effect::GlobalWrite,
     authority: Authority::DesktopUser,
@@ -345,7 +345,7 @@ pub static PREPARE_COMMAND: Command = Command {
         Arg::value(
             "request",
             "<json-file>",
-            "Required exact project, authored layout, expectedRevision, versioned output selection and optional transformer views; at most 800 KB.",
+            "Required exact project, authored layout, expectedRevision, versioned output selection, optional transformer views, and overrides keyed by transformer; null removes that layout exception. At most 800 KB.",
         )
         .required(),
         DESCRIPTOR_ARG,
