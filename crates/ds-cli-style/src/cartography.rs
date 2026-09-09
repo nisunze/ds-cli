@@ -47,6 +47,24 @@ const LINE_TYPE_ARG: Arg = Arg {
     ],
     summary: "Line preset. `solid` clears dashes; `directional` draws flow arrows.",
 };
+const LINE_TYPE_SCALE_ARG: Arg = Arg {
+    name: "line-type-scale",
+    kind: ArgKind::Value,
+    value: "<factor>",
+    required: false,
+    default: None,
+    choices: &[],
+    summary: "Multiply dash lengths and gaps, 0.1..100; line width is unchanged.",
+};
+const BOUNDARY_LINE_TYPE_SCALE_ARG: Arg = Arg {
+    name: "boundary-line-type-scale",
+    kind: ArgKind::Value,
+    value: "<factor>",
+    required: false,
+    default: None,
+    choices: &[],
+    summary: "Polygon boundary dash scale, 0.1..100; boundary width is unchanged.",
+};
 const DIRECTION_SIZE_ARG: Arg = Arg {
     name: "direction-size",
     kind: ArgKind::Value,
@@ -171,6 +189,8 @@ const ARGS: &[Arg] = &[
         "dash-dot-dot",
     ]),
     LINE_TYPE_ARG,
+    LINE_TYPE_SCALE_ARG,
+    BOUNDARY_LINE_TYPE_SCALE_ARG,
     DIRECTION_SIZE_ARG,
     DIRECTION_SPACING_ARG,
     CASING_COLOR_ARG,
@@ -309,6 +329,14 @@ fn arguments(inputs: &Inputs, apply: bool) -> Result<Value, Failure> {
 
     let mut arguments = Map::new();
     arguments.insert("ref".into(), json!(inputs.require("ref")?));
+    for (flag, key) in [
+        ("line-type-scale", "lineTypeScale"),
+        ("boundary-line-type-scale", "boundaryLineTypeScale"),
+    ] {
+        if let Some(raw) = inputs.value(flag) {
+            arguments.insert(key.into(), json!(bounded(raw, flag, 0.1, 100.)?));
+        }
+    }
     if let Some(value) = line_type {
         arguments.insert("lineType".into(), json!(value));
     }
@@ -586,6 +614,32 @@ mod tests {
         parts.iter().map(|part| (*part).to_string()).collect()
     }
 
+    #[test]
+    fn fractional_line_type_scales_are_typed_and_bounded() {
+        let tokens = argv(&[
+            "--ref",
+            "master/roads",
+            "--line-type-scale",
+            "2.5",
+            "--boundary-line-type-scale",
+            "0.5",
+        ]);
+        let input = parse(&plan::COMMAND, &tokens).unwrap();
+        let args = arguments(&input, false).unwrap();
+        assert_eq!(args["lineTypeScale"], json!(2.5));
+        assert_eq!(args["boundaryLineTypeScale"], json!(0.5));
+        for value in ["0", "101", "NaN"] {
+            let input = parse(
+                &plan::COMMAND,
+                &argv(&["--ref", "master/roads", "--line-type-scale", value]),
+            )
+            .unwrap();
+            assert_eq!(
+                arguments(&input, false).unwrap_err().code(),
+                "invalid_number"
+            );
+        }
+    }
     #[test]
     fn every_cartography_flag_is_typed_before_the_closed_instruction_envelope() {
         let tokens = argv(EVERY_FLAG);
