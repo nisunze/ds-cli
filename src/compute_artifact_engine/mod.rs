@@ -1,6 +1,7 @@
 //! Durable publication state machine. Native and browser hosts execute only
 //! the returned IO effect, after atomically persisting the returned row.
 //! Re-entering `start` after a crash reuses the same run, bytes and sessions.
+pub mod failure;
 #[cfg(test)]
 mod tests;
 mod transition;
@@ -54,6 +55,7 @@ struct Request {
     event: Event,
     #[serde(default)]
     reopens: u8,
+    lease_id: String,
 }
 #[derive(Debug, Serialize)]
 pub struct Reply {
@@ -65,24 +67,29 @@ pub struct Reply {
 pub struct Failure {
     pub status: &'static str,
     pub message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub retry_at: Option<u64>,
 }
 type Result<T> = std::result::Result<T, Failure>;
 fn failed(message: impl Into<String>) -> Failure {
     Failure {
         status: "failed",
         message: message.into(),
+        retry_at: None,
     }
 }
 fn conflict(message: impl Into<String>) -> Failure {
     Failure {
         status: "conflict",
         message: message.into(),
+        retry_at: None,
     }
 }
 fn retry(message: impl Into<String>) -> Failure {
     Failure {
         status: "pending",
         message: message.into(),
+        retry_at: None,
     }
 }
 fn text<'a>(value: &'a Value, key: &str) -> &'a str {
@@ -254,6 +261,26 @@ fn apply(mut request: Request) -> Result<Reply> {
     if request.now > 9_007_199_254_740_991 {
         return Err(failed("Invalid sync clock."));
     }
+    if request.lease_id.is_empty() || request.lease_id.len() > 128 {
+        return Err(failed("Invalid publication worker identity."));
+    }
+    let lease = text(&request.row, "sync_lease_id");
+    let until = request.row["sync_lease_until"].as_u64().unwrap_or(0);
+    if matches!(request.event, Event::Start) {
+        if !lease.is_empty() && lease != request.lease_id && until > request.now {
+            return Err(Failure {
+                status: "pending",
+                message: "Another worker owns this publication attempt.".into(),
+                retry_at: Some(until),
+            });
+        }
+    } else if lease != request.lease_id || until < request.now {
+        return Err(Failure {
+            status: "pending",
+            message: "Publication worker lease expired or changed.".into(),
+            retry_at: Some(request.now),
+        });
+    }
     let effect = match request.event {
         Event::Start => {
             start(&mut request.row)?;
@@ -267,6 +294,13 @@ fn apply(mut request: Request) -> Result<Reply> {
             transition::apply(&mut request.row, event, &mut request.reopens, request.now)?
         }
     };
+    if matches!(effect, Effect::Done { .. }) {
+        remove(&mut request.row, "sync_lease_id");
+        remove(&mut request.row, "sync_lease_until");
+    } else {
+        request.row["sync_lease_id"] = json!(request.lease_id);
+        request.row["sync_lease_until"] = json!(request.now.saturating_add(300_000));
+    }
     request.row["updated_at"] = json!(request.now);
     Ok(Reply {
         row: request.row,

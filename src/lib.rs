@@ -1244,3 +1244,11 @@ pub mod compute_artifact_engine;
 pub fn compute_artifact_transition_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
     compute_artifact_engine::evaluate(input).map_err(|error| wasm_bindgen::JsValue::from_str(&error))
 }
+
+#[cfg(feature = "wasm")]
+#[wasm_bindgen::prelude::wasm_bindgen(js_name = computeArtifactFailure)]
+pub fn compute_artifact_failure_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
+    compute_artifact_engine::failure::evaluate(input).map_err(|error| wasm_bindgen::JsValue::from_str(&error))
+}
+
+pub mod compute_artifact_queue;

@@ -9,6 +9,7 @@ fn step(row: Value, event: Event) -> Reply {
         row,
         event,
         reopens: 0,
+        lease_id: "worker-a".into(),
     })
     .unwrap()
 }
@@ -106,7 +107,8 @@ fn refuses_changed_bytes_outputs_work_identity_owner_and_terminal_replay() {
         now: 100,
         row: wrong,
         event: Event::Start,
-        reopens: 0
+        reopens: 0,
+        lease_id: "worker-a".into(),
     })
     .is_err());
     for state in ["synced", "conflict", "failed"] {
@@ -117,7 +119,8 @@ fn refuses_changed_bytes_outputs_work_identity_owner_and_terminal_replay() {
             now: 100,
             row: wrong,
             event: Event::Start,
-            reopens: 0
+            reopens: 0,
+            lease_id: "worker-a".into(),
         })
         .is_err());
     }
@@ -133,6 +136,7 @@ fn refuses_changed_bytes_outputs_work_identity_owner_and_terminal_replay() {
             offset: None,
         },
         reopens: 0,
+        lease_id: "worker-a".into(),
     })
     .unwrap_err();
     assert_eq!(changed.status, "conflict");
@@ -144,7 +148,8 @@ fn refuses_changed_bytes_outputs_work_identity_owner_and_terminal_replay() {
         event: Event::Opened {
             response: json!({"work_id":"work","head_revision":0,"outputs":[]})
         },
-        reopens: 0
+        reopens: 0,
+        lease_id: "worker-a".into(),
     })
     .is_err());
     let pending = opened(ready.row);
@@ -155,7 +160,8 @@ fn refuses_changed_bytes_outputs_work_identity_owner_and_terminal_replay() {
         event: Event::Finalized {
             response: json!({"state":"published","work_id":"work","head_revision":2})
         },
-        reopens: 0
+        reopens: 0,
+        lease_id: "worker-a".into(),
     })
     .is_err());
 }
@@ -186,6 +192,7 @@ fn expired_session_reopens_same_run_only_once_per_attempt() {
             offset: 0,
         },
         reopens: 1,
+        lease_id: "worker-a".into(),
     })
     .unwrap_err();
     assert_eq!(failure.status, "pending");
@@ -204,6 +211,7 @@ fn uploaded_is_not_published_and_stale_is_not_success() {
             response: json!({"work_id":"work","head_revision":0,"state":"pending"}),
         },
         reopens: 0,
+        lease_id: "worker-a".into(),
     })
     .unwrap_err();
     assert_eq!(failure.status, "pending");
@@ -215,4 +223,43 @@ fn uploaded_is_not_published_and_stale_is_not_success() {
     );
     assert_eq!(stale.row["phase"], "stored_stale");
     assert_eq!(stale.row["status"], "conflict");
+}
+
+#[test]
+fn another_worker_waits_and_expired_workers_cannot_commit_late_responses() {
+    let first = step(row(), Event::Start);
+    let busy = apply(Request {
+        owner: "owner".into(),
+        now: 2000,
+        row: first.row.clone(),
+        event: Event::Start,
+        reopens: 0,
+        lease_id: "worker-b".into(),
+    })
+    .unwrap_err();
+    assert_eq!(busy.retry_at, Some(301000));
+    let second = apply(Request {
+        owner: "owner".into(),
+        now: 301001,
+        row: first.row,
+        event: Event::Start,
+        reopens: 0,
+        lease_id: "worker-b".into(),
+    })
+    .unwrap();
+    let late = apply(Request {
+        owner: "owner".into(),
+        now: 301002,
+        row: second.row,
+        event: Event::Bytes {
+            output_id: "pdf__huye".into(),
+            sha256: "e".repeat(64),
+            size_bytes: 123,
+            offset: None,
+        },
+        reopens: 0,
+        lease_id: "worker-a".into(),
+    })
+    .unwrap_err();
+    assert_eq!(late.retry_at, Some(301002));
 }
