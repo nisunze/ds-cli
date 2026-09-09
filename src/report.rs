@@ -78,6 +78,10 @@ enum Command {
         model: crate::printing::map::Model,
         bounds: [f64; 4],
     },
+    MapCurrent {
+        rows: Vec<serde_json::Value>,
+        item: serde_json::Value,
+    },
     MapCatalog {
         rows: Vec<serde_json::Value>,
         item: serde_json::Value,
@@ -228,6 +232,9 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
             model,
             bounds,
         } => crate::printing::map::mv_layers(projection, model, bounds)?,
+        Command::MapCurrent { rows, item } => {
+            serde_json::json!(crate::printing::map::current(&rows, &item))
+        }
         Command::MapCatalog { rows, item } => crate::printing::map::catalog(rows, item)?,
         Command::MapRequest { request } => {
             crate::printing::map::validate_request(&request)?;

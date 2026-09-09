@@ -263,6 +263,15 @@ pub fn select_layers(area: &Value, sources: &BTreeMap<String, Value>) -> Result<
         .into())
 }
 
+pub fn current(rows: &[Value], item: &Value) -> bool {
+    rows.iter().any(|row| {
+        row["project"] == item["project"]
+            && row["filename"] == item["filename"]
+            && row["sha256"] == item["sha256"]
+            && row["createdAt"] == item["createdAt"]
+    })
+}
+
 /// Replace only one canonical filename. Never remove unselected paper outputs.
 pub fn catalog(rows: Vec<Value>, item: Value) -> Result<Value, String> {
     if rows.len() > 500
@@ -273,6 +282,13 @@ pub fn catalog(rows: Vec<Value>, item: Value) -> Result<Value, String> {
             .is_none_or(|s| s.len() != 64 || !s.bytes().all(|b| b.is_ascii_hexdigit()))
     {
         return Err("Invalid local map artifact inventory".into());
+    }
+    if rows.iter().any(|row| {
+        row["project"] == item["project"]
+            && row["filename"] == item["filename"]
+            && row["createdAt"].as_u64().unwrap_or(0) > item["createdAt"].as_u64().unwrap_or(0)
+    }) {
+        return Ok(json!(rows));
     }
     let mut next = Vec::new();
     for row in rows {
