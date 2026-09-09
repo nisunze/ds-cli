@@ -45,6 +45,9 @@ pub struct Layout {
     /// Combined exports: render all held project features on one sheet instead of an atlas.
     #[serde(default)]
     pub project_overview: bool,
+    /// Round an automatic fit denominator upward to this increment; explicit cameras stay exact.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scale_rounding: Option<f64>,
     /// Back-to-front layer IDs. Unlisted layers follow in their input order.
     #[serde(default)]
     pub layer_order: Vec<String>,
@@ -487,6 +490,9 @@ pub fn validate(layout: &Layout) -> Result<(), String> {
     {
         return Err("paper properties and resolved page dimensions disagree".into());
     }
+    if layout.scale_rounding.is_some_and(|step| !bounded(step, 1., 1_000_000.)) {
+        return Err("scale rounding increment must be 1..1000000".into());
+    }
     let mut ids = BTreeSet::new();
     let mut maps = 0;
     for element in &layout.elements {
@@ -831,6 +837,7 @@ pub fn default_layout() -> Layout {
     Layout {
         composition: None,
         project_overview: false,
+        scale_rounding: None,
         layer_order: Vec::new(),
         style_overrides: BTreeMap::new(),
         focus: None,
