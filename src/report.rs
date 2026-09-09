@@ -74,6 +74,8 @@ enum Command {
         report_type: Option<String>,
         #[serde(default)]
         transformers: Vec<String>,
+        #[serde(default)]
+        selection: Option<crate::report_formats::DesignOutputSelection>,
     },
     FormatOptions {
         #[serde(default)]
@@ -82,10 +84,14 @@ enum Command {
     Formats {
         sheets: serde_json::Value,
         combined: bool,
+        #[serde(default)]
+        selection: Option<crate::report_formats::DesignOutputSelection>,
     },
     ContextPreparation {
         sheets: serde_json::Value,
         online: bool,
+        #[serde(default)]
+        selection: Option<crate::report_formats::DesignOutputSelection>,
     },
     Publication {
         engine: String,
@@ -161,6 +167,22 @@ fn names(values: Vec<String>) -> Result<BTreeSet<String>, String> {
     }
     Ok(result)
 }
+/// Input batches are ordered newest first. Preserve every unselected canonical
+/// output in its original batch; never copy its provenance into a newer run.
+pub fn current_output_indices(batches: &[Vec<String>]) -> Vec<Vec<usize>> {
+    let mut seen = BTreeSet::new();
+    batches
+        .iter()
+        .map(|outputs| {
+            outputs
+                .iter()
+                .enumerate()
+                .filter_map(|(index, key)| seen.insert(key).then_some(index))
+                .collect()
+        })
+        .collect()
+}
+
 pub fn evaluate(input: &[u8]) -> Result<String, String> {
     if input.len() > 64 * 1024 * 1024 {
         return Err("Report command exceeds 64 MiB".into());
@@ -173,6 +195,7 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
             force,
             report_type,
             transformers,
+            selection,
         } => {
             if project.is_empty()
                 || project.len() > 128
@@ -204,17 +227,36 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
                 "compounded" => "Compounded report".into(),
                 _ => format!("Report · {transformer}"),
             };
-            serde_json::json!({"project":project,"transformer":transformer,"force":force,"transformers":transformers,"kind":kind,"label":label,"reuse_prepared":true})
+            let mut plan = serde_json::json!({"project":project,"transformer":transformer,"force":force,"transformers":transformers,"kind":kind,"label":label,"reuse_prepared":true});
+            if let Some(selection) = selection {
+                if kind != "transformer" {
+                    return Err("Local output overrides require individual transformers".into());
+                }
+                let tokens = selection.tokens()?;
+                if tokens.is_empty() || tokens.len() > 32 {
+                    return Err("Local output selection must contain 1..32 outputs".into());
+                }
+                plan["selection"] = serde_json::to_value(selection).map_err(|e| e.to_string())?;
+            }
+            plan
         }
         Command::FormatOptions { setups } => {
             serde_json::json!({"options": crate::report_formats::options(&setups)?})
         }
-        Command::Formats { sheets, combined } => {
-            serde_json::json!({"outputs": crate::report_formats::plan(&sheets, combined)?})
+        Command::Formats {
+            sheets,
+            combined,
+            selection,
+        } => {
+            serde_json::json!({"outputs": crate::report_formats::selected_plan(&sheets, combined, selection.as_ref())?})
         }
-        Command::ContextPreparation { sheets, online } => {
+        Command::ContextPreparation {
+            sheets,
+            online,
+            selection,
+        } => {
             let sheets = sheets.get("sheets").unwrap_or(&sheets);
-            let outputs = crate::report_formats::plan(sheets, false)?;
+            let outputs = crate::report_formats::selected_plan(sheets, false, selection.as_ref())?;
             let layouts = crate::report_formats::named_layouts(sheets)?;
             let mut seen = BTreeSet::new();
             let mut contexts = Vec::new();
@@ -388,6 +430,20 @@ mod tests {
 mod export_tests {
     use super::*;
     use serde_json::json;
+    #[test]
+    fn iterations_overwrite_only_selected_outputs_preserving_original_batches() {
+        let batches = vec![
+            vec!["pdf__a3".into()],
+            vec!["xlsx".into()],
+            vec!["pdf__a0".into(), "pdf__a3".into(), "xlsx".into()],
+            vec!["pdf__a3".into()],
+        ];
+        assert_eq!(
+            current_output_indices(&batches),
+            vec![vec![0], vec![0], vec![0], vec![]]
+        );
+    }
+
     #[test]
     fn printing_ensures_selected_context_once_and_acquires_only_online() {
         let mut first = crate::printing::default_layout();

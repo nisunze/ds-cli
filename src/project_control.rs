@@ -570,10 +570,29 @@ pub fn project_project_control_local_reports(
             .cmp(&left.created_at)
             .then_with(|| left.id.cmp(&right.id))
     });
-    // Transformer exports replace their complete canonical inventory. Older
-    // queue rows remain recovery records, never extra current report formats.
+    // An iteration replaces only the selected outputs. Keep every surviving
+    // file in its producing batch, with its original sync state and provenance.
     if input.transformer.is_some() {
-        reports.truncate(1);
+        let indices = crate::report::current_output_indices(
+            &reports
+                .iter()
+                .map(|report| {
+                    report
+                        .files
+                        .iter()
+                        .map(|file| format!("{}\0{}", report.variant, file.output_id))
+                        .collect()
+                })
+                .collect::<Vec<_>>(),
+        );
+        for (report, kept) in reports.iter_mut().zip(indices) {
+            report.files = std::mem::take(&mut report.files)
+                .into_iter()
+                .enumerate()
+                .filter_map(|(index, file)| kept.contains(&index).then_some(file))
+                .collect();
+        }
+        reports.retain(|report| !report.files.is_empty());
     }
     encode(&ProjectedReportCatalog {
         schema: PROJECT_CONTROL_REPORT_CATALOG_SCHEMA,
