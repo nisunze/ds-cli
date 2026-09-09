@@ -171,11 +171,11 @@ pub fn plan(r: &Request, boundaries: Vec<Boundary>, sheets: &Value) -> Result<Va
         l
     };
     layout.id = r.id.clone();
-    // District overview scale does not benefit from individual footprint or
-    // intermediate-contour geometry; keep those in large-scale custom sheets.
+    // Default district overviews omit fine context. An authored recipe is
+    // authoritative at every paper size, including custom A3 compositions.
     layout.context_layers.retain(|c| {
         !matches!(c.source, PrintContextSource::ProjectDsgridMv { .. })
-            && (!(r.family == "mv-map" || r.paper == Paper::A3)
+            && (!(r.family == "mv-map" && r.layout.is_none())
                 || !matches!(
                     c.source,
                     PrintContextSource::GoogleOpenBuildings { .. }
@@ -333,9 +333,10 @@ pub fn mv_layers(projection: Value, model: Model, bounds: [f64; 4]) -> Result<Va
     }
     let mut lines = Vec::new();
     let mut poles = Vec::new();
+    let mut angle_points = Vec::new();
     for feature in features {
         let layer = feature["properties"]["_layer"].as_str().unwrap_or("");
-        if !matches!(layer, "alignments" | "structures")
+        if !matches!(layer, "alignments" | "structures" | "angle_points")
             || feature["geometry"].is_null()
             || !intersects_area(&feature["geometry"], &area)?
         {
@@ -359,12 +360,14 @@ pub fn mv_layers(projection: Value, model: Model, bounds: [f64; 4]) -> Result<Va
         }
         if layer == "alignments" {
             lines.push(f);
-        } else {
+        } else if layer == "structures" {
             poles.push(f);
+        } else {
+            angle_points.push(f);
         }
     }
     Ok(
-        json!({"dsgrid_mv_lines":{"type":"FeatureCollection","features":lines},"dsgrid_mv_structures":{"type":"FeatureCollection","features":poles}}),
+        json!({"dsgrid_mv_lines":{"type":"FeatureCollection","features":lines},"dsgrid_mv_structures":{"type":"FeatureCollection","features":poles},"dsgrid_mv_angle_points":{"type":"FeatureCollection","features":angle_points}}),
     )
 }
 
@@ -389,6 +392,65 @@ mod tests {
             dpi: default_dpi(),
             layout: None,
         }
+    }
+    #[test]
+    fn mv_print_preserves_canonical_angle_point_roles_and_numbers() {
+        let features = json!({"features":[{"type":"Feature","id":"node-a","geometry":{"type":"Point","coordinates":[29.5,-2.]},"properties":{"_layer":"angle_points","point_role":"angle","number":"PI-17","tap_type":"transformer","tr_name":"Agatare","struct_no":"TR-4"}}]});
+        let model = Model {
+            id: "model-a".into(),
+            label: "A".into(),
+            revision_id: "rev".into(),
+            digest: "a".repeat(64),
+        };
+        let layers = mv_layers(features.clone(), model, [29., -3., 30., -1.]).unwrap();
+        let p = &layers["dsgrid_mv_angle_points"]["features"][0]["properties"];
+        for field in ["point_role", "number", "tap_type", "tr_name", "struct_no"] {
+            assert_eq!(p[field], features["features"][0]["properties"][field]);
+        }
+        assert_eq!(
+            layers["dsgrid_mv_angle_points"]["features"][0]["id"],
+            "model-a:\"node-a\""
+        );
+        assert_eq!(
+            layers["dsgrid_mv_structures"]["features"]
+                .as_array()
+                .unwrap()
+                .len(),
+            0
+        );
+    }
+    #[test]
+    fn authored_district_context_survives_paper_planning() {
+        let mut r = request("mv-map", &["24"]);
+        let mut layout =
+            named_layout(Some("map".into()), None, Paper::A3, Orientation::Landscape).unwrap();
+        layout.context_layers = vec![
+            PrintContextLayer {
+                id: "buildings".into(),
+                label: "Buildings".into(),
+                source: PrintContextSource::GoogleOpenBuildings {
+                    buffer_m: 0.,
+                    min_area_m2: 10.,
+                    min_confidence: 0.5,
+                },
+            },
+            PrintContextLayer {
+                id: "contours".into(),
+                label: "Contours".into(),
+                source: PrintContextSource::ElevationContours {
+                    buffer_m: 0.,
+                    minor_interval_m: 10,
+                    index_interval_m: 50,
+                    sample_spacing_m: 10.,
+                },
+            },
+        ];
+        r.layout = Some(layout.clone());
+        let p = plan(&r, vec![boundary("24", "district", 29.)], &json!({})).unwrap();
+        assert_eq!(
+            p["layout"]["context_layers"],
+            serde_json::to_value(&layout.context_layers).unwrap()
+        );
     }
     #[test]
     fn dpi_defaults_and_roundtrips_without_changing_output_identity() {
