@@ -53,6 +53,7 @@ not a complete layout:
   "columns": ["pole_number", "struct_type", "assembly_type", "stay"],
   "headings": ["Pole", "Structure", "Assembly", "Stay"],
   "widths": [20, 35, 45, 15],
+  "max_widths_mm": [20, 35, 45, 15],
   "sort_by": ["pole_number"],
   "panels": 3,
   "gap_mm": 4,
@@ -62,8 +63,10 @@ not a complete layout:
 }
 ```
 
-`widths` are relative column proportions. The renderer measures every cell and
-uses the smallest width satisfying those proportions. `rect` gives the maximum
+With `max_widths_mm`, each column independently auto-fits the measured contents,
+up to its ordered maximum. Outliers are truncated with an ellipsis; whitespace
+and line breaks become single spaces. Cells remain one line at the authored
+font size. Omit the caps to retain proportional `widths` sizing. `rect` gives the maximum
 available area. `panels` is the maximum number of side-by-side panels; the
 renderer uses only those needed and repeats headings. It refuses overflow
 instead of silently omitting rows or shrinking text. Sorting is lexical by the
@@ -121,3 +124,55 @@ reusable recipe. MCP profiles expose the same typed commands and request schema.
 Composition principles: [Ordnance Survey map layout guidance](https://docs.os.uk/more-than-maps/geographic-data-visualisation/guide-to-cartography/map-layout).
 The measured packing approach is informed by [absolute-placement rectangle
 packing](https://arxiv.org/abs/1402.0557); it is a smaller bounded implementation.
+
+## Source selection, print focus and hierarchy
+
+Add synchronized surveyed features with a context source such as
+`{"id":"survey_existing_poles","label":"Surveyed existing poles","source":{"kind":"survey","form":"lv_poles_as_built"}}`.
+Create its governed print style with `style print create` and bind it through
+`style_refs`. Explicit selection is independent of map visibility. Empty or
+incomplete caches refuse the print and name the missing source.
+
+A held local layer uses `{"kind":"local_layer","layer_id":"<id>"}`. Create or
+import it through `map draw`/the live local-data command, discover its ID, and
+bind a template-local `styles` pen or governed `style_refs` entry. Complete
+payloads are required: display previews are never mistaken for all features.
+Survey/local captures are bounded to 50,000 features and 32 MiB each.
+
+Set `layer_order` to logical layer IDs, back to front. For example:
+`["contours_intermediate","contours_index","village_boundaries","buildings_context","customers","roads","service_cables","lv_lines","dsgrid_mv_lines","spans","survey_existing_poles","lv_poles","dsgrid_mv_structures","tr"]`.
+Unlisted layers follow in original input order; include every selected layer
+when a strict hierarchy is needed. Label priorities are separately authored:
+`style label set --number symbol-sort-key=-1000` reserves transformer labels
+first. `--overlap on` tries clear positions then allows an overlap if necessary.
+
+A template `focus` such as `{"buffer_m":35,"outside_color":"#E1E5E8","outside_opacity":0.55,"border_color":"#9AA5AE","border_width_mm":0.15}` derives
+an expanded area from the current transformer's bounding geometry and washes
+the outside. Both buffer and fit exist only for that export. Saved transformer
+boundaries and other transformers are never changed.
+
+Span-only labels use `style cartography set --ref master/spans_print --opacity 0`
+and `style label set --ref master/spans_print --field length --format round
+--suffix ' m' --alignment line-center --overlap on --number symbol-sort-key=-500`.
+The separate LV conductor layer keeps its own pens. Labels are aligned to the
+span and kept upright. To label transformer name and rating, use `--field
+transfo --append-field tr_size --separator ' · ' --suffix ' kVA'`.
+`--number property=value` exposes backend-bounded numeric label controls;
+`--halo-color` controls text halo colour. These options are also typed MCP inputs.
+
+## Global defaults, project and personal overrides
+
+The existing layout save contract governs global/project publication. Save the
+reviewed starting template globally; a project layout with the same ID provides
+its override. Save only the intended scope and use its returned revision for
+optimistic concurrency. Selecting a project layout does not modify other
+projects' selections. Local one-off rendering can read a request file through
+`report layout render` without publishing a template.
+
+`style_overrides` provides per-template pens over shared governed symbols:
+`{"lv_lines":{"size":2.3,"palette":{"35":"#A88D00"}}}`. Only selected category
+colours change; other categories and icons are inherited. Fields are `color`,
+`size`, `opacity`, and `palette` (category value to colour). A palette requires
+a primary categorical match/get colour style. These overrides apply to both
+map and legend. A global default, project override and personal render can
+therefore keep different pens without repeatedly editing shared styles.

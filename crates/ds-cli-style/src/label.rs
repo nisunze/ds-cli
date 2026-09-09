@@ -97,12 +97,41 @@ fn arguments(inputs: &Inputs, apply: bool) -> Result<Value, Failure> {
         })
         .transpose()?;
     let papers = inputs.repeated("paper");
+    let mut numerics = serde_json::Map::new();
+    for item in inputs.repeated("number") {
+        let (key, value) = item.split_once('=').ok_or_else(|| {
+            Failure::invalid("invalid_number", "label number needs property=value")
+        })?;
+        let value = value
+            .parse::<f64>()
+            .ok()
+            .filter(|v| v.is_finite())
+            .ok_or_else(|| Failure::invalid("invalid_number", "label number must be finite"))?;
+        if key.is_empty() || numerics.insert(key.into(), json!(value)).is_some() {
+            return Err(Failure::invalid(
+                "invalid_number",
+                "label numeric properties must be unique",
+            ));
+        }
+    }
     let mut result = json!({
         "ref": inputs.require("ref")?,
         "field": raw,
         "apply": apply,
     });
     if inputs.value("visible").is_some()
+        || !inputs.repeated("append-field").is_empty()
+        || [
+            "separator",
+            "suffix",
+            "format",
+            "halo-color",
+            "overlap",
+            "alignment",
+        ]
+        .iter()
+        .any(|key| inputs.value(key).is_some())
+        || !numerics.is_empty()
         || size.is_some()
         || inputs.value("font").is_some()
         || inputs.value("color").is_some()
@@ -118,6 +147,24 @@ fn arguments(inputs: &Inputs, apply: bool) -> Result<Value, Failure> {
             "automatic_placement": inputs.value("placement").map(|v| v == "auto"),
         });
     }
+    if !numerics.is_empty() {
+        result["options"]["numerics"] = json!(numerics);
+    }
+    for key in ["separator", "suffix", "format", "alignment"] {
+        if let Some(value) = inputs.value(key) {
+            result["options"][key] = json!(value);
+        }
+    }
+    if let Some(value) = inputs.value("halo-color") {
+        result["options"]["halo_color"] = json!(value);
+    }
+    if let Some(value) = inputs.value("overlap") {
+        result["options"]["allow_overlap"] = json!(value == "on");
+    }
+    if !inputs.repeated("append-field").is_empty() {
+        result["options"]["append_fields"] = json!(inputs.repeated("append-field"));
+    }
+
     Ok(result)
 }
 
@@ -158,6 +205,78 @@ pub mod plan {
             FIELD_ARG,
             VISIBLE_ARG,
             SIZE_ARG,
+            Arg {
+                name: "number",
+                kind: ArgKind::Repeated,
+                value: "<property=value>",
+                required: false,
+                default: None,
+                choices: &[],
+                summary: "Label numeric property from labelSchema.numerics; repeat for priority, offsets, spacing or halo. Backend bounds apply.",
+            },
+            Arg {
+                name: "append-field",
+                kind: ArgKind::Repeated,
+                value: "<field>",
+                required: false,
+                default: None,
+                choices: &[],
+                summary: "Append a declared field to the label; repeat in display order.",
+            },
+            Arg {
+                name: "separator",
+                kind: ArgKind::Value,
+                value: "<text>",
+                required: false,
+                default: None,
+                choices: &[],
+                summary: "Separator between composed label fields; default is a centred dot.",
+            },
+            Arg {
+                name: "suffix",
+                kind: ArgKind::Value,
+                value: "<text>",
+                required: false,
+                default: None,
+                choices: &[],
+                summary: "Literal suffix, for example ' m' or ' kVA'.",
+            },
+            Arg {
+                name: "format",
+                kind: ArgKind::Value,
+                value: "<format>",
+                required: false,
+                default: None,
+                choices: &["raw", "round", "int"],
+                summary: "Format the primary field using the published label vocabulary.",
+            },
+            Arg {
+                name: "halo-color",
+                kind: ArgKind::Value,
+                value: "<#RRGGBB>",
+                required: false,
+                default: None,
+                choices: &[],
+                summary: "Text halo color; width is controlled with --number text-halo-width=value.",
+            },
+            Arg {
+                name: "overlap",
+                kind: ArgKind::Value,
+                value: "<on|off>",
+                required: false,
+                default: None,
+                choices: &["on", "off"],
+                summary: "Allow required labels to overlap other map features; clipping at the map edge still applies.",
+            },
+            Arg {
+                name: "alignment",
+                kind: ArgKind::Value,
+                value: "<placement>",
+                required: false,
+                default: None,
+                choices: &["point", "line", "line-center"],
+                summary: "Point placement or labels rotated along the line and kept upright.",
+            },
             FONT_ARG,
             COLOR_ARG,
             PAPER_ARG,
@@ -210,6 +329,78 @@ pub mod set {
             FIELD_ARG,
             VISIBLE_ARG,
             SIZE_ARG,
+            Arg {
+                name: "number",
+                kind: ArgKind::Repeated,
+                value: "<property=value>",
+                required: false,
+                default: None,
+                choices: &[],
+                summary: "Label numeric property from labelSchema.numerics; repeat for priority, offsets, spacing or halo. Backend bounds apply.",
+            },
+            Arg {
+                name: "append-field",
+                kind: ArgKind::Repeated,
+                value: "<field>",
+                required: false,
+                default: None,
+                choices: &[],
+                summary: "Append a declared field to the label; repeat in display order.",
+            },
+            Arg {
+                name: "separator",
+                kind: ArgKind::Value,
+                value: "<text>",
+                required: false,
+                default: None,
+                choices: &[],
+                summary: "Separator between composed label fields; default is a centred dot.",
+            },
+            Arg {
+                name: "suffix",
+                kind: ArgKind::Value,
+                value: "<text>",
+                required: false,
+                default: None,
+                choices: &[],
+                summary: "Literal suffix, for example ' m' or ' kVA'.",
+            },
+            Arg {
+                name: "format",
+                kind: ArgKind::Value,
+                value: "<format>",
+                required: false,
+                default: None,
+                choices: &["raw", "round", "int"],
+                summary: "Format the primary field using the published label vocabulary.",
+            },
+            Arg {
+                name: "halo-color",
+                kind: ArgKind::Value,
+                value: "<#RRGGBB>",
+                required: false,
+                default: None,
+                choices: &[],
+                summary: "Text halo color; width is controlled with --number text-halo-width=value.",
+            },
+            Arg {
+                name: "overlap",
+                kind: ArgKind::Value,
+                value: "<on|off>",
+                required: false,
+                default: None,
+                choices: &["on", "off"],
+                summary: "Allow required labels to overlap other map features; clipping at the map edge still applies.",
+            },
+            Arg {
+                name: "alignment",
+                kind: ArgKind::Value,
+                value: "<placement>",
+                required: false,
+                default: None,
+                choices: &["point", "line", "line-center"],
+                summary: "Point placement or labels rotated along the line and kept upright.",
+            },
             FONT_ARG,
             COLOR_ARG,
             PAPER_ARG,
@@ -300,5 +491,29 @@ mod tests {
             arguments(&set_input, true).unwrap()["options"],
             value["options"]
         );
+    }
+    #[test]
+    fn composed_label_and_numeric_controls_survive_the_cli_boundary() {
+        let tokens = [
+            "--ref",
+            "master/tr_print",
+            "--field",
+            "transfo",
+            "--append-field",
+            "tr_size",
+            "--suffix",
+            " kVA",
+            "--overlap",
+            "on",
+            "--number",
+            "symbol-sort-key=-1000",
+        ]
+        .map(str::to_string);
+        let input = parse(&set::COMMAND, &tokens).unwrap();
+        let args = arguments(&input, true).unwrap();
+        assert_eq!(args["options"]["append_fields"], json!(["tr_size"]));
+        assert_eq!(args["options"]["suffix"], " kVA");
+        assert_eq!(args["options"]["allow_overlap"], true);
+        assert_eq!(args["options"]["numerics"]["symbol-sort-key"], -1000.);
     }
 }
