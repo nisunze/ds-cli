@@ -737,6 +737,54 @@ impl<'a> Projector<'a> {
             "Unclassified/transformers".to_string()
         };
 
+        // The report-artifact channel publishes map printouts here. These
+        // are projected assets, with the existing report bytes as authority.
+        // Rich printout rows precede the legacy URL-only listing of the same
+        // canonical identity; the first placement owns folder and provenance.
+        if let Some(prints) = transformer
+            .report_metadata
+            .get("print_urls")
+            .and_then(Value::as_array)
+        {
+            for print in prints {
+                let artifact: ReportArtifactRow = decode(print);
+                let Some(path) = print.get("gcs_path").and_then(Value::as_str) else {
+                    continue;
+                };
+                let file = leaf_of(path);
+                if file.is_empty() {
+                    continue;
+                }
+                let family = print
+                    .get("map_family")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default();
+                let target = match family {
+                    "custom-map" => "Prints/custom maps",
+                    "mv-map" => "Reports/MV",
+                    _ => reports_folder.as_str(),
+                };
+                let mut projected = Row::new(
+                    "transformers",
+                    target,
+                    segment(&file),
+                    format!("sys:report_file:{name}:{file}"),
+                    json!({"transformer": name, "path": path_only(path),
+                        "sha256": present(&artifact.sha256), "family": family,
+                        "attachment_type": "printout", "paper_size": print.get("paper_size")}),
+                )
+                .recognised(artifact.size_bytes.unwrap_or(0), present(&artifact.format))
+                .bytes(artifact.size_bytes)
+                .digest(present(&artifact.sha256))
+                .status(Status::Durable)
+                .source(SourceKind::ReportOutput, "published printout");
+                if !reserved {
+                    projected = projected.transformer_link(name);
+                }
+                self.push(projected);
+            }
+        }
+
         for path in string_list(&transformer.report_files)
             .into_iter()
             .chain(string_list(&transformer.print_files))
@@ -799,51 +847,6 @@ impl<'a> Projector<'a> {
                 .modified(present(&metadata.updated_at))
                 .transformer_link(name),
             );
-        }
-        // The report-artifact channel publishes map printouts here. These
-        // are projected assets, with the existing report bytes as authority.
-        if let Some(prints) = transformer
-            .report_metadata
-            .get("print_urls")
-            .and_then(Value::as_array)
-        {
-            for print in prints {
-                let artifact: ReportArtifactRow = decode(print);
-                let Some(path) = print.get("gcs_path").and_then(Value::as_str) else {
-                    continue;
-                };
-                let file = leaf_of(path);
-                if file.is_empty() {
-                    continue;
-                }
-                let family = print
-                    .get("map_family")
-                    .and_then(Value::as_str)
-                    .unwrap_or_default();
-                let target = match family {
-                    "custom-map" => "Prints/custom maps",
-                    "mv-map" => "Reports/MV",
-                    _ => reports_folder.as_str(),
-                };
-                let mut projected = Row::new(
-                    "transformers",
-                    target,
-                    segment(&file),
-                    format!("sys:report_file:{name}:{file}"),
-                    json!({"transformer": name, "path": path_only(path),
-                        "sha256": present(&artifact.sha256), "family": family,
-                        "attachment_type": "printout", "paper_size": print.get("paper_size")}),
-                )
-                .recognised(artifact.size_bytes.unwrap_or(0), present(&artifact.format))
-                .bytes(artifact.size_bytes)
-                .digest(present(&artifact.sha256))
-                .status(Status::Durable)
-                .source(SourceKind::ReportOutput, "published printout");
-                if !reserved {
-                    projected = projected.transformer_link(name);
-                }
-                self.push(projected);
-            }
         }
         reserved
     }
@@ -2582,11 +2585,11 @@ mod tests {
     #[test]
     fn published_maps_are_projected_from_existing_report_channel() {
         let response = build(&tree_request(json!({"sources": {"transformers": [
-            {"name":"combined_transformer", "report_metadata":{"print_urls":[
+            {"name":"combined_transformer", "print_files":["gs://reports/huye.a0-landscape.pdf"], "report_metadata":{"print_urls":[
                 {"gcs_path":"gs://reports/huye.a0-landscape.pdf", "map_family":"custom-map", "size_bytes":500, "sha256":"abc"}
             ]}},
-            {"name":"mv_data", "report_metadata":{"print_urls":[
-                {"gcs_path":"gs://reports/mv_data.a3-landscape.pdf", "map_family":"mv-map"}
+            {"name":"mv_data", "print_files":["gs://reports/mv_data.a3-landscape.pdf"], "report_metadata":{"print_urls":[
+                {"gcs_path":"gs://reports/mv_data.a3-landscape.pdf", "map_family":"mv-map", "size_bytes":15000000, "sha256":"abc"}
             ]}}
         ]}}))).unwrap();
         assert!(rows(&response)
@@ -2596,6 +2599,13 @@ mod tests {
         assert!(rows(&response)
             .iter()
             .any(|(folder, name, _)| folder == "Reports/MV" && name == "mv_data.a3-landscape.pdf"));
+        let mv = asset_named(
+            &response,
+            "sys:report_file:mv_data:mv_data.a3-landscape.pdf",
+        );
+        assert_eq!(mv.bytes, 15000000);
+        assert_eq!(mv.origin.unwrap().r#ref["attachment_type"], "printout");
+        assert_eq!(rows(&response).len(), 2);
     }
 
     /// One row per source key of §2.5 — all nineteen.
