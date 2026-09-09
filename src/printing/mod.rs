@@ -3,6 +3,7 @@
 pub mod custom;
 pub mod map;
 pub mod overrides;
+pub mod style_overrides;
 pub mod table_headings;
 pub mod table_rows;
 use schemars::JsonSchema;

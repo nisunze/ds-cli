@@ -191,6 +191,7 @@ pub fn plan(r: &Request, boundaries: Vec<Boundary>, sheets: &Value) -> Result<Va
     }
 
     validate(&layout)?;
+    super::style_overrides::preflight(&layout, &sheets["printing_styles"])?;
     let frame = layout
         .elements
         .iter()
