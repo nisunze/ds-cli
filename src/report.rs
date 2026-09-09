@@ -65,6 +65,56 @@ pub fn publication_state(
 #[derive(Deserialize)]
 #[serde(tag = "command", rename_all = "snake_case", deny_unknown_fields)]
 enum Command {
+    MapPlan {
+        request: crate::printing::map::Request,
+        boundaries: Vec<crate::printing::custom::Boundary>,
+        sheets: serde_json::Value,
+    },
+    MapRequest {
+        request: crate::printing::map::Request,
+    },
+    MapMvLayers {
+        projection: serde_json::Value,
+        model: crate::printing::map::Model,
+        bounds: [f64; 4],
+    },
+    MapCurrent {
+        rows: Vec<serde_json::Value>,
+        item: serde_json::Value,
+    },
+    MapCatalog {
+        rows: Vec<serde_json::Value>,
+        item: serde_json::Value,
+    },
+    MapLayers {
+        area: serde_json::Value,
+        sources: std::collections::BTreeMap<String, serde_json::Value>,
+    },
+    CustomAreaPlan {
+        project: String,
+        id: String,
+        codes: Vec<String>,
+    },
+    CustomArea {
+        project: String,
+        id: String,
+        codes: Vec<String>,
+        boundaries: Vec<crate::printing::custom::Boundary>,
+        #[serde(default)]
+        include_geometry: bool,
+    },
+    Export {
+        project: String,
+        transformer: String,
+        #[serde(default)]
+        force: bool,
+        #[serde(default)]
+        report_type: Option<String>,
+        #[serde(default)]
+        transformers: Vec<String>,
+        #[serde(default)]
+        selection: Option<crate::report_formats::DesignOutputSelection>,
+    },
     FormatOptions {
         #[serde(default)]
         setups: Vec<serde_json::Value>,
@@ -72,6 +122,14 @@ enum Command {
     Formats {
         sheets: serde_json::Value,
         combined: bool,
+        #[serde(default)]
+        selection: Option<crate::report_formats::DesignOutputSelection>,
+    },
+    ContextPreparation {
+        sheets: serde_json::Value,
+        online: bool,
+        #[serde(default)]
+        selection: Option<crate::report_formats::DesignOutputSelection>,
     },
     Publication {
         engine: String,
@@ -147,17 +205,146 @@ fn names(values: Vec<String>) -> Result<BTreeSet<String>, String> {
     }
     Ok(result)
 }
+/// Input batches are ordered newest first. Preserve every unselected canonical
+/// output in its original batch; never copy its provenance into a newer run.
+pub fn current_output_indices(batches: &[Vec<String>]) -> Vec<Vec<usize>> {
+    let mut seen = BTreeSet::new();
+    batches
+        .iter()
+        .map(|outputs| {
+            outputs
+                .iter()
+                .enumerate()
+                .filter_map(|(index, key)| seen.insert(key).then_some(index))
+                .collect()
+        })
+        .collect()
+}
+
 pub fn evaluate(input: &[u8]) -> Result<String, String> {
     if input.len() > 64 * 1024 * 1024 {
         return Err("Report command exceeds 64 MiB".into());
     }
     let command: Command = serde_json::from_slice(input).map_err(|e| e.to_string())?;
     let result = match command {
+        Command::MapMvLayers {
+            projection,
+            model,
+            bounds,
+        } => crate::printing::map::mv_layers(projection, model, bounds)?,
+        Command::MapCurrent { rows, item } => {
+            serde_json::json!(crate::printing::map::current(&rows, &item))
+        }
+        Command::MapCatalog { rows, item } => crate::printing::map::catalog(rows, item)?,
+        Command::MapRequest { request } => {
+            crate::printing::map::validate_request(&request)?;
+            serde_json::to_value(request).map_err(|e| e.to_string())?
+        }
+        Command::MapPlan {
+            request,
+            boundaries,
+            sheets,
+        } => crate::printing::map::plan(&request, boundaries, &sheets)?,
+        Command::MapLayers { area, sources } => {
+            crate::printing::map::select_layers(&area, &sources)?
+        }
+        Command::CustomAreaPlan { project, id, codes } => {
+            crate::printing::custom::plan_area(&project, &id, &codes)?
+        }
+        Command::CustomArea {
+            project,
+            id,
+            codes,
+            boundaries,
+            include_geometry,
+        } => crate::printing::custom::area_result(
+            crate::printing::custom::prepare_area(&project, &id, &codes, boundaries)?,
+            include_geometry,
+        ),
+        Command::Export {
+            project,
+            transformer,
+            force,
+            report_type,
+            transformers,
+            selection,
+        } => {
+            if project.is_empty()
+                || project.len() > 128
+                || project.trim() != project
+                || !project
+                    .bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
+            {
+                return Err("Report export requires one exact project id.".into());
+            }
+            let kind = if transformer == "combined_transformer" {
+                match report_type.as_deref() {
+                    None | Some("combined") => "combined",
+                    Some("compounded_reports") => "compounded",
+                    _ => return Err("Unsupported report type.".into()),
+                }
+            } else {
+                names(vec![transformer.clone()])?;
+                if report_type.is_some() || !transformers.is_empty() {
+                    return Err("A transformer export cannot also name a combined scope.".into());
+                }
+                "transformer"
+            };
+            if names(transformers.clone())?.len() != transformers.len() {
+                return Err("Report scope repeats a transformer.".into());
+            }
+            let label = match kind {
+                "combined" => "Combined report".into(),
+                "compounded" => "Compounded report".into(),
+                _ => format!("Report · {transformer}"),
+            };
+            let mut plan = serde_json::json!({"project":project,"transformer":transformer,"force":force,"transformers":transformers,"kind":kind,"label":label,"reuse_prepared":true});
+            if let Some(selection) = selection {
+                if kind != "transformer" {
+                    return Err("Local output overrides require individual transformers".into());
+                }
+                let tokens = selection.tokens()?;
+                if tokens.is_empty() || tokens.len() > 32 {
+                    return Err("Local output selection must contain 1..32 outputs".into());
+                }
+                plan["selection"] = serde_json::to_value(selection).map_err(|e| e.to_string())?;
+            }
+            plan
+        }
         Command::FormatOptions { setups } => {
             serde_json::json!({"options": crate::report_formats::options(&setups)?})
         }
-        Command::Formats { sheets, combined } => {
-            serde_json::json!({"outputs": crate::report_formats::plan(&sheets, combined)?})
+        Command::Formats {
+            sheets,
+            combined,
+            selection,
+        } => {
+            serde_json::json!({"outputs": crate::report_formats::selected_plan(&sheets, combined, selection.as_ref())?})
+        }
+        Command::ContextPreparation {
+            sheets,
+            online,
+            selection,
+        } => {
+            let sheets = sheets.get("sheets").unwrap_or(&sheets);
+            let outputs = crate::report_formats::selected_plan(sheets, false, selection.as_ref())?;
+            let layouts = crate::report_formats::named_layouts(sheets)?;
+            let mut seen = BTreeSet::new();
+            let mut contexts = Vec::new();
+            for output in outputs {
+                if let Some((_, id)) = crate::report_formats::named_print_output(&output.format) {
+                    for context in &layouts[id].context_layers {
+                        let value = serde_json::to_value(context).map_err(|e| e.to_string())?;
+                        if seen.insert(serde_json::to_string(&value).map_err(|e| e.to_string())?) {
+                            contexts.push(value);
+                        }
+                    }
+                }
+            }
+            // Every export ensures its selected inputs. Acquisition happens
+            // before the renderer; offline hosts can only inspect held data.
+            serde_json::json!({"contexts": contexts, "acquire_missing": online})
         }
         Command::Publication {
             engine,
@@ -308,5 +495,92 @@ mod tests {
         assert!(evaluate(&serde_json::to_vec(&absent).unwrap()).is_err());
         absent["requested"] = serde_json::json!(["tx_a"]);
         assert!(evaluate(&serde_json::to_vec(&absent).unwrap()).is_ok());
+    }
+}
+
+#[cfg(test)]
+mod export_tests {
+    use super::*;
+    use serde_json::json;
+    #[test]
+    fn iterations_overwrite_only_selected_outputs_preserving_original_batches() {
+        let batches = vec![
+            vec!["pdf__a3".into()],
+            vec!["xlsx".into()],
+            vec!["pdf__a0".into(), "pdf__a3".into(), "xlsx".into()],
+            vec!["pdf__a3".into()],
+        ];
+        assert_eq!(
+            current_output_indices(&batches),
+            vec![vec![0], vec![0], vec![0], vec![]]
+        );
+    }
+
+    #[test]
+    fn printing_ensures_selected_context_once_and_acquires_only_online() {
+        let mut first = crate::printing::default_layout();
+        first.id = "a3".into();
+        first
+            .context_layers
+            .push(crate::printing::PrintContextLayer {
+                id: "roads".into(),
+                label: "Roads".into(),
+                source: crate::printing::PrintContextSource::Catalog {
+                    country: "Rwanda".into(),
+                    layer: "roads".into(),
+                },
+            });
+        let mut second = first.clone();
+        second.id = "a0".into();
+        let mut unused = first.clone();
+        unused.id = "unused".into();
+        unused.context_layers[0].id = "not-selected".into();
+        let setups = [first, second, unused]
+            .map(|layout| json!({"id":layout.id,"revision":"a".repeat(64),"layout":layout}));
+        let sheets = json!({"project_settings":[{"parameter":"design_export_format","value":["pdf__a3","png__a3","pdf__a0"]}], "printing_setups":setups});
+        for online in [true, false] {
+            let output: serde_json::Value = serde_json::from_str(
+                &evaluate(
+                    &serde_json::to_vec(
+                        &json!({"command":"context_preparation","sheets":sheets,"online":online}),
+                    )
+                    .unwrap(),
+                )
+                .unwrap(),
+            )
+            .unwrap();
+            assert_eq!(output["result"]["acquire_missing"], online);
+            assert_eq!(output["result"]["contexts"].as_array().unwrap().len(), 1);
+            assert_eq!(output["result"]["contexts"][0]["id"], "roads");
+        }
+        let mut missing = sheets;
+        missing["printing_setups"] = json!([]);
+        assert!(evaluate(
+            &serde_json::to_vec(
+                &json!({"command":"context_preparation","sheets":missing,"online":true})
+            )
+            .unwrap()
+        )
+        .is_err());
+    }
+    #[test]
+    fn gui_and_cli_export_selection_use_the_same_closed_command() {
+        let value = json!({"command":"export","project":"p","transformer":"agatare"});
+        let output: serde_json::Value =
+            serde_json::from_str(&evaluate(&serde_json::to_vec(&value).unwrap()).unwrap()).unwrap();
+        assert_eq!(output["result"]["kind"], "transformer");
+        assert_eq!(output["result"]["reuse_prepared"], true);
+        for bad in [
+            json!({"transformer":"collisions"}),
+            json!({"report_type":"compounded_reports"}),
+            json!({"transformers":["another"]}),
+            json!({"project":"../p"}),
+        ] {
+            let mut changed = value.clone();
+            for (k, v) in bad.as_object().unwrap() {
+                changed[k] = v.clone();
+            }
+            assert!(evaluate(&serde_json::to_vec(&changed).unwrap()).is_err());
+        }
     }
 }

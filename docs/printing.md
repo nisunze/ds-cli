@@ -37,3 +37,32 @@ CLI `report.layout.edit --request FILE` and web authoring use these same intents
 returns V2: standard paper is inferred from exact dimensions, other bounded
 dimensions become custom paper, and the legacy map frame becomes the clipped
 `primary_map` viewport. New output is never V1.
+
+## Local custom area preparation
+
+The report command exposes `custom_area_plan` before host IO and `custom_area`
+after exact national boundary capture. They share project/map identifier and
+one-to-eight distinct sector-code validation. Capture requires exact sector
+identities and levels, valid polygonal geometry, a connected selection, and
+at most 50,000 coordinates across the result. It preserves holes and constituent
+polygons; it does not claim to dissolve shared edges. The stable sorted capture
+has a SHA-256 over its serialized MultiPolygon. Default projection contains
+names, bounds and digest; complete coordinates require `include_geometry`.
+This is area preparation, not a rendered report or an offline-readiness claim.
+The host fetches through existing reference authority; it cannot replace missing
+boundaries with a rectangle. Custom print output remains local until the project
+asset lifecycle is implemented.
+
+## Indexed table headings
+
+`table.heading_mode` is `literal` (default), `auto_index`, or `indexed`.
+`auto_index` chooses indices when any authored heading exceeds its data-sized,
+minimum/maximum-constrained column. Indexed tables use stable column-order
+letters A–L for every column and an untruncated explanatory key above each
+panel. Full headings remain in the document; columns and values never change.
+The key wraps at the authored type size and consumes actual table height;
+row omission warnings must use that same remaining height. `measure_headings`
+continues to govern literal headings; indexed headings measure the letters.
+Per-transformer `table.heading_mode` overrides the project layout through the
+same existing print-instruction command. Old documents omit the default field
+when serialized, preserving compatibility and their existing presentation.

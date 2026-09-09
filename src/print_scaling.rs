@@ -70,10 +70,11 @@ impl PrintScaling {
         self.reference_paper == legacy.reference_paper
             && self.units == legacy.units
             && self.factors.len() == legacy.factors.len()
-            && legacy
-                .factors
-                .iter()
-                .all(|(paper, factor)| self.factors.get(paper).is_some_and(|f| (f - factor).abs() < 1e-9))
+            && legacy.factors.iter().all(|(paper, factor)| {
+                self.factors
+                    .get(paper)
+                    .is_some_and(|f| (f - factor).abs() < 1e-9)
+            })
     }
 }
 
@@ -174,7 +175,14 @@ mod tests {
         // A deliberately authored table is honoured as written.
         let authored = json!({"type":"line","metadata":{"print_scaling":{"reference_paper":"A3","units":"css_px",
             "factors":{"A0":1.5,"A1":1.25,"A2":1.1,"A3":1,"A4":1,"A5":1,"Custom":1}}}});
-        assert_eq!(scaling_from_style(&authored).unwrap().unwrap().factor("A0").unwrap(), 1.5);
+        assert_eq!(
+            scaling_from_style(&authored)
+                .unwrap()
+                .unwrap()
+                .factor("A0")
+                .unwrap(),
+            1.5
+        );
     }
 
     #[test]

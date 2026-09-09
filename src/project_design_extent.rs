@@ -130,7 +130,10 @@ fn validate_padding(degrees: f64) -> Result<(), String> {
 /// `None` means the design holds no usable WGS84 coordinate at all — an empty
 /// roster, empty collections, or a file whose coordinates were never projected
 /// into WGS84. That is the undesigned case, reported rather than guessed at.
-pub fn layers_bounds(layers: &Value, point_padding_degrees: f64) -> Result<Option<[f64; 4]>, String> {
+pub fn layers_bounds(
+    layers: &Value,
+    point_padding_degrees: f64,
+) -> Result<Option<[f64; 4]>, String> {
     validate_padding(point_padding_degrees)?;
     if layers.is_null() {
         return Ok(None);
@@ -310,9 +313,7 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
             }
             let extent = design_extent(&name, &layers, point_padding_degrees)?;
             let located = extent.bounds.is_some();
-            let degenerate = extent
-                .bounds
-                .is_some_and(|[w, s, e, n]| w == e || s == n);
+            let degenerate = extent.bounds.is_some_and(|[w, s, e, n]| w == e || s == n);
             let buffered = match (extent.bounds, buffer_m) {
                 (Some([w, s, e, n]), Some(metres)) => {
                     let rect = crate::project_dataset_cache::buffered(
@@ -359,8 +360,7 @@ mod tests {
         let value: Value =
             serde_json::from_str(&evaluate(request.to_string().as_bytes()).unwrap()).unwrap();
         let buffered = value["buffered"].as_array().unwrap();
-        let [w, s, e, n]: [f64; 4] =
-            [0, 1, 2, 3].map(|i| buffered[i].as_f64().unwrap());
+        let [w, s, e, n]: [f64; 4] = [0, 1, 2, 3].map(|i| buffered[i].as_f64().unwrap());
         // 200 m is ~0.0018° of latitude; the west/east growth is at least that.
         assert!((n - -1.999) > 0.0017 && (n - -1.999) < 0.0019);
         assert!((-2.0 - s) > 0.0017 && (-2.0 - s) < 0.0019);
@@ -479,7 +479,11 @@ mod tests {
         ];
         let merged = merge_extents(&cached, &held).unwrap();
         assert_eq!(
-            merged.extents.iter().map(|e| e.name.as_str()).collect::<Vec<_>>(),
+            merged
+                .extents
+                .iter()
+                .map(|e| e.name.as_str())
+                .collect::<Vec<_>>(),
             ["t1", "t2", "t9"]
         );
         // Union, not replacement: the saved extent another window may still be
@@ -529,7 +533,14 @@ mod tests {
         assert!(bare.extents[0].bounds.is_none());
         assert_eq!(bare.added, ["t5"]);
 
-        assert!(merge_extents(&[], &[HeldDesign { name: "".into(), layers: json!({}) }]).is_err());
+        assert!(merge_extents(
+            &[],
+            &[HeldDesign {
+                name: "".into(),
+                layers: json!({})
+            }]
+        )
+        .is_err());
     }
 
     #[test]
@@ -555,9 +566,11 @@ mod tests {
         assert_eq!(merged["added"], json!(["t2"]));
 
         assert!(evaluate(b"{}").is_err());
-        let wrong = json!({"schema": "ds.other/v1", "action": "extent", "name": "t1", "layers": {}});
+        let wrong =
+            json!({"schema": "ds.other/v1", "action": "extent", "name": "t1", "layers": {}});
         assert!(evaluate(wrong.to_string().as_bytes()).is_err());
-        let unknown = json!({"schema": SCHEMA, "action": "extent", "name": "t1", "layers": {}, "wat": 1});
+        let unknown =
+            json!({"schema": SCHEMA, "action": "extent", "name": "t1", "layers": {}, "wat": 1});
         assert!(evaluate(unknown.to_string().as_bytes()).is_err());
     }
 }

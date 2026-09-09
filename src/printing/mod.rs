@@ -1,12 +1,17 @@
 //! Print-layout authority shared by CLI, Canvas2D preview and vector delivery.
 //! Flat page elements in physical millimetres; no tile, HTML or remote-image IO.
+pub mod custom;
+pub mod map;
+pub mod overrides;
+pub mod table_headings;
+pub mod table_rows;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::collections::{BTreeMap, BTreeSet};
 
 mod artifact;
-pub use artifact::{ArtifactPresentation, validate_artifact_presentation};
+pub use artifact::{validate_artifact_presentation, ArtifactPresentation};
 
 pub const SCHEMA: &str = "ds.print-layout/v2";
 pub const LEGACY_SCHEMA: &str = "ds.print-layout/v1";
@@ -201,6 +206,15 @@ pub struct TableBinding {
     /// headings still render, truncated within their columns without wrapping.
     #[serde(default = "table_measure_headings_default")]
     pub measure_headings: bool,
+    /// Keep literal headings, or index them with a full key above each panel.
+    #[serde(
+        default,
+        skip_serializing_if = "table_headings::HeadingMode::is_literal"
+    )]
+    pub heading_mode: table_headings::HeadingMode,
+    /// Explicitly allow a visibly warned incomplete table for an outlier.
+    #[serde(default)]
+    pub overflow: TableOverflow,
     /// Maximum side-by-side panels, with repeated headings and no omitted rows.
     #[serde(default = "one_panel")]
     pub panels: usize,
@@ -228,6 +242,8 @@ impl Default for TableBinding {
             max_widths_mm: vec![],
             min_widths_mm: vec![],
             measure_headings: true,
+            heading_mode: table_headings::HeadingMode::Literal,
+            overflow: TableOverflow::TruncateWarn,
             panels: 1,
             gap_mm: 3.,
             sort_by: vec![],
@@ -236,6 +252,13 @@ impl Default for TableBinding {
             align: TableAlignment::Right,
         }
     }
+}
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum TableOverflow {
+    Error,
+    #[default]
+    TruncateWarn,
 }
 #[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema, PartialEq)]
 #[serde(rename_all = "snake_case")]
@@ -264,6 +287,9 @@ pub enum TablePresentation {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct LegendBinding {
+    /// Physical indentation of category swatches and labels under their layer.
+    #[serde(default = "legend_indent")]
+    pub indent_mm: f64,
     /// Logical layer IDs in the desired order; empty selects all geometry layers.
     #[serde(default)]
     pub layers: Vec<String>,
@@ -273,6 +299,9 @@ pub struct LegendBinding {
     pub categorical: bool,
     #[serde(default = "legend_row")]
     pub row_mm: f64,
+}
+fn legend_indent() -> f64 {
+    4.
 }
 fn legend_row() -> f64 {
     6.
@@ -617,8 +646,10 @@ pub fn validate(layout: &Layout) -> Result<(), String> {
                         || table.max_widths_mm.iter().any(|v| !bounded(*v, 3., 1000.))))
                 || (!table.min_widths_mm.is_empty()
                     && (table.min_widths_mm.len() != table.columns.len()
-                        || table.min_widths_mm.iter().enumerate().any(|(i,v)|
-                            !bounded(*v, 0., 1000.) || table.max_widths_mm.get(i).is_some_and(|max| v > max))))
+                        || table.min_widths_mm.iter().enumerate().any(|(i, v)| {
+                            !bounded(*v, 0., 1000.)
+                                || table.max_widths_mm.get(i).is_some_and(|max| v > max)
+                        })))
             {
                 return Err("invalid table binding, headings or column widths".into());
             }
@@ -635,6 +666,7 @@ pub fn validate(layout: &Layout) -> Result<(), String> {
                     .iter()
                     .any(|(k, v)| k.len() > 160 || v.len() > 160)
                 || !bounded(legend.row_mm, 3., 30.)
+                || !bounded(legend.indent_mm, 0., 20.)
             {
                 return Err("invalid legend controls".into());
             }
@@ -757,7 +789,8 @@ pub fn validate(layout: &Layout) -> Result<(), String> {
                 || o.label.as_ref().is_some_and(|l| {
                     l.size_pt.is_some_and(|v| !bounded(v, 1., 60.))
                         || l.halo_mm.is_some_and(|v| !bounded(v, 0., 5.))
-                        || l.offset_mm.is_some_and(|v| v.iter().any(|n| !bounded(*n, -20., 20.)))
+                        || l.offset_mm
+                            .is_some_and(|v| v.iter().any(|n| !bounded(*n, -20., 20.)))
                         || l.priority.is_some_and(|v| !bounded(v, -1000., 1000.))
                         || l.color.as_ref().is_some_and(|c| !color(c))
                         || l.halo_color.as_ref().is_some_and(|c| !color(c))
@@ -1186,6 +1219,15 @@ pub enum Command {
         #[serde(default)]
         required_layout: Option<String>,
     },
+    TransformerInstructions {
+        layout: Layout,
+        current: Vec<serde_json::Value>,
+        instructions: BTreeMap<String, Option<overrides::PrintOverride>>,
+    },
+    TransformerOverride {
+        layout: Layout,
+        instructions: overrides::PrintOverride,
+    },
     TransformerViews {
         views: BTreeMap<String, BTreeMap<String, GeographicView>>,
     },
@@ -1261,7 +1303,16 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
         serde_json::from_slice(input).map_err(|e| format!("invalid printing request: {e}"))?;
     let value = match command {
         Command::ProjectSettings { sheets } => {
-            crate::report_formats::inspect_project_settings(&sheets)?
+            let mut result = crate::report_formats::inspect_project_settings(&sheets)?;
+            result["transformer_instructions"] = sheets["project_settings"]
+                .as_array()
+                .and_then(|rows| {
+                    rows.iter()
+                        .find(|row| row["parameter"] == "printing_overrides")
+                })
+                .map(|row| row["value"].clone())
+                .unwrap_or_else(|| json!({}));
+            result
         }
         Command::OutputSelection {
             selection,
@@ -1282,6 +1333,21 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
                 }
             }
             json!({"selection":selection})
+        }
+        Command::TransformerInstructions {
+            layout,
+            current,
+            instructions,
+        } => {
+            let layout = upgrade(layout)?;
+            json!({"project_settings": overrides::update_settings(&layout, &current, &instructions)?})
+        }
+        Command::TransformerOverride {
+            layout,
+            instructions,
+        } => {
+            let layout = overrides::apply(&upgrade(layout)?, &instructions)?;
+            json!({"layout": layout, "instructions": instructions})
         }
         Command::TransformerViews { views } => {
             if views.len() > 10_000 {
@@ -1660,27 +1726,30 @@ mod tests {
 
     #[test]
     fn output_selection_can_require_the_layout_being_authored() {
-        assert!(
-            evaluate(
-                br#"{"op":"output_selection","legacy_formats":["pdf__a3"],"required_layout":"a3"}"#
-            )
-            .is_ok()
-        );
-        assert!(
-            evaluate(
-                br#"{"op":"output_selection","legacy_formats":["xlsx"],"required_layout":"a3"}"#
-            )
-            .is_err()
-        );
+        assert!(evaluate(
+            br#"{"op":"output_selection","legacy_formats":["pdf__a3"],"required_layout":"a3"}"#
+        )
+        .is_ok());
+        assert!(evaluate(
+            br#"{"op":"output_selection","legacy_formats":["xlsx"],"required_layout":"a3"}"#
+        )
+        .is_err());
     }
     #[test]
     fn minimum_column_widths_are_ordered_and_bounded_by_caps() {
-        let mut layout=default_layout();
+        let mut layout = default_layout();
         layout.elements.push(serde_json::from_value(serde_json::json!({"id":"info","kind":"table","rect":[20,20,100,100],
             "table":{"layer":"info","columns":["quantity"],"headings":["Quantity"],"widths":[1],"min_widths_mm":[6],"max_widths_mm":[10]}})).unwrap());
         validate(&layout).unwrap();
-        for invalid in [vec![11.],vec![-1.],vec![f64::NAN],vec![6.,6.]] {
-            layout.elements.last_mut().unwrap().table.as_mut().unwrap().min_widths_mm=invalid;
+        for invalid in [vec![11.], vec![-1.], vec![f64::NAN], vec![6., 6.]] {
+            layout
+                .elements
+                .last_mut()
+                .unwrap()
+                .table
+                .as_mut()
+                .unwrap()
+                .min_widths_mm = invalid;
             assert!(validate(&layout).is_err());
         }
     }
@@ -1693,17 +1762,35 @@ mod tests {
         value["measure_headings"] = serde_json::json!(false);
         let data_only: TableBinding = serde_json::from_value(value).unwrap();
         assert!(!data_only.measure_headings);
-        assert_eq!(serde_json::to_value(data_only).unwrap()["measure_headings"], false);
+        assert_eq!(
+            serde_json::to_value(data_only).unwrap()["measure_headings"],
+            false
+        );
     }
 
     #[test]
     fn label_offsets_are_physical_bounded_and_roundtrip() {
         let mut layout = default_layout();
-        layout.style_refs.insert("spans".into(), "master/spans_print".into());
-        layout.style_overrides.insert("spans".into(), serde_json::from_value(json!({"label":{"offset_mm":[0,-1.4]}})).unwrap());
+        layout
+            .style_refs
+            .insert("spans".into(), "master/spans_print".into());
+        layout.style_overrides.insert(
+            "spans".into(),
+            serde_json::from_value(json!({"label":{"offset_mm":[0,-1.4]}})).unwrap(),
+        );
         validate(&layout).unwrap();
-        assert_eq!(serde_json::from_value::<Layout>(serde_json::to_value(&layout).unwrap()).unwrap(),layout);
-        layout.style_overrides.get_mut("spans").unwrap().label.as_mut().unwrap().offset_mm=Some([0.,21.]);
+        assert_eq!(
+            serde_json::from_value::<Layout>(serde_json::to_value(&layout).unwrap()).unwrap(),
+            layout
+        );
+        layout
+            .style_overrides
+            .get_mut("spans")
+            .unwrap()
+            .label
+            .as_mut()
+            .unwrap()
+            .offset_mm = Some([0., 21.]);
         assert!(validate(&layout).is_err());
     }
 
@@ -1753,15 +1840,13 @@ mod tests {
             }
         }
         let layout = default_layout();
-        assert!(
-            evaluate(
-                &serde_json::to_vec(
-                    &json!({"op":"duplicate","layout":layout,"id":layout.id,"name":"Copy"})
-                )
-                .unwrap()
+        assert!(evaluate(
+            &serde_json::to_vec(
+                &json!({"op":"duplicate","layout":layout,"id":layout.id,"name":"Copy"})
             )
-            .is_err()
-        );
+            .unwrap()
+        )
+        .is_err());
         let result = evaluate(
             &serde_json::to_vec(&json!({"op":"rename","layout":layout,"name":"Renamed"})).unwrap(),
         )
@@ -1810,13 +1895,11 @@ mod tests {
             result["layout"]["elements"][0]["rect"],
             serde_json::json!([12., 32., 300., 235.])
         );
-        assert!(
-            evaluate(
-                &serde_json::to_vec(&serde_json::json!({"op":"remove","layout":layout,"id":"map"}))
-                    .unwrap()
-            )
-            .is_err()
-        );
+        assert!(evaluate(
+            &serde_json::to_vec(&serde_json::json!({"op":"remove","layout":layout,"id":"map"}))
+                .unwrap()
+        )
+        .is_err());
     }
 
     #[test]
@@ -1920,19 +2003,17 @@ mod tests {
             fit_around: Vec::new(),
         });
         assert!(validate(&layout).is_err());
-        assert!(
-            evaluate(
-                &serde_json::to_vec(&json!({
-                    "op":"set_viewport",
-                    "layout":default_layout(),
-                    "id":"title",
-                    "name":"Wrong",
-                    "view_slot":"wrong"
-                }))
-                .unwrap()
-            )
-            .is_err()
-        );
+        assert!(evaluate(
+            &serde_json::to_vec(&json!({
+                "op":"set_viewport",
+                "layout":default_layout(),
+                "id":"title",
+                "name":"Wrong",
+                "view_slot":"wrong"
+            }))
+            .unwrap()
+        )
+        .is_err());
     }
     #[test]
     fn category_sizes_need_a_field_and_scale_rounding_is_bounded() {

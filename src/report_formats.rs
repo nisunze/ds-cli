@@ -458,6 +458,60 @@ fn project_output_setting(sheets: &Value) -> Result<Option<&Value>, String> {
     }))
 }
 
+/// Local iteration selection is an execution input, never a settings mutation.
+/// Only exact formats with held, validated layouts can be rendered.
+pub fn selected_plan(
+    sheets: &Value,
+    is_combined: bool,
+    selection: Option<&DesignOutputSelection>,
+) -> Result<Vec<Output>, String> {
+    let Some(selection) = selection else {
+        return plan(sheets, is_combined);
+    };
+    if is_combined {
+        return Err("Local output overrides currently require individual transformers".into());
+    }
+    let tokens = selection.tokens()?;
+    if tokens.is_empty() || tokens.len() > 32 {
+        return Err("Local output selection must contain 1..32 outputs".into());
+    }
+    let layouts = named_layouts(sheets)?;
+    let mut seen = std::collections::BTreeSet::new();
+    let mut outputs = Vec::new();
+    for token in tokens {
+        let output = output(&token)?;
+        if named_print_output(&output.format).is_none()
+            && !INDIVIDUAL.contains(&output.format.as_str())
+        {
+            return Err(format!(
+                "Unsupported individual report output: {}",
+                output.format
+            ));
+        }
+        if !seen.insert(output.output_id.clone()) {
+            return Err("Local output selection repeats an output".into());
+        }
+        if let Some((_, id)) = named_print_output(&output.format) {
+            if !layouts.contains_key(id) {
+                return Err(format!("Prepare printing setup {id} before selecting it"));
+            }
+        }
+        outputs.push(output);
+    }
+    outputs.sort_by(|a, b| {
+        let rank = |output: &Output| {
+            INDIVIDUAL
+                .iter()
+                .position(|f| *f == output.format)
+                .unwrap_or(INDIVIDUAL.len())
+        };
+        rank(a)
+            .cmp(&rank(b))
+            .then_with(|| a.output_id.cmp(&b.output_id))
+    });
+    Ok(outputs)
+}
+
 pub fn inspect_project_settings(sheets: &Value) -> Result<Value, String> {
     let setting = project_output_setting(sheets)?;
     let prepared = plan(sheets, false)
@@ -522,6 +576,38 @@ mod tests {
     use super::*;
     use serde_json::json;
     #[test]
+    fn local_matrix_does_not_change_defaults_and_requires_held_layouts() {
+        let mut layout = crate::printing::default_layout();
+        layout.id = "detail".into();
+        let sheets = json!({"project_settings":[{"parameter":"report_formats","value":["xlsx","pdf__detail"]}],
+            "printing_setups":[{"id":"detail","revision":"a".repeat(64),"layout":layout}]});
+        let selection: DesignOutputSelection =
+            serde_json::from_value(json!({"schema":OUTPUT_SELECTION_SCHEMA,
+            "prints":[{"layout_id":"detail","formats":["pdf"]}]}))
+            .unwrap();
+        let original = sheets.clone();
+        assert_eq!(
+            selected_plan(&sheets, false, Some(&selection))
+                .unwrap()
+                .iter()
+                .map(|o| o.output_id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["pdf__detail"]
+        );
+        assert_eq!(sheets, original);
+        assert_eq!(selected_plan(&sheets, false, None).unwrap().len(), 2);
+        assert!(selected_plan(&json!({}), false, Some(&selection)).is_err());
+        assert!(selected_plan(&sheets, true, Some(&selection)).is_err());
+        let empty = DesignOutputSelection {
+            schema: OUTPUT_SELECTION_SCHEMA.into(),
+            prints: vec![],
+            geospatial: vec![],
+            tabular: vec![],
+        };
+        assert!(selected_plan(&sheets, false, Some(&empty)).is_err());
+    }
+
+    #[test]
     fn settings_inspection_uses_saved_selection_and_actual_paper_not_names() {
         use crate::printing::{named_layout, Orientation, Paper};
         let layout = named_layout(
@@ -583,7 +669,9 @@ mod tests {
             [210., 297.]
         );
         sheets["printing_setups"] = json!([]);
-        assert!(plan(&sheets, false).unwrap_err().contains("not in the sealed project printing inputs"));
+        assert!(plan(&sheets, false)
+            .unwrap_err()
+            .contains("not in the sealed project printing inputs"));
         assert!(named_setup_id("pdf__../outside").is_none());
         let options = options(&[json!({"id":"detail","name":"Renamed"})]).unwrap();
         assert!(options

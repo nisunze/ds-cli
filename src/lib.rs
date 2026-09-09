@@ -75,7 +75,14 @@ pub fn compute_artifact_retry_assessment_wasm(
 ) -> Result<String, wasm_bindgen::JsValue> {
     compute_artifact_sync::evaluate(input).map_err(|error| wasm_bindgen::JsValue::from_str(&error))
 }
+pub mod compute_artifact_sanitation;
 pub mod reconciliation;
+#[cfg(feature = "wasm")]
+#[wasm_bindgen::prelude::wasm_bindgen(js_name = computeArtifactSanitation)]
+pub fn compute_artifact_sanitation_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
+    compute_artifact_sanitation::evaluate(input)
+        .map_err(|error| wasm_bindgen::JsValue::from_str(&error))
+}
 #[cfg(feature = "wasm")]
 #[wasm_bindgen::prelude::wasm_bindgen(js_name = reconciliationCommand)]
 pub fn reconciliation_command_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
@@ -1270,4 +1277,36 @@ pub mod printing;
 #[wasm_bindgen::prelude::wasm_bindgen(js_name = printingCommand)]
 pub fn printing_command(input: &[u8]) -> Result<String, String> {
     printing::evaluate(input)
+}
+
+pub mod compute_artifact_inventory;
+#[cfg(feature = "wasm")]
+#[wasm_bindgen::prelude::wasm_bindgen(js_name = computeArtifactInventory)]
+pub fn compute_artifact_inventory_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
+    compute_artifact_inventory::evaluate(input)
+        .map_err(|error| wasm_bindgen::JsValue::from_str(&error))
+}
+
+pub mod compute_artifact_engine;
+#[cfg(feature = "wasm")]
+#[wasm_bindgen::prelude::wasm_bindgen(js_name = computeArtifactTransition)]
+pub fn compute_artifact_transition_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
+    compute_artifact_engine::evaluate(input)
+        .map_err(|error| wasm_bindgen::JsValue::from_str(&error))
+}
+
+#[cfg(feature = "wasm")]
+#[wasm_bindgen::prelude::wasm_bindgen(js_name = computeArtifactFailure)]
+pub fn compute_artifact_failure_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
+    compute_artifact_engine::failure::evaluate(input)
+        .map_err(|error| wasm_bindgen::JsValue::from_str(&error))
+}
+
+pub mod compute_artifact_queue;
+
+pub mod compute_artifact_cache;
+#[cfg(feature = "wasm")]
+#[wasm_bindgen::prelude::wasm_bindgen(js_name = computeArtifactCache)]
+pub fn compute_artifact_cache_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
+    compute_artifact_cache::evaluate(input).map_err(|error| wasm_bindgen::JsValue::from_str(&error))
 }

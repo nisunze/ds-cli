@@ -570,6 +570,30 @@ pub fn project_project_control_local_reports(
             .cmp(&left.created_at)
             .then_with(|| left.id.cmp(&right.id))
     });
+    // An iteration replaces only the selected outputs. Keep every surviving
+    // file in its producing batch, with its original sync state and provenance.
+    if input.transformer.is_some() {
+        let indices = crate::report::current_output_indices(
+            &reports
+                .iter()
+                .map(|report| {
+                    report
+                        .files
+                        .iter()
+                        .map(|file| format!("{}\0{}", report.variant, file.output_id))
+                        .collect()
+                })
+                .collect::<Vec<_>>(),
+        );
+        for (report, kept) in reports.iter_mut().zip(indices) {
+            report.files = std::mem::take(&mut report.files)
+                .into_iter()
+                .enumerate()
+                .filter_map(|(index, file)| kept.contains(&index).then_some(file))
+                .collect();
+        }
+        reports.retain(|report| !report.files.is_empty());
+    }
     encode(&ProjectedReportCatalog {
         schema: PROJECT_CONTROL_REPORT_CATALOG_SCHEMA,
         project: input.project,
@@ -756,7 +780,10 @@ mod tests {
         other_transformer["operation"] = json!("export-agasharu_1");
         let mut incomplete = row.clone();
         incomplete["outputs"][0]["local_path"] = Value::Null;
-        let input = json!({"project":"project-a", "transformer":"agasharu", "rows":[row, other_project, other_transformer]});
+        let mut superseded = row.clone();
+        superseded["id"] = json!("superseded");
+        superseded["created_at"] = json!(0);
+        let input = json!({"project":"project-a", "transformer":"agasharu", "rows":[row, superseded, other_project, other_transformer]});
         let value: Value = serde_json::from_str(
             &project_project_control_local_reports(&serde_json::to_vec(&input).unwrap()).unwrap(),
         )
