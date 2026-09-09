@@ -1662,6 +1662,11 @@ static DESKTOP_ENTRIES: &[Entry] = &[
         render: ds_cli_desktop::printing::render,
     },
     Entry {
+        command: &ds_cli_desktop::custom_print::AREA_COMMAND,
+        handler: ds_cli_desktop::custom_print::area,
+        render: ds_cli_desktop::printing::render,
+    },
+    Entry {
         command: &ds_cli_desktop::printing::SEED_CONTEXT_COMMAND,
         handler: ds_cli_desktop::printing::seed_context,
         render: ds_cli_desktop::printing::render,

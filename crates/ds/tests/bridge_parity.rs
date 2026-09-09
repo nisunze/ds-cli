@@ -307,6 +307,7 @@ fn printing_operations_have_one_closed_application_owner() {
         &ds_cli_desktop::printing::SETTINGS_OP,
         &ds_cli_desktop::printing::PREPARE_OP,
         &ds_cli_desktop::printing::SEED_CONTEXT_OP,
+        &ds_cli_desktop::custom_print::AREA_OP,
     ] {
         assert_eq!(
             count(allowlist, &format!("\"{}\"", op.operation)),

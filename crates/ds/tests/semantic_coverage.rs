@@ -78,6 +78,7 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("desktop.status", "discovery", "none"),
     ("desktop.offline.status", "read_only", "desktop_user"),
     ("desktop.offline.set", "local_file_write", "desktop_user"),
+    ("desktop.printing.custom.area", "read_only", "desktop_user"),
     ("desktop.printing.settings", "read_only", "desktop_user"),
     ("desktop.printing.list", "read_only", "desktop_user"),
     ("desktop.printing.get", "read_only", "desktop_user"),

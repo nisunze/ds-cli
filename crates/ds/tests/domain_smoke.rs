@@ -6824,3 +6824,33 @@ fn survey_capture_survives_separate_cli_processes_without_auth_or_desktop() {
     assert!(!root.join("no-auth").exists());
     std::fs::remove_dir_all(root).unwrap();
 }
+
+#[test]
+fn custom_print_area_refuses_bad_selection_before_pairing() {
+    for codes in [vec!["24"], vec!["2401", "2401"]] {
+        let mut args = vec![
+            "desktop",
+            "printing",
+            "custom",
+            "area",
+            "--project",
+            "p1",
+            "--id",
+            "huye",
+            "--output",
+            "json",
+        ];
+        for code in codes {
+            args.extend(["--sector", code]);
+        }
+        assert_eq!(refusal(&args), "custom_print_area_invalid");
+    }
+    let descriptor = ok(&[
+        "capabilities",
+        "desktop.printing.custom.area",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(descriptor["command"]["effect"], "read_only");
+    assert_eq!(descriptor["command"]["authority"], "desktop_user");
+}
