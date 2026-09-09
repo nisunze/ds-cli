@@ -55,6 +55,7 @@ pub struct CartographyChange {
     pub boundary_color: Option<String>,
     pub boundary_width: Option<f64>,
     pub boundary_opacity: Option<f64>,
+    pub boundary_line_type: Option<String>,
     pub line_type: Option<String>,
     pub direction_size: Option<f64>,
     pub direction_spacing: Option<f64>,
@@ -276,7 +277,8 @@ fn cartography(
         || change.pattern_stroke.is_some();
     let wants_boundary = change.boundary_color.is_some()
         || change.boundary_width.is_some()
-        || change.boundary_opacity.is_some();
+        || change.boundary_opacity.is_some()
+        || change.boundary_line_type.is_some();
     if !wants_line
         && !wants_casing
         && !wants_pattern
@@ -316,6 +318,19 @@ fn cartography(
         if let Some(opacity) = change.boundary_opacity {
             style["boundary"]["paint"]["line-opacity"] =
                 json!(bounded(opacity, 0., 1., "boundary opacity")?);
+        }
+        if let Some(requested) = &change.boundary_line_type {
+            let table = dash_table(snapshot);
+            let pattern = table
+                .get(requested)
+                .ok_or("boundary line type is absent from the published dash vocabulary")?;
+            if pattern.is_null() {
+                if let Some(paint) = style["boundary"]["paint"].as_object_mut() {
+                    paint.remove("line-dasharray");
+                }
+            } else {
+                style["boundary"]["paint"]["line-dasharray"] = pattern.clone();
+            }
         }
     }
     if wants_line {
@@ -1005,12 +1020,33 @@ mod tests {
             boundary_color: Some("#7C8792".into()),
             boundary_width: Some(0.7),
             boundary_opacity: Some(0.5),
+            boundary_line_type: Some("dashed".into()),
             ..Default::default()
         };
         let out = cartography(style, &change, &json!({})).unwrap();
         assert_eq!(out["paint"]["fill-opacity"], 0.);
         assert_eq!(out["boundary"]["paint"]["line-width"], 0.7);
         assert_eq!(out["layout"]["visibility"], "visible");
+        assert_eq!(out["boundary"]["paint"]["line-dasharray"], json!([2, 2]));
+        let solid = cartography(
+            out.clone(),
+            &CartographyChange {
+                boundary_line_type: Some("solid".into()),
+                ..Default::default()
+            },
+            &json!({}),
+        )
+        .unwrap();
+        assert!(solid["boundary"]["paint"].get("line-dasharray").is_none());
+        assert!(cartography(
+            out.clone(),
+            &CartographyChange {
+                boundary_line_type: Some("directional".into()),
+                ..Default::default()
+            },
+            &json!({})
+        )
+        .is_err());
         assert!(cartography(json!({"type":"line"}), &change, &json!({})).is_err());
         assert!(cartography(
             out,
