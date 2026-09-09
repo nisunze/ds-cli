@@ -61,9 +61,10 @@ pub fn assess(input: &[u8]) -> Result<Assessment, String> {
     // A former Brain comparator compared presentation pointer addresses after
     // independent storage reads. Explicitly retry that exact retained failure;
     // the repaired server still verifies declarations, bytes and head fences.
-    let is_storage_comparison_failure = request.failure_code.is_none()
-        && request.error.as_deref().map(str::trim)
-            == Some("compute artifact conflict: stored work changed before finalize");
+    let is_storage_comparison_failure =
+        matches!(request.failure_code.as_deref(), None | Some("CONFLICT"))
+            && request.error.as_deref().map(str::trim)
+                == Some("compute artifact conflict: stored work changed before finalize");
     let retry_eligible = request.engine == "network_reporter"
         && matches!(request.status.as_str(), "failed" | "conflict")
         && request.phase == "pending"
@@ -159,6 +160,14 @@ mod tests {
         candidate["failure_code"] = serde_json::Value::Null;
         candidate["error"] =
             json!("compute artifact conflict: stored work changed before finalize");
+        assert!(
+            assess(&serde_json::to_vec(&candidate).unwrap())
+                .unwrap()
+                .retry_eligible
+        );
+        // Brain's real HTTP conflict response retains this typed code. Older
+        // local receipts can predate failure-code persistence.
+        candidate["failure_code"] = json!("CONFLICT");
         assert!(
             assess(&serde_json::to_vec(&candidate).unwrap())
                 .unwrap()

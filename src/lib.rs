@@ -1230,3 +1230,10 @@ pub mod printing;
 pub fn printing_command(input: &[u8]) -> Result<String, String> {
     printing::evaluate(input)
 }
+
+pub mod compute_artifact_inventory;
+#[cfg(feature = "wasm")]
+#[wasm_bindgen::prelude::wasm_bindgen(js_name = computeArtifactInventory)]
+pub fn compute_artifact_inventory_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
+    compute_artifact_inventory::evaluate(input).map_err(|error| wasm_bindgen::JsValue::from_str(&error))
+}
