@@ -59,6 +59,8 @@ pub struct CartographyChange {
     pub boundary_opacity: Option<f64>,
     pub boundary_line_type: Option<String>,
     pub line_type: Option<String>,
+    pub line_type_scale: Option<f64>,
+    pub boundary_line_type_scale: Option<f64>,
     pub direction_size: Option<f64>,
     pub direction_spacing: Option<f64>,
     pub casing_color: Option<String>,
@@ -247,6 +249,12 @@ fn dash_table(snapshot: &Value) -> Map<String, Value> {
     result
 }
 fn current_line_type(style: &Value, table: &Map<String, Value>) -> String {
+    if let Some(name) = style["metadata"]["line_type_name"]
+        .as_str()
+        .filter(|name| table.contains_key(*name) || *name == "directional")
+    {
+        return name.into();
+    }
     if style["metadata"]["line_marker"] == "arrow" {
         "directional".into()
     } else {
@@ -269,6 +277,7 @@ fn cartography(
         .ok_or("missing style type")?
         .to_owned();
     let wants_line = change.line_type.is_some()
+        || change.line_type_scale.is_some()
         || change.direction_size.is_some()
         || change.direction_spacing.is_some();
     let wants_casing = change.casing_color.is_some() || change.casing_width.is_some();
@@ -280,7 +289,8 @@ fn cartography(
     let wants_boundary = change.boundary_color.is_some()
         || change.boundary_width.is_some()
         || change.boundary_opacity.is_some()
-        || change.boundary_line_type.is_some();
+        || change.boundary_line_type.is_some()
+        || change.boundary_line_type_scale.is_some();
     if !wants_line
         && !wants_casing
         && !wants_pattern
@@ -321,18 +331,29 @@ fn cartography(
             style["boundary"]["paint"]["line-opacity"] =
                 json!(bounded(opacity, 0., 1., "boundary opacity")?);
         }
-        if let Some(requested) = &change.boundary_line_type {
+        if change.boundary_line_type.is_some() || change.boundary_line_type_scale.is_some() {
             let table = dash_table(snapshot);
-            let pattern = table
-                .get(requested)
-                .ok_or("boundary line type is absent from the published dash vocabulary")?;
-            if pattern.is_null() {
-                if let Some(paint) = style["boundary"]["paint"].as_object_mut() {
-                    paint.remove("line-dasharray");
-                }
-            } else {
-                style["boundary"]["paint"]["line-dasharray"] = pattern.clone();
+            let requested = change
+                .boundary_line_type
+                .clone()
+                .unwrap_or_else(|| current_line_type(&style["boundary"], &table));
+            if !table.contains_key(&requested) {
+                return Err(
+                    "boundary line type is absent from the published dash vocabulary".into(),
+                );
             }
+            let mut boundary = style["boundary"].clone();
+            boundary["type"] = json!("line");
+            let mut scale = Map::new();
+            if let Some(value) = change.boundary_line_type_scale {
+                scale.insert(
+                    "dash".into(),
+                    json!(bounded(value, 0.1, 100., "boundary line type scale")?),
+                );
+            }
+            boundary = apply_line_type(boundary, &requested, &table, &scale)?;
+            boundary.as_object_mut().unwrap().remove("type");
+            style["boundary"] = boundary;
         }
     }
     if wants_line {
@@ -353,6 +374,12 @@ fn cartography(
             return Err("direction size/spacing require a directional line".into());
         }
         let mut scale = Map::new();
+        if let Some(value) = change.line_type_scale {
+            scale.insert(
+                "dash".into(),
+                json!(bounded(value, 0.1, 100., "line type scale")?),
+            );
+        }
         if let Some(size) = change.direction_size {
             scale.insert(
                 "size".into(),

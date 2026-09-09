@@ -315,6 +315,21 @@ pub fn apply_line_type(
     scale: &Map<String, Value>,
 ) -> Result<Value, String> {
     kind(&style)?;
+    let dash_scale = scale
+        .get("dash")
+        .and_then(Value::as_f64)
+        .or_else(|| style["metadata"]["line_type_scale"].as_f64())
+        .unwrap_or(1.);
+    if !dash_scale.is_finite() || !(0.1..=100.).contains(&dash_scale) {
+        return Err("line type scale must be between 0.1 and 100".into());
+    }
+    if dash_scale != 1. {
+        bucket(&mut style, "metadata")?.insert("line_type_scale".into(), json!(dash_scale));
+        bucket(&mut style, "metadata")?.insert("line_type_name".into(), json!(line_type));
+    } else if let Some(metadata) = style.get_mut("metadata").and_then(Value::as_object_mut) {
+        metadata.remove("line_type_scale");
+        metadata.remove("line_type_name");
+    }
     if line_type == "directional" {
         bucket(&mut style, "paint")?.remove("line-dasharray");
         bucket(&mut style, "metadata")?.insert("line_marker".into(), json!("arrow"));
@@ -334,7 +349,25 @@ pub fn apply_line_type(
     } else {
         let paint = bucket(&mut style, "paint")?;
         if let Some(pattern) = table.get(line_type).filter(|v| !v.is_null()) {
-            paint.insert("line-dasharray".into(), pattern.clone());
+            let values = pattern.as_array().ok_or("dash preset must be numeric")?;
+            let scaled: Result<Vec<f64>, String> = values
+                .iter()
+                .map(|value| {
+                    value
+                        .as_f64()
+                        .filter(|n| n.is_finite() && *n >= 0.)
+                        .map(|n| n * dash_scale)
+                        .ok_or_else(|| "dash preset must be numeric".into())
+                })
+                .collect();
+            paint.insert(
+                "line-dasharray".into(),
+                if dash_scale == 1. {
+                    pattern.clone()
+                } else {
+                    json!(scaled?)
+                },
+            );
         } else {
             paint.remove("line-dasharray");
         }
@@ -556,3 +589,32 @@ mod tests {
 
 // JSON.stringify emits integral JS numbers without a decimal suffix. Keep
 // native/WASM fixture documents identical while retaining existing integer data.
+
+#[cfg(test)]
+mod line_scale_tests {
+    use super::*;
+    #[test]
+    fn dash_scale_preserves_width_and_does_not_compound_on_repeated_edits() {
+        let table = json!({"dashed":[2,2], "solid":null})
+            .as_object()
+            .unwrap()
+            .clone();
+        let scale = json!({"dash":3}).as_object().unwrap().clone();
+        let style = json!({"type":"line","paint":{"line-width":2,"line-color":"#123456"}});
+        let a = apply_line_type(style, "dashed", &table, &scale).unwrap();
+        assert_eq!(a["paint"]["line-dasharray"], json!([6., 6.]));
+        assert_eq!(a["paint"]["line-width"], 2);
+        let b = apply_line_type(a.clone(), "dashed", &table, &Map::new()).unwrap();
+        assert_eq!(a, b);
+        let reset =
+            apply_line_type(b, "dashed", &table, json!({"dash":1}).as_object().unwrap()).unwrap();
+        assert_eq!(reset["paint"]["line-dasharray"], json!([2, 2]));
+        assert!(apply_line_type(
+            reset,
+            "dashed",
+            &table,
+            json!({"dash":0}).as_object().unwrap()
+        )
+        .is_err());
+    }
+}
