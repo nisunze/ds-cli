@@ -80,6 +80,8 @@ pub struct PrintLabelOverride {
     pub visible: Option<bool>,
     /// Paint placed labels below all map geometry, for background reference layers.
     pub below_geometry: Option<bool>,
+    /// Label-local offset in paper millimetres; rotates with along-line labels.
+    pub offset_mm: Option<[f64; 2]>,
     pub size_pt: Option<f64>,
     pub color: Option<String>,
     pub halo_color: Option<String>,
@@ -739,6 +741,7 @@ pub fn validate(layout: &Layout) -> Result<(), String> {
                 || o.label.as_ref().is_some_and(|l| {
                     l.size_pt.is_some_and(|v| !bounded(v, 1., 60.))
                         || l.halo_mm.is_some_and(|v| !bounded(v, 0., 5.))
+                        || l.offset_mm.is_some_and(|v| v.iter().any(|n| !bounded(*n, -20., 20.)))
                         || l.priority.is_some_and(|v| !bounded(v, -1000., 1000.))
                         || l.color.as_ref().is_some_and(|c| !color(c))
                         || l.halo_color.as_ref().is_some_and(|c| !color(c))
@@ -1654,6 +1657,17 @@ mod tests {
             .is_err()
         );
     }
+    #[test]
+    fn label_offsets_are_physical_bounded_and_roundtrip() {
+        let mut layout = default_layout();
+        layout.style_refs.insert("spans".into(), "master/spans_print".into());
+        layout.style_overrides.insert("spans".into(), serde_json::from_value(json!({"label":{"offset_mm":[0,-1.4]}})).unwrap());
+        validate(&layout).unwrap();
+        assert_eq!(serde_json::from_value::<Layout>(serde_json::to_value(&layout).unwrap()).unwrap(),layout);
+        layout.style_overrides.get_mut("spans").unwrap().label.as_mut().unwrap().offset_mm=Some([0.,21.]);
+        assert!(validate(&layout).is_err());
+    }
+
     #[test]
     fn context_layers_are_explicit_and_parameter_bounded() {
         let layout = default_layout();
