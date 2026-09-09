@@ -1230,6 +1230,8 @@ const PRINTING_COMMANDS: &[&str] = &[
     "desktop.printing.artifact.copy",
     "desktop.printing.seed-context",
     "desktop.printing.custom.area",
+    "desktop.printing.map.export",
+    "desktop.printing.map.list",
     "report.layout.new",
     "report.layout.edit",
     "report.layout.schema",

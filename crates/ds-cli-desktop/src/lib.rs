@@ -58,6 +58,8 @@ pub static DOMAIN: Domain = Domain {
         &printing::PREPARE_COMMAND,
         &printing::SEED_CONTEXT_COMMAND,
         &custom_print::AREA_COMMAND,
+        &custom_print::EXPORT_COMMAND,
+        &custom_print::LIST_COMMAND,
         &artifact::READ_COMMAND,
         &artifact::COPY_COMMAND,
         &data::STATUS_COMMAND,

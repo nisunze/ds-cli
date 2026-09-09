@@ -6854,3 +6854,29 @@ fn custom_print_area_refuses_bad_selection_before_pairing() {
     assert_eq!(descriptor["command"]["effect"], "read_only");
     assert_eq!(descriptor["command"]["authority"], "desktop_user");
 }
+
+#[test]
+fn map_export_and_catalog_contracts_keep_native_render_and_project_attachment_distinct() {
+    let export = ok(&[
+        "capabilities",
+        "desktop.printing.map.export",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(export["command"]["effect"], "artifact_write");
+    assert_eq!(export["command"]["confirmation_required"], true);
+    let list = ok(&[
+        "capabilities",
+        "desktop.printing.map.list",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(list["command"]["effect"], "read_only");
+    assert!(
+        list["command"]["inputs"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|a| a["name"] == "project" && a["required"] == true)
+    );
+}
