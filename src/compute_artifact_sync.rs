@@ -58,6 +58,12 @@ pub fn assess(input: &[u8]) -> Result<Assessment, String> {
 
     let is_admission_failure =
         admission_failure(request.failure_code.as_deref(), request.error.as_deref());
+    // A former Brain comparator compared presentation pointer addresses after
+    // independent storage reads. Explicitly retry that exact retained failure;
+    // the repaired server still verifies declarations, bytes and head fences.
+    let is_storage_comparison_failure = request.failure_code.is_none()
+        && request.error.as_deref().map(str::trim)
+            == Some("compute artifact conflict: stored work changed before finalize");
     let retry_eligible = request.engine == "network_reporter"
         && matches!(request.status.as_str(), "failed" | "conflict")
         && request.phase == "pending"
@@ -66,15 +72,21 @@ pub fn assess(input: &[u8]) -> Result<Assessment, String> {
             .engine_build_manifest_sha256
             .as_deref()
             .is_some_and(|sha| lower_hex(sha, 64))
-        && is_admission_failure;
+        && (is_admission_failure || is_storage_comparison_failure);
 
     Ok(Assessment {
         schema: SCHEMA,
         failure_code: is_admission_failure.then_some("ENGINE_BUILD_NOT_ADMITTED"),
         retry_eligible,
-        retry_remedy: is_admission_failure.then_some(
+        retry_remedy: if is_storage_comparison_failure {
+            Some(
+            "After the server storage-comparison fix is installed, retry this retained row. Immutable bytes and current publication authority will be verified again.",
+        )
+        } else {
+            is_admission_failure.then_some(
             "Verify that the server admits this exact engine_version and engine_build_manifest_sha256, then retry this same row.",
-        ),
+        )
+        },
     })
 }
 
@@ -138,6 +150,42 @@ mod tests {
                 .unwrap()
                 .retry_eligible
         );
+    }
+
+    #[test]
+    fn retries_only_the_exact_storage_comparison_failure() {
+        let mut candidate = request();
+        candidate["status"] = json!("conflict");
+        candidate["failure_code"] = serde_json::Value::Null;
+        candidate["error"] =
+            json!("compute artifact conflict: stored work changed before finalize");
+        assert!(
+            assess(&serde_json::to_vec(&candidate).unwrap())
+                .unwrap()
+                .retry_eligible
+        );
+        for (field, value) in [
+            (
+                "error",
+                json!("compute artifact conflict: network reporter input receipt is stale"),
+            ),
+            (
+                "error",
+                json!("compute artifact conflict: output bytes changed"),
+            ),
+            ("phase", json!("stored_stale")),
+            ("status", json!("syncing")),
+            ("engine", json!("solar")),
+            ("failure_code", json!("OTHER_FAILURE")),
+        ] {
+            let mut changed = candidate.clone();
+            changed[field] = value;
+            assert!(
+                !assess(&serde_json::to_vec(&changed).unwrap())
+                    .unwrap()
+                    .retry_eligible
+            );
+        }
     }
 
     #[test]

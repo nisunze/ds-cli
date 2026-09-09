@@ -570,6 +570,11 @@ pub fn project_project_control_local_reports(
             .cmp(&left.created_at)
             .then_with(|| left.id.cmp(&right.id))
     });
+    // Transformer exports replace their complete canonical inventory. Older
+    // queue rows remain recovery records, never extra current report formats.
+    if input.transformer.is_some() {
+        reports.truncate(1);
+    }
     encode(&ProjectedReportCatalog {
         schema: PROJECT_CONTROL_REPORT_CATALOG_SCHEMA,
         project: input.project,
@@ -756,7 +761,10 @@ mod tests {
         other_transformer["operation"] = json!("export-agasharu_1");
         let mut incomplete = row.clone();
         incomplete["outputs"][0]["local_path"] = Value::Null;
-        let input = json!({"project":"project-a", "transformer":"agasharu", "rows":[row, other_project, other_transformer]});
+        let mut superseded = row.clone();
+        superseded["id"] = json!("superseded");
+        superseded["created_at"] = json!(0);
+        let input = json!({"project":"project-a", "transformer":"agasharu", "rows":[row, superseded, other_project, other_transformer]});
         let value: Value = serde_json::from_str(
             &project_project_control_local_reports(&serde_json::to_vec(&input).unwrap()).unwrap(),
         )
