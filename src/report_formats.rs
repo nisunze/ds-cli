@@ -480,6 +480,14 @@ pub fn selected_plan(
     let mut outputs = Vec::new();
     for token in tokens {
         let output = output(&token)?;
+        if named_print_output(&output.format).is_none()
+            && !INDIVIDUAL.contains(&output.format.as_str())
+        {
+            return Err(format!(
+                "Unsupported individual report output: {}",
+                output.format
+            ));
+        }
         if !seen.insert(output.output_id.clone()) {
             return Err("Local output selection repeats an output".into());
         }
@@ -490,7 +498,17 @@ pub fn selected_plan(
         }
         outputs.push(output);
     }
-    outputs.sort_by(|a, b| a.output_id.cmp(&b.output_id));
+    outputs.sort_by(|a, b| {
+        let rank = |output: &Output| {
+            INDIVIDUAL
+                .iter()
+                .position(|f| *f == output.format)
+                .unwrap_or(INDIVIDUAL.len())
+        };
+        rank(a)
+            .cmp(&rank(b))
+            .then_with(|| a.output_id.cmp(&b.output_id))
+    });
     Ok(outputs)
 }
 
