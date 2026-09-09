@@ -59,6 +59,7 @@ pub struct Layout {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Default)]
 #[serde(deny_unknown_fields)]
 pub struct PrintStyleOverride {
+    pub visible: Option<bool>,
     pub color: Option<String>,
     pub size: Option<f64>,
     pub opacity: Option<f64>,
