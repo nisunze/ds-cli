@@ -84,7 +84,7 @@ A read paints the same catalogue the application's Assets tab renders: cached
 first, reconciled once, never polled. A CLI session therefore adds no project
 reads to a catalogue the application already has open.
 
-`--limit` is a page, bounded at 250 and defaulted to 50. When a page is short
+`--limit` is a page, bounded at 200 and defaulted to 50. When a page is short
 of the whole answer, `more` says so and `next_cursor` continues it — page with
 the cursor rather than re-querying from the top, which is the difference
 between one read and one read per page you have already seen. `scanned` is how
@@ -176,7 +176,7 @@ are looking at an existing inventory through a different window.
 | `invalid_folder_path` | absolute, empty, or carrying a `.`/`..` segment |
 | `invalid_out_path` | `--out` is not a new absolute path under an existing directory |
 | `invalid_source_path` | `--path` is not an absolute path to an existing readable file |
-| `invalid_number` | a bound with its number: `--limit` 1-250, `--depth` 1-8, `--pages` 1-5, `--rows` 1-200 |
+| `invalid_number` | a bound with its number: `--limit` 1-200, `--depth` 1-8, `--pages` 1-5, `--rows` 1-200 |
 | `invalid_layer_name` | `--as-layer` is empty, longer than 80 characters, or holds a control character — the same bound the application holds it to |
 | `invalid_date` | a `--since` that is not `YYYY-MM-DD` or RFC 3339 |
 | `invalid_link` | a `--link` that is not `pm_task:<id>` or `ds_object:<type>:<id>`, or a second one — a tree read filters on one link |

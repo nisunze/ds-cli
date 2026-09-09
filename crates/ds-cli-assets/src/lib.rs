@@ -162,7 +162,7 @@ pub const BRIDGE_OPS: &[&BridgeOp] = &[
 
 /// The largest page of catalogue rows one `list` returns. `more` and
 /// `next_cursor` say what was cut, so a short page is never silent.
-pub const MAX_PAGE_SIZE: i64 = 250;
+pub const MAX_PAGE_SIZE: i64 = 200;
 /// The page a caller gets without asking: the cheapest useful default, and
 /// inside the bound — the lesson `ds work` paid for once.
 pub const DEFAULT_PAGE_SIZE: i64 = 50;
@@ -440,7 +440,7 @@ pub const LIMIT_ARG: Arg = Arg {
     required: false,
     default: Some("50"),
     choices: &[],
-    summary: "Rows in one page (1-250). `more` and `next_cursor` say what was cut.",
+    summary: "Rows in one page (1-200). `more` and `next_cursor` say what was cut.",
 };
 
 pub const CURSOR_ARG: Arg = Arg::value(
@@ -802,7 +802,7 @@ mod tests {
     fn every_bound_a_summary_or_refusal_states_is_the_constant_it_names() {
         // A number printed in help is a hand copy of a constant, and the
         // parity suite only holds the constants. This holds the prose.
-        assert!(LIMIT_ARG.summary.contains("1-250") && MAX_PAGE_SIZE == 250);
+        assert!(LIMIT_ARG.summary.contains("1-200") && MAX_PAGE_SIZE == 200);
         assert!(DEPTH_ARG.summary.contains("1-8") && MAX_TREE_DEPTH == 8);
         assert!(PAGES_ARG.summary.contains("1-5") && MAX_PREVIEW_PAGES == 5);
         assert!(ROWS_ARG.summary.contains("1-200") && MAX_PREVIEW_ROWS == 200);

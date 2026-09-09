@@ -264,7 +264,7 @@ mod tests {
                 .code()
                 .to_string()
         };
-        assert_eq!(code(&["--limit", "251"]), "invalid_number");
+        assert_eq!(code(&["--limit", "201"]), "invalid_number");
         assert_eq!(code(&["--limit", "0"]), "invalid_number");
         assert_eq!(code(&["--since", "01-09-2026"]), "invalid_date");
         assert_eq!(code(&["--folder", "/contracts"]), "invalid_folder_path");
@@ -287,20 +287,20 @@ mod tests {
             .collect();
         let out = render(&json!({
             "assets": rows,
-            "next_cursor": "c_257",
+            "next_cursor": "c_207",
             "more": true,
             "scanned": 400,
             "truncated": true,
         }));
         let lines: Vec<&str> = out.lines().collect();
-        assert_eq!(lines[0], "257 assets on this page · 400 scanned");
+        assert_eq!(lines[0], "207 assets on this page · 400 scanned");
         assert_eq!(
             out.matches("lot-").count(),
             MAX_LINES,
             "the projection must stop at its own bound"
         );
         assert!(out.contains("… 7 more on this page"), "{out}");
-        assert!(out.contains("… more; continue with --cursor c_257"));
+        assert!(out.contains("… more; continue with --cursor c_207"));
         assert!(out.ends_with(
             "! the scan stopped at its bound; narrow with --folder, --kind or --since\n"
         ));
