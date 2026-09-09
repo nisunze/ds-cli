@@ -7399,3 +7399,22 @@ fn map_export_and_catalog_contracts_keep_native_render_and_project_attachment_di
             .any(|a| a["name"] == "project" && a["required"] == true)
     );
 }
+
+#[test]
+fn map_attachment_retry_requires_confirmation_and_canonical_filename() {
+    let descriptor = ok(&[
+        "capabilities",
+        "desktop.printing.map.attach",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(descriptor["command"]["effect"], "global_write");
+    assert_eq!(descriptor["command"]["confirmation_required"], true);
+    assert!(
+        descriptor["command"]["inputs"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|a| a["name"] == "filename" && a["required"] == true)
+    );
+}

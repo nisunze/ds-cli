@@ -1237,6 +1237,7 @@ const PRINTING_COMMANDS: &[&str] = &[
     "desktop.printing.custom.area",
     "desktop.printing.map.export",
     "desktop.printing.map.list",
+    "desktop.printing.map.attach",
     "report.layout.new",
     "report.layout.edit",
     "report.layout.schema",

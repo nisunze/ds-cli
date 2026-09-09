@@ -185,3 +185,52 @@ pub fn list(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
     )
     .map_err(ops::classify_signed_out)
 }
+
+pub const ATTACH_OP: BridgeOp = BridgeOp {
+    operation: "printing.map.attach",
+    arguments: &["project", "filename"],
+};
+pub static ATTACH_COMMAND: Command = Command {
+    id: "desktop.printing.map.attach",
+    path: &["desktop", "printing", "map", "attach"],
+    contract: 1,
+    summary: "Retry publication of one current local map printout.",
+    purpose: "Uses the same Project Control attachment operation and existing resumable report channel. The kernel checks that the canonical output is still current. An already uploaded blob is reused, then verified before attachment. Does not capture sources or render again; other formats remain intact.",
+    chapter: Chapter::Reports,
+    effect: Effect::GlobalWrite,
+    authority: Authority::DesktopUser,
+    execution: Execution::Sync,
+    args: &[
+        Arg::value("project", "<id>", "Exact active project.").required(),
+        Arg::value(
+            "filename",
+            "<canonical-name>",
+            "Exact current filename returned by map list.",
+        )
+        .required(),
+        DESCRIPTOR_ARG,
+    ],
+    output: "Current canonical PDF receipt with publication state attached or pending and its error. Pending means publication has not completed.",
+    examples: &[],
+    refusals: &[
+        ops::NOT_PAIRED,
+        ops::AMBIGUOUS,
+        ops::UNREACHABLE,
+        ops::PAIRING_REJECTED,
+        ops::REFUSED,
+        ops::UNSUPPORTED,
+        ops::UNREADABLE,
+        ops::SIGNED_OUT,
+    ],
+    reference: Some("docs/reference/desktop.printing.md"),
+    availability: ops::paired_availability,
+};
+pub fn attach(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
+    ops::invoke(
+        &ops::paired(inputs.value("desktop-descriptor"))?,
+        &ATTACH_OP,
+        json!({"project":inputs.require("project")?, "filename":inputs.require("filename")?}),
+        Duration::from_secs(2400),
+    )
+    .map_err(ops::classify_signed_out)
+}

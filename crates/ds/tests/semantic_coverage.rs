@@ -84,6 +84,11 @@ const EXPECTED: &[(&str, &str, &str)] = &[
         "desktop_user",
     ),
     ("desktop.printing.map.list", "read_only", "desktop_user"),
+    (
+        "desktop.printing.map.attach",
+        "global_write",
+        "desktop_user",
+    ),
     ("desktop.printing.custom.area", "read_only", "desktop_user"),
     ("desktop.printing.settings", "read_only", "desktop_user"),
     ("desktop.printing.list", "read_only", "desktop_user"),

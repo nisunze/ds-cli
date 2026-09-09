@@ -60,6 +60,7 @@ pub static DOMAIN: Domain = Domain {
         &custom_print::AREA_COMMAND,
         &custom_print::EXPORT_COMMAND,
         &custom_print::LIST_COMMAND,
+        &custom_print::ATTACH_COMMAND,
         &artifact::READ_COMMAND,
         &artifact::COPY_COMMAND,
         &data::STATUS_COMMAND,
