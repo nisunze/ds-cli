@@ -194,6 +194,10 @@ pub struct TableBinding {
     /// Ordered maximum column widths in mm; auto-fit and truncate outliers.
     #[serde(default)]
     pub max_widths_mm: Vec<f64>,
+    /// Include headings when measuring column widths. False measures data only;
+    /// headings still render, truncated within their columns without wrapping.
+    #[serde(default = "table_measure_headings_default")]
+    pub measure_headings: bool,
     /// Maximum side-by-side panels, with repeated headings and no omitted rows.
     #[serde(default = "one_panel")]
     pub panels: usize,
@@ -219,6 +223,7 @@ impl Default for TableBinding {
             headings: vec![],
             widths: vec![],
             max_widths_mm: vec![],
+            measure_headings: true,
             panels: 1,
             gap_mm: 3.,
             sort_by: vec![],
@@ -237,6 +242,9 @@ pub enum TableAlignment {
 }
 fn one_panel() -> usize {
     1
+}
+fn table_measure_headings_default() -> bool {
+    true
 }
 fn panel_gap() -> f64 {
     3.
@@ -1657,6 +1665,17 @@ mod tests {
             .is_err()
         );
     }
+    #[test]
+    fn table_heading_measurement_is_optional_and_roundtrips() {
+        let mut value = serde_json::json!({"layer":"customers","columns":["service_length"],"headings":["Service length"],"widths":[1]});
+        let default: TableBinding = serde_json::from_value(value.clone()).unwrap();
+        assert!(default.measure_headings);
+        value["measure_headings"] = serde_json::json!(false);
+        let data_only: TableBinding = serde_json::from_value(value).unwrap();
+        assert!(!data_only.measure_headings);
+        assert_eq!(serde_json::to_value(data_only).unwrap()["measure_headings"], false);
+    }
+
     #[test]
     fn label_offsets_are_physical_bounded_and_roundtrip() {
         let mut layout = default_layout();
