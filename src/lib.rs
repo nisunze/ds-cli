@@ -1255,3 +1255,10 @@ pub fn compute_artifact_failure_wasm(input: &[u8]) -> Result<String, wasm_bindge
 }
 
 pub mod compute_artifact_queue;
+
+pub mod compute_artifact_cache;
+#[cfg(feature = "wasm")]
+#[wasm_bindgen::prelude::wasm_bindgen(js_name = computeArtifactCache)]
+pub fn compute_artifact_cache_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
+    compute_artifact_cache::evaluate(input).map_err(|error| wasm_bindgen::JsValue::from_str(&error))
+}
