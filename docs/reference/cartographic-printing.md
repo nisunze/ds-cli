@@ -251,3 +251,9 @@ Project overview collection and rendering share a 200,000-feature ceiling;
 collection also retains its 128 MiB bound. The public render task schema reports
 `x-max-total-features`. A failure above that ceiling requires a smaller explicit
 scope; the renderer does not silently discard features or outliers.
+
+`table.min_widths_mm` supplies ordered physical lower bounds independently of
+headings. Use these with data-only measurement to keep short numeric columns
+readable; each minimum must be no greater than its corresponding maximum.
+For example, reserve 8–10 mm for short schedule quantities while long headings
+still truncate. These bounds do not change values or column order.
