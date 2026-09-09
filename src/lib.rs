@@ -11,6 +11,18 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use zeroize::Zeroize;
 
+pub mod assets;
+#[cfg(feature = "wasm")]
+#[wasm_bindgen::prelude::wasm_bindgen(js_name = assetsCommand)]
+pub fn assets_command_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
+    assets::evaluate(input).map_err(|error| wasm_bindgen::JsValue::from_str(&error))
+}
+#[cfg(feature = "wasm")]
+#[wasm_bindgen::prelude::wasm_bindgen(js_name = assetsPreview)]
+pub fn assets_preview_wasm(bytes: &[u8], request: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
+    assets::evaluate_with_bytes(bytes, request)
+        .map_err(|error| wasm_bindgen::JsValue::from_str(&error))
+}
 pub mod compute_artifact_sync;
 pub mod connectivity;
 pub mod design;
@@ -1005,6 +1017,42 @@ mod wasm_tests {
         project_control_rooms, solar_portfolio_membership, validate_firebase_login,
         validate_solar_portfolio,
     };
+
+    #[wasm_bindgen_test]
+    fn assets_native_and_wasm_share_results_and_refusals() {
+        let recognise = serde_json::to_vec(&serde_json::json!({
+            "schema": "ds.assets.request/v1", "action": "recognise",
+            "name": "notes.txt", "bytes_len": 5, "head_b64": "aGVsbG8="
+        }))
+        .unwrap();
+        let native = crate::assets::evaluate(&recognise).unwrap();
+        let browser = super::assets_command_wasm(&recognise).unwrap();
+        assert_eq!(browser, native);
+        let preview = serde_json::to_vec(&serde_json::json!({
+            "schema": "ds.assets.request/v1", "action": "preview", "format": "pdf"
+        }))
+        .unwrap();
+        let native = crate::assets::evaluate_with_bytes(b"%PDF-1.7", &preview).unwrap_err();
+        let browser = super::assets_preview_wasm(b"%PDF-1.7", &preview).unwrap_err();
+        assert_eq!(browser.as_string().unwrap(), native);
+    }
+
+    #[wasm_bindgen_test]
+    fn assets_preview_native_and_wasm_share_a_csv_grid() {
+        let csv = b"id,name,kv\nTX-104,Kabeza,11\nTX-105,Gikondo,33\n";
+        let preview = serde_json::to_vec(&serde_json::json!({
+            "schema": "ds.assets.request/v1", "action": "preview", "format": "csv", "rows": 1
+        }))
+        .unwrap();
+        let native = crate::assets::evaluate_with_bytes(csv, &preview).unwrap();
+        let browser = super::assets_preview_wasm(csv, &preview).unwrap();
+        assert_eq!(browser, native);
+        let doc: Value = serde_json::from_str(&browser).unwrap();
+        assert_eq!(doc["schema"], "ds.assets.preview_doc/v1");
+        assert_eq!(doc["blocks"][0]["type"], "grid");
+        assert_eq!(doc["blocks"][0]["rows_total"], 2);
+        assert_eq!(doc["blocks"][0]["rows_shown"], 1);
+    }
 
     #[wasm_bindgen_test]
     fn survey_native_and_wasm_share_validation_factory_and_conflict_policy() {
