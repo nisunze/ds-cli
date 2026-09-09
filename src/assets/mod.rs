@@ -55,9 +55,13 @@ pub const TREE_SCHEMA: &str = "ds.assets.tree/v1";
 
 const MIB: u64 = 1024 * 1024;
 
-/// JSON request bound for both entry points (the crate-wide 1 MiB request
-/// ceiling; the document bytes travel beside the request, never inside it).
+/// Small command envelope; document bytes travel beside it.
+/// Tree inventory metadata has a separate budget below.
 pub const MAX_REQUEST_BYTES: usize = MIB as usize;
+/// Project-wide inventory metadata, still constrained to 20,000 source rows.
+/// Real local print receipts exceed 1 MiB for only 200 transformer rooms.
+/// This is not a document/PDF size limit.
+pub const MAX_TREE_REQUEST_BYTES: usize = 64 * MIB as usize;
 /// Largest document either entry point accepts at all (§4.2, the pdf fetch
 /// ceiling); every per-format cap below is at or under it.
 pub const MAX_PREVIEW_INPUT_BYTES: u64 = 32 * MIB;
@@ -937,10 +941,18 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
         "assets request",
         input.len() as u64,
         "request",
-        MAX_REQUEST_BYTES as u64,
+        MAX_TREE_REQUEST_BYTES as u64,
     )?;
     let request: Request = serde_json::from_slice(input)
         .map_err(|error| format!("invalid assets request: {error}"))?;
+    if !matches!(&request, Request::Tree(_)) {
+        check_bytes(
+            "assets request",
+            input.len() as u64,
+            "request",
+            MAX_REQUEST_BYTES as u64,
+        )?;
+    }
     let value = match request {
         Request::Recognise(request) => {
             require_schema(&request.schema)?;
@@ -1173,14 +1185,25 @@ mod tests {
     #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
     #[cfg_attr(not(target_arch = "wasm32"), test)]
     fn request_bound_is_a_named_refusal() {
-        let oversized = vec![b' '; MAX_REQUEST_BYTES + 1];
+        let oversized = vec![b' '; MAX_TREE_REQUEST_BYTES + 1];
         let error = evaluate(&oversized).unwrap_err();
-        assert_eq!(
-            error,
-            "assets request is 1,048,577 bytes; the request bound is 1 MiB"
-        );
-        let error = evaluate_with_bytes(b"", &oversized).unwrap_err();
+        assert!(error.contains("request bound is 64 MiB"), "{error}");
+        let small_envelope = vec![b' '; MAX_REQUEST_BYTES + 1];
+        let error = evaluate_with_bytes(b"", &small_envelope).unwrap_err();
         assert!(error.contains("1,048,577 bytes"), "{error}");
+    }
+
+    #[test]
+    fn valid_inventory_above_small_command_budget_is_projected() {
+        let source = json!({"name":"TX", "metadata":{"ignored_inventory_metadata":"x".repeat(MAX_REQUEST_BYTES)}});
+        let request =
+            json!({"schema": REQUEST_SCHEMA, "action":"tree", "sources":{"transformers":[source]}});
+        let output = evaluate(&serde_json::to_vec(&request).unwrap()).unwrap();
+        assert!(output.contains("sys:transformer_design:TX"));
+        let envelope = json!({"schema": REQUEST_SCHEMA, "action":"recognise", "name":"x".repeat(MAX_REQUEST_BYTES), "bytes_len":0, "head_b64":""});
+        assert!(evaluate(&serde_json::to_vec(&envelope).unwrap())
+            .unwrap_err()
+            .contains("request bound is 1 MiB"));
     }
 
     #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
