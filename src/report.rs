@@ -65,6 +65,19 @@ pub fn publication_state(
 #[derive(Deserialize)]
 #[serde(tag = "command", rename_all = "snake_case", deny_unknown_fields)]
 enum Command {
+    CustomAreaPlan {
+        project: String,
+        id: String,
+        codes: Vec<String>,
+    },
+    CustomArea {
+        project: String,
+        id: String,
+        codes: Vec<String>,
+        boundaries: Vec<crate::printing::custom::Boundary>,
+        #[serde(default)]
+        include_geometry: bool,
+    },
     Export {
         project: String,
         transformer: String,
@@ -189,6 +202,19 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
     }
     let command: Command = serde_json::from_slice(input).map_err(|e| e.to_string())?;
     let result = match command {
+        Command::CustomAreaPlan { project, id, codes } => {
+            crate::printing::custom::plan_area(&project, &id, &codes)?
+        }
+        Command::CustomArea {
+            project,
+            id,
+            codes,
+            boundaries,
+            include_geometry,
+        } => crate::printing::custom::area_result(
+            crate::printing::custom::prepare_area(&project, &id, &codes, boundaries)?,
+            include_geometry,
+        ),
         Command::Export {
             project,
             transformer,
