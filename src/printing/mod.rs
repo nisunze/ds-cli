@@ -6,7 +6,7 @@ use serde_json::json;
 use std::collections::{BTreeMap, BTreeSet};
 
 mod artifact;
-pub use artifact::{ArtifactPresentation, validate_artifact_presentation};
+pub use artifact::{validate_artifact_presentation, ArtifactPresentation};
 
 pub const SCHEMA: &str = "ds.print-layout/v2";
 pub const LEGACY_SCHEMA: &str = "ds.print-layout/v1";
@@ -617,8 +617,10 @@ pub fn validate(layout: &Layout) -> Result<(), String> {
                         || table.max_widths_mm.iter().any(|v| !bounded(*v, 3., 1000.))))
                 || (!table.min_widths_mm.is_empty()
                     && (table.min_widths_mm.len() != table.columns.len()
-                        || table.min_widths_mm.iter().enumerate().any(|(i,v)|
-                            !bounded(*v, 0., 1000.) || table.max_widths_mm.get(i).is_some_and(|max| v > max))))
+                        || table.min_widths_mm.iter().enumerate().any(|(i, v)| {
+                            !bounded(*v, 0., 1000.)
+                                || table.max_widths_mm.get(i).is_some_and(|max| v > max)
+                        })))
             {
                 return Err("invalid table binding, headings or column widths".into());
             }
@@ -757,7 +759,8 @@ pub fn validate(layout: &Layout) -> Result<(), String> {
                 || o.label.as_ref().is_some_and(|l| {
                     l.size_pt.is_some_and(|v| !bounded(v, 1., 60.))
                         || l.halo_mm.is_some_and(|v| !bounded(v, 0., 5.))
-                        || l.offset_mm.is_some_and(|v| v.iter().any(|n| !bounded(*n, -20., 20.)))
+                        || l.offset_mm
+                            .is_some_and(|v| v.iter().any(|n| !bounded(*n, -20., 20.)))
                         || l.priority.is_some_and(|v| !bounded(v, -1000., 1000.))
                         || l.color.as_ref().is_some_and(|c| !color(c))
                         || l.halo_color.as_ref().is_some_and(|c| !color(c))
@@ -1660,27 +1663,30 @@ mod tests {
 
     #[test]
     fn output_selection_can_require_the_layout_being_authored() {
-        assert!(
-            evaluate(
-                br#"{"op":"output_selection","legacy_formats":["pdf__a3"],"required_layout":"a3"}"#
-            )
-            .is_ok()
-        );
-        assert!(
-            evaluate(
-                br#"{"op":"output_selection","legacy_formats":["xlsx"],"required_layout":"a3"}"#
-            )
-            .is_err()
-        );
+        assert!(evaluate(
+            br#"{"op":"output_selection","legacy_formats":["pdf__a3"],"required_layout":"a3"}"#
+        )
+        .is_ok());
+        assert!(evaluate(
+            br#"{"op":"output_selection","legacy_formats":["xlsx"],"required_layout":"a3"}"#
+        )
+        .is_err());
     }
     #[test]
     fn minimum_column_widths_are_ordered_and_bounded_by_caps() {
-        let mut layout=default_layout();
+        let mut layout = default_layout();
         layout.elements.push(serde_json::from_value(serde_json::json!({"id":"info","kind":"table","rect":[20,20,100,100],
             "table":{"layer":"info","columns":["quantity"],"headings":["Quantity"],"widths":[1],"min_widths_mm":[6],"max_widths_mm":[10]}})).unwrap());
         validate(&layout).unwrap();
-        for invalid in [vec![11.],vec![-1.],vec![f64::NAN],vec![6.,6.]] {
-            layout.elements.last_mut().unwrap().table.as_mut().unwrap().min_widths_mm=invalid;
+        for invalid in [vec![11.], vec![-1.], vec![f64::NAN], vec![6., 6.]] {
+            layout
+                .elements
+                .last_mut()
+                .unwrap()
+                .table
+                .as_mut()
+                .unwrap()
+                .min_widths_mm = invalid;
             assert!(validate(&layout).is_err());
         }
     }
@@ -1693,17 +1699,35 @@ mod tests {
         value["measure_headings"] = serde_json::json!(false);
         let data_only: TableBinding = serde_json::from_value(value).unwrap();
         assert!(!data_only.measure_headings);
-        assert_eq!(serde_json::to_value(data_only).unwrap()["measure_headings"], false);
+        assert_eq!(
+            serde_json::to_value(data_only).unwrap()["measure_headings"],
+            false
+        );
     }
 
     #[test]
     fn label_offsets_are_physical_bounded_and_roundtrip() {
         let mut layout = default_layout();
-        layout.style_refs.insert("spans".into(), "master/spans_print".into());
-        layout.style_overrides.insert("spans".into(), serde_json::from_value(json!({"label":{"offset_mm":[0,-1.4]}})).unwrap());
+        layout
+            .style_refs
+            .insert("spans".into(), "master/spans_print".into());
+        layout.style_overrides.insert(
+            "spans".into(),
+            serde_json::from_value(json!({"label":{"offset_mm":[0,-1.4]}})).unwrap(),
+        );
         validate(&layout).unwrap();
-        assert_eq!(serde_json::from_value::<Layout>(serde_json::to_value(&layout).unwrap()).unwrap(),layout);
-        layout.style_overrides.get_mut("spans").unwrap().label.as_mut().unwrap().offset_mm=Some([0.,21.]);
+        assert_eq!(
+            serde_json::from_value::<Layout>(serde_json::to_value(&layout).unwrap()).unwrap(),
+            layout
+        );
+        layout
+            .style_overrides
+            .get_mut("spans")
+            .unwrap()
+            .label
+            .as_mut()
+            .unwrap()
+            .offset_mm = Some([0., 21.]);
         assert!(validate(&layout).is_err());
     }
 
@@ -1753,15 +1777,13 @@ mod tests {
             }
         }
         let layout = default_layout();
-        assert!(
-            evaluate(
-                &serde_json::to_vec(
-                    &json!({"op":"duplicate","layout":layout,"id":layout.id,"name":"Copy"})
-                )
-                .unwrap()
+        assert!(evaluate(
+            &serde_json::to_vec(
+                &json!({"op":"duplicate","layout":layout,"id":layout.id,"name":"Copy"})
             )
-            .is_err()
-        );
+            .unwrap()
+        )
+        .is_err());
         let result = evaluate(
             &serde_json::to_vec(&json!({"op":"rename","layout":layout,"name":"Renamed"})).unwrap(),
         )
@@ -1810,13 +1832,11 @@ mod tests {
             result["layout"]["elements"][0]["rect"],
             serde_json::json!([12., 32., 300., 235.])
         );
-        assert!(
-            evaluate(
-                &serde_json::to_vec(&serde_json::json!({"op":"remove","layout":layout,"id":"map"}))
-                    .unwrap()
-            )
-            .is_err()
-        );
+        assert!(evaluate(
+            &serde_json::to_vec(&serde_json::json!({"op":"remove","layout":layout,"id":"map"}))
+                .unwrap()
+        )
+        .is_err());
     }
 
     #[test]
@@ -1920,19 +1940,17 @@ mod tests {
             fit_around: Vec::new(),
         });
         assert!(validate(&layout).is_err());
-        assert!(
-            evaluate(
-                &serde_json::to_vec(&json!({
-                    "op":"set_viewport",
-                    "layout":default_layout(),
-                    "id":"title",
-                    "name":"Wrong",
-                    "view_slot":"wrong"
-                }))
-                .unwrap()
-            )
-            .is_err()
-        );
+        assert!(evaluate(
+            &serde_json::to_vec(&json!({
+                "op":"set_viewport",
+                "layout":default_layout(),
+                "id":"title",
+                "name":"Wrong",
+                "view_slot":"wrong"
+            }))
+            .unwrap()
+        )
+        .is_err());
     }
     #[test]
     fn category_sizes_need_a_field_and_scale_rounding_is_bounded() {

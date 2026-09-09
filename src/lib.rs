@@ -63,12 +63,13 @@ pub fn compute_artifact_retry_assessment_wasm(
 ) -> Result<String, wasm_bindgen::JsValue> {
     compute_artifact_sync::evaluate(input).map_err(|error| wasm_bindgen::JsValue::from_str(&error))
 }
-pub mod reconciliation;
 pub mod compute_artifact_sanitation;
+pub mod reconciliation;
 #[cfg(feature = "wasm")]
 #[wasm_bindgen::prelude::wasm_bindgen(js_name = computeArtifactSanitation)]
 pub fn compute_artifact_sanitation_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
-    compute_artifact_sanitation::evaluate(input).map_err(|error| wasm_bindgen::JsValue::from_str(&error))
+    compute_artifact_sanitation::evaluate(input)
+        .map_err(|error| wasm_bindgen::JsValue::from_str(&error))
 }
 #[cfg(feature = "wasm")]
 #[wasm_bindgen::prelude::wasm_bindgen(js_name = reconciliationCommand)]

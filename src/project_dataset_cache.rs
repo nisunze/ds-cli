@@ -743,14 +743,19 @@ pub fn plan_focused(
     let groups = clusters(&expanded);
     let mut cells: Vec<Rect> = Vec::new();
     let mut reported: Vec<Cluster> = Vec::new();
-    let in_focus = |index: usize| focus.is_empty() || focus.iter().any(|name| *name == named[index].0);
+    let in_focus =
+        |index: usize| focus.is_empty() || focus.iter().any(|name| *name == named[index].0);
     for group in groups {
         let envelope = group
             .iter()
             .map(|&index| expanded[index])
             .reduce(Rect::union)
             .expect("a cluster always holds at least one rectangle");
-        let wanted: Vec<usize> = group.iter().copied().filter(|&index| in_focus(index)).collect();
+        let wanted: Vec<usize> = group
+            .iter()
+            .copied()
+            .filter(|&index| in_focus(index))
+            .collect();
         if wanted.is_empty() {
             continue;
         }
@@ -891,7 +896,11 @@ pub fn acquisition_selects(
     feature: &Value,
     area: &Value,
 ) -> Result<bool, String> {
-    crate::reference_cache::selects_area(feature, area, acquisition_selection(dataset_id, provider)?)
+    crate::reference_cache::selects_area(
+        feature,
+        area,
+        acquisition_selection(dataset_id, provider)?,
+    )
 }
 
 /// Reject an oversized or malformed source receipt outright.
@@ -1223,9 +1232,15 @@ mod tests {
         let mut extents = Vec::new();
         for i in 0..20 {
             let x = 30.0 + step * i as f64;
-            extents.push(extent(&format!("x{i}"), Some([x, -2.0, x + 0.0001, -1.9999])));
+            extents.push(extent(
+                &format!("x{i}"),
+                Some([x, -2.0, x + 0.0001, -1.9999]),
+            ));
             let y = -2.0 + step * i as f64;
-            extents.push(extent(&format!("y{i}"), Some([30.0, y, 30.0001, y + 0.0001])));
+            extents.push(extent(
+                &format!("y{i}"),
+                Some([30.0, y, 30.0001, y + 0.0001]),
+            ));
         }
         let whole = plan(&scope(), &buildings(), &policy(), &extents).unwrap();
         assert_eq!(whole.clusters.len(), 1);
@@ -1235,11 +1250,25 @@ mod tests {
         for &[w, s, e, n] in &whole.coverage.cells {
             assert!(rect_area_m2(Rect { w, s, e, n }) < 1_000_000.0);
         }
-        let one = plan_focused(&scope(), &buildings(), &policy(), &extents, &["x7".to_string()]).unwrap();
+        let one = plan_focused(
+            &scope(),
+            &buildings(),
+            &policy(),
+            &extents,
+            &["x7".to_string()],
+        )
+        .unwrap();
         assert_eq!(one.coverage.cells.len(), 1);
         assert_eq!(one.clusters[0].cells, 1);
         assert_eq!(one.clusters[0].members.len(), 40);
-        let none = plan_focused(&scope(), &buildings(), &policy(), &extents, &["absent".to_string()]).unwrap();
+        let none = plan_focused(
+            &scope(),
+            &buildings(),
+            &policy(),
+            &extents,
+            &["absent".to_string()],
+        )
+        .unwrap();
         assert!(none.empty);
         // A small pair keeps its single envelope and is not split.
         let pair = [
@@ -1644,7 +1673,8 @@ mod tests {
             acquisition_selection(BUILDINGS_DATASET_ID, "").unwrap(),
             AreaSelection::Intersects
         );
-        let area = json!({"type":"Polygon","coordinates":[[[0.,0.],[1.,0.],[1.,1.],[0.,1.],[0.,0.]]]});
+        let area =
+            json!({"type":"Polygon","coordinates":[[[0.,0.],[1.,0.],[1.,1.],[0.,1.],[0.,0.]]]});
         let crossing = json!({"type":"Feature","properties":{},
             "geometry":{"type":"Polygon","coordinates":[[[0.9,0.4],[1.3,0.4],[1.3,0.6],[0.9,0.6],[0.9,0.4]]]}});
         assert!(acquisition_selects(BUILDINGS_DATASET_ID, "", &crossing, &area).unwrap());
@@ -1656,7 +1686,9 @@ mod tests {
         // destructive one for it.
         let refused = acquisition_selection("some_new_dataset", "some-provider").unwrap_err();
         assert!(refused.contains("acquisition_selection"), "{refused}");
-        assert!(acquisition_selects("some_new_dataset", "some-provider", &crossing, &area).is_err());
+        assert!(
+            acquisition_selects("some_new_dataset", "some-provider", &crossing, &area).is_err()
+        );
     }
 
     #[test]
@@ -1672,11 +1704,9 @@ mod tests {
             "layers":{"buildings_context":{"type":"FeatureCollection","features":[]}},
             "counts":{"buildings_context":0},"coverage":{"truncated":false},
             "source_receipt": huge});
-        assert!(
-            decode_buildings(&response, &area)
-                .unwrap_err()
-                .contains("receipt")
-        );
+        assert!(decode_buildings(&response, &area)
+            .unwrap_err()
+            .contains("receipt"));
     }
 
     #[test]
@@ -1716,16 +1746,26 @@ mod tests {
         assert_eq!(report.stale.cells, vec![[0.0, 0.0, 1.0, 1.0]]);
         assert_eq!(report.unattributed.cells, vec![[5.0, 0.0, 6.0, 1.0]]);
         assert_eq!(report.versions, vec!["v1".to_string(), "v2".to_string()]);
-        assert_eq!(report.stale_geometry.as_ref().unwrap()["type"], "MultiPolygon");
+        assert_eq!(
+            report.stale_geometry.as_ref().unwrap()["type"],
+            "MultiPolygon"
+        );
 
         // Coverage that is stale is still coverage: this reports it, and the
         // caller still holds every cell it held before.
         let all = Coverage {
             cells: vec![[0.0, 0.0, 1.0, 1.0], [2.0, 0.0, 3.0, 1.0]],
         };
-        assert!(assess(&all, &Coverage { cells: vec![[0.0, 0.0, 1.0, 1.0]] })
+        assert!(
+            assess(
+                &all,
+                &Coverage {
+                    cells: vec![[0.0, 0.0, 1.0, 1.0]]
+                }
+            )
             .unwrap()
-            .covered);
+            .covered
+        );
 
         // No known current version is no evidence of obsolescence.
         assert!(freshness("", &rows).unwrap().fresh);

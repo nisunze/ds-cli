@@ -876,7 +876,9 @@ pub fn plan_style_edit(
                     );
                 }
             }
-            if let Some(old) = second_style_channel(style).filter(|c| c.key != def.key && !keep_other_channels) {
+            if let Some(old) =
+                second_style_channel(style).filter(|c| c.key != def.key && !keep_other_channels)
+            {
                 next = clear_dimension(next, &old.key)?;
             }
             next = apply_dimension(next, channel, &state)?;
@@ -1153,13 +1155,27 @@ mod tests {
     fn opacity_can_preserve_an_existing_halo_channel() {
         let style = json!({"type":"circle","paint":{"circle-color":"#123456","circle-stroke-width":["match",["get","status"],true,2,1],"circle-stroke-color":"#000000"}});
         let request = StyleInstruction::Dimension {
-            field:"status".into(), channel:"opacity".into(),
-            values:vec![DimensionValue {value:"true".into(),amount:Some(0.5),color:None}],
-            other:Some(1.),color:None,field_type:None,keep_other_channels:true,
+            field: "status".into(),
+            channel: "opacity".into(),
+            values: vec![DimensionValue {
+                value: "true".into(),
+                amount: Some(0.5),
+                color: None,
+            }],
+            other: Some(1.),
+            color: None,
+            field_type: None,
+            keep_other_channels: true,
         };
-        let plan=plan_style_edit(&snapshot(style.clone()),"master/poles",&request).unwrap();
-        assert_eq!(plan.document["paint"]["circle-stroke-width"],style["paint"]["circle-stroke-width"]);
-        assert_eq!(plan.document["paint"]["circle-opacity"],json!(["match",["get","status"],true,0.5,1]));
+        let plan = plan_style_edit(&snapshot(style.clone()), "master/poles", &request).unwrap();
+        assert_eq!(
+            plan.document["paint"]["circle-stroke-width"],
+            style["paint"]["circle-stroke-width"]
+        );
+        assert_eq!(
+            plan.document["paint"]["circle-opacity"],
+            json!(["match", ["get", "status"], true, 0.5, 1])
+        );
     }
 
     #[test]

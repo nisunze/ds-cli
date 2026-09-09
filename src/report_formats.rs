@@ -583,7 +583,9 @@ mod tests {
             [210., 297.]
         );
         sheets["printing_setups"] = json!([]);
-        assert!(plan(&sheets, false).unwrap_err().contains("not in the sealed project printing inputs"));
+        assert!(plan(&sheets, false)
+            .unwrap_err()
+            .contains("not in the sealed project printing inputs"));
         assert!(named_setup_id("pdf__../outside").is_none());
         let options = options(&[json!({"id":"detail","name":"Renamed"})]).unwrap();
         assert!(options
