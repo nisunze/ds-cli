@@ -457,6 +457,9 @@ pub enum Chapter {
     /// analytical format before any analysis reads it.
     Data,
     Project,
+    /// Project Assets: the documents a project holds, in declared and
+    /// auto-indexed folders, with previews, classification and links.
+    Assets,
     GridModel,
     PlsCadd,
     Survey,
@@ -474,6 +477,7 @@ impl Chapter {
         Self::Catalog,
         Self::Data,
         Self::Project,
+        Self::Assets,
         Self::GridModel,
         Self::PlsCadd,
         Self::Survey,
@@ -491,6 +495,7 @@ impl Chapter {
             Self::Catalog => "catalog",
             Self::Data => "data",
             Self::Project => "project",
+            Self::Assets => "assets",
             Self::GridModel => "grid-model",
             Self::PlsCadd => "pls-cadd",
             Self::Survey => "survey",
@@ -631,7 +636,7 @@ mod tests {
 
     #[test]
     fn chapter_tokens_are_unique_stable_and_round_trip() {
-        assert_eq!(Chapter::ALL.len(), 13);
+        assert_eq!(Chapter::ALL.len(), 14);
         for (index, chapter) in Chapter::ALL.iter().enumerate() {
             let token = chapter.token();
             assert_eq!(Chapter::from_token(token), Some(*chapter));

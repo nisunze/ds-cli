@@ -30,6 +30,7 @@ ds-cli-mcp = { workspace = true }
 ds-cli-skills = { workspace = true }
 ds-cli-solar = { workspace = true }
 ds-cli-work = { workspace = true }
+ds-cli-assets = { workspace = true }
 ds-cli-sre = { workspace = true }
 ds-cli-survey = { workspace = true }
 ds-cli-style = { workspace = true }

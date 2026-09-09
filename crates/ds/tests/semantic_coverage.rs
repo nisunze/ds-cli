@@ -560,6 +560,19 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("tile.preflight", "local_auth_state", "headless_project"),
     ("tile.remove", "global_write", "headless_project"),
     ("tile.status", "local_auth_state", "headless_project"),
+    // 2026-09-09: Project Assets. Reads are projections of the paired
+    // application's catalogue; `read` writes one new local file through the
+    // desktop; `promote` changes the desktop's local layers and nothing
+    // governed; classify/attach/ingest/folder are ds-brain writes.
+    ("assets.attach", "global_write", "project"),
+    ("assets.classify", "global_write", "project"),
+    ("assets.folder", "global_write", "project"),
+    ("assets.ingest", "global_write", "project"),
+    ("assets.list", "read_only", "project"),
+    ("assets.preview", "read_only", "project"),
+    ("assets.promote", "local_ui", "project"),
+    ("assets.read", "local_file_write", "project"),
+    ("assets.tree", "read_only", "project"),
     ("work.plan", "read_only", "project"),
     ("work.record.list", "read_only", "project"),
     ("work.record.read", "read_only", "project"),

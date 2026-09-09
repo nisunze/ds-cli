@@ -78,6 +78,7 @@ acceptance. Never create a gap file, call the API, or bypass `ds`.
 ## Route to a narrower skill when one fits
 
 - `ds-project-context` — active project and state boundary.
+- `ds-assets` — a project's documents, previews and links.
 - `ds-map-local-data` — temporary map layers and viewport.
 - `ds-lv-design-revision` — revise one transformer's LV design safely.
 - `ds-pls-cadd-terrain-roundtrip` — PLS-CADD route and terrain delivery.

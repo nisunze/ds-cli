@@ -1,0 +1,4 @@
+interface:
+  display_name: "DS Assets"
+  short_description: "Find, preview, read and govern a DS project's documents"
+  default_prompt: "Use $ds-assets to find, preview, read, promote or classify a project's documents through ds assets."

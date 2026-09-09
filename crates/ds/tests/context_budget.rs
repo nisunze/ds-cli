@@ -111,7 +111,11 @@ fn root_help_is_cheap() {
     // first and hide a domain-vs-command growth regression.
     // 2026-08-29: native auth earns one domain line; its six commands remain
     // entirely below this tier.
-    assert_within("root help", &["--help"], 2_380);
+    // 2026-09-09: raised from 2_380 by one domain line (80 bytes) for the
+    // `assets` domain — the Project Assets surface: documents in folders,
+    // previewed and linked. Measured 2,444 bytes with 21 domains; its nine
+    // commands stay below this tier and cost the root exactly this line.
+    assert_within("root help", &["--help"], 2_460);
 }
 
 #[test]
