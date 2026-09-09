@@ -1276,6 +1276,7 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
     let mut published = BTreeMap::<&str, BTreeSet<String>>::new();
     for profile in [
         "auth-context",
+        "printing",
         "grid",
         "grid-local-model",
         "pls",
@@ -1334,6 +1335,9 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
                 .collect(),
         );
     }
+    assert!(published["printing"].contains("map_print_schema"));
+    assert!(published["printing"].contains("desktop_printing_map_export"));
+    assert!(published["printing"].contains("report_layout_edit"));
     assert!(
         published["grid-local-model"].contains("dsgrid_model_list")
             && published["grid-local-model"].contains("dsgrid_model_create-local")

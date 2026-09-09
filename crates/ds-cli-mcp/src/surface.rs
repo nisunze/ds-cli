@@ -269,7 +269,7 @@ impl Profile {
             Self::AuthContext => chapter == Chapter::Project,
             Self::AdminBounds => chapter == Chapter::Data,
             Self::Grid => matches!(chapter, Chapter::GridModel | Chapter::Reports),
-            Self::Printing => chapter == Chapter::Reports,
+            Self::Printing => matches!(chapter, Chapter::Reports | Chapter::MapPresentation),
             Self::GridLocalModel => chapter == Chapter::GridModel,
             Self::Pls | Self::PlsLibrary | Self::LibraryGovernance => chapter == Chapter::PlsCadd,
             Self::Survey
@@ -1228,21 +1228,16 @@ const PRINTING_COMMANDS: &[&str] = &[
     "desktop.printing.settings",
     "desktop.printing.list",
     "desktop.printing.get",
-    "desktop.printing.save",
     "desktop.printing.prepare",
     "desktop.printing.transformers",
     "desktop.printing.export",
     "desktop.printing.artifact.read",
-    "desktop.printing.artifact.copy",
     "desktop.printing.seed-context",
-    "desktop.printing.custom.area",
+    "desktop.printing.save",
     "desktop.printing.map.export",
     "desktop.printing.map.list",
     "desktop.printing.map.attach",
-    "report.layout.new",
     "report.layout.edit",
-    "report.layout.schema",
-    "report.layout.render",
 ];
 
 #[cfg(test)]
