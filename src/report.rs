@@ -65,6 +65,27 @@ pub fn publication_state(
 #[derive(Deserialize)]
 #[serde(tag = "command", rename_all = "snake_case", deny_unknown_fields)]
 enum Command {
+    MapPlan {
+        request: crate::printing::map::Request,
+        boundaries: Vec<crate::printing::custom::Boundary>,
+        sheets: serde_json::Value,
+    },
+    MapRequest {
+        request: crate::printing::map::Request,
+    },
+    MapMvLayers {
+        projection: serde_json::Value,
+        model: crate::printing::map::Model,
+        bounds: [f64; 4],
+    },
+    MapCatalog {
+        rows: Vec<serde_json::Value>,
+        item: serde_json::Value,
+    },
+    MapLayers {
+        area: serde_json::Value,
+        sources: std::collections::BTreeMap<String, serde_json::Value>,
+    },
     CustomAreaPlan {
         project: String,
         id: String,
@@ -202,6 +223,24 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
     }
     let command: Command = serde_json::from_slice(input).map_err(|e| e.to_string())?;
     let result = match command {
+        Command::MapMvLayers {
+            projection,
+            model,
+            bounds,
+        } => crate::printing::map::mv_layers(projection, model, bounds)?,
+        Command::MapCatalog { rows, item } => crate::printing::map::catalog(rows, item)?,
+        Command::MapRequest { request } => {
+            crate::printing::map::validate_request(&request)?;
+            serde_json::to_value(request).map_err(|e| e.to_string())?
+        }
+        Command::MapPlan {
+            request,
+            boundaries,
+            sheets,
+        } => crate::printing::map::plan(&request, boundaries, &sheets)?,
+        Command::MapLayers { area, sources } => {
+            crate::printing::map::select_layers(&area, &sources)?
+        }
         Command::CustomAreaPlan { project, id, codes } => {
             crate::printing::custom::plan_area(&project, &id, &codes)?
         }

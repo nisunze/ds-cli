@@ -1,6 +1,7 @@
 //! Print-layout authority shared by CLI, Canvas2D preview and vector delivery.
 //! Flat page elements in physical millimetres; no tile, HTML or remote-image IO.
 pub mod custom;
+pub mod map;
 pub mod overrides;
 pub mod table_headings;
 pub mod table_rows;
