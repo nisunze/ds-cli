@@ -1475,7 +1475,7 @@ impl<'a> Projector<'a> {
             Some("mv-map") => (
                 "Reports/MV",
                 format!("sys:local_print:map:{leaf}"),
-                "district MV report",
+                "project MV report",
             ),
             _ => (
                 "Prints/local",
@@ -2359,8 +2359,60 @@ pub fn build(request: &TreeRequest) -> Result<TreeResponse, String> {
     // A source read twice (an overlapping page, a retried request) hands the
     // same row twice; one `sys:` id is one asset, so the first placement wins
     // and a duplicate never doubles a folder count.
+    // Coalesce proven identical printouts while keeping the local preview.
+    // Different digests remain distinct: publication may still be pending.
+    let mut placed = std::mem::take(&mut projector.placed);
+    let print_key = |asset: &Asset| -> Option<(String, String, String, u64)> {
+        let origin = asset.origin.as_ref()?;
+        let family = origin.r#ref.get("family")?.as_str()?;
+        if !matches!(family, "custom-map" | "mv-map") {
+            return None;
+        }
+        let digest = asset.digest.as_ref()?.strip_prefix("sha256:")?;
+        if digest.len() != 64 || !digest.bytes().all(|b| b.is_ascii_hexdigit()) {
+            return None;
+        }
+        Some((
+            family.into(),
+            asset.name.clone(),
+            digest.to_lowercase(),
+            asset.bytes,
+        ))
+    };
+    let locals: BTreeMap<_, _> = placed
+        .iter()
+        .enumerate()
+        .filter_map(|(i, (_, a))| {
+            if a.origin.as_ref()?.source != "local_prints" {
+                return None;
+            }
+            print_key(a).map(|key| (key, i))
+        })
+        .collect();
+    let mut duplicates = BTreeSet::new();
+    for i in 0..placed.len() {
+        let asset = &placed[i].1;
+        if asset
+            .origin
+            .as_ref()
+            .is_none_or(|o| o.source != "transformers")
+        {
+            continue;
+        }
+        let Some(local) = print_key(asset).and_then(|key| locals.get(&key).copied()) else {
+            continue;
+        };
+        if let Some(path) = asset.origin.as_ref().unwrap().r#ref.get("path").cloned() {
+            placed[local].1.origin.as_mut().unwrap().r#ref["published_path"] = path;
+            placed[local].1.source.detail = Some("local and published printout".into());
+            duplicates.insert(placed[i].1.asset_id.clone());
+        }
+    }
     let mut seen: BTreeSet<String> = BTreeSet::new();
-    for (path, asset) in std::mem::take(&mut projector.placed) {
+    for (path, asset) in placed {
+        if duplicates.contains(&asset.asset_id) {
+            continue;
+        }
         if !seen.insert(asset.asset_id.clone()) {
             continue;
         }
@@ -2719,6 +2771,32 @@ mod tests {
                 "updated_at": "2026-03-06T00:00:00Z", "updated_by": "lead@ds.rw"
             }]
         })
+    }
+
+    #[test]
+    fn identical_printout_copies_share_preview_but_pending_revisions_remain_distinct() {
+        let digest = "a".repeat(64);
+        let mut inputs = json!({"sources": {
+            "local_prints": [{"locator":"local-map", "filename":"mv_data.a3-landscape.pdf", "family":"mv-map", "format":"pdf", "size_bytes":15000, "sha256":digest}],
+            "transformers": [{"name":"mv_data", "print_files":["gs://reports/mv_data.a3-landscape.pdf"], "report_metadata":{"print_urls":[{"gcs_path":"gs://reports/mv_data.a3-landscape.pdf", "map_family":"mv-map", "size_bytes":15000, "sha256":digest}]}}]
+        }});
+        let response = build(&tree_request(inputs.clone())).unwrap();
+        let maps: Vec<_> = assets_of(&response)
+            .into_iter()
+            .filter(|a| a.name == "mv_data.a3-landscape.pdf")
+            .collect();
+        assert_eq!(maps.len(), 1);
+        assert_eq!(maps[0].origin.as_ref().unwrap().source, "local_prints");
+        assert!(maps[0].origin.as_ref().unwrap().r#ref["published_path"].is_string());
+        inputs["sources"]["local_prints"][0]["sha256"] = json!("b".repeat(64));
+        let response = build(&tree_request(inputs)).unwrap();
+        assert_eq!(
+            assets_of(&response)
+                .iter()
+                .filter(|a| a.name == "mv_data.a3-landscape.pdf")
+                .count(),
+            2
+        );
     }
 
     #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]

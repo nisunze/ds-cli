@@ -4,7 +4,7 @@ use super::{custom::Boundary, *};
 use ds_geo::spatial_predicate::{area_bounds, intersects_area, validate_area};
 use serde_json::{json, Value};
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Request {
     pub project: String,
@@ -20,12 +20,16 @@ pub struct Request {
     #[serde(default)]
     pub layout: Option<Layout>,
 }
-#[derive(Debug, Clone, Copy, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, Deserialize, Serialize, JsonSchema, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 pub enum PageMode {
     #[default]
     PerArea,
     Combined,
+}
+
+pub fn request_schema() -> Value {
+    serde_json::to_value(schemars::schema_for!(Request)).expect("map request schema serializes")
 }
 
 pub fn default_dpi() -> u16 {
