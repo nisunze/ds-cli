@@ -44,14 +44,32 @@ pub fn evaluate(bytes: &[u8]) -> Result<String, String> {
         return Err("Sanitation exceeds its byte bound".into());
     }
     let mut input: Input = serde_json::from_slice(bytes).map_err(|_| "Invalid sanitation input")?;
-    if input.owner.is_empty() || input.project.is_empty() || input.rows.len() > 4096 {
+    if input.owner.is_empty()
+        || input.owner.len() > 128
+        || input.project.is_empty()
+        || input.project.len() > 128
+        || input.rows.len() > 4096
+    {
         return Err("Sanitation requires one owner/project and at most 4096 rows".into());
     }
     input.rows.sort_by(|a, b| a.id.cmp(&b.id));
     let mut ids = BTreeSet::new();
     let mut latest = BTreeMap::<(&str, &str), &Row>::new();
     for row in &input.rows {
-        if !ids.insert(&row.id) || row.fingerprint.len() != 64 || row.held_outputs > row.outputs {
+        if !ids.insert(&row.id)
+            || row.id.is_empty()
+            || row.id.len() > 512
+            || row.operation.is_empty()
+            || row.operation.len() > 128
+            || row.variant.len() > 128
+            || row.outputs > 32
+            || row.fingerprint.len() != 64
+            || !row
+                .fingerprint
+                .bytes()
+                .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+            || row.held_outputs > row.outputs
+        {
             return Err("Invalid sanitation row identity or inventory".into());
         }
         if row.engine == "network_reporter" && row.outputs > 0 && row.held_outputs == row.outputs {
