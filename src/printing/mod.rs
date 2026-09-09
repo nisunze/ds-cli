@@ -61,6 +61,20 @@ pub struct PrintStyleOverride {
     pub opacity: Option<f64>,
     #[serde(default)]
     pub palette: BTreeMap<String, String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub label: Option<PrintLabelOverride>,
+}
+/// Template-local label choices; physical sizes stay constant across paper policies.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Default)]
+#[serde(deny_unknown_fields)]
+pub struct PrintLabelOverride {
+    pub visible: Option<bool>,
+    pub size_pt: Option<f64>,
+    pub color: Option<String>,
+    pub halo_color: Option<String>,
+    pub halo_mm: Option<f64>,
+    pub allow_overlap: Option<bool>,
+    pub priority: Option<f64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
@@ -692,6 +706,13 @@ pub fn validate(layout: &Layout) -> Result<(), String> {
                 || o.color.as_ref().is_some_and(|c| !color(c))
                 || o.size.is_some_and(|v| !bounded(v, 0., 100.))
                 || o.opacity.is_some_and(|v| !bounded(v, 0., 1.))
+                || o.label.as_ref().is_some_and(|l| {
+                    l.size_pt.is_some_and(|v| !bounded(v, 1., 60.))
+                        || l.halo_mm.is_some_and(|v| !bounded(v, 0., 5.))
+                        || l.priority.is_some_and(|v| !bounded(v, -1000., 1000.))
+                        || l.color.as_ref().is_some_and(|c| !color(c))
+                        || l.halo_color.as_ref().is_some_and(|c| !color(c))
+                })
                 || o.palette.len() > 128
                 || o.palette.iter().any(|(k, v)| k.len() > 160 || !color(v))
                 || (o.color.is_some() && !o.palette.is_empty())
@@ -1791,5 +1812,26 @@ mod tests {
             .unwrap()
         )
         .is_err());
+    }
+    #[test]
+    fn template_label_overrides_validate_physical_limits() {
+        let mut layout = default_layout();
+        layout
+            .style_refs
+            .insert("roads".into(), "gt/roads_print".into());
+        let mut change = PrintStyleOverride {
+            label: Some(PrintLabelOverride {
+                size_pt: Some(8.),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        layout
+            .style_overrides
+            .insert("roads".into(), change.clone());
+        validate(&layout).unwrap();
+        change.label.as_mut().unwrap().size_pt = Some(0.);
+        layout.style_overrides.insert("roads".into(), change);
+        assert!(validate(&layout).is_err());
     }
 }
