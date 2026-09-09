@@ -3,7 +3,23 @@
 Use the deployed `ds` paired to the intended desktop lane. No source checkout or
 GUI style editor is required. Begin with `ds desktop printing settings --project
 <project> --output json`, then read the selected layouts with `desktop printing
-get`. `ds report layout schema` returns the complete typed layout grammar.
+get`. `ds map print schema` is the map-authority entry point. Its compact index
+names request, layout, edit and output sections; read just the section needed
+with `--section`. These are the native Rust schemas, including nested style,
+label, table, legend, viewport and composition fields. `ds report layout schema`
+retains the report-domain view of that same grammar.
+
+The typed `printing` MCP profile exposes this discovery, layout validation,
+project setup read/save, map export, attachment and artifact read. It is bounded
+to 16 tools, including catalogue and diagnostics. Use the advertised tools and
+schemas instead of a second parameter list. An unknown property is a validation
+error, not a silently ignored control.
+
+For a project MV map, the request chooses combined or per-area pages and A3/A0.
+Read the exact request contract with `map print schema --section request`.
+Keep the canonical map id while iterating: replacing A3 preserves A0. Project
+setups retain project-specific authorship; personal request-file adjustments
+need not mutate a shared setup. The desktop UI and MCP call the same export.
 
 All distances in a layout are millimetres; typography is points. Style commands
 use the units advertised by `style read`, normally CSS pixels with governed
@@ -68,8 +84,9 @@ up to its ordered maximum. Outliers are truncated with an ellipsis; whitespace
 and line breaks become single spaces. Cells remain one line at the authored
 font size. Omit the caps to retain proportional `widths` sizing. `rect` gives the maximum
 available area. `panels` is the maximum number of side-by-side panels; the
-renderer uses only those needed and repeats headings. It refuses overflow
-instead of silently omitting rows or shrinking text. Sorting is lexical by the
+renderer uses only those needed and repeats headings. The table overflow policy chooses refusal or warned truncation; inspect
+`TableOverflow` in the layout schema. Truncation preserves authored type size
+and returns a warning so the cartographer can revise the layout. Sorting is lexical by the
 ordered `sort_by` keys, so zero-padded identifiers sort naturally.
 
 For the styled XLSX information presentation use `layer: "workbook_info"`,
@@ -250,10 +267,10 @@ This is independent of `columns`, `headings` and their order, so additional
 meter, identification or phone columns need no renderer changes. Service cable
 map labels can be hidden while customer `service_length` remains a table column.
 
-Project overview collection and rendering share a 200,000-feature ceiling;
-collection also retains its 128 MiB bound. The public render task schema reports
-`x-max-total-features`. A failure above that ceiling requires a smaller explicit
-scope; the renderer does not silently discard features or outliers.
+Read current input bounds from the native request and render schemas. Input
+safety bounds are separate from PDF byte size and resumable publication. The
+renderer must report a bound it cannot admit; it must never silently discard
+features or outliers to make a map fit.
 
 `table.min_widths_mm` supplies ordered physical lower bounds independently of
 headings. Use these with data-only measurement to keep short numeric columns
