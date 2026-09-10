@@ -273,7 +273,7 @@ pub static COMMAND: Command = Command {
     contract: 1,
     chapter: Chapter::Survey,
     summary: "Import bounded canonical Survey entry NDJSON headlessly.",
-    purpose: "Validates NDJSON before auth and sequential creates. Syncs redacted receipts before checkpoints; resume never auto-retries. The reference defines ownership and import restrictions.",
+    purpose: "Validates NDJSON before auth and sequential creates. Syncs redacted receipts before checkpoints; resume never auto-retries.",
     effect: Effect::GlobalWrite,
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
