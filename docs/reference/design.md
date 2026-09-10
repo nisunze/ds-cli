@@ -131,6 +131,7 @@ for the application.
 ```bash
 ds design status --output json
 ds design status --transformer TX-1 --transformer TX-2 --output json
+ds design status --findings --output json
 ```
 
 Omit `--transformer` for every transformer document in the project; repeat it
@@ -148,6 +149,35 @@ member the document does not carry is absent rather than defaulted. Fields the
 paired application computes for its own display exist only there and are never
 synthesised here. What each member means belongs to the reader, so a consumer
 sees one shape whether it runs in `ds` or in the application.
+
+### What is wrong with each of them
+
+Every row also carries `health`: one worst-wins `severity`
+(`ok|stale|processing|warning|error`) and the ordered `findings` behind it —
+each with its phase, its backend code, an i18n `label_key`, the backend's own
+bounded message, how many features it counts, how many the backend says it
+affects, and, where the offending features are addressable, a `locatable`
+directive naming the layer and the attribute filter that isolates them. The
+answer also carries `summary`: how many transformers are processing, carry
+warnings, and carry errors — a row with both is counted in both, which is how
+a refresh has always reported it.
+
+`ds-command-kernel::design_health` decides all of it, and the application
+renders the same answer, so an agent reading `ds` and an operator reading the
+Status page can no longer be told different things. A finding's `source` is
+`document` for what the transformer's own record says — what the severity
+badge counts — and `run` for what the last run's response said, which travels
+beside it and never moves a verdict.
+
+`--findings` answers the same findings as rows of their own, one per finding
+across the whole project, each naming its `transformer`. That is the project's
+issue list: what `jq '.data.findings[] | select(.severity=="error")'` prints is
+what the Status page's error table shows.
+
+```bash
+ds design status --findings --output json | jq '.data.summary'
+ds design status --findings --output json | jq -r '.data.findings[] | "\(.transformer) \(.severity) \(.code)"'
+```
 
 Two different bounds apply, and they are different on purpose. A request names
 at most 500 transformers — the same bound retirement and compounded reports

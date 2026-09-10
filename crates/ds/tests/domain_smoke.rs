@@ -3019,7 +3019,7 @@ fn background_project_operations_are_map_independent_and_use_the_declared_projec
         (
             "design.status",
             "local_auth_state",
-            BTreeSet::from(["lane", "transformer"]),
+            BTreeSet::from(["findings", "lane", "transformer"]),
         ),
         (
             "design.transformer.inventory",
@@ -3300,7 +3300,7 @@ fn design_status_reads_the_headless_project_and_never_reaches_for_a_browser() {
         .iter()
         .map(|input| input["name"].as_str().expect("input name"))
         .collect::<BTreeSet<_>>();
-    assert_eq!(inputs, BTreeSet::from(["lane", "transformer"]));
+    assert_eq!(inputs, BTreeSet::from(["findings", "lane", "transformer"]));
 
     // A flag the command does not declare is refused, not ignored: there is
     // no project override on the headless read spine.
