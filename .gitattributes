@@ -1,0 +1,49 @@
+# Line endings are LF in the working tree on EVERY platform.
+#
+# Why this file exists: this repo is developed on Windows and Linux and built on
+# both. With `core.autocrlf=true` (the Git-for-Windows default) a Windows
+# checkout rewrites every text file to CRLF while the repository keeps LF, so the
+# same commit produces different bytes on different machines. That difference is
+# invisible in `git diff` and shows up later as:
+#
+#   * source-level contract tests failing ONLY on Windows, because they assert a
+#     literal containing "\n" against a file that is physically CRLF (this cost a
+#     real debugging session on 2026-08-17 — three failures in
+#     desktop-publication-contract.test.ts that were pure checkout artifacts);
+#   * shell scripts carrying a trailing CR into commands, paths and heredocs,
+#     where the failure mode is an unreadable `$'\r': command not found`;
+#   * checksum drift, because a file's sha256 depends on its line endings and the
+#     desktop release pipeline pins font and artifact digests.
+#
+# `eol=lf` overrides `core.autocrlf` per repository, so nobody has to configure
+# their machine correctly for a checkout to be correct.
+#
+# Applying this to an existing checkout is a one-time, content-neutral step, run
+# on a CLEAN tree:  git add --renormalize .
+* text=auto eol=lf
+
+# Windows-only artifacts that genuinely need CRLF.
+*.bat  text eol=crlf
+*.cmd  text eol=crlf
+*.ps1  text eol=crlf
+
+# Binary — never touched, never diffed as text.
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.ico  binary
+*.webp binary
+*.pdf  binary
+*.zip  binary
+*.gz   binary
+*.woff  binary
+*.woff2 binary
+*.ttf  binary
+*.otf  binary
+*.pbf  binary
+*.wasm binary
+*.pmtiles binary
+*.glb  binary
+*.exe  binary
+*.dll  binary
