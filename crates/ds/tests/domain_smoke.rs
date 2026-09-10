@@ -7425,3 +7425,123 @@ fn map_attachment_retry_requires_confirmation_and_canonical_filename() {
             .any(|a| a["name"] == "filename" && a["required"] == true)
     );
 }
+
+// ---------------------------------------------------------------------------
+// style read — what a layer's fields carry, with no map
+// ---------------------------------------------------------------------------
+
+/// The acceptance test for the field-domain migration, run as an assertion.
+///
+/// `ds style read` used to emit `"onMap": null` unconditionally, because the
+/// only producer that field ever had was `map.queryRenderedFeatures` in the
+/// browser: `ds` could not answer what values a layer's fields carry, what
+/// scalar type each one is, or how many features hold each value. The Style
+/// Center recovered all three from whatever MapLibre happened to be painting,
+/// so the answer depended on the operator's viewport.
+///
+/// This runs the exact two kernel calls the command now makes — `field_domain`
+/// over canonical project features, then `describe_style` over the published
+/// catalogue — against the REAL style-catalog snapshot ds-client-core records
+/// from the gateway, with no browser, no DOM and no map instance in the
+/// process. What it asserts is specifically true of that fixture, not merely
+/// well-formed.
+/// The recorded gateway fixtures live in the sibling ds-web checkout, beside
+/// the client that records them. Same resolution `bridge_parity.rs` uses: the
+/// sibling by default, `DS_WEB_DIR` when the layout differs — a git worktree of
+/// this repository is two levels deeper, and a silently skipped parity check is
+/// worse than none.
+fn web_fixture(name: &str) -> PathBuf {
+    let root = match std::env::var_os("DS_WEB_DIR") {
+        Some(explicit) => PathBuf::from(explicit),
+        None => PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../ds-web"),
+    };
+    root.join("crates/ds-client-core/tests/fixtures").join(name)
+}
+
+#[test]
+fn style_read_answers_what_canonical_data_holds_with_no_map() {
+    let snapshot: serde_json::Value = serde_json::from_slice(
+        &std::fs::read(web_fixture("style-catalog-snapshot.json"))
+            .expect("the recorded style catalogue is readable"),
+    )
+    .expect("the recorded style catalogue is JSON");
+
+    // Canonical features of a DS Grid structures layer, as a transformer
+    // context reports them: property bags only, geometry never travels.
+    let features = serde_json::json!([
+        {"properties": {"label": "S1", "station_m": 0, "type_id": 4, "alignment_id": "A1"}},
+        {"properties": {"label": "S2", "station_m": 137.5, "type_id": 4, "alignment_id": "A1"}},
+        {"properties": {"label": "S3", "station_m": 1e21, "type_id": "4", "alignment_id": "A1"}}
+    ]);
+    let editor = snapshot["style_editors"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|editor| editor["style_ref"] == "ds_grid/structures")
+        .expect("the recorded catalogue publishes ds_grid/structures");
+
+    let report = ds_command_kernel::field_domain::evaluate(
+        &serde_json::to_vec(&serde_json::json!({
+            "schema": ds_command_kernel::field_domain::REQUEST_SCHEMA,
+            "operation": "observe",
+            "layer": "ds_grid/structures",
+            "canonical": {"kind": "local", "source": "design_room"},
+            "features": features,
+            "declared": editor["field_domains"],
+            "present": editor["present_values"],
+            "published": editor["field_values"],
+            "fields": editor["available_fields"],
+        }))
+        .unwrap(),
+    )
+    .expect("canonical features are observable");
+
+    let described = ds_command_kernel::style_plan::describe_style(
+        &snapshot,
+        "ds_grid/structures",
+        Some(&report),
+    )
+    .expect("the recorded catalogue describes ds_grid/structures");
+
+    // The field that used to be structurally unfillable now carries an answer.
+    assert!(described.get("onMap").is_none());
+    assert_eq!(described["observed"]["status"], "derived");
+    assert_eq!(described["observed"]["source"], "design_room");
+    assert_eq!(described["observed"]["features"], 3);
+
+    // A MapLibre `match` compares by TYPE. `label` is a string, `station_m` is
+    // a number, and `type_id` is carried inconsistently — which is exactly the
+    // case a renderer scan reported as whatever was on screen at the time.
+    assert_eq!(described["fieldTypes"]["label"], "string");
+    assert_eq!(described["fieldTypes"]["station_m"], "number");
+    assert_eq!(described["fieldTypes"]["type_id"], "mixed");
+
+    // Counts and the typed labels an arm must carry, both per value.
+    assert_eq!(
+        described["fieldCounts"]["alignment_id"],
+        serde_json::json!({"A1": 3})
+    );
+    assert_eq!(
+        described["fieldMatchLabels"]["station_m"]["137.5"],
+        serde_json::json!(137.5)
+    );
+    // Spelled the way the product spells it, not the way Rust's Display does.
+    assert_eq!(
+        described["fieldValues"]["station_m"],
+        serde_json::json!(["0", "137.5", "1e+21"])
+    );
+
+    // Without a canonical source, the answer is a NAMED refusal, never a
+    // silent empty vocabulary and never a renderer read.
+    let unobserved = ds_command_kernel::style_plan::describe_style(&snapshot, "gt/roads", None)
+        .expect("the recorded catalogue describes gt/roads");
+    assert_eq!(
+        unobserved["observed"]["code"],
+        "canonical_source_not_supplied"
+    );
+    assert!(
+        unobserved["observed"]["remedy"]
+            .as_str()
+            .is_some_and(|remedy| !remedy.is_empty())
+    );
+}

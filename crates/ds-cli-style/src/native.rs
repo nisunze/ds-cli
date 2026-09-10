@@ -22,6 +22,11 @@ pub const PROJECT_ARG: Arg = Arg::value(
     "<project-id>",
     "Exact project used by --host desktop. It does not switch the GUI project.",
 );
+pub const TRANSFORMER_ARG: Arg = Arg::value(
+    "transformer",
+    "<name>",
+    "Canonical project data to read this layer's values, counts and field types from. Omit and nothing is observed.",
+);
 pub const STYLE_REFUSED: Refusal = Refusal {
     code: "style_refused",
     when: "the guided style instruction violates the backend document contract",
@@ -157,6 +162,18 @@ native_refusal!(
     "the style response violates its closed bounded contract",
     "retry once, then update ds if it persists"
 );
+native_refusal!(
+    TRANSFORMER_NOT_FOUND,
+    "transformer_not_found",
+    "the named canonical source does not exist in the selected project",
+    "pass one exact transformer name from that project, or omit --transformer"
+);
+native_refusal!(
+    FIELD_DOMAIN_REFUSED,
+    "field_domain_refused",
+    "the canonical features of the named source violate the field-domain bound",
+    "narrow the source, or omit --transformer and read fieldDomains instead"
+);
 
 pub const REFUSALS: &[Refusal] = &[
     ds_cli_desktop::ops::NOT_PAIRED,
@@ -185,6 +202,8 @@ pub const REFUSALS: &[Refusal] = &[
     AUTH_IDENTITY_MISMATCH,
     AUTH_TRANSIENT,
     AUTH_UNREADABLE,
+    TRANSFORMER_NOT_FOUND,
+    FIELD_DOMAIN_REFUSED,
     crate::INVALID_NUMBER,
     crate::INVALID_VALUE_SPEC,
     crate::INVALID_COLOR,
@@ -225,9 +244,13 @@ pub fn execute(
                 args["limit"].as_u64().unwrap_or(100) as usize,
             )
         } else {
+            let reference = inputs.require("ref")?;
+            let observed =
+                observe_canonical(lane, snapshot.result().document(), reference, inputs)?;
             ds_command_kernel::style_plan::describe_style(
                 snapshot.result().document(),
-                inputs.require("ref")?,
+                reference,
+                observed.as_ref(),
             )
         };
         return result
@@ -311,4 +334,96 @@ pub fn execute(
 }
 fn refused(message: impl Into<String>) -> Failure {
     Failure::invalid("style_refused", message).remedy(STYLE_REFUSED.remedy)
+}
+
+/// What this layer's fields carry, read from CANONICAL project data with no
+/// map, no browser and no DOM.
+///
+/// The scalar type of a property is what a MapLibre `match` compares against,
+/// and ds-brain publishes one only for fields carrying a known-column domain.
+/// The rest used to be recovered in the browser from
+/// `map.queryRenderedFeatures` — the features that happened to be painted —
+/// so `ds` could never answer at all and `style read` reported `onMap: null`.
+///
+/// `--transformer` names the canonical source: one exact transformer in the
+/// selected project, fetched through the same fixed gateway call
+/// `ds design features select` uses. Without it nothing is observed, and the
+/// kernel says so by name rather than reporting a confidently empty answer.
+fn observe_canonical(
+    lane: &str,
+    snapshot: &Value,
+    reference: &str,
+    inputs: &Inputs,
+) -> Result<Option<Value>, Failure> {
+    let Some(transformer) = inputs.value("transformer") else {
+        return Ok(None);
+    };
+    let editor = snapshot["style_editors"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .find(|editor| editor["style_ref"] == reference)
+        .ok_or_else(|| refused("style editor is missing"))?;
+    let layer_name = editor["layer_name"].as_str().unwrap_or_default();
+    let context = ds_cli_auth::transformer_context(lane, transformer)?;
+    let features = canonical_features(context.snapshot().layers(), layer_name);
+    let request = json!({
+        "schema": ds_command_kernel::field_domain::REQUEST_SCHEMA,
+        "operation": "observe",
+        "layer": reference,
+        "canonical": {"kind": "local", "source": "design_room"},
+        "features": features,
+        "declared": editor["field_domains"],
+        "present": editor["present_values"],
+        "published": editor["field_values"],
+        "fields": editor["available_fields"],
+    });
+    let encoded = serde_json::to_vec(&request)
+        .map_err(|_| field_domain_refused("request is not encodable"))?;
+    ds_command_kernel::field_domain::evaluate(&encoded)
+        .map(Some)
+        .map_err(field_domain_refused)
+}
+
+fn field_domain_refused(message: impl Into<String>) -> Failure {
+    Failure::invalid(FIELD_DOMAIN_REFUSED.code, message).remedy(FIELD_DOMAIN_REFUSED.remedy)
+}
+
+/// The transformer room's features for one design layer, as property bags.
+///
+/// Geometry never travels: the question is about properties, so shipping
+/// coordinates through the kernel would be pure cost. A design style ref and a
+/// room key agree up to the `_vt` suffix and case, the same normalisation the
+/// Style Center applies.
+fn canonical_features(
+    layers: &std::collections::BTreeMap<String, Value>,
+    layer_name: &str,
+) -> Vec<Value> {
+    let wanted = normalized_layer(layer_name);
+    if wanted.is_empty() {
+        return Vec::new();
+    }
+    let mut features = Vec::new();
+    for (key, collection) in layers {
+        if normalized_layer(key) != wanted {
+            continue;
+        }
+        for feature in collection["features"].as_array().into_iter().flatten() {
+            if features.len() >= ds_command_kernel::field_domain::MAX_OBSERVED_FEATURES {
+                return features;
+            }
+            features.push(json!({"properties": feature["properties"]}));
+        }
+    }
+    features
+}
+
+fn normalized_layer(value: &str) -> String {
+    value
+        .trim()
+        .rsplit('/')
+        .next()
+        .unwrap_or_default()
+        .trim_end_matches("_vt")
+        .to_lowercase()
 }

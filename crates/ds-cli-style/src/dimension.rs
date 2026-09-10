@@ -120,20 +120,6 @@ fn render_dimension(data: &Value) -> String {
             out.push_str(&format!("  {property}: {expression}\n"));
         }
     }
-    if let Some(on_map) = data["onMap"].as_object() {
-        let counts: Vec<String> = on_map["counts"]
-            .as_object()
-            .into_iter()
-            .flatten()
-            .map(|(value, n)| format!("{value}={n}"))
-            .collect();
-        if !counts.is_empty() {
-            out.push_str(&format!(
-                "  on map: {}\n",
-                crate::truncate(&counts.join(", "), 110)
-            ));
-        }
-    }
     for warning in data["warnings"].as_array().into_iter().flatten() {
         if let Some(text) = warning.as_str() {
             out.push_str(&format!("  warning: {}\n", crate::truncate(text, 110)));
@@ -177,8 +163,9 @@ saving. Read it, then `ds style dimension set` with the same flags.",
         ],
         output: "\
 `ref`, `field`, `fieldType` (as the map carries it, or null), `channel`, \
-`expressions` (property → match expression), `second`, `onMap` counts per \
-value, `dryRun: true`, `published: false` and the full `document`.",
+`expressions` (property → match expression), `second`, `dryRun: true`, \
+`published: false` and the full `document`. Per-value counts are a property of \
+the project's data, not of an edit: read them from `ds style read --transformer`.",
         examples: &[Example {
             command: "ds style dimension plan --ref master/lv_poles --field drafting_status --channel halo --value draft=3:#FFFFFF --other 0 --output json",
             note: "Draft poles in the bare Design GeoJSON layer get a 3px white ring; every other value gets none.",
