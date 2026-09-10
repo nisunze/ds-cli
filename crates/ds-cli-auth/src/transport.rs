@@ -384,26 +384,34 @@ impl Transport for NativeTransport {
         bounded(response, call.response_limit())
     }
 
+    /// Stream one artifact to its DS-minted storage session under the shared
+    /// resumable protocol.
+    ///
+    /// The whole body of this call is `crate::upload`, which drives
+    /// `ds_command_kernel::transfer` — the same state machine the desktop shell
+    /// drives. It probes before writing, resumes from the server's committed
+    /// prefix, streams bounded chunks, and never restarts a session because a
+    /// probe was inconclusive. No DS credential is attached: under
+    /// `authority: storage_session` the session URI is the whole credential.
     fn upload_bytes(
         &mut self,
         mut call: ds_client_core::UploadBytesCall<'_>,
     ) -> Result<TransportResponse, TransportError> {
-        let limit = call.response_limit();
+        // A credential: copied out before the reader is borrowed, scrubbed on
+        // drop, and never logged or formatted into an error.
+        let session_uri = Zeroizing::new(call.uri().to_owned());
         let size = call.size();
-        let request = ureq::put(call.uri())
-            .header("Content-Type", "application/octet-stream")
-            .header("Content-Length", size.to_string())
-            .header("Content-Range", format!("bytes 0-{}/{size}", size - 1))
-            .config()
-            .max_redirects(0)
-            .http_status_as_error(false)
-            .timeout_connect(Some(CONNECT_TIMEOUT))
-            .timeout_global(Some(Duration::from_secs(1800)))
-            .build();
-        let response = request
-            .send(ureq::SendBody::from_reader(&mut call.reader().take(size)))
-            .map_err(classify)?;
-        bounded(response, limit)
+        crate::upload::transfer(
+            &session_uri,
+            crate::upload::SessionOrigin::Storage,
+            size,
+            call.reader(),
+            // `ds` runs one synchronous command per process and has no
+            // cancellation source of its own; a signal ends the process. The
+            // seam is the kernel's, so a caller that gains one wires it here
+            // rather than reinterpreting the protocol.
+            &|| false,
+        )
     }
 
     fn project_data(

@@ -12,6 +12,7 @@ mod state;
 #[cfg(windows)]
 mod state_windows;
 mod transport;
+mod upload;
 
 #[cfg(unix)]
 use std::io::Write;
