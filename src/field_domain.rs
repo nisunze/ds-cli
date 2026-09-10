@@ -135,13 +135,32 @@ fn scalar_text(value: &Value) -> Option<String> {
     }
 }
 
-/// ECMAScript `String(number)` for the integral range clients actually carry.
-/// Outside it, `f64`'s own shortest round-trip is the honest answer.
+/// ECMAScript `Number::toString`.
+///
+/// Not a stylistic choice. Rust's `Display` for `f64` never uses exponent
+/// notation, so it spells `1e21` as `1000000000000000000000` and `1e-7` as
+/// `0.0000001`, while every client, style label and table cell in the product
+/// shows `1e+21` and `1e-7`. A value key that disagrees with the product's own
+/// spelling is a value no authored `match` arm can address.
+///
+/// ECMAScript picks exponential form outside `[1e-6, 1e21)`; inside it, Rust's
+/// shortest round-trip decimal already agrees digit for digit.
 fn js_number_text(value: f64) -> String {
-    if value.fract() == 0.0 && value.abs() < 1e21 {
-        format!("{:.0}", value)
-    } else {
-        value.to_string()
+    if value == 0.0 {
+        // Also catches -0.0, which ECMAScript spells "0".
+        return "0".into();
+    }
+    let magnitude = value.abs();
+    if (1e-6..1e21).contains(&magnitude) {
+        return value.to_string();
+    }
+    let exponential = format!("{value:e}");
+    match exponential.split_once('e') {
+        // Rust omits the sign on a positive exponent; ECMAScript requires it.
+        Some((mantissa, exponent)) if !exponent.starts_with('-') => {
+            format!("{mantissa}e+{exponent}")
+        }
+        _ => exponential,
     }
 }
 
@@ -1088,6 +1107,29 @@ mod tests {
             .map(|_| json!({}))
             .collect();
         assert!(local(json!(overflow)).is_err());
+    }
+
+    /// The value key must be spelled the way the product spells it, because
+    /// that is the string every authored `match` arm addresses a value by.
+    #[test]
+    fn value_keys_are_spelled_the_way_ecmascript_spells_them() {
+        let report = local(json!([{"properties": {
+            "one": 1.0, "big": 1e21, "under": 1e20, "tiny": 1e-7, "small": 1e-6,
+            "neg": -1234567.5, "zero": -0.0, "frac": 0.1
+        }}]))
+        .unwrap();
+        for (field, expected) in [
+            ("one", "1"),
+            ("big", "1e+21"),
+            ("under", "100000000000000000000"),
+            ("tiny", "1e-7"),
+            ("small", "0.000001"),
+            ("neg", "-1234567.5"),
+            ("zero", "0"),
+            ("frac", "0.1"),
+        ] {
+            assert_eq!(report["values"][field], json!([expected]), "{field}");
+        }
     }
 
     #[test]
