@@ -1,5 +1,6 @@
 //! Print-layout authority shared by CLI, Canvas2D preview and vector delivery.
 //! Flat page elements in physical millimetres; no tile, HTML or remote-image IO.
+pub mod context;
 pub mod custom;
 pub mod lifecycle;
 pub mod map;
@@ -1251,6 +1252,26 @@ pub enum Command {
     LifecyclePlan {
         facts: lifecycle::Facts,
     },
+    /// The context sources a template starts with, and the styles their
+    /// layers print with when none are authored (see `context`).
+    ContextDefaults {},
+    /// Every catalogue dataset as a selectable row with its default decision.
+    ContextCatalog {
+        resources: Vec<context::CatalogResource>,
+    },
+    /// The selection a new project template starts with.
+    ContextDefaultSelection {
+        layout: Layout,
+        resources: Vec<context::CatalogResource>,
+    },
+    /// Switch one context layer on or off, seeding fallback styles.
+    ContextToggle {
+        layout: Layout,
+        layer: PrintContextLayer,
+        enabled: bool,
+        #[serde(default)]
+        resource: Option<context::CatalogResource>,
+    },
     TransformerInstructions {
         layout: Layout,
         current: Vec<serde_json::Value>,
@@ -1504,6 +1525,25 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
         }
         Command::LifecyclePlan { facts } => {
             serde_json::to_value(lifecycle::plan(&facts)?).map_err(|e| e.to_string())?
+        }
+        Command::ContextDefaults {} => json!({
+            "derived": context::derived_layers(),
+            "fallback_styles": context::fallback_styles(),
+            "excluded_catalog_layers": context::DEFAULT_CATALOG_EXCLUSIONS,
+        }),
+        Command::ContextCatalog { resources } => json!({"rows": context::catalog(&resources)?}),
+        Command::ContextDefaultSelection { layout, resources } => {
+            let layout = upgrade(layout)?;
+            json!({"layout": context::default_selection(layout, &resources)?})
+        }
+        Command::ContextToggle {
+            layout,
+            layer,
+            enabled,
+            resource,
+        } => {
+            let layout = upgrade(layout)?;
+            json!({"layout": context::toggle(layout, layer, enabled, resource.as_ref())?})
         }
         Command::TransformerInstructions {
             layout,
@@ -1926,6 +1966,54 @@ mod tests {
 
     /// The host passes the stored value through; deciding which legacy shape
     /// it is was the TypeScript half this op replaces.
+    #[test]
+    fn context_ops_answer_defaults_catalogue_rows_and_toggles_over_host_facts() {
+        let defaults: serde_json::Value =
+            serde_json::from_str(&evaluate(br#"{"op":"context_defaults"}"#).unwrap()).unwrap();
+        assert_eq!(defaults["derived"].as_array().unwrap().len(), 3);
+        assert_eq!(
+            defaults["fallback_styles"]["contours_index"]["label_field"],
+            "contour_label"
+        );
+        assert_eq!(defaults["excluded_catalog_layers"][0], "rwanda_upi_parcels");
+        let rows: serde_json::Value = serde_json::from_str(
+            &evaluate(
+                br#"{"op":"context_catalog","resources":[{"layer":"roads","label":"Roads","country":"Rwanda","ready":true},{"layer":"wetlands","label":"Wetlands","country":"Rwanda"}]}"#,
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(rows["rows"][0]["default_on"], true);
+        assert_eq!(rows["rows"][1]["refusal"], "printing_context_no_dataset");
+        let layout = serde_json::to_string(&default_layout()).unwrap();
+        let selected: serde_json::Value = serde_json::from_str(
+            &evaluate(
+                format!(
+                    r#"{{"op":"context_default_selection","layout":{layout},"resources":[{{"layer":"roads","label":"Roads","country":"Rwanda","ready":true}}]}}"#
+                )
+                .as_bytes(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(
+            selected["layout"]["context_layers"]
+                .as_array()
+                .unwrap()
+                .len(),
+            4
+        );
+        assert!(selected["layout"]["styles"]["dsgrid_mv_lines"].is_object());
+        assert!(evaluate(
+            format!(
+                r#"{{"op":"context_toggle","layout":{layout},"layer":{{"id":"wetlands","label":"Wetlands","source":{{"kind":"catalog","country":"Rwanda","layer":"wetlands"}}}},"enabled":true,"resource":{{"layer":"wetlands","label":"Wetlands","country":"Rwanda"}}}}"#
+            )
+            .as_bytes()
+        )
+        .unwrap_err()
+        .contains("printing_context_no_dataset"));
+    }
+
     #[test]
     fn lifecycle_plan_is_one_printing_op_over_host_facts() {
         let plan: serde_json::Value = serde_json::from_str(
