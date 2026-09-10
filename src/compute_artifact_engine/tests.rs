@@ -58,6 +58,7 @@ fn restart_at_each_persisted_boundary_keeps_bytes_and_work_identity() {
             output_id: "pdf__huye".into(),
             status: "active".into(),
             offset: 64,
+            cause: None,
         },
     );
     let upload = step(
@@ -80,6 +81,7 @@ fn restart_at_each_persisted_boundary_keeps_bytes_and_work_identity() {
             output_id: "pdf__huye".into(),
             status: "completed".into(),
             offset: 123,
+            cause: None,
         },
     );
     assert!(matches!(complete.effect, Effect::Finalize { .. }));
@@ -174,6 +176,7 @@ fn expired_session_reopens_same_run_only_once_per_attempt() {
             output_id: "pdf__huye".into(),
             status: "expired".into(),
             offset: 0,
+            cause: None,
         },
     );
     assert_eq!(expired.reopens, 1);
@@ -190,6 +193,7 @@ fn expired_session_reopens_same_run_only_once_per_attempt() {
             output_id: "pdf__huye".into(),
             status: "expired".into(),
             offset: 0,
+            cause: None,
         },
         reopens: 1,
         lease_id: "worker-a".into(),
@@ -262,4 +266,131 @@ fn another_worker_waits_and_expired_workers_cannot_commit_late_responses() {
     })
     .unwrap_err();
     assert_eq!(late.retry_at, Some(301002));
+}
+
+/// Helper: reach the state where a probe is the pending effect.
+fn awaiting_probe() -> Value {
+    let ready = prepared();
+    let pending = opened(ready.row);
+    let restarted = step(pending.row, Event::Start);
+    assert!(matches!(restarted.effect, Effect::Probe { .. }));
+    restarted.row
+}
+
+fn probe(row: Value, status: &str, cause: Option<crate::transfer::Cause>) -> Failure {
+    apply(Request {
+        owner: "owner".into(),
+        now: 1000,
+        row,
+        event: Event::Probed {
+            output_id: "pdf__huye".into(),
+            status: status.into(),
+            offset: 0,
+            cause,
+        },
+        reopens: 0,
+        lease_id: "worker-a".into(),
+    })
+    .expect_err("an unresolved probe must not advance")
+}
+
+#[test]
+fn an_unresolved_probe_names_its_cause_instead_of_saying_nothing() {
+    use crate::transfer::{Cause, Phase};
+    // Every one of these used to render the identical sentence
+    // "resumable session could not be checked", which is what made a real
+    // Stable failure loop 29 times with nothing to act on.
+    let cases = [
+        (Cause::Offline, "offline mode"),
+        (Cause::Dns, "resolve"),
+        (Cause::Connect, "could not reach"),
+        (Cause::Tls, "secure connection"),
+        (Cause::Timeout { phase: Phase::Idle }, "progress"),
+        (Cause::ConnectionClosed, "closed early"),
+        (Cause::RangeMalformed, "could not read"),
+        (Cause::BlockedByHostPolicy, "given no reason"),
+        (Cause::HttpStatus { status: 403 }, "refused"),
+        (Cause::HttpStatus { status: 500 }, "answered 500"),
+    ];
+    let mut seen = std::collections::BTreeSet::new();
+    for (cause, fragment) in cases {
+        let failure = probe(awaiting_probe(), "inconclusive", Some(cause.clone()));
+        assert_eq!(failure.status, "pending", "{cause:?} stays retryable");
+        assert!(
+            failure.message.contains(fragment),
+            "{cause:?} -> {}",
+            failure.message
+        );
+        assert!(
+            failure.message.starts_with("pdf__huye: "),
+            "the output is named: {}",
+            failure.message
+        );
+        assert!(
+            seen.insert(failure.message.clone()),
+            "two causes rendered the same sentence: {}",
+            failure.message
+        );
+    }
+}
+
+#[test]
+fn an_unresolved_probe_keeps_its_session_so_nothing_is_re_sent() {
+    // The whole point: "I could not tell" must not discard a session that may
+    // already hold most of the artifact.
+    let before = awaiting_probe();
+    let session = before["outputs"][0]["session_uri"].clone();
+    assert!(session.is_string());
+    let failure = probe(before, "inconclusive", Some(crate::transfer::Cause::Dns));
+    assert_eq!(failure.status, "pending");
+    assert!(failure.retry_at.is_none());
+    // The refusal path returns no row, so the caller's durable row — with its
+    // session_uri — is untouched by construction. Assert the engine did not
+    // instead take the reopen branch, which is the branch that clears it.
+    assert!(!failure.message.contains("expired"));
+}
+
+#[test]
+fn a_probe_the_host_proved_hopeless_is_terminal_not_a_loop() {
+    let failure = probe(
+        awaiting_probe(),
+        "failed",
+        Some(crate::transfer::Cause::HttpStatus { status: 403 }),
+    );
+    assert_eq!(failure.status, "failed");
+    assert!(failure.message.contains("refused"));
+}
+
+#[test]
+fn an_unknown_probe_state_is_a_host_defect_not_a_silent_retry() {
+    let failure = probe(awaiting_probe(), "banana", None);
+    assert_eq!(failure.status, "failed");
+    assert!(failure.message.contains("unknown state"));
+    assert!(failure.message.contains("banana"));
+    // A malformed host cannot write an unbounded string into a durable row.
+    let long = probe(awaiting_probe(), &"x".repeat(4096), None);
+    assert!(long.message.len() < 200);
+}
+
+#[test]
+fn probe_causes_never_leak_a_session_or_a_credential() {
+    use crate::transfer::Cause;
+    for cause in [
+        Cause::HttpStatus { status: 401 },
+        Cause::SessionExpired,
+        Cause::BlockedByHostPolicy,
+        Cause::Inconclusive,
+    ] {
+        for status in ["inconclusive", "failed"] {
+            let failure = probe(awaiting_probe(), status, Some(cause.clone()));
+            assert!(!failure.message.contains("http"), "{}", failure.message);
+            assert!(!failure.message.contains("://"), "{}", failure.message);
+            assert!(!failure.message.contains("Bearer"), "{}", failure.message);
+            assert!(
+                !failure.message.contains("session_uri"),
+                "{}",
+                failure.message
+            );
+        }
+    }
 }

@@ -24,9 +24,16 @@ pub enum Event {
     },
     Probed {
         output_id: String,
+        /// `completed` | `active` | `expired` | `inconclusive` | `failed`.
         status: String,
         #[serde(default)]
         offset: u64,
+        /// Why, when the probe did not establish a committed prefix. Hosts must
+        /// supply this for `inconclusive` and `failed`: without it the operator
+        /// is told only that something "could not be checked", which is what
+        /// produced a 29-attempt invisible retry loop on Stable.
+        #[serde(default)]
+        cause: Option<crate::transfer::Cause>,
     },
     Uploaded {
         output_id: String,
