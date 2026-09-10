@@ -1,6 +1,7 @@
 //! Print-layout authority shared by CLI, Canvas2D preview and vector delivery.
 //! Flat page elements in physical millimetres; no tile, HTML or remote-image IO.
 pub mod custom;
+pub mod lifecycle;
 pub mod map;
 pub mod overrides;
 pub mod style_overrides;
@@ -1244,6 +1245,12 @@ pub enum Command {
         #[serde(default)]
         views: BTreeMap<String, BTreeMap<String, GeographicView>>,
     },
+    /// What a host may do to a named setup right now — read live or from a
+    /// held copy, create or update, copy, delete, or refuse — decided from
+    /// the facts the host reports (see `lifecycle`).
+    LifecyclePlan {
+        facts: lifecycle::Facts,
+    },
     TransformerInstructions {
         layout: Layout,
         current: Vec<serde_json::Value>,
@@ -1494,6 +1501,9 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
             views,
         } => {
             json!({"project_settings":project_output_patch(current, &selection, layout_id.as_deref(), &views)?})
+        }
+        Command::LifecyclePlan { facts } => {
+            serde_json::to_value(lifecycle::plan(&facts)?).map_err(|e| e.to_string())?
         }
         Command::TransformerInstructions {
             layout,
@@ -1916,6 +1926,32 @@ mod tests {
 
     /// The host passes the stored value through; deciding which legacy shape
     /// it is was the TypeScript half this op replaces.
+    #[test]
+    fn lifecycle_plan_is_one_printing_op_over_host_facts() {
+        let plan: serde_json::Value = serde_json::from_str(
+            &evaluate(
+                br#"{"op":"lifecycle_plan","facts":{"intent":"save","library":"project","online":true,"editing":true,"loaded_matches":true,"held_revision":"abc"}}"#,
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(plan["decision"], "update");
+        assert_eq!(plan["expected_revision"], "abc");
+        let refused: serde_json::Value = serde_json::from_str(
+            &evaluate(
+                br#"{"op":"lifecycle_plan","facts":{"intent":"read","library":"global","online":false}}"#,
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(refused["decision"], "refuse");
+        assert_eq!(refused["refusal"]["message_key"], "printing_no_cached_copy");
+        assert!(evaluate(
+            br#"{"op":"lifecycle_plan","facts":{"intent":"read","library":"global","surprise":1}}"#
+        )
+        .is_err());
+    }
+
     #[test]
     fn output_selection_reads_whatever_the_project_stored_and_answers_placements() {
         let result: serde_json::Value = serde_json::from_str(
