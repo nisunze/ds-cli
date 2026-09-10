@@ -720,7 +720,8 @@ fn every_constructible_refusal_code_is_documented() {
                 .strip_prefix(&root)
                 .unwrap_or(&file)
                 .display()
-                .to_string();
+                .to_string()
+                .replace('\\', "/");
             match accounted.get(relative.as_str()) {
                 Some(listed) => {
                     listed_and_seen.insert(listed);

@@ -299,6 +299,11 @@ fn bridge_with_status(replies: Vec<(&'static str, u16, Value)>) -> Bridge {
                     Err(error) => panic!("bridge accepts `{expected_operation}`: {error}"),
                 }
             };
+            // Accept is polled, but request reads use blocking I/O with a timeout.
+            // Normalize the accepted socket instead of relying on OS inheritance.
+            session_stream
+                .set_nonblocking(false)
+                .expect("set blocking bridge session reads");
             session_stream
                 .set_read_timeout(Some(Duration::from_secs(10)))
                 .expect("set bridge session timeout");
@@ -322,6 +327,9 @@ fn bridge_with_status(replies: Vec<(&'static str, u16, Value)>) -> Bridge {
                     Err(error) => panic!("bridge accepts `{expected_operation}`: {error}"),
                 }
             };
+            stream
+                .set_nonblocking(false)
+                .expect("set blocking bridge request reads");
             stream
                 .set_read_timeout(Some(Duration::from_secs(10)))
                 .expect("set bridge read timeout");
