@@ -39,28 +39,41 @@ data-authority owner. The Tauri shell remains an IO host.
 ## 2. Layering (no cycles)
 
 ```
-ds-command-kernel            deterministic CONTRACTS, zero IO, zero HTTP
-  ├── gateway::registry      the closed operation table (§3)
-  ├── transfer               resumable-transfer protocol state machine (§4)
-  ├── compute_artifact_engine durable publication state machine (already owned)
-  └── failure classification typed causes (§5)
-        ▲                 ▲                        ▲
-        │                 │                        │
-ds-client-core        src-tauri                ds-web WASM
-(identity, lane,      (native IO host:         (browser IO host:
- profile, session,     ureq + files)            fetch + IDB)
- typed operations)
-        ▲
-        │
-      ds-cli
+                    routing/operations.json          ONE reviewed descriptor
+                     │                    │
+        generated TS manifest      generated Rust table
+                     │                    │
+ds-command-kernel    │              ds-client-core
+  deterministic      │                identity, lane, profile digest,
+  CONTRACTS,         │                session, refresh-store port,
+  zero IO,           │                typed operation bodies (§3)
+  zero HTTP          │                     ▲
+  ├── transfer  ◀────┴─────────────────────┤        (protocol, §4)
+  ├── compute_artifact_engine              │        (already owned)
+  └── failure classification               │        (typed causes, §5)
+        ▲                 ▲                │
+        │                 │                │
+   ds-web WASM        src-tauri          ds-cli
+   (browser IO:       (native IO:        (native IO:
+    fetch + IDB)       ureq + files)      ureq + files)
 ```
 
-- `ds-command-kernel` has **no** HTTP dependency and gains none. It is the only
-  crate all three hosts already link, which is why the shared contracts live
-  there.
-- `ds-client-core` already depends on `ds-command-kernel`. It keeps identity,
-  lane/audience binding, the refresh-token store port, and the typed operation
-  bodies; it gains the registry as its route/authority source of truth.
+Placement, and why it is not the other way round:
+
+- **`ds-command-kernel` holds the protocol, never a client.** It has no HTTP
+  dependency and gains none — it compiles to `cdylib` for the browser WASM
+  package, so a native HTTP client there would poison that build. The transfer
+  state machine belongs here precisely *because* it is pure: identical bytes
+  run in the browser and in the shell.
+- **`ds-client-core` holds the gateway operation registry**, not the kernel.
+  The registry carries identity — and `ds-client-core::profile` already hashes
+  every route, method and action constant, in a fixed order, into
+  `profile_sha256`. Putting the registry anywhere else would create a second
+  source for those constants and guarantee drift. It already depends on
+  `ds-command-kernel`; the edge stays one-way.
+- **The browser reaches the registry through the generated TS manifest**, from
+  the same descriptor bytes, checked by a parity test — not by linking
+  `ds-client-core` into WASM.
 - Hosts supply IO ports only. A host never re-decides protocol, retry,
   ordering, or acknowledgement meaning.
 
@@ -268,6 +281,44 @@ does not assert one; the fix is to make the cause observable and to move the
 transfer to a host where the browser's opaque failure modes do not apply.
 Weakening the `Attachment probe (v0)` validation, or admitting the known-bad
 `tables/alignments.arrow` fixture, is not part of this and is forbidden.
+
+### 9.1 Hypotheses that were checked and did NOT hold
+
+Recorded so nobody re-runs them, and so no one repeats them as a diagnosis.
+
+| Hypothesis | Verdict | Evidence |
+|---|---|---|
+| The bucket hides the 308 `Range` header from the browser, so resume degrades to blind retries | **Ruled out for this bucket.** `Range` *is* exposed and `Content-Range` *is* allowed. | `ds-apis-tf/storage_cors.json` `responseHeader` includes `Content-Range` and `Range`; `apply_storage_cors.sh` documents exactly this reason |
+| The gateway rejects the body because its swagger omits `engine_build_manifest_sha256`, producing `ENGINE_BUILD_NOT_ADMITTED` | **Ruled out as a runtime cause.** API Gateway (ESPv2) performs no request-body JSON validation and none is configured. | no `enableRequestValidation` / body-validation directive anywhere in `ds-apis-tf` |
+
+The second one was still a real defect in a published contract — the schema
+omitted the exact field admission requires and every format the Reporter
+actually publishes — and is corrected in `ds-apis-tf` separately. It changed no
+behaviour, and it is not an explanation of the Stable failure.
+
+## 10. Known end-to-end ceiling — an owner decision, not a client limit
+
+The client transfer path has no size ceiling (§4.3). The **server** does:
+
+- `ds-brain/internal/services/compute_artifacts.go` — `computeArtifactMaxBytes
+  = int64(64 << 20)`; a declared output outside `[1, 67108864]` is refused at
+  `open`.
+- `ds-apis-tf/api_compute_artifacts.tf` restates the same bound.
+
+Its code comment states the reason deliberately: the desktop bridge used
+bounded eager reads, and `finalize` re-hashes the whole object on Cloud Run, so
+"accepting multi-gigabyte declarations here would only move that CPU and memory
+burden back onto Cloud Run."
+
+Half of that premise is now gone — the desktop no longer does an eager
+whole-file read. The other half is not: raising the cap lengthens ds-brain's
+finalize hash against the gateway's 120 s deadline, on a service the owner has
+sized at 128 MiB. Raising it is therefore an owner decision with a cost, taken
+in two places at once, and it is **not** taken here. Until it is, a publication
+above 64 MiB is refused by the server no matter how well the client streams.
+
+Client-side freedom from the ceiling is proven independently by the protocol
+and native transfer tests.
 
 ## Implementation ledger
 
