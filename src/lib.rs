@@ -1338,3 +1338,14 @@ pub mod compute_artifact_cache;
 pub fn compute_artifact_cache_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
     compute_artifact_cache::evaluate(input).map_err(|error| wasm_bindgen::JsValue::from_str(&error))
 }
+
+/// What one HTTP outcome means: transient or terminal, retry and when, worth
+/// an SRE report, and what the operator is told. Hosts report facts and
+/// execute the decision; the browser, the shell and `ds` cannot answer a
+/// status or rewrite a backend message differently.
+pub mod response_policy;
+#[cfg(feature = "wasm")]
+#[wasm_bindgen::prelude::wasm_bindgen(js_name = responsePolicy)]
+pub fn response_policy_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
+    response_policy::evaluate(input).map_err(|error| wasm_bindgen::JsValue::from_str(&error))
+}

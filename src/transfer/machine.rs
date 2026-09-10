@@ -2,7 +2,7 @@ use super::*;
 
 /// Deterministic backoff. The host may add bounded jitter before sleeping; it
 /// may not shorten the delay. Kept pure so a replayed transfer is reproducible.
-fn backoff_ms(stalled_attempts: u32) -> u64 {
+pub(crate) fn backoff_ms(stalled_attempts: u32) -> u64 {
     let shift = stalled_attempts.saturating_sub(1).min(5);
     1_000u64.saturating_mul(1u64 << shift).min(30_000)
 }
