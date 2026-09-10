@@ -7,6 +7,25 @@ governed design inputs and owner calculations; do not certify from appearance.
 
 ## Source and identity
 
+Start from the evidence available, without making the user assemble every input
+before work begins:
+
+| Starting point | Next useful work |
+|---|---|
+| Existing project, no supplied files | Query authoritative models, design inventory, project documents and recipes; use sufficient governed data without demanding an archive |
+| Supplied archive or native model | Inspect its content and coordinate evidence through the source owner; identify usable engineering inputs and missing required content before supported import/conversion |
+| Example PDF, image or logos | Extract evidenced wording and branding; query engineering sources separately; never infer topology or approval from the picture |
+| No project recipe | Discover suitable global templates and customize a project copy within scope; if none fits, author and validate a supported project layout |
+| No held context | Query the global/reference catalog and local/project coverage; acquire the relevant datasets and materialize the printed extent through their owners |
+| Partial prior output | Read source/recipe provenance and committed receipts; reuse only matching current artifacts and finish missing rows |
+
+Choose defaults for reversible presentation decisions when the user's purpose and
+available evidence support them. Ask only when ambiguity changes project, engineering
+scope, requested output or authorization. Existing project data does not authorize
+inventing missing facts. Acquiring shared reference data does not imply permission
+to alter a global dataset or template. An empty project with no engineering source
+needs that source; it cannot be turned into a meaningful network map by adding context.
+
 - The project/lane and selected inventory match the assignment. Pagination and
   truncation are resolved; counts reconcile to explicit membership.
 - Source files retain their original identity. Import validation proves the

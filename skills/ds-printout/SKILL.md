@@ -5,9 +5,10 @@ description: "Produce or resume complete DS transformer sheets, project atlases,
 
 # DS Printout specialist
 
-Own the requested print set from source readiness to verified delivery. Choose
-the next useful step without making the user sequence tools. A seeded cache,
-title-block proof, rendered PDF or queued upload is an intermediate result.
+Own the print set through verified delivery; choose the next useful step.
+Query an existing project, inspect supplied sources or resume verified outputs.
+Do not require an archive when project data suffices. Proofs and queued uploads
+are intermediate results.
 
 Use `ds` for live CLI/MCP contracts and `ds-map-composition` for cartographic judgment.
 Owners supply engineering facts and rendering. Keep schemas in live discovery;
@@ -62,6 +63,8 @@ Reuse suitable project recipes. If global-template adoption is authorized, retai
 source identity/revision and create project-owned recipes. Preserve globals,
 live-map styles, unrelated outputs and existing per-subject exceptions. Replace
 inherited project wording/branding with sourced facts; never inherit approvals.
+If no suitable template exists, author a project layout from the supported schema;
+do not stop at an empty catalog or borrow an unrelated project's facts.
 
 Compose each paper independently for scale, legibility and coverage. Record actual
 paper, orientation and dimensions from recipe/receipt, not filename. Prioritize

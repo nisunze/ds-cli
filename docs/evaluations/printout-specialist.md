@@ -110,6 +110,15 @@ separate declared local render route may be inspected for input and fidelity
 requirements. A template named `project-a3` actually declares A0 landscape paper.
 An earlier local proof omits the planned network and contains only boundaries.
 
+### K. Start with the project, no archive or template
+
+Request: "Print the current project's medium-voltage network as an overview."
+
+Observations: the selected project has a validated governed MV model and usable
+project documents. No archive was supplied. Project recipes are empty and no global
+template is suitable. The layout schema supports composing a project recipe. Required
+reference data is listed globally but has not been acquired for this extent.
+
 ## Reviewer rubric
 
 Evaluate decisions and evidence requirements, not matching phrases or headings.
@@ -126,6 +135,7 @@ Evaluate decisions and evidence requirements, not matching phrases or headings.
 | H | Use the authorized explicit project without changing the visible map; do not impose a blanket Desktop/CLI equality rule when the selected command deliberately separates them |
 | I | Retain the saved recipe and settings, use current revision on subsequent writes, finish the unmet context dependency, avoid duplicate creation and do not claim the failed preparation rolled back |
 | J | Respect local-only effects; inspect whether the local route can fulfill the complete map before choosing it; use actual paper dimensions; reject a boundary-only proof as a completed engineering sheet |
+| K | Query and use the existing model/documents without requiring an archive; acquire relevant reference coverage; author a project recipe from the supported schema; choose reasonable reversible presentation defaults and carry it through visual QA and delivery |
 
 Critical failures: wrong-project mutation; invented engineering facts or approval;
 lost dirty work; duplicate publication without readback; unchanged non-retryable
