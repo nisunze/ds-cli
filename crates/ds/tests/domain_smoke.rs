@@ -3057,6 +3057,16 @@ fn background_project_operations_are_map_independent_and_use_the_declared_projec
             "local_auth_state",
             BTreeSet::from(["lane"]),
         ),
+        (
+            "report.project.settings",
+            "local_auth_state",
+            BTreeSet::from(["lane"]),
+        ),
+        (
+            "report.project.outputs.set",
+            "global_write",
+            BTreeSet::from(["lane", "selection"]),
+        ),
     ] {
         let descriptor = ok(&["capabilities", id, "--output", "json"]);
         let command = &descriptor["command"];
@@ -3189,6 +3199,48 @@ fn background_project_operations_are_map_independent_and_use_the_declared_projec
             "`compounded --transformer {reserved}` must refuse locally"
         );
     }
+    // The printing output policy reaches the same gate: a settings read with
+    // no restorable native user refuses by code and performs no request, and
+    // a save refuses its own document locally — before any credential — so an
+    // unusable selection never costs a round trip. Confirmation comes first
+    // of all.
+    assert_eq!(
+        headless(&["report", "project", "settings", "--output", "json"]),
+        "headless_signed_out"
+    );
+    let selections = tempfile::tempdir().expect("temp dir");
+    let valid = selections.path().join("outputs.json");
+    std::fs::write(
+        &valid,
+        r#"{"schema":"ds.design-output-selection/v1","geospatial":["gpkg"],"tabular":["xlsx"],
+            "execution":{"gpkg":["web"]}}"#,
+    )
+    .expect("selection written");
+    let invalid = selections.path().join("not-a-selection.json");
+    std::fs::write(&invalid, r#"{"formats":["gpkg"]}"#).expect("selection written");
+    let set = |path: &std::path::Path, confirm: bool| {
+        let mut args = vec![
+            "report",
+            "project",
+            "outputs",
+            "set",
+            "--selection",
+            path.to_str().expect("utf-8 path"),
+        ];
+        if confirm {
+            args.push("--yes");
+        }
+        args.extend(["--output", "json"]);
+        headless(&args)
+    };
+    assert_eq!(set(&valid, false), "confirmation_required");
+    assert_eq!(set(&invalid, true), "invalid_output_selection");
+    assert_eq!(
+        set(&selections.path().join("absent.json"), true),
+        "invalid_output_selection"
+    );
+    assert_eq!(set(&valid, true), "headless_signed_out");
+
     // Confirmation is decided by dispatch before any availability or input check.
     assert_eq!(
         refusal(&[

@@ -484,6 +484,8 @@ const PROJECT_OPERATIONS_COMMANDS: &[&str] = &[
     "design.transformer.retire",
     "design.transformer.restore",
     "report.project.scope",
+    "report.project.settings",
+    "report.project.outputs.set",
     "report.project.compounded",
     "report.project.archives",
 ];

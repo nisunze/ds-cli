@@ -21,6 +21,7 @@
 pub mod archives;
 pub mod compounded;
 pub mod scope;
+pub mod settings;
 
 use ds_cli_auth::{
     HeadlessProjectReport, PROJECT_REPORT_MAX_TRANSFORMERS, TransformerInventory,
