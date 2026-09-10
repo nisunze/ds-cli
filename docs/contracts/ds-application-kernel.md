@@ -75,6 +75,45 @@ Keep recording places where a domain rule is genuinely implemented twice, once
 in Go and once in a client. Those are now a work list rather than evidence for a
 pending decision, ordered by how much a disagreement would cost.
 
+### 1.2a Ruled later the same day — the wide reading is the ruling
+
+Owner, 2026-09-10, during the Design + Printing campaign:
+
+> "One of the things that needed to be in ds-brain was simply the scary part
+> of putting logic in TypeScript — so we can consider migration of
+> ds-brain-bulk and other heavy hitters to the frontend WASM, so that ds-brain
+> only grants permissions. This should be in this transitional state, slice by
+> slice."
+>
+> "The WASM itself is almost like a container — I am confident in Rust
+> scalability with coherence."
+
+**What this settles.** ds-brain converges on **authentication, authorization
+and entitlement** — who may do what, to which project, on which lane and
+audience — and on fronting the storage it guards. Every other decision it
+makes today is a migration candidate: domain rules, lifecycle and freshness
+computations, publication composition, and the heavy compute that lives in
+ds-brain-bulk. Those are decided in Rust and deployed as WASM in the browser,
+as native code in `ds` and in the desktop shell, with ds-brain **granting the
+permission and admitting the result**. The reason a rule sat in Go was never
+that Go should decide it; it was that TypeScript could not be trusted to.
+Rust can, and the WASM module is the container that makes one client-side
+decision coherent across every deployment form.
+
+**How it proceeds.** Inside the same transitional state, by the same method
+(§6a), ordered by the cost of a disagreement between the Go answer and the
+client answer, one slice at a time, each landing complete. A brain change
+lands when its domain is being worked, never as a queue-jumper — Cloud Run is
+still updated rarely, and "no rush" still holds for the schedule, not for the
+direction.
+
+**What it does not change.** ds-brain still decides whether a caller may read
+or write. A client answer never bypasses the grant; a write is admitted under
+the grant. Transport execution, storage and credentials remain host and server
+effects (§3). Where a rule *is* the grant — a lock, a write block, an
+entitlement — it stays in Go; where a rule merely computes what the grant is
+then applied to, it moves.
+
 ## 2. The litmus test
 
 > **If something should still make sense or work with the map closed, it
@@ -318,11 +357,12 @@ decides what the user may do outranks a 4,000-line module that formats things.
 4. **Never let a failure change the answer.** Placement is resolved once, before
    the work, from durable facts. A native failure does not fall back to a
    browser implementation of the same decision — that is two answers again.
-5. **Do not move rendering, DOM, or browser IO into Rust,** and do not read this
-   as permission to move ds-brain's server-side authorization, lifecycle,
-   publication or data-authority checks into the client. Rust owning the
-   application means the *client application*; the server still decides what it
-   decided before.
+5. **Do not move rendering, DOM, or browser IO into Rust,** and do not move
+   ds-brain's authorization — the grant itself — into the client. Under §1.2a
+   everything ds-brain decides *beyond* the grant (lifecycle and freshness
+   computation, publication composition, domain validation, heavy compute) is
+   a candidate, moved slice by slice; the server keeps deciding who may, and
+   admits what the client decided.
 
 ## 8. Suggested order
 
