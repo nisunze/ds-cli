@@ -1,8 +1,11 @@
-# Distribution specialist content contract
+# Printout specialist content contract
 
 The canonical role is
-[`skills/ds-distribution-delivery/SKILL.md`](../../skills/ds-distribution-delivery/SKILL.md).
-It owns delivery reasoning and composes the existing DS skills. Commands, schemas,
+[`skills/ds-printout/SKILL.md`](../../skills/ds-printout/SKILL.md).
+It is the first focused delivery role: printout production from source readiness
+through project sheet preparation, visual refinement, batch reconciliation and
+verified delivery. It replaces the initial Distribution Delivery prototype and
+uses `ds-map-composition` as its cartographic expertise. Commands, schemas,
 authorization, calculations, persistent product state and transport remain with
 their existing owners. There is no new execution service or second tool registry.
 
@@ -11,9 +14,9 @@ their existing owners. There is no new execution service or second tool registry
 | Surface | Source and responsibility |
 |---|---|
 | Native skill hosts | Canonical skill directory, including both referenced documents and `agents/openai.yaml`; existing skill packaging discovers the directory |
-| Claude Code agent | [`agents/claude-code/ds-distribution-delivery.md`](../../agents/claude-code/ds-distribution-delivery.md); thin frontmatter adapter preloading `ds` and the canonical role |
+| Claude Code agent | [`agents/claude-code/ds-printout.md`](../../agents/claude-code/ds-printout.md); thin frontmatter adapter preloading `ds` and the canonical role |
 | MCP-only host | Same canonical role bytes through the skill resource interface; supporting references need explicit supported resource access |
-| Behavioral review | [`docs/evaluations/distribution-delivery.md`](../evaluations/distribution-delivery.md); fixtures and acceptance rubric, not production project state |
+| Behavioral review | [`docs/evaluations/printout-specialist.md`](../evaluations/printout-specialist.md); fixtures and acceptance rubric, not production project state |
 
 The Claude adapter uses the documented `skills` preload mechanism and inherits
 the parent model. It does not set permission overrides, connection strings,
@@ -32,6 +35,11 @@ directories, so no new per-role executable or installer is needed for the native
 skill. The normal release must package and verify the complete directory with the
 matching bundle receipt. Do not replace a production receipt with a source-tree
 installation and describe the result as release-matched.
+
+The prototype was committed but never installed in production. Its source name
+`ds-distribution-delivery` is superseded by `ds-printout`; do not distribute both
+as competing entrypoints. Existing installer ownership rules govern any development
+installation that needs replacement. No migration of project data is involved.
 
 The Claude adapter is a registration source, not an installed registration.
 The migration owner can distribute it through the host's supported agent location

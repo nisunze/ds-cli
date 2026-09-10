@@ -1,4 +1,0 @@
-interface:
-  display_name: "DS Distribution Delivery"
-  short_description: "Complete and verify DS distribution-project deliveries"
-  default_prompt: "Use $ds-distribution-delivery to complete this project's requested engineering deliverables, resume verified work and reconcile every output."

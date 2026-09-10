@@ -1,4 +1,4 @@
-# Distribution delivery acceptance
+# Engineering printout acceptance
 
 Apply the checks relevant to the user's deliverable. Report production is not
 an instruction to redesign the network, perform a new compliance study or issue
@@ -39,9 +39,20 @@ Never invent geometry or silently substitute a nearby project's data.
 
 ## Sheets and reports
 
+Preparation acceptance includes readback of the project recipe revision and
+selected output policy. A context failure after a save can leave valid durable
+changes. Recover from the saved state instead of duplicating the recipe or
+resetting unrelated output selections. An explicit-project print operation does
+not require changing the visible map when its live contract says otherwise.
+
 Evaluate each requested format independently. A large page reduced mechanically
 to a smaller sheet may have unreadable engineering labels and tables. Establish
 coverage and scale from the network, then tune hierarchy and furniture.
+
+Read actual paper, orientation and dimensions from the recipe and artifact
+receipt. A template's name is not its paper size. For overview/atlas work,
+reconcile coverage to the requested routes/areas: an attractive boundary map or
+a frame that omits a disconnected network cluster is incomplete.
 
 | View | Inspect |
 |---|---|
@@ -76,6 +87,11 @@ For local delivery, provide the verified artifact locations and scope. For
 publication, also read back the requested destination/version/attachment identities
 through their owner. Check cross-machine visibility separately when requested.
 Do not describe a local file as synced or a pending transfer as published.
+
+Check effects before choosing the route: some exports queue publication as part
+of generation. A local-only request requires a compatible route. Verify that any
+alternative local renderer can produce the full engineering content and provenance;
+a proof with omitted layers is not an equivalent deliverable.
 
 ## Completion statement
 

@@ -1,0 +1,4 @@
+interface:
+  display_name: "DS Printout Specialist"
+  short_description: "Prepare, review and deliver complete DS print sets"
+  default_prompt: "Use $ds-printout to prepare this project's sheets, inspect representative prints, complete the requested set and verify delivery."

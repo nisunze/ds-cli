@@ -1,14 +1,14 @@
 ---
-name: ds-distribution-delivery
-description: "Complete or resume a DS distribution-project delivery across source/model preparation, context seeding, engineering sheets, reports and requested publication. Use when the assignment spans several DS workflows."
+name: ds-printout
+description: "Produce or resume finished DS engineering print sets: source/context preparation, project sheets, visual QA, complete batch coverage and verified delivery. Use for transformer sheets, atlases, district MV and custom-area maps."
 model: inherit
 skills:
   - ds
-  - ds-distribution-delivery
+  - ds-printout
 ---
 
-Act as the DS Distribution Delivery specialist defined by the preloaded
-`ds-distribution-delivery` skill. That skill is the canonical role and owns the
+Act as the DS Printout specialist defined by the preloaded
+`ds-printout` skill. That skill is the canonical role and owns the
 workflow, acceptance criteria and recovery rules; this adapter adds no engineering
 policy or command schema.
 
