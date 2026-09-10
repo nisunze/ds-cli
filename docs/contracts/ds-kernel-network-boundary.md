@@ -139,3 +139,123 @@ is not, it moves with the rest.
 `ds-command-kernel` with `ds-network` **absent from the filesystem** — not
 disabled, not feature-gated. Absent. Plus a recorded before/after WASM size, so
 the field-deployability claim is a number rather than an assertion.
+
+## 6. Ownership, stated as three layers (owner refinement, 2026-09-10)
+
+> **Hosts perform effects; `ds-command-kernel` decides application meaning.**
+
+| Host / Svelte | `ds-command-kernel` | `ds-network` |
+|---|---|---|
+| network transport | commands and queries | genuinely heavyweight engineering/network computation |
+| IndexedDB / OPFS / durable storage | canonical application state | |
+| credentials | selection | |
+| filesystem / OS / browser APIs | field/survey semantics | |
+| MapLibre rendering and pointer mechanics | editing semantics | |
+| execution of external I/O | filters / attributes / forms | |
+| | lightweight geometry | |
+| | validation | |
+| | deterministic transformations | |
+| | change/dirty tracking | |
+| | derived/view state | |
+| | explicit effects/results for the host | |
+
+Two failure modes, named:
+
+- **Do not drag transport, permanent IO implementations, storage engines,
+  renderer mechanics, or OS/browser concerns into the kernel.**
+- **Do not leave application semantics in TypeScript merely because they
+  currently sit next to IO or MapLibre code.** Split mechanics from meaning.
+
+### 6.1 "Network transport" is a host concern — and the transfer protocol is not
+
+These look contradictory and are not, so it is written down before someone
+"corrects" one into the other.
+
+The **socket, the TLS session, the fetch call, the credential** are transport
+*mechanics* and belong to the host. **What an acknowledgement means** — whether
+a 308 with no `Range` header proves zero committed bytes, whether an ambiguous
+response permits a re-send, how long until the next attempt — is application
+*meaning* and belongs to the kernel. That is exactly how
+`ds-command-kernel::transfer` is built: it holds no HTTP client, opens no
+socket, and the hosts report observed facts and execute one returned action.
+
+The test: if two hosts could reasonably disagree about the answer, it is
+meaning. If it is a platform API call, it is mechanics.
+
+## 7. The dependency graph, rethought
+
+Preferred shape when a shared contract is genuinely needed:
+
+```
+                 ds-domain / ds-types
+                    ▲           ▲
+                    │           │
+          ds-command-kernel   ds-network
+```
+
+**`ds-network` ──X──► `ds-command-kernel`** must not be created for convenience.
+`ds-command-kernel` is an application layer; `ds-network` should remain an
+independently callable engineering engine that accepts explicit engineering
+inputs and returns explicit deterministic results.
+
+**Measured 2026-09-10: that edge does not exist.** No `Cargo.toml` under
+`ds-network/` references `ds-command-kernel`. The graph is already correct in
+that direction and the work is to keep it so — in particular, a shared
+lightweight crate created while severing §3 must be depended on by *both*, never
+resolved by pointing `ds-network` at the kernel.
+
+Worth flagging, not acting on: **`ds-network-reporter` does depend on
+`ds-command-kernel`.** That is the report worker, not `ds-network`, so it is
+outside the letter of this rule — but it is a server-side engine depending on
+the application layer, which is the shape the rule exists to prevent. Someone
+should decide whether the spirit applies.
+
+## 8. Crossing the boundary: coarse, not chatty
+
+```
+ds-command-kernel → complete engineering request → ds-network
+                 → parallel heavy computation
+                 → deterministic result → kernel incorporates it
+```
+
+Forbidden shape: `UI → ds-network → UI → ds-network → UI`. Normal selection,
+editing, field inspection, survey, filtering, forms, lightweight geometry and
+ordinary validation **must not continuously wake `ds-network`**.
+
+## 9. CPU and power are part of the architecture
+
+Adaptive, not maximal. Parallelism is spent where the work justifies it and
+nowhere else.
+
+| Ordinary UI / field / survey work | Explicit heavy engineering job |
+|---|---|
+| lightweight execution | use parallelism aggressively |
+| bounded concurrency | use available CPU efficiently |
+| low power | finish quickly |
+| minimal background activity | return to idle |
+
+Specifically forbidden on the lightweight path: unnecessary permanent worker
+activity, busy polling, speculative heavy computation, waking multiple cores for
+trivial interaction, unnecessary background work, and failing to return to idle
+when work completes.
+
+**Do not burn CPU or battery simply because parallelism is available.** This
+matters because `ds-web` must remain viable as an offline-first Android/iOS
+field application.
+
+## 10. What the target is not
+
+The target is **not** "Rust everywhere", and it is **not** "maximum TypeScript
+removed". Deletion is a consequence of correct ownership, never the objective —
+optimise for architectural ownership, runtime behaviour, portability and
+performance, and let the line count fall out.
+
+The target is: a lightweight portable `ds-command-kernel`; thin host effects; no
+unnecessary dependency from `ds-network` to `ds-command-kernel`; neutral shared
+crates only where genuinely needed; `ds-network` as an independently bounded
+heavy engineering engine; aggressive multicore compute when heavy work justifies
+it; low CPU and battery when it does not; and `ds-network` invoked explicitly and
+coarsely, never as part of ordinary UI interaction.
+
+`ds-command-kernel` + `ds-web` must be capable of providing the complete
+ordinary/offline field experience with `ds-network` absent.
