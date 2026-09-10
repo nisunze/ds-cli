@@ -1616,6 +1616,24 @@ pub fn ensure_meter_type(
     .map(|receipt| receipt.result)
 }
 
+/// Save the project's `project_settings` sheet carrying a design output
+/// selection the kernel wrote. The rows are the kernel's answer, not this
+/// caller's composition: `report_formats::apply_output_selection` decides
+/// which row holds the selection and creates one when the sheet has none, and
+/// the closed change verifies that a readable selection is what arrives.
+pub fn design_output_rows(
+    lane: &str,
+    rows: Vec<serde_json::Value>,
+) -> Result<ds_client_core::FeederConfiguration, Failure> {
+    let change = ds_client_core::ProjectConfigurationChange::DesignOutputs { rows };
+    headless_project_report(
+        lane,
+        |device, project| device.feeder_configuration(project, Some(&change)),
+        |client, project| client.feeder_configuration(project, Some(&change), now()),
+    )
+    .map(|receipt| receipt.result)
+}
+
 pub fn customer_category_alias(
     lane: &str,
     alias: &str,

@@ -406,6 +406,16 @@ static REPORT_ENTRIES: &[Entry] = &[
         handler: ds_cli_report::project::archives::run,
         render: ds_cli_report::project::archives::render,
     },
+    Entry {
+        command: &ds_cli_report::project::settings::COMMAND,
+        handler: ds_cli_report::project::settings::run,
+        render: ds_cli_report::project::settings::render,
+    },
+    Entry {
+        command: &ds_cli_report::project::settings::OUTPUTS_SET,
+        handler: ds_cli_report::project::settings::set,
+        render: ds_cli_report::project::settings::render_set,
+    },
 ];
 
 static SOLAR_ENTRIES: &[Entry] = &[

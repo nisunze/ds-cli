@@ -122,6 +122,61 @@ rules, layout vocabulary and archive tree are ds-brain's
 `docs/contracts/compounded-reports.md`; this is the same deliverable the paired
 `ds map design batch report` requests through the application's session.
 
+## The project's output policy
+
+Which files a report produces, and where each one may be produced, is one
+decision and `ds-command-kernel::report_formats` makes it. These two commands
+are its headless door; the Settings page in the application is the other, and
+both get the same answer because neither computes it.
+
+```bash
+ds report project settings --output json                                  # what this project produces, and whether it can
+ds report project outputs set --selection outputs.json --yes              # save a selection authored as a document
+```
+
+`settings` reads the selected project's fresh configuration and hands its
+sheets to the kernel. The reply is the kernel's, unedited: `source` (the
+project's own export row, or the report defaults when it has none), the stored
+`setting` row exactly as saved, the `outputs` it resolves to with their formats
+and file suffixes, the `papers` of each named printout, `ready`, any `issues`,
+and a `refusal` naming a `code`, a `message_key` and the `mode` the settings
+were read in. The message key is deliberate: the GUI resolves it in the
+operator's language, `ds` prints the code and the kernel's own findings, and
+neither composes a sentence of its own. A project stores its selection in
+whatever shape it has ever stored one — a comma or semicolon string, a token
+array, a truthy map, or the versioned `ds.design-output-selection/v1` document
+— and all of them read here.
+
+`outputs set` takes that versioned document (`ds report layout schema` returns
+its schema under `output_selection`). It is validated against the kernel's
+closed type *before* any credential is restored, so a malformed selection costs
+no round trip. The kernel then writes it into the project's settings sheet —
+into whichever of the five export-row aliases the project already uses
+(`design_export_format`, `design_export_formats`, `transformer_export_formats`,
+`tr_export_formats`, `report_formats`, in any case and with hyphens), or a new
+`design_export_format` row when it has none — and every other settings row is
+preserved byte for byte. The patched sheet is saved through the same
+`save_config` request the application sends, then read back fresh and verified;
+a save whose read-back disagrees is reported as unreadable rather than as
+success.
+
+A selection's `execution` map is where each output may run: keys are an exact
+output id (`pdf__detail`), an output class (`print`, `geospatial`, `tabular`),
+or `*`, and the value is a subset of `["desktop","web"]`. An output no key
+names may run on both. The map is saved as authored, and ds-brain admits an
+export against it — the kernel decides what the policy says, the service
+decides whether this request is allowed.
+
+```json
+{
+  "schema": "ds.design-output-selection/v1",
+  "prints": [{ "layout_id": "detail", "enabled": true, "formats": ["pdf", "png"] }],
+  "geospatial": ["gpkg"],
+  "tabular": ["xlsx"],
+  "execution": { "pdf__detail": ["desktop"], "geospatial": ["web"] }
+}
+```
+
 A compounded archive consumes the project's applied `report_archive` consumer
 grouping: that plan, not this request, is the folder and section authority.
 `ds design consumer-grouping read|preview|apply --purpose report_archive` is
@@ -192,8 +247,10 @@ it verifies, and contacts nothing.
 
 `report project compounded` is the contrast: `artifact_write`, because the ZIP
 it publishes lands in the project's cloud registry where every member reads it
-as the delivery. `scope` and `archives` are `local_auth_state` like every
-headless read — they may rotate the native credential, and write nothing else.
+as the delivery. `scope`, `settings` and `archives` are `local_auth_state` like
+every headless read — they may rotate the native credential, and write nothing
+else. `report project outputs set` is `global_write`: it changes saved project
+settings every member's next export reads.
 
 ## Related
 

@@ -409,6 +409,16 @@ const EXPECTED: &[(&str, &str, &str)] = &[
         "headless_project",
     ),
     (
+        "report.project.settings",
+        "local_auth_state",
+        "headless_project",
+    ),
+    (
+        "report.project.outputs.set",
+        "global_write",
+        "headless_project",
+    ),
+    (
         "report.project.compounded",
         "artifact_write",
         "headless_project",
