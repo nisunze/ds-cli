@@ -246,6 +246,38 @@ The check reports **exact remaining exceptions** with a reason. Remaining DS
 gateway bypasses mean the goal is not complete, and the report says so rather
 than passing quietly.
 
+## 7a. Deletion is the deliverable — owner direction, 2026-09-10
+
+> "all logic needs to move from typescript, YAGNI, and move to rust. the biggest
+> threat is to be lenient on removing typescript and its tests. the more
+> typescript we remove the better"
+
+This governs how the remaining slices are judged. Read it as an instruction to
+**delete**, not to wrap, not to keep "for now", and not to preserve a TypeScript
+behaviour because it is marginally nicer than its Rust replacement.
+
+- A TypeScript module that still holds transport, retry, ordering, or
+  acknowledgement logic is not "a tracked exception". It is the work.
+- **Tests for deleted TypeScript are deleted with it.** A test that pins the
+  behaviour of removed logic is not coverage; it is ballast that makes the next
+  deletion look riskier than it is.
+- A justification for keeping TypeScript logic is the signal the direction
+  warns about. If one is being written, the answer is usually to delete.
+- If a surface genuinely breaks when its TypeScript engine goes, **simplify the
+  surface**; do not resurrect the engine.
+
+Worked example, recorded because it was nearly kept: `resumableUpload.ts` was
+first left in place with the reasoning that `uploadQueue` depends on
+`ResumableProgress` — per-byte XHR upload progress that `fetch` cannot produce —
+so removing it "degrades visible progress across roughly eight consumer
+families". That is exactly the leniency named above. Chunk-granularity progress
+is sufficient; the native host already emits `committedBytes` per step; and
+per-byte *socket* progress was never honest progress anyway (§4.2 rule 11). The
+engine goes.
+
+What TypeScript legitimately keeps is unchanged and short: Svelte presentation,
+DOM and file-picker events, rendering, and thin typed bindings.
+
 ## 8. What must NOT happen
 
 - No desktop fallback to browser fetch/XHR for DS traffic.
