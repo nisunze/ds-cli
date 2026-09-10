@@ -163,7 +163,9 @@ pub fn export(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
         &ops::paired(inputs.value("desktop-descriptor"))?,
         &EXPORT_OP,
         json!({"request":request}),
-        Duration::from_secs(2400),
+        // Desktop allows three hours for heavy composition preparation,
+        // rendering and retention; leave time to receive its final response.
+        Duration::from_secs(3 * 60 * 60 + 60),
     )
     .map_err(ops::classify_signed_out)
 }
