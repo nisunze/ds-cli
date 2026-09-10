@@ -1225,7 +1225,7 @@ pub enum Command {
         /// Whatever the project has actually stored, in any shape it has ever
         /// been stored in. A host passes the row value through and never
         /// decides which of the other two inputs it resembles.
-        #[serde(default)]
+        #[serde(default, deserialize_with = "deserialize_present")]
         stored: Option<serde_json::Value>,
         #[serde(default)]
         execution: Option<BTreeMap<String, Vec<crate::report_formats::Placement>>>,
@@ -1320,6 +1320,18 @@ pub enum Command {
         relative_to: String,
     },
 }
+/// Tell "the key is absent" apart from "the key is present and null". Serde
+/// collapses both onto `None`, and for a stored settings value that difference
+/// is the whole question: a project's export row may hold `null`, and `null` is
+/// something it stored — an empty selection — not a caller that passed no
+/// argument at all.
+fn deserialize_present<'de, D>(deserializer: D) -> Result<Option<Value>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    Deserialize::deserialize(deserializer).map(Some)
+}
+
 /// The per-transformer print view map, bounded and validated once. The native
 /// reporter reads this exact nesting at export time, so the rule lives beside
 /// the document grammar rather than in whichever host writes it.
@@ -1930,6 +1942,18 @@ mod tests {
             evaluate(br#"{"op":"output_selection","stored":"gpkg","legacy_formats":["xlsx"]}"#),
             Err("pass a stored settings value alone, without a selection, legacy formats or placements".into())
         );
+        // A row that holds `null` is a project that stored nothing, and reads
+        // as an empty selection. Passing no `stored` at all is a different
+        // request, and without an authoring input it is still refused.
+        for empty in [
+            br#"{"op":"output_selection","stored":null}"#.as_slice(),
+            br#"{"op":"output_selection","stored":""}"#.as_slice(),
+        ] {
+            let read: serde_json::Value = serde_json::from_str(&evaluate(empty).unwrap()).unwrap();
+            assert_eq!(read["selection"]["geospatial"], serde_json::json!([]));
+            assert_eq!(read["placements"], serde_json::json!({}));
+        }
+        assert!(evaluate(br#"{"op":"output_selection"}"#).is_err());
     }
 
     #[test]
