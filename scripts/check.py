@@ -6,6 +6,7 @@ scans for routes around `ds` or local gap ledgers. Deterministic, with no
 dependencies beyond the standard library. Exit 1 on any failure.
 """
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -134,6 +135,12 @@ def check_skill(d):
 
 
 def main():
+    layout = subprocess.run(
+        [sys.executable, str(ROOT / "scripts" / "check-workspace-root.py"),
+         str(ROOT.parent), "--if-managed"], check=False,
+    )
+    if layout.returncode:
+        FAIL.append("workspace root layout failed")
     skills = sorted(p for p in (ROOT / "skills").iterdir() if p.is_dir())
     for d in skills:
         check_skill(d)

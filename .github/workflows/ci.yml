@@ -138,6 +138,7 @@ jobs:
         run: |
           python3 scripts/check.py
           python3 scripts/test-check.py
+          python3 scripts/test-workspace-root.py
           bash scripts/test-install-skills.sh
 
       - name: Lint

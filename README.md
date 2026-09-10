@@ -296,6 +296,9 @@ the domain that owns them, and a gap found while working goes to
 
 ## Documentation
 
+Contributor workspace hygiene and knowledge ownership:
+[`docs/development/workspace-layout.md`](docs/development/workspace-layout.md).
+
 | Document | What it settles |
 |---|---|
 | [`docs/contracts/discovery-contract.md`](docs/contracts/discovery-contract.md) | tiers, byte budgets, availability |

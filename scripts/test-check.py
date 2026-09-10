@@ -40,6 +40,8 @@ def main() -> int:
         root = Path(temporary)
         (root / "scripts").mkdir()
         shutil.copyfile(CHECK, root / "scripts" / "check.py")
+        shutil.copyfile(CHECK.with_name("check-workspace-root.py"),
+                        root / "scripts" / "check-workspace-root.py")
 
         # Seven individually bounded descriptions deliberately exceed 2,048
         # characters in aggregate. Skill discovery is conditional, so growth

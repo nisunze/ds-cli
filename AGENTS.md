@@ -26,6 +26,13 @@ first-class projections of the same declaration and both must remain complete.
 
 ## Verification
 
+For a multi-repository workspace, follow
+[`docs/development/workspace-layout.md`](docs/development/workspace-layout.md).
+Run `python scripts/check-workspace-root.py ..` at session start and before
+handoff when the parent `AGENTS.md` carries `<!-- ds-workspace-root:v1 -->`.
+Never write task scratch, handovers, generated outputs or package dependencies
+into that parent. `scripts/check.py` also enforces this opted-in boundary.
+
 Everything under *Verification* in `CLAUDE.md` applies unchanged. Two further
 commands must pass, and CI runs them too:
 
