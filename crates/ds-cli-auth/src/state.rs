@@ -1154,6 +1154,7 @@ mod tests {
                 "transformer_inventory".to_owned(),
                 "retire_transformer".to_owned(),
                 "restore_transformer".to_owned(),
+                "list_transformers_status".to_owned(),
             ],
         })
         .unwrap()

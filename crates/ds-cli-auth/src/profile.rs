@@ -449,7 +449,7 @@ mod tests {
                     "printing": {"method":"POST","path":"/api/v1/printing","actions":["list","get","create","update","save","delete","copy"]},
                     "layers": { "method": "POST", "path": "/api/v1/layers", "actions": ["get_config", "get_style_catalog", "refresh", "reorder"] },
                     "tiles": { "method": "POST", "path": "/api/v1/tiles", "actions": ["status", "preflight", "generate", "list", "add", "remove"] },
-                    "project_report": { "method": "POST", "path": "/report", "actions": ["download_transfo", "list_compounded_reports", "transformer_inventory", "retire_transformer", "restore_transformer"] },
+                    "project_report": { "method": "POST", "path": "/report", "actions": ["download_transfo", "list_compounded_reports", "transformer_inventory", "retire_transformer", "restore_transformer", "list_transformers_status"] },
                     "provenance": { "source_revision": "abc123", "descriptor_sha256": "a".repeat(64) }
                 },
                 "canary": {
@@ -476,7 +476,7 @@ mod tests {
                     "printing": {"method":"POST","path":"/api/v1/printing","actions":["list","get","create","update","save","delete","copy"]},
                     "layers": { "method": "POST", "path": "/api/v1/layers", "actions": ["get_config", "get_style_catalog", "refresh", "reorder"] },
                     "tiles": { "method": "POST", "path": "/api/v1/tiles", "actions": ["status", "preflight", "generate", "list", "add", "remove"] },
-                    "project_report": { "method": "POST", "path": "/report", "actions": ["download_transfo", "list_compounded_reports", "transformer_inventory", "retire_transformer", "restore_transformer"] },
+                    "project_report": { "method": "POST", "path": "/report", "actions": ["download_transfo", "list_compounded_reports", "transformer_inventory", "retire_transformer", "restore_transformer", "list_transformers_status"] },
                     "provenance": { "source_revision": "def456", "descriptor_sha256": "b".repeat(64) }
                 }
             }
@@ -666,6 +666,7 @@ mod tests {
             "transformer_inventory",
             "retire_transformer",
             "restore_transformer",
+            "list_transformers_status",
             "delete_transformer"
         ]);
         let escaped = serde_json::to_vec(&escaped).unwrap();

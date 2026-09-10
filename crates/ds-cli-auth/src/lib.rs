@@ -54,7 +54,7 @@ pub use ds_client_core::{
     StyleInstruction, StyleSnapshot, TileCatalog, TileMutation, TileOperationResult,
     TileOperationStatus, TilePreflight, TilePreflightLayer, TilePreflightStatus, TileScope,
     TileType, TransformerInventory, TransformerInventoryRow, TransformerKind, TransformerLifecycle,
-    TransformerSet,
+    TransformerSet, TransformerStatusList, TransformerStatusRow,
 };
 
 /// The remedy the transformer-context route's own rejection carries.
@@ -1704,6 +1704,24 @@ pub fn transformer_inventory(
         lane_value,
         |device, project| device.transformer_inventory(project, requested),
         |client, project| client.transformer_inventory(project, requested, now()),
+    )
+}
+
+/// Read the transformer status rows of only the saved, audience-fenced
+/// selected project, or of the exact requested names.
+///
+/// This is the read every headless Design answer is built from. The rows are
+/// returned as ds-brain sent them: ds-client-core bounds the envelope and the
+/// reference names and reshapes nothing, because what a status member means
+/// belongs to the module that reads it.
+pub fn transformer_status(
+    lane_value: &str,
+    requested: &TransformerSet,
+) -> Result<HeadlessProjectReport<TransformerStatusList>, Failure> {
+    headless_project_report(
+        lane_value,
+        |device, project| device.transformer_status(project, requested),
+        |client, project| client.transformer_status(project, requested, now()),
     )
 }
 
@@ -3393,6 +3411,10 @@ mod tests {
             &str,
             &TransformerSet,
         ) -> Result<HeadlessProjectReport<TransformerInventory>, Failure> = transformer_inventory;
+        let _: fn(
+            &str,
+            &TransformerSet,
+        ) -> Result<HeadlessProjectReport<TransformerStatusList>, Failure> = transformer_status;
         let _: fn(
             &str,
             RetirementAction,

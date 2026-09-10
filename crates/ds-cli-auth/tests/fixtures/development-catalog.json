@@ -1,5 +1,5 @@
 {
-  "schema_version": "ds.native-client-profiles/v18",
+  "schema_version": "ds.native-client-profiles/v19",
   "development": true,
   "profiles": {
     "stable": {
@@ -97,7 +97,8 @@
           "list_compounded_reports",
           "transformer_inventory",
           "retire_transformer",
-          "restore_transformer"
+          "restore_transformer",
+          "list_transformers_status"
         ]
       },
       "provenance": {
@@ -246,7 +247,8 @@
           "list_compounded_reports",
           "transformer_inventory",
           "retire_transformer",
-          "restore_transformer"
+          "restore_transformer",
+          "list_transformers_status"
         ]
       },
       "provenance": {
