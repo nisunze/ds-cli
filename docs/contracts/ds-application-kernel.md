@@ -130,6 +130,42 @@ renderer glue, and `src/lib/components` is presentation. But `stores`,
 predominantly the truth the ruling assigns to Rust, and they alone are ~60k
 lines. This is a programme across multiple campaigns, not a slice.
 
+## 6a. The method — authority, not translation
+
+> Do not translate TypeScript mechanically into Rust. Identify the application
+> authority currently hiding in TypeScript, move that authority behind the
+> Rust/WASM boundary, prove parity, then remove the duplicate path.
+
+Four steps, in that order, and the order is the point.
+
+**1. Identify the authority.** The unit is a *decision*, not a module. Ask "who
+decides this, and where is that decision actually made?" — not "what would this
+file look like in Rust". Authority is often nowhere near where the code lives:
+in a store's derived value, in a Svelte `$effect`, in an argument-shaping
+helper, or implicitly in the order two functions happen to be called. Those are
+the ones worth finding, because reading file by file misses them.
+
+**2. Move the authority — not the shape.** A Rust module that mirrors a
+TypeScript file's decomposition has carried that file's accidental structure
+across the boundary, and the accident is now the contract. Describe the Rust
+seam on its own terms. Where the existing TypeScript decomposition is wrong,
+fixing it is part of moving the authority, not scope creep.
+
+**3. Prove parity, before deleting anything.** Name the proof: a golden-corpus
+comparison, a differential test against the TypeScript on real inputs for one
+release, a fixture set covering the edge cases the TypeScript handles. "Add
+tests" is not a parity proof. This step is what makes step 4 safe, and it is the
+step that gets skipped.
+
+**4. Remove the duplicate path.** Then, and only then. Two live answers to one
+question is the defect this whole document exists to remove — and a parity proof
+that is kept alongside both implementations forever is just a slower version of
+the same defect. §7a of the transport contract governs what goes: the module,
+and the tests that only pinned it.
+
+Rank work by **authority density, not line count**. A 200-line module that
+decides what the user may do outranks a 4,000-line module that formats things.
+
 ## 7. How to migrate, and how not to
 
 1. **Move the decision, delete the TypeScript.** Contract
