@@ -125,6 +125,45 @@ question. Two are the anti-pattern exactly:
 
 Neither can be answered by `ds` with no map open, which is the test.
 
+## 4a. The invariant, and the authority to rewrite
+
+Owner, 2026-09-10, after the anti-pattern sites were measured:
+
+> **MapLibre is a renderer, never a source of application truth.** Anything that
+> must be answerable by `ds` with no map open must be owned by the Rust kernel.
+>
+> For these affected subsystems, I would rather accept a deliberate rewrite from
+> the proper Rust boundary than accumulate adapters around the old frontend
+> architecture.
+
+This is non-negotiable and it is not a diff-size trade. Explicitly authorised,
+and explicitly forbidden:
+
+| Do | Do not |
+|---|---|
+| Identify the correct canonical Rust ownership and API **first**, then implement it | Patch the anti-pattern in place |
+| Delete the obsolete TypeScript authority | Keep it behind an adapter |
+| Rewrite the subsystem from the proper boundary | Preserve the current architecture to minimise the diff |
+| Preserve *behaviour* with tests | Preserve a bad internal design because the tests encode it |
+| One Rust command/query, identical from WASM, CLI, Tauri and a headless server | A TypeScript mirror of Rust state, a compatibility patch, or a second source of truth |
+
+**The acceptance test is one sentence:** can the same operation be performed and
+answered correctly by `ds` with no browser, DOM, or map instance running?
+
+### Auditing the renderer
+
+Every `queryRenderedFeatures` site must be classified, not counted. Keep it only
+where the question is *genuinely about the picture*: hit testing, pointer
+interaction, what is currently visible on screen. Any use that determines domain
+state, selection, metadata, fields, values, filtering semantics, or project
+truth is redesigned around Rust.
+
+The test that separates them: **off-screen features must exist exactly as
+on-screen features do.** A renderer query cannot satisfy that — it cannot see
+past the viewport, below minzoom, or through tile simplification — so any
+question whose correct answer includes off-screen data is not a renderer
+question, however it is currently implemented.
+
 ## 5. Peer clients, one kernel
 
 The CLI, the Svelte web UI and the Tauri desktop are **peer clients of the same
