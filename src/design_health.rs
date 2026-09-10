@@ -1078,7 +1078,16 @@ fn build(request: Request) -> Result<Reply, String> {
         .rows
         .iter()
         .map(|row| {
-            let name = string_value(row.as_object().and_then(|row| row.get("name")));
+            // Echoed EXACTLY as it was sent. The host keys its health map by
+            // the name it holds, so a trimmed echo would lose the row: the
+            // register would list none of its findings and every surface would
+            // pay for a second call to be told the same thing.
+            let name = row
+                .as_object()
+                .and_then(|row| row.get("name"))
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string();
             let run = request.run.get(&name);
             HealthRow {
                 health: transformer_health_with_run(row, run),
@@ -1271,7 +1280,13 @@ mod tests {
             let verdict = health(json!({"name": "tr_1", "layers": {layer: 1}}));
             assert_eq!(codes(&verdict), vec![layer]);
             assert_eq!(verdict.findings[0].label_key, label_key);
-            assert!(verdict.findings[0].locatable.is_some(), "{layer}");
+            // The directive the table declares is the directive the finding
+            // carries — the whole point of naming a place to look.
+            assert_eq!(
+                verdict.findings[0].locatable.as_ref(),
+                Some(&locatable),
+                "{layer}"
+            );
         }
     }
 
@@ -1477,6 +1492,25 @@ mod tests {
         assert_eq!(reply["rows"][0]["name"], "a");
         assert_eq!(reply["rows"][0]["severity"], "error");
         assert_eq!(reply["rows"][1]["warning_count"], 1);
+    }
+
+    #[test]
+    fn a_row_is_answered_under_the_exact_name_it_was_sent_under() {
+        // The host looks its answer up by the name it holds. A trimmed echo
+        // would miss, and the row would silently contribute nothing to the
+        // project's finding list while every surface paid for a second call.
+        let reply = evaluate(
+            &serde_json::to_vec(&json!({"schema": SCHEMA,
+                "rows": [{"name": " tr 1 ", "layers": {"drafting_errors": 2}}],
+                "run": {" tr 1 ": {"warnings": [{"code": "lost_nodes", "message": "two lost"}]}}}))
+            .unwrap(),
+        )
+        .unwrap();
+        let reply: Value = serde_json::from_str(&reply).unwrap();
+        assert_eq!(reply["rows"][0]["name"], " tr 1 ");
+        // And the run slice, keyed by that same name, still reaches it.
+        assert_eq!(reply["rows"][0]["findings"][1]["code"], "lost_nodes");
+        assert_eq!(reply["rows"][0]["findings"][1]["source"], "run");
     }
 
     #[test]
