@@ -179,7 +179,7 @@ pub static SAVE: Command = Command {
     id: "report.layout.save",
     path: &["report", "layout", "save"],
     contract: 1,
-    summary: "Publish a printing setup using its expected revision.",
+    summary: "Publish a printing setup; with a revision it updates, else creates.",
     purpose: "Printing commands delegate to their owning Rust and native client contracts. Shared templates live in ds-brain; project scope requires a held selected-project context. Geometry stays in ds-network and document validation in ds-command-kernel.",
     chapter: Chapter::Reports,
     effect: Effect::GlobalWrite,
@@ -311,16 +311,53 @@ pub fn get(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
     )
 }
 pub fn save(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
-    let request =
+    let request: ds_cli_auth::PrintingRequest =
         serde_json::from_slice(&bytes(i.require("request")?, 800_000)?).map_err(invalid)?;
-    if !matches!(request, ds_cli_auth::PrintingRequest::Save { .. }) {
+    let ds_cli_auth::PrintingRequest::Save {
+        layout,
+        expected_revision,
+    } = request
+    else {
         return Err(invalid("save requires a save request"));
-    }
-    ds_cli_auth::printing(
-        i.require("lane")?,
-        i.require("scope")? == "global",
-        &request,
-    )
+    };
+    let global = i.require("scope")? == "global";
+    // Whether this publish is a create or an update is the kernel's
+    // decision — the same one the Printing setup page takes from the
+    // revision it holds — so `ds` never sends the compatibility `save`
+    // action of its own accord.
+    let facts = ds_command_kernel::printing::lifecycle::Facts {
+        intent: ds_command_kernel::printing::lifecycle::Intent::Save,
+        library: if global {
+            ds_command_kernel::printing::lifecycle::Library::Global
+        } else {
+            ds_command_kernel::printing::lifecycle::Library::Project
+        },
+        online: true,
+        editing: true,
+        loaded_matches: !expected_revision.is_empty(),
+        held_revision: expected_revision.clone(),
+        ..Default::default()
+    };
+    let plan = ds_command_kernel::printing::lifecycle::plan(&facts).map_err(invalid)?;
+    let request = match plan.decision {
+        ds_command_kernel::printing::lifecycle::Decision::Update => {
+            ds_cli_auth::PrintingRequest::Update {
+                layout,
+                expected_revision: plan.expected_revision.unwrap_or(expected_revision),
+            }
+        }
+        ds_command_kernel::printing::lifecycle::Decision::Create => {
+            ds_cli_auth::PrintingRequest::Create { layout }
+        }
+        _ => {
+            return Err(invalid(
+                plan.refusal
+                    .map(|r| r.message_key)
+                    .unwrap_or_else(|| "save is not admissible".into()),
+            ));
+        }
+    };
+    ds_cli_auth::printing(i.require("lane")?, global, &request)
 }
 fn typed_request(i: &Inputs) -> Result<ds_cli_auth::PrintingRequest, Failure> {
     serde_json::from_slice(&bytes(i.require("request")?, 800_000)?).map_err(invalid)

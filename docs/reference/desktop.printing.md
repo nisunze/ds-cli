@@ -5,14 +5,14 @@ It reads project settings and reports the saved selection, planned output IDs
 and the actual selected template papers. It never infers paper from a filename.
 The same leaf is exposed by `ds mcp serve --exposure commands --profile printing`.
 
-Use `ds desktop printing list --scope project --project <exact-id> --output
-json` to inspect one project's dynamic catalog, or `--scope global` for shared
-samples. Read one exact authored document and its current optimistic revision
-with `ds desktop printing get --scope project --project <exact-id> --id <id>
---output json`.
-Publish a shared sample or a project-only layout with
-`ds desktop printing save --request setup-save.json --yes --output json`; the
-request contains `scope`, `layout`, and `expectedRevision`.
+Named setups are read and published natively, with no paired application:
+`ds report layout list --scope project --output json` inspects the selected
+project's catalog (`--scope global` for the shared samples), `ds report layout
+get --scope project --id <id> --output json` reads one authored document with
+its current optimistic revision, and `ds report layout save --scope project
+--request setup-save.json --yes --output json` publishes one — the kernel
+decides from the request's `expected_revision` whether that is a create or an
+update, the same decision the Printing setup page makes.
 
 `ds desktop printing prepare --request setup.json --yes --output json`
 requires `project` in the request and uses normal Brain-authorized saves without

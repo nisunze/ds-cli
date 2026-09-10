@@ -298,8 +298,6 @@ fn printing_operations_have_one_closed_application_owner() {
     let source = std::fs::read_to_string(root.join("src/lib/printing/prepare.ts")).unwrap();
     let allowlist = between(&transport, "pub const CLI_OPERATIONS: &[&str] = &[", "];");
     for op in [
-        &ds_cli_desktop::printing::LIST_OP,
-        &ds_cli_desktop::printing::GET_OP,
         &ds_cli_desktop::printing::TRANSFORMERS_OP,
         &ds_cli_desktop::printing::EXPORT_OP,
         &ds_cli_desktop::printing::SETTINGS_OP,
