@@ -693,6 +693,7 @@ dependencies = [
  "ds-cli-work",
  "ds-cli-workstation",
  "ds-client-core",
+ "ds-command-kernel",
  "ds-grid-engine",
  "ds-grid-exchange",
  "ds-solar-contracts",

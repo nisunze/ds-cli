@@ -44,6 +44,10 @@ tempfile = "3"
 # reviewed gateway operations. The binary reaches the core through
 # ds-cli-auth; only the contract test names the registry directly.
 ds-client-core = { workspace = true }
+# tests/domain_smoke.rs proves `ds style read` answers what a layer's fields
+# carry from canonical project data with no map, using the same kernel calls
+# the command makes. Only the contract test names the kernel directly.
+ds-command-kernel = { workspace = true }
 ds-grid-engine = { workspace = true }
 ds-grid-exchange = { workspace = true }
 ds-solar-contracts = { workspace = true }
