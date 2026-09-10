@@ -150,6 +150,39 @@ and explicitly forbidden:
 **The acceptance test is one sentence:** can the same operation be performed and
 answered correctly by `ds` with no browser, DOM, or map instance running?
 
+### The audit, completed 2026-09-10
+
+All 29 `queryRenderedFeatures` occurrences in `ds-web` classified by reading each
+one. Several are comments about the API's behaviour rather than calls.
+
+**Legitimately about the picture — kept:**
+
+| Site | Question it asks |
+|---|---|
+| `map/draw.ts` (×5) | what is under this pointer / in this drag box, for vertex and move handles |
+| `map/session-pick.ts` | its own docstring: "what's rendered under…" |
+| `map/context-menu.ts` | what was right-clicked |
+| `components/map/MapView.svelte` (×6) | every one a bbox around `e.point` or a hover point with a pixel tolerance — hover candidate, edit-session layer name, session-pick blocking, pin-polygon pick, grid-plan pick |
+| `stores/map.ts` | a render **diagnostic**: "is this layer drawing anything at the current viewport?" — a question about the picture by construction |
+| `components/map/AttributeTable.svelte` (×3) | the explicit **viewport-only** row filter, where "what is on screen" is exactly what the operator asked for |
+
+MapView is worth a note because a survey suggested two of its sites were
+misplaced: reading each one, they are hit tests. Its line-463 comment also shows
+the correct pattern already in use — the renderer supplies the pick, and the
+tile-clipped geometry is then *upgraded* from the stored geometry before
+anything is decided on it.
+
+**Application truth recovered from the renderer — rewritten:**
+
+| Site | What it wrongly owns |
+|---|---|
+| `styles/map-field-scan.ts` | a layer's fields, distinct values, scalar types, per-value counts |
+| `components/styles/StyleCenterDialog.svelte` | the **caller** that makes that scan a product behaviour — which values the Style Center offers an author depends on where they had panned |
+| `selection/lasso-run.ts` | which features a lasso selected |
+
+Three, not two: fixing the scan while leaving its call site would leave the
+authority in place with a new implementation behind it, which §4a forbids.
+
 ### Auditing the renderer
 
 Every `queryRenderedFeatures` site must be classified, not counted. Keep it only
