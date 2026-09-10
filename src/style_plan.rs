@@ -986,6 +986,19 @@ pub fn describe_style(
     observed: Option<&Value>,
 ) -> Result<Value, String> {
     let editor = style_editor(snapshot, reference)?;
+    // One vocabulary. When a report is supplied it is already the merged
+    // declared ∪ present ∪ observed answer for this layer, so it replaces the
+    // editor's own two lists rather than sitting beside them.
+    let vocabulary = observed.map_or_else(
+        || editor.clone(),
+        |report| {
+            json!({
+                "available_fields": report["fields"],
+                "field_values": report["values"],
+            })
+        },
+    );
+    let editor_vocabulary = &vocabulary;
     let document = snapshot["styles"]
         .get(reference)
         .ok_or("style document is missing")?;
@@ -998,17 +1011,17 @@ pub fn describe_style(
     }
     let kind = document["type"].as_str().ok_or("style type is missing")?;
     let channels:Vec<Value>=style_channels(kind).into_iter().map(|c|json!({"channel":c.key,"numberProperty":c.number_prop,"colorProperty":c.color_prop,"min":c.min,"max":c.max,"on":c.on,"off":c.off})).collect();
-    let fields: Vec<&Value> = editor["available_fields"]
+    let fields: Vec<&Value> = editor_vocabulary["available_fields"]
         .as_array()
         .into_iter()
         .flatten()
         .take(200)
         .collect();
     let mut values = Map::new();
-    let mut more = editor["available_fields"]
+    let mut more = editor_vocabulary["available_fields"]
         .as_array()
         .is_some_and(|a| a.len() > 200);
-    for (key, row) in editor["field_values"]
+    for (key, row) in editor_vocabulary["field_values"]
         .as_object()
         .into_iter()
         .flatten()
@@ -1021,9 +1034,10 @@ pub fn describe_style(
             json!(entries.iter().take(50).collect::<Vec<_>>()),
         );
     }
-    more |= editor["field_values"]
+    more |= editor_vocabulary["field_values"]
         .as_object()
         .is_some_and(|a| a.len() > 200);
+    more |= observed.is_some_and(|report| report["more"] == json!(true));
     let second = second_style_channel(document).map(|c| {
         let f = c
             .number_prop
@@ -1036,14 +1050,21 @@ pub fn describe_style(
             });
         json!({"field":f,"channel":c.key})
     });
-    let observation = observed.cloned().unwrap_or_else(|| json!({
-        "status": "refused",
-        "code": "canonical_source_not_supplied",
-        "detail": "this host named no canonical project data for the layer, so nothing about its field values, counts or scalar types could be observed",
-        "remedy": "name the canonical source that holds this layer's features, or read fieldDomains for the values ds-brain publishes",
-    }));
+    // `observed` is always the OBSERVATION — derived or refused, one shape —
+    // and what it produced sits flat beside `fields`/`fieldValues`, the way
+    // every other part of this description already reads.
+    let observation = observed.map_or_else(
+        || json!({
+            "status": "refused",
+            "code": "canonical_source_not_supplied",
+            "detail": "this host named no canonical project data for the layer, so nothing about its field values, counts or scalar types could be observed",
+            "remedy": "name the canonical source that holds this layer's features, or read fieldDomains for the values ds-brain publishes",
+        }),
+        |report| report["observed"].clone(),
+    );
+    let report = |key: &str| observed.map_or_else(|| json!({}), |value| value[key].clone());
     Ok(
-        json!({"project":snapshot["project_id"],"ref":reference,"type":kind,"target":editor["style_target"],"document":document,"fields":fields,"fieldValues":values,"channels":channels,"propertySchema":snapshot["style_properties"][kind],"labelSchema":snapshot["label_editor"],"icons":icon_names(snapshot).into_iter().take(200).collect::<Vec<_>>(),"fieldDomains":editor["field_domains"],"second":second,"colorField":primary_style_field(document),"observed":observation,"more":more}),
+        json!({"project":snapshot["project_id"],"ref":reference,"type":kind,"target":editor["style_target"],"document":document,"fields":fields,"fieldValues":values,"channels":channels,"propertySchema":snapshot["style_properties"][kind],"labelSchema":snapshot["label_editor"],"icons":icon_names(snapshot).into_iter().take(200).collect::<Vec<_>>(),"fieldDomains":editor["field_domains"],"second":second,"colorField":primary_style_field(document),"observed":observation,"fieldTypes":report("types"),"fieldTypeSource":report("typeSource"),"fieldTypeConflicts":report("typeConflicts"),"fieldCounts":report("counts"),"fieldMatchLabels":report("matchLabels"),"fieldProvenance":report("provenance"),"more":more}),
     )
 }
 pub fn list_styles(snapshot: &Value, query: Option<&str>, limit: usize) -> Result<Value, String> {
@@ -1190,10 +1211,15 @@ mod tests {
         )
         .unwrap();
         let described = describe_style(&state, "master/poles", Some(&report)).unwrap();
-        assert_eq!(described["observed"]["observed"]["status"], "derived");
-        assert_eq!(described["observed"]["types"]["road_no"], "number");
-        assert_eq!(described["observed"]["types"]["kind"], "string");
-        assert_eq!(described["observed"]["counts"]["kind"], json!({"wood": 1}));
+        assert_eq!(described["observed"]["status"], "derived");
+        assert_eq!(described["observed"]["source"], "design_room");
+        assert_eq!(described["fieldTypes"]["road_no"], "number");
+        assert_eq!(described["fieldTypes"]["kind"], "string");
+        assert_eq!(described["fieldCounts"]["kind"], json!({"wood": 1}));
+        assert_eq!(described["fieldMatchLabels"]["road_no"]["12"], json!(12));
+        // The report is the one vocabulary: a canonical value the published
+        // editor never listed still reaches the caller.
+        assert_eq!(described["fieldValues"]["kind"], json!(["wood"]));
     }
 
     fn snapshot(style: Value) -> Value {

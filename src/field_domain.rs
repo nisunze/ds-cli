@@ -247,6 +247,18 @@ struct Vocabulary {
     values: Vec<Value>,
 }
 
+/// An absent key and an explicit `null` are the same fact on this wire: a host
+/// indexing a published editor (`editor["field_domains"]`) hands over `null`
+/// where the catalogue simply did not carry the key, and refusing that would
+/// refuse the ordinary case.
+fn nullable<'de, D, T>(deserializer: D) -> Result<T, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Default + Deserialize<'de>,
+{
+    Ok(Option::<T>::deserialize(deserializer)?.unwrap_or_default())
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(tag = "operation", deny_unknown_fields)]
 enum Request {
@@ -257,20 +269,20 @@ enum Request {
         layer: String,
         canonical: Canonical,
         /// Property bags of the canonical features. Geometry is never sent.
-        #[serde(default)]
+        #[serde(default, deserialize_with = "nullable")]
         features: Vec<Value>,
         /// ds-brain `field_domains`, plus any host-declared vocabulary.
-        #[serde(default)]
+        #[serde(default, deserialize_with = "nullable")]
         declared: Map<String, Value>,
         /// ds-brain `present_values` (tilestats).
-        #[serde(default)]
+        #[serde(default, deserialize_with = "nullable")]
         present: Map<String, Value>,
         /// ds-brain `field_values` — the union it already publishes. Reported
         /// as declared, because a host cannot tell its two halves apart.
-        #[serde(default)]
+        #[serde(default, deserialize_with = "nullable")]
         published: Map<String, Value>,
         /// Fields the layer declares even with no values (`available_fields`).
-        #[serde(default)]
+        #[serde(default, deserialize_with = "nullable")]
         fields: Vec<Value>,
     },
     /// The typed match labels for values a report did not enumerate — an
@@ -1138,6 +1150,20 @@ mod tests {
             local(json!([{"struct_type": "S140"}, {"properties": {"struct_type": "S190"}}]))
                 .unwrap();
         assert_eq!(report["values"]["struct_type"], json!(["S140", "S190"]));
+    }
+
+    #[test]
+    fn an_absent_published_vocabulary_may_arrive_as_an_explicit_null() {
+        let report = command(json!({
+            "schema": REQUEST_SCHEMA, "operation": "observe", "layer": "gt/roads",
+            "canonical": {"kind": "local", "source": "design_room"},
+            "features": [{"properties": {"road_no": 7}}],
+            "declared": Value::Null, "present": Value::Null,
+            "published": Value::Null, "fields": Value::Null,
+        }))
+        .unwrap();
+        assert_eq!(report["types"]["road_no"], "number");
+        assert_eq!(report["values"]["road_no"], json!(["7"]));
     }
 
     #[test]
