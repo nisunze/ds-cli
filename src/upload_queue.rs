@@ -163,7 +163,10 @@ pub fn apply(state: Option<QueueState>, event: Event) -> Result<Reply, String> {
                 if state.jobs.len() >= MAX_ADMITTED_JOBS {
                     return Err("Upload queue is full.".into());
                 }
-                state.jobs.push(Job { key, running: false });
+                state.jobs.push(Job {
+                    key,
+                    running: false,
+                });
                 admitted = true;
             }
             state.pump(&mut actions);
@@ -280,7 +283,12 @@ mod tests {
         .expect("settle");
         assert_eq!(started(&settled), vec!["c"]);
         assert_eq!(
-            settled.state.jobs.iter().map(|j| j.key.as_str()).collect::<Vec<_>>(),
+            settled
+                .state
+                .jobs
+                .iter()
+                .map(|j| j.key.as_str())
+                .collect::<Vec<_>>(),
             vec!["b", "c"],
         );
     }
@@ -292,7 +300,11 @@ mod tests {
         let second = enqueue(Some(first.state), "same");
         assert!(!second.admitted, "the caller gets the in-flight completion");
         assert_eq!(started(&second), Vec::<String>::new());
-        assert_eq!(second.state.jobs.len(), 1, "never two transfers for one key");
+        assert_eq!(
+            second.state.jobs.len(),
+            1,
+            "never two transfers for one key"
+        );
     }
 
     #[test]
@@ -365,9 +377,15 @@ mod tests {
         assert_eq!(
             all.actions,
             vec![
-                Action::Abort { key: "a".to_string() },
-                Action::Abort { key: "b".to_string() },
-                Action::SettleAborted { key: "c".to_string() },
+                Action::Abort {
+                    key: "a".to_string()
+                },
+                Action::Abort {
+                    key: "b".to_string()
+                },
+                Action::SettleAborted {
+                    key: "c".to_string()
+                },
             ],
         );
         // The two in flight stay admitted until they report; nothing is started
@@ -399,13 +417,7 @@ mod tests {
 
     #[test]
     fn an_upload_needs_an_identity() {
-        assert!(apply(
-            None,
-            Event::Enqueue {
-                key: String::new()
-            }
-        )
-        .is_err());
+        assert!(apply(None, Event::Enqueue { key: String::new() }).is_err());
     }
 
     #[test]
