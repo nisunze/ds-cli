@@ -307,3 +307,7 @@ A1–A5. `{"op":"rename","layout":{...},"name":"New name"}` preserves identity;
 `{"op":"duplicate","layout":{...},"id":"new-id","name":"Copy"}` requires a
 new identity. Shared saves still require an expected revision and explicit
 confirmation. Rendering a held layout does not mutate its shared template.
+
+## Publishing a setup
+
+`ds report layout save --scope <global|project> --request <file>` takes a `save` request carrying `layout` and `expected_revision`. The kernel's setup lifecycle plan (`printing::lifecycle`) decides whether that publish is a create (empty revision) or an update (with one) — the same decision the Printing setup page takes — so `ds` never sends the compatibility `save` action itself.

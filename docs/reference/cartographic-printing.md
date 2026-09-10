@@ -2,7 +2,7 @@
 
 Use the deployed `ds` paired to the intended desktop lane. No source checkout or
 GUI style editor is required. Begin with `ds desktop printing settings --project
-<project> --output json`, then read the selected layouts with `desktop printing
+<project> --output json`, then read the selected layouts natively with `report layout
 get`. `ds map print schema` is the map-authority entry point. Its compact index
 names request, layout, edit and output sections; read just the section needed
 with `--section`. These are the native Rust schemas, including nested style,

@@ -1703,16 +1703,6 @@ static DESKTOP_ENTRIES: &[Entry] = &[
         render: ds_cli_desktop::printing::render,
     },
     Entry {
-        command: &ds_cli_desktop::printing::LIST_COMMAND,
-        handler: ds_cli_desktop::printing::list,
-        render: ds_cli_desktop::printing::render,
-    },
-    Entry {
-        command: &ds_cli_desktop::printing::GET_COMMAND,
-        handler: ds_cli_desktop::printing::get,
-        render: ds_cli_desktop::printing::render,
-    },
-    Entry {
         command: &ds_cli_desktop::printing::TRANSFORMERS_COMMAND,
         handler: ds_cli_desktop::printing::transformers,
         render: ds_cli_desktop::printing::render,
@@ -1720,11 +1710,6 @@ static DESKTOP_ENTRIES: &[Entry] = &[
     Entry {
         command: &ds_cli_desktop::printing::EXPORT_COMMAND,
         handler: ds_cli_desktop::printing::export,
-        render: ds_cli_desktop::printing::render,
-    },
-    Entry {
-        command: &ds_cli_desktop::printing::SAVE_COMMAND,
-        handler: ds_cli_desktop::printing::save,
         render: ds_cli_desktop::printing::render,
     },
     Entry {
