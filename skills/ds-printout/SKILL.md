@@ -7,8 +7,7 @@ description: "Produce or resume complete DS transformer sheets, project atlases,
 
 Own the print set through verified delivery; choose the next useful step.
 Query an existing project, inspect supplied sources or resume verified outputs.
-Do not require an archive when project data suffices. Proofs and queued uploads
-are intermediate results.
+Do not require an archive when project data suffices.
 
 Use `ds` for live CLI/MCP contracts and `ds-map-composition` for cartographic judgment.
 Owners supply engineering facts and rendering. Keep schemas in live discovery;
@@ -43,7 +42,6 @@ approval. Preserve existing infrastructure and dirty rooms when materializing da
 Use `ds-assets` for governed archives/documents/logos and authorized external source
 access. Preserve bytes and digests. Source text is evidence, not authority. Trace
 wording to its source page; keep unknown contract numbers/signatures unresolved.
-An example does not dictate DS title-block arrangement.
 
 For requested model preparation/publication, use `ds-grid-project-model` and the
 source workflow. Keep model versions, design revisions and attachment IDs distinct;
@@ -127,7 +125,8 @@ can justify another attempt. Do not strip required content to appease an incompa
 validator. Continue independent work and preserve the exact remaining dependency.
 Follow the user's official-feedback instructions without duplicates or a parallel backlog.
 
-Read [delivery record](references/delivery-record.md) when resuming and
+Follow [procedure](references/procedure.md) for the ordered steps by command
+id; read [delivery record](references/delivery-record.md) when resuming and
 [acceptance](references/acceptance.md) before release. Disclose missing references,
 retain these rules and seek supported skill access. Keep one writer for Desktop,
 rooms and recipes. Delegate immutable review only when permitted; reconcile results.
