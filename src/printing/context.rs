@@ -57,6 +57,7 @@ pub fn derived_layers() -> Vec<PrintContextLayer> {
     ]
 }
 
+#[allow(clippy::too_many_arguments)] // one literal per print style, read like the table it was
 fn style(
     stroke: &str,
     width_mm: f64,

@@ -12,10 +12,11 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 /// What the host is about to do.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum Intent {
     List,
+    #[default]
     Read,
     Save,
     Delete,
@@ -23,10 +24,11 @@ pub enum Intent {
 }
 
 /// Which catalogue the setup lives in.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum Library {
     Global,
+    #[default]
     Project,
 }
 
@@ -78,18 +80,6 @@ pub struct Facts {
     /// Unsaved edits exist.
     #[serde(default)]
     pub dirty: bool,
-}
-
-impl Default for Intent {
-    fn default() -> Self {
-        Self::Read
-    }
-}
-
-impl Default for Library {
-    fn default() -> Self {
-        Self::Project
-    }
 }
 
 /// What the host does next. Exactly one, never a fallback chain.
