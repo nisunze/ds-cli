@@ -1,4 +1,80 @@
 use super::*;
+use crate::transfer::{Cause, Phase};
+
+/// A short, safe echo of a host-supplied token. Bounded so a malformed host
+/// cannot write an unbounded string into a durable row's error field.
+fn bounded_token(value: &str) -> String {
+    let clean: String = value
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-'))
+        .take(32)
+        .collect();
+    if clean.is_empty() {
+        "unnamed".into()
+    } else {
+        clean
+    }
+}
+
+/// Turn a typed transport cause into one operator-readable sentence.
+///
+/// This exists because the previous text — "resumable session could not be
+/// checked" — was the same sentence for an offline device, a refused
+/// credential, a name-resolution failure and an unreadable response header. An
+/// operator could not act on it and a reviewer could not diagnose from it, so
+/// it produced a silent 29-attempt loop instead of a decision. Every sentence
+/// here is safe by construction: `Cause` cannot carry a URL, a token, or a
+/// response body.
+fn describe_probe_cause(cause: Option<&Cause>, retrying: bool) -> String {
+    let tail = if retrying {
+        " Delivery will try again; the upload keeps its place."
+    } else {
+        ""
+    };
+    let head = match cause {
+        Some(Cause::HttpStatus { status: 401 }) | Some(Cause::HttpStatus { status: 403 }) => {
+            "file storage refused this upload's credentials".to_string()
+        }
+        Some(Cause::HttpStatus { status }) => {
+            format!("file storage answered {status} while checking this upload")
+        }
+        Some(Cause::Dns) => "this device could not resolve the file-storage address".into(),
+        Some(Cause::Connect) => "this device could not reach file storage".into(),
+        Some(Cause::Tls) => "the secure connection to file storage could not be established".into(),
+        Some(Cause::Timeout { phase }) => match phase {
+            Phase::Connect => "the connection to file storage timed out".into(),
+            Phase::Request => "sending to file storage timed out".into(),
+            Phase::Response => "file storage did not answer in time".into(),
+            Phase::Idle => "the upload stopped making progress".into(),
+        },
+        Some(Cause::ConnectionClosed) => "the connection to file storage closed early".into(),
+        Some(Cause::Offline) => "this device is in offline mode".into(),
+        Some(Cause::Cancelled) => "the upload check was cancelled".into(),
+        Some(Cause::Truncated) => "file storage kept fewer bytes than were sent".into(),
+        Some(Cause::DigestMismatch) => "the uploaded bytes do not match this result".into(),
+        Some(Cause::LengthMismatch) => "the uploaded size does not match this result".into(),
+        Some(Cause::RangeMalformed) => {
+            "file storage reported a progress range this app could not read".into()
+        }
+        Some(Cause::SessionExpired) => "the upload session is no longer available".into(),
+        Some(Cause::BlockedByHostPolicy) => {
+            "this app was blocked from reaching file storage and was given no reason".into()
+        }
+        Some(Cause::Inconclusive) | None => {
+            "the upload's progress could not be established".to_string()
+        }
+    };
+    format!("{}{}{}", capitalize(&head), ".", tail)
+}
+
+fn capitalize(value: &str) -> String {
+    let mut chars = value.chars();
+    match chars.next() {
+        Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
+        None => String::new(),
+    }
+}
+
 fn phase(row: &Value, expected: &str) -> Result<()> {
     if text(row, "phase") != expected {
         return Err(failed("Sync response does not match the durable phase."));
@@ -119,6 +195,7 @@ pub(super) fn apply(row: &mut Value, event: Event, reopens: &mut u8, now: u64) -
             output_id,
             status,
             offset,
+            cause,
         } => {
             phase(row, "uploading")?;
             let output = output_mut(row, &output_id)?;
@@ -150,8 +227,23 @@ pub(super) fn apply(row: &mut Value, event: Event, reopens: &mut u8, now: u64) -
                     }
                     Ok(Effect::VerifyUpload { output_id, offset })
                 }
-                _ => Err(retry(format!(
-                    "{output_id}: resumable session could not be checked."
+                // Nothing was established. The session is deliberately KEPT —
+                // restarting on "I do not know" is how committed bytes get
+                // re-sent or abandoned. The operator gets the cause instead of
+                // the bare fact that a check did not conclude.
+                "inconclusive" => Err(retry(format!(
+                    "{output_id}: {}",
+                    describe_probe_cause(cause.as_ref(), true)
+                ))),
+                // The host established that this will not succeed by retrying.
+                "failed" => Err(failed(format!(
+                    "{output_id}: {}",
+                    describe_probe_cause(cause.as_ref(), false)
+                ))),
+                other => Err(failed(format!(
+                    "{output_id}: the upload check reported an unknown state \
+                     ({}).",
+                    bounded_token(other)
                 ))),
             }
         }
