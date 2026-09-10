@@ -7,12 +7,57 @@ instance of the pattern, not the whole of it.
 
 ## 1. The ruling
 
+> **Rust owns the product. WASM, CLI, server and Tauri are deployment forms.
+> Svelte is a presentation client.**
+
+Stated earlier the same day, and still the working formulation:
+
 > Move application state, business logic, and domain behavior behind Rust/WASM
 > so the product is headless by default. Svelte/TypeScript should mainly collect
 > user intent, render state, and handle browser/map-specific effects.
 >
 > The intended end state is simple: **Rust owns the application; TypeScript
 > operates the screen.**
+
+### 1.1 What "deployment form" means, and what it forbids
+
+A deployment form is a way the same product is shipped and reached. It is not a
+place where the product is decided.
+
+| Form | What it legitimately owns | What it must not own |
+|---|---|---|
+| **WASM** (browser, Web Worker) | loading the module, marshalling calls, browser IO adapters | any decision the CLI would answer differently |
+| **CLI** (`ds`) | argument parsing, terminal rendering, exit codes, headless IO | the semantics of the command it parses |
+| **Server** | request admission, transport, deployment topology | a second implementation of a domain rule the client also implements |
+| **Tauri** | window, filesystem, native IO, process lifetime | product logic — the existing rule that the shell is an IO host, unchanged |
+| **Svelte** | collecting intent, rendering state, DOM/CSS/MapLibre effects | truth of any kind |
+
+The practical test for a deployment form: **removing it must remove a way to
+reach the product, never a capability of the product.** If deleting the browser
+would delete a rule, the rule was in the wrong place.
+
+"Svelte is *a* presentation client" is deliberate. It is not the presentation
+client, and nothing may be reachable only through it. That is the same property
+§5 states for peer clients, from the other direction.
+
+### 1.2 One thing this leaves open — flag, do not assume
+
+"Server" as a deployment form sits uneasily with ds-brain, which is **Go** and
+which today owns server-side authorization, lifecycle, publication and
+data-authority checks. Two readings are available and they are very different:
+
+- **Narrow:** "server" means the Rust services already deployed as servers
+  (ds-network-reporter, ds-solar, ds-vector-tiler), and ds-brain remains the Go
+  authorization boundary it is. Nothing in the current campaigns changes.
+- **Wide:** ds-brain's domain decisions are also product, and should migrate
+  behind the same Rust boundary over time, leaving Go as transport and admission.
+
+**This document does not choose.** No campaign should act on the wide reading
+without an explicit owner decision, because it would move a security boundary,
+and §7 rule 5 says plainly that Rust owning the *application* means the client
+application. Until that decision exists, treat ds-brain as unchanged and record
+any place where a domain rule is genuinely implemented twice — once in Go and
+once in a client — as a finding for that decision to consider.
 
 ## 2. The litmus test
 
