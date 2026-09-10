@@ -8,8 +8,11 @@ pub mod table_headings;
 pub mod table_rows;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use serde_json::json;
+use serde_json::{json, Value};
 use std::collections::{BTreeMap, BTreeSet};
+
+/// The settings row the native reporter reads per-transformer print views from.
+pub const PRINTING_VIEWS_SETTING: &str = "printing_views";
 
 mod artifact;
 pub use artifact::{validate_artifact_presentation, ArtifactPresentation};
@@ -1211,14 +1214,35 @@ pub fn named_layout(
 pub enum Command {
     ProjectSettings {
         sheets: serde_json::Value,
+        #[serde(default)]
+        mode: Option<crate::report_formats::ReadinessMode>,
     },
     OutputSelection {
         #[serde(default)]
         selection: Option<crate::report_formats::DesignOutputSelection>,
         #[serde(default)]
         legacy_formats: Option<Vec<String>>,
+        /// Whatever the project has actually stored, in any shape it has ever
+        /// been stored in. A host passes the row value through and never
+        /// decides which of the other two inputs it resembles.
+        #[serde(default)]
+        stored: Option<serde_json::Value>,
+        #[serde(default)]
+        execution: Option<BTreeMap<String, Vec<crate::report_formats::Placement>>>,
         #[serde(default)]
         required_layout: Option<String>,
+    },
+    /// Patch a project's settings sheet with the outputs it should produce and
+    /// the per-transformer print views one layout was authored with. The
+    /// export row is resolved through every alias the planner reads, and
+    /// created when the sheet has none.
+    ProjectOutputPatch {
+        current: Vec<serde_json::Value>,
+        selection: crate::report_formats::DesignOutputSelection,
+        #[serde(default)]
+        layout_id: Option<String>,
+        #[serde(default)]
+        views: BTreeMap<String, BTreeMap<String, GeographicView>>,
     },
     TransformerInstructions {
         layout: Layout,
@@ -1296,6 +1320,106 @@ pub enum Command {
         relative_to: String,
     },
 }
+/// The per-transformer print view map, bounded and validated once. The native
+/// reporter reads this exact nesting at export time, so the rule lives beside
+/// the document grammar rather than in whichever host writes it.
+fn validate_transformer_views(
+    views: &BTreeMap<String, BTreeMap<String, GeographicView>>,
+) -> Result<(), String> {
+    if views.len() > 10_000 {
+        return Err("transformer print views exceed 10,000 transformers".into());
+    }
+    for (transformer, slots) in views {
+        let bytes = transformer.as_bytes();
+        if bytes.is_empty()
+            || bytes.len() > 121
+            || !((bytes[0].is_ascii_lowercase())
+                || (bytes[0] == b'_' && bytes.get(1).is_some_and(u8::is_ascii_digit)))
+            || !bytes[1..]
+                .iter()
+                .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || *byte == b'_')
+            || slots.len() > 64
+        {
+            return Err("invalid transformer print view map".into());
+        }
+        for (slot, view) in slots {
+            if slot.is_empty()
+                || slot.len() > 80
+                || !slot
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_' || byte == b'-')
+            {
+                return Err("invalid print viewport slot".into());
+            }
+            view.validate()?;
+        }
+    }
+    Ok(())
+}
+
+/// The whole project-settings patch a printing preparation performs: the
+/// export selection into its aliased row, and one layout's authored views into
+/// the `printing_views` row the native reporter reads
+/// (transformer → layout id → slot → view, bounded 10 000 / 32 / 8).
+fn project_output_patch(
+    current: Vec<serde_json::Value>,
+    selection: &crate::report_formats::DesignOutputSelection,
+    layout_id: Option<&str>,
+    views: &BTreeMap<String, BTreeMap<String, GeographicView>>,
+) -> Result<Vec<serde_json::Value>, String> {
+    let mut rows = current;
+    crate::report_formats::apply_output_selection(&mut rows, selection)?;
+    if views.is_empty() {
+        return Ok(rows);
+    }
+    let layout_id = layout_id.ok_or("print views require the layout they were authored on")?;
+    if !identifier(layout_id) {
+        return Err("invalid printing setup id".into());
+    }
+    validate_transformer_views(views)?;
+    let index = rows
+        .iter()
+        .position(|row| {
+            crate::report_formats::setting_parameter_key(row)
+                .is_some_and(|key| key == PRINTING_VIEWS_SETTING)
+        })
+        .unwrap_or_else(|| {
+            rows.push(json!({"parameter":PRINTING_VIEWS_SETTING,"value":{}}));
+            rows.len() - 1
+        });
+    let mut current = match rows[index]["value"].as_object() {
+        Some(existing) => existing.clone(),
+        None => serde_json::Map::new(),
+    };
+    for (transformer, slots) in views {
+        let layouts = current
+            .entry(transformer.clone())
+            .or_insert_with(|| json!({}));
+        if !layouts.is_object() {
+            *layouts = json!({});
+        }
+        layouts[layout_id] = json!(slots);
+    }
+    if current.len() > 10_000 {
+        return Err("transformer print views exceed 10,000 transformers".into());
+    }
+    for layouts in current.values() {
+        let layouts = layouts
+            .as_object()
+            .ok_or("invalid transformer print views")?;
+        if layouts.len() > 32 {
+            return Err("a transformer carries print views for more than 32 layouts".into());
+        }
+        for slots in layouts.values() {
+            if slots.as_object().is_none_or(|slots| slots.len() > 8) {
+                return Err("a print layout carries more than 8 viewport slots".into());
+            }
+        }
+    }
+    rows[index]["value"] = Value::Object(current);
+    Ok(rows)
+}
+
 pub fn evaluate(input: &[u8]) -> Result<String, String> {
     if input.len() > MAX_INPUT_BYTES {
         return Err("print input exceeds 32 MiB".into());
@@ -1303,8 +1427,8 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
     let command: Command =
         serde_json::from_slice(input).map_err(|e| format!("invalid printing request: {e}"))?;
     let value = match command {
-        Command::ProjectSettings { sheets } => {
-            let mut result = crate::report_formats::inspect_project_settings(&sheets)?;
+        Command::ProjectSettings { sheets, mode } => {
+            let mut result = crate::report_formats::inspect_project_settings(&sheets, mode)?;
             result["transformer_instructions"] = sheets["project_settings"]
                 .as_array()
                 .and_then(|rows| {
@@ -1318,10 +1442,25 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
         Command::OutputSelection {
             selection,
             legacy_formats,
+            stored,
+            execution,
             required_layout,
         } => {
-            let selection =
-                crate::report_formats::normalize_output_selection(selection, legacy_formats)?;
+            let selection = match stored {
+                Some(stored) => {
+                    if selection.is_some() || legacy_formats.is_some() || execution.is_some() {
+                        return Err(
+                            "pass a stored settings value alone, without a selection, legacy formats or placements".into(),
+                        );
+                    }
+                    crate::report_formats::stored_output_selection(&stored)?
+                }
+                None => crate::report_formats::normalize_output_selection(
+                    selection,
+                    legacy_formats,
+                    execution,
+                )?,
+            };
             if let Some(layout) = required_layout {
                 if !identifier(&layout)
                     || !selection.prints.iter().any(|print| {
@@ -1333,7 +1472,16 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
                     );
                 }
             }
-            json!({"selection":selection})
+            let placements = selection.placement_map()?;
+            json!({"selection":selection,"placements":placements})
+        }
+        Command::ProjectOutputPatch {
+            current,
+            selection,
+            layout_id,
+            views,
+        } => {
+            json!({"project_settings":project_output_patch(current, &selection, layout_id.as_deref(), &views)?})
         }
         Command::TransformerInstructions {
             layout,
@@ -1351,34 +1499,7 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
             json!({"layout": layout, "instructions": instructions})
         }
         Command::TransformerViews { views } => {
-            if views.len() > 10_000 {
-                return Err("transformer print views exceed 10,000 transformers".into());
-            }
-            for (transformer, slots) in &views {
-                let bytes = transformer.as_bytes();
-                if bytes.is_empty()
-                    || bytes.len() > 121
-                    || !((bytes[0].is_ascii_lowercase())
-                        || (bytes[0] == b'_' && bytes.get(1).is_some_and(u8::is_ascii_digit)))
-                    || !bytes[1..].iter().all(|byte| {
-                        byte.is_ascii_lowercase() || byte.is_ascii_digit() || *byte == b'_'
-                    })
-                    || slots.len() > 64
-                {
-                    return Err("invalid transformer print view map".into());
-                }
-                for (slot, view) in slots {
-                    if slot.is_empty()
-                        || slot.len() > 80
-                        || !slot.bytes().all(|byte| {
-                            byte.is_ascii_alphanumeric() || byte == b'_' || byte == b'-'
-                        })
-                    {
-                        return Err("invalid print viewport slot".into());
-                    }
-                    view.validate()?;
-                }
-            }
+            validate_transformer_views(&views)?;
             json!({"views":views})
         }
         Command::New {
@@ -1723,6 +1844,92 @@ mod tests {
         assert!(evaluate(br#"{"op":"transformer_views","views":{"TX 1":{}}}"#).is_err());
         assert!(evaluate(br#"{"op":"transformer_views","views":{"TX_1":{}}}"#).is_err());
         assert!(evaluate(br#"{"op":"transformer_views","views":{"tx_1":{"map":{"mode":"fit","extent_wgs84":[30,-2,29,-1]}}}}"#).is_err());
+    }
+
+    /// The whole settings patch `prepare.ts:251-280` wrote by hand: the export
+    /// row found through every alias (not the two it knew) or created, and the
+    /// `printing_views` row nested exactly as the native reporter reads it.
+    #[test]
+    fn a_project_output_patch_writes_the_export_row_and_the_reporter_view_nesting() {
+        let request = serde_json::json!({"op":"project_output_patch",
+            "current":[{"parameter":"tr-export-formats","value":"shp"},
+                       {"parameter":"printing_views","value":{"tx_1":{"other":{"held":true}}}}],
+            "selection":{"schema":"ds.design-output-selection/v1","prints":[
+                {"layout_id":"detail","formats":["pdf"]}],"geospatial":["gpkg"],"tabular":[],
+                "execution":{"pdf__detail":["desktop"]}},
+            "layout_id":"detail",
+            "views":{"tx_1":{"primary_map":{"mode":"camera","center_wgs84":[29.7,-2.5],"scale_denominator":1000}}}});
+        let result: serde_json::Value =
+            serde_json::from_str(&evaluate(&serde_json::to_vec(&request).unwrap()).unwrap())
+                .unwrap();
+        let rows = result["project_settings"].as_array().unwrap();
+        assert_eq!(rows.len(), 2, "no row is added when both already exist");
+        assert_eq!(rows[0]["parameter"], "tr-export-formats");
+        assert_eq!(
+            rows[0]["value"]["execution"],
+            serde_json::json!({"pdf__detail":["desktop"]})
+        );
+        assert_eq!(rows[0]["value"]["geospatial"], serde_json::json!(["gpkg"]));
+        // The layout is nested under the transformer, beside what was held.
+        assert_eq!(
+            rows[1]["value"]["tx_1"]["other"],
+            serde_json::json!({"held":true})
+        );
+        assert_eq!(
+            rows[1]["value"]["tx_1"]["detail"]["primary_map"]["scale_denominator"],
+            serde_json::json!(1000.0)
+        );
+
+        // A sheet with neither row gets both, under the first alias.
+        let bare = serde_json::json!({"op":"project_output_patch","current":[],
+            "selection":{"schema":"ds.design-output-selection/v1","geospatial":["gpkg"]},
+            "layout_id":"detail",
+            "views":{"tx_1":{"primary_map":{"mode":"camera","center_wgs84":[29.7,-2.5],"scale_denominator":1000}}}});
+        let created: serde_json::Value =
+            serde_json::from_str(&evaluate(&serde_json::to_vec(&bare).unwrap()).unwrap()).unwrap();
+        let rows = created["project_settings"].as_array().unwrap();
+        assert_eq!(rows[0]["parameter"], "design_export_format");
+        assert_eq!(rows[1]["parameter"], "printing_views");
+
+        // Views need the layout they were authored on, and are validated by
+        // the same rule `transformer_views` applies.
+        let mut missing = request.clone();
+        missing["layout_id"] = serde_json::Value::Null;
+        assert!(evaluate(&serde_json::to_vec(&missing).unwrap()).is_err());
+        let mut invalid = request;
+        invalid["views"] = serde_json::json!({"TX 1":{}});
+        assert!(evaluate(&serde_json::to_vec(&invalid).unwrap()).is_err());
+        assert!(evaluate(br#"{"op":"project_output_patch","current":[],"selection":{"schema":"ds.design-output-selection/v1"},"unknown":1}"#).is_err());
+    }
+
+    /// The host passes the stored value through; deciding which legacy shape
+    /// it is was the TypeScript half this op replaces.
+    #[test]
+    fn output_selection_reads_whatever_the_project_stored_and_answers_placements() {
+        let result: serde_json::Value = serde_json::from_str(
+            &evaluate(br#"{"op":"output_selection","stored":"png__detail,xlsx"}"#).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(result["selection"]["prints"][0]["layout_id"], "detail");
+        assert_eq!(
+            result["selection"]["prints"][0]["formats"],
+            serde_json::json!(["png"])
+        );
+        assert_eq!(
+            result["placements"],
+            serde_json::json!({"xlsx":["desktop","web"],"png__detail":["desktop","web"]})
+        );
+        let restricted: serde_json::Value = serde_json::from_str(&evaluate(
+            br#"{"op":"output_selection","stored":{"schema":"ds.design-output-selection/v1","geospatial":["gpkg"],"execution":{"geospatial":["web"]}}}"#,
+        ).unwrap()).unwrap();
+        assert_eq!(
+            restricted["placements"],
+            serde_json::json!({"gpkg":["web"]})
+        );
+        assert_eq!(
+            evaluate(br#"{"op":"output_selection","stored":"gpkg","legacy_formats":["xlsx"]}"#),
+            Err("pass a stored settings value alone, without a selection, legacy formats or placements".into())
+        );
     }
 
     #[test]

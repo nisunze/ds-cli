@@ -80,6 +80,40 @@ pub fn named_print_output(format: &str) -> Option<(PrintArtifactFormat, &str)> {
     crate::printing::identifier(id).then_some((kind, id))
 }
 
+/// Where a selected output may be produced. A selection that names no
+/// placement for an output offers both; ds-brain admits a request against this
+/// same matrix (`network_reporter_individual_policy.go`), so the vocabulary and
+/// its precedence are authored here rather than in two runtimes.
+#[derive(
+    Debug, Clone, Copy, Deserialize, Serialize, JsonSchema, PartialEq, Eq, PartialOrd, Ord,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum Placement {
+    Desktop,
+    Web,
+}
+
+/// The answer for an output no execution entry names.
+pub const BOTH_PLACEMENTS: &[Placement] = &[Placement::Desktop, Placement::Web];
+/// The catch-all execution key, tried after the exact id and the class.
+pub const EXECUTION_WILDCARD: &str = "*";
+/// The three classes an execution entry may be keyed by. `print` is singular
+/// because that is the token ds-brain matches (`:206`, `:225`); the selection
+/// field that carries prints is plural, and the two are not the same word.
+pub const EXECUTION_CLASSES: &[&str] = &["print", "geospatial", "tabular"];
+
+/// The execution class of one output id, exactly as ds-brain computes it while
+/// filtering the individual output list.
+pub fn output_class(output_id: &str) -> &'static str {
+    if output_id == "xlsx" {
+        "tabular"
+    } else if output_id.starts_with("pdf_") || named_print_output(output_id).is_some() {
+        "print"
+    } else {
+        "geospatial"
+    }
+}
+
 pub const OUTPUT_SELECTION_SCHEMA: &str = "ds.design-output-selection/v1";
 
 #[derive(Debug, Clone, Deserialize, Serialize, JsonSchema, PartialEq, Eq)]
@@ -105,9 +139,71 @@ pub struct DesignOutputSelection {
     pub geospatial: Vec<String>,
     #[serde(default)]
     pub tabular: Vec<String>,
+    /// Deployment placement, keyed by exact output id, by output class, or by
+    /// `*`. The Settings output matrix has written this key since 2026-09-07
+    /// and ds-brain has admitted it since; it was missing here, which is why
+    /// every reader of an edited project refused. `deny_unknown_fields` stays:
+    /// the guard was right, the field was absent.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub execution: BTreeMap<String, Vec<Placement>>,
 }
 
 impl DesignOutputSelection {
+    /// Which runtimes may produce one output of this selection. Precedence is
+    /// ds-brain's: the exact output id, then its class, then `*`, then both.
+    /// An entry naming an empty list refuses the output on every lane, as it
+    /// does there.
+    pub fn placements(&self, output_id: &str) -> &[Placement] {
+        self.execution
+            .get(output_id)
+            .or_else(|| self.execution.get(output_class(output_id)))
+            .or_else(|| self.execution.get(EXECUTION_WILDCARD))
+            .map_or(BOTH_PLACEMENTS, Vec::as_slice)
+    }
+
+    /// The placement answer for every output this selection yields, so a host
+    /// renders the matrix from one reply instead of asking per checkbox.
+    pub fn placement_map(&self) -> Result<BTreeMap<String, Vec<Placement>>, String> {
+        Ok(self
+            .tokens()?
+            .into_iter()
+            .map(|token| {
+                let placements = self.placements(&token).to_vec();
+                (token, placements)
+            })
+            .collect())
+    }
+
+    fn validate_execution(&self) -> Result<(), String> {
+        if self.execution.len() > 128 {
+            return Err("output execution placements exceed 128 entries".into());
+        }
+        for (key, placements) in &self.execution {
+            // Bounded, not enumerated. ds-brain simply never consults a key
+            // that matches no output id, class or wildcard, so refusing one
+            // here would make a project it admits unreadable — the failure
+            // this field exists to end.
+            if key.is_empty()
+                || key.len() > 128
+                || key.chars().any(char::is_control)
+                || placements.len() > 2
+            {
+                return Err(format!("invalid output execution placement for {key}"));
+            }
+            if placements
+                .iter()
+                .collect::<std::collections::BTreeSet<_>>()
+                .len()
+                != placements.len()
+            {
+                return Err(format!(
+                    "output execution placement repeats a lane for {key}"
+                ));
+            }
+        }
+        Ok(())
+    }
+
     pub fn tokens(&self) -> Result<Vec<String>, String> {
         if self.schema != OUTPUT_SELECTION_SCHEMA
             || self.prints.len() > 32
@@ -116,6 +212,7 @@ impl DesignOutputSelection {
         {
             return Err("invalid design output selection".into());
         }
+        self.validate_execution()?;
         let mut tokens = Vec::new();
         tokens.extend(self.geospatial.iter().cloned());
         tokens.extend(self.tabular.iter().cloned());
@@ -154,10 +251,18 @@ impl DesignOutputSelection {
 pub fn normalize_output_selection(
     selection: Option<DesignOutputSelection>,
     legacy_formats: Option<Vec<String>>,
+    execution: Option<BTreeMap<String, Vec<Placement>>>,
 ) -> Result<DesignOutputSelection, String> {
-    if let Some(selection) = selection {
+    if let Some(mut selection) = selection {
         if legacy_formats.is_some() {
             return Err("pass a versioned selection or legacy formats, not both".into());
+        }
+        // An incoming placement matrix survives the upgrade: an authoring host
+        // may carry the one it already holds, and its own is not overwritten.
+        if let Some(execution) = execution {
+            if !execution.is_empty() {
+                selection.execution = execution;
+            }
         }
         selection.tokens()?;
         return Ok(selection);
@@ -193,9 +298,45 @@ pub fn normalize_output_selection(
             .collect(),
         geospatial,
         tabular,
+        // A legacy token list carries no placement; the upgrade must not
+        // invent one. Absent means both lanes, which is what the legacy
+        // setting meant.
+        execution: execution.unwrap_or_default(),
     };
     selection.tokens()?;
     Ok(selection)
+}
+
+/// Read whatever a project has actually stored in its export row: the
+/// versioned selection, or any legacy shape `string_list` already understands
+/// (comma or semicolon text, a token array, a truthy map, a JSON array in a
+/// string). An absent or empty value is an empty selection rather than a
+/// refusal, because reading a project's settings is not authoring them — the
+/// authoring path (`normalize_output_selection`) still demands 1..32 tokens.
+///
+/// This is the one legacy reader. A host that re-derives it in its own
+/// language gets a second, disagreeing answer; that is what this replaces.
+pub fn stored_output_selection(value: &Value) -> Result<DesignOutputSelection, String> {
+    if value
+        .get("schema")
+        .is_some_and(|s| s == OUTPUT_SELECTION_SCHEMA)
+    {
+        let selection: DesignOutputSelection = serde_json::from_value(value.clone())
+            .map_err(|error| format!("Invalid design output selection: {error}"))?;
+        selection.tokens()?;
+        return Ok(selection);
+    }
+    let tokens = string_list(value);
+    if tokens.is_empty() {
+        return Ok(DesignOutputSelection {
+            schema: OUTPUT_SELECTION_SCHEMA.into(),
+            prints: Vec::new(),
+            geospatial: Vec::new(),
+            tabular: Vec::new(),
+            execution: BTreeMap::new(),
+        });
+    }
+    normalize_output_selection(None, Some(tokens), None)
 }
 
 pub fn output_selection_schema() -> Value {
@@ -418,6 +559,39 @@ pub fn string_list(value: &Value) -> Vec<String> {
     }
 }
 
+/// One parameter name reduced to the form the aliases are written in.
+pub fn setting_parameter_key(row: &Value) -> Option<String> {
+    row["parameter"]
+        .as_str()
+        .map(|s| s.trim().to_ascii_lowercase().replace('-', "_"))
+}
+
+/// The index of a project's export-selection row among settings rows, by any
+/// of the five aliases and with the same hyphen/case normalisation the
+/// planner reads with. Hosts patch through this instead of naming two of the
+/// five aliases themselves.
+pub fn output_setting_index(rows: &[Value]) -> Option<usize> {
+    rows.iter().position(|row| {
+        setting_parameter_key(row).is_some_and(|key| SETTING_ALIASES.contains(&key.as_str()))
+    })
+}
+
+fn settings_rows(rows: &Value, label: &str) -> Result<(), String> {
+    if !rows.is_array() {
+        return Err(format!("Report {label} must be a row list"));
+    }
+    for row in rows.as_array().unwrap() {
+        if !row.is_object()
+            || row
+                .get("parameter")
+                .is_some_and(|v| !v.is_null() && !v.is_string())
+        {
+            return Err("Report project setting must be an object with a text parameter".into());
+        }
+    }
+    Ok(())
+}
+
 fn project_output_setting(sheets: &Value) -> Result<Option<&Value>, String> {
     if !sheets.is_object() {
         return Err("Report sheets must be an object".into());
@@ -430,32 +604,44 @@ fn project_output_setting(sheets: &Value) -> Result<Option<&Value>, String> {
         .get("parameters")
         .and_then(|v| v.get("project_settings"));
     for rows in [top, nested].into_iter().flatten() {
-        if !rows.is_array() {
-            return Err("Report project_settings must be a row list".into());
-        }
-        for row in rows.as_array().unwrap() {
-            if !row.is_object()
-                || row
-                    .get("parameter")
-                    .is_some_and(|v| !v.is_null() && !v.is_string())
-            {
-                return Err(
-                    "Report project setting must be an object with a text parameter".into(),
-                );
-            }
-        }
+        settings_rows(rows, "project_settings")?;
     }
     let rows = top
         .and_then(Value::as_array)
         .filter(|rows| !rows.is_empty())
         .or_else(|| nested.and_then(Value::as_array));
-    Ok(rows.and_then(|rows| {
-        rows.iter().find(|row| {
-            row["parameter"].as_str().is_some_and(|s| {
-                SETTING_ALIASES.contains(&s.trim().to_ascii_lowercase().replace('-', "_").as_str())
-            })
-        })
-    }))
+    Ok(rows.and_then(|rows| output_setting_index(rows).map(|index| &rows[index])))
+}
+
+/// Bound and shape-check the settings rows a host hands over for patching.
+pub fn settings_rows_for_patch(rows: &[Value]) -> Result<(), String> {
+    if rows.len() > 10_000 {
+        return Err("Project settings exceed 10,000 rows".into());
+    }
+    settings_rows(&Value::Array(rows.to_vec()), "project_settings")
+}
+
+/// Write the selection into the project's export row, creating the row under
+/// the first alias when the sheet carries none. The alias set, the
+/// normalisation and the created parameter name all live here, with the
+/// planner that reads them back.
+pub fn apply_output_selection(
+    rows: &mut Vec<Value>,
+    selection: &DesignOutputSelection,
+) -> Result<String, String> {
+    settings_rows_for_patch(rows)?;
+    selection.tokens()?;
+    let value = serde_json::to_value(selection).map_err(|error| error.to_string())?;
+    match output_setting_index(rows) {
+        Some(index) => {
+            rows[index]["value"] = value;
+            Ok(setting_parameter_key(&rows[index]).unwrap_or_else(|| SETTING_ALIASES[0].into()))
+        }
+        None => {
+            rows.push(serde_json::json!({"parameter":SETTING_ALIASES[0],"value":value}));
+            Ok(SETTING_ALIASES[0].into())
+        }
+    }
 }
 
 /// Local iteration selection is an execution input, never a settings mutation.
@@ -470,6 +656,12 @@ pub fn selected_plan(
     };
     if is_combined {
         return Err("Local output overrides currently require individual transformers".into());
+    }
+    // A local override is one invocation's inventory, not the project's
+    // deployment policy. Placement belongs to the saved selection ds-brain
+    // admits against; an override carrying one would decide it per run.
+    if !selection.execution.is_empty() {
+        return Err("Local output overrides never carry an execution placement matrix".into());
     }
     let tokens = selection.tokens()?;
     if tokens.is_empty() || tokens.len() > 32 {
@@ -512,7 +704,45 @@ pub fn selected_plan(
     Ok(outputs)
 }
 
-pub fn inspect_project_settings(sheets: &Value) -> Result<Value, String> {
+/// How the settings under inspection were obtained. It decides which refusal a
+/// host renders when they are incomplete, and it is an input because only the
+/// host knows whether it just refreshed or is reading a held copy.
+#[derive(Debug, Clone, Copy, Default, Deserialize, Serialize, JsonSchema, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ReadinessMode {
+    #[default]
+    Refreshed,
+    Offline,
+}
+
+impl ReadinessMode {
+    pub fn token(self) -> &'static str {
+        match self {
+            Self::Refreshed => "refreshed",
+            Self::Offline => "offline",
+        }
+    }
+    /// The message key a host resolves. Kernel output names keys, never
+    /// English, so the GUI and `ds` refuse in the same words in every
+    /// language.
+    pub fn message_key(self) -> &'static str {
+        match self {
+            Self::Refreshed => "printing_inputs_incomplete_refreshed",
+            Self::Offline => "printing_inputs_incomplete_offline",
+        }
+    }
+}
+
+pub fn inspect_project_settings(
+    sheets: &Value,
+    mode: Option<ReadinessMode>,
+) -> Result<Value, String> {
+    let mode = mode.unwrap_or_default();
+    let refusal = serde_json::json!({
+        "code":"printing_inputs_incomplete",
+        "message_key":mode.message_key(),
+        "mode":mode.token(),
+    });
     let setting = project_output_setting(sheets)?;
     let prepared = plan(sheets, false)
         .and_then(|outputs| named_layouts(sheets).map(|layouts| (outputs, layouts)));
@@ -521,7 +751,7 @@ pub fn inspect_project_settings(sheets: &Value) -> Result<Value, String> {
         Err(issue) => {
             return Ok(
                 serde_json::json!({"source":if setting.is_some(){"project_settings"}else{"report_defaults"},
-            "setting":setting,"ready":false,"issues":[issue],"outputs":[],"papers":[]}),
+            "setting":setting,"ready":false,"issues":[issue],"outputs":[],"papers":[],"refusal":refusal}),
             )
         }
     };
@@ -532,17 +762,18 @@ pub fn inspect_project_settings(sheets: &Value) -> Result<Value, String> {
     }).collect::<Vec<_>>();
     Ok(
         serde_json::json!({"source":if setting.is_some(){"project_settings"}else{"report_defaults"},
-        "setting":setting,"ready":true,"issues":[],"outputs":outputs,"papers":papers}),
+        "setting":setting,"ready":true,"issues":[],"outputs":outputs,"papers":papers,"refusal":Value::Null}),
     )
 }
 
 pub fn plan(sheets: &Value, is_combined: bool) -> Result<Vec<Output>, String> {
     let raw = project_output_setting(sheets)?
         .map(|row| {
+            // The versioned selection is read by the one reader; a legacy
+            // value stays raw here so `normalize` keeps applying its format
+            // aliases and silently ignoring a token no report can produce.
             if row["value"]["schema"] == OUTPUT_SELECTION_SCHEMA {
-                serde_json::from_value::<DesignOutputSelection>(row["value"].clone())
-                    .map_err(|error| format!("Invalid design output selection: {error}"))?
-                    .tokens()
+                stored_output_selection(&row["value"])?.tokens()
             } else {
                 Ok(string_list(&row["value"]))
             }
@@ -575,6 +806,24 @@ pub fn plan(sheets: &Value, is_combined: bool) -> Result<Vec<Output>, String> {
 mod tests {
     use super::*;
     use serde_json::json;
+    /// The hazard the campaign opened with. `DesignOutputMatrix` has written an
+    /// `execution` key into the stored selection since 2026-09-07 — including
+    /// the empty map of its legacy upgrade — and this type refused it, so every
+    /// reader of a project edited since then (settings inspection, the native
+    /// reporter's export read, the `output_selection` op) failed.
+    #[test]
+    fn a_stored_selection_carrying_execution_placement_is_readable() {
+        let stored = json!({"schema":OUTPUT_SELECTION_SCHEMA,"prints":[],"geospatial":[],"tabular":[],"execution":{}});
+        serde_json::from_value::<DesignOutputSelection>(stored.clone())
+            .expect("the empty execution map the legacy upgrade writes must deserialize");
+        let sheets =
+            json!({"project_settings":[{"parameter":"design_export_format","value":stored}]});
+        assert!(
+            plan(&sheets, false).is_ok(),
+            "plan must read the stored selection"
+        );
+    }
+
     #[test]
     fn local_matrix_does_not_change_defaults_and_requires_held_layouts() {
         let mut layout = crate::printing::default_layout();
@@ -603,6 +852,7 @@ mod tests {
             prints: vec![],
             geospatial: vec![],
             tabular: vec![],
+            execution: BTreeMap::new(),
         };
         assert!(selected_plan(&sheets, false, Some(&empty)).is_err());
     }
@@ -622,7 +872,7 @@ mod tests {
             {"layout_id":"disabled","enabled":false,"formats":["pdf"]}],"geospatial":["gpkg"],"tabular":["xlsx"]});
         let sheets = json!({"project_settings":[{"parameter":"REPORT-FORMATS","value":selection}],
             "printing_setups":[{"id":layout.id,"revision":"a".repeat(64),"layout":layout}]});
-        let result = inspect_project_settings(&sheets).unwrap();
+        let result = inspect_project_settings(&sheets, None).unwrap();
         assert_eq!(result["setting"]["value"], selection);
         assert_eq!(
             result["outputs"],
@@ -631,13 +881,13 @@ mod tests {
         assert_eq!(result["papers"].as_array().unwrap().len(), 1);
         assert_eq!(result["papers"][0]["paper"]["size"], "A3");
         assert_eq!(result["source"], "project_settings");
-        let defaults = inspect_project_settings(&json!({})).unwrap();
+        let defaults = inspect_project_settings(&json!({}), None).unwrap();
         assert_eq!(defaults["source"], "report_defaults");
         assert!(defaults["setting"].is_null());
         assert_eq!(defaults["papers"], json!([]));
         let mut broken = sheets;
         broken["printing_setups"] = json!([]);
-        let unreadied = inspect_project_settings(&broken).unwrap();
+        let unreadied = inspect_project_settings(&broken, None).unwrap();
         assert_eq!(unreadied["ready"], false);
         assert_eq!(unreadied["setting"], broken["project_settings"][0]);
     }
@@ -756,6 +1006,220 @@ mod tests {
         assert_eq!(outputs[2].suffix, ".aderm-a3.jpg");
     }
 
+    /// ds-brain's precedence, reproduced: exact output id, then the output
+    /// class, then `*`, then both lanes. The class token is `print`, singular,
+    /// as `network_reporter_individual_policy.go:206,:225` matches it.
+    #[test]
+    fn execution_placement_follows_the_brains_precedence_exactly() {
+        let selection = |execution: Value| -> DesignOutputSelection {
+            serde_json::from_value(json!({"schema":OUTPUT_SELECTION_SCHEMA,
+                "prints":[{"layout_id":"detail","formats":["pdf"]}],
+                "geospatial":["gpkg"],"tabular":["xlsx"],"execution":execution}))
+            .expect("selection deserializes")
+        };
+        let absent = selection(json!({}));
+        for output in ["pdf__detail", "gpkg", "xlsx", "pdf_a0"] {
+            assert_eq!(absent.placements(output), BOTH_PLACEMENTS, "{output}");
+        }
+        let exact = selection(json!({"pdf__detail":["desktop"],"print":["web"],"*":[]}));
+        assert_eq!(exact.placements("pdf__detail"), [Placement::Desktop]);
+        assert_eq!(exact.placements("png__detail"), [Placement::Web]);
+        assert_eq!(exact.placements("pdf_a3"), [Placement::Web]);
+        assert_eq!(exact.placements("gpkg"), [] as [Placement; 0]);
+        let classes =
+            selection(json!({"geospatial":["desktop"],"tabular":["web"],"*":["desktop"]}));
+        assert_eq!(classes.placements("gpkg"), [Placement::Desktop]);
+        assert_eq!(classes.placements("xlsx"), [Placement::Web]);
+        assert_eq!(classes.placements("pdf__detail"), [Placement::Desktop]);
+        assert_eq!(output_class("xlsx"), "tabular");
+        assert_eq!(output_class("jpeg__detail"), "print");
+        assert_eq!(output_class("pdf_a0"), "print");
+        assert_eq!(output_class("shp"), "geospatial");
+        assert_eq!(
+            selection(json!({"gpkg":["desktop","web"]}))
+                .placement_map()
+                .unwrap()["gpkg"],
+            vec![Placement::Desktop, Placement::Web]
+        );
+        // Bounded, not enumerated: a key naming nothing is inert, as it is in
+        // Go, and a lane repeated or a third lane is refused outright.
+        assert!(selection(json!({"not_an_output":["web"]})).tokens().is_ok());
+        assert!(selection(json!({"gpkg":["web","web"]}))
+            .tokens()
+            .is_err_and(|error| error.contains("repeats a lane")));
+        assert!(serde_json::from_value::<DesignOutputSelection>(
+            json!({"schema":OUTPUT_SELECTION_SCHEMA,"execution":{"gpkg":["cloud"]}})
+        )
+        .is_err());
+    }
+
+    /// The empty `execution` map the Settings matrix writes on the first edit
+    /// of a legacy setting is not a restriction; it means both lanes, and it
+    /// survives a save/read round trip without being serialized back.
+    #[test]
+    fn an_empty_execution_map_means_both_lanes_and_is_not_written_back() {
+        let selection: DesignOutputSelection = serde_json::from_value(
+            json!({"schema":OUTPUT_SELECTION_SCHEMA,"prints":[],"geospatial":["gpkg"],"tabular":[],"execution":{}}),
+        )
+        .unwrap();
+        assert_eq!(selection.placements("gpkg"), BOTH_PLACEMENTS);
+        assert_eq!(
+            serde_json::to_value(&selection).unwrap(),
+            json!({"schema":OUTPUT_SELECTION_SCHEMA,"prints":[],"geospatial":["gpkg"],"tabular":[]})
+        );
+    }
+
+    /// One reader for every shape a project has ever stored, including the two
+    /// raster tokens the deleted TypeScript mislaid into `geospatial`.
+    #[test]
+    fn stored_settings_of_every_shape_read_through_one_reader() {
+        let read = |value: Value| stored_output_selection(&value).unwrap();
+        let png = read(json!("png__detail,jpg__detail,xlsx"));
+        assert_eq!(png.prints.len(), 1);
+        assert_eq!(png.prints[0].layout_id, "detail");
+        assert_eq!(
+            png.prints[0].formats,
+            vec![PrintArtifactFormat::Png, PrintArtifactFormat::Jpeg]
+        );
+        assert_eq!(png.geospatial, [] as [String; 0]);
+        assert_eq!(png.tabular, ["xlsx"]);
+        assert_eq!(read(json!("shp;kmz")).geospatial, ["shp", "kmz"]);
+        assert_eq!(read(json!(["gpkg", "xlsx"])).tabular, ["xlsx"]);
+        assert_eq!(read(json!({"shp":true,"kmz":false})).geospatial, ["shp"]);
+        // Reading is not authoring: an absent or empty setting is an empty
+        // selection, where the authoring normalizer demands 1..32 tokens.
+        for empty in [json!(null), json!(""), json!([]), json!({})] {
+            assert_eq!(read(empty).tokens().unwrap(), [] as [String; 0]);
+        }
+        let versioned = read(
+            json!({"schema":OUTPUT_SELECTION_SCHEMA,"prints":[],"geospatial":[],"tabular":[],"execution":{"gpkg":["web"]}}),
+        );
+        assert_eq!(versioned.placements("gpkg"), [Placement::Web]);
+        assert!(
+            stored_output_selection(&json!({"schema":OUTPUT_SELECTION_SCHEMA,"prints":"no"}))
+                .is_err()
+        );
+    }
+
+    /// The five aliases, the hyphen/case normalisation, and the row a sheet
+    /// without any of them gets — the job `prepare.ts` did with two names and
+    /// a refusal.
+    #[test]
+    fn the_export_row_is_patched_through_every_alias_and_created_when_absent() {
+        let selection: DesignOutputSelection = serde_json::from_value(
+            json!({"schema":OUTPUT_SELECTION_SCHEMA,"prints":[],"geospatial":["gpkg"],"tabular":[]}),
+        )
+        .unwrap();
+        for alias in [
+            "design_export_format",
+            "design_export_formats",
+            "transformer_export_formats",
+            "tr_export_formats",
+            "report_formats",
+            "REPORT-FORMATS",
+            " design-export-format ",
+        ] {
+            let mut rows = vec![
+                json!({"parameter":"unrelated","value":1}),
+                json!({"parameter":alias,"value":"shp"}),
+            ];
+            assert_eq!(
+                apply_output_selection(&mut rows, &selection).unwrap(),
+                setting_parameter_key(&json!({"parameter":alias})).unwrap(),
+                "{alias} keeps the row it already has"
+            );
+            assert_eq!(rows.len(), 2);
+            assert_eq!(rows[1]["value"]["geospatial"], json!(["gpkg"]));
+            assert_eq!(rows[0], json!({"parameter":"unrelated","value":1}));
+        }
+        let mut absent = vec![json!({"parameter":"unrelated","value":1})];
+        assert_eq!(
+            apply_output_selection(&mut absent, &selection).unwrap(),
+            SETTING_ALIASES[0]
+        );
+        assert_eq!(absent.len(), 2);
+        assert_eq!(absent[1]["parameter"], "design_export_format");
+        assert_eq!(absent[1]["value"]["schema"], OUTPUT_SELECTION_SCHEMA);
+        // A patched sheet reads back as the selection it was given.
+        let sheets = json!({"project_settings":absent});
+        assert_eq!(
+            plan(&sheets, false)
+                .unwrap()
+                .iter()
+                .map(|output| output.output_id.as_str())
+                .collect::<Vec<_>>(),
+            ["gpkg"]
+        );
+    }
+
+    /// A local override is one run's inventory. Placement is the project's
+    /// policy and ds-brain admits against it, so an override carrying one is
+    /// refused rather than quietly deciding it per invocation.
+    #[test]
+    fn a_local_override_may_not_carry_execution_placement() {
+        let mut layout = crate::printing::default_layout();
+        layout.id = "detail".into();
+        let sheets = json!({"project_settings":[{"parameter":"report_formats","value":["xlsx","pdf__detail"]}],
+            "printing_setups":[{"id":"detail","revision":"a".repeat(64),"layout":layout}]});
+        let selection: DesignOutputSelection = serde_json::from_value(
+            json!({"schema":OUTPUT_SELECTION_SCHEMA,"prints":[{"layout_id":"detail","formats":["pdf"]}],
+                "execution":{"pdf__detail":["desktop"]}}),
+        )
+        .unwrap();
+        assert!(selected_plan(&sheets, false, Some(&selection))
+            .is_err_and(|error| error.contains("never carry an execution placement")));
+    }
+
+    /// The refusal the GUI and `ds` both render, as keys rather than English.
+    #[test]
+    fn an_unready_settings_read_names_its_refusal_by_key_and_mode() {
+        let sheets = json!({"project_settings":[{"parameter":"design_export_format",
+            "value":{"schema":OUTPUT_SELECTION_SCHEMA,"prints":[{"layout_id":"missing","formats":["pdf"]}]}}]});
+        for (mode, key) in [
+            (None, "printing_inputs_incomplete_refreshed"),
+            (
+                Some(ReadinessMode::Refreshed),
+                "printing_inputs_incomplete_refreshed",
+            ),
+            (
+                Some(ReadinessMode::Offline),
+                "printing_inputs_incomplete_offline",
+            ),
+        ] {
+            let result = inspect_project_settings(&sheets, mode).unwrap();
+            assert_eq!(result["ready"], false);
+            assert_eq!(result["refusal"]["code"], "printing_inputs_incomplete");
+            assert_eq!(result["refusal"]["message_key"], key);
+            assert_eq!(result["refusal"]["mode"], mode.unwrap_or_default().token());
+            assert!(!result["issues"].as_array().unwrap().is_empty());
+        }
+        assert!(
+            inspect_project_settings(&json!({}), Some(ReadinessMode::Offline)).unwrap()["refusal"]
+                .is_null()
+        );
+    }
+
+    /// The option rows the matrix renders. A named print row carries the
+    /// layout id and the formats it may be produced in, so no host recovers
+    /// them by slicing `pdf__` off a value; a data row carries neither,
+    /// because it has no layout.
+    #[test]
+    fn every_option_row_declares_what_the_matrix_needs_without_string_surgery() {
+        let rows = options(&[json!({"id":"detail","name":"Detail"})]).unwrap();
+        assert!(!rows.is_empty());
+        for row in &rows {
+            let value = row["value"].as_str().expect("option value");
+            if let Some((_, id)) = named_print_output(value) {
+                assert_eq!(row["layout_id"], id);
+                assert_eq!(row["formats"], json!(["pdf", "png", "jpeg"]));
+            } else {
+                assert!(row["layout_id"].is_null(), "{value} declares a layout");
+                assert!(row["formats"].is_null(), "{value} declares formats");
+                assert!(output(value).is_ok(), "{value} is not a report output");
+            }
+        }
+    }
+
     #[test]
     fn output_selection_normalization_has_one_alias_and_bound_policy() {
         let selection = normalize_output_selection(
@@ -766,6 +1230,7 @@ mod tests {
                 "gpkg".into(),
                 "xlsx".into(),
             ]),
+            None,
         )
         .unwrap();
         assert_eq!(selection.schema, OUTPUT_SELECTION_SCHEMA);
@@ -776,7 +1241,7 @@ mod tests {
         );
         assert_eq!(selection.geospatial, ["gpkg"]);
         assert_eq!(selection.tabular, ["xlsx"]);
-        assert!(normalize_output_selection(None, Some(vec![])).is_err());
-        assert!(normalize_output_selection(None, Some(vec!["gif__a3".into()])).is_err());
+        assert!(normalize_output_selection(None, Some(vec![]), None).is_err());
+        assert!(normalize_output_selection(None, Some(vec!["gif__a3".into()]), None).is_err());
     }
 }

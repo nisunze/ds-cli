@@ -1,0 +1,922 @@
+{
+  "schema": "ds.printing-output-policy-parity/v1",
+  "purpose": "Every distinct shape a project has stored in its design export row, with what ds-web's deleted `DesignOutputMatrix.selection()` answered (`expected_ts`, recorded by running that code once before deleting it) and what ds-command-kernel answers (`expected`). Where the two differ the row carries a `why`: the kernel is right in every one of them. Read by ds-web `src/tests/printing-output-policy-parity.test.ts` over the vendored WASM and by ds-command-kernel `tests/printing_output_policy_corpus.rs` over the native build, from byte-identical copies.",
+  "options": [
+    {
+      "value": "shp",
+      "label": "SHP"
+    },
+    {
+      "value": "kmz",
+      "label": "KMZ"
+    },
+    {
+      "value": "xlsx",
+      "label": "XLSX"
+    },
+    {
+      "value": "geojson",
+      "label": "GeoJSON"
+    },
+    {
+      "value": "gpkg",
+      "label": "GPKG"
+    },
+    {
+      "value": "pdf__detail",
+      "label": "PDF · Detail"
+    },
+    {
+      "value": "pdf__overview",
+      "label": "PDF · Overview"
+    }
+  ],
+  "selection_cases": [
+    {
+      "id": "comma-string",
+      "stored": "shp,kmz,xlsx",
+      "expected_ts": {
+        "schema": "ds.design-output-selection/v1",
+        "prints": [],
+        "geospatial": [
+          "shp",
+          "kmz"
+        ],
+        "tabular": [
+          "xlsx"
+        ],
+        "execution": {}
+      },
+      "expected": {
+        "schema": "ds.design-output-selection/v1",
+        "prints": [],
+        "geospatial": [
+          "shp",
+          "kmz"
+        ],
+        "tabular": [
+          "xlsx"
+        ]
+      },
+      "placements": {
+        "kmz": [
+          "desktop",
+          "web"
+        ],
+        "shp": [
+          "desktop",
+          "web"
+        ],
+        "xlsx": [
+          "desktop",
+          "web"
+        ]
+      },
+      "tokens": [
+        "shp",
+        "kmz",
+        "xlsx"
+      ]
+    },
+    {
+      "id": "semicolon-string",
+      "stored": "gpkg;xlsx",
+      "expected_ts": {
+        "schema": "ds.design-output-selection/v1",
+        "prints": [],
+        "geospatial": [
+          "gpkg"
+        ],
+        "tabular": [
+          "xlsx"
+        ],
+        "execution": {}
+      },
+      "expected": {
+        "schema": "ds.design-output-selection/v1",
+        "prints": [],
+        "geospatial": [
+          "gpkg"
+        ],
+        "tabular": [
+          "xlsx"
+        ]
+      },
+      "placements": {
+        "gpkg": [
+          "desktop",
+          "web"
+        ],
+        "xlsx": [
+          "desktop",
+          "web"
+        ]
+      },
+      "tokens": [
+        "gpkg",
+        "xlsx"
+      ]
+    },
+    {
+      "id": "legacy-alias-string",
+      "stored": "A3_PDF;excel",
+      "expected_ts": {
+        "schema": "ds.design-output-selection/v1",
+        "prints": [],
+        "geospatial": [
+          "A3_PDF",
+          "excel"
+        ],
+        "tabular": [],
+        "execution": {}
+      },
+      "expected": {
+        "schema": "ds.design-output-selection/v1",
+        "prints": [],
+        "geospatial": [
+          "a3_pdf",
+          "excel"
+        ],
+        "tabular": []
+      },
+      "placements": {
+        "a3_pdf": [
+          "desktop",
+          "web"
+        ],
+        "excel": [
+          "desktop",
+          "web"
+        ]
+      },
+      "tokens": [
+        "a3_pdf",
+        "excel"
+      ],
+      "why": "The kernel lowercases a legacy token before classifying it, so `A3_PDF` reaches `normalize`'s alias table and becomes `pdf_a3`; the deleted TypeScript carried the operator's casing through and the alias never matched."
+    },
+    {
+      "id": "token-array",
+      "stored": [
+        "gpkg",
+        "xlsx",
+        "pdf__detail"
+      ],
+      "expected_ts": {
+        "schema": "ds.design-output-selection/v1",
+        "prints": [
+          {
+            "layout_id": "detail",
+            "enabled": true,
+            "formats": [
+              "pdf"
+            ]
+          }
+        ],
+        "geospatial": [
+          "gpkg"
+        ],
+        "tabular": [
+          "xlsx"
+        ],
+        "execution": {}
+      },
+      "expected": {
+        "schema": "ds.design-output-selection/v1",
+        "prints": [
+          {
+            "layout_id": "detail",
+            "enabled": true,
+            "formats": [
+              "pdf"
+            ]
+          }
+        ],
+        "geospatial": [
+          "gpkg"
+        ],
+        "tabular": [
+          "xlsx"
+        ]
+      },
+      "placements": {
+        "gpkg": [
+          "desktop",
+          "web"
+        ],
+        "pdf__detail": [
+          "desktop",
+          "web"
+        ],
+        "xlsx": [
+          "desktop",
+          "web"
+        ]
+      },
+      "tokens": [
+        "gpkg",
+        "xlsx",
+        "pdf__detail"
+      ]
+    },
+    {
+      "id": "boolean-map",
+      "stored": {
+        "shp": true,
+        "kmz": false,
+        "xlsx": true
+      },
+      "expected_ts": {
+        "schema": "ds.design-output-selection/v1",
+        "prints": [],
+        "geospatial": [
+          "shp"
+        ],
+        "tabular": [
+          "xlsx"
+        ],
+        "execution": {}
+      },
+      "expected": {
+        "schema": "ds.design-output-selection/v1",
+        "prints": [],
+        "geospatial": [
+          "shp"
+        ],
+        "tabular": [
+          "xlsx"
+        ]
+      },
+      "placements": {
+        "shp": [
+          "desktop",
+          "web"
+        ],
+        "xlsx": [
+          "desktop",
+          "web"
+        ]
+      },
+      "tokens": [
+        "shp",
+        "xlsx"
+      ]
+    },
+    {
+      "id": "truthy-string-map",
+      "stored": {
+        "shp": "yes",
+        "gpkg": true,
+        "kmz": "no"
+      },
+      "expected_ts": {
+        "schema": "ds.design-output-selection/v1",
+        "prints": [],
+        "geospatial": [
+          "gpkg"
+        ],
+        "tabular": [],
+        "execution": {}
+      },
+      "expected": {
+        "schema": "ds.design-output-selection/v1",
+        "prints": [],
+        "geospatial": [
+          "shp",
+          "gpkg"
+        ],
+        "tabular": []
+      },
+      "placements": {
+        "gpkg": [
+          "desktop",
+          "web"
+        ],
+        "shp": [
+          "desktop",
+          "web"
+        ]
+      },
+      "tokens": [
+        "shp",
+        "gpkg"
+      ],
+      "why": "A settings map may record truth as `\"yes\"`/`1`/`on`, and every other reader of this row (`report_formats::string_list`, and therefore `plan` and ds-brain) has always honoured that. The deleted TypeScript accepted only the boolean literal `true`, so it silently dropped `shp` from a selection the report itself produced."
+    },
+    {
+      "id": "v1-without-execution",
+      "stored": {
+        "schema": "ds.design-output-selection/v1",
+        "prints": [
+          {
+            "layout_id": "detail",
+            "enabled": true,
+            "formats": [
+              "pdf",
+              "png"
+            ]
+          }
+        ],
+        "geospatial": [
+          "gpkg"
+        ],
+        "tabular": [
+          "xlsx"
+        ]
+      },
+      "expected_ts": {
+        "schema": "ds.design-output-selection/v1",
+        "prints": [
+          {
+            "layout_id": "detail",
+            "enabled": true,
+            "formats": [
+              "pdf",
+              "png"
+            ]
+          }
+        ],
+        "geospatial": [
+          "gpkg"
+        ],
+        "tabular": [
+          "xlsx"
+        ],
+        "execution": {}
+      },
+      "expected": {
+        "schema": "ds.design-output-selection/v1",
+        "prints": [
+          {
+            "layout_id": "detail",
+            "enabled": true,
+            "formats": [
+              "pdf",
+              "png"
+            ]
+          }
+        ],
+        "geospatial": [
+          "gpkg"
+        ],
+        "tabular": [
+          "xlsx"
+        ]
+      },
+      "placements": {
+        "gpkg": [
+          "desktop",
+          "web"
+        ],
+        "pdf__detail": [
+          "desktop",
+          "web"
+        ],
+        "png__detail": [
+          "desktop",
+          "web"
+        ],
+        "xlsx": [
+          "desktop",
+          "web"
+        ]
+      },
+      "tokens": [
+        "gpkg",
+        "xlsx",
+        "pdf__detail",
+        "png__detail"
+      ]
+    },
+    {
+      "id": "v1-empty-execution",
+      "stored": {
+        "schema": "ds.design-output-selection/v1",
+        "prints": [],
+        "geospatial": [
+          "gpkg"
+        ],
+        "tabular": [],
+        "execution": {}
+      },
+      "expected_ts": {
+        "schema": "ds.design-output-selection/v1",
+        "prints": [],
+        "geospatial": [
+          "gpkg"
+        ],
+        "tabular": [],
+        "execution": {}
+      },
+      "expected": {
+        "schema": "ds.design-output-selection/v1",
+        "prints": [],
+        "geospatial": [
+          "gpkg"
+        ],
+        "tabular": []
+      },
+      "placements": {
+        "gpkg": [
+          "desktop",
+          "web"
+        ]
+      },
+      "tokens": [
+        "gpkg"
+      ]
+    },
+    {
+      "id": "v1-web-only-geospatial",
+      "stored": {
+        "schema": "ds.design-output-selection/v1",
+        "prints": [
+          {
+            "layout_id": "detail",
+            "enabled": true,
+            "formats": [
+              "pdf"
+            ]
+          }
+        ],
+        "geospatial": [
+          "gpkg"
+        ],
+        "tabular": [
+          "xlsx"
+        ],
+        "execution": {
+          "gpkg": [
+            "web"
+          ]
+        }
+      },
+      "expected_ts": {
+        "schema": "ds.design-output-selection/v1",
+        "prints": [
+          {
+            "layout_id": "detail",
+            "enabled": true,
+            "formats": [
+              "pdf"
+            ]
+          }
+        ],
+        "geospatial": [
+          "gpkg"
+        ],
+        "tabular": [
+          "xlsx"
+        ],
+        "execution": {
+          "gpkg": [
+            "web"
+          ]
+        }
+      },
+      "expected": {
+        "schema": "ds.design-output-selection/v1",
+        "prints": [
+          {
+            "layout_id": "detail",
+            "enabled": true,
+            "formats": [
+              "pdf"
+            ]
+          }
+        ],
+        "geospatial": [
+          "gpkg"
+        ],
+        "tabular": [
+          "xlsx"
+        ],
+        "execution": {
+          "gpkg": [
+            "web"
+          ]
+        }
+      },
+      "placements": {
+        "gpkg": [
+          "web"
+        ],
+        "pdf__detail": [
+          "desktop",
+          "web"
+        ],
+        "xlsx": [
+          "desktop",
+          "web"
+        ]
+      },
+      "tokens": [
+        "gpkg",
+        "xlsx",
+        "pdf__detail"
+      ]
+    },
+    {
+      "id": "v1-class-and-wildcard",
+      "stored": {
+        "schema": "ds.design-output-selection/v1",
+        "prints": [
+          {
+            "layout_id": "detail",
+            "enabled": true,
+            "formats": [
+              "pdf"
+            ]
+          }
+        ],
+        "geospatial": [
+          "gpkg"
+        ],
+        "tabular": [
+          "xlsx"
+        ],
+        "execution": {
+          "print": [
+            "desktop"
+          ],
+          "*": [
+            "web"
+          ]
+        }
+      },
+      "expected_ts": {
+        "schema": "ds.design-output-selection/v1",
+        "prints": [
+          {
+            "layout_id": "detail",
+            "enabled": true,
+            "formats": [
+              "pdf"
+            ]
+          }
+        ],
+        "geospatial": [
+          "gpkg"
+        ],
+        "tabular": [
+          "xlsx"
+        ],
+        "execution": {
+          "print": [
+            "desktop"
+          ],
+          "*": [
+            "web"
+          ]
+        }
+      },
+      "expected": {
+        "schema": "ds.design-output-selection/v1",
+        "prints": [
+          {
+            "layout_id": "detail",
+            "enabled": true,
+            "formats": [
+              "pdf"
+            ]
+          }
+        ],
+        "geospatial": [
+          "gpkg"
+        ],
+        "tabular": [
+          "xlsx"
+        ],
+        "execution": {
+          "*": [
+            "web"
+          ],
+          "print": [
+            "desktop"
+          ]
+        }
+      },
+      "placements": {
+        "gpkg": [
+          "web"
+        ],
+        "pdf__detail": [
+          "desktop"
+        ],
+        "xlsx": [
+          "web"
+        ]
+      },
+      "tokens": [
+        "gpkg",
+        "xlsx",
+        "pdf__detail"
+      ]
+    },
+    {
+      "id": "png-token",
+      "stored": "png__detail,xlsx",
+      "expected_ts": {
+        "schema": "ds.design-output-selection/v1",
+        "prints": [],
+        "geospatial": [
+          "png__detail"
+        ],
+        "tabular": [
+          "xlsx"
+        ],
+        "execution": {}
+      },
+      "expected": {
+        "schema": "ds.design-output-selection/v1",
+        "prints": [
+          {
+            "layout_id": "detail",
+            "enabled": true,
+            "formats": [
+              "png"
+            ]
+          }
+        ],
+        "geospatial": [],
+        "tabular": [
+          "xlsx"
+        ]
+      },
+      "placements": {
+        "png__detail": [
+          "desktop",
+          "web"
+        ],
+        "xlsx": [
+          "desktop",
+          "web"
+        ]
+      },
+      "tokens": [
+        "xlsx",
+        "png__detail"
+      ],
+      "why": "A `png__<id>` token is a named print in PNG. The deleted TypeScript matched print rows by the literal `pdf__` option value, so the token fell through to `geospatial`, was invisible in the matrix, and was dropped by the next data-output edit."
+    },
+    {
+      "id": "jpg-token",
+      "stored": "jpg__detail",
+      "expected_ts": {
+        "schema": "ds.design-output-selection/v1",
+        "prints": [],
+        "geospatial": [
+          "jpg__detail"
+        ],
+        "tabular": [],
+        "execution": {}
+      },
+      "expected": {
+        "schema": "ds.design-output-selection/v1",
+        "prints": [
+          {
+            "layout_id": "detail",
+            "enabled": true,
+            "formats": [
+              "jpeg"
+            ]
+          }
+        ],
+        "geospatial": [],
+        "tabular": []
+      },
+      "placements": {
+        "jpeg__detail": [
+          "desktop",
+          "web"
+        ]
+      },
+      "tokens": [
+        "jpeg__detail"
+      ],
+      "why": "`jpg__<id>` is the JPEG alias the kernel has always decoded (`named_print_output`), re-serialised as `jpeg`. The deleted TypeScript treated it as an unknown geospatial output."
+    },
+    {
+      "id": "pdf-token-outside-catalogue",
+      "stored": "pdf__unlisted,xlsx",
+      "expected_ts": {
+        "schema": "ds.design-output-selection/v1",
+        "prints": [],
+        "geospatial": [],
+        "tabular": [
+          "xlsx"
+        ],
+        "execution": {}
+      },
+      "expected": {
+        "schema": "ds.design-output-selection/v1",
+        "prints": [
+          {
+            "layout_id": "unlisted",
+            "enabled": true,
+            "formats": [
+              "pdf"
+            ]
+          }
+        ],
+        "geospatial": [],
+        "tabular": [
+          "xlsx"
+        ]
+      },
+      "placements": {
+        "pdf__unlisted": [
+          "desktop",
+          "web"
+        ],
+        "xlsx": [
+          "desktop",
+          "web"
+        ]
+      },
+      "tokens": [
+        "xlsx",
+        "pdf__unlisted"
+      ],
+      "why": "The stored setting names the layout; the option catalogue only says which layouts can be offered. The deleted TypeScript intersected the two and silently discarded a selected print whose template was absent, hiding the very condition `plan` refuses by name (`Selected printing setup … is not in the sealed project printing inputs`)."
+    },
+    {
+      "id": "empty-string",
+      "stored": "",
+      "expected_ts": {
+        "schema": "ds.design-output-selection/v1",
+        "prints": [],
+        "geospatial": [],
+        "tabular": [],
+        "execution": {}
+      },
+      "expected": {
+        "schema": "ds.design-output-selection/v1",
+        "prints": [],
+        "geospatial": [],
+        "tabular": []
+      },
+      "placements": {},
+      "tokens": []
+    },
+    {
+      "id": "null-value",
+      "stored": null,
+      "expected_ts": {
+        "schema": "ds.design-output-selection/v1",
+        "prints": [],
+        "geospatial": [],
+        "tabular": [],
+        "execution": {}
+      },
+      "expected": {
+        "schema": "ds.design-output-selection/v1",
+        "prints": [],
+        "geospatial": [],
+        "tabular": []
+      },
+      "placements": {},
+      "tokens": []
+    },
+    {
+      "id": "disabled-print",
+      "stored": {
+        "schema": "ds.design-output-selection/v1",
+        "prints": [
+          {
+            "layout_id": "detail",
+            "enabled": false,
+            "formats": [
+              "pdf"
+            ]
+          }
+        ],
+        "geospatial": [],
+        "tabular": [
+          "xlsx"
+        ]
+      },
+      "expected_ts": {
+        "schema": "ds.design-output-selection/v1",
+        "prints": [
+          {
+            "layout_id": "detail",
+            "enabled": false,
+            "formats": [
+              "pdf"
+            ]
+          }
+        ],
+        "geospatial": [],
+        "tabular": [
+          "xlsx"
+        ],
+        "execution": {}
+      },
+      "expected": {
+        "schema": "ds.design-output-selection/v1",
+        "prints": [
+          {
+            "layout_id": "detail",
+            "enabled": false,
+            "formats": [
+              "pdf"
+            ]
+          }
+        ],
+        "geospatial": [],
+        "tabular": [
+          "xlsx"
+        ]
+      },
+      "placements": {
+        "xlsx": [
+          "desktop",
+          "web"
+        ]
+      },
+      "tokens": [
+        "xlsx"
+      ]
+    }
+  ],
+  "sheet_cases": [
+    {
+      "id": "alias-design_export_format",
+      "parameter": "design_export_format",
+      "expected_source": "project_settings",
+      "expected_ready": true,
+      "expected_outputs": [
+        "xlsx",
+        "gpkg",
+        "pdf__detail"
+      ]
+    },
+    {
+      "id": "alias-design_export_formats",
+      "parameter": "design_export_formats",
+      "expected_source": "project_settings",
+      "expected_ready": true,
+      "expected_outputs": [
+        "xlsx",
+        "gpkg",
+        "pdf__detail"
+      ]
+    },
+    {
+      "id": "alias-transformer_export_formats",
+      "parameter": "transformer_export_formats",
+      "expected_source": "project_settings",
+      "expected_ready": true,
+      "expected_outputs": [
+        "xlsx",
+        "gpkg",
+        "pdf__detail"
+      ]
+    },
+    {
+      "id": "alias-tr_export_formats",
+      "parameter": "tr_export_formats",
+      "expected_source": "project_settings",
+      "expected_ready": true,
+      "expected_outputs": [
+        "xlsx",
+        "gpkg",
+        "pdf__detail"
+      ]
+    },
+    {
+      "id": "alias-report_formats",
+      "parameter": "report_formats",
+      "expected_source": "project_settings",
+      "expected_ready": true,
+      "expected_outputs": [
+        "xlsx",
+        "gpkg",
+        "pdf__detail"
+      ]
+    },
+    {
+      "id": "alias-hyphenated-uppercase",
+      "parameter": "DESIGN-EXPORT-FORMAT",
+      "expected_source": "project_settings",
+      "expected_ready": true,
+      "expected_outputs": [
+        "xlsx",
+        "gpkg",
+        "pdf__detail"
+      ]
+    },
+    {
+      "id": "no-export-row",
+      "parameter": null,
+      "expected_source": "report_defaults",
+      "expected_ready": true,
+      "expected_outputs": [
+        "shp",
+        "kmz",
+        "xlsx"
+      ]
+    }
+  ]
+}
