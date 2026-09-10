@@ -236,7 +236,10 @@ pub fn plan_project_control_rooms(input_json: &[u8]) -> Result<String, ProjectCo
     })
 }
 
-fn is_special_status_row(name: &str) -> bool {
+/// The aggregate/synthetic row names that are not transformers. Shared with
+/// `design_health`, which must not open a second copy of this vocabulary; the
+/// campaign's row-identity slice gives all of them one home.
+pub(crate) fn is_special_status_row(name: &str) -> bool {
     let canonical = name
         .trim()
         .to_ascii_lowercase()
