@@ -26,6 +26,7 @@ pub fn assets_preview_wasm(bytes: &[u8], request: &[u8]) -> Result<String, wasm_
 pub mod compute_artifact_sync;
 pub mod connectivity;
 pub mod design;
+pub mod field_domain;
 pub mod installation;
 pub mod map_active_view;
 pub mod map_scene;
@@ -1244,6 +1245,18 @@ pub fn style_plan_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
 #[wasm_bindgen::prelude::wasm_bindgen(js_name = styleCatalog)]
 pub fn style_catalog_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
     style_plan::style_catalog_request(input).map_err(|e| wasm_bindgen::JsValue::from_str(&e))
+}
+
+/// What fields a layer has, what values they carry and what scalar type each
+/// one is — over canonical project data, never over what a renderer painted.
+#[cfg(feature = "wasm")]
+#[wasm_bindgen::prelude::wasm_bindgen(js_name = fieldDomain)]
+pub fn field_domain_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
+    field_domain::evaluate(input)
+        .and_then(|value| {
+            serde_json::to_string(&value).map_err(|_| "field-domain encoding failed".into())
+        })
+        .map_err(|error| wasm_bindgen::JsValue::from_str(&error))
 }
 
 pub mod report_formats;
