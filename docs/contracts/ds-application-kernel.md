@@ -52,12 +52,28 @@ data-authority checks. Two readings are available and they are very different:
 - **Wide:** ds-brain's domain decisions are also product, and should migrate
   behind the same Rust boundary over time, leaving Go as transport and admission.
 
-**This document does not choose.** No campaign should act on the wide reading
-without an explicit owner decision, because it would move a security boundary,
-and §7 rule 5 says plainly that Rust owning the *application* means the client
-application. Until that decision exists, treat ds-brain as unchanged and record
-any place where a domain rule is genuinely implemented twice — once in Go and
-once in a client — as a finding for that decision to consider.
+**Answered by the owner, 2026-09-10:**
+
+> "there are also logic that are in ds brain that can move to rust, absolutely.
+> but no rush"
+
+So the wide reading is accepted **in principle**: ds-brain holds domain logic
+that belongs behind the same Rust boundary, and moving it is legitimate work.
+Two qualifications keep it from becoming a licence:
+
+- **"No rush" is part of the ruling.** ds-brain is one of the two components the
+  owner calls relatively stable (with desktop compute), and Cloud Run is
+  updated rarely. This is not a queue-jumping campaign; it happens when a domain
+  is being worked anyway.
+- **Domain logic is not the authorization boundary.** "Logic can move" was
+  answered about domain rules. ds-brain's server-side authorization, lifecycle,
+  publication and data-authority checks are a **security** boundary, and moving
+  one of those still needs its own explicit call — the server must keep deciding
+  what it decides today even when a client can compute the same answer.
+
+Keep recording places where a domain rule is genuinely implemented twice, once
+in Go and once in a client. Those are now a work list rather than evidence for a
+pending decision, ordered by how much a disagreement would cost.
 
 ## 2. The litmus test
 
