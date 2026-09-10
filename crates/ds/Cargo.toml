@@ -40,6 +40,10 @@ serde_json = { workspace = true }
 
 [dev-dependencies]
 tempfile = "3"
+# tests/gateway_operations.rs proves the CLI and the desktop select the same
+# reviewed gateway operations. The binary reaches the core through
+# ds-cli-auth; only the contract test names the registry directly.
+ds-client-core = { workspace = true }
 ds-grid-engine = { workspace = true }
 ds-grid-exchange = { workspace = true }
 ds-solar-contracts = { workspace = true }
