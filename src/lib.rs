@@ -1304,6 +1304,20 @@ pub fn compute_artifact_failure_wasm(input: &[u8]) -> Result<String, wasm_bindge
 
 pub mod compute_artifact_queue;
 
+/// The resumable byte-transfer protocol, owned once for every host.
+///
+/// Pure: it performs no IO and holds no HTTP client, so the same source
+/// compiles into the browser WASM package and the native shell. Hosts report
+/// observed facts and execute the single returned action; they never decide
+/// what an acknowledgement meant. See
+/// `docs/contracts/ds-transport-authority.md`.
+pub mod transfer;
+#[cfg(feature = "wasm")]
+#[wasm_bindgen::prelude::wasm_bindgen(js_name = transferStep)]
+pub fn transfer_step_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
+    transfer::evaluate(input).map_err(|error| wasm_bindgen::JsValue::from_str(&error))
+}
+
 pub mod compute_artifact_cache;
 #[cfg(feature = "wasm")]
 #[wasm_bindgen::prelude::wasm_bindgen(js_name = computeArtifactCache)]
