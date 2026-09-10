@@ -1335,6 +1335,50 @@ mod tests {
         fs::remove_dir(root).unwrap();
     }
 
+    /// A call made under one account must never reach another account's
+    /// selected project. `matches` is the fence every project-scoped operation
+    /// crosses before an operation id is chosen, so a wrong account fails
+    /// closed before a request is built, not after one is answered.
+    ///
+    /// The sibling test below covers the stale *audience*; this one covers the
+    /// account itself, on both fields the principal has.
+    #[test]
+    fn a_context_for_another_account_is_refused() {
+        let profile = profile();
+        let saved = ProjectContext {
+            schema: CONTEXT_SCHEMA.to_owned(),
+            lane: profile.lane().token().to_owned(),
+            credential_audience_sha256: profile.credential_audience_sha256().to_owned(),
+            uid: "uid-a".to_owned(),
+            email: "operator@example.com".to_owned(),
+            ds_project: "project-a".to_owned(),
+            project_name: "Project A".to_owned(),
+            display_name: None,
+            role: Some("owner".to_owned()),
+            status: "active".to_owned(),
+        };
+        assert!(saved.matches(&profile, "uid-a", "operator@example.com"));
+        for (uid, email) in [
+            ("uid-b", "operator@example.com"),
+            ("uid-a", "someone.else@example.com"),
+            ("uid-b", "someone.else@example.com"),
+            ("", ""),
+            ("UID-A", "operator@example.com"),
+        ] {
+            assert!(
+                !saved.matches(&profile, uid, email),
+                "{uid}/{email} must not read another account's selected project"
+            );
+        }
+        // A stale schema is refused for the same reason: an older shape cannot
+        // be assumed to have carried this fence at all.
+        let older = ProjectContext {
+            schema: "ds.native-project-context/v0".to_owned(),
+            ..saved
+        };
+        assert!(!older.matches(&profile, "uid-a", "operator@example.com"));
+    }
+
     #[test]
     fn stale_context_snapshot_is_refused_and_retained() {
         let root = temp_dir("stale-read-context");
