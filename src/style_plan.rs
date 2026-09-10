@@ -111,6 +111,11 @@ pub fn style_catalog_request(input: &[u8]) -> Result<String, String> {
         Read {
             snapshot: Value,
             reference: String,
+            /// One `field_domain` report over this layer's canonical project
+            /// data, when the host holds any. Absent is a legitimate answer —
+            /// see `describe_style` — and is never filled by a renderer.
+            #[serde(default)]
+            observed: Option<Value>,
         },
     }
     let request: Request = serde_json::from_slice(input).map_err(|e| e.to_string())?;
@@ -123,7 +128,8 @@ pub fn style_catalog_request(input: &[u8]) -> Result<String, String> {
         Request::Read {
             snapshot,
             reference,
-        } => describe_style(&snapshot, &reference)?,
+            observed,
+        } => describe_style(&snapshot, &reference, observed.as_ref())?,
     };
     serde_json::to_string(&result).map_err(|e| e.to_string())
 }
@@ -687,7 +693,11 @@ pub fn plan_style_edit(
         });
     }
     let mut next = style.clone();
-    let mut receipt = json!({"project":snapshot["project_id"],"ref":reference,"type":kind,"published":false,"dryRun":true,"onMap":null});
+    // No `onMap` here: an edit receipt is not a data report, and the field it
+    // used to carry had no producer that was not a renderer query. What the
+    // layer's fields actually hold is `field_domain::evaluate`'s answer, and
+    // `describe_style` is where it is reported.
+    let mut receipt = json!({"project":snapshot["project_id"],"ref":reference,"type":kind,"published":false,"dryRun":true});
     match instruction {
         StyleInstruction::Appearance { color, icon, size } => {
             if color.is_none() && icon.is_none() && size.is_none() {
@@ -955,9 +965,40 @@ pub fn plan_style_edit(
     })
 }
 
-/// Bounded headless description. Runtime presence is not inferred from the catalog.
-pub fn describe_style(snapshot: &Value, reference: &str) -> Result<Value, String> {
+/// Bounded headless description of one style, plus what its layer's fields
+/// actually carry.
+///
+/// `observed` is a `field_domain` report the HOST supplies over canonical
+/// project data — design rooms, survey entries, the layer's own features. It is
+/// never a renderer query: a value outside the viewport, below minzoom or
+/// dropped by tile simplification is part of the correct answer here, and no
+/// renderer can see it.
+///
+/// When the host holds no canonical data for the layer, it passes `None` and
+/// this reports a typed refusal naming the reason, so a caller reading
+/// `.observed` is told why rather than shown a silently empty answer. This
+/// replaces the `"onMap": null` this function used to emit unconditionally —
+/// a field whose only possible producer was `map.queryRenderedFeatures`, and
+/// which `ds style read` therefore advertised and could never fill.
+pub fn describe_style(
+    snapshot: &Value,
+    reference: &str,
+    observed: Option<&Value>,
+) -> Result<Value, String> {
     let editor = style_editor(snapshot, reference)?;
+    // One vocabulary. When a report is supplied it is already the merged
+    // declared ∪ present ∪ observed answer for this layer, so it replaces the
+    // editor's own two lists rather than sitting beside them.
+    let vocabulary = observed.map_or_else(
+        || editor.clone(),
+        |report| {
+            json!({
+                "available_fields": report["fields"],
+                "field_values": report["values"],
+            })
+        },
+    );
+    let editor_vocabulary = &vocabulary;
     let document = snapshot["styles"]
         .get(reference)
         .ok_or("style document is missing")?;
@@ -970,17 +1011,17 @@ pub fn describe_style(snapshot: &Value, reference: &str) -> Result<Value, String
     }
     let kind = document["type"].as_str().ok_or("style type is missing")?;
     let channels:Vec<Value>=style_channels(kind).into_iter().map(|c|json!({"channel":c.key,"numberProperty":c.number_prop,"colorProperty":c.color_prop,"min":c.min,"max":c.max,"on":c.on,"off":c.off})).collect();
-    let fields: Vec<&Value> = editor["available_fields"]
+    let fields: Vec<&Value> = editor_vocabulary["available_fields"]
         .as_array()
         .into_iter()
         .flatten()
         .take(200)
         .collect();
     let mut values = Map::new();
-    let mut more = editor["available_fields"]
+    let mut more = editor_vocabulary["available_fields"]
         .as_array()
         .is_some_and(|a| a.len() > 200);
-    for (key, row) in editor["field_values"]
+    for (key, row) in editor_vocabulary["field_values"]
         .as_object()
         .into_iter()
         .flatten()
@@ -993,9 +1034,10 @@ pub fn describe_style(snapshot: &Value, reference: &str) -> Result<Value, String
             json!(entries.iter().take(50).collect::<Vec<_>>()),
         );
     }
-    more |= editor["field_values"]
+    more |= editor_vocabulary["field_values"]
         .as_object()
         .is_some_and(|a| a.len() > 200);
+    more |= observed.is_some_and(|report| report["more"] == json!(true));
     let second = second_style_channel(document).map(|c| {
         let f = c
             .number_prop
@@ -1008,8 +1050,21 @@ pub fn describe_style(snapshot: &Value, reference: &str) -> Result<Value, String
             });
         json!({"field":f,"channel":c.key})
     });
+    // `observed` is always the OBSERVATION — derived or refused, one shape —
+    // and what it produced sits flat beside `fields`/`fieldValues`, the way
+    // every other part of this description already reads.
+    let observation = observed.map_or_else(
+        || json!({
+            "status": "refused",
+            "code": "canonical_source_not_supplied",
+            "detail": "this host named no canonical project data for the layer, so nothing about its field values, counts or scalar types could be observed",
+            "remedy": "name the canonical source that holds this layer's features, or read fieldDomains for the values ds-brain publishes",
+        }),
+        |report| report["observed"].clone(),
+    );
+    let report = |key: &str| observed.map_or_else(|| json!({}), |value| value[key].clone());
     Ok(
-        json!({"project":snapshot["project_id"],"ref":reference,"type":kind,"target":editor["style_target"],"document":document,"fields":fields,"fieldValues":values,"channels":channels,"propertySchema":snapshot["style_properties"][kind],"labelSchema":snapshot["label_editor"],"icons":icon_names(snapshot).into_iter().take(200).collect::<Vec<_>>(),"fieldDomains":editor["field_domains"],"second":second,"colorField":primary_style_field(document),"onMap":null,"more":more}),
+        json!({"project":snapshot["project_id"],"ref":reference,"type":kind,"target":editor["style_target"],"document":document,"fields":fields,"fieldValues":values,"channels":channels,"propertySchema":snapshot["style_properties"][kind],"labelSchema":snapshot["label_editor"],"icons":icon_names(snapshot).into_iter().take(200).collect::<Vec<_>>(),"fieldDomains":editor["field_domains"],"second":second,"colorField":primary_style_field(document),"observed":observation,"fieldTypes":report("types"),"fieldTypeSource":report("typeSource"),"fieldTypeConflicts":report("typeConflicts"),"fieldCounts":report("counts"),"fieldMatchLabels":report("matchLabels"),"fieldProvenance":report("provenance"),"more":more}),
     )
 }
 pub fn list_styles(snapshot: &Value, query: Option<&str>, limit: usize) -> Result<Value, String> {
@@ -1118,7 +1173,7 @@ mod tests {
             ),
             (
                 json!({"operation":"read","snapshot":state,"reference":"master/poles"}),
-                describe_style(&state, "master/poles").unwrap(),
+                describe_style(&state, "master/poles", None).unwrap(),
             ),
         ] {
             let output: Value = serde_json::from_str(
@@ -1131,6 +1186,42 @@ mod tests {
             assert!(style_catalog_request(&serde_json::to_vec(&invalid).unwrap()).is_err());
         }
     }
+
+    /// `onMap` used to be hard-coded `null` here because its only possible
+    /// producer was `map.queryRenderedFeatures`. The replacement is answered
+    /// from canonical project data — or refused by name, never left silent.
+    #[test]
+    fn a_style_description_reports_what_canonical_data_holds_or_refuses_by_name() {
+        let state = snapshot(json!({"type":"circle","paint":{"circle-radius":4}}));
+        let refused = describe_style(&state, "master/poles", None).unwrap();
+        assert_eq!(refused["observed"]["status"], "refused");
+        assert_eq!(refused["observed"]["code"], "canonical_source_not_supplied");
+        assert!(refused["observed"]["remedy"].is_string());
+        assert!(refused.get("onMap").is_none());
+
+        let report = crate::field_domain::evaluate(
+            &serde_json::to_vec(&json!({
+                "schema": crate::field_domain::REQUEST_SCHEMA,
+                "operation": "observe",
+                "layer": "master/poles",
+                "canonical": {"kind": "local", "source": "design_room"},
+                "features": [{"properties": {"kind": "wood", "road_no": 12}}],
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+        let described = describe_style(&state, "master/poles", Some(&report)).unwrap();
+        assert_eq!(described["observed"]["status"], "derived");
+        assert_eq!(described["observed"]["source"], "design_room");
+        assert_eq!(described["fieldTypes"]["road_no"], "number");
+        assert_eq!(described["fieldTypes"]["kind"], "string");
+        assert_eq!(described["fieldCounts"]["kind"], json!({"wood": 1}));
+        assert_eq!(described["fieldMatchLabels"]["road_no"]["12"], json!(12));
+        // The report is the one vocabulary: a canonical value the published
+        // editor never listed still reaches the caller.
+        assert_eq!(described["fieldValues"]["kind"], json!(["wood"]));
+    }
+
     fn snapshot(style: Value) -> Value {
         json!({
             "project_id":"p",
