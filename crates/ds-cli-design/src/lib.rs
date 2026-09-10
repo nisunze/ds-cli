@@ -41,6 +41,7 @@
 //! ## What the family is
 //!
 //! ```text
+//!   status     the project's transformer status rows (headless, unreshaped)
 //!   lv         project-export → process
 //!   transformer download local rooms (paired, no map) | inventory → retire | restore
 //!   selection  list → read → save | archive | assign
@@ -151,6 +152,7 @@ pub static DOMAIN: Domain = Domain {
         &comment::promote::COMMAND,
         &lv::project_export::COMMAND,
         &lv::process::COMMAND,
+        &transformer::status::COMMAND,
         &transformer::download::COMMAND,
         &transformer::inventory::COMMAND,
         &transformer::retire::COMMAND,

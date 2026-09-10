@@ -478,6 +478,7 @@ const DESIGN_EDIT_COMMANDS: &[&str] = &[
 // router so neither grows; an agent doing background delivery work gets this
 // narrow profile.
 const PROJECT_OPERATIONS_COMMANDS: &[&str] = &[
+    "design.status",
     "design.transformer.download",
     "design.transformer.inventory",
     "design.transformer.retire",

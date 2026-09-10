@@ -232,6 +232,10 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("design.tag.list", "read_only", "project"),
     ("design.tag.query", "read_only", "project"),
     ("design.tag.set", "global_write", "project"),
+    // The headless Design read spine: the status rows every other Design
+    // answer is built from, on the same native credential class as the
+    // inventory because restoring the native session may rotate it.
+    ("design.status", "local_auth_state", "headless_project"),
     ("design.transformer.download", "local_ui", "project"),
     (
         "design.transformer.inventory",

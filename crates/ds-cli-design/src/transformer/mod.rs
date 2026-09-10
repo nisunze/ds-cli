@@ -10,12 +10,17 @@
 //! audience-fenced selected project; there is no `--project`, Desktop
 //! descriptor, URL, body, or action override.
 //!
+//! `status` shares this module's credential path, scope flag and refusals but
+//! answers `ds design status`: the project's own transformer status rows, the
+//! read every other headless Design answer is built from.
+//!
 //! Contract: ds-brain `docs/contracts/transformer-retirement.md`.
 
 pub mod download;
 pub mod inventory;
 pub mod restore;
 pub mod retire;
+pub mod status;
 
 use ds_cli_auth::{
     HeadlessProjectReport, PROJECT_REPORT_MAX_REASON_CHARS, PROJECT_REPORT_MAX_TRANSFORMERS,

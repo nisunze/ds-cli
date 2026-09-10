@@ -118,6 +118,45 @@ ds design features select --transformer T-1042 --layer lv_lines \
 The older `ds map design select` contract is unchanged for callers already
 using a paired application.
 
+## Transformer status rows, without a browser
+
+`ds design status` is the read every other headless Design answer is built
+from. Like `features select` it restores the native user for
+`--lane stable|canary` and reads only that user's audience-fenced selected
+project, through the fixed governed status call. There is no `--project`, no
+Desktop descriptor, no URL, body or action override, and no fallback: if the
+native path cannot answer, the command refuses in words rather than reaching
+for the application.
+
+```bash
+ds design status --output json
+ds design status --transformer TX-1 --transformer TX-2 --output json
+```
+
+Omit `--transformer` for every transformer document in the project; repeat it
+for exact names. A named read answers only the names that have a document, so
+a shorter list than the request is an answer and not a refusal — use
+`ds design transformer inventory` when the question is which names exist. A
+project with no transformer document at all, and a named read that matches
+none, both answer zero rows for the same reason.
+
+**The rows are what the service sent.** `ds` does not reshape, rename,
+normalise or complete them: `process_metadata`, `report_metadata`,
+`draft_metadata`, `sketch_metadata`, `layers`, `uploads`, `report_artifacts`
+and `retry_capabilities` appear exactly as the project stores them, and a
+member the document does not carry is absent rather than defaulted. Fields the
+paired application computes for its own display exist only there and are never
+synthesised here. What each member means belongs to the reader, so a consumer
+sees one shape whether it runs in `ds` or in the application.
+
+Two different bounds apply, and they are different on purpose. A request names
+at most 500 transformers — the same bound retirement and compounded reports
+use. An answer carries at most 2,000 rows, which is the bound on one project's
+own transformer collection: an unnamed read asks for the whole project, so it
+can legitimately answer more rows than any single request could have named.
+Above either bound, or past the fixed response size cap, the answer is refused
+as `auth_response_unreadable` rather than truncated.
+
 ## Local transformer rooms for background work
 
 `ds design transformer download` materializes saved transformer rooms into the

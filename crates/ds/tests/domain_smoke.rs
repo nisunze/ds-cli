@@ -61,6 +61,10 @@ fn native_refusal(args: &[&str]) -> String {
 }
 fn run_ds(args: &[&str], native: bool) -> Run {
     let config = temp_root("native-smoke-auth");
+    // The development catalogue is the reviewed action vocabulary written out
+    // literally, not a hashed release artefact: it carries no profile digest
+    // and no producer stages it. When the closed vocabulary changes, its
+    // literals are edited here in the same commit as the change.
     let bundle = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../ds-cli-auth/tests/fixtures/development-catalog.json");
     let mut command = Command::new(env!("CARGO_BIN_EXE_ds"));
@@ -3013,6 +3017,11 @@ fn global_tile_list_is_a_domain_bounded_paired_recovery_read() {
 fn background_project_operations_are_map_independent_and_use_the_declared_project_context() {
     for (id, effect, inputs) in [
         (
+            "design.status",
+            "local_auth_state",
+            BTreeSet::from(["lane", "transformer"]),
+        ),
+        (
             "design.transformer.inventory",
             "local_auth_state",
             BTreeSet::from(["lane", "transformer"]),
@@ -3220,6 +3229,82 @@ fn background_project_operations_are_map_independent_and_use_the_declared_projec
         inputs,
         BTreeSet::from(["desktop-descriptor", "force", "transformer"])
     );
+}
+
+/// The headless Design read spine: `ds design status` answers from the native
+/// credential and the selected project, or it refuses in words. It never
+/// reaches for a browser, a map, a Desktop descriptor, or a project override.
+#[test]
+fn design_status_reads_the_headless_project_and_never_reaches_for_a_browser() {
+    let descriptor = ok(&["capabilities", "design.status", "--output", "json"]);
+    let command = &descriptor["command"];
+    assert_eq!(command["path"], serde_json::json!(["design", "status"]));
+    assert_eq!(command["authority"], "headless_project");
+    assert_eq!(command["effect"], "local_auth_state");
+    assert_eq!(command["execution"], "sync");
+    let inputs = command["inputs"]
+        .as_array()
+        .expect("inputs")
+        .iter()
+        .map(|input| input["name"].as_str().expect("input name"))
+        .collect::<BTreeSet<_>>();
+    assert_eq!(inputs, BTreeSet::from(["lane", "transformer"]));
+
+    // A flag the command does not declare is refused, not ignored: there is
+    // no project override on the headless read spine.
+    assert_eq!(
+        native_ds(&["design", "status", "--project", "p-1", "--output", "json"]).envelope["error"]
+            ["code"],
+        "unknown_flag"
+    );
+
+    // A malformed scope is answered locally, before any credential restore.
+    assert_eq!(
+        native_refusal(&[
+            "design",
+            "status",
+            "--transformer",
+            " tx_a",
+            "--output",
+            "json"
+        ]),
+        "invalid_transformer_scope"
+    );
+
+    // With the development catalogue and no restorable native user, the read
+    // stops at the native auth boundary — the same typed refusal every other
+    // native read gives. Nothing here contacts a service or an application.
+    for args in [
+        vec!["design", "status", "--output", "json"],
+        vec![
+            "design",
+            "status",
+            "--transformer",
+            "tx_a",
+            "--lane",
+            "canary",
+            "--output",
+            "json",
+        ],
+    ] {
+        let run = native_ds(&args);
+        // Unauthorized, not invalid input: the request was well formed and
+        // there is simply no verified principal behind it.
+        assert_eq!(run.code, 4, "{}", args.join(" "));
+        assert_eq!(run.envelope["error"]["class"], "unauthorized");
+        assert_eq!(
+            run.envelope["error"]["code"],
+            "headless_signed_out",
+            "{}",
+            args.join(" ")
+        );
+        assert!(
+            run.stderr.is_empty() || !run.stderr.contains("http"),
+            "{} touched a network surface: {}",
+            args.join(" "),
+            run.stderr
+        );
+    }
 }
 
 #[test]
@@ -3791,7 +3876,7 @@ fn design_lv_project_export_refuses_an_existing_artifact_before_auth_or_desktop(
             "project_report": {
                 "method": "POST",
                 "path": "/report",
-                "actions": ["download_transfo", "list_compounded_reports", "transformer_inventory", "retire_transformer", "restore_transformer"]
+                "actions": ["download_transfo", "list_compounded_reports", "transformer_inventory", "retire_transformer", "restore_transformer", "list_transformers_status"]
             },
             "provenance": { "source_revision": "abc123", "descriptor_sha256": digest }
         })
@@ -3799,7 +3884,7 @@ fn design_lv_project_export_refuses_an_existing_artifact_before_auth_or_desktop(
     std::fs::write(
         &profile_path,
         serde_json::to_vec(&json!({
-            "schema_version": "ds.native-client-profiles/v18",
+            "schema_version": "ds.native-client-profiles/v19",
             "development": true,
             "profiles": {
                 "stable": profile(
@@ -4415,7 +4500,7 @@ fn every_design_command_is_discoverable_without_the_desktop_installed() {
     let commands = index["commands"].as_array().expect("commands");
     assert_eq!(
         commands.len(),
-        60,
+        61,
         "the design domain should expose its whole family: {commands:?}"
     );
     for command in commands {
@@ -4431,6 +4516,7 @@ fn every_design_command_is_discoverable_without_the_desktop_installed() {
                     | "design.meter-types.ensure"
                     | "design.customer-categories.alias"
                     | "design.lv.project-export"
+                    | "design.status"
                     | "design.transformer.inventory"
                     | "design.transformer.retire"
                     | "design.transformer.restore"
@@ -4566,6 +4652,9 @@ fn design_collaboration_is_a_complete_headless_project_surface() {
                 && !id.starts_with("design.categories.")
                 && !id.starts_with("design.meter-types.")
                 && !id.starts_with("design.customer-categories.")
+                // The native read spine is not bridge collaboration; its own
+                // test pins its availability and its refusals.
+                && *id != "design.status"
         })
         .collect();
     let expected: BTreeSet<&str> = [
@@ -4658,6 +4747,7 @@ fn design_collaboration_is_a_complete_headless_project_surface() {
             || id.starts_with("design.categories.")
             || id.starts_with("design.meter-types.")
             || id.starts_with("design.customer-categories.")
+            || id == "design.status"
         {
             continue;
         }

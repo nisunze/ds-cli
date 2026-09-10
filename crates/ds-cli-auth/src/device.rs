@@ -26,9 +26,9 @@ use ds_client_core::{
     SurveyEntriesChangesRequest, SurveyEntriesSelectRequest, SurveyEntriesSelection,
     SurveyEntryCreateReceipt, SurveyEntryCreateRequest, SurveyQueryRequest, SurveyQueryResult,
     TileOperationResult, TilePreflight, TileType, TransformerContext, TransformerInventory,
-    TransformerSet, TransportError, TransportResponse, device_secret_json, parse_device_begin,
-    parse_device_list, parse_device_read, parse_device_refresh, parse_device_revoke,
-    parse_device_status,
+    TransformerSet, TransformerStatusList, TransportError, TransportResponse, device_secret_json,
+    parse_device_begin, parse_device_list, parse_device_read, parse_device_refresh,
+    parse_device_revoke, parse_device_status,
 };
 use serde_json::{Value, json};
 use zeroize::{Zeroize, Zeroizing};
@@ -684,6 +684,13 @@ impl DeviceSession {
         requested: &TransformerSet,
     ) -> Result<TransformerInventory, ClientError> {
         fixed_device_call!(self, transformer_inventory, project, requested)
+    }
+    pub fn transformer_status(
+        &mut self,
+        project: &str,
+        requested: &TransformerSet,
+    ) -> Result<TransformerStatusList, ClientError> {
+        fixed_device_call!(self, transformer_status, project, requested)
     }
     pub fn transformer_retirement(
         &mut self,
