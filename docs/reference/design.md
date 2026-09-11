@@ -575,3 +575,21 @@ and why — ds-brain's published verdict is authoritative when present), `kind`
 (individual, aggregate, project_document, analysis) and `allows` (combinable,
 versionable, reportable, deletable). A headless client holds no browser rooms,
 so every row is remote and nothing is dirty here by construction.
+
+## Process settings, resolved headlessly
+
+`ds design process settings --preset drafting|sketch [--lane standard|fast]
+[--project-config config.json] [--operator toggles.json]
+[--firestore-design-data]` answers what the LV process dialog sends for that
+lane and preset, from the same kernel module (`process_settings`) over the
+engine's own processor catalogue: `settings` (the preset applied to the
+catalogue defaults and the project's own `transformer_settings` rows, the
+dependency collapse applied, the operator's toggles laid over), `visible_groups`
+(what the dialog would show), `wire_settings` (what the run receives — hidden
+keys forced or omitted, geometry property calculation pinned on, the Sketch
+customer-connection contract stamped) and `dropped` (every key that left the
+wire or was forced, with its reason). Without `--project-config` the catalogue
+alone resolves; pass the project's configuration document to include its
+tolerances and preset rows. The dependency collapse follows the engine's five
+property-keep keys: `keep_flying_stay` alone never preserved computed
+properties on the engine side, and no longer pretends to here.

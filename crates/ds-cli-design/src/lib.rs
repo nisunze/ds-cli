@@ -70,6 +70,7 @@ pub mod grouping;
 pub mod known_columns;
 pub mod lv;
 pub mod materials;
+pub mod process_settings;
 pub mod project;
 pub mod selection;
 pub mod sync;
@@ -152,6 +153,7 @@ pub static DOMAIN: Domain = Domain {
         &comment::promote::COMMAND,
         &lv::project_export::COMMAND,
         &lv::process::COMMAND,
+        &process_settings::COMMAND,
         &transformer::status::COMMAND,
         &transformer::download::COMMAND,
         &transformer::inventory::COMMAND,

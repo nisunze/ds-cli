@@ -175,6 +175,7 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("design.comment.read", "read_only", "project"),
     ("design.comment.resolve", "global_write", "project"),
     ("design.lv.process", "local_file_write", "none"),
+    ("design.process.settings", "read_only", "none"),
     ("design.project.init", "local_file_write", "none"),
     ("design.project.write", "local_file_write", "none"),
     ("design.project.edit", "local_file_write", "none"),

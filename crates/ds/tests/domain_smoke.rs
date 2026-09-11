@@ -4552,7 +4552,7 @@ fn every_design_command_is_discoverable_without_the_desktop_installed() {
     let commands = index["commands"].as_array().expect("commands");
     assert_eq!(
         commands.len(),
-        61,
+        62,
         "the design domain should expose its whole family: {commands:?}"
     );
     for command in commands {
@@ -4707,6 +4707,9 @@ fn design_collaboration_is_a_complete_headless_project_surface() {
                 // The native read spine is not bridge collaboration; its own
                 // test pins its availability and its refusals.
                 && *id != "design.status"
+                // Process settings resolve in the kernel over the engine's
+                // catalogue; no project, bridge or desktop state is read.
+                && *id != "design.process.settings"
         })
         .collect();
     let expected: BTreeSet<&str> = [
