@@ -79,6 +79,8 @@ pub fn submit_solar(
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct SolarSnapshotProvenance {
+    pub project_id: String,
+    pub root: String,
     pub template_id: String,
     pub input_base_fingerprint: String,
     pub source_snapshot_sha256: String,
@@ -160,11 +162,14 @@ struct PreparedSolarRequest {
 fn validate_solar_request(request: &PreparedSolarRequest) -> Result<(), String> {
     request.prepared.validate().map_err(|error| format!("solar_prepared_request_invalid: {error}"))?;
     if request.run_id.as_deref().is_some_and(|run_id| !valid_run_id(run_id)) { return Err("solar_prepared_request_invalid: run_id must be 1..128 letters, digits, _ or -".into()); }
+    if let Some(provenance) = &request.provenance { validate_provenance(provenance, &request.prepared)?; }
     Ok(())
 }
 fn validate_provenance(provenance: &SolarSnapshotProvenance, prepared: &PreparedSolarCityInput) -> Result<(), String> {
     let digest = |value: &str| value.len() == 64 && value.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b));
-    if provenance.template_id != prepared.city.identity.city_id || !digest(&provenance.input_base_fingerprint) || !digest(&provenance.source_snapshot_sha256) || provenance.snapshot_receipt_id.len() != 36 { return Err("solar_snapshot_provenance_invalid_or_stale".into()); }
+    let receipt = provenance.snapshot_receipt_id.as_bytes();
+    let uuid = receipt.len() == 36 && [8, 13, 18, 23].into_iter().all(|i| receipt[i] == b'-') && matches!(receipt[14], b'1'..=b'5') && matches!(receipt[19], b'8' | b'9' | b'a' | b'b');
+    if provenance.project_id != prepared.city.identity.project_id || provenance.root != prepared.city.identity.root || provenance.template_id != prepared.city.identity.city_id || !digest(&provenance.input_base_fingerprint) || !digest(&provenance.source_snapshot_sha256) || !uuid { return Err("solar_snapshot_provenance_invalid_or_stale".into()); }
     Ok(())
 }
 
