@@ -45,6 +45,24 @@ pub mod design_status_row;
 pub fn design_status_query_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
     design_status_query::evaluate(input).map_err(|error| wasm_bindgen::JsValue::from_str(&error))
 }
+pub mod design_conflict;
+#[cfg(feature = "wasm")]
+#[wasm_bindgen::prelude::wasm_bindgen(js_name = designConflict)]
+pub fn design_conflict_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
+    design_conflict::evaluate(input).map_err(|error| wasm_bindgen::JsValue::from_str(&error))
+}
+pub mod design_presence;
+#[cfg(feature = "wasm")]
+#[wasm_bindgen::prelude::wasm_bindgen(js_name = designPresence)]
+pub fn design_presence_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
+    design_presence::evaluate(input).map_err(|error| wasm_bindgen::JsValue::from_str(&error))
+}
+pub mod design_version;
+#[cfg(feature = "wasm")]
+#[wasm_bindgen::prelude::wasm_bindgen(js_name = designVersion)]
+pub fn design_version_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
+    design_version::evaluate(input).map_err(|error| wasm_bindgen::JsValue::from_str(&error))
+}
 pub mod process_settings;
 #[cfg(feature = "wasm")]
 #[wasm_bindgen::prelude::wasm_bindgen(js_name = processSettings)]
@@ -168,10 +186,12 @@ pub fn survey_evaluate_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValu
 }
 
 pub use project_control::{
+    plan_project_control_artifact_download, plan_project_control_bulk_action,
     plan_project_control_report_download, plan_project_control_rooms,
     project_project_control_local_reports, ProjectControlError, RoomAvailability,
     RoomMaterializationPlan, MAX_PROJECT_CONTROL_INPUT_BYTES, MAX_PROJECT_CONTROL_OUTBOX_ROWS,
-    MAX_PROJECT_CONTROL_ROOMS, PROJECT_CONTROL_REPORT_CATALOG_SCHEMA,
+    MAX_PROJECT_CONTROL_ROOMS, PROJECT_CONTROL_ARTIFACT_DOWNLOAD_SCHEMA,
+    PROJECT_CONTROL_BULK_PLAN_SCHEMA, PROJECT_CONTROL_REPORT_CATALOG_SCHEMA,
     PROJECT_CONTROL_REPORT_PLAN_SCHEMA, PROJECT_CONTROL_ROOM_PLAN_SCHEMA,
 };
 
@@ -659,6 +679,7 @@ mod wasm {
     use wasm_bindgen::prelude::*;
 
     use super::{
+        plan_project_control_artifact_download, plan_project_control_bulk_action,
         plan_project_control_report_download, plan_project_control_rooms, plan_solar_network_seed,
         plan_solar_portfolio_mutation, project_project_control_local_reports,
         solar_portfolio_membership_identity, validate_firebase_id_token,
@@ -704,6 +725,18 @@ mod wasm {
     #[wasm_bindgen(js_name = planProjectControlReportDownload)]
     pub fn project_control_report_download(input_json: &[u8]) -> Result<String, JsValue> {
         plan_project_control_report_download(input_json)
+            .map_err(|error| JsValue::from_str(&error.to_string()))
+    }
+
+    #[wasm_bindgen(js_name = planProjectControlBulkAction)]
+    pub fn project_control_bulk_action(input_json: &[u8]) -> Result<String, JsValue> {
+        plan_project_control_bulk_action(input_json)
+            .map_err(|error| JsValue::from_str(&error.to_string()))
+    }
+
+    #[wasm_bindgen(js_name = planProjectControlArtifactDownload)]
+    pub fn project_control_artifact_download(input_json: &[u8]) -> Result<String, JsValue> {
+        plan_project_control_artifact_download(input_json)
             .map_err(|error| JsValue::from_str(&error.to_string()))
     }
 
