@@ -249,7 +249,9 @@ pub fn admit_document(project: &str, response: &Value) -> Result<Value, Refusal>
     for layer in layers {
         let id = layer["id"]
             .as_str()
-            .filter(|id| !id.is_empty() && id.chars().count() <= MAX_LAYER_ID_CHARS)
+            .filter(|id| {
+                crate::layer_state::valid_runtime_id(id) && id.chars().count() <= MAX_LAYER_ID_CHARS
+            })
             .ok_or_else(unreadable)?;
         if !layer["type"].is_string() {
             return Err(unreadable());
@@ -621,6 +623,15 @@ mod tests {
 
     #[test]
     fn unreadable_and_refused_answers_are_typed() {
+        for invalid in ["", " ", " a", "a ", "a\nlabel", "a\0label"] {
+            let mut malformed = document();
+            malformed["layers"][0]["id"] = json!(invalid);
+            assert_eq!(
+                admit_document("p1", &wrap(malformed)).unwrap_err().code,
+                "unreadable_response",
+                "{invalid:?}"
+            );
+        }
         assert_eq!(
             admit_document("p2", &wrap(document())).unwrap_err().code,
             "unreadable_response"

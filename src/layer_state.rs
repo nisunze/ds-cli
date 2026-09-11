@@ -54,6 +54,10 @@ use serde_json::{json, Map, Value};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 pub const SCHEMA: &str = "ds.layer-state/v1";
+pub(crate) fn valid_runtime_id(id: &str) -> bool {
+    !id.is_empty() && id.trim() == id && !id.chars().any(char::is_control)
+}
+
 pub const MAX_INPUT_BYTES: usize = 32 * 1024 * 1024;
 pub const MAX_LAYERS: usize = 50_000;
 pub const MAX_IDS: usize = 5_000;
@@ -379,8 +383,8 @@ impl<'a> Facts<'a> {
         let mut by_id = HashMap::with_capacity(document.layers.len());
         for (index, row) in document.layers.iter().enumerate() {
             let id = row.id.as_str();
-            if id.is_empty() {
-                return Err("layer document has a layer without a runtime id".into());
+            if !valid_runtime_id(id) {
+                return Err("layer document has an invalid runtime id".into());
             }
             if by_id.insert(id, index).is_some() {
                 return Err(format!("layer document repeats the runtime id {id}"));
@@ -1878,6 +1882,11 @@ mod tests {
 
     #[test]
     fn fences_refuse_a_stale_project_a_wrong_schema_and_a_missing_document() {
+        for invalid in ["", " ", " roads", "roads ", "roads\nlabel", "roads\0label"] {
+            let mut malformed = document();
+            malformed["layers"][0]["id"] = json!(invalid);
+            assert!(refuse(json!({"schema": SCHEMA, "project": "p1", "document": malformed, "op": {"kind": "plan"}})).contains("invalid runtime id"));
+        }
         let stale = refuse(
             json!({"schema": SCHEMA, "project": "p2", "document": document(), "op": {"kind": "plan"}}),
         );
