@@ -2,6 +2,7 @@
 //! Flat page elements in physical millimetres; no tile, HTML or remote-image IO.
 pub mod context;
 pub mod custom;
+pub mod elements;
 pub mod lifecycle;
 pub mod map;
 pub mod overrides;
@@ -180,7 +181,7 @@ pub struct PrintCorridor {
     pub opacity: f64,
     pub dash_mm: Vec<f64>,
 }
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, JsonSchema, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum ElementKind {
     Map,
@@ -433,7 +434,12 @@ pub struct Element {
 #[serde(deny_unknown_fields)]
 pub struct ContentFlow {
     pub after: String,
+    #[serde(default = "content_flow_gap")]
     pub gap_mm: f64,
+}
+/// The gap a content-sized frame keeps below the frame it flows after.
+fn content_flow_gap() -> f64 {
+    5.
 }
 fn font() -> f64 {
     10.
@@ -926,7 +932,7 @@ pub fn default_layout() -> Layout {
         fill: white(),
         opacity: opaque(),
     };
-    Layout {
+    complete(Layout {
         composition: None,
         project_overview: false,
         scale_rounding: None,
@@ -995,7 +1001,7 @@ pub fn default_layout() -> Layout {
                 8.,
             ),
         ],
-    }
+    })
 }
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, JsonSchema, PartialEq)]
 pub enum Paper {
@@ -1107,7 +1113,7 @@ fn infer_paper(page: [f64; 2]) -> Result<PaperSpec, String> {
 
 pub fn upgrade(mut layout: Layout) -> Result<Layout, String> {
     match layout.schema.as_str() {
-        SCHEMA => return Ok(layout),
+        SCHEMA => return Ok(complete(layout)),
         LEGACY_SCHEMA => {}
         _ => return Err("unsupported print layout schema".into()),
     }
@@ -1123,8 +1129,21 @@ pub fn upgrade(mut layout: Layout) -> Result<Layout, String> {
         }
     }
     layout.schema = SCHEMA.into();
+    let layout = complete(layout);
     validate(&layout)?;
     Ok(layout)
+}
+
+/// A legend element always carries its binding, so every host reads the
+/// document's values instead of guessing the defaults an absent binding
+/// would have meant.
+fn complete(mut layout: Layout) -> Layout {
+    for element in &mut layout.elements {
+        if element.kind == ElementKind::Legend && element.legend.is_none() {
+            element.legend = elements::new_element(ElementKind::Legend, String::new(), "").legend;
+        }
+    }
+    layout
 }
 
 fn fit_to_paper(mut layout: Layout, paper: PaperSpec) -> Result<Layout, String> {
@@ -1265,6 +1284,30 @@ pub enum Command {
         layout: Layout,
         resources: Vec<context::CatalogResource>,
     },
+    /// The canonical new page element of a kind (see `elements`); the id is
+    /// minted when absent, a logo names the layout asset it shows.
+    AddElement {
+        layout: Layout,
+        kind: ElementKind,
+        #[serde(default)]
+        id: Option<String>,
+        #[serde(default)]
+        asset: String,
+    },
+    /// Which governed print styles a print layer may bind, from the host's
+    /// style catalogue facts.
+    StyleRefChoices {
+        catalogue: Vec<elements::StyleFacts>,
+    },
+    /// Bind (or, with an empty reference, unbind) a print layer's style.
+    SetLayerStyleRef {
+        layout: Layout,
+        layer_id: String,
+        style_ref: String,
+        catalogue: Vec<elements::StyleFacts>,
+    },
+    /// The DPI and paper a local map print may ask for, with the defaults.
+    MapRequestChoices {},
     /// The print editor's zero state and its history cap (see `session`).
     SessionDefaults {},
     /// One event against the editor's workflow state: the next state and the
@@ -1545,6 +1588,27 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
             let layout = upgrade(layout)?;
             json!({"layout": context::default_selection(layout, &resources)?})
         }
+        Command::AddElement {
+            layout,
+            kind,
+            id,
+            asset,
+        } => {
+            let (layout, index) = elements::add(upgrade(layout)?, kind, id, &asset)?;
+            json!({"layout": layout, "index": index})
+        }
+        Command::StyleRefChoices { catalogue } => {
+            json!({"refs": elements::style_ref_choices(&catalogue)})
+        }
+        Command::SetLayerStyleRef {
+            layout,
+            layer_id,
+            style_ref,
+            catalogue,
+        } => {
+            json!({"layout": elements::set_layer_style_ref(upgrade(layout)?, &layer_id, &style_ref, &catalogue)?})
+        }
+        Command::MapRequestChoices {} => map::request_choices(),
         Command::SessionDefaults {} => json!({
             "state": session::State::default(),
             "history_cap": session::HISTORY_CAP,
@@ -1753,6 +1817,7 @@ mod tests {
         let mut table = layout.elements[legend].clone();
         table.id = "quantities".into();
         table.kind = ElementKind::Table;
+        table.legend = None;
         table.table = Some(TableBinding {
             layer: "info".into(),
             additional_layers: vec!["tapping_poles".into()],

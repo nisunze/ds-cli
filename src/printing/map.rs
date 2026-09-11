@@ -36,6 +36,15 @@ pub fn default_dpi() -> u16 {
     300
 }
 
+/// The DPI and paper a local map print may ask for: the bounds
+/// `validate_request` enforces, the shortlist a picker offers, the defaults.
+pub fn request_choices() -> Value {
+    json!({
+        "dpi": {"default": default_dpi(), "min": 72, "max": 1200, "choices": [150, 300, 600, 1200]},
+        "paper": {"default": "A3", "choices": ["A3", "A0"]},
+    })
+}
+
 pub fn validate_request(r: &Request) -> Result<(), String> {
     if !identifier(&r.project) || !identifier(&r.id) || r.project.len() > 128 || r.id.len() > 80 {
         return Err("Map printing requires exact bounded project and map identifiers".into());
