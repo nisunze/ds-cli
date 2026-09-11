@@ -24,6 +24,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
 use crate::design::row_allows;
+/// The browser's `finiteInteger`. One spelling, in `design_status_row`, which
+/// reads the same ordinals off the same rows for the register.
+use crate::design_status_row::finite_ordinal;
 
 pub const SCHEMA: &str = "ds.design-version/v1";
 
@@ -232,20 +235,6 @@ fn object(value: &Value) -> Option<&Map<String, Value>> {
     value.as_object()
 }
 
-/// The browser's `finiteInteger`: a finite, non-negative, truncated ordinal.
-fn finite_ordinal(value: Option<&Value>) -> Option<i64> {
-    let numeric = match value? {
-        Value::Number(number) => number.as_f64()?,
-        Value::String(raw) => raw.trim().parse::<f64>().ok()?,
-        _ => return None,
-    };
-    if !numeric.is_finite() {
-        return None;
-    }
-    let rounded = numeric.trunc() as i64;
-    (rounded >= 0).then_some(rounded)
-}
-
 fn version_metadata(row: Option<&Value>) -> Option<&Map<String, Value>> {
     row.and_then(object)?
         .get("version_metadata")
@@ -287,34 +276,32 @@ pub fn changed_since_version(row: Option<&Value>) -> bool {
 }
 
 /// Every version fact about one row, decided once.
+///
+/// The lead, the highest ordinal, `restored`, `unversioned` and the reason are
+/// NOT decided here: `design_status_row::version_view` already decides them for
+/// every row the register renders, and a second spelling would be free to
+/// drift. This folds the ordinal arithmetic, the label, the row's versionable
+/// kind and the movement test around that one answer.
 pub fn facts(row: Option<&Value>, name_override: Option<&str>) -> VersionFacts {
+    let empty = Map::new();
+    let map = row.and_then(object).unwrap_or(&empty);
+    let view = crate::design_status_row::version_view(map);
     let metadata = version_metadata(row);
-    let version =
-        finite_ordinal(metadata.and_then(|map| map.get("lead_version"))).unwrap_or(UNVERSIONED);
-    let latest = finite_ordinal(metadata.and_then(|map| map.get("latest_version")))
-        .unwrap_or(UNVERSIONED)
-        .max(version);
-    let count = finite_ordinal(metadata.and_then(|map| map.get("count"))).unwrap_or(latest);
-    let reason = metadata
-        .and_then(|map| map.get("lead_reason"))
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .filter(|text| !text.is_empty())
-        .map(str::to_string);
+    let count = finite_ordinal(metadata.and_then(|map| map.get("count"))).unwrap_or(view.latest);
     let name = name_override
         .map(str::to_string)
         .unwrap_or_else(|| row_name(row));
     VersionFacts {
         versionable: row_allows(&name).versionable,
         name,
-        version,
-        latest,
-        next: latest + 1,
+        version: view.version,
+        latest: view.latest,
+        next: view.latest + 1,
         count,
-        label: format!("v{version}"),
-        restored: version > UNVERSIONED && latest > version,
-        unversioned: version == UNVERSIONED,
-        reason,
+        label: format!("v{}", view.version),
+        restored: view.restored,
+        unversioned: view.unversioned,
+        reason: view.reason,
         changed_since_version: changed_since_version(row),
     }
 }

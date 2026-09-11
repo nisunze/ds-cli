@@ -497,7 +497,9 @@ fn lane_of(meta: Option<&Map<String, Value>>) -> Option<Lane> {
 }
 
 /// `finiteInteger` (transformer-version.ts): truncated, and never negative.
-fn finite_ordinal(value: Option<&Value>) -> Option<i64> {
+/// `design_version` reads the same ordinals off the same rows, so it shares
+/// this one rather than carrying a second spelling of it.
+pub(crate) fn finite_ordinal(value: Option<&Value>) -> Option<i64> {
     let numeric = match value? {
         Value::Number(number) => number.as_f64()?,
         Value::String(raw) => raw.trim().parse::<f64>().ok()?,
@@ -512,7 +514,10 @@ fn finite_ordinal(value: Option<&Value>) -> Option<i64> {
 
 const UNVERSIONED: i64 = 0;
 
-fn version_view(row: &Map<String, Value>) -> VersionView {
+/// The lead/latest/restored/unversioned/reason half of every version answer.
+/// `design_version` folds `next`, `count`, the label and the movement test
+/// around THIS — the register and the prompt must never decide the lead twice.
+pub(crate) fn version_view(row: &Map<String, Value>) -> VersionView {
     let metadata = row.get("version_metadata").and_then(object);
     let version =
         finite_ordinal(metadata.and_then(|m| m.get("lead_version"))).unwrap_or(UNVERSIONED);

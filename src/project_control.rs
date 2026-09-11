@@ -633,13 +633,18 @@ pub enum BulkAction {
 }
 
 impl BulkAction {
-    /// The capability the register gates the verb on. `None` for verbs every
-    /// project member may run on their own rows.
+    /// The capability the register gates the verb on — the SAME grant its own
+    /// button is gated on, not a guess. Adding to combined is `design.report`;
+    /// exporting reports is `design.download` + `reports.export` (a different
+    /// grant, which is why one list for all three verbs hid the Reports counts
+    /// from an operator who could export but not combine); the compound verb
+    /// needs both legs. Empty for verbs every project member may run on their
+    /// own rows.
     fn capabilities(self) -> &'static [&'static str] {
         match self {
-            Self::AddToCombined | Self::CombinedAndExport | Self::GenerateReports => {
-                &["design.report"]
-            }
+            Self::AddToCombined => &["design.report"],
+            Self::GenerateReports => &["design.download", "reports.export"],
+            Self::CombinedAndExport => &["design.report", "design.download", "reports.export"],
             Self::RetryProcess => &["design.bulk_retry"],
             Self::Delete => &["transformer.delete"],
             Self::Save | Self::Version => &[],
@@ -1397,6 +1402,69 @@ mod tests {
     fn an_unknown_bulk_verb_is_refused_rather_than_guessed() {
         let input = json!({ "action": "detonate", "rows": [], "selection": [] });
         assert!(plan_project_control_bulk_action(&serde_json::to_vec(&input).unwrap()).is_err());
+    }
+
+    fn bulk_plan(action: &str, capabilities: Value) -> Value {
+        let input = json!({
+            "action": action,
+            "rows": [{
+                "name": "tx_1",
+                "computed": {
+                    "combined_inclusion_state": "success",
+                    "report_state": "success",
+                    "report_has_files": true
+                }
+            }],
+            "selection": ["tx_1"],
+            "capabilities": capabilities,
+            "combined_mirror_ui": true,
+        });
+        serde_json::from_str(
+            &plan_project_control_bulk_action(&serde_json::to_vec(&input).unwrap()).unwrap(),
+        )
+        .unwrap()
+    }
+
+    /// Exporting reports and adding to the combined mirror are DIFFERENT
+    /// grants in the register that renders these counts: the Export Reports
+    /// button reads `design.download` + `reports.export`, the Add-to-combined
+    /// button reads `design.report`. One shared list for all three verbs
+    /// emptied the Reports counts for an operator who could export but not
+    /// combine, and filled them for one who could combine but not export.
+    #[test]
+    fn each_bulk_verb_asks_for_the_grant_its_own_button_asks_for() {
+        let exporter = json!(["design.download", "reports.export"]);
+        let combiner = json!(["design.report"]);
+
+        let reports = bulk_plan("generate_reports", exporter.clone());
+        assert_eq!(reports["unavailable"], Value::Null);
+        assert_eq!(reports["fresh"], json!(1));
+        assert_eq!(
+            bulk_plan("generate_reports", combiner.clone())["unavailable"],
+            json!("capability_missing")
+        );
+
+        let combined = bulk_plan("add_to_combined", combiner.clone());
+        assert_eq!(combined["unavailable"], Value::Null);
+        assert_eq!(combined["fresh"], json!(1));
+        assert_eq!(
+            bulk_plan("add_to_combined", exporter.clone())["unavailable"],
+            json!("capability_missing")
+        );
+
+        // The compound verb runs both legs, so it needs both grants.
+        for partial in [exporter, combiner] {
+            assert_eq!(
+                bulk_plan("combined_and_export", partial)["unavailable"],
+                json!("capability_missing")
+            );
+        }
+        let both = bulk_plan(
+            "combined_and_export",
+            json!(["design.report", "design.download", "reports.export"]),
+        );
+        assert_eq!(both["unavailable"], Value::Null);
+        assert_eq!(both["fresh"], json!(1));
     }
 
     #[test]
