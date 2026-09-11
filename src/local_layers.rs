@@ -33,6 +33,7 @@
 
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::{json, Map, Value};
+use sha2::{Digest, Sha256};
 use std::collections::HashSet;
 
 pub const SCHEMA: &str = "ds.local-layers/v1";
@@ -63,6 +64,14 @@ pub const SKETCH_COLORS: [&str; 10] = [
     "#2563eb", "#dc2626", "#16a34a", "#d97706", "#7c3aed", "#0891b2", "#be185d", "#4d7c0f",
     "#9333ea", "#ea580c",
 ];
+
+/// The class colour a pinned-transformer row is painted in. Pinned rows are
+/// one visual class, so they never take a palette entry: the host names the
+/// pair it materialised, never the colour.
+pub const PINNED_COLOR: &str = "#64748b";
+/// How much of a transformer or class name a pinned id spells out before its
+/// fingerprint takes over.
+pub const MAX_PINNED_SLUG_CHARS: usize = 64;
 
 pub const MANUAL_SOURCE_NAME: &str = "Manual layers";
 pub const IMPORT_SOURCE_NAME: &str = "Imported files";
@@ -584,6 +593,11 @@ impl LocalLayer {
         if !bounded(&self.id, MAX_NAME_CHARS) {
             return Err(malformed("a local layer needs a bounded trimmed id"));
         }
+        if !one_segment(&self.id) {
+            return Err(malformed(
+                "a local layer id is one path segment: no separator, and never . or ..",
+            ));
+        }
         if !bounded(&self.name, MAX_NAME_CHARS) {
             return Err(malformed(
                 "a local layer needs a bounded trimmed name of 1 to 200 characters",
@@ -622,6 +636,18 @@ impl LocalLayer {
             ));
         }
         if let Some(metadata) = &self.source_metadata {
+            // The kind rule is the descriptor's, not one op's: an imported
+            // file belongs to an imported layer. `register` and `restore`
+            // drop metadata that does not belong; a registry a host hands in
+            // is held to the same rule on every op, so a row no path here
+            // could have minted is never carried on.
+            if matches!(metadata, SourceMetadata::ImportFile { .. })
+                && self.source_kind != SourceKind::Import
+            {
+                return Err(malformed(
+                    "imported-file metadata belongs only to a layer imported from a file",
+                ));
+            }
             metadata.validate()?;
         }
         if let Some(storage) = &self.feature_storage {
@@ -825,6 +851,16 @@ fn bounded(value: &str, max: usize) -> bool {
         && !value.chars().any(char::is_control)
 }
 
+/// An id names a record on a host that keeps records in a file system: the
+/// browser keys IndexedDB by it, the native store writes `<id>.geojson` under
+/// its payload directory. So an id is ONE path segment — it carries no
+/// separator and is never the current or the parent directory. A traversal
+/// shape is refused here, where every host asks, rather than neutralised
+/// afterwards by each host on its own.
+fn one_segment(value: &str) -> bool {
+    !value.contains(['/', '\\', ':']) && value != "." && value != ".."
+}
+
 /// Drop control characters, trim, and bound by character count. `restore`
 /// repairs a legacy row this way; every other op refuses instead.
 fn sanitize(value: &str, max: usize) -> String {
@@ -1011,6 +1047,26 @@ struct Draft {
     feature_count: Option<i64>,
     #[serde(default)]
     feature_storage: Option<Value>,
+    /// A pinned-transformer row is named by the pair it was materialised
+    /// from, never by a clock: see `PinnedIdentity`.
+    #[serde(default)]
+    pinned: Option<PinnedIdentity>,
+}
+
+/// What a pinned-transformer row IS — the transformer it was materialised from
+/// and the design class inside it. The host names the pair; the id, the class
+/// colour and the schema are the kernel's answer, so the same pair always
+/// reopens as the same layer and materialising it twice is not two layers.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct PinnedIdentity {
+    transformer: String,
+    class_name: String,
+    /// The property keys the pinned features carry. The columns are the
+    /// kernel's answer: sanitised like every schema field, ordered,
+    /// de-duplicated and bounded, all of them text.
+    #[serde(default)]
+    fields: Option<Vec<String>>,
 }
 
 /// The changes a layer admits. Each one is a whole answer: what a change
@@ -1148,7 +1204,21 @@ fn apply(op: Op) -> Result<Value, Fault> {
             registry.fence(&scope)?;
             let clock = admitted_clock(now_ms)?;
             let layer = register(&draft, clock, sequence, color_index)?;
-            if registry.layers.iter().any(|row| row.id == layer.id) {
+            if let Some(held) = registry.layers.iter().position(|row| row.id == layer.id) {
+                // A pinned pair has ONE identity, so materialising it again is
+                // not a second layer: the catalogue answers the descriptor it
+                // already holds — with whatever visibility and style the user
+                // gave it — and nothing changes. Every other kind is minted
+                // from the clock, so the same id twice is a host mistake.
+                if draft.pinned.is_some() {
+                    let receipt = serde_json::to_value(&registry.layers[held])
+                        .map_err(|error| Fault::Hard(error.to_string()))?;
+                    return Ok(json!({
+                        "registry": registry,
+                        "receipt": receipt,
+                        "changed": false,
+                    }));
+                }
                 return Err(refusal(
                     DUPLICATE_LAYER,
                     &format!("local layer {} already exists", layer.id),
@@ -1193,7 +1263,7 @@ fn apply(op: Op) -> Result<Value, Fault> {
             project_fence(&registry.layers[index], project.as_deref())?;
             let applied = change.wire();
             let mut next = registry.clone();
-            let release = update(&mut next, index, change, clock)?;
+            let release = update(&mut next, index, change, clock, project.as_deref())?;
             answer(
                 &registry,
                 next,
@@ -1280,8 +1350,12 @@ fn register(
             "Project Work is an ephemeral governed map root, not a prepared local layer",
         ));
     }
+    let pinned = admitted_pair(draft, kind)?;
     let name = draft.name.trim().to_owned();
-    let id = format!("sketch-{now_ms}-{sequence}");
+    let id = match &pinned {
+        Some((transformer, class_name)) => pinned_id(transformer, class_name),
+        None => format!("sketch-{now_ms}-{sequence}"),
+    };
     let feature_count = admitted_count(draft.feature_count.unwrap_or(0))?;
     let feature_storage = admitted_storage(draft.feature_storage.as_ref(), &id)?;
     let layer = LocalLayer {
@@ -1297,12 +1371,24 @@ fn register(
             Some(now_ms),
         ),
         geometry_type: draft.geometry_type,
-        color: SKETCH_COLORS[(color_index % SKETCH_COLORS.len() as u64) as usize].to_owned(),
+        // Pinned rows are one visual class, painted in the class colour; every
+        // other kind takes the palette entry the host has reached.
+        color: match kind {
+            SourceKind::Pinned => PINNED_COLOR.to_owned(),
+            _ => SKETCH_COLORS[(color_index % SKETCH_COLORS.len() as u64) as usize].to_owned(),
+        },
         line_width: DEFAULT_LINE_WIDTH,
         point_radius: DEFAULT_POINT_RADIUS,
         fill_opacity: DEFAULT_FILL_OPACITY,
         style_doc: None,
-        schema: draft.schema.clone().unwrap_or_default(),
+        schema: match draft
+            .pinned
+            .as_ref()
+            .and_then(|pinned| pinned.fields.as_deref())
+        {
+            Some(fields) => pinned_schema(fields),
+            None => draft.schema.clone().unwrap_or_default(),
+        },
         feature_count,
         feature_storage,
         visible: true,
@@ -1312,6 +1398,100 @@ fn register(
     };
     layer.validate()?;
     Ok(layer)
+}
+
+/// The pair a pinned row is named by, or `None` for every other layer. A
+/// pinned identity belongs to a pinned layer and names both halves of the
+/// pair; a host that offers one for another kind, or half of one, built the
+/// request out of a layer it had not identified.
+fn admitted_pair(draft: &Draft, kind: SourceKind) -> Result<Option<(String, String)>, Fault> {
+    let Some(pinned) = &draft.pinned else {
+        return Ok(None);
+    };
+    if kind != SourceKind::Pinned {
+        return Err(malformed(
+            "a pinned identity belongs to a layer of source kind pinned",
+        ));
+    }
+    let transformer = sanitize(&pinned.transformer, MAX_TEXT_CHARS);
+    let class_name = sanitize(&pinned.class_name, MAX_TEXT_CHARS);
+    if transformer.is_empty() || class_name.is_empty() {
+        return Err(malformed(
+            "a pinned identity names its transformer and its design class",
+        ));
+    }
+    if pinned.fields.is_some() && draft.schema.is_some() {
+        return Err(malformed(
+            "a pinned layer's columns are derived from its field names, so it carries no schema of its own",
+        ));
+    }
+    Ok(Some((transformer, class_name)))
+}
+
+/// The id of a pinned row, derived from the pair it was materialised from:
+/// `pinned-<transformer>__<class>-<fingerprint>`. The slugs are readable, not
+/// identifying — lower-casing and folding punctuation loses information, so
+/// `Poles A` and `Poles-A` slug the same. The fingerprint is taken over the
+/// pair itself, which is what keeps two distinct pairs two distinct layers,
+/// and the whole id is one path segment.
+fn pinned_id(transformer: &str, class_name: &str) -> String {
+    let digest = Sha256::digest(format!("{transformer}\u{1f}{class_name}").as_bytes());
+    let fingerprint: String = digest
+        .iter()
+        .take(4)
+        .map(|byte| format!("{byte:02x}"))
+        .collect();
+    format!(
+        "pinned-{}__{}-{fingerprint}",
+        pinned_slug(transformer),
+        pinned_slug(class_name)
+    )
+}
+
+/// One half of a pinned id: lowercase ASCII letters and digits, anything else
+/// a single separator, bounded.
+fn pinned_slug(value: &str) -> String {
+    let mut slug = String::new();
+    for ch in value.chars() {
+        if slug.chars().count() >= MAX_PINNED_SLUG_CHARS {
+            break;
+        }
+        if ch.is_ascii_alphanumeric() {
+            slug.push(ch.to_ascii_lowercase());
+        } else if !slug.is_empty() && !slug.ends_with('-') {
+            slug.push('-');
+        }
+    }
+    let slug = slug.trim_end_matches('-');
+    if slug.is_empty() {
+        "unnamed".to_owned()
+    } else {
+        slug.to_owned()
+    }
+}
+
+/// The columns of a pinned row: the property keys its features carry,
+/// sanitised like every schema field, ordered and de-duplicated so the same
+/// pair always answers the same schema, and bounded.
+fn pinned_schema(fields: &[String]) -> Vec<Field> {
+    let mut names: Vec<String> = fields
+        .iter()
+        .map(|name| sanitize(name, MAX_NAME_CHARS))
+        .filter(|name| !name.is_empty())
+        .collect();
+    names.sort();
+    names.dedup();
+    names.truncate(MAX_SCHEMA_FIELDS);
+    names
+        .into_iter()
+        .map(|name| Field {
+            name,
+            kind: FieldType::Text,
+            default_value: None,
+            options: None,
+            required: None,
+        })
+        .collect()
 }
 
 /// A feature count a host asserts is never negative; only `restore` repairs
@@ -1441,6 +1621,10 @@ fn restore_row(
     } else {
         name
     };
+    // A legacy source label is repaired like every other text field. It used
+    // to be read raw, so one row filed under an unbounded or control-laden
+    // label refused the whole reopen and stranded every layer in the store.
+    let source_name = sanitize(&js_string(row.get("sourceName")), MAX_TEXT_CHARS);
     let source_layer_name = sanitize(&js_string(row.get("sourceLayerName")), MAX_TEXT_CHARS);
     let color = sanitize(&js_string(row.get("color")), MAX_COLOR_CHARS);
     let color = if color.is_empty() {
@@ -1458,14 +1642,17 @@ fn restore_row(
             .map(|features| features.len() as f64),
     };
     LocalLayer {
-        source_name: source_label(&name, row.get("sourceName").and_then(Value::as_str), kind),
+        source_name: source_label(&name, Some(&source_name), kind),
         source_layer_name: if source_layer_name.is_empty() {
             name.clone()
         } else {
             source_layer_name
         },
         source_kind: kind,
-        source_metadata: SourceMetadata::from_raw(row.get("sourceMetadata"), kind, Some(now_ms)),
+        // Normalised metadata and storage that still cannot be admitted are
+        // dropped, never carried into a refusal: restore repairs.
+        source_metadata: SourceMetadata::from_raw(row.get("sourceMetadata"), kind, Some(now_ms))
+            .filter(|metadata| metadata.validate().is_ok()),
         geometry_type: GeometryType::from_raw(row.get("geometryType")),
         color,
         line_width: clamp_number(
@@ -1496,7 +1683,8 @@ fn restore_row(
         feature_count: feature_count
             .filter(|count| count.is_finite())
             .map_or(0, |count| count.trunc().max(0.0) as u64),
-        feature_storage: FeatureStorage::from_raw(row.get("featureStorage"), &id),
+        feature_storage: FeatureStorage::from_raw(row.get("featureStorage"), &id)
+            .filter(|storage| storage.validate().is_ok()),
         visible: row.get("visible") != Some(&Value::Bool(false)),
         created_at: match js_number(row.get("createdAt")) {
             Some(created) if created.is_finite() && created >= 0.0 => created.trunc() as i64,
@@ -1559,6 +1747,7 @@ fn update(
     index: usize,
     change: Change,
     clock: Option<i64>,
+    project: Option<&str>,
 ) -> Result<Vec<Value>, Fault> {
     let mut release = vec![];
     match change {
@@ -1644,12 +1833,27 @@ fn update(
             if !bounded(&name, MAX_TEXT_CHARS) {
                 return Err(malformed("a source needs a bounded trimmed name"));
             }
-            for layer in &mut registry.layers {
-                if layer.source_kind == kind && layer.source_name == source_name {
-                    // The label rule holds here too: a manual layer is never
-                    // filed under its own name.
-                    layer.source_name = source_label(&layer.name, Some(&name), kind);
-                }
+            // A source rename moves every layer filed under that label, so
+            // the project fence is asked of every one of them, not only of the
+            // layer the op named — otherwise a rename raised under one project
+            // would rewrite another project's folder layers. The fence is
+            // asked before anything moves, so a refusal leaves the whole
+            // catalogue as it was.
+            let moved: Vec<usize> = registry
+                .layers
+                .iter()
+                .enumerate()
+                .filter(|(_, layer)| layer.source_kind == kind && layer.source_name == source_name)
+                .map(|(index, _)| index)
+                .collect();
+            for index in &moved {
+                project_fence(&registry.layers[*index], project)?;
+            }
+            for index in moved {
+                let layer = &mut registry.layers[index];
+                // The label rule holds here too: a manual layer is never
+                // filed under its own name.
+                layer.source_name = source_label(&layer.name, Some(&name), kind);
             }
         }
         Change::Style {
@@ -2736,6 +2940,273 @@ mod tests {
         assert_eq!(
             answer["registry"]["layers"][0]["id"],
             "sketch-1700000000000-4"
+        );
+    }
+    // ── what a fixing review found, each rule on its own ─────────────────
+
+    #[test]
+    fn restore_repairs_a_source_label_it_cannot_admit_instead_of_stranding_the_store() {
+        // A legacy row filed under an unbounded, control-laden label used to
+        // refuse the WHOLE reopen — and a browser that cannot reopen shows no
+        // layer at all. The label is now repaired like every other text field.
+        let long = "x".repeat(MAX_TEXT_CHARS + 100);
+        let answer = restore(vec![
+            json!({"id": "s1", "name": "Roads", "sourceName": format!("{long}\u{7}"),
+                   "geometryType": "LineString", "color": "#123456"}),
+            json!({"id": "s2", "name": "Poles", "sourceName": "\u{1}\u{2}",
+                   "geometryType": "Point", "color": "#123456"}),
+        ]);
+        let layers = answer["registry"]["layers"].as_array().expect("layers");
+        assert_eq!(layers.len(), 2, "no row is stranded: {answer}");
+        assert_eq!(
+            layers[0]["sourceName"].as_str().expect("a label").len(),
+            MAX_TEXT_CHARS,
+            "the label is trimmed to its bound, not refused"
+        );
+        assert_eq!(
+            layers[1]["sourceName"], MANUAL_SOURCE_NAME,
+            "a label with nothing left in it falls back to the kind's own"
+        );
+        for row in 0..2 {
+            assert!(
+                answer["receipt"]["repaired"][row]["fields"]
+                    .as_array()
+                    .expect("repaired fields")
+                    .contains(&json!("sourceName")),
+                "the host is told to rewrite the label it carried"
+            );
+        }
+        // The same rule for the rest of a row: metadata and storage that
+        // cannot be admitted are dropped, never turned into a refusal.
+        let answer = restore(vec![
+            json!({"id": "s3", "name": "Roads", "geometryType": "Point",
+                                         "color": "#123456",
+                                         "sourceMetadata": {"kind": "gis_folder", "dsProject": "p1",
+                                                            "handleKey": "\u{1}", "folderName": "gis",
+                                                            "filePath": "gis/roads.geojson",
+                                                            "lastRefreshAt": 9},
+                                         "featureStorage": {"kind": "upload_chunks",
+                                                            "workspaceKey": "\u{1}", "fileName": "r.geojson",
+                                                            "parsedLayer": "roads"}}),
+        ]);
+        assert_eq!(
+            answer["registry"]["layers"]
+                .as_array()
+                .expect("layers")
+                .len(),
+            1
+        );
+        assert_eq!(
+            answer["registry"]["layers"][0]["sourceMetadata"],
+            Value::Null
+        );
+        assert_eq!(
+            answer["registry"]["layers"][0]["featureStorage"],
+            Value::Null
+        );
+    }
+
+    /// The draft a host offers for a pinned-transformer row.
+    fn pinned_draft(transformer: &str, class_name: &str, fields: Value) -> Value {
+        json!({"name": "Poles", "geometryType": "Point", "sourceKind": "pinned",
+               "sourceName": transformer, "sourceLayerName": class_name, "featureCount": 3,
+               "pinned": {"transformer": transformer, "className": class_name, "fields": fields}})
+    }
+
+    #[test]
+    fn a_pinned_pair_names_its_layer_and_two_pairs_never_share_one_id() {
+        let first = admitted(pinned_draft(
+            "Poles A",
+            "mv_line",
+            json!(["name", "id", "name"]),
+        ));
+        let id = first["id"].as_str().expect("an id").to_owned();
+        assert!(
+            id.starts_with("pinned-poles-a__mv-line-"),
+            "the id reads as the pair it was materialised from: {id}"
+        );
+        assert!(one_segment(&id) && bounded(&id, MAX_NAME_CHARS), "{id}");
+        // The browser lower-cased and folded punctuation into one character,
+        // so `Poles A` and `Poles-A` were ONE layer. The fingerprint is taken
+        // over the pair itself, so the two pairs are two layers.
+        let second = admitted(pinned_draft("Poles-A", "mv_line", json!(["name", "id"])));
+        assert_ne!(first["id"], second["id"], "distinct pairs stay distinct");
+        assert!(second["id"]
+            .as_str()
+            .expect("an id")
+            .starts_with("pinned-poles-a__mv-line-"));
+        // The class colour, the flat style and the columns are the kernel's.
+        assert_eq!(first["color"], PINNED_COLOR);
+        assert_eq!(first["lineWidth"], 2.5);
+        assert_eq!(first["pointRadius"], 5.0);
+        assert_eq!(first["fillOpacity"], 0.15);
+        assert_eq!(
+            first["schema"],
+            json!([{"name": "id", "type": "text"}, {"name": "name", "type": "text"}]),
+            "the property keys, sanitised, ordered and de-duplicated"
+        );
+        assert_eq!(first["sourceName"], "Poles A");
+        assert_eq!(first["visible"], true);
+    }
+
+    #[test]
+    fn materialising_a_pinned_pair_again_answers_the_layer_already_held() {
+        let mut layer = admitted(pinned_draft("Poles A", "mv_line", json!(["name"])));
+        // What the user did to it since: hidden, and painted by the class.
+        layer["visible"] = json!(false);
+        layer["color"] = json!("#ff0000");
+        let registry = store(vec![layer.clone()]);
+        let answer = ask(register(
+            registry.clone(),
+            pinned_draft("Poles A", "mv_line", json!(["name", "phase"])),
+        ));
+        assert_eq!(answer["changed"], false, "one pair is one layer");
+        assert_eq!(answer["receipt"], layer, "the descriptor already held");
+        assert_eq!(answer["registry"], registry, "and nothing was rewritten");
+        // A pinned identity is a pinned layer's; half a pair identifies
+        // nothing; and the columns are derived, so a host offers one or the
+        // other, never both.
+        let mut wrong_kind = pinned_draft("Poles A", "mv_line", json!(["name"]));
+        wrong_kind["sourceKind"] = json!("manual");
+        assert_eq!(refused(register(empty(), wrong_kind)), MALFORMED_DESCRIPTOR);
+        let mut half = pinned_draft("Poles A", "mv_line", json!(["name"]));
+        half["pinned"]["className"] = json!("  ");
+        assert_eq!(refused(register(empty(), half)), MALFORMED_DESCRIPTOR);
+        let mut both = pinned_draft("Poles A", "mv_line", json!(["name"]));
+        both["schema"] = json!([{"name": "name", "type": "text"}]);
+        assert_eq!(refused(register(empty(), both)), MALFORMED_DESCRIPTOR);
+        // Without a pair a pinned layer is still minted from the clock, and a
+        // second one with the same clock is the host's mistake as ever.
+        let clocked = admitted(json!({"name": "Poles", "geometryType": "Point",
+                                      "sourceKind": "pinned"}));
+        assert_eq!(clocked["id"], "sketch-1700000000000-4");
+        assert_eq!(clocked["color"], PINNED_COLOR);
+        assert_eq!(
+            refused(register(
+                store(vec![clocked]),
+                json!({"name": "Poles", "geometryType": "Point", "sourceKind": "pinned"})
+            )),
+            DUPLICATE_LAYER
+        );
+    }
+
+    #[test]
+    fn renaming_a_source_is_fenced_by_every_layer_it_would_move() {
+        // Two layers filed under one label, prepared from two projects'
+        // folders. A rename raised under one project moves the other's row
+        // too, so the fence is asked of every layer it moves — not only of
+        // the one the op named.
+        let mut draft = json!({"name": "Roads", "geometryType": "LineString",
+                               "sourceName": "Shared folder"});
+        draft["sourceMetadata"] = json!({"kind": "gis_folder", "dsProject": "p1", "handleKey": "h1",
+                                         "folderName": "gis", "filePath": "gis/roads.geojson",
+                                         "lastRefreshAt": 9});
+        let mine = admitted(draft.clone());
+        draft["name"] = json!("Poles");
+        draft["sourceMetadata"]["dsProject"] = json!("p2");
+        draft["sourceMetadata"]["filePath"] = json!("gis/poles.geojson");
+        let mut theirs = admitted(draft);
+        theirs["id"] = json!("sketch-1700000000000-5");
+        let registry = store(vec![mine.clone(), theirs.clone()]);
+        let id = mine["id"].as_str().expect("an id").to_owned();
+        let change = json!({"kind": "rename_source", "sourceName": "Shared folder",
+                            "name": "Renamed folder"});
+        let mut op = update(registry.clone(), &id, change.clone());
+        op["project"] = json!("p1");
+        assert_eq!(
+            refused(op),
+            PROJECT_CONTEXT_CHANGED,
+            "the other project's row is not renamed from here"
+        );
+        // The named layer's own fence still passes, so nothing moved because
+        // of a layer the op never mentioned — and the catalogue is untouched.
+        let mut op = update(registry.clone(), &id, change.clone());
+        op["project"] = json!("p2");
+        assert_eq!(refused(op), PROJECT_CONTEXT_CHANGED);
+        let answer = ask(update(registry, &id, change));
+        assert_eq!(
+            answer["changed"], true,
+            "an op naming no project is not fenced"
+        );
+        assert_eq!(
+            answer["registry"]["layers"][0]["sourceName"],
+            "Renamed folder"
+        );
+        assert_eq!(
+            answer["registry"]["layers"][1]["sourceName"],
+            "Renamed folder"
+        );
+    }
+
+    #[test]
+    fn an_id_is_one_path_segment_wherever_a_catalogue_is_read() {
+        // An id keys a record on a host that keeps records in a file system.
+        // A traversal-shaped one used to pass the kernel and be named in a
+        // release receipt, leaving each host to neutralise it on its own.
+        let mut layer = admitted(manual_draft());
+        layer["id"] = json!("../../etc/original");
+        let registry = store(vec![layer.clone()]);
+        for op in [
+            json!({"kind": "list", "registry": registry.clone(), "scope": browser()}),
+            update(
+                registry.clone(),
+                "../../etc/original",
+                json!({"kind": "visible", "visible": false}),
+            ),
+            json!({"kind": "remove", "registry": registry.clone(), "scope": browser(),
+                   "id": "../../etc/original"}),
+            register(registry.clone(), manual_draft()),
+        ] {
+            assert_eq!(refused(op), MALFORMED_DESCRIPTOR);
+        }
+        for shape in ["a/b", "a\\b", "c:\\layers", ".", ".."] {
+            let mut layer = layer.clone();
+            layer["id"] = json!(shape);
+            assert_eq!(
+                refused(json!({"kind": "list", "registry": store(vec![layer]),
+                               "scope": browser()})),
+                MALFORMED_DESCRIPTOR,
+                "{shape} is not one path segment"
+            );
+        }
+        // Restore repairs what it can, but an id cannot be repaired: minting
+        // another one would orphan the payload the row names, so the store is
+        // refused and the host keeps its raw bytes.
+        let answer = ask(json!({"kind": "restore", "scope": browser(),
+                                "records": [{"id": "a/b", "name": "Roads"}],
+                                "now_ms": 1_700_000_000_000i64}));
+        assert_eq!(answer["refusal"]["code"], MALFORMED_DESCRIPTOR);
+    }
+
+    #[test]
+    fn imported_file_metadata_is_refused_on_a_manual_row_on_every_op() {
+        // `register` and `restore` drop it, so no path here mints such a row —
+        // but a registry a host hands in was read from its own store, and the
+        // whole-registry validation now holds it to the same rule.
+        let mut layer = admitted(manual_draft());
+        layer["sourceMetadata"] = json!({"kind": "import_file", "fileName": "roads.geojson",
+                                         "sourceName": "roads.geojson", "lastRefreshAt": 9});
+        let registry = store(vec![layer.clone()]);
+        let id = layer["id"].as_str().expect("an id").to_owned();
+        for op in [
+            json!({"kind": "list", "registry": registry.clone(), "scope": browser()}),
+            update(
+                registry.clone(),
+                &id,
+                json!({"kind": "visible", "visible": false}),
+            ),
+            json!({"kind": "remove", "registry": registry.clone(), "scope": browser(), "id": id}),
+            register(registry.clone(), manual_draft()),
+        ] {
+            assert_eq!(refused(op), MALFORMED_DESCRIPTOR);
+        }
+        // The same row on an imported layer is exactly what it is for.
+        let mut imported = layer;
+        imported["sourceKind"] = json!("import");
+        assert_eq!(
+            ask(json!({"kind": "list", "registry": store(vec![imported]), "scope": browser()}))
+                ["receipt"]["count"],
+            1
         );
     }
 }
