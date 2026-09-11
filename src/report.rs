@@ -162,6 +162,89 @@ enum Command {
         lifecycle: Option<String>,
         groups: Vec<Group>,
     },
+    /// How a compounded archive is laid out — the level vocabulary, its legacy
+    /// spelling, and the keys an operator reads it under.
+    ArchiveLayout {
+        #[serde(default)]
+        layout: ArchiveLayout,
+    },
+    /// What is this artifact called? One answer for a local outbox file and for
+    /// a signed storage locator.
+    ArtifactName {
+        #[serde(default)]
+        locator: String,
+    },
+}
+
+/// The archive layout as a registry entry or a dialog carries it.
+///
+/// Two spellings describe one choice: `file_level` is current, and
+/// `transformer_grouping` is the legacy twin older archives were written with.
+/// Both, plus the default, were folded in one expression inside a Svelte
+/// component — so an archive written by the command line and one written by the
+/// dialog could be described to an operator under different words. The fold
+/// lives here now, and it answers in keys.
+#[derive(Clone, Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ArchiveLayout {
+    #[serde(default)]
+    pub file_level: Option<String>,
+    /// Legacy spelling accepted for archives and clients written before
+    /// `file_level`.
+    #[serde(default)]
+    pub transformer_grouping: Option<String>,
+    #[serde(default)]
+    pub combine_per_district: Option<bool>,
+    #[serde(default)]
+    pub combine_per_group: Option<bool>,
+}
+
+/// Every level a compounded archive may nest to, in nesting order. `flat` and
+/// `district_sector` are the legacy twin's spellings of the ends of the same
+/// scale.
+pub const ARCHIVE_LEVELS: &[&str] = &["root", "district", "sector", "district_sector", "flat"];
+
+/// The label key a level is read under. Two levels deliberately share one:
+/// `district_sector` IS a sector-level archive under the legacy spelling, and
+/// anything this module does not recognise is the default, transformer.
+pub fn archive_level_key(level: &str) -> &'static str {
+    match level {
+        "root" => "pctl_layout_root",
+        "district" => "pctl_layout_district",
+        "sector" | "district_sector" => "pctl_layout_sector",
+        _ => "pctl_layout_transformer",
+    }
+}
+
+impl ArchiveLayout {
+    /// The level this layout names: the current spelling, then the legacy twin,
+    /// then the default. One expression, one answer.
+    pub fn level(&self) -> &str {
+        self.file_level
+            .as_deref()
+            .filter(|value| !value.is_empty())
+            .or(self
+                .transformer_grouping
+                .as_deref()
+                .filter(|value| !value.is_empty()))
+            .unwrap_or("transformer")
+    }
+
+    pub fn describe(&self) -> serde_json::Value {
+        let level = self.level();
+        let level_key = archive_level_key(level);
+        let combine_per_district = self.combine_per_district == Some(true);
+        serde_json::json!({
+            "level": level,
+            "level_key": level_key,
+            "combine_per_district": combine_per_district,
+            "combine_per_group": self.combine_per_group == Some(true),
+            // The phrase the operator reads: the level alone, or the
+            // per-district phrase taking that level as its parameter.
+            "label_key": if combine_per_district { "pctl_layout_per_district" } else { level_key },
+            "label_level_key": if combine_per_district { Some(level_key) } else { None },
+        })
+    }
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -443,6 +526,10 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
             }
             serde_json::json!({"groups":output})
         }
+        Command::ArchiveLayout { layout } => layout.describe(),
+        Command::ArtifactName { locator } => {
+            serde_json::json!({"filename": crate::report_formats::artifact_filename(&locator)})
+        }
     };
     serde_json::to_string(&serde_json::json!({"schema":"ds.report.command/v1","result":result}))
         .map_err(|e| e.to_string())
@@ -455,6 +542,88 @@ pub fn report_command_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Five level tokens, four labels, one legacy twin and one default — the
+    /// whole vocabulary, asserted as a table so a new spelling has to be added
+    /// here before it can be read anywhere.
+    #[test]
+    fn the_archive_layout_vocabulary_is_five_tokens_and_four_labels() {
+        let describe = |value: serde_json::Value| -> serde_json::Value {
+            let request = serde_json::json!({"command":"archive_layout","layout":value});
+            let reply: serde_json::Value =
+                serde_json::from_str(&evaluate(request.to_string().as_bytes()).unwrap()).unwrap();
+            reply["result"].clone()
+        };
+        for (layout, level, key) in [
+            (
+                serde_json::json!({"file_level":"root"}),
+                "root",
+                "pctl_layout_root",
+            ),
+            (
+                serde_json::json!({"file_level":"district"}),
+                "district",
+                "pctl_layout_district",
+            ),
+            (
+                serde_json::json!({"file_level":"sector"}),
+                "sector",
+                "pctl_layout_sector",
+            ),
+            (
+                serde_json::json!({"transformer_grouping":"district_sector"}),
+                "district_sector",
+                "pctl_layout_sector",
+            ),
+            (
+                serde_json::json!({"file_level":"transformer"}),
+                "transformer",
+                "pctl_layout_transformer",
+            ),
+            // The legacy twin's own flat spelling and the empty layout both
+            // land on the default, exactly as the archive registry reads them.
+            (
+                serde_json::json!({"transformer_grouping":"flat"}),
+                "flat",
+                "pctl_layout_transformer",
+            ),
+            (
+                serde_json::json!({}),
+                "transformer",
+                "pctl_layout_transformer",
+            ),
+        ] {
+            let answer = describe(layout);
+            assert_eq!(answer["level"], level);
+            assert_eq!(answer["level_key"], key);
+            assert_eq!(answer["label_key"], key);
+            assert_eq!(answer["label_level_key"], serde_json::Value::Null);
+        }
+        // The current spelling wins over the legacy twin when both are present.
+        let both = describe(
+            serde_json::json!({"file_level":"root","transformer_grouping":"district_sector"}),
+        );
+        assert_eq!(both["level"], "root");
+        // Combining per district wraps the level rather than replacing it.
+        let combined =
+            describe(serde_json::json!({"file_level":"sector","combine_per_district":true}));
+        assert_eq!(combined["label_key"], "pctl_layout_per_district");
+        assert_eq!(combined["label_level_key"], "pctl_layout_sector");
+        assert_eq!(combined["combine_per_district"], true);
+        assert!(ARCHIVE_LEVELS.contains(&"district_sector"));
+        // The artifact name rides the same command surface, so a card and a
+        // headless caller ask one question of one owner.
+        let reply: serde_json::Value = serde_json::from_str(
+            &evaluate(
+                serde_json::json!({"command":"artifact_name","locator":"https://h/v0/b/x/o/a%2Fb.xlsx?alt=media"})
+                    .to_string()
+                    .as_bytes(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(reply["result"]["filename"], "b.xlsx");
+    }
     #[test]
     fn export_and_publication_are_separate() {
         let release = format!("ds-network-reporter@0.1.0+{}", "a".repeat(40));

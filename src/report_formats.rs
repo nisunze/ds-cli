@@ -470,6 +470,77 @@ pub fn output(format: &str) -> Result<Output, String> {
     })
 }
 
+/// What is this artifact called?
+///
+/// One question, two kinds of evidence. A local artifact is named from the
+/// output it is (`combined_output_filename` below, and the transformer form in
+/// `project_control`); a cloud artifact is named from the locator it was signed
+/// under. They belong in one module because a report an operator downloads from
+/// the outbox and the same report downloaded from storage must not arrive under
+/// two different names.
+///
+/// A storage locator carries the object path percent-encoded after `/o/`; any
+/// other locator is a plain path or URL. The query string is never part of the
+/// name — it is the signature.
+pub fn artifact_filename(locator: &str) -> String {
+    let path = match locator.split_once("/o/") {
+        Some((_, encoded)) => encoded.split('?').next().unwrap_or(""),
+        None => locator.split('?').next().unwrap_or(""),
+    };
+    let decoded = percent_decode(path).unwrap_or_else(|| path.to_string());
+    let name = decoded.rsplit('/').next().unwrap_or("");
+    if name.is_empty() {
+        // A zero-length basename is not a name. The browser's own `?? 'file'`
+        // could never fire, because splitting a string always yields at least
+        // one member — so a locator ending in a separator produced an empty
+        // filename and a download with no name. This is that fallback, working.
+        return "file".into();
+    }
+    name.to_string()
+}
+
+/// `decodeURIComponent` semantics: `%XX` is a byte, the result must be UTF-8,
+/// and anything malformed decodes to nothing so the caller keeps the raw text.
+fn percent_decode(value: &str) -> Option<String> {
+    let bytes = value.as_bytes();
+    let mut out: Vec<u8> = Vec::with_capacity(bytes.len());
+    let mut index = 0;
+    while index < bytes.len() {
+        if bytes[index] == b'%' {
+            let hex = bytes.get(index + 1..index + 3)?;
+            let hex = std::str::from_utf8(hex).ok()?;
+            out.push(u8::from_str_radix(hex, 16).ok()?);
+            index += 3;
+        } else {
+            out.push(bytes[index]);
+            index += 1;
+        }
+    }
+    String::from_utf8(out).ok()
+}
+
+/// The filename a combined or compounded outbox output carries.
+///
+/// Moved here from the local-report projection so that both halves of "what is
+/// this artifact called" are decided by the one module that knows what an
+/// output id means.
+pub fn combined_output_filename(kind: &str, output_id: &str, format: &str) -> String {
+    if kind == "compounded" {
+        return "compounded_reports.zip".to_string();
+    }
+    if let Ok(definition) = output(output_id) {
+        if definition.format == format {
+            return format!("combined_transformer{}", definition.suffix);
+        }
+    }
+    match output_id {
+        "shp" => "combined_transformer.shp.zip".to_string(),
+        "xlsx" => "combined_transformer.xlsx".to_string(),
+        "geojsonseq" => "combined_transformer_geojsonl.zip".to_string(),
+        _ => format!("combined_transformer.{format}"),
+    }
+}
+
 pub fn normalize(values: &[String]) -> Vec<String> {
     let selected: Vec<_> = values
         .iter()
@@ -805,6 +876,57 @@ pub fn plan(sheets: &Value, is_combined: bool) -> Result<Vec<Output>, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The name is the artifact's own, whatever evidence it came from: a signed
+    /// storage locator, a plain path, or the output id of a local outbox row.
+    #[test]
+    fn one_artifact_has_one_name_from_either_kind_of_evidence() {
+        // A storage locator carries the object path percent-encoded after /o/,
+        // and the signature after ? is never part of the name.
+        assert_eq!(
+            artifact_filename(
+                "https://host/v0/b/bucket/o/eds%2Fp1%2Fcombined%20report.xlsx?alt=media&token=t"
+            ),
+            "combined report.xlsx"
+        );
+        // A plain URL or path is the same question with less wrapping.
+        assert_eq!(
+            artifact_filename(
+                "https://host/reports/combined_transformer.shp.zip?X-Goog-Signature=a"
+            ),
+            "combined_transformer.shp.zip"
+        );
+        assert_eq!(artifact_filename("/outbox/run/report.pdf"), "report.pdf");
+        // Malformed encoding keeps the raw text rather than losing the name.
+        assert_eq!(
+            artifact_filename("https://host/o/a%2Fb%ZZ.pdf"),
+            "a%2Fb%ZZ.pdf"
+        );
+        // A locator that ends in a separator has no basename at all.
+        assert_eq!(artifact_filename("https://host/reports/"), "file");
+        assert_eq!(artifact_filename(""), "file");
+        // The local half answers the same question from the output it is.
+        assert_eq!(
+            combined_output_filename("compounded", "shp", "zip"),
+            "compounded_reports.zip"
+        );
+        assert_eq!(
+            combined_output_filename("combined", "shp", "zip"),
+            "combined_transformer.shp.zip"
+        );
+        assert_eq!(
+            combined_output_filename("combined", "xlsx", "xlsx"),
+            "combined_transformer.xlsx"
+        );
+        assert_eq!(
+            combined_output_filename("combined", "geojsonseq", "zip"),
+            "combined_transformer_geojsonl.zip"
+        );
+        assert_eq!(
+            combined_output_filename("combined", "unheard_of", "bin"),
+            "combined_transformer.bin"
+        );
+    }
     use serde_json::json;
     /// The hazard the campaign opened with. `DesignOutputMatrix` has written an
     /// `execution` key into the stored selection since 2026-09-07 — including

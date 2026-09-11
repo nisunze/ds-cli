@@ -521,7 +521,11 @@ pub fn project_project_control_local_reports(
                     }
                     format!("{transformer}{}", definition.suffix)
                 } else {
-                    output_filename(kind, &output.output_id, &output.format)
+                    crate::report_formats::combined_output_filename(
+                        kind,
+                        &output.output_id,
+                        &output.format,
+                    )
                 },
                 output_id: output.output_id,
                 format: output.format,
@@ -583,23 +587,6 @@ pub fn project_project_control_local_reports(
         project: input.project,
         reports,
     })
-}
-
-fn output_filename(kind: &str, output_id: &str, format: &str) -> String {
-    if kind == "compounded" {
-        return "compounded_reports.zip".to_string();
-    }
-    if let Ok(output) = crate::report_formats::output(output_id) {
-        if output.format == format {
-            return format!("combined_transformer{}", output.suffix);
-        }
-    }
-    match output_id {
-        "shp" => "combined_transformer.shp.zip".to_string(),
-        "xlsx" => "combined_transformer.xlsx".to_string(),
-        "geojsonseq" => "combined_transformer_geojsonl.zip".to_string(),
-        _ => format!("combined_transformer.{format}"),
-    }
 }
 
 fn decode<T: for<'de> Deserialize<'de>>(

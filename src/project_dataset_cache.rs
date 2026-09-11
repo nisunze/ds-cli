@@ -1080,6 +1080,110 @@ pub fn decode_buildings(response: &Value, area: &Value) -> Result<Value, String>
         "sourceReceipt":{"provider":receipt,"coverage":response["coverage"]}}))
 }
 
+/// One catalog entry as the client's dataset registry declares it. Echoed into
+/// the row verbatim; this module invents no label and no parameter.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct CatalogEntry {
+    pub id: String,
+    #[serde(default)]
+    pub label: String,
+    #[serde(default)]
+    pub provider: String,
+    #[serde(default)]
+    pub quality: String,
+    #[serde(default)]
+    pub parameters: BTreeMap<String, Value>,
+}
+
+/// A catalog entry paired with the project's own room for it, if any.
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OverviewRow {
+    pub dataset: CatalogEntry,
+    /// The room as the local store holds it. `null` means nobody has asked yet
+    /// — a distinct state from an empty room, and the one the projection is
+    /// careful to keep distinct.
+    #[serde(default)]
+    pub held: Value,
+}
+
+/// Which canonical datasets this project holds, and what each one covers.
+///
+/// One projection, read by the Project Control card and by the command line.
+/// Its whole point is that those two can never disagree, which is exactly why
+/// it cannot be a browser function: a field defaulted differently on either
+/// side is a silent divergence in what an operator is told they hold.
+///
+/// Nothing here fetches, refreshes or removes a row. Absent is reported as
+/// absent, staleness travels with the row that is stale, and no dataset ever
+/// speaks for another.
+pub fn overview(project: &str, policy: &BufferPolicy, rows: &[OverviewRow]) -> Value {
+    let datasets: Vec<Value> = rows
+        .iter()
+        .map(|row| overview_row(&row.dataset, &row.held, policy))
+        .collect();
+    let seeded = datasets
+        .iter()
+        .filter(|row| row["seeded"] == Value::Bool(true))
+        .count();
+    json!({
+        "project": project,
+        "datasets": datasets,
+        "seeded": seeded,
+        "available": datasets.len(),
+    })
+}
+
+fn overview_row(dataset: &CatalogEntry, held: &Value, policy: &BufferPolicy) -> Value {
+    let exists = held["exists"] == Value::Bool(true);
+    let held = if exists { held } else { &Value::Null };
+    let member = |key: &str, fallback: Value| -> Value {
+        match held.get(key) {
+            Some(Value::Null) | None => fallback,
+            Some(value) => value.clone(),
+        }
+    };
+    let empty_coverage = json!({"cells": []});
+    json!({
+        "dataset_id": dataset.id,
+        "label": dataset.label,
+        "provider": dataset.provider,
+        "quality": dataset.quality,
+        "parameters": dataset.parameters,
+        // Absent is a distinct state from empty: nobody has asked yet.
+        "seeded": exists,
+        "ready": member("ready", json!(false)) == Value::Bool(true),
+        "feature_count": member("feature_count", json!(0)),
+        "index_state": member("index_state", json!("absent")),
+        "source_version": member("source_version", json!("")),
+        // Freshness travels with the row rather than being asked for
+        // separately: an operator reading what is held has to be able to see
+        // that some of it was completed under a version the provider has since
+        // replaced. It is a report — nothing here refetches or removes a row.
+        "available_version": member("available_version", json!("")),
+        "source_versions": member("source_versions", json!([])),
+        "fresh": member("fresh", json!(true)) != Value::Bool(false),
+        "stale": member("stale", empty_coverage.clone()),
+        "stale_count": member("stale_count", json!(0)),
+        "buffer_policy": member("buffer_policy", serde_json::to_value(policy).unwrap_or(Value::Null)),
+        "requested": member("requested", empty_coverage.clone()),
+        "completed": member("completed", empty_coverage),
+        "created_at": member("created_at", Value::Null),
+        "updated_at": member("updated_at", Value::Null),
+        "last_error": member("last_error", Value::Null),
+        "pending_queries": member("pending_queries", json!(0)),
+        // Abandoned attempts. Reported apart from pending so neither spins.
+        "expired_queries": member("expired_queries", json!(0)),
+        "queries": Value::Array(
+            member("queries", json!([]))
+                .as_array()
+                .map(|rows| rows.iter().take(20).cloned().collect())
+                .unwrap_or_default(),
+        ),
+    })
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(tag = "action", rename_all = "snake_case", deny_unknown_fields)]
 enum Request {
@@ -1125,6 +1229,14 @@ enum Request {
         dataset: Dataset,
         policy: BufferPolicy,
         coverage: Coverage,
+    },
+    Overview {
+        schema: String,
+        #[serde(default)]
+        project: String,
+        policy: BufferPolicy,
+        #[serde(default)]
+        rows: Vec<OverviewRow>,
     },
 }
 
@@ -1214,6 +1326,16 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
                 "coverage_digest": coverage.digest(),
             }))
         }
+        Request::Overview {
+            schema,
+            project,
+            policy,
+            rows,
+        } => {
+            require_schema(&schema)?;
+            policy.validate()?;
+            Ok(overview(&project, &policy, &rows))
+        }
     }
     .map_err(|error| error.to_string())?;
     serde_json::to_string(&value).map_err(|error| error.to_string())
@@ -1222,6 +1344,97 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn catalog() -> CatalogEntry {
+        CatalogEntry {
+            id: "buildings".into(),
+            label: "Buildings".into(),
+            provider: "ds".into(),
+            quality: "source".into(),
+            parameters: BTreeMap::new(),
+        }
+    }
+
+    /// The projection the card and the command line both read. Absent is not
+    /// empty, a partial room keeps its own defaults, and no dataset speaks for
+    /// another.
+    #[test]
+    fn an_overview_reports_absence_apart_from_emptiness() {
+        let policy = buffer_policy(&[50.0]).unwrap();
+        let never = OverviewRow {
+            dataset: catalog(),
+            held: Value::Null,
+        };
+        let requested_then_failed = OverviewRow {
+            dataset: CatalogEntry {
+                id: "roads".into(),
+                ..catalog()
+            },
+            held: json!({
+                "exists": true, "ready": false, "index_state": "absent",
+                "last_error": "provider refused", "pending_queries": 0,
+                "requested": {"cells": ["a"]}, "completed": {"cells": []},
+                "feature_count": 0, "fresh": true
+            }),
+        };
+        let covered = OverviewRow {
+            dataset: CatalogEntry {
+                id: "parcels".into(),
+                ..catalog()
+            },
+            held: json!({
+                "exists": true, "ready": true, "index_state": "ready",
+                "feature_count": 12, "source_version": "v2",
+                "available_version": "v3", "fresh": false,
+                "stale": {"cells": ["a"]}, "stale_count": 1,
+                "requested": {"cells": ["a"]}, "completed": {"cells": ["a"]},
+                "queries": (0..25).map(|index| json!({"id": index})).collect::<Vec<_>>()
+            }),
+        };
+        let answer = overview("p1", &policy, &[never, requested_then_failed, covered]);
+        assert_eq!(answer["project"], "p1");
+        assert_eq!(answer["available"], 3);
+        assert_eq!(answer["seeded"], 2);
+        let rows = answer["datasets"].as_array().unwrap();
+        // Never seeded: absent, not an empty room, and it inherits the policy.
+        assert_eq!(rows[0]["seeded"], false);
+        assert_eq!(rows[0]["index_state"], "absent");
+        assert_eq!(rows[0]["fresh"], true);
+        assert_eq!(rows[0]["completed"], json!({"cells": []}));
+        assert_eq!(
+            rows[0]["buffer_policy"],
+            serde_json::to_value(&policy).unwrap()
+        );
+        assert_eq!(rows[0]["created_at"], Value::Null);
+        // Requested but failed: seeded and unready, with its own error.
+        assert_eq!(rows[1]["seeded"], true);
+        assert_eq!(rows[1]["ready"], false);
+        assert_eq!(rows[1]["last_error"], "provider refused");
+        // Superseded: every feature kept, staleness reported beside the row.
+        assert_eq!(rows[2]["fresh"], false);
+        assert_eq!(rows[2]["stale_count"], 1);
+        assert_eq!(rows[2]["feature_count"], 12);
+        // The query log is bounded so a long history cannot become the answer.
+        assert_eq!(rows[2]["queries"].as_array().unwrap().len(), 20);
+    }
+
+    /// A room that says it does not exist reports as absent even when stale
+    /// members survive beside the flag — `exists` is the one gate.
+    #[test]
+    fn a_tombstoned_room_reports_as_absent() {
+        let policy = buffer_policy(&[50.0]).unwrap();
+        let answer = overview(
+            "p1",
+            &policy,
+            &[OverviewRow {
+                dataset: catalog(),
+                held: json!({"exists": false, "feature_count": 9, "index_state": "ready"}),
+            }],
+        );
+        assert_eq!(answer["seeded"], 0);
+        assert_eq!(answer["datasets"][0]["feature_count"], 0);
+        assert_eq!(answer["datasets"][0]["index_state"], "absent");
+    }
 
     #[test]
     fn a_district_sized_chain_queries_member_rectangles_and_focus_narrows_them() {
