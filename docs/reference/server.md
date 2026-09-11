@@ -1,5 +1,12 @@
 # Native server
 
+`ds server engine --output json` inspects the Solar engine linked into this
+executable, without login, a running server or network access. Release builds
+return the owner's `ds.engine-build/v1` identity. The release publisher registers
+this manifest separately from the bundled standalone `ds-solar` manifest:
+their Cargo dependency closures can differ. Development builds omit release
+provenance and cannot be admitted as release engines.
+
 `ds server serve` hosts the shared Rust compute runtime under the identity
 established by `ds auth login` or device linking. Run both under the same Linux
 user and lane. No browser, paired Desktop, ADC or service-account impersonation

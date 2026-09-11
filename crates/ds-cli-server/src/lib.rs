@@ -75,6 +75,38 @@ const fn command(
         },
     }
 }
+pub static ENGINE: Command = Command {
+    id: "server.engine",
+    path: &["server", "engine"],
+    contract: 1,
+    summary: "Inspect the Solar engine embedded in this Server executable.",
+    purpose: "Identify the exact linked Solar build for release admission and diagnostics. A bundled standalone engine can have a different dependency closure. This local inspection needs no login, running server, state directory or network connection; development builds intentionally omit release provenance.",
+    chapter: Chapter::Design,
+    effect: Effect::ReadOnly,
+    authority: Authority::None,
+    execution: Execution::Sync,
+    args: &[],
+    output: "The owning engine's identity and stamped schema inventory. Release builds carry ds.engine-build/v1 provenance, including the linked dependency-lock and build-manifest digests.",
+    examples: &[Example {
+        command: "ds server engine --output json",
+        note: "Inspect this binary's embedded Solar engine without starting or authenticating a server.",
+        runnable: true,
+    }],
+    refusals: &[Refusal {
+        code: "server_engine_identity_invalid",
+        when: "the owning engine identity cannot be encoded",
+        remedy: "rebuild the executable from the pinned engine sources and retry",
+    }],
+    reference: Some("docs/reference/server.md"),
+    availability: || Availability::Available,
+};
+pub fn engine(_: &Inputs, _: &Context) -> Result<Value, Failure> {
+    serde_json::to_value(ds_compute_runtime::solar_engine_identity()).map_err(|error| {
+        Failure::failed("server_engine_identity_invalid", error.to_string())
+            .remedy("rebuild the executable from the pinned engine sources and retry")
+    })
+}
+
 pub static SERVE: Command = command(
     "server.serve",
     &["server", "serve"],
@@ -223,6 +255,7 @@ pub static DOMAIN: Domain = Domain {
     id: "server",
     summary: "Native server.",
     commands: &[
+        &ENGINE,
         &SERVE,
         &SUBMIT,
         &SOLAR_SUBMIT,

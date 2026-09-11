@@ -40,6 +40,21 @@ const NATIVE_AUTH_CODES: &[&str] = &[
     "headless_project_not_selected",
 ];
 
+#[test]
+fn server_engine_reports_the_actual_linked_owner_without_auth_or_server() {
+    let result = native_ds(&["server", "engine", "--output", "json"]);
+    assert_eq!(result.code, 0, "{}", result.stderr);
+    assert_eq!(result.envelope["status"], "ok");
+    let mut expected = ds_solar_contracts::EngineIdentity::current();
+    expected.schemas = ds_solar_contracts::EngineIdentity::stamped_schema_inventory();
+    assert_eq!(expected.name, "ds-solar-engine");
+    assert!(!expected.schemas.is_empty());
+    assert_eq!(
+        result.envelope["data"],
+        serde_json::to_value(expected).unwrap()
+    );
+}
+
 struct Run {
     envelope: Value,
     stdout: String,

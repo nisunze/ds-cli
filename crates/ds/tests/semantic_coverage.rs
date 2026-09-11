@@ -13,6 +13,7 @@ use std::process::Command;
 use serde_json::Value;
 
 const EXPECTED: &[(&str, &str, &str)] = &[
+    ("server.engine", "read_only", "none"),
     // The native server requires its owner's headless identity. The control
     // credential only connects to that host; it grants no Desktop authority.
     ("server.serve", "local_file_write", "headless_user"),
