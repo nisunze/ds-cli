@@ -20,7 +20,7 @@ plan again.
 
 | Input | Meaning |
 |---|---|
-| `project`, `install_id` | The project being synced and the install doing it. Never an account. |
+| `project`, `personal`, `install_id` | The project being synced and the install doing it — or `personal: true` with an empty project for the signed-in account's own bytes (user data, personal notes, personal media), which go through the same gate under their own scope: "project bytes and even personal bytes of course" (owner). Never an account as the key of a project row. |
 | `now_ms` | The host's monotonic high-water mark of server-observed time (edge contract §3). |
 | `online` | Connectivity as the host sees it. |
 | `trigger` | Why the host asks now: `startup`, `navigation`, `local_change`, `publish_completed`, `download_completed`, `reconnect`, `remote_push`, `manual`, `grant_opened`. A plan is never asked for because time passed. |
@@ -48,6 +48,14 @@ per trigger and never runs on a clock:
 |---|---|
 | `refresh_remote{needed, reason}` | Whether the remote heads must be re-read for THIS trigger: `never_read` (no heads held yet), `trigger_reads_record` (startup, navigation, reconnect, manual), `record_changed` (a push from the messaging stream); never for a local change (`held_heads_suffice`), a completed publish (`receipt_carries_the_head`), a completed download or a freshly opened grant (`nothing_remote_changed`). |
 | `wake` | `{kind: "event"}` — wait for the next trigger — or `{kind: "at", at_ms, reason: "grant_renewal"}`, the ONE timed wake: renew a valid grant `GRANT_RENEW_LEAD_MS` (10 min) before it expires while an upload is pending. The transport's own retry (`response_policy`) is the only other timer, and it is not this plan's. |
+
+**Uploads never wait.** Owner, 2026-09-11: "uploads are a must, as fast as you
+can, but always in the background and offline first." A finished local artifact
+is a `local_change` trigger: the plan lists its upload at once (no read of the
+record first), the host runs it in the background under the grant, and if the
+link is down the artifact is held locally and the reconnect event — an OS
+signal, never a poll — drains it. Resume is the transport's own; it is not a
+reason to wait either.
 
 ## 2. What hosts do
 

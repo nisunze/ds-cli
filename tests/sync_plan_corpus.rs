@@ -253,7 +253,7 @@ fn cases() -> Vec<(&'static str, &'static str, Value)> {
         ),
         (
             "local-change-uses-held-heads",
-            "A local change never re-reads the record; the held heads decide.",
+            "A local change never re-reads the record: uploads go first, from the held heads or none.",
             { let mut v = input(true, g(), vec![local("network_reporter", "export-a", A, None, true, REL)], vec![]); v["trigger"] = json!("local_change"); v },
         ),
         (
@@ -263,9 +263,15 @@ fn cases() -> Vec<(&'static str, &'static str, Value)> {
         ),
         (
             "never-read-reads-once",
-            "Heads never read are read once, whatever the trigger.",
-            { let mut v = input(true, g(), vec![], vec![]); v["trigger"] = json!("local_change"); v.as_object_mut().unwrap().remove("remote_read_at_ms"); v },
+            "Heads never read are read once on a trigger that reads the record; a local change still uploads first.",
+            { let mut v = input(true, g(), vec![], vec![]); v["trigger"] = json!("manual"); v.as_object_mut().unwrap().remove("remote_read_at_ms"); v },
         ),
+        (
+            "personal-bytes-same-gate",
+            "Personal bytes (user data, notes) use the same gate under their own scope; the grant carries no project.",
+            { let mut v = input(true, Some(json!({"grant_id": "g1", "install_id": "install-1", "project": "", "engines": [{"name": "user_data", "release": "ds-web@0.1.0"}], "expires_at_ms": 10_000_000})), vec![json!({"engine": "user_data", "operation": "notes", "variant": "default", "sha256": A, "size_bytes": 64, "produced_at_ms": 1_000, "engine_release": "ds-web@0.1.0"})], vec![]); v["project"] = json!(""); v["personal"] = json!(true); v["trigger"] = json!("local_change"); v },
+        ),
+
     ]
 }
 
@@ -377,7 +383,7 @@ fn every_case_answers_its_rationale() {
     );
     assert_eq!(
         by_id["local-change-uses-held-heads"]["expected"]["refresh_remote"],
-        json!({"needed": false, "reason": "held_heads_suffice"})
+        json!({"needed": false, "reason": "upload_first"})
     );
     assert_eq!(
         by_id["remote-push-reads-the-record"]["expected"]["refresh_remote"],
