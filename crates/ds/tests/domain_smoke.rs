@@ -8327,6 +8327,45 @@ fn prepared_local_layers_live_a_whole_life_on_disk_and_never_touch_the_original(
     assert_eq!(listed["layers"][0]["origin"]["kind"], "import_file");
     assert_eq!(listed["layers"][0]["origin"]["label"], "roads.geojson");
 
+    // Another DS account's catalogue, and another lane's, are their own: the
+    // layer is not there to list, rename or remove, the refusal is the
+    // kernel's `unknown_layer`, and this account's payload is not reached.
+    assert_eq!(
+        ok(&["map", "local", "list", "--account", "other"])["layer_count"],
+        0
+    );
+    assert_eq!(
+        ok(&["map", "local", "list", "--lane", "canary"])["layer_count"],
+        0
+    );
+    assert_eq!(
+        refused(&[
+            "map",
+            "local",
+            "remove",
+            "--layer",
+            &id,
+            "--account",
+            "other",
+            "--yes"
+        ]),
+        "unknown_layer"
+    );
+    assert_eq!(
+        refused(&[
+            "map", "local", "rename", "--layer", &id, "--lane", "canary", "--name", "Theirs"
+        ]),
+        "unknown_layer"
+    );
+    assert!(
+        payload.is_file(),
+        "a removal under another account never reaches this account's payload"
+    );
+    assert_eq!(
+        ok(&["map", "local", "list"])["layers"][0]["name"],
+        "Access roads"
+    );
+
     let renamed = ok(&[
         "map",
         "local",

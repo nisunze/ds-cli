@@ -556,8 +556,10 @@ it does not claim the pixels have been rendered.
 `map local list/register/rename/remove` keep the prepared local layers this
 machine has for itself. A prepared local layer is a catalogue row — a name, an
 origin, a geometry type, a style, a column schema, a feature count — with its
-features copied beside it: `<DS_LAYER_HOME or the local data directory>/prepared/
-<lane>/<account>/catalogue.json`, `.../payloads/<layer-id>.geojson`. The browser
+features copied beside it, under the same root as the native layer registry
+(`DS_LAYER_HOME`, or `ds/layers` in the local data directory):
+`<root>/prepared/<lane>/<account>/catalogue.json` and
+`<root>/prepared/<lane>/<account>/payloads/<layer-id>.geojson`. The browser
 keeps the same descriptor in IndexedDB, and both ask one owner
 (`ds-command-kernel::local_layers`) the same five questions, so a rule is never
 true on one host and false on the other. No sign-in, no open map, no backend.
