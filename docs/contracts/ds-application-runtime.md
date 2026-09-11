@@ -9,17 +9,18 @@ from §1, §1 wins, subject to the later owner scope amendment in §0.
 
 ## 0. Current scope — later owner amendment, 2026-09-11
 
-The owner has deferred Android and iOS to keep the current migration nimble.
-**Web, Linux, Windows and server are the current first-class targets.** Android
-and iOS are future extensions, not current implementation or acceptance gates.
-Do not build mobile adapters, schedulers, packaging or speculative abstractions
-now. Choose storage and runtime boundaries for the current targets; extend them
-when a concrete mobile project is authorized. Existing mobile code is not
-ordered removed.
+The owner clarified the product boundary: **web/PWA, Linux, Windows and server
+are the supported targets.** Native Android/iOS ports are excluded, not deferred
+or planned as a future phase. Flutter remains the separate mobile application.
+Survey, ds-cli and MCP remain supported.
 
-This amendment supersedes the mobile obligations in the verbatim historical
-directive below. R7 is deferred and must not block completion of the current
-campaign. The detailed runtime requirements are maintained in
+Do not build native-mobile adapters, schedulers, packaging, acceptance gates or
+speculative abstractions for this product. Preserve existing Flutter code.
+Choose storage and runtime boundaries for the supported targets.
+
+This amendment supersedes the native-mobile obligations in the verbatim
+historical directive below, including its mobile acceptance requirements. R7 is
+withdrawn. The detailed requirements are maintained in
 [the headless runtime contract](ds-headless-application-runtime.md).
 
 ## 1. The original directive (verbatim; scope amended by §0)
@@ -97,7 +98,6 @@ campaign. The detailed runtime requirements are maintained in
 | R4 | Verified handoff of pending work | the legacy per-user outbox → the new store: identities, replay keys, bytes, acknowledgements, unresolved failures preserved; competing owners prevented | kernel (handoff plan) + host |
 | R5 | Enforceable architectural checks | tests that reject frontend backend imports, route construction, direct backend requests, alternate domain mutations, including indirect wrappers | ds-web contract tests |
 | R6 | Web host | the browser loop over the same plan with fetch transport and IndexedDB, offline-capable, opportunistic background (workers) | ds-web runtime adapter |
-| R7 | Deferred mobile extension | No implementation or acceptance work in the current campaign; define from concrete requirements when authorized | future scope |
 | R8 | Fencing and lifecycle | account/project/deployment fences; cancellation, logout, account switch, explicit background shutdown; leases; idempotent effects | kernel + hosts |
 
 ## 4. Platform status (implemented / tested / not yet verified) — kept current
@@ -107,6 +107,5 @@ campaign. The detailed runtime requirements are maintained in
 | Linux/Windows desktop | kernel (`sync::plan`) | native (`gateway_transfer.rs`) | legacy IndexedDB (to move, R1/R4) | shell process only (R2 open) | implemented, tested in-process; not operationally proven |
 | CLI | kernel | native (`ds-cli-auth`, weak-network harness green) | none yet (R1) | `ds sync run` pending (S8) | plan headless: implemented + tested |
 | Server | kernel | native | R1 | R3 | not yet verified |
-| Web | kernel (WASM) | fetch host | IndexedDB (TypeScript-shaped) | opportunistic (R6) | not yet verified |
-| Android/iOS | deferred | — | — | — | outside current scope; does not block acceptance |
+| Web/PWA | kernel (WASM) | fetch host | IndexedDB (TypeScript-shaped) | opportunistic (R6) | not yet verified |
 | Cloud producers | — | publish via ds-brain with attribution | ds-brain record | n/a | landed server-side (admission), not deployed |

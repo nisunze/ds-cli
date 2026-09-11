@@ -10,17 +10,18 @@ It is an implementation mandate, not a new wire protocol or command registry.
 
 ## 1. Mandate
 
-Build a shared, headless Rust application runtime with **web, Linux, Windows
-and server as the current first-class targets**. TypeScript/Svelte is a thin
+Build a shared, headless Rust application runtime with **web/PWA, Linux, Windows
+and server as the supported targets**. TypeScript/Svelte is a thin
 presentation client. Optimize execution for each platform without duplicating
 application logic.
 
-**Scope narrowed by the owner, 2026-09-11:** Android and iOS are future
-extensions, outside this campaign's implementation and acceptance scope. Do not
-build mobile adapters, background schedulers, packaging or speculative
-abstractions now. Extend the application for those targets when concrete work
-is authorized. This supersedes the earlier all-platform requirement; it does
-not direct removal of existing mobile application code.
+**Product boundary, clarified by the owner on 2026-09-11:** this product has
+no native Android or iOS deployment requirement, now or as a planned future
+phase. Web/PWA remains first-class; Flutter remains the separate mobile
+application. Keep Survey, ds-cli and MCP. Do not add native-mobile adapters,
+background schedulers, packaging, acceptance gates or speculative abstractions
+to this product. Preserve existing Flutter code. This supersedes the earlier
+all-platform requirement and the subsequent wording that merely deferred it.
 
 On desktop, closing the application window must not stop synchronization when
 background operation is enabled. Server operations must run without a browser,
@@ -84,7 +85,7 @@ dependency or operating-system integration into the pure kernel crate.
 
 | Target | Required execution model | Lifecycle obligation |
 | --- | --- | --- |
-| Web | Local Rust/WASM with browser-native persistence and workers where supported. Local decisions and prepared offline work require neither a server round trip nor a native companion. | Browser background execution is opportunistic. Preserve work across suspension and browser closure, then resume when execution becomes available. A worker alone does not guarantee continued execution after closure. |
+| Web/PWA | Local Rust/WASM with browser-native persistence and workers where supported. Local decisions and prepared offline work require neither a server round trip nor a native companion. | Browser background execution is opportunistic. Preserve work across suspension and browser closure, then resume when execution becomes available. A worker alone does not guarantee continued execution after closure. |
 | Linux | A native background host independent of the application window, integrated with installation, startup, shutdown and updates. | Closing the UI leaves enabled background work running. Explicit shutdown, logout, restart and update behavior must be defined and recoverable. |
 | Windows | A native background host independent of the application window, integrated with installation, startup, shutdown and updates. | The same durability and background-operation guarantees as Linux, using appropriate Windows lifecycle integration. |
 | Server | A supervised headless host with durable storage, explicit identity, bounded concurrency, graceful shutdown and restart recovery. | Work survives process replacement and restart when its storage is retained. Multiple workers have explicit ownership and safe idempotent effects. |
@@ -220,7 +221,7 @@ The following are required outcomes, not claims of current completion:
 - Resource measurements demonstrate suitability for each supported target.
 
 Record current-target results separately: implemented, tested or not yet verified.
-Deferred Android/iOS work is not an acceptance gap for this campaign.
+Native Android/iOS ports are outside this product and are not acceptance gaps.
 Distinguish **implemented, landed, deployed and operationally proven** states.
 Desktop success does not certify web or server behavior. Do not declare
 the transition complete while competing frontend authority remains.
