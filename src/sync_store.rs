@@ -20,7 +20,7 @@
 
 use crate::sync::{Identity, Trigger};
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
 pub const SCHEMA: &str = "ds.sync-store/v1";
@@ -370,6 +370,10 @@ pub enum Event {
     Cancel {
         scope: Scope,
         identity: Identity,
+        /// A job-owned publication cancels only the exact local replay key it
+        /// observed. `None` preserves the existing identity-only UI action.
+        #[serde(default)]
+        expected_replay_key: Option<String>,
     },
     HandoffLegacy {
         rows: Vec<LegacyHandoff>,
@@ -693,7 +697,21 @@ pub fn apply(request: &Request) -> Result<Transition, String> {
             Some(lease) => t.refuse("lease_held", format!("{} holds it", lease.worker_id)),
             None => {}
         },
-        Event::Cancel { scope, identity } => match find_artifact(snapshot, scope, identity) {
+        Event::Cancel {
+            scope,
+            identity,
+            expected_replay_key,
+        } => match find_artifact(snapshot, scope, identity) {
+            Some(row)
+                if expected_replay_key
+                    .as_deref()
+                    .is_some_and(|expected| expected != row.replay_key) =>
+            {
+                t.refuse(
+                    "publication_replaced",
+                    "the current publication has another replay key",
+                );
+            }
             Some(row) if matches!(row.state, ArtifactState::Held | ArtifactState::Uploading) => {
                 let mut next = row.clone();
                 next.state = ArtifactState::Refused;
@@ -801,7 +819,9 @@ fn handoff_one(snapshot: &Snapshot, handoff: &LegacyHandoff, now: u64, t: &mut T
         )
     } else {
         match &handoff.bytes {
-            BytesEvidence::Verified { locator } => (state, reason, true, locator.clone(), "imported"),
+            BytesEvidence::Verified { locator } => {
+                (state, reason, true, locator.clone(), "imported")
+            }
             BytesEvidence::Missing { reason: why } => (
                 ArtifactState::Refused,
                 Some(format!(
@@ -1161,15 +1181,17 @@ mod tests {
         ))
         .unwrap();
         assert_eq!(renew_dead.refusals[0].code, "lease_expired");
-        assert!(apply(&request(
-            Snapshot::default(),
-            Event::LeaseTake {
-                scope: scope(),
-                worker_id: "w1".into(),
-                ttl_ms: LEASE_TTL_MAX_MS + 1
-            }
-        ))
-        .is_err());
+        assert!(
+            apply(&request(
+                Snapshot::default(),
+                Event::LeaseTake {
+                    scope: scope(),
+                    worker_id: "w1".into(),
+                    ttl_ms: LEASE_TTL_MAX_MS + 1
+                }
+            ))
+            .is_err()
+        );
     }
 
     #[test]
@@ -1219,6 +1241,7 @@ mod tests {
             Event::Cancel {
                 scope: scope(),
                 identity: ident("a"),
+                expected_replay_key: None,
             },
         ))
         .unwrap();
@@ -1236,10 +1259,48 @@ mod tests {
             Event::Cancel {
                 scope: scope(),
                 identity: ident("a"),
+                expected_replay_key: None,
             },
         ))
         .unwrap();
         assert_eq!(t.refusals[0].code, "not_cancellable");
+    }
+
+    #[test]
+    fn cancel_with_an_expected_replay_key_never_refuses_a_replacement_row() {
+        let t = apply(&request(
+            Snapshot {
+                artifacts: vec![held("a", "new-job")],
+                ..Default::default()
+            },
+            Event::Cancel {
+                scope: scope(),
+                identity: ident("a"),
+                expected_replay_key: Some("old-job".into()),
+            },
+        ))
+        .unwrap();
+        assert_eq!(t.refusals[0].code, "publication_replaced");
+        assert!(t.changes.is_empty(), "replacement stays held");
+
+        let matching = apply(&request(
+            Snapshot {
+                artifacts: vec![held("a", "new-job")],
+                ..Default::default()
+            },
+            Event::Cancel {
+                scope: scope(),
+                identity: ident("a"),
+                expected_replay_key: Some("new-job".into()),
+            },
+        ))
+        .unwrap();
+        assert!(matches!(
+            &matching.changes[0],
+            RowChange::UpsertArtifact(row)
+                if row.state == ArtifactState::Refused
+                    && row.state_reason.as_deref() == Some("cancelled")
+        ));
     }
 
     fn legacy(id: &str, project: &str, status: &str, phase: &str, outputs: Value) -> Value {
@@ -1282,18 +1343,22 @@ mod tests {
         );
         assert_eq!(rows[1].state, ArtifactState::Published);
         assert_eq!(rows[2].state, ArtifactState::Refused);
-        assert!(rows[2]
-            .state_reason
-            .as_deref()
-            .unwrap()
-            .starts_with("handoff_bytes_missing: no committed batch"));
+        assert!(
+            rows[2]
+                .state_reason
+                .as_deref()
+                .unwrap()
+                .starts_with("handoff_bytes_missing: no committed batch")
+        );
         assert!(!rows[2].readable);
         assert_eq!(rows[3].state, ArtifactState::Refused);
-        assert!(rows[3]
-            .state_reason
-            .as_deref()
-            .unwrap()
-            .starts_with("handoff_unmapped"));
+        assert!(
+            rows[3]
+                .state_reason
+                .as_deref()
+                .unwrap()
+                .starts_with("handoff_unmapped")
+        );
         assert_eq!(evidence[0].outcome, "imported");
         assert_eq!(evidence[2].outcome, "bytes_missing");
         assert_eq!(evidence[3].outcome, "unmapped");
