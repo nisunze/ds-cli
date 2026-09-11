@@ -36,9 +36,21 @@ impl ServerSyncSession {
         let credential_binding = ds_cli_auth::runtime_credential_binding(&connection.lane)
             .map_err(|error| error.message().to_owned())?;
         let owner = auth::identity(&connection.lane)?;
-        if owner != connection.owner || owner != principal.uid() {
-            return Err("server identity changed; Sync Center access is fenced".to_string());
-        }
+        let principal_owner = digest(
+            &serde_json::to_vec(&(
+                principal.uid(),
+                principal.lane(),
+                principal.credential_audience_sha256(),
+            ))
+            .map_err(|error| error.to_string())?,
+        );
+        require_sync_identity(
+            &connection.owner,
+            &owner,
+            &principal_owner,
+            context.account_uid(),
+            principal.uid(),
+        )?;
         let gateway = ds_cli_auth::sync::NativeSyncSession::open(
             ds_cli_auth::Lane::parse(&connection.lane)
                 .map_err(|error| error.message().to_owned())?,
@@ -129,6 +141,22 @@ impl ServerSyncSession {
     }
 }
 
+fn require_sync_identity(
+    connection_owner: &str,
+    current_owner: &str,
+    principal_owner: &str,
+    context_uid: &str,
+    principal_uid: &str,
+) -> Result<(), String> {
+    if connection_owner != current_owner
+        || current_owner != principal_owner
+        || context_uid != principal_uid
+    {
+        return Err("server identity changed; Sync Center access is fenced".into());
+    }
+    Ok(())
+}
+
 fn fence_for(account_uid: &str, deployment: &str, install_id: &str) -> Fence {
     Fence {
         account: account_uid.to_owned(),
@@ -146,6 +174,18 @@ fn require_selected_project(project: &str, selected_project: &str) -> Result<(),
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn sync_accepts_matching_owner_digests_and_compares_user_ids_separately() {
+        let owner = digest(b"uid/lane/audience");
+        assert_ne!(owner, "uid-a");
+        assert!(require_sync_identity(&owner, &owner, &owner, "uid-a", "uid-a").is_ok());
+        assert!(require_sync_identity("previous-owner", &owner, &owner, "uid-a", "uid-a").is_err());
+        assert!(
+            require_sync_identity(&owner, &owner, "other-principal", "uid-a", "uid-a").is_err()
+        );
+        assert!(require_sync_identity(&owner, &owner, &owner, "uid-b", "uid-a").is_err());
+    }
 
     #[test]
     fn fence_carries_native_principal_deployment_and_registered_install() {
