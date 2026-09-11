@@ -139,7 +139,7 @@ impl SolarActivity {
                     .into_iter()
                     .find(|row| row.client_publish_id == job.id)
                     .ok_or("Solar job no longer owns the current publication for this city")?;
-                let transition = host.cancel(&row.identity)?;
+                let transition = host.cancel_publication(&row.identity, &job.id)?;
                 let state = if transition.refusals.is_empty() {
                     "cancelled"
                 } else {
