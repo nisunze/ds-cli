@@ -4,12 +4,12 @@ mod host;
 pub mod server_sync;
 mod solar_sync;
 use ds_cli_contract::{
+    Context, Failure, Inputs,
     spec::{
         Arg, Authority, Availability, Chapter, Command, Domain, Effect, Example, Execution, Refusal,
     },
-    Context, Failure, Inputs,
 };
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::{io::Read, path::PathBuf, sync::Arc};
 
 const STATE: Arg = Arg::value(
@@ -175,6 +175,19 @@ pub static STATUS: Command = command(
         runnable: false,
     }],
 );
+pub static ACTIVITY: Command = command(
+    "server.activity",
+    &["server", "activity"],
+    "Read the server's shared Sync Center activity and publication state.",
+    Effect::ReadOnly,
+    Execution::Sync,
+    &[STATE, LANE],
+    &[Example {
+        command: "ds server activity --lane canary --output json",
+        note: "Read running jobs and held publication state from the authenticated server.",
+        runnable: false,
+    }],
+);
 pub static CANCEL: Command = command(
     "server.cancel",
     &["server", "cancel"],
@@ -209,7 +222,15 @@ pub static RESULT: Command = command(
 pub static DOMAIN: Domain = Domain {
     id: "server",
     summary: "Native server.",
-    commands: &[&SERVE, &SUBMIT, &SOLAR_SUBMIT, &STATUS, &CANCEL, &RESULT],
+    commands: &[
+        &SERVE,
+        &SUBMIT,
+        &SOLAR_SUBMIT,
+        &STATUS,
+        &ACTIVITY,
+        &CANCEL,
+        &RESULT,
+    ],
 };
 fn failure(e: impl ToString) -> Failure {
     Failure::failed("server_refused", e.to_string())
@@ -356,6 +377,16 @@ pub fn status(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
         "/v1/jobs".into()
     };
     json_request(inputs, "GET", &path, None)
+}
+pub fn activity(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
+    serde_json::from_slice(&request(
+        inputs,
+        "GET",
+        "/v1/activity",
+        None,
+        16 * 1024 * 1024,
+    )?)
+    .map_err(failure)
 }
 pub fn cancel(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
     json_request(

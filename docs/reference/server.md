@@ -11,6 +11,7 @@ ds server serve --lane stable
 # From another terminal under the same account:
 ds server submit --input transformer-batch.json --key processing-001
 ds server status
+ds server activity --lane canary --output json
 ds server status --job <id>
 ds server result --job <id> --out result.json
 ```
@@ -56,3 +57,8 @@ uses the exact development executable; `--cli auth login --email <email>` or
 MCP exposes submit, status, cancel and result through the existing command
 catalog. Starting the foreground host is a terminal/service operation and is
 excluded from MCP so it cannot block a tool response indefinitely.
+
+`server activity` reads the server's shared Sync Center state, including native
+job lifecycle and artifact publication receipts. It uses the same protected
+connection and native identity as other Server commands; it creates no queue.
+A completed calculation and a published artifact are separate states.

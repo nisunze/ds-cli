@@ -2023,6 +2023,11 @@ static SERVER_ENTRIES: &[Entry] = &[
         render: ds_cli_server::render,
     },
     Entry {
+        command: &ds_cli_server::ACTIVITY,
+        handler: ds_cli_server::activity,
+        render: ds_cli_server::render,
+    },
+    Entry {
         command: &ds_cli_server::CANCEL,
         handler: ds_cli_server::cancel,
         render: ds_cli_server::render,
