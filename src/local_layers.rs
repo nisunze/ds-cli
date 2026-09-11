@@ -650,14 +650,31 @@ impl LocalLayer {
     }
 
     /// Everything the host may delete once this layer is gone: its own
-    /// payload record, and its own parked chunks. Nothing else exists to name.
-    fn release(&self) -> Vec<Value> {
+    /// payload record, and its own parked chunks. Nothing else exists to name
+    /// — and chunks another layer of the catalogue still parks its payload in
+    /// are that layer's storage, so they are not named either.
+    fn release<'a>(&self, others: impl IntoIterator<Item = &'a Self>) -> Vec<Value> {
         let mut release = vec![json!({"kind": "features_payload", "id": self.id})];
         if let Some(storage) = &self.feature_storage {
-            release.push(storage.release());
+            if !chunks_still_parked(storage, others) {
+                release.push(storage.release());
+            }
         }
         release
     }
+}
+
+/// Whether any of `layers` still parks its payload in `storage`'s chunks.
+fn chunks_still_parked<'a>(
+    storage: &FeatureStorage,
+    layers: impl IntoIterator<Item = &'a LocalLayer>,
+) -> bool {
+    layers.into_iter().any(|layer| {
+        layer
+            .feature_storage
+            .as_ref()
+            .is_some_and(|other| other.same_payload(storage))
+    })
 }
 
 // ── Scope and registry ──────────────────────────────────────────────────
@@ -1195,7 +1212,14 @@ fn apply(op: Op) -> Result<Value, Fault> {
             let index = registry.find(&id)?;
             let layer = &registry.layers[index];
             project_fence(layer, project.as_deref())?;
-            let release = layer.release();
+            let release = layer.release(
+                registry
+                    .layers
+                    .iter()
+                    .enumerate()
+                    .filter(|(other, _)| *other != index)
+                    .map(|(_, other)| other),
+            );
             let mut next = registry.clone();
             next.layers.remove(index);
             answer(
@@ -1258,6 +1282,8 @@ fn register(
     }
     let name = draft.name.trim().to_owned();
     let id = format!("sketch-{now_ms}-{sequence}");
+    let feature_count = admitted_count(draft.feature_count.unwrap_or(0))?;
+    let feature_storage = admitted_storage(draft.feature_storage.as_ref(), &id)?;
     let layer = LocalLayer {
         source_name: source_label(&name, draft.source_name.as_deref(), kind),
         source_layer_name: match draft.source_layer_name.as_deref().map(str::trim) {
@@ -1277,8 +1303,8 @@ fn register(
         fill_opacity: DEFAULT_FILL_OPACITY,
         style_doc: None,
         schema: draft.schema.clone().unwrap_or_default(),
-        feature_count: draft.feature_count.unwrap_or(0).max(0) as u64,
-        feature_storage: FeatureStorage::from_raw(draft.feature_storage.as_ref(), &id),
+        feature_count,
+        feature_storage,
         visible: true,
         created_at: now_ms,
         name,
@@ -1286,6 +1312,28 @@ fn register(
     };
     layer.validate()?;
     Ok(layer)
+}
+
+/// A feature count a host asserts is never negative; only `restore` repairs
+/// one.
+fn admitted_count(count: i64) -> Result<u64, Fault> {
+    u64::try_from(count).map_err(|_| malformed("a feature count is never negative"))
+}
+
+/// Storage a host offers must locate its chunks: `null` or absent is no
+/// storage, but an object the kernel cannot read is a malformed descriptor,
+/// not a payload to lose quietly. Only `restore` repairs one.
+fn admitted_storage(raw: Option<&Value>, owner: &str) -> Result<Option<FeatureStorage>, Fault> {
+    let storage = FeatureStorage::from_raw(raw, owner);
+    if raw.is_some_and(|raw| !raw.is_null()) && storage.is_none() {
+        return Err(malformed(
+            "feature storage must name the upload chunks that hold the payload",
+        ));
+    }
+    if let Some(storage) = &storage {
+        storage.validate()?;
+    }
+    Ok(storage)
 }
 
 // ── restore ─────────────────────────────────────────────────────────────
@@ -1300,10 +1348,12 @@ fn restore(scope: Scope, records: &[Value], now_ms: i64) -> Result<Value, Fault>
         )));
     }
     let mut registry = Registry::opened(scope);
-    let mut retired: Vec<String> = vec![];
-    let mut release: Vec<Value> = vec![];
+    let mut retired: Vec<(String, Option<FeatureStorage>)> = vec![];
     let mut repaired: Vec<Value> = vec![];
     let mut palette = 0usize;
+    // One id space for what is reopened and what is retired: a retired row
+    // that shares its id with a kept row would otherwise name the kept
+    // layer's payload for release.
     let mut ids = HashSet::new();
     for (index, record) in records.iter().enumerate() {
         let Some(row) = record.as_object() else {
@@ -1313,22 +1363,17 @@ fn restore(scope: Scope, records: &[Value], now_ms: i64) -> Result<Value, Fault>
         };
         let kind = SourceKind::from_raw(row.get("sourceKind"));
         let id = restored_id(row, index, now_ms);
-        if kind == SourceKind::ProjectWork {
-            // Ephemeral by rule: it is released, never reopened.
-            if !retired.contains(&id) {
-                release.push(json!({"kind": "features_payload", "id": id}));
-                if let Some(storage) = FeatureStorage::from_raw(row.get("featureStorage"), &id) {
-                    release.push(storage.release());
-                }
-                retired.push(id);
-            }
-            continue;
-        }
         if !ids.insert(id.clone()) {
             return Err(refusal(
                 DUPLICATE_LAYER,
                 &format!("local layer {id} appears twice in the store"),
             ));
+        }
+        if kind == SourceKind::ProjectWork {
+            // Ephemeral by rule: it is released, never reopened.
+            let storage = FeatureStorage::from_raw(row.get("featureStorage"), &id);
+            retired.push((id, storage));
+            continue;
         }
         let layer = restore_row(row, id, kind, now_ms, &mut palette);
         layer.validate()?;
@@ -1345,6 +1390,18 @@ fn restore(scope: Scope, records: &[Value], now_ms: i64) -> Result<Value, Fault>
         registry.revision = 1;
     }
     registry.validate()?;
+    // What the host may delete for each retired row: its own payload record
+    // and its parked chunks — unless a reopened layer still parks there.
+    let mut release: Vec<Value> = vec![];
+    for (id, storage) in &retired {
+        release.push(json!({"kind": "features_payload", "id": id}));
+        if let Some(storage) = storage {
+            if !chunks_still_parked(storage, &registry.layers) {
+                release.push(storage.release());
+            }
+        }
+    }
+    let retired: Vec<&String> = retired.iter().map(|(id, _)| id).collect();
     Ok(json!({
         "registry": registry,
         "receipt": {
@@ -1518,24 +1575,32 @@ fn update(
             for field in &schema {
                 field.validate()?;
             }
+            let feature_count = admitted_count(feature_count)?;
             let next_storage =
-                FeatureStorage::from_raw(feature_storage.as_ref(), &registry.layers[index].id);
-            if let Some(storage) = &next_storage {
-                storage.validate()?;
-            }
-            let layer = &mut registry.layers[index];
-            if let Some(previous) = layer.feature_storage.take() {
+                admitted_storage(feature_storage.as_ref(), &registry.layers[index].id)?;
+            if let Some(previous) = registry.layers[index].feature_storage.clone() {
                 // A replaced payload always leaves the parked chunks behind —
-                // unless the replacement is those same chunks.
-                if !next_storage
+                // unless the replacement is those same chunks, or another
+                // layer still parks its payload there.
+                let replaced_by_the_same = next_storage
                     .as_ref()
-                    .is_some_and(|next| next.same_payload(&previous))
-                {
+                    .is_some_and(|next| next.same_payload(&previous));
+                let parked_elsewhere = chunks_still_parked(
+                    &previous,
+                    registry
+                        .layers
+                        .iter()
+                        .enumerate()
+                        .filter(|(other, _)| *other != index)
+                        .map(|(_, other)| other),
+                );
+                if !replaced_by_the_same && !parked_elsewhere {
                     release.push(previous.release());
                 }
             }
+            let layer = &mut registry.layers[index];
             layer.schema = schema;
-            layer.feature_count = feature_count.max(0) as u64;
+            layer.feature_count = feature_count;
             layer.feature_storage = next_storage;
         }
         Change::SourceMetadata { source_metadata } => {
@@ -1581,7 +1646,9 @@ fn update(
             }
             for layer in &mut registry.layers {
                 if layer.source_kind == kind && layer.source_name == source_name {
-                    layer.source_name = name.clone();
+                    // The label rule holds here too: a manual layer is never
+                    // filed under its own name.
+                    layer.source_name = source_label(&layer.name, Some(&name), kind);
                 }
             }
         }
@@ -1600,24 +1667,25 @@ fn update(
                 }
                 layer.color = color;
             }
+            // Only `restore` clamps; a host that asserts a value outside the
+            // descriptor's range is refused, and nothing moves.
             if let Some(line_width) = line_width {
-                layer.line_width = clamp_f64(
-                    Some(line_width),
-                    DEFAULT_LINE_WIDTH,
-                    MIN_LINE_WIDTH,
-                    MAX_LINE_WIDTH,
-                );
+                if !(MIN_LINE_WIDTH..=MAX_LINE_WIDTH).contains(&line_width) {
+                    return Err(malformed("a line width is 0.5 to 12"));
+                }
+                layer.line_width = line_width;
             }
             if let Some(point_radius) = point_radius {
-                layer.point_radius = clamp_f64(
-                    Some(point_radius),
-                    DEFAULT_POINT_RADIUS,
-                    MIN_POINT_RADIUS,
-                    MAX_POINT_RADIUS,
-                );
+                if !(MIN_POINT_RADIUS..=MAX_POINT_RADIUS).contains(&point_radius) {
+                    return Err(malformed("a point radius is 1 to 24"));
+                }
+                layer.point_radius = point_radius;
             }
             if let Some(fill_opacity) = fill_opacity {
-                layer.fill_opacity = clamp_f64(Some(fill_opacity), DEFAULT_FILL_OPACITY, 0.0, 1.0);
+                if !(0.0..=1.0).contains(&fill_opacity) {
+                    return Err(malformed("a fill opacity is 0 to 1"));
+                }
+                layer.fill_opacity = fill_opacity;
             }
             if let Some(style_doc) = style_doc {
                 if style_doc.as_ref().is_some_and(|doc| !doc.is_object()) {
@@ -1873,9 +1941,43 @@ mod tests {
         );
         let mut draft = manual_draft();
         draft["featureStorage"] = json!({"kind": "upload_chunks", "workspaceKey": "w1"});
+        assert_eq!(
+            refused(register(empty(), draft)),
+            MALFORMED_DESCRIPTOR,
+            "storage that cannot locate its chunks is a malformed descriptor, not a payload to lose"
+        );
+        let mut draft = manual_draft();
+        draft["featureStorage"] = Value::Null;
         assert!(
             admitted(draft).get("featureStorage").is_none(),
-            "storage that cannot locate its chunks is not storage"
+            "null is no storage at all"
+        );
+    }
+
+    #[test]
+    fn a_negative_feature_count_is_refused_wherever_a_host_asserts_it() {
+        let mut draft = manual_draft();
+        draft["featureCount"] = json!(-1);
+        assert_eq!(refused(register(empty(), draft)), MALFORMED_DESCRIPTOR);
+        let layer = admitted(manual_draft());
+        let id = layer["id"].as_str().expect("id").to_owned();
+        assert_eq!(
+            refused(update(
+                store(vec![layer.clone()]),
+                &id,
+                json!({"kind": "payload", "schema": [], "featureCount": -3, "featureStorage": null}),
+            )),
+            MALFORMED_DESCRIPTOR
+        );
+        assert_eq!(
+            refused(update(
+                store(vec![layer]),
+                &id,
+                json!({"kind": "payload", "schema": [], "featureCount": 3,
+                       "featureStorage": {"kind": "upload_chunks", "workspaceKey": "w1"}}),
+            )),
+            MALFORMED_DESCRIPTOR,
+            "an update never parks a payload in chunks it cannot locate"
         );
     }
 
@@ -2112,13 +2214,29 @@ mod tests {
         assert_eq!(answer["registry"]["revision"], 8);
         // Re-parking the same chunks releases nothing: the payload is the one just written.
         let same = ask(update(
-            store(vec![layer]),
+            store(vec![layer.clone()]),
             &id,
             json!({"kind": "payload", "schema": [], "featureCount": 3,
                    "featureStorage": {"kind": "upload_chunks", "workspaceKey": "w1",
                                       "fileName": "big.csv", "parsedLayer": "rows"}}),
         ));
         assert_eq!(same["receipt"]["release"], json!([]));
+        // Chunks another layer still parks its payload in are that layer's storage.
+        let mut sibling = layer.clone();
+        sibling["id"] = json!("sketch-sibling");
+        let shared = ask(update(
+            store(vec![layer, sibling]),
+            &id,
+            json!({"kind": "payload", "schema": [], "featureCount": 3, "featureStorage": null}),
+        ));
+        assert_eq!(
+            shared["receipt"]["release"],
+            json!([]),
+            "a release never names another layer's storage"
+        );
+        assert!(shared["registry"]["layers"][1]
+            .get("featureStorage")
+            .is_some());
     }
 
     #[test]
@@ -2189,14 +2307,29 @@ mod tests {
     }
 
     #[test]
-    fn style_clamps_what_it_is_given_and_a_null_document_clears_it() {
+    fn style_is_admitted_in_bounds_refused_outside_them_and_a_null_document_clears_it() {
         let layer = admitted(manual_draft());
         let id = layer["id"].as_str().expect("id").to_owned();
+        for out_of_range in [
+            json!({"kind": "style", "lineWidth": 900}),
+            json!({"kind": "style", "lineWidth": 0.4}),
+            json!({"kind": "style", "pointRadius": 0}),
+            json!({"kind": "style", "pointRadius": 25}),
+            json!({"kind": "style", "fillOpacity": 2}),
+            json!({"kind": "style", "fillOpacity": -0.1}),
+            json!({"kind": "style", "color": "#000000", "fillOpacity": 2}),
+        ] {
+            assert_eq!(
+                refused(update(store(vec![layer.clone()]), &id, out_of_range)),
+                MALFORMED_DESCRIPTOR,
+                "only restore clamps; an update outside the range is refused whole"
+            );
+        }
         let answer = ask(update(
             store(vec![layer]),
             &id,
-            json!({"kind": "style", "color": " #000000 ", "lineWidth": 900,
-                   "pointRadius": 0, "fillOpacity": 2, "styleDoc": {"paint": {}}}),
+            json!({"kind": "style", "color": " #000000 ", "lineWidth": MAX_LINE_WIDTH,
+                   "pointRadius": MIN_POINT_RADIUS, "fillOpacity": 1, "styleDoc": {"paint": {}}}),
         ));
         let next = &answer["registry"]["layers"][0];
         assert_eq!(next["color"], "#000000");
@@ -2357,6 +2490,18 @@ mod tests {
         let id = layer["id"].as_str().expect("id").to_owned();
         let mut other = layer.clone();
         other["id"] = json!("sketch-other");
+        other["featureStorage"]["parsedLayer"] = json!("other-rows");
+        let mut sharing = layer.clone();
+        sharing["id"] = json!("sketch-sharing");
+        let answer = ask(
+            json!({"kind": "remove", "registry": store(vec![layer.clone(), sharing]),
+                                "scope": browser(), "id": id}),
+        );
+        assert_eq!(
+            answer["receipt"]["release"],
+            json!([{"kind": "features_payload", "id": id}]),
+            "chunks another layer still parks in are never named"
+        );
         let answer = ask(
             json!({"kind": "remove", "registry": store(vec![layer, other]),
                                 "scope": browser(), "id": id}),
@@ -2466,6 +2611,113 @@ mod tests {
             json!({"kind": "list", "registry": empty(), "scope": {"host": "native"}})
         )
         .contains("native scope"));
+    }
+
+    #[test]
+    fn a_retired_row_never_names_a_kept_layers_record_for_release() {
+        // The same id on a retired and a kept row is one id twice: the store
+        // refuses whole rather than releasing the kept layer's payload.
+        for records in [
+            vec![
+                json!({"id": "a", "sourceKind": "project_work"}),
+                json!({"id": "a", "name": "Kept"}),
+            ],
+            vec![
+                json!({"id": "a", "name": "Kept"}),
+                json!({"id": "a", "sourceKind": "project_work"}),
+            ],
+            vec![
+                json!({"id": "a", "sourceKind": "project_work"}),
+                json!({"id": "a", "sourceKind": "project_work"}),
+            ],
+        ] {
+            let answer = ask(json!({"kind": "restore", "scope": browser(), "now_ms": 1,
+                                    "records": records}));
+            assert_eq!(answer["refusal"]["code"], DUPLICATE_LAYER);
+            assert!(answer.get("registry").is_none());
+        }
+        // Chunks a kept layer still parks in are its storage, whichever row
+        // named them first.
+        let storage = json!({"kind": "upload_chunks", "workspaceKey": "w", "fileName": "f",
+                             "parsedLayer": "l"});
+        let answer = restore(vec![
+            json!({"id": "pw", "sourceKind": "project_work", "featureStorage": storage}),
+            json!({"id": "kept", "name": "Kept", "featureStorage": storage}),
+        ]);
+        assert_eq!(answer["receipt"]["retired"], json!(["pw"]));
+        assert_eq!(
+            answer["receipt"]["release"],
+            json!([{"kind": "features_payload", "id": "pw"}])
+        );
+        assert_eq!(
+            answer["registry"]["layers"][0]["featureStorage"]["parsedLayer"],
+            "l"
+        );
+    }
+
+    #[test]
+    fn renaming_a_source_never_files_a_manual_layer_under_its_own_name() {
+        let first = admitted(manual_draft());
+        let id = first["id"].as_str().expect("id").to_owned();
+        let mut second = first.clone();
+        second["id"] = json!("sketch-2");
+        second["name"] = json!("Other");
+        let answer = ask(update(
+            store(vec![first, second]),
+            &id,
+            json!({"kind": "rename_source", "sourceKind": "manual",
+                   "sourceName": MANUAL_SOURCE_NAME, "name": "Access road"}),
+        ));
+        let layers = &answer["registry"]["layers"];
+        assert_eq!(
+            layers[0]["sourceName"], MANUAL_SOURCE_NAME,
+            "the layer named Access road is not filed under Access road"
+        );
+        assert_eq!(layers[1]["sourceName"], "Access road");
+        // The admitted registry reopens as itself: nothing left to repair.
+        let reopened = restore(layers.as_array().expect("layers").clone());
+        assert_eq!(reopened["receipt"]["repaired"], json!([]));
+    }
+
+    #[test]
+    fn a_native_catalogue_is_fenced_by_lane_and_uid() {
+        let owner = json!({"host": "native", "lane": "run", "uid": "u1"});
+        let mut op = register(empty(), manual_draft());
+        op["registry"]["scope"] = owner.clone();
+        op["scope"] = owner.clone();
+        let registry = ask(op)["registry"].clone();
+        let id = registry["layers"][0]["id"].as_str().expect("id").to_owned();
+        for stranger in [
+            json!({"host": "native", "lane": "run", "uid": "u2"}),
+            json!({"host": "native", "lane": "canary", "uid": "u1"}),
+            json!({"host": "browser"}),
+        ] {
+            let mut register_op = register(registry.clone(), manual_draft());
+            register_op["scope"] = stranger.clone();
+            assert_eq!(refused(register_op), SCOPE_MISMATCH);
+            assert_eq!(
+                refused(json!({"kind": "list", "registry": registry.clone(), "scope": stranger})),
+                SCOPE_MISMATCH
+            );
+            assert_eq!(
+                refused(
+                    json!({"kind": "update", "registry": registry.clone(), "scope": stranger,
+                               "id": id, "change": {"kind": "visible", "visible": false}})
+                ),
+                SCOPE_MISMATCH
+            );
+            assert_eq!(
+                refused(
+                    json!({"kind": "remove", "registry": registry.clone(), "scope": stranger,
+                               "id": id})
+                ),
+                SCOPE_MISMATCH
+            );
+        }
+        let mut own = json!({"kind": "remove", "registry": registry, "scope": owner, "id": id});
+        assert_eq!(ask(own.clone())["changed"], true);
+        own["scope"]["uid"] = json!("u2");
+        assert_eq!(refused(own), SCOPE_MISMATCH);
     }
 
     #[test]

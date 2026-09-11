@@ -829,6 +829,58 @@
       }
     },
     {
+      "id": "register-negative-feature-count-refused",
+      "why": "A feature count a host asserts is never negative; only restore repairs one, so a register that carries one is a malformed descriptor and nothing is admitted.",
+      "request": {
+        "kind": "register",
+        "registry": {
+          "schema": 1,
+          "revision": 4,
+          "scope": {
+            "host": "browser"
+          },
+          "layers": []
+        },
+        "scope": {
+          "host": "browser"
+        },
+        "now_ms": 1758000000000,
+        "sequence": 8,
+        "colorIndex": 0,
+        "draft": {
+          "name": "Buildings",
+          "geometryType": "Polygon",
+          "sourceKind": "import",
+          "featureCount": -1,
+          "schema": [
+            {
+              "name": "use",
+              "type": "select",
+              "options": [
+                "home",
+                "shop"
+              ]
+            }
+          ],
+          "featureStorage": {
+            "kind": "upload_chunks",
+            "workspaceKey": "w-2024",
+            "fileName": "buildings.csv",
+            "parsedLayer": "buildings",
+            "renderMode": "preview",
+            "previewLimit": 9000000
+          }
+        }
+      },
+      "expected": {
+        "outcome": "refused",
+        "refusal": {
+          "code": "malformed_descriptor",
+          "message": "a feature count is never negative"
+        }
+      }
+    },
+    {
       "id": "register-scope-mismatch",
       "why": "Every op names the scope it believes it is in; a catalogue from another store is never appended to.",
       "request": {
@@ -935,6 +987,42 @@
           "createdAt": 1758000000000
         },
         "changed": true
+      }
+    },
+    {
+      "id": "register-scope-mismatch-between-native-stores",
+      "why": "A native catalogue is keyed by lane and uid: the same lane under another user is another store, and an op naming it changes nothing.",
+      "request": {
+        "kind": "register",
+        "registry": {
+          "schema": 1,
+          "revision": 0,
+          "scope": {
+            "host": "native",
+            "lane": "run",
+            "uid": "u1"
+          },
+          "layers": []
+        },
+        "scope": {
+          "host": "native",
+          "lane": "run",
+          "uid": "u2"
+        },
+        "now_ms": 1758000000000,
+        "sequence": 1,
+        "colorIndex": 0,
+        "draft": {
+          "name": "Access road",
+          "geometryType": "LineString"
+        }
+      },
+      "expected": {
+        "outcome": "refused",
+        "refusal": {
+          "code": "scope_mismatch",
+          "message": "the registry belongs to another local layer scope"
+        }
       }
     },
     {
@@ -1557,6 +1645,137 @@
       }
     },
     {
+      "id": "restore-retired-chunks-a-kept-layer-still-parks-in-are-not-released",
+      "why": "A retired row’s parked chunks are released only when no reopened layer still parks its payload there; otherwise they are that layer’s storage and the receipt does not name them.",
+      "request": {
+        "kind": "restore",
+        "scope": {
+          "host": "browser"
+        },
+        "records": [
+          {
+            "id": "sketch-1758000000000-1",
+            "name": "Access road",
+            "sourceName": "Manual layers",
+            "sourceLayerName": "Access road",
+            "sourceKind": "manual",
+            "geometryType": "LineString",
+            "color": "#2563eb",
+            "lineWidth": 2.5,
+            "pointRadius": 5.0,
+            "fillOpacity": 0.15,
+            "schema": [],
+            "featureCount": 0,
+            "visible": true,
+            "createdAt": 1758000000000
+          },
+          {
+            "id": "pw-1",
+            "name": "Tasks",
+            "sourceKind": "project_work",
+            "featureStorage": {
+              "kind": "upload_chunks",
+              "workspaceKey": "w-2024",
+              "fileName": "tasks.csv",
+              "parsedLayer": "tasks",
+              "idPrefix": "feat-pw-1",
+              "renderMode": "full"
+            }
+          },
+          {
+            "id": "sketch-1758000000000-3",
+            "name": "Tasks kept",
+            "sourceName": "Manual layers",
+            "sourceLayerName": "Access road",
+            "sourceKind": "manual",
+            "geometryType": "LineString",
+            "color": "#2563eb",
+            "lineWidth": 2.5,
+            "pointRadius": 5.0,
+            "fillOpacity": 0.15,
+            "schema": [],
+            "featureCount": 12,
+            "visible": true,
+            "createdAt": 1758000000000,
+            "featureStorage": {
+              "kind": "upload_chunks",
+              "workspaceKey": "w-2024",
+              "fileName": "tasks.csv",
+              "parsedLayer": "tasks",
+              "idPrefix": "feat-pw-1",
+              "renderMode": "full"
+            }
+          }
+        ],
+        "now_ms": 1758000000000
+      },
+      "expected": {
+        "registry": {
+          "schema": 1,
+          "revision": 1,
+          "scope": {
+            "host": "browser"
+          },
+          "layers": [
+            {
+              "id": "sketch-1758000000000-1",
+              "name": "Access road",
+              "sourceName": "Manual layers",
+              "sourceLayerName": "Access road",
+              "sourceKind": "manual",
+              "geometryType": "LineString",
+              "color": "#2563eb",
+              "lineWidth": 2.5,
+              "pointRadius": 5.0,
+              "fillOpacity": 0.15,
+              "schema": [],
+              "featureCount": 0,
+              "visible": true,
+              "createdAt": 1758000000000
+            },
+            {
+              "id": "sketch-1758000000000-3",
+              "name": "Tasks kept",
+              "sourceName": "Manual layers",
+              "sourceLayerName": "Access road",
+              "sourceKind": "manual",
+              "geometryType": "LineString",
+              "color": "#2563eb",
+              "lineWidth": 2.5,
+              "pointRadius": 5.0,
+              "fillOpacity": 0.15,
+              "schema": [],
+              "featureCount": 12,
+              "featureStorage": {
+                "kind": "upload_chunks",
+                "workspaceKey": "w-2024",
+                "fileName": "tasks.csv",
+                "parsedLayer": "tasks",
+                "idPrefix": "feat-pw-1",
+                "renderMode": "full"
+              },
+              "visible": true,
+              "createdAt": 1758000000000
+            }
+          ]
+        },
+        "receipt": {
+          "restored": 2,
+          "retired": [
+            "pw-1"
+          ],
+          "repaired": [],
+          "release": [
+            {
+              "kind": "features_payload",
+              "id": "pw-1"
+            }
+          ]
+        },
+        "changed": true
+      }
+    },
+    {
       "id": "restore-duplicate-id-refuses-the-whole-store",
       "why": "Two rows under one id cannot both be reopened and neither may be dropped silently, so the whole restore refuses and the host keeps its raw bytes.",
       "request": {
@@ -1581,6 +1800,36 @@
         "refusal": {
           "code": "duplicate_layer",
           "message": "local layer a appears twice in the store"
+        }
+      }
+    },
+    {
+      "id": "restore-a-retired-row-sharing-a-kept-id-refuses-the-store",
+      "why": "A retired Project Work row and a kept row with one id are one id twice: releasing the retired row’s payload would delete the kept layer’s, so the whole store refuses and the host keeps its raw bytes.",
+      "request": {
+        "kind": "restore",
+        "scope": {
+          "host": "browser"
+        },
+        "records": [
+          {
+            "id": "sketch-1758000000000-1",
+            "name": "Kept",
+            "sourceKind": "manual"
+          },
+          {
+            "id": "sketch-1758000000000-1",
+            "name": "Tasks",
+            "sourceKind": "project_work"
+          }
+        ],
+        "now_ms": 1758000000000
+      },
+      "expected": {
+        "outcome": "refused",
+        "refusal": {
+          "code": "duplicate_layer",
+          "message": "local layer sketch-1758000000000-1 appears twice in the store"
         }
       }
     },
@@ -2049,6 +2298,207 @@
               "fillOpacity": 0.15,
               "schema": [],
               "featureCount": 40000,
+              "featureStorage": {
+                "kind": "upload_chunks",
+                "workspaceKey": "w-2024",
+                "fileName": "roads.csv",
+                "parsedLayer": "roads",
+                "idPrefix": "feat-sketch-1758000000000-1",
+                "renderMode": "full"
+              },
+              "visible": true,
+              "createdAt": 1758000000000
+            }
+          ]
+        },
+        "receipt": {
+          "id": "sketch-1758000000000-1",
+          "applied": "payload",
+          "release": []
+        },
+        "changed": true
+      }
+    },
+    {
+      "id": "update-payload-with-unreadable-storage-refused",
+      "why": "Storage a host offers must locate its chunks: an object the kernel cannot read is a malformed descriptor, refused whole, never a payload lost quietly while the previous chunks are released.",
+      "request": {
+        "kind": "update",
+        "registry": {
+          "schema": 1,
+          "revision": 4,
+          "scope": {
+            "host": "browser"
+          },
+          "layers": [
+            {
+              "id": "sketch-1758000000000-1",
+              "name": "Access road",
+              "sourceName": "Manual layers",
+              "sourceLayerName": "Access road",
+              "sourceKind": "manual",
+              "geometryType": "LineString",
+              "color": "#2563eb",
+              "lineWidth": 2.5,
+              "pointRadius": 5.0,
+              "fillOpacity": 0.15,
+              "schema": [],
+              "featureCount": 12,
+              "featureStorage": {
+                "kind": "upload_chunks",
+                "workspaceKey": "w-2024",
+                "fileName": "roads.csv",
+                "parsedLayer": "roads",
+                "idPrefix": "feat-sketch-1758000000000-1",
+                "renderMode": "full"
+              },
+              "visible": true,
+              "createdAt": 1758000000000
+            }
+          ]
+        },
+        "scope": {
+          "host": "browser"
+        },
+        "id": "sketch-1758000000000-1",
+        "change": {
+          "kind": "payload",
+          "schema": [],
+          "featureCount": 3,
+          "featureStorage": {
+            "kind": "upload_chunks",
+            "workspaceKey": "w-2024"
+          }
+        }
+      },
+      "expected": {
+        "outcome": "refused",
+        "refusal": {
+          "code": "malformed_descriptor",
+          "message": "feature storage must name the upload chunks that hold the payload"
+        }
+      }
+    },
+    {
+      "id": "update-payload-leaves-chunks-another-layer-still-parks-in",
+      "why": "Chunks another layer of the catalogue still parks its payload in are that layer’s storage: replacing this layer’s payload releases nothing, so a release never names another layer’s record.",
+      "request": {
+        "kind": "update",
+        "registry": {
+          "schema": 1,
+          "revision": 4,
+          "scope": {
+            "host": "browser"
+          },
+          "layers": [
+            {
+              "id": "sketch-1758000000000-1",
+              "name": "Access road",
+              "sourceName": "Manual layers",
+              "sourceLayerName": "Access road",
+              "sourceKind": "manual",
+              "geometryType": "LineString",
+              "color": "#2563eb",
+              "lineWidth": 2.5,
+              "pointRadius": 5.0,
+              "fillOpacity": 0.15,
+              "schema": [],
+              "featureCount": 12,
+              "featureStorage": {
+                "kind": "upload_chunks",
+                "workspaceKey": "w-2024",
+                "fileName": "roads.csv",
+                "parsedLayer": "roads",
+                "idPrefix": "feat-sketch-1758000000000-1",
+                "renderMode": "full"
+              },
+              "visible": true,
+              "createdAt": 1758000000000
+            },
+            {
+              "id": "sketch-1758000000000-9",
+              "name": "Roads (copy)",
+              "sourceName": "Manual layers",
+              "sourceLayerName": "Access road",
+              "sourceKind": "manual",
+              "geometryType": "LineString",
+              "color": "#2563eb",
+              "lineWidth": 2.5,
+              "pointRadius": 5.0,
+              "fillOpacity": 0.15,
+              "schema": [],
+              "featureCount": 12,
+              "featureStorage": {
+                "kind": "upload_chunks",
+                "workspaceKey": "w-2024",
+                "fileName": "roads.csv",
+                "parsedLayer": "roads",
+                "idPrefix": "feat-sketch-1758000000000-1",
+                "renderMode": "full"
+              },
+              "visible": true,
+              "createdAt": 1758000000000
+            }
+          ]
+        },
+        "scope": {
+          "host": "browser"
+        },
+        "id": "sketch-1758000000000-1",
+        "change": {
+          "kind": "payload",
+          "schema": [
+            {
+              "name": "road",
+              "type": "text"
+            }
+          ],
+          "featureCount": 3,
+          "featureStorage": null
+        }
+      },
+      "expected": {
+        "registry": {
+          "schema": 1,
+          "revision": 5,
+          "scope": {
+            "host": "browser"
+          },
+          "layers": [
+            {
+              "id": "sketch-1758000000000-1",
+              "name": "Access road",
+              "sourceName": "Manual layers",
+              "sourceLayerName": "Access road",
+              "sourceKind": "manual",
+              "geometryType": "LineString",
+              "color": "#2563eb",
+              "lineWidth": 2.5,
+              "pointRadius": 5.0,
+              "fillOpacity": 0.15,
+              "schema": [
+                {
+                  "name": "road",
+                  "type": "text"
+                }
+              ],
+              "featureCount": 3,
+              "visible": true,
+              "createdAt": 1758000000000
+            },
+            {
+              "id": "sketch-1758000000000-9",
+              "name": "Roads (copy)",
+              "sourceName": "Manual layers",
+              "sourceLayerName": "Access road",
+              "sourceKind": "manual",
+              "geometryType": "LineString",
+              "color": "#2563eb",
+              "lineWidth": 2.5,
+              "pointRadius": 5.0,
+              "fillOpacity": 0.15,
+              "schema": [],
+              "featureCount": 12,
               "featureStorage": {
                 "kind": "upload_chunks",
                 "workspaceKey": "w-2024",
@@ -2579,8 +3029,179 @@
       }
     },
     {
-      "id": "update-style-is-clamped-and-the-document-is-carried",
-      "why": "A style change clamps every number into the descriptor's range and carries the rich style document untouched — the kernel never reads it.",
+      "id": "update-rename-a-source-never-files-a-manual-layer-under-its-own-name",
+      "why": "The source label rule holds through a source rename: a manual layer whose own name is the new source name is filed under Manual layers, not under itself, so the admitted registry reopens without repair.",
+      "request": {
+        "kind": "update",
+        "registry": {
+          "schema": 1,
+          "revision": 4,
+          "scope": {
+            "host": "browser"
+          },
+          "layers": [
+            {
+              "id": "sketch-1758000000000-1",
+              "name": "Access road",
+              "sourceName": "Manual layers",
+              "sourceLayerName": "Access road",
+              "sourceKind": "manual",
+              "geometryType": "LineString",
+              "color": "#2563eb",
+              "lineWidth": 2.5,
+              "pointRadius": 5.0,
+              "fillOpacity": 0.15,
+              "schema": [],
+              "featureCount": 0,
+              "visible": true,
+              "createdAt": 1758000000000
+            },
+            {
+              "id": "sketch-1758000000000-2",
+              "name": "Poles",
+              "sourceName": "Manual layers",
+              "sourceLayerName": "Access road",
+              "sourceKind": "manual",
+              "geometryType": "LineString",
+              "color": "#2563eb",
+              "lineWidth": 2.5,
+              "pointRadius": 5.0,
+              "fillOpacity": 0.15,
+              "schema": [],
+              "featureCount": 0,
+              "visible": true,
+              "createdAt": 1758000000000
+            },
+            {
+              "id": "sketch-1758000000000-3",
+              "name": "Access road",
+              "sourceName": "Field survey",
+              "sourceLayerName": "Access road",
+              "sourceKind": "manual",
+              "geometryType": "LineString",
+              "color": "#2563eb",
+              "lineWidth": 2.5,
+              "pointRadius": 5.0,
+              "fillOpacity": 0.15,
+              "schema": [],
+              "featureCount": 0,
+              "visible": true,
+              "createdAt": 1758000000000
+            },
+            {
+              "id": "sketch-1758000000000-4",
+              "name": "Access road",
+              "sourceName": "Manual layers",
+              "sourceLayerName": "Access road",
+              "sourceKind": "derived",
+              "geometryType": "LineString",
+              "color": "#2563eb",
+              "lineWidth": 2.5,
+              "pointRadius": 5.0,
+              "fillOpacity": 0.15,
+              "schema": [],
+              "featureCount": 0,
+              "visible": true,
+              "createdAt": 1758000000000
+            }
+          ]
+        },
+        "scope": {
+          "host": "browser"
+        },
+        "id": "sketch-1758000000000-1",
+        "change": {
+          "kind": "rename_source",
+          "sourceKind": "manual",
+          "sourceName": "Manual layers",
+          "name": "Access road"
+        }
+      },
+      "expected": {
+        "registry": {
+          "schema": 1,
+          "revision": 5,
+          "scope": {
+            "host": "browser"
+          },
+          "layers": [
+            {
+              "id": "sketch-1758000000000-1",
+              "name": "Access road",
+              "sourceName": "Manual layers",
+              "sourceLayerName": "Access road",
+              "sourceKind": "manual",
+              "geometryType": "LineString",
+              "color": "#2563eb",
+              "lineWidth": 2.5,
+              "pointRadius": 5.0,
+              "fillOpacity": 0.15,
+              "schema": [],
+              "featureCount": 0,
+              "visible": true,
+              "createdAt": 1758000000000
+            },
+            {
+              "id": "sketch-1758000000000-2",
+              "name": "Poles",
+              "sourceName": "Access road",
+              "sourceLayerName": "Access road",
+              "sourceKind": "manual",
+              "geometryType": "LineString",
+              "color": "#2563eb",
+              "lineWidth": 2.5,
+              "pointRadius": 5.0,
+              "fillOpacity": 0.15,
+              "schema": [],
+              "featureCount": 0,
+              "visible": true,
+              "createdAt": 1758000000000
+            },
+            {
+              "id": "sketch-1758000000000-3",
+              "name": "Access road",
+              "sourceName": "Field survey",
+              "sourceLayerName": "Access road",
+              "sourceKind": "manual",
+              "geometryType": "LineString",
+              "color": "#2563eb",
+              "lineWidth": 2.5,
+              "pointRadius": 5.0,
+              "fillOpacity": 0.15,
+              "schema": [],
+              "featureCount": 0,
+              "visible": true,
+              "createdAt": 1758000000000
+            },
+            {
+              "id": "sketch-1758000000000-4",
+              "name": "Access road",
+              "sourceName": "Manual layers",
+              "sourceLayerName": "Access road",
+              "sourceKind": "derived",
+              "geometryType": "LineString",
+              "color": "#2563eb",
+              "lineWidth": 2.5,
+              "pointRadius": 5.0,
+              "fillOpacity": 0.15,
+              "schema": [],
+              "featureCount": 0,
+              "visible": true,
+              "createdAt": 1758000000000
+            }
+          ]
+        },
+        "receipt": {
+          "id": "sketch-1758000000000-1",
+          "applied": "rename_source",
+          "release": []
+        },
+        "changed": true
+      }
+    },
+    {
+      "id": "update-style-in-bounds-and-the-document-is-carried",
+      "why": "A style change inside the descriptor’s range is admitted as given and carries the rich style document untouched — the kernel never reads it.",
       "request": {
         "kind": "update",
         "registry": {
@@ -2615,9 +3236,9 @@
         "change": {
           "kind": "style",
           "color": " #0f766e ",
-          "lineWidth": 900,
-          "pointRadius": 0,
-          "fillOpacity": 2,
+          "lineWidth": 4,
+          "pointRadius": 8,
+          "fillOpacity": 0.4,
           "styleDoc": {
             "paint": {
               "line-color": "#0f766e"
@@ -2641,9 +3262,9 @@
               "sourceKind": "manual",
               "geometryType": "LineString",
               "color": "#0f766e",
-              "lineWidth": 12.0,
-              "pointRadius": 1.0,
-              "fillOpacity": 1.0,
+              "lineWidth": 4.0,
+              "pointRadius": 8.0,
+              "fillOpacity": 0.4,
               "styleDoc": {
                 "paint": {
                   "line-color": "#0f766e"
@@ -2662,6 +3283,56 @@
           "release": []
         },
         "changed": true
+      }
+    },
+    {
+      "id": "update-style-out-of-bounds-refused",
+      "why": "Only restore clamps: a host asserting a style outside the descriptor’s range is refused whole, so nothing moves and no value is silently corrected.",
+      "request": {
+        "kind": "update",
+        "registry": {
+          "schema": 1,
+          "revision": 4,
+          "scope": {
+            "host": "browser"
+          },
+          "layers": [
+            {
+              "id": "sketch-1758000000000-1",
+              "name": "Access road",
+              "sourceName": "Manual layers",
+              "sourceLayerName": "Access road",
+              "sourceKind": "manual",
+              "geometryType": "LineString",
+              "color": "#2563eb",
+              "lineWidth": 2.5,
+              "pointRadius": 5.0,
+              "fillOpacity": 0.15,
+              "schema": [],
+              "featureCount": 0,
+              "visible": true,
+              "createdAt": 1758000000000
+            }
+          ]
+        },
+        "scope": {
+          "host": "browser"
+        },
+        "id": "sketch-1758000000000-1",
+        "change": {
+          "kind": "style",
+          "color": "#0f766e",
+          "lineWidth": 900,
+          "pointRadius": 0,
+          "fillOpacity": 2
+        }
+      },
+      "expected": {
+        "outcome": "refused",
+        "refusal": {
+          "code": "malformed_descriptor",
+          "message": "a line width is 0.5 to 12"
+        }
       }
     },
     {
@@ -3356,6 +4027,173 @@
             "host": "browser"
           },
           "layers": []
+        },
+        "receipt": {
+          "id": "sketch-1758000000000-1",
+          "removed": true,
+          "release": [
+            {
+              "kind": "features_payload",
+              "id": "sketch-1758000000000-1"
+            }
+          ]
+        },
+        "changed": true
+      }
+    },
+    {
+      "id": "remove-leaves-chunks-another-layer-still-parks-in",
+      "why": "Removing a layer whose chunks another layer still parks its payload in releases only its own payload record: the chunks are the other layer’s storage and are never named.",
+      "request": {
+        "kind": "remove",
+        "registry": {
+          "schema": 1,
+          "revision": 4,
+          "scope": {
+            "host": "browser"
+          },
+          "layers": [
+            {
+              "id": "sketch-1758000000000-1",
+              "name": "Access road",
+              "sourceName": "roads.zip",
+              "sourceLayerName": "Access road",
+              "sourceKind": "import",
+              "sourceMetadata": {
+                "kind": "import_file",
+                "fileName": "roads.zip",
+                "sourceName": "roads.zip",
+                "sourcePath": "/home/field/gis/roads.zip",
+                "lastRefreshAt": 1757000000000
+              },
+              "geometryType": "LineString",
+              "color": "#2563eb",
+              "lineWidth": 2.5,
+              "pointRadius": 5.0,
+              "fillOpacity": 0.15,
+              "schema": [],
+              "featureCount": 12,
+              "featureStorage": {
+                "kind": "upload_chunks",
+                "workspaceKey": "w-2024",
+                "fileName": "roads.csv",
+                "parsedLayer": "roads",
+                "idPrefix": "feat-sketch-1758000000000-1",
+                "renderMode": "full"
+              },
+              "visible": true,
+              "createdAt": 1758000000000
+            },
+            {
+              "id": "sketch-1758000000000-2",
+              "name": "Poles",
+              "sourceName": "Manual layers",
+              "sourceLayerName": "Access road",
+              "sourceKind": "manual",
+              "geometryType": "LineString",
+              "color": "#2563eb",
+              "lineWidth": 2.5,
+              "pointRadius": 5.0,
+              "fillOpacity": 0.15,
+              "schema": [],
+              "featureCount": 0,
+              "visible": true,
+              "createdAt": 1758000000000
+            },
+            {
+              "id": "sketch-1758000000000-9",
+              "name": "Access road (copy)",
+              "sourceName": "roads.zip",
+              "sourceLayerName": "Access road",
+              "sourceKind": "import",
+              "sourceMetadata": {
+                "kind": "import_file",
+                "fileName": "roads.zip",
+                "sourceName": "roads.zip",
+                "sourcePath": "/home/field/gis/roads.zip",
+                "lastRefreshAt": 1757000000000
+              },
+              "geometryType": "LineString",
+              "color": "#2563eb",
+              "lineWidth": 2.5,
+              "pointRadius": 5.0,
+              "fillOpacity": 0.15,
+              "schema": [],
+              "featureCount": 12,
+              "featureStorage": {
+                "kind": "upload_chunks",
+                "workspaceKey": "w-2024",
+                "fileName": "roads.csv",
+                "parsedLayer": "roads",
+                "idPrefix": "feat-sketch-1758000000000-1",
+                "renderMode": "full"
+              },
+              "visible": true,
+              "createdAt": 1758000000000
+            }
+          ]
+        },
+        "scope": {
+          "host": "browser"
+        },
+        "id": "sketch-1758000000000-1"
+      },
+      "expected": {
+        "registry": {
+          "schema": 1,
+          "revision": 5,
+          "scope": {
+            "host": "browser"
+          },
+          "layers": [
+            {
+              "id": "sketch-1758000000000-2",
+              "name": "Poles",
+              "sourceName": "Manual layers",
+              "sourceLayerName": "Access road",
+              "sourceKind": "manual",
+              "geometryType": "LineString",
+              "color": "#2563eb",
+              "lineWidth": 2.5,
+              "pointRadius": 5.0,
+              "fillOpacity": 0.15,
+              "schema": [],
+              "featureCount": 0,
+              "visible": true,
+              "createdAt": 1758000000000
+            },
+            {
+              "id": "sketch-1758000000000-9",
+              "name": "Access road (copy)",
+              "sourceName": "roads.zip",
+              "sourceLayerName": "Access road",
+              "sourceKind": "import",
+              "sourceMetadata": {
+                "kind": "import_file",
+                "fileName": "roads.zip",
+                "sourceName": "roads.zip",
+                "sourcePath": "/home/field/gis/roads.zip",
+                "lastRefreshAt": 1757000000000
+              },
+              "geometryType": "LineString",
+              "color": "#2563eb",
+              "lineWidth": 2.5,
+              "pointRadius": 5.0,
+              "fillOpacity": 0.15,
+              "schema": [],
+              "featureCount": 12,
+              "featureStorage": {
+                "kind": "upload_chunks",
+                "workspaceKey": "w-2024",
+                "fileName": "roads.csv",
+                "parsedLayer": "roads",
+                "idPrefix": "feat-sketch-1758000000000-1",
+                "renderMode": "full"
+              },
+              "visible": true,
+              "createdAt": 1758000000000
+            }
+          ]
         },
         "receipt": {
           "id": "sketch-1758000000000-1",
