@@ -66,3 +66,23 @@ continues to govern literal headings; indexed headings measure the letters.
 Per-transformer `table.heading_mode` overrides the project layout through the
 same existing print-instruction command. Old documents omit the default field
 when serialized, preserving compatibility and their existing presentation.
+
+## Printable inventory and preview admission
+
+`printable_transformers` takes status `rows`, optional account-fenced host
+`rooms`, `current_user`, and a `limit` of 1 through 500. Reserved names use
+`design::row_kind`, so aggregate, analysis and project-document rows remain
+excluded even when native status omits `kind`. Supplied room facts produce
+`cached` / `dirty` booleans; omitted room facts produce nulls and
+`local_rooms_known: false`. An empty supplied inventory is known empty.
+
+`render_plan` validates the layout, requires all referenced print styles and
+some map data, and returns `ready`, refusal keys, required style references
+and text with the host-supplied date. Rendering remains a host effect.
+
+Report `export` requires an overview's `active_project` fact to match
+`project`; hosts re-evaluate after asynchronous preparation. Individual
+transformer exports need no open project. `batch_outcome` orders completed
+results and counts errors without performing any export. These decisions are
+available natively through `ds report transformers`, `ds report plan`, and
+`ds report layout edit` as well as WASM.
