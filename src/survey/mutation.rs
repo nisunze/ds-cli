@@ -242,11 +242,10 @@ fn capture(r: &Value) -> Result<Value, String> {
             payload[key] = v.clone();
         }
     }
+    payload["schema"] = json!("ds.survey-entry-create/v1");
+    payload["operation"] = json!("plan");
     let plan: Value = serde_json::from_str(&crate::survey_entry_create::evaluate(
-        &serde_json::to_vec(
-            &json!({"schema":"ds.survey-entry-create/v1","operation":"plan","request":payload}),
-        )
-        .map_err(|e| e.to_string())?,
+        &serde_json::to_vec(&payload).map_err(|e| e.to_string())?,
     )?)
     .map_err(|e| e.to_string())?;
     let feature = optimistic(
@@ -357,6 +356,14 @@ mod tests {
         assert!(capture(&json!({"grants":{}}))
             .unwrap_err()
             .contains("entries.create"));
+    }
+    #[test]
+    fn capture_composes_the_existing_create_wire_contract() {
+        let r = json!({"params":{"data":{"name":"Pole"},"entryDocumentSchema":{"top_level_keys":[{"key":"data","required":false},{"key":"metadata","required":false},{"key":"geometry","required":false}]}},"identity":{"project_id":"p","form_id":"form","doc_id":"d"},"grants":{"entries.create":true},"user_email":"field@example.com","mutation_id":"key","now":"2026-09-11T00:00:00Z"});
+        let result = capture(&r).unwrap();
+        assert_eq!(result["payload"]["operation"], "create");
+        assert_eq!(result["payload"]["data"]["name"], "Pole");
+        assert_eq!(result["feature"]["properties"]["doc_id"], "d");
     }
     #[test]
     fn restore_clears_legacy_tombstones_and_retains_location_delta() {

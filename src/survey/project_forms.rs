@@ -196,7 +196,7 @@ fn receipt(request: &Value) -> Result<Value, String> {
     if request["project_id"].as_str() != Some(expected_project) {
         return Err(format!(
             "Project forms save returned project {}, expected {expected_project}",
-            request["project_id"]
+            request["project_id"].as_str().unwrap_or("unknown")
         ));
     }
     let requested = request["requested_slugs"]
