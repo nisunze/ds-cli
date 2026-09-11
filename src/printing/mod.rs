@@ -5,6 +5,7 @@ pub mod custom;
 pub mod lifecycle;
 pub mod map;
 pub mod overrides;
+pub mod session;
 pub mod style_overrides;
 pub mod table_headings;
 pub mod table_rows;
@@ -1264,6 +1265,14 @@ pub enum Command {
         layout: Layout,
         resources: Vec<context::CatalogResource>,
     },
+    /// The print editor's zero state and its history cap (see `session`).
+    SessionDefaults {},
+    /// One event against the editor's workflow state: the next state and the
+    /// operations the host performs on the documents it holds.
+    SessionStep {
+        state: session::State,
+        event: session::Event,
+    },
     /// Switch one context layer on or off, seeding fallback styles.
     ContextToggle {
         layout: Layout,
@@ -1535,6 +1544,13 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
         Command::ContextDefaultSelection { layout, resources } => {
             let layout = upgrade(layout)?;
             json!({"layout": context::default_selection(layout, &resources)?})
+        }
+        Command::SessionDefaults {} => json!({
+            "state": session::State::default(),
+            "history_cap": session::HISTORY_CAP,
+        }),
+        Command::SessionStep { state, event } => {
+            serde_json::to_value(session::step(&state, &event)?).map_err(|e| e.to_string())?
         }
         Command::ContextToggle {
             layout,
