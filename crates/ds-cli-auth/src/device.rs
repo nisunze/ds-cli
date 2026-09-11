@@ -931,6 +931,10 @@ fn device_failure(_: DeviceError) -> Failure {
 }
 
 fn device_response_failure(error: DeviceError, http_status: u16) -> Failure {
+    if http_status == 429 || (500..=599).contains(&http_status) {
+        return transport_failure(TransportError::Unreachable)
+            .detail(json!({ "http_status": http_status }));
+    }
     if http_status == 404 {
         return Failure::unavailable(
             "device_auth_endpoint_unavailable",
@@ -1138,5 +1142,27 @@ mod tests {
         let failure = device_response_failure(DeviceError::Response, 201);
         assert_eq!(failure.code(), "device_auth_response_invalid");
         assert_eq!(failure.detail_value(), Some(&json!({ "http_status": 201 })));
+    }
+
+    #[test]
+    fn transient_begin_statuses_are_retryable_before_body_validation() {
+        for status in [429, 500, 502, 503, 504] {
+            let failure = device_response_failure(DeviceError::Response, status);
+            assert_eq!(failure.code(), "device_auth_transient");
+            assert_eq!(
+                failure.detail_value(),
+                Some(&json!({ "http_status": status }))
+            );
+        }
+    }
+
+    #[test]
+    fn permanent_authorization_statuses_remain_contract_refusals() {
+        for status in [401, 403] {
+            assert_eq!(
+                device_response_failure(DeviceError::Response, status).code(),
+                "device_auth_response_invalid"
+            );
+        }
     }
 }
