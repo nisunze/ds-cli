@@ -136,6 +136,19 @@ impl Store {
     pub fn job_result(&self, owner: &str, lane: &str, id: &str) -> Result<Option<Vec<u8>>> {
         Ok(self.connection.query_row("SELECT result FROM compute_jobs WHERE id=?1 AND owner=?2 AND lane=?3 AND phase='completed'",params![id,owner,lane],|r|r.get(0)).optional()?.flatten())
     }
+    /// The sealed request retained with a job, visible only to its native
+    /// owner/lane. Hosts use it to reconstruct a publication after restart;
+    /// it is never a caller-supplied file reference.
+    pub fn job_input(&self, owner: &str, lane: &str, id: &str) -> Result<Option<Vec<u8>>> {
+        self.connection
+            .query_row(
+                "SELECT input FROM compute_jobs WHERE id=?1 AND owner=?2 AND lane=?3",
+                params![id, owner, lane],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(Into::into)
+    }
 
     /// True only while this exact leased worker is still entitled to commit.
     /// Native engines use it for cooperative cancellation after `Cancel` or a
