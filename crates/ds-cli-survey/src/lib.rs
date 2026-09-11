@@ -26,7 +26,7 @@ use serde_json::{Map, Value, json};
 
 pub static DOMAIN: Domain = Domain {
     id: "survey",
-    summary: "Survey control plane: forms, project settings, templates, projects.",
+    summary: "Survey evidence, offline capture, forms and project templates.",
     commands: &[
         &workspace::INIT,
         &workspace::PREPARE,

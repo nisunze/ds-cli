@@ -222,8 +222,8 @@ pub static COMMAND: Command = Command {
     path: &["survey", "entries", "changes"],
     contract: 1,
     chapter: Chapter::Survey,
-    summary: "Read one fenced page of Survey changes headlessly.",
-    purpose: "Validates the form, inclusive lower clock, limit, and cursor before auth; uses only the restored user's selected project; releases its lease before the fixed changes call; and verifies one immutable-fence page. It never auto-paginates. Continue incomplete pages with unchanged updated-after/limit and exact next_cursor without advancing the checkpoint. Only a complete upper_fence advances it. Apply rows idempotently by doc_id plus firestore_updated_at; tombstones remove live rows. This is coalesced mirror state, not Firestore history. No project, transport, projection, force, authority, or Desktop override exists.",
+    summary: "Refresh a Survey delivery from changes since its checkpoint.",
+    purpose: "Use to refresh a downstream survey delivery after field corrections or new captures without downloading everything again. Reads one selected-project mirror page since an inclusive replication clock; this is not a capture-date filter. It never auto-paginates. Continue incomplete pages with unchanged updated-after/limit and exact next_cursor without advancing the checkpoint. Only a complete upper_fence advances it. Apply rows idempotently by doc_id plus firestore_updated_at; tombstones remove live rows. This is coalesced mirror state, not Firestore history. No project, transport, projection, force, authority, or Desktop override exists.",
     effect: Effect::LocalAuthState,
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
@@ -232,7 +232,7 @@ pub static COMMAND: Command = Command {
     examples: &[
         Example {
             command: "ds survey entries changes --form <form-slug> --updated-after 2026-08-30T00:00:00Z --output json",
-            note: "Reads one page; an incomplete result does not advance the checkpoint. The exact slug comes from `ds survey forms list`.",
+            note: "Refresh the prior delivery. Keep its completed checkpoint until all pages complete; resolve the exact slug with `ds survey project-forms list`.",
             runnable: false,
         },
         Example {

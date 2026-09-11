@@ -202,8 +202,8 @@ pub static COMMAND: Command = Command {
     path: &["survey", "entries", "select"],
     contract: 1,
     chapter: Chapter::Survey,
-    summary: "Select bounded Survey geometry headlessly.",
-    purpose: "Validates one exact form, WGS84 bounding box, and limit before profile or auth access; restores the native user; loads only its audience-fenced selected project under lease; releases the lease before the fixed Survey selection call; and verifies the returned mutable mirror rows and digest. There is no project, URL, method, body, token, cursor, geometry-document, field, media, deletion, force, caller-authority, or Desktop override.",
+    summary: "Locate surveyed assets for spatial review and design handoff.",
+    purpose: "Use to locate surveyed assets in a requested area for spatial review or a design handoff. Returns only identities, geometry, creators and replication times; engineering attributes, photos and network connections are not included. Preserve the project, form, bbox, digest and completeness; a mutable mirror selection is not an approved design revision. Narrow a truncated bbox and deduplicate overlapping selections by identity. Resolve the exact participating project form first. Native selected-project permissions apply; there is no cursor or field expansion.",
     effect: Effect::LocalAuthState,
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
@@ -212,7 +212,7 @@ pub static COMMAND: Command = Command {
     examples: &[
         Example {
             command: "ds survey entries select --form <form-slug> --bbox '29.70,-2.05,29.80,-1.95' --output json",
-            note: "Returns at most 100 spatially intersecting rows from the selected project's governed form; read the exact slug from `ds survey forms list`.",
+            note: "Locate observations in this area, up to 100 rows. Resolve the exact slug with `ds survey project-forms list`; identify missing attributes before handing this to a designer.",
             runnable: false,
         },
         Example {

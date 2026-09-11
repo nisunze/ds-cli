@@ -67,7 +67,7 @@ command!(
     "survey.workspace.prepare",
     "prepare",
     "Cache selected project forms for offline Survey capture.",
-    "Fetches one complete selected-project form resolution through the native client, then initializes a new durable local workspace. Subsequent collect and list operations require no network.",
+    "Prepare before an offline field visit while connectivity is available. Fetches the selected project and complete resolved forms into a new durable native workspace; later collect and list operations need no network. Keep the workspace and form revisions through interruption. This prepares native CLI capture, not the browser or an Android device.",
     Effect::LocalFileWrite,
     Authority::HeadlessProject,
     &[WORKSPACE, crate::LANE],
@@ -79,7 +79,7 @@ command!(
     "survey.workspace.collect",
     "collect",
     "Collect one validated Survey entry entirely offline.",
-    "Validates data using the cached form and shared Rust kernel, then commits one entry and stable replay identity in a SQLite transaction. Unknown or hidden fields are refused instead of discarded. No network is attempted; sync is a separate confirmed action.",
+    "Record one field observation while disconnected using a prepared workspace. The cached form and shared Rust kernel validate it before the entry and stable replay identity commit together in SQLite. Unknown or hidden fields are refused instead of discarded. Local pending means collected, not published; sync is a separate confirmed action.",
     Effect::LocalFileWrite,
     Authority::None,
     &[
@@ -126,7 +126,7 @@ command!(
     "survey.workspace.sync",
     "sync",
     "Publish a bounded offline Survey batch with stable replay keys.",
-    "Requires --yes. Binds the workspace to the restored principal, audience, lane and selected project before sending any row. Sends sequentially through the governed create API, persists each verified acknowledgement, and stops on any refusal. An ambiguous outcome stays pending for an exact idempotent retry; no automatic retry or data deletion occurs.",
+    "Publish retained field captures when connectivity returns and publication is authorized. Requires --yes. Binds the workspace to the restored principal, audience, lane and selected project before sending any row. Sends sequentially through the governed create API, persists each verified acknowledgement, and stops on any refusal. An ambiguous outcome stays pending for an exact idempotent retry; no automatic retry or data deletion occurs.",
     Effect::GlobalWrite,
     Authority::HeadlessProject,
     &[

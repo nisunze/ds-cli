@@ -1,4 +1,43 @@
-# Survey control plane
+# Survey evidence and collection
+
+Survey data records observed conditions, locations and capture context. It helps
+plan visits, track field work, review evidence and prepare design inputs. It does
+not by itself establish an approved design, construction quantity or complete
+asset inventory.
+
+## Choose the operation from the question
+
+| Need | Existing operation | Evidence required for the answer |
+| --- | --- | --- |
+| Progress by surveyor or asset type | `survey.query` | Exact project/form, measure, requested period and filters; distinguish records from distinct assets. |
+| Coverage gaps or where to visit next | `survey.query`, then `survey.entries.select` when locations are needed | An agreed target area, asset list or expected count. Without a denominator, coverage remains unknown. |
+| Missing observations before design review | `survey.query` with relevant form fields and bounded filters | Supported field names and a stated quality rule; results are review candidates, not permission to correct or delete. |
+| Surveyed assets for a design handoff | `survey.entries.select` | Area, exact identities, freshness, digest and completeness; explicitly identify required engineering attributes or photos absent from this projection. |
+| Changes since a prior delivery | `survey.entries.changes` | Last completed replication checkpoint, retained cursors and tombstones; a partial page does not advance the checkpoint. |
+| Work without connectivity | `survey.workspace.prepare`, then `collect` and `list` | Prepared project/forms and durable pending captures; `sync` publishes only when authorized and online. |
+| Standardize or reuse collection forms | Project-form and template commands below | Current settings and versions; configuration reuse does not copy observations. |
+
+## Reuse existing discovery
+
+CLI help, `ds capabilities` and MCP describe the same registered commands. Use
+`ds capabilities --search "survey progress"` when only the purpose is known;
+otherwise request the known command directly. Read its full contract once, then
+reuse it while the installed build and task remain unchanged. There is no need
+to walk every command or load an agent-specific skill before a simple query.
+
+Recover scope from the request and selected project; resolve unknown form slugs
+with `survey.project-forms.list`. Read only the schema fields needed by the
+question. A global master catalogue does not establish project participation.
+An unavailable command/profile is an installation problem; an empty result,
+permission refusal and truncated result are different outcomes. Follow the
+reported remedy instead of repeating discovery or substituting private storage.
+
+Return the answer with project, forms, area/period, measure, freshness and
+completeness. Retain exact identities and completed delivery checkpoints when
+handing off data. Capture time answers when field work happened; replication
+time answers when a downstream copy changed.
+
+## Control plane and native capture
 
 `ds survey` runs natively without Desktop. Form Factory schemas, project form
 bindings/settings, reusable templates and project creation use fixed typed
