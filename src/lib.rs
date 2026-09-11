@@ -12,6 +12,12 @@ use serde_json::Value;
 use zeroize::Zeroize;
 
 pub mod assets;
+pub mod solar_snapshot;
+#[cfg(feature = "wasm")]
+#[wasm_bindgen::prelude::wasm_bindgen(js_name = solarSnapshot)]
+pub fn solar_snapshot_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
+    solar_snapshot::evaluate(input).map_err(|error| wasm_bindgen::JsValue::from_str(&error))
+}
 #[cfg(feature = "wasm")]
 #[wasm_bindgen::prelude::wasm_bindgen(js_name = assetsCommand)]
 pub fn assets_command_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
