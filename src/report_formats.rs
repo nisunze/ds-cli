@@ -84,13 +84,29 @@ pub fn named_print_output(format: &str) -> Option<(PrintArtifactFormat, &str)> {
 /// placement for an output offers both; ds-brain admits a request against this
 /// same matrix (`network_reporter_individual_policy.go`), so the vocabulary and
 /// its precedence are authored here rather than in two runtimes.
-#[derive(
-    Debug, Clone, Copy, Deserialize, Serialize, JsonSchema, PartialEq, Eq, PartialOrd, Ord,
-)]
+#[derive(Debug, Clone, Copy, Serialize, JsonSchema, PartialEq, Eq, PartialOrd, Ord)]
 #[serde(rename_all = "snake_case")]
 pub enum Placement {
     Desktop,
     Web,
+}
+
+/// Read a placement the way ds-brain reads one: trimmed and case-folded
+/// (`network_reporter_individual_policy.go:408`). A selection the grant admits
+/// must not be unreadable here — that is the failure this whole field exists to
+/// end — and serialisation stays canonical `snake_case`, so a stored `Desktop`
+/// is honoured once and written back lowercase.
+impl<'de> Deserialize<'de> for Placement {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let raw = String::deserialize(deserializer)?;
+        match raw.trim().to_ascii_lowercase().as_str() {
+            "desktop" => Ok(Self::Desktop),
+            "web" => Ok(Self::Web),
+            other => Err(serde::de::Error::custom(format!(
+                "unknown output placement `{other}`, expected `desktop` or `web`"
+            ))),
+        }
+    }
 }
 
 /// The answer for an output no execution entry names.
@@ -275,14 +291,20 @@ pub fn normalize_output_selection(
     let mut geospatial = Vec::new();
     let mut tabular = Vec::new();
     for raw in formats {
-        let token = raw.to_ascii_lowercase();
+        // Trimmed, case-folded and aliased exactly as `normalize` and ds-brain
+        // read the same token, so the selection a host renders and the plan a
+        // report runs never name the output differently. A repeat collapses
+        // for the same reason the grant's `selected` map collapses it.
+        let token = alias_format(&raw.trim().to_ascii_lowercase()).to_string();
         if let Some((format, id)) = named_print_output(&token) {
             prints.entry(id.into()).or_default().insert(format);
-        } else if token == "xlsx" {
-            tabular.push(token);
         } else if token.contains("__") {
             return Err(format!("invalid named print output: {raw}"));
-        } else {
+        } else if token == "xlsx" {
+            if !tabular.contains(&token) {
+                tabular.push(token);
+            }
+        } else if !geospatial.contains(&token) {
             geospatial.push(token);
         }
     }
@@ -470,6 +492,24 @@ pub fn output(format: &str) -> Result<Output, String> {
     })
 }
 
+/// The legacy format aliases, in one place. ds-brain applies exactly this map
+/// while admitting a request (`networkReporterIndividualFormatAliases`), so a
+/// stored `excel` is `xlsx` and a stored `A3_PDF` is `pdf_a3` for EVERY reader:
+/// the planner, the selection the Settings matrix renders, and the grant. A
+/// reader that skipped it answered `a3_pdf` — a token no catalogue offers and
+/// no execution class claims — while the grant answered `pdf_a3`, class
+/// `print`, and the two disagreed about where the output could run.
+pub fn alias_format(lowercase: &str) -> &str {
+    match lowercase {
+        "shp.zip" | "shapefile" => "shp",
+        "json" | "geojson.zip" => "geojson",
+        "excel" => "xlsx",
+        "pdf" | "a0_pdf" => "pdf_a0",
+        "a3_pdf" => "pdf_a3",
+        other => other,
+    }
+}
+
 pub fn normalize(values: &[String]) -> Vec<String> {
     let selected: Vec<_> = values
         .iter()
@@ -477,15 +517,7 @@ pub fn normalize(values: &[String]) -> Vec<String> {
             if let Some((kind, id)) = named_print_output(value.trim()) {
                 return format!("{}__{id}", kind.prefix());
             }
-            let lower = value.trim().to_ascii_lowercase();
-            match lower.as_str() {
-                "shp.zip" | "shapefile" => "shp".into(),
-                "json" | "geojson.zip" => "geojson".into(),
-                "excel" => "xlsx".into(),
-                "pdf" | "a0_pdf" => "pdf_a0".into(),
-                "a3_pdf" => "pdf_a3".into(),
-                _ => lower,
-            }
+            alias_format(&value.trim().to_ascii_lowercase()).to_string()
         })
         .collect();
     let mut ordered: Vec<_> = INDIVIDUAL
@@ -821,6 +853,103 @@ mod tests {
         assert!(
             plan(&sheets, false).is_ok(),
             "plan must read the stored selection"
+        );
+    }
+
+    /// One stored token, one answer. `normalize` (and therefore `plan`, the
+    /// native reporter and ds-brain) has always aliased `A3_PDF` to `pdf_a3`;
+    /// the selection reader skipped the table and answered `a3_pdf`, which no
+    /// catalogue offers and which `output_class` calls geospatial while the
+    /// grant calls it `print` — so a project restricting prints to the desktop
+    /// had this output shown as running anywhere.
+    #[test]
+    fn a_legacy_alias_reads_the_same_in_the_selection_as_in_the_plan() {
+        let selection = stored_output_selection(&json!("A3_PDF;excel")).expect("legacy row reads");
+        assert_eq!(selection.tokens().unwrap(), ["pdf_a3", "xlsx"]);
+        assert_eq!(output_class("pdf_a3"), "print");
+        assert_eq!(output_class("xlsx"), "tabular");
+        let sheets = json!({"project_settings":[{"parameter":"design_export_format","value":"A3_PDF;excel"}]});
+        let planned: Vec<_> = plan(&sheets, false)
+            .expect("plan reads the same row")
+            .into_iter()
+            .map(|output| output.output_id)
+            .collect();
+        assert_eq!(planned, ["xlsx", "pdf_a3"]);
+        // The class the grant filters on is the class this selection answers
+        // for, so a project that keeps prints on the desktop keeps this one
+        // there too.
+        let restricted = normalize_output_selection(
+            None,
+            Some(vec!["A3_PDF".into(), "excel".into()]),
+            Some(BTreeMap::from([(
+                "print".to_string(),
+                vec![Placement::Desktop],
+            )])),
+        )
+        .expect("a legacy list upgrades with the placement its host holds");
+        assert_eq!(restricted.placements("pdf_a3"), [Placement::Desktop]);
+        assert_eq!(restricted.placements("xlsx"), BOTH_PLACEMENTS);
+        // The same token twice is one selection, as it is for the grant.
+        assert_eq!(
+            stored_output_selection(&json!("excel,xlsx,SHP,shp"))
+                .unwrap()
+                .tokens()
+                .unwrap(),
+            ["shp", "xlsx"]
+        );
+    }
+
+    /// ds-brain trims and case-folds a stored placement before matching it. A
+    /// selection it admits must read here, and must be written back canonical.
+    #[test]
+    fn a_stored_placement_is_read_the_way_the_grant_reads_it() {
+        let stored = json!({"schema":OUTPUT_SELECTION_SCHEMA,"geospatial":["gpkg"],
+            "execution":{"gpkg":[" Desktop ","WEB"]}});
+        let selection = stored_output_selection(&stored).expect("the grant admits this project");
+        assert_eq!(selection.placements("gpkg"), BOTH_PLACEMENTS);
+        assert_eq!(
+            serde_json::to_value(&selection).unwrap()["execution"]["gpkg"],
+            json!(["desktop", "web"])
+        );
+        assert!(stored_output_selection(
+            &json!({"schema":OUTPUT_SELECTION_SCHEMA,"geospatial":["gpkg"],"execution":{"gpkg":["cloud"]}})
+        )
+        .is_err());
+        // Case-folding must not smuggle a repeat past the duplicate rule.
+        assert!(stored_output_selection(
+            &json!({"schema":OUTPUT_SELECTION_SCHEMA,"geospatial":["gpkg"],"execution":{"gpkg":["web","WEB"]}})
+        )
+        .is_err());
+    }
+
+    /// The Settings page saves the whole sheet through `design_config::save`.
+    /// That writer must not be a second author of the export row: the bytes the
+    /// output matrix chose are the bytes that are stored.
+    #[test]
+    fn the_settings_sheet_save_leaves_the_export_row_exactly_as_chosen() {
+        let value = json!({"schema":OUTPUT_SELECTION_SCHEMA,
+            "prints":[{"layout_id":"detail","enabled":true,"formats":["pdf"]}],
+            "geospatial":["gpkg"],"tabular":["xlsx"],"execution":{"print":["desktop"]}});
+        let rows = json!([
+            {"parameter":"Design-Export-Format","value":value},
+            {"parameter":"max_cable_size","value":"3 x 70"},
+        ]);
+        let document = json!({"sheets":{"project_settings":rows}});
+        let saved = crate::design_config::save_sheet(&document, "project_settings", &rows)
+            .expect("the settings sheet saves");
+        let saved = saved.as_array().expect("rows");
+        // The parameter name is reduced the way every reader of this row
+        // reduces it, and the selection itself is untouched.
+        assert_eq!(saved[0]["parameter"], "design_export_format");
+        assert_eq!(saved[0]["value"], value);
+        assert_eq!(
+            setting_parameter_key(&saved[0]).as_deref(),
+            Some("design_export_format")
+        );
+        let sheets = json!({"project_settings":saved});
+        assert_eq!(
+            project_output_setting(&sheets).unwrap().unwrap()["value"],
+            value
         );
     }
 
