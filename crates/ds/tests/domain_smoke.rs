@@ -3022,6 +3022,11 @@ fn background_project_operations_are_map_independent_and_use_the_declared_projec
             BTreeSet::from(["findings", "lane", "transformer"]),
         ),
         (
+            "design.dashboard",
+            "local_auth_state",
+            BTreeSet::from(["fast", "lane"]),
+        ),
+        (
             "design.transformer.inventory",
             "local_auth_state",
             BTreeSet::from(["lane", "transformer"]),
@@ -3342,6 +3347,95 @@ fn design_status_reads_the_headless_project_and_never_reaches_for_a_browser() {
         let run = native_ds(&args);
         // Unauthorized, not invalid input: the request was well formed and
         // there is simply no verified principal behind it.
+        assert_eq!(run.code, 4, "{}", args.join(" "));
+        assert_eq!(run.envelope["error"]["class"], "unauthorized");
+        assert_eq!(
+            run.envelope["error"]["code"],
+            "headless_signed_out",
+            "{}",
+            args.join(" ")
+        );
+        assert!(
+            run.stderr.is_empty() || !run.stderr.contains("http"),
+            "{} touched a network surface: {}",
+            args.join(" "),
+            run.stderr
+        );
+    }
+}
+
+/// The Dashboard is the same headless spine, folded once: the same credential,
+/// the same refusals, the same absence of a browser — and a model whose every
+/// attention note is the shared health verdict, so `ds` and the register can
+/// never disagree about a project's state.
+#[test]
+fn design_dashboard_is_the_same_headless_read_folded_once() {
+    let descriptor = ok(&["capabilities", "design.dashboard", "--output", "json"]);
+    let command = &descriptor["command"];
+    assert_eq!(command["path"], serde_json::json!(["design", "dashboard"]));
+    assert_eq!(command["authority"], "headless_project");
+    assert_eq!(command["effect"], "local_auth_state");
+    assert_eq!(command["execution"], "sync");
+    assert_eq!(command["availability"], "unavailable");
+    let inputs = command["inputs"]
+        .as_array()
+        .expect("inputs")
+        .iter()
+        .map(|input| input["name"].as_str().expect("input name"))
+        .collect::<BTreeSet<_>>();
+    // No `--transformer`: every percentage here is measured against the fleet,
+    // so a dashboard over a subset would be a different question.
+    assert_eq!(inputs, BTreeSet::from(["fast", "lane"]));
+    // The descriptor says out loud that a headless client holds no live
+    // diagnostics, so a reader is never surprised by their absence.
+    assert!(
+        command["output"]
+            .as_str()
+            .expect("output")
+            .contains("headless client holds none"),
+    );
+
+    // No project override, and a malformed lane is answered locally.
+    assert_eq!(
+        native_ds(&[
+            "design",
+            "dashboard",
+            "--project",
+            "p-1",
+            "--output",
+            "json"
+        ])
+        .envelope["error"]["code"],
+        "unknown_flag"
+    );
+    assert_eq!(
+        native_ds(&[
+            "design",
+            "dashboard",
+            "--transformer",
+            "tx_a",
+            "--output",
+            "json"
+        ])
+        .envelope["error"]["code"],
+        "unknown_flag"
+    );
+
+    // With no restorable native user the read stops at the auth boundary —
+    // the same typed refusal the rest of the spine gives, and no network.
+    for args in [
+        vec!["design", "dashboard", "--output", "json"],
+        vec![
+            "design",
+            "dashboard",
+            "--fast",
+            "--lane",
+            "canary",
+            "--output",
+            "json",
+        ],
+    ] {
+        let run = native_ds(&args);
         assert_eq!(run.code, 4, "{}", args.join(" "));
         assert_eq!(run.envelope["error"]["class"], "unauthorized");
         assert_eq!(
@@ -4552,7 +4646,7 @@ fn every_design_command_is_discoverable_without_the_desktop_installed() {
     let commands = index["commands"].as_array().expect("commands");
     assert_eq!(
         commands.len(),
-        61,
+        62,
         "the design domain should expose its whole family: {commands:?}"
     );
     for command in commands {
@@ -4569,6 +4663,7 @@ fn every_design_command_is_discoverable_without_the_desktop_installed() {
                     | "design.customer-categories.alias"
                     | "design.lv.project-export"
                     | "design.status"
+                    | "design.dashboard"
                     | "design.transformer.inventory"
                     | "design.transformer.retire"
                     | "design.transformer.restore"
@@ -4705,8 +4800,10 @@ fn design_collaboration_is_a_complete_headless_project_surface() {
                 && !id.starts_with("design.meter-types.")
                 && !id.starts_with("design.customer-categories.")
                 // The native read spine is not bridge collaboration; its own
-                // test pins its availability and its refusals.
+                // test pins its availability and its refusals. The Dashboard
+                // is the same spine, folded once.
                 && *id != "design.status"
+                && *id != "design.dashboard"
         })
         .collect();
     let expected: BTreeSet<&str> = [
@@ -4800,6 +4897,7 @@ fn design_collaboration_is_a_complete_headless_project_surface() {
             || id.starts_with("design.meter-types.")
             || id.starts_with("design.customer-categories.")
             || id == "design.status"
+            || id == "design.dashboard"
         {
             continue;
         }

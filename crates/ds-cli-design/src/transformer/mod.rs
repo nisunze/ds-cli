@@ -12,10 +12,12 @@
 //!
 //! `status` shares this module's credential path, scope flag and refusals but
 //! answers `ds design status`: the project's own transformer status rows, the
-//! read every other headless Design answer is built from.
+//! read every other headless Design answer is built from. `dashboard` folds
+//! those same rows once into the project's whole progress story.
 //!
 //! Contract: ds-brain `docs/contracts/transformer-retirement.md`.
 
+pub mod dashboard;
 pub mod download;
 pub mod inventory;
 pub mod restore;

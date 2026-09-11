@@ -153,6 +153,7 @@ pub static DOMAIN: Domain = Domain {
         &lv::project_export::COMMAND,
         &lv::process::COMMAND,
         &transformer::status::COMMAND,
+        &transformer::dashboard::COMMAND,
         &transformer::download::COMMAND,
         &transformer::inventory::COMMAND,
         &transformer::retire::COMMAND,
