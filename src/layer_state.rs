@@ -223,6 +223,8 @@ enum Op {
     Isolate { ids: Vec<String> },
     /// Return to the remembered visibility, if the snapshot still applies.
     Restore,
+    /// Whether the held snapshot still applies to this document.
+    Isolation,
     /// Canonical rows with their families and folded visibility.
     Catalog {
         #[serde(default = "default_limit")]
@@ -652,8 +654,10 @@ impl<'a> Context<'a> {
         let named: Vec<Value> = ids
             .iter()
             .map(|id| match self.facts.get(id) {
-                Some(fact) => json!({"id": id, "role": fact.role, "known": true}),
-                None => json!({"id": id, "role": suffix_role(id, "", "", ""), "known": false}),
+                Some(fact) => {
+                    json!({"id": id, "role": fact.role, "known": true, "base": strip_companion_suffix(id)})
+                }
+                None => json!({"id": id, "role": suffix_role(id, "", "", ""), "known": false, "base": strip_companion_suffix(id)}),
             })
             .collect();
         json!({"layers": layers, "ids": named})
@@ -1269,6 +1273,10 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
                     context.isolate(ids)
                 }
                 Op::Restore => context.restore(),
+                Op::Isolation => json!({
+                    "active": context.isolation_active(),
+                    "snapshot": context.isolation.is_some(),
+                }),
                 Op::Catalog { limit } => context.catalog(*limit)?,
                 Op::Matrix => context.matrix(document),
                 Op::Reorder { orders } => context.reorder(orders),
@@ -1369,7 +1377,7 @@ mod tests {
         assert_eq!(by("roads__label")["authored_visible"], false);
         assert_eq!(
             out["ids"][0],
-            json!({"id": "sketch__d3", "role": "d3", "known": false})
+            json!({"id": "sketch__d3", "role": "d3", "known": false, "base": "sketch"})
         );
         assert_eq!(
             out["ids"][1]["role"], "companion",

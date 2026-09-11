@@ -14920,6 +14920,782 @@
       }
     },
     {
+      "id": "classify",
+      "why": "which runtime layers are companions and which family each belongs to; the companion base of any id",
+      "request": {
+        "schema": "ds.layer-state/v1",
+        "project": "proj-kigali",
+        "document": {
+          "project_id": "proj-kigali",
+          "resolved_at": 1700000000000,
+          "sources": {
+            "ds-survey_geo": {
+              "type": "geojson",
+              "data": {
+                "type": "FeatureCollection",
+                "features": []
+              },
+              "source_role": "survey"
+            },
+            "ds-design_geo": {
+              "type": "geojson",
+              "data": {
+                "type": "FeatureCollection",
+                "features": []
+              },
+              "source_role": "design"
+            },
+            "ds-upload-1": {
+              "type": "geojson",
+              "data": {
+                "type": "FeatureCollection",
+                "features": []
+              },
+              "source_role": "upload"
+            },
+            "ds-tile_a": {
+              "type": "vector",
+              "url": "pmtiles://https://tiles.example/a.pmtiles"
+            },
+            "ds-global_tiles": {
+              "type": "vector",
+              "url": "pmtiles://https://tiles.example/global.pmtiles"
+            }
+          },
+          "styles": {
+            "poles": {},
+            "poles__label": {},
+            "lv_lines_vt": {},
+            "lv_lines_vt__label": {},
+            "lv_lines_vt__d3": {},
+            "rwanda_upi_parcels": {},
+            "rwanda_upi_parcels__boundary": {},
+            "rwanda_upi_parcels__label": {},
+            "transformers": {},
+            "transformers__label": {},
+            "orphan": {},
+            "ud/roads": {}
+          },
+          "layers": [
+            {
+              "id": "ds-poles",
+              "type": "circle",
+              "source": "ds-survey_geo",
+              "style_ref": "poles",
+              "paint": {
+                "circle-color": "#123456"
+              },
+              "layout": {},
+              "metadata": {
+                "config_layer_id": "survey/poles",
+                "label": "Poles",
+                "layer_class": "survey",
+                "layer_type": "form",
+                "geometry_type": "Point",
+                "order": 10,
+                "source_key": "geojson",
+                "layer_key": "survey:poles",
+                "entry_key": "survey:poles",
+                "toggleable": true
+              }
+            },
+            {
+              "id": "ds-poles__label",
+              "type": "symbol",
+              "source": "ds-survey_geo",
+              "style_ref": "poles__label",
+              "paint": {
+                "circle-color": "#123456"
+              },
+              "layout": {
+                "visibility": "none",
+                "text-field": [
+                  "get",
+                  "name"
+                ]
+              },
+              "metadata": {
+                "config_layer_id": "survey/poles",
+                "parent_layer": "ds-poles",
+                "label": "Poles Labels",
+                "layer_class": "survey",
+                "geometry_type": "Point",
+                "order": 10,
+                "source_key": "geojson",
+                "layer_key": "survey:poles"
+              },
+              "minzoom": 14,
+              "maxzoom": 24
+            },
+            {
+              "id": "ds-lv_lines",
+              "type": "line",
+              "source": "ds-tile_a",
+              "style_ref": "lv_lines_vt",
+              "paint": {
+                "circle-color": "#123456"
+              },
+              "layout": {},
+              "metadata": {
+                "config_layer_id": "survey/lv_lines",
+                "label": "LV Lines",
+                "layer_class": "survey_tile",
+                "geometry_type": "LineString",
+                "order": 20,
+                "source_key": "tile_a",
+                "layer_key": "survey:lv_lines"
+              },
+              "source-layer": "lv_lines",
+              "minzoom": 8
+            },
+            {
+              "id": "ds-lv_lines__label__collision",
+              "type": "symbol",
+              "source": "ds-tile_a",
+              "style_ref": "lv_lines_vt__label",
+              "paint": {
+                "circle-color": "#123456"
+              },
+              "layout": {},
+              "metadata": {
+                "config_layer_id": "survey/lv_lines",
+                "parent_layer": "ds-lv_lines",
+                "label": "LV Lines Labels",
+                "source_key": "tile_a",
+                "layer_key": "survey:lv_lines"
+              },
+              "source-layer": "lv_lines",
+              "minzoom": 15,
+              "maxzoom": 24
+            },
+            {
+              "id": "ds-lv_lines__d3__collision",
+              "type": "fill-extrusion",
+              "source": "ds-tile_a",
+              "style_ref": "lv_lines_vt__d3",
+              "paint": {
+                "circle-color": "#123456"
+              },
+              "layout": {},
+              "metadata": {
+                "config_layer_id": "survey/lv_lines",
+                "parent_layer": "ds-lv_lines",
+                "label": "LV Lines 3D",
+                "source_key": "tile_a",
+                "layer_key": "survey:lv_lines"
+              },
+              "source-layer": "lv_lines"
+            },
+            {
+              "id": "upi-parcels-fill",
+              "type": "fill",
+              "source": "ds-global_tiles",
+              "style_ref": "rwanda_upi_parcels",
+              "paint": {
+                "circle-color": "#123456"
+              },
+              "layout": {},
+              "metadata": {
+                "config_layer_id": "global/upi",
+                "label": "UPI Parcels",
+                "layer_class": "global_layer",
+                "geometry_type": "Polygon",
+                "order": 30,
+                "global_domain": "upi"
+              },
+              "source-layer": "upi"
+            },
+            {
+              "id": "upi-parcels-stroke",
+              "type": "line",
+              "source": "ds-global_tiles",
+              "style_ref": "rwanda_upi_parcels__boundary",
+              "paint": {
+                "circle-color": "#123456"
+              },
+              "layout": {},
+              "metadata": {
+                "config_layer_id": "global/upi",
+                "label": "UPI Parcels Boundary",
+                "layer_class": "global_layer",
+                "order": 30
+              },
+              "source-layer": "upi"
+            },
+            {
+              "id": "upi-parcels-labels",
+              "type": "symbol",
+              "source": "ds-global_tiles",
+              "style_ref": "rwanda_upi_parcels__label",
+              "paint": {
+                "circle-color": "#123456"
+              },
+              "layout": {
+                "visibility": "none"
+              },
+              "metadata": {
+                "config_layer_id": "global/upi",
+                "label": "UPI Parcels Labels",
+                "layer_class": "global_layer",
+                "order": 30
+              },
+              "source-layer": "upi"
+            },
+            {
+              "id": "other-boundary",
+              "type": "line",
+              "source": "ds-global_tiles",
+              "style_ref": "rwanda_upi_parcels__boundary",
+              "paint": {
+                "circle-color": "#123456"
+              },
+              "layout": {},
+              "metadata": {
+                "config_layer_id": "global/other",
+                "label": "Other",
+                "layer_class": "global_layer",
+                "order": 31
+              },
+              "source-layer": "other"
+            },
+            {
+              "id": "ds-transformers",
+              "type": "circle",
+              "source": "ds-design_geo",
+              "style_ref": "transformers",
+              "paint": {
+                "circle-color": "#123456"
+              },
+              "layout": {},
+              "metadata": {
+                "config_layer_id": "design/transformers",
+                "label": "Transformers",
+                "layer_class": "design",
+                "layer_type": "design",
+                "geometry_type": "Point",
+                "order": 5,
+                "source_key": "geojson",
+                "layer_key": "design:transformers",
+                "template_name": "lv_default"
+              }
+            },
+            {
+              "id": "ds-transformers__label",
+              "type": "symbol",
+              "source": "ds-design_geo",
+              "style_ref": "transformers__label",
+              "paint": {
+                "circle-color": "#123456"
+              },
+              "layout": {},
+              "metadata": {
+                "config_layer_id": "design/transformers",
+                "parent_layer": "ds-transformers",
+                "label": "Transformers Labels",
+                "layer_class": "design",
+                "order": 5,
+                "source_key": "geojson",
+                "layer_key": "design:transformers"
+              }
+            },
+            {
+              "id": "ds-orphan",
+              "type": "circle",
+              "source": "ds-missing_source",
+              "style_ref": "orphan",
+              "paint": {
+                "circle-color": "#123456"
+              },
+              "layout": {},
+              "metadata": {
+                "config_layer_id": "survey/orphan",
+                "label": "Orphan",
+                "layer_class": "survey",
+                "order": 40
+              }
+            },
+            {
+              "id": "ds-scratch",
+              "type": "circle",
+              "source": "ds-survey_geo",
+              "style_ref": "",
+              "paint": {
+                "circle-color": "#123456"
+              },
+              "layout": {},
+              "metadata": {}
+            },
+            {
+              "id": "ud-roads",
+              "type": "line",
+              "source": "ds-upload-1",
+              "style_ref": "ud/roads",
+              "paint": {
+                "circle-color": "#123456"
+              },
+              "layout": {},
+              "metadata": {
+                "config_layer_id": "user_data/roads",
+                "label": "roads",
+                "layer_class": "user_data",
+                "geometry_type": "LineString",
+                "order": 50,
+                "source_key": "upload-1",
+                "layer_key": "user_data:roads",
+                "user_data_group_id": "upload-1",
+                "user_data_file_name": "roads.geojson"
+              }
+            }
+          ],
+          "matrix": {
+            "survey": {
+              "sources": [
+                {
+                  "key": "geojson",
+                  "label": "survey entries"
+                },
+                {
+                  "key": "tile_a",
+                  "label": "tile_a"
+                }
+              ],
+              "rows": [
+                {
+                  "key": "survey:poles",
+                  "label": "Poles",
+                  "ids": [
+                    "ds-poles",
+                    null
+                  ],
+                  "style_ref": "poles",
+                  "style_refs": [
+                    "poles",
+                    null
+                  ],
+                  "geometry_type": "Point"
+                },
+                {
+                  "key": "survey:lv_lines",
+                  "label": "LV Lines",
+                  "ids": [
+                    null,
+                    "ds-lv_lines"
+                  ],
+                  "style_refs": [
+                    null,
+                    "lv_lines_vt"
+                  ],
+                  "geometry_type": "LineString"
+                },
+                {
+                  "key": "survey:empty",
+                  "label": "Empty",
+                  "ids": [
+                    null,
+                    null
+                  ]
+                }
+              ]
+            },
+            "design": {
+              "sources": [
+                {
+                  "key": "geojson",
+                  "label": "geojson"
+                }
+              ],
+              "rows": [
+                {
+                  "key": "design:transformers",
+                  "label": "Transformers",
+                  "ids": [
+                    "ds-transformers"
+                  ],
+                  "style_ref": "transformers",
+                  "geometry_type": "Point"
+                }
+              ]
+            },
+            "global": {
+              "sources": [
+                {
+                  "key": "global_tiles",
+                  "label": "global tiles"
+                }
+              ],
+              "rows": [
+                {
+                  "key": "global:upi",
+                  "label": "UPI Parcels",
+                  "ids": [
+                    "upi-parcels-fill"
+                  ],
+                  "style_ref": "rwanda_upi_parcels",
+                  "geometry_type": "Polygon"
+                }
+              ]
+            },
+            "user_data": {
+              "sources": [
+                {
+                  "key": "upload-1",
+                  "label": "roads.geojson",
+                  "created_at": 1700000000000,
+                  "created_by": "x@y.z",
+                  "file_name": "roads.geojson"
+                }
+              ],
+              "rows": [
+                {
+                  "key": "user_data:roads",
+                  "label": "roads",
+                  "ids": [
+                    "ud-roads"
+                  ],
+                  "style_ref": "ud/roads_missing",
+                  "style_refs": [
+                    "ud/roads_missing"
+                  ],
+                  "geometry_type": "LineString"
+                }
+              ]
+            },
+            "project_data": {
+              "sources": [],
+              "rows": []
+            }
+          },
+          "sidebar": {
+            "groups": []
+          },
+          "basemaps": [],
+          "required_images": [],
+          "platform_config": {
+            "domain_labels": [
+              {
+                "key": "survey",
+                "label": "Survey"
+              },
+              {
+                "key": "design",
+                "label": "Design"
+              },
+              {
+                "key": "global",
+                "label": "Global"
+              },
+              {
+                "key": "user_data",
+                "label": "My data"
+              }
+            ]
+          },
+          "symbol_catalog": {
+            "icons": []
+          }
+        },
+        "op": {
+          "kind": "classify",
+          "ids": [
+            "ds-poles__label",
+            "root__d3__collision",
+            "sketch",
+            "x__boundary"
+          ]
+        }
+      },
+      "expected_ts": {
+        "layers": [
+          {
+            "id": "ds-poles",
+            "companion": false,
+            "family": "geojson\u001fsurvey:poles"
+          },
+          {
+            "id": "ds-poles__label",
+            "companion": true,
+            "family": "geojson\u001fsurvey:poles"
+          },
+          {
+            "id": "ds-lv_lines",
+            "companion": false,
+            "family": "tile_a\u001fsurvey:lv_lines"
+          },
+          {
+            "id": "ds-lv_lines__label__collision",
+            "companion": true,
+            "family": "tile_a\u001fsurvey:lv_lines"
+          },
+          {
+            "id": "ds-lv_lines__d3__collision",
+            "companion": true,
+            "family": "tile_a\u001fsurvey:lv_lines"
+          },
+          {
+            "id": "upi-parcels-fill",
+            "companion": false,
+            "family": "ds-global_tiles\u001fupi\u001frwanda_upi_parcels"
+          },
+          {
+            "id": "upi-parcels-stroke",
+            "companion": true,
+            "family": "ds-global_tiles\u001fupi\u001frwanda_upi_parcels"
+          },
+          {
+            "id": "upi-parcels-labels",
+            "companion": true,
+            "family": "ds-global_tiles\u001fupi\u001frwanda_upi_parcels"
+          },
+          {
+            "id": "other-boundary",
+            "companion": true,
+            "family": "ds-global_tiles\u001fother\u001frwanda_upi_parcels"
+          },
+          {
+            "id": "ds-transformers",
+            "companion": false,
+            "family": "geojson\u001fdesign:transformers"
+          },
+          {
+            "id": "ds-transformers__label",
+            "companion": true,
+            "family": "geojson\u001fdesign:transformers"
+          },
+          {
+            "id": "ds-orphan",
+            "companion": false,
+            "family": "ds-missing_source\u001f\u001forphan"
+          },
+          {
+            "id": "ds-scratch",
+            "companion": false,
+            "family": "ds-survey_geo\u001f\u001fds-scratch"
+          },
+          {
+            "id": "ud-roads",
+            "companion": false,
+            "family": "upload-1\u001fuser_data:roads"
+          }
+        ],
+        "ids": [
+          {
+            "id": "ds-poles__label",
+            "base": "ds-poles"
+          },
+          {
+            "id": "root__d3__collision",
+            "base": "root"
+          },
+          {
+            "id": "sketch",
+            "base": "sketch"
+          },
+          {
+            "id": "x__boundary",
+            "base": "x"
+          }
+        ]
+      },
+      "expected": {
+        "layers": [
+          {
+            "id": "ds-poles",
+            "canonical_id": "survey/poles",
+            "family": "geojson\u001fsurvey:poles",
+            "role": "primary",
+            "parent": null,
+            "companion": false,
+            "authored_visible": true,
+            "source": "ds-survey_geo",
+            "source_state": "present",
+            "style_ref": "poles"
+          },
+          {
+            "id": "ds-poles__label",
+            "canonical_id": "survey/poles",
+            "family": "geojson\u001fsurvey:poles",
+            "role": "label",
+            "parent": "ds-poles",
+            "companion": true,
+            "authored_visible": false,
+            "source": "ds-survey_geo",
+            "source_state": "present",
+            "style_ref": "poles__label"
+          },
+          {
+            "id": "ds-lv_lines",
+            "canonical_id": "survey/lv_lines",
+            "family": "tile_a\u001fsurvey:lv_lines",
+            "role": "primary",
+            "parent": null,
+            "companion": false,
+            "authored_visible": true,
+            "source": "ds-tile_a",
+            "source_state": "present",
+            "style_ref": "lv_lines_vt"
+          },
+          {
+            "id": "ds-lv_lines__label__collision",
+            "canonical_id": "survey/lv_lines",
+            "family": "tile_a\u001fsurvey:lv_lines",
+            "role": "label",
+            "parent": "ds-lv_lines",
+            "companion": true,
+            "authored_visible": true,
+            "source": "ds-tile_a",
+            "source_state": "present",
+            "style_ref": "lv_lines_vt__label"
+          },
+          {
+            "id": "ds-lv_lines__d3__collision",
+            "canonical_id": "survey/lv_lines",
+            "family": "tile_a\u001fsurvey:lv_lines",
+            "role": "d3",
+            "parent": "ds-lv_lines",
+            "companion": true,
+            "authored_visible": true,
+            "source": "ds-tile_a",
+            "source_state": "present",
+            "style_ref": "lv_lines_vt__d3"
+          },
+          {
+            "id": "upi-parcels-fill",
+            "canonical_id": "global/upi",
+            "family": "ds-global_tiles\u001fupi\u001frwanda_upi_parcels",
+            "role": "primary",
+            "parent": null,
+            "companion": false,
+            "authored_visible": true,
+            "source": "ds-global_tiles",
+            "source_state": "present",
+            "style_ref": "rwanda_upi_parcels"
+          },
+          {
+            "id": "upi-parcels-stroke",
+            "canonical_id": "global/upi",
+            "family": "ds-global_tiles\u001fupi\u001frwanda_upi_parcels",
+            "role": "boundary",
+            "parent": null,
+            "companion": true,
+            "authored_visible": true,
+            "source": "ds-global_tiles",
+            "source_state": "present",
+            "style_ref": "rwanda_upi_parcels__boundary"
+          },
+          {
+            "id": "upi-parcels-labels",
+            "canonical_id": "global/upi",
+            "family": "ds-global_tiles\u001fupi\u001frwanda_upi_parcels",
+            "role": "label",
+            "parent": null,
+            "companion": true,
+            "authored_visible": false,
+            "source": "ds-global_tiles",
+            "source_state": "present",
+            "style_ref": "rwanda_upi_parcels__label"
+          },
+          {
+            "id": "other-boundary",
+            "canonical_id": "global/other",
+            "family": "ds-global_tiles\u001fother\u001frwanda_upi_parcels",
+            "role": "boundary",
+            "parent": null,
+            "companion": true,
+            "authored_visible": true,
+            "source": "ds-global_tiles",
+            "source_state": "present",
+            "style_ref": "rwanda_upi_parcels__boundary"
+          },
+          {
+            "id": "ds-transformers",
+            "canonical_id": "design/transformers",
+            "family": "geojson\u001fdesign:transformers",
+            "role": "primary",
+            "parent": null,
+            "companion": false,
+            "authored_visible": true,
+            "source": "ds-design_geo",
+            "source_state": "present",
+            "style_ref": "transformers"
+          },
+          {
+            "id": "ds-transformers__label",
+            "canonical_id": "design/transformers",
+            "family": "geojson\u001fdesign:transformers",
+            "role": "label",
+            "parent": "ds-transformers",
+            "companion": true,
+            "authored_visible": true,
+            "source": "ds-design_geo",
+            "source_state": "present",
+            "style_ref": "transformers__label"
+          },
+          {
+            "id": "ds-orphan",
+            "canonical_id": "survey/orphan",
+            "family": "ds-missing_source\u001f\u001forphan",
+            "role": "primary",
+            "parent": null,
+            "companion": false,
+            "authored_visible": true,
+            "source": "ds-missing_source",
+            "source_state": "missing",
+            "style_ref": "orphan"
+          },
+          {
+            "id": "ds-scratch",
+            "canonical_id": null,
+            "family": "ds-survey_geo\u001f\u001fds-scratch",
+            "role": "primary",
+            "parent": null,
+            "companion": false,
+            "authored_visible": true,
+            "source": "ds-survey_geo",
+            "source_state": "present",
+            "style_ref": null
+          },
+          {
+            "id": "ud-roads",
+            "canonical_id": "user_data/roads",
+            "family": "upload-1\u001fuser_data:roads",
+            "role": "primary",
+            "parent": null,
+            "companion": false,
+            "authored_visible": true,
+            "source": "ds-upload-1",
+            "source_state": "present",
+            "style_ref": "ud/roads"
+          }
+        ],
+        "ids": [
+          {
+            "id": "ds-poles__label",
+            "role": "label",
+            "known": true,
+            "base": "ds-poles"
+          },
+          {
+            "id": "root__d3__collision",
+            "role": "d3",
+            "known": false,
+            "base": "root"
+          },
+          {
+            "id": "sketch",
+            "role": "primary",
+            "known": false,
+            "base": "sketch"
+          },
+          {
+            "id": "x__boundary",
+            "role": "boundary",
+            "known": false,
+            "base": "x"
+          }
+        ]
+      }
+    },
+    {
       "id": "fold-partial",
       "why": "a bare fold over host-held values",
       "request": {
