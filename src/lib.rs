@@ -32,7 +32,13 @@ pub mod design_health;
 pub fn design_health_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
     design_health::evaluate(input).map_err(|error| wasm_bindgen::JsValue::from_str(&error))
 }
+pub mod design_status_query;
 pub mod design_status_row;
+#[cfg(feature = "wasm")]
+#[wasm_bindgen::prelude::wasm_bindgen(js_name = designStatusQuery)]
+pub fn design_status_query_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
+    design_status_query::evaluate(input).map_err(|error| wasm_bindgen::JsValue::from_str(&error))
+}
 pub mod process_settings;
 #[cfg(feature = "wasm")]
 #[wasm_bindgen::prelude::wasm_bindgen(js_name = processSettings)]

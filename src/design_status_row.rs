@@ -438,7 +438,7 @@ fn string_at(map: Option<&Map<String, Value>>, key: &str) -> String {
 /// `parseTimestampMs` (status-table.ts): a finite number is epoch millis; a
 /// string is whatever `Date.parse` makes of it; everything else, and 0,
 /// is "no timestamp".
-fn timestamp_ms(value: Option<&Value>) -> i64 {
+pub(crate) fn timestamp_ms(value: Option<&Value>) -> i64 {
     match value {
         Some(Value::Number(number)) => number
             .as_f64()
@@ -1417,6 +1417,36 @@ fn build(request: Request) -> Result<Reply, String> {
         presence_rooms,
         presence_complete,
     })
+}
+
+/// The truth of these rows under these editor facts, with no browser rooms —
+/// what `design_status_query` reads per row. Rows come back in merge order; a
+/// duplicate canonical name keeps the first slot and the last value, as the
+/// browser's `byName` did, so read them by `server_index` or canonical name.
+pub fn truths(
+    rows: &[Value],
+    active_session_transformer: Option<&str>,
+    current_user_email: &str,
+    local_edit_lock: Option<&str>,
+    now_ms: i64,
+) -> Vec<RowReply> {
+    let request = Request {
+        schema: SCHEMA.to_string(),
+        server_rows: rows.to_vec(),
+        local_room_headers: Vec::new(),
+        active_session_transformer: active_session_transformer
+            .filter(|name| !name.is_empty())
+            .map(str::to_string),
+        current_user_email: current_user_email.to_string(),
+        now_ms,
+        local_edit_lock: local_edit_lock
+            .filter(|name| !name.is_empty())
+            .map(|transformer| LocalEditLock {
+                transformer: transformer.to_string(),
+            }),
+        room_targets: Vec::new(),
+    };
+    build(request).map(|reply| reply.rows).unwrap_or_default()
 }
 
 pub fn evaluate(input: &[u8]) -> Result<String, String> {
