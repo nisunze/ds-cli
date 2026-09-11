@@ -91,8 +91,6 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ),
     ("desktop.printing.custom.area", "read_only", "desktop_user"),
     ("desktop.printing.settings", "read_only", "desktop_user"),
-    ("desktop.printing.list", "read_only", "desktop_user"),
-    ("desktop.printing.get", "read_only", "desktop_user"),
     ("desktop.printing.transformers", "read_only", "desktop_user"),
     ("desktop.printing.export", "artifact_write", "desktop_user"),
     (
@@ -105,7 +103,6 @@ const EXPECTED: &[(&str, &str, &str)] = &[
         "local_file_write",
         "desktop_user",
     ),
-    ("desktop.printing.save", "global_write", "desktop_user"),
     ("desktop.printing.prepare", "global_write", "desktop_user"),
     (
         "desktop.printing.seed-context",
@@ -391,6 +388,7 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("report.engine", "discovery", "none"),
     ("report.layout.new", "discovery", "none"),
     ("report.layout.edit", "read_only", "none"),
+    ("report.layout.context", "read_only", "none"),
     ("map.print.schema", "discovery", "none"),
     ("report.layout.schema", "discovery", "none"),
     ("report.layout.render", "local_file_write", "none"),

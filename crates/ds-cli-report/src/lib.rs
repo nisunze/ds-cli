@@ -64,6 +64,7 @@ pub static DOMAIN: Domain = Domain {
         &layout::NEW,
         &layout::EDIT,
         &layout::SCHEMA,
+        &layout::CONTEXT,
         &layout::RENDER,
         &layout::LIST,
         &layout::GET,
