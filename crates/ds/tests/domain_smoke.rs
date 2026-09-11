@@ -7969,66 +7969,42 @@ fn native_layers_persist_without_a_desktop_and_gis_inspection_pins_exact_bytes()
 }
 
 #[test]
-fn survey_capture_survives_separate_cli_processes_without_auth_or_desktop() {
-    let root = temp_root("survey-workspace");
+fn retired_survey_workspace_is_not_discoverable_and_never_touches_existing_data() {
+    let root = temp_root("retired-survey-workspace");
     std::fs::create_dir_all(&root).unwrap();
-    let workspace = root.join("offline");
-    let snapshot = root.join("snapshot.json");
-    let document = root.join("point.json");
-    std::fs::write(&snapshot, serde_json::to_vec(&json!({"project_id":"migration","forms":[{"slug":"poles","enabled":true,"fields":[{"key":"name","type":"text","required":true}],"entry_document_schema":{"top_level_keys":[{"key":"data"},{"key":"geometry"}]}}]})).unwrap()).unwrap();
-    std::fs::write(
-        &document,
-        r#"{"data":{"name":"Legacy pole"},"geometry":{"type":"Point","coordinates":[30,-2]}}"#,
-    )
-    .unwrap();
-    let invoke = |args: &[&str]| {
+    let retained = root.join("survey.sqlite");
+    let original = b"retained user workspace bytes";
+    std::fs::write(&retained, original).unwrap();
+    let index = ok(&["capabilities", "survey", "--output", "json"]);
+    assert!(index["commands"].as_array().unwrap().iter().all(|command| {
+        !command["id"]
+            .as_str()
+            .unwrap()
+            .starts_with("survey.workspace.")
+    }));
+    for action in ["init", "prepare", "collect", "list", "sync"] {
+        let id = format!("survey.workspace.{action}");
+        assert_eq!(
+            refusal(&["capabilities", &id, "--output", "json"]),
+            "unknown_selector"
+        );
         let result = Command::new(env!("CARGO_BIN_EXE_ds"))
-            .args(args)
-            .args(["--output", "json"])
-            .env("DS_NATIVE_STATE_DIR", root.join("no-auth"))
-            .env("DS_DESKTOP_DESCRIPTOR", root.join("no-desktop"))
+            .args([
+                "survey",
+                "workspace",
+                action,
+                "--workspace",
+                root.to_str().unwrap(),
+                "--yes",
+                "--output",
+                "json",
+            ])
             .output()
             .unwrap();
-        let envelope: Value = serde_json::from_slice(&result.stdout).unwrap();
-        (result.status.success(), envelope)
-    };
-    let path = workspace.to_str().unwrap();
-    let (ok, receipt) = invoke(&[
-        "survey",
-        "workspace",
-        "init",
-        "--workspace",
-        path,
-        "--snapshot",
-        snapshot.to_str().unwrap(),
-    ]);
-    assert!(ok, "{receipt}");
-    let (ok, receipt) = invoke(&[
-        "survey",
-        "workspace",
-        "collect",
-        "--workspace",
-        path,
-        "--form",
-        "poles",
-        "--document",
-        document.to_str().unwrap(),
-        "--created-at",
-        "2026-09-05T10:00:00Z",
-        "--doc-id",
-        "legacy-123",
-    ]);
-    assert!(ok, "{receipt}");
-    assert_eq!(receipt["data"]["uploaded"], false);
-    let (ok, inventory) = invoke(&["survey", "workspace", "list", "--workspace", path]);
-    assert!(ok, "{inventory}");
-    assert_eq!(inventory["data"]["pending"], 1);
-    assert_eq!(inventory["data"]["entries"][0]["doc_id"], "legacy-123");
-    let (ok, refusal) = invoke(&["survey", "workspace", "sync", "--workspace", path]);
-    assert!(!ok, "sync must require confirmation: {refusal}");
-    let (_, inventory) = invoke(&["survey", "workspace", "list", "--workspace", path]);
-    assert_eq!(inventory["data"]["pending"], 1);
-    assert!(!root.join("no-auth").exists());
+        assert!(!result.status.success(), "retired operation {action} ran");
+        assert_eq!(std::fs::read(&retained).unwrap(), original);
+        assert_eq!(std::fs::read_dir(&root).unwrap().count(), 1);
+    }
     std::fs::remove_dir_all(root).unwrap();
 }
 

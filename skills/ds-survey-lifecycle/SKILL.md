@@ -25,7 +25,7 @@ form slugs, field keys, command names or internal storage.
 | “Are coordinates or required observations missing?” | Find records needing review before design or handover. | Relevant form + bounded aggregate filters; do not fetch every row by default. |
 | “Give the designer the surveyed assets in this area.” | Preserve observed locations and identities as design inputs. | Bounded spatial selection; state which required attributes it cannot supply. |
 | “What changed since the last delivery?” | Refresh a downstream copy without rereading everything. | `survey.entries.changes`; retain the completed checkpoint. |
-| “Our team will work without connectivity.” | Prepare known forms and retain captures until publication succeeds. | [Field capture](references/field-capture.md). |
+| “Our team will work without connectivity.” | Prepare browser forms and retain captures until publication succeeds. | [Field capture](references/field-capture.md). |
 | “Set up or reuse our collection forms.” | Define observations consistently for one project or future projects. | [Configuration](references/configuration.md). |
 
 ## Use the shortest supported route

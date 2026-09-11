@@ -970,7 +970,6 @@ dependencies = [
  "ds-cli-contract",
  "ds-cli-desktop",
  "ds-client-core",
- "ds-survey-store",
  "libc",
  "serde",
  "serde_json",
@@ -1251,20 +1250,6 @@ dependencies = [
  "serde_json",
  "sha2",
  "thiserror",
-]
-
-[[package]]
-name = "ds-survey-store"
-version = "0.1.0"
-dependencies = [
- "ds-client-core",
- "ds-command-kernel",
- "fs2",
- "rusqlite",
- "serde",
- "serde_json",
- "sha2",
- "uuid",
 ]
 
 [[package]]

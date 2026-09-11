@@ -3287,28 +3287,6 @@ pub fn survey_control(lane_value: &str, command: &SurveyControlCommand) -> Resul
     }
 }
 
-pub fn survey_workspace_snapshot(lane_value: &str) -> Result<Value, Failure> {
-    let lane = Lane::parse(lane_value)?;
-    if let Some((mut device, selected)) = restored_device_project(lane)? {
-        let command = SurveyControlCommand::WorkspaceSnapshot {
-            project: selected.project_id().into(),
-        };
-        return device
-            .survey_control(Some(selected.project_id()), &command)
-            .map_err(map_client);
-    }
-    let profile = profile::load(lane)?;
-    let store = NativeRefreshStore::open()?;
-    let mut client = Client::new(profile, NativeTransport, store);
-    let user = require_restore_before_context(&mut client)?;
-    let selected = load_selected_project(client.profile(), &user)?;
-    let command = SurveyControlCommand::WorkspaceSnapshot {
-        project: selected.project_id().into(),
-    };
-    let result = client.survey_control(Some(selected.project_id()), &command, now());
-    with_released_context_disposition(client.profile(), &selected, result)
-}
-
 pub fn solar_project_session(lane_value: &str) -> Result<HeadlessSolarProjectSession, Failure> {
     let lane = Lane::parse(lane_value)?;
     if let Some((device, selected)) = restored_device_project(lane)? {

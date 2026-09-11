@@ -13,15 +13,6 @@ use std::process::Command;
 use serde_json::Value;
 
 const EXPECTED: &[(&str, &str, &str)] = &[
-    ("survey.workspace.init", "local_file_write", "none"),
-    ("survey.workspace.collect", "local_file_write", "none"),
-    ("survey.workspace.list", "local_file_write", "none"),
-    (
-        "survey.workspace.prepare",
-        "local_file_write",
-        "headless_project",
-    ),
-    ("survey.workspace.sync", "global_write", "headless_project"),
     (
         "design.features.select",
         "local_auth_state",
