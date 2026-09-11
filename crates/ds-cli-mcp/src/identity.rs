@@ -165,7 +165,10 @@ mod tests {
     #[test]
     fn canary_server_registration_is_distinct_from_desktop_and_stable_server() {
         let server = ServerIdentity::new("headless-canary", RuntimePlatform::Linux);
-        assert_eq!(server.registration_name(), "dsGridDesignHeadlessCanaryLinux");
+        assert_eq!(
+            server.registration_name(),
+            "dsGridDesignHeadlessCanaryLinux"
+        );
         for lane in ["headless", "canary", "stable"] {
             let other = ServerIdentity::new(lane, RuntimePlatform::Linux);
             assert_ne!(server.registration_name(), other.registration_name());
