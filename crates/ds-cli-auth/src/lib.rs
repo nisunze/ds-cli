@@ -1692,17 +1692,49 @@ pub fn layer_reorder_fenced(
     orders: &[crate::LayerOrder],
     fence: &LayerScopeFence,
 ) -> Result<HeadlessLayerOrderReceipt, Failure> {
+    let lane = Lane::parse(lane_value)?;
+    if let Some((mut device, selected)) = restored_device_project(lane)? {
+        verify_layer_scope_fence(lane_value, fence, fence.uid(), fence.project())?;
+        if selected.project_id() != fence.project() {
+            return Err(Failure::conflict(
+                "project_context_changed",
+                "the restored device selected another project",
+            )
+            .remedy("repeat the layer request"));
+        }
+        let result = device
+            .layer_reorder(selected.project_id(), orders)
+            .map_err(map_client)?;
+        return Ok(HeadlessLayerOrderReceipt {
+            lane: lane.token(),
+            project_id: selected.project_id().to_owned(),
+            project_name: selected.project_name().to_owned(),
+            project_status: selected.status().to_owned(),
+            result,
+        });
+    }
+    let profile = profile::load(lane)?;
+    let store = NativeRefreshStore::open()?;
+    let mut client = Client::new(profile, NativeTransport, store);
+    let user = require_restore_before_context(&mut client)?;
+    let selected = load_selected_project(client.profile(), &user)?;
     verify_layer_scope_fence(lane_value, fence, fence.uid(), fence.project())?;
-    let receipt = layer_reorder(lane_value, orders)?;
-    if receipt.project_id() != fence.project() {
+    if selected.project_id() != fence.project() {
         return Err(Failure::conflict(
             "project_context_changed",
-            "the layer order receipt names another selected project",
+            "the restored client selected another project",
         )
         .remedy("repeat the layer request"));
     }
-    verify_layer_scope_fence(lane_value, fence, fence.uid(), fence.project())?;
-    Ok(receipt)
+    let result = client.layer_reorder(selected.project_id(), orders, now());
+    let result = with_released_context_disposition(client.profile(), &selected, result)?;
+    Ok(HeadlessLayerOrderReceipt {
+        lane: lane.token(),
+        project_id: selected.project_id().to_owned(),
+        project_name: selected.project_name().to_owned(),
+        project_status: selected.status().to_owned(),
+        result,
+    })
 }
 
 pub fn tile_status(
