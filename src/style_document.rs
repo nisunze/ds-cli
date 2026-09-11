@@ -349,7 +349,14 @@ fn same(expected: &Value, data: &Map<String, Value>, key: &str) -> bool {
 pub fn admit_publish(expected: &Value, response: &Value) -> Result<Value, Refusal> {
     let data = envelope(response)?;
     let mismatch = || unreadable("style publish receipt does not match the authored target");
-    if data.get("updated") != Some(&Value::Bool(true))
+    // A receipt is only ever admitted against the payload that was sent, and
+    // that payload named its target: an expectation without one is a host
+    // slip, never a match.
+    if !expected
+        .get("style_target")
+        .and_then(Value::as_str)
+        .is_some_and(|target| !target.is_empty())
+        || data.get("updated") != Some(&Value::Bool(true))
         || !data.get("style_data").is_some_and(Value::is_object)
         || !same(expected, data, "style_target")
         || ["slug", "template_name", "styling_template_id", "layer_name"]
@@ -772,6 +779,20 @@ mod tests {
         let mut extra = receipt();
         extra["slug"] = json!("anything");
         assert!(admit_publish(&payload(), &wrap(extra)).is_ok());
+        // An expectation that names no target is a host slip: a receipt that
+        // also names none must not slip through as a match of nothing.
+        for expected in [
+            json!({}),
+            json!({"style_ref": "master/roads", "style_target": ""}),
+        ] {
+            let mut targetless = receipt();
+            targetless.as_object_mut().unwrap().remove("style_target");
+            let refusal = admit_publish(&expected, &wrap(targetless)).unwrap_err();
+            assert_eq!(
+                refusal.message,
+                "style publish receipt does not match the authored target"
+            );
+        }
     }
 
     #[test]
