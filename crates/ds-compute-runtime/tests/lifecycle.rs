@@ -98,7 +98,7 @@ fn real_compute_survives_reopen_and_never_recomputes_completed_work() {
             .phase,
         Phase::Queued
     );
-    assert!(runtime::run_one(&path, "owner", "stable", "worker", Arc::new(Allowed)).unwrap());
+    assert!(runtime::run_one(&path, "owner", "stable", "worker", Arc::new(Allowed), None).unwrap());
     let store = runtime::open(&path).unwrap();
     let result = store
         .job_result("owner", "stable", &job.id)
@@ -114,7 +114,7 @@ fn real_compute_survives_reopen_and_never_recomputes_completed_work() {
             .attempts,
         1
     );
-    assert!(!runtime::run_one(&path, "owner", "stable", "worker2", Arc::new(Allowed)).unwrap());
+    assert!(!runtime::run_one(&path, "owner", "stable", "worker2", Arc::new(Allowed), None).unwrap());
     assert!(store
         .job_result("another-owner", "stable", &job.id)
         .unwrap()
@@ -132,7 +132,7 @@ fn prepared_solar_survives_reopen_without_a_client_path_or_live_request() {
     // `run_one` reopens the durable store after submission. Its only input is
     // the retained request bytes, so this proves no client workspace/cache path
     // or original HTTP request remains in the execution boundary.
-    assert!(runtime::run_one(&path, "owner", "stable", "recovered", Arc::new(Allowed)).unwrap());
+    assert!(runtime::run_one(&path, "owner", "stable", "recovered", Arc::new(Allowed), None).unwrap());
     let result = runtime::open(&path)
         .unwrap()
         .job_result("owner", "stable", &job.id)
@@ -162,7 +162,7 @@ fn parallel_claims_are_unique_and_revocation_and_cancellation_stop_work() {
     for key in ["a", "b"] {
         runtime::submit(&path, "owner", "stable", key, &bytes).unwrap();
     }
-    assert!(runtime::run_one(&path, "owner", "stable", "revoked", Arc::new(Revoked)).is_err());
+    assert!(runtime::run_one(&path, "owner", "stable", "revoked", Arc::new(Revoked), None).is_err());
     let barrier = Arc::new(std::sync::Barrier::new(2));
     let handles = (0..2)
         .map(|i| {
@@ -246,6 +246,7 @@ fn workers_complete_real_batches_inside_the_shared_resource_bound() {
         "stable".into(),
         2,
         Arc::new(Bound(observed.clone())),
+        None,
     )
     .unwrap();
     let deadline = Instant::now() + Duration::from_secs(10);

@@ -222,6 +222,13 @@ pub trait Authorizer: Send + Sync + 'static {
     fn authorize(&self, expected_owner: &str) -> Result<(), String>;
 }
 
+/// A host-owned projection hook after a durable terminal commit.  It never
+/// decides compute lifecycle and failures are retried by recovery; hosts use
+/// it to project completed work into their existing durable activity owner.
+pub trait CompletionObserver: Send + Sync + 'static {
+    fn completed(&self, job: &Job) -> Result<(), String>;
+}
+
 pub struct Workers {
     stop: Arc<AtomicBool>,
     threads: Vec<thread::JoinHandle<()>>,
@@ -233,11 +240,24 @@ impl Workers {
         lane: String,
         count: usize,
         auth: Arc<dyn Authorizer>,
+        observer: Option<Arc<dyn CompletionObserver>>,
     ) -> Result<Self, String> {
         if count == 0 || count > 256 {
             return Err("worker count must be 1..256".into());
         }
         open(&path)?;
+        if let Some(observer) = observer.as_ref() {
+            for job in open(&path)?
+                .jobs(&owner, &lane, 1000)
+                .map_err(|error| error.to_string())?
+                .into_iter()
+                .filter(|job| job.phase == Phase::Completed)
+            {
+                if let Err(error) = observer.completed(&job) {
+                    eprintln!("compute activity recovery: {error}");
+                }
+            }
+        }
         // All batches share this bounded pool, including the engine's nested
         // parallel transformer work. A batch cannot escape memory admission by
         // starting another machine-wide pool for its individual transformers.
@@ -251,12 +271,13 @@ impl Workers {
         let stop = Arc::new(AtomicBool::new(false));
         let mut threads = Vec::with_capacity(count);
         for index in 0..count {
-            let (path, owner, lane, auth, stop) = (
+            let (path, owner, lane, auth, stop, observer) = (
                 path.clone(),
                 owner.clone(),
                 lane.clone(),
                 auth.clone(),
                 stop.clone(),
+                observer.clone(),
             );
             let pool = pool.clone();
             let worker = format!("{}-{}-{index}", std::process::id(), now_ms());
@@ -266,7 +287,7 @@ impl Workers {
                         thread::sleep(Duration::from_millis(500));
                         continue;
                     }
-                    match pool.install(|| run_one(&path, &owner, &lane, &worker, auth.clone())) {
+                    match pool.install(|| run_one(&path, &owner, &lane, &worker, auth.clone(), observer.as_deref())) {
                         Ok(true) => {}
                         Ok(false) => thread::sleep(Duration::from_millis(200)),
                         Err(error) => {
@@ -298,6 +319,7 @@ pub fn run_one(
     lane: &str,
     worker: &str,
     auth: Arc<dyn Authorizer>,
+    observer: Option<&dyn CompletionObserver>,
 ) -> Result<bool, String> {
     auth.authorize(owner)?;
     let Some((job, input)) = open(path)?
@@ -393,7 +415,7 @@ pub fn run_one(
     match output {
         Ok(bytes) => {
             let sha = digest(&bytes);
-            open(path)?
+            let completed = open(path)?
                 .update_job(
                     owner,
                     lane,
@@ -406,6 +428,11 @@ pub fn run_one(
                     Some(&bytes),
                 )
                 .map_err(|e| e.to_string())?;
+            if let Some(observer) = observer {
+                if let Err(error) = observer.completed(&completed) {
+                    eprintln!("compute activity projection: {error}");
+                }
+            }
         }
         Err(error) => {
             open(path)?
