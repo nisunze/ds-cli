@@ -4,12 +4,12 @@ mod host;
 pub mod server_sync;
 mod solar_sync;
 use ds_cli_contract::{
+    Context, Failure, Inputs,
     spec::{
         Arg, Authority, Availability, Chapter, Command, Domain, Effect, Example, Execution, Refusal,
     },
-    Context, Failure, Inputs,
 };
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::{io::Read, path::PathBuf, sync::Arc};
 
 const STATE: Arg = Arg::value(

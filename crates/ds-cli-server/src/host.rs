@@ -1,17 +1,17 @@
 use axum::extract::Request;
 use axum::middleware::{self, Next};
 use axum::{
+    Json, Router,
     body::Bytes,
     extract::{DefaultBodyLimit, Path as Param, State},
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
     routing::{get, post},
-    Json, Router,
 };
 use ds_command_kernel::compute_jobs::Event;
 use ds_compute_runtime::{self as runtime, Authorizer};
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::{
     fs::{self, OpenOptions},
     io::{Read, Write},
@@ -38,6 +38,7 @@ pub struct App {
 }
 
 type ApiError = (StatusCode, Json<Value>);
+
 fn error(status: StatusCode, message: impl ToString) -> ApiError {
     (status, Json(json!({"error":message.to_string()})))
 }
@@ -162,12 +163,14 @@ async fn submit_solar(
     body: Bytes,
 ) -> Result<(StatusCode, Json<Value>), ApiError> {
     blocking(move || {
-        let job = runtime::submit_solar(
+        let (sealed, provenance) = runtime::decode_solar_server_submission(&body)?;
+        let job = runtime::submit_solar_with_provenance(
             &app.database,
             &app.connection.owner,
             &app.connection.lane,
             &key,
-            &body,
+            &sealed,
+            provenance,
         )?;
         Ok((StatusCode::ACCEPTED, Json(json!({"job":job}))))
     })
@@ -352,6 +355,9 @@ pub async fn serve(mut app: App, workers: usize) -> Result<(), String> {
     let activity =
         crate::solar_sync::SolarActivity::open(app.database.clone(), app.connection.clone())?;
     app.activity = Some(activity.clone());
+    // The pump merely drains durable StoreHost rows after a completion wake;
+    // it does not run in a compute worker or block recovery/server readiness.
+    let solar_pump = activity.start_pump();
     let workers = runtime::Workers::start(
         app.database.clone(),
         app.connection.owner.clone(),
@@ -382,7 +388,9 @@ pub async fn serve(mut app: App, workers: usize) -> Result<(), String> {
         .await
         .map_err(|e| e.to_string());
     workers.stop();
+    solar_pump.stop();
     drop(workers);
+    drop(solar_pump);
     result
 }
 
@@ -452,6 +460,57 @@ mod tests {
             .unwrap();
         let value: Value = serde_json::from_slice(&bytes).unwrap();
         assert_eq!(value, json!({"jobs":[],"more":false}));
+    }
+
+    #[tokio::test]
+    async fn solar_submit_requires_the_kernel_claim_envelope_after_local_auth() {
+        let dir = tempfile::tempdir().unwrap();
+        let response = router(app(dir.path(), true))
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/solar-processing/job-1")
+                    .header("authorization", format!("Bearer {}", "a".repeat(64)))
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        r#"{"schema_version":"ds.solar.server-submission/v1"}"#,
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::CONFLICT);
+        assert!(
+            !dir.path().join("store.sqlite").exists(),
+            "a missing claim cannot create a compute-only Solar job"
+        );
+    }
+
+    #[tokio::test]
+    async fn activity_route_is_authenticated_and_refuses_prestartup_projection() {
+        let dir = tempfile::tempdir().unwrap();
+        let unauthorized = router(app(dir.path(), true))
+            .oneshot(
+                Request::builder()
+                    .uri("/v1/activity")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(unauthorized.status(), StatusCode::UNAUTHORIZED);
+
+        let response = router(app(dir.path(), true))
+            .oneshot(
+                Request::builder()
+                    .uri("/v1/activity")
+                    .header("authorization", format!("Bearer {}", "a".repeat(64)))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::CONFLICT);
     }
     #[cfg(unix)]
     #[test]

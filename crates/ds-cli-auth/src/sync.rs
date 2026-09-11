@@ -7,12 +7,15 @@
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use ds_client_core::{Client, InstallHeartbeat, NativeSyncRequest, SyncGatewayOperation};
+use ds_client_core::{
+    Client, ClientError, ErrorKind, InstallHeartbeat, NativeSyncRequest,
+    SolarCalculationArtifactFinalize, SolarCalculationArtifactOpen, SyncGatewayOperation,
+};
 use ds_edge_authority::{
     AuthorityPins, AuthorityVerifier, ExpectedInstall, InstallLeaseCapability,
     VerifiedInstallStatus, VerifyInstallRequest, load_or_create_install_id,
 };
-use ds_sync_runtime::{Gateway, SyncRoute};
+use ds_sync_runtime::{Gateway, SyncRoute, TransferReceipt};
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -76,6 +79,47 @@ struct HeartbeatAnswer {
     min_supported_version: String,
     server_time: String,
     lease: InstallLeaseCapability,
+}
+
+#[derive(Deserialize)]
+struct ComputeArtifactOpenAnswer {
+    work_id: String,
+    state: String,
+    outputs: Vec<ComputeArtifactUpload>,
+}
+
+#[derive(Deserialize)]
+struct ComputeArtifactUpload {
+    output_id: String,
+    status: String,
+    session_uri: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct ComputeArtifactFinalizeAnswer {
+    work_id: String,
+    state: String,
+    head_revision: u64,
+}
+
+/// The durable server result after a Solar calculation is accepted by the
+/// existing compute-artifact authority. `stored_stale` is a real terminal
+/// result: a changed project snapshot never becomes a false retry loop.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SolarPublicationReceipt {
+    pub work_id: String,
+    pub state: String,
+    pub head_revision: u64,
+}
+
+/// How the server-owned Solar publisher should advance its shared durable
+/// artifact state. These variants carry only client-authored messages and an
+/// HTTP class; no bearer or unbounded service body crosses this boundary.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum SolarPublicationError {
+    Blocked(String),
+    StoredStale(String),
+    Retryable(String),
 }
 
 struct SessionState {
@@ -162,11 +206,130 @@ impl NativeSyncSession {
         self.heartbeat_locked(&mut state)
     }
 
+    /// Solar's publication pump needs the same registration heartbeat, but it
+    /// must retain closed HTTP refusal classes so a revoked install is stored
+    /// as refused instead of retried as a transport outage.
+    pub fn register_engine_for_solar(
+        &self,
+        addition: NativeEngineAddition,
+    ) -> Result<(), SolarPublicationError> {
+        validate_addition(&addition).map_err(SolarPublicationError::Blocked)?;
+        let mut state = self.state.lock().map_err(|_| {
+            SolarPublicationError::Retryable("native Sync Center session is unavailable".into())
+        })?;
+        state.addition = Some(addition);
+        self.heartbeat_solar_locked(&mut state)
+    }
+
     pub fn credential_binding(&self) -> &str {
         &self.credential_binding
     }
     pub fn lane(&self) -> &str {
         self.lane.token()
+    }
+
+    /// Publish the one sealed Solar calculation result through the existing
+    /// compute-artifact open/upload/finalize protocol. The callback receives a
+    /// DS-minted storage session only; it never receives this session's bearer
+    /// or chooses a control-plane route.
+    pub fn publish_solar_calculation(
+        &self,
+        declaration: SolarCalculationArtifactOpen<'_>,
+        guard: &dyn Fn() -> Result<(), String>,
+        transfer: impl FnOnce(&str) -> Result<TransferReceipt, String>,
+    ) -> Result<SolarPublicationReceipt, SolarPublicationError> {
+        if declaration.project_id != self.project {
+            return Err(SolarPublicationError::Blocked(
+                "Solar publication crosses the authenticated project fence".into(),
+            ));
+        }
+        let client_run_id = declaration.client_run_id;
+        let output_size_bytes = declaration.output_size_bytes;
+        guard().map_err(SolarPublicationError::Retryable)?;
+        let opened: ComputeArtifactOpenAnswer = serde_json::from_value(self.execute_solar(
+            NativeSyncRequest::solar_calculation_open(declaration).map_err(classify_solar_error)?,
+        )?)
+        .map_err(|_| {
+            SolarPublicationError::Blocked(
+                "Solar compute artifact open response is outside its closed contract".into(),
+            )
+        })?;
+        if !matches!(
+            opened.state.as_str(),
+            "pending" | "published" | "stored_stale"
+        ) || opened.outputs.len() != 1
+        {
+            return Err(SolarPublicationError::Blocked(
+                "Solar compute artifact open response is outside its closed contract".into(),
+            ));
+        }
+        let work_id = opened.work_id.clone();
+        let upload = opened
+            .outputs
+            .into_iter()
+            .next()
+            .expect("exactly one output");
+        if upload.output_id != "report-input" {
+            return Err(SolarPublicationError::Blocked(
+                "Solar compute artifact open returned an unexpected output".into(),
+            ));
+        }
+        match upload.status.as_str() {
+            "already_exists" => {}
+            "upload" => {
+                let session_uri = upload.session_uri.ok_or_else(|| {
+                    SolarPublicationError::Blocked(
+                        "Solar compute artifact open did not mint a storage session".into(),
+                    )
+                })?;
+                let receipt = transfer(&session_uri).map_err(SolarPublicationError::Retryable)?;
+                if receipt.output_id != "report-input"
+                    || receipt.outcome != "completed"
+                    || receipt.committed_bytes != receipt.total_bytes
+                    || receipt.total_bytes != output_size_bytes
+                {
+                    return Err(SolarPublicationError::Blocked(
+                        "Solar compute artifact transfer did not commit its sealed output".into(),
+                    ));
+                }
+            }
+            _ => {
+                return Err(SolarPublicationError::Blocked(
+                    "Solar compute artifact open returned an invalid upload state".into(),
+                ));
+            }
+        }
+        // `already_exists` does not invoke the transfer closure, so this
+        // guard is the cancellation/revocation fence immediately before the
+        // idempotent finalize call as well.
+        guard().map_err(SolarPublicationError::Retryable)?;
+        let finalized: ComputeArtifactFinalizeAnswer = serde_json::from_value(
+            self.execute_solar(
+                NativeSyncRequest::solar_calculation_finalize(SolarCalculationArtifactFinalize {
+                    project_id: &self.project,
+                    work_id: &work_id,
+                    client_run_id,
+                })
+                .map_err(classify_solar_error)?,
+            )?,
+        )
+        .map_err(|_| {
+            SolarPublicationError::Blocked(
+                "Solar compute artifact finalize response is outside its closed contract".into(),
+            )
+        })?;
+        if finalized.work_id != work_id
+            || !matches!(finalized.state.as_str(), "published" | "stored_stale")
+        {
+            return Err(SolarPublicationError::Blocked(
+                "Solar compute artifact finalize response is outside its closed contract".into(),
+            ));
+        }
+        Ok(SolarPublicationReceipt {
+            work_id: finalized.work_id,
+            state: finalized.state,
+            head_revision: finalized.head_revision,
+        })
     }
 
     fn heartbeat_locked(&self, state: &mut SessionState) -> Result<(), String> {
@@ -222,6 +385,72 @@ impl NativeSyncSession {
         Ok(())
     }
 
+    fn heartbeat_solar_locked(
+        &self,
+        state: &mut SessionState,
+    ) -> Result<(), SolarPublicationError> {
+        self.assert_runtime_fence()
+            .map_err(SolarPublicationError::Blocked)?;
+        let addition = state.addition.as_ref().ok_or_else(|| {
+            SolarPublicationError::Blocked(
+                "native Sync Center installation has no registered engine release".into(),
+            )
+        })?;
+        let request = NativeSyncRequest::heartbeat(InstallHeartbeat {
+            install_id: &self.install_id,
+            device: &self.device,
+            arch: &self.arch,
+            app_version: &self.app_version,
+            channel: self.lane.token(),
+            os_version: "linux native-server",
+            webview_version: "native-server",
+            addition_name: &addition.name,
+            addition_version: &addition.version,
+            addition_release: &addition.release,
+            addition_state: "ready",
+        })
+        .map_err(classify_solar_error)?;
+        let data = state
+            .client
+            .sync_gateway(&request, now())
+            .map_err(classify_solar_error)?;
+        self.assert_runtime_fence()
+            .map_err(SolarPublicationError::Blocked)?;
+        let answer: HeartbeatAnswer = serde_json::from_value(data).map_err(|_| {
+            SolarPublicationError::Blocked(
+                "native install heartbeat response is outside its closed contract".into(),
+            )
+        })?;
+        let pins = pins(self.lane).map_err(SolarPublicationError::Blocked)?;
+        let verified = AuthorityVerifier::new(&self.authority_dir, pins)
+            .and_then(|verifier| {
+                verifier.verify_install(VerifyInstallRequest {
+                    server_time: answer.server_time,
+                    capability: answer.lease,
+                    expected: ExpectedInstall {
+                        install_id: self.install_id.clone(),
+                        device: self.device.clone(),
+                        arch: self.arch.clone(),
+                        app_version: self.app_version.clone(),
+                        channel: self.lane.token().into(),
+                        owner_uid: Some(self.principal.uid().to_owned()),
+                        status: answer.status,
+                        min_supported_version: answer.min_supported_version,
+                        lease_expires_at: answer.lease_expires_at,
+                    },
+                })
+            })
+            .map_err(SolarPublicationError::Blocked)?;
+        if verified.status != VerifiedInstallStatus::Active
+            || verified.owner_uid.as_deref() != Some(self.principal.uid())
+        {
+            return Err(SolarPublicationError::Blocked(
+                "native installation lease is not active for this principal".into(),
+            ));
+        }
+        Ok(())
+    }
+
     fn assert_runtime_fence(&self) -> Result<(), String> {
         let (principal, _) = crate::probe_headless_identity(self.lane.token())
             .map_err(|error| error.message().to_owned())?
@@ -236,7 +465,7 @@ impl NativeSyncSession {
         )
     }
 
-    fn post(&self, route: SyncRoute, body: &Value) -> Result<Value, String> {
+    fn execute(&self, request: NativeSyncRequest) -> Result<Value, String> {
         let mut state = self
             .state
             .lock()
@@ -245,17 +474,34 @@ impl NativeSyncSession {
         // and fails closed for revocation, principal drift, lane drift, or a
         // blocked install instead of relying on an old local lease.
         self.heartbeat_locked(&mut state)?;
-        let operation = match route {
-            SyncRoute::ComputeArtifacts => SyncGatewayOperation::ComputeArtifacts,
-            SyncRoute::WorkOpen => SyncGatewayOperation::WorkOpen,
-            SyncRoute::WorkPublish => SyncGatewayOperation::WorkPublish,
-        };
-        let request =
-            NativeSyncRequest::for_project(operation, &self.project, body).map_err(client_error)?;
         state
             .client
             .sync_gateway(&request, now())
             .map_err(client_error)
+    }
+
+    fn execute_solar(&self, request: NativeSyncRequest) -> Result<Value, SolarPublicationError> {
+        let mut state = self.state.lock().map_err(|_| {
+            SolarPublicationError::Retryable("native Sync Center session is unavailable".into())
+        })?;
+        self.heartbeat_solar_locked(&mut state)?;
+        state
+            .client
+            .sync_gateway(&request, now())
+            .map_err(classify_solar_error)
+    }
+
+    fn post(&self, route: SyncRoute, body: &Value) -> Result<Value, String> {
+        if route != SyncRoute::ComputeArtifacts {
+            return Err("native Solar server does not use Network Reporter work routes".into());
+        }
+        let request = NativeSyncRequest::for_project(
+            SyncGatewayOperation::ComputeArtifacts,
+            &self.project,
+            body,
+        )
+        .map_err(client_error)?;
+        self.execute(request)
     }
 }
 
@@ -272,6 +518,36 @@ fn now() -> u64 {
 }
 fn client_error(error: ds_client_core::ClientError) -> String {
     error.to_string()
+}
+
+fn classify_solar_error(error: ClientError) -> SolarPublicationError {
+    let status = error.service_refusal().map(|refusal| refusal.status());
+    let detail = match status {
+        Some(status) => {
+            format!("Solar compute artifact authority refused this operation (HTTP {status})")
+        }
+        None => error.to_string(),
+    };
+    match status {
+        Some(409) => SolarPublicationError::StoredStale(detail),
+        Some(400 | 401 | 403 | 404 | 422) | None
+            if matches!(
+                error.kind(),
+                ErrorKind::InvalidInput
+                    | ErrorKind::SignedOut
+                    | ErrorKind::InvalidCredentials
+                    | ErrorKind::AccountDisabled
+                    | ErrorKind::AuthenticationRejected
+                    | ErrorKind::ResourceNotFound
+                    | ErrorKind::PermanentlyRevoked
+                    | ErrorKind::IdentityMismatch
+                    | ErrorKind::DurableState
+            ) =>
+        {
+            SolarPublicationError::Blocked(detail)
+        }
+        _ => SolarPublicationError::Retryable(detail),
+    }
 }
 fn native_device() -> Result<&'static str, String> {
     if cfg!(target_os = "linux") {

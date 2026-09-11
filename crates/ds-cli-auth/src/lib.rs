@@ -63,6 +63,7 @@ pub use ds_client_core::{
     TileType, TransformerInventory, TransformerInventoryRow, TransformerKind, TransformerLifecycle,
     TransformerSet, TransformerStatusList, TransformerStatusRow,
 };
+pub use ds_client_core::{SolarCalculationArtifactFinalize, SolarCalculationArtifactOpen};
 pub use profile::Lane;
 
 /// The remedy the transformer-context route's own rejection carries.
