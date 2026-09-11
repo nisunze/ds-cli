@@ -161,6 +161,12 @@ pub struct SolarPublication {
     pub outputs: Vec<SolarOutput>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SolarJobScope {
+    pub project_id: String,
+    pub city_id: String,
+}
+
 #[derive(Debug, Clone)]
 pub struct SolarOutput {
     pub output_id: String,
@@ -170,13 +176,26 @@ pub struct SolarOutput {
     pub bytes: Vec<u8>,
 }
 
+/// Read the sealed project scope before completion so a host can project the
+/// same durable queued/running/cancelled lifecycle into Sync Center.
+pub fn solar_job_scope(job: &Job, input: &[u8]) -> Result<SolarJobScope, String> {
+    if job.engine != EngineKind::SolarPrepared || job.input_tag != "ds.solar.calculate.prepared/v1" {
+        return Err("job is not a prepared Solar computation".into());
+    }
+    let request: PreparedSolarRequest = serde_json::from_slice(input)
+        .map_err(|error| format!("durable Solar request scope is invalid: {error}"))?;
+    request.prepared.validate().map_err(|error| error.to_string())?;
+    Ok(SolarJobScope {
+        project_id: request.prepared.city.identity.project_id,
+        city_id: request.prepared.city.identity.city_id,
+    })
+}
+
 /// Decode publication facts without ever consulting a caller path, browser
 /// cache or temporary file.  The payload is re-verified against every output
 /// declaration before a host may offer it to a Sync Center transfer.
 pub fn solar_publication(job: &Job, input: &[u8], result: &[u8]) -> Result<SolarPublication, String> {
-    if job.engine != EngineKind::SolarPrepared || job.input_tag != "ds.solar.calculate.prepared/v1" {
-        return Err("job is not a prepared Solar computation".into());
-    }
+    let scope = solar_job_scope(job, input)?;
     if job.phase != Phase::Completed || digest(result) != job.result_sha256.as_deref().unwrap_or_default() {
         return Err("Solar publication result is not a completed durable result".into());
     }
@@ -205,8 +224,8 @@ pub fn solar_publication(job: &Job, input: &[u8], result: &[u8]) -> Result<Solar
         return Err("completed Solar result has no publishable outputs".into());
     }
     Ok(SolarPublication {
-        project_id: request.prepared.city.identity.project_id,
-        city_id: request.prepared.city.identity.city_id,
+        project_id: scope.project_id,
+        city_id: scope.city_id,
         engine_release: format!(
             "{}@{}",
             response.result.engine.name, response.result.engine.version
