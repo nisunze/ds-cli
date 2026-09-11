@@ -232,49 +232,9 @@ fn sheet_rows(project_config: Option<&Value>, sheet: &str) -> Vec<Map<String, Va
 /// The canonical spelling of a configuration parameter, as the project
 /// template readers spell it: lowercase, runs of non-alphanumerics become
 /// `_`, edges trimmed, a leading `_` kept for experimental keys.
-pub fn canonical_parameter_name(name: &str) -> String {
-    let trimmed = name.trim().to_ascii_lowercase();
-    let experimental = trimmed.starts_with('_');
-    let mut body = String::new();
-    let mut pending = false;
-    for ch in trimmed.chars() {
-        if ch.is_ascii_alphanumeric() {
-            if pending && !body.is_empty() {
-                body.push('_');
-            }
-            pending = false;
-            body.push(ch);
-        } else {
-            pending = true;
-        }
-    }
-    if experimental && !body.is_empty() {
-        format!("_{body}")
-    } else {
-        body
-    }
-}
+pub use crate::design_config::canonical_parameter_name;
 
-fn setting_value(raw: &Value) -> Option<Value> {
-    match raw {
-        Value::Bool(b) => Some(Value::Bool(*b)),
-        Value::Number(n) => n.as_f64().filter(|v| v.is_finite()).map(|_| raw.clone()),
-        Value::String(s) => {
-            let text = s.trim().to_ascii_lowercase();
-            match text.as_str() {
-                "true" | "yes" | "on" => Some(Value::Bool(true)),
-                "false" | "no" | "off" => Some(Value::Bool(false)),
-                "" => None,
-                _ => text
-                    .parse::<f64>()
-                    .ok()
-                    .filter(|v| v.is_finite())
-                    .map(|v| json!(v)),
-            }
-        }
-        _ => None,
-    }
-}
+use crate::design_config::process_setting_value as setting_value;
 
 /// The project's own preset rows (`transformer_settings` rows carrying a
 /// `preset` column), keyed by preset.

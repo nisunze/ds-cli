@@ -1,0 +1,5773 @@
+{
+  "schema": "ds.settings-model-parity/v1",
+  "captured_from": {
+    "web": "707deedf",
+    "files": [
+      "src/lib/design/rule-set-sheet.ts",
+      "src/lib/design/alias-list.ts",
+      "src/lib/components/design/ProjectConfig.svelte"
+    ]
+  },
+  "cases": [
+    {
+      "id": "list-0",
+      "request": {
+        "op": "coerce",
+        "control": "list",
+        "raw": "",
+        "options": [
+          {
+            "value": "A"
+          },
+          {
+            "value": "B"
+          },
+          {
+            "value": "C"
+          }
+        ]
+      },
+      "expected_ts": []
+    },
+    {
+      "id": "enabled-0",
+      "request": {
+        "op": "coerce",
+        "control": "enabled",
+        "raw": "",
+        "options": [
+          {
+            "value": "A"
+          },
+          {
+            "value": "B"
+          },
+          {
+            "value": "C"
+          }
+        ]
+      },
+      "expected_ts": false
+    },
+    {
+      "id": "checkbox_map-0",
+      "request": {
+        "op": "coerce",
+        "control": "checkbox_map",
+        "raw": "",
+        "options": [
+          {
+            "value": "A"
+          },
+          {
+            "value": "B"
+          },
+          {
+            "value": "C"
+          }
+        ]
+      },
+      "expected_ts": {
+        "A": false,
+        "B": false,
+        "C": false
+      }
+    },
+    {
+      "id": "render-0",
+      "request": {
+        "op": "render",
+        "value": ""
+      },
+      "expected_ts": ""
+    },
+    {
+      "id": "scalar-0",
+      "request": {
+        "op": "coerce",
+        "control": "scalar",
+        "raw": ""
+      },
+      "expected_ts": ""
+    },
+    {
+      "id": "list-1",
+      "request": {
+        "op": "coerce",
+        "control": "list",
+        "raw": " ",
+        "options": [
+          {
+            "value": "A"
+          },
+          {
+            "value": "B"
+          },
+          {
+            "value": "C"
+          }
+        ]
+      },
+      "expected_ts": []
+    },
+    {
+      "id": "enabled-1",
+      "request": {
+        "op": "coerce",
+        "control": "enabled",
+        "raw": " ",
+        "options": [
+          {
+            "value": "A"
+          },
+          {
+            "value": "B"
+          },
+          {
+            "value": "C"
+          }
+        ]
+      },
+      "expected_ts": false
+    },
+    {
+      "id": "checkbox_map-1",
+      "request": {
+        "op": "coerce",
+        "control": "checkbox_map",
+        "raw": " ",
+        "options": [
+          {
+            "value": "A"
+          },
+          {
+            "value": "B"
+          },
+          {
+            "value": "C"
+          }
+        ]
+      },
+      "expected_ts": {
+        "A": false,
+        "B": false,
+        "C": false
+      }
+    },
+    {
+      "id": "render-1",
+      "request": {
+        "op": "render",
+        "value": " "
+      },
+      "expected_ts": " "
+    },
+    {
+      "id": "scalar-1",
+      "request": {
+        "op": "coerce",
+        "control": "scalar",
+        "raw": " "
+      },
+      "expected_ts": " "
+    },
+    {
+      "id": "list-2",
+      "request": {
+        "op": "coerce",
+        "control": "list",
+        "raw": null,
+        "options": [
+          {
+            "value": "A"
+          },
+          {
+            "value": "B"
+          },
+          {
+            "value": "C"
+          }
+        ]
+      },
+      "expected_ts": []
+    },
+    {
+      "id": "enabled-2",
+      "request": {
+        "op": "coerce",
+        "control": "enabled",
+        "raw": null,
+        "options": [
+          {
+            "value": "A"
+          },
+          {
+            "value": "B"
+          },
+          {
+            "value": "C"
+          }
+        ]
+      },
+      "expected_ts": false
+    },
+    {
+      "id": "checkbox_map-2",
+      "request": {
+        "op": "coerce",
+        "control": "checkbox_map",
+        "raw": null,
+        "options": [
+          {
+            "value": "A"
+          },
+          {
+            "value": "B"
+          },
+          {
+            "value": "C"
+          }
+        ]
+      },
+      "expected_ts": {
+        "A": false,
+        "B": false,
+        "C": false
+      }
+    },
+    {
+      "id": "render-2",
+      "request": {
+        "op": "render",
+        "value": null
+      },
+      "expected_ts": ""
+    },
+    {
+      "id": "list-3",
+      "request": {
+        "op": "coerce",
+        "control": "list",
+        "raw": true,
+        "options": [
+          {
+            "value": "A"
+          },
+          {
+            "value": "B"
+          },
+          {
+            "value": "C"
+          }
+        ]
+      },
+      "expected_ts": [
+        "true"
+      ]
+    },
+    {
+      "id": "enabled-3",
+      "request": {
+        "op": "coerce",
+        "control": "enabled",
+        "raw": true,
+        "options": [
+          {
+            "value": "A"
+          },
+          {
+            "value": "B"
+          },
+          {
+            "value": "C"
+          }
+        ]
+      },
+      "expected_ts": true
+    },
+    {
+      "id": "checkbox_map-3",
+      "request": {
+        "op": "coerce",
+        "control": "checkbox_map",
+        "raw": true,
+        "options": [
+          {
+            "value": "A"
+          },
+          {
+            "value": "B"
+          },
+          {
+            "value": "C"
+          }
+        ]
+      },
+      "expected_ts": {
+        "A": false,
+        "B": false,
+        "C": false
+      }
+    },
+    {
+      "id": "render-3",
+      "request": {
+        "op": "render",
+        "value": true
+      },
+      "expected_ts": "true"
+    },
+    {
+      "id": "list-4",
+      "request": {
+        "op": "coerce",
+        "control": "list",
+        "raw": false,
+        "options": [
+          {
+            "value": "A"
+          },
+          {
+            "value": "B"
+          },
+          {
+            "value": "C"
+          }
+        ]
+      },
+      "expected_ts": [
+        "false"
+      ]
+    },
+    {
+      "id": "enabled-4",
+      "request": {
+        "op": "coerce",
+        "control": "enabled",
+        "raw": false,
+        "options": [
+          {
+            "value": "A"
+          },
+          {
+            "value": "B"
+          },
+          {
+            "value": "C"
+          }
+        ]
+      },
+      "expected_ts": false
+    },
+    {
+      "id": "checkbox_map-4",
+      "request": {
+        "op": "coerce",
+        "control": "checkbox_map",
+        "raw": false,
+        "options": [
+          {
+            "value": "A"
+          },
+          {
+            "value": "B"
+          },
+          {
+            "value": "C"
+          }
+        ]
+      },
+      "expected_ts": {
+        "A": false,
+        "B": false,
+        "C": false
+      }
+    },
+    {
+      "id": "render-4",
+      "request": {
+        "op": "render",
+        "value": false
+      },
+      "expected_ts": "false"
+    },
+    {
+      "id": "list-5",
+      "request": {
+        "op": "coerce",
+        "control": "list",
+        "raw": 0,
+        "options": [
+          {
+            "value": "A"
+          },
+          {
+            "value": "B"
+          },
+          {
+            "value": "C"
+          }
+        ]
+      },
+      "expected_ts": [
+        "0"
+      ]
+    },
+    {
+      "id": "enabled-5",
+      "request": {
+        "op": "coerce",
+        "control": "enabled",
+        "raw": 0,
+        "options": [
+          {
+            "value": "A"
+          },
+          {
+            "value": "B"
+          },
+          {
+            "value": "C"
+          }
+        ]
+      },
+      "expected_ts": false
+    },
+    {
+      "id": "checkbox_map-5",
+      "request": {
+        "op": "coerce",
+        "control": "checkbox_map",
+        "raw": 0,
+        "options": [
+          {
+            "value": "A"
+          },
+          {
+            "value": "B"
+          },
+          {
+            "value": "C"
+          }
+        ]
+      },
+      "expected_ts": {
+        "A": false,
+        "B": false,
+        "C": false
+      }
+    },
+    {
+      "id": "render-5",
+      "request": {
+        "op": "render",
+        "value": 0
+      },
+      "expected_ts": "0"
+    },
+    {
+      "id": "list-6",
+      "request": {
+        "op": "coerce",
+        "control": "list",
+        "raw": 1,
+        "options": [
+          {
+            "value": "A"
+          },
+          {
+            "value": "B"
+          },
+          {
+            "value": "C"
+          }
+        ]
+      },
+      "expected_ts": [
+        "1"
+      ]
+    },
+    {
+      "id": "enabled-6",
+      "request": {
+        "op": "coerce",
+        "control": "enabled",
+        "raw": 1,
+        "options": [
+          {
+            "value": "A"
+          },
+          {
+            "value": "B"
+          },
+          {
+            "value": "C"
+          }
+        ]
+      },
+      "expected_ts": true
+    },
+    {
+      "id": "checkbox_map-6",
+      "request": {
+        "op": "coerce",
+        "control": "checkbox_map",
+        "raw": 1,
+        "options": [
+          {
+            "value": "A"
+          },
+          {
+            "value": "B"
+          },
+          {
+            "value": "C"
+          }
+        ]
+      },
+      "expected_ts": {
+        "A": false,
+        "B": false,
+        "C": false
+      }
+    },
+    {
+      "id": "render-6",
+      "request": {
+        "op": "render",
+        "value": 1
+      },
+      "expected_ts": "1"
+    },
+    {
+      "id": "list-7",
+      "request": {
+        "op": "coerce",
+        "control": "list",
+        "raw": "007",
+        "options": [
+          {
+            "value": "A"
+          },
+          {
+            "value": "B"
+          },
+          {
+            "value": "C"
+          }
+        ]
+      },
+      "expected_ts": [
+        "007"
+      ]
+    },
+    {
+      "id": "enabled-7",
+      "request": {
+        "op": "coerce",
+        "control": "enabled",
+        "raw": "007",
+        "options": [
+          {
+            "value": "A"
+          },
+          {
+            "value": "B"
+          },
+          {
+            "value": "C"
+          }
+        ]
+      },
+      "expected_ts": false
+    },
+    {
+      "id": "checkbox_map-7",
+      "request": {
+        "op": "coerce",
+        "control": "checkbox_map",
+        "raw": "007",
+        "options": [
+          {
+            "value": "A"
+          },
+          {
+            "value": "B"
+          },
+          {
+            "value": "C"
+          }
+        ]
+      },
+      "expected_ts": {
+        "A": false,
+        "B": false,
+        "C": false
+      }
+    },
+    {
+      "id": "render-7",
+      "request": {
+        "op": "render",
+        "value": "007"
+      },
+      "expected_ts": "007"
+    },
+    {
+      "id": "scalar-7",
+      "request": {
+        "op": "coerce",
+        "control": "scalar",
+        "raw": "007"
+      },
+      "expected_ts": 7
+    },
+    {
+      "id": "list-8",
+      "request": {
+        "op": "coerce",
+        "control": "list",
+        "raw": "TRUE",
+        "options": [
+          {
+            "value": "A"
+          },
+          {
+            "value": "B"
+          },
+          {
+            "value": "C"
+          }
+        ]
+      },
+      "expected_ts": [
+        "TRUE"
+      ]
+    },
+    {
+      "id": "enabled-8",
+      "request": {
+        "op": "coerce",
+        "control": "enabled",
+        "raw": "TRUE",
+        "options": [
+          {
+            "value": "A"
+          },
+          {
+            "value": "B"
+          },
+          {
+            "value": "C"
+          }
+        ]
+      },
+      "expected_ts": true
+    },
+    {
+      "id": "checkbox_map-8",
+      "request": {
+        "op": "coerce",
+        "control": "checkbox_map",
+        "raw": "TRUE",
+        "options": [
+          {
+            "value": "A"
+          },
+          {
+            "value": "B"
+          },
+          {
+            "value": "C"
+          }
+        ]
+      },
+      "expected_ts": {
+        "A": false,
+        "B": false,
+        "C": false
+      }
+    },
+    {
+      "id": "render-8",
+      "request": {
+        "op": "render",
+        "value": "TRUE"
+      },
+      "expected_ts": "TRUE"
+    },
+    {
+      "id": "scalar-8",
+      "request": {
+        "op": "coerce",
+        "control": "scalar",
+        "raw": "TRUE"
+      },
+      "expected_ts": "TRUE",
+      "expected": true,
+      "why": "Scalar booleans are case insensitive across native and web."
+    },
+    {
+      "id": "list-9",
+      "request": {
+        "op": "coerce",
+        "control": "list",
+        "raw": "false",
+        "options": [
+          {
+            "value": "A"
+          },
+          {
+            "value": "B"
+          },
+          {
+            "value": "C"
+          }
+        ]
+      },
+      "expected_ts": [
+        "false"
+      ]
+    },
+    {
+      "id": "enabled-9",
+      "request": {
+        "op": "coerce",
+        "control": "enabled",
+        "raw": "false",
+        "options": [
+          {
+            "value": "A"
+          },
+          {
+            "value": "B"
+          },
+          {
+            "value": "C"
+          }
+        ]
+      },
+      "expected_ts": false
+    },
+    {
+      "id": "checkbox_map-9",
+      "request": {
+        "op": "coerce",
+        "control": "checkbox_map",
+        "raw": "false",
+        "options": [
+          {
+            "value": "A"
+          },
+          {
+            "value": "B"
+          },
+          {
+            "value": "C"
+          }
+        ]
+      },
+      "expected_ts": {
+        "A": false,
+        "B": false,
+        "C": false
+      }
+    },
+    {
+      "id": "render-9",
+      "request": {
+        "op": "render",
+        "value": "false"
+      },
+      "expected_ts": "false"
+    },
+    {
+      "id": "scalar-9",
+      "request": {
+        "op": "coerce",
+        "control": "scalar",
+        "raw": "false"
+      },
+      "expected_ts": false
+    },
+    {
+      "id": "list-10",
+      "request": {
+        "op": "coerce",
+        "control": "list",
+        "raw": "False",
+        "options": [
+          {
+            "value": "A"
+          },
+          {
+            "value": "B"
+          },
+          {
+            "value": "C"
+          }
+        ]
+      },
+      "expected_ts": [
+        "False"
+      ]
+    },
+    {
+      "id": "enabled-10",
+      "request": {
+        "op": "coerce",
+        "control": "enabled",
+        "raw": "False",
+        "options": [
+          {
+            "value": "A"
+          },
+          {
+            "value": "B"
+          },
+          {
+            "value": "C"
+          }
+        ]
+      },
+      "expected_ts": false
+    },
+    {
+      "id": "checkbox_map-10",
+      "request": {
+        "op": "coerce",
+        "control": "checkbox_map",
+        "raw": "False",
+        "options": [
+          {
+            "value": "A"
+          },
+          {
+            "value": "B"
+          },
+          {
+            "value": "C"
+          }
+        ]
+      },
+      "expected_ts": {
+        "A": false,
+        "B": false,
+        "C": false
+      }
+    },
+    {
+      "id": "render-10",
+      "request": {
+        "op": "render",
+        "value": "False"
+      },
+      "expected_ts": "False"
+    },
+    {
+      "id": "scalar-10",
+      "request": {
+        "op": "coerce",
+        "control": "scalar",
+        "raw": "False"
+      },
+      "expected_ts": "False",
+      "expected": false,
+      "why": "Scalar booleans are case insensitive across native and web."
+    },
+    {
+      "id": "list-11",
+      "request": {
+        "op": "coerce",
+        "control": "list",
+        "raw": " 1 ",
+        "options": [
+          {
+            "value": "A"
+          },
+          {
+            "value": "B"
+          },
+          {
+            "value": "C"
+          }
+        ]
+      },
+      "expected_ts": [
+        "1"
+      ]
+    },
+    {
+      "id": "enabled-11",
+      "request": {
+        "op": "coerce",
+        "control": "enabled",
+        "raw": " 1 ",
+        "options": [
+          {
+            "value": "A"
+          },
+          {
+            "value": "B"
+          },
+          {
+            "value": "C"
+          }
+        ]
+      },
+      "expected_ts": true
+    },
+    {
+      "id": "checkbox_map-11",
+      "request": {
+        "op": "coerce",
+        "control": "checkbox_map",
+        "raw": " 1 ",
+        "options": [
+          {
+            "value": "A"
+          },
+          {
+            "value": "B"
+          },
+          {
+            "value": "C"
+          }
+        ]
+      },
+      "expected_ts": {
+        "A": false,
+        "B": false,
+        "C": false
+      }
+    },
+    {
+      "id": "render-11",
+      "request": {
+        "op": "render",
+        "value": " 1 "
+      },
+      "expected_ts": " 1 "
+    },
+    {
+      "id": "scalar-11",
+      "request": {
+        "op": "coerce",
+        "control": "scalar",
+        "raw": " 1 "
+      },
+      "expected_ts": 1
+    },
+    {
+      "id": "list-12",
+      "request": {
+        "op": "coerce",
+        "control": "list",
+        "raw": "[a,b",
+        "options": [
+          {
+            "value": "A"
+          },
+          {
+            "value": "B"
+          },
+          {
+            "value": "C"
+          }
+        ]
+      },
+      "expected_ts": [
+        "[a",
+        "b"
+      ]
+    },
+    {
+      "id": "enabled-12",
+      "request": {
+        "op": "coerce",
+        "control": "enabled",
+        "raw": "[a,b",
+        "options": [
+          {
+            "value": "A"
+          },
+          {
+            "value": "B"
+          },
+          {
+            "value": "C"
+          }
+        ]
+      },
+      "expected_ts": false
+    },
+    {
+      "id": "checkbox_map-12",
+      "request": {
+        "op": "coerce",
+        "control": "checkbox_map",
+        "raw": "[a,b",
+        "options": [
+          {
+            "value": "A"
+          },
+          {
+            "value": "B"
+          },
+          {
+            "value": "C"
+          }
+        ]
+      },
+      "expected_ts": {
+        "A": false,
+        "B": true,
+        "C": false
+      }
+    },
+    {
+      "id": "render-12",
+      "request": {
+        "op": "render",
+        "value": "[a,b"
+      },
+      "expected_ts": "[a,b"
+    },
+    {
+      "id": "scalar-12",
+      "request": {
+        "op": "coerce",
+        "control": "scalar",
+        "raw": "[a,b"
+      },
+      "expected_ts": "[a,b"
+    },
+    {
+      "id": "list-13",
+      "request": {
+        "op": "coerce",
+        "control": "list",
+        "raw": "[1,\"a\"]",
+        "options": [
+          {
+            "value": "A"
+          },
+          {
+            "value": "B"
+          },
+          {
+            "value": "C"
+          }
+        ]
+      },
+      "expected_ts": [
+        "1",
+        "a"
+      ]
+    },
+    {
+      "id": "enabled-13",
+      "request": {
+        "op": "coerce",
+        "control": "enabled",
+        "raw": "[1,\"a\"]",
+        "options": [
+          {
+            "value": "A"
+          },
+          {
+            "value": "B"
+          },
+          {
+            "value": "C"
+          }
+        ]
+      },
+      "expected_ts": false
+    },
+    {
+      "id": "checkbox_map-13",
+      "request": {
+        "op": "coerce",
+        "control": "checkbox_map",
+        "raw": "[1,\"a\"]",
+        "options": [
+          {
+            "value": "A"
+          },
+          {
+            "value": "B"
+          },
+          {
+            "value": "C"
+          }
+        ]
+      },
+      "expected_ts": {
+        "A": true,
+        "B": false,
+        "C": false
+      }
+    },
+    {
+      "id": "render-13",
+      "request": {
+        "op": "render",
+        "value": "[1,\"a\"]"
+      },
+      "expected_ts": "[1,\"a\"]"
+    },
+    {
+      "id": "scalar-13",
+      "request": {
+        "op": "coerce",
+        "control": "scalar",
+        "raw": "[1,\"a\"]"
+      },
+      "expected_ts": [
+        1,
+        "a"
+      ]
+    },
+    {
+      "id": "list-14",
+      "request": {
+        "op": "coerce",
+        "control": "list",
+        "raw": "{\"x\":true}",
+        "options": [
+          {
+            "value": "A"
+          },
+          {
+            "value": "B"
+          },
+          {
+            "value": "C"
+          }
+        ]
+      },
+      "expected_ts": [
+        "{\"x\":true}"
+      ]
+    },
+    {
+      "id": "enabled-14",
+      "request": {
+        "op": "coerce",
+        "control": "enabled",
+        "raw": "{\"x\":true}",
+        "options": [
+          {
+            "value": "A"
+          },
+          {
+            "value": "B"
+          },
+          {
+            "value": "C"
+          }
+        ]
+      },
+      "expected_ts": false
+    },
+    {
+      "id": "checkbox_map-14",
+      "request": {
+        "op": "coerce",
+        "control": "checkbox_map",
+        "raw": "{\"x\":true}",
+        "options": [
+          {
+            "value": "A"
+          },
+          {
+            "value": "B"
+          },
+          {
+            "value": "C"
+          }
+        ]
+      },
+      "expected_ts": {
+        "A": false,
+        "B": false,
+        "C": false
+      }
+    },
+    {
+      "id": "render-14",
+      "request": {
+        "op": "render",
+        "value": "{\"x\":true}"
+      },
+      "expected_ts": "{\"x\":true}"
+    },
+    {
+      "id": "scalar-14",
+      "request": {
+        "op": "coerce",
+        "control": "scalar",
+        "raw": "{\"x\":true}"
+      },
+      "expected_ts": {
+        "x": true
+      }
+    },
+    {
+      "id": "list-15",
+      "request": {
+        "op": "coerce",
+        "control": "list",
+        "raw": "1e3",
+        "options": [
+          {
+            "value": "A"
+          },
+          {
+            "value": "B"
+          },
+          {
+            "value": "C"
+          }
+        ]
+      },
+      "expected_ts": [
+        "1e3"
+      ]
+    },
+    {
+      "id": "enabled-15",
+      "request": {
+        "op": "coerce",
+        "control": "enabled",
+        "raw": "1e3",
+        "options": [
+          {
+            "value": "A"
+          },
+          {
+            "value": "B"
+          },
+          {
+            "value": "C"
+          }
+        ]
+      },
+      "expected_ts": false
+    },
+    {
+      "id": "checkbox_map-15",
+      "request": {
+        "op": "coerce",
+        "control": "checkbox_map",
+        "raw": "1e3",
+        "options": [
+          {
+            "value": "A"
+          },
+          {
+            "value": "B"
+          },
+          {
+            "value": "C"
+          }
+        ]
+      },
+      "expected_ts": {
+        "A": false,
+        "B": false,
+        "C": false
+      }
+    },
+    {
+      "id": "render-15",
+      "request": {
+        "op": "render",
+        "value": "1e3"
+      },
+      "expected_ts": "1e3"
+    },
+    {
+      "id": "scalar-15",
+      "request": {
+        "op": "coerce",
+        "control": "scalar",
+        "raw": "1e3"
+      },
+      "expected_ts": 1000
+    },
+    {
+      "id": "list-16",
+      "request": {
+        "op": "coerce",
+        "control": "list",
+        "raw": "0x10",
+        "options": [
+          {
+            "value": "A"
+          },
+          {
+            "value": "B"
+          },
+          {
+            "value": "C"
+          }
+        ]
+      },
+      "expected_ts": [
+        "0x10"
+      ]
+    },
+    {
+      "id": "enabled-16",
+      "request": {
+        "op": "coerce",
+        "control": "enabled",
+        "raw": "0x10",
+        "options": [
+          {
+            "value": "A"
+          },
+          {
+            "value": "B"
+          },
+          {
+            "value": "C"
+          }
+        ]
+      },
+      "expected_ts": false
+    },
+    {
+      "id": "checkbox_map-16",
+      "request": {
+        "op": "coerce",
+        "control": "checkbox_map",
+        "raw": "0x10",
+        "options": [
+          {
+            "value": "A"
+          },
+          {
+            "value": "B"
+          },
+          {
+            "value": "C"
+          }
+        ]
+      },
+      "expected_ts": {
+        "A": false,
+        "B": false,
+        "C": false
+      }
+    },
+    {
+      "id": "render-16",
+      "request": {
+        "op": "render",
+        "value": "0x10"
+      },
+      "expected_ts": "0x10"
+    },
+    {
+      "id": "scalar-16",
+      "request": {
+        "op": "coerce",
+        "control": "scalar",
+        "raw": "0x10"
+      },
+      "expected_ts": 16
+    },
+    {
+      "id": "list-17",
+      "request": {
+        "op": "coerce",
+        "control": "list",
+        "raw": "yes",
+        "options": [
+          {
+            "value": "A"
+          },
+          {
+            "value": "B"
+          },
+          {
+            "value": "C"
+          }
+        ]
+      },
+      "expected_ts": [
+        "yes"
+      ]
+    },
+    {
+      "id": "enabled-17",
+      "request": {
+        "op": "coerce",
+        "control": "enabled",
+        "raw": "yes",
+        "options": [
+          {
+            "value": "A"
+          },
+          {
+            "value": "B"
+          },
+          {
+            "value": "C"
+          }
+        ]
+      },
+      "expected_ts": true
+    },
+    {
+      "id": "checkbox_map-17",
+      "request": {
+        "op": "coerce",
+        "control": "checkbox_map",
+        "raw": "yes",
+        "options": [
+          {
+            "value": "A"
+          },
+          {
+            "value": "B"
+          },
+          {
+            "value": "C"
+          }
+        ]
+      },
+      "expected_ts": {
+        "A": false,
+        "B": false,
+        "C": false
+      }
+    },
+    {
+      "id": "render-17",
+      "request": {
+        "op": "render",
+        "value": "yes"
+      },
+      "expected_ts": "yes"
+    },
+    {
+      "id": "scalar-17",
+      "request": {
+        "op": "coerce",
+        "control": "scalar",
+        "raw": "yes"
+      },
+      "expected_ts": "yes"
+    },
+    {
+      "id": "list-18",
+      "request": {
+        "op": "coerce",
+        "control": "list",
+        "raw": "on",
+        "options": [
+          {
+            "value": "A"
+          },
+          {
+            "value": "B"
+          },
+          {
+            "value": "C"
+          }
+        ]
+      },
+      "expected_ts": [
+        "on"
+      ]
+    },
+    {
+      "id": "enabled-18",
+      "request": {
+        "op": "coerce",
+        "control": "enabled",
+        "raw": "on",
+        "options": [
+          {
+            "value": "A"
+          },
+          {
+            "value": "B"
+          },
+          {
+            "value": "C"
+          }
+        ]
+      },
+      "expected_ts": true
+    },
+    {
+      "id": "checkbox_map-18",
+      "request": {
+        "op": "coerce",
+        "control": "checkbox_map",
+        "raw": "on",
+        "options": [
+          {
+            "value": "A"
+          },
+          {
+            "value": "B"
+          },
+          {
+            "value": "C"
+          }
+        ]
+      },
+      "expected_ts": {
+        "A": false,
+        "B": false,
+        "C": false
+      }
+    },
+    {
+      "id": "render-18",
+      "request": {
+        "op": "render",
+        "value": "on"
+      },
+      "expected_ts": "on"
+    },
+    {
+      "id": "scalar-18",
+      "request": {
+        "op": "coerce",
+        "control": "scalar",
+        "raw": "on"
+      },
+      "expected_ts": "on"
+    },
+    {
+      "id": "list-19",
+      "request": {
+        "op": "coerce",
+        "control": "list",
+        "raw": "NaN",
+        "options": [
+          {
+            "value": "A"
+          },
+          {
+            "value": "B"
+          },
+          {
+            "value": "C"
+          }
+        ]
+      },
+      "expected_ts": [
+        "NaN"
+      ]
+    },
+    {
+      "id": "enabled-19",
+      "request": {
+        "op": "coerce",
+        "control": "enabled",
+        "raw": "NaN",
+        "options": [
+          {
+            "value": "A"
+          },
+          {
+            "value": "B"
+          },
+          {
+            "value": "C"
+          }
+        ]
+      },
+      "expected_ts": false
+    },
+    {
+      "id": "checkbox_map-19",
+      "request": {
+        "op": "coerce",
+        "control": "checkbox_map",
+        "raw": "NaN",
+        "options": [
+          {
+            "value": "A"
+          },
+          {
+            "value": "B"
+          },
+          {
+            "value": "C"
+          }
+        ]
+      },
+      "expected_ts": {
+        "A": false,
+        "B": false,
+        "C": false
+      }
+    },
+    {
+      "id": "render-19",
+      "request": {
+        "op": "render",
+        "value": "NaN"
+      },
+      "expected_ts": "NaN"
+    },
+    {
+      "id": "scalar-19",
+      "request": {
+        "op": "coerce",
+        "control": "scalar",
+        "raw": "NaN"
+      },
+      "expected_ts": "NaN"
+    },
+    {
+      "id": "list-20",
+      "request": {
+        "op": "coerce",
+        "control": "list",
+        "raw": "Infinity",
+        "options": [
+          {
+            "value": "A"
+          },
+          {
+            "value": "B"
+          },
+          {
+            "value": "C"
+          }
+        ]
+      },
+      "expected_ts": [
+        "Infinity"
+      ]
+    },
+    {
+      "id": "enabled-20",
+      "request": {
+        "op": "coerce",
+        "control": "enabled",
+        "raw": "Infinity",
+        "options": [
+          {
+            "value": "A"
+          },
+          {
+            "value": "B"
+          },
+          {
+            "value": "C"
+          }
+        ]
+      },
+      "expected_ts": false
+    },
+    {
+      "id": "checkbox_map-20",
+      "request": {
+        "op": "coerce",
+        "control": "checkbox_map",
+        "raw": "Infinity",
+        "options": [
+          {
+            "value": "A"
+          },
+          {
+            "value": "B"
+          },
+          {
+            "value": "C"
+          }
+        ]
+      },
+      "expected_ts": {
+        "A": false,
+        "B": false,
+        "C": false
+      }
+    },
+    {
+      "id": "render-20",
+      "request": {
+        "op": "render",
+        "value": "Infinity"
+      },
+      "expected_ts": "Infinity"
+    },
+    {
+      "id": "scalar-20",
+      "request": {
+        "op": "coerce",
+        "control": "scalar",
+        "raw": "Infinity"
+      },
+      "expected_ts": null
+    },
+    {
+      "id": "list-21",
+      "request": {
+        "op": "coerce",
+        "control": "list",
+        "raw": "a,b; C\nd",
+        "options": [
+          {
+            "value": "A"
+          },
+          {
+            "value": "B"
+          },
+          {
+            "value": "C"
+          }
+        ]
+      },
+      "expected_ts": [
+        "a",
+        "b",
+        "C",
+        "d"
+      ]
+    },
+    {
+      "id": "enabled-21",
+      "request": {
+        "op": "coerce",
+        "control": "enabled",
+        "raw": "a,b; C\nd",
+        "options": [
+          {
+            "value": "A"
+          },
+          {
+            "value": "B"
+          },
+          {
+            "value": "C"
+          }
+        ]
+      },
+      "expected_ts": false
+    },
+    {
+      "id": "checkbox_map-21",
+      "request": {
+        "op": "coerce",
+        "control": "checkbox_map",
+        "raw": "a,b; C\nd",
+        "options": [
+          {
+            "value": "A"
+          },
+          {
+            "value": "B"
+          },
+          {
+            "value": "C"
+          }
+        ]
+      },
+      "expected_ts": {
+        "A": true,
+        "B": true,
+        "C": true
+      }
+    },
+    {
+      "id": "render-21",
+      "request": {
+        "op": "render",
+        "value": "a,b; C\nd"
+      },
+      "expected_ts": "a,b; C\nd"
+    },
+    {
+      "id": "scalar-21",
+      "request": {
+        "op": "coerce",
+        "control": "scalar",
+        "raw": "a,b; C\nd"
+      },
+      "expected_ts": "a,b; C\nd"
+    },
+    {
+      "id": "list-22",
+      "request": {
+        "op": "coerce",
+        "control": "list",
+        "raw": "[\"A\",\"a\",[\"B\"]]",
+        "options": [
+          {
+            "value": "A"
+          },
+          {
+            "value": "B"
+          },
+          {
+            "value": "C"
+          }
+        ]
+      },
+      "expected_ts": [
+        "A",
+        "B"
+      ]
+    },
+    {
+      "id": "enabled-22",
+      "request": {
+        "op": "coerce",
+        "control": "enabled",
+        "raw": "[\"A\",\"a\",[\"B\"]]",
+        "options": [
+          {
+            "value": "A"
+          },
+          {
+            "value": "B"
+          },
+          {
+            "value": "C"
+          }
+        ]
+      },
+      "expected_ts": false
+    },
+    {
+      "id": "checkbox_map-22",
+      "request": {
+        "op": "coerce",
+        "control": "checkbox_map",
+        "raw": "[\"A\",\"a\",[\"B\"]]",
+        "options": [
+          {
+            "value": "A"
+          },
+          {
+            "value": "B"
+          },
+          {
+            "value": "C"
+          }
+        ]
+      },
+      "expected_ts": {
+        "A": true,
+        "B": true,
+        "C": false
+      }
+    },
+    {
+      "id": "render-22",
+      "request": {
+        "op": "render",
+        "value": "[\"A\",\"a\",[\"B\"]]"
+      },
+      "expected_ts": "[\"A\",\"a\",[\"B\"]]"
+    },
+    {
+      "id": "scalar-22",
+      "request": {
+        "op": "coerce",
+        "control": "scalar",
+        "raw": "[\"A\",\"a\",[\"B\"]]"
+      },
+      "expected_ts": [
+        "A",
+        "a",
+        [
+          "B"
+        ]
+      ]
+    },
+    {
+      "id": "list-23",
+      "request": {
+        "op": "coerce",
+        "control": "list",
+        "raw": " first ",
+        "options": [
+          {
+            "value": "A"
+          },
+          {
+            "value": "B"
+          },
+          {
+            "value": "C"
+          }
+        ]
+      },
+      "expected_ts": [
+        "first"
+      ]
+    },
+    {
+      "id": "enabled-23",
+      "request": {
+        "op": "coerce",
+        "control": "enabled",
+        "raw": " first ",
+        "options": [
+          {
+            "value": "A"
+          },
+          {
+            "value": "B"
+          },
+          {
+            "value": "C"
+          }
+        ]
+      },
+      "expected_ts": false
+    },
+    {
+      "id": "checkbox_map-23",
+      "request": {
+        "op": "coerce",
+        "control": "checkbox_map",
+        "raw": " first ",
+        "options": [
+          {
+            "value": "A"
+          },
+          {
+            "value": "B"
+          },
+          {
+            "value": "C"
+          }
+        ]
+      },
+      "expected_ts": {
+        "A": false,
+        "B": false,
+        "C": false
+      }
+    },
+    {
+      "id": "render-23",
+      "request": {
+        "op": "render",
+        "value": " first "
+      },
+      "expected_ts": " first "
+    },
+    {
+      "id": "scalar-23",
+      "request": {
+        "op": "coerce",
+        "control": "scalar",
+        "raw": " first "
+      },
+      "expected_ts": " first "
+    },
+    {
+      "id": "list-24",
+      "request": {
+        "op": "coerce",
+        "control": "list",
+        "raw": [
+          "A",
+          "a",
+          " B ",
+          null
+        ],
+        "options": [
+          {
+            "value": "A"
+          },
+          {
+            "value": "B"
+          },
+          {
+            "value": "C"
+          }
+        ]
+      },
+      "expected_ts": [
+        "A",
+        "B"
+      ]
+    },
+    {
+      "id": "enabled-24",
+      "request": {
+        "op": "coerce",
+        "control": "enabled",
+        "raw": [
+          "A",
+          "a",
+          " B ",
+          null
+        ],
+        "options": [
+          {
+            "value": "A"
+          },
+          {
+            "value": "B"
+          },
+          {
+            "value": "C"
+          }
+        ]
+      },
+      "expected_ts": false
+    },
+    {
+      "id": "checkbox_map-24",
+      "request": {
+        "op": "coerce",
+        "control": "checkbox_map",
+        "raw": [
+          "A",
+          "a",
+          " B ",
+          null
+        ],
+        "options": [
+          {
+            "value": "A"
+          },
+          {
+            "value": "B"
+          },
+          {
+            "value": "C"
+          }
+        ]
+      },
+      "expected_ts": {
+        "A": true,
+        "B": true,
+        "C": false
+      }
+    },
+    {
+      "id": "render-24",
+      "request": {
+        "op": "render",
+        "value": [
+          "A",
+          "a",
+          " B ",
+          null
+        ]
+      },
+      "expected_ts": "[\"A\",\"a\",\" B \",null]"
+    },
+    {
+      "id": "list-25",
+      "request": {
+        "op": "coerce",
+        "control": "list",
+        "raw": {
+          "A": true,
+          "B": "yes",
+          "C": "1",
+          "D": "on",
+          "E": false
+        },
+        "options": [
+          {
+            "value": "A"
+          },
+          {
+            "value": "B"
+          },
+          {
+            "value": "C"
+          }
+        ]
+      },
+      "expected_ts": [
+        "A",
+        "B"
+      ]
+    },
+    {
+      "id": "enabled-25",
+      "request": {
+        "op": "coerce",
+        "control": "enabled",
+        "raw": {
+          "A": true,
+          "B": "yes",
+          "C": "1",
+          "D": "on",
+          "E": false
+        },
+        "options": [
+          {
+            "value": "A"
+          },
+          {
+            "value": "B"
+          },
+          {
+            "value": "C"
+          }
+        ]
+      },
+      "expected_ts": false
+    },
+    {
+      "id": "checkbox_map-25",
+      "request": {
+        "op": "coerce",
+        "control": "checkbox_map",
+        "raw": {
+          "A": true,
+          "B": "yes",
+          "C": "1",
+          "D": "on",
+          "E": false
+        },
+        "options": [
+          {
+            "value": "A"
+          },
+          {
+            "value": "B"
+          },
+          {
+            "value": "C"
+          }
+        ]
+      },
+      "expected_ts": {
+        "A": true,
+        "B": true,
+        "C": true
+      }
+    },
+    {
+      "id": "render-25",
+      "request": {
+        "op": "render",
+        "value": {
+          "A": true,
+          "B": "yes",
+          "C": "1",
+          "D": "on",
+          "E": false
+        }
+      },
+      "expected_ts": "{\"A\":true,\"B\":\"yes\",\"C\":\"1\",\"D\":\"on\",\"E\":false}"
+    },
+    {
+      "id": "parameter-0",
+      "request": {
+        "op": "canonical_parameter_name",
+        "value": "_experimental_x"
+      },
+      "expected_ts": "_experimental_x"
+    },
+    {
+      "id": "parameter-1",
+      "request": {
+        "op": "canonical_parameter_name",
+        "value": "max-feeder-cable-size"
+      },
+      "expected_ts": "max_feeder_cable_size"
+    },
+    {
+      "id": "parameter-2",
+      "request": {
+        "op": "canonical_parameter_name",
+        "value": "Max Feeder Cable Size"
+      },
+      "expected_ts": "max feeder cable size",
+      "expected": "max_feeder_cable_size",
+      "why": "Converge on process_settings grammar, preserving experimental underscore."
+    },
+    {
+      "id": "parameter-3",
+      "request": {
+        "op": "canonical_parameter_name",
+        "value": "lv_poles__rule"
+      },
+      "expected_ts": "lv_poles__rule",
+      "expected": "lv_poles_rule",
+      "why": "Converge on process_settings grammar, preserving experimental underscore."
+    },
+    {
+      "id": "parameter-4",
+      "request": {
+        "op": "canonical_parameter_name",
+        "value": " LV Poles Rule "
+      },
+      "expected_ts": "lv poles rule",
+      "expected": "lv_poles_rule",
+      "why": "Converge on process_settings grammar, preserving experimental underscore."
+    },
+    {
+      "id": "parameter-5",
+      "request": {
+        "op": "canonical_parameter_name",
+        "value": "--x"
+      },
+      "expected_ts": "__x",
+      "expected": "x",
+      "why": "Converge on process_settings grammar, preserving experimental underscore."
+    },
+    {
+      "id": "parameter-6",
+      "request": {
+        "op": "canonical_parameter_name",
+        "value": "__x"
+      },
+      "expected_ts": "__x",
+      "expected": "_x",
+      "why": "Converge on process_settings grammar, preserving experimental underscore."
+    },
+    {
+      "id": "parameter-7",
+      "request": {
+        "op": "canonical_parameter_name",
+        "value": " _X "
+      },
+      "expected_ts": "_x"
+    },
+    {
+      "id": "parameter-8",
+      "request": {
+        "op": "canonical_parameter_name",
+        "value": "A.B"
+      },
+      "expected_ts": "a.b",
+      "expected": "a_b",
+      "why": "Converge on process_settings grammar, preserving experimental underscore."
+    },
+    {
+      "id": "parameter-9",
+      "request": {
+        "op": "canonical_parameter_name",
+        "value": "a/b"
+      },
+      "expected_ts": "a/b",
+      "expected": "a_b",
+      "why": "Converge on process_settings grammar, preserving experimental underscore."
+    },
+    {
+      "id": "parameter-10",
+      "request": {
+        "op": "canonical_parameter_name",
+        "value": "a\\b"
+      },
+      "expected_ts": "a\\b",
+      "expected": "a_b",
+      "why": "Converge on process_settings grammar, preserving experimental underscore."
+    },
+    {
+      "id": "parameter-11",
+      "request": {
+        "op": "canonical_parameter_name",
+        "value": "a@b"
+      },
+      "expected_ts": "a@b",
+      "expected": "a_b",
+      "why": "Converge on process_settings grammar, preserving experimental underscore."
+    },
+    {
+      "id": "parameter-12",
+      "request": {
+        "op": "canonical_parameter_name",
+        "value": "a:b"
+      },
+      "expected_ts": "a:b",
+      "expected": "a_b",
+      "why": "Converge on process_settings grammar, preserving experimental underscore."
+    },
+    {
+      "id": "parameter-13",
+      "request": {
+        "op": "canonical_parameter_name",
+        "value": "a\tb"
+      },
+      "expected_ts": "a\tb",
+      "expected": "a_b",
+      "why": "Converge on process_settings grammar, preserving experimental underscore."
+    },
+    {
+      "id": "parameter-14",
+      "request": {
+        "op": "canonical_parameter_name",
+        "value": "camelCase"
+      },
+      "expected_ts": "camelcase"
+    },
+    {
+      "id": "parameter-15",
+      "request": {
+        "op": "canonical_parameter_name",
+        "value": "survey-forms-in-transformer-exports"
+      },
+      "expected_ts": "survey_forms_in_transformer_exports"
+    },
+    {
+      "id": "parameter-16",
+      "request": {
+        "op": "canonical_parameter_name",
+        "value": "transformer_export_survey_forms"
+      },
+      "expected_ts": "transformer_export_survey_forms"
+    },
+    {
+      "id": "parameter-17",
+      "request": {
+        "op": "canonical_parameter_name",
+        "value": "default_process_preset"
+      },
+      "expected_ts": "default_process_preset"
+    },
+    {
+      "id": "parameter-18",
+      "request": {
+        "op": "canonical_parameter_name",
+        "value": "minimum_feeder_cable_size"
+      },
+      "expected_ts": "minimum_feeder_cable_size"
+    },
+    {
+      "id": "parameter-19",
+      "request": {
+        "op": "canonical_parameter_name",
+        "value": "maximum_feeder_cable_size"
+      },
+      "expected_ts": "maximum_feeder_cable_size"
+    },
+    {
+      "id": "parameter-20",
+      "request": {
+        "op": "canonical_parameter_name",
+        "value": "lv_poles_rule_set"
+      },
+      "expected_ts": "lv_poles_rule_set"
+    },
+    {
+      "id": "parameter-21",
+      "request": {
+        "op": "canonical_parameter_name",
+        "value": "data-source"
+      },
+      "expected_ts": "data_source"
+    },
+    {
+      "id": "parameter-22",
+      "request": {
+        "op": "canonical_parameter_name",
+        "value": "already_normal"
+      },
+      "expected_ts": "already_normal"
+    },
+    {
+      "id": "parameter-23",
+      "request": {
+        "op": "canonical_parameter_name",
+        "value": "A___B"
+      },
+      "expected_ts": "a___b",
+      "expected": "a_b",
+      "why": "Converge on process_settings grammar, preserving experimental underscore."
+    },
+    {
+      "id": "parameter-24",
+      "request": {
+        "op": "canonical_parameter_name",
+        "value": "---"
+      },
+      "expected_ts": "___",
+      "expected": "",
+      "why": "Converge on process_settings grammar, preserving experimental underscore."
+    },
+    {
+      "id": "parameter-25",
+      "request": {
+        "op": "canonical_parameter_name",
+        "value": "_"
+      },
+      "expected_ts": "_",
+      "expected": "",
+      "why": "Converge on process_settings grammar, preserving experimental underscore."
+    },
+    {
+      "id": "parameter-26",
+      "request": {
+        "op": "canonical_parameter_name",
+        "value": "007"
+      },
+      "expected_ts": "007"
+    },
+    {
+      "id": "parameter-27",
+      "request": {
+        "op": "canonical_parameter_name",
+        "value": "é_x"
+      },
+      "expected_ts": "é_x",
+      "expected": "x",
+      "why": "Converge on process_settings grammar, preserving experimental underscore."
+    },
+    {
+      "id": "parameter-28",
+      "request": {
+        "op": "canonical_parameter_name",
+        "value": "x_é"
+      },
+      "expected_ts": "x_é",
+      "expected": "x",
+      "why": "Converge on process_settings grammar, preserving experimental underscore."
+    },
+    {
+      "id": "parameter-29",
+      "request": {
+        "op": "canonical_parameter_name",
+        "value": "x_"
+      },
+      "expected_ts": "x_",
+      "expected": "x",
+      "why": "Converge on process_settings grammar, preserving experimental underscore."
+    },
+    {
+      "id": "alias-0",
+      "request": {
+        "op": "alias_list",
+        "action": "parse",
+        "value": null
+      },
+      "expected_ts": []
+    },
+    {
+      "id": "alias-add-0",
+      "request": {
+        "op": "alias_list",
+        "action": "add",
+        "value": null,
+        "alias": " New "
+      },
+      "expected_ts": [
+        "New"
+      ]
+    },
+    {
+      "id": "alias-remove-0",
+      "request": {
+        "op": "alias_list",
+        "action": "remove",
+        "value": null,
+        "alias": "a"
+      },
+      "expected_ts": []
+    },
+    {
+      "id": "alias-1",
+      "request": {
+        "op": "alias_list",
+        "action": "parse",
+        "value": []
+      },
+      "expected_ts": []
+    },
+    {
+      "id": "alias-add-1",
+      "request": {
+        "op": "alias_list",
+        "action": "add",
+        "value": [],
+        "alias": " New "
+      },
+      "expected_ts": [
+        "New"
+      ]
+    },
+    {
+      "id": "alias-remove-1",
+      "request": {
+        "op": "alias_list",
+        "action": "remove",
+        "value": [],
+        "alias": "a"
+      },
+      "expected_ts": []
+    },
+    {
+      "id": "alias-2",
+      "request": {
+        "op": "alias_list",
+        "action": "parse",
+        "value": [
+          "A",
+          "a",
+          " B ",
+          "nan",
+          "NONE",
+          "null",
+          "undefined",
+          "\\",
+          "",
+          null,
+          0,
+          false
+        ]
+      },
+      "expected_ts": [
+        "A",
+        "B",
+        "0",
+        "false"
+      ]
+    },
+    {
+      "id": "alias-add-2",
+      "request": {
+        "op": "alias_list",
+        "action": "add",
+        "value": [
+          "A",
+          "a",
+          " B ",
+          "nan",
+          "NONE",
+          "null",
+          "undefined",
+          "\\",
+          "",
+          null,
+          0,
+          false
+        ],
+        "alias": " New "
+      },
+      "expected_ts": [
+        "A",
+        "B",
+        "0",
+        "false",
+        "New"
+      ]
+    },
+    {
+      "id": "alias-remove-2",
+      "request": {
+        "op": "alias_list",
+        "action": "remove",
+        "value": [
+          "A",
+          "a",
+          " B ",
+          "nan",
+          "NONE",
+          "null",
+          "undefined",
+          "\\",
+          "",
+          null,
+          0,
+          false
+        ],
+        "alias": "a"
+      },
+      "expected_ts": [
+        "B",
+        "0",
+        "false"
+      ]
+    },
+    {
+      "id": "alias-3",
+      "request": {
+        "op": "alias_list",
+        "action": "parse",
+        "value": "A ## a ## B ## nan"
+      },
+      "expected_ts": [],
+      "expected": [
+        "A",
+        "B"
+      ],
+      "why": "Legacy ## strings are readable; edits always emit arrays."
+    },
+    {
+      "id": "alias-add-3",
+      "request": {
+        "op": "alias_list",
+        "action": "add",
+        "value": "A ## a ## B ## nan",
+        "alias": " New "
+      },
+      "expected_ts": [
+        "New"
+      ],
+      "expected": [
+        "A",
+        "B",
+        "New"
+      ],
+      "why": "Legacy aliases are preserved when adding an alias."
+    },
+    {
+      "id": "alias-remove-3",
+      "request": {
+        "op": "alias_list",
+        "action": "remove",
+        "value": "A ## a ## B ## nan",
+        "alias": "a"
+      },
+      "expected_ts": [],
+      "expected": [
+        "B"
+      ],
+      "why": "Legacy aliases are preserved when removing an alias."
+    },
+    {
+      "id": "alias-4",
+      "request": {
+        "op": "alias_list",
+        "action": "parse",
+        "value": [
+          "x",
+          {},
+          [
+            "a",
+            "b"
+          ]
+        ]
+      },
+      "expected_ts": [
+        "x",
+        "[object Object]",
+        "a,b"
+      ]
+    },
+    {
+      "id": "alias-add-4",
+      "request": {
+        "op": "alias_list",
+        "action": "add",
+        "value": [
+          "x",
+          {},
+          [
+            "a",
+            "b"
+          ]
+        ],
+        "alias": " New "
+      },
+      "expected_ts": [
+        "x",
+        "[object Object]",
+        "a,b",
+        "New"
+      ]
+    },
+    {
+      "id": "alias-remove-4",
+      "request": {
+        "op": "alias_list",
+        "action": "remove",
+        "value": [
+          "x",
+          {},
+          [
+            "a",
+            "b"
+          ]
+        ],
+        "alias": "a"
+      },
+      "expected_ts": [
+        "x",
+        "[object Object]",
+        "a,b"
+      ]
+    },
+    {
+      "id": "rule_set_names-0",
+      "request": {
+        "op": "rule_set_names",
+        "value": [
+          {
+            "priority": 1,
+            "position": "angle"
+          },
+          {
+            "notes": " "
+          }
+        ]
+      },
+      "expected_ts": [
+        "rule_edcl"
+      ]
+    },
+    {
+      "id": "rule_set_rows-0",
+      "request": {
+        "op": "rule_set_rows",
+        "value": [
+          {
+            "priority": 1,
+            "position": "angle"
+          },
+          {
+            "notes": " "
+          }
+        ],
+        "name": "rule_edcl"
+      },
+      "expected_ts": [
+        {
+          "priority": 1,
+          "position": "angle"
+        },
+        {
+          "notes": " "
+        }
+      ]
+    },
+    {
+      "id": "rule_set_metadata-0",
+      "request": {
+        "op": "rule_set_metadata",
+        "value": [
+          {
+            "priority": 1,
+            "position": "angle"
+          },
+          {
+            "notes": " "
+          }
+        ],
+        "name": "rule_edcl"
+      },
+      "expected_ts": {}
+    },
+    {
+      "id": "compact-0",
+      "request": {
+        "op": "compact",
+        "sheet_key": "lv_poles_rules",
+        "value": [
+          {
+            "priority": 1,
+            "position": "angle"
+          },
+          {
+            "notes": " "
+          }
+        ]
+      },
+      "expected_ts": [
+        {
+          "priority": 1,
+          "position": "angle"
+        }
+      ]
+    },
+    {
+      "id": "with_rule_set_rows-0",
+      "request": {
+        "op": "with_rule_set_rows",
+        "value": [
+          {
+            "priority": 1,
+            "position": "angle"
+          },
+          {
+            "notes": " "
+          }
+        ],
+        "name": "rule_edcl",
+        "rows": [
+          {
+            "priority": 3
+          }
+        ]
+      },
+      "expected_ts": {
+        "rule_edcl": {
+          "table": [
+            {
+              "priority": 3
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "with_rule_set_metadata-0",
+      "request": {
+        "op": "with_rule_set_metadata",
+        "value": [
+          {
+            "priority": 1,
+            "position": "angle"
+          },
+          {
+            "notes": " "
+          }
+        ],
+        "name": "rule_edcl",
+        "metadata": {
+          "default_material": "concrete"
+        }
+      },
+      "expected_ts": {
+        "rule_edcl": {
+          "default_material": "concrete",
+          "table": [
+            {
+              "priority": 1,
+              "position": "angle"
+            },
+            {
+              "notes": " "
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "rule_set_names-1",
+      "request": {
+        "op": "rule_set_names",
+        "value": {
+          "rule_edcl": [
+            {
+              "assembly_type": "A"
+            },
+            {
+              "a": null
+            }
+          ],
+          "rule_tchd": []
+        }
+      },
+      "expected_ts": [
+        "rule_edcl",
+        "rule_tchd"
+      ]
+    },
+    {
+      "id": "rule_set_rows-1",
+      "request": {
+        "op": "rule_set_rows",
+        "value": {
+          "rule_edcl": [
+            {
+              "assembly_type": "A"
+            },
+            {
+              "a": null
+            }
+          ],
+          "rule_tchd": []
+        },
+        "name": "rule_edcl"
+      },
+      "expected_ts": [
+        {
+          "assembly_type": "A"
+        },
+        {
+          "a": null
+        }
+      ]
+    },
+    {
+      "id": "rule_set_metadata-1",
+      "request": {
+        "op": "rule_set_metadata",
+        "value": {
+          "rule_edcl": [
+            {
+              "assembly_type": "A"
+            },
+            {
+              "a": null
+            }
+          ],
+          "rule_tchd": []
+        },
+        "name": "rule_edcl"
+      },
+      "expected_ts": {}
+    },
+    {
+      "id": "compact-1",
+      "request": {
+        "op": "compact",
+        "sheet_key": "lv_poles_rules",
+        "value": {
+          "rule_edcl": [
+            {
+              "assembly_type": "A"
+            },
+            {
+              "a": null
+            }
+          ],
+          "rule_tchd": []
+        }
+      },
+      "expected_ts": {
+        "rule_edcl": {
+          "table": [
+            {
+              "assembly_type": "A"
+            }
+          ]
+        },
+        "rule_tchd": {
+          "table": []
+        }
+      }
+    },
+    {
+      "id": "with_rule_set_rows-1",
+      "request": {
+        "op": "with_rule_set_rows",
+        "value": {
+          "rule_edcl": [
+            {
+              "assembly_type": "A"
+            },
+            {
+              "a": null
+            }
+          ],
+          "rule_tchd": []
+        },
+        "name": "rule_edcl",
+        "rows": [
+          {
+            "priority": 3
+          }
+        ]
+      },
+      "expected_ts": {
+        "rule_edcl": {
+          "table": [
+            {
+              "priority": 3
+            }
+          ]
+        },
+        "rule_tchd": []
+      }
+    },
+    {
+      "id": "with_rule_set_metadata-1",
+      "request": {
+        "op": "with_rule_set_metadata",
+        "value": {
+          "rule_edcl": [
+            {
+              "assembly_type": "A"
+            },
+            {
+              "a": null
+            }
+          ],
+          "rule_tchd": []
+        },
+        "name": "rule_edcl",
+        "metadata": {
+          "default_material": "concrete"
+        }
+      },
+      "expected_ts": {
+        "rule_edcl": {
+          "default_material": "concrete",
+          "table": [
+            {
+              "assembly_type": "A"
+            },
+            {
+              "a": null
+            }
+          ]
+        },
+        "rule_tchd": []
+      }
+    },
+    {
+      "id": "rule_set_names-2",
+      "request": {
+        "op": "rule_set_names",
+        "value": {
+          "rule_edcl": {
+            "table": [
+              {
+                "priority": 1
+              },
+              {
+                "notes": ""
+              }
+            ],
+            "default_material": "wooden"
+          },
+          "rule_tchd": {
+            "table": [
+              {
+                "priority": 2
+              }
+            ],
+            "default_material": "steel"
+          }
+        }
+      },
+      "expected_ts": [
+        "rule_edcl",
+        "rule_tchd"
+      ]
+    },
+    {
+      "id": "rule_set_rows-2",
+      "request": {
+        "op": "rule_set_rows",
+        "value": {
+          "rule_edcl": {
+            "table": [
+              {
+                "priority": 1
+              },
+              {
+                "notes": ""
+              }
+            ],
+            "default_material": "wooden"
+          },
+          "rule_tchd": {
+            "table": [
+              {
+                "priority": 2
+              }
+            ],
+            "default_material": "steel"
+          }
+        },
+        "name": "rule_edcl"
+      },
+      "expected_ts": [
+        {
+          "priority": 1
+        },
+        {
+          "notes": ""
+        }
+      ]
+    },
+    {
+      "id": "rule_set_metadata-2",
+      "request": {
+        "op": "rule_set_metadata",
+        "value": {
+          "rule_edcl": {
+            "table": [
+              {
+                "priority": 1
+              },
+              {
+                "notes": ""
+              }
+            ],
+            "default_material": "wooden"
+          },
+          "rule_tchd": {
+            "table": [
+              {
+                "priority": 2
+              }
+            ],
+            "default_material": "steel"
+          }
+        },
+        "name": "rule_edcl"
+      },
+      "expected_ts": {
+        "default_material": "wooden"
+      }
+    },
+    {
+      "id": "compact-2",
+      "request": {
+        "op": "compact",
+        "sheet_key": "lv_poles_rules",
+        "value": {
+          "rule_edcl": {
+            "table": [
+              {
+                "priority": 1
+              },
+              {
+                "notes": ""
+              }
+            ],
+            "default_material": "wooden"
+          },
+          "rule_tchd": {
+            "table": [
+              {
+                "priority": 2
+              }
+            ],
+            "default_material": "steel"
+          }
+        }
+      },
+      "expected_ts": {
+        "rule_edcl": {
+          "table": [
+            {
+              "priority": 1
+            }
+          ],
+          "default_material": "wooden"
+        },
+        "rule_tchd": {
+          "table": [
+            {
+              "priority": 2
+            }
+          ],
+          "default_material": "steel"
+        }
+      }
+    },
+    {
+      "id": "with_rule_set_rows-2",
+      "request": {
+        "op": "with_rule_set_rows",
+        "value": {
+          "rule_edcl": {
+            "table": [
+              {
+                "priority": 1
+              },
+              {
+                "notes": ""
+              }
+            ],
+            "default_material": "wooden"
+          },
+          "rule_tchd": {
+            "table": [
+              {
+                "priority": 2
+              }
+            ],
+            "default_material": "steel"
+          }
+        },
+        "name": "rule_edcl",
+        "rows": [
+          {
+            "priority": 3
+          }
+        ]
+      },
+      "expected_ts": {
+        "rule_edcl": {
+          "table": [
+            {
+              "priority": 3
+            }
+          ],
+          "default_material": "wooden"
+        },
+        "rule_tchd": {
+          "table": [
+            {
+              "priority": 2
+            }
+          ],
+          "default_material": "steel"
+        }
+      }
+    },
+    {
+      "id": "with_rule_set_metadata-2",
+      "request": {
+        "op": "with_rule_set_metadata",
+        "value": {
+          "rule_edcl": {
+            "table": [
+              {
+                "priority": 1
+              },
+              {
+                "notes": ""
+              }
+            ],
+            "default_material": "wooden"
+          },
+          "rule_tchd": {
+            "table": [
+              {
+                "priority": 2
+              }
+            ],
+            "default_material": "steel"
+          }
+        },
+        "name": "rule_edcl",
+        "metadata": {
+          "default_material": "concrete"
+        }
+      },
+      "expected_ts": {
+        "rule_edcl": {
+          "default_material": "concrete",
+          "table": [
+            {
+              "priority": 1
+            },
+            {
+              "notes": ""
+            }
+          ]
+        },
+        "rule_tchd": {
+          "table": [
+            {
+              "priority": 2
+            }
+          ],
+          "default_material": "steel"
+        }
+      }
+    },
+    {
+      "id": "rule_set_names-3",
+      "request": {
+        "op": "rule_set_names",
+        "value": {}
+      },
+      "expected_ts": [
+        "rule_edcl"
+      ]
+    },
+    {
+      "id": "rule_set_rows-3",
+      "request": {
+        "op": "rule_set_rows",
+        "value": {},
+        "name": "rule_edcl"
+      },
+      "expected_ts": []
+    },
+    {
+      "id": "rule_set_metadata-3",
+      "request": {
+        "op": "rule_set_metadata",
+        "value": {},
+        "name": "rule_edcl"
+      },
+      "expected_ts": {}
+    },
+    {
+      "id": "compact-3",
+      "request": {
+        "op": "compact",
+        "sheet_key": "lv_poles_rules",
+        "value": {}
+      },
+      "expected_ts": {}
+    },
+    {
+      "id": "with_rule_set_rows-3",
+      "request": {
+        "op": "with_rule_set_rows",
+        "value": {},
+        "name": "rule_edcl",
+        "rows": [
+          {
+            "priority": 3
+          }
+        ]
+      },
+      "expected_ts": {
+        "rule_edcl": {
+          "table": [
+            {
+              "priority": 3
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "with_rule_set_metadata-3",
+      "request": {
+        "op": "with_rule_set_metadata",
+        "value": {},
+        "name": "rule_edcl",
+        "metadata": {
+          "default_material": "concrete"
+        }
+      },
+      "expected_ts": {
+        "rule_edcl": {
+          "default_material": "concrete",
+          "table": []
+        }
+      }
+    },
+    {
+      "id": "rule_set_names-4",
+      "request": {
+        "op": "rule_set_names",
+        "value": null
+      },
+      "expected_ts": [
+        "rule_edcl"
+      ]
+    },
+    {
+      "id": "rule_set_rows-4",
+      "request": {
+        "op": "rule_set_rows",
+        "value": null,
+        "name": "rule_edcl"
+      },
+      "expected_ts": []
+    },
+    {
+      "id": "rule_set_metadata-4",
+      "request": {
+        "op": "rule_set_metadata",
+        "value": null,
+        "name": "rule_edcl"
+      },
+      "expected_ts": {}
+    },
+    {
+      "id": "compact-4",
+      "request": {
+        "op": "compact",
+        "sheet_key": "lv_poles_rules",
+        "value": null
+      },
+      "expected_ts": null
+    },
+    {
+      "id": "with_rule_set_rows-4",
+      "request": {
+        "op": "with_rule_set_rows",
+        "value": null,
+        "name": "rule_edcl",
+        "rows": [
+          {
+            "priority": 3
+          }
+        ]
+      },
+      "expected_ts": {
+        "rule_edcl": {
+          "table": [
+            {
+              "priority": 3
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "with_rule_set_metadata-4",
+      "request": {
+        "op": "with_rule_set_metadata",
+        "value": null,
+        "name": "rule_edcl",
+        "metadata": {
+          "default_material": "concrete"
+        }
+      },
+      "expected_ts": {
+        "rule_edcl": {
+          "default_material": "concrete",
+          "table": []
+        }
+      }
+    },
+    {
+      "id": "columns-lv_poles_rules",
+      "request": {
+        "op": "columns",
+        "sheet_key": "lv_poles_rules",
+        "rows": [
+          {
+            "z": 1,
+            "notes": "a",
+            "priority": 2,
+            "struct_type": "x",
+            "a": 3,
+            "group_id": "g",
+            "tag_id": "t",
+            "label": "label"
+          },
+          {
+            "another": 4
+          }
+        ]
+      },
+      "expected_ts": [
+        "priority",
+        "notes",
+        "z",
+        "a",
+        "group_id",
+        "tag_id",
+        "label",
+        "another",
+        "struct_type"
+      ]
+    },
+    {
+      "id": "columns-tags",
+      "request": {
+        "op": "columns",
+        "sheet_key": "tags",
+        "rows": [
+          {
+            "z": 1,
+            "notes": "a",
+            "priority": 2,
+            "struct_type": "x",
+            "a": 3,
+            "group_id": "g",
+            "tag_id": "t",
+            "label": "label"
+          },
+          {
+            "another": 4
+          }
+        ]
+      },
+      "expected_ts": [
+        "tag_id",
+        "label",
+        "group_id",
+        "z",
+        "notes",
+        "priority",
+        "struct_type",
+        "a",
+        "another"
+      ]
+    },
+    {
+      "id": "columns-tag_groups",
+      "request": {
+        "op": "columns",
+        "sheet_key": "tag_groups",
+        "rows": [
+          {
+            "z": 1,
+            "notes": "a",
+            "priority": 2,
+            "struct_type": "x",
+            "a": 3,
+            "group_id": "g",
+            "tag_id": "t",
+            "label": "label"
+          },
+          {
+            "another": 4
+          }
+        ]
+      },
+      "expected_ts": [
+        "group_id",
+        "label",
+        "z",
+        "priority",
+        "struct_type",
+        "a",
+        "tag_id",
+        "another",
+        "notes"
+      ]
+    },
+    {
+      "id": "columns-custom",
+      "request": {
+        "op": "columns",
+        "sheet_key": "custom",
+        "rows": [
+          {
+            "z": 1,
+            "notes": "a",
+            "priority": 2,
+            "struct_type": "x",
+            "a": 3,
+            "group_id": "g",
+            "tag_id": "t",
+            "label": "label"
+          },
+          {
+            "another": 4
+          }
+        ]
+      },
+      "expected_ts": [
+        "z",
+        "notes",
+        "priority",
+        "struct_type",
+        "a",
+        "group_id",
+        "tag_id",
+        "label",
+        "another"
+      ]
+    },
+    {
+      "id": "dirty-0",
+      "request": {
+        "op": "dirty",
+        "baseline": {
+          "a": 1,
+          "b": 2
+        },
+        "current": {
+          "b": 2,
+          "a": 1
+        }
+      },
+      "expected_ts": true,
+      "expected": false,
+      "why": "Object key order is not a semantic edit."
+    },
+    {
+      "id": "dirty-1",
+      "request": {
+        "op": "dirty",
+        "baseline": [
+          {
+            "value": "x"
+          }
+        ],
+        "current": [
+          {
+            "value": " x"
+          }
+        ]
+      },
+      "expected_ts": true
+    },
+    {
+      "id": "dirty-2",
+      "request": {
+        "op": "dirty",
+        "baseline": [
+          {
+            "value": 0
+          }
+        ],
+        "current": [
+          {
+            "value": 0
+          },
+          {}
+        ]
+      },
+      "expected_ts": true
+    },
+    {
+      "id": "dirty-3",
+      "request": {
+        "op": "dirty",
+        "baseline": [
+          {
+            "value": 0
+          }
+        ],
+        "current": [
+          {
+            "value": 0
+          }
+        ]
+      },
+      "expected_ts": false
+    },
+    {
+      "id": "rule-name- Rule EDCL ",
+      "request": {
+        "op": "normalize_rule_set_name",
+        "value": " Rule EDCL "
+      },
+      "expected_ts": "rule_edcl"
+    },
+    {
+      "id": "rule-name---Wooden--",
+      "request": {
+        "op": "normalize_rule_set_name",
+        "value": "--Wooden--"
+      },
+      "expected_ts": "--wooden--"
+    },
+    {
+      "id": "rule-name-a__b",
+      "request": {
+        "op": "normalize_rule_set_name",
+        "value": "a__b"
+      },
+      "expected_ts": "a_b"
+    },
+    {
+      "id": "rule-name- _ ",
+      "request": {
+        "op": "normalize_rule_set_name",
+        "value": " _ "
+      },
+      "expected_ts": ""
+    },
+    {
+      "id": "rule-name-téchd",
+      "request": {
+        "op": "normalize_rule_set_name",
+        "value": "téchd"
+      },
+      "expected_ts": "t_chd"
+    },
+    {
+      "id": "template-0-sheet_model",
+      "request": {
+        "op": "sheet_model",
+        "document": {
+          "groups": {
+            "extra": {
+              "sheets": [
+                "tags"
+              ]
+            },
+            "data_cleaning": {
+              "sheets": [
+                "cust_category"
+              ]
+            },
+            "parameters": {
+              "sheets": [
+                "project_settings"
+              ]
+            },
+            "header_mapping": {
+              "sheets": [
+                "know_columns"
+              ]
+            },
+            "engineering": {
+              "sheets": [
+                "lv_poles_rules"
+              ]
+            }
+          },
+          "models": {
+            "project_settings": {
+              "parameters": {
+                "max-feeder-size": {
+                  "control": "select",
+                  "options": [
+                    {
+                      "value": "25",
+                      "label": "25 mm²"
+                    },
+                    {
+                      "value": " 50 "
+                    },
+                    {
+                      "value": "25"
+                    },
+                    {
+                      "value": ""
+                    }
+                  ]
+                },
+                "exports": {
+                  "control": "checkbox_map",
+                  "options": [
+                    {
+                      "value": "pdf"
+                    }
+                  ]
+                }
+              }
+            },
+            "lv_poles_rules": {
+              "type": "rule_set",
+              "rule_sets": [
+                {
+                  "value": "rule_tchd"
+                },
+                {
+                  "value": "rule_edcl"
+                }
+              ],
+              "fields": {
+                "default_material": {
+                  "control": "select",
+                  "options": [
+                    {
+                      "value": "wooden"
+                    },
+                    {
+                      "value": "steel"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "sheets": {
+            "project_settings": [
+              {
+                "parameter": "max_feeder_size",
+                "value": 25
+              }
+            ],
+            "lv_poles_rules": {
+              "rule_edcl": {
+                "table": [
+                  {
+                    "position": "angle",
+                    "priority": 1,
+                    "assembly_type": "A"
+                  }
+                ],
+                "default_material": "wooden"
+              },
+              "rule_tchd": {
+                "table": [],
+                "default_material": "steel"
+              }
+            }
+          }
+        },
+        "sheet_key": "lv_poles_rules"
+      },
+      "expected_ts": {
+        "type": "rule_set",
+        "rule_sets": [
+          {
+            "value": "rule_tchd"
+          },
+          {
+            "value": "rule_edcl"
+          }
+        ],
+        "fields": {
+          "default_material": {
+            "control": "select",
+            "options": [
+              {
+                "value": "wooden"
+              },
+              {
+                "value": "steel"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "template-0-parameter_model",
+      "request": {
+        "op": "parameter_model",
+        "document": {
+          "groups": {
+            "extra": {
+              "sheets": [
+                "tags"
+              ]
+            },
+            "data_cleaning": {
+              "sheets": [
+                "cust_category"
+              ]
+            },
+            "parameters": {
+              "sheets": [
+                "project_settings"
+              ]
+            },
+            "header_mapping": {
+              "sheets": [
+                "know_columns"
+              ]
+            },
+            "engineering": {
+              "sheets": [
+                "lv_poles_rules"
+              ]
+            }
+          },
+          "models": {
+            "project_settings": {
+              "parameters": {
+                "max-feeder-size": {
+                  "control": "select",
+                  "options": [
+                    {
+                      "value": "25",
+                      "label": "25 mm²"
+                    },
+                    {
+                      "value": " 50 "
+                    },
+                    {
+                      "value": "25"
+                    },
+                    {
+                      "value": ""
+                    }
+                  ]
+                },
+                "exports": {
+                  "control": "checkbox_map",
+                  "options": [
+                    {
+                      "value": "pdf"
+                    }
+                  ]
+                }
+              }
+            },
+            "lv_poles_rules": {
+              "type": "rule_set",
+              "rule_sets": [
+                {
+                  "value": "rule_tchd"
+                },
+                {
+                  "value": "rule_edcl"
+                }
+              ],
+              "fields": {
+                "default_material": {
+                  "control": "select",
+                  "options": [
+                    {
+                      "value": "wooden"
+                    },
+                    {
+                      "value": "steel"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "sheets": {
+            "project_settings": [
+              {
+                "parameter": "max_feeder_size",
+                "value": 25
+              }
+            ],
+            "lv_poles_rules": {
+              "rule_edcl": {
+                "table": [
+                  {
+                    "position": "angle",
+                    "priority": 1,
+                    "assembly_type": "A"
+                  }
+                ],
+                "default_material": "wooden"
+              },
+              "rule_tchd": {
+                "table": [],
+                "default_material": "steel"
+              }
+            }
+          }
+        },
+        "sheet_key": "project_settings",
+        "parameter": "max_feeder_size"
+      },
+      "expected_ts": {
+        "control": "select",
+        "options": [
+          {
+            "value": "25",
+            "label": "25 mm²"
+          },
+          {
+            "value": " 50 "
+          },
+          {
+            "value": "25"
+          },
+          {
+            "value": ""
+          }
+        ]
+      }
+    },
+    {
+      "id": "template-0-parameter_options",
+      "request": {
+        "op": "parameter_options",
+        "document": {
+          "groups": {
+            "extra": {
+              "sheets": [
+                "tags"
+              ]
+            },
+            "data_cleaning": {
+              "sheets": [
+                "cust_category"
+              ]
+            },
+            "parameters": {
+              "sheets": [
+                "project_settings"
+              ]
+            },
+            "header_mapping": {
+              "sheets": [
+                "know_columns"
+              ]
+            },
+            "engineering": {
+              "sheets": [
+                "lv_poles_rules"
+              ]
+            }
+          },
+          "models": {
+            "project_settings": {
+              "parameters": {
+                "max-feeder-size": {
+                  "control": "select",
+                  "options": [
+                    {
+                      "value": "25",
+                      "label": "25 mm²"
+                    },
+                    {
+                      "value": " 50 "
+                    },
+                    {
+                      "value": "25"
+                    },
+                    {
+                      "value": ""
+                    }
+                  ]
+                },
+                "exports": {
+                  "control": "checkbox_map",
+                  "options": [
+                    {
+                      "value": "pdf"
+                    }
+                  ]
+                }
+              }
+            },
+            "lv_poles_rules": {
+              "type": "rule_set",
+              "rule_sets": [
+                {
+                  "value": "rule_tchd"
+                },
+                {
+                  "value": "rule_edcl"
+                }
+              ],
+              "fields": {
+                "default_material": {
+                  "control": "select",
+                  "options": [
+                    {
+                      "value": "wooden"
+                    },
+                    {
+                      "value": "steel"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "sheets": {
+            "project_settings": [
+              {
+                "parameter": "max_feeder_size",
+                "value": 25
+              }
+            ],
+            "lv_poles_rules": {
+              "rule_edcl": {
+                "table": [
+                  {
+                    "position": "angle",
+                    "priority": 1,
+                    "assembly_type": "A"
+                  }
+                ],
+                "default_material": "wooden"
+              },
+              "rule_tchd": {
+                "table": [],
+                "default_material": "steel"
+              }
+            }
+          }
+        },
+        "sheet_key": "project_settings",
+        "parameter": "max_feeder_size",
+        "current": "70",
+        "select": true
+      },
+      "expected_ts": [
+        {
+          "value": "70",
+          "label": "70"
+        },
+        {
+          "value": "25",
+          "label": "25 mm²"
+        },
+        {
+          "value": "50"
+        }
+      ]
+    },
+    {
+      "id": "template-0-field_model",
+      "request": {
+        "op": "field_model",
+        "document": {
+          "groups": {
+            "extra": {
+              "sheets": [
+                "tags"
+              ]
+            },
+            "data_cleaning": {
+              "sheets": [
+                "cust_category"
+              ]
+            },
+            "parameters": {
+              "sheets": [
+                "project_settings"
+              ]
+            },
+            "header_mapping": {
+              "sheets": [
+                "know_columns"
+              ]
+            },
+            "engineering": {
+              "sheets": [
+                "lv_poles_rules"
+              ]
+            }
+          },
+          "models": {
+            "project_settings": {
+              "parameters": {
+                "max-feeder-size": {
+                  "control": "select",
+                  "options": [
+                    {
+                      "value": "25",
+                      "label": "25 mm²"
+                    },
+                    {
+                      "value": " 50 "
+                    },
+                    {
+                      "value": "25"
+                    },
+                    {
+                      "value": ""
+                    }
+                  ]
+                },
+                "exports": {
+                  "control": "checkbox_map",
+                  "options": [
+                    {
+                      "value": "pdf"
+                    }
+                  ]
+                }
+              }
+            },
+            "lv_poles_rules": {
+              "type": "rule_set",
+              "rule_sets": [
+                {
+                  "value": "rule_tchd"
+                },
+                {
+                  "value": "rule_edcl"
+                }
+              ],
+              "fields": {
+                "default_material": {
+                  "control": "select",
+                  "options": [
+                    {
+                      "value": "wooden"
+                    },
+                    {
+                      "value": "steel"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "sheets": {
+            "project_settings": [
+              {
+                "parameter": "max_feeder_size",
+                "value": 25
+              }
+            ],
+            "lv_poles_rules": {
+              "rule_edcl": {
+                "table": [
+                  {
+                    "position": "angle",
+                    "priority": 1,
+                    "assembly_type": "A"
+                  }
+                ],
+                "default_material": "wooden"
+              },
+              "rule_tchd": {
+                "table": [],
+                "default_material": "steel"
+              }
+            }
+          }
+        },
+        "sheet_key": "lv_poles_rules",
+        "field": "default_material"
+      },
+      "expected_ts": {
+        "control": "select",
+        "options": [
+          {
+            "value": "wooden"
+          },
+          {
+            "value": "steel"
+          }
+        ]
+      }
+    },
+    {
+      "id": "template-0-field_options",
+      "request": {
+        "op": "field_options",
+        "document": {
+          "groups": {
+            "extra": {
+              "sheets": [
+                "tags"
+              ]
+            },
+            "data_cleaning": {
+              "sheets": [
+                "cust_category"
+              ]
+            },
+            "parameters": {
+              "sheets": [
+                "project_settings"
+              ]
+            },
+            "header_mapping": {
+              "sheets": [
+                "know_columns"
+              ]
+            },
+            "engineering": {
+              "sheets": [
+                "lv_poles_rules"
+              ]
+            }
+          },
+          "models": {
+            "project_settings": {
+              "parameters": {
+                "max-feeder-size": {
+                  "control": "select",
+                  "options": [
+                    {
+                      "value": "25",
+                      "label": "25 mm²"
+                    },
+                    {
+                      "value": " 50 "
+                    },
+                    {
+                      "value": "25"
+                    },
+                    {
+                      "value": ""
+                    }
+                  ]
+                },
+                "exports": {
+                  "control": "checkbox_map",
+                  "options": [
+                    {
+                      "value": "pdf"
+                    }
+                  ]
+                }
+              }
+            },
+            "lv_poles_rules": {
+              "type": "rule_set",
+              "rule_sets": [
+                {
+                  "value": "rule_tchd"
+                },
+                {
+                  "value": "rule_edcl"
+                }
+              ],
+              "fields": {
+                "default_material": {
+                  "control": "select",
+                  "options": [
+                    {
+                      "value": "wooden"
+                    },
+                    {
+                      "value": "steel"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "sheets": {
+            "project_settings": [
+              {
+                "parameter": "max_feeder_size",
+                "value": 25
+              }
+            ],
+            "lv_poles_rules": {
+              "rule_edcl": {
+                "table": [
+                  {
+                    "position": "angle",
+                    "priority": 1,
+                    "assembly_type": "A"
+                  }
+                ],
+                "default_material": "wooden"
+              },
+              "rule_tchd": {
+                "table": [],
+                "default_material": "steel"
+              }
+            }
+          }
+        },
+        "sheet_key": "lv_poles_rules",
+        "field": "default-material"
+      },
+      "expected_ts": [
+        {
+          "value": "wooden"
+        },
+        {
+          "value": "steel"
+        }
+      ]
+    },
+    {
+      "id": "template-0-rule_set_names",
+      "request": {
+        "op": "rule_set_names",
+        "document": {
+          "groups": {
+            "extra": {
+              "sheets": [
+                "tags"
+              ]
+            },
+            "data_cleaning": {
+              "sheets": [
+                "cust_category"
+              ]
+            },
+            "parameters": {
+              "sheets": [
+                "project_settings"
+              ]
+            },
+            "header_mapping": {
+              "sheets": [
+                "know_columns"
+              ]
+            },
+            "engineering": {
+              "sheets": [
+                "lv_poles_rules"
+              ]
+            }
+          },
+          "models": {
+            "project_settings": {
+              "parameters": {
+                "max-feeder-size": {
+                  "control": "select",
+                  "options": [
+                    {
+                      "value": "25",
+                      "label": "25 mm²"
+                    },
+                    {
+                      "value": " 50 "
+                    },
+                    {
+                      "value": "25"
+                    },
+                    {
+                      "value": ""
+                    }
+                  ]
+                },
+                "exports": {
+                  "control": "checkbox_map",
+                  "options": [
+                    {
+                      "value": "pdf"
+                    }
+                  ]
+                }
+              }
+            },
+            "lv_poles_rules": {
+              "type": "rule_set",
+              "rule_sets": [
+                {
+                  "value": "rule_tchd"
+                },
+                {
+                  "value": "rule_edcl"
+                }
+              ],
+              "fields": {
+                "default_material": {
+                  "control": "select",
+                  "options": [
+                    {
+                      "value": "wooden"
+                    },
+                    {
+                      "value": "steel"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "sheets": {
+            "project_settings": [
+              {
+                "parameter": "max_feeder_size",
+                "value": 25
+              }
+            ],
+            "lv_poles_rules": {
+              "rule_edcl": {
+                "table": [
+                  {
+                    "position": "angle",
+                    "priority": 1,
+                    "assembly_type": "A"
+                  }
+                ],
+                "default_material": "wooden"
+              },
+              "rule_tchd": {
+                "table": [],
+                "default_material": "steel"
+              }
+            }
+          }
+        },
+        "sheet_key": "lv_poles_rules",
+        "value": {
+          "rule_edcl": {
+            "table": [
+              {
+                "position": "angle",
+                "priority": 1,
+                "assembly_type": "A"
+              }
+            ],
+            "default_material": "wooden"
+          },
+          "rule_tchd": {
+            "table": [],
+            "default_material": "steel"
+          }
+        }
+      },
+      "expected_ts": [
+        "rule_tchd",
+        "rule_edcl"
+      ]
+    },
+    {
+      "id": "template-1-sheet_model",
+      "request": {
+        "op": "sheet_model",
+        "document": {
+          "sheets": {
+            "lv_poles_rules": [
+              {
+                "position": "terminal",
+                "assembly_type": "B"
+              }
+            ],
+            "project_settings": []
+          }
+        },
+        "sheet_key": "lv_poles_rules"
+      },
+      "expected_ts": null
+    },
+    {
+      "id": "template-1-parameter_model",
+      "request": {
+        "op": "parameter_model",
+        "document": {
+          "sheets": {
+            "lv_poles_rules": [
+              {
+                "position": "terminal",
+                "assembly_type": "B"
+              }
+            ],
+            "project_settings": []
+          }
+        },
+        "sheet_key": "project_settings",
+        "parameter": "max_feeder_size"
+      },
+      "expected_ts": null
+    },
+    {
+      "id": "template-1-parameter_options",
+      "request": {
+        "op": "parameter_options",
+        "document": {
+          "sheets": {
+            "lv_poles_rules": [
+              {
+                "position": "terminal",
+                "assembly_type": "B"
+              }
+            ],
+            "project_settings": []
+          }
+        },
+        "sheet_key": "project_settings",
+        "parameter": "max_feeder_size",
+        "current": "70",
+        "select": true
+      },
+      "expected_ts": []
+    },
+    {
+      "id": "template-1-field_model",
+      "request": {
+        "op": "field_model",
+        "document": {
+          "sheets": {
+            "lv_poles_rules": [
+              {
+                "position": "terminal",
+                "assembly_type": "B"
+              }
+            ],
+            "project_settings": []
+          }
+        },
+        "sheet_key": "lv_poles_rules",
+        "field": "default_material"
+      },
+      "expected_ts": null
+    },
+    {
+      "id": "template-1-field_options",
+      "request": {
+        "op": "field_options",
+        "document": {
+          "sheets": {
+            "lv_poles_rules": [
+              {
+                "position": "terminal",
+                "assembly_type": "B"
+              }
+            ],
+            "project_settings": []
+          }
+        },
+        "sheet_key": "lv_poles_rules",
+        "field": "default-material"
+      },
+      "expected_ts": []
+    },
+    {
+      "id": "template-1-rule_set_names",
+      "request": {
+        "op": "rule_set_names",
+        "document": {
+          "sheets": {
+            "lv_poles_rules": [
+              {
+                "position": "terminal",
+                "assembly_type": "B"
+              }
+            ],
+            "project_settings": []
+          }
+        },
+        "sheet_key": "lv_poles_rules",
+        "value": [
+          {
+            "position": "terminal",
+            "assembly_type": "B"
+          }
+        ]
+      },
+      "expected_ts": [
+        "rule_edcl"
+      ]
+    },
+    {
+      "id": "template-2-sheet_model",
+      "request": {
+        "op": "sheet_model",
+        "document": {
+          "models": {
+            "lv_poles_rules": {
+              "type": "rule_set"
+            }
+          },
+          "sheets": {
+            "lv_poles_rules": {
+              "rule_edcl": [
+                {
+                  "position": "line",
+                  "assembly_type": "C"
+                }
+              ]
+            }
+          }
+        },
+        "sheet_key": "lv_poles_rules"
+      },
+      "expected_ts": {
+        "type": "rule_set"
+      }
+    },
+    {
+      "id": "template-2-parameter_model",
+      "request": {
+        "op": "parameter_model",
+        "document": {
+          "models": {
+            "lv_poles_rules": {
+              "type": "rule_set"
+            }
+          },
+          "sheets": {
+            "lv_poles_rules": {
+              "rule_edcl": [
+                {
+                  "position": "line",
+                  "assembly_type": "C"
+                }
+              ]
+            }
+          }
+        },
+        "sheet_key": "project_settings",
+        "parameter": "max_feeder_size"
+      },
+      "expected_ts": null
+    },
+    {
+      "id": "template-2-parameter_options",
+      "request": {
+        "op": "parameter_options",
+        "document": {
+          "models": {
+            "lv_poles_rules": {
+              "type": "rule_set"
+            }
+          },
+          "sheets": {
+            "lv_poles_rules": {
+              "rule_edcl": [
+                {
+                  "position": "line",
+                  "assembly_type": "C"
+                }
+              ]
+            }
+          }
+        },
+        "sheet_key": "project_settings",
+        "parameter": "max_feeder_size",
+        "current": "70",
+        "select": true
+      },
+      "expected_ts": []
+    },
+    {
+      "id": "template-2-field_model",
+      "request": {
+        "op": "field_model",
+        "document": {
+          "models": {
+            "lv_poles_rules": {
+              "type": "rule_set"
+            }
+          },
+          "sheets": {
+            "lv_poles_rules": {
+              "rule_edcl": [
+                {
+                  "position": "line",
+                  "assembly_type": "C"
+                }
+              ]
+            }
+          }
+        },
+        "sheet_key": "lv_poles_rules",
+        "field": "default_material"
+      },
+      "expected_ts": null
+    },
+    {
+      "id": "template-2-field_options",
+      "request": {
+        "op": "field_options",
+        "document": {
+          "models": {
+            "lv_poles_rules": {
+              "type": "rule_set"
+            }
+          },
+          "sheets": {
+            "lv_poles_rules": {
+              "rule_edcl": [
+                {
+                  "position": "line",
+                  "assembly_type": "C"
+                }
+              ]
+            }
+          }
+        },
+        "sheet_key": "lv_poles_rules",
+        "field": "default-material"
+      },
+      "expected_ts": []
+    },
+    {
+      "id": "template-2-rule_set_names",
+      "request": {
+        "op": "rule_set_names",
+        "document": {
+          "models": {
+            "lv_poles_rules": {
+              "type": "rule_set"
+            }
+          },
+          "sheets": {
+            "lv_poles_rules": {
+              "rule_edcl": [
+                {
+                  "position": "line",
+                  "assembly_type": "C"
+                }
+              ]
+            }
+          }
+        },
+        "sheet_key": "lv_poles_rules",
+        "value": {
+          "rule_edcl": [
+            {
+              "position": "line",
+              "assembly_type": "C"
+            }
+          ]
+        }
+      },
+      "expected_ts": [
+        "rule_edcl"
+      ]
+    },
+    {
+      "id": "duplicate-dirty",
+      "request": {
+        "op": "duplicate_rule_set",
+        "value": {
+          "rule_edcl": {
+            "table": [
+              {
+                "position": "angle",
+                "priority": 1,
+                "assembly_type": "A"
+              }
+            ],
+            "default_material": "wooden"
+          },
+          "rule_tchd": {
+            "table": [],
+            "default_material": "steel"
+          }
+        },
+        "source": "rule_edcl",
+        "target": "copy",
+        "dirty": true
+      },
+      "expected_ts": {
+        "rule_edcl": {
+          "table": [
+            {
+              "position": "angle",
+              "priority": 1,
+              "assembly_type": "A"
+            }
+          ],
+          "default_material": "wooden"
+        },
+        "rule_tchd": {
+          "table": [],
+          "default_material": "steel"
+        },
+        "copy": {
+          "table": [
+            {
+              "position": "angle",
+              "priority": 1,
+              "assembly_type": "A"
+            }
+          ],
+          "default_material": "wooden"
+        }
+      },
+      "expected_error": "config_sheet_dirty",
+      "why": "Invalid duplicate intent refuses before a write; no silent no-op or empty invented source."
+    },
+    {
+      "id": "duplicate-collision",
+      "request": {
+        "op": "duplicate_rule_set",
+        "value": {
+          "rule_edcl": {
+            "table": [
+              {
+                "position": "angle",
+                "priority": 1,
+                "assembly_type": "A"
+              }
+            ],
+            "default_material": "wooden"
+          },
+          "rule_tchd": {
+            "table": [],
+            "default_material": "steel"
+          }
+        },
+        "source": "rule_edcl",
+        "target": "RULE TCHD",
+        "dirty": false
+      },
+      "expected_ts": {
+        "rule_edcl": {
+          "table": [
+            {
+              "position": "angle",
+              "priority": 1,
+              "assembly_type": "A"
+            }
+          ],
+          "default_material": "wooden"
+        },
+        "rule_tchd": {
+          "table": [],
+          "default_material": "steel"
+        }
+      },
+      "expected_error": "config_rule_set_exists",
+      "why": "Invalid duplicate intent refuses before a write; no silent no-op or empty invented source."
+    },
+    {
+      "id": "duplicate-missing",
+      "request": {
+        "op": "duplicate_rule_set",
+        "value": {
+          "rule_edcl": {
+            "table": [
+              {
+                "position": "angle",
+                "priority": 1,
+                "assembly_type": "A"
+              }
+            ],
+            "default_material": "wooden"
+          },
+          "rule_tchd": {
+            "table": [],
+            "default_material": "steel"
+          }
+        },
+        "source": "missing",
+        "target": "copy",
+        "dirty": false
+      },
+      "expected_ts": {
+        "rule_edcl": {
+          "table": [
+            {
+              "position": "angle",
+              "priority": 1,
+              "assembly_type": "A"
+            }
+          ],
+          "default_material": "wooden"
+        },
+        "rule_tchd": {
+          "table": [],
+          "default_material": "steel"
+        },
+        "copy": {
+          "table": []
+        }
+      },
+      "expected_error": "config_rule_set_source_invalid",
+      "why": "Invalid duplicate intent refuses before a write; no silent no-op or empty invented source."
+    },
+    {
+      "id": "duplicate-preserves-siblings",
+      "request": {
+        "op": "duplicate_rule_set",
+        "value": {
+          "rule_edcl": {
+            "table": [
+              {
+                "position": "angle",
+                "priority": 1,
+                "assembly_type": "A"
+              }
+            ],
+            "default_material": "wooden"
+          },
+          "rule_tchd": {
+            "table": [],
+            "default_material": "steel"
+          }
+        },
+        "source": "rule_edcl",
+        "target": "Copy",
+        "dirty": false
+      },
+      "expected_ts": {
+        "rule_edcl": {
+          "table": [
+            {
+              "position": "angle",
+              "priority": 1,
+              "assembly_type": "A"
+            }
+          ],
+          "default_material": "wooden"
+        },
+        "rule_tchd": {
+          "table": [],
+          "default_material": "steel"
+        },
+        "copy": {
+          "table": [
+            {
+              "position": "angle",
+              "priority": 1,
+              "assembly_type": "A"
+            }
+          ],
+          "default_material": "wooden"
+        }
+      }
+    },
+    {
+      "id": "unique-collision",
+      "request": {
+        "op": "unique_rule_set_name",
+        "existing": [
+          "Rule A",
+          "rule_a_2"
+        ],
+        "base": "rule_a"
+      },
+      "expected_ts": "rule_a_3"
+    }
+  ],
+  "contract_cases": [
+    {
+      "id": "ordered-model",
+      "request": {
+        "op": "model",
+        "document": {
+          "groups": {
+            "extra": {
+              "sheets": [
+                "tags"
+              ]
+            },
+            "data_cleaning": {
+              "sheets": [
+                "cust_category"
+              ]
+            },
+            "parameters": {
+              "sheets": [
+                "project_settings"
+              ]
+            },
+            "header_mapping": {
+              "sheets": [
+                "know_columns"
+              ]
+            },
+            "engineering": {
+              "sheets": [
+                "lv_poles_rules"
+              ]
+            }
+          },
+          "models": {
+            "project_settings": {
+              "parameters": {
+                "max-feeder-size": {
+                  "control": "select",
+                  "options": [
+                    {
+                      "value": "25",
+                      "label": "25 mm²"
+                    },
+                    {
+                      "value": " 50 "
+                    },
+                    {
+                      "value": "25"
+                    },
+                    {
+                      "value": ""
+                    }
+                  ]
+                },
+                "exports": {
+                  "control": "checkbox_map",
+                  "options": [
+                    {
+                      "value": "pdf"
+                    }
+                  ]
+                }
+              }
+            },
+            "lv_poles_rules": {
+              "type": "rule_set",
+              "rule_sets": [
+                {
+                  "value": "rule_tchd"
+                },
+                {
+                  "value": "rule_edcl"
+                }
+              ],
+              "fields": {
+                "default_material": {
+                  "control": "select",
+                  "options": [
+                    {
+                      "value": "wooden"
+                    },
+                    {
+                      "value": "steel"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "sheets": {
+            "project_settings": [
+              {
+                "parameter": "max_feeder_size",
+                "value": 25
+              }
+            ],
+            "lv_poles_rules": {
+              "rule_edcl": {
+                "table": [
+                  {
+                    "position": "angle",
+                    "priority": 1,
+                    "assembly_type": "A"
+                  }
+                ],
+                "default_material": "wooden"
+              },
+              "rule_tchd": {
+                "table": [],
+                "default_material": "steel"
+              }
+            }
+          }
+        }
+      },
+      "expected": {
+        "groups": [
+          "parameters",
+          "engineering",
+          "header_mapping",
+          "data_cleaning",
+          "extra"
+        ]
+      },
+      "projection": "groups"
+    },
+    {
+      "id": "checkbox-toggle-inactive",
+      "request": {
+        "op": "toggle",
+        "control": "checkbox_map",
+        "current": {
+          "A": true,
+          "retired": true
+        },
+        "value": "B",
+        "checked": true,
+        "options": [
+          {
+            "value": "A"
+          },
+          {
+            "value": "B"
+          }
+        ]
+      },
+      "expected": {
+        "A": true,
+        "B": true,
+        "retired": true
+      }
+    },
+    {
+      "id": "survey-toggle-inactive",
+      "request": {
+        "op": "toggle",
+        "control": "multiselect",
+        "current": [
+          "retired",
+          "a"
+        ],
+        "value": "b",
+        "checked": true,
+        "options": [
+          {
+            "value": "b"
+          },
+          {
+            "value": "a"
+          }
+        ]
+      },
+      "expected": [
+        "b",
+        "a",
+        "retired"
+      ]
+    },
+    {
+      "id": "save-canonical-parameters",
+      "request": {
+        "op": "save",
+        "document": {
+          "sheets": {
+            "project_settings": []
+          }
+        },
+        "sheet_key": "project_settings",
+        "value": [
+          {
+            "parameter": "_Experimental X",
+            "value": "YES"
+          },
+          {}
+        ]
+      },
+      "expected": [
+        {
+          "parameter": "_experimental_x",
+          "value": true
+        }
+      ]
+    },
+    {
+      "id": "save-legacy-rules",
+      "request": {
+        "op": "save",
+        "document": {
+          "sheets": {
+            "lv_poles_rules": []
+          }
+        },
+        "sheet_key": "lv_poles_rules",
+        "value": [
+          {
+            "priority": 1
+          },
+          {}
+        ]
+      },
+      "expected": {
+        "rule_edcl": {
+          "table": [
+            {
+              "priority": 1
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "native-multi-select",
+      "request": {
+        "op": "set",
+        "document": {
+          "models": {
+            "project_settings": {
+              "parameters": {
+                "formats": {
+                  "control": "multi_select"
+                }
+              }
+            }
+          },
+          "sheets": {
+            "project_settings": [
+              {
+                "parameter": "formats",
+                "value": []
+              }
+            ]
+          }
+        },
+        "sheet_key": "project_settings",
+        "parameter": "formats",
+        "raw": "[\"pdf\",\"PDF\",\"xlsx\"]"
+      },
+      "expected": [
+        {
+          "parameter": "formats",
+          "value": [
+            "pdf",
+            "xlsx"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "survey-options",
+      "request": {
+        "op": "survey_options",
+        "project_matches": true,
+        "forms": [
+          {
+            "slug": "a",
+            "display_name": "A"
+          },
+          {
+            "slug": "b",
+            "enabled": false
+          },
+          {
+            "slug": "c",
+            "project_settings": {
+              "enabled": false
+            }
+          },
+          {
+            "slug": "d",
+            "display_name": ""
+          }
+        ]
+      },
+      "expected": [
+        {
+          "slug": "a",
+          "label": "A"
+        },
+        {
+          "slug": "d",
+          "label": "d"
+        }
+      ]
+    },
+    {
+      "id": "survey-options-wrong-project",
+      "request": {
+        "op": "survey_options",
+        "project_matches": false,
+        "forms": [
+          {
+            "slug": "a"
+          }
+        ]
+      },
+      "expected": []
+    },
+    {
+      "id": "metadata-remove-empty",
+      "request": {
+        "op": "metadata_field",
+        "metadata": {
+          "default_material": "wooden",
+          "other": 1
+        },
+        "field": "default_material",
+        "value": ""
+      },
+      "expected": {
+        "other": 1
+      }
+    },
+    {
+      "id": "metadata-preserve-false",
+      "request": {
+        "op": "metadata_field",
+        "metadata": {
+          "other": 1
+        },
+        "field": "enabled",
+        "value": false
+      },
+      "expected": {
+        "other": 1,
+        "enabled": false
+      }
+    }
+  ],
+  "admission_cases": [
+    {
+      "id": "false-success-none",
+      "request": {
+        "cache_present": false,
+        "cached_generation": 3,
+        "current_generation": 3,
+        "scope_matches": true,
+        "invalidation_pending": false,
+        "response_status": "success",
+        "fetched_present": true,
+        "wait_expired": false,
+        "online": true
+      },
+      "verdict": "serve_fetched"
+    },
+    {
+      "id": "false-success-account",
+      "request": {
+        "cache_present": false,
+        "cached_generation": 3,
+        "current_generation": 3,
+        "scope_matches": false,
+        "invalidation_pending": false,
+        "response_status": "success",
+        "fetched_present": true,
+        "wait_expired": false,
+        "online": true
+      },
+      "verdict": "superseded"
+    },
+    {
+      "id": "false-success-generation",
+      "request": {
+        "cache_present": false,
+        "cached_generation": 3,
+        "current_generation": 4,
+        "scope_matches": true,
+        "invalidation_pending": false,
+        "response_status": "success",
+        "fetched_present": true,
+        "wait_expired": false,
+        "online": true
+      },
+      "verdict": "superseded"
+    },
+    {
+      "id": "false-success-invalidation",
+      "request": {
+        "cache_present": false,
+        "cached_generation": 3,
+        "current_generation": 3,
+        "scope_matches": true,
+        "invalidation_pending": true,
+        "response_status": "success",
+        "fetched_present": true,
+        "wait_expired": false,
+        "online": true
+      },
+      "verdict": "superseded"
+    },
+    {
+      "id": "false-failed-none",
+      "request": {
+        "cache_present": false,
+        "cached_generation": 3,
+        "current_generation": 3,
+        "scope_matches": true,
+        "invalidation_pending": false,
+        "response_status": "failed",
+        "fetched_present": false,
+        "wait_expired": false,
+        "online": true
+      },
+      "verdict": "unavailable"
+    },
+    {
+      "id": "false-failed-account",
+      "request": {
+        "cache_present": false,
+        "cached_generation": 3,
+        "current_generation": 3,
+        "scope_matches": false,
+        "invalidation_pending": false,
+        "response_status": "failed",
+        "fetched_present": false,
+        "wait_expired": false,
+        "online": true
+      },
+      "verdict": "superseded"
+    },
+    {
+      "id": "false-failed-generation",
+      "request": {
+        "cache_present": false,
+        "cached_generation": 3,
+        "current_generation": 4,
+        "scope_matches": true,
+        "invalidation_pending": false,
+        "response_status": "failed",
+        "fetched_present": false,
+        "wait_expired": false,
+        "online": true
+      },
+      "verdict": "superseded"
+    },
+    {
+      "id": "false-failed-invalidation",
+      "request": {
+        "cache_present": false,
+        "cached_generation": 3,
+        "current_generation": 3,
+        "scope_matches": true,
+        "invalidation_pending": true,
+        "response_status": "failed",
+        "fetched_present": false,
+        "wait_expired": false,
+        "online": true
+      },
+      "verdict": "superseded"
+    },
+    {
+      "id": "false-pending-none",
+      "request": {
+        "cache_present": false,
+        "cached_generation": 3,
+        "current_generation": 3,
+        "scope_matches": true,
+        "invalidation_pending": false,
+        "response_status": "pending",
+        "fetched_present": false,
+        "wait_expired": true,
+        "online": true
+      },
+      "verdict": "unavailable"
+    },
+    {
+      "id": "false-pending-account",
+      "request": {
+        "cache_present": false,
+        "cached_generation": 3,
+        "current_generation": 3,
+        "scope_matches": false,
+        "invalidation_pending": false,
+        "response_status": "pending",
+        "fetched_present": false,
+        "wait_expired": true,
+        "online": true
+      },
+      "verdict": "superseded"
+    },
+    {
+      "id": "false-pending-generation",
+      "request": {
+        "cache_present": false,
+        "cached_generation": 3,
+        "current_generation": 4,
+        "scope_matches": true,
+        "invalidation_pending": false,
+        "response_status": "pending",
+        "fetched_present": false,
+        "wait_expired": true,
+        "online": true
+      },
+      "verdict": "superseded"
+    },
+    {
+      "id": "false-pending-invalidation",
+      "request": {
+        "cache_present": false,
+        "cached_generation": 3,
+        "current_generation": 3,
+        "scope_matches": true,
+        "invalidation_pending": true,
+        "response_status": "pending",
+        "fetched_present": false,
+        "wait_expired": true,
+        "online": true
+      },
+      "verdict": "superseded"
+    },
+    {
+      "id": "false-idle-none",
+      "request": {
+        "cache_present": false,
+        "cached_generation": 3,
+        "current_generation": 3,
+        "scope_matches": true,
+        "invalidation_pending": false,
+        "response_status": "idle",
+        "fetched_present": false,
+        "wait_expired": false,
+        "online": true
+      },
+      "verdict": "unavailable"
+    },
+    {
+      "id": "false-idle-account",
+      "request": {
+        "cache_present": false,
+        "cached_generation": 3,
+        "current_generation": 3,
+        "scope_matches": false,
+        "invalidation_pending": false,
+        "response_status": "idle",
+        "fetched_present": false,
+        "wait_expired": false,
+        "online": true
+      },
+      "verdict": "superseded"
+    },
+    {
+      "id": "false-idle-generation",
+      "request": {
+        "cache_present": false,
+        "cached_generation": 3,
+        "current_generation": 4,
+        "scope_matches": true,
+        "invalidation_pending": false,
+        "response_status": "idle",
+        "fetched_present": false,
+        "wait_expired": false,
+        "online": true
+      },
+      "verdict": "superseded"
+    },
+    {
+      "id": "false-idle-invalidation",
+      "request": {
+        "cache_present": false,
+        "cached_generation": 3,
+        "current_generation": 3,
+        "scope_matches": true,
+        "invalidation_pending": true,
+        "response_status": "idle",
+        "fetched_present": false,
+        "wait_expired": false,
+        "online": true
+      },
+      "verdict": "superseded"
+    },
+    {
+      "id": "true-success-none",
+      "request": {
+        "cache_present": true,
+        "cached_generation": 3,
+        "current_generation": 3,
+        "scope_matches": true,
+        "invalidation_pending": false,
+        "response_status": "success",
+        "fetched_present": true,
+        "wait_expired": false,
+        "online": true
+      },
+      "verdict": "serve_fetched"
+    },
+    {
+      "id": "true-success-account",
+      "request": {
+        "cache_present": true,
+        "cached_generation": 3,
+        "current_generation": 3,
+        "scope_matches": false,
+        "invalidation_pending": false,
+        "response_status": "success",
+        "fetched_present": true,
+        "wait_expired": false,
+        "online": true
+      },
+      "verdict": "superseded"
+    },
+    {
+      "id": "true-success-generation",
+      "request": {
+        "cache_present": true,
+        "cached_generation": 3,
+        "current_generation": 4,
+        "scope_matches": true,
+        "invalidation_pending": false,
+        "response_status": "success",
+        "fetched_present": true,
+        "wait_expired": false,
+        "online": true
+      },
+      "verdict": "superseded"
+    },
+    {
+      "id": "true-success-invalidation",
+      "request": {
+        "cache_present": true,
+        "cached_generation": 3,
+        "current_generation": 3,
+        "scope_matches": true,
+        "invalidation_pending": true,
+        "response_status": "success",
+        "fetched_present": true,
+        "wait_expired": false,
+        "online": true
+      },
+      "verdict": "superseded"
+    },
+    {
+      "id": "true-failed-none",
+      "request": {
+        "cache_present": true,
+        "cached_generation": 3,
+        "current_generation": 3,
+        "scope_matches": true,
+        "invalidation_pending": false,
+        "response_status": "failed",
+        "fetched_present": false,
+        "wait_expired": false,
+        "online": true
+      },
+      "verdict": "stale_permitted"
+    },
+    {
+      "id": "true-failed-account",
+      "request": {
+        "cache_present": true,
+        "cached_generation": 3,
+        "current_generation": 3,
+        "scope_matches": false,
+        "invalidation_pending": false,
+        "response_status": "failed",
+        "fetched_present": false,
+        "wait_expired": false,
+        "online": true
+      },
+      "verdict": "superseded"
+    },
+    {
+      "id": "true-failed-generation",
+      "request": {
+        "cache_present": true,
+        "cached_generation": 3,
+        "current_generation": 4,
+        "scope_matches": true,
+        "invalidation_pending": false,
+        "response_status": "failed",
+        "fetched_present": false,
+        "wait_expired": false,
+        "online": true
+      },
+      "verdict": "superseded"
+    },
+    {
+      "id": "true-failed-invalidation",
+      "request": {
+        "cache_present": true,
+        "cached_generation": 3,
+        "current_generation": 3,
+        "scope_matches": true,
+        "invalidation_pending": true,
+        "response_status": "failed",
+        "fetched_present": false,
+        "wait_expired": false,
+        "online": true
+      },
+      "verdict": "superseded"
+    },
+    {
+      "id": "true-pending-none",
+      "request": {
+        "cache_present": true,
+        "cached_generation": 3,
+        "current_generation": 3,
+        "scope_matches": true,
+        "invalidation_pending": false,
+        "response_status": "pending",
+        "fetched_present": false,
+        "wait_expired": true,
+        "online": true
+      },
+      "verdict": "stale_permitted"
+    },
+    {
+      "id": "true-pending-account",
+      "request": {
+        "cache_present": true,
+        "cached_generation": 3,
+        "current_generation": 3,
+        "scope_matches": false,
+        "invalidation_pending": false,
+        "response_status": "pending",
+        "fetched_present": false,
+        "wait_expired": true,
+        "online": true
+      },
+      "verdict": "superseded"
+    },
+    {
+      "id": "true-pending-generation",
+      "request": {
+        "cache_present": true,
+        "cached_generation": 3,
+        "current_generation": 4,
+        "scope_matches": true,
+        "invalidation_pending": false,
+        "response_status": "pending",
+        "fetched_present": false,
+        "wait_expired": true,
+        "online": true
+      },
+      "verdict": "superseded"
+    },
+    {
+      "id": "true-pending-invalidation",
+      "request": {
+        "cache_present": true,
+        "cached_generation": 3,
+        "current_generation": 3,
+        "scope_matches": true,
+        "invalidation_pending": true,
+        "response_status": "pending",
+        "fetched_present": false,
+        "wait_expired": true,
+        "online": true
+      },
+      "verdict": "superseded"
+    },
+    {
+      "id": "true-idle-none",
+      "request": {
+        "cache_present": true,
+        "cached_generation": 3,
+        "current_generation": 3,
+        "scope_matches": true,
+        "invalidation_pending": false,
+        "response_status": "idle",
+        "fetched_present": false,
+        "wait_expired": false,
+        "online": true
+      },
+      "verdict": "serve_cached"
+    },
+    {
+      "id": "true-idle-account",
+      "request": {
+        "cache_present": true,
+        "cached_generation": 3,
+        "current_generation": 3,
+        "scope_matches": false,
+        "invalidation_pending": false,
+        "response_status": "idle",
+        "fetched_present": false,
+        "wait_expired": false,
+        "online": true
+      },
+      "verdict": "superseded"
+    },
+    {
+      "id": "true-idle-generation",
+      "request": {
+        "cache_present": true,
+        "cached_generation": 3,
+        "current_generation": 4,
+        "scope_matches": true,
+        "invalidation_pending": false,
+        "response_status": "idle",
+        "fetched_present": false,
+        "wait_expired": false,
+        "online": true
+      },
+      "verdict": "superseded"
+    },
+    {
+      "id": "true-idle-invalidation",
+      "request": {
+        "cache_present": true,
+        "cached_generation": 3,
+        "current_generation": 3,
+        "scope_matches": true,
+        "invalidation_pending": true,
+        "response_status": "idle",
+        "fetched_present": false,
+        "wait_expired": false,
+        "online": true
+      },
+      "verdict": "superseded"
+    }
+  ]
+}

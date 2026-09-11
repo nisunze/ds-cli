@@ -249,3 +249,31 @@ mod material_request_tests {
         assert!(material_propagation_request(apply.to_string().as_bytes()).is_err());
     }
 }
+
+mod editor;
+pub use editor::*;
+
+pub fn canonical_parameter_name(name: &str) -> String {
+    let trimmed = name.trim().to_ascii_lowercase();
+    let experimental = trimmed.starts_with('_');
+    let mut body = String::new();
+    let mut pending = false;
+    for ch in trimmed.chars() {
+        if ch.is_ascii_alphanumeric() {
+            if pending && !body.is_empty() {
+                body.push('_');
+            }
+            pending = false;
+            body.push(ch);
+        } else {
+            pending = true;
+        }
+    }
+    if experimental && !body.is_empty() {
+        format!("_{body}")
+    } else {
+        body
+    }
+}
+mod projection;
+pub use projection::{bounded_page, read_sheet};

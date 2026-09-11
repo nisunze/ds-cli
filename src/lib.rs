@@ -1300,6 +1300,12 @@ pub fn design_version_command_wasm(input: &[u8]) -> Result<String, wasm_bindgen:
 
 pub mod design_config;
 #[cfg(feature = "wasm")]
+#[wasm_bindgen::prelude::wasm_bindgen(js_name = designConfig)]
+pub fn design_config_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
+    design_config::evaluate(input).map_err(|e| wasm_bindgen::JsValue::from_str(&e))
+}
+
+#[cfg(feature = "wasm")]
 #[wasm_bindgen::prelude::wasm_bindgen(js_name = designConfigInspect)]
 pub fn design_config_inspect_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
     design_config::inspect(input).map_err(|e| wasm_bindgen::JsValue::from_str(&e))
@@ -1391,4 +1397,11 @@ pub mod response_policy;
 #[wasm_bindgen::prelude::wasm_bindgen(js_name = responsePolicy)]
 pub fn response_policy_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
     response_policy::evaluate(input).map_err(|error| wasm_bindgen::JsValue::from_str(&error))
+}
+
+pub mod project_config;
+#[cfg(feature = "wasm")]
+#[wasm_bindgen::prelude::wasm_bindgen(js_name = projectConfigAdmit)]
+pub fn project_config_admit_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
+    project_config::evaluate(input).map_err(|e| wasm_bindgen::JsValue::from_str(&e))
 }
