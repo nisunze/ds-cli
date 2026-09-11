@@ -73,6 +73,13 @@ pub struct Context {
 /// Deliberately open to unknown members: this is the grant's own document,
 /// already bounded by the parser that produced it, and a member named later
 /// still describes a plan these decisions answer the same way.
+///
+/// Every count is read by `host_counts`: a host hands over what the wire
+/// handed it, and what a negative, fractional, absent or non-numeric count
+/// MEANS is stated there — `max(0, trunc(value))`, everything else zero — so
+/// the browser card and `ds solar seed` cannot clamp two different ways on
+/// their way in. A count is never the fact a verdict turns on; the plan's
+/// cities are.
 #[derive(Clone, Debug, Default, Deserialize)]
 pub struct Plan {
     #[serde(default)]
@@ -84,19 +91,19 @@ pub struct Plan {
     /// False on every preview. Read, never inferred from the action name.
     #[serde(default)]
     pub mutated: bool,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "crate::host_counts::count")]
     pub create_count: u64,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "crate::host_counts::count")]
     pub skip_count: u64,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "crate::host_counts::count")]
     pub changed_count: u64,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "crate::host_counts::count")]
     pub missing_count: u64,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "crate::host_counts::count")]
     pub document_count: u64,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "crate::host_counts::count")]
     pub asset_count: u64,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "crate::host_counts::count")]
     pub excluded_asset_count: u64,
     #[serde(default)]
     pub warnings: Vec<String>,
@@ -108,6 +115,43 @@ pub struct Plan {
 pub struct PlanCity {
     #[serde(default)]
     pub warnings: Vec<String>,
+}
+
+/// A document row in a planned city — as much of one as the input rule reads.
+/// Every other member stays with the host: it holds the rows, this decides
+/// which of them the city is calculated FROM.
+#[derive(Clone, Debug, Default, Deserialize)]
+pub struct PlanDocument {
+    #[serde(default)]
+    pub kind: String,
+    #[serde(default)]
+    pub subcollection: String,
+}
+
+/// The subcollection a governed Solar city's calculation inputs live in.
+const CITY_INPUT_SUBCOLLECTION: &str = "01_city_inputs";
+/// The kind ds-brain gives the city ROOT row. An apply writes it like any
+/// other document; the city is not calculated from it.
+const ROOT_KIND: &str = "root";
+
+/// Which of a planned city's documents is that city calculated FROM?
+///
+/// The preview lists the city's inputs, not everything the apply would write,
+/// and the two are told apart by a named subcollection and a named kind — a
+/// rule, held in a browser filter beside a magic string. The root is excluded
+/// BY KIND rather than by its subcollection happening to be empty.
+///
+/// Answered as positions in the list the caller handed over, so no row is
+/// copied through the kernel to come back unchanged.
+pub fn calculation_inputs(documents: &[PlanDocument]) -> Vec<usize> {
+    documents
+        .iter()
+        .enumerate()
+        .filter(|(_, document)| {
+            document.kind != ROOT_KIND && document.subcollection == CITY_INPUT_SUBCOLLECTION
+        })
+        .map(|(index, _)| index)
+        .collect()
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
@@ -269,6 +313,11 @@ enum Request {
     },
     /// Does this plan still describe this context, and may it be applied?
     Verdict { plan: Plan, context: Context },
+    /// Which of these documents is the city calculated from?
+    CalculationInputs {
+        #[serde(default)]
+        documents: Vec<PlanDocument>,
+    },
     /// What does this plan amount to?
     Summarize {
         #[serde(default)]
@@ -289,6 +338,9 @@ struct Reply {
     summary: Option<Summary>,
     #[serde(skip_serializing_if = "Option::is_none")]
     bounds: Option<Bounds>,
+    /// Positions in the document list the caller sent, for `calculation_inputs`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    inputs: Option<Vec<usize>>,
 }
 
 #[derive(Serialize)]
@@ -330,6 +382,7 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
                 applyable: None,
                 summary: None,
                 bounds: Some(BOUNDS),
+                inputs: None,
             }
         }
         Request::Verdict { plan, context } => Reply {
@@ -339,6 +392,7 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
             applyable: Some(applyable(&plan, &context)),
             summary: Some(summarize(Some(&plan))),
             bounds: None,
+            inputs: None,
         },
         Request::Summarize { plan } => Reply {
             ok: true,
@@ -347,6 +401,16 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
             applyable: None,
             summary: Some(summarize(plan.as_ref())),
             bounds: None,
+            inputs: None,
+        },
+        Request::CalculationInputs { documents } => Reply {
+            ok: true,
+            refusal: None,
+            drift: None,
+            applyable: None,
+            summary: None,
+            bounds: None,
+            inputs: Some(calculation_inputs(&documents)),
         },
     };
     serde_json::to_string(&reply).map_err(|_| "solar_seed_reply_invalid".into())
@@ -355,6 +419,38 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// What a city is calculated FROM is a rule about two named fields, not a
+    /// filter beside a magic string: the root row is excluded by its KIND, a
+    /// row in another subcollection is not an input, and the order the plan
+    /// listed them survives.
+    #[test]
+    fn a_citys_inputs_are_its_input_subcollection_without_the_root() {
+        fn document(kind: &str, subcollection: &str) -> PlanDocument {
+            PlanDocument {
+                kind: kind.to_owned(),
+                subcollection: subcollection.to_owned(),
+            }
+        }
+        let documents = vec![
+            document("root", ""),
+            document("", "01_city_inputs"),
+            document("", "02_results"),
+            document("plot", "01_city_inputs"),
+            // A root row filed INSIDE the input subcollection is still the
+            // row the apply writes, not a row the city is calculated from.
+            document("root", "01_city_inputs"),
+        ];
+        assert_eq!(calculation_inputs(&documents), vec![1, 3]);
+        assert_eq!(calculation_inputs(&[]), Vec::<usize>::new());
+        let reply = evaluate(
+            br#"{"op":"calculation_inputs","documents":[{"kind":"root","subcollection":""},{"subcollection":"01_city_inputs","doc_id":"a"}]}"#,
+        )
+        .unwrap();
+        assert_eq!(reply, r#"{"ok":true,"inputs":[1]}"#);
+        let reply = evaluate(br#"{"op":"calculation_inputs"}"#).unwrap();
+        assert_eq!(reply, r#"{"ok":true,"inputs":[]}"#);
+    }
 
     fn context() -> Context {
         Context {
@@ -373,6 +469,29 @@ mod tests {
             create_count: 1,
             ..Plan::default()
         }
+    }
+
+    /// A malformed count is a zero here, not an exception in the card: the
+    /// browser used to clamp on its way in, so the rule it clamped by is the
+    /// kernel's (`host_counts`) and every door reads the same plan.
+    #[test]
+    fn a_malformed_count_reads_as_zero() {
+        let plan: Plan = serde_json::from_str(
+            r#"{"root":"eds_project/p1/eds_solar","ds_project":"p1",
+                "seed_source_root":"eds_solar","create_count":-1,
+                "document_count":2.5,"skip_count":"3","asset_count":null,
+                "missing_count":1e30}"#,
+        )
+        .expect("a plan whose counts are malformed still decodes");
+        assert_eq!(plan.create_count, 0);
+        assert_eq!(plan.document_count, 2);
+        assert_eq!(plan.skip_count, 0);
+        assert_eq!(plan.asset_count, 0);
+        assert_eq!(plan.missing_count, u64::MAX);
+        // Nothing to create is nothing to apply, exactly as a plain zero is.
+        assert!(!applyable(&plan, &context()));
+        let summary = summarize(Some(&plan));
+        assert_eq!((summary.create, summary.documents), (0, 2));
     }
 
     #[test]

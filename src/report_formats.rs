@@ -539,6 +539,112 @@ pub fn artifact_filename(locator: &str) -> String {
     name.to_string()
 }
 
+/// Which door does this artifact open: the in-app PDF preview, or a download?
+///
+/// It belongs beside the name because it is a question ABOUT the name, and the
+/// browser asked it with its own regular expression next to every button that
+/// offered the choice — two readings of one rule, in a template, where a third
+/// button would have made three.
+pub fn artifact_opens_as_pdf(filename: &str) -> bool {
+    filename.to_ascii_lowercase().ends_with(".pdf")
+}
+
+/// What an artifact IS, from the name it carries: the badge vocabulary the
+/// report cards read a version's files under.
+///
+/// `.shp.zip` is a shapefile and a plain `.zip` is an archive — a distinction
+/// the browser drew in a chain of `endsWith` calls sitting beside the colours,
+/// so the card and a headless reader were free to disagree about what a file
+/// is. The answer is a key: what it is CALLED and what colour it wears stay
+/// with whoever renders it.
+pub fn artifact_kind(filename: &str) -> &'static str {
+    let name = filename.to_ascii_lowercase();
+    if name.ends_with(".xlsx") || name.ends_with(".xls") {
+        "excel"
+    } else if name.ends_with(".shp.zip") || name.contains(".shp.") {
+        "shapefile"
+    } else if name.ends_with(".kmz") {
+        "kmz"
+    } else if name.ends_with(".gpkg") {
+        "gpkg"
+    } else if name.ends_with(".zip") {
+        "zip"
+    } else {
+        "other"
+    }
+}
+
+/// The order those kinds are offered in: the deliverable first, the unreadable
+/// last. An operator scanning one version's files reads the same sequence
+/// wherever the files are listed.
+pub const ARTIFACT_KIND_ORDER: [&str; 6] = ["excel", "shapefile", "kmz", "gpkg", "zip", "other"];
+
+/// One version's artifacts, grouped by what they are and ordered for reading.
+///
+/// Answers with POSITIONS in the list the caller sent, so no locator is copied
+/// through the kernel to come back unchanged. A kind nothing matched is not a
+/// group: an empty badge is a claim about a file that is not there.
+pub fn artifact_groups(locators: &[String]) -> Vec<(&'static str, Vec<usize>)> {
+    let kinds: Vec<&'static str> = locators
+        .iter()
+        .map(|locator| artifact_kind(&artifact_filename(locator)))
+        .collect();
+    let mut groups: Vec<(&'static str, Vec<usize>)> = Vec::new();
+    for kind in ARTIFACT_KIND_ORDER {
+        let items: Vec<usize> = kinds
+            .iter()
+            .enumerate()
+            .filter(|(_, held)| **held == kind)
+            .map(|(index, _)| index)
+            .collect();
+        if !items.is_empty() {
+            groups.push((kind, items));
+        }
+    }
+    groups
+}
+
+/// What one stored report version is called, what its download is called, and
+/// what the folder inside that download is called.
+///
+/// Three decisions the browser held: a version is shown under its display
+/// name, failing that the version label it was published with, failing that
+/// its prefix; the folder inside the archive is that same name with every
+/// character a filesystem refuses replaced; and a name that survives none of
+/// that is the prefix again rather than an archive rooted at `/`.
+pub fn combined_entry_naming(
+    display_name: &str,
+    version_label: &str,
+    prefix: &str,
+) -> (String, String, String) {
+    let label = [display_name, version_label, prefix]
+        .into_iter()
+        .find(|candidate| !candidate.is_empty())
+        .unwrap_or_default()
+        .to_string();
+    let mut folder = String::with_capacity(label.len());
+    let mut replaced = false;
+    for character in label.chars() {
+        if matches!(
+            character,
+            '\\' | '/' | ':' | '*' | '?' | '"' | '<' | '>' | '|'
+        ) {
+            // A RUN of refused characters is one separator, not one each.
+            if !replaced {
+                folder.push('_');
+                replaced = true;
+            }
+        } else {
+            folder.push(character);
+            replaced = false;
+        }
+    }
+    if folder.is_empty() {
+        folder = prefix.to_string();
+    }
+    (label, folder, format!("{prefix}.zip"))
+}
+
 /// `decodeURIComponent` semantics: `%XX` is a byte, the result must be UTF-8,
 /// and anything malformed decodes to nothing so the caller keeps the raw text.
 fn percent_decode(value: &str) -> Option<String> {
