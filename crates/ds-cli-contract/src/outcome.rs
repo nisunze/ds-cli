@@ -151,6 +151,21 @@ impl Failure {
         self
     }
 
+    /// Replace the sentence while keeping the class, code, remedy and next
+    /// step a shared mapping already chose.
+    ///
+    /// It exists for one shape: an adapter that classifies a refusal from its
+    /// kind and then learns something the kind could not carry — the exact
+    /// HTTP status a governed route answered with, and the route's own words.
+    /// Rebuilding the failure to say so would hand a constructor a code it
+    /// computed, which `tests/refusal_coverage.rs` cannot read and must
+    /// therefore refuse; this keeps the code a literal at the site that owns
+    /// it.
+    pub fn with_message(mut self, message: impl Into<String>) -> Self {
+        self.0.message = message.into();
+        self
+    }
+
     pub fn class(&self) -> ExitClass {
         self.0.class
     }

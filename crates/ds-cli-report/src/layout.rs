@@ -10,11 +10,31 @@ use std::io::Read;
 fn local() -> Availability {
     Availability::Available
 }
-const REFUSALS: &[Refusal] = &[Refusal {
-    code: "printing_invalid",
-    when: "The bounded print document or intent is invalid",
-    remedy: "Use report.layout.schema and correct the reported layout constraint",
-}];
+const REFUSALS: &[Refusal] = &[
+    Refusal {
+        code: "printing_invalid",
+        when: "The bounded print document or intent is invalid",
+        remedy: "Use report.layout.schema and correct the reported layout constraint",
+    },
+    // The deployed layout validator's own refusal, re-raised under its name.
+    // It is a client-input failure even when the deployed validator is the
+    // half that is out of date, which is why its remedy names both causes.
+    Refusal {
+        code: "print_layout_invalid",
+        when: "The deployed layout validator refused the submitted document, naming the field",
+        remedy: "Correct the named field against report.layout.schema; if it is valid, the deployed print validator is older than this client and must be redeployed",
+    },
+    Refusal {
+        code: "print_setup_not_found",
+        when: "The named printing setup does not exist in the addressed scope",
+        remedy: "List the scope with report.layout.list, or copy a setup into it with report.layout.copy",
+    },
+    Refusal {
+        code: "print_validator_unavailable",
+        when: "The layout validator could not be reached, or answered a server fault",
+        remedy: "Retry without changing the layout; a repeated refusal is a deployment failure, not an authoring one",
+    },
+];
 const REQUEST: Arg = Arg::value("request", "<json-file>", "Bounded typed request file.").required();
 const SCOPE: Arg = Arg::value(
     "scope",
@@ -527,7 +547,7 @@ pub fn new(_i: &Inputs, _c: &Context) -> Result<Value, Failure> {
 }
 pub fn schema(_i: &Inputs, _c: &Context) -> Result<Value, Failure> {
     Ok(
-        json!({"map_request":ds_command_kernel::printing::map::request_schema(),"layout":ds_command_kernel::printing::layout_schema(),"edit":ds_command_kernel::printing::command_schema(),"output_selection":ds_command_kernel::report_formats::output_selection_schema(),"transactions":{"create":{"action":"create","layout":"<layout document>"},"update":{"action":"update","layout":"<layout document>","expected_revision":"<exact revision>"},"delete":"use --id and --expected-revision","copy":{"action":"copy","source":{"scope":"global|project","id":"<id>","revision":"<exact revision>"},"destination":{"scope":"global|project","id":"<new id>","name":"<optional name>","expected_revision":"<empty for create or exact revision>"}}},"render":"ds report tasks --task render_print_layout --output json"}),
+        json!({"map_request":ds_command_kernel::printing::map::request_schema(),"layout":ds_command_kernel::printing::layout_schema(),"edit":ds_command_kernel::printing::command_schema(),"output_selection":ds_command_kernel::report_formats::output_selection_schema(),"transactions":{"create":{"action":"create","layout":"<layout document>"},"update":{"action":"update","layout":"<layout document>","expected_revision":"<exact revision>"},"save":{"action":"save","layout":"<layout document>","expected_revision":"<empty to create, or the exact revision to update>"},"delete":"use --id and --expected-revision","copy":{"action":"copy","source":{"scope":"global|project","id":"<id>","revision":"<exact revision>"},"destination":{"scope":"global|project","id":"<new id>","name":"<optional name>","expected_revision":"<empty for create or exact revision>"}}},"render":"ds report tasks --task render_print_layout --output json"}),
     )
 }
 pub fn edit(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
@@ -725,16 +745,43 @@ pub fn get(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
         },
     )
 }
+/// What `layout save` publishes, from whichever documented transaction the
+/// caller derived from `report.layout.schema`.
+///
+/// `schema` documented `create`, `update` and `copy` and never `save`, while
+/// `save` accepted nothing but a save request — so the only shapes discovery
+/// offered were the ones this command refused, and an agent that followed the
+/// schema got `save requires a save request`. Both halves are fixed: the
+/// schema documents `save`, and a create or an update reaches the same
+/// publish, because create-versus-update is decided from facts below and not
+/// from the word the caller used. `copy` and `delete` are different
+/// transactions with their own commands and stay refused here, by name.
+fn publication(
+    request: ds_cli_auth::PrintingRequest,
+) -> Result<(ds_command_kernel::printing::Layout, String), Failure> {
+    match request {
+        ds_cli_auth::PrintingRequest::Save {
+            layout,
+            expected_revision,
+        }
+        | ds_cli_auth::PrintingRequest::Update {
+            layout,
+            expected_revision,
+        } => Ok((layout, expected_revision)),
+        // A create names no revision, which is exactly the fact that makes
+        // the lifecycle plan below choose Create.
+        ds_cli_auth::PrintingRequest::Create { layout } => Ok((layout, String::new())),
+        _ => Err(invalid(
+            "layout save accepts action save, create or update; use report.layout.copy for a copy \
+             and report.layout.delete for a delete",
+        )),
+    }
+}
+
 pub fn save(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
     let request: ds_cli_auth::PrintingRequest =
         serde_json::from_slice(&bytes(i.require("request")?, 800_000)?).map_err(invalid)?;
-    let ds_cli_auth::PrintingRequest::Save {
-        layout,
-        expected_revision,
-    } = request
-    else {
-        return Err(invalid("save requires a save request"));
-    };
+    let (layout, expected_revision) = publication(request)?;
     let global = i.require("scope")? == "global";
     // Whether this publish is a create or an update is the kernel's
     // decision — the same one the Printing setup page takes from the
@@ -835,4 +882,122 @@ pub fn render(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
         1024 * 1024,
     )?)
     .map_err(invalid)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Fill one documented transaction's placeholders with real values.
+    ///
+    /// A placeholder is any string in angle brackets; what it stands for is
+    /// decided by the key it sits under, so the test never re-states the
+    /// shape the schema is publishing.
+    fn filled(key: &str, template: &Value) -> Value {
+        match template {
+            Value::Object(fields) => Value::Object(
+                fields
+                    .iter()
+                    .map(|(name, value)| (name.clone(), filled(name, value)))
+                    .collect(),
+            ),
+            // A documented choice list is filled with its first choice.
+            Value::String(text) if text.contains('|') => json!(text.split('|').next()),
+            Value::String(text) if text.starts_with('<') => match key {
+                "layout" => {
+                    json!(ds_command_kernel::printing::default_layout())
+                }
+                "revision" => json!("a".repeat(64)),
+                // An update pins an exact revision; a save may name none,
+                // which is the fact that makes it a create.
+                "expected_revision" if text.contains("empty") => json!(""),
+                "expected_revision" => json!("a".repeat(64)),
+                "id" => json!("sample_layout"),
+                "name" => json!("Sample"),
+                "scope" => json!("global"),
+                _ => template.clone(),
+            },
+            other => other.clone(),
+        }
+    }
+
+    fn documented_schema() -> Value {
+        let context = Context {
+            confirmed: false,
+            output: ds_cli_contract::Output {
+                format: ds_cli_contract::Format::Json,
+                pretty: false,
+                color: false,
+            },
+        };
+        schema(&Inputs::default(), &context).expect("the schema is local and cannot fail")
+    }
+
+    fn transaction(name: &str) -> ds_cli_auth::PrintingRequest {
+        let schema = documented_schema();
+        let documented = filled(name, &schema["transactions"][name]);
+        serde_json::from_value(documented)
+            .unwrap_or_else(|error| panic!("documented `{name}` does not parse: {error}"))
+    }
+
+    /// Discovery and acceptance were two different contracts: `schema`
+    /// documented `create`, `update` and `copy`, `save` accepted only `save`,
+    /// and an agent that read the schema was refused by every command it
+    /// could reach. Every documented transaction must now parse into a
+    /// request the command named for it actually accepts.
+    #[test]
+    fn every_documented_transaction_parses_into_the_request_its_command_accepts() {
+        assert!(matches!(
+            transaction("create"),
+            ds_cli_auth::PrintingRequest::Create { .. }
+        ));
+        assert!(matches!(
+            transaction("update"),
+            ds_cli_auth::PrintingRequest::Update { .. }
+        ));
+        assert!(matches!(
+            transaction("save"),
+            ds_cli_auth::PrintingRequest::Save { .. }
+        ));
+        assert!(matches!(
+            transaction("copy"),
+            ds_cli_auth::PrintingRequest::Copy { .. }
+        ));
+        // Delete is documented as the two flags it takes, not as a body.
+        let schema = documented_schema();
+        let delete = schema["transactions"]["delete"]
+            .as_str()
+            .expect("delete is documented as its flags");
+        assert!(delete.contains("--id") && delete.contains("--expected-revision"));
+    }
+
+    /// `layout save` publishes whichever of the three publishing shapes the
+    /// caller derived from the schema. Create-versus-update stays a decision
+    /// taken from the revision, never from the word.
+    #[test]
+    fn save_publishes_every_schema_derived_publishing_shape_and_names_what_it_refuses() {
+        for name in ["save", "create", "update"] {
+            let (layout, revision) = publication(transaction(name))
+                .unwrap_or_else(|error| panic!("save refused documented `{name}`: {error:?}"));
+            assert_eq!(layout, ds_command_kernel::printing::default_layout());
+            // A create carries no revision; the other two carry the one the
+            // schema documents for them.
+            let expected = if name == "update" { 64 } else { 0 };
+            assert_eq!(revision.len(), expected, "{name}");
+        }
+        for other in [
+            transaction("copy"),
+            ds_cli_auth::PrintingRequest::List {},
+            ds_cli_auth::PrintingRequest::Delete {
+                id: "sample_layout".into(),
+                expected_revision: "a".repeat(64),
+            },
+        ] {
+            let refusal = publication(other).expect_err("a different transaction is refused");
+            let message = format!("{refusal:?}");
+            for action in ["save", "create", "update"] {
+                assert!(message.contains(action), "{message}");
+            }
+        }
+    }
 }

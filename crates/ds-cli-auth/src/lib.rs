@@ -3057,7 +3057,16 @@ fn map_client(error: ClientError) -> Failure {
         return map_project_report_service_code(code);
     }
     let message = error.to_string();
-    let failure = map_client_kind(error.kind(), message.clone());
+    // A governed route that authored its own bounded refusal has said
+    // something the coarse class cannot: which status it used and what is
+    // wrong. Collapsing that into `auth_response_unreadable` is what made a
+    // print layout the deployed validator could not decode read as an
+    // authentication failure on 2026-09-10.
+    let refusal = error.service_refusal();
+    let failure = match refusal {
+        Some(refusal) => map_service_refusal(error.kind(), refusal, &message),
+        None => map_client_kind(error.kind(), message.clone()),
+    };
     // ClientError messages are static, owner-authored text, never response
     // bodies. Preserve these bounded route diagnostics for data/config calls.
     if message.starts_with("the transformer context route")
@@ -3065,7 +3074,20 @@ fn map_client(error: ClientError) -> Failure {
         || message.starts_with("feeder settings were saved")
     {
         let diagnostic = route_diagnostic(&message);
-        let mut failure = failure.detail(serde_json::json!({"owner_message":message}));
+        let mut detail = serde_json::json!({"owner_message":message});
+        // The status and the service's own sentence are the difference
+        // between "retry" and "this deployment cannot answer": carry both
+        // where the route authored them.
+        if let Some(refusal) = refusal {
+            detail["http_status"] = serde_json::json!(refusal.status());
+            if let Some(code) = refusal.code() {
+                detail["service_code"] = serde_json::json!(code);
+            }
+            if let Some(sentence) = refusal.message() {
+                detail["service_message"] = serde_json::json!(sentence);
+            }
+        }
+        let mut failure = failure.detail(detail);
         // The shared kind mapping has nothing to say about a route that
         // rejects a credential this lane just verified, and a named refusal
         // with no way out is a dead end. Only fill the silence: a code that
@@ -3079,6 +3101,47 @@ fn map_client(error: ClientError) -> Failure {
         failure
     } else {
         failure
+    }
+}
+
+/// One governed route's own refusal, rendered as a CLI failure.
+///
+/// The code a caller plans against is this crate's, not the server's string:
+/// only the two codes the printing contract declares are adopted by name, and
+/// every other refusal keeps the shared kind mapping. What always crosses is
+/// the exact status and the service's bounded sentence, because a receipt that
+/// says only "refused" is a receipt nobody can act on.
+fn map_service_refusal(
+    kind: ErrorKind,
+    refusal: &ds_client_core::ServiceRefusal,
+    owner_message: &str,
+) -> Failure {
+    let message = match refusal.message() {
+        Some(sentence) => format!("{owner_message} (HTTP {}): {sentence}", refusal.status()),
+        None => format!("{owner_message} (HTTP {})", refusal.status()),
+    };
+    match refusal.code() {
+        Some("print_layout_invalid") => Failure::invalid("print_layout_invalid", message)
+            .remedy(
+                "correct the layout against ds report layout schema; if the refused field is \
+                 valid, the deployed print validator is older than this client and has to be \
+                 redeployed",
+            )
+            .next("ds report layout schema --output json"),
+        Some("print_setup_not_found") => Failure::invalid("print_setup_not_found", message)
+            .remedy("name a setup this scope holds, or copy one into it")
+            .next("ds report layout list --scope project --output json"),
+        Some("print_validator_unavailable") => {
+            Failure::unavailable("print_validator_unavailable", message).remedy(
+                "retry without changing the layout; a repeated refusal means the deployed print \
+                 validator is unavailable, not that the layout is wrong",
+            )
+        }
+        // Every other refusal keeps the shared kind mapping's class, code,
+        // remedy and next step — several of those arms answer with their own
+        // static sentence, so the status and the service's words are carried
+        // back over it rather than lost.
+        _ => map_client_kind(kind, message.clone()).with_message(message),
     }
 }
 
@@ -4060,5 +4123,97 @@ mod tests {
         assert_eq!(first.len(), 64);
         assert!(!first.contains("uid-1"));
         assert!(!first.contains("operator@example.com"));
+    }
+
+    /// The receipt an operator actually reads. On 2026-09-10 a print layout
+    /// the deployed validator could not decode reached `ds` as
+    /// `auth_response_unreadable` — an authentication code, with no field
+    /// named and no way forward. Each governed refusal now keeps its status,
+    /// its sentence and a code that says what kind of problem it is.
+    #[test]
+    fn a_governed_refusal_reads_as_what_it_is_and_never_as_an_auth_failure() {
+        use ds_client_core::ServiceRefusal;
+
+        let invalid = map_service_refusal(
+            ErrorKind::InvalidInput,
+            &ServiceRefusal::new(
+                422,
+                Some("print_layout_invalid"),
+                Some("unknown field `composition`, expected one of `schema`, `id`, `name`"),
+            ),
+            "Printing request refused: the layout is not acceptable to this deployment",
+        );
+        assert_eq!(invalid.code(), "print_layout_invalid");
+        assert!(invalid.message().contains("HTTP 422"), "{invalid:?}");
+        assert!(
+            invalid.message().contains("unknown field `composition`"),
+            "{invalid:?}"
+        );
+        assert!(invalid.remedy_text().is_some());
+        assert!(
+            invalid
+                .next_commands()
+                .iter()
+                .any(|command| command.contains("report layout schema")),
+            "{invalid:?}"
+        );
+
+        let unavailable = map_service_refusal(
+            ErrorKind::Transient,
+            &ServiceRefusal::new(
+                502,
+                Some("print_validator_unavailable"),
+                Some("The print layout validator answered 500"),
+            ),
+            "The printing service is temporarily unavailable",
+        );
+        assert_eq!(unavailable.code(), "print_validator_unavailable");
+        assert!(
+            unavailable.message().contains("HTTP 502"),
+            "{unavailable:?}"
+        );
+
+        // A refusal the printing contract does not name keeps the shared kind
+        // mapping — and still carries the status and the sentence, which is
+        // what `report.project.outputs.set` had none of.
+        let configuration = map_service_refusal(
+            ErrorKind::Transient,
+            &ServiceRefusal::new(502, Some("internal_error"), Some("store unavailable")),
+            "project configuration request was refused; no cached configuration is substituted",
+        );
+        assert_eq!(configuration.code(), "auth_transient");
+        assert!(
+            configuration.message().contains("HTTP 502"),
+            "{configuration:?}"
+        );
+        assert!(
+            configuration.message().contains("store unavailable"),
+            "{configuration:?}"
+        );
+
+        // A missing setup is a printing fact. The shared kind mapping's
+        // `transformer_not_found` was the nearest thing it had, and it was
+        // wrong about what was missing.
+        let missing = map_service_refusal(
+            ErrorKind::ResourceNotFound,
+            &ServiceRefusal::new(
+                404,
+                Some("print_setup_not_found"),
+                Some("Printing setup not found"),
+            ),
+            "The printing setup does not exist",
+        );
+        assert_eq!(missing.code(), "print_setup_not_found");
+        assert!(missing.message().contains("HTTP 404"), "{missing:?}");
+
+        // No code and no sentence is still better than a bare class: the
+        // status alone tells a caller whether to retry.
+        let bare = map_service_refusal(
+            ErrorKind::AuthenticationRejected,
+            &ServiceRefusal::new(403, None, None),
+            "Printing request rejected for this identity",
+        );
+        assert_eq!(bare.code(), "auth_rejected");
+        assert!(bare.message().ends_with("(HTTP 403)"), "{bare:?}");
     }
 }
