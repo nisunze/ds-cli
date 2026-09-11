@@ -168,3 +168,32 @@ section.
 
 - `ds-web/src-tauri/src/cli_bridge.rs` — the bridge, and the closed operation list
 - `ds-web/src/lib/desktop/cli-bridge.ts` — the typed CLI operations themselves
+
+## `ds desktop sync plan` — the sync gate's one decision, headless
+
+Authority `none`: no pairing, no credential. Name the scope — `--project <id>`,
+or `--personal` for the signed-in account's own bytes (user data, notes), which
+go through the same gate — hand the kernel what an install
+holds (`--local <file>`) and what the shared record holds
+(`--remote <file>`), optionally the work grant in hand (`--grant <file>`),
+`--now-ms` (server-observed time; defaults to this machine's clock), `--offline`,
+`--trigger` (why the plan is asked for now — `startup`, `navigation`,
+`local_change`, `publish_completed`, `download_completed`, `reconnect`,
+`remote_push`, `manual`, `grant_opened`; never "because time passed") and
+`--remote-read-at-ms` (when the held remote heads were last read; omit when
+never), and read back the ordered actions a host performs — `open_grant`
+(always first when an upload needs one), `upload`, `download`, `conflict` (a
+head that moved past the base a result was computed on; surfaced, never
+overwritten), `nothing`, `refused` (a malformed or duplicate row, refused on its
+own so one bad row never poisons the queue) — plus `refresh_remote` (whether the
+remote heads must be re-read for this trigger: never on a local change, never
+after a publish whose receipt carries the head), `wake` (`event`, or the one
+timed wake: a grant renewal before a pending upload) and a summary. There is no
+poll: the record is read on navigation, reconnect, an explicit sync or a push
+from the messaging stream. Contract: `ds-command-kernel/docs/contracts/ds-sync-engine.md`.
+
+Inventory shapes: local rows are
+`{engine, operation, variant?, sha256, size_bytes, produced_at_ms, base_revision?, readable?, engine_release}`;
+remote heads are `{engine, operation, variant?, revision, sha256, published_at_ms}`;
+the grant is `{grant_id, install_id, project, engines[{name, release}], expires_at_ms}`.
+Refusal `sync_plan_invalid` names the file or the field the kernel refused.

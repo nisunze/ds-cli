@@ -14,6 +14,12 @@ mod state_windows;
 mod transport;
 mod upload;
 
+/// The weak-network acceptance seam. Feature-gated, so it exists only for
+/// `crates/ds-cli-auth/tests/weak_network.rs` and never in a release build;
+/// see the module's own header for why an integration test needs it.
+#[cfg(feature = "weak-network-harness")]
+pub use upload::weak_network_harness;
+
 #[cfg(unix)]
 use std::io::Write;
 use std::io::{self, BufRead, Read};
@@ -3279,28 +3285,6 @@ pub fn survey_control(lane_value: &str, command: &SurveyControlCommand) -> Resul
         Some(selected) => with_released_context_disposition(client.profile(), &selected, result),
         None => result.map_err(map_client),
     }
-}
-
-pub fn survey_workspace_snapshot(lane_value: &str) -> Result<Value, Failure> {
-    let lane = Lane::parse(lane_value)?;
-    if let Some((mut device, selected)) = restored_device_project(lane)? {
-        let command = SurveyControlCommand::WorkspaceSnapshot {
-            project: selected.project_id().into(),
-        };
-        return device
-            .survey_control(Some(selected.project_id()), &command)
-            .map_err(map_client);
-    }
-    let profile = profile::load(lane)?;
-    let store = NativeRefreshStore::open()?;
-    let mut client = Client::new(profile, NativeTransport, store);
-    let user = require_restore_before_context(&mut client)?;
-    let selected = load_selected_project(client.profile(), &user)?;
-    let command = SurveyControlCommand::WorkspaceSnapshot {
-        project: selected.project_id().into(),
-    };
-    let result = client.survey_control(Some(selected.project_id()), &command, now());
-    with_released_context_disposition(client.profile(), &selected, result)
 }
 
 pub fn solar_project_session(lane_value: &str) -> Result<HeadlessSolarProjectSession, Failure> {

@@ -360,6 +360,29 @@ pub fn scope_json(requested: &TransformerSet, inventory: &TransformerInventory) 
     })
 }
 
+/// How a compounded archive is laid out, in the report layer's own vocabulary.
+///
+/// Two spellings describe one choice — `file_level` is current and
+/// `transformer_grouping` is the legacy twin older archives were written with —
+/// and folding them was, until now, a nested ternary inside one Svelte
+/// component. `ds` therefore produced archives it could not describe, and
+/// described legacy archives as having no layout at all. The fold is
+/// `ds_command_kernel::report::ArchiveLayout`'s; this hands it the two
+/// spellings and returns the keys a caller renders.
+pub fn archive_layout_vocabulary(
+    file_level: Option<&str>,
+    transformer_grouping: Option<&str>,
+    combine_per_district: bool,
+) -> serde_json::Value {
+    ds_command_kernel::report::ArchiveLayout {
+        file_level: file_level.map(str::to_string),
+        transformer_grouping: transformer_grouping.map(str::to_string),
+        combine_per_district: Some(combine_per_district),
+        combine_per_group: None,
+    }
+    .describe()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

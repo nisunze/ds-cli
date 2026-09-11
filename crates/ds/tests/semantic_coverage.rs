@@ -13,15 +13,6 @@ use std::process::Command;
 use serde_json::Value;
 
 const EXPECTED: &[(&str, &str, &str)] = &[
-    ("survey.workspace.init", "local_file_write", "none"),
-    ("survey.workspace.collect", "local_file_write", "none"),
-    ("survey.workspace.list", "local_file_write", "none"),
-    (
-        "survey.workspace.prepare",
-        "local_file_write",
-        "headless_project",
-    ),
-    ("survey.workspace.sync", "global_write", "headless_project"),
     (
         "design.features.select",
         "local_auth_state",
@@ -116,6 +107,7 @@ const EXPECTED: &[(&str, &str, &str)] = &[
         "desktop_user",
     ),
     ("desktop.sync.status", "read_only", "desktop_user"),
+    ("desktop.sync.plan", "read_only", "none"),
     ("desktop.sync.published", "read_only", "desktop_user"),
     ("desktop.sync.retry", "global_write", "desktop_user"),
     ("desktop.data.rwanda.status", "read_only", "desktop_user"),
@@ -248,6 +240,36 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     // answer is built from, on the same native credential class as the
     // inventory because restoring the native session may rotate it.
     ("design.status", "local_auth_state", "headless_project"),
+    ("design.collisions", "local_auth_state", "headless_project"),
+    // Slice 14a: the previews the register kept to itself. Each reads the
+    // same status rows on the same native credential class and answers from
+    // the shared kernel, so an agent learns what a batch would skip.
+    ("design.bulk.plan", "local_auth_state", "headless_project"),
+    (
+        "design.download.plan",
+        "local_auth_state",
+        "headless_project",
+    ),
+    (
+        "design.version.status",
+        "local_auth_state",
+        "headless_project",
+    ),
+    (
+        "design.conflict.list",
+        "local_auth_state",
+        "headless_project",
+    ),
+    (
+        "design.conflict.check",
+        "local_auth_state",
+        "headless_project",
+    ),
+    (
+        "design.presence.status",
+        "local_auth_state",
+        "headless_project",
+    ),
     ("design.dashboard", "local_auth_state", "headless_project"),
     ("design.transformer.download", "local_ui", "project"),
     (

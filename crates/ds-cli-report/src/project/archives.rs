@@ -66,12 +66,29 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
                 "individual_artifact_transformer_count": archive.individual_artifact_transformer_count(),
                 "missing_individual_artifact_count": archive.missing_individual_artifact_count(),
                 "errors": archive.errors(),
-                "archive_layout": archive.archive_layout().map(|layout| json!({
-                    "file_level": layout.file_level(),
-                    "combine_per_district": layout.combine_per_district(),
-                })),
+                // The layout as the registry recorded it, plus the report
+                // layer's own vocabulary for it — so a legacy archive written
+                // under `transformer_grouping` alone is described here exactly
+                // as the application describes it, instead of as no layout.
+                "archive_layout": archive.archive_layout().map(|layout| {
+                    let mut recorded = json!({
+                        "file_level": layout.file_level(),
+                        "transformer_grouping": layout.transformer_grouping(),
+                        "combine_per_district": layout.combine_per_district(),
+                    });
+                    let vocabulary = super::archive_layout_vocabulary(
+                        layout.file_level(),
+                        layout.transformer_grouping(),
+                        layout.combine_per_district(),
+                    );
+                    recorded
+                        .as_object_mut()
+                        .expect("layout is an object")
+                        .extend(vocabulary.as_object().expect("vocabulary is an object").clone());
+                    recorded
+                }),
                 "layout_collapsed": archive.archive_layout().map(|layout| layout_collapsed(
-                    layout.file_level(),
+                    layout.file_level().or(layout.transformer_grouping()),
                     layout.combine_per_district(),
                     archive.district_count(),
                     archive.transformer_count(),

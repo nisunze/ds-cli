@@ -92,6 +92,69 @@ fn run_ds(args: &[&str], native: bool) -> Run {
 }
 
 #[test]
+fn desktop_sync_plan_answers_headlessly_and_refuses_a_malformed_inventory() {
+    let dir = tempfile::tempdir().unwrap();
+    let local = dir.path().join("local.json");
+    let remote = dir.path().join("remote.json");
+    let sha = "a".repeat(64);
+    std::fs::write(
+        &local,
+        serde_json::json!([{"engine":"network_reporter","operation":"export-a","sha256":sha,"size_bytes":1,
+            "produced_at_ms":1,"engine_release":"ds-network-reporter@0.1.0+0123456789abcdef0123456789abcdef01234567"}])
+        .to_string(),
+    )
+    .unwrap();
+    std::fs::write(&remote, "[]").unwrap();
+    let plan = ok(&[
+        "desktop",
+        "sync",
+        "plan",
+        "--project",
+        "p",
+        "--local",
+        local.to_str().unwrap(),
+        "--remote",
+        remote.to_str().unwrap(),
+        "--now-ms",
+        "10000",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(plan["schema"], "ds.sync-plan/v1");
+    assert_eq!(plan["actions"][0]["kind"], "open_grant");
+    assert_eq!(plan["actions"][1]["kind"], "upload");
+    assert_eq!(plan["grant_valid"], false);
+    let offline = ok(&[
+        "desktop",
+        "sync",
+        "plan",
+        "--project",
+        "p",
+        "--offline",
+        "--now-ms",
+        "1",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(offline["actions"][0]["kind"], "offline");
+    std::fs::write(&local, "{not json").unwrap();
+    let refused = ds(&[
+        "desktop",
+        "sync",
+        "plan",
+        "--project",
+        "p",
+        "--local",
+        local.to_str().unwrap(),
+        "--output",
+        "json",
+    ]);
+    assert_eq!(refused.envelope["error"]["code"], "sync_plan_invalid");
+    let described = ok(&["capabilities", "desktop.sync.plan", "--output", "json"]);
+    assert_eq!(described["command"]["authority"], "none");
+}
+
+#[test]
 fn published_read_checks_selectors_and_never_falls_back_to_local_files() {
     let invalid = ds(&[
         "desktop",
@@ -3296,9 +3359,284 @@ fn background_project_operations_are_map_independent_and_use_the_declared_projec
     );
 }
 
+/// The collision read: a report cannot be produced while a collision stands,
+/// so `ds` has to be able to say how many there are. It reads the project-wide
+/// document the report owner wrote; it starts no detection and takes no
+/// project, transformer or descriptor.
+#[test]
+fn design_collisions_reads_the_project_document_and_starts_nothing() {
+    let descriptor = ok(&["capabilities", "design.collisions", "--output", "json"]);
+    let command = &descriptor["command"];
+    assert_eq!(command["path"], serde_json::json!(["design", "collisions"]));
+    assert_eq!(command["authority"], "headless_project");
+    assert_eq!(command["effect"], "local_auth_state");
+    assert_eq!(command["execution"], "sync");
+    let inputs = command["inputs"]
+        .as_array()
+        .expect("inputs")
+        .iter()
+        .map(|input| input["name"].as_str().expect("input name"))
+        .collect::<BTreeSet<_>>();
+    // Lane and nothing else: the project is the session's own.
+    assert_eq!(inputs, BTreeSet::from(["lane"]));
+
+    // A project override is refused, not ignored — the same rule the rest of
+    // the headless read spine follows.
+    assert_eq!(
+        native_ds(&[
+            "design",
+            "collisions",
+            "--project",
+            "p-1",
+            "--output",
+            "json"
+        ])
+        .envelope["error"]["code"],
+        "unknown_flag"
+    );
+
+    // And an undeclared lane is answered locally, before any credential is
+    // restored.
+    assert_eq!(
+        native_ds(&[
+            "design",
+            "collisions",
+            "--lane",
+            "staging",
+            "--output",
+            "json"
+        ])
+        .envelope["error"]["class"],
+        "invalid_input"
+    );
+}
+
 /// The headless Design read spine: `ds design status` answers from the native
 /// credential and the selected project, or it refuses in words. It never
 /// reaches for a browser, a map, a Desktop descriptor, or a project override.
+#[test]
+fn design_bulk_plan_previews_a_batch_before_anything_is_dispatched() {
+    let descriptor = ok(&["capabilities", "design.bulk.plan", "--output", "json"]);
+    let command = &descriptor["command"];
+    assert_eq!(
+        command["path"],
+        serde_json::json!(["design", "bulk", "plan"])
+    );
+    assert_eq!(command["authority"], "headless_project");
+    assert_eq!(command["effect"], "local_auth_state");
+    assert_eq!(command["execution"], "sync");
+    assert_eq!(
+        command["inputs"]
+            .as_array()
+            .expect("inputs")
+            .iter()
+            .map(|input| input["name"].as_str().expect("input name"))
+            .collect::<BTreeSet<_>>(),
+        BTreeSet::from([
+            "action",
+            "capability",
+            "combined-mirror",
+            "lane",
+            "transformer"
+        ])
+    );
+    // The verb is a closed set, answered locally before any credential.
+    assert_eq!(
+        native_ds(&[
+            "design", "bulk", "plan", "--action", "detonate", "--output", "json"
+        ])
+        .envelope["error"]["code"],
+        "invalid_choice"
+    );
+    // And a malformed scope is refused before the credential too.
+    assert_eq!(
+        native_refusal(&[
+            "design",
+            "bulk",
+            "plan",
+            "--action",
+            "save",
+            "--transformer",
+            " tx_a",
+            "--output",
+            "json"
+        ]),
+        "invalid_transformer_scope"
+    );
+}
+
+#[test]
+fn design_download_plan_answers_scope_urls_and_placement_headlessly() {
+    let descriptor = ok(&["capabilities", "design.download.plan", "--output", "json"]);
+    let command = &descriptor["command"];
+    assert_eq!(
+        command["path"],
+        serde_json::json!(["design", "download", "plan"])
+    );
+    assert_eq!(command["authority"], "headless_project");
+    assert_eq!(command["effect"], "local_auth_state");
+    assert_eq!(
+        command["inputs"]
+            .as_array()
+            .expect("inputs")
+            .iter()
+            .map(|input| input["name"].as_str().expect("input name"))
+            .collect::<BTreeSet<_>>(),
+        BTreeSet::from(["format", "lane", "transformer"])
+    );
+    assert_eq!(
+        native_ds(&[
+            "design", "download", "plan", "--format", "docx", "--output", "json"
+        ])
+        .envelope["error"]["code"],
+        "invalid_choice"
+    );
+    assert_eq!(
+        native_refusal(&[
+            "design",
+            "download",
+            "plan",
+            "--transformer",
+            " tx_a",
+            "--output",
+            "json"
+        ]),
+        "invalid_transformer_scope"
+    );
+}
+
+#[test]
+fn design_version_status_says_whether_a_cut_is_warranted() {
+    let descriptor = ok(&["capabilities", "design.version.status", "--output", "json"]);
+    let command = &descriptor["command"];
+    assert_eq!(
+        command["path"],
+        serde_json::json!(["design", "version", "status"])
+    );
+    assert_eq!(command["authority"], "headless_project");
+    assert_eq!(command["effect"], "local_auth_state");
+    assert_eq!(
+        command["inputs"]
+            .as_array()
+            .expect("inputs")
+            .iter()
+            .map(|input| input["name"].as_str().expect("input name"))
+            .collect::<BTreeSet<_>>(),
+        BTreeSet::from(["lane", "transformer"])
+    );
+    // There is no project override on the headless read spine.
+    assert_eq!(
+        native_ds(&[
+            "design",
+            "version",
+            "status",
+            "--project",
+            "p-1",
+            "--output",
+            "json"
+        ])
+        .envelope["error"]["code"],
+        "unknown_flag"
+    );
+    assert_eq!(
+        native_refusal(&[
+            "design",
+            "version",
+            "status",
+            "--transformer",
+            " tx_a",
+            "--output",
+            "json"
+        ]),
+        "invalid_transformer_scope"
+    );
+}
+
+#[test]
+fn design_conflict_reads_never_claim_room_state_they_cannot_see() {
+    for (id, path) in [
+        ("design.conflict.list", vec!["design", "conflict", "list"]),
+        ("design.conflict.check", vec!["design", "conflict", "check"]),
+    ] {
+        let descriptor = ok(&["capabilities", id, "--output", "json"]);
+        let command = &descriptor["command"];
+        assert_eq!(command["path"], serde_json::json!(path));
+        assert_eq!(command["authority"], "headless_project");
+        assert_eq!(command["effect"], "local_auth_state");
+        // Both say, in their own output contract, that a working copy is a
+        // fact this client may not hold.
+        assert!(
+            command["output"]
+                .as_str()
+                .expect("output")
+                .contains("room_state"),
+            "{id} must declare the room state it reports"
+        );
+    }
+    assert_eq!(
+        ok(&["capabilities", "design.conflict.list", "--output", "json"])["command"]["inputs"]
+            .as_array()
+            .expect("inputs")
+            .iter()
+            .map(|input| input["name"].as_str().expect("input name"))
+            .collect::<BTreeSet<_>>(),
+        BTreeSet::from(["lane"])
+    );
+    // `check` names a transformer; naming none is refused locally.
+    assert_eq!(
+        native_refusal(&["design", "conflict", "check", "--output", "json"]),
+        "invalid_transformer_scope"
+    );
+    assert_eq!(
+        native_refusal(&[
+            "design",
+            "conflict",
+            "check",
+            "--transformer",
+            " tx_a",
+            "--output",
+            "json"
+        ]),
+        "invalid_transformer_scope"
+    );
+}
+
+#[test]
+fn design_presence_status_reports_the_bounds_and_refuses_to_invent_rooms() {
+    let descriptor = ok(&["capabilities", "design.presence.status", "--output", "json"]);
+    let command = &descriptor["command"];
+    assert_eq!(
+        command["path"],
+        serde_json::json!(["design", "presence", "status"])
+    );
+    assert_eq!(command["authority"], "headless_project");
+    assert_eq!(command["effect"], "local_auth_state");
+    assert_eq!(
+        command["inputs"]
+            .as_array()
+            .expect("inputs")
+            .iter()
+            .map(|input| input["name"].as_str().expect("input name"))
+            .collect::<BTreeSet<_>>(),
+        BTreeSet::from(["lane"])
+    );
+    assert!(
+        command["output"]
+            .as_str()
+            .expect("output")
+            .contains("room_state"),
+        "presence must declare the room state it reports"
+    );
+    // A lane it does not offer is refused locally, before any credential.
+    assert_eq!(
+        native_ds(&[
+            "design", "presence", "status", "--lane", "nightly", "--output", "json"
+        ])
+        .envelope["error"]["code"],
+        "invalid_choice"
+    );
+}
+
 #[test]
 fn design_status_reads_the_headless_project_and_never_reaches_for_a_browser() {
     let descriptor = ok(&["capabilities", "design.status", "--output", "json"]);
@@ -4700,7 +5038,7 @@ fn every_design_command_is_discoverable_without_the_desktop_installed() {
     let commands = index["commands"].as_array().expect("commands");
     assert_eq!(
         commands.len(),
-        69,
+        76,
         "the design domain should expose its whole family: {commands:?}"
     );
     for command in commands {
@@ -4723,10 +5061,20 @@ fn every_design_command_is_discoverable_without_the_desktop_installed() {
                     | "design.customer-categories.alias"
                     | "design.lv.project-export"
                     | "design.status"
+                    | "design.collisions"
                     | "design.dashboard"
                     | "design.transformer.inventory"
                     | "design.transformer.retire"
                     | "design.transformer.restore"
+                    // The slice-14a previews read the same native spine as
+                    // `design.status`, so they are honestly unavailable in a
+                    // build with no digest-pinned release catalog.
+                    | "design.bulk.plan"
+                    | "design.download.plan"
+                    | "design.version.status"
+                    | "design.conflict.list"
+                    | "design.conflict.check"
+                    | "design.presence.status"
             ) {
                 "unavailable"
             } else {
@@ -4869,6 +5217,19 @@ fn design_collaboration_is_a_complete_headless_project_surface() {
                 && *id != "design.process.settings"
                 // The Dashboard is the same headless read folded once.
                 && *id != "design.dashboard"
+                // The collision read answers from the same headless status
+                // call; it is not a governed record operation.
+                && *id != "design.collisions"
+                // The slice-14a previews are the same spine folded by the
+                // shared kernel — a preview of a batch, a download, a version
+                // state, an overwrite gate or a lease pass. None reaches the
+                // bridge; `every_design_command_is_discoverable_*` pins their
+                // availability and `semantic_coverage` their authority.
+                && !id.starts_with("design.bulk.")
+                && !id.starts_with("design.download.")
+                && !id.starts_with("design.version.")
+                && !id.starts_with("design.conflict.")
+                && !id.starts_with("design.presence.")
         })
         .collect();
     let expected: BTreeSet<&str> = [
@@ -4964,6 +5325,12 @@ fn design_collaboration_is_a_complete_headless_project_surface() {
             || id.starts_with("design.customer-categories.")
             || id == "design.status"
             || id == "design.dashboard"
+            || id == "design.collisions"
+            || id.starts_with("design.bulk.")
+            || id.starts_with("design.download.")
+            || id.starts_with("design.version.")
+            || id.starts_with("design.conflict.")
+            || id.starts_with("design.presence.")
         {
             continue;
         }
@@ -7480,19 +7847,27 @@ fn no_survey_example_names_a_deployment_form_slug() {
                     value.starts_with('<') && value.ends_with('>'),
                     "`{id}` example `{text}` names the form `{value}`. A slug is \
                      per-deployment: examples carry a `<form-slug>` placeholder and \
-                     send the reader to `ds survey forms list`."
+                     name the appropriate form discovery command."
                 );
             }
         }
         // The placeholder is only honest if the example also says where the real
         // slug comes from; otherwise it trades one guess for another.
         if names_a_form {
+            // Data reads need participating project forms; global masters do
+            // not establish that the selected project uses a form.
+            let discovery = match id.as_str() {
+                "survey.query" | "survey.entries.select" | "survey.entries.changes" => {
+                    "ds survey project-forms list"
+                }
+                _ => "ds survey forms list",
+            };
             assert!(
                 examples.iter().any(|example| {
                     example["note"]
                         .as_str()
                         .unwrap_or_default()
-                        .contains("ds survey forms list")
+                        .contains(discovery)
                 }),
                 "`{id}` documents a `<form-slug>` placeholder but no example names \
                  the discovery command that resolves it"
@@ -7594,66 +7969,42 @@ fn native_layers_persist_without_a_desktop_and_gis_inspection_pins_exact_bytes()
 }
 
 #[test]
-fn survey_capture_survives_separate_cli_processes_without_auth_or_desktop() {
-    let root = temp_root("survey-workspace");
+fn retired_survey_workspace_is_not_discoverable_and_never_touches_existing_data() {
+    let root = temp_root("retired-survey-workspace");
     std::fs::create_dir_all(&root).unwrap();
-    let workspace = root.join("offline");
-    let snapshot = root.join("snapshot.json");
-    let document = root.join("point.json");
-    std::fs::write(&snapshot, serde_json::to_vec(&json!({"project_id":"migration","forms":[{"slug":"poles","enabled":true,"fields":[{"key":"name","type":"text","required":true}],"entry_document_schema":{"top_level_keys":[{"key":"data"},{"key":"geometry"}]}}]})).unwrap()).unwrap();
-    std::fs::write(
-        &document,
-        r#"{"data":{"name":"Legacy pole"},"geometry":{"type":"Point","coordinates":[30,-2]}}"#,
-    )
-    .unwrap();
-    let invoke = |args: &[&str]| {
+    let retained = root.join("survey.sqlite");
+    let original = b"retained user workspace bytes";
+    std::fs::write(&retained, original).unwrap();
+    let index = ok(&["capabilities", "survey", "--output", "json"]);
+    assert!(index["commands"].as_array().unwrap().iter().all(|command| {
+        !command["id"]
+            .as_str()
+            .unwrap()
+            .starts_with("survey.workspace.")
+    }));
+    for action in ["init", "prepare", "collect", "list", "sync"] {
+        let id = format!("survey.workspace.{action}");
+        assert_eq!(
+            refusal(&["capabilities", &id, "--output", "json"]),
+            "unknown_selector"
+        );
         let result = Command::new(env!("CARGO_BIN_EXE_ds"))
-            .args(args)
-            .args(["--output", "json"])
-            .env("DS_NATIVE_STATE_DIR", root.join("no-auth"))
-            .env("DS_DESKTOP_DESCRIPTOR", root.join("no-desktop"))
+            .args([
+                "survey",
+                "workspace",
+                action,
+                "--workspace",
+                root.to_str().unwrap(),
+                "--yes",
+                "--output",
+                "json",
+            ])
             .output()
             .unwrap();
-        let envelope: Value = serde_json::from_slice(&result.stdout).unwrap();
-        (result.status.success(), envelope)
-    };
-    let path = workspace.to_str().unwrap();
-    let (ok, receipt) = invoke(&[
-        "survey",
-        "workspace",
-        "init",
-        "--workspace",
-        path,
-        "--snapshot",
-        snapshot.to_str().unwrap(),
-    ]);
-    assert!(ok, "{receipt}");
-    let (ok, receipt) = invoke(&[
-        "survey",
-        "workspace",
-        "collect",
-        "--workspace",
-        path,
-        "--form",
-        "poles",
-        "--document",
-        document.to_str().unwrap(),
-        "--created-at",
-        "2026-09-05T10:00:00Z",
-        "--doc-id",
-        "legacy-123",
-    ]);
-    assert!(ok, "{receipt}");
-    assert_eq!(receipt["data"]["uploaded"], false);
-    let (ok, inventory) = invoke(&["survey", "workspace", "list", "--workspace", path]);
-    assert!(ok, "{inventory}");
-    assert_eq!(inventory["data"]["pending"], 1);
-    assert_eq!(inventory["data"]["entries"][0]["doc_id"], "legacy-123");
-    let (ok, refusal) = invoke(&["survey", "workspace", "sync", "--workspace", path]);
-    assert!(!ok, "sync must require confirmation: {refusal}");
-    let (_, inventory) = invoke(&["survey", "workspace", "list", "--workspace", path]);
-    assert_eq!(inventory["data"]["pending"], 1);
-    assert!(!root.join("no-auth").exists());
+        assert!(!result.status.success(), "retired operation {action} ran");
+        assert_eq!(std::fs::read(&retained).unwrap(), original);
+        assert_eq!(std::fs::read_dir(&root).unwrap().count(), 1);
+    }
     std::fs::remove_dir_all(root).unwrap();
 }
 

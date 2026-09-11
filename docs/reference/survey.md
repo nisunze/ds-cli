@@ -1,4 +1,43 @@
-# Survey control plane
+# Survey evidence and collection
+
+Survey data records observed conditions, locations and capture context. It helps
+plan visits, track field work, review evidence and prepare design inputs. It does
+not by itself establish an approved design, construction quantity or complete
+asset inventory.
+
+## Choose the operation from the question
+
+| Need | Existing operation | Evidence required for the answer |
+| --- | --- | --- |
+| Progress by surveyor or asset type | `survey.query` | Exact project/form, measure, requested period and filters; distinguish records from distinct assets. |
+| Coverage gaps or where to visit next | `survey.query`, then `survey.entries.select` when locations are needed | An agreed target area, asset list or expected count. Without a denominator, coverage remains unknown. |
+| Missing observations before design review | `survey.query` with relevant form fields and bounded filters | Supported field names and a stated quality rule; results are review candidates, not permission to correct or delete. |
+| Surveyed assets for a design handoff | `survey.entries.select` | Area, exact identities, freshness, digest and completeness; explicitly identify required engineering attributes or photos absent from this projection. |
+| Changes since a prior delivery | `survey.entries.changes` | Last completed replication checkpoint, retained cursors and tombstones; a partial page does not advance the checkpoint. |
+| Work without connectivity | Browser Survey capture | Cached project/forms, local media and durable IndexedDB entry/outbox commits; there is no separate native CLI capture workspace. |
+| Standardize or reuse collection forms | Project-form and template commands below | Current settings and versions; configuration reuse does not copy observations. |
+
+## Reuse existing discovery
+
+CLI help, `ds capabilities` and MCP describe the same registered commands. Use
+`ds capabilities --search "survey progress"` when only the purpose is known;
+otherwise request the known command directly. Read its full contract once, then
+reuse it while the installed build and task remain unchanged. There is no need
+to walk every command or load an agent-specific skill before a simple query.
+
+Recover scope from the request and selected project; resolve unknown form slugs
+with `survey.project-forms.list`. Read only the schema fields needed by the
+question. A global master catalogue does not establish project participation.
+An unavailable command/profile is an installation problem; an empty result,
+permission refusal and truncated result are different outcomes. Follow the
+reported remedy instead of repeating discovery or substituting private storage.
+
+Return the answer with project, forms, area/period, measure, freshness and
+completeness. Retain exact identities and completed delivery checkpoints when
+handing off data. Capture time answers when field work happened; replication
+time answers when a downstream copy changed.
+
+## Control plane and browser capture
 
 `ds survey` runs natively without Desktop. Form Factory schemas, project form
 bindings/settings, reusable templates and project creation use fixed typed
@@ -9,39 +48,21 @@ canary; no survey command accepts a Desktop descriptor. Server operations still
 require service access and current permissions. Profile catalog schema v16 must
 advertise the exact survey control routes; older catalogs fail closed.
 
-Offline capture uses a native SQLite workspace:
+Offline capture stays in browser Survey. Prepare the selected project and its
+resolved forms while online; entries and pending mutations commit together in
+IndexedDB, and captured media remains local until delivery. Local retention,
+server acknowledgement and mirror visibility are distinct states.
 
-```sh
-ds survey workspace init --workspace ./survey-local --snapshot ./resolved-forms.json
-ds survey workspace collect --workspace ./survey-local --form poles \
-  --document ./point.json --doc-id source-123 --created-at 2026-09-05T10:00:00Z
-ds survey workspace list --workspace ./survey-local --limit 20
-# Once service access is available, explicitly publish a bounded batch:
-ds survey workspace sync --workspace ./survey-local --limit 10 --yes
-```
+The separate SQLite-backed native Survey workspace and its
+`survey workspace init|prepare|collect|list|sync` commands are retired. They are
+not replaced with a second CLI capture store. Native query, selection, changes,
+form/template administration, governed online entry creation and canonical
+NDJSON import remain supported.
 
-For a completely disconnected demonstration from this repository, use
-`examples/survey/offline-snapshot.json` as the snapshot and
-`examples/survey/entry.json` as the document. They define a synthetic local
-project for exercising capture; replace them with an actual resolved project
-snapshot before preparing a real migration.
-
-`init`, `collect`, and `list` never contact the network or require sign-in.
-The snapshot is `{ "project_id": "…", "forms": […] }` with full resolved enabled
-forms, field definitions and entry document schemas. A collection document has
-`data` and optional canonical `geometry`, `connectivity`, `detailed_location`,
-and `context_key`. Unknown or hidden fields are refused without insertion;
-source ids and capture times are retained for migration. The SQLite row and
-stable replay key commit together. Reopening does not invent a new replay key.
-
-When online, `survey workspace prepare --workspace ./survey-local` obtains the
-selected project's full form snapshot instead of reading a supplied file.
-Sync binds the workspace to the restored principal, project, lane and audience
-before sending any entry. It stops on the first error and retains pending rows
-for exact idempotent retry. A committed receipt confirms Firestore acceptance,
-not BigQuery mirror visibility. Cached form metadata never grants authority.
-No GCP access is needed for local preparation and capture; no sync was exercised
-against a live service in the offline implementation tests.
+Retirement does not delete or automatically migrate existing workspace files.
+Keep any retained workspace and its artifacts intact; pending data is not proof
+of publication. Recovery of an old workspace is a separate explicit task, not a
+reason to recreate it, change replay identities or report its rows as delivered.
 
 `survey query` is the selected-project aggregate data plane. It restores the
 same native identity, releases the audience-fenced project-context lease before

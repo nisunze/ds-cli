@@ -78,6 +78,7 @@ acceptance. Never create a gap file, call the API, or bypass `ds`.
 ## Route to a narrower skill when one fits
 
 - `ds-project-context` — active project and state boundary.
+- `ds-survey-lifecycle` — survey progress/coverage evidence, field capture, forms and templates.
 - `ds-assets` — a project's documents, previews and links.
 - `ds-map-composition` — engineering print hierarchy, relief and visual refinement.
 - `ds-map-local-data` — temporary map layers and viewport.

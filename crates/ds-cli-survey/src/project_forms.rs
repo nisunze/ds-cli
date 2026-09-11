@@ -25,7 +25,7 @@ pub static LIST_COMMAND: Command = Command {
     path: &["survey", "project-forms", "list"],
     contract: 2,
     summary: "List the selected project's form bindings headlessly.",
-    purpose: "Restores the native user, loads only its UID/email/lane/audience-fenced selected project, and performs the fixed project-forms activate read. The gateway rechecks membership. It accepts no project id, Desktop descriptor, arbitrary request field, or mutation action.",
+    purpose: "Find which forms belong to the selected project before counting observations, selecting assets or preparing collection. Use returned slugs and participation state; a global master form is not proof that this project uses it. The native user and selected project are identity-fenced and the gateway rechecks membership. This read does not change bindings or settings.",
     chapter: Chapter::Survey,
     effect: Effect::LocalAuthState,
     authority: Authority::HeadlessProject,

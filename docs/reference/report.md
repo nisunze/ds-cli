@@ -189,6 +189,17 @@ the requested layout silently collapses to `_unassigned` folders while the run
 still reports `success`, which the archives registry row exposes as
 `district_count: 0` and `ds` derives there as `layout_collapsed`.
 
+**Both commands describe the layout in the report layer's own vocabulary.**
+`archive_layout` carries the recorded spelling plus `level`, `level_key`,
+`label_key` and `label_level_key` — the same keys the application renders, from
+`ds-command-kernel::report`. Two spellings describe one choice: `file_level` is
+current and `transformer_grouping` is the legacy twin older archives were
+written with, and the kernel folds them (`district_sector` reads as a
+sector-level archive; an unrecognised or absent level is the default,
+transformer). Until 2026-09-11 `ds report project archives` ignored the legacy
+spelling entirely and reported a foldered archive as having no layout at all,
+which is how one archive came to be described two ways.
+
 The registry's `download_url` is freshly signed by the service with about an
 hour of validity, but has been observed arriving with seconds left, so a caller
 must never assume a returned URL is still usable. `ds` reads each URL's own

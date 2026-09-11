@@ -1,132 +1,62 @@
 ---
 name: ds-survey-lifecycle
-description: Manage forms and project templates through `ds survey`.
+description: "Use DS survey data for progress, coverage, quality checks and design handoffs; prepare offline collection and manage forms or project templates. Start from the user's question, not command discovery."
 metadata:
   ds-chapters: survey
 ---
 
-# Survey lifecycle through `ds`
+# Survey: from field evidence to a useful answer
 
-Use this for the survey control plane, including network-aware forms. It assumes
-the base `ds` skill: discover the installed command and obey its live contract.
-Never call the API directly, inspect IndexedDB, extract a JWT, or implement a
-missing command inside the skill.
+A survey records what someone observed, where and when. Use it to plan field
+work, follow progress, check collected evidence or prepare a design input.
+Survey observations are not automatically an approved design, a construction
+quantity or proof that every asset was visited.
 
-Survey commands use native `ds auth` identity and fixed Rust client routes.
-Project-bound commands must match the selected native project. No Desktop is
-required. Discover the installed contract: stale profile catalogs can refuse new
-native routes and must never be bypassed with raw HTTP or desktop operations.
+## Choose the job first
 
-Offline collection uses `survey workspace init`, `collect`, and `list` without
-sign-in or service access. Initialize from a full resolved local form snapshot;
-when services are available, `prepare` fetches one. Publish only with explicit
-`workspace sync --yes`; pending entries remain local and retain stable replay
-keys after errors. Never interpret a cached schema as permission or a committed
-Firestore receipt as proof of BigQuery visibility.
+Recover the requested project, purpose, area/period and deliverable from context.
+Ask only for missing scope that would change the answer. The user need not know
+form slugs, field keys, command names or internal storage.
 
-## Keep the four objects distinct
+| The user needs… | Why survey data helps | Start here |
+| --- | --- | --- |
+| “How many poles did each team survey?” | Measure recorded activity and plan the next visit. | `survey.query`; [read data](references/read-data.md). |
+| “Where do we still need to survey?” | Compare collected evidence with the intended area or asset list. | Aggregate first; `survey.entries.select` only for spatial evidence. Coverage needs a denominator. |
+| “Are coordinates or required observations missing?” | Find records needing review before design or handover. | Relevant form + bounded aggregate filters; do not fetch every row by default. |
+| “Give the designer the surveyed assets in this area.” | Preserve observed locations and identities as design inputs. | Bounded spatial selection; state which required attributes it cannot supply. |
+| “What changed since the last delivery?” | Refresh a downstream copy without rereading everything. | `survey.entries.changes`; retain the completed checkpoint. |
+| “Our team will work without connectivity.” | Prepare browser forms and retain captures until publication succeeds. | [Field capture](references/field-capture.md). |
+| “Set up or reuse our collection forms.” | Define observations consistently for one project or future projects. | [Configuration](references/configuration.md). |
 
-- **Form Factory form:** one global master schema.
-- **Project-form binding:** enabled state and settings for that form in one
-  project.
-- **Project template:** a reusable snapshot of project-form configuration.
-- **Project created from a template:** a new independent project instance.
+## Use the shortest supported route
 
-Applying a template changes an existing project. Creating a project from a
-template creates a different project. Creating a template snapshots an existing
-project; it does neither of those things.
+Use the base `ds` skill. Once the installed build/lane and project are known,
+go directly to `ds capabilities <command-id> --output json` for the chosen
+operation. Reuse that contract within the same build/session; do not repeat the
+domain catalogue or read all three references for every question. Search the
+Survey domain only if the named command is absent or the intent needs another
+operation. Read a form only when its fields/settings are needed or unknown.
 
-## Discover before writing
+Use `auth.project.status` for native selected-project identity. List the selected
+project's bindings with `survey.project-forms.list` to resolve an unknown slug;
+a global Form Factory list is not a project's participating forms. Read live
+availability/authority: older installations may still pair control commands to
+Desktop. A map is needed only for an operation that consumes map-owned state.
 
-```text
-ds capabilities survey --output json
-ds capabilities --search 'form template project settings' --output json
-ds capabilities <selected-command-id> --output json
-```
+`native_profile_not_configured`, a missing command or a mismatched release is
+an installation/contract problem, not an empty survey. Follow its remedy once;
+do not loop login, switch projects, open unrelated repositories or use raw HTTP,
+Firestore, IndexedDB or extracted credentials to manufacture an answer.
 
-For a complex new master form, read the backend vocabulary first:
+## Finish with evidence the next person can use
 
-```text
-ds survey form types --output json
-ds survey forms list --query pole --detail --output json
-ds survey form read --slug <form-slug> --output json
-```
+Return the requested answer or artifact, with project, exact forms, area/time
+filters, source freshness and completeness. A count of records is not a count of
+unique physical assets unless the identity rule supports it. Missing/blocked,
+empty and truncated results are different. Do not label a partial result “all”.
 
-`<form-slug>` is a placeholder. Take the exact slug from the `forms list` line
-above; never guess one from a domain word.
-
-Hypothetical requests that should route here include:
-
-- “Create valve, junction, reservoir, and pipe forms for a water-network
-  survey.”
-- “Make the pipe form an edge and the junction form a node for project A.”
-- “Turn project A's survey configuration into a reusable template.”
-- “Create a new project from that template.”
-- “Disable an unavailable archived binding without touching its missing master.”
-
-Water is only an example. Never infer topology setting keys from the domain
-word. Read the live field types and the target form's settings editor.
-
-## Author a global form
-
-Create or update only from an explicit bounded JSON document. Read the form
-immediately before an update and echo its version:
-
-```text
-ds survey form create --schema ./form.json --yes --output json
-ds survey form update --slug water_pipe --expect-version 3 --schema ./patch.json --yes --output json
-```
-
-Use `survey form lifecycle` for duplicate, publish, unpublish, archive,
-restore, or delete. Archive/delete are dependency-aware; `--force` deliberately
-creates unavailable project/template bindings, so never add it merely to clear
-a refusal.
-
-## Configure one project's forms
-
-Read the explicit project and one form's backend-owned editor:
-
-```text
-ds survey project-forms read --project project-a --detail --output json
-ds survey project-form editor --project project-a --form water_pipe --output json
-```
-
-Build a JSON change array using only keys returned in `editor.sections`. A row
-with `settings` must echo `editor.version` as `expected_version`; an enable-only
-row omits it and preserves settings. Plan, inspect every row, then apply the
-same file only when ready:
-
-```text
-ds survey project-forms plan --project project-a --changes ./changes.json --output json
-ds survey project-forms apply --project project-a --changes ./changes.json --yes --output json
-```
-
-An unavailable binding may be cleaned independently with exactly an
-enable-only `false` row. Do not edit or re-enable it until its master is
-restored. The absent master is a refusal/control case, never a prerequisite for
-listing forms, managing templates, creating a project from a template, or
-editing another project's bindings.
-
-## Reuse configuration
-
-```text
-ds survey template create --project project-a --name 'Water Network' --yes --output json
-ds survey template read --template water_network --output json
-```
-
-Then choose exactly one intent:
-
-```text
-ds survey template apply --project existing-b --template water_network --merge-strategy preserve --yes --output json
-ds survey project create-from-template --template water_network --project-name 'New Water Survey' --yes --output json
-```
-
-Use `survey template lifecycle` only for the reusable catalogue object. It does
-not retroactively mutate projects created from or updated by the template.
-
-## Map boundary
-
-Use `ds map` only when the operation genuinely consumes map-owned local state,
-such as Working Area materialization, local geometry, viewport state, or survey
-record migration. Form schemas, project-form settings, templates, and project
-creation stay under `ds survey` and require no open map.
+Keep exact entry identities, form revisions, receipt/digest or completed cursor
+state with the requested deliverable when it must be resumed or handed off.
+Use the task's destination, not a personal path. Reads do not authorize changing
+forms, copying projects or publishing captures. Carry existing authorization
+through the workflow; `--yes` is for the user's specific authorized write.

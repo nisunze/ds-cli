@@ -3,8 +3,8 @@
 //! Global Form Factory schemas, project-form bindings/settings, reusable
 //! project templates, and project creation from a template are related but
 //! distinct lifecycle layers. Every control-plane operation uses the fixed
-//! native client. Offline workspaces use their Rust domain owner; this crate
-//! owns argument parsing and IO, never form validation or topology.
+//! native client. This crate owns argument parsing and IO, never form
+//! validation or topology. Offline capture stays in the browser application.
 
 pub mod changes;
 pub mod create;
@@ -14,7 +14,6 @@ pub mod import;
 pub mod project_forms;
 pub mod query;
 pub mod templates;
-pub mod workspace;
 
 use std::io::Read;
 
@@ -26,13 +25,8 @@ use serde_json::{Map, Value, json};
 
 pub static DOMAIN: Domain = Domain {
     id: "survey",
-    summary: "Survey control plane: forms, project settings, templates, projects.",
+    summary: "Survey evidence, forms and project templates.",
     commands: &[
-        &workspace::INIT,
-        &workspace::PREPARE,
-        &workspace::COLLECT,
-        &workspace::LIST,
-        &workspace::SYNC,
         &forms::LIST_COMMAND,
         &forms::READ_COMMAND,
         &forms::TYPES_COMMAND,

@@ -226,38 +226,44 @@ copy no longer says what that exact template version says.",
     availability: crate::paired_availability,
 };
 
-pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
-    let value_type = inputs.require("value-type")?;
-    let values = match inputs.value("values") {
-        Some(raw) => crate::list_values(raw, "values", MAX_TAG_VALUES)?,
-        None => Vec::new(),
-    };
-    if (value_type == "choice") != !values.is_empty() {
-        return Err(Failure::invalid(
+/// The shape of a tag definition is `ds_command_kernel::design_tags`'s — the
+/// same matrix the tag editor offers controls from and the grant admits by.
+/// This door used to check `--input-control` against a flat list of five
+/// spellings with no compatibility rule at all, so it composed and sent
+/// definitions the grant then refused after a round trip.
+fn admissible(inputs: &Inputs, values: &[String]) -> Result<(), Failure> {
+    use ds_command_kernel::design_tags;
+    let definition = serde_json::json!({
+        "value_type": inputs.require("value-type")?,
+        "cardinality": inputs.require("cardinality")?,
+        "input_control": inputs.value("input-control"),
+        "values": values,
+        "constraints": constraints(inputs)?,
+    });
+    let definition: design_tags::Definition =
+        serde_json::from_value(definition).map_err(|error| {
+            Failure::invalid("invalid_tag_input", error.to_string())
+                .remedy("see the reference for the value types, cardinalities and controls")
+        })?;
+    design_tags::validate_definition(&definition).map_err(|refusal| {
+        Failure::invalid(
             "invalid_tag_input",
-            if value_type == "choice" {
-                "a choice definition requires --values"
-            } else {
-                "only choice definitions accept --values"
-            },
+            format!(
+                "`{}` is not admissible for a {}/{} definition ({})",
+                refusal.field,
+                inputs.require("value-type").unwrap_or("?"),
+                inputs.require("cardinality").unwrap_or("?"),
+                refusal.code,
+            ),
         )
-        .remedy("pass --values for choice, or omit it for text/integer/number"));
-    }
-    if value_type != "choice" && inputs.require("cardinality")? != "single" {
-        return Err(Failure::invalid(
-            "invalid_tag_input",
-            "text, integer and number definitions are single-valued",
-        )
-        .remedy("omit --cardinality or pass --cardinality single"));
-    }
-    let mut arguments = Map::new();
-    arguments.insert("definition".into(), json!(inputs.require("definition")?));
-    arguments.insert("name".into(), json!(inputs.require("name")?));
-    arguments.insert("values".into(), json!(values));
-    arguments.insert("value_type".into(), json!(value_type));
-    if let Some(value) = inputs.value("input-control") {
-        arguments.insert("input_control".into(), json!(value));
-    }
+        .remedy("run `ds capabilities design.tag.define` for the admissible combinations")
+        .detail(serde_json::json!({"code": refusal.code, "field": refusal.field}))
+    })?;
+    Ok(())
+}
+
+/// The numeric and text bounds, in the kernel's own spelling.
+fn constraints(inputs: &Inputs) -> Result<Value, Failure> {
     let mut constraints = Map::new();
     for flag in ["min", "max"] {
         if let Some(raw) = inputs.value(flag) {
@@ -270,8 +276,27 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             json!(crate::integer(raw, "max-length", 1, 500)?),
         );
     }
-    if !constraints.is_empty() {
-        arguments.insert("constraints".into(), Value::Object(constraints));
+    Ok(Value::Object(constraints))
+}
+
+pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
+    let value_type = inputs.require("value-type")?;
+    let values = match inputs.value("values") {
+        Some(raw) => crate::list_values(raw, "values", MAX_TAG_VALUES)?,
+        None => Vec::new(),
+    };
+    admissible(inputs, &values)?;
+    let mut arguments = Map::new();
+    arguments.insert("definition".into(), json!(inputs.require("definition")?));
+    arguments.insert("name".into(), json!(inputs.require("name")?));
+    arguments.insert("values".into(), json!(values));
+    arguments.insert("value_type".into(), json!(value_type));
+    if let Some(value) = inputs.value("input-control") {
+        arguments.insert("input_control".into(), json!(value));
+    }
+    let bounds = constraints(inputs)?;
+    if !bounds.as_object().is_none_or(Map::is_empty) {
+        arguments.insert("constraints".into(), bounds);
     }
     for flag in ["cardinality", "description"] {
         if let Some(value) = inputs.value(flag) {

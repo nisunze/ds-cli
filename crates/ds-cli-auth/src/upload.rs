@@ -99,14 +99,15 @@ const MAX_TRANSFER_STEPS: u32 = 200_000;
 /// Which origin a session URI is being validated against.
 ///
 /// `upload_bytes` can only ever select [`SessionOrigin::Storage`]. The loopback
-/// variant does not exist outside `cfg(test)`, so no release build contains a
-/// code path that could accept one.
+/// variant exists only under `cfg(test)` or the `weak-network-harness` feature,
+/// which nothing but this crate's own tests enables, so no release build
+/// contains a code path that could accept one.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum SessionOrigin {
     /// The DS mint host, over TLS.
     Storage,
     /// Tests only: a scripted `TcpListener` on loopback.
-    #[cfg(test)]
+    #[cfg(any(test, feature = "weak-network-harness"))]
     Loopback,
 }
 
@@ -148,7 +149,7 @@ fn validated_session_uri(raw: &str, origin: SessionOrigin) -> Result<String, Ses
                 return Err(SessionRefusal::NonDefaultPort);
             }
         }
-        #[cfg(test)]
+        #[cfg(any(test, feature = "weak-network-harness"))]
         SessionOrigin::Loopback => {
             if url.scheme() != "http" || !matches!(host, "127.0.0.1" | "localhost") {
                 return Err(SessionRefusal::HostNotAllowed);
@@ -466,7 +467,7 @@ fn observe(response: ureq::http::Response<ureq::Body>) -> (u16, RangeObservation
 /// Instrumentation the tests assert on. The memory bound is an invariant, so it
 /// is measured rather than argued. Never reaches a caller or a receipt.
 #[derive(Clone, Copy, Debug, Default)]
-#[cfg_attr(not(test), allow(dead_code))]
+#[cfg_attr(not(any(test, feature = "weak-network-harness")), allow(dead_code))]
 struct TransferStats {
     /// Largest slice ever handed to the socket, in bytes.
     widest_read: usize,
@@ -487,7 +488,7 @@ struct TransferStats {
 /// `transfer::TransferState` cannot cross the call boundary, so a resume
 /// across two `ds` invocations would need a `ds-client-core` change.
 #[derive(Clone, Debug)]
-#[cfg_attr(not(test), allow(dead_code))]
+#[cfg_attr(not(any(test, feature = "weak-network-harness")), allow(dead_code))]
 struct UploadReport {
     done: bool,
     status: Option<u16>,
@@ -804,6 +805,81 @@ pub(crate) fn transfer(
     let (report, _) = drive(session_uri, origin, total_bytes, reader, cancel)
         .map_err(|_| TransportError::Unreachable)?;
     report.into_response()
+}
+
+// ---------------------------------------------------------------------------
+// Weak-network harness seam
+// ---------------------------------------------------------------------------
+
+/// The one seam an out-of-crate harness gets: it drives *this* host, unchanged,
+/// against a scripted in-process session on loopback.
+///
+/// It adds no behaviour. [`drive_loopback`] validates the session URI through
+/// the same [`validated_session_uri`] every transfer goes through, then calls
+/// the same [`drive`] that `upload_bytes` calls; the only thing it does that
+/// production cannot is name [`SessionOrigin::Loopback`], which is why the
+/// whole module — and that variant — is behind the `weak-network-harness`
+/// feature. Nothing but `crates/ds-cli-auth/tests/weak_network.rs` enables it,
+/// dev-dependencies are not built for a release profile, and `cargo build -p
+/// ds` therefore contains neither this module nor a loopback-accepting origin.
+///
+/// Why a feature rather than `cfg(test)`: an integration test links this crate
+/// as an external one, so `cfg(test)` items are invisible to it. The
+/// alternative — making `drive` public — would put a loopback-capable entry
+/// point in every release build, which is the property the origin check exists
+/// to hold.
+#[cfg(feature = "weak-network-harness")]
+pub mod weak_network_harness {
+    use super::*;
+
+    /// Everything one transfer established, flattened so a harness can assert
+    /// on it without reaching further into the crate.
+    #[derive(Clone, Debug)]
+    pub struct Outcome {
+        /// The server holds every byte.
+        pub done: bool,
+        /// The last status the server actually returned, if any.
+        pub status: Option<u16>,
+        /// The kernel's typed terminal cause, when the transfer did not finish.
+        pub cause: Option<Cause>,
+        /// Bytes the SERVER proved it holds.
+        pub committed: u64,
+        pub total: u64,
+        /// Requests this host dispatched, probes included.
+        pub requests: u32,
+        /// Largest slice ever handed to the socket.
+        pub widest_read: usize,
+        /// Largest re-send window ever held.
+        pub widest_stage: usize,
+    }
+
+    /// Run one transfer against a loopback session to a terminal outcome.
+    pub fn drive_loopback(
+        session_uri: &str,
+        total_bytes: u64,
+        reader: &mut dyn Read,
+        cancel: &dyn Fn() -> bool,
+    ) -> Result<Outcome, String> {
+        let session_uri = validated_session_uri(session_uri, SessionOrigin::Loopback)
+            .map_err(|refusal| format!("harness session URI refused: {refusal:?}"))?;
+        let (report, stats) = drive(
+            session_uri,
+            SessionOrigin::Loopback,
+            total_bytes,
+            reader,
+            cancel,
+        )?;
+        Ok(Outcome {
+            done: report.done,
+            status: report.status,
+            cause: report.cause,
+            committed: report.committed,
+            total: report.total,
+            requests: stats.requests,
+            widest_read: stats.widest_read,
+            widest_stage: stats.widest_stage,
+        })
+    }
 }
 
 #[cfg(test)]

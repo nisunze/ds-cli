@@ -53,6 +53,17 @@ const QUERY_INVALID: Refusal = Refusal {
     remedy: "See the reference for the dimensions; name one admin level",
 };
 
+/// The read refusals every native project read shares: the packaged profile,
+/// the restorable user, and the audience-fenced project context.
+pub const REFUSALS_READ: &[Refusal] = &[
+    super::NATIVE_PROFILE,
+    super::NATIVE_PROFILE_DIGEST,
+    super::NATIVE_PROFILE_UNSAFE,
+    super::HEADLESS_SIGNED_OUT,
+    super::HEADLESS_NO_PROJECT,
+    super::PROJECT_CONTEXT_STALE,
+];
+
 const REFUSALS: &[Refusal] = &[
     super::NATIVE_PROFILE,
     super::NATIVE_PROFILE_DIGEST,

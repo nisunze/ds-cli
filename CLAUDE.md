@@ -37,7 +37,11 @@ the problem at the wrong tier.
    inputs, output, examples, refusals — goes in the `Command` value. Help, the
    JSON descriptor, validation and dispatch all read that. There is no second
    place to describe a command, and adding one would be the first thing to
-   reject in review.
+   reject in review. Lead summaries and purposes with the user's job: why they
+   need this operation, the context it requires and what its result can support.
+   Keep critical completeness limits visible. Those words also drive existing
+   capability search and MCP descriptions; do not make callers load a private
+   skill or learn transport internals to recognize the right operation.
 4. **Enumerate its refusals.** Every way it declines, with a stable code and a
    remedy. `refusals_are_named_and_actionable` requires the remedy;
    `runnable_examples_run_and_fail_only_as_documented` checks the codes are

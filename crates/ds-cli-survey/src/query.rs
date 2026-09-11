@@ -188,8 +188,8 @@ pub static COMMAND: Command = Command {
     path: &["survey", "query"],
     contract: 1,
     chapter: Chapter::Survey,
-    summary: "Run one governed Survey aggregate headlessly.",
-    purpose: "Validates one closed aggregate question before auth, restores the native user, loads only its audience-fenced selected project under lease, releases the lease before the fixed Survey query call, and strictly decodes at most 200 rows. The server rechecks project/form/view authority and refreshes the survey mirror. No project, URL, body, token, raw-entry, or media override is accepted.",
+    summary: "Measure Survey progress, coverage evidence and data quality.",
+    purpose: "Use for survey progress by surveyor, distinct asset counts, or missing observations before design review. Ask a bounded aggregate question instead of downloading entries. Coverage needs an agreed target count or asset list; record counts alone do not prove completion. Resolve the exact project form and requested field before querying. The native selected-project call returns at most 200 rows after server permission and mirror checks; preserve filters, freshness and truncation. Raw entries and photos require their own supported operations.",
     effect: Effect::LocalAuthState,
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
@@ -206,8 +206,8 @@ pub static COMMAND: Command = Command {
     output: "Lane, selected-project identity, echoed form/metric/grouping, at most 200 aggregate rows, and truncation; never raw entries, billing claims, or credentials.",
     examples: &[
         Example {
-            command: "ds survey query --form <form-slug> --metric count --group-by created_by --filter '{\"field\":\"created_by\",\"op\":\"eq\",\"value\":\"operator@example.com\"}' --output json",
-            note: "Counts the selected project's governed rows by the public created_by field. Read the exact slug from `ds survey forms list`.",
+            command: "ds survey query --form <form-slug> --metric count --group-by created_by --output json",
+            note: "Compare recorded activity by surveyor. Resolve <form-slug> with `ds survey project-forms list`; the global form catalogue does not establish project participation.",
             runnable: false,
         },
         Example {

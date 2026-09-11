@@ -931,31 +931,6 @@ static MAP_ENTRIES: &[Entry] = &[
 
 static SURVEY_ENTRIES: &[Entry] = &[
     Entry {
-        command: &ds_cli_survey::workspace::INIT,
-        handler: ds_cli_survey::workspace::init,
-        render: ds_cli_survey::workspace::render,
-    },
-    Entry {
-        command: &ds_cli_survey::workspace::PREPARE,
-        handler: ds_cli_survey::workspace::prepare,
-        render: ds_cli_survey::workspace::render,
-    },
-    Entry {
-        command: &ds_cli_survey::workspace::COLLECT,
-        handler: ds_cli_survey::workspace::collect,
-        render: ds_cli_survey::workspace::render,
-    },
-    Entry {
-        command: &ds_cli_survey::workspace::LIST,
-        handler: ds_cli_survey::workspace::list,
-        render: ds_cli_survey::workspace::render,
-    },
-    Entry {
-        command: &ds_cli_survey::workspace::SYNC,
-        handler: ds_cli_survey::workspace::sync,
-        render: ds_cli_survey::workspace::render,
-    },
-    Entry {
         command: &ds_cli_survey::forms::LIST_COMMAND,
         handler: ds_cli_survey::forms::list,
         render: ds_cli_survey::forms::render_list,
@@ -1702,6 +1677,41 @@ static DESIGN_ENTRIES: &[Entry] = &[
         render: ds_cli_design::transformer::status::render,
     },
     Entry {
+        command: &ds_cli_design::collisions::COMMAND,
+        handler: ds_cli_design::collisions::run,
+        render: ds_cli_design::collisions::render,
+    },
+    Entry {
+        command: &ds_cli_design::preview::BULK_PLAN,
+        handler: ds_cli_design::preview::run_bulk_plan,
+        render: ds_cli_design::preview::render_bulk_plan,
+    },
+    Entry {
+        command: &ds_cli_design::preview::DOWNLOAD_PLAN,
+        handler: ds_cli_design::preview::run_download_plan,
+        render: ds_cli_design::preview::render_download_plan,
+    },
+    Entry {
+        command: &ds_cli_design::preview::VERSION_STATUS,
+        handler: ds_cli_design::preview::run_version_status,
+        render: ds_cli_design::preview::render_version_status,
+    },
+    Entry {
+        command: &ds_cli_design::preview::CONFLICT_LIST,
+        handler: ds_cli_design::preview::run_conflict_list,
+        render: ds_cli_design::preview::render_conflict_list,
+    },
+    Entry {
+        command: &ds_cli_design::preview::CONFLICT_CHECK,
+        handler: ds_cli_design::preview::run_conflict_check,
+        render: ds_cli_design::preview::render_conflict_check,
+    },
+    Entry {
+        command: &ds_cli_design::preview::PRESENCE_STATUS,
+        handler: ds_cli_design::preview::run_presence_status,
+        render: ds_cli_design::preview::render_presence_status,
+    },
+    Entry {
         command: &ds_cli_design::transformer::dashboard::COMMAND,
         handler: ds_cli_design::transformer::dashboard::run,
         render: ds_cli_design::transformer::dashboard::render,
@@ -1871,6 +1881,11 @@ static DESKTOP_ENTRIES: &[Entry] = &[
         command: &ds_cli_desktop::sync::STATUS_COMMAND,
         handler: ds_cli_desktop::sync::status,
         render: ds_cli_desktop::sync::render,
+    },
+    Entry {
+        command: &ds_cli_desktop::sync_plan::PLAN_COMMAND,
+        handler: ds_cli_desktop::sync_plan::run,
+        render: ds_cli_desktop::sync_plan::render,
     },
     Entry {
         command: &ds_cli_desktop::sync::RETRY_COMMAND,
