@@ -223,7 +223,7 @@ pub static COMMAND: Command = Command {
     contract: 1,
     chapter: Chapter::Survey,
     summary: "Refresh a Survey delivery from changes since its checkpoint.",
-    purpose: "Use to refresh a downstream survey delivery after field corrections or new captures without downloading everything again. Reads one selected-project mirror page since an inclusive replication clock; this is not a capture-date filter. It never auto-paginates. Continue incomplete pages with unchanged updated-after/limit and exact next_cursor without advancing the checkpoint. Only a complete upper_fence advances it. Apply rows idempotently by doc_id plus firestore_updated_at; tombstones remove live rows. This is coalesced mirror state, not Firestore history. No project, transport, projection, force, authority, or Desktop override exists.",
+    purpose: "Use to refresh a downstream survey delivery after field corrections or new captures without downloading everything again. Reads one selected-project mirror page since an inclusive replication clock; this is not a capture-date filter. It never auto-paginates. Continue incomplete pages with unchanged updated-after/limit and exact next_cursor without advancing the checkpoint. Only a complete upper_fence advances it. Apply rows idempotently by doc_id plus firestore_updated_at; tombstones remove live rows. This is coalesced mirror state, not Firestore history.",
     effect: Effect::LocalAuthState,
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
