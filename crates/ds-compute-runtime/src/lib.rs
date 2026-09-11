@@ -1,10 +1,15 @@
 //! Portable native compute host shared by headless Server and Desktop.
-//! Domain lifecycle/admission belongs to the kernel; Fast LV belongs to ds-network.
+//! Domain lifecycle/admission belongs to the kernel; domain engines run only
+//! after their complete, durable input has been admitted.
 use ds_command_kernel::compute_jobs::{self, Event, Job, Phase};
 use ds_network::network::native_fast_lv::{
     decode_native_fast_lv_request, encode_native_fast_lv_result, process_native_fast_lv,
 };
+use ds_solar_contracts::{PreparedSolarCityInput, SolarCalculationResult};
+use ds_solar_io::output::{OutputFile, encode_outputs};
+use ds_solar_runtime::{CalculationOptions, CalculationTimings, SolarRuntime};
 use ds_sync_store::Store;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{
     path::{Path, PathBuf},
@@ -39,6 +44,39 @@ pub fn submit(
     key: &str,
     input: &[u8],
 ) -> Result<Job, String> {
+    if decode_native_fast_lv_request(input).is_ok() {
+        return submit_validated(path, owner, lane, key, input);
+    }
+    submit_solar(path, owner, lane, key, input)
+}
+
+/// Admit the existing hosted Solar calculation request as a durable native
+/// job. The prepared input embeds every weather/reference byte the runtime
+/// needs, so restart recovery never depends on a browser cache, a client path
+/// or a temporary request file.
+pub fn submit_solar(
+    path: &Path,
+    owner: &str,
+    lane: &str,
+    key: &str,
+    input: &[u8],
+) -> Result<Job, String> {
+    let request: PreparedSolarRequest = serde_json::from_slice(input)
+        .map_err(|error| format!("solar_prepared_request_invalid: {error}"))?;
+    request
+        .prepared
+        .validate()
+        .map_err(|error| format!("solar_prepared_request_invalid: {error}"))?;
+    submit_validated(path, owner, lane, key, input)
+}
+
+fn submit_validated(
+    path: &Path,
+    owner: &str,
+    lane: &str,
+    key: &str,
+    input: &[u8],
+) -> Result<Job, String> {
     if key.is_empty()
         || key.len() > 128
         || !key
@@ -47,7 +85,6 @@ pub fn submit(
     {
         return Err("job_key_invalid: use 1..128 letters, digits, _ or -".into());
     }
-    decode_native_fast_lv_request(input).map_err(|e| e.to_string())?;
     let id = digest(&serde_json::to_vec(&(owner, lane, key)).map_err(|e| e.to_string())?);
     let now = now_ms();
     let job = Job {
@@ -67,6 +104,33 @@ pub fn submit(
     open(path)?
         .submit_job(&job, input)
         .map_err(|e| e.to_string())
+}
+
+/// The established Cloud Run calculation request shape. It is deliberately
+/// path-free: server recovery replays the sealed prepared input itself.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PreparedSolarRequest {
+    prepared: PreparedSolarCityInput,
+    #[serde(default = "default_render_charts")]
+    render_charts: bool,
+    #[serde(default)]
+    run_id: Option<String>,
+}
+
+const fn default_render_charts() -> bool {
+    true
+}
+
+/// The established Cloud Run response shape, retained verbatim when the same
+/// runtime is placed behind the durable native owner.
+#[derive(Debug, Serialize)]
+struct PreparedSolarResponse {
+    #[serde(flatten)]
+    result: SolarCalculationResult,
+    timings: CalculationTimings,
+    plots_generated: bool,
+    outputs: Vec<OutputFile>,
 }
 
 /// Performs live native credential validation. Implemented by the native auth
@@ -208,9 +272,7 @@ pub fn run_one(
         if digest(&input) != job.input_sha256 {
             return Err("durable input digest mismatch".to_string());
         }
-        let request = decode_native_fast_lv_request(&input).map_err(|e| e.to_string())?;
-        let result = process_native_fast_lv(request).map_err(|e| e.to_string())?;
-        encode_native_fast_lv_result(&result).map_err(|e| e.to_string())
+        execute(&input, &job.id)
     })
     .unwrap_or_else(|_| Err("native compute panicked; input retained".into()));
     done.store(true, Ordering::Release);
@@ -253,6 +315,53 @@ pub fn run_one(
         }
     }
     Ok(true)
+}
+
+fn execute(input: &[u8], job_id: &str) -> Result<Vec<u8>, String> {
+    if let Ok(request) = decode_native_fast_lv_request(input) {
+        let result = process_native_fast_lv(request).map_err(|e| e.to_string())?;
+        return encode_native_fast_lv_result(&result).map_err(|e| e.to_string());
+    }
+    let request: PreparedSolarRequest = serde_json::from_slice(input)
+        .map_err(|error| format!("durable input is not a supported compute request: {error}"))?;
+    request
+        .prepared
+        .validate()
+        .map_err(|error| format!("prepared Solar input no longer validates: {error}"))?;
+    let run_id = request.run_id.unwrap_or_else(|| job_id.to_owned());
+    let runtime = SolarRuntime::new();
+    let options = CalculationOptions::default()
+        .with_charts(request.render_charts)
+        .with_run_id(run_id);
+    let outcome = runtime
+        .calculate(&request.prepared, &options)
+        .map_err(|error| error.to_string())?;
+    let mut files = vec![
+        (
+            outcome.report_input.name(),
+            outcome.report_input.entry.media_type.as_str(),
+            outcome.report_input.bytes.as_slice(),
+        ),
+    ];
+    if let Some(artifacts) = &outcome.artifacts {
+        for chart in &artifacts.charts {
+            files.push((chart.name.as_str(), chart.media_type, chart.bytes.as_slice()));
+        }
+    }
+    for document in &outcome.documents {
+        files.push((
+            document.name(),
+            document.entry.media_type.as_str(),
+            document.bytes.as_slice(),
+        ));
+    }
+    let response = PreparedSolarResponse {
+        result: outcome.result,
+        timings: outcome.timings,
+        plots_generated: request.render_charts,
+        outputs: encode_outputs(files).map_err(|error| error.to_string())?,
+    };
+    serde_json::to_vec(&response).map_err(|error| format!("Solar result encoding failed: {error}"))
 }
 
 pub fn capacity() -> usize {

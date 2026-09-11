@@ -1,5 +1,9 @@
 use ds_command_kernel::compute_jobs::{Event, Phase};
 use ds_compute_runtime::{self as runtime, Authorizer};
+use ds_solar_contracts::{
+    BundleBytes, CityIdentity, PreparedSolarCityInput, RunOptions, SnapshotRevision,
+    SolarCityInput, WeatherDataset, WeatherKey, WeatherPin,
+};
 use serde_json::json;
 use std::sync::Arc;
 struct Allowed;
@@ -16,6 +20,68 @@ impl Authorizer for Revoked {
 }
 fn request() -> Vec<u8> {
     serde_json::to_vec(&json!({"schema":"ds.fast-lv.request/v1","jobs":[{"transformer_name":"T1","gdfs":{"tr":{"type":"FeatureCollection","features":[{"type":"Feature","id":"tr-1","geometry":{"type":"Point","coordinates":[30.0,-2.0]},"properties":{"name":"T1","names":"T1"}}]},"lv_lines":{"type":"FeatureCollection","features":[{"type":"Feature","id":"line-1","geometry":{"type":"LineString","coordinates":[[30.0,-2.0],[30.0004,-2.0]]},"properties":{}}]},"customers":{"type":"FeatureCollection","features":[]}},"settings":{}}]})).unwrap()
+}
+
+fn prepared_solar_request() -> Vec<u8> {
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../../ds-solar/fixtures");
+    let city = "aderm_bere";
+    let snapshot: serde_json::Value = serde_json::from_slice(
+        &std::fs::read(root.join(format!("city/{city}.snapshot.json"))).unwrap(),
+    )
+    .unwrap();
+    let input = SolarCityInput::from_city_snapshot(
+        CityIdentity {
+            project_id: "durable-server-test".to_string(),
+            root: "solar".to_string(),
+            city_id: city.to_string(),
+            display_name: snapshot["_root"]["display_name"].as_str().unwrap().to_string(),
+        },
+        SnapshotRevision {
+            source: "fixture".to_string(),
+            captured_at: "2026-08-08T00:00:00Z".to_string(),
+            record_updated_at_ms: None,
+            revision: None,
+        },
+        RunOptions::default(),
+        &snapshot,
+    )
+    .unwrap();
+    let weather: WeatherDataset = serde_json::from_slice(
+        &std::fs::read(root.join(format!("weather/{city}.weather.json"))).unwrap(),
+    )
+    .unwrap();
+    let weather_key = WeatherKey::new(
+        input.site.latitude,
+        input.site.longitude,
+        weather.provenance.timezone.clone(),
+        WeatherPin::pvgis_tmy(),
+    )
+    .unwrap();
+    let reference_root = root.join("reference").join(city);
+    let reference = ds_solar_contracts::reference_unit::open(&BundleBytes {
+        weather_json: std::fs::read(reference_root.join("weather.json")).unwrap(),
+        reference_unit_json: std::fs::read(reference_root.join("reference-unit.json")).unwrap(),
+        reference_unit_parquet: std::fs::read(reference_root.join("reference-unit.parquet"))
+            .unwrap(),
+        manifest_json: std::fs::read(reference_root.join("manifest.json")).unwrap(),
+    })
+    .unwrap()
+    .reference_unit;
+    let prepared = PreparedSolarCityInput::commit(
+        input,
+        weather_key,
+        weather,
+        reference,
+        "2026-08-20T00:00:00Z",
+    )
+    .unwrap();
+    serde_json::to_vec(&json!({
+        "prepared": prepared,
+        "render_charts": false,
+        "run_id": "durable-solar-run",
+    }))
+    .unwrap()
 }
 #[test]
 fn real_compute_survives_reopen_and_never_recomputes_completed_work() {
@@ -53,6 +119,28 @@ fn real_compute_survives_reopen_and_never_recomputes_completed_work() {
         .job_result("another-owner", "stable", &job.id)
         .unwrap()
         .is_none());
+}
+
+#[test]
+fn prepared_solar_survives_reopen_without_a_client_path_or_live_request() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("store.sqlite");
+    let bytes = prepared_solar_request();
+    let job = runtime::submit(&path, "owner", "stable", "solar-request", &bytes).unwrap();
+    // `run_one` reopens the durable store after submission. Its only input is
+    // the retained request bytes, so this proves no client workspace/cache path
+    // or original HTTP request remains in the execution boundary.
+    assert!(runtime::run_one(&path, "owner", "stable", "recovered", Arc::new(Allowed)).unwrap());
+    let result = runtime::open(&path)
+        .unwrap()
+        .job_result("owner", "stable", &job.id)
+        .unwrap()
+        .unwrap();
+    let decoded: serde_json::Value = serde_json::from_slice(&result).unwrap();
+    assert_eq!(decoded["run_id"], "durable-solar-run");
+    assert!(decoded["result_digest"].as_str().is_some());
+    assert_eq!(decoded["plots_generated"], false);
+    assert_eq!(decoded["outputs"].as_array().unwrap().len(), 1);
 }
 #[test]
 fn parallel_claims_are_unique_and_revocation_and_cancellation_stop_work() {
