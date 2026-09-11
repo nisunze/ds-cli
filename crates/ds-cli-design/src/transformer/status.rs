@@ -34,8 +34,9 @@ request is an answer, not a refusal. Rows are returned as the service sent \
 them, bounded but not reshaped, so a consumer reads one shape whether it runs \
 here or in the application. No project, Desktop descriptor, URL, body or \
 action override is accepted, and nothing here falls back to a browser. Every \
-row also carries the shared kernel's verdict for it: one severity and the \
-ordered findings behind it, with where the offending features are.",
+row also carries the shared kernel's verdict (health) and truth (view, phase \
+ownership, latest action, governance, retry, kind, allows); the reference \
+document describes each. A headless client holds no browser rooms.",
     chapter: Chapter::Design,
     effect: Effect::LocalAuthState,
     authority: Authority::HeadlessProject,
@@ -45,8 +46,9 @@ ordered findings behind it, with where the offending features are.",
 Lane and selected-project identity/status, the row count, the project's \
 severity summary, and one row per transformer as the service sent it — \
 process/report/draft/sketch metadata, layer counts, uploads, artifacts, \
-retry capabilities — plus a `health` member. With --findings, one `findings` \
-row per finding.",
+retry capabilities — plus `health`, `view`, `phase_ownership`, `latest_action`, \
+`governance`, `retry`, `kind` and `allows`. With --findings, one `findings` row \
+per finding.",
     examples: &[
         Example {
             command: "ds design status --transformer TX-1 --output json",
@@ -86,17 +88,37 @@ fn status_json(list: &TransformerStatusList, findings: bool) -> Value {
         .iter()
         .map(|row| transformer_health(row.row()))
         .collect();
+    // The rows' truth — saved/unsaved, locality, lane, presence, version,
+    // which run owns the record, the latest action, the governance label, the
+    // retry verdict, the row's kind and what it may be a target of — is the
+    // shared kernel's answer over the same rows. A headless client holds no
+    // browser rooms, so every row is remote and clean here by construction.
+    let truth = status_row_truth(list);
     let rows: Vec<Value> = list
         .rows()
         .iter()
         .zip(&health)
-        .map(|(row, health)| {
+        .enumerate()
+        .map(|(index, (row, health))| {
             let mut row = row.row().clone();
             if let Some(object) = row.as_object_mut() {
                 object.insert(
                     "health".into(),
                     serde_json::to_value(health).unwrap_or(Value::Null),
                 );
+                if let Some(answer) = truth.get(index) {
+                    for key in [
+                        "view",
+                        "phase_ownership",
+                        "latest_action",
+                        "governance",
+                        "retry",
+                        "kind",
+                        "allows",
+                    ] {
+                        object.insert(key.into(), answer[key].clone());
+                    }
+                }
             }
             row
         })
@@ -113,6 +135,39 @@ fn status_json(list: &TransformerStatusList, findings: bool) -> Value {
         );
     }
     out
+}
+
+/// One kernel call over the list: the row truth in server order (the kernel
+/// keeps the server's first position for every name), keyed back by index.
+fn status_row_truth(list: &TransformerStatusList) -> Vec<Value> {
+    let rows: Vec<Value> = list.rows().iter().map(|row| row.row().clone()).collect();
+    let request = json!({
+        "schema": ds_command_kernel::design_status_row::SCHEMA,
+        "server_rows": rows,
+        "local_room_headers": [],
+        "current_user_email": "",
+        "now_ms": std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis() as i64)
+            .unwrap_or(0),
+    });
+    let Ok(input) = serde_json::to_vec(&request) else {
+        return Vec::new();
+    };
+    let Ok(reply) = ds_command_kernel::design_status_row::evaluate(&input) else {
+        return Vec::new();
+    };
+    let reply: Value = serde_json::from_str(&reply).unwrap_or(Value::Null);
+    let mut by_index: Vec<Value> = vec![Value::Null; list.len()];
+    for row in reply["rows"].as_array().into_iter().flatten() {
+        let slot = row["server_index"]
+            .as_u64()
+            .and_then(|index| by_index.get_mut(index as usize));
+        if let Some(slot) = slot {
+            *slot = row.clone();
+        }
+    }
+    by_index
 }
 
 /// Every finding in the project, in row order then finding order — the same
@@ -168,9 +223,11 @@ pub fn render(data: &Value) -> String {
                 .map(|version| format!("v{version}"))
                 .unwrap_or_default();
             let line = format!(
-                "  {:<32} {:<9} {:<12} {:<12} {}",
+                "  {:<32} {:<9} {:<10} {:<8} {:<12} {:<12} {}",
                 row["name"].as_str().unwrap_or("?"),
                 row["health"]["severity"].as_str().unwrap_or("-"),
+                row["kind"].as_str().unwrap_or("-"),
+                row["governance"]["state"].as_str().unwrap_or("-"),
                 row["process_metadata"]["status"].as_str().unwrap_or("-"),
                 row["report_metadata"]["status"].as_str().unwrap_or("-"),
                 version,

@@ -559,3 +559,19 @@ covers an archived or expired project and a missing capability.
 The pairing refusals (`desktop_not_paired`, `desktop_ambiguous`,
 `desktop_unreachable`, `pairing_rejected`, `desktop_signed_out`) are the shared
 set every bridge domain uses; `ds map --help` documents them once.
+
+## Status row truth
+
+Every `ds design status` row also carries the shared kernel's truth for it
+(`design_status_row`, the same module the Transformers register reads):
+`view` (saved/unsaved and why, locality, lane, combined and report state,
+version, presence, whose room is here), `phase_ownership` (which run owns the
+record when Draft/Sketch and Process both stamped it; the superseded run's
+retained error is a `legacy_phase_superseded` finding in `health`),
+`latest_action` (a label key, when, who, and the rank that decided a tie),
+`governance` (the label over ds-brain's verdict: open, locked, blocked,
+unknown), `retry` (whether a Process retry would be refused, from what source,
+and why — ds-brain's published verdict is authoritative when present), `kind`
+(individual, aggregate, project_document, analysis) and `allows` (combinable,
+versionable, reportable, deletable). A headless client holds no browser rooms,
+so every row is remote and nothing is dirty here by construction.
