@@ -5,6 +5,13 @@ being moved toward, not a description of where it is. §6 measures the distance
 honestly. The transport work completed on 2026-09-10 is the first finished
 instance of the pattern, not the whole of it.
 
+**Runtime and platform refinement, 2026-09-11:**
+[Headless application runtime across all platforms](ds-headless-application-runtime.md)
+is the normative continuation for web, Android, iOS, Linux, Windows and server.
+It governs background execution, durable ownership, platform adapters and the
+removal of frontend backend-client bypasses. Host effects do not imply permanent
+TypeScript ownership of networking or persistence orchestration.
+
 ## 1. The ruling
 
 > **Rust owns the product. WASM, CLI, server and Tauri are deployment forms.
