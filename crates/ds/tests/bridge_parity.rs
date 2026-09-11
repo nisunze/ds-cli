@@ -724,9 +724,26 @@ fn solar_seeding_sends_the_same_governed_request_and_reads_the_same_refusals_as_
         )),
         "the card no longer parses ds-brain's city root row by kind"
     );
+    // The card parses `mutated` onto the plan it renders; the VERDICT over it
+    // — a preview that claims it wrote is a contract break, not a UI state —
+    // is `ds_command_kernel::solar_seed`'s since slice 15, so both surfaces
+    // ask one owner instead of each restating the rule.
     assert!(
-        app.solar_seed_pure.contains("plan.mutated"),
-        "the card no longer reads the server's own `mutated` flag"
+        app.solar_seed_pure
+            .contains("mutated: source.mutated === true"),
+        "the card no longer parses the server's own `mutated` flag onto the plan"
+    );
+    let mutated = ds_command_kernel::solar_seed::Plan {
+        mutated: true,
+        ..Default::default()
+    };
+    assert_eq!(
+        ds_command_kernel::solar_seed::drift(
+            &mutated,
+            &ds_command_kernel::solar_seed::Context::default()
+        ),
+        ds_command_kernel::solar_seed::Drift::Mutated,
+        "the shared kernel no longer refuses a preview that claims it wrote"
     );
 }
 

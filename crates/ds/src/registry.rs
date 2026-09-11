@@ -1702,6 +1702,11 @@ static DESIGN_ENTRIES: &[Entry] = &[
         render: ds_cli_design::transformer::status::render,
     },
     Entry {
+        command: &ds_cli_design::collisions::COMMAND,
+        handler: ds_cli_design::collisions::run,
+        render: ds_cli_design::collisions::render,
+    },
+    Entry {
         command: &ds_cli_design::transformer::dashboard::COMMAND,
         handler: ds_cli_design::transformer::dashboard::run,
         render: ds_cli_design::transformer::dashboard::render,

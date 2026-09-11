@@ -81,10 +81,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             "mode": if request.transformers().is_empty() { "all_active" } else { "explicit" },
             "requested": request.transformers().names(),
         },
-        "archive_layout": {
-            "file_level": file_level.token(),
-            "combine_per_group": combine_per_group,
-        },
+        "archive_layout": archive_layout(file_level.token(), combine_per_group),
         "force": force,
         "status": receipt.status().token(),
         "prefix": receipt.prefix(),
@@ -111,6 +108,27 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         .expect("receipt is an object")
         .extend(fields.as_object().expect("fields are an object").clone());
     Ok(output)
+}
+
+/// The requested layout, in the report layer's own words.
+///
+/// `combine_per_group` is the current name for the choice the registry has
+/// always recorded as `combine_per_district`; both are reported so a caller
+/// reading a fresh receipt and one reading an old registry row see the same
+/// archive described the same way.
+fn archive_layout(file_level: &str, combine_per_group: bool) -> Value {
+    let mut layout = json!({
+        "file_level": file_level,
+        "combine_per_group": combine_per_group,
+    });
+    let vocabulary = super::archive_layout_vocabulary(Some(file_level), None, combine_per_group);
+    layout.as_object_mut().expect("layout is an object").extend(
+        vocabulary
+            .as_object()
+            .expect("vocabulary is an object")
+            .clone(),
+    );
+    layout
 }
 
 pub fn render(data: &Value) -> String {

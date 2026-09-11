@@ -352,6 +352,17 @@ different number. Both are `desktop_contract_mismatch`: a plan that omitted the
 document deciding whether a city exists would promise fewer documents than the
 apply then wrote.
 
+**The bounds are the shared kernel's.** At most 64 cities in one request, each
+an exact unpadded source city id of at most 128 characters and named once; a
+source root of at most 512 characters, omitted rather than empty; a
+`--seed-digest` of exactly 64 lowercase hex characters and no `sha256:` prefix,
+so an apply cannot be confirmed with a membership revision. Those numbers were
+held three times — here, in the application's own seeding door, and in the
+governed owner. The owner keeps its copy because it is the security boundary;
+the two client copies are now one, in `ds-command-kernel::solar_seed`, and an
+over-large selection is still refused locally under the server's own
+`solar_seed_bounded`.
+
 **What `ds` sends is only the selection.** The destination is the paired
 session's selected project, composed by the application exactly as the card
 does; there is no project or root argument, because a project id is not proof

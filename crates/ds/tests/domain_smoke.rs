@@ -3296,6 +3296,58 @@ fn background_project_operations_are_map_independent_and_use_the_declared_projec
     );
 }
 
+/// The collision read: a report cannot be produced while a collision stands,
+/// so `ds` has to be able to say how many there are. It reads the project-wide
+/// document the report owner wrote; it starts no detection and takes no
+/// project, transformer or descriptor.
+#[test]
+fn design_collisions_reads_the_project_document_and_starts_nothing() {
+    let descriptor = ok(&["capabilities", "design.collisions", "--output", "json"]);
+    let command = &descriptor["command"];
+    assert_eq!(command["path"], serde_json::json!(["design", "collisions"]));
+    assert_eq!(command["authority"], "headless_project");
+    assert_eq!(command["effect"], "local_auth_state");
+    assert_eq!(command["execution"], "sync");
+    let inputs = command["inputs"]
+        .as_array()
+        .expect("inputs")
+        .iter()
+        .map(|input| input["name"].as_str().expect("input name"))
+        .collect::<BTreeSet<_>>();
+    // Lane and nothing else: the project is the session's own.
+    assert_eq!(inputs, BTreeSet::from(["lane"]));
+
+    // A project override is refused, not ignored — the same rule the rest of
+    // the headless read spine follows.
+    assert_eq!(
+        native_ds(&[
+            "design",
+            "collisions",
+            "--project",
+            "p-1",
+            "--output",
+            "json"
+        ])
+        .envelope["error"]["code"],
+        "unknown_flag"
+    );
+
+    // And an undeclared lane is answered locally, before any credential is
+    // restored.
+    assert_eq!(
+        native_ds(&[
+            "design",
+            "collisions",
+            "--lane",
+            "staging",
+            "--output",
+            "json"
+        ])
+        .envelope["error"]["class"],
+        "invalid_input"
+    );
+}
+
 /// The headless Design read spine: `ds design status` answers from the native
 /// credential and the selected project, or it refuses in words. It never
 /// reaches for a browser, a map, a Desktop descriptor, or a project override.
@@ -4700,7 +4752,7 @@ fn every_design_command_is_discoverable_without_the_desktop_installed() {
     let commands = index["commands"].as_array().expect("commands");
     assert_eq!(
         commands.len(),
-        69,
+        70,
         "the design domain should expose its whole family: {commands:?}"
     );
     for command in commands {
@@ -4723,6 +4775,7 @@ fn every_design_command_is_discoverable_without_the_desktop_installed() {
                     | "design.customer-categories.alias"
                     | "design.lv.project-export"
                     | "design.status"
+                    | "design.collisions"
                     | "design.dashboard"
                     | "design.transformer.inventory"
                     | "design.transformer.retire"
@@ -4869,6 +4922,9 @@ fn design_collaboration_is_a_complete_headless_project_surface() {
                 && *id != "design.process.settings"
                 // The Dashboard is the same headless read folded once.
                 && *id != "design.dashboard"
+                // The collision read answers from the same headless status
+                // call; it is not a governed record operation.
+                && *id != "design.collisions"
         })
         .collect();
     let expected: BTreeSet<&str> = [
@@ -4964,6 +5020,7 @@ fn design_collaboration_is_a_complete_headless_project_surface() {
             || id.starts_with("design.customer-categories.")
             || id == "design.status"
             || id == "design.dashboard"
+            || id == "design.collisions"
         {
             continue;
         }
