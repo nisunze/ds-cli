@@ -24,6 +24,7 @@ default = []
 wasm = ["dep:wasm-bindgen"]
 
 [dependencies]
+ryu = "1"
 schemars = "1.2.2"
 base64 = "0.22"
 ds-solar-contracts = { path = "../ds-solar/crates/ds-solar-contracts", default-features = false }

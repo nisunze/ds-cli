@@ -7,8 +7,8 @@
 //! construction — UTF-16 key order, ECMAScript number spelling,
 //! `JSON.stringify` escaping — and this module is the kernel's own copy so a
 //! headless host can produce the same digests without linking the desktop's
-//! signing crate. It performs no IO and formats numbers with the standard
-//! library's shortest round-trip algorithm, reshaped into ECMAScript's
+//! signing crate. It performs no IO and formats numbers with the edge authority's
+//! same Ryu shortest round-trip algorithm, reshaped into ECMAScript's
 //! fixed/scientific thresholds.
 
 use serde_json::{Number, Value};
@@ -98,24 +98,23 @@ fn exact_binary64(number: &Number) -> Result<f64, String> {
 
 /// ECMAScript `Number::toString`: the shortest digit string that round-trips,
 /// in fixed notation between 1e-6 (inclusive) and 1e21 (exclusive), otherwise
-/// scientific with a signed exponent. The digits come from the standard
-/// library's `{:e}` formatting, which is the same shortest round-trip
-/// representation `ryu` and V8 produce.
+/// scientific with a signed exponent. The digits use the same Ryu formatter as the native edge authority.
 pub(crate) fn ecmascript_number(value: f64) -> String {
     if value == 0.0 {
         return "0".to_string();
     }
     let negative = value.is_sign_negative();
     let magnitude = value.abs();
-    let raw = format!("{magnitude:e}");
+    let mut buffer = ryu::Buffer::new();
+    let raw = buffer.format_finite(magnitude);
     let (mantissa, exponent) = match raw.split_once('e') {
         Some((mantissa, exponent)) => (
             mantissa,
             exponent
                 .parse::<i32>()
-                .expect("std always emits a bounded decimal exponent"),
+                .expect("ryu always emits a bounded decimal exponent"),
         ),
-        None => (raw.as_str(), 0),
+        None => (raw, 0),
     };
     let decimal_position = mantissa.find('.').unwrap_or(mantissa.len()) as i32 + exponent;
     let mut digits = mantissa
