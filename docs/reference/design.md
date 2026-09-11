@@ -327,7 +327,7 @@ rules follow, and both are enforced rather than documented: a version is READ by
 a read this process performed, never asserted from a flag; and the member digest
 `assign` echoes is the one `read` returned, never recomputed here. A selection
 drawn by lasso on a rendered map is a different thing and stays with the paired
-application as `map.selection.*`.
+application as `ds map design select`.
 
 There is no `--project` flag anywhere in this domain. Attachment, tag and
 comment commands use the project open in the paired application; saved

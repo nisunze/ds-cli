@@ -3,8 +3,10 @@
 //! The browser draws a prompt; `ds` has no dialog and must not grow one. It
 //! asks the same kernel policy, and when the operator supplies the
 //! confirmation on the command line it receives the same gesture-bound grant
-//! token the page receives — which a later `--force-grant` presents. The
-//! secret itself never appears here: only the kernel holds it, and
+//! token the page receives. No command in this slice SPENDS one yet: the
+//! forced-run commands that will accept it are not written, so this mints and
+//! reports, and nothing more. The secret itself never appears here: only the
+//! kernel holds it, and
 //! `pipeline.force` on ds-brain remains the authorization gate.
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
@@ -66,7 +68,7 @@ pub static COMMAND: Command = Command {
     path: &["design", "force-gate", "check"],
     contract: 1,
     summary: "Does this forced action need a grant, and mint one.",
-    purpose: "One policy for the Transformer Status register and for Project Control, which asked this in two places with two conditions. Reports the grant requirement for an action; with --gesture and a matching --confirm it mints the grant a headless run then presents as --force-grant. The confirmation secret lives in ds-command-kernel, never in a client string, and this is cost friction: ds-brain still re-checks pipeline.force on the call itself.",
+    purpose: "One policy for the Transformer Status register and for Project Control, which asked this in two places with two conditions. Reports the grant requirement for an action; with --gesture and a matching --confirm it mints the gesture-bound grant token a forced headless run will present. The confirmation secret lives in ds-command-kernel, never in a client string, and this is cost friction: ds-brain still re-checks pipeline.force on the call itself.",
     chapter: Chapter::Design,
     effect: Effect::ReadOnly,
     authority: Authority::None,

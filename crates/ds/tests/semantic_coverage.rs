@@ -231,7 +231,7 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     // decision did not move — ds-brain still evaluates membership — only
     // residency did, so the authority is `headless_project`: the selected
     // project is read from this machine's own session, never from a paired
-    // browser. The lasso stays paired under `map.selection.*`.
+    // browser. The lasso stays paired under `map.design.select`.
     (
         "design.selection.archive",
         "global_write",

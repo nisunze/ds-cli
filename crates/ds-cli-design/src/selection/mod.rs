@@ -20,9 +20,10 @@
 //! same audience-fenced project every other headless Design read uses, and the
 //! answers below are byte-for-byte the ones the bridge returned.
 //!
-//! The lasso stays paired. A selection drawn on the map is `map.selection.*`
-//! under the paired application, because it is made by pointing at a rendered
-//! map — there is nothing headless about it. A SAVED selection is a document.
+//! The lasso stays paired. A selection drawn on the map is `ds map design
+//! select` under the paired application, because it is made by pointing at a
+//! rendered map — there is nothing headless about it. A SAVED selection is a
+//! document.
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{Arg, Refusal};
