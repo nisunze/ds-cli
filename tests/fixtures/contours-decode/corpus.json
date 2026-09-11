@@ -1,0 +1,2389 @@
+{
+ "schema": "ds.contours-decode-parity/v1",
+ "note": "Every case `ds_command_kernel::project_dataset_cache::decode_contours` decides, recorded as the one named proof of the contour decoder that admits the tiler's `/v1/contours/fetch` answer into a project dataset room. Areas and lines are synthetic at coordinates that belong to no project. Error strings are exact: they are persisted as a room's last_error and read by an operator, so a change to one is a change to the product.",
+ "cases": [
+  {
+   "id": "two_kinds_admitted",
+   "note": "The ordinary page: two intermediate lines and one index line, every count agreeing with its collection. Both kinds are admitted into one page — each line keeps its contour_kind for the print-context split — and the receipt is synthesised from the tiler's sampling facts.",
+   "area": {
+    "type": "Polygon",
+    "coordinates": [
+     [
+      [
+       30.0,
+       -1.0
+      ],
+      [
+       30.01,
+       -1.0
+      ],
+      [
+       30.01,
+       -0.99
+      ],
+      [
+       30.0,
+       -0.99
+      ],
+      [
+       30.0,
+       -1.0
+      ]
+     ]
+    ]
+   },
+   "response": {
+    "status": "success",
+    "layers": {
+     "contours_intermediate": {
+      "type": "FeatureCollection",
+      "features": [
+       {
+        "type": "Feature",
+        "properties": {
+         "elevation_m": 1500,
+         "contour_kind": "intermediate",
+         "contour_label": "",
+         "interval_m": 10,
+         "source": "rwanda_dem_10m"
+        },
+        "geometry": {
+         "type": "LineString",
+         "coordinates": [
+          [
+           30.002,
+           -0.995
+          ],
+          [
+           30.004,
+           -0.995
+          ]
+         ]
+        }
+       },
+       {
+        "type": "Feature",
+        "properties": {
+         "elevation_m": 1500,
+         "contour_kind": "intermediate",
+         "contour_label": "",
+         "interval_m": 10,
+         "source": "rwanda_dem_10m"
+        },
+        "geometry": {
+         "type": "LineString",
+         "coordinates": [
+          [
+           30.002,
+           -0.994
+          ],
+          [
+           30.004,
+           -0.994
+          ]
+         ]
+        }
+       }
+      ]
+     },
+     "contours_index": {
+      "type": "FeatureCollection",
+      "features": [
+       {
+        "type": "Feature",
+        "properties": {
+         "elevation_m": 1500,
+         "contour_kind": "index",
+         "contour_label": "1500 m",
+         "interval_m": 10,
+         "source": "rwanda_dem_10m"
+        },
+        "geometry": {
+         "type": "LineString",
+         "coordinates": [
+          [
+           30.002,
+           -0.993
+          ],
+          [
+           30.004,
+           -0.993
+          ]
+         ]
+        }
+       }
+      ]
+     }
+    },
+    "source": "rwanda_dem_10m",
+    "source_version": "https://dem.example/rwanda/10m",
+    "minor_interval_m": 10,
+    "index_interval_m": 50,
+    "requested_spacing_m": 10.0,
+    "effective_spacing_m": 10.0,
+    "grid": [
+     112,
+     111
+    ],
+    "sampled_points": 12432,
+    "unresolved_points": 0,
+    "intermediate_features": 2,
+    "index_features": 1
+   },
+   "expect": {
+    "ok": true,
+    "features": 3,
+    "source_version": "https://dem.example/rwanda/10m",
+    "receipt": {
+     "source": "rwanda_dem_10m",
+     "source_version": "https://dem.example/rwanda/10m",
+     "minor_interval_m": 10,
+     "index_interval_m": 50,
+     "effective_spacing_m": 10.0,
+     "grid": [
+      112,
+      111
+     ],
+     "sampled_points": 12432,
+     "unresolved_points": 0
+    }
+   }
+  },
+  {
+   "id": "complete_empty_response",
+   "note": "Flat ground has no contour. A complete empty page still completes coverage; re-asking for it for ever is what spends sampling for no rows.",
+   "area": {
+    "type": "Polygon",
+    "coordinates": [
+     [
+      [
+       30.0,
+       -1.0
+      ],
+      [
+       30.01,
+       -1.0
+      ],
+      [
+       30.01,
+       -0.99
+      ],
+      [
+       30.0,
+       -0.99
+      ],
+      [
+       30.0,
+       -1.0
+      ]
+     ]
+    ]
+   },
+   "response": {
+    "status": "success",
+    "layers": {
+     "contours_intermediate": {
+      "type": "FeatureCollection",
+      "features": []
+     },
+     "contours_index": {
+      "type": "FeatureCollection",
+      "features": []
+     }
+    },
+    "source": "rwanda_dem_10m",
+    "source_version": "https://dem.example/rwanda/10m",
+    "minor_interval_m": 10,
+    "index_interval_m": 50,
+    "requested_spacing_m": 10.0,
+    "effective_spacing_m": 10.0,
+    "grid": [
+     112,
+     111
+    ],
+    "sampled_points": 12432,
+    "unresolved_points": 0,
+    "intermediate_features": 0,
+    "index_features": 0
+   },
+   "expect": {
+    "ok": true,
+    "features": 0,
+    "source_version": "https://dem.example/rwanda/10m",
+    "receipt": {
+     "source": "rwanda_dem_10m",
+     "source_version": "https://dem.example/rwanda/10m",
+     "minor_interval_m": 10,
+     "index_interval_m": 50,
+     "effective_spacing_m": 10.0,
+     "grid": [
+      112,
+      111
+     ],
+     "sampled_points": 12432,
+     "unresolved_points": 0
+    }
+   }
+  },
+  {
+   "id": "line_straddles_east_edge",
+   "note": "A contour that legitimately crosses the edge of the requested area is ADMITTED under the intersects rule: the tiler clips by the segment midpoint, so a straddling segment is exactly what a boundary produces.",
+   "area": {
+    "type": "Polygon",
+    "coordinates": [
+     [
+      [
+       30.0,
+       -1.0
+      ],
+      [
+       30.01,
+       -1.0
+      ],
+      [
+       30.01,
+       -0.99
+      ],
+      [
+       30.0,
+       -0.99
+      ],
+      [
+       30.0,
+       -1.0
+      ]
+     ]
+    ]
+   },
+   "response": {
+    "status": "success",
+    "layers": {
+     "contours_intermediate": {
+      "type": "FeatureCollection",
+      "features": [
+       {
+        "type": "Feature",
+        "properties": {
+         "elevation_m": 1500,
+         "contour_kind": "intermediate",
+         "contour_label": "",
+         "interval_m": 10,
+         "source": "rwanda_dem_10m"
+        },
+        "geometry": {
+         "type": "LineString",
+         "coordinates": [
+          [
+           30.009,
+           -0.995
+          ],
+          [
+           30.011,
+           -0.995
+          ]
+         ]
+        }
+       }
+      ]
+     },
+     "contours_index": {
+      "type": "FeatureCollection",
+      "features": []
+     }
+    },
+    "source": "rwanda_dem_10m",
+    "source_version": "https://dem.example/rwanda/10m",
+    "minor_interval_m": 10,
+    "index_interval_m": 50,
+    "requested_spacing_m": 10.0,
+    "effective_spacing_m": 10.0,
+    "grid": [
+     112,
+     111
+    ],
+    "sampled_points": 12432,
+    "unresolved_points": 0,
+    "intermediate_features": 1,
+    "index_features": 0
+   },
+   "expect": {
+    "ok": true,
+    "features": 1,
+    "source_version": "https://dem.example/rwanda/10m",
+    "receipt": {
+     "source": "rwanda_dem_10m",
+     "source_version": "https://dem.example/rwanda/10m",
+     "minor_interval_m": 10,
+     "index_interval_m": 50,
+     "effective_spacing_m": 10.0,
+     "grid": [
+      112,
+      111
+     ],
+     "sampled_points": 12432,
+     "unresolved_points": 0
+    }
+   }
+  },
+  {
+   "id": "multilinestring_admitted",
+   "note": "A line that arrives as a MultiLineString is a line.",
+   "area": {
+    "type": "Polygon",
+    "coordinates": [
+     [
+      [
+       30.0,
+       -1.0
+      ],
+      [
+       30.01,
+       -1.0
+      ],
+      [
+       30.01,
+       -0.99
+      ],
+      [
+       30.0,
+       -0.99
+      ],
+      [
+       30.0,
+       -1.0
+      ]
+     ]
+    ]
+   },
+   "response": {
+    "status": "success",
+    "layers": {
+     "contours_intermediate": {
+      "type": "FeatureCollection",
+      "features": [
+       {
+        "type": "Feature",
+        "properties": {
+         "elevation_m": 1500,
+         "contour_kind": "intermediate",
+         "contour_label": "",
+         "interval_m": 10,
+         "source": "rwanda_dem_10m"
+        },
+        "geometry": {
+         "type": "MultiLineString",
+         "coordinates": [
+          [
+           [
+            30.002,
+            -0.995
+           ],
+           [
+            30.004,
+            -0.995
+           ]
+          ],
+          [
+           [
+            30.002,
+            -0.994
+           ],
+           [
+            30.004,
+            -0.994
+           ]
+          ]
+         ]
+        }
+       }
+      ]
+     },
+     "contours_index": {
+      "type": "FeatureCollection",
+      "features": []
+     }
+    },
+    "source": "rwanda_dem_10m",
+    "source_version": "https://dem.example/rwanda/10m",
+    "minor_interval_m": 10,
+    "index_interval_m": 50,
+    "requested_spacing_m": 10.0,
+    "effective_spacing_m": 10.0,
+    "grid": [
+     112,
+     111
+    ],
+    "sampled_points": 12432,
+    "unresolved_points": 0,
+    "intermediate_features": 1,
+    "index_features": 0
+   },
+   "expect": {
+    "ok": true,
+    "features": 1,
+    "source_version": "https://dem.example/rwanda/10m",
+    "receipt": {
+     "source": "rwanda_dem_10m",
+     "source_version": "https://dem.example/rwanda/10m",
+     "minor_interval_m": 10,
+     "index_interval_m": 50,
+     "effective_spacing_m": 10.0,
+     "grid": [
+      112,
+      111
+     ],
+     "sampled_points": 12432,
+     "unresolved_points": 0
+    }
+   }
+  },
+  {
+   "id": "terrarium_fallback_source",
+   "note": "When the national DEM does not cover the whole area the tiler cuts the whole area from Terrarium and says so. The version is the tiler's own, so a room re-acquires when the surface changes.",
+   "area": {
+    "type": "Polygon",
+    "coordinates": [
+     [
+      [
+       30.0,
+       -1.0
+      ],
+      [
+       30.01,
+       -1.0
+      ],
+      [
+       30.01,
+       -0.99
+      ],
+      [
+       30.0,
+       -0.99
+      ],
+      [
+       30.0,
+       -1.0
+      ]
+     ]
+    ]
+   },
+   "response": {
+    "status": "success",
+    "layers": {
+     "contours_intermediate": {
+      "type": "FeatureCollection",
+      "features": [
+       {
+        "type": "Feature",
+        "properties": {
+         "elevation_m": 1500,
+         "contour_kind": "intermediate",
+         "contour_label": "",
+         "interval_m": 10,
+         "source": "aws_terrarium"
+        },
+        "geometry": {
+         "type": "LineString",
+         "coordinates": [
+          [
+           30.002,
+           -0.995
+          ],
+          [
+           30.004,
+           -0.995
+          ]
+         ]
+        }
+       }
+      ]
+     },
+     "contours_index": {
+      "type": "FeatureCollection",
+      "features": []
+     }
+    },
+    "source": "aws_terrarium",
+    "source_version": "terrarium/z15",
+    "minor_interval_m": 10,
+    "index_interval_m": 50,
+    "requested_spacing_m": 10.0,
+    "effective_spacing_m": 10.0,
+    "grid": [
+     112,
+     111
+    ],
+    "sampled_points": 12432,
+    "unresolved_points": 3,
+    "intermediate_features": 1,
+    "index_features": 0
+   },
+   "expect": {
+    "ok": true,
+    "features": 1,
+    "source_version": "terrarium/z15",
+    "receipt": {
+     "source": "aws_terrarium",
+     "source_version": "terrarium/z15",
+     "minor_interval_m": 10,
+     "index_interval_m": 50,
+     "effective_spacing_m": 10.0,
+     "grid": [
+      112,
+      111
+     ],
+     "sampled_points": 12432,
+     "unresolved_points": 3
+    }
+   }
+  },
+  {
+   "id": "status_not_success",
+   "note": "The status is read first; nothing else in a failed response is evidence.",
+   "area": {
+    "type": "Polygon",
+    "coordinates": [
+     [
+      [
+       30.0,
+       -1.0
+      ],
+      [
+       30.01,
+       -1.0
+      ],
+      [
+       30.01,
+       -0.99
+      ],
+      [
+       30.0,
+       -0.99
+      ],
+      [
+       30.0,
+       -1.0
+      ]
+     ]
+    ]
+   },
+   "response": {
+    "status": "error",
+    "layers": {
+     "contours_intermediate": {
+      "type": "FeatureCollection",
+      "features": [
+       {
+        "type": "Feature",
+        "properties": {
+         "elevation_m": 1500,
+         "contour_kind": "intermediate",
+         "contour_label": "",
+         "interval_m": 10,
+         "source": "rwanda_dem_10m"
+        },
+        "geometry": {
+         "type": "LineString",
+         "coordinates": [
+          [
+           30.002,
+           -0.995
+          ],
+          [
+           30.004,
+           -0.995
+          ]
+         ]
+        }
+       }
+      ]
+     },
+     "contours_index": {
+      "type": "FeatureCollection",
+      "features": []
+     }
+    },
+    "source": "rwanda_dem_10m",
+    "source_version": "https://dem.example/rwanda/10m",
+    "minor_interval_m": 10,
+    "index_interval_m": 50,
+    "requested_spacing_m": 10.0,
+    "effective_spacing_m": 10.0,
+    "grid": [
+     112,
+     111
+    ],
+    "sampled_points": 12432,
+    "unresolved_points": 0,
+    "intermediate_features": 1,
+    "index_features": 0
+   },
+   "expect": {
+    "ok": false,
+    "error": "contour acquisition did not succeed"
+   }
+  },
+  {
+   "id": "intermediate_layer_missing",
+   "note": "Both layers are required even when one would be empty: an absent layer is not an empty one.",
+   "area": {
+    "type": "Polygon",
+    "coordinates": [
+     [
+      [
+       30.0,
+       -1.0
+      ],
+      [
+       30.01,
+       -1.0
+      ],
+      [
+       30.01,
+       -0.99
+      ],
+      [
+       30.0,
+       -0.99
+      ],
+      [
+       30.0,
+       -1.0
+      ]
+     ]
+    ]
+   },
+   "response": {
+    "status": "success",
+    "layers": {
+     "contours_index": {
+      "type": "FeatureCollection",
+      "features": [
+       {
+        "type": "Feature",
+        "properties": {
+         "elevation_m": 1500,
+         "contour_kind": "index",
+         "contour_label": "1500 m",
+         "interval_m": 10,
+         "source": "rwanda_dem_10m"
+        },
+        "geometry": {
+         "type": "LineString",
+         "coordinates": [
+          [
+           30.002,
+           -0.993
+          ],
+          [
+           30.004,
+           -0.993
+          ]
+         ]
+        }
+       }
+      ]
+     }
+    },
+    "source": "rwanda_dem_10m",
+    "source_version": "https://dem.example/rwanda/10m",
+    "minor_interval_m": 10,
+    "index_interval_m": 50,
+    "requested_spacing_m": 10.0,
+    "effective_spacing_m": 10.0,
+    "grid": [
+     112,
+     111
+    ],
+    "sampled_points": 12432,
+    "unresolved_points": 0,
+    "intermediate_features": 0,
+    "index_features": 1
+   },
+   "expect": {
+    "ok": false,
+    "error": "contour acquisition has no `contours_intermediate` collection"
+   }
+  },
+  {
+   "id": "index_layer_not_a_collection",
+   "note": "A collection is admitted by its declared type, not by having a features array.",
+   "area": {
+    "type": "Polygon",
+    "coordinates": [
+     [
+      [
+       30.0,
+       -1.0
+      ],
+      [
+       30.01,
+       -1.0
+      ],
+      [
+       30.01,
+       -0.99
+      ],
+      [
+       30.0,
+       -0.99
+      ],
+      [
+       30.0,
+       -1.0
+      ]
+     ]
+    ]
+   },
+   "response": {
+    "status": "success",
+    "layers": {
+     "contours_intermediate": {
+      "type": "FeatureCollection",
+      "features": []
+     },
+     "contours_index": {
+      "type": "GeometryCollection",
+      "features": [
+       {
+        "type": "Feature",
+        "properties": {
+         "elevation_m": 1500,
+         "contour_kind": "index",
+         "contour_label": "1500 m",
+         "interval_m": 10,
+         "source": "rwanda_dem_10m"
+        },
+        "geometry": {
+         "type": "LineString",
+         "coordinates": [
+          [
+           30.002,
+           -0.993
+          ],
+          [
+           30.004,
+           -0.993
+          ]
+         ]
+        }
+       }
+      ]
+     }
+    },
+    "source": "rwanda_dem_10m",
+    "source_version": "https://dem.example/rwanda/10m",
+    "minor_interval_m": 10,
+    "index_interval_m": 50,
+    "requested_spacing_m": 10.0,
+    "effective_spacing_m": 10.0,
+    "grid": [
+     112,
+     111
+    ],
+    "sampled_points": 12432,
+    "unresolved_points": 0,
+    "intermediate_features": 0,
+    "index_features": 1
+   },
+   "expect": {
+    "ok": false,
+    "error": "contour acquisition `contours_index` is not a FeatureCollection"
+   }
+  },
+  {
+   "id": "counts_disagree_with_collection",
+   "note": "The tiler's own count is the completeness receipt for each layer. A mismatch is a refusal before any row is examined.",
+   "area": {
+    "type": "Polygon",
+    "coordinates": [
+     [
+      [
+       30.0,
+       -1.0
+      ],
+      [
+       30.01,
+       -1.0
+      ],
+      [
+       30.01,
+       -0.99
+      ],
+      [
+       30.0,
+       -0.99
+      ],
+      [
+       30.0,
+       -1.0
+      ]
+     ]
+    ]
+   },
+   "response": {
+    "status": "success",
+    "layers": {
+     "contours_intermediate": {
+      "type": "FeatureCollection",
+      "features": [
+       {
+        "type": "Feature",
+        "properties": {
+         "elevation_m": 1500,
+         "contour_kind": "intermediate",
+         "contour_label": "",
+         "interval_m": 10,
+         "source": "rwanda_dem_10m"
+        },
+        "geometry": {
+         "type": "LineString",
+         "coordinates": [
+          [
+           30.002,
+           -0.995
+          ],
+          [
+           30.004,
+           -0.995
+          ]
+         ]
+        }
+       }
+      ]
+     },
+     "contours_index": {
+      "type": "FeatureCollection",
+      "features": []
+     }
+    },
+    "source": "rwanda_dem_10m",
+    "source_version": "https://dem.example/rwanda/10m",
+    "minor_interval_m": 10,
+    "index_interval_m": 50,
+    "requested_spacing_m": 10.0,
+    "effective_spacing_m": 10.0,
+    "grid": [
+     112,
+     111
+    ],
+    "sampled_points": 12432,
+    "unresolved_points": 0,
+    "intermediate_features": 2,
+    "index_features": 0
+   },
+   "expect": {
+    "ok": false,
+    "error": "contour acquisition `intermediate_features` count does not match its `contours_intermediate` collection"
+   }
+  },
+  {
+   "id": "index_count_missing",
+   "note": "An absent count is a mismatch, not zero.",
+   "area": {
+    "type": "Polygon",
+    "coordinates": [
+     [
+      [
+       30.0,
+       -1.0
+      ],
+      [
+       30.01,
+       -1.0
+      ],
+      [
+       30.01,
+       -0.99
+      ],
+      [
+       30.0,
+       -0.99
+      ],
+      [
+       30.0,
+       -1.0
+      ]
+     ]
+    ]
+   },
+   "response": {
+    "status": "success",
+    "layers": {
+     "contours_intermediate": {
+      "type": "FeatureCollection",
+      "features": []
+     },
+     "contours_index": {
+      "type": "FeatureCollection",
+      "features": [
+       {
+        "type": "Feature",
+        "properties": {
+         "elevation_m": 1500,
+         "contour_kind": "index",
+         "contour_label": "1500 m",
+         "interval_m": 10,
+         "source": "rwanda_dem_10m"
+        },
+        "geometry": {
+         "type": "LineString",
+         "coordinates": [
+          [
+           30.002,
+           -0.993
+          ],
+          [
+           30.004,
+           -0.993
+          ]
+         ]
+        }
+       }
+      ]
+     }
+    },
+    "source": "rwanda_dem_10m",
+    "source_version": "https://dem.example/rwanda/10m",
+    "minor_interval_m": 10,
+    "index_interval_m": 50,
+    "requested_spacing_m": 10.0,
+    "effective_spacing_m": 10.0,
+    "grid": [
+     112,
+     111
+    ],
+    "sampled_points": 12432,
+    "unresolved_points": 0,
+    "intermediate_features": 0
+   },
+   "expect": {
+    "ok": false,
+    "error": "contour acquisition `index_features` count does not match its `contours_index` collection"
+   }
+  },
+  {
+   "id": "properties_not_an_object",
+   "note": "A row whose properties are not an object cannot carry a contour_kind; it is refused as malformed and named by the identifier it carries.",
+   "area": {
+    "type": "Polygon",
+    "coordinates": [
+     [
+      [
+       30.0,
+       -1.0
+      ],
+      [
+       30.01,
+       -1.0
+      ],
+      [
+       30.01,
+       -0.99
+      ],
+      [
+       30.0,
+       -0.99
+      ],
+      [
+       30.0,
+       -1.0
+      ]
+     ]
+    ]
+   },
+   "response": {
+    "status": "success",
+    "layers": {
+     "contours_intermediate": {
+      "type": "FeatureCollection",
+      "features": []
+     },
+     "contours_index": {
+      "type": "FeatureCollection",
+      "features": [
+       {
+        "type": "Feature",
+        "properties": "index",
+        "id": "bad-shape",
+        "geometry": {
+         "type": "LineString",
+         "coordinates": [
+          [
+           30.002,
+           -0.993
+          ],
+          [
+           30.004,
+           -0.993
+          ]
+         ]
+        }
+       }
+      ]
+     }
+    },
+    "source": "rwanda_dem_10m",
+    "source_version": "https://dem.example/rwanda/10m",
+    "minor_interval_m": 10,
+    "index_interval_m": 50,
+    "requested_spacing_m": 10.0,
+    "effective_spacing_m": 10.0,
+    "grid": [
+     112,
+     111
+    ],
+    "sampled_points": 12432,
+    "unresolved_points": 0,
+    "intermediate_features": 0,
+    "index_features": 1
+   },
+   "expect": {
+    "ok": false,
+    "error": "contour line #0 `bad-shape` in `contours_index` has an invalid shape: a provider row must be a GeoJSON Feature with a properties object"
+   }
+  },
+  {
+   "id": "polygon_geometry",
+   "note": "A contour is a line. The geometry type is quoted so an operator can see what the provider actually sent.",
+   "area": {
+    "type": "Polygon",
+    "coordinates": [
+     [
+      [
+       30.0,
+       -1.0
+      ],
+      [
+       30.01,
+       -1.0
+      ],
+      [
+       30.01,
+       -0.99
+      ],
+      [
+       30.0,
+       -0.99
+      ],
+      [
+       30.0,
+       -1.0
+      ]
+     ]
+    ]
+   },
+   "response": {
+    "status": "success",
+    "layers": {
+     "contours_intermediate": {
+      "type": "FeatureCollection",
+      "features": [
+       {
+        "type": "Feature",
+        "properties": {
+         "elevation_m": 1500,
+         "contour_kind": "intermediate",
+         "contour_label": "",
+         "interval_m": 10,
+         "source": "rwanda_dem_10m"
+        },
+        "geometry": {
+         "type": "Polygon",
+         "coordinates": [
+          [
+           [
+            30.002,
+            -0.995
+           ],
+           [
+            30.004,
+            -0.995
+           ],
+           [
+            30.004,
+            -0.994
+           ],
+           [
+            30.002,
+            -0.995
+           ]
+          ]
+         ]
+        }
+       }
+      ]
+     },
+     "contours_index": {
+      "type": "FeatureCollection",
+      "features": []
+     }
+    },
+    "source": "rwanda_dem_10m",
+    "source_version": "https://dem.example/rwanda/10m",
+    "minor_interval_m": 10,
+    "index_interval_m": 50,
+    "requested_spacing_m": 10.0,
+    "effective_spacing_m": 10.0,
+    "grid": [
+     112,
+     111
+    ],
+    "sampled_points": 12432,
+    "unresolved_points": 0,
+    "intermediate_features": 1,
+    "index_features": 0
+   },
+   "expect": {
+    "ok": false,
+    "error": "contour line #0 in `contours_intermediate` geometry is `Polygon`, not LineString/MultiLineString"
+   }
+  },
+  {
+   "id": "null_geometry",
+   "note": "No geometry is named as absent rather than as an empty type.",
+   "area": {
+    "type": "Polygon",
+    "coordinates": [
+     [
+      [
+       30.0,
+       -1.0
+      ],
+      [
+       30.01,
+       -1.0
+      ],
+      [
+       30.01,
+       -0.99
+      ],
+      [
+       30.0,
+       -0.99
+      ],
+      [
+       30.0,
+       -1.0
+      ]
+     ]
+    ]
+   },
+   "response": {
+    "status": "success",
+    "layers": {
+     "contours_intermediate": {
+      "type": "FeatureCollection",
+      "features": [
+       {
+        "type": "Feature",
+        "properties": {
+         "elevation_m": 1500,
+         "contour_kind": "intermediate",
+         "contour_label": "",
+         "interval_m": 10,
+         "source": "rwanda_dem_10m"
+        },
+        "geometry": null
+       }
+      ]
+     },
+     "contours_index": {
+      "type": "FeatureCollection",
+      "features": []
+     }
+    },
+    "source": "rwanda_dem_10m",
+    "source_version": "https://dem.example/rwanda/10m",
+    "minor_interval_m": 10,
+    "index_interval_m": 50,
+    "requested_spacing_m": 10.0,
+    "effective_spacing_m": 10.0,
+    "grid": [
+     112,
+     111
+    ],
+    "sampled_points": 12432,
+    "unresolved_points": 0,
+    "intermediate_features": 1,
+    "index_features": 0
+   },
+   "expect": {
+    "ok": false,
+    "error": "contour line #0 in `contours_intermediate` geometry is absent, not LineString/MultiLineString"
+   }
+  },
+  {
+   "id": "line_without_coordinates",
+   "note": "A line with no coordinate has no bounds and cannot be placed anywhere.",
+   "area": {
+    "type": "Polygon",
+    "coordinates": [
+     [
+      [
+       30.0,
+       -1.0
+      ],
+      [
+       30.01,
+       -1.0
+      ],
+      [
+       30.01,
+       -0.99
+      ],
+      [
+       30.0,
+       -0.99
+      ],
+      [
+       30.0,
+       -1.0
+      ]
+     ]
+    ]
+   },
+   "response": {
+    "status": "success",
+    "layers": {
+     "contours_intermediate": {
+      "type": "FeatureCollection",
+      "features": [
+       {
+        "type": "Feature",
+        "properties": {
+         "elevation_m": 1500,
+         "contour_kind": "intermediate",
+         "contour_label": "",
+         "interval_m": 10,
+         "source": "rwanda_dem_10m"
+        },
+        "geometry": {
+         "type": "LineString",
+         "coordinates": []
+        }
+       }
+      ]
+     },
+     "contours_index": {
+      "type": "FeatureCollection",
+      "features": []
+     }
+    },
+    "source": "rwanda_dem_10m",
+    "source_version": "https://dem.example/rwanda/10m",
+    "minor_interval_m": 10,
+    "index_interval_m": 50,
+    "requested_spacing_m": 10.0,
+    "effective_spacing_m": 10.0,
+    "grid": [
+     112,
+     111
+    ],
+    "sampled_points": 12432,
+    "unresolved_points": 0,
+    "intermediate_features": 1,
+    "index_features": 0
+   },
+   "expect": {
+    "ok": false,
+    "error": "contour line #0 in `contours_intermediate` has no bounds: its geometry carries no usable coordinate"
+   }
+  },
+  {
+   "id": "line_outside_area",
+   "note": "The tiler returned a line east of everything it was asked for. The refusal carries the rule and both rectangles, which is the whole evidence needed to tell overfetch from a boundary defect.",
+   "area": {
+    "type": "Polygon",
+    "coordinates": [
+     [
+      [
+       30.0,
+       -1.0
+      ],
+      [
+       30.01,
+       -1.0
+      ],
+      [
+       30.01,
+       -0.99
+      ],
+      [
+       30.0,
+       -0.99
+      ],
+      [
+       30.0,
+       -1.0
+      ]
+     ]
+    ]
+   },
+   "response": {
+    "status": "success",
+    "layers": {
+     "contours_intermediate": {
+      "type": "FeatureCollection",
+      "features": [
+       {
+        "type": "Feature",
+        "properties": {
+         "elevation_m": 1500,
+         "contour_kind": "intermediate",
+         "contour_label": "",
+         "interval_m": 10,
+         "source": "rwanda_dem_10m"
+        },
+        "geometry": {
+         "type": "LineString",
+         "coordinates": [
+          [
+           30.02,
+           -0.995
+          ],
+          [
+           30.03,
+           -0.995
+          ]
+         ]
+        }
+       }
+      ]
+     },
+     "contours_index": {
+      "type": "FeatureCollection",
+      "features": []
+     }
+    },
+    "source": "rwanda_dem_10m",
+    "source_version": "https://dem.example/rwanda/10m",
+    "minor_interval_m": 10,
+    "index_interval_m": 50,
+    "requested_spacing_m": 10.0,
+    "effective_spacing_m": 10.0,
+    "grid": [
+     112,
+     111
+    ],
+    "sampled_points": 12432,
+    "unresolved_points": 0,
+    "intermediate_features": 1,
+    "index_features": 0
+   },
+   "expect": {
+    "ok": false,
+    "error": "contour line #0 in `contours_intermediate` lies outside the requested area (rule: intersects; line bounds [30.020000, -0.995000, 30.030000, -0.995000]; area bounds [30.000000, -1.000000, 30.010000, -0.990000])"
+   }
+  },
+  {
+   "id": "named_by_provider_identifier",
+   "note": "When the row carries an identifier the refusal quotes it beside the position.",
+   "area": {
+    "type": "Polygon",
+    "coordinates": [
+     [
+      [
+       30.0,
+       -1.0
+      ],
+      [
+       30.01,
+       -1.0
+      ],
+      [
+       30.01,
+       -0.99
+      ],
+      [
+       30.0,
+       -0.99
+      ],
+      [
+       30.0,
+       -1.0
+      ]
+     ]
+    ]
+   },
+   "response": {
+    "status": "success",
+    "layers": {
+     "contours_intermediate": {
+      "type": "FeatureCollection",
+      "features": []
+     },
+     "contours_index": {
+      "type": "FeatureCollection",
+      "features": [
+       {
+        "type": "Feature",
+        "properties": {
+         "elevation_m": 1500,
+         "contour_kind": "index",
+         "contour_label": "1500 m",
+         "interval_m": 10,
+         "source": "rwanda_dem_10m"
+        },
+        "id": "ridge-12",
+        "geometry": {
+         "type": "LineString",
+         "coordinates": [
+          [
+           30.02,
+           -0.995
+          ],
+          [
+           30.03,
+           -0.995
+          ]
+         ]
+        }
+       }
+      ]
+     }
+    },
+    "source": "rwanda_dem_10m",
+    "source_version": "https://dem.example/rwanda/10m",
+    "minor_interval_m": 10,
+    "index_interval_m": 50,
+    "requested_spacing_m": 10.0,
+    "effective_spacing_m": 10.0,
+    "grid": [
+     112,
+     111
+    ],
+    "sampled_points": 12432,
+    "unresolved_points": 0,
+    "intermediate_features": 0,
+    "index_features": 1
+   },
+   "expect": {
+    "ok": false,
+    "error": "contour line #0 `ridge-12` in `contours_index` lies outside the requested area (rule: intersects; line bounds [30.020000, -0.995000, 30.030000, -0.995000]; area bounds [30.000000, -1.000000, 30.010000, -0.990000])"
+   }
+  },
+  {
+   "id": "second_row_named_by_position",
+   "note": "The first row is fine; the refusal names the second by its position in its own layer.",
+   "area": {
+    "type": "Polygon",
+    "coordinates": [
+     [
+      [
+       30.0,
+       -1.0
+      ],
+      [
+       30.01,
+       -1.0
+      ],
+      [
+       30.01,
+       -0.99
+      ],
+      [
+       30.0,
+       -0.99
+      ],
+      [
+       30.0,
+       -1.0
+      ]
+     ]
+    ]
+   },
+   "response": {
+    "status": "success",
+    "layers": {
+     "contours_intermediate": {
+      "type": "FeatureCollection",
+      "features": [
+       {
+        "type": "Feature",
+        "properties": {
+         "elevation_m": 1500,
+         "contour_kind": "intermediate",
+         "contour_label": "",
+         "interval_m": 10,
+         "source": "rwanda_dem_10m"
+        },
+        "geometry": {
+         "type": "LineString",
+         "coordinates": [
+          [
+           30.002,
+           -0.995
+          ],
+          [
+           30.004,
+           -0.995
+          ]
+         ]
+        }
+       },
+       {
+        "type": "Feature",
+        "properties": {
+         "elevation_m": 1500,
+         "contour_kind": "intermediate",
+         "contour_label": "",
+         "interval_m": 10,
+         "source": "rwanda_dem_10m"
+        },
+        "geometry": {
+         "type": "LineString",
+         "coordinates": [
+          [
+           30.02,
+           -0.995
+          ],
+          [
+           30.03,
+           -0.995
+          ]
+         ]
+        }
+       }
+      ]
+     },
+     "contours_index": {
+      "type": "FeatureCollection",
+      "features": []
+     }
+    },
+    "source": "rwanda_dem_10m",
+    "source_version": "https://dem.example/rwanda/10m",
+    "minor_interval_m": 10,
+    "index_interval_m": 50,
+    "requested_spacing_m": 10.0,
+    "effective_spacing_m": 10.0,
+    "grid": [
+     112,
+     111
+    ],
+    "sampled_points": 12432,
+    "unresolved_points": 0,
+    "intermediate_features": 2,
+    "index_features": 0
+   },
+   "expect": {
+    "ok": false,
+    "error": "contour line #1 in `contours_intermediate` lies outside the requested area (rule: intersects; line bounds [30.020000, -0.995000, 30.030000, -0.995000]; area bounds [30.000000, -1.000000, 30.010000, -0.990000])"
+   }
+  },
+  {
+   "id": "unknown_contour_kind",
+   "note": "Only the two kinds the print styles know exist.",
+   "area": {
+    "type": "Polygon",
+    "coordinates": [
+     [
+      [
+       30.0,
+       -1.0
+      ],
+      [
+       30.01,
+       -1.0
+      ],
+      [
+       30.01,
+       -0.99
+      ],
+      [
+       30.0,
+       -0.99
+      ],
+      [
+       30.0,
+       -1.0
+      ]
+     ]
+    ]
+   },
+   "response": {
+    "status": "success",
+    "layers": {
+     "contours_intermediate": {
+      "type": "FeatureCollection",
+      "features": []
+     },
+     "contours_index": {
+      "type": "FeatureCollection",
+      "features": [
+       {
+        "type": "Feature",
+        "properties": {
+         "elevation_m": 1500,
+         "contour_kind": "major",
+         "contour_label": "",
+         "interval_m": 10,
+         "source": "rwanda_dem_10m"
+        },
+        "geometry": {
+         "type": "LineString",
+         "coordinates": [
+          [
+           30.002,
+           -0.993
+          ],
+          [
+           30.004,
+           -0.993
+          ]
+         ]
+        }
+       }
+      ]
+     }
+    },
+    "source": "rwanda_dem_10m",
+    "source_version": "https://dem.example/rwanda/10m",
+    "minor_interval_m": 10,
+    "index_interval_m": 50,
+    "requested_spacing_m": 10.0,
+    "effective_spacing_m": 10.0,
+    "grid": [
+     112,
+     111
+    ],
+    "sampled_points": 12432,
+    "unresolved_points": 0,
+    "intermediate_features": 0,
+    "index_features": 1
+   },
+   "expect": {
+    "ok": false,
+    "error": "contour line #0 in `contours_index` records contour_kind `major`, not index/intermediate"
+   }
+  },
+  {
+   "id": "kind_in_the_wrong_layer",
+   "note": "A line's recorded kind must be the kind of the layer it arrived in: the print-context split reads the property, and the tiler's split is the only evidence of which kind it is.",
+   "area": {
+    "type": "Polygon",
+    "coordinates": [
+     [
+      [
+       30.0,
+       -1.0
+      ],
+      [
+       30.01,
+       -1.0
+      ],
+      [
+       30.01,
+       -0.99
+      ],
+      [
+       30.0,
+       -0.99
+      ],
+      [
+       30.0,
+       -1.0
+      ]
+     ]
+    ]
+   },
+   "response": {
+    "status": "success",
+    "layers": {
+     "contours_intermediate": {
+      "type": "FeatureCollection",
+      "features": []
+     },
+     "contours_index": {
+      "type": "FeatureCollection",
+      "features": [
+       {
+        "type": "Feature",
+        "properties": {
+         "elevation_m": 1500,
+         "contour_kind": "intermediate",
+         "contour_label": "",
+         "interval_m": 10,
+         "source": "rwanda_dem_10m"
+        },
+        "geometry": {
+         "type": "LineString",
+         "coordinates": [
+          [
+           30.002,
+           -0.993
+          ],
+          [
+           30.004,
+           -0.993
+          ]
+         ]
+        }
+       }
+      ]
+     }
+    },
+    "source": "rwanda_dem_10m",
+    "source_version": "https://dem.example/rwanda/10m",
+    "minor_interval_m": 10,
+    "index_interval_m": 50,
+    "requested_spacing_m": 10.0,
+    "effective_spacing_m": 10.0,
+    "grid": [
+     112,
+     111
+    ],
+    "sampled_points": 12432,
+    "unresolved_points": 0,
+    "intermediate_features": 0,
+    "index_features": 1
+   },
+   "expect": {
+    "ok": false,
+    "error": "contour line #0 in `contours_index` records contour_kind `intermediate`, but that layer holds only `index` lines"
+   }
+  },
+  {
+   "id": "missing_contour_kind",
+   "note": "A line without a kind could not be split later, so it is refused now.",
+   "area": {
+    "type": "Polygon",
+    "coordinates": [
+     [
+      [
+       30.0,
+       -1.0
+      ],
+      [
+       30.01,
+       -1.0
+      ],
+      [
+       30.01,
+       -0.99
+      ],
+      [
+       30.0,
+       -0.99
+      ],
+      [
+       30.0,
+       -1.0
+      ]
+     ]
+    ]
+   },
+   "response": {
+    "status": "success",
+    "layers": {
+     "contours_intermediate": {
+      "type": "FeatureCollection",
+      "features": [
+       {
+        "type": "Feature",
+        "properties": {
+         "elevation_m": 1500,
+         "contour_label": "",
+         "interval_m": 10,
+         "source": "rwanda_dem_10m"
+        },
+        "geometry": {
+         "type": "LineString",
+         "coordinates": [
+          [
+           30.002,
+           -0.995
+          ],
+          [
+           30.004,
+           -0.995
+          ]
+         ]
+        }
+       }
+      ]
+     },
+     "contours_index": {
+      "type": "FeatureCollection",
+      "features": []
+     }
+    },
+    "source": "rwanda_dem_10m",
+    "source_version": "https://dem.example/rwanda/10m",
+    "minor_interval_m": 10,
+    "index_interval_m": 50,
+    "requested_spacing_m": 10.0,
+    "effective_spacing_m": 10.0,
+    "grid": [
+     112,
+     111
+    ],
+    "sampled_points": 12432,
+    "unresolved_points": 0,
+    "intermediate_features": 1,
+    "index_features": 0
+   },
+   "expect": {
+    "ok": false,
+    "error": "contour line #0 in `contours_intermediate` records no contour_kind"
+   }
+  },
+  {
+   "id": "request_area_is_not_a_polygon",
+   "note": "The area is validated first: without it there is no rule to admit anything under.",
+   "area": {
+    "type": "Point",
+    "coordinates": [
+     30.0,
+     -1.0
+    ]
+   },
+   "response": {
+    "status": "success",
+    "layers": {
+     "contours_intermediate": {
+      "type": "FeatureCollection",
+      "features": [
+       {
+        "type": "Feature",
+        "properties": {
+         "elevation_m": 1500,
+         "contour_kind": "intermediate",
+         "contour_label": "",
+         "interval_m": 10,
+         "source": "rwanda_dem_10m"
+        },
+        "geometry": {
+         "type": "LineString",
+         "coordinates": [
+          [
+           30.002,
+           -0.995
+          ],
+          [
+           30.004,
+           -0.995
+          ]
+         ]
+        }
+       }
+      ]
+     },
+     "contours_index": {
+      "type": "FeatureCollection",
+      "features": []
+     }
+    },
+    "source": "rwanda_dem_10m",
+    "source_version": "https://dem.example/rwanda/10m",
+    "minor_interval_m": 10,
+    "index_interval_m": 50,
+    "requested_spacing_m": 10.0,
+    "effective_spacing_m": 10.0,
+    "grid": [
+     112,
+     111
+    ],
+    "sampled_points": 12432,
+    "unresolved_points": 0,
+    "intermediate_features": 1,
+    "index_features": 0
+   },
+   "expect": {
+    "ok": false,
+    "error": "query area must be a GeoJSON Polygon or MultiPolygon"
+   }
+  },
+  {
+   "id": "source_version_missing",
+   "note": "A page with no source version could never be told stale; it is refused rather than held under an empty version.",
+   "area": {
+    "type": "Polygon",
+    "coordinates": [
+     [
+      [
+       30.0,
+       -1.0
+      ],
+      [
+       30.01,
+       -1.0
+      ],
+      [
+       30.01,
+       -0.99
+      ],
+      [
+       30.0,
+       -0.99
+      ],
+      [
+       30.0,
+       -1.0
+      ]
+     ]
+    ]
+   },
+   "response": {
+    "status": "success",
+    "layers": {
+     "contours_intermediate": {
+      "type": "FeatureCollection",
+      "features": [
+       {
+        "type": "Feature",
+        "properties": {
+         "elevation_m": 1500,
+         "contour_kind": "intermediate",
+         "contour_label": "",
+         "interval_m": 10,
+         "source": "rwanda_dem_10m"
+        },
+        "geometry": {
+         "type": "LineString",
+         "coordinates": [
+          [
+           30.002,
+           -0.995
+          ],
+          [
+           30.004,
+           -0.995
+          ]
+         ]
+        }
+       }
+      ]
+     },
+     "contours_index": {
+      "type": "FeatureCollection",
+      "features": []
+     }
+    },
+    "source": "rwanda_dem_10m",
+    "source_version": "",
+    "minor_interval_m": 10,
+    "index_interval_m": 50,
+    "requested_spacing_m": 10.0,
+    "effective_spacing_m": 10.0,
+    "grid": [
+     112,
+     111
+    ],
+    "sampled_points": 12432,
+    "unresolved_points": 0,
+    "intermediate_features": 1,
+    "index_features": 0
+   },
+   "expect": {
+    "ok": false,
+    "error": "contour acquisition names no source version"
+   }
+  },
+  {
+   "id": "source_missing",
+   "note": "The elevation source is part of the receipt.",
+   "area": {
+    "type": "Polygon",
+    "coordinates": [
+     [
+      [
+       30.0,
+       -1.0
+      ],
+      [
+       30.01,
+       -1.0
+      ],
+      [
+       30.01,
+       -0.99
+      ],
+      [
+       30.0,
+       -0.99
+      ],
+      [
+       30.0,
+       -1.0
+      ]
+     ]
+    ]
+   },
+   "response": {
+    "status": "success",
+    "layers": {
+     "contours_intermediate": {
+      "type": "FeatureCollection",
+      "features": [
+       {
+        "type": "Feature",
+        "properties": {
+         "elevation_m": 1500,
+         "contour_kind": "intermediate",
+         "contour_label": "",
+         "interval_m": 10,
+         "source": "rwanda_dem_10m"
+        },
+        "geometry": {
+         "type": "LineString",
+         "coordinates": [
+          [
+           30.002,
+           -0.995
+          ],
+          [
+           30.004,
+           -0.995
+          ]
+         ]
+        }
+       }
+      ]
+     },
+     "contours_index": {
+      "type": "FeatureCollection",
+      "features": []
+     }
+    },
+    "source": null,
+    "source_version": "https://dem.example/rwanda/10m",
+    "minor_interval_m": 10,
+    "index_interval_m": 50,
+    "requested_spacing_m": 10.0,
+    "effective_spacing_m": 10.0,
+    "grid": [
+     112,
+     111
+    ],
+    "sampled_points": 12432,
+    "unresolved_points": 0,
+    "intermediate_features": 1,
+    "index_features": 0
+   },
+   "expect": {
+    "ok": false,
+    "error": "contour acquisition names no source"
+   }
+  },
+  {
+   "id": "invalid_intervals",
+   "note": "The intervals the lines were cut at are recorded; a pair the tiler itself would refuse cannot be a fact about admitted lines.",
+   "area": {
+    "type": "Polygon",
+    "coordinates": [
+     [
+      [
+       30.0,
+       -1.0
+      ],
+      [
+       30.01,
+       -1.0
+      ],
+      [
+       30.01,
+       -0.99
+      ],
+      [
+       30.0,
+       -0.99
+      ],
+      [
+       30.0,
+       -1.0
+      ]
+     ]
+    ]
+   },
+   "response": {
+    "status": "success",
+    "layers": {
+     "contours_intermediate": {
+      "type": "FeatureCollection",
+      "features": [
+       {
+        "type": "Feature",
+        "properties": {
+         "elevation_m": 1500,
+         "contour_kind": "intermediate",
+         "contour_label": "",
+         "interval_m": 10,
+         "source": "rwanda_dem_10m"
+        },
+        "geometry": {
+         "type": "LineString",
+         "coordinates": [
+          [
+           30.002,
+           -0.995
+          ],
+          [
+           30.004,
+           -0.995
+          ]
+         ]
+        }
+       }
+      ]
+     },
+     "contours_index": {
+      "type": "FeatureCollection",
+      "features": []
+     }
+    },
+    "source": "rwanda_dem_10m",
+    "source_version": "https://dem.example/rwanda/10m",
+    "minor_interval_m": 10,
+    "index_interval_m": 45,
+    "requested_spacing_m": 10.0,
+    "effective_spacing_m": 10.0,
+    "grid": [
+     112,
+     111
+    ],
+    "sampled_points": 12432,
+    "unresolved_points": 0,
+    "intermediate_features": 1,
+    "index_features": 0
+   },
+   "expect": {
+    "ok": false,
+    "error": "contour acquisition records invalid intervals: index_interval_m must be a multiple of minor_interval_m and no greater than 1000"
+   }
+  },
+  {
+   "id": "spacing_missing",
+   "note": "The effective sampling spacing decides how fine the lines are; a receipt without it does not account for them.",
+   "area": {
+    "type": "Polygon",
+    "coordinates": [
+     [
+      [
+       30.0,
+       -1.0
+      ],
+      [
+       30.01,
+       -1.0
+      ],
+      [
+       30.01,
+       -0.99
+      ],
+      [
+       30.0,
+       -0.99
+      ],
+      [
+       30.0,
+       -1.0
+      ]
+     ]
+    ]
+   },
+   "response": {
+    "status": "success",
+    "layers": {
+     "contours_intermediate": {
+      "type": "FeatureCollection",
+      "features": [
+       {
+        "type": "Feature",
+        "properties": {
+         "elevation_m": 1500,
+         "contour_kind": "intermediate",
+         "contour_label": "",
+         "interval_m": 10,
+         "source": "rwanda_dem_10m"
+        },
+        "geometry": {
+         "type": "LineString",
+         "coordinates": [
+          [
+           30.002,
+           -0.995
+          ],
+          [
+           30.004,
+           -0.995
+          ]
+         ]
+        }
+       }
+      ]
+     },
+     "contours_index": {
+      "type": "FeatureCollection",
+      "features": []
+     }
+    },
+    "source": "rwanda_dem_10m",
+    "source_version": "https://dem.example/rwanda/10m",
+    "minor_interval_m": 10,
+    "index_interval_m": 50,
+    "requested_spacing_m": 10.0,
+    "grid": [
+     112,
+     111
+    ],
+    "sampled_points": 12432,
+    "unresolved_points": 0,
+    "intermediate_features": 1,
+    "index_features": 0
+   },
+   "expect": {
+    "ok": false,
+    "error": "contour acquisition records no effective sampling spacing"
+   }
+  },
+  {
+   "id": "grid_malformed",
+   "note": "The sampling grid is two axes of at least two samples each.",
+   "area": {
+    "type": "Polygon",
+    "coordinates": [
+     [
+      [
+       30.0,
+       -1.0
+      ],
+      [
+       30.01,
+       -1.0
+      ],
+      [
+       30.01,
+       -0.99
+      ],
+      [
+       30.0,
+       -0.99
+      ],
+      [
+       30.0,
+       -1.0
+      ]
+     ]
+    ]
+   },
+   "response": {
+    "status": "success",
+    "layers": {
+     "contours_intermediate": {
+      "type": "FeatureCollection",
+      "features": [
+       {
+        "type": "Feature",
+        "properties": {
+         "elevation_m": 1500,
+         "contour_kind": "intermediate",
+         "contour_label": "",
+         "interval_m": 10,
+         "source": "rwanda_dem_10m"
+        },
+        "geometry": {
+         "type": "LineString",
+         "coordinates": [
+          [
+           30.002,
+           -0.995
+          ],
+          [
+           30.004,
+           -0.995
+          ]
+         ]
+        }
+       }
+      ]
+     },
+     "contours_index": {
+      "type": "FeatureCollection",
+      "features": []
+     }
+    },
+    "source": "rwanda_dem_10m",
+    "source_version": "https://dem.example/rwanda/10m",
+    "minor_interval_m": 10,
+    "index_interval_m": 50,
+    "requested_spacing_m": 10.0,
+    "effective_spacing_m": 10.0,
+    "grid": [
+     112
+    ],
+    "sampled_points": 12432,
+    "unresolved_points": 0,
+    "intermediate_features": 1,
+    "index_features": 0
+   },
+   "expect": {
+    "ok": false,
+    "error": "contour acquisition records no sampling grid"
+   }
+  },
+  {
+   "id": "no_resolved_samples",
+   "note": "Every sample unresolved means no surface was cut; the tiler refuses that itself, and so does the decoder when it sees one.",
+   "area": {
+    "type": "Polygon",
+    "coordinates": [
+     [
+      [
+       30.0,
+       -1.0
+      ],
+      [
+       30.01,
+       -1.0
+      ],
+      [
+       30.01,
+       -0.99
+      ],
+      [
+       30.0,
+       -0.99
+      ],
+      [
+       30.0,
+       -1.0
+      ]
+     ]
+    ]
+   },
+   "response": {
+    "status": "success",
+    "layers": {
+     "contours_intermediate": {
+      "type": "FeatureCollection",
+      "features": []
+     },
+     "contours_index": {
+      "type": "FeatureCollection",
+      "features": []
+     }
+    },
+    "source": "rwanda_dem_10m",
+    "source_version": "https://dem.example/rwanda/10m",
+    "minor_interval_m": 10,
+    "index_interval_m": 50,
+    "requested_spacing_m": 10.0,
+    "effective_spacing_m": 10.0,
+    "grid": [
+     112,
+     111
+    ],
+    "sampled_points": 12432,
+    "unresolved_points": 12432,
+    "intermediate_features": 0,
+    "index_features": 0
+   },
+   "expect": {
+    "ok": false,
+    "error": "contour acquisition resolved no elevation sample"
+   }
+  }
+ ]
+}

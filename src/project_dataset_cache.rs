@@ -1137,13 +1137,14 @@ pub fn seed_targets(
     Ok(targets.into_iter().map(|(_, _, id)| id).collect())
 }
 
-/// How one building footprint is named in a refusal.
+/// How one provider row — a building footprint, a contour line — is named
+/// in a refusal.
 ///
 /// The provider's own stable identifier when it carries one, otherwise the
 /// feature's position in the response. Bounded and stripped of control
 /// characters: this string is persisted as the room's `last_error` and read by
 /// an operator, so it can neither be unbounded nor carry line breaks.
-fn footprint_reference(index: usize, feature: &Value) -> String {
+fn feature_reference(index: usize, feature: &Value) -> String {
     let identifier = feature
         .get("id")
         .and_then(Value::as_str)
@@ -1192,7 +1193,7 @@ fn bounds_text(bounds: [f64; 4]) -> String {
 /// This is a refusal in every case, exactly as before: nothing is dropped,
 /// nothing is admitted, and no coverage is claimed. Only the sentence changed.
 fn admit_footprint(index: usize, feature: &Value, area: &Value) -> Result<(), String> {
-    let reference = footprint_reference(index, feature);
+    let reference = feature_reference(index, feature);
     if feature["type"] != "Feature" || !feature["properties"].is_object() {
         return Err(format!(
             "building footprint {reference} has an invalid shape: a provider row must be a GeoJSON Feature with a properties object"
@@ -1271,6 +1272,194 @@ pub fn decode_buildings(response: &Value, area: &Value) -> Result<Value, String>
     }
     Ok(json!({"features": features, "sourceVersion":version,
         "sourceReceipt":{"provider":receipt,"coverage":response["coverage"]}}))
+}
+
+/// The two layers a contour acquisition arrives in, one per `contour_kind`.
+///
+/// A room holds both kinds as one dataset — every line carries its own
+/// `contour_kind` — and the print-context assembler splits them back into
+/// these layer ids, so the ids are named here once for both directions.
+pub const CONTOURS_INDEX_LAYER: &str = "contours_index";
+pub const CONTOURS_INTERMEDIATE_LAYER: &str = "contours_intermediate";
+/// The longest provider text a contour receipt records verbatim.
+const MAX_CONTOUR_RECEIPT_TEXT_CHARS: usize = 512;
+
+/// Admit one acquired contour line, or say exactly why it cannot be admitted.
+///
+/// The same discipline as `admit_footprint`: every distinguishable fault is
+/// its own sentence naming the layer and the row, the out-of-area case carries
+/// both rectangles and the rule, and every case is a refusal — a room never
+/// holds a page it cannot fully account for. One fault is new here: a line
+/// whose recorded `contour_kind` is not the kind of the layer it arrived in.
+/// The print-context assembler splits a room's lines on that property, so a
+/// mislabelled line would print in the wrong style, and the provider's own
+/// split is the only evidence of which kind it is.
+fn admit_contour(
+    layer: &str,
+    kind: &str,
+    index: usize,
+    feature: &Value,
+    area: &Value,
+) -> Result<(), String> {
+    let reference = feature_reference(index, feature);
+    if feature["type"] != "Feature" || !feature["properties"].is_object() {
+        return Err(format!(
+            "contour line {reference} in `{layer}` has an invalid shape: a provider row must be a GeoJSON Feature with a properties object"
+        ));
+    }
+    let geometry = feature["geometry"]["type"].as_str().unwrap_or("");
+    if !matches!(geometry, "LineString" | "MultiLineString") {
+        let named = if geometry.is_empty() {
+            "absent".to_owned()
+        } else {
+            format!("`{}`", quoted(geometry))
+        };
+        return Err(format!(
+            "contour line {reference} in `{layer}` geometry is {named}, not LineString/MultiLineString"
+        ));
+    }
+    let Some(bounds) = crate::reference_cache::feature_bounds(feature) else {
+        return Err(format!(
+            "contour line {reference} in `{layer}` has no bounds: its geometry carries no usable coordinate"
+        ));
+    };
+    let selected =
+        acquisition_selects(CONTOURS_DATASET_ID, "", feature, area).map_err(|error| {
+            format!("contour line {reference} in `{layer}` has unreadable geometry: {error}")
+        })?;
+    if !selected {
+        let area_bounds = crate::reference_cache::area_bounds(area)
+            .map(bounds_text)
+            .unwrap_or_else(|_| "[unreadable]".to_owned());
+        return Err(format!(
+            "contour line {reference} in `{layer}` lies outside the requested area (rule: intersects; line bounds {}; area bounds {area_bounds})",
+            bounds_text(bounds)
+        ));
+    }
+    match feature["properties"]["contour_kind"].as_str() {
+        Some(recorded) if recorded == kind => Ok(()),
+        Some(recorded @ ("index" | "intermediate")) => Err(format!(
+            "contour line {reference} in `{layer}` records contour_kind `{recorded}`, but that layer holds only `{kind}` lines"
+        )),
+        Some(other) => Err(format!(
+            "contour line {reference} in `{layer}` records contour_kind `{}`, not index/intermediate",
+            quoted(other)
+        )),
+        None => Err(format!(
+            "contour line {reference} in `{layer}` records no contour_kind"
+        )),
+    }
+}
+
+/// One provider text a contour receipt records verbatim: present, non-empty
+/// and bounded, never trimmed or rewritten.
+fn contour_receipt_text(response: &Value, key: &str) -> Result<String, String> {
+    let named = key.replace('_', " ");
+    let value = response[key]
+        .as_str()
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| format!("contour acquisition names no {named}"))?;
+    if value.chars().count() > MAX_CONTOUR_RECEIPT_TEXT_CHARS {
+        return Err(format!("contour {named} exceeds its bound"));
+    }
+    Ok(value.to_owned())
+}
+
+/// Decode a complete contour acquisition before it can extend coverage.
+///
+/// The tiler answers `/v1/contours/fetch` with two `FeatureCollection`s —
+/// `contours_intermediate` and `contours_index` — and their counts, plus the
+/// facts of the sampling that produced them. Contours are generated for the
+/// whole requested area and clipped to it, so there is no truncation receipt
+/// to read: completeness is each count agreeing with its collection, and
+/// every line lying in the area under the dataset's own `Intersects` rule.
+///
+/// The admitted page holds both kinds in one `features` array — each line
+/// carries its `contour_kind`, which is what the print-context assembler
+/// splits on — and a synthesised source receipt, because the tiler sends
+/// none: the elevation source and its version, the intervals the lines were
+/// cut at, the effective sampling spacing and grid, and how many samples
+/// resolved. `sourceVersion` is the tiler's `source_version` (the DEM base
+/// URL, or the Terrarium zoom when the DEM did not cover the area), so a
+/// room re-acquires when the surface it was cut from changes.
+///
+/// A complete empty page is admitted: flat ground has no contour, and asking
+/// for it again for ever is what spends sampling for no rows.
+pub fn decode_contours(response: &Value, area: &Value) -> Result<Value, String> {
+    crate::reference_cache::validate_area(area)?;
+    if response["status"] != "success" {
+        return Err("contour acquisition did not succeed".into());
+    }
+    let mut features: Vec<Value> = Vec::new();
+    for (layer, kind, count_key) in [
+        (
+            CONTOURS_INTERMEDIATE_LAYER,
+            "intermediate",
+            "intermediate_features",
+        ),
+        (CONTOURS_INDEX_LAYER, "index", "index_features"),
+    ] {
+        let collection = &response["layers"][layer];
+        let rows = collection["features"]
+            .as_array()
+            .ok_or_else(|| format!("contour acquisition has no `{layer}` collection"))?;
+        if collection["type"] != "FeatureCollection" {
+            return Err(format!(
+                "contour acquisition `{layer}` is not a FeatureCollection"
+            ));
+        }
+        if response[count_key].as_u64() != Some(rows.len() as u64) {
+            return Err(format!(
+                "contour acquisition `{count_key}` count does not match its `{layer}` collection"
+            ));
+        }
+        for (index, feature) in rows.iter().enumerate() {
+            admit_contour(layer, kind, index, feature, area)?;
+        }
+        features.extend(rows.iter().cloned());
+    }
+    let source = contour_receipt_text(response, "source")?;
+    let source_version = contour_receipt_text(response, "source_version")?;
+    let minor_interval_m = response["minor_interval_m"].as_u64().unwrap_or(0);
+    let index_interval_m = response["index_interval_m"].as_u64().unwrap_or(0);
+    if minor_interval_m == 0
+        || index_interval_m < minor_interval_m
+        || !index_interval_m.is_multiple_of(minor_interval_m)
+        || index_interval_m > 1_000
+    {
+        return Err("contour acquisition records invalid intervals: index_interval_m must be a multiple of minor_interval_m and no greater than 1000".into());
+    }
+    let effective_spacing_m = response["effective_spacing_m"]
+        .as_f64()
+        .filter(|spacing| spacing.is_finite() && *spacing > 0.)
+        .ok_or("contour acquisition records no effective sampling spacing")?;
+    let grid = response["grid"]
+        .as_array()
+        .filter(|axes| axes.len() == 2)
+        .and_then(|axes| {
+            let columns = axes[0].as_u64().filter(|count| *count >= 2)?;
+            let rows = axes[1].as_u64().filter(|count| *count >= 2)?;
+            Some([columns, rows])
+        })
+        .ok_or("contour acquisition records no sampling grid")?;
+    let sampled_points = response["sampled_points"].as_u64().unwrap_or(0);
+    let unresolved_points = response["unresolved_points"].as_u64().unwrap_or(u64::MAX);
+    if sampled_points == 0 || unresolved_points >= sampled_points {
+        return Err("contour acquisition resolved no elevation sample".into());
+    }
+    let receipt = json!({
+        "source": source,
+        "source_version": source_version,
+        "minor_interval_m": minor_interval_m,
+        "index_interval_m": index_interval_m,
+        "effective_spacing_m": effective_spacing_m,
+        "grid": grid,
+        "sampled_points": sampled_points,
+        "unresolved_points": unresolved_points,
+    });
+    validate_source_receipt(&receipt)
+        .map_err(|error| format!("contour acquisition receipt: {error}"))?;
+    Ok(json!({"features": features, "sourceVersion": source_version, "sourceReceipt": receipt}))
 }
 
 /// One catalog entry as the client's dataset registry declares it. Echoed into
@@ -1396,6 +1585,11 @@ enum Request {
         response: Value,
         area: Value,
     },
+    DecodeContours {
+        schema: String,
+        response: Value,
+        area: Value,
+    },
     Plan {
         schema: String,
         scope: Scope,
@@ -1474,6 +1668,14 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
         } => {
             require_schema(&schema)?;
             Ok(decode_buildings(&response, &area)?)
+        }
+        Request::DecodeContours {
+            schema,
+            response,
+            area,
+        } => {
+            require_schema(&schema)?;
+            Ok(decode_contours(&response, &area)?)
         }
         Request::Plan {
             schema,
@@ -1756,6 +1958,63 @@ mod tests {
             json!([{"type":"Feature","geometry":null,"properties":{}}]);
         malformed["counts"]["buildings_context"] = json!(1);
         assert!(decode_buildings(&malformed, &area).is_err());
+    }
+
+    #[test]
+    fn contour_decoder_synthesises_a_bounded_receipt_and_keeps_both_kinds() {
+        let area = json!({"type":"Polygon","coordinates":[[[30.,-1.],[30.01,-1.],[30.01,-0.99],[30.,-0.99],[30.,-1.]]]});
+        let line = |kind: &str, lat: f64| {
+            json!({"type":"Feature","properties":{"elevation_m":1500,"contour_kind":kind,
+                "contour_label":"","interval_m":10,"source":"rwanda_dem_10m"},
+                "geometry":{"type":"LineString","coordinates":[[30.002,lat],[30.004,lat]]}})
+        };
+        let valid = json!({"status":"success",
+            "layers":{
+                "contours_intermediate":{"type":"FeatureCollection","features":[line("intermediate",-0.995),line("intermediate",-0.994)]},
+                "contours_index":{"type":"FeatureCollection","features":[line("index",-0.993)]}},
+            "source":"rwanda_dem_10m","source_version":"https://dem.example/rwanda/10m",
+            "minor_interval_m":10,"index_interval_m":50,"requested_spacing_m":10.0,
+            "effective_spacing_m":10.0,"grid":[112,111],"sampled_points":12432,
+            "unresolved_points":0,"intermediate_features":2,"index_features":1});
+        let page = decode_contours(&valid, &area).unwrap();
+        assert_eq!(page["features"].as_array().unwrap().len(), 3);
+        assert_eq!(page["sourceVersion"], "https://dem.example/rwanda/10m");
+        let receipt = &page["sourceReceipt"];
+        assert!(validate_source_receipt(receipt).is_ok());
+        assert_eq!(receipt["source"], "rwanda_dem_10m");
+        assert_eq!(receipt["grid"], json!([112, 111]));
+        assert_eq!(receipt["minor_interval_m"], 10);
+        assert_eq!(receipt["index_interval_m"], 50);
+        assert_eq!(receipt["unresolved_points"], 0);
+        // The kinds survive for the print-context split.
+        let kinds: Vec<&str> = page["features"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|feature| feature["properties"]["contour_kind"].as_str().unwrap())
+            .collect();
+        assert_eq!(kinds, ["intermediate", "intermediate", "index"]);
+        // A version past its bound is refused, not trimmed.
+        let mut long = valid.clone();
+        long["source_version"] = json!("v".repeat(513));
+        assert_eq!(
+            decode_contours(&long, &area).unwrap_err(),
+            "contour source version exceeds its bound"
+        );
+        // Wholly unresolved sampling has no surface to cut from.
+        let mut blind = valid.clone();
+        blind["unresolved_points"] = json!(12432);
+        assert_eq!(
+            decode_contours(&blind, &area).unwrap_err(),
+            "contour acquisition resolved no elevation sample"
+        );
+        // The door reaches the same decoder.
+        let request =
+            json!({"action":"decode_contours","schema":SCHEMA,"response":valid,"area":area});
+        let answer: Value =
+            serde_json::from_str(&evaluate(&serde_json::to_vec(&request).unwrap()).unwrap())
+                .unwrap();
+        assert_eq!(answer["sourceReceipt"]["source"], "rwanda_dem_10m");
     }
 
     fn scope() -> Scope {

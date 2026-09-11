@@ -76,3 +76,35 @@ A refusal quotes provider strings — a footprint's identifier, a geometry's typ
 — bounded in characters and stripped of control characters, so a malformed
 provider row can neither break the status line it is read in nor a host's
 string handling.
+
+## 2026-09-12 — contour decode
+
+`decode_contours` admits the tiler's `/v1/contours/fetch` answer (reached
+through ds-brain `query_print_context` with `context_kind: elevation_contours`)
+into a room the same way `decode_buildings` admits a building page, so a
+headless host and the desktop hold contours as one `elevation_contours`
+dataset rather than the desktop's per-transformer IndexedDB retention.
+
+The tiler sends two `FeatureCollection`s, `contours_intermediate` and
+`contours_index`, with `intermediate_features` / `index_features` counts and no
+`source_receipt`. The decoder requires `status: success`, both layers present
+as collections, each count equal to its collection, every line a `LineString`
+or `MultiLineString` lying in the requested area under the dataset's
+`Intersects` rule, and every line's `contour_kind` equal to the kind of the
+layer it arrived in. The admitted page carries both kinds in one `features`
+array — the print-context assembler splits them back on `contour_kind` into
+`CONTOURS_INDEX_LAYER` / `CONTOURS_INTERMEDIATE_LAYER` — and a synthesised
+receipt `{source, source_version, minor_interval_m, index_interval_m,
+effective_spacing_m, grid, sampled_points, unresolved_points}` that
+`validate_source_receipt` accepts. `sourceVersion` is the tiler's
+`source_version` (the DEM base URL, or the Terrarium zoom when the DEM did not
+cover the area), so `freshness` re-acquires when the surface changes. A
+complete empty page is admitted.
+
+Refusals follow the building decoder's discipline — one sentence per
+distinguishable fault, naming the layer and the row (`contour line #<index>
+[`<id>`] in `<layer>` …`), the out-of-area case carrying the rule and both
+rectangles — and are exact, because they are persisted as the room's
+`last_error`. The named proof is `tests/fixtures/contours-decode/corpus.json`,
+run by `tests/contours_decode_corpus.rs`; the request door is
+`{action: "decode_contours", schema, response, area}`.
