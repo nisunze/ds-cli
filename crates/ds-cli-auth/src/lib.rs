@@ -1556,6 +1556,9 @@ impl LayerScopeFence {
     pub fn project(&self) -> &str {
         &self.project
     }
+    pub fn audience(&self) -> &str {
+        &self.audience
+    }
 }
 
 fn verify_restored_layer_identity(
@@ -1627,17 +1630,47 @@ pub fn layer_config_fenced(
     refresh: bool,
     fence: &LayerScopeFence,
 ) -> Result<HeadlessLayerSnapshot, Failure> {
-    verify_layer_scope_fence(lane_value, fence, fence.uid(), fence.project())?;
-    let snapshot = layer_config(lane_value, refresh)?;
-    if snapshot.project_id() != fence.project() {
-        return Err(Failure::conflict(
-            "project_context_changed",
-            "the layer document was read from another selected project",
-        )
-        .remedy("repeat the layer request"));
+    let lane = Lane::parse(lane_value)?;
+    if let Some((mut device, selected)) = restored_device_project(lane)? {
+        verify_restored_layer_identity(
+            fence,
+            device.context().uid(),
+            device.profile().credential_audience_sha256(),
+            selected.project_id(),
+        )?;
+        verify_layer_scope_fence(lane_value, fence, fence.uid(), fence.project())?;
+        let result = device
+            .layer_config(selected.project_id(), refresh)
+            .map_err(map_client)?;
+        return Ok(HeadlessLayerSnapshot {
+            lane: lane.token(),
+            project_id: selected.project_id().to_owned(),
+            project_name: selected.project_name().to_owned(),
+            project_status: selected.status().to_owned(),
+            result,
+        });
     }
+    let profile = profile::load(lane)?;
+    let store = NativeRefreshStore::open()?;
+    let mut client = Client::new(profile, NativeTransport, store);
+    let user = require_restore_before_context(&mut client)?;
+    let selected = load_selected_project(client.profile(), &user)?;
+    verify_restored_layer_identity(
+        fence,
+        user.uid(),
+        client.profile().credential_audience_sha256(),
+        selected.project_id(),
+    )?;
     verify_layer_scope_fence(lane_value, fence, fence.uid(), fence.project())?;
-    Ok(snapshot)
+    let result = client.layer_config(selected.project_id(), refresh, now());
+    let result = with_released_context_disposition(client.profile(), &selected, result)?;
+    Ok(HeadlessLayerSnapshot {
+        lane: lane.token(),
+        project_id: selected.project_id().to_owned(),
+        project_name: selected.project_name().to_owned(),
+        project_status: selected.status().to_owned(),
+        result,
+    })
 }
 
 pub fn style_catalog(lane_value: &str) -> Result<HeadlessStyleSnapshot, Failure> {
@@ -1717,13 +1750,6 @@ pub fn layer_reorder_fenced(
             selected.project_id(),
         )?;
         verify_layer_scope_fence(lane_value, fence, fence.uid(), fence.project())?;
-        if selected.project_id() != fence.project() {
-            return Err(Failure::conflict(
-                "project_context_changed",
-                "the restored device selected another project",
-            )
-            .remedy("repeat the layer request"));
-        }
         let result = device
             .layer_reorder(selected.project_id(), orders)
             .map_err(map_client)?;
@@ -1747,13 +1773,6 @@ pub fn layer_reorder_fenced(
         selected.project_id(),
     )?;
     verify_layer_scope_fence(lane_value, fence, fence.uid(), fence.project())?;
-    if selected.project_id() != fence.project() {
-        return Err(Failure::conflict(
-            "project_context_changed",
-            "the restored client selected another project",
-        )
-        .remedy("repeat the layer request"));
-    }
     let result = client.layer_reorder(selected.project_id(), orders, now());
     let result = with_released_context_disposition(client.profile(), &selected, result)?;
     Ok(HeadlessLayerOrderReceipt {
@@ -3797,6 +3816,26 @@ pub fn printing(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn restored_layer_identity_requires_exact_uid_audience_and_project() {
+        let fence = LayerScopeFence {
+            uid: "u1".into(),
+            audience: "a1".into(),
+            project: "p1".into(),
+            credential: "c1".into(),
+        };
+        assert!(verify_restored_layer_identity(&fence, "u1", "a1", "p1").is_ok());
+        for (uid, audience, project) in [("u2", "a1", "p1"), ("u1", "a2", "p1"), ("u1", "a1", "p2")]
+        {
+            assert_eq!(
+                verify_restored_layer_identity(&fence, uid, audience, project)
+                    .unwrap_err()
+                    .code(),
+                "project_context_changed"
+            );
+        }
+    }
 
     #[test]
     fn project_report_adapter_exposes_only_lane_and_typed_requests() {
