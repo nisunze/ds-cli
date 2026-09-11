@@ -62,6 +62,7 @@
 
 pub mod attachment;
 pub mod category_catalog;
+pub mod collisions;
 pub mod comment;
 pub mod config;
 pub mod features;
@@ -161,6 +162,7 @@ pub static DOMAIN: Domain = Domain {
         &lv::project_export::COMMAND,
         &lv::process::COMMAND,
         &process_settings::COMMAND,
+        &collisions::COMMAND,
         &transformer::status::COMMAND,
         &transformer::dashboard::COMMAND,
         &transformer::download::COMMAND,
