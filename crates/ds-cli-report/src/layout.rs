@@ -248,6 +248,110 @@ const SESSION_REFUSALS: &[Refusal] = &[
         remedy: "Nothing to do; the document is at its newest held state",
     },
 ];
+const ADD_LAYOUT: Arg =
+    Arg::value("layout", "<json-file>", "Held print layout to add to.").required();
+const ADD_KIND: Arg = Arg::value("kind", "<kind>", "The element kind.")
+    .choices(&[
+        "map",
+        "text",
+        "legend",
+        "scale_bar",
+        "north_arrow",
+        "logo",
+        "rectangle",
+        "table",
+    ])
+    .required();
+const ADD_ID: Arg = Arg::value(
+    "id",
+    "<element-id>",
+    "Element id; minted as <kind>-<n> when omitted.",
+);
+const ADD_ASSET: Arg = Arg::value(
+    "asset",
+    "<asset-id>",
+    "For a logo: the layout asset it shows.",
+);
+pub static ADD: Command = Command {
+    id: "report.layout.add",
+    path: &["report", "layout", "add"],
+    contract: 1,
+    summary: "Add the canonical new element of a kind to a layout.",
+    purpose: "What a newly added text, frame, table, legend or logo element is — its frame, ink, type size and bindings — is decided once in ds-command-kernel (printing::elements) for the Printing setup page and this command alike, so an author never retypes the defaults. A legend carries its binding from the start; a logo names an asset the layout holds.",
+    chapter: Chapter::Reports,
+    effect: Effect::ReadOnly,
+    authority: Authority::None,
+    execution: Execution::Sync,
+    args: &[ADD_LAYOUT, ADD_KIND, ADD_ID, ADD_ASSET],
+    output: "{layout, index}: the layout with the new element and where it sits.",
+    examples: &[Example {
+        command: "ds report layout add --layout layout.json --kind table --output json",
+        note: "The new table binds lv_print_info with Description/Unit/Quantity.",
+        runnable: false,
+    }],
+    refusals: REFUSALS,
+    reference: Some("docs/reference/report.md"),
+    availability: local,
+};
+const STYLE_ACTION: Arg = Arg::value(
+    "action",
+    "<action>",
+    "choices: which governed print styles a layer may bind; set: bind (or, with an empty --style-ref, unbind) one layer.",
+)
+.choices(&["choices", "set"])
+.default("choices");
+const STYLE_CATALOGUE: Arg = Arg::value(
+    "catalogue",
+    "<json-file>",
+    "Style catalogue facts: [{style_ref, style_target}] as the layers snapshot reports them.",
+)
+.required();
+const STYLE_LAYOUT: Arg = Arg::value("layout", "<json-file>", "Held print layout (set).");
+const STYLE_LAYER: Arg = Arg::value("layer", "<layer-id>", "Logical print layer id (set).");
+const STYLE_REF: Arg = Arg::value(
+    "style-ref",
+    "<style-ref>",
+    "Governed print style to bind; empty unbinds (set).",
+);
+pub static STYLE_REF_COMMAND: Command = Command {
+    id: "report.layout.style-ref",
+    path: &["report", "layout", "style-ref"],
+    contract: 1,
+    summary: "Which governed print styles a print layer may bind; bind one.",
+    purpose: "Which `_print` style documents may be bound to a print layer, and what binding one means, are decided once in ds-command-kernel (printing::elements) from the style catalogue's facts — the same decision the Printing setup page's picker takes. The governed clones themselves are created with style.print.create.",
+    chapter: Chapter::Reports,
+    effect: Effect::ReadOnly,
+    authority: Authority::None,
+    execution: Execution::Sync,
+    args: &[
+        STYLE_ACTION,
+        STYLE_CATALOGUE,
+        STYLE_LAYOUT,
+        STYLE_LAYER,
+        STYLE_REF,
+    ],
+    output: "choices: {refs}; set: {layout}.",
+    examples: &[Example {
+        command: "ds report layout style-ref --catalogue styles.json --output json",
+        note: "The print styles a layer may bind, in stable order.",
+        runnable: false,
+    }],
+    refusals: STYLE_REFUSALS,
+    reference: Some("docs/reference/report.md"),
+    availability: local,
+};
+const STYLE_REFUSALS: &[Refusal] = &[
+    Refusal {
+        code: "printing_invalid",
+        when: "The layout, catalogue or layer id is malformed",
+        remedy: "Use report.layout.schema and correct the reported layout constraint",
+    },
+    Refusal {
+        code: "printing_style_ref_ineligible",
+        when: "The style reference is not a governed print style the catalogue offers",
+        remedy: "Create the governed clone with style.print.create, or pick one from --action choices",
+    },
+];
 pub static RENDER: Command = Command {
     id: "report.layout.render",
     path: &["report", "layout", "render"],
@@ -515,6 +619,43 @@ pub fn context(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
         }
         other => Err(invalid(format!("unknown action `{other}`"))),
     }
+}
+pub fn add(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
+    let mut request = json!({
+        "op": "add_element",
+        "layout": json_file(i, "layout")?,
+        "kind": i.require("kind")?,
+        "asset": i.value("asset").unwrap_or(""),
+    });
+    if let Some(id) = i.value("id") {
+        request["id"] = Value::String(id.into());
+    }
+    let input = serde_json::to_vec(&request).map_err(invalid)?;
+    let result = ds_command_kernel::printing::evaluate(&input).map_err(invalid)?;
+    serde_json::from_str(&result).map_err(invalid)
+}
+pub fn style_ref(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
+    let catalogue = json_file(i, "catalogue")?;
+    let request = match i.require("action")? {
+        "choices" => json!({"op": "style_ref_choices", "catalogue": catalogue}),
+        _ => json!({
+            "op": "set_layer_style_ref",
+            "layout": json_file(i, "layout")?,
+            "layer_id": i.require("layer")?,
+            "style_ref": i.value("style-ref").unwrap_or(""),
+            "catalogue": catalogue,
+        }),
+    };
+    let input = serde_json::to_vec(&request).map_err(invalid)?;
+    let result = ds_command_kernel::printing::evaluate(&input).map_err(|e| {
+        if e.starts_with("printing_style_ref_ineligible") {
+            Failure::invalid("printing_style_ref_ineligible", e)
+                .remedy("Create the governed clone with style.print.create, or pick one from --action choices")
+        } else {
+            invalid(e)
+        }
+    })?;
+    serde_json::from_str(&result).map_err(invalid)
 }
 pub fn session(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
     let (state, event) = (i.value("state"), i.value("event"));

@@ -7,7 +7,24 @@ fn map_print_discovery_is_compact_and_exposes_the_real_kernel_schemas() {
     assert!(index.to_string().len() < 2000);
     assert_eq!(
         index["data"]["sections"],
-        serde_json::json!(["request", "layout", "edit", "outputs"])
+        serde_json::json!(["request", "choices", "layout", "edit", "outputs"])
+    );
+    // The choices section is the kernel's advertised DPI/paper shortlist and
+    // defaults, not a JSON schema: it is what a picker renders.
+    let (choices, code) = common::json(&[
+        "map",
+        "print",
+        "schema",
+        "--section",
+        "choices",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(code, 0);
+    assert_eq!(choices["data"]["dpi"]["default"], 300);
+    assert_eq!(
+        choices["data"]["paper"]["choices"],
+        serde_json::json!(["A3", "A0"])
     );
     for section in ["request", "layout", "edit", "outputs"] {
         let (schema, code) = common::json(&[

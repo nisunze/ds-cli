@@ -19,7 +19,7 @@ pub static COMMAND: Command = Command {
         "<section>",
         "Return one complete authoritative schema.",
     )
-    .choices(&["request", "layout", "edit", "outputs"])],
+    .choices(&["request", "choices", "layout", "edit", "outputs"])],
     output: "Section index or one kernel-generated JSON Schema, with no network or project reads.",
     examples: &[Example {
         command: "ds map print schema --output json",
@@ -33,11 +33,12 @@ pub static COMMAND: Command = Command {
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     Ok(match inputs.value("section") {
         Some("request") => ds_command_kernel::printing::map::request_schema(),
+        Some("choices") => ds_command_kernel::printing::map::request_choices(),
         Some("layout") => ds_command_kernel::printing::layout_schema(),
         Some("edit") => ds_command_kernel::printing::command_schema(),
         Some("outputs") => ds_command_kernel::report_formats::output_selection_schema(),
         _ => {
-            json!({"sections":["request","layout","edit","outputs"],"next":"ds map print schema --section <section> --output json","author":"report.layout.edit","export":"desktop.printing.map.export","preview":"map.ui.open","assets":"assets.tree"})
+            json!({"sections":["request","choices","layout","edit","outputs"],"next":"ds map print schema --section <section> --output json","author":"report.layout.edit","export":"desktop.printing.map.export","preview":"map.ui.open","assets":"assets.tree"})
         }
     })
 }

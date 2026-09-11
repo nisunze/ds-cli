@@ -3437,7 +3437,7 @@ fn every_map_command_is_reachable_without_the_desktop_installed() {
     assert!(
         printing["sections"]
             .as_array()
-            .is_some_and(|s| s.len() == 4)
+            .is_some_and(|s| s.len() == 5)
     );
     for command in commands {
         assert_eq!(
