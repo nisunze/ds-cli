@@ -5,10 +5,13 @@ fn main() {
         Some("stable") => "stable",
         Some("canary") => "canary",
         Some("headless") => "headless",
+        Some("headless-canary") => "headless-canary",
         Some("local") => "local",
         None => "development",
         Some(other) => {
-            panic!("DS_DESKTOP_LANE must be stable, canary, headless, or local; got {other:?}")
+            panic!(
+                "DS_DESKTOP_LANE must be stable, canary, headless, headless-canary, or local; got {other:?}"
+            )
         }
     };
     println!("cargo:rustc-env=DS_MCP_RELEASE_LANE={lane}");
