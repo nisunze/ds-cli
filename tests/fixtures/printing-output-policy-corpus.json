@@ -134,26 +134,27 @@
         "schema": "ds.design-output-selection/v1",
         "prints": [],
         "geospatial": [
-          "a3_pdf",
-          "excel"
+          "pdf_a3"
         ],
-        "tabular": []
+        "tabular": [
+          "xlsx"
+        ]
       },
       "placements": {
-        "a3_pdf": [
+        "pdf_a3": [
           "desktop",
           "web"
         ],
-        "excel": [
+        "xlsx": [
           "desktop",
           "web"
         ]
       },
       "tokens": [
-        "a3_pdf",
-        "excel"
+        "pdf_a3",
+        "xlsx"
       ],
-      "why": "The kernel lowercases a legacy token before classifying it, so `A3_PDF` reaches `normalize`'s alias table and becomes `pdf_a3`; the deleted TypeScript carried the operator's casing through and the alias never matched."
+      "why": "The kernel trims, lowercases and aliases a legacy token through the one table `report_formats::alias_format` holds \u2014 the same map ds-brain applies (`networkReporterIndividualFormatAliases`) \u2014 so `A3_PDF` is `pdf_a3` (class `print`) and `excel` is `xlsx` (class `tabular`). The deleted TypeScript carried the operator's casing through and never aliased, so it named two outputs no catalogue offers and gave them the placement rule of a class neither belongs to."
     },
     {
       "id": "token-array",
