@@ -32,17 +32,17 @@ use ds_cli_contract::spec::{
 use ds_cli_contract::{Context, Inputs};
 use ds_command_kernel::{
     report::PublicationState,
-    report_export::{reportable_transformer, InputReceipt},
+    report_export::{InputReceipt, reportable_transformer},
 };
 use ds_report_artifacts::{
-    confined_fs::HeldDirectory, CommittedAuthorizedPublication, VerifiedSidecarArtifact,
+    CommittedAuthorizedPublication, VerifiedSidecarArtifact, confined_fs::HeldDirectory,
 };
 use ds_report_host::{
-    batch_plan, installed_admin_bounds_path, run_batch, shared_root, verify_admin_bounds_asset,
-    BatchSettings, EngineExit, HostFailure, ReportEngine, RunSettings, TransformerReportInputs,
-    DEFAULT_RESIDENT_LIMIT, MAX_RESIDENT_LIMIT,
+    BatchSettings, DEFAULT_RESIDENT_LIMIT, EngineExit, HostFailure, MAX_RESIDENT_LIMIT,
+    ReportEngine, RunSettings, TransformerReportInputs, batch_plan, installed_admin_bounds_path,
+    run_batch, shared_root, verify_admin_bounds_asset,
 };
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use super::{LANE_ARG, TRANSFORMER_ARG};
 use crate::{DISCOVERY_TIMEOUT, DS_REPORT, EXPORT_TIMEOUT};
@@ -875,9 +875,11 @@ mod tests {
             host_failure(HostFailure::new("something_new", "why")).code(),
             "report_result_invalid"
         );
-        assert!(REFUSALS
-            .iter()
-            .any(|refusal| refusal.code == NOT_ACTIVE.code));
+        assert!(
+            REFUSALS
+                .iter()
+                .any(|refusal| refusal.code == NOT_ACTIVE.code)
+        );
     }
 
     #[test]
@@ -894,10 +896,12 @@ mod tests {
         assert!(COMMAND.summary.len() <= 70);
         assert!(COMMAND.args.iter().all(|arg| arg.name != "project"));
         assert!(COMMAND.args.iter().any(|arg| arg.name == "publish"));
-        assert!(COMMAND
-            .args
-            .iter()
-            .any(|arg| arg.name == "server-state-dir"));
+        assert!(
+            COMMAND
+                .args
+                .iter()
+                .any(|arg| arg.name == "server-state-dir")
+        );
         assert!(COMMAND.purpose.contains("named print output"));
     }
 

@@ -14,7 +14,6 @@ mod state_windows;
 pub mod sync;
 mod transport;
 mod upload;
-pub use upload::transfer_sync_output;
 
 /// The weak-network acceptance seam. Feature-gated, so it exists only for
 /// `crates/ds-cli-auth/tests/weak_network.rs` and never in a release build;

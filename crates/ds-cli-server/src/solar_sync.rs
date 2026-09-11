@@ -6,7 +6,7 @@
 use std::{
     collections::BTreeSet,
     io::Cursor,
-    path::{Path, PathBuf},
+    path::PathBuf,
     sync::{
         Arc, Mutex,
         atomic::{AtomicBool, Ordering},
@@ -23,8 +23,8 @@ use ds_compute_runtime::{
     self as runtime, CompletionObserver, SolarPublication, SolarPublicationMetadata,
 };
 use ds_sync_runtime::{
-    ActivityRow, LocalOutput, LocalRow, Producer, Reads, SolarPublishOutcome, SolarPublisher,
-    TransferReceipt, inventory_digest,
+    ActivityRow, LocalOutput, LocalRow, Producer, SolarPublishOutcome, SolarPublisher,
+    TransferReceipt, VerifiedReads, inventory_digest,
 };
 
 use crate::{host::Connection, server_sync::ServerSyncSession};
@@ -37,6 +37,10 @@ pub struct SolarActivity {
     /// Native engine registration and its following gateway pass are one
     /// release-attributed action, even when compute workers finish together.
     sync_gate: Mutex<()>,
+    /// Shared Sync Center reader. It owns the object-ticket origin pin,
+    /// redirect refusal, staging, and digest proof; this host only anchors its
+    /// private cache below the protected server state directory.
+    reads: VerifiedReads,
     wake: AtomicBool,
     publication_failure: Mutex<Option<String>>,
 }
@@ -66,8 +70,12 @@ impl Drop for SolarSyncPump {
 
 impl SolarActivity {
     pub fn open(database: PathBuf, connection: Connection) -> Result<Arc<Self>, String> {
+        let state_directory = database
+            .parent()
+            .ok_or("server database path has no protected state directory")?;
         Ok(Arc::new(Self {
             session: Arc::new(ServerSyncSession::open(&database, &connection)?),
+            reads: VerifiedReads::new(state_directory.join("sync-downloads")),
             database,
             connection,
             sync_gate: Mutex::new(()),
@@ -104,9 +112,8 @@ impl SolarActivity {
 
     pub fn store_read(&self) -> Result<Value, String> {
         let producer = SolarProducer { activity: self };
-        let reads = ServerReads;
         self.session
-            .with_host_for_project(self.session.project(), &producer, &reads, |host| {
+            .with_host_for_project(self.session.project(), &producer, &self.reads, |host| {
                 host.store_read()
             })
     }
@@ -127,9 +134,8 @@ impl SolarActivity {
             .ok_or("completed Solar job lost its durable prepared input")?;
         let scope = runtime::solar_job_scope(job, &input)?;
         let producer = SolarProducer { activity: self };
-        let reads = ServerReads;
         self.session
-            .with_host_for_project(&scope.project_id, &producer, &reads, |host| {
+            .with_host_for_project(&scope.project_id, &producer, &self.reads, |host| {
                 // A completion can be cancelled before the background pump's
                 // first pass. Record the existing local row first, without
                 // opening or uploading any remote work.
@@ -194,13 +200,15 @@ impl SolarActivity {
             .lock()
             .map_err(|_| "Solar Sync Center activity gate is unavailable")?;
         let producer = SolarProducer { activity: self };
-        let reads = ServerReads;
         let publisher = SolarComputeArtifactsPublisher { activity: self };
         let project = self.session.project().to_owned();
-        self.session
-            .with_host_for_project(&project, &producer, &reads, |host| {
+        let solar = self
+            .session
+            .with_host_for_project(&project, &producer, &self.reads, |host| {
                 host.run_solar_publications(&publisher).map(|_| ())
-            })
+            });
+        let reports = crate::server_reports::drain(&self.database, &self.session, &self.reads);
+        solar.and(reports)
     }
 
     fn note_publication_failure(&self, error: &str) {
@@ -210,7 +218,7 @@ impl SolarActivity {
         let detail = if error.contains("exceeds 4096 durable jobs") {
             "Solar Sync Center inventory exceeds its 4096 completed-job bound".into()
         } else {
-            "Solar Sync Center could not read or publish durable Solar work; it will retry".into()
+            "Sync Center could not read or publish durable server work; it will retry".into()
         };
         if let Ok(mut failure) = self.publication_failure.lock() {
             *failure = Some(detail);
@@ -382,7 +390,13 @@ impl Producer for SolarProducer<'_> {
             return Err("Solar output bytes no longer match their sealed declaration".into());
         }
         let mut reader = Cursor::new(output.bytes);
-        ds_cli_auth::transfer_sync_output(output_id, session_uri, output.size_bytes, &mut reader)
+        ds_sync_runtime::transfer_verified_output(
+            output_id,
+            session_uri,
+            output.size_bytes,
+            &output.sha256,
+            &mut reader,
+        )
     }
 
     fn activity(&self, project: &str) -> Result<Vec<ActivityRow>, String> {
@@ -549,26 +563,5 @@ impl SolarPublisher for SolarComputeArtifactsPublisher<'_> {
             }
             Err(ds_cli_auth::sync::SolarPublicationError::Retryable(detail)) => Err(detail),
         }
-    }
-}
-
-/// Solar's server pass only publishes its own completed rows. A remote head
-/// is not silently downloaded into a compute job; such a request must use a
-/// dedicated native read owner.
-struct ServerReads;
-
-impl Reads for ServerReads {
-    fn head_root(&self, _project: &str, _identity: &Identity) -> Result<PathBuf, String> {
-        Err("the Solar server publication host does not materialize remote heads".into())
-    }
-
-    fn download_verified(
-        &self,
-        _url: &str,
-        _destination: &Path,
-        _sha256: &str,
-        _size_bytes: u64,
-    ) -> Result<(), String> {
-        Err("the Solar server publication host does not download remote heads".into())
     }
 }

@@ -2,6 +2,7 @@
 mod auth;
 mod host;
 mod layers;
+mod server_reports;
 pub mod server_sync;
 mod solar_sync;
 use ds_cli_contract::{

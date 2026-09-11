@@ -107,7 +107,7 @@ Worker leases renew during computation. After a killed process, an expired
 30-second lease can be reclaimed; completed jobs are never rerun. Cancellation
 retains input and fences late results. The native engine finishes its current
 computation before releasing CPU; cancellation does not promise mid-algorithm
-interruption. Cloud input acquisition/publication, device management UI and
+interruption. Complete interactive Desktop workflow delegation, device management UI and
 public browser authentication remain separate migration gates.
 
 Development: `ds-web/run-linux-server.sh` builds locally and restarts its own
@@ -126,3 +126,24 @@ excluded from MCP so it cannot block a tool response indefinitely.
 job lifecycle and artifact publication receipts. It uses the same protected
 connection and native identity as other Server commands; it creates no queue.
 A completed calculation and a published artifact are separate states.
+
+## Report publication without Desktop
+
+`ds report project export --transformer <name> --out-dir <fresh-directory>
+--publish --lane canary` runs the native report engine and seals verified outputs
+into the same report artifact store consumed by Desktop. The foreground Server
+publishes queued reports in the background through the existing WorkGrant
+authority. `queued_for_server_sync` is an enqueue receipt, not proof of remote
+publication; inspect `ds server activity --lane canary --output json`.
+
+Both commands must use the same user, lane and state directory. If Server uses
+`--state-dir`, export must receive that exact path as `--server-state-dir`.
+Without `--publish`, export remains local-only. Development engines cannot
+claim release publication authority. This command computes before queueing;
+it does not claim a durable background report-compute job.
+
+The development launcher isolates config, cache, data and Server state below
+`DS_SERVER_DEV_ROOT` (default `~/.local/state/ds/server-dev`). Use its `--cli`
+mode to authenticate that development environment. It neither copies the
+installed Server login nor allows a development state override into installed
+Server state.

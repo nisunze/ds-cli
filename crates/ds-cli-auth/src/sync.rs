@@ -8,8 +8,9 @@ use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use ds_client_core::{
-    Client, ClientError, ErrorKind, InstallHeartbeat, NativeSyncRequest,
-    SolarCalculationArtifactFinalize, SolarCalculationArtifactOpen, SyncGatewayOperation,
+    Client, ClientError, ErrorKind, InstallHeartbeat, InstallHeartbeatWithoutAddition,
+    NativeSyncRequest, SolarCalculationArtifactFinalize, SolarCalculationArtifactOpen,
+    SyncGatewayOperation,
 };
 use ds_edge_authority::{
     AuthorityPins, AuthorityVerifier, ExpectedInstall, InstallLeaseCapability,
@@ -334,24 +335,9 @@ impl NativeSyncSession {
 
     fn heartbeat_locked(&self, state: &mut SessionState) -> Result<(), String> {
         self.assert_runtime_fence()?;
-        let addition = state
-            .addition
-            .as_ref()
-            .ok_or("native Sync Center installation has no registered engine release")?;
-        let request = NativeSyncRequest::heartbeat(InstallHeartbeat {
-            install_id: &self.install_id,
-            device: &self.device,
-            arch: &self.arch,
-            app_version: &self.app_version,
-            channel: self.lane.token(),
-            os_version: "linux native-server",
-            webview_version: "native-server",
-            addition_name: &addition.name,
-            addition_version: &addition.version,
-            addition_release: &addition.release,
-            addition_state: "ready",
-        })
-        .map_err(client_error)?;
+        let request = self
+            .heartbeat_request(state.addition.as_ref())
+            .map_err(client_error)?;
         let data = state
             .client
             .sync_gateway(&request, now())
@@ -396,20 +382,9 @@ impl NativeSyncSession {
                 "native Sync Center installation has no registered engine release".into(),
             )
         })?;
-        let request = NativeSyncRequest::heartbeat(InstallHeartbeat {
-            install_id: &self.install_id,
-            device: &self.device,
-            arch: &self.arch,
-            app_version: &self.app_version,
-            channel: self.lane.token(),
-            os_version: "linux native-server",
-            webview_version: "native-server",
-            addition_name: &addition.name,
-            addition_version: &addition.version,
-            addition_release: &addition.release,
-            addition_state: "ready",
-        })
-        .map_err(classify_solar_error)?;
+        let request = self
+            .heartbeat_request(Some(addition))
+            .map_err(classify_solar_error)?;
         let data = state
             .client
             .sync_gateway(&request, now())
@@ -465,6 +440,38 @@ impl NativeSyncSession {
         )
     }
 
+    fn heartbeat_request(
+        &self,
+        addition: Option<&NativeEngineAddition>,
+    ) -> Result<NativeSyncRequest, ClientError> {
+        match addition {
+            Some(addition) => NativeSyncRequest::heartbeat(InstallHeartbeat {
+                install_id: &self.install_id,
+                device: &self.device,
+                arch: &self.arch,
+                app_version: &self.app_version,
+                channel: self.lane.token(),
+                os_version: "linux native-server",
+                webview_version: "native-server",
+                addition_name: &addition.name,
+                addition_version: &addition.version,
+                addition_release: &addition.release,
+                addition_state: "ready",
+            }),
+            None => {
+                NativeSyncRequest::heartbeat_without_addition(InstallHeartbeatWithoutAddition {
+                    install_id: &self.install_id,
+                    device: &self.device,
+                    arch: &self.arch,
+                    app_version: &self.app_version,
+                    channel: self.lane.token(),
+                    os_version: "linux native-server",
+                    webview_version: "native-server",
+                })
+            }
+        }
+    }
+
     fn execute(&self, request: NativeSyncRequest) -> Result<Value, String> {
         let mut state = self
             .state
@@ -473,6 +480,28 @@ impl NativeSyncSession {
         // Renew/verify before every operation. This refreshes Firebase first
         // and fails closed for revocation, principal drift, lane drift, or a
         // blocked install instead of relying on an old local lease.
+        self.heartbeat_locked(&mut state)?;
+        state
+            .client
+            .sync_gateway(&request, now())
+            .map_err(client_error)
+    }
+
+    /// A report grant is admitted with the engine release in its sealed
+    /// `work/open` declaration. Keep the registration heartbeat and that
+    /// exact request under one session lock, so a second report release cannot
+    /// replace the installation addition between admission and the call.
+    fn execute_reporter_work_open(
+        &self,
+        addition: NativeEngineAddition,
+        request: NativeSyncRequest,
+    ) -> Result<Value, String> {
+        validate_addition(&addition)?;
+        let mut state = self
+            .state
+            .lock()
+            .map_err(|_| "native Sync Center session is unavailable")?;
+        state.addition = Some(addition);
         self.heartbeat_locked(&mut state)?;
         state
             .client
@@ -492,17 +521,65 @@ impl NativeSyncSession {
     }
 
     fn post(&self, route: SyncRoute, body: &Value) -> Result<Value, String> {
-        if route != SyncRoute::ComputeArtifacts {
-            return Err("native Solar server does not use Network Reporter work routes".into());
+        match route {
+            SyncRoute::ComputeArtifacts => {
+                let request = NativeSyncRequest::for_project(
+                    SyncGatewayOperation::ComputeArtifacts,
+                    &self.project,
+                    body,
+                )
+                .map_err(client_error)?;
+                self.execute(request)
+            }
+            SyncRoute::WorkOpen => {
+                let addition = reporter_addition_for_work_open(body)?;
+                let request = NativeSyncRequest::for_project(
+                    SyncGatewayOperation::WorkOpen,
+                    &self.project,
+                    body,
+                )
+                .map_err(client_error)?;
+                self.execute_reporter_work_open(addition, request)
+            }
+            // A publish is authorized by the signed grant minted above. It
+            // never accepts a release from this untrusted declaration, so one
+            // report cannot steal another release's installation admission.
+            SyncRoute::WorkPublish => {
+                let request = NativeSyncRequest::for_project(
+                    SyncGatewayOperation::WorkPublish,
+                    &self.project,
+                    body,
+                )
+                .map_err(client_error)?;
+                self.execute(request)
+            }
         }
-        let request = NativeSyncRequest::for_project(
-            SyncGatewayOperation::ComputeArtifacts,
-            &self.project,
-            body,
-        )
-        .map_err(client_error)?;
-        self.execute(request)
     }
+}
+
+fn reporter_addition_for_work_open(body: &Value) -> Result<NativeEngineAddition, String> {
+    let object = body
+        .as_object()
+        .ok_or("native Sync Center report work declaration is invalid")?;
+    if object.get("engine").and_then(Value::as_str) != Some("ds-network-reporter") {
+        return Err("native Sync Center report work declaration is invalid".into());
+    }
+    let release = object
+        .get("engine_release")
+        .and_then(Value::as_str)
+        .ok_or("native Sync Center report work declaration is invalid")?;
+    let version = release
+        .strip_prefix("ds-network-reporter@")
+        .filter(|version| !version.is_empty())
+        .ok_or("native Sync Center report work declaration is invalid")?;
+    let addition = NativeEngineAddition {
+        name: "ds-network-reporter".into(),
+        version: version.into(),
+        release: release.into(),
+    };
+    validate_addition(&addition)
+        .map_err(|_| "native Sync Center report work declaration is invalid".to_string())?;
+    Ok(addition)
 }
 
 impl Gateway for NativeSyncSession {
@@ -564,16 +641,31 @@ fn native_arch() -> Result<&'static str, String> {
     }
 }
 fn validate_addition(addition: &NativeEngineAddition) -> Result<(), String> {
-    if addition.name != "ds-solar-engine"
-        || addition.version.is_empty()
+    if !matches!(
+        addition.name.as_str(),
+        "ds-solar-engine" | "ds-network-reporter"
+    ) || addition.version.is_empty()
         || addition.release.is_empty()
         || addition.version.len() > 120
         || addition.release.len() > 256
         || addition.release.contains(char::is_control)
+        || (addition.name == "ds-network-reporter"
+            && (addition.release != format!("ds-network-reporter@{}", addition.version)
+                || !valid_reporter_version(&addition.version)))
     {
         return Err("native Sync Center engine release is invalid".into());
     }
     Ok(())
+}
+
+fn valid_reporter_version(version: &str) -> bool {
+    let Some(revision) = version.strip_prefix("0.1.0+") else {
+        return false;
+    };
+    revision.len() == 40
+        && revision
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || matches!(byte, b'a'..=b'f'))
 }
 fn check_runtime_fence(
     expected_principal: &ProviderIdentity,
@@ -624,6 +716,45 @@ mod tests {
                 .all(|byte| byte.is_ascii_digit() || matches!(byte, b'.' | b'-' | b'+'))
         );
         assert_ne!(env!("DS_NATIVE_APP_VERSION"), env!("CARGO_PKG_VERSION"));
+    }
+
+    #[test]
+    fn reporter_registration_is_bound_to_its_declared_release() {
+        let mut addition = NativeEngineAddition {
+            name: "ds-network-reporter".into(),
+            version: format!("0.1.0+{}", "a".repeat(40)),
+            release: format!("ds-network-reporter@0.1.0+{}", "a".repeat(40)),
+        };
+        assert!(validate_addition(&addition).is_ok());
+        addition.release = "ds-solar-engine@0.1.0+abc".into();
+        assert!(validate_addition(&addition).is_err());
+        addition.name = "unregistered-engine".into();
+        assert!(validate_addition(&addition).is_err());
+    }
+
+    #[test]
+    fn work_open_selects_only_its_exact_reporter_release() {
+        let release = "ds-network-reporter@0.1.0+0123456789abcdef0123456789abcdef01234567";
+        let body = serde_json::json!({
+            "ds_project": "project-a",
+            "engine": "ds-network-reporter",
+            "engine_release": release,
+        });
+        let addition = reporter_addition_for_work_open(&body).unwrap();
+        assert_eq!(addition.name, "ds-network-reporter");
+        assert_eq!(addition.release, release);
+        assert_eq!(
+            addition.version,
+            "0.1.0+0123456789abcdef0123456789abcdef01234567"
+        );
+
+        for invalid in [
+            serde_json::json!({"engine":"solar", "engine_release": release}),
+            serde_json::json!({"engine":"ds-network-reporter", "engine_release":"ds-network-reporter@0.1.0+wrong"}),
+            serde_json::json!({"engine":"ds-network-reporter"}),
+        ] {
+            assert!(reporter_addition_for_work_open(&invalid).is_err());
+        }
     }
 
     fn identity(uid: &str) -> ProviderIdentity {
