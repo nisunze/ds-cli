@@ -1403,9 +1403,17 @@ fn register(
 /// The pair a pinned row is named by, or `None` for every other layer. A
 /// pinned identity belongs to a pinned layer and names both halves of the
 /// pair; a host that offers one for another kind, or half of one, built the
-/// request out of a layer it had not identified.
+/// request out of a layer it had not identified. It is REQUIRED of a pinned
+/// layer: without the pair the id falls back to the clock and the counter, and
+/// a room materialised again would be a second row instead of the same one —
+/// the collision the pair exists to close.
 fn admitted_pair(draft: &Draft, kind: SourceKind) -> Result<Option<(String, String)>, Fault> {
     let Some(pinned) = &draft.pinned else {
+        if kind == SourceKind::Pinned {
+            return Err(malformed(
+                "a pinned layer is named by the transformer and design class it was materialised from",
+            ));
+        }
         return Ok(None);
     };
     if kind != SourceKind::Pinned {
@@ -1530,6 +1538,9 @@ fn restore(scope: Scope, records: &[Value], now_ms: i64) -> Result<Value, Fault>
     let mut registry = Registry::opened(scope);
     let mut retired: Vec<(String, Option<FeatureStorage>)> = vec![];
     let mut repaired: Vec<Value> = vec![];
+    // Rows this reopen refuses to re-key, and the chunks they still park in.
+    let mut carried: Vec<Value> = vec![];
+    let mut carried_storage: Vec<FeatureStorage> = vec![];
     let mut palette = 0usize;
     // One id space for what is reopened and what is retired: a retired row
     // that shares its id with a kept row would otherwise name the kept
@@ -1543,6 +1554,21 @@ fn restore(scope: Scope, records: &[Value], now_ms: i64) -> Result<Value, Fault>
         };
         let kind = SourceKind::from_raw(row.get("sourceKind"));
         let id = restored_id(row, index, now_ms);
+        // An id is never repaired. Repairing one re-keys the row and orphans
+        // the payload the host parked under the id the row actually carries,
+        // so a row whose id cannot be admitted as it stands is CARRIED: not
+        // reopened, not retired, nothing released for it. The host persists it
+        // verbatim beside the admitted registry, a later kernel can still
+        // repair it, and the next reopen carries it again — stable, never
+        // lossy. The question is asked first, so it holds whatever else the
+        // row says of itself.
+        if let Some(reason) = id_fault(&id) {
+            carried.push(json!({"raw": record, "reason": reason}));
+            if let Some(storage) = FeatureStorage::from_raw(row.get("featureStorage"), &id) {
+                carried_storage.push(storage);
+            }
+            continue;
+        }
         if !ids.insert(id.clone()) {
             return Err(refusal(
                 DUPLICATE_LAYER,
@@ -1565,6 +1591,8 @@ fn restore(scope: Scope, records: &[Value], now_ms: i64) -> Result<Value, Fault>
         }
         registry.layers.push(layer);
     }
+    // What was admitted is what `changed` speaks for: a carried row leaves the
+    // host's bytes exactly as they were, so it is no reason to rewrite them.
     let changed = !retired.is_empty() || !repaired.is_empty();
     if changed {
         registry.revision = 1;
@@ -1576,32 +1604,71 @@ fn restore(scope: Scope, records: &[Value], now_ms: i64) -> Result<Value, Fault>
     for (id, storage) in &retired {
         release.push(json!({"kind": "features_payload", "id": id}));
         if let Some(storage) = storage {
-            if !chunks_still_parked(storage, &registry.layers) {
+            // A carried row is still a row, and it still parks its payload
+            // where it says it does.
+            if !chunks_still_parked(storage, &registry.layers)
+                && !carried_storage
+                    .iter()
+                    .any(|parked| parked.same_payload(storage))
+            {
                 release.push(storage.release());
             }
         }
     }
     let retired: Vec<&String> = retired.iter().map(|(id, _)| id).collect();
+    let mut receipt = json!({
+        "restored": registry.layers.len(),
+        "retired": retired,
+        "repaired": repaired,
+        "release": release,
+    });
+    // `carried` is the exception, not the shape: a store with nothing to carry
+    // answers the receipt it always has.
+    if !carried.is_empty() {
+        if let Some(receipt) = receipt.as_object_mut() {
+            receipt.insert("carried".to_owned(), Value::Array(carried));
+        }
+    }
     Ok(json!({
         "registry": registry,
-        "receipt": {
-            "restored": registry.layers.len(),
-            "retired": retired,
-            "repaired": repaired,
-            "release": release,
-        },
+        "receipt": receipt,
         "changed": changed,
     }))
 }
 
-/// A row that lost its id gets one from the host's clock and its place in the
-/// store, so the same store reopens to the same ids.
+/// The id a row carries, read exactly as it was persisted — never trimmed,
+/// never truncated, never stripped. A row that carries no id at all has no
+/// record keyed under one either, so it is minted one from the host's clock
+/// and its place in the store; the same store then reopens to the same ids.
 fn restored_id(row: &Map<String, Value>, index: usize, now_ms: i64) -> String {
-    let id = sanitize(&js_string(row.get("id")), MAX_NAME_CHARS);
+    let id = match row.get("id") {
+        Some(Value::String(id)) => id.clone(),
+        other => js_string(other),
+    };
     if id.is_empty() {
         format!("sketch-{now_ms}-{index}")
     } else {
         id
+    }
+}
+
+/// Why a stored id cannot be admitted as it stands — the id rules of
+/// `LocalLayer::validate`, asked before the row is normalised so that `restore`
+/// can carry the row rather than re-key it. The answer is the reason the
+/// receipt reports, so it says which rule the id broke.
+fn id_fault(id: &str) -> Option<&'static str> {
+    if id.is_empty() {
+        Some("a local layer id is never repaired, and this row's id is blank")
+    } else if id.chars().any(char::is_control) {
+        Some("a local layer id is never repaired, and this row's id carries a control character")
+    } else if id.trim() != id {
+        Some("a local layer id is never repaired, and this row's id is not trimmed")
+    } else if id.chars().count() > MAX_NAME_CHARS {
+        Some("a local layer id is never repaired, and this row's id is longer than 200 characters")
+    } else if !one_segment(id) {
+        Some("a local layer id is never repaired, and this row's id is not one path segment")
+    } else {
+        None
     }
 }
 
@@ -1997,6 +2064,10 @@ mod tests {
         ] {
             let mut draft = manual_draft();
             draft["sourceKind"] = json!(kind);
+            // A pinned layer is named by its pair wherever it is registered.
+            if kind == "pinned" {
+                draft["pinned"] = json!({"transformer": "Poles A", "className": "mv_line"});
+            }
             assert_eq!(admitted(draft)["sourceName"], expected);
         }
         let mut draft = manual_draft();
@@ -2079,6 +2150,26 @@ mod tests {
                        "sourceName": MANUAL_SOURCE_NAME, "name": "Anything"}),
             )),
             UNSUPPORTED_SOURCE_KIND
+        );
+    }
+
+    #[test]
+    fn a_pinned_layer_without_its_pair_is_refused() {
+        // Without the pair the id would fall back to the clock and the counter,
+        // and materialising the same room again would append a second row
+        // instead of answering the one already held.
+        let mut draft = manual_draft();
+        draft["sourceKind"] = json!("pinned");
+        assert_eq!(refused(register(empty(), draft)), MALFORMED_DESCRIPTOR);
+        // Half a pair is no pair either, and the pair belongs to a pinned layer.
+        let mut half = pinned_draft("Poles A", "mv_line", json!(["name"]));
+        half["pinned"]["transformer"] = json!("  ");
+        assert_eq!(refused(register(empty(), half)), MALFORMED_DESCRIPTOR);
+        assert!(
+            admitted(pinned_draft("Poles A", "mv_line", json!(["name"])))["id"]
+                .as_str()
+                .expect("an id")
+                .starts_with("pinned-poles-a__mv-line-")
         );
     }
 
@@ -2345,6 +2436,110 @@ mod tests {
                 .expect("layers")
                 .len(),
             1
+        );
+    }
+
+    #[test]
+    fn a_row_whose_id_is_malformed_is_carried_verbatim_and_never_re_keyed() {
+        // The id carries a control character, so it is not admissible — and
+        // repairing it would key the reopened row somewhere the host never
+        // parked its payload. The good row beside it still reopens.
+        let bad = json!({"id": "sketch-1\u{7}-2", "name": "Broken", "featureStorage": {
+            "kind": "upload_chunks", "workspaceKey": "w", "fileName": "f", "parsedLayer": "l",
+        }});
+        let kept = admitted(manual_draft());
+        let answer = restore(vec![kept.clone(), bad.clone()]);
+        let layers = answer["registry"]["layers"].as_array().expect("layers");
+        assert_eq!(layers.len(), 1, "only the admissible row is reopened");
+        assert_eq!(layers[0], kept, "and it reopens exactly as it was");
+        assert_eq!(answer["receipt"]["restored"], 1);
+        assert_eq!(answer["receipt"]["carried"][0]["raw"], bad, "verbatim");
+        assert_eq!(
+            answer["receipt"]["carried"][0]["reason"],
+            "a local layer id is never repaired, and this row's id carries a control character"
+        );
+        assert_eq!(
+            answer["receipt"]["release"],
+            json!([]),
+            "a carried row is not destroyed, so nothing of it is released"
+        );
+        assert_eq!(answer["receipt"]["retired"], json!([]));
+        assert_eq!(answer["receipt"]["repaired"], json!([]));
+        assert_eq!(
+            answer["changed"], false,
+            "the host's bytes are what they were: admitted rows plus this one"
+        );
+    }
+
+    #[test]
+    fn every_id_rule_carries_its_row_rather_than_refusing_the_whole_store() {
+        // Each shape `LocalLayer::validate` refuses, and what used to happen to
+        // it: a traversal id refused the WHOLE store (every layer in it lost to
+        // its owner), an over-long or untrimmed one was silently truncated or
+        // trimmed into a different record.
+        for (id, reason) in [
+            ("../escape", "is not one path segment"),
+            ("a/b", "is not one path segment"),
+            (" padded ", "is not trimmed"),
+            (
+                "x".repeat(MAX_NAME_CHARS + 1).as_str(),
+                "is longer than 200 characters",
+            ),
+        ] {
+            let answer = restore(vec![
+                admitted(manual_draft()),
+                json!({"id": id, "name": "Carried"}),
+            ]);
+            assert_eq!(
+                answer["registry"]["layers"]
+                    .as_array()
+                    .expect("layers")
+                    .len(),
+                1,
+                "{id}: the rest of the store still reopens"
+            );
+            assert_eq!(answer["receipt"]["carried"][0]["raw"]["id"], id);
+            assert!(
+                answer["receipt"]["carried"][0]["reason"]
+                    .as_str()
+                    .is_some_and(|said| said.ends_with(reason)),
+                "{id}: the receipt says which rule the id broke"
+            );
+        }
+    }
+
+    #[test]
+    fn a_carried_row_is_carried_again_on_every_reopen_and_keeps_its_chunks() {
+        // Stability: the host persists the admitted rows and the carried raw
+        // rows together, and reopening THAT store answers the same thing again.
+        // A retired row parked in the same chunks releases nothing either — the
+        // carried row still parks its payload there.
+        let carried = json!({"id": "sketch-\u{7}", "name": "Broken", "featureStorage": {
+            "kind": "upload_chunks", "workspaceKey": "w", "fileName": "f", "parsedLayer": "l",
+        }});
+        let first = restore(vec![
+            json!({"id": "keep", "name": "Kept"}),
+            carried.clone(),
+            json!({"id": "pw", "sourceKind": "project_work", "featureStorage": {
+                "kind": "upload_chunks", "workspaceKey": "w", "fileName": "f", "parsedLayer": "l",
+            }}),
+        ]);
+        assert_eq!(
+            first["receipt"]["release"],
+            json!([{"kind": "features_payload", "id": "pw"}]),
+            "the chunks the carried row parks in are not the retired row's to release"
+        );
+        let mut stored: Vec<Value> = first["registry"]["layers"]
+            .as_array()
+            .expect("layers")
+            .clone();
+        stored.push(first["receipt"]["carried"][0]["raw"].clone());
+        let again = restore(stored);
+        assert_eq!(again["receipt"]["carried"][0]["raw"], carried);
+        assert_eq!(again["receipt"]["restored"], 1);
+        assert_eq!(
+            again["changed"], false,
+            "a reopen of an answer is no change"
         );
     }
 
@@ -3075,18 +3270,16 @@ mod tests {
         let mut both = pinned_draft("Poles A", "mv_line", json!(["name"]));
         both["schema"] = json!([{"name": "name", "type": "text"}]);
         assert_eq!(refused(register(empty(), both)), MALFORMED_DESCRIPTOR);
-        // Without a pair a pinned layer is still minted from the clock, and a
-        // second one with the same clock is the host's mistake as ever.
-        let clocked = admitted(json!({"name": "Poles", "geometryType": "Point",
-                                      "sourceKind": "pinned"}));
-        assert_eq!(clocked["id"], "sketch-1700000000000-4");
-        assert_eq!(clocked["color"], PINNED_COLOR);
+        // And a pinned layer without a pair at all is refused rather than
+        // minted from the clock: an id no pair derives can never be
+        // rematerialised idempotently, which is the whole point of the pair
+        // (`a_pinned_layer_without_its_pair_is_refused`).
         assert_eq!(
             refused(register(
-                store(vec![clocked]),
+                empty(),
                 json!({"name": "Poles", "geometryType": "Point", "sourceKind": "pinned"})
             )),
-            DUPLICATE_LAYER
+            MALFORMED_DESCRIPTOR
         );
     }
 
@@ -3170,12 +3363,18 @@ mod tests {
             );
         }
         // Restore repairs what it can, but an id cannot be repaired: minting
-        // another one would orphan the payload the row names, so the store is
-        // refused and the host keeps its raw bytes.
+        // another one would orphan the payload the row names. So the row is
+        // carried instead — the store still reopens around it, and the host
+        // keeps that row's raw bytes (see
+        // `a_row_whose_id_is_malformed_is_carried_verbatim_and_never_re_keyed`).
         let answer = ask(json!({"kind": "restore", "scope": browser(),
                                 "records": [{"id": "a/b", "name": "Roads"}],
                                 "now_ms": 1_700_000_000_000i64}));
-        assert_eq!(answer["refusal"]["code"], MALFORMED_DESCRIPTOR);
+        assert_eq!(answer["registry"]["layers"], json!([]));
+        assert_eq!(
+            answer["receipt"]["carried"][0]["raw"],
+            json!({"id": "a/b", "name": "Roads"})
+        );
     }
 
     #[test]

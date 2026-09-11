@@ -1188,6 +1188,42 @@
       }
     },
     {
+      "id": "register-a-pinned-layer-without-its-pair-refused",
+      "why": "A pinned row is named by the transformer and design class it was materialised from. Without the pair the id would fall back to the clock and the counter, so materialising the same room again could never answer the row already held - the collision the pair exists to close.",
+      "request": {
+        "kind": "register",
+        "registry": {
+          "schema": 1,
+          "revision": 4,
+          "scope": {
+            "host": "browser"
+          },
+          "layers": []
+        },
+        "scope": {
+          "host": "browser"
+        },
+        "now_ms": 1758000000000,
+        "sequence": 3,
+        "colorIndex": 0,
+        "draft": {
+          "name": "MV line",
+          "geometryType": "LineString",
+          "sourceKind": "pinned",
+          "sourceName": "Poles A",
+          "sourceLayerName": "mv_line",
+          "featureCount": 12
+        }
+      },
+      "expected": {
+        "outcome": "refused",
+        "refusal": {
+          "code": "malformed_descriptor",
+          "message": "a pinned layer is named by the transformer and design class it was materialised from"
+        }
+      }
+    },
+    {
       "id": "register-name-over-two-hundred-refused",
       "why": "A descriptor name is bounded at 200 characters, so no host can persist an unbounded label into a shared catalogue.",
       "request": {
@@ -1523,6 +1559,170 @@
           "release": []
         },
         "changed": true
+      }
+    },
+    {
+      "id": "restore-an-id-it-cannot-admit-is-carried-not-re-keyed",
+      "why": "An id is never repaired: stripping the control character would key the reopened row somewhere the host never parked its payload. The row is carried verbatim instead - omitted from the registry, nothing released for it, no reason to rewrite the store - while the admissible row beside it reopens exactly as it was.",
+      "request": {
+        "kind": "restore",
+        "scope": {
+          "host": "browser"
+        },
+        "records": [
+          {
+            "id": "sketch-1758000000000-1",
+            "name": "Access road",
+            "sourceName": "Manual layers",
+            "sourceLayerName": "Access road",
+            "sourceKind": "manual",
+            "geometryType": "LineString",
+            "color": "#2563eb",
+            "lineWidth": 2.5,
+            "pointRadius": 5.0,
+            "fillOpacity": 0.15,
+            "schema": [],
+            "featureCount": 0,
+            "visible": true,
+            "createdAt": 1758000000000
+          },
+          {
+            "id": "sketch-1758000000000-\u0007",
+            "name": "Broken",
+            "featureStorage": {
+              "kind": "upload_chunks",
+              "workspaceKey": "w-2024",
+              "fileName": "roads.csv",
+              "parsedLayer": "roads"
+            }
+          }
+        ],
+        "now_ms": 1758000000000
+      },
+      "expected": {
+        "registry": {
+          "schema": 1,
+          "revision": 0,
+          "scope": {
+            "host": "browser"
+          },
+          "layers": [
+            {
+              "id": "sketch-1758000000000-1",
+              "name": "Access road",
+              "sourceName": "Manual layers",
+              "sourceLayerName": "Access road",
+              "sourceKind": "manual",
+              "geometryType": "LineString",
+              "color": "#2563eb",
+              "lineWidth": 2.5,
+              "pointRadius": 5.0,
+              "fillOpacity": 0.15,
+              "schema": [],
+              "featureCount": 0,
+              "visible": true,
+              "createdAt": 1758000000000
+            }
+          ]
+        },
+        "receipt": {
+          "restored": 1,
+          "retired": [],
+          "repaired": [],
+          "release": [],
+          "carried": [
+            {
+              "raw": {
+                "id": "sketch-1758000000000-\u0007",
+                "name": "Broken",
+                "featureStorage": {
+                  "kind": "upload_chunks",
+                  "workspaceKey": "w-2024",
+                  "fileName": "roads.csv",
+                  "parsedLayer": "roads"
+                }
+              },
+              "reason": "a local layer id is never repaired, and this row's id carries a control character"
+            }
+          ]
+        },
+        "changed": false
+      }
+    },
+    {
+      "id": "restore-a-traversal-id-is-carried-and-the-rest-of-the-store-reopens",
+      "why": "A traversal-shaped id used to refuse the whole reopen, stranding every other layer in the store from its owner. It is one carried row now: the store reopens around it, the host keeps its raw bytes beside the admitted registry, and the next reopen carries it again - stable, never lossy.",
+      "request": {
+        "kind": "restore",
+        "scope": {
+          "host": "browser"
+        },
+        "records": [
+          {
+            "id": "sketch-1758000000000-1",
+            "name": "Access road",
+            "sourceName": "Manual layers",
+            "sourceLayerName": "Access road",
+            "sourceKind": "manual",
+            "geometryType": "LineString",
+            "color": "#2563eb",
+            "lineWidth": 2.5,
+            "pointRadius": 5.0,
+            "fillOpacity": 0.15,
+            "schema": [],
+            "featureCount": 0,
+            "visible": true,
+            "createdAt": 1758000000000
+          },
+          {
+            "id": "../../etc/original",
+            "name": "Escape"
+          }
+        ],
+        "now_ms": 1758000000000
+      },
+      "expected": {
+        "registry": {
+          "schema": 1,
+          "revision": 0,
+          "scope": {
+            "host": "browser"
+          },
+          "layers": [
+            {
+              "id": "sketch-1758000000000-1",
+              "name": "Access road",
+              "sourceName": "Manual layers",
+              "sourceLayerName": "Access road",
+              "sourceKind": "manual",
+              "geometryType": "LineString",
+              "color": "#2563eb",
+              "lineWidth": 2.5,
+              "pointRadius": 5.0,
+              "fillOpacity": 0.15,
+              "schema": [],
+              "featureCount": 0,
+              "visible": true,
+              "createdAt": 1758000000000
+            }
+          ]
+        },
+        "receipt": {
+          "restored": 1,
+          "retired": [],
+          "repaired": [],
+          "release": [],
+          "carried": [
+            {
+              "raw": {
+                "id": "../../etc/original",
+                "name": "Escape"
+              },
+              "reason": "a local layer id is never repaired, and this row's id is not one path segment"
+            }
+          ]
+        },
+        "changed": false
       }
     },
     {

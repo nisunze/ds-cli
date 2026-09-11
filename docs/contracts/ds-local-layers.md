@@ -19,7 +19,7 @@ the same answers from `local_layers` (schema `ds.local-layers/v1`, WASM export
 |---|---|---|
 | What is in the catalogue | `list` | render rows |
 | Admit this new layer — its id, every default, its normalised origin | `register` | persist the returned registry; draw the returned descriptor |
-| Reopen the store after a restart: what is admissible, what was repaired, what may not persist | `restore` | read the raw rows; rewrite when `changed`; delete exactly what `release` names |
+| Reopen the store after a restart: what is admissible, what was repaired, what may not persist, what is carried | `restore` | read the raw rows; rewrite when `changed`; keep each carried row verbatim; delete exactly what `release` names |
 | Apply one admitted change (payload, origin, rename, source rename, style, visibility) | `update` | persist; release exactly what the receipt names |
 | Remove one logical layer | `remove` | persist; delete exactly what `release` names |
 
@@ -83,10 +83,24 @@ an aspiration.
 - **An id is one path segment.** It keys a record on a host that keeps records
   in a file system — an IndexedDB key, `<id>.geojson` under the native store's
   payload directory — so it carries no `/`, `\` or `:` and is never `.` or
-  `..`. Refused as `malformed_descriptor` at `register`, on every registry a
-  host hands in, and on `restore` — the one thing `restore` will not repair,
-  because an id minted anew would orphan the payload the row names, so the
-  store is refused and the host keeps its raw bytes.
+  `..`. Refused as `malformed_descriptor` at `register` and on every registry a
+  host hands in.
+- **An id is never repaired, and a row is never lost for one.** Trimming an id,
+  stripping a control character from it or truncating it to 200 re-keys the row
+  and orphans the payload the host parked under the id the row actually
+  carries. So `restore` — which repairs everything else — asks the id question
+  first and **carries** a row whose id it cannot admit (control character, over
+  200 characters, untrimmed, not one path segment): the row is omitted from the
+  registry, nothing of it is retired or released, and the receipt answers it
+  under `carried: [{"raw": <the row verbatim>, "reason"}]`. `changed` speaks
+  only for the admitted rows, because the host's bytes are still its bytes.
+  **Hosts persist carried rows verbatim beside the admitted registry** (the
+  browser writes `sketchLayersMeta` as the admitted rows followed by the
+  carried raw rows, and its orphan sweep treats a carried row's payload key as
+  known), so a later kernel can still make sense of one. The next reopen
+  carries it again — stable, never lossy. A row that carries **no** id at all
+  is a different thing: nothing was ever keyed under one, so it is minted
+  `sketch-<now_ms>-<index>` as before.
 - **A rename is not a re-provenance.** A manual layer's name inside its source
   is its name, so a rename moves both; an imported layer keeps the name it had
   inside its file. A manual layer is never filed under its own name (the source
@@ -119,9 +133,12 @@ offers now is the pair; the identity is the kernel's.
 ```
 
 - `transformer` and `className` are the **raw** pair the row was materialised
-  from — not a canonical, slugged or humanised form of either. Both are
-  required: either one blank is `malformed_descriptor`, and so is a `pinned`
-  block on a layer of any other source kind.
+  from — not a canonical, slugged or humanised form of either. **The pair
+  itself is required of `sourceKind: "pinned"`**: no `pinned` block, either
+  half blank, or a `pinned` block on a layer of any other source kind is
+  `malformed_descriptor`. Without the pair the id would fall back to the clock
+  and the counter, and the same room materialised again would be a second row
+  instead of the one already held — the collision the pair exists to close.
 - `fields` (optional) are the property keys the pinned features carry, in any
   order and with repeats. The columns are the kernel's answer: each name
   sanitised like every schema field, ordered, de-duplicated, bounded at 256,
@@ -173,7 +190,9 @@ refuse the whole registry, for every layer in it.
   range, a negative count, storage that cannot locate its chunks) is a refusal
   of the whole op — nothing is silently corrected or dropped. A store that
   refuses to reopen strands every layer in it, which is why the asymmetry
-  exists. *Alternative: refuse a bad row on restore too.*
+  exists. The **id** is the one field restore neither repairs nor refuses the
+  store over: it carries that row instead (the id rule above). *Alternative:
+  refuse a bad row on restore too.*
 - **D2 — `repaired.fields` means "what the host must rewrite",** not "what was
   wrong": it is every descriptor key whose admitted value differs from what the
   row carried, an absent `schema` against `[]` included. Uniform, so it cannot
@@ -200,7 +219,9 @@ refuse the whole registry, for every layer in it.
 - **D9 — Shared chunks are never released.** Two layers naming the same
   `upload_chunks` triple should not exist (the importer clears a triple before
   re-parsing into it), but the kernel does not rely on that: a release names a
-  triple only when no other layer of the catalogue parks its payload there.
+  triple only when no other layer of the catalogue parks its payload there — a
+  carried row included, since it is still a row and still parks its payload
+  where it says it does.
   *Alternative: trust the importer and always name the triple.*
 
 - **D10 — A pinned pair is an identity, so registering it twice is idempotent.**
@@ -219,15 +240,16 @@ refuse the whole registry, for every layer in it.
 
 ## 4. Proof
 
-`tests/fixtures/local-layers-cases.json` — 76 recorded cases, each saying why
+`tests/fixtures/local-layers-cases.json` — 79 recorded cases, each saying why
 it exists — replayed by `tests/local_layers_cases.rs`, byte-identical to
 ds-web's `src/tests/fixtures/local-layers/cases.json` for the browser's WASM
 replay and the native store's. Two boundary properties are asserted over the
 recorded answers themselves: a refusal answers no registry, and every release
-item names exactly one record the layer owns. 41 module tests hold each rule
+item names exactly one record the layer owns. 45 module tests hold each rule
 and each refusal on its own, the lane/uid fence of a native catalogue, the
 shared-id and shared-chunk release guards, the pinned pair's derived identity
-and the five fences a fixing review found missing included.
+and the five fences a fixing review found missing included — a carried row's
+stability across reopens and the pinned pair's requiredness among them.
 
 ## 5. What hosts keep
 
