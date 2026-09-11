@@ -76,6 +76,27 @@ pub fn submit_solar(
     submit_validated(path, owner, lane, key, input, EngineKind::SolarPrepared, "ds.solar.calculate.prepared/v1")
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SolarSnapshotProvenance {
+    pub template_id: String,
+    pub input_base_fingerprint: String,
+    pub source_snapshot_sha256: String,
+    pub snapshot_receipt_id: String,
+}
+
+pub fn submit_solar_with_provenance(
+    path: &Path, owner: &str, lane: &str, key: &str, input: &[u8], provenance: SolarSnapshotProvenance,
+) -> Result<Job, String> {
+    if input.len() > 64 * 1024 * 1024 { return Err("solar_prepared_request_too_large".into()); }
+    let mut request: PreparedSolarRequest = serde_json::from_slice(input).map_err(|error| format!("solar_prepared_request_invalid: {error}"))?;
+    validate_solar_request(&request)?;
+    validate_provenance(&provenance, &request.prepared)?;
+    request.provenance = Some(provenance);
+    let sealed = serde_json::to_vec(&request).map_err(|error| error.to_string())?;
+    submit_validated(path, owner, lane, key, &sealed, EngineKind::SolarPrepared, "ds.solar.calculate.prepared/v1")
+}
+
 fn submit_validated(
     path: &Path,
     owner: &str,
@@ -124,7 +145,7 @@ fn valid_run_id(value: &str) -> bool {
 
 /// The established Cloud Run calculation request shape. It is deliberately
 /// path-free: server recovery replays the sealed prepared input itself.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct PreparedSolarRequest {
     prepared: PreparedSolarCityInput,
@@ -132,6 +153,19 @@ struct PreparedSolarRequest {
     render_charts: bool,
     #[serde(default)]
     run_id: Option<String>,
+    #[serde(default)]
+    provenance: Option<SolarSnapshotProvenance>,
+}
+
+fn validate_solar_request(request: &PreparedSolarRequest) -> Result<(), String> {
+    request.prepared.validate().map_err(|error| format!("solar_prepared_request_invalid: {error}"))?;
+    if request.run_id.as_deref().is_some_and(|run_id| !valid_run_id(run_id)) { return Err("solar_prepared_request_invalid: run_id must be 1..128 letters, digits, _ or -".into()); }
+    Ok(())
+}
+fn validate_provenance(provenance: &SolarSnapshotProvenance, prepared: &PreparedSolarCityInput) -> Result<(), String> {
+    let digest = |value: &str| value.len() == 64 && value.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b));
+    if provenance.template_id != prepared.city.identity.city_id || !digest(&provenance.input_base_fingerprint) || !digest(&provenance.source_snapshot_sha256) || provenance.snapshot_receipt_id.len() != 36 { return Err("solar_snapshot_provenance_invalid_or_stale".into()); }
+    Ok(())
 }
 
 const fn default_render_charts() -> bool {
@@ -159,6 +193,7 @@ pub struct SolarPublication {
     pub engine_release: String,
     pub engine_build_manifest_sha256: String,
     pub outputs: Vec<SolarOutput>,
+    pub provenance: Option<SolarSnapshotProvenance>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -183,6 +218,7 @@ pub struct SolarPublicationMetadata {
     pub engine_release: String,
     pub engine_build_manifest_sha256: String,
     pub outputs: Vec<SolarOutputMetadata>,
+    pub provenance: Option<SolarSnapshotProvenance>,
 }
 #[derive(Debug, Clone)]
 pub struct SolarOutputMetadata {
@@ -248,6 +284,7 @@ pub fn solar_publication(job: &Job, input: &[u8], result: &[u8]) -> Result<Solar
         ),
         engine_build_manifest_sha256: response.result.engine.build_manifest_sha256,
         outputs,
+        provenance: request.provenance,
     })
 }
 
@@ -260,6 +297,8 @@ pub fn solar_publication_metadata(
     result: &[u8],
 ) -> Result<SolarPublicationMetadata, String> {
     let scope = solar_job_scope(job, input)?;
+    let request: PreparedSolarRequest = serde_json::from_slice(input)
+        .map_err(|error| format!("durable Solar request cannot be published: {error}"))?;
     if job.phase != Phase::Completed
         || digest(result) != job.result_sha256.as_deref().unwrap_or_default()
     {
@@ -294,6 +333,7 @@ pub fn solar_publication_metadata(
         ),
         engine_build_manifest_sha256: response.result.engine.build_manifest_sha256,
         outputs,
+        provenance: request.provenance,
     })
 }
 
