@@ -260,6 +260,15 @@ impl IdentityFence {
             )
             .remedy("update DS GridDesign, sign in, select the intended project, and retry")
         })?;
+        if fence.lane == "local" {
+            return Err(Failure::unavailable(
+                "desktop_operation_unsupported",
+                "the paired local Desktop build has no provisioned native lane",
+            )
+            .remedy(
+                "use a provisioned Canary or Stable DS GridDesign build for paired CLI operations",
+            ));
+        }
         if fence.uid.is_empty()
             || !matches!(fence.lane.as_str(), "stable" | "canary")
             || fence.credential_audience_sha256.len() != 64
@@ -367,6 +376,24 @@ pub fn session(descriptor: &discover::Descriptor) -> Result<Value, Failure> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn signed_in_local_desktop_is_unsupported_not_an_identity_mismatch() {
+        let error = IdentityFence::from_session(&json!({
+            "uid": "uid-1",
+            "lane": "local",
+            "credential_audience_sha256": "a".repeat(64),
+            "project": "project-1",
+            "session_revision": 7,
+        }))
+        .expect_err("local Desktop must not impersonate a provisioned release lane");
+        assert_eq!(error.code(), "desktop_operation_unsupported");
+        assert!(
+            error
+                .remedy_text()
+                .is_some_and(|remedy| remedy.contains("provisioned Canary or Stable"))
+        );
+    }
 
     #[test]
     fn structured_desktop_refusals_keep_code_class_and_remedy() {
