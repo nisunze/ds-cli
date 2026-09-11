@@ -38,6 +38,10 @@ const DETAIL_PREVIEW_MAX: usize = 10;
 const DETAIL_STRING_MAX_CHARS: usize = 200;
 /// What replaces a URL, bearer or credential-looking run of characters.
 const REDACTED: &str = "[redacted]";
+/// A legacy Draft/Sketch run that was still open when a newer terminal
+/// Process run took the record. Its error used to be moved aside by the
+/// store's normaliser and never seen again; it is loud now.
+pub const LEGACY_PHASE_SUPERSEDED: &str = "legacy_phase_superseded";
 
 // ── the vocabulary ──────────────────────────────────────────────────────
 
@@ -231,6 +235,7 @@ fn code_meta(code: &str) -> Option<(&'static str, Option<Locatable>)> {
         "report_export_partial" => ("dlbl_warn_report_export_partial", None),
         "input_warning" => ("dlbl_warn_input_warning", None),
         PROCESSED_OUTPUT_MISSING => ("dsh_finding_processed_output_missing", None),
+        LEGACY_PHASE_SUPERSEDED => ("dsh_finding_legacy_phase_superseded", None),
         _ => return None,
     })
 }
@@ -746,10 +751,10 @@ fn phase_finding(phase: Phase, meta: Option<&Map<String, Value>>) -> Option<Find
             source: Source::Document,
         }),
         // `stale` deliberately yields nothing: a report going stale after a
-        // save is routine, not a problem. The supersession pass rewrites a
-        // legacy phase to `stale` before this is read, so a superseded legacy
-        // error yields no finding either — the campaign's next slice makes
-        // that supersession explicit and gives the retained error a finding.
+        // save is routine, not a problem. A superseded legacy phase no longer
+        // arrives here disguised as `stale` — `design_status_row::
+        // phase_supersession` names it before this is read, and its retained
+        // error becomes a `legacy_phase_superseded` finding below.
         _ => None,
     }
 }
@@ -916,8 +921,36 @@ pub fn transformer_health_with_run(row: &Value, run: Option<&Value>) -> Transfor
     let mut findings: Vec<Finding> = Vec::new();
     let mut seen_codes: BTreeSet<String> = BTreeSet::new();
 
+    // ONE supersession rule, applied at ingest and read here — never a
+    // document somebody rewrote on the way in (campaign slice 3).
+    let supersession = crate::design_status_row::phase_supersession(&Value::Object(row.clone()));
+
     for (phase, key) in PHASE_SLOTS {
         let meta = row.get(key).and_then(object);
+        let superseded = match phase {
+            Phase::Draft => supersession.draft.as_ref(),
+            Phase::Sketch => supersession.sketch.as_ref(),
+            _ => None,
+        };
+        if let Some(superseded) = superseded {
+            // The phase lost the record. Whatever it was doing is history —
+            // except an error, which the register's own docstring says stays
+            // loud, and which the normaliser used to silence.
+            if let Some(message) = &superseded.retained_error {
+                if !seen_codes.contains(LEGACY_PHASE_SUPERSEDED) {
+                    seen_codes.insert(LEGACY_PHASE_SUPERSEDED.into());
+                    findings.push(coded_finding(
+                        phase,
+                        FindingSeverity::Error,
+                        LEGACY_PHASE_SUPERSEDED,
+                        message.clone(),
+                        None,
+                        Source::Document,
+                    ));
+                }
+            }
+            continue;
+        }
         if let Some(finding) = phase_finding(phase, meta) {
             if !finding.code.is_empty() {
                 seen_codes.insert(finding.code.clone());

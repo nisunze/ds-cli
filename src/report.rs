@@ -170,26 +170,11 @@ struct Group {
 }
 /// Names a report *produces*: the collision document and the combined set
 /// under any of its spellings. They are output, never a participant, so no
-/// lane may take one as a requested transformer. Canonicalized the way
-/// `project_control` canonicalizes a status row, so an alias or a cased
-/// spelling cannot smuggle one in.
+/// lane may take one as a requested transformer. One vocabulary decides it —
+/// `design::row_allows(name).reportable` — so an alias or a cased spelling
+/// cannot smuggle one in and the register cannot disagree about it.
 pub fn is_reserved_report_identity(name: &str) -> bool {
-    let canonical = name
-        .trim()
-        .to_ascii_lowercase()
-        .chars()
-        .map(|character| {
-            if character.is_ascii_lowercase() || character.is_ascii_digit() || character == '_' {
-                character
-            } else {
-                '_'
-            }
-        })
-        .collect::<String>();
-    matches!(
-        canonical.as_str(),
-        "collisions" | "combined_transformer" | "all_transformers" | "combined_transformers"
-    )
+    !crate::design::row_allows(name).reportable
 }
 fn names(values: Vec<String>) -> Result<BTreeSet<String>, String> {
     if values.len() > 2000 {

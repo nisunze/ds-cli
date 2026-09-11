@@ -592,3 +592,180 @@ mod process_plan_tests {
         assert!(process_plan(br#"{"targets":["tx_a"],"workers":0,"resident_limit":2}"#).is_err());
     }
 }
+
+// ── one row-identity vocabulary ─────────────────────────────────────────
+//
+// Three overlapping name sets decided what a status row IS: the browser's
+// `SPECIAL_ROW_NAMES`, its `COMBINED_AGGREGATE_NAMES` (the same set minus
+// `mv_data`), its `UNVERSIONABLE_NAMES` (a third membership that adds
+// `__all__` and drops `mv_data`/`compounded_report`), plus two Rust copies —
+// `project_control::is_special_status_row` and
+// `report::is_reserved_report_identity`. This is the one home all of them
+// became. The asymmetries are not accidents and are pinned by name below.
+
+/// What a status row is, when it is not a transformer.
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum RowKind {
+    /// A real LV transformer document.
+    Individual,
+    /// A synthetic selection over transformers — it has no document of its
+    /// own and can never be an input to the flow that produces it.
+    Aggregate,
+    /// A document that belongs to the project rather than to one transformer:
+    /// the MV network (`mv_data`) and the compounded report.
+    ProjectDocument,
+    /// Computed analysis output, full-replaced by its producer on every run.
+    Analysis,
+}
+
+/// What a row may be a target of. Per-kind, with the two documented
+/// exceptions the browser's three sets encoded by accident of membership.
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RowAllows {
+    /// May be an input to "add to combined" / "combined + export".
+    pub combinable: bool,
+    /// May carry server-assigned vN versions.
+    pub versionable: bool,
+    /// May be a requested transformer of a report lane.
+    pub reportable: bool,
+    /// Has a document of its own that a delete would remove.
+    pub deletable: bool,
+}
+
+/// The browser's `canonicalName` (`api/design.ts`) and the canonicalisation
+/// `project_control`/`report` already applied, which are the same rule: trim,
+/// lowercase, and every other byte becomes `_`.
+pub fn canonical_row_name(name: &str) -> String {
+    name.trim()
+        .to_ascii_lowercase()
+        .chars()
+        .map(|character| {
+            if character.is_ascii_lowercase() || character.is_ascii_digit() || character == '_' {
+                character
+            } else {
+                '_'
+            }
+        })
+        .collect()
+}
+
+/// Classify a row by its canonical name alone — the only input this has.
+pub fn row_kind(name: &str) -> RowKind {
+    match canonical_row_name(name).as_str() {
+        // `combined_transformers` is the plural spelling the report lane
+        // already treated as the combined set; `__all__` is the whole-project
+        // selection token. Both are selections, never documents.
+        "combined_transformer" | "combined_transformers" | "all_transformers" | "__all__" => {
+            RowKind::Aggregate
+        }
+        "mv_data" | "compounded_report" => RowKind::ProjectDocument,
+        "collisions" => RowKind::Analysis,
+        _ => RowKind::Individual,
+    }
+}
+
+/// Not a transformer: the register pins it, gives it no sync badge, and keeps
+/// it out of every per-fleet option list.
+pub fn is_special_row(name: &str) -> bool {
+    row_kind(name) != RowKind::Individual
+}
+
+pub fn row_allows(name: &str) -> RowAllows {
+    let canonical = canonical_row_name(name);
+    if canonical.is_empty() {
+        // A nameless row is a target of nothing. `isVersionableTransformer`
+        // said so first and it is true of all four.
+        return RowAllows {
+            combinable: false,
+            versionable: false,
+            reportable: false,
+            deletable: false,
+        };
+    }
+    match row_kind(&canonical) {
+        RowKind::Individual => RowAllows {
+            combinable: true,
+            versionable: true,
+            reportable: true,
+            deletable: true,
+        },
+        // The two pinned asymmetries. `mv_data` is a PEER in the combined
+        // flow, not the aggregate it feeds, so it may be combined — and it is
+        // a document, so it versions. `compounded_report` is the project's
+        // compounded output: never a combined input, but it was never in the
+        // unversionable set either, and the report lane does not reserve its
+        // name. Neither is a transformer a delete would remove.
+        RowKind::ProjectDocument => RowAllows {
+            combinable: canonical == "mv_data",
+            versionable: true,
+            reportable: true,
+            deletable: false,
+        },
+        RowKind::Aggregate | RowKind::Analysis => RowAllows {
+            combinable: false,
+            versionable: false,
+            reportable: false,
+            deletable: false,
+        },
+    }
+}
+
+#[cfg(test)]
+mod row_identity_tests {
+    use super::*;
+
+    #[test]
+    fn reproduces_every_membership_of_the_three_sets_it_replaces() {
+        for name in [
+            "compounded_report",
+            "combined_transformer",
+            "all_transformers",
+            "mv_data",
+            "collisions",
+        ] {
+            assert!(is_special_row(name), "{name} was a special status row");
+        }
+        assert!(!is_special_row("tx_1"));
+        // Cased and punctuated spellings canonicalise in.
+        assert!(is_special_row(" Combined-Transformer "));
+
+        // COMBINED_AGGREGATE_NAMES — the special set minus mv_data.
+        for name in [
+            "compounded_report",
+            "combined_transformer",
+            "all_transformers",
+            "collisions",
+        ] {
+            assert!(!row_allows(name).combinable, "{name} is never combinable");
+        }
+        assert!(row_allows("mv_data").combinable);
+        assert!(row_allows("tx_1").combinable);
+
+        // UNVERSIONABLE_NAMES.
+        for name in [
+            "collisions",
+            "__all__",
+            "all_transformers",
+            "combined_transformer",
+        ] {
+            assert!(!row_allows(name).versionable, "{name} is unversionable");
+        }
+        assert!(row_allows("mv_data").versionable);
+        assert!(row_allows("compounded_report").versionable);
+        assert!(row_allows("tx_1").versionable);
+        assert!(!row_allows("  ").versionable);
+    }
+
+    #[test]
+    fn the_declared_divergences_are_the_only_ones() {
+        // `__all__` is the project-wide selection token: no register row ever
+        // carries it, so classifying it as the aggregate it is costs nothing.
+        assert!(is_special_row("__all__"));
+        // The plural spelling the report lane already reserved.
+        assert!(is_special_row("combined_transformers"));
+        // Nothing else moved.
+        assert!(!is_special_row("tx_1"));
+        assert!(!is_special_row("mv_data_2"));
+    }
+}

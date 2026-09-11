@@ -236,30 +236,11 @@ pub fn plan_project_control_rooms(input_json: &[u8]) -> Result<String, ProjectCo
     })
 }
 
-/// The aggregate/synthetic row names that are not transformers. Shared with
-/// `design_health`, which must not open a second copy of this vocabulary; the
-/// campaign's row-identity slice gives all of them one home.
+/// The aggregate/synthetic row names that are not transformers. One home
+/// now: `design::row_kind`, which the register, the report lane and
+/// `design_status_row` all read.
 pub(crate) fn is_special_status_row(name: &str) -> bool {
-    let canonical = name
-        .trim()
-        .to_ascii_lowercase()
-        .chars()
-        .map(|character| {
-            if character.is_ascii_lowercase() || character.is_ascii_digit() || character == '_' {
-                character
-            } else {
-                '_'
-            }
-        })
-        .collect::<String>();
-    matches!(
-        canonical.as_str(),
-        "compounded_report"
-            | "combined_transformer"
-            | "all_transformers"
-            | "mv_data"
-            | "collisions"
-    )
+    crate::design::is_special_row(name)
 }
 
 fn availability(

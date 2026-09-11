@@ -64,7 +64,7 @@ fn corpus() -> Value {
 fn every_recorded_row_reads_the_same_in_rust_as_the_corpus_records() {
     let corpus = corpus();
     let cases = corpus["cases"].as_array().expect("cases");
-    assert!(cases.len() >= 53, "the corpus lost rows");
+    assert!(cases.len() >= 56, "the corpus lost rows");
     let mut divergences = 0;
     for case in cases {
         let id = case["id"].as_str().expect("case id");
@@ -82,7 +82,7 @@ fn every_recorded_row_reads_the_same_in_rust_as_the_corpus_records() {
         );
         divergences += usize::from(!same);
     }
-    assert_eq!(divergences, 13, "the recorded divergence count changed");
+    assert_eq!(divergences, 16, "the recorded divergence count changed");
 }
 
 #[test]

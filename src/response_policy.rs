@@ -252,10 +252,37 @@ fn imf_fixdate_ms(raw: &str) -> Option<i64> {
     epoch_ms(year, month, day, hour, minute, second)
 }
 
+/// The fractional-second field, in whole milliseconds. `Date.parse` keeps it
+/// and `design_status_row` ties on it, so the one parser does too.
+fn fraction_millis(time: &str) -> i64 {
+    let Some((_, fraction)) = time.rsplit(':').next().and_then(|s| s.split_once('.')) else {
+        return 0;
+    };
+    let digits: String = fraction
+        .chars()
+        .take_while(char::is_ascii_digit)
+        .chain("000".chars())
+        .take(3)
+        .collect();
+    digits.parse::<i64>().unwrap_or(0)
+}
+
 /// ISO-8601 in UTC or with a numeric offset — not an HTTP-date, but a common
 /// enough server mistake that refusing it would silently discard a real delay.
-fn iso8601_ms(raw: &str) -> Option<i64> {
-    let (date, rest) = raw.split_once(['T', 't'])?;
+/// Also the one ISO reader the crate has: `design_status_row` folds phase
+/// timestamps with it rather than opening a second copy.
+pub(crate) fn iso8601_ms(raw: &str) -> Option<i64> {
+    let Some((date, rest)) = raw.split_once(['T', 't']) else {
+        // A bare date is UTC midnight, exactly as `Date.parse` reads it.
+        let mut date_parts = raw.split('-');
+        let year = date_parts.next()?.parse::<i64>().ok()?;
+        let month = date_parts.next()?.parse::<i64>().ok()?;
+        let day = date_parts.next()?.parse::<i64>().ok()?;
+        if date_parts.next().is_some() {
+            return None;
+        }
+        return epoch_ms(year, month, day, 0, 0, 0);
+    };
     let mut date_parts = date.split('-');
     let year = date_parts.next()?.parse::<i64>().ok()?;
     let month = date_parts.next()?.parse::<i64>().ok()?;
@@ -280,7 +307,10 @@ fn iso8601_ms(raw: &str) -> Option<i64> {
         )
     };
     let (hour, minute, second) = hms(time)?;
-    Some(epoch_ms(year, month, day, hour, minute, second)? - offset_minutes * 60_000)
+    Some(
+        epoch_ms(year, month, day, hour, minute, second)? + fraction_millis(time)
+            - offset_minutes * 60_000,
+    )
 }
 
 /// `Retry-After` is delta-seconds or an HTTP-date. Anything else is not a
