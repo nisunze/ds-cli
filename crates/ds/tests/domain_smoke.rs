@@ -7784,19 +7784,27 @@ fn no_survey_example_names_a_deployment_form_slug() {
                     value.starts_with('<') && value.ends_with('>'),
                     "`{id}` example `{text}` names the form `{value}`. A slug is \
                      per-deployment: examples carry a `<form-slug>` placeholder and \
-                     send the reader to `ds survey forms list`."
+                     name the appropriate form discovery command."
                 );
             }
         }
         // The placeholder is only honest if the example also says where the real
         // slug comes from; otherwise it trades one guess for another.
         if names_a_form {
+            // Data reads need participating project forms; global masters do
+            // not establish that the selected project uses a form.
+            let discovery = match id.as_str() {
+                "survey.query" | "survey.entries.select" | "survey.entries.changes" => {
+                    "ds survey project-forms list"
+                }
+                _ => "ds survey forms list",
+            };
             assert!(
                 examples.iter().any(|example| {
                     example["note"]
                         .as_str()
                         .unwrap_or_default()
-                        .contains("ds survey forms list")
+                        .contains(discovery)
                 }),
                 "`{id}` documents a `<form-slug>` placeholder but no example names \
                  the discovery command that resolves it"
