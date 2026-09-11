@@ -1347,6 +1347,12 @@ fn overview_row(dataset: &CatalogEntry, held: &Value, policy: &BufferPolicy) -> 
         // Absent is a distinct state from empty: nobody has asked yet.
         "seeded": exists,
         "ready": member("ready", json!(false)) == Value::Bool(true),
+        // A room is one machine's holding. Saying so on every row is what
+        // stops "Linux has it" from being read as "the project has it":
+        // nothing in this cache publishes a dataset, and two installations of
+        // the same project legitimately hold different coverage.
+        "local_holding": exists,
+        "shared": false,
         "feature_count": member("feature_count", json!(0)),
         "index_state": member("index_state", json!("absent")),
         "source_version": member("source_version", json!("")),
@@ -1621,8 +1627,16 @@ mod tests {
             serde_json::to_value(&policy).unwrap()
         );
         assert_eq!(rows[0]["created_at"], Value::Null);
+        // Local, and saying so on every row — held or not. A room is one
+        // machine's holding; nothing in this cache publishes a dataset, so an
+        // operator comparing two installations reads a fact rather than
+        // inferring one from a row that merely says "held".
+        assert_eq!(rows[0]["local_holding"], false);
+        assert_eq!(rows[0]["shared"], false);
         // Requested but failed: seeded and unready, with its own error.
         assert_eq!(rows[1]["seeded"], true);
+        assert_eq!(rows[1]["local_holding"], true);
+        assert_eq!(rows[1]["shared"], false);
         assert_eq!(rows[1]["ready"], false);
         assert_eq!(rows[1]["last_error"], "provider refused");
         // Superseded: every feature kept, staleness reported beside the row.
