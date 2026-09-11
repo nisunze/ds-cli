@@ -86,3 +86,27 @@ transformer exports need no open project. `batch_outcome` orders completed
 results and counts errors without performing any export. These decisions are
 available natively through `ds report transformers`, `ds report plan`, and
 `ds report layout edit` as well as WASM.
+
+## The print-context document
+
+`report_export::print_context_document(coverage, sources, layers)` is the one
+recipe for the `ds.print-context/v1` asset a host stages beside a transformer's
+room and the engine (`ds-network-reporter` `load_print_context`) reads
+digest-bound. The desktop shell assembled that document itself until now; with
+one kernel recipe a desktop and a headless server given the same coverage,
+sources and layers stage byte-identical assets under one digest
+(`report_export::sha256_hex`).
+
+The document is `{"schema","coverage","sources","layers"}` in that order,
+layers in the map's own order, compact serialization. Validation mirrors what
+the engine would refuse: `coverage` is a Polygon or MultiPolygon; every layer
+id is an identifier and its collection exactly `{type: FeatureCollection,
+features}` of Features with object properties; no layer is empty (the engine
+drops an empty collection silently — a host names what it could not supply in
+the run receipt instead); every `sources` entry names a layer of the document;
+at most 64 layers, 100 000 features and 64 MiB.
+
+A run receipt (`report_export::run_receipt`) records `print_context_sha256`
+(null when the run printed without external context), `print_context_layers`
+and `print_context_omitted`, so a receipt never reads as complete when its map
+context was not.

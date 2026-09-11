@@ -70,6 +70,17 @@ pub const BATCH_RECEIPT_SCHEMA: &str = "ds.report-batch/v1";
 pub const RUN_RECEIPT_FILE: &str = "report-run.json";
 /// The receipt file a host writes at the root of a batch's output directory.
 pub const BATCH_RECEIPT_FILE: &str = "report-batch.json";
+/// The wire schema of the print-context document a host stages beside a
+/// transformer's room and the engine reads digest-bound
+/// (`ds-network-reporter` `load_print_context`).
+pub const PRINT_CONTEXT_SCHEMA: &str = "ds.print-context/v1";
+/// The most context layers one print-context document may carry — the same
+/// bound a print layout may request.
+pub const MAX_PRINT_CONTEXT_LAYERS: usize = 64;
+/// The most features one print-context document may carry, over every layer.
+pub const MAX_PRINT_CONTEXT_FEATURES: usize = 100_000;
+/// The most bytes one print-context document may occupy: the engine's bound.
+pub const MAX_PRINT_CONTEXT_BYTES: u64 = 64 * 1024 * 1024;
 
 // ---------------------------------------------------------------------------
 // Identities and bounds
@@ -354,6 +365,130 @@ pub fn transformer_document_bytes(layers: &BTreeMap<String, Value>) -> Result<Ve
     }
     serde_json::to_vec(&PlainTransformerDocument { layers })
         .map_err(|error| format!("could not encode local transformer layers: {error}"))
+}
+
+// ---------------------------------------------------------------------------
+// The print context
+// ---------------------------------------------------------------------------
+
+/// Lowercase hex SHA-256 of `bytes` — the digest form every receipt and
+/// engine request in this module carries.
+pub fn sha256_hex(bytes: &[u8]) -> String {
+    format!("{:x}", Sha256::digest(bytes))
+}
+
+/// The exact `ds.print-context/v1` document a host stages beside a
+/// transformer's room, and that the engine reads digest-bound.
+///
+/// One recipe for every host — the desktop shell assembled this document
+/// itself until now — so a desktop and a server given the same coverage,
+/// sources and layers stage byte-identical assets under one digest:
+/// `{"schema","coverage","sources","layers"}` in that order, layers in the
+/// map's own order, compact serialization.
+///
+/// Validation mirrors what the engine would refuse, so a bad document is
+/// refused where its layers were gathered rather than after an engine
+/// started: `coverage` is the area the layers were read for (a Polygon or
+/// MultiPolygon); every layer id is an identifier and its collection exactly
+/// `{type: FeatureCollection, features}` of Features with object properties
+/// and an object or null geometry; no layer is empty — the engine drops an
+/// empty collection silently, and a host names what it could not supply in
+/// the run receipt instead; every `sources` entry is an object naming a
+/// `layer` of the document; and the whole stays inside the feature and byte
+/// bounds the engine enforces.
+pub fn print_context_document(
+    coverage: &Value,
+    sources: &Value,
+    layers: &BTreeMap<String, Value>,
+) -> Result<Vec<u8>, String> {
+    crate::reference_cache::validate_area(coverage)
+        .map_err(|error| format!("print context coverage: {error}"))?;
+    if layers.is_empty() {
+        return Err("print context has no layers".to_string());
+    }
+    if layers.len() > MAX_PRINT_CONTEXT_LAYERS {
+        return Err(format!(
+            "print context carries {} layers, over the {MAX_PRINT_CONTEXT_LAYERS}-layer bound",
+            layers.len()
+        ));
+    }
+    let mut features = 0_usize;
+    for (id, collection) in layers {
+        if !crate::printing::identifier(id) {
+            return Err(format!(
+                "print context layer id {id:?} is not an identifier"
+            ));
+        }
+        let object = collection.as_object().ok_or_else(|| {
+            format!("print context layer {id:?} must be a GeoJSON FeatureCollection")
+        })?;
+        if object.len() != 2
+            || object.get("type").and_then(Value::as_str) != Some("FeatureCollection")
+        {
+            return Err(format!(
+                "print context layer {id:?} must contain only type=FeatureCollection and features"
+            ));
+        }
+        let rows = object
+            .get("features")
+            .and_then(Value::as_array)
+            .ok_or_else(|| format!("print context layer {id:?} features must be an array"))?;
+        if rows.is_empty() {
+            return Err(format!("print context layer {id:?} is empty"));
+        }
+        for (index, feature) in rows.iter().enumerate() {
+            let shaped = feature.get("type").and_then(Value::as_str) == Some("Feature")
+                && feature.get("properties").is_some_and(Value::is_object)
+                && feature
+                    .get("geometry")
+                    .is_some_and(|geometry| geometry.is_object() || geometry.is_null());
+            if !shaped {
+                return Err(format!(
+                    "print context layer {id:?} feature[{index}] is not a GeoJSON Feature with object properties"
+                ));
+            }
+        }
+        features = features
+            .checked_add(rows.len())
+            .filter(|total| *total <= MAX_PRINT_CONTEXT_FEATURES)
+            .ok_or_else(|| {
+                format!("print context carries more than {MAX_PRINT_CONTEXT_FEATURES} features")
+            })?;
+    }
+    let entries = sources
+        .as_array()
+        .ok_or("print context sources must be an array")?;
+    if entries.len() > MAX_PRINT_CONTEXT_LAYERS {
+        return Err(format!(
+            "print context names {} sources, over the {MAX_PRINT_CONTEXT_LAYERS}-source bound",
+            entries.len()
+        ));
+    }
+    for (index, entry) in entries.iter().enumerate() {
+        let named = entry
+            .get("layer")
+            .and_then(Value::as_str)
+            .is_some_and(|layer| layers.contains_key(layer));
+        if !entry.is_object() || !named {
+            return Err(format!(
+                "print context source[{index}] must be an object naming a layer of the document"
+            ));
+        }
+    }
+    let bytes = serde_json::to_vec(&json!({
+        "schema": PRINT_CONTEXT_SCHEMA,
+        "coverage": coverage,
+        "sources": sources,
+        "layers": layers,
+    }))
+    .map_err(|error| format!("could not encode print context: {error}"))?;
+    if bytes.len() as u64 > MAX_PRINT_CONTEXT_BYTES {
+        return Err(format!(
+            "print context is {} bytes, over the 64 MiB bound",
+            bytes.len()
+        ));
+    }
+    Ok(bytes)
 }
 
 // ---------------------------------------------------------------------------
@@ -937,6 +1072,15 @@ pub struct RunReceiptFacts<'a> {
     /// ds-brain's `metadata.content_digest` for the fetched room, when the
     /// host had one to compare against.
     pub expected_content_digest: Option<&'a str>,
+    /// The digest of the `ds.print-context/v1` document staged beside the
+    /// room (`print_context_document`), or `None` when the run printed
+    /// without external context.
+    pub print_context_sha256: Option<&'a str>,
+    /// The layer ids that document carried, in document order.
+    pub print_context_layers: &'a [String],
+    /// The selected context ids the host could not supply on this run,
+    /// each named so a receipt never reads as complete when it is not.
+    pub print_context_omitted: &'a [String],
 }
 
 /// The publication identity this run would be enqueued under — the same
@@ -974,6 +1118,30 @@ pub fn run_receipt(facts: &RunReceiptFacts<'_>) -> Result<Value, String> {
         return Err("Network Reporter run identity is invalid".to_string());
     }
     verify_content_digest(facts.plan, facts.expected_content_digest)?;
+    match facts.print_context_sha256 {
+        Some(digest) if !exact_lower_sha256(digest) => {
+            return Err("Network Reporter print context digest is invalid".to_string());
+        }
+        Some(_) if facts.print_context_layers.is_empty() => {
+            return Err("Network Reporter print context digest names no layers".to_string());
+        }
+        None if !facts.print_context_layers.is_empty() => {
+            return Err("Network Reporter print context layers have no digest".to_string());
+        }
+        _ => {}
+    }
+    let mut context_ids = HashSet::new();
+    for id in facts
+        .print_context_layers
+        .iter()
+        .chain(facts.print_context_omitted)
+    {
+        if !crate::printing::identifier(id) || !context_ids.insert(id.as_str()) {
+            return Err(format!(
+                "Network Reporter print context names an invalid or repeated id {id:?}"
+            ));
+        }
+    }
     let content_digest_verified = facts
         .expected_content_digest
         .map(|expected| expected == facts.plan.content_digest);
@@ -1019,6 +1187,9 @@ pub fn run_receipt(facts: &RunReceiptFacts<'_>) -> Result<Value, String> {
         "sheets_sha256": facts.plan.sheets_sha256,
         "reference_semantic_sha256": facts.plan.reference_semantic_sha256,
         "room": facts.plan.room,
+        "print_context_sha256": facts.print_context_sha256,
+        "print_context_layers": facts.print_context_layers,
+        "print_context_omitted": facts.print_context_omitted,
         "formats_requested": facts.plan.formats,
         "outputs": outputs,
         "warnings": facts.result.warnings,
@@ -1606,6 +1777,182 @@ mod tests {
         ));
     }
 
+    fn context_layer(id: &str) -> (String, Value) {
+        (
+            id.to_string(),
+            json!({"type":"FeatureCollection","features":[{
+                "type":"Feature","properties":{"class":"national"},
+                "geometry":{"type":"LineString","coordinates":[[30.0,-2.0],[30.01,-2.0]]}
+            }]}),
+        )
+    }
+
+    fn coverage() -> Value {
+        json!({"type":"Polygon","coordinates":[[[29.99,-2.01],[30.02,-2.01],[30.02,-1.99],[29.99,-1.99],[29.99,-2.01]]]})
+    }
+
+    #[test]
+    fn the_print_context_document_is_the_engine_document_and_deterministic() {
+        // The exact input the engine's own test stages
+        // (`ds-network-reporter` `desktop_print_context_is_digest_bound_and_decoded_as_vectors`).
+        let layers: BTreeMap<String, Value> = [context_layer("roads")].into_iter().collect();
+        let sources = json!([{"layer":"roads","resource_id":"r","version":"v","cache":"local"}]);
+        let bytes = print_context_document(&coverage(), &sources, &layers).unwrap();
+        let document: Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(document["schema"], PRINT_CONTEXT_SCHEMA);
+        assert_eq!(
+            document.as_object().unwrap().keys().collect::<Vec<_>>(),
+            ["schema", "coverage", "sources", "layers"]
+        );
+        assert_eq!(
+            document["layers"]["roads"]["features"]
+                .as_array()
+                .unwrap()
+                .len(),
+            1
+        );
+        // Byte-identical to the recipe the desktop shell applied on its own
+        // until now, so a desktop and a server stage one digest.
+        let desktop = serde_json::to_vec(&json!({
+            "schema":"ds.print-context/v1", "coverage":coverage(), "sources":sources, "layers":layers
+        }))
+        .unwrap();
+        assert_eq!(bytes, desktop);
+        assert_eq!(
+            sha256_hex(&bytes),
+            format!("{:x}", Sha256::digest(&desktop))
+        );
+        // Layer order is the map's, whatever order a host gathered them in.
+        let reversed: BTreeMap<String, Value> = [context_layer("rivers"), context_layer("roads")]
+            .into_iter()
+            .collect();
+        let forward: BTreeMap<String, Value> = [context_layer("roads"), context_layer("rivers")]
+            .into_iter()
+            .collect();
+        assert_eq!(
+            print_context_document(&coverage(), &json!([]), &reversed).unwrap(),
+            print_context_document(&coverage(), &json!([]), &forward).unwrap()
+        );
+        assert_eq!(
+            sha256_hex(b""),
+            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        );
+    }
+
+    #[test]
+    fn a_print_context_document_is_refused_where_the_engine_would_refuse_it() {
+        let layers: BTreeMap<String, Value> = [context_layer("roads")].into_iter().collect();
+        let refused = |coverage: &Value, sources: &Value, layers: &BTreeMap<String, Value>| {
+            print_context_document(coverage, sources, layers).unwrap_err()
+        };
+        assert!(refused(
+            &json!({"type":"Point","coordinates":[30.,-2.]}),
+            &json!([]),
+            &layers
+        )
+        .contains("coverage"));
+        assert!(refused(&coverage(), &json!([]), &BTreeMap::new()).contains("no layers"));
+        let bad_id: BTreeMap<String, Value> =
+            [context_layer("roads national")].into_iter().collect();
+        assert!(refused(&coverage(), &json!([]), &bad_id).contains("not an identifier"));
+        let mut empty = layers.clone();
+        empty.insert(
+            "rivers".into(),
+            json!({"type":"FeatureCollection","features":[]}),
+        );
+        assert!(refused(&coverage(), &json!([]), &empty).contains("is empty"));
+        let mut decorated = layers.clone();
+        decorated.insert(
+            "rivers".into(),
+            json!({"type":"FeatureCollection","features":[{"type":"Feature","properties":{},"geometry":null}],"name":"x"}),
+        );
+        assert!(
+            refused(&coverage(), &json!([]), &decorated).contains("only type=FeatureCollection")
+        );
+        let mut shapeless = layers.clone();
+        shapeless.insert(
+            "rivers".into(),
+            json!({"type":"FeatureCollection","features":[{"type":"Feature","properties":[],"geometry":null}]}),
+        );
+        assert!(refused(&coverage(), &json!([]), &shapeless).contains("feature[0]"));
+        assert!(refused(&coverage(), &json!({}), &layers).contains("sources must be an array"));
+        assert!(refused(&coverage(), &json!([{"layer":"rivers"}]), &layers).contains("source[0]"));
+        let mut many = BTreeMap::new();
+        for index in 0..=MAX_PRINT_CONTEXT_LAYERS {
+            many.insert(format!("layer_{index}"), context_layer("x").1);
+        }
+        assert!(refused(&coverage(), &json!([]), &many).contains("-layer bound"));
+        let features: Vec<Value> = (0..=MAX_PRINT_CONTEXT_FEATURES)
+            .map(|_| json!({"type":"Feature","properties":{},"geometry":null}))
+            .collect();
+        let crowded: BTreeMap<String, Value> = [(
+            "roads".to_string(),
+            json!({"type":"FeatureCollection","features":features}),
+        )]
+        .into_iter()
+        .collect();
+        assert!(refused(&coverage(), &json!([]), &crowded).contains("more than"));
+    }
+
+    #[test]
+    fn receipts_record_the_print_context_they_were_rendered_with() {
+        let plan = plan_transformer_export(
+            "proj-1",
+            &simple_receipt("Benin"),
+            "tx_a",
+            7,
+            &layers(),
+            None,
+        )
+        .unwrap();
+        let out_dir = PathBuf::from("/tmp/run/out");
+        let result = verify_result(
+            &serde_json::to_vec(&result_document(&plan, &out_dir)).unwrap(),
+            &plan,
+            &out_dir,
+        )
+        .unwrap();
+        let run_id = format!("report-{}", "0".repeat(32));
+        let digest = sha256_hex(b"print-context");
+        let supplied = ["roads".to_string(), "contours_index".to_string()];
+        let omitted = ["project_dsgrid_mv".to_string()];
+        let facts = |sha: Option<&str>, layers: &[String], omitted: &[String]| {
+            run_receipt(&RunReceiptFacts {
+                plan: &plan,
+                client_run_id: &run_id,
+                engine: &engine(),
+                result: &result,
+                artifact_dir: "tx_a",
+                now_ms: 1_700_000_000_000,
+                expected_content_digest: None,
+                print_context_sha256: sha,
+                print_context_layers: layers,
+                print_context_omitted: omitted,
+            })
+        };
+        let receipt = facts(Some(&digest), &supplied, &omitted).unwrap();
+        assert_eq!(receipt["print_context_sha256"], digest);
+        assert_eq!(
+            receipt["print_context_layers"],
+            json!(["roads", "contours_index"])
+        );
+        assert_eq!(
+            receipt["print_context_omitted"],
+            json!(["project_dsgrid_mv"])
+        );
+        // A run without context says so, and may still name what it omitted.
+        let bare = facts(None, &[], &omitted).unwrap();
+        assert_eq!(bare["print_context_sha256"], Value::Null);
+        assert_eq!(bare["print_context_omitted"], json!(["project_dsgrid_mv"]));
+        // A digest without layers, layers without a digest, a malformed
+        // digest, and an id that is not an identifier or is named twice.
+        assert!(facts(Some(&digest), &[], &[]).is_err());
+        assert!(facts(None, &supplied, &[]).is_err());
+        assert!(facts(Some("abc"), &supplied, &[]).is_err());
+        assert!(facts(Some(&digest), &["roads x".to_string()], &[]).is_err());
+        assert!(facts(Some(&digest), &supplied, &["roads".to_string()]).is_err());
+    }
+
     #[test]
     fn artifact_filenames_follow_their_format() {
         assert!(valid_artifact_filename("tx_a.shp.zip", "shp"));
@@ -1647,9 +1994,15 @@ mod tests {
             artifact_dir: "tx_a",
             now_ms: 1_700_000_000_000,
             expected_content_digest: Some(&plan.content_digest),
+            print_context_sha256: None,
+            print_context_layers: &[],
+            print_context_omitted: &[],
         })
         .unwrap();
         assert_eq!(receipt["schema"], RUN_RECEIPT_SCHEMA);
+        assert_eq!(receipt["print_context_sha256"], Value::Null);
+        assert_eq!(receipt["print_context_layers"], json!([]));
+        assert_eq!(receipt["print_context_omitted"], json!([]));
         assert_eq!(receipt["outputs"][0]["path"], "tx_a/tx_a.shp.zip");
         assert_eq!(
             receipt["outputs"][1]["content_type"],
@@ -1676,6 +2029,9 @@ mod tests {
             artifact_dir: "tx_a",
             now_ms: 0,
             expected_content_digest: None,
+            print_context_sha256: None,
+            print_context_layers: &[],
+            print_context_omitted: &[],
         })
         .is_err());
 
