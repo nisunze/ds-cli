@@ -6,8 +6,9 @@ honestly. The transport work completed on 2026-09-10 is the first finished
 instance of the pattern, not the whole of it.
 
 **Runtime and platform refinement, 2026-09-11:**
-[Headless application runtime across all platforms](ds-headless-application-runtime.md)
-is the normative continuation for web, Android, iOS, Linux, Windows and server.
+[Headless application runtime for web, desktop and server](ds-headless-application-runtime.md)
+is the normative continuation for web, Linux, Windows and server. Android/iOS
+are deferred extensions, outside the current campaign and acceptance scope.
 It governs background execution, durable ownership, platform adapters and the
 removal of frontend backend-client bypasses. Host effects do not imply permanent
 TypeScript ownership of networking or persistence orchestration.

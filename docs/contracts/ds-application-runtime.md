@@ -1,13 +1,28 @@
-# The DS application runtime — one headless Rust runtime, every platform a target
+# The DS application runtime — web, desktop and server
 
 **Status:** apex ruling for the sync gate campaign and everything after it. Owner
 directive, 2026-09-11, recorded verbatim in §1. It sits above
 `ds-application-kernel.md` (Rust owns the product), `ds-transport-authority.md`
 (one transport), `ds-sync-engine.md` (one decision) and ds-brain's
 `edge-admission-and-publish.md` (authority is handed, once). Where they differ
-from §1, §1 wins.
+from §1, §1 wins, subject to the later owner scope amendment in §0.
 
-## 1. The directive (verbatim)
+## 0. Current scope — later owner amendment, 2026-09-11
+
+The owner has deferred Android and iOS to keep the current migration nimble.
+**Web, Linux, Windows and server are the current first-class targets.** Android
+and iOS are future extensions, not current implementation or acceptance gates.
+Do not build mobile adapters, schedulers, packaging or speculative abstractions
+now. Choose storage and runtime boundaries for the current targets; extend them
+when a concrete mobile project is authorized. Existing mobile code is not
+ordered removed.
+
+This amendment supersedes the mobile obligations in the verbatim historical
+directive below. R7 is deferred and must not block completion of the current
+campaign. The detailed runtime requirements are maintained in
+[the headless runtime contract](ds-headless-application-runtime.md).
+
+## 1. The original directive (verbatim; scope amended by §0)
 
 > Steer the campaign toward a shared, headless Rust application runtime, with web, Android, iOS, Linux, Windows, and server as first-class targets. TypeScript/Svelte becomes a thin presentation client. Optimize execution for each platform without duplicating application logic.
 > Start from the existing kernel, ds-client-core, queues, transfer machinery, storage owners, CLI/MCP interfaces, and packaging. Extend existing contracts where necessary. Do not introduce competing command registries, parallel clients, or another synchronization implementation.
@@ -76,13 +91,13 @@ from §1, §1 wins.
 
 | # | Slice | Durable state / decision | Owner after |
 |---|---|---|---|
-| R1 | One authoritative queue + artifact store per execution context, behind the Rust boundary | desktop/server: a kernel-defined schema in a native store (SQLite via `ds-design-workspace` or a sibling crate); web: IndexedDB rows the kernel shapes; mobile: checkpointed captures | kernel (schema, transitions) + host (bytes) |
+| R1 | One authoritative queue + artifact store per execution context, behind the Rust boundary | desktop/server: a kernel-defined schema in a native store (SQLite via `ds-design-workspace` or a sibling crate); web: IndexedDB rows the kernel shapes | kernel (schema, transitions) + host (bytes) |
 | R2 | Desktop background host | `ds sync serve` (or the shell resident) owning delivery when the window closes, with a lease so one worker drains; installation/startup/shutdown/update integration through the launcher family | ds-cli host + packaging |
 | R3 | Server headless host | supervised `ds sync serve` with an explicit identity (device credential), bounded concurrency, graceful shutdown, restart recovery | ds-cli host |
 | R4 | Verified handoff of pending work | the legacy per-user outbox → the new store: identities, replay keys, bytes, acknowledgements, unresolved failures preserved; competing owners prevented | kernel (handoff plan) + host |
 | R5 | Enforceable architectural checks | tests that reject frontend backend imports, route construction, direct backend requests, alternate domain mutations, including indirect wrappers | ds-web contract tests |
 | R6 | Web host | the browser loop over the same plan with fetch transport and IndexedDB, offline-capable, opportunistic background (workers) | ds-web runtime adapter |
-| R7 | Mobile host contract | the six host calls + checkpoint/resume against the portable kernel; scheduled tasks; secure storage | future app; not yet verified |
+| R7 | Deferred mobile extension | No implementation or acceptance work in the current campaign; define from concrete requirements when authorized | future scope |
 | R8 | Fencing and lifecycle | account/project/deployment fences; cancellation, logout, account switch, explicit background shutdown; leases; idempotent effects | kernel + hosts |
 
 ## 4. Platform status (implemented / tested / not yet verified) — kept current
@@ -93,5 +108,5 @@ from §1, §1 wins.
 | CLI | kernel | native (`ds-cli-auth`, weak-network harness green) | none yet (R1) | `ds sync run` pending (S8) | plan headless: implemented + tested |
 | Server | kernel | native | R1 | R3 | not yet verified |
 | Web | kernel (WASM) | fetch host | IndexedDB (TypeScript-shaped) | opportunistic (R6) | not yet verified |
-| Android/iOS | kernel (portable since the severance) | — | — | scheduled tasks (R7) | not yet verified |
+| Android/iOS | deferred | — | — | — | outside current scope; does not block acceptance |
 | Cloud producers | — | publish via ds-brain with attribution | ds-brain record | n/a | landed server-side (admission), not deployed |
