@@ -8,6 +8,14 @@ repository.workspace = true
 authors.workspace = true
 publish.workspace = true
 
+[features]
+# Test-only. Exposes `weak_network_harness` and the loopback session origin so
+# the out-of-crate weak-network acceptance harness can drive this exact host
+# against a scripted in-process storage session. No release build enables it:
+# it is reached only through this package's own dev-dependency below, and
+# dev-dependencies are not built for `cargo build`/`cargo install`.
+weak-network-harness = []
+
 [dependencies]
 base64 = { workspace = true }
 ds-cli-contract = { workspace = true }
@@ -28,3 +36,11 @@ libc = { workspace = true }
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { workspace = true }
+
+[dev-dependencies]
+# A package may dev-depend on itself, and that is the only way a test target
+# outside the crate can turn on one of its own features. `cargo test -p
+# ds-cli-auth` therefore compiles `tests/weak_network.rs` against a library
+# that carries the harness seam, while every non-test build of the same
+# library carries none of it.
+ds-cli-auth = { path = ".", features = ["weak-network-harness"] }

@@ -14,6 +14,12 @@ mod state_windows;
 mod transport;
 mod upload;
 
+/// The weak-network acceptance seam. Feature-gated, so it exists only for
+/// `crates/ds-cli-auth/tests/weak_network.rs` and never in a release build;
+/// see the module's own header for why an integration test needs it.
+#[cfg(feature = "weak-network-harness")]
+pub use upload::weak_network_harness;
+
 #[cfg(unix)]
 use std::io::Write;
 use std::io::{self, BufRead, Read};

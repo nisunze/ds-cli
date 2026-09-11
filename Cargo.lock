@@ -739,6 +739,7 @@ name = "ds-cli-auth"
 version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
+ "ds-cli-auth",
  "ds-cli-contract",
  "ds-cli-desktop",
  "ds-client-core",
