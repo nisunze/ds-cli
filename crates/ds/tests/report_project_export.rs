@@ -69,6 +69,8 @@ fn the_descriptor_is_a_headless_project_fenced_local_file_write() {
             "out-dir",
             "concurrency",
             "admin-bounds",
+            "publish",
+            "server-state-dir",
             "lane"
         ]
     );
@@ -95,6 +97,9 @@ fn the_descriptor_is_a_headless_project_fenced_local_file_write() {
         "invalid_concurrency",
         "reserved_transformer_identity",
         "transformer_not_active",
+        "report_publish_local_only",
+        "report_publish_scope_changed",
+        "report_publish_root_invalid",
     ] {
         assert!(refusals.contains(&expected), "{expected} is not documented");
     }
@@ -127,7 +132,7 @@ fn local_refusals_are_decided_before_any_credential_is_restored() {
                     "--output",
                     "json"
                 ],
-                None,
+                Some("/bin/true"),
             )),
             "invalid_concurrency",
             "--concurrency {bad}"
@@ -148,12 +153,12 @@ fn local_refusals_are_decided_before_any_credential_is_restored() {
                 "--output",
                 "json"
             ],
-            None,
+            Some("/bin/true"),
         )),
         "reserved_transformer_identity"
     );
     // The output directory is required by the parser.
-    let missing = headless(&["report", "project", "export", "--output", "json"], None);
+    let missing = headless(&["report", "project", "export", "--output", "json"], Some("/bin/true"));
     assert_ne!(code(&missing), "", "{missing}");
     assert_ne!(code(&missing), "headless_signed_out");
     // With valid inputs the credential gate is the first thing that answers,
@@ -169,7 +174,7 @@ fn local_refusals_are_decided_before_any_credential_is_restored() {
                 "--output",
                 "json"
             ],
-            None,
+            Some("/bin/true"),
         )),
         "headless_signed_out"
     );

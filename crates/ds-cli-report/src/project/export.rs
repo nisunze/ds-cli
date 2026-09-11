@@ -20,8 +20,9 @@
 //! the batch receipt, never the end of the batch.
 
 use std::collections::BTreeMap;
-use std::ffi::OsString;
+use std::ffi::{OsStr, OsString};
 use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant};
 
 use ds_cli_auth::{TransformerKind, TransformerLifecycle};
 use ds_cli_contract::outcome::Failure;
@@ -29,13 +30,19 @@ use ds_cli_contract::spec::{
     Arg, Authority, Availability, Chapter, Command, Effect, Example, Execution, Refusal,
 };
 use ds_cli_contract::{Context, Inputs};
-use ds_command_kernel::report_export::{InputReceipt, reportable_transformer};
-use ds_report_host::{
-    BatchSettings, DEFAULT_RESIDENT_LIMIT, EngineExit, HostFailure, MAX_RESIDENT_LIMIT,
-    ReportEngine, RunSettings, TransformerReportInputs, batch_plan, installed_admin_bounds_path,
-    run_batch, shared_root, verify_admin_bounds_asset,
+use ds_command_kernel::{
+    report::PublicationState,
+    report_export::{reportable_transformer, InputReceipt},
 };
-use serde_json::{Value, json};
+use ds_report_artifacts::{
+    confined_fs::HeldDirectory, CommittedAuthorizedPublication, VerifiedSidecarArtifact,
+};
+use ds_report_host::{
+    batch_plan, installed_admin_bounds_path, run_batch, shared_root, verify_admin_bounds_asset,
+    BatchSettings, EngineExit, HostFailure, ReportEngine, RunSettings, TransformerReportInputs,
+    DEFAULT_RESIDENT_LIMIT, MAX_RESIDENT_LIMIT,
+};
+use serde_json::{json, Value};
 
 use super::{LANE_ARG, TRANSFORMER_ARG};
 use crate::{DISCOVERY_TIMEOUT, DS_REPORT, EXPORT_TIMEOUT};
@@ -55,6 +62,15 @@ const ADMIN_BOUNDS_ARG: Arg = Arg::value(
     "admin-bounds",
     "<path>",
     "Rwanda villages asset (.dsab). Default: the installed machine-shared asset.",
+);
+const PUBLISH_ARG: Arg = Arg::switch(
+    "publish",
+    "Seal verified outputs for the matching native Server sync pump; without it, writes local reports only.",
+);
+const SERVER_STATE_DIR_ARG: Arg = Arg::value(
+    "server-state-dir",
+    "<absolute-path>",
+    "Matching `ds server serve --state-dir` directory when the Server uses a custom state root.",
 );
 
 /// The staging directory a batch keeps below its output root while engines
@@ -136,6 +152,21 @@ const NOT_ACTIVE: Refusal = Refusal {
     when: "a named transformer is retired, deleted or missing",
     remedy: "`ds report project scope` shows the lifecycle; restore or drop the name",
 };
+const PUBLISH_LOCAL_ONLY: Refusal = Refusal {
+    code: "report_publish_local_only",
+    when: "--publish was requested from a development reporter build",
+    remedy: "run a release reporter build, or omit --publish for local-only files",
+};
+const PUBLISH_SCOPE_CHANGED: Refusal = Refusal {
+    code: "report_publish_scope_changed",
+    when: "the native UID, lane, credential audience, selected project, or credential generation changed before sealed publication",
+    remedy: "repeat the export under the current native account and project",
+};
+const PUBLISH_ROOT: Refusal = Refusal {
+    code: "report_publish_root_invalid",
+    when: "the Server state root is unavailable, relative, or cannot hold a sealed publication",
+    remedy: "start Server with its default state root or pass the same absolute --server-state-dir used by ds server serve",
+};
 
 const REFUSALS: &[Refusal] = &[
     super::NATIVE_PROFILE,
@@ -175,6 +206,9 @@ const REFUSALS: &[Refusal] = &[
     BATCH_EMPTY,
     BATCH_FAILED,
     NOT_ACTIVE,
+    PUBLISH_LOCAL_ONLY,
+    PUBLISH_SCOPE_CHANGED,
+    PUBLISH_ROOT,
 ];
 
 pub static COMMAND: Command = Command {
@@ -182,7 +216,7 @@ pub static COMMAND: Command = Command {
     path: &["report", "project", "export"],
     contract: 1,
     summary: "Produce transformer reports, prints included, headlessly.",
-    purpose: "Export saved transformers from the native user's selected project using its governed configuration, saved layers and installed reporter. Includes data outputs and named print outputs from saved printing setups; no browser or Desktop is required. Scope defaults to all active transformers. Runs bounded parallel engines and verifies every artifact. Fences account, lane, audience and project across input reads. Delivers local files only, without enqueueing publication. External print context is not supplied; the engine reports omitted layers. Photo references require a media grant and currently refuse. Inspect each batch row and print warning before delivery.",
+    purpose: "Export saved transformers from the native user's selected project using its governed configuration, saved layers and installed reporter. Includes data outputs and named print outputs from saved printing setups; no browser or Desktop is required. Scope defaults to all active transformers. Runs bounded parallel engines and verifies every artifact. Without --publish it delivers local files only. With --publish it rechecks the native UID, lane, credential audience, selected project and credential generation, then seals verified bytes in the matching Server state root for that Server's shared sync pump; it never claims a cloud publish completed. External print context is not supplied; the engine reports omitted layers. Photo references require a media grant and currently refuse. Inspect each batch row and print warning before delivery.",
     chapter: Chapter::Reports,
     effect: Effect::LocalFileWrite,
     authority: Authority::HeadlessProject,
@@ -192,13 +226,16 @@ pub static COMMAND: Command = Command {
         OUT_DIR_ARG,
         CONCURRENCY_ARG,
         ADMIN_BOUNDS_ARG,
+        PUBLISH_ARG,
+        SERVER_STATE_DIR_ARG,
         LANE_ARG,
     ],
     output: "\
 Lane and selected-project identity/status, the scope, the engine identity and \
 publication state, the batch (status completed|partial|failed, counts, \
 concurrency, receipt path) and one result per transformer in stable order: \
-`ok` with its artifact count and `<transformer>/report-run.json`, or `error` \
+`ok` with its artifact count and `<transformer>/report-run.json`; --publish also \
+reports the durable local Server-sync queue identity, or `error` \
 with a typed code, message and detail.",
     examples: &[
         Example {
@@ -209,6 +246,11 @@ with a typed code, message and detail.",
         Example {
             command: "ds report project export --transformer tx_a --transformer tx_b --out-dir ./reports --concurrency 2",
             note: "Two named transformers, two engines at once.",
+            runnable: false,
+        },
+        Example {
+            command: "ds report project export --transformer tx_a --out-dir ./reports --publish --output json",
+            note: "Seal one verified release report for the matching Server sync pump; it is not a cloud completion receipt.",
             runnable: false,
         },
     ],
@@ -358,18 +400,184 @@ fn require_same_context(
     Ok(())
 }
 
+/// The report queue is a child of the exact Server state directory. Keeping
+/// this resolver in `ds-compute-runtime` lets Server derive its database and
+/// this command derive the adjacent sealed-artifact root without a CLI crate
+/// dependency cycle or a second XDG interpretation.
+pub fn server_report_artifacts_root(
+    lane: &str,
+    server_state_dir: Option<&Path>,
+) -> Result<PathBuf, Failure> {
+    ds_compute_runtime::server_state_directory(lane, server_state_dir)
+        .map(|state| state.join("report-artifacts"))
+        .map_err(|error| Failure::invalid(PUBLISH_ROOT.code, error).remedy(PUBLISH_ROOT.remedy))
+}
+
+fn receipt_text<'a>(receipt: &'a Value, field: &str) -> Result<&'a str, Failure> {
+    receipt
+        .get(field)
+        .and_then(Value::as_str)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| {
+            Failure::failed(
+                PUBLISH_ROOT.code,
+                format!("verified report receipt lacks {field}"),
+            )
+            .remedy(PUBLISH_ROOT.remedy)
+        })
+}
+
+fn receipt_revision(receipt: &Value) -> Result<i64, Failure> {
+    receipt
+        .get("transformer_revision")
+        .and_then(Value::as_i64)
+        .filter(|revision| *revision > 0)
+        .ok_or_else(|| {
+            Failure::failed(
+                PUBLISH_ROOT.code,
+                "verified report receipt lacks a positive transformer revision",
+            )
+            .remedy(PUBLISH_ROOT.remedy)
+        })
+}
+
+fn seal_run_for_server(
+    run: &ds_report_host::RunOutcome,
+    owner_uid: &str,
+    project_id: &str,
+    root: &Path,
+    guard: &dyn Fn() -> Result<(), Failure>,
+) -> Result<CommittedAuthorizedPublication, Failure> {
+    if run
+        .engine
+        .publication_state()
+        .map_err(|error| Failure::failed(PUBLISH_ROOT.code, error).remedy(PUBLISH_ROOT.remedy))?
+        != PublicationState::Pending
+    {
+        return Err(Failure::conflict(
+            PUBLISH_LOCAL_ONLY.code,
+            "the reporter build is local-only and cannot enter the Server publication queue",
+        )
+        .remedy(PUBLISH_LOCAL_ONLY.remedy));
+    }
+    if receipt_text(&run.receipt, "project_id")? != project_id
+        || receipt_text(&run.receipt, "transformer")? != run.transformer
+    {
+        return Err(Failure::failed(
+            PUBLISH_ROOT.code,
+            "verified report receipt no longer matches the authenticated project or transformer",
+        )
+        .remedy(PUBLISH_ROOT.remedy));
+    }
+    let artifact_dir = HeldDirectory::open_absolute(&run.artifact_dir)
+        .map_err(|error| Failure::failed(PUBLISH_ROOT.code, error).remedy(PUBLISH_ROOT.remedy))?
+        .ok_or_else(|| {
+            Failure::failed(
+                PUBLISH_ROOT.code,
+                "verified report artifact directory disappeared",
+            )
+            .remedy(PUBLISH_ROOT.remedy)
+        })?;
+    let mut held = Vec::with_capacity(run.artifacts.len());
+    let mut formats = Vec::with_capacity(run.artifacts.len());
+    for artifact in &run.artifacts {
+        let file = artifact_dir
+            .open_regular_file(OsStr::new(&artifact.filename), "verified report artifact")
+            .map_err(|error| {
+                Failure::failed(
+                    PUBLISH_ROOT.code,
+                    format!(
+                        "could not open verified report artifact {}: {error}",
+                        artifact.filename
+                    ),
+                )
+                .remedy(PUBLISH_ROOT.remedy)
+            })?;
+        formats.push(artifact.format.as_str());
+        held.push(VerifiedSidecarArtifact {
+            format: artifact.format.clone(),
+            filename: artifact.filename.clone(),
+            size_bytes: artifact.size_bytes,
+            sha256: artifact.sha256.clone(),
+            paper_size: artifact.paper_size.clone(),
+            presentation: artifact.presentation.clone(),
+            held_file: file,
+        });
+    }
+    let deadline = Instant::now() + Duration::from_secs(30);
+    let pending = ds_report_artifacts::promote_local_artifacts(
+        root,
+        &held,
+        owner_uid,
+        project_id,
+        &run.engine.engine_version,
+        &run.engine.build_manifest_sha256,
+        &run.transformer,
+        receipt_revision(&run.receipt)?,
+        receipt_text(&run.receipt, "input_base_fingerprint")?,
+        receipt_text(&run.receipt, "room_content_sha256")?,
+        &run.client_run_id,
+        &formats,
+        deadline,
+    )
+    .map_err(|error| Failure::failed(PUBLISH_ROOT.code, error).remedy(PUBLISH_ROOT.remedy))?;
+    // The pending batch retains rollback through all copy/rename/fsync work.
+    // Recheck the captured scope at the only durable visibility boundary.
+    guard()?;
+    pending
+        .commit(deadline)
+        .map_err(|error| Failure::failed(PUBLISH_ROOT.code, error).remedy(PUBLISH_ROOT.remedy))
+}
+
+fn verify_publish_scope(
+    lane: &str,
+    fence: &ds_cli_auth::LayerScopeFence,
+    owner_uid: &str,
+    project_id: &str,
+) -> Result<(), Failure> {
+    ds_cli_auth::verify_layer_scope_fence(lane, fence, owner_uid, project_id).map_err(|_| {
+        Failure::conflict(
+            PUBLISH_SCOPE_CHANGED.code,
+            "the native publication scope changed before report artifacts could be sealed",
+        )
+        .remedy(PUBLISH_SCOPE_CHANGED.remedy)
+    })
+}
+
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let requested = super::transformer_set(inputs)?;
     let lane = inputs.require("lane")?;
     let out_dir = PathBuf::from(inputs.require("out-dir")?);
     let resident_limit = concurrency_limit(inputs)?;
     let explicit_asset = inputs.value("admin-bounds").map(PathBuf::from);
+    let publish = inputs.switch("publish");
+    let publish_scope = publish
+        .then(|| ds_cli_auth::capture_layer_scope_fence(lane))
+        .transpose()?;
+    let publish_root = if publish {
+        Some(server_report_artifacts_root(
+            lane,
+            inputs.value("server-state-dir").map(Path::new),
+        )?)
+    } else {
+        if inputs.value("server-state-dir").is_some() {
+            return Err(Failure::invalid(
+                "report_inputs_invalid",
+                "--server-state-dir requires --publish",
+            )
+            .remedy("pass --publish, or remove --server-state-dir"));
+        }
+        None
+    };
 
     // The lifecycle inventory is both the project identity and the scope:
     // every active saved transformer, or the exact names given with the state
     // each one is in.
     let inventory = ds_cli_auth::transformer_inventory(lane, &requested)?;
     let project_id = inventory.project_id().to_string();
+    if let Some(fence) = publish_scope.as_ref() {
+        verify_publish_scope(lane, fence, fence.uid(), &project_id)?;
+    }
     let mut output = super::project_receipt(&inventory);
     let scope = super::scope_json(&requested, inventory.result());
     let mut lifecycle: BTreeMap<String, String> = BTreeMap::new();
@@ -517,11 +725,51 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let outcome = run_batch(&CliEngine, &settings, &plan.names, fetch).map_err(host_failure)?;
     // Every run removed its own scratch; the empty staging root goes too.
     let _ = std::fs::remove_dir(&staging);
+    if outcome.receipt["status"] == "failed" {
+        return Err(
+            Failure::failed("report_batch_failed", "no transformer report completed")
+                .remedy(BATCH_FAILED.remedy)
+                .detail(json!({
+                    "out_dir": out_dir.display().to_string(),
+                    "results": outcome.receipt["results"],
+                })),
+        );
+    }
 
     let publication_state = outcome.engine.publication_state().ok();
+    let sealed_publications =
+        if let (Some(fence), Some(root)) = (publish_scope.as_ref(), publish_root.as_ref()) {
+            let mut publications = Vec::with_capacity(outcome.runs.len());
+            for run in &outcome.runs {
+                // The publication marker is the durable effect. Re-probe the
+                // native UID/audience/project/credential binding immediately
+                // before each marker can become visible to the Server pump.
+                verify_publish_scope(lane, fence, fence.uid(), &project_id)?;
+                let committed = seal_run_for_server(run, fence.uid(), &project_id, root, &|| {
+                    verify_publish_scope(lane, fence, fence.uid(), &project_id)
+                })?;
+                publications.push(json!({
+                    "batch_id": committed.receipt.batch_id,
+                    "client_publish_id": committed.receipt.client_publish_id,
+                    "transformer": committed.receipt.transformer,
+                    "outputs": committed.artifacts.len(),
+                }));
+            }
+            Some(publications)
+        } else {
+            None
+        };
     output["out_dir"] = json!(out_dir.display().to_string());
     output["scope"] = scope;
-    output["publication_enqueued"] = json!(false);
+    output["publication_enqueued"] = json!(publish);
+    if let (Some(root), Some(publications)) = (publish_root, sealed_publications) {
+        output["publication"] = json!({
+            "state": "queued_for_server_sync",
+            "root": root.display().to_string(),
+            "batches": publications,
+            "note": "sealed locally; the matching native Server sync pump publishes when it next runs",
+        });
+    }
     output["engine"] = json!({
         "engine_version": outcome.engine.engine_version,
         "build_manifest_sha256": outcome.engine.build_manifest_sha256,
@@ -536,16 +784,6 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         "receipt": outcome.receipt_path.display().to_string(),
     });
     output["results"] = outcome.receipt["results"].clone();
-    if outcome.receipt["status"] == "failed" {
-        return Err(
-            Failure::failed("report_batch_failed", "no transformer report completed")
-                .remedy(BATCH_FAILED.remedy)
-                .detail(json!({
-                    "out_dir": out_dir.display().to_string(),
-                    "results": outcome.receipt["results"],
-                })),
-        );
-    }
     Ok(output)
 }
 
@@ -637,11 +875,9 @@ mod tests {
             host_failure(HostFailure::new("something_new", "why")).code(),
             "report_result_invalid"
         );
-        assert!(
-            REFUSALS
-                .iter()
-                .any(|refusal| refusal.code == NOT_ACTIVE.code)
-        );
+        assert!(REFUSALS
+            .iter()
+            .any(|refusal| refusal.code == NOT_ACTIVE.code));
     }
 
     #[test]
@@ -657,6 +893,124 @@ mod tests {
         assert_eq!(COMMAND.effect, Effect::LocalFileWrite);
         assert!(COMMAND.summary.len() <= 70);
         assert!(COMMAND.args.iter().all(|arg| arg.name != "project"));
+        assert!(COMMAND.args.iter().any(|arg| arg.name == "publish"));
+        assert!(COMMAND
+            .args
+            .iter()
+            .any(|arg| arg.name == "server-state-dir"));
         assert!(COMMAND.purpose.contains("named print output"));
+    }
+
+    #[test]
+    fn release_reports_seal_only_verified_outputs_for_the_server_queue() {
+        let root = tempfile::tempdir().unwrap();
+        let report_dir = root.path().join("report");
+        std::fs::create_dir(&report_dir).unwrap();
+        let artifact = report_dir.join("report.xlsx");
+        std::fs::write(&artifact, b"x").unwrap();
+        let mut run = ds_report_host::RunOutcome {
+            transformer: "tx-a".into(),
+            client_run_id: "report-00000000000000000000000000000000".into(),
+            artifact_dir: report_dir,
+            receipt_path: root.path().join("report-run.json"),
+            receipt: json!({
+                "project_id": "project-a",
+                "transformer": "tx-a",
+                "transformer_revision": 3,
+                "input_base_fingerprint": "a".repeat(64),
+                "room_content_sha256": "b".repeat(64),
+            }),
+            artifacts: vec![ds_command_kernel::report_export::VerifiedArtifact {
+                output_id: "xlsx".into(),
+                format: "xlsx".into(),
+                filename: "report.xlsx".into(),
+                content_type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                size_bytes: 1,
+                sha256: "2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881".into(),
+                paper_size: None,
+                presentation: None,
+            }],
+            warnings: vec![],
+            engine: ds_command_kernel::report_export::EngineIdentity {
+                engine_version: format!("ds-network-reporter@0.1.0+{}", "c".repeat(40)),
+                build_manifest_sha256: "d".repeat(64),
+                package_version: "0.1.0".into(),
+                source_sha: "c".repeat(40),
+                profile: "release".into(),
+            },
+        };
+        let queue = root.path().join("report-artifacts");
+        let committed =
+            seal_run_for_server(&run, "owner-a", "project-a", &queue, &|| Ok(())).unwrap();
+        assert_eq!(committed.receipt.project_id, "project-a");
+        assert_eq!(committed.receipt.transformer, "tx-a");
+        let rows =
+            ds_report_artifacts::list_project_publication_batches_from_root(&queue, "project-a")
+                .unwrap();
+        assert_eq!(rows.len(), 1);
+        assert!(ds_report_artifacts::open_batch_output(&queue, &rows[0], "xlsx").is_ok());
+
+        let rollback_queue = root.path().join("rollback");
+        let error = seal_run_for_server(&run, "owner-a", "project-a", &rollback_queue, &|| {
+            Err(Failure::conflict(
+                PUBLISH_SCOPE_CHANGED.code,
+                "scope changed",
+            ))
+        })
+        .unwrap_err();
+        assert_eq!(error.code(), PUBLISH_SCOPE_CHANGED.code);
+        assert!(
+            ds_report_artifacts::list_project_publication_batches_from_root(
+                &rollback_queue,
+                "project-a",
+            )
+            .unwrap()
+            .is_empty()
+        );
+
+        std::fs::write(root.path().join("report/report.xlsx"), b"corrupt").unwrap();
+        let corrupt_queue = root.path().join("corrupt");
+        assert_eq!(
+            seal_run_for_server(&run, "owner-a", "project-a", &corrupt_queue, &|| Ok(()))
+                .unwrap_err()
+                .code(),
+            PUBLISH_ROOT.code,
+        );
+        assert!(
+            ds_report_artifacts::list_project_publication_batches_from_root(
+                &corrupt_queue,
+                "project-a",
+            )
+            .unwrap()
+            .is_empty()
+        );
+
+        run.engine.engine_version = ds_command_kernel::report::DEVELOPMENT_ENGINE.into();
+        assert_eq!(
+            seal_run_for_server(
+                &run,
+                "owner-a",
+                "project-a",
+                &root.path().join("local"),
+                &|| Ok(())
+            )
+            .unwrap_err()
+            .code(),
+            PUBLISH_LOCAL_ONLY.code,
+        );
+    }
+
+    #[test]
+    fn server_queue_root_is_the_exact_custom_server_state_child() {
+        assert_eq!(
+            server_report_artifacts_root("stable", Some(Path::new("/var/lib/ds"))).unwrap(),
+            PathBuf::from("/var/lib/ds/report-artifacts"),
+        );
+        assert_eq!(
+            server_report_artifacts_root("stable", Some(Path::new("relative")))
+                .unwrap_err()
+                .code(),
+            PUBLISH_ROOT.code,
+        );
     }
 }

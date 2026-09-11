@@ -426,6 +426,7 @@ pending.
 ```bash
 ds report project export --out-dir ./reports --output json                        # every active saved transformer
 ds report project export --transformer tx_a --out-dir ./reports --concurrency 2  # named scope, two engines at once
+ds report project export --transformer tx_a --out-dir ./reports --publish         # seal for the matching native Server sync pump
 ```
 
 The inputs are the governed ones, fetched under the native user for its
@@ -452,7 +453,16 @@ every result in the kernel's stable order; a transformer the engine refused is
 one `error` row with its typed blockers, never the end of the batch. The
 command exits non-zero only when no transformer completed
 (`report_batch_failed`). Nothing here publishes: the receipts carry what a
-publication needs, but no publication row is enqueued by this command
+publication needs, but no publication row is enqueued by this command unless
+you explicitly pass `--publish`. That opt-in rechecks the native UID, lane,
+credential audience, selected project and credential generation immediately
+before every sealed batch commit. It writes only to
+`<server-state-dir>/report-artifacts` (the default state directory is
+`$XDG_STATE_HOME/ds/server/<lane>`, or `$HOME/.local/state/ds/server/<lane>`)
+and reports `queued_for_server_sync`; it does not claim cloud publication.
+For a custom Server `--state-dir`, pass the same absolute path as
+`--server-state-dir`. The matching native Server sync pump transfers committed
+sealed batches on its next run.
 (`publication_enqueued: false`). Configuration and room receipts must keep
 the same principal, audience, lane and project throughout acquisition. A
 saved content digest mismatch refuses before computation. A completed report

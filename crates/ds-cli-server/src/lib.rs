@@ -12,7 +12,11 @@ use ds_cli_contract::{
     },
 };
 use serde_json::{Value, json};
-use std::{io::Read, path::PathBuf, sync::Arc};
+use std::{
+    io::Read,
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 
 const STATE: Arg = Arg::value(
     "state-dir",
@@ -586,14 +590,11 @@ fn failure(e: impl ToString) -> Failure {
         .remedy("verify native authentication, protected server state and ds server serve")
 }
 fn state(inputs: &Inputs) -> Result<PathBuf, Failure> {
-    if let Some(path) = inputs.value("state-dir") {
-        return Ok(PathBuf::from(path));
-    }
-    let root = std::env::var_os("XDG_STATE_HOME")
-        .map(PathBuf::from)
-        .or_else(|| std::env::var_os("HOME").map(|p| PathBuf::from(p).join(".local/state")))
-        .ok_or_else(|| failure("provide --state-dir"))?;
-    Ok(root.join("ds/server").join(inputs.require("lane")?))
+    ds_compute_runtime::server_state_directory(
+        inputs.require("lane")?,
+        inputs.value("state-dir").map(Path::new),
+    )
+    .map_err(failure)
 }
 pub fn serve(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
     let lane = inputs.require("lane")?.to_owned();

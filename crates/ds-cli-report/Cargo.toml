@@ -19,6 +19,8 @@ serde_json = { workspace = true }
 # The reserved computed report identities are the kernel's rule; the headless
 # scope lane applies the same predicate the offline lane already enforces.
 ds-command-kernel = { workspace = true }
+ds-compute-runtime = { path = "../../../ds-command-kernel/crates/ds-compute-runtime" }
+ds-report-artifacts = { path = "../../../ds-command-kernel/crates/ds-report-artifacts" }
 # The native host of one transformer report run (staging, byte verification,
 # receipts, bounded batches), shared with the desktop shell. It spawns no
 # process: `ds report project export` hands it the audited `ds-report` engine
