@@ -26,6 +26,12 @@ pub fn assets_preview_wasm(bytes: &[u8], request: &[u8]) -> Result<String, wasm_
 pub mod compute_artifact_sync;
 pub mod connectivity;
 pub mod design;
+pub mod design_dashboard;
+#[cfg(feature = "wasm")]
+#[wasm_bindgen::prelude::wasm_bindgen(js_name = designDashboard)]
+pub fn design_dashboard_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
+    design_dashboard::evaluate(input).map_err(|error| wasm_bindgen::JsValue::from_str(&error))
+}
 pub mod design_health;
 #[cfg(feature = "wasm")]
 #[wasm_bindgen::prelude::wasm_bindgen(js_name = designHealth)]
