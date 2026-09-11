@@ -144,8 +144,12 @@ pub fn solar_portfolio_batch_wasm(input: &[u8]) -> Result<String, wasm_bindgen::
     solar_batch::evaluate(input).map_err(|error| wasm_bindgen::JsValue::from_str(&error))
 }
 pub mod survey;
+pub mod survey_control;
+pub mod survey_entries_changes;
+pub mod survey_entries_select;
 pub mod survey_entry_create;
 pub mod survey_entry_outbox;
+pub mod survey_query;
 
 #[cfg(feature = "wasm")]
 #[wasm_bindgen::prelude::wasm_bindgen(js_name = surveyEntryCreate)]

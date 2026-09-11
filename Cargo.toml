@@ -28,7 +28,7 @@ schemars = "1.2.2"
 base64 = "0.22"
 ds-solar-contracts = { path = "../ds-solar/crates/ds-solar-contracts", default-features = false }
 serde = { version = "1", features = ["derive"] }
-serde_json = { version = "1", features = ["preserve_order"] }
+serde_json = { version = "1", features = ["preserve_order", "raw_value"] }
 sha2 = "0.10"
 wasm-bindgen = { version = "0.2", optional = true }
 zeroize = "1"
