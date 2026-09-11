@@ -17,7 +17,7 @@
 //! arguments it constructed. A subcommand no `ds` command names is not
 //! reachable from `ds`, which is the property the rule exists to preserve.
 
-use std::ffi::OsString;
+use std::ffi::{OsStr, OsString};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -92,6 +92,12 @@ impl External {
     /// the application — and the resulting wrong answer would look like a
     /// correct one.
     pub fn locate(&self) -> Option<PathBuf> {
+        let executable = std::env::current_exe().ok();
+        let path = std::env::var_os("PATH");
+        self.locate_for_paths(executable.as_deref(), path.as_deref())
+    }
+
+    fn locate_for_paths(&self, executable: Option<&Path>, path: Option<&OsStr>) -> Option<PathBuf> {
         if let Some(raw) = std::env::var_os(self.env_override) {
             let path = PathBuf::from(raw);
             // An override that does not resolve is an operator error worth
@@ -100,15 +106,20 @@ impl External {
             return path.is_file().then_some(path);
         }
 
-        if let Some(sibling) = std::env::current_exe()
-            .ok()
-            .and_then(|exe| exe.parent().map(|dir| dir.join(self.file_name())))
-            .filter(|path| path.is_file())
+        if let Some(executable) = executable
+            && let Some((sibling, sealed_lane)) = packaged_sibling(executable, &self.file_name())
         {
-            return Some(sibling);
+            if sibling.is_file() {
+                return Some(sibling);
+            }
+            // A packaged Canary CLI must not quietly borrow a Stable sidecar
+            // from PATH. Its package owns the lane-suffixed siblings.
+            if sealed_lane {
+                return None;
+            }
         }
 
-        self.on_path()
+        self.on_path_in(path)
     }
 
     /// Availability, resolved with filesystem metadata only.
@@ -400,14 +411,34 @@ impl External {
         }
     }
 
-    fn on_path(&self) -> Option<PathBuf> {
+    fn on_path_in(&self, path: Option<&OsStr>) -> Option<PathBuf> {
         let file_name = self.file_name();
-        std::env::var_os("PATH").and_then(|path| {
-            std::env::split_paths(&path)
+        path.and_then(|path| {
+            std::env::split_paths(path)
                 .map(|dir| dir.join(&file_name))
                 .find(|candidate| is_executable(candidate))
         })
     }
+}
+
+/// Resolve a packaged sidecar from the executable that launched this process.
+///
+/// The Canary Debian package installs `ds-canary` with lane-suffixed sidecars
+/// alongside it. That package is intentionally co-installable with Stable, so
+/// a missing Canary sidecar is not allowed to fall through to Stable on PATH.
+fn packaged_sibling(executable: &Path, sidecar: &str) -> Option<(PathBuf, bool)> {
+    let sealed_canary = cfg!(not(windows))
+        && executable
+            .file_name()
+            .is_some_and(|name| name == "ds-canary");
+    let sidecar = if sealed_canary {
+        format!("{sidecar}-canary")
+    } else {
+        sidecar.to_string()
+    };
+    executable
+        .parent()
+        .map(|directory| (directory.join(sidecar), sealed_canary))
 }
 
 fn is_executable(path: &Path) -> bool {
@@ -479,6 +510,55 @@ mod tests {
     use std::time::Duration;
 
     use super::*;
+
+    #[test]
+    fn canary_cli_uses_only_lane_isolated_packaged_sidecars() {
+        let executable = Path::new("/usr/bin/ds-canary");
+        assert_eq!(
+            packaged_sibling(executable, "ds-solar"),
+            Some((PathBuf::from("/usr/bin/ds-solar-canary"), true))
+        );
+        assert_eq!(
+            packaged_sibling(executable, "ds-report"),
+            Some((PathBuf::from("/usr/bin/ds-report-canary"), true))
+        );
+    }
+
+    #[test]
+    fn stable_cli_keeps_stable_packaged_sidecars_unsealed() {
+        assert_eq!(
+            packaged_sibling(Path::new("/usr/bin/ds"), "ds-solar"),
+            Some((PathBuf::from("/usr/bin/ds-solar"), false))
+        );
+    }
+
+    #[test]
+    fn missing_canary_sidecar_does_not_fall_back_to_stable_on_path() {
+        let root = std::env::temp_dir().join(format!("ds-cli-exec-lane-{}", std::process::id()));
+        let stable_bin = root.join("stable-bin");
+        fs::create_dir_all(&stable_bin).unwrap();
+        let stable_solar = stable_bin.join("ds-solar");
+        fs::write(&stable_solar, b"#!/bin/sh\nexit 0\n").unwrap();
+        let mut permissions = fs::metadata(&stable_solar).unwrap().permissions();
+        permissions.set_mode(0o700);
+        fs::set_permissions(&stable_solar, permissions).unwrap();
+
+        let owner = External {
+            name: "ds-solar",
+            env_override: "DS_CLI_EXEC_CANARY_MISSING_TEST",
+            owner: "test",
+            remedy: "repair fixture",
+            missing_code: "fixture_missing",
+        };
+        assert_eq!(
+            owner.locate_for_paths(
+                Some(&root.join("canary-bin/ds-canary")),
+                Some(stable_bin.as_os_str()),
+            ),
+            None
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
 
     #[test]
     fn typed_stdin_is_bounded_delivered_and_timeout_safe() {

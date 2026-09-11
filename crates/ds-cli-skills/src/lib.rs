@@ -97,7 +97,13 @@ impl IndexedBundle {
 /// receipt metadata only; [`IndexedBundle::read_skill`] performs the complete
 /// inventory and digest verification lazily.
 pub fn indexed_bundle(expected_cli_sha: &str) -> Result<IndexedBundle, String> {
-    let candidates = bundle_candidates();
+    indexed_bundle_from_candidates(&bundle_candidates(), expected_cli_sha)
+}
+
+fn indexed_bundle_from_candidates(
+    candidates: &[PathBuf],
+    expected_cli_sha: &str,
+) -> Result<IndexedBundle, String> {
     let existing = candidates
         .iter()
         .filter(|path| path.exists())
@@ -232,10 +238,30 @@ fn bundle_candidates() -> Vec<PathBuf> {
         return vec![PathBuf::from(override_path)];
     }
 
+    let executable = std::env::current_exe().ok();
+    bundle_candidates_for_executable(executable.as_deref())
+}
+
+fn bundle_candidates_for_executable(executable: Option<&Path>) -> Vec<PathBuf> {
     let mut candidates = Vec::new();
-    if let Ok(executable) = std::env::current_exe()
+    if let Some(executable) = executable
         && let Some(bin) = executable.parent()
     {
+        let canary = cfg!(not(windows))
+            && executable
+                .file_name()
+                .is_some_and(|name| name == "ds-canary");
+        if canary {
+            if let Some(prefix) = bin.parent() {
+                // The co-installable Canary package owns this bundle. Do not
+                // select a same-revision Stable bundle if its own is missing.
+                push_unique(
+                    &mut candidates,
+                    prefix.join("lib").join("ds-canary").join("ds-cli-skills"),
+                );
+            }
+            return candidates;
+        }
         push_unique(&mut candidates, bin.join("ds-cli-skills"));
         if let Some(prefix) = bin.parent() {
             push_unique(
@@ -271,6 +297,10 @@ fn bundle_candidates() -> Vec<PathBuf> {
         PathBuf::from("/usr/lib/DS GridDesign/ds-cli-skills"),
     );
     push_unique(&mut candidates, PathBuf::from("/usr/lib/ds/ds-cli-skills"));
+    push_unique(
+        &mut candidates,
+        PathBuf::from("/usr/lib/ds-canary/ds-cli-skills"),
+    );
     candidates
 }
 
@@ -770,7 +800,34 @@ mod tests {
 
     #[test]
     fn headless_release_bundle_is_a_closed_candidate() {
-        assert!(bundle_candidates().contains(&PathBuf::from("/usr/lib/ds/ds-cli-skills")));
+        let candidates = bundle_candidates();
+        assert!(candidates.contains(&PathBuf::from("/usr/lib/ds/ds-cli-skills")));
+        assert!(candidates.contains(&PathBuf::from("/usr/lib/ds-canary/ds-cli-skills")));
+        assert!(!candidates.contains(&PathBuf::from("/usr/lib/ds-canary/other")));
+    }
+
+    #[cfg(not(windows))]
+    #[test]
+    fn canary_executable_selects_its_own_bundle_before_an_identical_stable_bundle() {
+        let temp = TestDir::new();
+        let cli_sha = "2222222222222222222222222222222222222222";
+        let stable = temp.0.join("usr/lib/ds/ds-cli-skills");
+        let canary = temp.0.join("usr/lib/ds-canary/ds-cli-skills");
+        // Both receipts bind to the same CLI revision. Selection must still
+        // remain lane-specific rather than relying on the digest to choose.
+        write_bundle(&stable, cli_sha);
+        write_bundle(&canary, cli_sha);
+
+        let executable = temp.0.join("usr/bin/ds-canary");
+        let candidates = bundle_candidates_for_executable(Some(&executable));
+        assert_eq!(candidates, vec![canary.clone()]);
+        assert_eq!(
+            indexed_bundle_from_candidates(&candidates, cli_sha)
+                .unwrap()
+                .bundle
+                .root,
+            canary
+        );
     }
 
     #[test]

@@ -287,7 +287,10 @@ fn discovery() -> Result<(PathBuf, bool, String), Failure> {
 fn valid_product_root(root: &str) -> bool {
     matches!(
         root,
-        "/usr/lib/DS GridDesign" | "/usr/lib/DS GridDesign Canary" | "/usr/lib/ds"
+        "/usr/lib/DS GridDesign"
+            | "/usr/lib/DS GridDesign Canary"
+            | "/usr/lib/ds"
+            | "/usr/lib/ds-canary"
     )
 }
 
@@ -519,15 +522,16 @@ mod tests {
 
     #[cfg(not(windows))]
     #[test]
-    fn release_product_roots_are_closed_to_two_desktops_and_headless_ds() {
+    fn release_product_roots_are_closed_to_desktops_and_lane_isolated_headless_packages() {
         for root in [
             "/usr/lib/DS GridDesign",
             "/usr/lib/DS GridDesign Canary",
             "/usr/lib/ds",
+            "/usr/lib/ds-canary",
         ] {
             assert!(valid_product_root(root));
         }
-        for root in ["/tmp/ds", "/usr/lib/ds-canary", "/usr/lib/ds/other"] {
+        for root in ["/tmp/ds", "/usr/lib/ds/other", "/usr/lib/ds-canary/other"] {
             assert!(!valid_product_root(root));
         }
     }
