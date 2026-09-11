@@ -155,7 +155,7 @@ impl Transport for NativeTransport {
         call: TransformerContextCall<'_>,
     ) -> Result<TransportResponse, TransportError> {
         debug_assert_eq!(call.method(), "POST");
-        debug_assert_eq!(call.path(), "/api/v1/data");
+        debug_assert_eq!(call.path(), "/report");
         debug_assert_eq!(call.timeout_seconds(), 120);
         let (request_id, action_id) = correlation_headers();
         let mut bearer = format!("Bearer {}", call.bearer_token());
@@ -897,7 +897,7 @@ mod tests {
     fn transformer_wire_target_and_limits_are_fixed() {
         assert_eq!(
             transformer_context_url("https://fixture.ue.gateway.dev"),
-            "https://fixture.ue.gateway.dev/api/v1/data"
+            "https://fixture.ue.gateway.dev/report"
         );
         assert_eq!(ds_client_core::TRANSFORMER_CONTEXT_METHOD, "POST");
         assert_eq!(ds_client_core::TRANSFORMER_CONTEXT_TIMEOUT_SECONDS, 120);

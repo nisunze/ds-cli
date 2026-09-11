@@ -45,7 +45,7 @@
       },
       "transformer_context": {
         "method": "POST",
-        "path": "/api/v1/data",
+        "path": "/report",
         "action": "get_transformers_data",
         "fields": "context"
       },
@@ -200,7 +200,7 @@
       },
       "transformer_context": {
         "method": "POST",
-        "path": "/api/v1/data",
+        "path": "/report",
         "action": "get_transformers_data",
         "fields": "context"
       },

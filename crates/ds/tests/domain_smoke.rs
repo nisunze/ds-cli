@@ -4388,7 +4388,7 @@ fn design_lv_project_export_refuses_an_existing_artifact_before_auth_or_desktop(
             "projects_read": { "method": "GET", "path": "/api/v1/user/projects" },
             "transformer_context": {
                 "method": "POST",
-                "path": "/api/v1/data",
+                "path": "/report",
                 "action": "get_transformers_data",
                 "fields": "context"
             },

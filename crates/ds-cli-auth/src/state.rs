@@ -1103,7 +1103,7 @@ mod tests {
             project_list_method: "GET".to_owned(),
             project_list_path: "/api/v1/user/projects".to_owned(),
             transformer_context_method: "POST".to_owned(),
-            transformer_context_path: "/api/v1/data".to_owned(),
+            transformer_context_path: "/report".to_owned(),
             transformer_context_action: "get_transformers_data".to_owned(),
             transformer_context_fields: "context".to_owned(),
             project_forms_method: "POST".to_owned(),

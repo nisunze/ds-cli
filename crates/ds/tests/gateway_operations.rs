@@ -83,11 +83,6 @@ fn route(id: &str) -> (String, String) {
 /// remainder is asserted rather than quietly filled in from the CLI constant.
 const CLI_ONLY: &[(&str, &str)] = &[
     (
-        "POST /api/v1/data",
-        "The gateway routes it at ds_brain_bulk_url, a second private ds-brain deployment the \
-         descriptor does not list as a public backend.",
-    ),
-    (
         "POST /api/v1/survey/query",
         "No matching path exists in ds-apis-tf, so the gateway contract test could not validate a \
          declaration. Native client only.",
