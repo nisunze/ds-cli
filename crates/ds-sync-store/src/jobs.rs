@@ -19,6 +19,7 @@ impl Store {
     pub fn submit_job(&mut self, job: &Job, input: &[u8]) -> Result<Job> {
         if !compute_jobs::digest(&job.id)
             || !compute_jobs::digest(&job.input_sha256)
+            || !valid_input_tag(&job.engine, &job.input_tag)
             || job.owner.is_empty()
             || job.owner.len() > 512
             || !matches!(job.lane.as_str(), "stable" | "canary")
@@ -135,4 +136,44 @@ impl Store {
     pub fn job_result(&self, owner: &str, lane: &str, id: &str) -> Result<Option<Vec<u8>>> {
         Ok(self.connection.query_row("SELECT result FROM compute_jobs WHERE id=?1 AND owner=?2 AND lane=?3 AND phase='completed'",params![id,owner,lane],|r|r.get(0)).optional()?.flatten())
     }
+
+    /// True only while this exact leased worker is still entitled to commit.
+    /// Native engines use it for cooperative cancellation after `Cancel` or a
+    /// lease takeover; it does not change job ownership.
+    pub fn worker_still_current(
+        &self,
+        owner: &str,
+        lane: &str,
+        id: &str,
+        worker: &str,
+        now: u64,
+    ) -> Result<bool> {
+        let row: Option<String> = self
+            .connection
+            .query_row(
+                "SELECT row FROM compute_jobs WHERE id=?1 AND owner=?2 AND lane=?3",
+                params![id, owner, lane],
+                |row| row.get(0),
+            )
+            .optional()?;
+        Ok(row
+            .map(|row| serde_json::from_str::<Job>(&row))
+            .transpose()?
+            .is_some_and(|job| {
+                job.phase == Phase::Running
+                    && job.worker.as_deref() == Some(worker)
+                    && job.lease_until_ms > now
+            }))
+    }
+}
+
+fn valid_input_tag(engine: &compute_jobs::EngineKind, input_tag: &str) -> bool {
+    matches!(
+        (engine, input_tag),
+        (compute_jobs::EngineKind::FastLv, "ds.fast-lv.request/v1")
+            | (
+                compute_jobs::EngineKind::SolarPrepared,
+                "ds.solar.calculate.prepared/v1"
+            )
+    )
 }

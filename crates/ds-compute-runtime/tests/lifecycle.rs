@@ -126,7 +126,9 @@ fn prepared_solar_survives_reopen_without_a_client_path_or_live_request() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("store.sqlite");
     let bytes = prepared_solar_request();
-    let job = runtime::submit(&path, "owner", "stable", "solar-request", &bytes).unwrap();
+    assert!(runtime::submit(&path, "owner", "stable", "solar-request", &bytes).is_err());
+    let job = runtime::submit_solar(&path, "owner", "stable", "solar-request", &bytes).unwrap();
+    assert_eq!(job.input_tag, "ds.solar.calculate.prepared/v1");
     // `run_one` reopens the durable store after submission. Its only input is
     // the retained request bytes, so this proves no client workspace/cache path
     // or original HTTP request remains in the execution boundary.

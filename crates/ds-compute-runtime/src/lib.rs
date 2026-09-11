@@ -1,13 +1,13 @@
 //! Portable native compute host shared by headless Server and Desktop.
 //! Domain lifecycle/admission belongs to the kernel; domain engines run only
 //! after their complete, durable input has been admitted.
-use ds_command_kernel::compute_jobs::{self, Event, Job, Phase};
+use ds_command_kernel::compute_jobs::{self, EngineKind, Event, Job, Phase};
 use ds_network::network::native_fast_lv::{
     decode_native_fast_lv_request, encode_native_fast_lv_result, process_native_fast_lv,
 };
 use ds_solar_contracts::{PreparedSolarCityInput, SolarCalculationResult};
 use ds_solar_io::output::{OutputFile, encode_outputs};
-use ds_solar_runtime::{CalculationOptions, CalculationTimings, SolarRuntime};
+use ds_solar_runtime::{CalculationOptions, CalculationTimings, CancelToken, SolarRuntime};
 use ds_sync_store::Store;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -44,10 +44,9 @@ pub fn submit(
     key: &str,
     input: &[u8],
 ) -> Result<Job, String> {
-    if decode_native_fast_lv_request(input).is_ok() {
-        return submit_validated(path, owner, lane, key, input);
-    }
-    submit_solar(path, owner, lane, key, input)
+    decode_native_fast_lv_request(input)
+        .map_err(|error| format!("fast_lv_request_invalid: {error}"))?;
+    submit_validated(path, owner, lane, key, input, EngineKind::FastLv, "ds.fast-lv.request/v1")
 }
 
 /// Admit the existing hosted Solar calculation request as a durable native
@@ -61,13 +60,19 @@ pub fn submit_solar(
     key: &str,
     input: &[u8],
 ) -> Result<Job, String> {
+    if input.len() > 64 * 1024 * 1024 {
+        return Err("solar_prepared_request_too_large".into());
+    }
     let request: PreparedSolarRequest = serde_json::from_slice(input)
         .map_err(|error| format!("solar_prepared_request_invalid: {error}"))?;
     request
         .prepared
         .validate()
         .map_err(|error| format!("solar_prepared_request_invalid: {error}"))?;
-    submit_validated(path, owner, lane, key, input)
+    if request.run_id.as_deref().is_some_and(|run_id| !valid_run_id(run_id)) {
+        return Err("solar_prepared_request_invalid: run_id must be 1..128 letters, digits, _ or -".into());
+    }
+    submit_validated(path, owner, lane, key, input, EngineKind::SolarPrepared, "ds.solar.calculate.prepared/v1")
 }
 
 fn submit_validated(
@@ -76,6 +81,8 @@ fn submit_validated(
     lane: &str,
     key: &str,
     input: &[u8],
+    engine: EngineKind,
+    input_tag: &str,
 ) -> Result<Job, String> {
     if key.is_empty()
         || key.len() > 128
@@ -92,6 +99,8 @@ fn submit_validated(
         owner: owner.into(),
         lane: lane.into(),
         input_sha256: digest(input),
+        engine,
+        input_tag: input_tag.to_owned(),
         phase: Phase::Queued,
         attempts: 0,
         created_at_ms: now,
@@ -104,6 +113,12 @@ fn submit_validated(
     open(path)?
         .submit_job(&job, input)
         .map_err(|e| e.to_string())
+}
+
+fn valid_run_id(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 128
+        && value.bytes().all(|byte| byte.is_ascii_alphanumeric() || b"_-".contains(&byte))
 }
 
 /// The established Cloud Run calculation request shape. It is deliberately
@@ -225,8 +240,9 @@ pub fn run_one(
     };
     let done = Arc::new(AtomicBool::new(false));
     let renewed = Arc::new(AtomicBool::new(true));
+    let cancelled = CancelToken::new();
     let renew_thread = {
-        let (path, owner, lane, worker, id, done, renewed, auth) = (
+        let (path, owner, lane, worker, id, done, renewed, auth, cancelled) = (
             path.to_owned(),
             owner.to_owned(),
             lane.to_owned(),
@@ -235,11 +251,24 @@ pub fn run_one(
             done.clone(),
             renewed.clone(),
             auth.clone(),
+            cancelled.clone(),
         );
         thread::spawn(move || {
             let mut ticks = 0;
             while !done.load(Ordering::Acquire) {
                 thread::sleep(Duration::from_millis(100));
+                let current = open(&path).and_then(|store| {
+                    store
+                        .worker_still_current(&owner, &lane, &id, &worker, now_ms())
+                        .map_err(|error| error.to_string())
+                });
+                if !matches!(current, Ok(true)) {
+                    cancelled.cancel();
+                    if current.is_err() {
+                        renewed.store(false, Ordering::Release);
+                    }
+                    break;
+                }
                 ticks += 1;
                 if ticks < 50 {
                     continue;
@@ -263,6 +292,7 @@ pub fn run_one(
                 });
                 if result.is_err() {
                     renewed.store(false, Ordering::Release);
+                    cancelled.cancel();
                     break;
                 }
             }
@@ -272,13 +302,24 @@ pub fn run_one(
         if digest(&input) != job.input_sha256 {
             return Err("durable input digest mismatch".to_string());
         }
-        execute(&input, &job.id)
+        execute(&input, &job, Some(&cancelled))
     })
     .unwrap_or_else(|_| Err("native compute panicked; input retained".into()));
     done.store(true, Ordering::Release);
     let _ = renew_thread.join();
     if !renewed.load(Ordering::Acquire) {
         return Err("job lease or authorization lost; input retained for recovery".into());
+    }
+    if cancelled.is_cancelled() {
+        // `Cancel` (or a recovered worker) already committed the durable
+        // lifecycle state. The engine observed the token at a stage boundary;
+        // this worker must not overwrite that terminal/fenced state.
+        if !open(path)?
+            .worker_still_current(owner, lane, &job.id, worker, now_ms())
+            .map_err(|error| error.to_string())?
+        {
+            return Ok(true);
+        }
     }
     auth.authorize(owner)?;
     match output {
@@ -317,10 +358,18 @@ pub fn run_one(
     Ok(true)
 }
 
-fn execute(input: &[u8], job_id: &str) -> Result<Vec<u8>, String> {
-    if let Ok(request) = decode_native_fast_lv_request(input) {
+fn execute(input: &[u8], job: &Job, cancel: Option<&CancelToken>) -> Result<Vec<u8>, String> {
+    if job.engine == EngineKind::FastLv {
+        if job.input_tag != "ds.fast-lv.request/v1" {
+            return Err("durable Fast LV input tag mismatch".into());
+        }
+        let request = decode_native_fast_lv_request(input)
+            .map_err(|error| format!("durable Fast LV input invalid: {error}"))?;
         let result = process_native_fast_lv(request).map_err(|e| e.to_string())?;
         return encode_native_fast_lv_result(&result).map_err(|e| e.to_string());
+    }
+    if job.engine != EngineKind::SolarPrepared || job.input_tag != "ds.solar.calculate.prepared/v1" {
+        return Err("durable compute engine or input tag is unsupported".into());
     }
     let request: PreparedSolarRequest = serde_json::from_slice(input)
         .map_err(|error| format!("durable input is not a supported compute request: {error}"))?;
@@ -328,8 +377,9 @@ fn execute(input: &[u8], job_id: &str) -> Result<Vec<u8>, String> {
         .prepared
         .validate()
         .map_err(|error| format!("prepared Solar input no longer validates: {error}"))?;
-    let run_id = request.run_id.unwrap_or_else(|| job_id.to_owned());
-    let runtime = SolarRuntime::new();
+    let run_id = request.run_id.unwrap_or_else(|| job.id.clone());
+    let cancel = cancel.cloned().unwrap_or_else(CancelToken::new);
+    let runtime = SolarRuntime::new().with_cancel(&cancel);
     let options = CalculationOptions::default()
         .with_charts(request.render_charts)
         .with_run_id(run_id);
