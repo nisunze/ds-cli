@@ -49,9 +49,11 @@ the sha256 of every source they were cut from. `tests/geo_lite_drift.rs`:
    `ds-network` path, and a `.rs` file that reaches one through `include_str!`,
    `include_bytes!` or `#[path]`. The second is not hypothetical — see §5.
 
-Parity needs no corpus, because parity is by construction: the bytes are the
-same bytes, and the 37 unit tests that ship inside those files run here too
-(`cargo test --workspace`). The drift test is the named proof.
+Parity needs no corpus for twelve of the thirteen entries, because parity is by
+construction: the bytes are the same bytes, and the 37 unit tests that ship
+inside those files run here too (`cargo test --workspace`). The drift test is
+the named proof. The thirteenth — the partial entry below — is the one place
+that argument does not reach, so it carries a corpus of its own.
 
 ### Why two crates
 
@@ -76,6 +78,17 @@ operations tree. The kernel calls one function, so the cut is at item level:
 it carries, and is checked against its three SOURCES' digests rather than by
 byte comparison. Upstream touching any of the three fails the drift test and
 asks for a re-derivation by hand.
+
+Those digests prove upstream has not moved. They prove nothing about whether the
+transcription was faithful the day it was cut — a transposed argument, a dropped
+halving or a different Earth radius would pass every digest in this contract. So
+the partial entry is additionally checked against closed forms computed WITHOUT
+the haversine formula (an exact meridian arc, and the spherical law of cosines)
+in `tests/geo_lite_drift.rs::the_transcribed_haversine_matches_an_independent_yardstick`.
+Two independent formulations of the same distance on the same sphere agree with
+a correct transcription and disagree with a wrong one. **Any future partial
+entry owes the same kind of proof**, because for a partial entry the bytes are
+ours, not ds-network's.
 
 ## 2. What is snapshotted
 
@@ -139,6 +152,20 @@ is therefore excluded from `members` and carries its own `[workspace]` table and
 `Cargo.lock` at an unchanged path. `ds-cli`'s path dependency on it is
 unaffected.
 
+That has one consequence which is easy to miss and was: **a detached crate is
+invisible to `cargo test --workspace`.** It is not a member here any more, and
+it is not a member of ds-cli's workspace either — it sits outside that
+directory and declares its own `[workspace]`, so `cargo test --workspace` there
+builds it as a dependency and runs none of its tests. Detaching it silently took
+its six tests out of every gate.
+
+They run in `scripts/test-detached-workspaces.sh`, which is part of the kernel's
+gates wherever `../ds-network` is on disk (it prints `SKIPPED` and exits 0 where
+it is not — a checkout without the engine is the severance working, and this is
+the one crate that legitimately cannot build there).
+`tests/geo_lite_drift.rs::every_detached_workspace_is_covered_by_the_gate_script`
+fails if a second crate is ever detached and not listed in it.
+
 ## 5. `include_str!` is an edge too
 
 `src/process_settings.rs`'s test module read ds-network's
@@ -163,7 +190,7 @@ after, using the same command both times
 | `dist/ds_command_kernel_bg.wasm` (wasm-pack) | 10,282,760 B | 10,403,695 B | +120,935 B |
 | after `wasm-opt --all-features -Oz --strip-debug --strip-producers` | 7,530,016 B | 7,646,634 B | +116,618 B |
 | `cargo check --features wasm` with ds-network **absent** | fails | **succeeds** | |
-| `cargo test` with ds-network **absent** | fails | **succeeds (527)** | |
+| `cargo test` with ds-network **absent** | fails | **succeeds (529)** | |
 | `wasm-pack build` with ds-network **absent** | fails | **succeeds** | |
 
 **The artefact did not shrink, and that is the honest finding.** The ruling's §3

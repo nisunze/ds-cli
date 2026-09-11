@@ -130,7 +130,7 @@ either direction. Full contract and method: `ds-portable-geometry.md`.
 | kernel WASM (`wasm-pack --release`) | 10,282,760 B | 10,403,695 B |
 | same, after `wasm-opt -Oz --strip-debug` | 7,530,016 B | 7,646,634 B |
 | `cargo check --features wasm`, ds-network absent | fails | **succeeds** |
-| `cargo test`, ds-network absent | fails | **succeeds (527)** |
+| `cargo test`, ds-network absent | fails | **succeeds (529)** |
 | `wasm-pack build`, ds-network absent | fails | **succeeds** |
 
 The byte count is the honest surprise and is worth carrying forward: the

@@ -65,6 +65,27 @@ fn field<'a>(entry: &'a Value, key: &str) -> &'a str {
         .unwrap_or_else(|| panic!("manifest entry is missing `{key}`: {entry}"))
 }
 
+/// Every `crates/<name>` that carries its own `[workspace]` table, and is
+/// therefore NOT part of the kernel's build. One exists — `ds-design-workspace`
+/// — and the reason is in `docs/contracts/ds-portable-geometry.md` §4.
+fn detached_crate_dirs() -> Vec<PathBuf> {
+    let crates = kernel_root().join("crates");
+    let mut detached = Vec::new();
+    for entry in std::fs::read_dir(&crates).expect("crates/ is readable") {
+        let dir = entry.expect("unreadable crates/ entry").path();
+        let manifest = dir.join("Cargo.toml");
+        if !manifest.is_file() {
+            continue;
+        }
+        let text = std::fs::read_to_string(&manifest).expect("manifest is UTF-8");
+        if text.lines().any(|line| line.trim() == "[workspace]") {
+            detached.push(dir);
+        }
+    }
+    detached.sort();
+    detached
+}
+
 /// Every file listed on disk under the vendor root, relative, `/`-joined.
 fn vendored_files_on_disk() -> BTreeSet<String> {
     fn walk(dir: &Path, root: &Path, found: &mut BTreeSet<String>) {
@@ -277,11 +298,14 @@ fn no_kernel_manifest_reaches_ds_network() {
 /// and this is what keeps the next one from being written.
 #[test]
 fn no_kernel_source_reaches_ds_network() {
-    fn walk(dir: &Path, offenders: &mut Vec<String>) {
+    fn walk(dir: &Path, skip: &[PathBuf], offenders: &mut Vec<String>) {
         for entry in std::fs::read_dir(dir).expect("source tree is readable") {
             let path = entry.expect("unreadable source entry").path();
             if path.is_dir() {
-                walk(&path, offenders);
+                if skip.contains(&path) {
+                    continue;
+                }
+                walk(&path, skip, offenders);
                 continue;
             }
             if path.extension().and_then(|e| e.to_str()) != Some("rs") {
@@ -307,12 +331,136 @@ fn no_kernel_source_reaches_ds_network() {
     }
 
     let mut offenders = Vec::new();
-    walk(&kernel_root().join("src"), &mut offenders);
-    walk(&kernel_root().join("tests"), &mut offenders);
+    walk(&kernel_root().join("src"), &[], &mut offenders);
+    walk(&kernel_root().join("tests"), &[], &mut offenders);
+    // `crates/` too. The `#[path]` mounts that turn the snapshot into a crate
+    // live there, so a reach across the line is likelier there than in `src/`.
+    // A DETACHED crate is skipped: it carries its own `[workspace]` precisely
+    // because it is allowed to need ds-network, and it is not in the build the
+    // absent-ds-network acceptance runs (ds-portable-geometry.md §4).
+    walk(
+        &kernel_root().join("crates"),
+        &detached_crate_dirs(),
+        &mut offenders,
+    );
     assert!(
         offenders.is_empty(),
         "these read ds-network off the filesystem, so the kernel cannot build or \
          test without it. Snapshot what they need with scripts/sync-geo-lite.sh:\n{}",
         offenders.join("\n")
     );
+}
+
+/// A detached crate is invisible to `cargo test --workspace`: it is not a
+/// member here, and it is not a member of ds-cli's workspace either (it lives
+/// outside that directory and declares its own `[workspace]`). Detaching
+/// `ds-design-workspace` was necessary — cargo resolves every member's
+/// manifest, so while it was a member the kernel could not build with
+/// ds-network absent — but it silently took that crate's tests out of every
+/// gate. `scripts/test-detached-workspaces.sh` is where they run now, and this
+/// is what stops the next detached crate from going uncovered.
+#[test]
+fn every_detached_workspace_is_covered_by_the_gate_script() {
+    let script_path = kernel_root().join("scripts/test-detached-workspaces.sh");
+    let script = std::fs::read_to_string(&script_path).unwrap_or_else(|error| {
+        panic!(
+            "cannot read scripts/test-detached-workspaces.sh: {error}. \
+             A detached crate's tests run nowhere without it"
+        )
+    });
+
+    for dir in detached_crate_dirs() {
+        let name = dir
+            .file_name()
+            .and_then(|n| n.to_str())
+            .expect("crate directory has a name");
+        assert!(
+            script.contains(&format!("crates/{name}/Cargo.toml")),
+            "crates/{name} carries its own [workspace], so `cargo test --workspace` \
+             never reaches it. Add it to scripts/test-detached-workspaces.sh"
+        );
+    }
+}
+
+/// The ONE entry whose parity is not by construction.
+///
+/// Twelve of the thirteen vendored files ARE the ds-network bytes, so the
+/// digest check is the whole proof. `geo/haversine.rs` is different: it is a
+/// hand transcription of three items out of three `ds-geo-ops` files, so its
+/// bytes are ours. The drift test above pins its SOURCES — it proves upstream
+/// has not moved, and says nothing about whether the transcription was faithful
+/// the day it was cut. A transposed argument, a dropped halving or a different
+/// Earth radius would pass every other gate in this file.
+///
+/// So this one is checked against closed forms computed WITHOUT the haversine
+/// formula: an exact meridian arc, and the spherical law of cosines. Both are
+/// independent formulations of the same distance on the same sphere, so they
+/// agree with a correct transcription and disagree with every wrong one.
+#[test]
+fn the_transcribed_haversine_matches_an_independent_yardstick() {
+    use ds_geo_lite::{haversine_distance_m, haversine_m, EARTH_RADIUS_M};
+
+    assert_eq!(
+        EARTH_RADIUS_M, 6_371_000.0,
+        "the radius is `ds-geo-ops::types::EARTH_RADIUS_M`; changing it here is drift"
+    );
+
+    // 1. A meridian arc is exact on a sphere: R * dlat, no trigonometry.
+    //    This also catches a transposed (lng, lat) argument pair, which would
+    //    read the same numbers as a parallel instead.
+    for (lng, lat, dlat) in [
+        (30.0_f64, 0.0_f64, 1.0_f64),
+        (30.0, -1.95, 0.001),
+        (-74.0, 40.7, 2.5),
+        (179.9, -33.9, 0.25),
+    ] {
+        let expected = EARTH_RADIUS_M * dlat.to_radians();
+        let actual = haversine_m(lng, lat, lng, lat + dlat);
+        assert!(
+            (actual - expected).abs() <= 1e-9 * expected,
+            "meridian arc at ({lng}, {lat}) + {dlat}deg: {actual} m, closed form {expected} m"
+        );
+    }
+
+    // 2. The spherical law of cosines — a different formulation of the same
+    //    great-circle distance, stable at these separations.
+    fn law_of_cosines(a_lng: f64, a_lat: f64, b_lng: f64, b_lat: f64) -> f64 {
+        let (p1, p2) = (a_lat.to_radians(), b_lat.to_radians());
+        let dlng = (b_lng - a_lng).to_radians();
+        EARTH_RADIUS_M * (p1.sin() * p2.sin() + p1.cos() * p2.cos() * dlng.cos()).acos()
+    }
+    for (a_lng, a_lat, b_lng, b_lat) in [
+        (30.0589, -1.9441, 32.5825, 0.3476),   // Kigali -> Kampala
+        (-0.1276, 51.5072, -74.0060, 40.7128), // London -> New York
+        (30.0, 60.0, 31.0, 60.0),              // a short east-west hop, high latitude
+        (179.5, -20.0, -179.5, -20.0),         // across the antimeridian
+        (10.0, -5.0, 12.0, 5.0),               // across the equator
+    ] {
+        let actual = haversine_m(a_lng, a_lat, b_lng, b_lat);
+        let expected = law_of_cosines(a_lng, a_lat, b_lng, b_lat);
+        assert!(
+            (actual - expected).abs() <= 1e-6 * expected,
+            "({a_lng}, {a_lat}) -> ({b_lng}, {b_lat}): {actual} m, law of cosines {expected} m"
+        );
+        assert!(
+            (haversine_m(b_lng, b_lat, a_lng, a_lat) - actual).abs() <= 1e-9,
+            "distance is not symmetric"
+        );
+    }
+
+    // 3. A point is zero metres from itself.
+    assert_eq!(haversine_m(30.0589, -1.9441, 30.0589, -1.9441), 0.0);
+
+    // 4. The two items are the same number; only the guard differs, and the
+    //    guard is the item taken from `ds-geo-ops::lib.rs`.
+    assert_eq!(
+        haversine_m(30.0, -1.0, 31.0, -2.0),
+        haversine_distance_m(30.0, -1.0, 31.0, -2.0)
+    );
+    for bad in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+        assert!(haversine_m(bad, -1.0, 31.0, -2.0).is_nan());
+        assert!(haversine_m(30.0, bad, 31.0, -2.0).is_nan());
+        assert!(haversine_m(30.0, -1.0, bad, -2.0).is_nan());
+        assert!(haversine_m(30.0, -1.0, 31.0, bad).is_nan());
+    }
 }
