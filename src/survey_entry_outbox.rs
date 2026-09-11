@@ -132,7 +132,8 @@ pub enum Event {
         id: String,
         generation: String,
         lease: u64,
-        server_version: Option<u64>,
+        #[serde(default)]
+        local_entry: serde_json::Value,
     },
     ManualRetry {
         current_uid: String,
@@ -158,6 +159,8 @@ pub enum Outcome {
         status: u16,
         #[serde(default)]
         network: bool,
+        #[serde(default)]
+        details: serde_json::Value,
     },
     Success,
     AuthRejected,
@@ -238,7 +241,7 @@ fn valid(h: &Header) -> bool {
         && h.generation.as_ref().is_none_or(|v| valid_generation(v))
         && h.created_at <= MAX_SAFE_INT
         && h.next_attempt_at <= MAX_SAFE_INT
-        && h.lease <= MAX_SAFE_INT
+        && h.lease < MAX_SAFE_INT
 }
 fn owned(h: &Header, uid: &str) -> bool {
     h.owner_uid.as_deref() == Some(uid) && h.generation.as_deref().is_some_and(valid_generation)
@@ -272,19 +275,32 @@ fn backoff(attempts: u32) -> u64 {
 fn find<'a>(headers: &'a mut [Header], id: &str) -> Option<&'a mut Header> {
     headers.iter_mut().find(|h| h.id == id)
 }
+fn safe_version(value: &serde_json::Value) -> Option<u64> {
+    value.as_u64().filter(|v| *v <= MAX_SAFE_INT)
+}
 pub fn evaluate(input: &[u8]) -> Result<String, String> {
     if input.len() > MAX_INPUT {
         return Err("Survey entry outbox command exceeds its byte bound.".into());
     }
     let req: Request = serde_json::from_slice(input)
         .map_err(|_| "Invalid Survey entry outbox command.".to_string())?;
-    if req.schema != SCHEMA || req.headers.len() > MAX_ROWS || req.now > MAX_SAFE_INT {
+    if req.schema != SCHEMA || req.headers.len() > MAX_ROWS || req.now > MAX_SAFE_INT - MAX_BACKOFF
+    {
         return Err("Unsupported or oversized Survey entry outbox command.".into());
     }
     let mut headers = Vec::new();
     let mut actions = Vec::new();
     let mut malformed_predecessors = std::collections::BTreeSet::new();
     for raw in req.headers {
+        if let Event::Schedule { current_uid, .. } = &req.event {
+            if raw
+                .get("owner_uid")
+                .and_then(|v| v.as_str())
+                .is_some_and(|uid| uid != current_uid)
+            {
+                continue;
+            }
+        }
         match serde_json::from_value::<Header>(raw.clone()) {
             Ok(h) if valid(&h) => headers.push(h),
             Ok(h) => {
@@ -363,8 +379,15 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
                 // A committed row can survive the crash gap before its fenced
                 // remove. It is never a FIFO predecessor. Foreign-account rows
                 // likewise remain durable but cannot block this account.
-                if h.status == Status::Synced || (h.owner_uid.is_some() && !owned(h, &current_uid))
-                {
+                if h.status == Status::Synced {
+                    if owned(h, &current_uid) {
+                        actions.push(Action::Remove {
+                            expected: Fence::from(&*h),
+                        });
+                    }
+                    continue;
+                }
+                if h.owner_uid.as_deref().is_some_and(|uid| uid != current_uid) {
                     continue;
                 }
                 let key = format!("{}\0{}\0{}", h.project_id, h.form_id, h.doc_id);
@@ -442,56 +465,35 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
                     && h.subeffect_phase == Some(Phase::Dispatch)
                 {
                     let old = h.clone();
-                    match outcome {
-                        Outcome::Response { status, network } => {
-                            if network || status == 408 || status == 429 || status >= 500 {
-                                h.status = Status::Pending;
-                                h.subeffect_phase = None;
-                                h.next_attempt_at = req.now.saturating_add(backoff(h.attempts));
-                                h.error = Some("transient".into());
-                                persist(&mut actions, &old, h.clone());
-                                actions.push(Action::WakeAt {
-                                    at: h.next_attempt_at,
-                                });
+                    let outcome = match outcome {
+                        Outcome::Response {
+                            status,
+                            network,
+                            details,
+                        } => {
+                            if network
+                                || status == 0
+                                || status == 408
+                                || status == 429
+                                || status >= 500
+                            {
+                                Outcome::Transient {
+                                    retry_after_ms: None,
+                                }
                             } else if status == 401 || status == 403 {
-                                if h.attempts >= AUTH_CAP {
-                                    fail(h, "auth_rejected");
-                                    actions.push(Action::Surface {
-                                        id,
-                                        code: "auth_rejected".into(),
-                                    });
-                                } else {
-                                    h.status = Status::Pending;
-                                    h.subeffect_phase = Some(Phase::RefreshAuth);
-                                }
-                                persist(&mut actions, &old, h.clone());
-                                if h.status == Status::Pending {
-                                    actions.push(Action::RefreshAuth { header: h.clone() });
-                                }
+                                Outcome::AuthRejected
                             } else if status == 409 {
-                                if h.operation == Operation::Create || h.conflict_rebased {
-                                    h.status = Status::Conflict;
-                                    h.subeffect_phase = None;
-                                    h.error = Some("conflict".into());
-                                    actions.push(Action::Surface {
-                                        id,
-                                        code: "conflict".into(),
-                                    });
-                                    persist(&mut actions, &old, h.clone());
-                                } else {
-                                    h.subeffect_phase = Some(Phase::ReadEntryVersion);
-                                    persist(&mut actions, &old, h.clone());
-                                    actions.push(Action::ReadEntryVersion { header: h.clone() });
+                                Outcome::Conflict {
+                                    server_version: safe_version(&details["server_version"]),
                                 }
                             } else {
-                                fail(h, "invalid");
-                                persist(&mut actions, &old, h.clone());
-                                actions.push(Action::Surface {
-                                    id,
-                                    code: "invalid".into(),
-                                });
+                                Outcome::Invalid
                             }
                         }
+                        other => other,
+                    };
+                    match outcome {
+                        Outcome::Response { .. } => unreachable!(),
                         Outcome::Success => {
                             h.status = Status::Synced;
                             h.subeffect_phase = None;
@@ -609,8 +611,10 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
             id,
             generation,
             lease,
-            server_version,
+            local_entry,
         } => {
+            let properties = local_entry.get("properties").unwrap_or(&local_entry);
+            let server_version = safe_version(&properties["metadata"]["client_version"]);
             if let Some(h) = find(&mut headers, &id) {
                 if owned(h, &current_uid)
                     && h.generation.as_deref() == Some(&generation)
@@ -675,7 +679,9 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
                     && owned(h, &current_uid)
                     && matches!(h.status, Status::Failed | Status::Conflict)
                 {
-                    actions.push(Action::Remove { expected: h.into() })
+                    actions.push(Action::Remove {
+                        expected: Fence::from(&*h),
+                    })
                 }
             }
         }
@@ -782,5 +788,100 @@ mod tests {
             .unwrap()
             .iter()
             .any(|a| a["kind"] == "persist"));
+    }
+    #[test]
+    fn crash_recovery_clears_auth_phase_and_synced_rows_do_not_block() {
+        let mut row = h("a", "pending");
+        row["subeffect_phase"] = json!("refresh_auth");
+        let r = run(vec![row], json!({"kind":"recover","current_uid":"u"}));
+        assert_eq!(r["actions"][0]["header"]["status"], "pending");
+        assert!(r["actions"][0]["header"]["subeffect_phase"].is_null());
+        let r = run(
+            vec![h("a", "synced"), h("b", "pending")],
+            json!({"kind":"schedule","current_uid":"u","online":true}),
+        );
+        assert_eq!(r["actions"][0]["kind"], "remove");
+        assert_eq!(r["actions"][2]["header"]["id"], "b");
+    }
+    #[test]
+    fn malformed_predecessor_blocks_only_its_entity() {
+        for value in [json!("bad"), json!(9007199254740992_u64)] {
+            let mut bad = h("a", "pending");
+            bad["created_at"] = value;
+            let mut unrelated = h("c", "pending");
+            unrelated["doc_id"] = json!("other");
+            let r = run(
+                vec![bad, h("b", "pending"), unrelated],
+                json!({"kind":"schedule","current_uid":"u","online":true}),
+            );
+            let ids: Vec<_> = r["actions"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .filter(|a| a["kind"] == "dispatch")
+                .map(|a| a["header"]["id"].as_str().unwrap())
+                .collect();
+            assert_eq!(ids, vec!["c"]);
+        }
+    }
+    #[test]
+    fn foreign_rows_never_dispatch_or_block_or_accept_manual_changes() {
+        let mut foreign = h("a", "failed");
+        foreign["owner_uid"] = json!("other");
+        let r = run(
+            vec![foreign.clone(), h("b", "pending")],
+            json!({"kind":"schedule","current_uid":"u","online":true}),
+        );
+        assert_eq!(r["actions"][1]["header"]["id"], "b");
+        let r = run(
+            vec![foreign],
+            json!({"kind":"discard","current_uid":"u","ids":["a"]}),
+        );
+        assert!(r["actions"].as_array().unwrap().is_empty());
+    }
+    #[test]
+    fn http_auth_effect_is_persisted_first_and_bounded() {
+        let event = json!({"kind":"result","current_uid":"u","id":"a","generation":"11111111-1111-1111-1111-111111111111","lease":0,"outcome":{"kind":"response","status":401}});
+        let r = run(vec![h("a", "syncing")], event.clone());
+        assert_eq!(r["actions"][0]["kind"], "persist");
+        assert_eq!(r["actions"][1]["kind"], "refresh_auth");
+        let mut row = h("a", "syncing");
+        row["attempts"] = json!(3);
+        let r = run(vec![row], event);
+        assert_eq!(r["actions"][0]["header"]["status"], "failed");
+    }
+    #[test]
+    fn http_conflict_uses_server_version_once_and_never_promotes_create() {
+        let event = json!({"kind":"result","current_uid":"u","id":"a","generation":"11111111-1111-1111-1111-111111111111","lease":0,"outcome":{"kind":"response","status":409,"details":{"server_version":7}}});
+        let r = run(vec![h("a", "syncing")], event.clone());
+        assert_eq!(r["actions"][0]["payload_patch"]["expected_version"], 7);
+        for create in [true, false] {
+            let mut row = h("a", "syncing");
+            if create {
+                row["operation"] = json!("create");
+            } else {
+                row["conflict_rebased"] = json!(true);
+            }
+            let r = run(vec![row], event.clone());
+            assert_eq!(r["actions"][0]["header"]["status"], "conflict");
+            assert!(r["actions"][0]["payload_patch"].is_null());
+        }
+    }
+    #[test]
+    fn legacy_confirmation_preserves_identity_and_fences_old_completion() {
+        let mut row = h("a", "failed");
+        row.as_object_mut().unwrap().remove("owner_uid");
+        row.as_object_mut().unwrap().remove("generation");
+        let event = json!({"kind":"recover_legacy","current_uid":"u","id":"a","project_id":"p","generation":"22222222-2222-2222-2222-222222222222","operator_confirmed":true});
+        let r = run(vec![row], event);
+        let header = &r["actions"][0]["header"];
+        assert_eq!(header["legacy_confirmed"], true);
+        assert_eq!(header["idempotency_key"], "survey_a");
+        assert_eq!(header["owner_uid"], "u");
+        let r = run(
+            vec![header.clone()],
+            json!({"kind":"result","current_uid":"u","id":"a","generation":"11111111-1111-1111-1111-111111111111","lease":0,"outcome":{"kind":"success"}}),
+        );
+        assert!(r["actions"].as_array().unwrap().is_empty());
     }
 }
