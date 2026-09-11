@@ -405,3 +405,48 @@ preview.json --output json`, using the kernel's `render_plan` operation:
 "text":{"title":"Preview"},"date":"2026-09-11"}`. It returns `ready`, refusal
 keys, required print-style references and text. This evaluates admission only;
 PDF rendering still uses the existing renderer.
+
+## Headless transformer reports
+
+`ds report project export` produces individual transformer reports — prints
+included — with no browser, no room cache and no Desktop. It is the door a
+Linux server host calls, and the desktop's Report button reaches the same
+owner: the decisions are `ds-command-kernel::report_export`'s, the IO is
+`ds-web/crates/ds-report-host`'s, and the engine is the installed `ds-report`.
+
+```bash
+ds report project export --out-dir ./reports --output json                        # every active saved transformer
+ds report project export --transformer tx_a --out-dir ./reports --concurrency 2  # named scope, two engines at once
+```
+
+The inputs are the governed ones, fetched under the native user for its
+audience-fenced selected project: the Network Reporter input receipt ds-brain
+mints beside the fresh configuration (country, the exact settings sheets, the
+reference snapshot) and each transformer's exact saved layers with their
+revision. From them the kernel decides the formats (the project's output
+policy, `ds report project settings`), the `input_base_fingerprint`
+(`network_reporter/input-base/v2`) and the `room_content_sha256` (RFC 8785
+over the room) — byte for byte what the desktop shell records — and the exact
+typed request the engine reads. Named print outputs (`pdf__<layout>`) render
+from the project's saved printing setups inside the same engine run; a Rwanda
+project is stamped with the installed villages asset
+(`--admin-bounds` names one explicitly).
+
+The batch runs independent transformers under `min(scope, processors,
+--concurrency|4)` resident engines; rooms are fetched one at a time. Each
+completed transformer leaves `<out-dir>/<transformer>/` with its artifacts and
+`report-run.json` (every artifact's SHA-256, size, content type and paper
+identity, the engine identity, the fingerprint and digests, and the
+publication identity — `state` is `pending` for a release engine and
+`local_only` for a development build). `<out-dir>/report-batch.json` records
+every result in the kernel's stable order; a transformer the engine refused is
+one `error` row with its typed blockers, never the end of the batch. The
+command exits non-zero only when no transformer completed
+(`report_batch_failed`). Nothing here publishes: the receipts carry what a
+publication needs, and the durable store decides delivery.
+
+What is not headless yet: print context layers (survey, local, catalog,
+buildings, contours, project MV) are prepared by the desktop from its caches,
+so a server run renders named prints without them and the engine's print
+warnings say so; a media scope grant is not minted here, so a room carrying
+photos is refused by the engine with a typed blocker.

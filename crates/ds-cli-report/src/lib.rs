@@ -88,5 +88,6 @@ pub static DOMAIN: Domain = Domain {
         &project::archives::COMMAND,
         &project::settings::COMMAND,
         &project::settings::OUTPUTS_SET,
+        &project::export::COMMAND,
     ],
 };

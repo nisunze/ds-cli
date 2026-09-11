@@ -20,6 +20,7 @@
 
 pub mod archives;
 pub mod compounded;
+pub mod export;
 pub mod scope;
 pub mod settings;
 

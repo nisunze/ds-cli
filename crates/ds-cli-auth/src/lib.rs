@@ -619,6 +619,7 @@ impl CredentialProvider for NativeContextProvider<'_> {
 /// audience-fenced selected project. The server remains the membership and
 /// resource authority; this adapter only binds local identity and context.
 pub struct HeadlessTransformerContext {
+    identity: ProviderIdentity,
     lane: &'static str,
     project_name: String,
     project_status: String,
@@ -626,6 +627,9 @@ pub struct HeadlessTransformerContext {
 }
 
 impl HeadlessTransformerContext {
+    pub const fn identity(&self) -> &ProviderIdentity {
+        &self.identity
+    }
     pub const fn lane(&self) -> &'static str {
         self.lane
     }
@@ -827,6 +831,7 @@ pub struct HeadlessTilePreflight {
 /// core receipt types; the project identity travels beside it so a CLI
 /// receipt can name what it acted on without a second read.
 pub struct HeadlessProjectReport<T> {
+    identity: ProviderIdentity,
     lane: &'static str,
     project_id: String,
     project_name: String,
@@ -835,6 +840,9 @@ pub struct HeadlessProjectReport<T> {
 }
 
 impl<T> HeadlessProjectReport<T> {
+    pub const fn identity(&self) -> &ProviderIdentity {
+        &self.identity
+    }
     pub const fn lane(&self) -> &'static str {
         self.lane
     }
@@ -1244,6 +1252,11 @@ pub fn transformer_context(
             .transformer_context(selected.project_id(), transformer)
             .map_err(map_client)?;
         return Ok(HeadlessTransformerContext {
+            identity: ProviderIdentity::new(
+                lane.token(),
+                device.profile().credential_audience_sha256(),
+                device.context().uid(),
+            )?,
             lane: lane.token(),
             project_name: selected.project_name().to_owned(),
             project_status: selected.status().to_owned(),
@@ -1267,6 +1280,11 @@ pub fn transformer_context(
     let result = client.transformer_context(selected.project_id(), transformer, now());
     let snapshot = with_released_context_disposition(client.profile(), &selected, result)?;
     Ok(HeadlessTransformerContext {
+        identity: ProviderIdentity::new(
+            lane.token(),
+            client.profile().credential_audience_sha256(),
+            user.uid(),
+        )?,
         lane: lane.token(),
         project_name: selected.project_name().to_owned(),
         project_status: selected.status().to_owned(),
@@ -1638,6 +1656,15 @@ pub fn feeder_configuration(
     lane: &str,
     bounds: Option<(f64, f64)>,
 ) -> Result<ds_client_core::FeederConfiguration, Failure> {
+    feeder_configuration_receipt(lane, bounds).map(HeadlessProjectReport::into_result)
+}
+
+/// Preserve the identity and project that supplied a configuration so a
+/// multi-call native workflow can reject account or project changes.
+pub fn feeder_configuration_receipt(
+    lane: &str,
+    bounds: Option<(f64, f64)>,
+) -> Result<HeadlessProjectReport<ds_client_core::FeederConfiguration>, Failure> {
     let change =
         bounds.map(
             |(minimum, maximum)| ds_client_core::ProjectConfigurationChange::FeederLimits {
@@ -1650,7 +1677,6 @@ pub fn feeder_configuration(
         |device, project| device.feeder_configuration(project, change.as_ref()),
         |client, project| client.feeder_configuration(project, change.as_ref(), now()),
     )
-    .map(|receipt| receipt.result)
 }
 
 /// Settings uses the same selected-project transport and fresh readback as
@@ -1727,6 +1753,11 @@ fn headless_project_report<T>(
     if let Some((mut device, selected)) = restored_device_project(lane)? {
         let result = device_call(&mut device, selected.project_id()).map_err(map_client)?;
         return Ok(HeadlessProjectReport {
+            identity: ProviderIdentity::new(
+                lane.token(),
+                device.profile().credential_audience_sha256(),
+                device.context().uid(),
+            )?,
             lane: lane.token(),
             project_id: selected.project_id().to_owned(),
             project_name: selected.project_name().to_owned(),
@@ -1742,6 +1773,11 @@ fn headless_project_report<T>(
     let result = session_call(&mut client, selected.project_id());
     let result = with_released_context_disposition(client.profile(), &selected, result)?;
     Ok(HeadlessProjectReport {
+        identity: ProviderIdentity::new(
+            lane.token(),
+            client.profile().credential_audience_sha256(),
+            user.uid(),
+        )?,
         lane: lane.token(),
         project_id: selected.project_id().to_owned(),
         project_name: selected.project_name().to_owned(),

@@ -486,6 +486,7 @@ const PROJECT_OPERATIONS_COMMANDS: &[&str] = &[
     "report.project.outputs.set",
     "report.project.compounded",
     "report.project.archives",
+    "report.project.export",
 ];
 
 const DESIGN_RUN_COMMANDS: &[&str] = &[
