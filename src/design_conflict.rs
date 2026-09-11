@@ -1,14 +1,12 @@
 //! May this operator overwrite the cloud head of a conflicted transformer?
 //!
-//! The browser answered this question TWICE. `forceReviewEligibility` ran nine
-//! ordered refusals to gate the SEND; `reviewedConflictIsCurrent` re-checked
-//! two of those nine — plus a tenth fact the send never looked at, that the
-//! review actually finished — to gate the TICK. So the tick and the send could
-//! disagree, and the operator saw a box they were allowed to check and a save
-//! that then refused it.
+//! The browser used to answer this question TWICE. The tick and send gates
+//! could disagree, and an unfinished review could reach a save. This module
+//! evaluates one ordered refusal list for both actions, including the finished
+//! review fence.
 //!
 //! This module is the ONE answer. The refusals keep their order and become
-//! NAMED CODES; the tick is a declared subset of the same evaluation, not a
+//! NAMED CODES; the tick is a declared view of the same evaluation, not a
 //! second function. Every message that leaves here is an i18n KEY — the
 //! sentences the browser carried belong to the host that renders them.
 //!
@@ -31,9 +29,8 @@ const MAX_INPUT_BYTES: usize = 32 * 1024 * 1024;
 
 // ── the vocabulary ──────────────────────────────────────────────────────
 
-/// The nine ordered refusals, in the order they are tested, plus the tenth
-/// the tick gate adds. A code is machine vocabulary; `message_key` is what the
-/// host translates.
+/// The ordered refusals, in the order they are tested. A code is machine
+/// vocabulary; `message_key` is what the host translates.
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum RefusalCode {
@@ -55,7 +52,7 @@ pub enum RefusalCode {
     ConflictBaseVersionMismatch,
     /// 9. The cloud head moved after comparison.
     CloudHeadMoved,
-    /// 10. The comparison never finished; only the tick gate reads it.
+    /// 10. The comparison never finished.
     ReviewNotFinished,
 }
 
@@ -125,11 +122,11 @@ pub struct CheckReply {
     pub schema: &'static str,
     pub op: &'static str,
     pub name: String,
-    /// May this overwrite be SENT right now (the nine refusals)?
+    /// May this overwrite be SENT right now (all ordered refusals)?
     pub eligible: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub refusal: Option<Refusal>,
-    /// May the overwrite box be TICKED (refusals 3, 4, 8, 9 and 10)?
+    /// May the overwrite box be TICKED (the review-state refusals)?
     pub tick_admissible: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tick_refusal: Option<Refusal>,
@@ -185,7 +182,7 @@ pub struct ReviewState {
     /// comparison never pinned one.
     #[serde(default)]
     pub reviewed_current_version: Option<i64>,
-    /// Did the comparison finish? Only the tick gate reads it.
+    /// Did the comparison finish? Neither action may proceed before it does.
     #[serde(default)]
     pub reviewed: bool,
 }
@@ -236,6 +233,14 @@ fn send_refusal(request: &CheckRequest) -> Option<RefusalCode> {
     let Some(conflict) = request.conflict.as_ref() else {
         return Some(RefusalCode::NoConflictRecorded);
     };
+    // A conflict is only meaningful between two distinct positive persisted
+    // counters. This keeps malformed host state from minting force fields.
+    if conflict.base_version <= 0
+        || conflict.current_version <= 0
+        || conflict.base_version == conflict.current_version
+    {
+        return Some(RefusalCode::NoConflictRecorded);
+    }
     let Some(review) = request.review.as_ref() else {
         return Some(RefusalCode::ReviewMissing);
     };
@@ -252,12 +257,13 @@ fn send_refusal(request: &CheckRequest) -> Option<RefusalCode> {
     // comparison can be pinned to.
     let base_matches = request
         .current_base_version
-        .filter(|version| *version != 0)
+        .filter(|version| *version > 0)
+        .filter(|_| review.base_version > 0)
         .is_some_and(|version| version == review.base_version);
     if !base_matches {
         return Some(RefusalCode::LocalBaseVersionChanged);
     }
-    let Some(reviewed_current) = review.reviewed_current_version.filter(|value| *value != 0) else {
+    let Some(reviewed_current) = review.reviewed_current_version.filter(|value| *value > 0) else {
         return Some(RefusalCode::ReviewNotPinned);
     };
     if conflict.base_version != review.base_version {
@@ -266,27 +272,38 @@ fn send_refusal(request: &CheckRequest) -> Option<RefusalCode> {
     if conflict.current_version != reviewed_current {
         return Some(RefusalCode::CloudHeadMoved);
     }
+    if !review.reviewed {
+        return Some(RefusalCode::ReviewNotFinished);
+    }
     None
 }
 
 /// The tick gate: the same list, restricted to what a tick can know. It never
 /// reads the capability, the tick itself, or the live digest/base — those move
-/// under the operator's hand between ticking and sending — and it adds the one
-/// fact the send list never tested: that the comparison finished.
+/// under the operator's hand between ticking and sending.
 fn tick_refusal(request: &CheckRequest) -> Option<RefusalCode> {
     let Some(conflict) = request.conflict.as_ref() else {
         return Some(RefusalCode::NoConflictRecorded);
     };
+    if conflict.base_version <= 0
+        || conflict.current_version <= 0
+        || conflict.base_version == conflict.current_version
+    {
+        return Some(RefusalCode::NoConflictRecorded);
+    }
     let Some(review) = request.review.as_ref() else {
         return Some(RefusalCode::ReviewMissing);
     };
     if !review.reviewed {
         return Some(RefusalCode::ReviewNotFinished);
     }
-    if conflict.base_version != review.base_version {
+    if review.base_version <= 0 || conflict.base_version != review.base_version {
         return Some(RefusalCode::ConflictBaseVersionMismatch);
     }
-    if Some(conflict.current_version) != review.reviewed_current_version {
+    let Some(reviewed_current) = review.reviewed_current_version.filter(|value| *value > 0) else {
+        return Some(RefusalCode::ReviewNotPinned);
+    };
+    if conflict.current_version != reviewed_current {
         return Some(RefusalCode::CloudHeadMoved);
     }
     None
@@ -298,7 +315,7 @@ fn check(request: &CheckRequest) -> CheckReply {
     let force_fields = match (refusal, request.review.as_ref()) {
         (None, Some(review)) => review
             .reviewed_current_version
-            .filter(|value| *value != 0)
+            .filter(|value| *value > 0)
             .map(|reviewed_current_version| ForceFields {
                 force_version_conflict: true,
                 reviewed_current_version,
@@ -318,8 +335,11 @@ fn check(request: &CheckRequest) -> CheckReply {
 }
 
 /// Which rows are conflicted. A room this browser holds, dirty and known to
-/// the server, whose save counter has moved past the base it was taken from,
-/// is a conflict — and the register recorded it from a render pass until now.
+/// the server, whose positive save counter differs from the positive base it
+/// was taken from, is a conflict — and the register recorded it from a render
+/// pass until now. Version counters have no direction in this rule: a local
+/// copy can carry a base from a different branch that is ahead of the reviewed
+/// cloud head. The reviewed overwrite still pins that actual cloud head later.
 pub fn detect(rows: &[Value]) -> Vec<DetectedConflict> {
     let mut conflicts = Vec::new();
     for row in rows {
@@ -344,7 +364,7 @@ pub fn detect(rows: &[Value]) -> Vec<DetectedConflict> {
                 .and_then(Value::as_object)
                 .and_then(|metadata| metadata.get("version")),
         );
-        if base_version > 0 && current_version > base_version {
+        if base_version > 0 && current_version > 0 && current_version != base_version {
             conflicts.push(DetectedConflict {
                 name: name.to_string(),
                 base_version,
@@ -485,7 +505,7 @@ mod tests {
     }
 
     #[test]
-    fn the_tick_gate_is_a_declared_subset_plus_the_finished_comparison() {
+    fn the_tick_gate_reads_the_review_state_from_the_send_gate() {
         // A tick is admissible without the capability and without the tick
         // itself — the two facts the send gate adds.
         let mut request = eligible_request();
@@ -495,11 +515,12 @@ mod tests {
         assert!(!reply.eligible);
         assert!(reply.tick_admissible);
 
-        // The one fact the send list never tested.
+        // A comparison must finish before either action is allowed.
         let mut request = eligible_request();
         request.review.as_mut().unwrap().reviewed = false;
         let reply = check(&request);
-        assert!(reply.eligible, "the send gate never read `reviewed`");
+        assert!(!reply.eligible);
+        assert_eq!(reply.refusal.unwrap().code, RefusalCode::ReviewNotFinished);
         assert!(!reply.tick_admissible);
         assert_eq!(
             reply.tick_refusal.unwrap().code,
@@ -508,15 +529,48 @@ mod tests {
     }
 
     #[test]
-    fn a_zero_base_version_is_absent_not_a_match() {
+    fn a_zero_base_version_is_not_a_typed_conflict() {
         let mut request = eligible_request();
         request.current_base_version = Some(0);
         request.review.as_mut().unwrap().base_version = 0;
         request.conflict.as_mut().unwrap().base_version = 0;
         assert_eq!(
             check(&request).refusal.unwrap().code,
-            RefusalCode::LocalBaseVersionChanged
+            RefusalCode::NoConflictRecorded
         );
+    }
+
+    #[test]
+    fn malformed_or_equal_versions_never_mint_force_fields() {
+        let cases: Vec<(&str, Box<dyn Fn(&mut CheckRequest)>)> = vec![
+            (
+                "equal conflict",
+                Box::new(|r| r.conflict.as_mut().unwrap().current_version = 4),
+            ),
+            (
+                "negative local base",
+                Box::new(|r| r.current_base_version = Some(-4)),
+            ),
+            (
+                "negative review base",
+                Box::new(|r| r.review.as_mut().unwrap().base_version = -4),
+            ),
+            (
+                "negative reviewed head",
+                Box::new(|r| r.review.as_mut().unwrap().reviewed_current_version = Some(-7)),
+            ),
+            (
+                "negative conflict head",
+                Box::new(|r| r.conflict.as_mut().unwrap().current_version = -7),
+            ),
+        ];
+        for (name, mutate) in cases {
+            let mut request = eligible_request();
+            mutate(&mut request);
+            let reply = check(&request);
+            assert!(!reply.eligible, "{name} stayed eligible");
+            assert!(reply.force_fields.is_none(), "{name} minted force fields");
+        }
     }
 
     #[test]
@@ -529,22 +583,39 @@ mod tests {
             // Server does not know it.
             json!({"name": "tx_3", "client_dirty": true, "client_server_known": false,
                    "client_base_server_version": 4, "metadata": {"version": 7}}),
-            // The head has not moved.
+            // The head has not changed.
             json!({"name": "tx_4", "client_dirty": true, "client_base_server_version": 7,
                    "metadata": {"version": 7}}),
+            // A local base may be from a different branch and ahead of the
+            // current cloud head. It remains a conflict to review and resolve.
+            json!({"name": "tx_5", "client_dirty": true, "client_base_server_version": 7,
+                   "metadata": {"version": 4}}),
             // No base version: nothing to conflict with.
-            json!({"name": "tx_5", "client_dirty": true, "metadata": {"version": 7}}),
+            json!({"name": "tx_6", "client_dirty": true, "metadata": {"version": 7}}),
+            // Stored and local version counters must both be positive.
+            json!({"name": "tx_7", "client_dirty": true, "client_base_server_version": -1,
+                   "metadata": {"version": 4}}),
+            json!({"name": "tx_8", "client_dirty": true, "client_base_server_version": 4,
+                   "metadata": {"version": -1}}),
             json!({"name": "collisions", "client_dirty": true, "client_base_server_version": 4,
                    "metadata": {"version": 7}}),
         ];
         let conflicts = detect(&rows);
-        assert_eq!(conflicts.len(), 1);
+        assert_eq!(conflicts.len(), 2);
         assert_eq!(conflicts[0].name, "tx_1");
         assert_eq!(
             (conflicts[0].base_version, conflicts[0].current_version),
             (4, 7)
         );
         assert_eq!(conflicts[0].evidence, "inferred");
+        assert_eq!(
+            (
+                conflicts[1].name.as_str(),
+                conflicts[1].base_version,
+                conflicts[1].current_version
+            ),
+            ("tx_5", 7, 4)
+        );
     }
 
     #[test]

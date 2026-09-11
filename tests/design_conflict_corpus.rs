@@ -8,7 +8,7 @@
 //! sentences the browser carried.
 //!
 //! This file proves the NATIVE build — the one `ds design conflict` links —
-//! answers the same recorded bytes, and that the nine refusals keep their
+//! answers the same recorded bytes, and that the ordered refusals keep their
 //! order.
 
 use ds_command_kernel::design_conflict::{evaluate, SCHEMA};
@@ -52,20 +52,20 @@ fn the_refusals_keep_the_order_the_review_numbered_them_in() {
             seen.push(ordinal);
         }
     }
-    // Every one of the nine send refusals is exercised, and the tenth is the
-    // tick gate's alone.
+    // Every send refusal is exercised; the completed-review fence applies to
+    // the send and tick paths alike.
     let mut ordinals: Vec<u64> = seen.clone();
     ordinals.sort_unstable();
     ordinals.dedup();
-    assert_eq!(ordinals, (1..=9).collect::<Vec<u64>>());
-    let tick_only: Vec<&str> = corpus["cases"]
+    assert_eq!(ordinals, (1..=10).collect::<Vec<u64>>());
+    let review_fenced: Vec<&str> = corpus["cases"]
         .as_array()
         .expect("cases")
         .iter()
         .filter(|case| case["expected"]["tick_refusal"]["code"] == "review_not_finished")
         .map(|case| case["id"].as_str().expect("case id"))
         .collect();
-    assert_eq!(tick_only, ["review-not-finished"]);
+    assert_eq!(review_fenced, ["review-not-finished"]);
 }
 
 #[test]

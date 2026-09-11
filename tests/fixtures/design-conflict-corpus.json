@@ -344,7 +344,7 @@
 		},
 		{
 			"id": "local-base-version-zero",
-			"note": "Refusal 6 — a zero base version is absent, never a match.",
+			"note": "Refusal 3 — a zero base version cannot form a typed conflict.",
 			"request": {
 				"op": "check",
 				"schema": "ds.design-conflict/v1",
@@ -366,8 +366,8 @@
 			},
 			"expected_ts": {
 				"eligible": false,
-				"reason": "The local base version changed after comparison. Compare again.",
-				"tick": true,
+				"reason": "No typed version conflict is recorded.",
+				"tick": false,
 				"force_fields": null
 			},
 			"expected": {
@@ -376,11 +376,16 @@
 				"name": "tx_1",
 				"eligible": false,
 				"refusal": {
-					"code": "local_base_version_changed",
-					"message_key": "dscf_local_base_version_changed",
-					"ordinal": 6
+					"code": "no_conflict_recorded",
+					"message_key": "dscf_no_conflict_recorded",
+					"ordinal": 3
 				},
-				"tick_admissible": true
+				"tick_admissible": false,
+				"tick_refusal": {
+					"code": "no_conflict_recorded",
+					"message_key": "dscf_no_conflict_recorded",
+					"ordinal": 3
+				}
 			}
 		},
 		{
@@ -422,9 +427,9 @@
 				},
 				"tick_admissible": false,
 				"tick_refusal": {
-					"code": "cloud_head_moved",
-					"message_key": "dscf_cloud_head_moved",
-					"ordinal": 9
+					"code": "review_not_pinned",
+					"message_key": "dscf_review_not_pinned",
+					"ordinal": 7
 				}
 			}
 		},
@@ -522,7 +527,7 @@
 		},
 		{
 			"id": "review-not-finished",
-			"note": "Refusal 10 — the tick gate alone reads whether the comparison finished; the send gate never did.",
+			"note": "Refusal 10 — neither the tick nor the send may use an unfinished comparison.",
 			"request": {
 				"op": "check",
 				"schema": "ds.design-conflict/v1",
@@ -543,7 +548,7 @@
 				"current_base_version": 4
 			},
 			"expected_ts": {
-				"eligible": true,
+				"eligible": false,
 				"tick": false,
 				"force_fields": {
 					"forceVersionConflict": true,
@@ -554,16 +559,17 @@
 				"schema": "ds.design-conflict/v1",
 				"op": "check",
 				"name": "tx_1",
-				"eligible": true,
+				"eligible": false,
+				"refusal": {
+					"code": "review_not_finished",
+					"message_key": "dscf_review_not_finished",
+					"ordinal": 10
+				},
 				"tick_admissible": false,
 				"tick_refusal": {
 					"code": "review_not_finished",
 					"message_key": "dscf_review_not_finished",
 					"ordinal": 10
-				},
-				"force_fields": {
-					"force_version_conflict": true,
-					"reviewed_current_version": 7
 				}
 			}
 		},
@@ -651,6 +657,15 @@
 					}
 				},
 				{
+					"name": "tx_base_ahead",
+					"client_dirty": true,
+					"client_server_known": true,
+					"client_base_server_version": 3,
+					"metadata": {
+						"version": 2
+					}
+				},
+				{
 					"name": "tx_nobase",
 					"client_dirty": true,
 					"client_server_known": true,
@@ -676,6 +691,11 @@
 				"currentVersion": 7
 			},
 			{
+				"name": "tx_base_ahead",
+				"baseVersion": 3,
+				"currentVersion": 2
+			},
+			{
 				"name": "collisions",
 				"baseVersion": 4,
 				"currentVersion": 7
@@ -689,6 +709,13 @@
 					"name": "tx_1",
 					"base_version": 4,
 					"current_version": 7,
+					"code": "TRANSFORMER_VERSION_MISMATCH",
+					"evidence": "inferred"
+				},
+				{
+					"name": "tx_base_ahead",
+					"base_version": 3,
+					"current_version": 2,
 					"code": "TRANSFORMER_VERSION_MISMATCH",
 					"evidence": "inferred"
 				}
