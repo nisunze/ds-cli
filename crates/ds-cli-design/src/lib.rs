@@ -61,12 +61,15 @@
 //! read what they are removing before they remove it.
 
 pub mod attachment;
+pub mod autoprocess;
 pub mod category_catalog;
 pub mod collisions;
 pub mod comment;
 pub mod config;
+pub mod data_lane;
 pub mod features;
 pub mod feeder_limits;
+pub mod force_gate;
 pub mod group;
 pub mod grouping;
 pub mod known_columns;
@@ -164,6 +167,9 @@ pub static DOMAIN: Domain = Domain {
         &lv::process::COMMAND,
         &process_settings::COMMAND,
         &collisions::COMMAND,
+        &autoprocess::COMMAND,
+        &force_gate::COMMAND,
+        &data_lane::COMMAND,
         &transformer::status::COMMAND,
         &preview::BULK_PLAN,
         &preview::DOWNLOAD_PLAN,
@@ -183,26 +189,6 @@ pub static DOMAIN: Domain = Domain {
 // The declared wire contract
 // ---------------------------------------------------------------------------
 
-pub const SELECTION_LIST: BridgeOp = BridgeOp {
-    operation: "design.selection.list",
-    arguments: &["archived", "limit"],
-};
-pub const SELECTION_READ: BridgeOp = BridgeOp {
-    operation: "design.selection.read",
-    arguments: &["selection"],
-};
-pub const SELECTION_SAVE: BridgeOp = BridgeOp {
-    operation: "design.selection.save",
-    arguments: &["name", "transformers", "selection", "description"],
-};
-pub const SELECTION_ARCHIVE: BridgeOp = BridgeOp {
-    operation: "design.selection.archive",
-    arguments: &["selection", "restore"],
-};
-pub const SELECTION_ASSIGN: BridgeOp = BridgeOp {
-    operation: "design.selection.assign",
-    arguments: &["selection", "title", "owner", "purpose"],
-};
 pub const ATTACHMENT_LIST: BridgeOp = BridgeOp {
     operation: "design.attachment.list",
     arguments: &["kind", "object", "version", "archived"],
@@ -357,11 +343,6 @@ pub const BRIDGE_OPS: &[&BridgeOp] = &[
     &sync::STATUS_OP,
     &sync::CANCEL_OP,
     &sync::RESUME_OP,
-    &SELECTION_LIST,
-    &SELECTION_READ,
-    &SELECTION_SAVE,
-    &SELECTION_ARCHIVE,
-    &SELECTION_ASSIGN,
     &ATTACHMENT_LIST,
     &ATTACHMENT_PUBLISH,
     &ATTACHMENT_DOWNLOAD,

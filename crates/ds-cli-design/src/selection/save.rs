@@ -5,9 +5,11 @@ use ds_cli_contract::spec::{
     Arg, ArgKind, Authority, Chapter, Command, Effect, Example, Execution,
 };
 use ds_cli_contract::{Context, Inputs};
-use serde_json::{Map, Value, json};
+use ds_client_core::{DesignSelectionRequest, DesignSelectionSave};
+use serde_json::{Value, json};
 
-use crate::{DESCRIPTOR_ARG, MAX_SELECTION_MEMBERS};
+use super::{ID_ARG, LANE};
+use crate::MAX_SELECTION_MEMBERS;
 
 const NAME_ARG: Arg = Arg {
     name: "name",
@@ -64,14 +66,15 @@ at save time — a member that was already missing when it was saved would be \
 noise on every later read.",
     chapter: Chapter::Design,
     effect: Effect::GlobalWrite,
-    authority: Authority::Project,
+    authority: Authority::HeadlessProject,
     execution: Execution::Sync,
     args: &[
         NAME_ARG,
         TRANSFORMERS_ARG,
         SELECTION_ARG,
         DESCRIPTION_ARG,
-        DESCRIPTOR_ARG,
+        ID_ARG,
+        LANE,
     ],
     output: "The project, the `selection` id, its `name`, the committed `version`, and the member count.",
     examples: &[Example {
@@ -79,48 +82,52 @@ noise on every later read.",
         note: "Without --yes dispatch refuses before the bridge is opened.",
         runnable: false,
     }],
-    refusals: &[
-        crate::NOT_PAIRED,
-        crate::AMBIGUOUS,
-        crate::UNREACHABLE,
-        crate::PAIRING_REJECTED,
-        crate::DESIGN_REFUSED,
-        crate::UNSUPPORTED,
-        crate::UNREADABLE,
-        crate::SIGNED_OUT,
-        crate::NOT_PERMITTED,
-        crate::READ_ONLY,
-        crate::CONFLICT,
-        crate::INVALID_VALUE_LIST,
-        crate::TOO_MANY,
-        crate::CONFIRMATION_REQUIRED,
-    ],
+    refusals: super::REFUSALS,
     reference: Some("docs/reference/design.md"),
-    availability: crate::paired_availability,
+    availability: ds_cli_auth::native_availability,
 };
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
+    let lane = inputs.require("lane")?;
+    let name = inputs.require("name")?;
     let transformers = crate::list_values(
         inputs.require("transformers")?,
         "transformers",
         MAX_SELECTION_MEMBERS,
     )?;
-    let mut arguments = Map::new();
-    arguments.insert("name".into(), json!(inputs.require("name")?));
-    arguments.insert("transformers".into(), json!(transformers));
-    for flag in ["selection", "description"] {
-        if let Some(value) = inputs.value(flag) {
-            arguments.insert(flag.into(), json!(value));
-        }
-    }
-    let descriptor = crate::paired(inputs.value("desktop-descriptor"))?;
-    crate::invoke(
-        &descriptor,
-        &crate::SELECTION_SAVE,
-        Value::Object(arguments),
-        crate::WRITE_TIMEOUT,
-    )
-    .map_err(crate::classify_design_failure)
+    let existing = inputs.value("selection");
+    // Replacing an existing selection needs its current version, which is READ
+    // here rather than accepted from the caller: `ds` must not be able to assert
+    // a version it never observed.
+    let expected_version = match existing {
+        Some(selection) => Some(super::read_selection(lane, selection)?.1.selection.version),
+        None => None,
+    };
+    let selection_id = match (existing, inputs.value("id")) {
+        (Some(selection), _) => selection.to_owned(),
+        (None, Some(pinned)) => pinned.to_owned(),
+        (None, None) => super::mint_id("sel", name),
+    };
+    let members = transformers.len();
+    let (project, answer) = super::ask(
+        lane,
+        &selection_id,
+        &DesignSelectionRequest::Save(DesignSelectionSave {
+            selection_id: selection_id.clone(),
+            name: name.to_owned(),
+            description: inputs.value("description").map(str::to_owned),
+            member_ids: transformers,
+            expected_version,
+        }),
+    )?;
+    let head = super::saved_head(answer)?;
+    Ok(json!({
+        "project": project,
+        "selection": head.selection_id,
+        "name": head.name,
+        "version": head.version,
+        "members": members,
+    }))
 }
 
 pub fn render(data: &Value) -> String {

@@ -1677,6 +1677,21 @@ static DESIGN_ENTRIES: &[Entry] = &[
         render: ds_cli_design::process_settings::render,
     },
     Entry {
+        command: &ds_cli_design::autoprocess::COMMAND,
+        handler: ds_cli_design::autoprocess::run,
+        render: ds_cli_design::autoprocess::render,
+    },
+    Entry {
+        command: &ds_cli_design::force_gate::COMMAND,
+        handler: ds_cli_design::force_gate::run,
+        render: ds_cli_design::force_gate::render,
+    },
+    Entry {
+        command: &ds_cli_design::data_lane::COMMAND,
+        handler: ds_cli_design::data_lane::run,
+        render: ds_cli_design::data_lane::render,
+    },
+    Entry {
         command: &ds_cli_design::transformer::status::COMMAND,
         handler: ds_cli_design::transformer::status::run,
         render: ds_cli_design::transformer::status::render,

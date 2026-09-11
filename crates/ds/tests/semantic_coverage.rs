@@ -188,6 +188,9 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("design.comment.read", "read_only", "project"),
     ("design.comment.resolve", "global_write", "project"),
     ("design.lv.process", "local_file_write", "none"),
+    ("design.autoprocess.plan", "read_only", "none"),
+    ("design.data.lane", "read_only", "headless_project"),
+    ("design.force-gate.check", "read_only", "none"),
     ("design.process.settings", "read_only", "none"),
     ("design.project.init", "local_file_write", "none"),
     ("design.project.write", "local_file_write", "none"),
@@ -223,11 +226,24 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("design.materials.apply", "global_write", "project"),
     ("design.known-columns.list", "read_only", "project"),
     ("design.known-columns.set", "global_write", "project"),
-    ("design.selection.archive", "global_write", "project"),
-    ("design.selection.assign", "global_write", "project"),
-    ("design.selection.list", "read_only", "project"),
-    ("design.selection.read", "read_only", "project"),
-    ("design.selection.save", "global_write", "project"),
+    // Saved Transformer Status selections are NATIVE from Slice 14b. The
+    // decision did not move — ds-brain still evaluates membership — only
+    // residency did, so the authority is `headless_project`: the selected
+    // project is read from this machine's own session, never from a paired
+    // browser. The lasso stays paired under `map.design.select`.
+    (
+        "design.selection.archive",
+        "global_write",
+        "headless_project",
+    ),
+    (
+        "design.selection.assign",
+        "global_write",
+        "headless_project",
+    ),
+    ("design.selection.list", "read_only", "headless_project"),
+    ("design.selection.read", "read_only", "headless_project"),
+    ("design.selection.save", "global_write", "headless_project"),
     // Governed metadata-discovered groups. `apply` and `unassign` write the
     // shared project record, so both are `global_write`; `preview` proposes
     // nothing durable and `export` is a projection of what is already stored,

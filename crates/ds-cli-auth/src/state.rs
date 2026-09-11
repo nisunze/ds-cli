@@ -1156,6 +1156,15 @@ mod tests {
                 "restore_transformer".to_owned(),
                 "list_transformers_status".to_owned(),
             ],
+            design_selections_method: "POST".to_owned(),
+            design_selections_path: "/api/v1/design/selections".to_owned(),
+            design_selections_actions: vec![
+                "list".to_owned(),
+                "get".to_owned(),
+                "save".to_owned(),
+                "archive".to_owned(),
+                "promote_task".to_owned(),
+            ],
         })
         .unwrap()
     }

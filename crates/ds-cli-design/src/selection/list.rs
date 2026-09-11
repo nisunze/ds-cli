@@ -5,9 +5,11 @@ use ds_cli_contract::spec::{
     Arg, ArgKind, Authority, Chapter, Command, Effect, Example, Execution,
 };
 use ds_cli_contract::{Context, Inputs};
-use serde_json::{Map, Value, json};
+use ds_client_core::{DesignSelectionAnswer, DesignSelectionRequest};
+use serde_json::{Value, json};
 
-use crate::{DESCRIPTOR_ARG, LIMIT_ARG};
+use super::LANE;
+use crate::LIMIT_ARG;
 
 const ARCHIVED_ARG: Arg = Arg {
     name: "archived",
@@ -33,9 +35,9 @@ does that, because evaluating every selection to list them would cost a \
 project-wide read per row.",
     chapter: Chapter::Design,
     effect: Effect::ReadOnly,
-    authority: Authority::Project,
+    authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[ARCHIVED_ARG, LIMIT_ARG, DESCRIPTOR_ARG],
+    args: &[ARCHIVED_ARG, LIMIT_ARG, LANE],
     output: "\
 The project, the matched total, whether more exist, and rows of `selection`, \
 `name`, `mode`, `version`, `state`, `members` (null for a query selection, \
@@ -45,41 +47,56 @@ whose membership is evaluated on read) and `assignments`.",
         note: "Read .data.selections[].selection to feed read, archive or assign.",
         runnable: false,
     }],
-    refusals: &[
-        crate::NOT_PAIRED,
-        crate::AMBIGUOUS,
-        crate::UNREACHABLE,
-        crate::PAIRING_REJECTED,
-        crate::DESIGN_REFUSED,
-        crate::UNSUPPORTED,
-        crate::UNREADABLE,
-        crate::SIGNED_OUT,
-        crate::NOT_PERMITTED,
-        crate::INVALID_NUMBER,
-    ],
+    refusals: super::REFUSALS,
     reference: Some("docs/reference/design.md"),
-    availability: crate::paired_availability,
+    availability: ds_cli_auth::native_availability,
 };
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
-    let mut arguments = Map::new();
-    if inputs.switch("archived") {
-        arguments.insert("archived".into(), json!(true));
-    }
-    if let Some(limit) = inputs.value("limit") {
-        arguments.insert(
-            "limit".into(),
-            json!(crate::integer(limit, "limit", 1, crate::MAX_PAGE_SIZE)?),
-        );
-    }
-    let descriptor = crate::paired(inputs.value("desktop-descriptor"))?;
-    crate::invoke(
-        &descriptor,
-        &crate::SELECTION_LIST,
-        Value::Object(arguments),
-        crate::READ_TIMEOUT,
-    )
-    .map_err(crate::classify_design_failure)
+    // The page's own bound, applied to the page's own answer: ds-brain returns
+    // every selection and the listing is paged here, exactly as the register
+    // pages it.
+    let limit = match inputs.value("limit") {
+        Some(value) => crate::integer(value, "limit", 1, crate::MAX_PAGE_SIZE)? as usize,
+        None => 50,
+    };
+    let (project, answer) = super::ask(
+        inputs.require("lane")?,
+        "",
+        &DesignSelectionRequest::List {
+            include_archived: inputs.switch("archived"),
+        },
+    )?;
+    let DesignSelectionAnswer::List(rows) = answer else {
+        return Err(Failure::unavailable(
+            "auth_response_unreadable",
+            "the saved-selection listing did not match its closed contract",
+        ));
+    };
+    let total = rows.len();
+    let listed: Vec<Value> = rows
+        .iter()
+        .take(limit)
+        .map(|row| {
+            json!({
+                "selection": row.selection_id,
+                "name": row.name,
+                "mode": row.mode,
+                "version": row.version,
+                "state": row.state,
+                // `null` for a query selection: its membership is evaluated on
+                // read, and 0 would read as "empty".
+                "members": row.members,
+                "assignments": row.assignments,
+            })
+        })
+        .collect();
+    Ok(json!({
+        "project": project,
+        "total": total,
+        "more": total > listed.len(),
+        "selections": listed,
+    }))
 }
 
 pub fn render(data: &Value) -> String {
