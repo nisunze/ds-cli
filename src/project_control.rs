@@ -13,6 +13,9 @@ pub const PROJECT_CONTROL_ROOM_PLAN_SCHEMA: &str = "ds.project-control.room-plan
 pub const PROJECT_CONTROL_REPORT_PLAN_SCHEMA: &str = "ds.project-control.report-plan/v1";
 pub const PROJECT_CONTROL_REPORT_CATALOG_SCHEMA: &str =
     "ds.project-control.local-report-catalog/v1";
+pub const PROJECT_CONTROL_BULK_PLAN_SCHEMA: &str = "ds.project-control.bulk-plan/v1";
+pub const PROJECT_CONTROL_ARTIFACT_DOWNLOAD_SCHEMA: &str =
+    "ds.project-control.artifact-download/v1";
 pub const MAX_PROJECT_CONTROL_INPUT_BYTES: usize = 2 * 1024 * 1024;
 pub const MAX_PROJECT_CONTROL_ROOMS: usize = 2_000;
 pub const MAX_PROJECT_CONTROL_OUTBOX_ROWS: usize = 4_096;
@@ -589,6 +592,744 @@ pub fn project_project_control_local_reports(
     })
 }
 
+// ── bulk admissibility ──────────────────────────────────────────────────
+//
+// "Would this action do anything for this row" is freshness arithmetic over
+// published state. The register answered it three times, in three `$derived`
+// blocks of a Svelte component, each with a different freshness rule — and a
+// fourth time in the toolbar that decided whether to show the counts. A CLI
+// caller could not ask it at all: every batch verb took an explicit list and
+// performed it, so an agent never learned what would be skipped.
+//
+// One rule here, over the rows the register is already showing. ds-brain
+// re-reads Firestore before dispatching, so this is the operator's own
+// denominator, never the authority.
+
+/// The seven bulk verbs the register offers. `combined_and_export` is the
+/// compound of the first and the third, and is fresh only when BOTH are.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BulkAction {
+    AddToCombined,
+    CombinedAndExport,
+    GenerateReports,
+    RetryProcess,
+    Save,
+    Delete,
+    Version,
+}
+
+impl BulkAction {
+    /// The capability the register gates the verb on — the SAME grant its own
+    /// button is gated on, not a guess. Adding to combined is `design.report`;
+    /// exporting reports is `design.download` + `reports.export` (a different
+    /// grant, which is why one list for all three verbs hid the Reports counts
+    /// from an operator who could export but not combine); the compound verb
+    /// needs both legs. Empty for verbs every project member may run on their
+    /// own rows.
+    fn capabilities(self) -> &'static [&'static str] {
+        match self {
+            Self::AddToCombined => &["design.report"],
+            Self::GenerateReports => &["design.download", "reports.export"],
+            Self::CombinedAndExport => &["design.report", "design.download", "reports.export"],
+            Self::RetryProcess => &["design.bulk_retry"],
+            Self::Delete => &["transformer.delete"],
+            Self::Save | Self::Version => &[],
+        }
+    }
+
+    /// Whether the verb exists at all in this register. The combined mirror
+    /// is a project-configuration choice, not a permission.
+    fn needs_combined_mirror(self) -> bool {
+        matches!(self, Self::AddToCombined | Self::CombinedAndExport)
+    }
+}
+
+/// Why a selected row is not a target.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SkipReason {
+    /// Not ticked.
+    NotSelected,
+    /// The row's kind forbids it (`design::row_allows`).
+    NotCombinable,
+    NotVersionable,
+    NotDeletable,
+    /// A synthetic or reserved row is never a report target.
+    SpecialRow,
+    /// ds-brain published `can_retry: false`.
+    RetryRefused,
+    /// Already saved: a bulk save would send nothing.
+    AlreadySaved,
+    /// The combined mirror UI is off in this project.
+    CombinedMirrorDisabled,
+    /// The operator lacks the capability this verb is gated on.
+    CapabilityMissing,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct BulkTarget {
+    pub name: String,
+    /// The mirror/report is current; dispatching would re-do finished work.
+    pub fresh: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct BulkSkip {
+    pub name: String,
+    pub reason: SkipReason,
+}
+
+#[derive(Debug, Serialize)]
+struct BulkPlan {
+    schema: &'static str,
+    action: BulkAction,
+    /// Rows the verb would actually dispatch — every target, fresh or stale.
+    targets: Vec<BulkTarget>,
+    skipped: Vec<BulkSkip>,
+    /// Targets whose work is already current.
+    fresh: usize,
+    /// Targets that would really run.
+    stale: usize,
+    /// The verb is unavailable for every row: a missing capability, or a
+    /// combined mirror this project does not use.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    unavailable: Option<SkipReason>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct BulkPlanInput {
+    action: BulkAction,
+    /// The register's own rows, in its order — already filtered, because the
+    /// counts have always been over `filtered`, not the render window.
+    rows: Vec<serde_json::Value>,
+    /// The ticked names. Empty means nothing is ticked, and every verb here
+    /// acts on the tick set only.
+    #[serde(default)]
+    selection: Vec<String>,
+    #[serde(default)]
+    capabilities: Vec<String>,
+    /// The project uses the combined mirror UI.
+    #[serde(default)]
+    combined_mirror_ui: bool,
+    #[serde(default)]
+    active_session_transformer: Option<String>,
+    #[serde(default)]
+    current_user_email: Option<String>,
+    #[serde(default)]
+    local_edit_lock: Option<String>,
+    #[serde(default)]
+    now_ms: i64,
+}
+
+/// Which of the selected rows each bulk verb may target, and how many would
+/// be dispatched rather than skipped as already fresh.
+pub fn plan_project_control_bulk_action(input_json: &[u8]) -> Result<String, ProjectControlError> {
+    let input: BulkPlanInput = decode(input_json, "bulk-plan")?;
+    if input.rows.len() > MAX_PROJECT_CONTROL_ROOMS {
+        return Err(error("bulk-plan carries more rows than the register holds"));
+    }
+    let action = input.action;
+    let missing = action
+        .capabilities()
+        .iter()
+        .any(|capability| !input.capabilities.iter().any(|held| held == capability));
+    let unavailable = if missing {
+        Some(SkipReason::CapabilityMissing)
+    } else if action.needs_combined_mirror() && !input.combined_mirror_ui {
+        Some(SkipReason::CombinedMirrorDisabled)
+    } else {
+        None
+    };
+
+    let selection: BTreeSet<String> = input
+        .selection
+        .iter()
+        .map(|name| crate::design::canonical_row_name(name))
+        .collect();
+    let truths = crate::design_status_row::truths(
+        &input.rows,
+        input.active_session_transformer.as_deref(),
+        input.current_user_email.as_deref().unwrap_or_default(),
+        input.local_edit_lock.as_deref(),
+        input.now_ms,
+    );
+
+    let mut targets = Vec::new();
+    let mut skipped = Vec::new();
+    for truth in &truths {
+        let canonical = crate::design::canonical_row_name(&truth.name);
+        if !selection.contains(&canonical) {
+            skipped.push(BulkSkip {
+                name: truth.name.clone(),
+                reason: SkipReason::NotSelected,
+            });
+            continue;
+        }
+        if let Some(reason) = unavailable {
+            skipped.push(BulkSkip {
+                name: truth.name.clone(),
+                reason,
+            });
+            continue;
+        }
+        match bulk_verdict(action, truth) {
+            Ok(fresh) => targets.push(BulkTarget {
+                name: truth.name.clone(),
+                fresh,
+            }),
+            Err(reason) => skipped.push(BulkSkip {
+                name: truth.name.clone(),
+                reason,
+            }),
+        }
+    }
+    let fresh = targets.iter().filter(|target| target.fresh).count();
+    encode(&BulkPlan {
+        schema: PROJECT_CONTROL_BULK_PLAN_SCHEMA,
+        action,
+        stale: targets.len() - fresh,
+        fresh,
+        targets,
+        skipped,
+        unavailable,
+    })
+}
+
+/// One row under one verb: a target (with its freshness) or a named skip.
+///
+/// Unsaved local state counts as STALE for every published-state verb — the
+/// browser holds work the server has not seen, so whatever the server says is
+/// current is current about something else.
+fn bulk_verdict(
+    action: BulkAction,
+    truth: &crate::design_status_row::RowReply,
+) -> Result<bool, SkipReason> {
+    use crate::design_status_row::{CombinedState, SyncState};
+    let unsaved = truth.view.sync_state == SyncState::Unsaved;
+    let combined_fresh = truth.view.combined_state == CombinedState::Success;
+    let report_fresh =
+        truth.view.report_state == CombinedState::Success && truth.view.report_has_files;
+    match action {
+        BulkAction::AddToCombined => {
+            if !truth.allows.combinable {
+                return Err(SkipReason::NotCombinable);
+            }
+            Ok(!unsaved && combined_fresh)
+        }
+        BulkAction::CombinedAndExport => {
+            if !truth.allows.combinable {
+                return Err(SkipReason::NotCombinable);
+            }
+            Ok(!unsaved && combined_fresh && report_fresh)
+        }
+        BulkAction::GenerateReports => {
+            if truth.kind != crate::design::RowKind::Individual {
+                return Err(SkipReason::SpecialRow);
+            }
+            Ok(!unsaved && report_fresh)
+        }
+        BulkAction::RetryProcess => {
+            if !truth.retry.allowed {
+                return Err(SkipReason::RetryRefused);
+            }
+            Ok(false)
+        }
+        BulkAction::Save => {
+            if !unsaved {
+                return Err(SkipReason::AlreadySaved);
+            }
+            Ok(false)
+        }
+        BulkAction::Delete => {
+            if !truth.allows.deletable {
+                return Err(SkipReason::NotDeletable);
+            }
+            Ok(false)
+        }
+        BulkAction::Version => {
+            if !truth.allows.versionable {
+                return Err(SkipReason::NotVersionable);
+            }
+            Ok(false)
+        }
+    }
+}
+
+// ── download scope, urls and placement ──────────────────────────────────
+//
+// Which artifacts a download produces: which rows are in scope, which URLs
+// represent them, WHICH COPY of a duplicated artifact wins, and how many are
+// fresh, stale or missing.
+//
+// The placement rule is the one this widening exists for. A record's URL is a
+// lazy pointer that is not downloaded by default; a local compute overwrites
+// the local copy; the Sync Center uploads the local copy back over the record.
+// So whenever a local copy exists it IS the working truth. A positional "last
+// wins" shipped once and sent every deduplicated download on a round trip to
+// the cloud for bytes already on disk. Here it is an explicit, testable output
+// with a `why`, not a map-insertion side effect.
+
+/// Where an artifact URL points. Only explicit local transports and
+/// filesystem paths are local: treating every non-HTTP value as local once
+/// made `gs://` pointers outrank real cloud URLs.
+fn is_remote_artifact_url(url: &str) -> bool {
+    let value = url.trim();
+    let lower = value.to_ascii_lowercase();
+    if lower.starts_with("gs://") || lower.starts_with("compute-artifact://") {
+        return true;
+    }
+    if lower.starts_with("ds-reporter://") {
+        return false;
+    }
+    let Some(rest) = lower
+        .strip_prefix("https://")
+        .or_else(|| lower.strip_prefix("http://"))
+    else {
+        return false;
+    };
+    // The host is everything before the first `/`, `?` or `#`, minus any
+    // userinfo and port — `URL.hostname`, spelled out.
+    let authority = rest.split(['/', '?', '#']).next().unwrap_or_default();
+    let authority = authority.rsplit('@').next().unwrap_or_default();
+    let host = authority
+        .split(':')
+        .next()
+        .unwrap_or_default()
+        .trim_matches(['[', ']']);
+    if host.is_empty() {
+        return true;
+    }
+    host != "tauri.localhost" && host != "asset.localhost"
+}
+
+/// The artifact NAME two copies share: the last path segment, lowercased,
+/// with any query stripped and backslashes normalised.
+fn artifact_name(url: &str) -> String {
+    let path = url.split('?').next().unwrap_or_default().replace('\\', "/");
+    let name = path.rsplit('/').next().unwrap_or_default();
+    if name.is_empty() {
+        path.to_ascii_lowercase()
+    } else {
+        name.to_ascii_lowercase()
+    }
+}
+
+/// Why a URL won its artifact name.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PlacementWhy {
+    /// Only one copy carried this name.
+    Only,
+    /// A local copy outranks a remote one, whatever the order.
+    LocalWins,
+    /// Same placement: the later copy is the newer one.
+    LaterWins,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct Placement {
+    /// The row whose artifacts collided.
+    pub row: String,
+    /// The artifact name the copies collided on.
+    pub name: String,
+    pub chosen: String,
+    pub why: PlacementWhy,
+    /// Every copy that carried this name, in the order they were merged.
+    pub candidates: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct DownloadScopeRow {
+    name: String,
+    /// The row's report artifacts under the placement rule — what the summary
+    /// counts, without the print files the delivery adds.
+    report_files: Vec<String>,
+    /// Report artifacts plus the row's print files: what a download delivers.
+    urls: Vec<String>,
+    report_status: String,
+    /// Special rows are answered (a caller may ask about the combined row)
+    /// but are never part of the individual-files scope.
+    in_scope: bool,
+}
+
+#[derive(Debug, Clone, Copy, Serialize)]
+struct DownloadSummary {
+    fresh: usize,
+    stale: usize,
+    missing: usize,
+    stale_with_files: usize,
+    /// Rows whose artifacts are already listed: fresh plus stale-with-files.
+    cached: usize,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Default)]
+struct SourceUploadSummary {
+    draft: usize,
+    sketch: usize,
+    process: usize,
+    total: usize,
+    downloadable: usize,
+}
+
+#[derive(Debug, Serialize)]
+struct ArtifactDownloadPlan {
+    schema: &'static str,
+    /// Which rows are in scope, in the register's order.
+    scope: Vec<String>,
+    rows: Vec<DownloadScopeRow>,
+    /// Every URL the scope delivers, de-duplicated across rows, in order.
+    urls: Vec<String>,
+    /// The same list after the operator's format filter.
+    filtered_urls: Vec<String>,
+    /// URLs the host resolved by another route (a refresh that just ran),
+    /// filtered under the same rule so the format checkboxes mean one thing.
+    filtered_extra_urls: Vec<String>,
+    placement: Vec<Placement>,
+    summary: DownloadSummary,
+    source_uploads: SourceUploadSummary,
+    /// The precedence the scope was built under.
+    scope_precedence: &'static str,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ArtifactDownloadInput {
+    /// The register's filtered rows, in its order.
+    rows: Vec<serde_json::Value>,
+    #[serde(default)]
+    selection: Vec<String>,
+    /// `xlsx` / `gpkg` / `kmz` / `shp`; empty means every format.
+    #[serde(default)]
+    formats: Vec<String>,
+    /// URLs a just-finished mutation produced that the row does not carry
+    /// yet, by transformer name.
+    #[serde(default)]
+    mutation_cache: BTreeMap<String, Vec<String>>,
+    /// A list the host already resolved, to be filtered by the same formats.
+    #[serde(default)]
+    extra_urls: Vec<String>,
+}
+
+/// Which artifacts a download produces, and which copy of each wins.
+pub fn plan_project_control_artifact_download(
+    input_json: &[u8],
+) -> Result<String, ProjectControlError> {
+    let input: ArtifactDownloadInput = decode(input_json, "artifact-download")?;
+    if input.rows.len() > MAX_PROJECT_CONTROL_ROOMS {
+        return Err(error(
+            "artifact-download carries more rows than the register holds",
+        ));
+    }
+    let selection: BTreeSet<String> = input
+        .selection
+        .iter()
+        .map(|name| crate::design::canonical_row_name(name))
+        .collect();
+
+    // Scope precedence (StatusTable): explicit selection > active filter >
+    // whole project. The caller has already applied the filter, so the only
+    // decision left here is whether a tick narrows it. Special rows are never
+    // part of the individual-files scope.
+    let mut scope = Vec::new();
+    let mut rows = Vec::new();
+    let mut urls: Vec<String> = Vec::new();
+    let mut summary = DownloadSummary {
+        fresh: 0,
+        stale: 0,
+        missing: 0,
+        stale_with_files: 0,
+        cached: 0,
+    };
+    let mut source_uploads = SourceUploadSummary::default();
+    let mut placement: Vec<Placement> = Vec::new();
+
+    for row in &input.rows {
+        let Some(map) = row.as_object() else { continue };
+        let name = map
+            .get("name")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or_default()
+            .to_string();
+        let canonical = crate::design::canonical_row_name(&name);
+        let in_scope = !crate::design::is_special_row(&canonical)
+            && (selection.is_empty() || selection.contains(&canonical));
+        let cache = input
+            .mutation_cache
+            .get(&name)
+            .or_else(|| input.mutation_cache.get(&canonical))
+            .map(Vec::as_slice)
+            .unwrap_or_default();
+        let (report, row_placement) = report_files(map, &name, &canonical, cache);
+        let delivery = unique_strings(
+            report
+                .iter()
+                .cloned()
+                .chain(string_list(map.get("print_files"))),
+        );
+        let status = map
+            .get("report_metadata")
+            .and_then(serde_json::Value::as_object)
+            .and_then(|meta| meta.get("status"))
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or_default()
+            .to_string();
+        let has_files = !report.is_empty();
+        placement.extend(row_placement);
+        if !in_scope {
+            rows.push(DownloadScopeRow {
+                name,
+                report_files: report,
+                urls: delivery,
+                report_status: status,
+                in_scope,
+            });
+            continue;
+        }
+        if status == "stale" {
+            summary.stale += 1;
+            if has_files {
+                summary.stale_with_files += 1;
+            }
+        } else if has_files {
+            summary.fresh += 1;
+        } else {
+            summary.missing += 1;
+        }
+        for url in &delivery {
+            if !urls.contains(url) {
+                urls.push(url.clone());
+            }
+        }
+        count_source_uploads(map, &mut source_uploads);
+        rows.push(DownloadScopeRow {
+            name: name.clone(),
+            report_files: report,
+            urls: delivery,
+            report_status: status,
+            in_scope,
+        });
+        scope.push(name);
+    }
+    summary.cached = summary.fresh + summary.stale_with_files;
+
+    let filtered_urls = apply_format_filter(&urls, &input.formats);
+    let filtered_extra_urls = apply_format_filter(&input.extra_urls, &input.formats);
+    encode(&ArtifactDownloadPlan {
+        schema: PROJECT_CONTROL_ARTIFACT_DOWNLOAD_SCHEMA,
+        scope_precedence: if selection.is_empty() {
+            "filtered_rows"
+        } else {
+            "explicit_selection"
+        },
+        scope,
+        rows,
+        urls,
+        filtered_urls,
+        filtered_extra_urls,
+        placement,
+        summary,
+        source_uploads,
+    })
+}
+
+/// The dedupe, spelled as a choice: the local copy wins by PLACEMENT; among
+/// two copies of the same placement, the later (newer) one wins.
+fn choose_placement(candidates: &[String]) -> String {
+    let mut chosen = String::new();
+    for url in candidates {
+        if !chosen.is_empty() && !is_remote_artifact_url(&chosen) && is_remote_artifact_url(url) {
+            continue;
+        }
+        chosen = url.clone();
+    }
+    chosen
+}
+
+/// One row's report artifacts: its listed files, the URLs its report phase
+/// cached or emitted, and anything a just-finished mutation produced —
+/// de-duplicated by artifact name under the placement rule.
+///
+/// Two rules ride with it. A combined report with zero rows has nothing to
+/// deliver, whatever URLs the document still carries; and the combined row
+/// itself never delivers a KMZ.
+fn report_files(
+    row: &serde_json::Map<String, serde_json::Value>,
+    name: &str,
+    canonical: &str,
+    mutation_cache: &[String],
+) -> (Vec<String>, Vec<Placement>) {
+    if canonical == "combined_transformer" && combined_report_has_zero_rows(row) {
+        return (Vec::new(), Vec::new());
+    }
+    let merged = unique_strings(
+        string_list(row.get("report_files"))
+            .into_iter()
+            .chain(phase_urls(row.get("report_metadata")))
+            .chain(mutation_cache.iter().cloned()),
+    );
+    let mut byname: Vec<(String, Vec<String>)> = Vec::new();
+    for url in merged {
+        let key = artifact_name(&url);
+        match byname.iter_mut().find(|(name, _)| name == &key) {
+            Some((_, candidates)) => candidates.push(url),
+            None => byname.push((key, vec![url])),
+        }
+    }
+    let mut placement = Vec::new();
+    let mut deduped = Vec::new();
+    for (artifact, candidates) in byname {
+        let chosen = choose_placement(&candidates);
+        let why = if candidates.len() == 1 {
+            PlacementWhy::Only
+        } else if candidates.iter().any(|url| !is_remote_artifact_url(url))
+            && candidates.iter().any(|url| is_remote_artifact_url(url))
+        {
+            PlacementWhy::LocalWins
+        } else {
+            PlacementWhy::LaterWins
+        };
+        deduped.push(chosen.clone());
+        placement.push(Placement {
+            row: name.to_string(),
+            name: artifact,
+            chosen,
+            why,
+            candidates,
+        });
+    }
+    if canonical == "combined_transformer" {
+        let kmz = |url: &String| {
+            url.to_ascii_lowercase()
+                .split('?')
+                .next()
+                .unwrap_or_default()
+                .ends_with(".kmz")
+        };
+        placement.retain(|entry| !kmz(&entry.chosen));
+        deduped.retain(|url| !kmz(url));
+    }
+    (deduped, placement)
+}
+
+fn combined_report_has_zero_rows(row: &serde_json::Map<String, serde_json::Value>) -> bool {
+    let details = row
+        .get("report_metadata")
+        .and_then(serde_json::Value::as_object)
+        .and_then(|meta| meta.get("outcomes"))
+        .and_then(serde_json::Value::as_object)
+        .and_then(|outcomes| outcomes.get("report_export"))
+        .and_then(serde_json::Value::as_object)
+        .and_then(|export| export.get("details"))
+        .and_then(serde_json::Value::as_object);
+    match details.and_then(|details| details.get("row_count")) {
+        Some(serde_json::Value::Number(number)) => number.as_f64() == Some(0.0),
+        Some(serde_json::Value::String(raw)) => raw.trim().parse::<f64>() == Ok(0.0),
+        _ => false,
+    }
+}
+
+/// A report phase's cached and emitted URLs, as strings or `{url}` objects.
+fn phase_urls(meta: Option<&serde_json::Value>) -> Vec<String> {
+    let Some(meta) = meta.and_then(serde_json::Value::as_object) else {
+        return Vec::new();
+    };
+    unique_strings(
+        string_list(meta.get("cached_urls"))
+            .into_iter()
+            .chain(string_list(meta.get("output_urls"))),
+    )
+}
+
+fn string_list(value: Option<&serde_json::Value>) -> Vec<String> {
+    let Some(entries) = value.and_then(serde_json::Value::as_array) else {
+        return Vec::new();
+    };
+    entries
+        .iter()
+        .filter_map(|entry| match entry {
+            serde_json::Value::String(raw) => Some(raw.clone()),
+            serde_json::Value::Object(map) => map
+                .get("url")
+                .and_then(serde_json::Value::as_str)
+                .map(str::to_string),
+            _ => None,
+        })
+        .collect()
+}
+
+fn unique_strings(values: impl IntoIterator<Item = String>) -> Vec<String> {
+    let mut seen = BTreeSet::new();
+    let mut out = Vec::new();
+    for value in values {
+        if value.is_empty() {
+            continue;
+        }
+        if seen.insert(value.clone()) {
+            out.push(value);
+        }
+    }
+    out
+}
+
+fn apply_format_filter(urls: &[String], formats: &[String]) -> Vec<String> {
+    if formats.is_empty() {
+        return urls.to_vec();
+    }
+    urls.iter()
+        .filter(|url| {
+            let lower = url
+                .split('?')
+                .next()
+                .unwrap_or_default()
+                .to_ascii_lowercase();
+            formats.iter().any(|format| match format.as_str() {
+                "xlsx" => lower.ends_with(".xlsx"),
+                "gpkg" => lower.ends_with(".gpkg"),
+                "kmz" => lower.ends_with(".kmz"),
+                "shp" => lower.ends_with(".shp.zip") || lower.contains("_shp.zip"),
+                _ => false,
+            })
+        })
+        .cloned()
+        .collect()
+}
+
+fn count_source_uploads(
+    row: &serde_json::Map<String, serde_json::Value>,
+    summary: &mut SourceUploadSummary,
+) {
+    let Some(uploads) = row.get("uploads").and_then(serde_json::Value::as_object) else {
+        return;
+    };
+    for action in ["draft", "sketch", "process"] {
+        let sources = uploads
+            .get(action)
+            .and_then(serde_json::Value::as_array)
+            .map(Vec::as_slice)
+            .unwrap_or_default();
+        let downloadable = sources
+            .iter()
+            .filter(|source| {
+                source
+                    .as_object()
+                    .and_then(|source| source.get("download_url"))
+                    .and_then(serde_json::Value::as_str)
+                    .map(str::trim)
+                    .is_some_and(|url| !url.is_empty())
+            })
+            .count();
+        match action {
+            "draft" => summary.draft += sources.len(),
+            "sketch" => summary.sketch += sources.len(),
+            _ => summary.process += sources.len(),
+        }
+        summary.total += sources.len();
+        summary.downloadable += downloadable;
+    }
+}
+
 fn decode<T: for<'de> Deserialize<'de>>(
     input_json: &[u8],
     label: &str,
@@ -632,6 +1373,108 @@ fn error(message: &str) -> ProjectControlError {
 mod tests {
     use super::*;
     use serde_json::{json, Value};
+
+    #[test]
+    fn a_bulk_plan_refuses_more_rows_than_the_register_can_hold() {
+        let rows: Vec<Value> = (0..=MAX_PROJECT_CONTROL_ROOMS)
+            .map(|index| json!({ "name": format!("tx_{index}") }))
+            .collect();
+        let input = json!({ "action": "save", "rows": rows, "selection": [] });
+        let error = plan_project_control_bulk_action(&serde_json::to_vec(&input).unwrap())
+            .expect_err("the bound holds");
+        assert!(error.to_string().contains("more rows"), "{error}");
+    }
+
+    #[test]
+    fn an_unknown_bulk_verb_is_refused_rather_than_guessed() {
+        let input = json!({ "action": "detonate", "rows": [], "selection": [] });
+        assert!(plan_project_control_bulk_action(&serde_json::to_vec(&input).unwrap()).is_err());
+    }
+
+    fn bulk_plan(action: &str, capabilities: Value) -> Value {
+        let input = json!({
+            "action": action,
+            "rows": [{
+                "name": "tx_1",
+                "computed": {
+                    "combined_inclusion_state": "success",
+                    "report_state": "success",
+                    "report_has_files": true
+                }
+            }],
+            "selection": ["tx_1"],
+            "capabilities": capabilities,
+            "combined_mirror_ui": true,
+        });
+        serde_json::from_str(
+            &plan_project_control_bulk_action(&serde_json::to_vec(&input).unwrap()).unwrap(),
+        )
+        .unwrap()
+    }
+
+    /// Exporting reports and adding to the combined mirror are DIFFERENT
+    /// grants in the register that renders these counts: the Export Reports
+    /// button reads `design.download` + `reports.export`, the Add-to-combined
+    /// button reads `design.report`. One shared list for all three verbs
+    /// emptied the Reports counts for an operator who could export but not
+    /// combine, and filled them for one who could combine but not export.
+    #[test]
+    fn each_bulk_verb_asks_for_the_grant_its_own_button_asks_for() {
+        let exporter = json!(["design.download", "reports.export"]);
+        let combiner = json!(["design.report"]);
+
+        let reports = bulk_plan("generate_reports", exporter.clone());
+        assert_eq!(reports["unavailable"], Value::Null);
+        assert_eq!(reports["fresh"], json!(1));
+        assert_eq!(
+            bulk_plan("generate_reports", combiner.clone())["unavailable"],
+            json!("capability_missing")
+        );
+
+        let combined = bulk_plan("add_to_combined", combiner.clone());
+        assert_eq!(combined["unavailable"], Value::Null);
+        assert_eq!(combined["fresh"], json!(1));
+        assert_eq!(
+            bulk_plan("add_to_combined", exporter.clone())["unavailable"],
+            json!("capability_missing")
+        );
+
+        // The compound verb runs both legs, so it needs both grants.
+        for partial in [exporter, combiner] {
+            assert_eq!(
+                bulk_plan("combined_and_export", partial)["unavailable"],
+                json!("capability_missing")
+            );
+        }
+        let both = bulk_plan(
+            "combined_and_export",
+            json!(["design.report", "design.download", "reports.export"]),
+        );
+        assert_eq!(both["unavailable"], Value::Null);
+        assert_eq!(both["fresh"], json!(1));
+    }
+
+    #[test]
+    fn a_download_plan_answers_a_special_row_but_never_scopes_it() {
+        let input = json!({
+            "rows": [
+                { "name": "combined_transformer", "report_files": ["gs://b/combined.xlsx"] },
+                { "name": "tx_1", "report_files": ["gs://b/tx_1.xlsx"] }
+            ]
+        });
+        let plan: Value = serde_json::from_str(
+            &plan_project_control_artifact_download(&serde_json::to_vec(&input).unwrap()).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(plan["scope"], json!(["tx_1"]));
+        assert_eq!(plan["rows"][0]["in_scope"], json!(false));
+        assert_eq!(
+            plan["rows"][0]["report_files"],
+            json!(["gs://b/combined.xlsx"])
+        );
+        assert_eq!(plan["summary"]["fresh"], 1);
+        assert_eq!(plan["scope_precedence"], "filtered_rows");
+    }
 
     fn room_plan(overrides: Value) -> Vec<u8> {
         let mut value = json!({
