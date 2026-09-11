@@ -130,7 +130,14 @@ pub struct RemoteHead {
 #[serde(deny_unknown_fields)]
 pub struct Input {
     pub schema: String,
+    /// The project whose bytes are planned; empty when `personal` is set.
     pub project: String,
+    /// The signed-in account's own bytes (user data, personal notes, personal
+    /// media) go through the same gate under their own scope — "project bytes
+    /// and even personal bytes of course" (owner, 2026-09-11). The grant for
+    /// them carries an empty project.
+    #[serde(default)]
+    pub personal: bool,
     pub install_id: String,
     /// The host's monotonic high-water mark of server-observed time.
     pub now_ms: u64,
@@ -216,6 +223,7 @@ pub struct Summary {
 pub struct Plan {
     pub schema: &'static str,
     pub project: String,
+    pub personal: bool,
     /// Ordered: the host performs these top to bottom and re-plans after.
     pub actions: Vec<Action>,
     /// Whether to re-read the remote heads for this trigger before acting.
@@ -227,6 +235,17 @@ pub struct Plan {
 }
 
 fn refresh_remote(input: &Input) -> RefreshRemote {
+    // Uploads never wait (owner, 2026-09-11: "uploads are a must, as fast as
+    // you can, always in the background and offline first"). A local change
+    // plans from the heads already held — or from none: the server's publish
+    // check is the concurrency authority, so an upload planned blind is never
+    // an overwrite, at worst a loud conflict at publish.
+    if input.trigger == Trigger::LocalChange {
+        return RefreshRemote {
+            needed: false,
+            reason: "upload_first",
+        };
+    }
     if input.remote_read_at_ms.is_none() {
         return RefreshRemote {
             needed: true,
@@ -244,10 +263,7 @@ fn refresh_remote(input: &Input) -> RefreshRemote {
             needed: true,
             reason: "record_changed",
         },
-        Trigger::LocalChange => RefreshRemote {
-            needed: false,
-            reason: "held_heads_suffice",
-        },
+        Trigger::LocalChange => unreachable!("answered above"),
         Trigger::PublishCompleted => RefreshRemote {
             needed: false,
             reason: "receipt_carries_the_head",
@@ -308,8 +324,15 @@ pub fn plan(input: &Input) -> Result<Plan, String> {
     if input.schema != SCHEMA {
         return Err(format!("unsupported sync plan schema `{}`", input.schema));
     }
-    if input.project.is_empty() || input.install_id.is_empty() {
-        return Err("a sync plan needs a project and an install".into());
+    if input.install_id.is_empty() {
+        return Err("a sync plan needs an install".into());
+    }
+    if input.personal != input.project.is_empty() {
+        return Err(if input.personal {
+            "a personal plan carries no project".into()
+        } else {
+            "a sync plan needs a project, or `personal`".into()
+        });
     }
     if input.local.len() > MAX_ARTIFACTS || input.remote.len() > MAX_ARTIFACTS {
         return Err("sync inventories exceed their bound".into());
@@ -317,6 +340,7 @@ pub fn plan(input: &Input) -> Result<Plan, String> {
     let mut plan = Plan {
         schema: SCHEMA,
         project: input.project.clone(),
+        personal: input.personal,
         actions: Vec::new(),
         refresh_remote: RefreshRemote {
             needed: false,
@@ -551,6 +575,7 @@ mod tests {
             install_id: "install-1".into(),
             now_ms: 10_000,
             online: true,
+            personal: false,
             trigger: Trigger::Navigation,
             remote_read_at_ms: Some(9_000),
             grant,

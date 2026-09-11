@@ -35,6 +35,7 @@
       "expected": {
         "schema": "ds.sync-plan/v1",
         "project": "p",
+        "personal": false,
         "actions": [],
         "refresh_remote": {
           "needed": true,
@@ -97,6 +98,7 @@
       "expected": {
         "schema": "ds.sync-plan/v1",
         "project": "p",
+        "personal": false,
         "actions": [
           {
             "kind": "offline"
@@ -163,6 +165,7 @@
       "expected": {
         "schema": "ds.sync-plan/v1",
         "project": "p",
+        "personal": false,
         "actions": [
           {
             "kind": "upload",
@@ -223,6 +226,7 @@
       "expected": {
         "schema": "ds.sync-plan/v1",
         "project": "p",
+        "personal": false,
         "actions": [
           {
             "kind": "open_grant",
@@ -297,6 +301,7 @@
       "expected": {
         "schema": "ds.sync-plan/v1",
         "project": "p",
+        "personal": false,
         "actions": [
           {
             "kind": "open_grant",
@@ -371,6 +376,7 @@
       "expected": {
         "schema": "ds.sync-plan/v1",
         "project": "p",
+        "personal": false,
         "actions": [
           {
             "kind": "open_grant",
@@ -431,6 +437,7 @@
       "expected": {
         "schema": "ds.sync-plan/v1",
         "project": "p",
+        "personal": false,
         "actions": [
           {
             "kind": "download",
@@ -515,6 +522,7 @@
       "expected": {
         "schema": "ds.sync-plan/v1",
         "project": "p",
+        "personal": false,
         "actions": [
           {
             "kind": "nothing",
@@ -597,6 +605,7 @@
       "expected": {
         "schema": "ds.sync-plan/v1",
         "project": "p",
+        "personal": false,
         "actions": [
           {
             "kind": "upload",
@@ -683,6 +692,7 @@
       "expected": {
         "schema": "ds.sync-plan/v1",
         "project": "p",
+        "personal": false,
         "actions": [
           {
             "kind": "conflict",
@@ -766,6 +776,7 @@
       "expected": {
         "schema": "ds.sync-plan/v1",
         "project": "p",
+        "personal": false,
         "actions": [
           {
             "kind": "conflict",
@@ -840,6 +851,7 @@
       "expected": {
         "schema": "ds.sync-plan/v1",
         "project": "p",
+        "personal": false,
         "actions": [
           {
             "kind": "refused",
@@ -922,6 +934,7 @@
       "expected": {
         "schema": "ds.sync-plan/v1",
         "project": "p",
+        "personal": false,
         "actions": [
           {
             "kind": "download",
@@ -1026,6 +1039,7 @@
       "expected": {
         "schema": "ds.sync-plan/v1",
         "project": "p",
+        "personal": false,
         "actions": [
           {
             "kind": "upload",
@@ -1158,6 +1172,7 @@
       "expected": {
         "schema": "ds.sync-plan/v1",
         "project": "p",
+        "personal": false,
         "actions": [
           {
             "kind": "download",
@@ -1261,6 +1276,7 @@
       "expected": {
         "schema": "ds.sync-plan/v1",
         "project": "p",
+        "personal": false,
         "actions": [
           {
             "kind": "upload",
@@ -1295,7 +1311,7 @@
     },
     {
       "id": "local-change-uses-held-heads",
-      "why": "A local change never re-reads the record; the held heads decide.",
+      "why": "A local change never re-reads the record: uploads go first, from the held heads or none.",
       "request": {
         "schema": "ds.sync-plan/v1",
         "project": "p",
@@ -1337,6 +1353,7 @@
       "expected": {
         "schema": "ds.sync-plan/v1",
         "project": "p",
+        "personal": false,
         "actions": [
           {
             "kind": "upload",
@@ -1352,7 +1369,7 @@
         ],
         "refresh_remote": {
           "needed": false,
-          "reason": "held_heads_suffice"
+          "reason": "upload_first"
         },
         "wake": {
           "kind": "at",
@@ -1402,6 +1419,7 @@
       "expected": {
         "schema": "ds.sync-plan/v1",
         "project": "p",
+        "personal": false,
         "actions": [],
         "refresh_remote": {
           "needed": true,
@@ -1422,14 +1440,14 @@
     },
     {
       "id": "never-read-reads-once",
-      "why": "Heads never read are read once, whatever the trigger.",
+      "why": "Heads never read are read once on a trigger that reads the record; a local change still uploads first.",
       "request": {
         "schema": "ds.sync-plan/v1",
         "project": "p",
         "install_id": "install-1",
         "now_ms": 10000,
         "online": true,
-        "trigger": "local_change",
+        "trigger": "manual",
         "grant": {
           "grant_id": "g1",
           "install_id": "install-1",
@@ -1452,6 +1470,7 @@
       "expected": {
         "schema": "ds.sync-plan/v1",
         "project": "p",
+        "personal": false,
         "actions": [],
         "refresh_remote": {
           "needed": true,
@@ -1463,6 +1482,79 @@
         "grant_valid": true,
         "summary": {
           "uploads": 0,
+          "downloads": 0,
+          "conflicts": 0,
+          "refused": 0,
+          "in_sync": 0
+        }
+      }
+    },
+    {
+      "id": "personal-bytes-same-gate",
+      "why": "Personal bytes (user data, notes) use the same gate under their own scope; the grant carries no project.",
+      "request": {
+        "schema": "ds.sync-plan/v1",
+        "project": "",
+        "install_id": "install-1",
+        "now_ms": 10000,
+        "online": true,
+        "trigger": "local_change",
+        "remote_read_at_ms": 9000,
+        "local": [
+          {
+            "engine": "user_data",
+            "operation": "notes",
+            "variant": "default",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "size_bytes": 64,
+            "produced_at_ms": 1000,
+            "engine_release": "ds-web@0.1.0"
+          }
+        ],
+        "remote": [],
+        "grant": {
+          "grant_id": "g1",
+          "install_id": "install-1",
+          "project": "",
+          "engines": [
+            {
+              "name": "user_data",
+              "release": "ds-web@0.1.0"
+            }
+          ],
+          "expires_at_ms": 10000000
+        },
+        "personal": true
+      },
+      "expected": {
+        "schema": "ds.sync-plan/v1",
+        "project": "",
+        "personal": true,
+        "actions": [
+          {
+            "kind": "upload",
+            "identity": {
+              "engine": "user_data",
+              "operation": "notes",
+              "variant": "default"
+            },
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "size_bytes": 64,
+            "reason": "absent_remotely"
+          }
+        ],
+        "refresh_remote": {
+          "needed": false,
+          "reason": "upload_first"
+        },
+        "wake": {
+          "kind": "at",
+          "at_ms": 9400000,
+          "reason": "grant_renewal"
+        },
+        "grant_valid": true,
+        "summary": {
+          "uploads": 1,
           "downloads": 0,
           "conflicts": 0,
           "refused": 0,
