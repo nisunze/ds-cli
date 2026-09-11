@@ -111,6 +111,48 @@ impl SolarActivity {
             })
     }
 
+    /// Cancel only the shared publication owned by this completed Solar job.
+    /// The compute result remains durable and readable; StoreHost records the
+    /// publication transition and refuses an already committed artifact.
+    pub fn cancel_publication(&self, job: &Job) -> Result<Value, String> {
+        if job.engine != EngineKind::SolarPrepared
+            || job.phase != ds_command_kernel::compute_jobs::Phase::Completed
+        {
+            return Err("only a completed prepared Solar job has a publication to cancel".into());
+        }
+        let store = runtime::open(&self.database)?;
+        let input = store
+            .job_input(&self.connection.owner, &self.connection.lane, &job.id)
+            .map_err(|error| error.to_string())?
+            .ok_or("completed Solar job lost its durable prepared input")?;
+        let scope = runtime::solar_job_scope(job, &input)?;
+        let producer = SolarProducer { activity: self };
+        let reads = ServerReads;
+        self.session
+            .with_host_for_project(&scope.project_id, &producer, &reads, |host| {
+                // A completion can be cancelled before the background pump's
+                // first pass. Record the existing local row first, without
+                // opening or uploading any remote work.
+                ds_sync_runtime::SyncHost::local(host, &scope.project_id)?;
+                let row = producer
+                    .rows(&scope.project_id)?
+                    .into_iter()
+                    .find(|row| row.client_publish_id == job.id)
+                    .ok_or("Solar job no longer owns the current publication for this city")?;
+                let transition = host.cancel(&row.identity)?;
+                let state = if transition.refusals.is_empty() {
+                    "cancelled"
+                } else {
+                    "refused"
+                };
+                Ok(serde_json::json!({
+                    "state": state,
+                    "identity": row.identity,
+                    "transition": transition,
+                }))
+            })
+    }
+
     /// Start the non-blocking publication pump after the HTTP server can
     /// accept requests. Completion observers only set `wake`; they never
     /// upload from a compute worker or delay durable replay at startup.

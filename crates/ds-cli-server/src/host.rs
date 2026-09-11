@@ -182,17 +182,47 @@ async fn cancel(
     Param(id): Param<String>,
 ) -> Result<Json<Value>, ApiError> {
     blocking(move || {
-        let job = runtime::open(&app.database)?
-            .update_job(
-                &app.connection.owner,
-                &app.connection.lane,
-                &id,
-                Event::Cancel,
-                runtime::now_ms(),
-                None,
-            )
-            .map_err(|e| e.to_string())?;
-        Ok(Json(json!({"job":job})))
+        let completed_solar = |job: &ds_command_kernel::compute_jobs::Job| {
+            job.engine == ds_command_kernel::compute_jobs::EngineKind::SolarPrepared
+                && job.phase == ds_command_kernel::compute_jobs::Phase::Completed
+        };
+        let publication_cancel = |job: ds_command_kernel::compute_jobs::Job| {
+            let activity = app
+                .activity
+                .as_ref()
+                .ok_or("Solar Sync Center activity is unavailable before server startup")?;
+            let publication = activity.cancel_publication(&job)?;
+            Ok(Json(json!({"job":job,"publication":publication})))
+        };
+        let current = runtime::open(&app.database)?
+            .job(&app.connection.owner, &app.connection.lane, &id)
+            .map_err(|error| error.to_string())?
+            .ok_or("compute job not found")?;
+        if completed_solar(&current) {
+            return publication_cancel(current);
+        }
+        match runtime::open(&app.database)?.update_job(
+            &app.connection.owner,
+            &app.connection.lane,
+            &id,
+            Event::Cancel,
+            runtime::now_ms(),
+            None,
+        ) {
+            Ok(job) => Ok(Json(json!({"job":job}))),
+            Err(error) if error.to_string().contains("job_already_terminal") => {
+                let completed = runtime::open(&app.database)?
+                    .job(&app.connection.owner, &app.connection.lane, &id)
+                    .map_err(|error| error.to_string())?
+                    .ok_or("compute job not found after cancellation race")?;
+                if completed_solar(&completed) {
+                    publication_cancel(completed)
+                } else {
+                    Err(error.to_string())
+                }
+            }
+            Err(error) => Err(error.to_string()),
+        }
     })
     .await
 }
@@ -511,6 +541,83 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(response.status(), StatusCode::CONFLICT);
+    }
+
+    #[tokio::test]
+    async fn completed_solar_cancel_keeps_compute_result_and_requires_publication_owner() {
+        let dir = tempfile::tempdir().unwrap();
+        let database = dir.path().join("store.sqlite");
+        let input = b"sealed Solar input";
+        let queued = ds_command_kernel::compute_jobs::Job {
+            id: ds_compute_runtime::digest(b"completed-solar-cancel"),
+            owner: "test-owner".into(),
+            lane: "stable".into(),
+            input_sha256: ds_compute_runtime::digest(input),
+            engine: ds_command_kernel::compute_jobs::EngineKind::SolarPrepared,
+            input_tag: "ds.solar.calculate.prepared/v1".into(),
+            phase: ds_command_kernel::compute_jobs::Phase::Queued,
+            attempts: 0,
+            created_at_ms: 1,
+            updated_at_ms: 1,
+            worker: None,
+            lease_until_ms: 0,
+            result_sha256: None,
+            error: None,
+        };
+        let mut store = runtime::open(&database).unwrap();
+        store.submit_job(&queued, input).unwrap();
+        let (running, _) = store
+            .claim_job("test-owner", "stable", "worker", 2, 1_000)
+            .unwrap()
+            .unwrap();
+        let result = b"completed solar result";
+        let completed = store
+            .update_job(
+                "test-owner",
+                "stable",
+                &running.id,
+                Event::Complete {
+                    worker: "worker",
+                    result_sha256: &runtime::digest(result),
+                },
+                3,
+                Some(result),
+            )
+            .unwrap();
+        drop(store);
+
+        let response = router(app(dir.path(), true))
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/v1/jobs/{}/cancel", completed.id))
+                    .header("authorization", format!("Bearer {}", "a".repeat(64)))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::CONFLICT);
+        let body = axum::body::to_bytes(response.into_body(), 4096)
+            .await
+            .unwrap();
+        assert!(String::from_utf8_lossy(&body).contains("Solar Sync Center activity"));
+        let store = runtime::open(&database).unwrap();
+        assert_eq!(
+            store
+                .job("test-owner", "stable", &completed.id)
+                .unwrap()
+                .unwrap()
+                .phase,
+            ds_command_kernel::compute_jobs::Phase::Completed
+        );
+        assert_eq!(
+            store
+                .job_result("test-owner", "stable", &completed.id)
+                .unwrap()
+                .unwrap(),
+            result
+        );
     }
     #[cfg(unix)]
     #[test]

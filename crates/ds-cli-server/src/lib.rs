@@ -197,7 +197,7 @@ pub static CANCEL: Command = command(
     &[STATE, LANE, JOB],
     &[Example {
         command: "ds server cancel --job <job-id>",
-        note: "Use the exact id from the submitted job receipt.",
+        note: "Cancels queued/running compute, or the pending Sync Center publication of a completed Solar job.",
         runnable: false,
     }],
 );
