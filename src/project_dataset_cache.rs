@@ -1031,6 +1031,112 @@ pub fn freshness(current: &str, held: &[HeldVersion]) -> Result<Freshness, Strin
     })
 }
 
+/// The code a host raises when a seed has nothing to act on.
+///
+/// Typed rather than a sentence: the operator-facing wording belongs to the
+/// surface that refuses (the CLI names `--dataset`, a card would name a
+/// button), and both must be refusing the same thing.
+pub const SEED_SCOPE_REFUSAL: &str = "project_dataset_scope_invalid";
+/// How many datasets one seed may be offered. A project declares a workflow's
+/// worth of context layers, never a catalogue's.
+pub const MAX_SEED_CANDIDATES: usize = 512;
+const MAX_SEED_LABEL_CHARS: usize = 256;
+const MAX_DATASET_ID_CHARS: usize = 128;
+
+/// A dataset a project declares, or one it already holds.
+///
+/// `label` is what a host displays for it, and it is what orders a seed: the
+/// order datasets are acquired in is a decision, so it is made here instead of
+/// falling out of a host's map iteration or a catalogue's publication order.
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+pub struct SeedCandidate {
+    pub id: String,
+    #[serde(default)]
+    pub label: String,
+    /// A room already exists for this dataset. Meaningless on a declaration,
+    /// which is what the project needs rather than what this machine has.
+    #[serde(default)]
+    pub seeded: bool,
+}
+
+fn dataset_reference(id: &str) -> Result<String, String> {
+    let id = id.trim();
+    if id.is_empty()
+        || id.chars().count() > MAX_DATASET_ID_CHARS
+        || id.chars().any(char::is_control)
+    {
+        return Err("a seed target needs one bounded dataset id".into());
+    }
+    Ok(id.to_owned())
+}
+
+/// Which datasets one `seed` acts on, in the order it must acquire them.
+///
+/// Naming a dataset explicitly is the act of adding one the project has not
+/// declared, so an explicit name is the whole answer — nothing else is seeded
+/// beside it, and nothing validates it here beyond its shape, because whether
+/// a host can hold it is a property of that host's registry.
+///
+/// Without one, the answer is what the project **declares** (its workflow's
+/// own context datasets) UNION what it already **holds**. The union is the
+/// decision:
+///
+/// * Declared alone would drop a dataset an operator deliberately added with
+///   `--dataset`, silently stopping its refresh.
+/// * Held alone is what this used to be, and it could never be satisfied on a
+///   machine that held nothing — first use, the one case where an operator
+///   most needs the command, refused itself.
+/// * Neither is "everything published for this country": a dataset the project
+///   does not declare and does not hold is never introduced by accident.
+///
+/// A held row that was never seeded is a dataset this project *could* hold,
+/// not one it holds, and enters a seed only by being declared. Nothing
+/// declared and nothing held is a typed refusal, never an empty success: a run
+/// that acquired nothing must not read as a completed seed.
+pub fn seed_targets(
+    declared: &[SeedCandidate],
+    held: &[SeedCandidate],
+    explicit: &str,
+) -> Result<Vec<String>, String> {
+    let explicit = explicit.trim();
+    if !explicit.is_empty() {
+        return Ok(vec![dataset_reference(explicit)?]);
+    }
+    if declared.len() > MAX_SEED_CANDIDATES || held.len() > MAX_SEED_CANDIDATES {
+        return Err(format!(
+            "more than {MAX_SEED_CANDIDATES} datasets were offered to one seed"
+        ));
+    }
+    let mut targets: Vec<(usize, String, String)> = Vec::new();
+    let mut seen: BTreeSet<String> = BTreeSet::new();
+    for (group, candidates) in [(0usize, declared), (1usize, held)] {
+        for candidate in candidates {
+            if group == 1 && !candidate.seeded {
+                continue;
+            }
+            let id = dataset_reference(&candidate.id)?;
+            let label = candidate.label.trim();
+            if label.chars().count() > MAX_SEED_LABEL_CHARS {
+                return Err("a seed target's label exceeds its bound".into());
+            }
+            if !seen.insert(id.clone()) {
+                continue;
+            }
+            let order = if label.is_empty() {
+                id.clone()
+            } else {
+                label.to_owned()
+            };
+            targets.push((group, order, id));
+        }
+    }
+    if targets.is_empty() {
+        return Err(SEED_SCOPE_REFUSAL.into());
+    }
+    targets.sort();
+    Ok(targets.into_iter().map(|(_, _, id)| id).collect())
+}
+
 /// How one building footprint is named in a refusal.
 ///
 /// The provider's own stable identifier when it carries one, otherwise the
@@ -1046,16 +1152,24 @@ fn footprint_reference(index: usize, feature: &Value) -> String {
         .map(str::trim)
         .filter(|value| !value.is_empty());
     match identifier {
-        Some(identifier) => {
-            let cleaned: String = identifier
-                .chars()
-                .filter(|character| !character.is_control())
-                .take(MAX_FOOTPRINT_REFERENCE_CHARS)
-                .collect();
-            format!("#{index} `{cleaned}`")
-        }
+        Some(identifier) => format!("#{index} `{}`", quoted(identifier)),
         None => format!("#{index}"),
     }
+}
+
+/// A provider-supplied string as a refusal may quote it.
+///
+/// Bounded in CHARACTERS and stripped of control characters. Both halves are
+/// load-bearing: every string quoted here came from a provider response, so
+/// slicing one by bytes would panic the moment a multi-byte character crossed
+/// the bound, and a line break in it would break the status line a refusal is
+/// read in.
+fn quoted(value: &str) -> String {
+    value
+        .chars()
+        .filter(|character| !character.is_control())
+        .take(MAX_FOOTPRINT_REFERENCE_CHARS)
+        .collect()
 }
 
 fn bounds_text(bounds: [f64; 4]) -> String {
@@ -1089,7 +1203,7 @@ fn admit_footprint(index: usize, feature: &Value, area: &Value) -> Result<(), St
         let named = if geometry.is_empty() {
             "absent".to_owned()
         } else {
-            format!("`{}`", &geometry[..geometry.len().min(64)])
+            format!("`{}`", quoted(geometry))
         };
         return Err(format!(
             "building footprint {reference} geometry is {named}, not Polygon/MultiPolygon"
@@ -1205,6 +1319,16 @@ enum Request {
         policy: BufferPolicy,
         coverage: Coverage,
     },
+    SeedTargets {
+        schema: String,
+        #[serde(default)]
+        declared: Vec<SeedCandidate>,
+        #[serde(default)]
+        held: Vec<SeedCandidate>,
+        /// One dataset named on the command line, empty when none was.
+        #[serde(default)]
+        explicit: String,
+    },
 }
 
 fn require_schema(schema: &str) -> Result<(), String> {
@@ -1273,6 +1397,18 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
         } => {
             require_schema(&schema)?;
             serde_json::to_value(freshness(&current, &held)?)
+        }
+        Request::SeedTargets {
+            schema,
+            declared,
+            held,
+            explicit,
+        } => {
+            require_schema(&schema)?;
+            Ok(json!({
+                "schema": SCHEMA,
+                "targets": seed_targets(&declared, &held, &explicit)?,
+            }))
         }
         Request::Identity {
             schema,
@@ -1875,5 +2011,119 @@ mod tests {
             serde_json::from_str(&evaluate(assessed.to_string().as_bytes()).unwrap()).unwrap();
         assert_eq!(result["covered"], true);
         assert_eq!(result["gap_count"], 0);
+    }
+    fn candidate(id: &str, label: &str, seeded: bool) -> SeedCandidate {
+        SeedCandidate {
+            id: id.into(),
+            label: label.into(),
+            seeded,
+        }
+    }
+
+    /// First use: a machine that holds nothing still seeds what the project
+    /// declares. This is the defect the command shipped with — an unqualified
+    /// seed could only ever refresh datasets already seeded, so on a fresh
+    /// install it refused with "this project holds no dataset yet", which is
+    /// the exact state the operator was trying to leave.
+    #[test]
+    fn a_seed_that_names_no_dataset_acquires_what_the_project_declares() {
+        let declared = [
+            candidate("google_open_buildings", "Building footprints", false),
+            candidate("rwanda_roads", "Roads", false),
+        ];
+        assert_eq!(
+            seed_targets(&declared, &[], "").unwrap(),
+            // Ordered by label, so two machines seed in the same order.
+            vec!["google_open_buildings", "rwanda_roads"]
+        );
+    }
+
+    /// What the project declares UNION what it already holds — and a held row
+    /// that was never seeded is not a holding.
+    #[test]
+    fn a_seed_keeps_refreshing_a_dataset_added_outside_the_declaration() {
+        let declared = [candidate(
+            "google_open_buildings",
+            "Building footprints",
+            false,
+        )];
+        let held = [
+            candidate("rwanda_upi_parcels", "Parcels", true),
+            candidate("rwanda_rivers", "Rivers", false),
+        ];
+        assert_eq!(
+            seed_targets(&declared, &held, "").unwrap(),
+            // Declared first, then what is held beside it; never the row that
+            // has no room, which would be introducing a dataset by accident.
+            vec!["google_open_buildings", "rwanda_upi_parcels"]
+        );
+    }
+
+    /// A dataset in both lists is one target, and it keeps its declared place.
+    #[test]
+    fn a_declared_dataset_that_is_also_held_is_seeded_once() {
+        let declared = [
+            candidate("rwanda_roads", "Roads", false),
+            candidate("google_open_buildings", "Building footprints", false),
+        ];
+        let held = [candidate("rwanda_roads", "Roads", true)];
+        assert_eq!(
+            seed_targets(&declared, &held, "").unwrap(),
+            vec!["google_open_buildings", "rwanda_roads"]
+        );
+    }
+
+    /// Naming one dataset is the act of adding one the project has not
+    /// declared, so it is the whole answer.
+    #[test]
+    fn an_explicit_dataset_is_the_only_target() {
+        let declared = [candidate(
+            "google_open_buildings",
+            "Building footprints",
+            false,
+        )];
+        assert_eq!(
+            seed_targets(&declared, &[], "  rwanda_upi_parcels ").unwrap(),
+            vec!["rwanda_upi_parcels"]
+        );
+        assert!(seed_targets(&[], &[], "  ").is_err());
+    }
+
+    /// Nothing declared and nothing held is a typed refusal, not an empty
+    /// success: a run that acquired nothing must never read as a seed.
+    #[test]
+    fn a_seed_with_nothing_to_act_on_refuses_by_name() {
+        assert_eq!(
+            seed_targets(&[], &[candidate("rwanda_roads", "Roads", false)], "").unwrap_err(),
+            SEED_SCOPE_REFUSAL
+        );
+        let many: Vec<SeedCandidate> = (0..MAX_SEED_CANDIDATES + 1)
+            .map(|index| candidate(&format!("d{index}"), "", false))
+            .collect();
+        assert!(seed_targets(&many, &[], "")
+            .unwrap_err()
+            .contains("more than"));
+        assert!(seed_targets(&[candidate("", "", false)], &[], "").is_err());
+    }
+
+    /// The same answers through the request door the WASM export and `ds`
+    /// reach.
+    #[test]
+    fn the_seed_target_action_answers_through_the_request_door() {
+        let request = json!({"action":"seed_targets","schema":SCHEMA,
+            "declared":[{"id":"google_open_buildings","label":"Building footprints"}],
+            "held":[{"id":"rwanda_upi_parcels","label":"Parcels","seeded":true}]});
+        let value: Value =
+            serde_json::from_str(&evaluate(request.to_string().as_bytes()).unwrap()).unwrap();
+        assert_eq!(value["schema"], SCHEMA);
+        assert_eq!(
+            value["targets"],
+            json!(["google_open_buildings", "rwanda_upi_parcels"])
+        );
+        let empty = json!({"action":"seed_targets","schema":SCHEMA});
+        assert_eq!(
+            evaluate(empty.to_string().as_bytes()).unwrap_err(),
+            SEED_SCOPE_REFUSAL
+        );
     }
 }

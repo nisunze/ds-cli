@@ -62,3 +62,17 @@ has not declared. A dataset the project already holds is always refreshed, so an
 operator who deliberately seeded something outside the declaration keeps it.
 Seeding is per dataset: one dataset's failure records its own `last_error` and
 never abandons the rest, and `seeded` is never `ready`.
+
+Which datasets one run acts on is `seed_targets` (action `seed_targets`), not a
+host's own arithmetic: it takes the declaration, the rooms that already exist
+and the optional explicit `--dataset`, and answers with the ordered targets —
+declared first, each group by label, so two machines seed in the same order — or
+the typed refusal `project_dataset_scope_invalid` when the project declares
+nothing and holds nothing. A held row that was never seeded is a dataset the
+project *could* hold, not one it holds, and enters a run only by being declared.
+Hosts supply the facts and map ids back to the providers that can hold them.
+
+A refusal quotes provider strings — a footprint's identifier, a geometry's type
+— bounded in characters and stripped of control characters, so a malformed
+provider row can neither break the status line it is read in nor a host's
+string handling.

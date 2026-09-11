@@ -178,6 +178,39 @@ fn a_quoted_identifier_cannot_break_the_status_line() {
     assert!(error.contains("`upheretoo`"), "{error}");
 }
 
+/// A provider's geometry type is quoted the same way its identifier is:
+/// bounded in CHARACTERS, with control characters removed.
+///
+/// Every string a refusal quotes came out of a provider response. Bounding one
+/// by bytes panics the moment a multi-byte character crosses the bound — and
+/// the row being refused is, by definition, one the provider got wrong, so
+/// this is the input the diagnosis has to survive rather than the one it can
+/// assume away.
+#[test]
+fn a_quoted_geometry_type_is_bounded_in_characters() {
+    let area = json!({"type":"Polygon","coordinates":[[[30.,-1.],[30.1,-1.],[30.1,-0.9],[30.,-0.9],[30.,-1.]]]});
+    let response = |kind: Value| {
+        json!({
+            "status": "success", "provider": "google",
+            "coverage": {"status": "features_returned", "truncated": false},
+            "layers": {"buildings_context": {"type": "FeatureCollection", "features": [
+                {"type": "Feature", "id": "odd-row", "properties": {},
+                 "geometry": {"type": kind, "coordinates": []}}
+            ]}},
+            "counts": {"buildings_context": 1},
+            "source_receipt": {"provider": "google", "dataset_version": "v3"},
+        })
+    };
+    // 30 three-byte characters: byte 64 falls inside the 22nd of them.
+    let error = decode_buildings(&response(json!("\u{5b57}".repeat(30))), &area)
+        .expect_err("not an area geometry");
+    assert!(error.contains("not Polygon/MultiPolygon"), "{error}");
+    assert!(error.chars().count() < 200, "{error}");
+    let error = decode_buildings(&response(json!("Line\nString\tish")), &area)
+        .expect_err("not an area geometry");
+    assert!(!error.contains('\n') && !error.contains('\t'), "{error}");
+}
+
 /// The same answers through the module's own request door, which is what the
 /// WASM export and the CLI both reach.
 #[test]
