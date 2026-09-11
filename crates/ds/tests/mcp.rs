@@ -1317,9 +1317,9 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
             "grid" => 19,
             "survey-projects" => 18,
             "design-edit" => 23,
-            // Fifteen printing leaves plus both bootstrap tools since the
-            // kernel's context-layer decision joined the workflow.
-            "printing" => 17,
+            // Seventeen printing leaves plus bootstrap: native inventory
+            // and pure report plans share the kernel with browser-room IO.
+            "printing" => 19,
             _ => 16,
         };
         assert!(
@@ -1341,6 +1341,10 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
     assert!(published["printing"].contains("map_print_schema"));
     assert!(published["printing"].contains("desktop_printing_map_export"));
     assert!(published["printing"].contains("report_layout_edit"));
+    assert!(published["printing"].contains("report_transformers"));
+    assert!(published["printing"].contains("report_plan"));
+    assert!(!published["grid"].contains("report_transformers"));
+    assert!(!published["grid"].contains("report_plan"));
     assert!(
         published["grid-local-model"].contains("dsgrid_model_list")
             && published["grid-local-model"].contains("dsgrid_model_create-local")

@@ -317,6 +317,16 @@ static PLS_ENTRIES: &[Entry] = &[
 
 static REPORT_ENTRIES: &[Entry] = &[
     Entry {
+        command: &ds_cli_report::planning::TRANSFORMERS,
+        handler: ds_cli_report::planning::transformers,
+        render: ds_cli_report::layout::render_text,
+    },
+    Entry {
+        command: &ds_cli_report::planning::PLAN,
+        handler: ds_cli_report::planning::plan,
+        render: ds_cli_report::layout::render_text,
+    },
+    Entry {
         command: &ds_cli_report::layout::NEW,
         handler: ds_cli_report::layout::new,
         render: ds_cli_report::layout::render_text,

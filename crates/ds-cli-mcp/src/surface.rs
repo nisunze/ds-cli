@@ -172,11 +172,10 @@ impl Profile {
             // same bounded desktop-owned workflow without transporting
             // features through MCP.
             Self::DesignEdit => 23,
-            // Fifteen printing leaves plus both bootstrap tools: the kernel's
-            // context-layer decision (`report.layout.context`) joined the
-            // workflow that already carried authoring, published setups,
-            // preparation, export and delivery.
-            Self::Printing => 17,
+            // Seventeen printing leaves plus both bootstrap tools. Native
+            // inventory and pure report planning join the browser-room IO
+            // adapter; neither adds a second policy implementation.
+            Self::Printing => 19,
             _ => 16,
         }
     }
@@ -190,6 +189,7 @@ impl Profile {
                     && !PROJECT_OPERATIONS_COMMANDS.contains(&tool.id.as_str())
                     // Printing has its own workflow profile and Reports router;
                     // changing that profile must not expand the Grid surface.
+                    && !PRINTING_COMMANDS.contains(&tool.id.as_str())
                     && !tool.id.starts_with("desktop.printing.")
                     && !tool.id.starts_with("report.layout.")
                     // Project cache preparation belongs to the focused model
@@ -1240,6 +1240,8 @@ const PRINTING_COMMANDS: &[&str] = &[
     "report.layout.get",
     "desktop.printing.prepare",
     "desktop.printing.transformers",
+    "report.transformers",
+    "report.plan",
     "desktop.printing.export",
     "desktop.printing.artifact.read",
     "desktop.printing.seed-context",

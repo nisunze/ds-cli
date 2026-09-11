@@ -390,6 +390,12 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("report.engine", "discovery", "none"),
     ("report.layout.new", "discovery", "none"),
     ("report.layout.edit", "read_only", "none"),
+    (
+        "report.transformers",
+        "local_auth_state",
+        "headless_project",
+    ),
+    ("report.plan", "read_only", "none"),
     ("report.layout.context", "read_only", "none"),
     ("report.layout.session", "read_only", "none"),
     ("report.layout.add", "read_only", "none"),

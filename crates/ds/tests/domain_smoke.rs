@@ -7843,3 +7843,139 @@ fn style_read_answers_what_canonical_data_holds_with_no_map() {
             .is_some_and(|remedy| !remedy.is_empty())
     );
 }
+
+#[test]
+fn printable_inventory_is_headless_and_limits_before_reading_credentials() {
+    let descriptor = ok(&["capabilities", "report.transformers", "--output", "json"]);
+    let command = &descriptor["command"];
+    assert_eq!(command["authority"], "headless_project");
+    assert_eq!(command["effect"], "local_auth_state");
+    let inputs: BTreeSet<_> = command["inputs"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|input| input["name"].as_str().unwrap())
+        .collect();
+    assert_eq!(inputs, BTreeSet::from(["lane", "limit"]));
+    assert_eq!(
+        native_refusal(&["report", "transformers", "--limit", "0", "--output", "json"]),
+        "report_plan_invalid"
+    );
+    assert!(
+        NATIVE_AUTH_CODES
+            .contains(&native_refusal(&["report", "transformers", "--output", "json"]).as_str())
+    );
+    assert_eq!(
+        native_refusal(&[
+            "report",
+            "transformers",
+            "--project",
+            "p1",
+            "--output",
+            "json"
+        ]),
+        "unknown_flag"
+    );
+}
+
+#[test]
+fn printing_plans_answer_headlessly_from_the_same_kernel() {
+    let root = temp_root("printing-plan");
+    std::fs::create_dir_all(&root).unwrap();
+    let request = root.join("request.json");
+    let file = request.to_str().unwrap();
+    std::fs::write(
+        &request,
+        r#"{"results":[{"transformer":"b","status":"error"},{"transformer":"a","status":"ok"}]}"#,
+    )
+    .unwrap();
+    let out = ok(&[
+        "report",
+        "plan",
+        "--action",
+        "batch-outcome",
+        "--request",
+        file,
+        "--output",
+        "json",
+    ]);
+    assert_eq!(out["failed"], 1);
+    assert_eq!(out["results"][0]["transformer"], "a");
+    std::fs::write(
+        &request,
+        r#"{"project":"p1","transformer":"combined_transformer","active_project":"p1"}"#,
+    )
+    .unwrap();
+    assert_eq!(
+        ok(&[
+            "report",
+            "plan",
+            "--action",
+            "export",
+            "--request",
+            file,
+            "--output",
+            "json"
+        ])["kind"],
+        "combined"
+    );
+    std::fs::write(
+        &request,
+        r#"{"project":"p1","transformer":"combined_transformer","active_project":"p2"}"#,
+    )
+    .unwrap();
+    assert_eq!(
+        refusal(&[
+            "report",
+            "plan",
+            "--action",
+            "export",
+            "--request",
+            file,
+            "--output",
+            "json"
+        ]),
+        "report_plan_invalid"
+    );
+    std::fs::write(&request, r#"{"command":"export"}"#).unwrap();
+    assert_eq!(
+        refusal(&[
+            "report",
+            "plan",
+            "--action",
+            "export",
+            "--request",
+            file,
+            "--output",
+            "json"
+        ]),
+        "report_plan_invalid"
+    );
+    let mut layout_request = json!({"op":"render_plan","layout":ds_command_kernel::printing::default_layout(),"layer_count":0});
+    std::fs::write(&request, serde_json::to_vec(&layout_request).unwrap()).unwrap();
+    let missing = ok(&[
+        "report",
+        "layout",
+        "edit",
+        "--request",
+        file,
+        "--output",
+        "json",
+    ]);
+    assert_eq!(missing["ready"], false);
+    assert_eq!(missing["refusals"][0]["code"], "print_preview_needs_layers");
+    layout_request["layer_count"] = json!(1);
+    std::fs::write(&request, serde_json::to_vec(&layout_request).unwrap()).unwrap();
+    assert_eq!(
+        ok(&[
+            "report",
+            "layout",
+            "edit",
+            "--request",
+            file,
+            "--output",
+            "json"
+        ])["ready"],
+        true
+    );
+}

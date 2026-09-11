@@ -363,3 +363,34 @@ has agreed to drop unsaved edits. Documents never cross this boundary.
 ## Publishing a setup
 
 `ds report layout save --scope <global|project> --request <file>` takes a `save` request carrying `layout` and `expected_revision`. The kernel's setup lifecycle plan (`printing::lifecycle`) decides whether that publish is a create (empty revision) or an update (with one) — the same decision the Printing setup page takes — so `ds` never sends the compatibility `save` action itself.
+
+## Printable inventory and report plans
+
+`ds report transformers --limit 100 --output json` reads the native user's
+selected project and asks `printing::inventory` which rows are printable.
+Reserved aggregate, analysis and project-document identities are excluded even
+when raw status rows omit their kind. The result reports `more.omitted`.
+`cached` and `dirty` are **null**, with `local_rooms_known: false`, because this
+native read does not inspect browser rooms. `ds desktop printing transformers`
+remains the browser-room IO adapter and asks the same kernel with those facts.
+Neither command opens or switches the map.
+
+`ds report plan --action export --request export.json --output json` evaluates
+an export request without running it. The file contains `project`,
+`transformer`, optional `transformers`, `force`, `report_type`, `selection`,
+and the host's `active_project`. A combined or compounded overview requires
+that last fact to match `project`; an individual transformer does not.
+The GUI asks again after preparation to detect a project switch during IO.
+The input is a fact document, not an authorization grant.
+
+`ds report plan --action batch-outcome --request batch.json --output json`
+accepts `{"results":[{"transformer":"tx_a","status":"ok"}]}` and returns the
+ordered results and `failed` count. Both actions accept at most 4 MiB and refuse
+a `command` key inside the document.
+
+Preview admission is available through `ds report layout edit --request
+preview.json --output json`, using the kernel's `render_plan` operation:
+`{"op":"render_plan","layout":{...},"available_style_refs":[],"layer_count":1,
+"text":{"title":"Preview"},"date":"2026-09-11"}`. It returns `ready`, refusal
+keys, required print-style references and text. This evaluates admission only;
+PDF rendering still uses the existing renderer.
