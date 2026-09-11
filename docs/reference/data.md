@@ -153,6 +153,48 @@ it is detectable and skippable, and a generated artifact can be matched back to
 what produced it. `skipped_coordinate_rows` reports rows that had no usable
 coordinate and therefore carry no geometry — reported, never silently dropped.
 
+## `project-cache status` and `project-cache seed`
+
+A project holds bounded, spatially indexed extracts of the datasets its
+workflow declares, instead of downloading a whole national layer it will mostly
+not use. Coverage is the design's own footprint, buffered and fused, so
+neighbouring transformers share one acquisition.
+
+`status` costs nothing and reaches no provider. `seed` is the one command here
+that queries a geographic source, so it is confirmed.
+
+### What an omitted `--dataset` seeds
+
+Every dataset this project's workflow **declares**, plus any it already holds.
+The declaration is the printing context catalogue's own answer for the project —
+decided once in `ds-command-kernel`'s `printing::context` for the Printing setup
+page and this command alike, so the two can never disagree about what a project
+needs. It is not everything published for the country: a catalogue layer the
+default selection excludes, or one the catalogue reports unavailable, is not
+declared.
+
+**A computer that holds nothing yet seeds the declaration.** That is the point
+of the rule: first use is when an operator needs this most, and refusing with
+"this project holds no dataset yet" describes the exact state they were trying
+to leave. Naming `--dataset` remains the explicit act of adding one dataset the
+project does not declare; once added, it is refreshed by later unqualified runs
+rather than silently dropped.
+
+### Partial is partial
+
+Datasets are seeded one at a time and each keeps its own truth. One dataset's
+failure records its own cause on its own row — a national subset whose bundle is
+not installed on this computer, for instance — and never abandons the datasets
+beside it. The run reports how many did not complete; `seeded` is never `ready`,
+and a failed acquisition keeps every cell the project already paid for.
+
+### Local, not shared
+
+Every row says whether it is held on this computer (`local_holding`). A room is
+one machine's holding: nothing here publishes anything, and two installations of
+the same project legitimately hold different coverage. A dataset acquired on one
+computer is acquired again on the next.
+
 ## What this is not
 
 Not a query engine. `ds data` writes formats; reading and reducing them is a

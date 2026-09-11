@@ -58,12 +58,12 @@ const PROJECT_ARG: Arg = Arg {
 const DATASET_ARG: Arg = Arg::value(
     "dataset",
     "<dataset-id>",
-    "One canonical dataset id, from `ds data project-cache status`. Defaults to every dataset this project declares.",
+    "One canonical dataset id. Omitted: every dataset this project declares plus any it holds, even holding none yet.",
 );
 
 const INVALID_SCOPE: Refusal = Refusal {
     code: "project_dataset_scope_invalid",
-    when: "the project is missing, or the named dataset is not one this project declares",
+    when: "the project is missing, the named dataset is not one this client can hold, or the project declares no dataset at all",
     remedy: "pass one exact --project, and a --dataset id listed by `ds data project-cache status`",
 };
 
@@ -131,13 +131,13 @@ pub static SEED_COMMAND: Command = Command {
     path: &["data", "project-cache", "seed"],
     contract: 1,
     summary: "Acquire the geographic datasets this project's design needs.",
-    purpose: "Derives coverage from every transformer's design extent, buffers each by the project's policy, fuses overlapping clusters, and acquires ONLY the parts not already held. Disconnected sites stay separate rather than fusing into one enormous rectangle, and a re-run over unchanged design acquires nothing. This is the one command that queries a geographic source, so it is confirmed: it spends provider cost. Printing and reporting read the resulting local index and never query a source themselves. Held data survives a failure, and a partial acquisition is never reported as ready.",
+    purpose: "Derives coverage from every transformer's design extent, buffers each by the project's policy, fuses overlapping clusters, and acquires ONLY the parts not already held. Disconnected sites stay separate, and a re-run over unchanged design acquires nothing. With no --dataset it seeds what this project declares plus what it holds, even where it holds none yet. This is the one command that queries a geographic source, so it is confirmed: it spends provider cost. Held data survives a failure, one dataset's failure never abandons the rest, and a partial acquisition is never reported as ready.",
     chapter: Chapter::Data,
     effect: Effect::ArtifactWrite,
     authority: Authority::Project,
     execution: Execution::Sync,
     args: &[PROJECT_ARG, DATASET_ARG, DESCRIPTOR_ARG],
-    output: "Per dataset: fused clusters and their buffers, coverage acquired in this run, total held coverage, feature count, query digests and any warnings.",
+    output: "Per dataset: fused clusters and buffers, coverage acquired this run, held coverage, feature count, local holding, digests, warnings and its own failure cause. Plus how many failed and whether the run completed.",
     examples: &[
         Example {
             command: "ds data project-cache seed --project my-project --dataset google_open_buildings --yes --output json",
@@ -146,7 +146,7 @@ pub static SEED_COMMAND: Command = Command {
         },
         Example {
             command: "ds data project-cache seed --project my-project --yes --output json",
-            note: "Seeds every dataset this project's workflow declares.",
+            note: "Seeds every dataset this project declares, holding none too.",
             runnable: false,
         },
     ],
@@ -301,17 +301,33 @@ pub fn render_seed(data: &Value) -> String {
     );
     for dataset in &datasets {
         out.push_str(&format!(
-            "  {} · {} cluster(s) · {} acquisition(s) this run · {} feature(s) held\n",
+            "  {} · {} cluster(s) · {} acquisition(s) this run · {} feature(s) held{}\n",
             dataset["dataset_id"].as_str().unwrap_or("?"),
             dataset["clusters"].as_u64().unwrap_or(0),
             dataset["acquired"].as_u64().unwrap_or(0),
             dataset["feature_count"].as_u64().unwrap_or(0),
+            if dataset["local_holding"] == Value::Bool(true) {
+                " · held on this computer"
+            } else {
+                ""
+            },
         ));
+        // A dataset that failed says so on its own line. Reporting only the
+        // total would let a run that acquired nothing read as a seed.
+        if let Some(error) = dataset["error"].as_str() {
+            out.push_str(&format!("    not acquired: {error}\n"));
+        }
         for warning in dataset["warnings"].as_array().cloned().unwrap_or_default() {
             if let Some(text) = warning.as_str() {
                 out.push_str(&format!("    note: {text}\n"));
             }
         }
+    }
+    let failed = data["failed"].as_u64().unwrap_or(0);
+    if failed > 0 {
+        out.push_str(&format!(
+            "{failed} dataset(s) did not complete; held data is kept and retrying acquires only what is still missing\n"
+        ));
     }
     out
 }
@@ -349,6 +365,68 @@ mod tests {
                 .expect("both commands name their project");
             assert!(project.required, "the project must never be implicit");
         }
+    }
+
+    /// The descriptor and the executor say the same thing about an omitted
+    /// `--dataset`.
+    ///
+    /// They did not. The descriptor promised "every dataset this project's
+    /// workflow declares"; the implementation seeded only datasets the project
+    /// had ALREADY seeded, so first use on any computer refused with "This
+    /// project holds no dataset yet. Name the one to seed with --dataset." —
+    /// a sentence describing the exact state the operator was trying to leave.
+    /// A descriptor is the contract an agent reads instead of the source, so a
+    /// gap between the two is a defect in the product, not in the prose.
+    #[test]
+    fn an_omitted_dataset_declares_the_first_use_behaviour() {
+        let dataset = SEED_COMMAND
+            .args
+            .iter()
+            .find(|arg| arg.name == "dataset")
+            .expect("seed declares its dataset argument");
+        assert!(!dataset.required, "the dataset is optional by contract");
+        let summary = dataset.summary.to_lowercase();
+        assert!(summary.contains("declares"), "{}", dataset.summary);
+        assert!(
+            summary.contains("holding none") || summary.contains("holds none"),
+            "the first-use case is the one an operator hits first: {}",
+            dataset.summary,
+        );
+        assert!(
+            SEED_COMMAND.purpose.contains("holds none yet"),
+            "the purpose must state what an omitted --dataset does on a fresh computer",
+        );
+        // And it must not promise the thing this command exists not to do.
+        assert!(!SEED_COMMAND.purpose.contains("everything published"));
+    }
+
+    /// A seed that could not finish every dataset renders as partial.
+    #[test]
+    fn a_partial_seed_never_renders_as_a_complete_one() {
+        let data = serde_json::json!({
+            "project": "p",
+            "failed": 1,
+            "complete": false,
+            "datasets": [
+                {"dataset_id":"google_open_buildings","clusters":1,"acquired":1,"feature_count":12,
+                 "local_holding":true,"warnings":[]},
+                {"dataset_id":"id-roads","clusters":0,"acquired":0,"feature_count":0,
+                 "local_holding":false,"warnings":[],
+                 "error":"This resource is not installed on this computer."},
+            ],
+        });
+        let rendered = render_seed(&data);
+        assert!(rendered.contains("held on this computer"), "{rendered}");
+        assert!(
+            rendered.contains("not acquired: This resource is not installed on this computer."),
+            "{rendered}",
+        );
+        assert!(
+            rendered.contains("1 dataset(s) did not complete"),
+            "{rendered}"
+        );
+        // The dataset that DID land is still reported as landed.
+        assert!(rendered.contains("google_open_buildings"), "{rendered}");
     }
 
     #[test]
