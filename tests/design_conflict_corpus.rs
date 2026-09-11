@@ -78,7 +78,10 @@ fn declared_divergences_preserve_historical_answers_and_explain_new_admission() 
         .filter(|case| case.get("why").is_some())
         .map(|case| case["id"].as_str().expect("case id"))
         .collect();
-    assert_eq!(declared, vec!["local-base-version-zero", "review-not-finished"]);
+    assert_eq!(
+        declared,
+        vec!["local-base-version-zero", "review-not-finished"]
+    );
     let why = corpus["detect"]["why"]
         .as_str()
         .expect("the detect divergence is declared");
