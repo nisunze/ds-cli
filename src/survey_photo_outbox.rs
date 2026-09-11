@@ -69,6 +69,82 @@ pub struct Row {
     /// policy from it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub expected_generation: Option<String>,
+    /// A locally generated JPEG thumbnail that travels with the original as
+    /// one atomic upload plan. It is never an independently retried row.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub companion: Option<Companion>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct Companion {
+    pub path: String,
+    pub content_type: String,
+    pub size: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expected_generation: Option<String>,
+}
+
+/// One ordered host IO target. The host must PUT and verify every target in
+/// this order before reporting `TransportOutcome::Success` for the row.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct UploadTarget {
+    pub path: String,
+    pub content_type: String,
+    pub size: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expected_generation: Option<String>,
+}
+
+/// The canonical server-compatible thumbnail object name for an original
+/// survey photo. Only the final filename extension is replaced.
+pub fn thumbnail_path_for(path: &str) -> Result<String, String> {
+    let (prefix, filename) = path
+        .rsplit_once('/')
+        .map_or(("", path), |(prefix, name)| (prefix, name));
+    if filename.is_empty() || filename == "." || filename == ".." {
+        return Err("Survey-photo original path needs a filename for its thumbnail.".into());
+    }
+    let stem = filename
+        .rfind('.')
+        .filter(|index| *index > 0)
+        .map_or(filename, |index| &filename[..index]);
+    let thumbnail = format!("{stem}_thunder.jpeg");
+    Ok(if prefix.is_empty() {
+        thumbnail
+    } else {
+        format!("{prefix}/{thumbnail}")
+    })
+}
+
+/// Produce the single ordered upload plan. The original is always first so a
+/// thumbnail cannot become visible for a failed original replacement.
+pub fn upload_plan(row: &Row) -> Result<Vec<UploadTarget>, String> {
+    if let Some(companion) = &row.companion {
+        if companion.path != thumbnail_path_for(&row.path)?
+            || companion.content_type != "image/jpeg"
+            || companion.size == 0
+            || !valid_expected_generation(companion.expected_generation.as_deref())
+        {
+            return Err("Survey-photo thumbnail companion is not a canonical JPEG target.".into());
+        }
+    }
+    let mut targets = vec![UploadTarget {
+        path: row.path.clone(),
+        content_type: row.content_type.clone(),
+        size: row.size,
+        expected_generation: row.expected_generation.clone(),
+    }];
+    if let Some(companion) = &row.companion {
+        targets.push(UploadTarget {
+            path: companion.path.clone(),
+            content_type: companion.content_type.clone(),
+            size: companion.size,
+            expected_generation: companion.expected_generation.clone(),
+        });
+    }
+    Ok(targets)
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -147,6 +223,7 @@ pub enum Action {
         #[serde(skip_serializing_if = "Option::is_none")]
         expected_generation: Option<String>,
         lease: u64,
+        targets: Vec<UploadTarget>,
     },
     Abort {
         path: String,
@@ -207,6 +284,15 @@ fn ensure_row(row: Option<Row>) -> Result<Row, String> {
     if !valid_expected_generation(row.expected_generation.as_deref()) {
         return Err("Survey-photo expected generation must be a positive decimal string.".into());
     }
+    if let Some(companion) = &row.companion {
+        if companion.path != thumbnail_path_for(&row.path)?
+            || companion.content_type != "image/jpeg"
+            || companion.size == 0
+            || !valid_expected_generation(companion.expected_generation.as_deref())
+        {
+            return Err("Survey-photo thumbnail companion is not a canonical JPEG target.".into());
+        }
+    }
     Ok(row)
 }
 
@@ -222,15 +308,23 @@ fn block(row: &mut Row, message: &str, now: u64) {
 }
 
 fn remove(row: Row) -> Reply {
+    let companion_path = row
+        .companion
+        .as_ref()
+        .map(|companion| companion.path.clone());
+    let mut actions = vec![
+        Action::RemoveOutboxRow {
+            path: row.path.clone(),
+        },
+        Action::UnpinBlob { path: row.path },
+    ];
+    if let Some(path) = companion_path {
+        actions.push(Action::UnpinBlob { path });
+    }
     Reply {
         schema: SURVEY_PHOTO_OUTBOX_SCHEMA,
         row: None,
-        actions: vec![
-            Action::RemoveOutboxRow {
-                path: row.path.clone(),
-            },
-            Action::UnpinBlob { path: row.path },
-        ],
+        actions,
     }
 }
 
@@ -342,6 +436,7 @@ pub fn apply(now: u64, row: Option<Row>, event: Event) -> Result<Reply, String> 
                     generation: row.generation.clone(),
                     expected_generation: row.expected_generation.clone(),
                     lease: row.lease,
+                    targets: upload_plan(&row)?,
                 });
             } else if row.status == Status::Pending && row.next_attempt_at > now {
                 actions.push(Action::WakeAt {
@@ -524,6 +619,7 @@ mod tests {
             lease: 0,
             generation: "stash-a".into(),
             expected_generation: Some("123456".into()),
+            companion: None,
         }
     }
     fn drive(row: Row, now: u64) -> Reply {
@@ -552,7 +648,13 @@ mod tests {
                 content_type: "image/jpeg".into(),
                 generation: "stash-a".into(),
                 expected_generation: Some("123456".into()),
-                lease: 1
+                lease: 1,
+                targets: vec![UploadTarget {
+                    path: "survey/a.jpg".into(),
+                    content_type: "image/jpeg".into(),
+                    size: 4,
+                    expected_generation: Some("123456".into()),
+                }],
             }]
         );
         let capped = apply(
@@ -567,6 +669,65 @@ mod tests {
         )
         .unwrap();
         assert!(capped.actions.is_empty());
+    }
+
+    #[test]
+    fn companion_has_one_canonical_ordered_plan_and_cleanup_unpins_both_bytes() {
+        let mut state = row();
+        state.companion = Some(Companion {
+            path: "survey/a_thunder.jpeg".into(),
+            content_type: "image/jpeg".into(),
+            size: 3,
+            expected_generation: None,
+        });
+        let started = drive(state, 10);
+        let Action::Dispatch { targets, .. } = &started.actions[0] else {
+            panic!("dispatch expected")
+        };
+        assert_eq!(
+            targets
+                .iter()
+                .map(|target| target.path.as_str())
+                .collect::<Vec<_>>(),
+            vec!["survey/a.jpg", "survey/a_thunder.jpeg"]
+        );
+        let removed = apply(
+            11,
+            started.row,
+            Event::Result {
+                scope: scope(),
+                generation: "stash-a".into(),
+                lease: 1,
+                outcome: TransportOutcome::Success,
+            },
+        )
+        .unwrap();
+        assert!(removed.row.is_none());
+        assert_eq!(
+            removed
+                .actions
+                .iter()
+                .filter(|action| matches!(action, Action::UnpinBlob { .. }))
+                .count(),
+            2
+        );
+    }
+
+    #[test]
+    fn invalid_companion_cannot_admit_or_create_an_upload_plan() {
+        let mut state = row();
+        state.companion = Some(Companion {
+            path: "survey/a-thumb.jpg".into(),
+            content_type: "image/png".into(),
+            size: 0,
+            expected_generation: None,
+        });
+        assert!(apply(1, Some(state.clone()), Event::Recover).is_err());
+        assert!(upload_plan(&state).is_err());
+        assert_eq!(
+            thumbnail_path_for("folder/field.capture.png").unwrap(),
+            "folder/field.capture_thunder.jpeg"
+        );
     }
 
     #[test]

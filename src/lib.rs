@@ -1407,6 +1407,26 @@ pub fn survey_photo_outbox_step_wasm(input: &[u8]) -> Result<String, wasm_bindge
     survey_photo_outbox::evaluate(input).map_err(|error| wasm_bindgen::JsValue::from_str(&error))
 }
 
+/// Pixel processing for survey capture and import. The byte-oriented API is
+/// separate from the JSON state machines so photo payloads never become base64
+/// command fields.
+pub mod survey_photo_media;
+#[cfg(feature = "wasm")]
+#[wasm_bindgen::prelude::wasm_bindgen(js_name = surveyPhotoMediaProcess)]
+pub fn survey_photo_media_process_wasm(
+    input: &[u8],
+    rotation_degrees: u16,
+) -> Result<survey_photo_media::SurveyPhotoBundleWasm, wasm_bindgen::JsValue> {
+    survey_photo_media::process_wasm(input, rotation_degrees)
+        .map_err(|error| wasm_bindgen::JsValue::from_str(&error))
+}
+#[cfg(feature = "wasm")]
+#[wasm_bindgen::prelude::wasm_bindgen(js_name = surveyPhotoThumbnailPath)]
+pub fn survey_photo_thumbnail_path_wasm(path: &str) -> Result<String, wasm_bindgen::JsValue> {
+    survey_photo_outbox::thumbnail_path_for(path)
+        .map_err(|error| wasm_bindgen::JsValue::from_str(&error))
+}
+
 pub mod project_config;
 #[cfg(feature = "wasm")]
 #[wasm_bindgen::prelude::wasm_bindgen(js_name = projectConfigAdmit)]

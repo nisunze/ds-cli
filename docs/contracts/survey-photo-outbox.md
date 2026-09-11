@@ -21,6 +21,21 @@ stored generation and SHA-256 before success is reported. The host removes the
 queue row and unpins bytes only when the kernel permits it. Cached bytes remain
 available; cancellation never deletes the image cache.
 
+When a capture/import produced a thumbnail, the optional `companion` is a
+canonical `{original stem}_thunder.jpeg` JPEG target. The kernel validates that
+relationship and emits one ordered upload plan: original first, then thumbnail.
+The host atomically pins both local blobs, verifies every target before it
+reports success, and unpins both only after the row is settled. A thumbnail is
+therefore never independently retried or allowed to survive a failed original.
+
+`survey_photo_media` is the separate byte API for capture/import. It admits
+JPEG and PNG source bytes up to 50 MiB and 50 MP, applies available JPEG EXIF
+orientation plus one net clockwise turn, caps the normalized original at 2048
+px, and creates a white-composited JPEG-quality-85 thumbnail at 320 px. The
+WASM API accepts and returns typed byte arrays, never JSON/base64 photo data.
+`surveyPhotoMediaDetect` lets hosts preserve GIF, WebP, and non-image
+attachments unchanged without creating a thumbnail.
+
 The optional `expected_generation` is an opaque positive decimal storage
 precondition preserved with a queued replacement. Its authorization and storage
 comparison remain in ds-brain. Photo rotation is frontend image processing by
