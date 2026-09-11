@@ -100,6 +100,22 @@ pub fn completed(cached: bool, pairs: Option<u64>) -> Vec<Phrase> {
     phrases
 }
 
+/// The single key a surface reads a project's collision answer under, outside
+/// a run: never checked, checked but unreadable, or a count.
+///
+/// The same three-way fold `completed` applies to a finished run, asked as a
+/// state rather than as copy — so `ds design collisions` and the card name one
+/// condition one way instead of each holding its own `match`.
+pub fn state_key(checked: bool, pairs: Option<u64>) -> &'static str {
+    match (checked, pairs) {
+        (false, _) => "pctl_collisions_never_checked",
+        (true, None) => "pctl_collisions_unknown",
+        (true, Some(0)) => "pctl_collisions_pairs_none",
+        (true, Some(1)) => "pctl_collisions_pairs_one",
+        (true, Some(_)) => "pctl_collisions_pairs_many",
+    }
+}
+
 #[derive(Deserialize)]
 #[serde(tag = "op", rename_all = "snake_case", deny_unknown_fields)]
 enum Request {
@@ -245,6 +261,24 @@ mod tests {
             completed(false, Some(9))[1],
             Phrase::counted("pctl_collisions_pairs_many", 9)
         );
+    }
+
+    /// A project that was never checked is not a project whose count could not
+    /// be read, and neither is a project with zero pairs. One vocabulary, so a
+    /// headless reader and the card cannot disagree about which it is.
+    #[test]
+    fn the_state_key_separates_never_checked_from_unknown_and_from_zero() {
+        assert_eq!(state_key(false, None), "pctl_collisions_never_checked");
+        assert_eq!(state_key(false, Some(3)), "pctl_collisions_never_checked");
+        assert_eq!(state_key(true, None), "pctl_collisions_unknown");
+        assert_eq!(state_key(true, Some(0)), "pctl_collisions_pairs_none");
+        assert_eq!(state_key(true, Some(1)), "pctl_collisions_pairs_one");
+        assert_eq!(state_key(true, Some(7)), "pctl_collisions_pairs_many");
+        // The counted phrases are the same keys `completed` names, so the two
+        // surfaces cannot drift apart.
+        assert_eq!(completed(false, Some(0))[1].key, state_key(true, Some(0)));
+        assert_eq!(completed(false, Some(1))[1].key, state_key(true, Some(1)));
+        assert_eq!(completed(false, Some(7))[1].key, state_key(true, Some(7)));
     }
 
     #[test]

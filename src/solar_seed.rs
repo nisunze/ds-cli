@@ -155,9 +155,12 @@ pub fn applyable(plan: &Plan, context: &Context) -> bool {
 /// card is already bound to the open project, while a headless caller must be
 /// proven to be aiming at the project it selected rather than at the catalog.
 pub fn validate_context(context: &Context, require_destination: bool) -> Result<(), Refusal> {
+    // Both bounds are counted in CHARACTERS, as their names say and as the two
+    // client copies did: a city id spelled with accented letters must not be
+    // refused at half the length an ASCII one is allowed.
     if !context.seed_source_root.is_empty()
         && (context.seed_source_root.trim() != context.seed_source_root
-            || context.seed_source_root.len() > MAX_SOURCE_CHARS)
+            || context.seed_source_root.chars().count() > MAX_SOURCE_CHARS)
     {
         return Err(Refusal::new(
             "solar_seed_source_invalid",
@@ -168,7 +171,7 @@ pub fn validate_context(context: &Context, require_destination: bool) -> Result<
         return Err(Refusal::new("SOLAR_SEED_BOUNDED", "cities"));
     }
     for city in &context.cities {
-        if city.is_empty() || city.trim() != city || city.len() > MAX_CITY_CHARS {
+        if city.is_empty() || city.trim() != city || city.chars().count() > MAX_CITY_CHARS {
             return Err(Refusal::new("solar_seed_city_invalid", "cities"));
         }
     }
@@ -440,6 +443,30 @@ mod tests {
         assert_eq!(
             validate_context(&projectless, true).unwrap_err().code,
             "solar_seed_project_required"
+        );
+    }
+
+    /// The two length bounds are CHARACTERS, as both deleted client copies
+    /// counted them. Counting bytes would refuse an accented city id at half
+    /// the length an ASCII one is allowed — a governed request the grant would
+    /// have taken, refused locally by a client that measured it differently.
+    #[test]
+    fn the_length_bounds_count_characters_not_bytes() {
+        let mut accented = context();
+        accented.cities = vec!["é".repeat(MAX_CITY_CHARS)];
+        assert!(validate_context(&accented, false).is_ok());
+        accented.cities = vec!["é".repeat(MAX_CITY_CHARS + 1)];
+        assert_eq!(
+            validate_context(&accented, false).unwrap_err().code,
+            "solar_seed_city_invalid"
+        );
+        let mut source = context();
+        source.seed_source_root = "é".repeat(MAX_SOURCE_CHARS);
+        assert!(validate_context(&source, false).is_ok());
+        source.seed_source_root = "é".repeat(MAX_SOURCE_CHARS + 1);
+        assert_eq!(
+            validate_context(&source, false).unwrap_err().code,
+            "solar_seed_source_invalid"
         );
     }
 
