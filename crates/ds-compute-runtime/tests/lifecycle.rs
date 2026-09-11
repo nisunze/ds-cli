@@ -143,6 +143,16 @@ fn prepared_solar_survives_reopen_without_a_client_path_or_live_request() {
     assert!(decoded["result_digest"].as_str().is_some());
     assert_eq!(decoded["plots_generated"], false);
     assert_eq!(decoded["outputs"].as_array().unwrap().len(), 1);
+    let stored = runtime::open(&path).unwrap();
+    let durable_job = stored
+        .job("owner", "stable", &job.id)
+        .unwrap()
+        .expect("completed job remains visible");
+    let publication = runtime::solar_publication(&durable_job, &bytes, &result).unwrap();
+    assert_eq!(publication.project_id, "durable-server-test");
+    assert_eq!(publication.city_id, "aderm_bere");
+    assert_eq!(publication.outputs.len(), 1);
+    assert_eq!(publication.outputs[0].output_id, "report_input.json");
 }
 #[test]
 fn parallel_claims_are_unique_and_revocation_and_cancellation_stop_work() {

@@ -461,6 +461,7 @@ dependencies = [
 name = "ds-compute-runtime"
 version = "0.1.0"
 dependencies = [
+ "base64",
  "ds-command-kernel",
  "ds-network",
  "ds-solar-contracts",

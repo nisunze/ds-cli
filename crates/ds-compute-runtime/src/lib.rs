@@ -9,6 +9,7 @@ use ds_solar_contracts::{PreparedSolarCityInput, SolarCalculationResult};
 use ds_solar_io::output::{OutputFile, encode_outputs};
 use ds_solar_runtime::{CalculationOptions, CalculationTimings, CancelToken, SolarRuntime};
 use ds_sync_store::Store;
+use base64::Engine;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{
@@ -139,13 +140,80 @@ const fn default_render_charts() -> bool {
 
 /// The established Cloud Run response shape, retained verbatim when the same
 /// runtime is placed behind the durable native owner.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 struct PreparedSolarResponse {
     #[serde(flatten)]
     result: SolarCalculationResult,
     timings: CalculationTimings,
     plots_generated: bool,
     outputs: Vec<OutputFile>,
+}
+
+/// Durable publication facts derived only from a sealed prepared request and
+/// its retained completed response.  Hosts map this to their activity store;
+/// this runtime deliberately does not depend on Sync Center types or transport.
+#[derive(Debug, Clone)]
+pub struct SolarPublication {
+    pub project_id: String,
+    pub city_id: String,
+    pub engine_release: String,
+    pub engine_build_manifest_sha256: String,
+    pub outputs: Vec<SolarOutput>,
+}
+
+#[derive(Debug, Clone)]
+pub struct SolarOutput {
+    pub output_id: String,
+    pub content_type: String,
+    pub sha256: String,
+    pub size_bytes: u64,
+    pub bytes: Vec<u8>,
+}
+
+/// Decode publication facts without ever consulting a caller path, browser
+/// cache or temporary file.  The payload is re-verified against every output
+/// declaration before a host may offer it to a Sync Center transfer.
+pub fn solar_publication(job: &Job, input: &[u8], result: &[u8]) -> Result<SolarPublication, String> {
+    if job.engine != EngineKind::SolarPrepared || job.input_tag != "ds.solar.calculate.prepared/v1" {
+        return Err("job is not a prepared Solar computation".into());
+    }
+    if job.phase != Phase::Completed || digest(result) != job.result_sha256.as_deref().unwrap_or_default() {
+        return Err("Solar publication result is not a completed durable result".into());
+    }
+    let request: PreparedSolarRequest = serde_json::from_slice(input)
+        .map_err(|error| format!("durable Solar request cannot be published: {error}"))?;
+    request.prepared.validate().map_err(|error| error.to_string())?;
+    let response: PreparedSolarResponse = serde_json::from_slice(result)
+        .map_err(|error| format!("durable Solar response cannot be published: {error}"))?;
+    let outputs = response.outputs.into_iter().map(|output| {
+        let bytes = base64::engine::general_purpose::STANDARD
+            .decode(&output.body_base64)
+            .map_err(|_| "durable Solar output is not valid base64".to_string())?;
+        let declared = output.entry;
+        if declared.byte_count != bytes.len() as u64 || declared.content_digest != format!("sha256:{}", digest(&bytes)) {
+            return Err("durable Solar output does not match its sealed declaration".into());
+        }
+        Ok(SolarOutput {
+            output_id: declared.name,
+            content_type: declared.media_type,
+            sha256: digest(&bytes),
+            size_bytes: bytes.len() as u64,
+            bytes,
+        })
+    }).collect::<Result<Vec<_>, String>>()?;
+    if outputs.is_empty() {
+        return Err("completed Solar result has no publishable outputs".into());
+    }
+    Ok(SolarPublication {
+        project_id: request.prepared.city.identity.project_id,
+        city_id: request.prepared.city.identity.city_id,
+        engine_release: format!(
+            "{}@{}",
+            response.result.engine.name, response.result.engine.version
+        ),
+        engine_build_manifest_sha256: response.result.engine.build_manifest_sha256,
+        outputs,
+    })
 }
 
 /// Performs live native credential validation. Implemented by the native auth
