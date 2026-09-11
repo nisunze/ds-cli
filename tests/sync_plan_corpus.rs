@@ -46,7 +46,7 @@ fn grant(expires_at_ms: u64, engines: Vec<(&str, &str)>) -> Value {
 }
 fn input(online: bool, grant: Option<Value>, local: Vec<Value>, remote: Vec<Value>) -> Value {
     let mut value = json!({"schema": SCHEMA, "project": "p", "install_id": "install-1", "now_ms": 10_000,
-        "online": online, "local": local, "remote": remote});
+        "online": online, "trigger": "navigation", "remote_read_at_ms": 9_000, "local": local, "remote": remote});
     if let Some(grant) = grant {
         value["grant"] = grant;
     }
@@ -247,24 +247,24 @@ fn cases() -> Vec<(&'static str, &'static str, Value)> {
             ),
         ),
         (
-            "grant-near-expiry",
-            "In sync but the grant expires soon: the next check is the renewal lead.",
-            input(
-                true,
-                Some(grant(
-                    10_000 + 10 * 60 * 1000 + 1_000,
-                    vec![("network_reporter", REL)],
-                )),
-                vec![local(
-                    "network_reporter",
-                    "export-a",
-                    A,
-                    Some("r1"),
-                    true,
-                    REL,
-                )],
-                vec![remote("network_reporter", "export-a", A, "r1")],
-            ),
+            "grant-renewal-is-the-only-timer",
+            "An upload pending under a grant that expires soon: the one timed wake, renewal before expiry.",
+            input(true, Some(grant(10_000 + 10 * 60 * 1000 + 1_000, vec![("network_reporter", REL)])), vec![local("network_reporter", "export-a", A, None, true, REL)], vec![]),
+        ),
+        (
+            "local-change-uses-held-heads",
+            "A local change never re-reads the record; the held heads decide.",
+            { let mut v = input(true, g(), vec![local("network_reporter", "export-a", A, None, true, REL)], vec![]); v["trigger"] = json!("local_change"); v },
+        ),
+        (
+            "remote-push-reads-the-record",
+            "A push from the messaging stream is the one reason to re-read without navigating.",
+            { let mut v = input(true, g(), vec![], vec![]); v["trigger"] = json!("remote_push"); v },
+        ),
+        (
+            "never-read-reads-once",
+            "Heads never read are read once, whatever the trigger.",
+            { let mut v = input(true, g(), vec![], vec![]); v["trigger"] = json!("local_change"); v.as_object_mut().unwrap().remove("remote_read_at_ms"); v },
         ),
     ]
 }
@@ -364,7 +364,33 @@ fn every_case_answers_its_rationale() {
         ]
     );
     assert_eq!(
-        by_id["grant-near-expiry"]["expected"]["next_check_ms"],
-        11_000
+        by_id["grant-renewal-is-the-only-timer"]["expected"]["wake"],
+        json!({"kind": "at", "at_ms": 11_000, "reason": "grant_renewal"})
     );
+    assert_eq!(
+        by_id["in-sync"]["expected"]["wake"],
+        json!({"kind": "event"})
+    );
+    assert_eq!(
+        by_id["offline"]["expected"]["wake"],
+        json!({"kind": "event"})
+    );
+    assert_eq!(
+        by_id["local-change-uses-held-heads"]["expected"]["refresh_remote"],
+        json!({"needed": false, "reason": "held_heads_suffice"})
+    );
+    assert_eq!(
+        by_id["remote-push-reads-the-record"]["expected"]["refresh_remote"],
+        json!({"needed": true, "reason": "record_changed"})
+    );
+    assert_eq!(
+        by_id["never-read-reads-once"]["expected"]["refresh_remote"],
+        json!({"needed": true, "reason": "never_read"})
+    );
+    for case in frozen["cases"].as_array().unwrap() {
+        assert!(
+            case["expected"].get("next_check_ms").is_none(),
+            "no poll cadence anywhere"
+        );
+    }
 }

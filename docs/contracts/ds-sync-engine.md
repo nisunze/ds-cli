@@ -23,6 +23,8 @@ plan again.
 | `project`, `install_id` | The project being synced and the install doing it. Never an account. |
 | `now_ms` | The host's monotonic high-water mark of server-observed time (edge contract §3). |
 | `online` | Connectivity as the host sees it. |
+| `trigger` | Why the host asks now: `startup`, `navigation`, `local_change`, `publish_completed`, `download_completed`, `reconnect`, `remote_push`, `manual`, `grant_opened`. A plan is never asked for because time passed. |
+| `remote_read_at_ms` | When the held `remote` heads were last read from the record; absent when never. |
 | `grant` | The work grant in hand (`work/open`), parsed not verified: `grant_id`, `install_id`, `project`, `engines[{name, release}]`, `expires_at_ms`. |
 | `local[]` | What this machine holds: identity (`engine`, `operation`, `variant`), `sha256`, `size_bytes`, `produced_at_ms`, `base_revision` (the remote head revision the result was computed against, if any), `readable`, `engine_release`. |
 | `remote[]` | What the shared record holds: identity, `revision`, `sha256`, `published_at_ms`. |
@@ -37,11 +39,15 @@ plan again.
 | `nothing{identity, reason}` | Digests equal (`in_sync`). |
 | `refused{identity?, reason}` | A row that takes no part: `identity_malformed`, `duplicate_identity`, `local_unreadable` with no remote copy. One bad row never poisons the queue. |
 
-`next_check_ms` is absolute server time: `POLL_ACTIVE_MS` (30 s) while work is
-pending, `POLL_IDLE_MS` (5 min) when in sync, `POLL_OFFLINE_MS` (5 min) when
-offline, and never later than `GRANT_RENEW_LEAD_MS` (10 min) before the grant
-expires. A host event — local change, a push from the messaging stream,
-reconnect — is always an earlier wake; the poll is the bound, not the design.
+**No polling.** Owner, 2026-09-11: "we cannot afford passive aggressive polling
+when not needed — this should be triggered by dependencies and navigations, not
+background hammering of Firestore." So the plan answers two more questions
+per trigger and never runs on a clock:
+
+| Output | Meaning |
+|---|---|
+| `refresh_remote{needed, reason}` | Whether the remote heads must be re-read for THIS trigger: `never_read` (no heads held yet), `trigger_reads_record` (startup, navigation, reconnect, manual), `record_changed` (a push from the messaging stream); never for a local change (`held_heads_suffice`), a completed publish (`receipt_carries_the_head`), a completed download or a freshly opened grant (`nothing_remote_changed`). |
+| `wake` | `{kind: "event"}` — wait for the next trigger — or `{kind: "at", at_ms, reason: "grant_renewal"}`, the ONE timed wake: renew a valid grant `GRANT_RENEW_LEAD_MS` (10 min) before it expires while an upload is pending. The transport's own retry (`response_policy`) is the only other timer, and it is not this plan's. |
 
 ## 2. What hosts do
 
