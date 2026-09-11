@@ -1315,6 +1315,13 @@ mod wasm_tests {
     }
 }
 
+pub mod layer_document;
+#[cfg(feature = "wasm")]
+#[wasm_bindgen::prelude::wasm_bindgen(js_name = layerDocument)]
+pub fn layer_document_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
+    layer_document::evaluate(input).map_err(|error| wasm_bindgen::JsValue::from_str(&error))
+}
+
 pub mod layer_state;
 #[cfg(feature = "wasm")]
 #[wasm_bindgen::prelude::wasm_bindgen(js_name = layerState)]
