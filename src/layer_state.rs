@@ -265,7 +265,6 @@ pub enum Reason {
     AuthoredHidden,
     #[serde(rename = "needs_3d_shapes")]
     Needs3dShapes,
-    SourceMissing,
 }
 
 // ── facts derived once per request ──────────────────────────────────────
@@ -669,13 +668,12 @@ impl<'a> Context<'a> {
         for fact in &self.facts.rows {
             let remembered = self.remembered.remembered(fact);
             let desired = remembered.unwrap_or(fact.authored_visible);
-            let mut reasons = runtime_reasons(fact, desired, self.mode);
+            let reasons = runtime_reasons(fact, desired, self.mode);
             let hidden_label =
                 fact.role == Role::Label && !fact.authored_visible && remembered.is_none();
+            // A layer whose source is absent is neither mounted nor recorded; its
+            // `source_state` says why, and `runtime` stays the visibility decision.
             let source_missing = fact.source_state == SourceState::Missing;
-            if source_missing {
-                reasons.push(Reason::SourceMissing);
-            }
             let mount = !hidden_label && !source_missing;
             let record = mount && (!fact.companion || remembered.is_some());
             if record {
@@ -1422,10 +1420,12 @@ mod tests {
         assert_eq!(by("roads__d3")["record"], false);
         // a layer whose source is missing is skipped and says why
         assert_eq!(by("lost")["mount"], false);
-        assert!(by("lost")["reasons"]
-            .as_array()
-            .unwrap()
-            .contains(&json!("source_missing")));
+        assert_eq!(by("lost")["source_state"], "missing");
+        assert_eq!(
+            by("lost")["runtime"],
+            "visible",
+            "runtime is the visibility decision; the source fact has its own field"
+        );
         // primaries are always recorded, companions never without memory
         assert_eq!(
             out["preferences"],
