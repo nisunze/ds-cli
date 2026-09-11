@@ -1,8 +1,10 @@
 # The kernel / engine boundary — Android and iOS are the litmus test
 
-**Status:** owner ruling, 2026-09-10. The boundary is **currently violated**;
-§3 measures it exactly. This document states the rule, the measurement, and what
-severing it requires.
+**Status:** owner ruling, 2026-09-10. **RESOLVED 2026-09-11** by the
+ds-command-kernel commit that introduced `vendor/ds-geo-lite/` (lane
+`fable/sever-network-edge-v2`). §3 is kept as the measurement of the violation,
+now historical; §3.1 records what it measures after. `ds-portable-geometry.md`
+is the implementation contract.
 
 ## 1. The rule
 
@@ -75,7 +77,7 @@ build graph for anyone who does not know to disable it, two build
 configurations to test, and a default that will drift back on. The boundary is a
 **dependency edge that does not exist**, not one that is usually off.
 
-## 3. The violation, measured (2026-09-10)
+## 3. The violation, measured (2026-09-10) — historical
 
 `ds-command-kernel/Cargo.toml` lines 31–33:
 
@@ -107,11 +109,37 @@ Transitively this pulls `geo 0.33.1`, `geo-types`, `geographiclib-rs`, `regex`
 and `rstar` into every kernel build, including the browser WASM package.
 
 **Today's kernel WASM artefact: 7.9 MB.** That is the number an Android or iOS
-field build would carry.
+field build would carry. (Measured again in the severance lane with one command
+before and after: see §3.1 — the figure is dominated by the kernel itself, not
+by the engine crates.)
 
 One thing that is **not** a problem, recorded so nobody spends effort on it:
 `polars` is *not* in the graph. `ds-geo` declares `default = []` and puts polars
 behind `enable_dataframes`, which the kernel does not enable.
+
+### 3.1 Measured after (2026-09-11)
+
+Those three lines are gone. The kernel carries a digest-pinned snapshot of the
+ds-network files the eleven symbols need, compiled as `crates/ds-geo-lite` and
+`crates/ds-canvas-lite`; `ds-network` is unedited and there is no Cargo edge in
+either direction. Full contract and method: `ds-portable-geometry.md`.
+
+| | before | after |
+|---|---|---|
+| `Cargo.lock` packages | 189 | **154** |
+| kernel WASM (`wasm-pack --release`) | 10,282,760 B | 10,403,695 B |
+| same, after `wasm-opt -Oz --strip-debug` | 7,530,016 B | 7,646,634 B |
+| `cargo check --features wasm`, ds-network absent | fails | **succeeds** |
+| `cargo test`, ds-network absent | fails | **succeeds (527)** |
+| `wasm-pack build`, ds-network absent | fails | **succeeds** |
+
+The byte count is the honest surprise and is worth carrying forward: the
+artefact never contained the 22,238 lines, because wasm-ld strips what nothing
+reaches. The 7.9 MB a field device carried was *already* the portable subset.
+What the severance removes is the **build graph** — 35 packages, and the
+requirement that an engine checkout exist at all. `ds-portable-geometry.md` §6
+has the section-level breakdown of the +1.6 % and why it is codegen-unit
+repartitioning rather than new code.
 
 ## 4. What severing requires
 

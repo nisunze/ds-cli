@@ -1,9 +1,9 @@
 //! Closed headless camera intents. Spatial algorithms and numeric adapters
 //! belong to ds-network; the command kernel validates and dispatches intent.
-use ds_canvas::packed::camera_buffer;
+use ds_canvas_lite::packed::camera_buffer;
 #[cfg(test)]
-use ds_canvas::packed::selection_buffer;
-use ds_canvas::{Bounds, HostSurface, Point, Viewport};
+use ds_canvas_lite::packed::selection_buffer;
+use ds_canvas_lite::{Bounds, HostSurface, Point, Viewport};
 use serde::Deserialize;
 use serde_json::{json, Value};
 pub const MAX_COMMAND_BYTES: usize = 1_048_576;

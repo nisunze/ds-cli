@@ -506,8 +506,8 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
             }
             let l = read(&scope, &left.manifest.id, &left)?;
             let r = read(&scope, &right.manifest.id, &right)?;
-            let comparison = ds_geo::comparison::compare_geojson_layers(
-                ds_geo::comparison::GeoJsonLayerComparisonInput {
+            let comparison = ds_geo_lite::comparison::compare_geojson_layers(
+                ds_geo_lite::comparison::GeoJsonLayerComparisonInput {
                     local_layers: layers(&l)?,
                     cloud_layers: layers(&r)?,
                     layer_names: vec![],
@@ -524,8 +524,8 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
                     }]}),
                 )])
             };
-            let metadata_comparison = ds_geo::comparison::compare_geojson_layers(
-                ds_geo::comparison::GeoJsonLayerComparisonInput {
+            let metadata_comparison = ds_geo_lite::comparison::compare_geojson_layers(
+                ds_geo_lite::comparison::GeoJsonLayerComparisonInput {
                     local_layers: metadata_layer(&l),
                     cloud_layers: metadata_layer(&r),
                     layer_names: vec![],
@@ -575,7 +575,7 @@ fn consistency(left: &Evidence, right: &Evidence, tolerance_m: f64) -> Value {
     };
     match (left.location, right.location) {
         (Some(a), Some(b)) if geographic && valid(a) && valid(b) => {
-            let distance = ds_geo_ops::haversine_m(a[0], a[1], b[0], b[1]);
+            let distance = ds_geo_lite::haversine_m(a[0], a[1], b[0], b[1]);
             add(
                 "relocation",
                 if distance > tolerance_m {
