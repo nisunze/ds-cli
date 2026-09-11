@@ -72,6 +72,7 @@ pub mod grouping;
 pub mod known_columns;
 pub mod lv;
 pub mod materials;
+pub mod preview;
 pub mod process_settings;
 pub mod project;
 pub mod selection;
@@ -164,6 +165,12 @@ pub static DOMAIN: Domain = Domain {
         &process_settings::COMMAND,
         &collisions::COMMAND,
         &transformer::status::COMMAND,
+        &preview::BULK_PLAN,
+        &preview::DOWNLOAD_PLAN,
+        &preview::VERSION_STATUS,
+        &preview::CONFLICT_LIST,
+        &preview::CONFLICT_CHECK,
+        &preview::PRESENCE_STATUS,
         &transformer::dashboard::COMMAND,
         &transformer::download::COMMAND,
         &transformer::inventory::COMMAND,

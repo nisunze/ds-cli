@@ -1707,6 +1707,36 @@ static DESIGN_ENTRIES: &[Entry] = &[
         render: ds_cli_design::collisions::render,
     },
     Entry {
+        command: &ds_cli_design::preview::BULK_PLAN,
+        handler: ds_cli_design::preview::run_bulk_plan,
+        render: ds_cli_design::preview::render_bulk_plan,
+    },
+    Entry {
+        command: &ds_cli_design::preview::DOWNLOAD_PLAN,
+        handler: ds_cli_design::preview::run_download_plan,
+        render: ds_cli_design::preview::render_download_plan,
+    },
+    Entry {
+        command: &ds_cli_design::preview::VERSION_STATUS,
+        handler: ds_cli_design::preview::run_version_status,
+        render: ds_cli_design::preview::render_version_status,
+    },
+    Entry {
+        command: &ds_cli_design::preview::CONFLICT_LIST,
+        handler: ds_cli_design::preview::run_conflict_list,
+        render: ds_cli_design::preview::render_conflict_list,
+    },
+    Entry {
+        command: &ds_cli_design::preview::CONFLICT_CHECK,
+        handler: ds_cli_design::preview::run_conflict_check,
+        render: ds_cli_design::preview::render_conflict_check,
+    },
+    Entry {
+        command: &ds_cli_design::preview::PRESENCE_STATUS,
+        handler: ds_cli_design::preview::run_presence_status,
+        render: ds_cli_design::preview::render_presence_status,
+    },
+    Entry {
         command: &ds_cli_design::transformer::dashboard::COMMAND,
         handler: ds_cli_design::transformer::dashboard::run,
         render: ds_cli_design::transformer::dashboard::render,
