@@ -4,7 +4,7 @@
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{Arg, Authority, Chapter, Command, Effect, Example, Execution};
 use ds_cli_contract::{Context, Inputs};
-use serde_json::{Value, json};
+use serde_json::Value;
 
 use super::native::LANE_ARG;
 
@@ -55,117 +55,22 @@ pub static COMMAND: Command = Command {
 };
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
-    let limit = crate::integer(inputs.require("limit")?, "limit", 1, 500)?;
-    let zoom = inputs
-        .value("zoom")
-        .map(|raw| crate::integer(raw, "zoom", 0, 24))
-        .transpose()?;
-    let lane = inputs.require("lane")?;
-    let headless = ds_cli_auth::layer_config(lane, inputs.switch("refresh"))?;
-    let preferences = super::read_preferences(lane, headless.project_id())?;
-    let mut request = json!({
-        "schema": ds_command_kernel::layer_state::SCHEMA,
-        "project": headless.project_id(),
-        "document": headless.result().document(),
-        "preferences": preferences,
-        "op": {"kind": "catalog", "limit": limit},
-    });
-    if let Some(zoom) = zoom {
-        request["zoom"] = json!(zoom);
-    }
-    let mut result = super::ask_layer_state(&request)?;
-    result["project"] = json!(headless.project_id());
-    result["lane"] = json!(headless.lane());
-    result["refreshed"] = json!(inputs.switch("refresh"));
-    result["visibility_source"] = json!("native_local");
-    Ok(result)
-}
-
-/// One word for a folded visibility: `visible`, `partial` or `hidden`.
-pub fn visibility_word(visibility: &Value) -> &'static str {
-    match (
-        visibility["all_visible"].as_bool().unwrap_or(false),
-        visibility["any_visible"].as_bool().unwrap_or(false),
-    ) {
-        (true, _) => "visible",
-        (false, true) => "partial",
-        (false, false) => "hidden",
-    }
+    let request = ds_layer_ops::ListRequest {
+        refresh: inputs.switch("refresh"),
+        limit: Some(crate::integer(inputs.require("limit")?, "limit", 1, 500)?),
+        zoom: inputs
+            .value("zoom")
+            .map(|raw| crate::integer(raw, "zoom", 0, 24))
+            .transpose()?,
+    };
+    let mut documents = ds_layer_ops::Native::new(inputs.require("lane")?);
+    ds_layer_ops::list(
+        &mut documents,
+        &ds_layer_ops::Preferences::native()?,
+        &request,
+    )
 }
 
 pub fn render(data: &Value) -> String {
-    let mut out = format!(
-        "project {} · {} canonical layers\n",
-        data["project"].as_str().unwrap_or("?"),
-        data["layer_count"]
-    );
-    for layer in data["layers"].as_array().into_iter().flatten() {
-        out.push_str(&format!(
-            "{:<38} {:>6}  {:<12} {:<8} {}\n",
-            layer["id"].as_str().unwrap_or("?"),
-            layer["order"],
-            layer["geometry"].as_str().unwrap_or("?"),
-            visibility_word(&layer["visibility"]),
-            layer["label"].as_str().unwrap_or("?")
-        ));
-    }
-    let runtime = data["runtime_layers"]
-        .as_array()
-        .cloned()
-        .unwrap_or_default();
-    if !runtime.is_empty() {
-        out.push_str(&format!(
-            "{} loaded runtime roots (read-only)\n",
-            runtime.len()
-        ));
-    }
-    for root in runtime {
-        out.push_str(&format!(
-            "  {:<20} {:<15} {:>6} mapped · {:>6} table-only · {}\n",
-            root["logicalRoot"].as_str().unwrap_or("?"),
-            root["authority"].as_str().unwrap_or("?"),
-            root["featureCount"].as_u64().unwrap_or(0),
-            root["nonGeometricCount"].as_u64().unwrap_or(0),
-            root["freshness"].as_str().unwrap_or("?")
-        ));
-        for child in root["children"].as_array().into_iter().flatten() {
-            out.push_str(&format!(
-                "    {:<12} {:>6}  {:<8} {}\n",
-                child["geometry"].as_str().unwrap_or("?"),
-                child["featureCount"].as_u64().unwrap_or(0),
-                child["styleState"].as_str().unwrap_or("?"),
-                child["styleRef"].as_str().unwrap_or("—")
-            ));
-        }
-    }
-    out
-}
-
-#[cfg(test)]
-mod tests {
-    use super::render;
-    use serde_json::json;
-
-    #[test]
-    fn renders_runtime_roots_separately_from_reorderable_layers() {
-        let text = render(&json!({
-            "project": "p1",
-            "layer_count": 1,
-            "layers": [{ "id": "canonical", "order": 10, "geometry": "Point", "label": "Customers", "visibility": { "count": 2, "any_visible": true, "all_visible": false, "next": false } }],
-            "runtime_layers": [{
-                "logicalRoot": "personal_notes",
-                "authority": "account_private",
-                "featureCount": 2,
-                "nonGeometricCount": 3,
-                "freshness": "fresh",
-                "children": [{ "geometry": "Point", "featureCount": 2, "styleState": "ready", "styleRef": "ud/personal_notes_point" }]
-            }]
-        }));
-        assert!(text.contains("1 canonical layers"));
-        assert!(text.contains("partial"));
-        assert!(text.contains("1 loaded runtime roots (read-only)"));
-        assert!(text.contains("personal_notes"));
-        assert!(text.contains("ud/personal_notes_point"));
-        assert!(text.contains("ready"));
-    }
+    ds_layer_ops::render_list(data)
 }

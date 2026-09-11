@@ -678,6 +678,12 @@ fn every_constructible_refusal_code_is_documented() {
         // caller declares them in its own REFUSALS — which is what a reader of
         // one command's help actually needs.
         ("ds-cli-desktop", None),
+        // The layer drawer's shared application owner: `ds map layer …` and
+        // `ds server layers …` both call it, and each declares its refusals
+        // in its own command lists (`ds-cli-map::layer::native`,
+        // `ds-cli-server::LAYER_REFUSALS`), which is what a reader of one
+        // command's help needs.
+        ("ds-layer-ops", None),
     ];
 
     // A domain crate missing from the list above is silently unchecked, which

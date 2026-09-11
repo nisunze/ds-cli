@@ -23,6 +23,10 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("server.activity", "read_only", "headless_user"),
     ("server.cancel", "local_file_write", "headless_user"),
     ("server.result", "local_file_write", "headless_user"),
+    ("server.layers.list", "read_only", "headless_user"),
+    ("server.layers.show", "local_file_write", "headless_user"),
+    ("server.layers.hide", "local_file_write", "headless_user"),
+    ("server.layers.reorder", "global_write", "headless_user"),
     (
         "report.project.export",
         "local_file_write",

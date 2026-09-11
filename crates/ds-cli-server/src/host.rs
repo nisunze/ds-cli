@@ -35,6 +35,8 @@ pub struct App {
     pub auth: Arc<dyn Authorizer>,
     pub requests: Arc<tokio::sync::Semaphore>,
     pub activity: Option<Arc<crate::solar_sync::SolarActivity>>,
+    /// The layer drawer's document source and preference root for this host.
+    pub layers: Arc<dyn crate::layers::LayerHost>,
 }
 
 type ApiError = (StatusCode, Json<Value>);
@@ -71,6 +73,9 @@ pub fn router(app: App) -> Router {
         .route("/v1/jobs/:id/cancel", post(cancel))
         .route("/v1/jobs/:id/result", get(result))
         .route("/v1/activity", get(activity))
+        .route("/v1/layers", get(crate::layers::list))
+        .route("/v1/layers/visibility", post(crate::layers::visibility))
+        .route("/v1/layers/order", post(crate::layers::order))
         .route("/v1/transformer-processing/:key", post(submit))
         .route("/v1/solar-processing/:key", post(submit_solar))
         .layer(DefaultBodyLimit::max(64 * 1024 * 1024))
@@ -451,6 +456,7 @@ mod tests {
             auth: Arc::new(Auth(authorized)),
             requests: Arc::new(tokio::sync::Semaphore::new(2)),
             activity: None,
+            layers: crate::layers::NativeLayerHost::new("stable"),
         }
     }
     #[tokio::test]
