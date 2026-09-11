@@ -1,15 +1,15 @@
 //! Portable native compute host shared by headless Server and Desktop.
 //! Domain lifecycle/admission belongs to the kernel; domain engines run only
 //! after their complete, durable input has been admitted.
+use base64::Engine;
 use ds_command_kernel::compute_jobs::{self, EngineKind, Event, Job, Phase};
 use ds_network::network::native_fast_lv::{
     decode_native_fast_lv_request, encode_native_fast_lv_result, process_native_fast_lv,
 };
 use ds_solar_contracts::{PreparedSolarCityInput, SolarCalculationResult};
-use ds_solar_io::output::{OutputFile, encode_outputs};
+use ds_solar_io::output::{encode_outputs, OutputFile};
 use ds_solar_runtime::{CalculationOptions, CalculationTimings, CancelToken, SolarRuntime};
 use ds_sync_store::Store;
-use base64::Engine;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{
@@ -47,7 +47,15 @@ pub fn submit(
 ) -> Result<Job, String> {
     decode_native_fast_lv_request(input)
         .map_err(|error| format!("fast_lv_request_invalid: {error}"))?;
-    submit_validated(path, owner, lane, key, input, EngineKind::FastLv, "ds.fast-lv.request/v1")
+    submit_validated(
+        path,
+        owner,
+        lane,
+        key,
+        input,
+        EngineKind::FastLv,
+        "ds.fast-lv.request/v1",
+    )
 }
 
 /// Admit the existing hosted Solar calculation request as a durable native
@@ -66,14 +74,16 @@ pub fn submit_solar(
     }
     let request: PreparedSolarRequest = serde_json::from_slice(input)
         .map_err(|error| format!("solar_prepared_request_invalid: {error}"))?;
-    request
-        .prepared
-        .validate()
-        .map_err(|error| format!("solar_prepared_request_invalid: {error}"))?;
-    if request.run_id.as_deref().is_some_and(|run_id| !valid_run_id(run_id)) {
-        return Err("solar_prepared_request_invalid: run_id must be 1..128 letters, digits, _ or -".into());
-    }
-    submit_validated(path, owner, lane, key, input, EngineKind::SolarPrepared, "ds.solar.calculate.prepared/v1")
+    validate_solar_request(&request)?;
+    submit_validated(
+        path,
+        owner,
+        lane,
+        key,
+        input,
+        EngineKind::SolarPrepared,
+        "ds.solar.calculate.prepared/v1",
+    )
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -88,15 +98,31 @@ pub struct SolarSnapshotProvenance {
 }
 
 pub fn submit_solar_with_provenance(
-    path: &Path, owner: &str, lane: &str, key: &str, input: &[u8], provenance: SolarSnapshotProvenance,
+    path: &Path,
+    owner: &str,
+    lane: &str,
+    key: &str,
+    input: &[u8],
+    provenance: SolarSnapshotProvenance,
 ) -> Result<Job, String> {
-    if input.len() > 64 * 1024 * 1024 { return Err("solar_prepared_request_too_large".into()); }
-    let mut request: PreparedSolarRequest = serde_json::from_slice(input).map_err(|error| format!("solar_prepared_request_invalid: {error}"))?;
+    if input.len() > 64 * 1024 * 1024 {
+        return Err("solar_prepared_request_too_large".into());
+    }
+    let mut request: PreparedSolarRequest = serde_json::from_slice(input)
+        .map_err(|error| format!("solar_prepared_request_invalid: {error}"))?;
     validate_solar_request(&request)?;
     validate_provenance(&provenance, &request.prepared)?;
     request.provenance = Some(provenance);
     let sealed = serde_json::to_vec(&request).map_err(|error| error.to_string())?;
-    submit_validated(path, owner, lane, key, &sealed, EngineKind::SolarPrepared, "ds.solar.calculate.prepared/v1")
+    submit_validated(
+        path,
+        owner,
+        lane,
+        key,
+        &sealed,
+        EngineKind::SolarPrepared,
+        "ds.solar.calculate.prepared/v1",
+    )
 }
 
 fn submit_validated(
@@ -142,7 +168,9 @@ fn submit_validated(
 fn valid_run_id(value: &str) -> bool {
     !value.is_empty()
         && value.len() <= 128
-        && value.bytes().all(|byte| byte.is_ascii_alphanumeric() || b"_-".contains(&byte))
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || b"_-".contains(&byte))
 }
 
 /// The established Cloud Run calculation request shape. It is deliberately
@@ -160,16 +188,51 @@ struct PreparedSolarRequest {
 }
 
 fn validate_solar_request(request: &PreparedSolarRequest) -> Result<(), String> {
-    request.prepared.validate().map_err(|error| format!("solar_prepared_request_invalid: {error}"))?;
-    if request.run_id.as_deref().is_some_and(|run_id| !valid_run_id(run_id)) { return Err("solar_prepared_request_invalid: run_id must be 1..128 letters, digits, _ or -".into()); }
-    if let Some(provenance) = &request.provenance { validate_provenance(provenance, &request.prepared)?; }
+    request
+        .prepared
+        .validate()
+        .map_err(|error| format!("solar_prepared_request_invalid: {error}"))?;
+    if request
+        .run_id
+        .as_deref()
+        .is_some_and(|run_id| !valid_run_id(run_id))
+    {
+        return Err(
+            "solar_prepared_request_invalid: run_id must be 1..128 letters, digits, _ or -".into(),
+        );
+    }
+    if let Some(provenance) = &request.provenance {
+        validate_provenance(provenance, &request.prepared)?;
+    }
     Ok(())
 }
-fn validate_provenance(provenance: &SolarSnapshotProvenance, prepared: &PreparedSolarCityInput) -> Result<(), String> {
-    let digest = |value: &str| value.len() == 64 && value.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b));
+fn validate_provenance(
+    provenance: &SolarSnapshotProvenance,
+    prepared: &PreparedSolarCityInput,
+) -> Result<(), String> {
+    let digest = |value: &str| {
+        value.len() == 64
+            && value
+                .bytes()
+                .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+    };
     let receipt = provenance.snapshot_receipt_id.as_bytes();
-    let uuid = receipt.len() == 36 && [8, 13, 18, 23].into_iter().all(|i| receipt[i] == b'-') && matches!(receipt[14], b'1'..=b'5') && matches!(receipt[19], b'8' | b'9' | b'a' | b'b');
-    if provenance.project_id != prepared.city.identity.project_id || provenance.root != prepared.city.identity.root || provenance.template_id != prepared.city.identity.city_id || !digest(&provenance.input_base_fingerprint) || !digest(&provenance.source_snapshot_sha256) || !uuid { return Err("solar_snapshot_provenance_invalid_or_stale".into()); }
+    let uuid = receipt.len() == 36
+        && [8, 13, 18, 23].into_iter().all(|i| receipt[i] == b'-')
+        && matches!(receipt[14], b'1'..=b'5')
+        && matches!(receipt[19], b'8' | b'9' | b'a' | b'b')
+        && receipt.iter().enumerate().all(|(i, b)| {
+            [8, 13, 18, 23].contains(&i) || b.is_ascii_digit() || (b'a'..=b'f').contains(b)
+        });
+    if provenance.project_id != prepared.city.identity.project_id
+        || provenance.root != prepared.city.identity.root
+        || provenance.template_id != prepared.city.identity.city_id
+        || !digest(&provenance.input_base_fingerprint)
+        || !digest(&provenance.source_snapshot_sha256)
+        || !uuid
+    {
+        return Err("solar_snapshot_provenance_invalid_or_stale".into());
+    }
     Ok(())
 }
 
@@ -236,12 +299,16 @@ pub struct SolarOutputMetadata {
 /// Read the sealed project scope before completion so a host can project the
 /// same durable queued/running/cancelled lifecycle into Sync Center.
 pub fn solar_job_scope(job: &Job, input: &[u8]) -> Result<SolarJobScope, String> {
-    if job.engine != EngineKind::SolarPrepared || job.input_tag != "ds.solar.calculate.prepared/v1" {
+    if job.engine != EngineKind::SolarPrepared || job.input_tag != "ds.solar.calculate.prepared/v1"
+    {
         return Err("job is not a prepared Solar computation".into());
+    }
+    if digest(input) != job.input_sha256 {
+        return Err("durable Solar input digest mismatch".into());
     }
     let request: PreparedSolarRequest = serde_json::from_slice(input)
         .map_err(|error| format!("durable Solar request scope is invalid: {error}"))?;
-    request.prepared.validate().map_err(|error| error.to_string())?;
+    validate_solar_request(&request)?;
     Ok(SolarJobScope {
         project_id: request.prepared.city.identity.project_id,
         city_id: request.prepared.city.identity.city_id,
@@ -251,32 +318,44 @@ pub fn solar_job_scope(job: &Job, input: &[u8]) -> Result<SolarJobScope, String>
 /// Decode publication facts without ever consulting a caller path, browser
 /// cache or temporary file.  The payload is re-verified against every output
 /// declaration before a host may offer it to a Sync Center transfer.
-pub fn solar_publication(job: &Job, input: &[u8], result: &[u8]) -> Result<SolarPublication, String> {
+pub fn solar_publication(
+    job: &Job,
+    input: &[u8],
+    result: &[u8],
+) -> Result<SolarPublication, String> {
     let scope = solar_job_scope(job, input)?;
-    if job.phase != Phase::Completed || digest(result) != job.result_sha256.as_deref().unwrap_or_default() {
+    if job.phase != Phase::Completed
+        || digest(result) != job.result_sha256.as_deref().unwrap_or_default()
+    {
         return Err("Solar publication result is not a completed durable result".into());
     }
     let request: PreparedSolarRequest = serde_json::from_slice(input)
         .map_err(|error| format!("durable Solar request cannot be published: {error}"))?;
-    request.prepared.validate().map_err(|error| error.to_string())?;
+    validate_solar_request(&request)?;
     let response: PreparedSolarResponse = serde_json::from_slice(result)
         .map_err(|error| format!("durable Solar response cannot be published: {error}"))?;
-    let outputs = response.outputs.into_iter().map(|output| {
-        let bytes = base64::engine::general_purpose::STANDARD
-            .decode(&output.body_base64)
-            .map_err(|_| "durable Solar output is not valid base64".to_string())?;
-        let declared = output.entry;
-        if declared.byte_count != bytes.len() as u64 || declared.content_digest != format!("sha256:{}", digest(&bytes)) {
-            return Err("durable Solar output does not match its sealed declaration".into());
-        }
-        Ok(SolarOutput {
-            output_id: declared.name,
-            content_type: declared.media_type,
-            sha256: digest(&bytes),
-            size_bytes: bytes.len() as u64,
-            bytes,
+    let outputs = response
+        .outputs
+        .into_iter()
+        .map(|output| {
+            let bytes = base64::engine::general_purpose::STANDARD
+                .decode(&output.body_base64)
+                .map_err(|_| "durable Solar output is not valid base64".to_string())?;
+            let declared = output.entry;
+            if declared.byte_count != bytes.len() as u64
+                || declared.content_digest != format!("sha256:{}", digest(&bytes))
+            {
+                return Err("durable Solar output does not match its sealed declaration".into());
+            }
+            Ok(SolarOutput {
+                output_id: declared.name,
+                content_type: declared.media_type,
+                sha256: digest(&bytes),
+                size_bytes: bytes.len() as u64,
+                bytes,
+            })
         })
-    }).collect::<Result<Vec<_>, String>>()?;
+        .collect::<Result<Vec<_>, String>>()?;
     if outputs.is_empty() {
         return Err("completed Solar result has no publishable outputs".into());
     }
@@ -304,6 +383,7 @@ pub fn solar_publication_metadata(
     let scope = solar_job_scope(job, input)?;
     let request: PreparedSolarRequest = serde_json::from_slice(input)
         .map_err(|error| format!("durable Solar request cannot be published: {error}"))?;
+    validate_solar_request(&request)?;
     if job.phase != Phase::Completed
         || digest(result) != job.result_sha256.as_deref().unwrap_or_default()
     {
@@ -416,24 +496,23 @@ impl Workers {
             let pool = pool.clone();
             let worker = format!("{}-{}-{index}", std::process::id(), now_ms());
             threads.push(thread::spawn(move || {
-                let mut idle_ticks = 0_u32;
                 while !stop.load(Ordering::Acquire) {
                     if auth.authorize(&owner).is_err() {
                         thread::sleep(Duration::from_millis(500));
                         continue;
                     }
-                    match pool.install(|| run_one(&path, &owner, &lane, &worker, auth.clone(), observer.as_deref())) {
-                        Ok(true) => idle_ticks = 0,
+                    match pool.install(|| {
+                        run_one(
+                            &path,
+                            &owner,
+                            &lane,
+                            &worker,
+                            auth.clone(),
+                            observer.as_deref(),
+                        )
+                    }) {
+                        Ok(true) => {}
                         Ok(false) => {
-                            idle_ticks = idle_ticks.saturating_add(1);
-                            if index == 0 && idle_ticks >= 25 {
-                                idle_ticks = 0;
-                                if let Some(observer) = observer.as_deref() {
-                                    if let Err(error) = observer.recover() {
-                                        eprintln!("compute activity retry: {error}");
-                                    }
-                                }
-                            }
                             thread::sleep(Duration::from_millis(200));
                         }
                         Err(error) => {
@@ -609,15 +688,13 @@ fn execute(input: &[u8], job: &Job, cancel: Option<&CancelToken>) -> Result<Vec<
         let result = process_native_fast_lv(request).map_err(|e| e.to_string())?;
         return encode_native_fast_lv_result(&result).map_err(|e| e.to_string());
     }
-    if job.engine != EngineKind::SolarPrepared || job.input_tag != "ds.solar.calculate.prepared/v1" {
+    if job.engine != EngineKind::SolarPrepared || job.input_tag != "ds.solar.calculate.prepared/v1"
+    {
         return Err("durable compute engine or input tag is unsupported".into());
     }
     let request: PreparedSolarRequest = serde_json::from_slice(input)
         .map_err(|error| format!("durable input is not a supported compute request: {error}"))?;
-    request
-        .prepared
-        .validate()
-        .map_err(|error| format!("prepared Solar input no longer validates: {error}"))?;
+    validate_solar_request(&request)?;
     let run_id = request.run_id.unwrap_or_else(|| job.id.clone());
     let cancel = cancel.cloned().unwrap_or_else(CancelToken::new);
     let runtime = SolarRuntime::new().with_cancel(&cancel);
@@ -627,16 +704,18 @@ fn execute(input: &[u8], job: &Job, cancel: Option<&CancelToken>) -> Result<Vec<
     let outcome = runtime
         .calculate(&request.prepared, &options)
         .map_err(|error| error.to_string())?;
-    let mut files = vec![
-        (
-            outcome.report_input.name(),
-            outcome.report_input.entry.media_type.as_str(),
-            outcome.report_input.bytes.as_slice(),
-        ),
-    ];
+    let mut files = vec![(
+        outcome.report_input.name(),
+        outcome.report_input.entry.media_type.as_str(),
+        outcome.report_input.bytes.as_slice(),
+    )];
     if let Some(artifacts) = &outcome.artifacts {
         for chart in &artifacts.charts {
-            files.push((chart.name.as_str(), chart.media_type, chart.bytes.as_slice()));
+            files.push((
+                chart.name.as_str(),
+                chart.media_type,
+                chart.bytes.as_slice(),
+            ));
         }
     }
     for document in &outcome.documents {
