@@ -235,7 +235,10 @@ pub fn admit_document(project: &str, response: &Value) -> Result<Value, Refusal>
     if layers.len() > MAX_LAYERS {
         return Err(unreadable());
     }
-    let sources: HashSet<&str> = data["sources"]
+    // `Map` indexing panics on an absent key; every optional section is read
+    // through `field`, which answers Null like a `Value` does.
+    let field = |key: &str| data.get(key).unwrap_or(&Value::Null);
+    let sources: HashSet<&str> = field("sources")
         .as_object()
         .expect("checked")
         .keys()
@@ -286,7 +289,7 @@ pub fn admit_document(project: &str, response: &Value) -> Result<Value, Refusal>
             );
         }
     }
-    for group in data["sidebar"]["groups"].as_array().into_iter().flatten() {
+    for group in field("sidebar")["groups"].as_array().into_iter().flatten() {
         let key = group["key"].as_str().unwrap_or_default();
         unknown_references(
             &mut issues,
@@ -299,7 +302,7 @@ pub fn admit_document(project: &str, response: &Value) -> Result<Value, Refusal>
         ("survey_layers", "layer_ids"),
         ("design_layers", "layer_ids"),
     ] {
-        for layer in data[section].as_array().into_iter().flatten() {
+        for layer in field(section).as_array().into_iter().flatten() {
             let key = layer["key"].as_str().unwrap_or_default();
             unknown_references(
                 &mut issues,
@@ -310,7 +313,7 @@ pub fn admit_document(project: &str, response: &Value) -> Result<Value, Refusal>
         }
     }
     for grouping in ["by_layer_type", "by_source"] {
-        for group in data["sidebar_groupings"][grouping]
+        for group in field("sidebar_groupings")[grouping]
             .as_array()
             .into_iter()
             .flatten()
@@ -579,6 +582,12 @@ mod tests {
     fn a_coherent_document_is_admitted_and_returned_unreshaped() {
         let admitted = admit_document("p1", &wrap(document())).unwrap();
         assert_eq!(admitted, document());
+        // every cross-reference section is optional; a minimal document is admitted too
+        let minimal = json!({"project_id": "p1", "sources": {"s": {}}, "styles": {}, "style_editors": [], "layers": [{"id": "a", "type": "circle", "source": "s"}]});
+        assert_eq!(
+            admit_document("p1", &wrap(minimal.clone())).unwrap(),
+            minimal
+        );
     }
 
     #[test]
