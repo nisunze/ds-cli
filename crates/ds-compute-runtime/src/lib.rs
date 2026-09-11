@@ -25,6 +25,15 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
+/// The Solar engine linked into this native host. Its dependency closure can
+/// differ from a bundled standalone engine, so release admission must inspect
+/// this identity directly rather than borrow the standalone manifest.
+pub fn solar_engine_identity() -> ds_solar_contracts::EngineIdentity {
+    let mut identity = ds_solar_contracts::EngineIdentity::current();
+    identity.schemas = ds_solar_contracts::EngineIdentity::stamped_schema_inventory();
+    identity
+}
+
 pub fn now_ms() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
