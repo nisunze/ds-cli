@@ -5,6 +5,14 @@ edition = "2021"
 publish = false
 description = "Native offline Design persistence and job lifecycle; no renderer or network transport."
 
+# Its own workspace, deliberately — see docs/contracts/ds-portable-geometry.md §4.
+# This is a native host crate (rusqlite, fs2, no WASM) and it legitimately calls
+# ds-network. Cargo resolves every workspace member's manifest before building
+# any of them, so while this sat in ds-command-kernel's `members` the kernel
+# could not build with ds-network absent no matter what the kernel's own
+# dependencies said. Its path is unchanged, so ds-cli is unaffected.
+[workspace]
+
 [dependencies]
 ds-command-kernel = { path = "../.." }
 ds-network = { path = "../../../ds-network/crates/ds-network" }

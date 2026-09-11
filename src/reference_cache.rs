@@ -85,30 +85,30 @@ pub fn validate_page(
 }
 /// Feature envelope used while building a native spatial index.
 pub fn feature_bounds(feature: &Value) -> Option<[f64; 4]> {
-    ds_geo::viewport::geojson_bounds(feature)
+    ds_geo_lite::viewport::geojson_bounds(feature)
 }
 
 pub fn validate_area(area: &Value) -> Result<(), String> {
-    ds_geo::spatial_predicate::validate_area(area)
+    ds_geo_lite::spatial_predicate::validate_area(area)
 }
 
 pub fn area_bounds(area: &Value) -> Result<[f64; 4], String> {
-    ds_geo::spatial_predicate::area_bounds(area)
+    ds_geo_lite::spatial_predicate::area_bounds(area)
 }
 
 pub fn covers_area(coverage: &Value, area: &Value) -> Result<bool, String> {
-    ds_geo::spatial_predicate::covers_area(coverage, area)
+    ds_geo_lite::spatial_predicate::covers_area(coverage, area)
 }
 
 pub fn intersects_area(feature: &Value, area: &Value) -> Result<bool, String> {
-    ds_geo::spatial_predicate::intersects_area(feature, area)
+    ds_geo_lite::spatial_predicate::intersects_area(feature, area)
 }
 
 /// The one area predicate, applied under an explicitly named rule.
 ///
 /// Re-exported here so every consumer of this contract reaches the same
 /// implementation the geometry crate proves, rather than writing a second one.
-pub use ds_geo::spatial_predicate::{selects_area, AreaSelection};
+pub use ds_geo_lite::spatial_predicate::{selects_area, AreaSelection};
 
 #[cfg(test)]
 mod tests {

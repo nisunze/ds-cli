@@ -1,6 +1,6 @@
 //! Exact local custom-print area preparation. Hosts fetch the named boundaries;
 //! the kernel checks identity, connected coverage and reproducible composition.
-use ds_geo::spatial_predicate::{area_bounds, intersects_area, validate_area};
+use ds_geo_lite::spatial_predicate::{area_bounds, intersects_area, validate_area};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};

@@ -61,7 +61,7 @@ fn union_bounds(a: [f64; 4], b: [f64; 4]) -> [f64; 4] {
 /// thing this module does.
 fn layer_bounds(layer: &Value) -> Option<[f64; 4]> {
     if layer.get("type").is_some() {
-        return ds_geo::viewport::geojson_bounds(layer);
+        return ds_geo_lite::viewport::geojson_bounds(layer);
     }
     layer
         .get("features")?
@@ -80,8 +80,8 @@ fn layer_bounds(layer: &Value) -> Option<[f64; 4]> {
 /// transformer rather than as an error.
 fn member_bounds(feature: &Value) -> Option<[f64; 4]> {
     match feature.get("geometry") {
-        Some(geometry) => ds_geo::viewport::geojson_bounds(geometry),
-        None => ds_geo::viewport::geojson_bounds(feature),
+        Some(geometry) => ds_geo_lite::viewport::geojson_bounds(geometry),
+        None => ds_geo_lite::viewport::geojson_bounds(feature),
     }
 }
 

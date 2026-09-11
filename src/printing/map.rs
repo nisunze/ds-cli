@@ -1,7 +1,7 @@
 //! Local map composition plans. Hosts acquire data; this kernel owns scope,
 //! paper furniture, canonical names and feature membership for every consumer.
 use super::{custom::Boundary, *};
-use ds_geo::spatial_predicate::{area_bounds, intersects_area, validate_area};
+use ds_geo_lite::spatial_predicate::{area_bounds, intersects_area, validate_area};
 use serde_json::{json, Value};
 
 #[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]

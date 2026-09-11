@@ -50,7 +50,7 @@ pub(super) fn length(geometry: &Value) -> Result<f64, String> {
     for pair in coordinates.windows(2) {
         let a = point(&pair[0])?;
         let b = point(&pair[1])?;
-        total += ds_geo_ops::haversine_m(a.0, a.1, b.0, b.1);
+        total += ds_geo_lite::haversine_m(a.0, a.1, b.0, b.1);
     }
     Ok(total)
 }
@@ -114,7 +114,7 @@ pub(super) fn encode(request: &Value) -> Result<Value, String> {
                 let b = point(&geom["coordinates"])?;
                 output.insert(
                     "distance_m".into(),
-                    json!(ds_geo_ops::haversine_m(a.0, a.1, b.0, b.1)),
+                    json!(ds_geo_lite::haversine_m(a.0, a.1, b.0, b.1)),
                 );
             }
         }
