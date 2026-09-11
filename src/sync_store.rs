@@ -20,7 +20,7 @@
 
 use crate::sync::{Identity, Trigger};
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 
 pub const SCHEMA: &str = "ds.sync-store/v1";
@@ -1181,17 +1181,15 @@ mod tests {
         ))
         .unwrap();
         assert_eq!(renew_dead.refusals[0].code, "lease_expired");
-        assert!(
-            apply(&request(
-                Snapshot::default(),
-                Event::LeaseTake {
-                    scope: scope(),
-                    worker_id: "w1".into(),
-                    ttl_ms: LEASE_TTL_MAX_MS + 1
-                }
-            ))
-            .is_err()
-        );
+        assert!(apply(&request(
+            Snapshot::default(),
+            Event::LeaseTake {
+                scope: scope(),
+                worker_id: "w1".into(),
+                ttl_ms: LEASE_TTL_MAX_MS + 1
+            }
+        ))
+        .is_err());
     }
 
     #[test]
@@ -1343,22 +1341,18 @@ mod tests {
         );
         assert_eq!(rows[1].state, ArtifactState::Published);
         assert_eq!(rows[2].state, ArtifactState::Refused);
-        assert!(
-            rows[2]
-                .state_reason
-                .as_deref()
-                .unwrap()
-                .starts_with("handoff_bytes_missing: no committed batch")
-        );
+        assert!(rows[2]
+            .state_reason
+            .as_deref()
+            .unwrap()
+            .starts_with("handoff_bytes_missing: no committed batch"));
         assert!(!rows[2].readable);
         assert_eq!(rows[3].state, ArtifactState::Refused);
-        assert!(
-            rows[3]
-                .state_reason
-                .as_deref()
-                .unwrap()
-                .starts_with("handoff_unmapped")
-        );
+        assert!(rows[3]
+            .state_reason
+            .as_deref()
+            .unwrap()
+            .starts_with("handoff_unmapped"));
         assert_eq!(evidence[0].outcome, "imported");
         assert_eq!(evidence[2].outcome, "bytes_missing");
         assert_eq!(evidence[3].outcome, "unmapped");
