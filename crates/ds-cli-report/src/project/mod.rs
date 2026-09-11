@@ -24,12 +24,12 @@ pub mod scope;
 pub mod settings;
 
 use ds_cli_auth::{
-    HeadlessProjectReport, TransformerInventory, TransformerLifecycle, TransformerSet,
-    PROJECT_REPORT_MAX_TRANSFORMERS,
+    HeadlessProjectReport, PROJECT_REPORT_MAX_TRANSFORMERS, TransformerInventory,
+    TransformerLifecycle, TransformerSet,
 };
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{Arg, Refusal};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 pub const TRANSFORMER_ARG: Arg = Arg::repeated(
     "transformer",
