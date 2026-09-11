@@ -248,6 +248,7 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     // answer is built from, on the same native credential class as the
     // inventory because restoring the native session may rotate it.
     ("design.status", "local_auth_state", "headless_project"),
+    ("design.collisions", "local_auth_state", "headless_project"),
     ("design.dashboard", "local_auth_state", "headless_project"),
     ("design.transformer.download", "local_ui", "project"),
     (

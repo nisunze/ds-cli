@@ -50,23 +50,12 @@ const PREVIEW_OPERATION: &str = "solar.seed.preview";
 const APPLY_OPERATION: &str = "solar.seed.apply";
 
 /// ds-brain refuses more than this many cities in one request
-/// (`solarSeedMaxCities`). `ds` holds the same number so an over-large
-/// selection is refused once, locally, with the code the server would have
-/// used — not sent, planned and refused after a round trip.
-pub const MAX_CITIES: usize = 64;
-
-/// A city id is an identity, not a payload. The same bound every other Solar
-/// context argument carries.
-const MAX_CITY_CHARS: usize = 128;
-
-/// A seed source root is a governed catalog path, not a document path.
-const MAX_SOURCE_CHARS: usize = 512;
-
-/// `seed_digest` is `hex.EncodeToString` over a SHA-256 sum: 64 lowercase hex
-/// characters, with no `sha256:` prefix. Solar's *other* digests are prefixed,
-/// so accepting either here would let a caller confirm an apply with a
-/// membership revision.
-const SEED_DIGEST_CHARS: usize = 64;
+/// (`solarSeedMaxCities`). The bound was held three times — here, in the
+/// application's own seeding door, and in the grant. The grant keeps its copy
+/// because it is the security boundary; the two client copies are now one, in
+/// `ds_command_kernel::solar_seed`, so an over-large selection is refused once,
+/// locally, with the code the server would have used.
+pub use ds_command_kernel::solar_seed::{MAX_CITIES, MAX_CITY_CHARS, MAX_SOURCE_CHARS};
 
 /// The document `kind` marking a city root row, and the only kind ds-brain
 /// names today.
@@ -398,61 +387,72 @@ fn arguments(inputs: &Inputs, seed_digest: Option<&str>) -> Result<Map<String, V
     if let Some(digest) = seed_digest {
         arguments.insert("seed_digest".into(), json!(digest));
     }
-    if let Some(source) = inputs.value("source") {
-        arguments.insert("seed_source_root".into(), json!(validate_source(source)?));
+    let source = inputs.value("source");
+    let cities = inputs.repeated("city");
+    validate_envelope(source, cities)?;
+    if let Some(source) = source {
+        arguments.insert("seed_source_root".into(), json!(source));
     }
-    let cities = validate_cities(inputs.repeated("city"))?;
     if !cities.is_empty() {
         arguments.insert("cities".into(), json!(cities));
     }
     Ok(arguments)
 }
 
-fn validate_source(source: &str) -> Result<&str, Failure> {
-    if source.is_empty() || source.trim() != source || source.chars().count() > MAX_SOURCE_CHARS {
-        return Err(Failure::invalid(
-            "invalid_seed_source",
-            "--source must be one exact governed seed source root",
-        )
-        .remedy("omit --source for the governed catalog, or pass one unpadded root"));
+/// The envelope, bounded by the shared kernel. The destination is NOT checked
+/// here: the paired application owns project identity and composes the
+/// destination root from its own session, exactly as the seeding card does.
+fn validate_envelope(source: Option<&str>, cities: &[String]) -> Result<(), Failure> {
+    let context = ds_command_kernel::solar_seed::Context {
+        root: String::new(),
+        seed_source_root: source.unwrap_or_default().to_string(),
+        ds_project: String::new(),
+        cities: cities.to_vec(),
+    };
+    // An empty --source is the one shape the kernel reads as "the governed
+    // catalog"; this door was given the flag, so an empty value is a mistake.
+    if source.is_some_and(str::is_empty) {
+        return Err(invalid_source());
     }
-    Ok(source)
+    ds_command_kernel::solar_seed::validate_context(&context, false).map_err(|refusal| {
+        match refusal.code {
+            "SOLAR_SEED_BOUNDED" => Failure::invalid(
+                "solar_seed_bounded",
+                format!(
+                    "{} cities were requested; one governed seed request carries at most {MAX_CITIES}",
+                    cities.len()
+                ),
+            )
+            .remedy("seed in smaller sets of at most 64 cities")
+            .detail(json!({ "given": cities.len(), "max": MAX_CITIES })),
+            "solar_seed_cities_duplicated" => Failure::invalid(
+                "invalid_seed_city",
+                "the same --city was named twice",
+            )
+            .remedy("name each source city id once"),
+            "solar_seed_source_invalid" => invalid_source(),
+            _ => Failure::invalid(
+                "invalid_seed_city",
+                "each --city must be one exact unpadded source city id",
+            )
+            .remedy("pass exact source city ids, one per --city"),
+        }
+    })
 }
 
-fn validate_cities(cities: &[String]) -> Result<&[String], Failure> {
-    if cities.len() > MAX_CITIES {
-        return Err(Failure::invalid(
-            "solar_seed_bounded",
-            format!(
-                "{} cities were requested; one governed seed request carries at most {MAX_CITIES}",
-                cities.len()
-            ),
-        )
-        .remedy("seed in smaller sets of at most 64 cities")
-        .detail(json!({ "given": cities.len(), "max": MAX_CITIES })));
-    }
-    if cities
-        .iter()
-        .any(|city| city.is_empty() || city.trim() != city || city.chars().count() > MAX_CITY_CHARS)
-    {
-        return Err(Failure::invalid(
-            "invalid_seed_city",
-            "each --city must be one exact unpadded source city id",
-        )
-        .remedy("pass exact source city ids, one per --city"));
-    }
-    Ok(cities)
+fn invalid_source() -> Failure {
+    Failure::invalid(
+        "invalid_seed_source",
+        "--source must be one exact governed seed source root",
+    )
+    .remedy("omit --source for the governed catalog, or pass one unpadded root")
 }
 
 /// `seed_digest` is only ever echoed. This checks the caller echoed something
 /// that could have been a digest at all — a truncated copy/paste is refused
 /// here rather than becoming a server round trip that reports drift.
 fn validate_digest(raw: &str) -> Result<&str, Failure> {
-    let well_formed = raw.chars().count() == SEED_DIGEST_CHARS
-        && raw
-            .bytes()
-            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte));
-    if !well_formed {
+    if ds_command_kernel::solar_seed::confirm_digest(raw).is_err() {
         return Err(Failure::invalid(
             "solar_seed_digest_required",
             "--seed-digest must be the exact 64-character lowercase seed_digest of a previewed plan",
@@ -707,7 +707,7 @@ mod tests {
     }
 
     fn digest(byte: char) -> String {
-        byte.to_string().repeat(SEED_DIGEST_CHARS)
+        byte.to_string().repeat(64)
     }
 
     fn city_row(city_id: &str, action: &str, documents: usize) -> Value {
@@ -833,27 +833,57 @@ mod tests {
         }
     }
 
+    /// The bound is the kernel's now, but it must still arrive here under the
+    /// server's own code and with the same remedy — one vocabulary describes
+    /// one condition, wherever it is enforced.
     #[test]
     fn a_selection_larger_than_one_governed_request_is_refused_locally() {
         let over: Vec<String> = (0..=MAX_CITIES)
             .map(|index| format!("city-{index}"))
             .collect();
         assert_eq!(
-            validate_cities(&over).expect_err("must refuse").code(),
+            validate_envelope(None, &over)
+                .expect_err("must refuse")
+                .code(),
             "solar_seed_bounded"
         );
         let exact: Vec<String> = (0..MAX_CITIES)
             .map(|index| format!("city-{index}"))
             .collect();
-        assert!(validate_cities(&exact).is_ok(), "64 cities is the bound");
+        assert!(
+            validate_envelope(None, &exact).is_ok(),
+            "64 cities is the bound"
+        );
         for bad in ["", " huye", "huye ", &"c".repeat(MAX_CITY_CHARS + 1)] {
             assert_eq!(
-                validate_cities(&[bad.to_string()])
+                validate_envelope(None, &[bad.to_string()])
                     .expect_err("must refuse")
                     .code(),
                 "invalid_seed_city"
             );
         }
+        // The same city twice is one request that would seed it once; the
+        // grant refuses it, so this door does too rather than sending it.
+        assert_eq!(
+            validate_envelope(None, &["huye".to_string(), "huye".to_string()])
+                .expect_err("must refuse")
+                .code(),
+            "invalid_seed_city"
+        );
+        // An empty --source is not the governed catalog: omitting the flag is.
+        assert_eq!(
+            validate_envelope(Some(""), &[])
+                .expect_err("must refuse")
+                .code(),
+            "invalid_seed_source"
+        );
+        assert_eq!(
+            validate_envelope(Some(&"s".repeat(MAX_SOURCE_CHARS + 1)), &[])
+                .expect_err("must refuse")
+                .code(),
+            "invalid_seed_source"
+        );
+        assert!(validate_envelope(None, &[]).is_ok());
     }
 
     #[test]

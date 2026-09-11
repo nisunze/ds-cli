@@ -81,10 +81,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             "mode": if request.transformers().is_empty() { "all_active" } else { "explicit" },
             "requested": request.transformers().names(),
         },
-        "archive_layout": {
-            "file_level": file_level.token(),
-            "combine_per_group": combine_per_group,
-        },
+        "archive_layout": archive_layout(file_level.token(), combine_per_group),
         "force": force,
         "status": receipt.status().token(),
         "prefix": receipt.prefix(),
@@ -111,6 +108,29 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         .expect("receipt is an object")
         .extend(fields.as_object().expect("fields are an object").clone());
     Ok(output)
+}
+
+/// The requested layout, in the report layer's own words.
+///
+/// `combine_per_group` is the current name for the choice the registry has
+/// always recorded as `combine_per_district`; both are reported so a caller
+/// reading a fresh receipt and one reading an old registry row see the same
+/// archive described the same way.
+fn archive_layout(file_level: &str, combine_per_group: bool) -> Value {
+    // The vocabulary is the shared fold's; the RECORDED members are this
+    // receipt's own and win, so describing an archive can never restate what
+    // was asked for. (`describe` echoes `combine_per_group` from the layout it
+    // was handed, which is the registry's spelling and not this flag.)
+    let mut layout = super::archive_layout_vocabulary(Some(file_level), None, combine_per_group);
+    let recorded = json!({
+        "file_level": file_level,
+        "combine_per_group": combine_per_group,
+    });
+    layout
+        .as_object_mut()
+        .expect("layout is an object")
+        .extend(recorded.as_object().expect("recorded is an object").clone());
+    layout
 }
 
 pub fn render(data: &Value) -> String {
@@ -154,6 +174,29 @@ pub fn render(data: &Value) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The receipt reports what was ASKED FOR. The shared vocabulary echoes a
+    /// registry layout's own `combine_per_group`, which this receipt does not
+    /// carry — so merging the vocabulary over the recorded members used to
+    /// report every `--combine-per-group` run as `false`.
+    #[test]
+    fn the_requested_grouping_survives_the_shared_vocabulary() {
+        for requested in [true, false] {
+            let layout = archive_layout("transformer", requested);
+            assert_eq!(
+                layout["combine_per_group"],
+                serde_json::json!(requested),
+                "the receipt must report the grouping the caller asked for"
+            );
+            assert_eq!(layout["file_level"], serde_json::json!("transformer"));
+            // The vocabulary still arrives beside it, in keys.
+            assert_eq!(layout["level_key"], "pctl_layout_transformer");
+        }
+        assert_eq!(
+            archive_layout("district", true)["label_key"],
+            "pctl_layout_per_district"
+        );
+    }
 
     /// The `archive_layout` key is pinned by the contract, so the honesty has
     /// to live in the prose beside it: the receipt reports what was asked

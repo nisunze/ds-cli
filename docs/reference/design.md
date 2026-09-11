@@ -495,6 +495,59 @@ vocabulary storing `Initial` therefore refuses instead of reporting zero
 transformers — and `not_equals` refuses instead of reporting all of them.
 Definitions the project does not carry stay the server's refusal to make.
 
+### Which control a definition may use
+
+One matrix, and it is the shared kernel's — the same answer the application's
+tag editor offers controls from and the same one the governed owner admits by:
+
+| Value type | Cardinality | Controls, default first |
+|---|---|---|
+| `choice` | `single` | `dropdown`, `radio` |
+| `choice` | `multiple` | `multiselect` |
+| `text` | `single` | `text` |
+| `integer`, `number` | `single` | `number` |
+
+Nothing else is admissible. `text`, `integer` and `number` are single-valued,
+so `--cardinality multiple` with one of them is refused rather than sent. A
+`choice` carries 1 to 100 values and no numeric or length constraint — its
+vocabulary IS its bound; a `text` definition carries `--max-length` (1 to 500,
+defaulting to 500) and no numeric bounds; `integer` and `number` carry `--min`
+and `--max` and no length, and an `integer` bound must itself be whole. Every
+one of these is refused here, before the request leaves, under
+`invalid_tag_input` with the offending member named in `error.details.field`.
+
+Until 2026-09-11 this door checked `--input-control` against a flat list of the
+five spellings and enforced no compatibility at all, so a combination like
+`--value-type text --input-control number` was composed, sent and refused by
+the owner after a round trip. That is now a local refusal.
+
+## This project's collisions
+
+```bash
+ds design collisions --output json
+```
+
+A collision means two or more transformers claim overlapping ground or a
+clashing identity, and a compounded report cannot be produced while one
+stands — so this is the read to make before `ds report project compounded`
+fails.
+
+It reads the project-wide collisions document the report owner writes. The
+count is taken in a fixed precedence: the document's own layer count, then the
+terminal detection outcome's pair count, then that outcome's compatibility
+twin. The order matters because a run that finds NOTHING deliberately writes no
+layer, so the outcome is an equal-authority source and not a fallback — a
+project with zero collisions reports `0`, not "unknown". A malformed count
+stays `null`: nothing here turns text into a number the owner never wrote.
+
+`checked` says whether the project has ever been checked at all, which is a
+different state from a check that found nothing. `state` is the key an operator
+reads the answer under, `pairs` is the count when one is recorded, and
+`transformers` is how many ordinary transformers a detection run would cover.
+
+This command starts nothing and writes nothing. Detection itself is a separate
+governed action.
+
 Use `--match all` (the default) or `--match any`. One call accepts at most 20
 predicates and scans at most 2,000 current LV transformers. `--limit` is not a
 page: if the complete match set is larger, the server refuses and asks for a
