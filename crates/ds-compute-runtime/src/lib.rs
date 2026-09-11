@@ -319,7 +319,7 @@ impl Workers {
                         Ok(true) => idle_ticks = 0,
                         Ok(false) => {
                             idle_ticks = idle_ticks.saturating_add(1);
-                            if idle_ticks >= 25 {
+                            if index == 0 && idle_ticks >= 25 {
                                 idle_ticks = 0;
                                 if let Some(observer) = observer.as_deref() {
                                     if let Err(error) = observer.recover() {
