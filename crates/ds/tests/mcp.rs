@@ -1320,6 +1320,11 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
             // Seventeen printing leaves plus bootstrap: native inventory
             // and pure report plans share the kernel with browser-room IO.
             "printing" => 19,
+            // Sixteen layer leaves plus bootstrap: the layer drawer's profile
+            // also carries this machine's prepared local layer catalogue,
+            // which is the same "one host's own layers" workflow as the local
+            // tile references beside it.
+            "layers" => 18,
             _ => 16,
         };
         assert!(
