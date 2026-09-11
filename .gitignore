@@ -5,3 +5,6 @@
 
 # The detached host crate builds in its own target (scripts/test-detached-workspaces.sh)
 crates/ds-design-workspace/target/
+
+# Shared native report artifact host
+crates/ds-report-artifacts/target/

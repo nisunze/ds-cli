@@ -256,3 +256,30 @@ application migration. Start from the current activity and existing owners,
 identify the next coherent slice, implement and validate it, then land it.
 Preserve other lanes' work and keep the platform acceptance gaps explicit.
 Do not create another architecture or protocol document to restate this mandate.
+
+## Native extraction order and installed-state isolation
+
+Complete the native dependencies needed for Linux Server before the broad
+frontend migration. Move existing implementations into shared native owners;
+Desktop and Server must call those owners. Creating a Server copy while keeping
+an independent Tauri implementation is not an extraction.
+
+Report publication storage belongs to `crates/ds-report-artifacts` in this
+repository. Native Sync Center orchestration, report inventory, verified cache
+reads and sealed storage-session transfers belong to `ds-web/crates/ds-sync-runtime`.
+The pure kernel retains the plan and transfer state machine. Tauri supplies
+shell integration, cancellation and progress projection. Different backend
+publication protocols share the durable store and project lease; a Solar row
+must never be submitted through a report work-grant protocol.
+
+A source development launcher must use a separate native identity/context
+store, installation identity, compute and sync database, artifact/cache root
+and listening port from the installed Server, including installed Canary.
+Sharing public deployment profiles is allowed. Copying production credentials
+or opening production mutable state to make development start is not. Source
+CLI commands must resolve the same development namespace as their development
+Server. Production installation continues through the published download path.
+
+Artifact-store tests move with their owner. Record actual shared-runtime,
+Desktop adapter and Server consumer validation separately; a clean build is
+not a live authenticated publication proof or remote GUI parity.
