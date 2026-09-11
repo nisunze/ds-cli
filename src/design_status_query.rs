@@ -580,7 +580,7 @@ fn normalize_multi(values: &[String], allowed: &[&str]) -> Vec<String> {
 
 /// `localeCompare` on ASCII account names: letters compare regardless of
 /// case first, and a lowercase letter precedes its uppercase twin.
-fn locale_cmp(a: &str, b: &str) -> Ordering {
+pub(crate) fn locale_cmp(a: &str, b: &str) -> Ordering {
     let key = |s: &str| {
         (
             s.to_lowercase(),

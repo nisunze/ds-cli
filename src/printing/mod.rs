@@ -3,6 +3,7 @@
 pub mod context;
 pub mod custom;
 pub mod elements;
+pub mod inventory;
 pub mod lifecycle;
 pub mod map;
 pub mod overrides;
@@ -1272,6 +1273,30 @@ pub enum Command {
     LifecyclePlan {
         facts: lifecycle::Facts,
     },
+    /// Which transformers may be printed, in what order, and which of them
+    /// this device holds (see `inventory`).
+    PrintableTransformers {
+        rows: Vec<serde_json::Value>,
+        #[serde(default)]
+        rooms: Vec<inventory::Room>,
+        #[serde(default)]
+        current_user: String,
+        limit: usize,
+    },
+    /// May a PDF preview of this layout be produced right now, and from what:
+    /// every bound print style must be available and there must be map data
+    /// to draw. The host assembles the render request from the answer.
+    RenderPlan {
+        layout: Layout,
+        #[serde(default)]
+        available_style_refs: Vec<String>,
+        #[serde(default)]
+        layer_count: usize,
+        #[serde(default)]
+        text: serde_json::Value,
+        #[serde(default)]
+        date: String,
+    },
     /// The context sources a template starts with, and the styles their
     /// layers print with when none are authored (see `context`).
     ContextDefaults {},
@@ -1577,6 +1602,51 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
         }
         Command::LifecyclePlan { facts } => {
             serde_json::to_value(lifecycle::plan(&facts)?).map_err(|e| e.to_string())?
+        }
+        Command::PrintableTransformers {
+            rows,
+            rooms,
+            current_user,
+            limit,
+        } => serde_json::to_value(inventory::printable(&rows, &rooms, &current_user, limit)?)
+            .map_err(|e| e.to_string())?,
+        Command::RenderPlan {
+            layout,
+            available_style_refs,
+            layer_count,
+            text,
+            date,
+        } => {
+            validate(&layout)?;
+            let mut refusals = Vec::new();
+            let mut refs: Vec<&String> = Vec::new();
+            for reference in layout.style_refs.values() {
+                if !refs.contains(&reference) {
+                    refs.push(reference);
+                }
+                if !available_style_refs.contains(reference) {
+                    refusals.push(json!({
+                        "code": "print_style_unavailable",
+                        "message_key": "printing_style_unavailable",
+                        "params": {"reference": reference},
+                    }));
+                }
+            }
+            if layer_count == 0 {
+                refusals.push(json!({
+                    "code": "print_preview_needs_layers",
+                    "message_key": "printing_preview_needs_layers",
+                    "params": {},
+                }));
+            }
+            let mut composed = text.as_object().cloned().unwrap_or_default();
+            composed.insert("date".into(), serde_json::Value::String(date));
+            json!({
+                "ready": refusals.is_empty(),
+                "refusals": refusals,
+                "print_style_refs": refs,
+                "text": composed,
+            })
         }
         Command::ContextDefaults {} => json!({
             "derived": context::derived_layers(),
@@ -1992,6 +2062,58 @@ mod tests {
     /// The whole settings patch `prepare.ts:251-280` wrote by hand: the export
     /// row found through every alias (not the two it knew) or created, and the
     /// `printing_views` row nested exactly as the native reporter reads it.
+    #[test]
+    fn a_render_plan_admits_a_preview_only_with_its_styles_and_some_map_data() {
+        let mut layout: serde_json::Value =
+            serde_json::from_str(&evaluate(br#"{"op":"new","paper":"A3"}"#).expect("a new layout"))
+                .expect("layout json");
+        let layout = layout["layout"].take();
+        let mut with_style = layout.clone();
+        with_style["style_refs"] =
+            serde_json::json!({"lv_lines": "lv_lines_print", "poles": "poles_print"});
+        let plan = |layout: &serde_json::Value,
+                    refs: serde_json::Value,
+                    count: usize|
+         -> serde_json::Value {
+            let request = serde_json::json!({"op":"render_plan","layout":layout,"available_style_refs":refs,"layer_count":count,"text":{"title":"T","project":"P","drawing":"D","source":"S"},"date":"2026-09-11"});
+            serde_json::from_str(&evaluate(&serde_json::to_vec(&request).unwrap()).expect("plan"))
+                .unwrap()
+        };
+        let ready = plan(
+            &with_style,
+            serde_json::json!(["lv_lines_print", "poles_print", "other"]),
+            2,
+        );
+        assert_eq!(ready["ready"], true);
+        assert_eq!(
+            ready["print_style_refs"],
+            serde_json::json!(["lv_lines_print", "poles_print"])
+        );
+        assert_eq!(ready["text"]["date"], "2026-09-11");
+        assert_eq!(ready["text"]["title"], "T");
+        let missing = plan(&with_style, serde_json::json!(["lv_lines_print"]), 2);
+        assert_eq!(missing["ready"], false);
+        assert_eq!(missing["refusals"][0]["code"], "print_style_unavailable");
+        assert_eq!(missing["refusals"][0]["params"]["reference"], "poles_print");
+        let empty = plan(&layout, serde_json::json!([]), 0);
+        assert_eq!(empty["refusals"][0]["code"], "print_preview_needs_layers");
+        assert_eq!(empty["print_style_refs"], serde_json::json!([]));
+    }
+
+    #[test]
+    fn a_printable_inventory_is_one_command() {
+        let request = serde_json::json!({"op":"printable_transformers","rows":[{"name":"b"},{"name":"a","kind":"individual"}],"rooms":[{"name":"A","owner_email":null,"local_dirty":true}],"current_user":"","limit":1});
+        let out: serde_json::Value = serde_json::from_str(
+            &evaluate(&serde_json::to_vec(&request).unwrap()).expect("inventory"),
+        )
+        .unwrap();
+        assert_eq!(out["total"], 2);
+        assert_eq!(out["transformers"][0]["name"], "a");
+        assert_eq!(out["transformers"][0]["dirty"], true);
+        assert_eq!(out["more"]["omitted"], 1);
+        assert!(evaluate(br#"{"op":"printable_transformers","rows":[],"limit":0}"#).is_err());
+    }
+
     #[test]
     fn a_project_output_patch_writes_the_export_row_and_the_reporter_view_nesting() {
         let request = serde_json::json!({"op":"project_output_patch",
