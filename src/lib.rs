@@ -24,6 +24,7 @@ pub fn assets_preview_wasm(bytes: &[u8], request: &[u8]) -> Result<String, wasm_
         .map_err(|error| wasm_bindgen::JsValue::from_str(&error))
 }
 pub mod compute_artifact_sync;
+pub mod compute_jobs;
 pub mod connectivity;
 pub mod design;
 pub mod design_dashboard;

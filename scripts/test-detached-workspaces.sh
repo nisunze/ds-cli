@@ -21,6 +21,7 @@ kernel_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 # Every detached crate, one manifest path per line.
 manifests=(
 	"crates/ds-design-workspace/Cargo.toml"
+	"crates/ds-compute-runtime/Cargo.toml"
 )
 
 if [[ ! -d "${kernel_root}/../ds-network" ]]; then
