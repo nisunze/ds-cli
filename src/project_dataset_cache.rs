@@ -44,6 +44,10 @@ pub const MAX_ENVELOPE_M2: f64 = 25_000_000.0;
 /// this size is refused whole rather than trimmed to fit, because a truncated
 /// receipt no longer proves what it claims.
 pub const MAX_SOURCE_RECEIPT_BYTES: usize = 64 * 1024;
+/// How much of a provider's own footprint identifier a refusal may quote. A
+/// refusal is persisted as a room's `last_error`, so it carries a name, never a
+/// payload.
+const MAX_FOOTPRINT_REFERENCE_CHARS: usize = 64;
 /// How long a recorded acquisition may stay pending before it is treated as
 /// abandoned.
 ///
@@ -1027,6 +1031,91 @@ pub fn freshness(current: &str, held: &[HeldVersion]) -> Result<Freshness, Strin
     })
 }
 
+/// How one building footprint is named in a refusal.
+///
+/// The provider's own stable identifier when it carries one, otherwise the
+/// feature's position in the response. Bounded and stripped of control
+/// characters: this string is persisted as the room's `last_error` and read by
+/// an operator, so it can neither be unbounded nor carry line breaks.
+fn footprint_reference(index: usize, feature: &Value) -> String {
+    let identifier = feature
+        .get("id")
+        .and_then(Value::as_str)
+        .or_else(|| feature["properties"].get("full_plus_code")?.as_str())
+        .or_else(|| feature["properties"].get("id")?.as_str())
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    match identifier {
+        Some(identifier) => {
+            let cleaned: String = identifier
+                .chars()
+                .filter(|character| !character.is_control())
+                .take(MAX_FOOTPRINT_REFERENCE_CHARS)
+                .collect();
+            format!("#{index} `{cleaned}`")
+        }
+        None => format!("#{index}"),
+    }
+}
+
+fn bounds_text(bounds: [f64; 4]) -> String {
+    format!(
+        "[{:.6}, {:.6}, {:.6}, {:.6}]",
+        bounds[0], bounds[1], bounds[2], bounds[3]
+    )
+}
+
+/// Admit one acquired footprint, or say exactly why it cannot be admitted.
+///
+/// Four different facts used to share one sentence, so an operator reading a
+/// room's `last_error` could not tell a malformed provider row from a correct
+/// row the provider returned outside the area it was asked for — and neither
+/// could anyone reading the status days later. Each case now names itself and
+/// the offending footprint, and the out-of-area case carries the two
+/// rectangles and the rule that separated them, which is the whole evidence
+/// needed to tell overfetch from a boundary defect without a debugger.
+///
+/// This is a refusal in every case, exactly as before: nothing is dropped,
+/// nothing is admitted, and no coverage is claimed. Only the sentence changed.
+fn admit_footprint(index: usize, feature: &Value, area: &Value) -> Result<(), String> {
+    let reference = footprint_reference(index, feature);
+    if feature["type"] != "Feature" || !feature["properties"].is_object() {
+        return Err(format!(
+            "building footprint {reference} has an invalid shape: a provider row must be a GeoJSON Feature with a properties object"
+        ));
+    }
+    let geometry = feature["geometry"]["type"].as_str().unwrap_or("");
+    if !matches!(geometry, "Polygon" | "MultiPolygon") {
+        let named = if geometry.is_empty() {
+            "absent".to_owned()
+        } else {
+            format!("`{}`", &geometry[..geometry.len().min(64)])
+        };
+        return Err(format!(
+            "building footprint {reference} geometry is {named}, not Polygon/MultiPolygon"
+        ));
+    }
+    let Some(bounds) = crate::reference_cache::feature_bounds(feature) else {
+        return Err(format!(
+            "building footprint {reference} has no bounds: its geometry carries no usable coordinate"
+        ));
+    };
+    let selected =
+        acquisition_selects(BUILDINGS_DATASET_ID, "", feature, area).map_err(|error| {
+            format!("building footprint {reference} has unreadable geometry: {error}")
+        })?;
+    if !selected {
+        let area_bounds = crate::reference_cache::area_bounds(area)
+            .map(bounds_text)
+            .unwrap_or_else(|_| "[unreadable]".to_owned());
+        return Err(format!(
+            "building footprint {reference} lies outside the requested area (rule: intersects; footprint bounds {}; area bounds {area_bounds})",
+            bounds_text(bounds)
+        ));
+    }
+    Ok(())
+}
+
 /// Decode a complete source-quality building acquisition before it can extend coverage.
 /// Provider coverage uncertainty is retained, including a complete empty response.
 pub fn decode_buildings(response: &Value, area: &Value) -> Result<Value, String> {
@@ -1046,18 +1135,8 @@ pub fn decode_buildings(response: &Value, area: &Value) -> Result<Value, String>
     {
         return Err("building acquisition count does not match its footprint collection".into());
     }
-    for feature in features {
-        if feature["type"] != "Feature"
-            || !feature["properties"].is_object()
-            || !matches!(
-                feature["geometry"]["type"].as_str(),
-                Some("Polygon" | "MultiPolygon")
-            )
-            || crate::reference_cache::feature_bounds(feature).is_none()
-            || !acquisition_selects(BUILDINGS_DATASET_ID, "", feature, area)?
-        {
-            return Err("building acquisition contains an invalid or out-of-area footprint".into());
-        }
+    for (index, feature) in features.iter().enumerate() {
+        admit_footprint(index, feature, area)?;
     }
     validate_source_receipt(&response["source_receipt"])
         .map_err(|error| format!("building acquisition receipt: {error}"))?;
