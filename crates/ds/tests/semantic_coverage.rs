@@ -390,6 +390,8 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("report.layout.edit", "read_only", "none"),
     ("report.layout.context", "read_only", "none"),
     ("report.layout.session", "read_only", "none"),
+    ("report.layout.add", "read_only", "none"),
+    ("report.layout.style-ref", "read_only", "none"),
     ("map.print.schema", "discovery", "none"),
     ("report.layout.schema", "discovery", "none"),
     ("report.layout.render", "local_file_write", "none"),

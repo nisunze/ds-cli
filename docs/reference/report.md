@@ -325,6 +325,22 @@ layer, seeding its print styles, refusing `printing_context_no_dataset` for a
 catalogue layer that is neither held nor downloadable unless it is already
 selected. `report.layout.edit` accepts the same `context_*` ops as raw requests.
 
+## New elements and print styles
+
+`ds report layout add --layout l.json --kind table|text|legend|logo|…`
+appends the canonical new element of that kind — the frame, ink and type
+size the Printing setup page gives one, a table bound to `lv_print_info`
+with Description/Unit/Quantity, a legend carrying its binding from the start,
+a logo (`--asset`) showing an asset the layout holds — and returns the layout
+with the element's index; the id is minted as `<kind>-<n>` unless `--id` is
+given. `ds report layout style-ref --catalogue styles.json` lists the governed
+print styles a print layer may bind, from the layers snapshot's style facts
+(`[{style_ref, style_target}]`); `--action set --layout l.json --layer ID
+--style-ref REF` binds one (an empty reference unbinds), refusing
+`printing_style_ref_ineligible` for a reference the catalogue does not offer.
+`ds map print schema --section choices` advertises the DPI and paper a local
+map print may ask for, with their defaults.
+
 ## The editor's workflow
 
 `ds report layout session` answers what the Printing setup page's flags
