@@ -25,6 +25,8 @@
 //! and feeds the results back, exactly as `transfer` does. No IO, no clock —
 //! `now_ms` is an input. ds-brain's lease authority does not move.
 
+use std::collections::{BTreeMap, BTreeSet};
+
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
@@ -192,7 +194,11 @@ pub fn plan(request: &PlanRequestView<'_>) -> Plan {
     let now = request.now_ms;
     let limit = request.budget.min(MAX_LOCK_CALLS_PER_PASS);
     let mut clear = Vec::new();
-    let present: Vec<String> = request
+    // Keyed sets, not scans. The browser looked each of these up in a `Set`
+    // and a `Map`; a `contains` over a `Vec` would turn one pass over a
+    // project's rooms into rooms x held work, which is the linear-scan shape
+    // the Pain Ledger already paid for once.
+    let present: BTreeSet<String> = request
         .rooms
         .iter()
         .map(|room| canonical_row_name(&room.name))
@@ -204,7 +210,20 @@ pub fn plan(request: &PlanRequestView<'_>) -> Plan {
             clear.push(room.name.clone());
         }
     }
-    let cleared: Vec<String> = clear.iter().map(|name| canonical_row_name(name)).collect();
+    let cleared: BTreeSet<String> = clear.iter().map(|name| canonical_row_name(name)).collect();
+    let drafts: BTreeSet<String> = request
+        .drafts
+        .iter()
+        .map(|draft| canonical_row_name(draft))
+        .collect();
+    // First-wins, exactly as the `find` it replaces: two entries that
+    // canonicalise to one name keep the earlier state.
+    let mut held_by_name: BTreeMap<String, &Held> = BTreeMap::new();
+    for held in request.held {
+        held_by_name
+            .entry(canonical_row_name(&held.name))
+            .or_insert(held);
+    }
 
     // 2) Held rooms that vanished release their hold and draft — complete
     //    passes only.
@@ -216,10 +235,7 @@ pub fn plan(request: &PlanRequestView<'_>) -> Plan {
                 continue;
             }
             to_release.push(ReleaseCall {
-                delete_draft: request
-                    .drafts
-                    .iter()
-                    .any(|draft| canonical_row_name(draft) == canonical),
+                delete_draft: drafts.contains(&canonical),
                 name: held.name.clone(),
             });
         }
@@ -239,10 +255,9 @@ pub fn plan(request: &PlanRequestView<'_>) -> Plan {
         if digest.is_none() {
             needs_digest.push(room.name.clone());
         }
-        let state = request
-            .held
-            .iter()
-            .find(|held| canonical_row_name(&held.name) == canonical)
+        let state = held_by_name
+            .get(&canonical)
+            .copied()
             .filter(|_| !cleared.contains(&canonical));
         let reason = match state {
             None => Some(HoldReason::New),
@@ -415,6 +430,33 @@ mod tests {
                 delete_draft: true
             }]
         );
+    }
+
+    /// The lease lookup is keyed, not scanned — a `Vec::contains` per room
+    /// would make one pass over a project's rooms quadratic. Keying has one
+    /// semantic to preserve: two entries that canonicalise to the same name
+    /// keep the EARLIER state, exactly as the `find` it replaces did.
+    #[test]
+    fn two_leases_under_one_canonical_name_keep_the_earlier_state() {
+        let mut stale = held("TX_1", 0);
+        stale.digest = Some("earlier".into());
+        let mut fresh = held("tx_1", HOLD_REFRESH_MS + 9_000);
+        fresh.digest = Some("later".into());
+        let mut subject = room("tx_1", true);
+        subject.digest = Some("earlier".into());
+
+        let plan = run(
+            &[subject],
+            &[stale, fresh],
+            &[],
+            HOLD_REFRESH_MS + 10_000,
+            true,
+        );
+        // The earlier lease is old enough to be stale; the later one would not
+        // be, so a last-wins lookup would plan no hold at all.
+        assert_eq!(plan.hold.len(), 1, "the earlier lease decides");
+        assert_eq!(plan.hold[0].reason, HoldReason::Stale);
+        assert!(plan.release.is_empty(), "the room is present");
     }
 
     #[test]
