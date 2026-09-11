@@ -21,7 +21,7 @@ the same kind of layer:
 | Parse, map canonical headers, and Rust-clean a design archive | `ds map design upload inspect/stage` | No map; signed-in project required |
 
 Project ordering accepts only `layers[].id` returned by `ds map layer list`.
-Those are canonical config ids. Never substitute `runtimeIds`, style refs,
+Those are canonical config ids. Never substitute `runtime_ids`, style refs,
 GeoJSON keys, or an id remembered from another project. Review the complete
 set of overrides, then use `--yes`; the renderer still preserves its safe
 global/reference and geometry stack bands.
