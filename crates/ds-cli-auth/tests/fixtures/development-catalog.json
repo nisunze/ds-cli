@@ -1,5 +1,5 @@
 {
-  "schema_version": "ds.native-client-profiles/v19",
+  "schema_version": "ds.native-client-profiles/v20",
   "development": true,
   "profiles": {
     "stable": {
@@ -88,6 +88,11 @@
           "add",
           "remove"
         ]
+      },
+      "design_selections": {
+        "method": "POST",
+        "path": "/api/v1/design/selections",
+        "actions": ["list", "get", "save", "archive", "promote_task"]
       },
       "project_report": {
         "method": "POST",
@@ -238,6 +243,11 @@
           "add",
           "remove"
         ]
+      },
+      "design_selections": {
+        "method": "POST",
+        "path": "/api/v1/design/selections",
+        "actions": ["list", "get", "save", "archive", "promote_task"]
       },
       "project_report": {
         "method": "POST",

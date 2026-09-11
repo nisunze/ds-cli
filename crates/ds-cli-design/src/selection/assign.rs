@@ -5,9 +5,10 @@ use ds_cli_contract::spec::{
     Arg, ArgKind, Authority, Chapter, Command, Effect, Example, Execution,
 };
 use ds_cli_contract::{Context, Inputs};
-use serde_json::{Map, Value, json};
+use ds_client_core::{DesignSelectionAnswer, DesignSelectionPromotion, DesignSelectionRequest};
+use serde_json::{Value, json};
 
-use crate::DESCRIPTOR_ARG;
+use super::LANE;
 use crate::selection::read::SELECTION_ARG;
 
 const TITLE_ARG: Arg = Arg {
@@ -40,6 +41,12 @@ const PURPOSE_ARG: Arg = Arg {
     summary: "Why the work was assigned. Recorded on the receipt.",
 };
 
+const ASSIGNMENT_ARG: Arg = Arg::value(
+    "assignment",
+    "<assignment-id>",
+    "The receipt id to assign under. Omit and one is minted from the title.",
+);
+
 pub static COMMAND: Command = Command {
     id: "design.selection.assign",
     path: &["design", "selection", "assign"],
@@ -56,14 +63,15 @@ approved, or it does not happen. Members that no longer resolve are reported on 
 the receipt rather than silently included.",
     chapter: Chapter::Design,
     effect: Effect::GlobalWrite,
-    authority: Authority::Project,
+    authority: Authority::HeadlessProject,
     execution: Execution::Sync,
     args: &[
         SELECTION_ARG,
         TITLE_ARG,
         OWNER_ARG,
         PURPOSE_ARG,
-        DESCRIPTOR_ARG,
+        ASSIGNMENT_ARG,
+        LANE,
     ],
     output: "\
 The project, the `selection`, the minted `assignment` and `task` ids, the \
@@ -74,41 +82,56 @@ selection could not resolve, and the `committedRevision` the plan moved to.",
         note: "Read .data.memberDigest on the receipt to see exactly what was assigned.",
         runnable: false,
     }],
-    refusals: &[
-        crate::NOT_PAIRED,
-        crate::AMBIGUOUS,
-        crate::UNREACHABLE,
-        crate::PAIRING_REJECTED,
-        crate::DESIGN_REFUSED,
-        crate::UNSUPPORTED,
-        crate::UNREADABLE,
-        crate::SIGNED_OUT,
-        crate::NOT_PERMITTED,
-        crate::READ_ONLY,
-        crate::CONFLICT,
-        crate::CONFIRMATION_REQUIRED,
-    ],
+    refusals: super::REFUSALS,
     reference: Some("docs/reference/design.md"),
-    availability: crate::paired_availability,
+    availability: ds_cli_auth::native_availability,
 };
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
-    let mut arguments = Map::new();
-    arguments.insert("selection".into(), json!(inputs.require("selection")?));
-    arguments.insert("title".into(), json!(inputs.require("title")?));
-    for flag in ["owner", "purpose"] {
-        if let Some(value) = inputs.value(flag) {
-            arguments.insert(flag.into(), json!(value));
-        }
-    }
-    let descriptor = crate::paired(inputs.value("desktop-descriptor"))?;
-    crate::invoke(
-        &descriptor,
-        &crate::SELECTION_ASSIGN,
-        Value::Object(arguments),
-        crate::WRITE_TIMEOUT,
-    )
-    .map_err(crate::classify_design_failure)
+    let lane = inputs.require("lane")?;
+    let selection = inputs.require("selection")?;
+    let title = inputs.require("title")?;
+    // Membership is evaluated first, and the digest that read returned is what
+    // travels: echoed, never derived. A selection that moved in between is
+    // refused by ds-brain rather than quietly assigning a different set.
+    let (_, read) = super::read_selection(lane, selection)?;
+    let assignment_id = match inputs.value("assignment") {
+        Some(pinned) => pinned.to_owned(),
+        None => super::mint_id("assign", title),
+    };
+    let (project, answer) = super::ask(
+        lane,
+        selection,
+        &DesignSelectionRequest::Promote(DesignSelectionPromotion {
+            selection_id: selection.to_owned(),
+            assignment_id,
+            expected_version: read.selection.version,
+            expected_member_digest: read.member_digest,
+            // Project Work requires at least 8 characters; this is the fence
+            // for the command, not a name anybody reads.
+            command_id: super::mint_id("dscmd", ""),
+            title: title.to_owned(),
+            purpose: inputs.value("purpose").map(str::to_owned),
+            responsible_email: inputs.value("owner").map(str::to_owned),
+            review_required: true,
+        }),
+    )?;
+    let DesignSelectionAnswer::Assigned(receipt) = answer else {
+        return Err(Failure::unavailable(
+            "auth_response_unreadable",
+            "the promotion receipt did not match its closed contract",
+        ));
+    };
+    Ok(json!({
+        "project": project,
+        "selection": selection,
+        "assignment": receipt.assignment_id,
+        "task": receipt.task_id,
+        "memberDigest": receipt.member_digest,
+        "members": receipt.member_ids,
+        "missing": receipt.missing_member_ids,
+        "committedRevision": receipt.committed_revision,
+    }))
 }
 
 pub fn render(data: &Value) -> String {

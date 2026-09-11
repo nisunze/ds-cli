@@ -692,6 +692,13 @@ impl DeviceSession {
     ) -> Result<TransformerStatusList, ClientError> {
         fixed_device_call!(self, transformer_status, project, requested)
     }
+    pub fn design_selections(
+        &mut self,
+        project: &str,
+        request: &ds_client_core::DesignSelectionRequest,
+    ) -> Result<ds_client_core::DesignSelectionAnswer, ClientError> {
+        fixed_device_call!(self, design_selections, project, request)
+    }
     pub fn transformer_retirement(
         &mut self,
         project: &str,

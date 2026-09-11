@@ -1757,6 +1757,24 @@ pub fn transformer_status(
     )
 }
 
+/// One saved-selection operation in only the saved, audience-fenced selected
+/// project.
+///
+/// Membership is evaluated by ds-brain and nothing in `ds` re-derives it: this
+/// is the residency fix the survey called for, not a second authority. A read
+/// returns the same evaluated member set and digest the register shows, and a
+/// promotion echoes that digest back.
+pub fn design_selections(
+    lane_value: &str,
+    request: &ds_client_core::DesignSelectionRequest,
+) -> Result<HeadlessProjectReport<ds_client_core::DesignSelectionAnswer>, Failure> {
+    headless_project_report(
+        lane_value,
+        |device, project| device.design_selections(project, request),
+        |client, project| client.design_selections(project, request, now()),
+    )
+}
+
 /// Retire or restore exact transformers in only the saved, audience-fenced
 /// selected project. ds-brain decides governance, ownership, and lifecycle
 /// per name and answers every name in order.

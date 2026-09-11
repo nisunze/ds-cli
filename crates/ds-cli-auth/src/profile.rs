@@ -92,6 +92,9 @@ struct Entry {
     layers: Tiles,
     tiles: Tiles,
     project_report: ProjectReport,
+    /// Saved Transformer Status selections. Membership is ds-brain's decision;
+    /// this route is only how a headless caller reaches the same answer.
+    design_selections: Tiles,
     provenance: Provenance,
 }
 
@@ -385,6 +388,9 @@ fn load_path(
         project_report_method: entry.project_report.method,
         project_report_path: entry.project_report.path,
         project_report_actions: entry.project_report.actions,
+        design_selections_method: entry.design_selections.method,
+        design_selections_path: entry.design_selections.path,
+        design_selections_actions: entry.design_selections.actions,
     })
     .map_err(|_| unsafe_catalog())
 }
@@ -450,6 +456,7 @@ mod tests {
                     "layers": { "method": "POST", "path": "/api/v1/layers", "actions": ["get_config", "get_style_catalog", "refresh", "reorder"] },
                     "tiles": { "method": "POST", "path": "/api/v1/tiles", "actions": ["status", "preflight", "generate", "list", "add", "remove"] },
                     "project_report": { "method": "POST", "path": "/report", "actions": ["download_transfo", "list_compounded_reports", "transformer_inventory", "retire_transformer", "restore_transformer", "list_transformers_status"] },
+                    "design_selections": {"method":"POST","path":"/api/v1/design/selections","actions":["list","get","save","archive","promote_task"]},
                     "provenance": { "source_revision": "abc123", "descriptor_sha256": "a".repeat(64) }
                 },
                 "canary": {
@@ -477,6 +484,7 @@ mod tests {
                     "layers": { "method": "POST", "path": "/api/v1/layers", "actions": ["get_config", "get_style_catalog", "refresh", "reorder"] },
                     "tiles": { "method": "POST", "path": "/api/v1/tiles", "actions": ["status", "preflight", "generate", "list", "add", "remove"] },
                     "project_report": { "method": "POST", "path": "/report", "actions": ["download_transfo", "list_compounded_reports", "transformer_inventory", "retire_transformer", "restore_transformer", "list_transformers_status"] },
+                    "design_selections": {"method":"POST","path":"/api/v1/design/selections","actions":["list","get","save","archive","promote_task"]},
                     "provenance": { "source_revision": "def456", "descriptor_sha256": "b".repeat(64) }
                 }
             }

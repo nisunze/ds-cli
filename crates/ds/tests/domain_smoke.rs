@@ -4078,13 +4078,18 @@ fn design_lv_project_export_refuses_an_existing_artifact_before_auth_or_desktop(
                 "path": "/report",
                 "actions": ["download_transfo", "list_compounded_reports", "transformer_inventory", "retire_transformer", "restore_transformer", "list_transformers_status"]
             },
+            "design_selections": {
+                "method": "POST",
+                "path": "/api/v1/design/selections",
+                "actions": ["list", "get", "save", "archive", "promote_task"]
+            },
             "provenance": { "source_revision": "abc123", "descriptor_sha256": digest }
         })
     };
     std::fs::write(
         &profile_path,
         serde_json::to_vec(&json!({
-            "schema_version": "ds.native-client-profiles/v19",
+            "schema_version": "ds.native-client-profiles/v20",
             "development": true,
             "profiles": {
                 "stable": profile(
@@ -4193,8 +4198,12 @@ fn design_validates_its_own_inputs_before_it_opens_the_bridge() {
         .map(|index| format!("t{index}"))
         .collect::<Vec<_>>()
         .join(",");
+    // Saved selections are native from Slice 14b, so the member bound is proven
+    // under the development catalogue: a native command's availability gate
+    // runs before its `run`, and the point of the assertion is unchanged — the
+    // bound is refused locally, before any credential is spent.
     assert_eq!(
-        refusal(&[
+        native_refusal(&[
             "design",
             "selection",
             "save",
@@ -4692,6 +4701,254 @@ fn every_design_write_refuses_without_confirmation() {
 }
 
 #[test]
+fn autoprocess_plan_answers_the_three_admissions_from_one_document() {
+    let root = temp_root("autoprocess-plan");
+    std::fs::create_dir_all(&root).unwrap();
+    let changes = root.join("edits.json");
+    std::fs::write(
+        &changes,
+        r#"{
+          "trigger": {
+            "reason": "attribute-cell-edit",
+            "changed_fields": ["plan_kva"],
+            "vocabulary": {"lockable_cells": [], "status_fields": []}
+          },
+          "differential_scope": {
+            "differential_enabled": true, "is_mv_session": false,
+            "accumulator_bound": true, "force_full": false, "change_count": 3,
+            "blocking_diagnostics": false,
+            "mapping": {"unmapped": false, "feeder_ids": ["f1"]}
+          },
+          "cadence": {
+            "enabled": true, "running": false, "queued": true, "force": false,
+            "pending_edit_count": 3, "window_started_at_ms": 1000,
+            "cadence": {"min_pending_edits": 5, "max_pending_seconds": 1},
+            "now_ms": 1000
+          }
+        }"#,
+    )
+    .unwrap();
+    let path = changes.display().to_string();
+    let data = ok(&[
+        "design",
+        "autoprocess",
+        "plan",
+        "--changes",
+        &path,
+        "--now-ms",
+        "1100",
+        "--output",
+        "json",
+    ]);
+    // The sizing pin is inside the rule, not a transcribed list.
+    assert_eq!(data["trigger"]["schedule"], true);
+    assert_eq!(data["differential_scope"]["scope"], "feeders");
+    // `now_ms` is an input, not a clock the kernel reads: --now-ms 1100 is
+    // 100 ms into the one-second window, so 900 ms of it remain. The document
+    // alone would have answered 1000.
+    assert_eq!(data["cadence"]["decision"], "wait");
+    assert_eq!(data["cadence"]["wait_ms"], 900);
+    assert_eq!(
+        data["cadence"]["reason_key"],
+        "autoprocess_window_remaining"
+    );
+    assert_eq!(data["cadence"]["waiting_not_executing"], true);
+
+    let descriptor = ds(&[
+        "capabilities",
+        "design.autoprocess.plan",
+        "--output",
+        "json",
+    ])
+    .envelope["data"]["command"]
+        .clone();
+    assert_eq!(descriptor["effect"], "read_only");
+    assert_eq!(descriptor["authority"], "none");
+
+    // A section the kernel does not answer is named, not silently dropped.
+    let stray = root.join("stray.json");
+    std::fs::write(&stray, r#"{"cadence_wait": {}}"#).unwrap();
+    assert_eq!(
+        refusal(&[
+            "design",
+            "autoprocess",
+            "plan",
+            "--changes",
+            &stray.display().to_string(),
+            "--output",
+            "json",
+        ]),
+        "autoprocess_request_invalid"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn force_gate_check_mints_a_grant_bound_to_its_gesture() {
+    let unforced = ok(&[
+        "design",
+        "force-gate",
+        "check",
+        "--action",
+        "retry_process",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(unforced["policy"]["requires_grant"], false);
+    assert_eq!(unforced["policy"]["reason_key"], "force_not_requested");
+
+    let forced = ok(&[
+        "design",
+        "force-gate",
+        "check",
+        "--action",
+        "retry_process",
+        "--force",
+        "--targets",
+        "28",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(forced["policy"]["requires_grant"], true);
+    assert_eq!(forced["policy"]["target_count"], 28);
+    // The page's prompt is not reachable from here, and neither is the code:
+    // a wrong answer mints nothing.
+    let refused = ok(&[
+        "design",
+        "force-gate",
+        "check",
+        "--action",
+        "retry_process",
+        "--force",
+        "--gesture",
+        "g1",
+        "--confirm",
+        "not-the-code",
+        "--now-ms",
+        "1000",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(refused["grant"]["granted"], false);
+    assert!(refused["grant"]["token"].is_null());
+
+    let descriptor = ds(&[
+        "capabilities",
+        "design.force-gate.check",
+        "--output",
+        "json",
+    ])
+    .envelope["data"]["command"]
+        .clone();
+    assert_eq!(descriptor["effect"], "read_only");
+    assert_eq!(descriptor["authority"], "none");
+
+    // A confirmation with no gesture has nothing to bind to.
+    assert_eq!(
+        refusal(&[
+            "design",
+            "force-gate",
+            "check",
+            "--action",
+            "retry_process",
+            "--force",
+            "--confirm",
+            "xxx",
+            "--output",
+            "json",
+        ]),
+        "force_gate_input_invalid"
+    );
+}
+
+#[test]
+fn design_data_lane_is_a_native_project_read() {
+    let descriptor = ds(&["capabilities", "design.data.lane", "--output", "json"]).envelope["data"]
+        ["command"]
+        .clone();
+    assert_eq!(descriptor["effect"], "read_only");
+    assert_eq!(descriptor["authority"], "headless_project");
+    // No desktop, no bridge: it refuses on the native session, never on pairing.
+    let code = refusal(&["design", "data", "lane", "--output", "json"]);
+    assert!(
+        !PAIRING_CODES.contains(&code.as_str()) && !code.is_empty(),
+        "`ds design data lane` ended in `{code}`, which is a bridge state"
+    );
+}
+
+#[test]
+fn saved_selections_are_native_and_ds_brain_still_decides_membership() {
+    // The decision did not move. ds-brain evaluates a saved selection's
+    // membership and keeps it; what Slice 14b changed is residency — the five
+    // commands no longer need a paired browser to ask, because the credential
+    // now lives here. So: `headless_project`, never a pairing state.
+    for (id, effect) in [
+        ("design.selection.list", "read_only"),
+        ("design.selection.read", "read_only"),
+        ("design.selection.save", "global_write"),
+        ("design.selection.archive", "global_write"),
+        ("design.selection.assign", "global_write"),
+    ] {
+        let descriptor = ok(&["capabilities", id, "--output", "json"]);
+        assert_eq!(descriptor["command"]["effect"], effect, "`{id}` effect");
+        assert_eq!(
+            descriptor["command"]["authority"], "headless_project",
+            "`{id}` reads this machine's own selected project"
+        );
+    }
+    for args in [
+        vec!["design", "selection", "list", "--output", "json"],
+        vec![
+            "design",
+            "selection",
+            "read",
+            "--selection",
+            "sel-smoke",
+            "--output",
+            "json",
+        ],
+    ] {
+        let code = native_refusal(&args);
+        assert!(
+            !PAIRING_CODES.contains(&code.as_str()) && !code.is_empty(),
+            "`{}` ended in `{code}`, which is a bridge state",
+            args.join(" ")
+        );
+    }
+    // A write still needs the confirmation every governed write needs, and the
+    // refusal arrives before a credential is spent.
+    assert_eq!(
+        native_refusal(&[
+            "design",
+            "selection",
+            "archive",
+            "--selection",
+            "sel-smoke",
+            "--output",
+            "json",
+        ]),
+        "confirmation_required",
+        "an unconfirmed archive must refuse before it reaches the project"
+    );
+    assert_eq!(
+        native_refusal(&[
+            "design",
+            "selection",
+            "save",
+            "--name",
+            "smoke",
+            "--transformers",
+            ",,",
+            "--yes",
+            "--output",
+            "json"
+        ]),
+        "invalid_value_list",
+        "empty member lists must be refused before the project is reached",
+    );
+}
+
+#[test]
 fn every_design_command_is_discoverable_without_the_desktop_installed() {
     // Bridge collaboration remains available before pairing. The native
     // feature read is separately discoverable and honestly unavailable when
@@ -4700,7 +4957,7 @@ fn every_design_command_is_discoverable_without_the_desktop_installed() {
     let commands = index["commands"].as_array().expect("commands");
     assert_eq!(
         commands.len(),
-        69,
+        72,
         "the design domain should expose its whole family: {commands:?}"
     );
     for command in commands {
@@ -4727,6 +4984,14 @@ fn every_design_command_is_discoverable_without_the_desktop_installed() {
                     | "design.transformer.inventory"
                     | "design.transformer.retire"
                     | "design.transformer.restore"
+                    | "design.data.lane"
+                    // Saved selections are native from Slice 14b: the decision
+                    // stayed with ds-brain, the residency moved here.
+                    | "design.selection.list"
+                    | "design.selection.read"
+                    | "design.selection.save"
+                    | "design.selection.archive"
+                    | "design.selection.assign"
             ) {
                 "unavailable"
             } else {
@@ -4735,15 +5000,21 @@ fn every_design_command_is_discoverable_without_the_desktop_installed() {
             "`{id}` has the wrong packaging or Desktop availability"
         );
     }
-    // A well-formed read gets as far as pairing and no further.
+    // A well-formed BRIDGE read gets as far as pairing and no further. Saved
+    // selections are no longer that read — they are native — so the probe uses
+    // a collaboration read that still speaks to the paired application.
     let descriptor = temp_root("design-discovery-unreachable")
         .join("session.json")
         .display()
         .to_string();
     let code = refusal(&[
         "design",
-        "selection",
+        "tag",
         "list",
+        "--kind",
+        "lv_transformer",
+        "--object",
+        "T-smoke",
         "--desktop-descriptor",
         &descriptor,
         "--output",
@@ -4779,9 +5050,9 @@ fn design_reads_are_reads_and_design_writes_are_governed_writes() {
     // one thing a reviewer cannot infer from a command's name: `retire` sounds
     // destructive and is a soft, reversible governed write, while `download`
     // sounds like it moves bytes and changes nothing shared.
+    // Saved selections left this loop in Slice 14b: they are `headless_project`
+    // now, asserted in `saved_selections_are_native_and_ds_brain_still_decides`.
     for (id, effect) in [
-        ("design.selection.list", "read_only"),
-        ("design.selection.read", "read_only"),
         ("design.attachment.list", "read_only"),
         ("design.attachment.download", "read_only"),
         ("design.tag.list", "read_only"),
@@ -4789,8 +5060,6 @@ fn design_reads_are_reads_and_design_writes_are_governed_writes() {
         ("design.known-columns.list", "read_only"),
         ("design.comment.list", "read_only"),
         ("design.comment.read", "read_only"),
-        ("design.selection.save", "global_write"),
-        ("design.selection.assign", "global_write"),
         ("design.attachment.publish", "global_write"),
         ("design.attachment.retire", "global_write"),
         ("design.tag.define", "global_write"),
@@ -4856,6 +5125,7 @@ fn design_collaboration_is_a_complete_headless_project_surface() {
                 && !id.starts_with("design.transformer.")
                 && !id.starts_with("design.project.")
                 && !id.starts_with("design.config.")
+                && !id.starts_with("design.data.")
                 && !id.starts_with("design.feeder-limits.")
                 && !id.starts_with("design.categories.")
                 && !id.starts_with("design.meter-types.")
@@ -4867,20 +5137,24 @@ fn design_collaboration_is_a_complete_headless_project_surface() {
                 // Process settings resolve in the kernel over the engine's
                 // catalogue; no project, bridge or desktop state is read.
                 && *id != "design.process.settings"
+                // AutoProcess admission and the force gate are pure kernel
+                // policy over inputs the caller supplies: no project, bridge
+                // or desktop state is read.
+                && *id != "design.autoprocess.plan"
+                && *id != "design.force-gate.check"
                 // The Dashboard is the same headless read folded once.
                 && *id != "design.dashboard"
+                // Saved selections are native from Slice 14b; ds-brain still
+                // decides membership, but `ds` no longer needs a paired
+                // browser to ask it.
+                && !id.starts_with("design.selection.")
         })
         .collect();
     let expected: BTreeSet<&str> = [
         "design.sync.status",
         "design.sync.cancel",
         "design.sync.resume",
-        "design.selection.list",
         "design.features.select",
-        "design.selection.read",
-        "design.selection.save",
-        "design.selection.archive",
-        "design.selection.assign",
         "design.attachment.list",
         "design.attachment.publish",
         "design.attachment.download",
@@ -4923,9 +5197,6 @@ fn design_collaboration_is_a_complete_headless_project_surface() {
         "design.materials.apply",
         "design.sync.cancel",
         "design.sync.resume",
-        "design.selection.save",
-        "design.selection.archive",
-        "design.selection.assign",
         "design.attachment.publish",
         "design.attachment.retire",
         "design.tag.define",
@@ -4958,12 +5229,14 @@ fn design_collaboration_is_a_complete_headless_project_surface() {
             || id.starts_with("design.transformer.")
             || id.starts_with("design.project.")
             || id.starts_with("design.config.")
+            || id.starts_with("design.data.")
             || id.starts_with("design.feeder-limits.")
             || id.starts_with("design.categories.")
             || id.starts_with("design.meter-types.")
             || id.starts_with("design.customer-categories.")
             || id == "design.status"
             || id == "design.dashboard"
+            || id.starts_with("design.selection.")
         {
             continue;
         }
@@ -4993,27 +5266,6 @@ fn design_collaboration_is_a_complete_headless_project_surface() {
                 "design.sync.resume" => {
                     vec!["design", "sync", "resume", "--operation", "version:smoke"]
                 }
-                "design.selection.save" => vec![
-                    "design",
-                    "selection",
-                    "save",
-                    "--name",
-                    "smoke",
-                    "--transformers",
-                    "T-smoke",
-                ],
-                "design.selection.archive" => {
-                    vec!["design", "selection", "archive", "--selection", "sel-smoke"]
-                }
-                "design.selection.assign" => vec![
-                    "design",
-                    "selection",
-                    "assign",
-                    "--selection",
-                    "sel-smoke",
-                    "--title",
-                    "Smoke",
-                ],
                 "design.attachment.publish" => vec![
                     "design",
                     "attachment",
@@ -5171,8 +5423,6 @@ fn design_collaboration_is_a_complete_headless_project_surface() {
     // Well-formed reads reach the paired bridge rather than silently asking
     // the map for local state or rejecting a valid shared-record request.
     for args in [
-        vec!["design", "selection", "list"],
-        vec!["design", "selection", "read", "--selection", "sel-smoke"],
         vec![
             "design",
             "attachment",
@@ -5220,22 +5470,6 @@ fn design_collaboration_is_a_complete_headless_project_surface() {
         );
     }
 
-    assert_eq!(
-        refusal(&[
-            "design",
-            "selection",
-            "save",
-            "--name",
-            "smoke",
-            "--transformers",
-            ",,",
-            "--yes",
-            "--output",
-            "json"
-        ]),
-        "invalid_value_list",
-        "empty member lists must be refused before pairing",
-    );
     assert_eq!(
         refusal(&[
             "design",

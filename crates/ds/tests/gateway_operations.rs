@@ -36,14 +36,15 @@ use ds_client_core::gateway::{
     GatewayOperation, OPERATIONS, PROFILE_CONSTANTS_WITHOUT_REGISTRY_ENTRY, operation,
 };
 use ds_client_core::{
-    CLIENT_PROFILE_SCHEMA, ClientProfile, ClientProfileInput, DeploymentLane, LAYERS_ACTIONS,
-    LAYERS_METHOD, LAYERS_PATH, PRINTING_ACTIONS, PROCESSING_LANE_HEADER, PROJECT_DATA_ACTIONS,
-    PROJECT_FORM_EDITOR_ACTION, PROJECT_FORMS_ACTION, PROJECT_REPORT_ACTIONS, ProfileError,
-    SOLAR_SNAPSHOT_ACTION, STYLES_ACTION, SURVEY_CONTROL_ROUTES, SURVEY_ENTRIES_CHANGES_METHOD,
-    SURVEY_ENTRIES_CHANGES_PATH, SURVEY_ENTRIES_SELECT_METHOD, SURVEY_ENTRIES_SELECT_PATH,
-    SURVEY_ENTRY_CREATE_METHOD, SURVEY_ENTRY_CREATE_OPERATION, SURVEY_ENTRY_CREATE_PATH,
-    SURVEY_QUERY_METHOD, SURVEY_QUERY_PATH, TILES_ACTIONS, TRANSFORMER_CONTEXT_ACTION,
-    TRANSFORMER_CONTEXT_FIELDS, TRANSFORMER_CONTEXT_METHOD, TRANSFORMER_CONTEXT_PATH,
+    CLIENT_PROFILE_SCHEMA, ClientProfile, ClientProfileInput, DESIGN_SELECTIONS_ACTIONS,
+    DeploymentLane, LAYERS_ACTIONS, LAYERS_METHOD, LAYERS_PATH, PRINTING_ACTIONS,
+    PROCESSING_LANE_HEADER, PROJECT_DATA_ACTIONS, PROJECT_FORM_EDITOR_ACTION, PROJECT_FORMS_ACTION,
+    PROJECT_REPORT_ACTIONS, ProfileError, SOLAR_SNAPSHOT_ACTION, STYLES_ACTION,
+    SURVEY_CONTROL_ROUTES, SURVEY_ENTRIES_CHANGES_METHOD, SURVEY_ENTRIES_CHANGES_PATH,
+    SURVEY_ENTRIES_SELECT_METHOD, SURVEY_ENTRIES_SELECT_PATH, SURVEY_ENTRY_CREATE_METHOD,
+    SURVEY_ENTRY_CREATE_OPERATION, SURVEY_ENTRY_CREATE_PATH, SURVEY_QUERY_METHOD,
+    SURVEY_QUERY_PATH, TILES_ACTIONS, TRANSFORMER_CONTEXT_ACTION, TRANSFORMER_CONTEXT_FIELDS,
+    TRANSFORMER_CONTEXT_METHOD, TRANSFORMER_CONTEXT_PATH,
 };
 
 /// Every registry operation `ds` can issue, and which of its typed calls does.
@@ -138,6 +139,8 @@ fn profile_from_registry(lane: DeploymentLane, gateway_origin: &str) -> ClientPr
     let (printing_method, printing_path) = route("domains.printing.list");
     let (tiles_method, tiles_path) = route("domains.tiles.action");
     let (project_report_method, project_report_path) = route("domains.project_report.action");
+    let (design_selections_method, design_selections_path) =
+        route("domains.design_collaboration.selections");
 
     ClientProfileInput {
         schema_version: CLIENT_PROFILE_SCHEMA.to_owned(),
@@ -208,6 +211,11 @@ fn profile_from_registry(lane: DeploymentLane, gateway_origin: &str) -> ClientPr
         project_report_method,
         project_report_path,
         project_report_actions: PROJECT_REPORT_ACTIONS.map(str::to_owned).to_vec(),
+        design_selections_method,
+        design_selections_path,
+        // The registry declares this vocabulary too; it is asserted separately
+        // in `the_action_vocabularies_the_cli_may_send_are_declared`.
+        design_selections_actions: DESIGN_SELECTIONS_ACTIONS.map(str::to_owned).to_vec(),
     }
 }
 
@@ -332,6 +340,10 @@ fn the_action_vocabularies_the_cli_may_send_are_declared() {
     assert_eq!(
         op("domains.project_report.action").actions,
         &PROJECT_REPORT_ACTIONS[..]
+    );
+    assert_eq!(
+        op("domains.design_collaboration.selections").actions,
+        &DESIGN_SELECTIONS_ACTIONS[..]
     );
     assert_eq!(op("domains.styles.update").actions, &[STYLES_ACTION]);
     assert_eq!(

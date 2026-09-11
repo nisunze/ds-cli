@@ -311,16 +311,28 @@ Saved selections, attachments, tags and comment threads are governed project
 state behind ds-brain, which is the only gateway and the only authority: it
 decides who may write, it arbitrates two people editing the same record in the
 same second, and it refuses a write authored against a version that has since
-moved. So every collaboration command here is one named semantic operation the
-*paired application* performs under the session it already holds. `ds` sends a
-request and receives an outcome. It never receives a credential, and it never
-runs code inside the application — `docs/reference/desktop.status.md` has the
-pairing argument in full.
+moved. So an attachment, tag or comment command here is one named semantic
+operation the *paired application* performs under the session it already holds.
+`ds` sends a request and receives an outcome. It never receives a credential,
+and it never runs code inside the application — `docs/reference/desktop.status.md`
+has the pairing argument in full.
 
-There is no `--project` flag anywhere in this domain. Collaboration commands
-use the project open in the paired application; the headless feature and LV
-export commands use the exact audience-fenced context selected by
-`ds auth project use`.
+**Saved selections are the exception, and only in where they run from.**
+`ds design selection list|read|save|archive|assign` reach ds-brain directly on
+this machine's own signed-in session. Nothing about the authority changed:
+ds-brain still evaluates membership, still owns the version, and still refuses a
+write authored against a version that has moved. What changed is that reading a
+server-owned answer no longer needs a browser open to hold the credential. Two
+rules follow, and both are enforced rather than documented: a version is READ by
+a read this process performed, never asserted from a flag; and the member digest
+`assign` echoes is the one `read` returned, never recomputed here. A selection
+drawn by lasso on a rendered map is a different thing and stays with the paired
+application as `map.selection.*`.
+
+There is no `--project` flag anywhere in this domain. Attachment, tag and
+comment commands use the project open in the paired application; saved
+selections, the headless feature reads and the LV export commands use the exact
+audience-fenced context selected by `ds auth project use`.
 
 ## Why this is not `ds map`
 
@@ -666,6 +678,66 @@ alone resolves; pass the project's configuration document to include its
 tolerances and preset rows. The dependency collapse follows the engine's five
 property-keep keys: `keep_flying_stay` alone never preserved computed
 properties on the engine side, and no longer pretends to here.
+
+## AutoProcess, planned without running it
+
+`ds design autoprocess plan --changes edits.json [--now-ms 1789…]` answers the
+three admission questions AutoProcess asks in the browser, from the same kernel
+module (`autoprocess`). The document holds up to three sections and the answer
+carries the ones it found:
+
+- `trigger` — `{reason, changed_fields[], vocabulary{lockable_cells[],
+  status_fields[]}}` → does this committed edit warrant re-running the LV
+  network. The two attribute vocabularies are ds-network's and are passed in;
+  the kernel owns only the rule that unions them with the sizing and topology
+  extras (`plan_kva`, `ex_tr_size`, the connection identity fields).
+- `differential_scope` — `{differential_enabled, is_mv_session,
+  accumulator_bound, force_full, change_count, blocking_diagnostics?,
+  mapping?}` → `feeders` or `full`, and which of the seven fallbacks answered.
+  The two expensive host walks are optional: leave them out and the kernel
+  either decides on a cheaper branch or answers `pending`, naming the input it
+  now needs.
+- `cadence` — `{enabled, running, queued, force, pending_edit_count,
+  window_started_at_ms, cadence{min_pending_edits, max_pending_seconds},
+  now_ms}` → `dispatch` / `wait` with `wait_ms` / `idle`, plus
+  `waiting_not_executing`, which a host renders instead of a running spinner.
+
+`now_ms` is an input, never a clock the kernel reads, so the same document
+always plans the same way; `--now-ms` overrides the cadence section's own value.
+The timer, the change accumulator, the GDF walk and the engine latch stay with
+whoever runs AutoProcess — this plans, it never runs.
+
+## The force gate, headless
+
+`ds design force-gate check --action <action> [--force] [--targets n]
+[--native-reports] [--no-force-capability] [--gesture id --confirm code]`
+answers whether an expensive forced action needs the operator's confirmation
+before it bypasses the freshness guards, from the same policy the Transformer
+Status register and Project Control use (`force_gate`). One condition, where
+those two surfaces used to disagree: the gate is live only when force is
+requested AND `pipeline.force` is held, and the two report exports are exempt
+when the installed compute generates them, because local regeneration spends
+no shared resource.
+
+With `--gesture` and a matching `--confirm`, the kernel mints a grant bound to
+that gesture, that action and an expiry, which a headless run then presents as
+`--force-grant`. The confirmation code is never in this executable's source or
+in any client's: `ds` receives a token or nothing. This is cost friction, not
+authorization — ds-brain re-checks `pipeline.force` on the call itself, and a
+grant does not change what it will accept.
+
+## Which store the project's design data comes from
+
+`ds design data lane` reads the selected project's fresh Settings through the
+native user client and asks the kernel which design-data path the project
+declares: `firestore`, or the `mirrored` combined store. The explicit
+`use_firestore_design_data` parameter wins; the legacy `design_data_source` and
+`combined_source` spellings answer only when it is absent; a project that
+declares nothing is Firestore. The answer names the `parameter` that decided
+and the `reason_key`, so a surprising lane traces back to the row that set it.
+ds-brain evaluates the same question on the grant side before it serves, which
+is a fence rather than a second answer: this is what the client believes, and
+it is now one belief rather than the browser's and the CLI's.
 
 ### Project Settings
 

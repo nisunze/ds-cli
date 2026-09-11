@@ -7,7 +7,7 @@ use ds_cli_contract::spec::{
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
 
-use crate::DESCRIPTOR_ARG;
+use super::LANE;
 
 pub const SELECTION_ARG: Arg = Arg {
     name: "selection",
@@ -33,9 +33,9 @@ Also returns `memberDigest`, which `ds design selection assign` must echo back; 
 that echo is what proves the operator saw the exact set being assigned.",
     chapter: Chapter::Design,
     effect: Effect::ReadOnly,
-    authority: Authority::Project,
+    authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[SELECTION_ARG, DESCRIPTOR_ARG],
+    args: &[SELECTION_ARG, LANE],
     output: "\
 The project, the selection's `name`, `mode`, `version`, `state`, its \
 `memberDigest`, the `present`/`changed`/`missing` counts, and one row per \
@@ -45,30 +45,37 @@ member with `id`, `label` and `state`.",
         note: "Read .data.memberDigest before assigning; it pins what gets assigned.",
         runnable: false,
     }],
-    refusals: &[
-        crate::NOT_PAIRED,
-        crate::AMBIGUOUS,
-        crate::UNREACHABLE,
-        crate::PAIRING_REJECTED,
-        crate::DESIGN_REFUSED,
-        crate::UNSUPPORTED,
-        crate::UNREADABLE,
-        crate::SIGNED_OUT,
-        crate::NOT_PERMITTED,
-    ],
+    refusals: super::REFUSALS,
     reference: Some("docs/reference/design.md"),
-    availability: crate::paired_availability,
+    availability: ds_cli_auth::native_availability,
 };
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
-    let descriptor = crate::paired(inputs.value("desktop-descriptor"))?;
-    crate::invoke(
-        &descriptor,
-        &crate::SELECTION_READ,
-        json!({ "selection": inputs.require("selection")? }),
-        crate::READ_TIMEOUT,
-    )
-    .map_err(crate::classify_design_failure)
+    let selection = inputs.require("selection")?;
+    let (project, read) = super::read_selection(inputs.require("lane")?, selection)?;
+    Ok(json!({
+        "project": project,
+        "selection": read.selection.selection_id,
+        "name": read.selection.name,
+        "mode": read.selection.mode,
+        "version": read.selection.version,
+        "state": read.selection.state,
+        // The digest a promotion must echo back. It comes from the server; `ds`
+        // carries it, never recomputes it.
+        "memberDigest": read.member_digest,
+        "present": read.present,
+        "changed": read.changed,
+        "missing": read.missing,
+        "members": read
+            .members
+            .iter()
+            .map(|member| json!({
+                "id": member.id,
+                "label": member.label,
+                "state": member.state,
+            }))
+            .collect::<Vec<_>>(),
+    }))
 }
 
 pub fn render(data: &Value) -> String {
