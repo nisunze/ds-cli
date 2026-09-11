@@ -1,0 +1,567 @@
+{
+  "schema": "ds.survey-media-address-cases/v1",
+  "purpose": "What ds-command-kernel::survey_media_address answers for a survey media reference: which of the three stored layouts it is, what it identifies, the object and thumbnail companion it resolves to, and the body a host sends to ds-brain's survey_media actions. The kernel replays this file in tests/survey_media_address_cases.rs and ds-web replays the identical copy through the vendored WASM, so no rule can be true on one host only.",
+  "source": "ds-command-kernel/docs/contracts/survey-photo-outbox.md (Survey media address). The rules replace ds-web src/lib/api/survey-media-upload.ts (surveyMediaAddress) and are transcribed from ds-brain internal/handlers/survey_media.go (surveyMediaSegment, surveyMediaFileName, surveyMediaPath); the field app's layout is simple_notes/lib/src/core/entry_engine.dart.",
+  "note": "Each case is the op WITHOUT the schema wrapper; `schema` overrides the default ds.survey-media-address/v1. `expected` is the parsed answer, or {\"error\": \"<the exact Err string>\"} when the reference or the request is refused. `refuses` names why, from the vocabulary below.",
+  "refusals": {
+    "not_a_layout": "The reference is not one of the three stored layouts.",
+    "bucket_qualified": "A bucket prefix: a host cache key, not an object name.",
+    "traversal": "A segment contains `..`.",
+    "escaped": "A URL spelling: a percent escape, a query or fragment marker, or a control character.",
+    "separator": "A Windows separator is not a path separator.",
+    "empty_segment": "A segment is empty.",
+    "segment_charset": "A segment is outside the gateway's segment character class.",
+    "segment_bound": "A segment is longer than the gateway's 128-character bound.",
+    "file_name": "The filename is a single dot or a double dot.",
+    "companion_bound": "The _thunder.jpeg companion could not be a bounded object name.",
+    "malformed_request": "The request itself is malformed; not a path refusal."
+  },
+  "cases": [
+    {
+      "id": "web_layout_is_the_browsers_five_segment_reference",
+      "why": "The layout every DS browser upload has written since survey media existed: a project, the literal forms folder, a form, an entry and a file, with its thumbnail companion beside it.",
+      "request": {
+        "kind": "parse",
+        "path": "p1/forms/poles/e1/photo_1.jpg"
+      },
+      "expected": {
+        "layout": "web",
+        "project": "p1",
+        "form": "poles",
+        "entry": "e1",
+        "file": "photo_1.jpg",
+        "object_path": "p1/forms/poles/e1/photo_1.jpg",
+        "thumbnail_object_path": "p1/forms/poles/e1/photo_1_thunder.jpeg"
+      }
+    },
+    {
+      "id": "web_layout_wire_body_is_byte_identical_to_todays_request",
+      "why": "The web layout must send exactly what ds-brain already accepts — four fields, no layout and no media_field — so an unreleased gateway keeps serving today's browser.",
+      "request": {
+        "kind": "wire",
+        "path": "p1/forms/poles/e1/photo_1.jpg"
+      },
+      "expected": {
+        "project_id": "p1",
+        "form_slug": "poles",
+        "entry_id": "e1",
+        "file_name": "photo_1.jpg"
+      }
+    },
+    {
+      "id": "projects_layout_is_the_six_segment_reference",
+      "why": "The reference ds-web's own fixtures carry: the same address under a projects/ root, which the old client parser refused outright.",
+      "request": {
+        "kind": "parse",
+        "path": "projects/p1/forms/poles/e1/photo_1.jpg"
+      },
+      "expected": {
+        "layout": "projects",
+        "project": "p1",
+        "form": "poles",
+        "entry": "e1",
+        "file": "photo_1.jpg",
+        "object_path": "projects/p1/forms/poles/e1/photo_1.jpg",
+        "thumbnail_object_path": "projects/p1/forms/poles/e1/photo_1_thunder.jpeg"
+      }
+    },
+    {
+      "id": "projects_layout_wire_body_names_its_layout",
+      "why": "A non-web layout must name itself so ds-brain recomposes the path it validated instead of trusting a client-sent string.",
+      "request": {
+        "kind": "wire",
+        "path": "projects/p1/forms/poles/e1/photo_1.jpg"
+      },
+      "expected": {
+        "project_id": "p1",
+        "form_slug": "poles",
+        "entry_id": "e1",
+        "file_name": "photo_1.jpg",
+        "layout": "projects"
+      }
+    },
+    {
+      "id": "field_app_layout_is_the_seven_segment_device_reference",
+      "why": "What simple_notes' entry_engine.dart uploads: projects/{p}/forms/{f}/{e}/{field}/{millis}_{index}.{ext}. Rotation was impossible for these photos until this layout was an address.",
+      "request": {
+        "kind": "parse",
+        "path": "projects/p1/forms/poles/e1/photo_1/1700000000000_0.jpg"
+      },
+      "expected": {
+        "layout": "field_app",
+        "project": "p1",
+        "form": "poles",
+        "entry": "e1",
+        "field": "photo_1",
+        "file": "1700000000000_0.jpg",
+        "object_path": "projects/p1/forms/poles/e1/photo_1/1700000000000_0.jpg",
+        "thumbnail_object_path": "projects/p1/forms/poles/e1/photo_1/1700000000000_0_thunder.jpeg"
+      }
+    },
+    {
+      "id": "field_app_wire_body_carries_the_media_field",
+      "why": "The field folder is the only part of a field_app path ds-brain cannot infer, so it travels as media_field beside the layout.",
+      "request": {
+        "kind": "wire",
+        "path": "projects/p1/forms/poles/e1/photo_1/1700000000000_0.jpg"
+      },
+      "expected": {
+        "project_id": "p1",
+        "form_slug": "poles",
+        "entry_id": "e1",
+        "file_name": "1700000000000_0.jpg",
+        "layout": "field_app",
+        "media_field": "photo_1"
+      }
+    },
+    {
+      "id": "a_thumbnail_reference_is_its_own_companion",
+      "why": "A _thunder.jpeg reference resolves to itself, because thumbnail_path_for never derives a thumbnail of a thumbnail.",
+      "request": {
+        "kind": "parse",
+        "path": "projects/p1/forms/poles/e1/photo_1/1700000000000_0_thunder.jpeg"
+      },
+      "expected": {
+        "layout": "field_app",
+        "project": "p1",
+        "form": "poles",
+        "entry": "e1",
+        "field": "photo_1",
+        "file": "1700000000000_0_thunder.jpeg",
+        "object_path": "projects/p1/forms/poles/e1/photo_1/1700000000000_0_thunder.jpeg",
+        "thumbnail_object_path": "projects/p1/forms/poles/e1/photo_1/1700000000000_0_thunder.jpeg"
+      }
+    },
+    {
+      "id": "a_thumbnail_is_addressed_with_its_layouts_own_wire_body",
+      "why": "A companion is a stored object like any other: the web layout addresses it with today's four-field body.",
+      "request": {
+        "kind": "wire",
+        "path": "p1/forms/poles/e1/photo_1_thunder.jpeg"
+      },
+      "expected": {
+        "project_id": "p1",
+        "form_slug": "poles",
+        "entry_id": "e1",
+        "file_name": "photo_1_thunder.jpeg"
+      }
+    },
+    {
+      "id": "a_file_without_an_extension_keeps_a_companion_beside_it",
+      "why": "The companion rule replaces a final extension when there is one and appends when there is not; an extensionless capture still has one thumbnail name.",
+      "request": {
+        "kind": "parse",
+        "path": "p1/forms/poles/e1/capture"
+      },
+      "expected": {
+        "layout": "web",
+        "project": "p1",
+        "form": "poles",
+        "entry": "e1",
+        "file": "capture",
+        "object_path": "p1/forms/poles/e1/capture",
+        "thumbnail_object_path": "p1/forms/poles/e1/capture_thunder.jpeg"
+      }
+    },
+    {
+      "id": "a_field_folder_may_carry_a_dot",
+      "why": "The segment rule admits dots — only a `..` is traversal — so a field named photo.front addresses normally.",
+      "request": {
+        "kind": "parse",
+        "path": "projects/p1/forms/poles/e1/photo.front/1700000000000_0.jpg"
+      },
+      "expected": {
+        "layout": "field_app",
+        "project": "p1",
+        "form": "poles",
+        "entry": "e1",
+        "field": "photo.front",
+        "file": "1700000000000_0.jpg",
+        "object_path": "projects/p1/forms/poles/e1/photo.front/1700000000000_0.jpg",
+        "thumbnail_object_path": "projects/p1/forms/poles/e1/photo.front/1700000000000_0_thunder.jpeg"
+      }
+    },
+    {
+      "id": "a_leading_slash_is_the_only_normalisation",
+      "why": "Hosts hand over both spellings of the same object; a single leading slash is removed and nothing else about the stored name is rewritten.",
+      "request": {
+        "kind": "parse",
+        "path": "/projects/p1/forms/poles/e1/photo_1/1700000000000_0.jpg"
+      },
+      "expected": {
+        "layout": "field_app",
+        "project": "p1",
+        "form": "poles",
+        "entry": "e1",
+        "field": "photo_1",
+        "file": "1700000000000_0.jpg",
+        "object_path": "projects/p1/forms/poles/e1/photo_1/1700000000000_0.jpg",
+        "thumbnail_object_path": "projects/p1/forms/poles/e1/photo_1/1700000000000_0_thunder.jpeg"
+      }
+    },
+    {
+      "id": "a_file_name_may_begin_with_the_field_prefix_ds_web_writes",
+      "why": "ds-web's safeMediaFileName prefixes a field with an underscore, which the filename rule admits even though a folder segment may not begin with one.",
+      "request": {
+        "kind": "parse",
+        "path": "p1/forms/poles/e1/_photo_1-9e2b.jpg"
+      },
+      "expected": {
+        "layout": "web",
+        "project": "p1",
+        "form": "poles",
+        "entry": "e1",
+        "file": "_photo_1-9e2b.jpg",
+        "object_path": "p1/forms/poles/e1/_photo_1-9e2b.jpg",
+        "thumbnail_object_path": "p1/forms/poles/e1/_photo_1-9e2b_thunder.jpeg"
+      }
+    },
+    {
+      "id": "a_segment_at_its_bound_is_admitted",
+      "why": "128 characters is the gateway's segment bound, and the address must admit exactly what the gateway composes.",
+      "request": {
+        "kind": "parse",
+        "path": "p1/forms/poles/eaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/photo_1.jpg"
+      },
+      "expected": {
+        "layout": "web",
+        "project": "p1",
+        "form": "poles",
+        "entry": "eaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "file": "photo_1.jpg",
+        "object_path": "p1/forms/poles/eaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/photo_1.jpg",
+        "thumbnail_object_path": "p1/forms/poles/eaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/photo_1_thunder.jpeg"
+      }
+    },
+    {
+      "id": "a_file_name_whose_companion_fits_exactly_is_admitted",
+      "why": "The longest original whose _thunder.jpeg companion is still a 255-character object name; one character more and the companion could not exist.",
+      "request": {
+        "kind": "parse",
+        "path": "p1/forms/poles/e1/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.jpg"
+      },
+      "expected": {
+        "layout": "web",
+        "project": "p1",
+        "form": "poles",
+        "entry": "e1",
+        "file": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.jpg",
+        "object_path": "p1/forms/poles/e1/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.jpg",
+        "thumbnail_object_path": "p1/forms/poles/e1/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa_thunder.jpeg"
+      }
+    },
+    {
+      "id": "four_segments_name_no_file",
+      "why": "The defect's own sentence: a reference that stops at the entry identifies no stored object.",
+      "request": {
+        "kind": "parse",
+        "path": "p1/forms/poles/e1"
+      },
+      "refuses": "not_a_layout",
+      "expected": {
+        "error": "Media path must identify a project, form, entry and file"
+      }
+    },
+    {
+      "id": "eight_segments_are_not_one_of_the_three_layouts",
+      "why": "A second folder below the media field is nothing any DS writer produces; the grammar is closed, not merely bounded.",
+      "request": {
+        "kind": "parse",
+        "path": "projects/p1/forms/poles/e1/photo_1/extra/1700000000000_0.jpg"
+      },
+      "refuses": "not_a_layout",
+      "expected": {
+        "error": "Media path must identify a project, form, entry and file"
+      }
+    },
+    {
+      "id": "a_field_folder_without_the_projects_root_is_not_a_layout",
+      "why": "Only the field app writes a field folder, and it always writes the projects/ root; six segments without it are ambiguous and refused.",
+      "request": {
+        "kind": "parse",
+        "path": "p1/forms/poles/e1/photo_1/1700000000000_0.jpg"
+      },
+      "refuses": "not_a_layout",
+      "expected": {
+        "error": "Media path must identify a project, form, entry and file"
+      }
+    },
+    {
+      "id": "the_forms_folder_is_literal",
+      "why": "forms is a fixed folder in all three layouts, never a project's own segment.",
+      "request": {
+        "kind": "parse",
+        "path": "p1/form/poles/e1/photo_1.jpg"
+      },
+      "refuses": "not_a_layout",
+      "expected": {
+        "error": "Media path must identify a project, form, entry and file"
+      }
+    },
+    {
+      "id": "an_empty_reference_is_refused",
+      "why": "A photo row with no path must refuse like any other non-address rather than resolving to the bucket root.",
+      "request": {
+        "kind": "parse",
+        "path": ""
+      },
+      "refuses": "not_a_layout",
+      "expected": {
+        "error": "Media path must identify a project, form, entry and file"
+      }
+    },
+    {
+      "id": "wire_refuses_exactly_what_parse_refuses",
+      "why": "Both ops go through one grammar, so a host cannot get a request body for a reference it could not resolve.",
+      "request": {
+        "kind": "wire",
+        "path": "p1/forms/poles/e1"
+      },
+      "refuses": "not_a_layout",
+      "expected": {
+        "error": "Media path must identify a project, form, entry and file"
+      }
+    },
+    {
+      "id": "a_bucket_qualified_reference_is_refused",
+      "why": "A bucket-qualified spelling is a host cache key, not an object name; hosts strip the bucket before asking.",
+      "request": {
+        "kind": "parse",
+        "path": "ds-survey-media/p1/forms/poles/e1/photo_1.jpg"
+      },
+      "refuses": "bucket_qualified",
+      "expected": {
+        "error": "Media path must identify a project, form, entry and file"
+      }
+    },
+    {
+      "id": "a_bucket_qualified_field_app_reference_is_refused",
+      "why": "The same rule at the field app's depth, where a bucket prefix would otherwise look like a legal eighth segment.",
+      "request": {
+        "kind": "parse",
+        "path": "ds-survey-media/projects/p1/forms/poles/e1/photo_1/1700000000000_0.jpg"
+      },
+      "refuses": "bucket_qualified",
+      "expected": {
+        "error": "Media path must identify a project, form, entry and file"
+      }
+    },
+    {
+      "id": "a_traversal_segment_is_refused",
+      "why": "ds-brain rejects any segment containing .., and the client must refuse it before a request is ever signed.",
+      "request": {
+        "kind": "parse",
+        "path": "p1/forms/../e1/photo_1.jpg"
+      },
+      "refuses": "traversal",
+      "expected": {
+        "error": "Media path must identify a project, form, entry and file"
+      }
+    },
+    {
+      "id": "a_field_folder_containing_a_traversal_is_refused",
+      "why": "The .. rule is about the characters anywhere in a segment, not only a segment that is exactly two dots.",
+      "request": {
+        "kind": "parse",
+        "path": "projects/p1/forms/poles/e1/ph..oto/1700000000000_0.jpg"
+      },
+      "refuses": "traversal",
+      "expected": {
+        "error": "Media path must identify a project, form, entry and file"
+      }
+    },
+    {
+      "id": "a_percent_escape_is_not_an_object_name",
+      "why": "A percent-escaped name is a URL spelling; the stored object's own name is what addresses it.",
+      "request": {
+        "kind": "parse",
+        "path": "p1/forms/poles/e1/photo%201.jpg"
+      },
+      "refuses": "escaped",
+      "expected": {
+        "error": "Media path must identify a project, form, entry and file"
+      }
+    },
+    {
+      "id": "a_query_marker_is_not_part_of_an_object_name",
+      "why": "A signed URL's query must never reach the address; ? and # are outside the filename rule.",
+      "request": {
+        "kind": "parse",
+        "path": "p1/forms/poles/e1/photo_1.jpg?generation=1"
+      },
+      "refuses": "escaped",
+      "expected": {
+        "error": "Media path must identify a project, form, entry and file"
+      }
+    },
+    {
+      "id": "a_control_character_is_refused",
+      "why": "Control characters were on the browser's own blocklist and are outside the gateway's character class.",
+      "request": {
+        "kind": "parse",
+        "path": "p1/forms/poles/e1/photo\u0001.jpg"
+      },
+      "refuses": "escaped",
+      "expected": {
+        "error": "Media path must identify a project, form, entry and file"
+      }
+    },
+    {
+      "id": "a_windows_separator_is_not_a_path_separator",
+      "why": "A backslash never separates object segments; a desktop host must not turn a Windows spelling into an address.",
+      "request": {
+        "kind": "parse",
+        "path": "p1\\forms\\poles\\e1\\photo_1.jpg"
+      },
+      "refuses": "separator",
+      "expected": {
+        "error": "Media path must identify a project, form, entry and file"
+      }
+    },
+    {
+      "id": "an_empty_segment_is_refused",
+      "why": "A doubled slash makes a segment the gateway cannot compose.",
+      "request": {
+        "kind": "parse",
+        "path": "p1/forms//e1/photo_1.jpg"
+      },
+      "refuses": "empty_segment",
+      "expected": {
+        "error": "Media path must identify a project, form, entry and file"
+      }
+    },
+    {
+      "id": "a_trailing_slash_names_no_file",
+      "why": "A reference that ends at a folder identifies no stored bytes.",
+      "request": {
+        "kind": "parse",
+        "path": "p1/forms/poles/e1/"
+      },
+      "refuses": "empty_segment",
+      "expected": {
+        "error": "Media path must identify a project, form, entry and file"
+      }
+    },
+    {
+      "id": "a_segment_may_not_begin_with_an_underscore",
+      "why": "The gateway's segment rule requires an alphanumeric first character; the client must refuse the same thing.",
+      "request": {
+        "kind": "parse",
+        "path": "p1/forms/_poles/e1/photo_1.jpg"
+      },
+      "refuses": "segment_charset",
+      "expected": {
+        "error": "Media path must identify a project, form, entry and file"
+      }
+    },
+    {
+      "id": "a_field_folder_may_not_begin_with_an_underscore",
+      "why": "The field folder is a segment and obeys the segment rule, not the looser filename rule.",
+      "request": {
+        "kind": "parse",
+        "path": "projects/p1/forms/poles/e1/_field/1700000000000_0.jpg"
+      },
+      "refuses": "segment_charset",
+      "expected": {
+        "error": "Media path must identify a project, form, entry and file"
+      }
+    },
+    {
+      "id": "a_segment_beyond_its_bound_is_refused",
+      "why": "129 characters is one past the gateway's segment bound.",
+      "request": {
+        "kind": "parse",
+        "path": "p1/forms/poles/eaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/photo_1.jpg"
+      },
+      "refuses": "segment_bound",
+      "expected": {
+        "error": "Media path must identify a project, form, entry and file"
+      }
+    },
+    {
+      "id": "a_dot_file_name_is_refused",
+      "why": "A single dot is a folder reference, never a file, in both the client's and the gateway's rules.",
+      "request": {
+        "kind": "parse",
+        "path": "p1/forms/poles/e1/."
+      },
+      "refuses": "file_name",
+      "expected": {
+        "error": "Media path must identify a project, form, entry and file"
+      }
+    },
+    {
+      "id": "a_dotdot_file_name_is_refused",
+      "why": "The traversal spelling of a filename is refused explicitly, as ds-brain refuses it explicitly.",
+      "request": {
+        "kind": "parse",
+        "path": "p1/forms/poles/e1/.."
+      },
+      "refuses": "file_name",
+      "expected": {
+        "error": "Media path must identify a project, form, entry and file"
+      }
+    },
+    {
+      "id": "a_file_name_whose_companion_would_exceed_the_object_bound_is_refused",
+      "why": "An address names an original and its companion; if the _thunder.jpeg name could not be a 255-character object, the gateway would refuse the pair and the browser must say so first.",
+      "request": {
+        "kind": "parse",
+        "path": "p1/forms/poles/e1/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.jpg"
+      },
+      "refuses": "companion_bound",
+      "expected": {
+        "error": "Media path must identify a project, form, entry and file"
+      }
+    },
+    {
+      "id": "an_unknown_op_is_a_malformed_request",
+      "why": "The op set is closed: parse and wire. A host asking for anything else has a bug, not an unresolvable path, and must not see the path refusal.",
+      "request": {
+        "kind": "compose",
+        "path": "p1/forms/poles/e1/photo_1.jpg"
+      },
+      "refuses": "malformed_request",
+      "expected": {
+        "error": "invalid survey media address request: unknown variant `compose`, expected `parse` or `wire` at line 1 column 61"
+      }
+    },
+    {
+      "id": "an_unknown_request_field_is_refused",
+      "why": "Requests are closed so a host cannot smuggle a bucket or a layout past the grammar.",
+      "request": {
+        "kind": "parse",
+        "path": "p1/forms/poles/e1/photo_1.jpg",
+        "bucket": "ds-survey-media"
+      },
+      "refuses": "malformed_request",
+      "expected": {
+        "error": "invalid survey media address request: unknown field `bucket`, expected `path` at line 1 column 127"
+      }
+    },
+    {
+      "id": "a_missing_path_is_a_malformed_request",
+      "why": "An absent path is a marshalling defect in the host, reported as one.",
+      "request": {
+        "kind": "parse"
+      },
+      "refuses": "malformed_request",
+      "expected": {
+        "error": "invalid survey media address request: missing field `path` at line 1 column 61"
+      }
+    },
+    {
+      "id": "an_unsupported_schema_is_refused",
+      "why": "A host pinned to another version of this contract is told so instead of being answered.",
+      "schema": "ds.survey-media-address/v2",
+      "request": {
+        "kind": "parse",
+        "path": "p1/forms/poles/e1/photo_1.jpg"
+      },
+      "refuses": "malformed_request",
+      "expected": {
+        "error": "unsupported survey media address schema; expected ds.survey-media-address/v1"
+      }
+    }
+  ]
+}

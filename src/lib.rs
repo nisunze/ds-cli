@@ -1539,6 +1539,16 @@ pub fn survey_photo_thumbnail_path_wasm(path: &str) -> Result<String, wasm_bindg
         .map_err(|error| wasm_bindgen::JsValue::from_str(&error))
 }
 
+/// Which stored object a survey media reference names — across the browser's,
+/// ds-web's and the field app's three path layouts — and the body a host
+/// sends to address it. No host re-derives the grammar.
+pub mod survey_media_address;
+#[cfg(feature = "wasm")]
+#[wasm_bindgen::prelude::wasm_bindgen(js_name = surveyMediaAddress)]
+pub fn survey_media_address_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
+    survey_media_address::evaluate(input).map_err(|error| wasm_bindgen::JsValue::from_str(&error))
+}
+
 pub mod project_config;
 #[cfg(feature = "wasm")]
 #[wasm_bindgen::prelude::wasm_bindgen(js_name = projectConfigAdmit)]
