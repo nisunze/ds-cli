@@ -332,6 +332,11 @@ static REPORT_ENTRIES: &[Entry] = &[
         render: ds_cli_report::layout::render_text,
     },
     Entry {
+        command: &ds_cli_report::layout::SESSION,
+        handler: ds_cli_report::layout::session,
+        render: ds_cli_report::layout::render_text,
+    },
+    Entry {
         command: &ds_cli_report::layout::SCHEMA,
         handler: ds_cli_report::layout::schema,
         render: ds_cli_report::layout::render_text,

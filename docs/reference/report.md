@@ -325,6 +325,25 @@ layer, seeding its print styles, refusing `printing_context_no_dataset` for a
 catalogue layer that is neither held nor downloadable unless it is already
 selected. `report.layout.edit` accepts the same `context_*` ops as raw requests.
 
+## The editor's workflow
+
+`ds report layout session` answers what the Printing setup page's flags
+answered — may this layout be changed right now, is it dirty, what does Cancel
+restore, what do Undo and Redo mean and how deep they go — from the same
+kernel reducer (`printing::session`). With no arguments it returns the zero
+state and the history cap. With `--state state.json --event event.json` it
+returns the next state, the operations the host performs on the documents it
+holds (`install_document`, `push_undo`, `pop_undo`, `pop_redo`,
+`clear_history`, `snapshot_baseline`, `restore_baseline`, `drop_baseline`,
+`clear_document`) and whether anything applied; a refusal names its code
+(`printing_discard_unconfirmed`, `printing_not_editing`,
+`printing_global_read_only`, `printing_no_document`,
+`printing_nothing_to_undo`, `printing_nothing_to_redo`). Events:
+`draft`, `load {id, revision, global, same_document}`, `begin_edit`,
+`open_context`, `edit`, `undo`, `redo`, `discard`, `saved {id, revision}`,
+`deleted`; `draft`, `load` and `discard` take `confirmed` once the operator
+has agreed to drop unsaved edits. Documents never cross this boundary.
+
 ## Publishing a setup
 
 `ds report layout save --scope <global|project> --request <file>` takes a `save` request carrying `layout` and `expected_revision`. The kernel's setup lifecycle plan (`printing::lifecycle`) decides whether that publish is a create (empty revision) or an update (with one) — the same decision the Printing setup page takes — so `ds` never sends the compatibility `save` action itself.

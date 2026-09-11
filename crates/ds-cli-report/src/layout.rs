@@ -173,6 +173,81 @@ const CONTEXT_REFUSALS: &[Refusal] = &[
         remedy: "Download the dataset first, or choose one the catalogue reports as ready",
     },
 ];
+const SESSION_STATE: Arg = Arg::value(
+    "state",
+    "<json-file>",
+    "The editor state the host holds: library, has_layout, editing, dirty, loaded_global, has_baseline, saved_id, revision, undo_depth, redo_depth. Omit with --event omitted to read the zero state.",
+);
+const SESSION_EVENT: Arg = Arg::value(
+    "event",
+    "<json-file>",
+    "The event: {kind: draft|load|begin_edit|open_context|edit|undo|redo|discard|saved|deleted, ...}.",
+);
+pub static SESSION: Command = Command {
+    id: "report.layout.session",
+    path: &["report", "layout", "session"],
+    contract: 1,
+    summary: "Decide one print-editor event: next state and the host's operations.",
+    purpose: "May a layout be changed right now, is it dirty, what does Cancel restore, what do Undo and Redo mean and how deep they go are decided once in ds-command-kernel (printing::session) for the Printing setup page and any headless editor alike. The host reports the state it holds and the event; the kernel returns the next state, the operations to perform on the documents the host keeps (install, push/pop undo, snapshot/restore baseline, clear), or a refusal. Documents never cross this boundary. With no arguments it returns the zero state and the history cap.",
+    chapter: Chapter::Reports,
+    effect: Effect::ReadOnly,
+    authority: Authority::None,
+    execution: Execution::Sync,
+    args: &[SESSION_STATE, SESSION_EVENT],
+    output: "{state, ops, applied, refusal?} for an event; {state, history_cap} with no arguments.",
+    examples: &[
+        Example {
+            command: "ds report layout session --output json",
+            note: "The editor's zero state and how deep its undo stack goes.",
+            runnable: true,
+        },
+        Example {
+            command: "ds report layout session --state state.json --event event.json --output json",
+            note: "One event; `ops` says what to do to the held documents, in order.",
+            runnable: false,
+        },
+    ],
+    refusals: SESSION_REFUSALS,
+    reference: Some("docs/reference/report.md"),
+    availability: local,
+};
+const SESSION_REFUSALS: &[Refusal] = &[
+    Refusal {
+        code: "printing_invalid",
+        when: "The state or event file is malformed, or a field is unknown or unbounded",
+        remedy: "Use report.layout.schema and correct the reported layout constraint",
+    },
+    Refusal {
+        code: "printing_discard_unconfirmed",
+        when: "A draft, load or cancel would drop unsaved edits and the event does not say confirmed",
+        remedy: "Ask the operator, then send the same event with confirmed: true",
+    },
+    Refusal {
+        code: "printing_not_editing",
+        when: "An edit, undo or redo arrives outside edit mode",
+        remedy: "Send begin_edit first (or draft a new document)",
+    },
+    Refusal {
+        code: "printing_global_read_only",
+        when: "A global template is opened for editing from a project page",
+        remedy: "Copy it into the project (report.layout.copy) and edit the copy",
+    },
+    Refusal {
+        code: "printing_no_document",
+        when: "The event needs an open document and none is held",
+        remedy: "Draft or load a document first",
+    },
+    Refusal {
+        code: "printing_nothing_to_undo",
+        when: "Undo with an empty undo stack",
+        remedy: "Nothing to do; the document is at its oldest held state",
+    },
+    Refusal {
+        code: "printing_nothing_to_redo",
+        when: "Redo with an empty redo stack",
+        remedy: "Nothing to do; the document is at its newest held state",
+    },
+];
 pub static RENDER: Command = Command {
     id: "report.layout.render",
     path: &["report", "layout", "render"],
@@ -439,6 +514,58 @@ pub fn context(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
             context_eval(request)
         }
         other => Err(invalid(format!("unknown action `{other}`"))),
+    }
+}
+pub fn session(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
+    let (state, event) = (i.value("state"), i.value("event"));
+    let request = match (state, event) {
+        (None, None) => json!({"op": "session_defaults"}),
+        (Some(_), Some(_)) => json!({
+            "op": "session_step",
+            "state": json_file(i, "state")?,
+            "event": json_file(i, "event")?,
+        }),
+        _ => return Err(invalid("--state and --event go together")),
+    };
+    let input = serde_json::to_vec(&request).map_err(invalid)?;
+    let result = ds_command_kernel::printing::evaluate(&input).map_err(invalid)?;
+    let value: Value = serde_json::from_str(&result).map_err(invalid)?;
+    if let Some(code) = value["refusal"]["code"].as_str() {
+        return Err(session_refusal(code));
+    }
+    Ok(value)
+}
+/// The kernel's refusal under its own code, with the remedy this command
+/// declares for it. One arm per declared code, so the declaration and the
+/// emission cannot drift apart unnoticed.
+fn session_refusal(code: &str) -> Failure {
+    let remedy = |code: &str| {
+        SESSION_REFUSALS
+            .iter()
+            .find(|r| r.code == code)
+            .map(|r| r.remedy)
+            .unwrap_or("Correct the reported state or event")
+    };
+    match code {
+        "printing_discard_unconfirmed" => {
+            Failure::invalid("printing_discard_unconfirmed", code).remedy(remedy(code))
+        }
+        "printing_not_editing" => {
+            Failure::invalid("printing_not_editing", code).remedy(remedy(code))
+        }
+        "printing_global_read_only" => {
+            Failure::invalid("printing_global_read_only", code).remedy(remedy(code))
+        }
+        "printing_no_document" => {
+            Failure::invalid("printing_no_document", code).remedy(remedy(code))
+        }
+        "printing_nothing_to_undo" => {
+            Failure::invalid("printing_nothing_to_undo", code).remedy(remedy(code))
+        }
+        "printing_nothing_to_redo" => {
+            Failure::invalid("printing_nothing_to_redo", code).remedy(remedy(code))
+        }
+        other => invalid(format!("unknown editor refusal `{other}`")),
     }
 }
 pub fn list(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
