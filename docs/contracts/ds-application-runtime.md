@@ -1,65 +1,13 @@
-# The DS application runtime — one headless Rust runtime, every platform a target
+# The DS application runtime — campaign record
 
-**Status:** apex ruling for the sync gate campaign and everything after it. Owner
-directive, 2026-09-11, recorded verbatim in §1. It sits above
-`ds-application-kernel.md` (Rust owns the product), `ds-transport-authority.md`
-(one transport), `ds-sync-engine.md` (one decision) and ds-brain's
-`edge-admission-and-publish.md` (authority is handed, once). Where they differ
-from §1, §1 wins.
+**Status:** campaign record, 2026-09-11. The governing direction is
+[`ds-headless-application-runtime.md`](ds-headless-application-runtime.md)
+(normative owner direction, §1–§10); this file does not restate it. It keeps
+what that contract asks the campaign to keep explicit: which existing piece
+owns what, the runtime slices, and the per-platform acceptance state
+(implemented / landed / deployed / operationally proven).
 
-## 1. The directive (verbatim)
-
-> Steer the campaign toward a shared, headless Rust application runtime, with web, Android, iOS, Linux, Windows, and server as first-class targets. TypeScript/Svelte becomes a thin presentation client. Optimize execution for each platform without duplicating application logic.
-> Start from the existing kernel, ds-client-core, queues, transfer machinery, storage owners, CLI/MCP interfaces, and packaging. Extend existing contracts where necessary. Do not introduce competing command registries, parallel clients, or another synchronization implementation.
->
-> **Mandatory ownership boundary**
-> - Every application command and decision passes through the Rust application/kernel boundary.
-> - Rust owns validation, backend routes, request construction, response interpretation, synchronization, retry decisions, reconciliation, and completion evidence. Server-side authorization remains authoritative.
-> - TypeScript/Svelte displays projected state and forwards typed user intentions. It must never bypass Rust through backend calls, alternate business rules, or independent mutations of authoritative application state.
-> - Keep pure kernel decisions separate from runtime effects and platform adapters. Necessary browser or native bindings execute explicit operations; they do not decide application behavior.
-> - Keep backend route knowledge inside the Rust application client. Frontend code must not construct backend requests or interpret backend protocols.
->
-> **Platform execution** — share application behavior while respecting different execution environments:
-> - Web: Rust/WASM runs locally, using browser-native persistence and workers where supported. Web remains fully supported without a native companion. Local decisions and prepared offline work must not require server round trips. Browser background execution is opportunistic; closing the browser cannot be assumed to leave synchronization running.
-> - Android/iOS: integrate with supported background scheduling, secure storage, and application lifecycle. Checkpoint work so suspension or termination preserves committed local captures. Resume when execution becomes available. Do not promise continuous background execution.
-> - Linux/Windows: a native background host owns synchronization independently of the UI. Closing the application window must not stop delivery when background operation is enabled. Integrate startup, shutdown, installation, and updates with the existing application lifecycle.
-> - Server: a supervised headless host runs the same application operations without a browser, webview, DOM, or paired desktop. Support durable storage, explicit identities, bounded concurrency, graceful shutdown, and restart recovery.
-> - CLI/MCP: invoke the same application operations without requiring frontend participation.
-> Do not impose a desktop daemon architecture on web or mobile. A browser worker, mobile scheduled task, desktop process, and server worker have different lifetimes; each must execute the same durable state machine correctly.
->
-> **Durability and ownership**
-> Establish one authoritative persistent queue and artifact store for each execution context.
-> Browser persistence remains appropriate for the web. It cannot remain the sole owner of desktop work expected to continue after the webview closes. Use storage appropriate to each host behind the shared Rust application boundary.
-> Migrate existing pending work through a supported, verified handoff. Preserve identities, replay keys, original artifact bytes, acknowledgements, and unresolved failures. Prevent competing queue owners and silent loss.
-> Recover after UI closure, process crashes, connectivity loss, suspension, and machine restart. Resume supported transfers without restarting completed work or falsely reporting success.
-> Fence work by account, project, and deployment. Define cancellation, logout, account switching, and explicit background shutdown. Multiple workers or application instances must not execute the same work unsafely; use explicit ownership, leases where appropriate, and idempotent effects.
-> Server execution must use an explicitly supported identity model. Never substitute ambient credentials or silently broaden authority.
->
-> **Performance**
-> Optimize startup, WASM size, memory, battery, bandwidth, and storage access for each platform.
-> Use bounded batches, incremental state projections, appropriate concurrency, and efficient byte transfer. Avoid copying whole datasets or large artifacts across the UI boundary. Avoid unnecessary polling and background wakeups.
-> The universal guarantee is durable progress and safe resumption whenever execution and connectivity are available. Continuous background execution is a platform-specific capability.
->
-> **Execution and integration**
-> Coordinate the existing campaign lanes around this destination and preserve completed work.
-> Land coherent vertical slices. For each slice: 1. Identify the application decision, durable state, and current owner. 2. Move ownership into the appropriate Rust component. 3. Connect the relevant platform adapters and headless entrypoints. 4. Remove the competing TypeScript implementation and bypass paths. 5. Prove behavior, recovery, and compatibility. 6. Land the slice before expanding scope.
-> Keep UI communication typed and bounded. Do not expose arbitrary HTTP, filesystem, or code-execution access through a local bridge.
-> Add enforceable architectural checks that reject frontend backend imports, route construction, direct backend requests, and alternative domain mutations. Check indirect wrappers as well as obvious calls. Keep necessary platform bindings narrowly defined.
->
-> **Acceptance** — demonstrate, with platform-specific evidence:
-> - Desktop work continues after the UI closes.
-> - Web performs prepared local work offline without a native companion.
-> - Mobile suspension and process termination preserve committed local work and permit safe resumption.
-> - Interrupted delivery resumes without losing work or duplicating committed effects.
-> - Reopened or reconnected UI reflects the runtime's authoritative state.
-> - Equivalent operations run headlessly on a server without frontend dependencies.
-> - Restart, concurrent-worker, account-isolation, cancellation, and blocked-work behavior are verified.
-> - Every deferred or refused item has a truthful reason and an actionable recovery path.
-> - No migrated frontend workflow can bypass the Rust application boundary.
-> Desktop success does not certify mobile or web. Mark each platform as implemented, tested, or not yet verified.
-> Build locally; never trigger remote CI or Cloud Build. Distinguish implemented, landed, deployed, and operationally proven states. Do not declare the transition complete while competing frontend authority remains.
-
-## 2. What already exists, and what each piece is under this directive
+## 1. What already exists, and what each piece is under the contract
 
 | Piece | Today | Role under §1 |
 |---|---|---|
@@ -72,7 +20,7 @@ from §1, §1 wins.
 | IndexedDB through `stores/db.ts` | the browser's persistence, TypeScript-shaped today | **web persistence**, to be driven through the WASM boundary (the kernel decides the row, the host writes bytes) |
 | ds-brain `work/open` · `work/publish` · `compute_artifacts` (admission from the release registry, landed 2026-09-11) | grants and re-authorization | **server-side authorization, authoritative**; hands authority, decides nothing else |
 
-## 3. Runtime slices (added to the sync gate campaign; each lands by the six steps of §1)
+## 2. Runtime slices (each lands by the six steps of the contract's §8)
 
 | # | Slice | Durable state / decision | Owner after |
 |---|---|---|---|
@@ -85,7 +33,7 @@ from §1, §1 wins.
 | R7 | Mobile host contract | the six host calls + checkpoint/resume against the portable kernel; scheduled tasks; secure storage | future app; not yet verified |
 | R8 | Fencing and lifecycle | account/project/deployment fences; cancellation, logout, account switch, explicit background shutdown; leases; idempotent effects | kernel + hosts |
 
-## 4. Platform status (implemented / tested / not yet verified) — kept current
+## 3. Platform status (implemented / landed / deployed / operationally proven) — kept current
 
 | Platform | Decision | Transport | Durable store | Background execution | Status |
 |---|---|---|---|---|---|
