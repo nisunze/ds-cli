@@ -23,7 +23,8 @@ use ds_cli_contract::{Context, Inputs};
 #[cfg(test)]
 use ds_command_kernel::report_formats::Placement;
 use ds_command_kernel::report_formats::{
-    DesignOutputSelection, ReadinessMode, apply_output_selection, named_layouts,
+    DesignOutputSelection, ReadinessMode, apply_output_selection, named_layouts, named_setup_id,
+    normalize, output_setting_index, stored_output_selection, string_list,
 };
 use serde_json::{Value, json};
 
@@ -226,7 +227,7 @@ fn receipt(lane: &str, summary: &Value) -> Value {
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let lane = inputs.require("lane")?;
     let configuration = ds_cli_auth::feeder_configuration(lane, None)?;
-    let sheets = sheets_with_printing_catalogue(lane, &configuration.document["sheets"])?;
+    let sheets = sheets_with_printing_catalogue(lane, &configuration.document["sheets"], None)?;
     // The native read always refreshes: this client substitutes no cached
     // configuration, so the mode the kernel names its refusal with is not a
     // guess.
@@ -243,36 +244,91 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     Ok(output)
 }
 
-/// The configuration sheets, completed with the project's own printing
-/// catalogue under the kernel's `printing_setups` sheet.
+/// The configuration sheets, completed with the printing setups the selection
+/// names under the kernel's `printing_setups` sheet.
 ///
 /// The configuration read serves the settings rows; the printing setups a
-/// project holds live in the printing library and are served by the printing
-/// contract's list, whose rows already carry the `id`, `revision` and
-/// `layout` the kernel's `named_layouts` reads. Only the reporter's sealed
+/// project holds live in the printing library. Only the reporter's sealed
 /// input receipt ever carried that sheet, and it is derived from the saved
 /// selection — so before this read, a headless adoption check and the
 /// `papers` projection looked for a sheet that never existed at write time and
-/// refused every project setup as "not held". A sheet the configuration does
-/// serve is kept as served.
-fn sheets_with_printing_catalogue(lane: &str, sheets: &Value) -> Result<Value, Failure> {
+/// refused every project setup as "not held". The printing list is the
+/// catalogue's identity (its rows carry no document); each named setup the
+/// project holds is then read exactly, in the `{id, revision, layout}` shape
+/// the kernel's `named_layouts` reads. A setup the selection names but the
+/// catalogue lacks is left out, so the kernel refuses it by its own rule. A
+/// sheet the configuration does serve is kept as served.
+fn sheets_with_printing_catalogue(
+    lane: &str,
+    sheets: &Value,
+    selection: Option<&DesignOutputSelection>,
+) -> Result<Value, Failure> {
     if sheets.get("printing_setups").is_some() {
         return Ok(sheets.clone());
     }
+    let wanted = match selection {
+        Some(selection) => selection
+            .prints
+            .iter()
+            .filter(|print| print.enabled)
+            .map(|print| print.layout_id.clone())
+            .collect::<Vec<_>>(),
+        None => stored_setup_ids(sheets),
+    };
+    if wanted.is_empty() {
+        return Ok(with_printing_setups(sheets, Vec::new()));
+    }
     let catalogue = ds_cli_auth::printing(lane, false, &ds_cli_auth::PrintingRequest::List {})?;
-    Ok(with_printing_setups(sheets, &catalogue["setups"]))
+    let held = catalogue["setups"]
+        .as_array()
+        .map(|rows| {
+            rows.iter()
+                .filter_map(|row| row["id"].as_str().map(str::to_owned))
+                .collect::<std::collections::BTreeSet<_>>()
+        })
+        .unwrap_or_default();
+    let mut setups = Vec::new();
+    for id in wanted {
+        if !held.contains(&id) {
+            continue;
+        }
+        let setup = ds_cli_auth::printing(
+            lane,
+            false,
+            &ds_cli_auth::PrintingRequest::Get { id: id.clone() },
+        )?;
+        setups
+            .push(json!({"id":setup["id"],"revision":setup["revision"],"layout":setup["layout"]}));
+    }
+    Ok(with_printing_setups(sheets, setups))
 }
 
-/// Pure half of the completion: the served sheets plus the catalogue rows,
+/// The printing setups the stored output selection names, read with the
+/// kernel's own readers: the export row under any of its aliases, the
+/// versioned document or the legacy token list, and the `pdf__<id>` tokens.
+fn stored_setup_ids(sheets: &Value) -> Vec<String> {
+    let Some(rows) = sheets["project_settings"].as_array() else {
+        return Vec::new();
+    };
+    let Some(index) = output_setting_index(rows) else {
+        return Vec::new();
+    };
+    let value = &rows[index]["value"];
+    let tokens = stored_output_selection(value)
+        .and_then(|selection| selection.tokens())
+        .unwrap_or_else(|_| string_list(value));
+    normalize(&tokens)
+        .iter()
+        .filter_map(|token| named_setup_id(token).map(str::to_owned))
+        .collect()
+}
+
+/// Pure half of the completion: the served sheets plus the resolved rows,
 /// unless the configuration already served the sheet.
-fn with_printing_setups(sheets: &Value, setups: &Value) -> Value {
+fn with_printing_setups(sheets: &Value, setups: Vec<Value>) -> Value {
     let mut sheets = sheets.clone();
     if sheets.get("printing_setups").is_none() {
-        sheets["printing_setups"] = setups
-            .as_array()
-            .cloned()
-            .map(Value::Array)
-            .unwrap_or_else(|| json!([]));
+        sheets["printing_setups"] = Value::Array(setups);
     }
     sheets
 }
@@ -313,7 +369,8 @@ pub fn set(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let selection = selection(inputs)?;
     let lane = inputs.require("lane")?;
     let configuration = ds_cli_auth::feeder_configuration(lane, None)?;
-    let sheets = sheets_with_printing_catalogue(lane, &configuration.document["sheets"])?;
+    let sheets =
+        sheets_with_printing_catalogue(lane, &configuration.document["sheets"], Some(&selection))?;
     // A selection that cannot execute must not be saved as if it could.
     adoption(&sheets, &selection)?;
     let mut rows = configuration.document["sheets"]["project_settings"]
@@ -476,13 +533,24 @@ mod tests {
         assert!(CONFIRM.remedy.contains("ds report project settings"));
     }
 
-    /// The served configuration carries no printing catalogue; the printing
-    /// list's rows complete it in the sealed sheet's shape, and a sheet the
-    /// configuration does serve is never replaced.
+    /// The served configuration carries no printing catalogue; the resolved
+    /// rows complete it in the sealed sheet's shape, the stored selection's
+    /// setup ids are read by the kernel's own readers under every stored
+    /// shape, and a sheet the configuration does serve is never replaced.
     #[test]
-    fn served_sheets_are_completed_with_the_project_printing_catalogue() {
-        let served = json!({"project_settings":[{"parameter":"design_export_format","value":["pdf__project_a3"]}]});
-        let completed = with_printing_setups(&served, &json!([layout("project_a3")]));
+    fn served_sheets_are_completed_with_the_named_printing_setups() {
+        let served = json!({"project_settings":[{"parameter":"design_export_format","value":["pdf__project_a3","xlsx"]}]});
+        assert_eq!(stored_setup_ids(&served), vec!["project_a3".to_owned()]);
+        let versioned = json!({"project_settings":[{"parameter":"tr_export_formats","value":{
+            "schema":"ds.design-output-selection/v1",
+            "prints":[{"layout_id":"project_a0","enabled":true,"formats":["pdf"]},
+                      {"layout_id":"project_a3","enabled":false,"formats":["pdf"]}],
+            "geospatial":["kmz"],"tabular":[]}}]});
+        assert_eq!(stored_setup_ids(&versioned), vec!["project_a0".to_owned()]);
+        assert!(stored_setup_ids(&json!({"project_settings":[]})).is_empty());
+        assert!(stored_setup_ids(&json!({})).is_empty());
+
+        let completed = with_printing_setups(&served, vec![layout("project_a3")]);
         assert_eq!(completed["project_settings"], served["project_settings"]);
         assert_eq!(
             completed["printing_setups"].as_array().map(Vec::len),
@@ -492,14 +560,16 @@ mod tests {
         let refusal = adoption(&completed, &select("a3_landscape_rwanda_project_lv", true))
             .expect_err("a setup outside the catalogue is not held");
         assert!(format!("{refusal:?}").contains(SETUP_NOT_ADOPTED.code));
-        // No catalogue at all: the sheet is present and empty, so the kernel
+        // Nothing resolved: the sheet is present and empty, so the kernel
         // reads "holds none" rather than "unreadable".
-        let empty = with_printing_setups(&served, &Value::Null);
-        assert_eq!(empty["printing_setups"], json!([]));
+        assert_eq!(
+            with_printing_setups(&served, Vec::new())["printing_setups"],
+            json!([])
+        );
         // A served sheet stays as served.
         let sealed = json!({"printing_setups":[layout("project_a3")]});
         assert_eq!(
-            with_printing_setups(&sealed, &json!([]))["printing_setups"],
+            with_printing_setups(&sealed, Vec::new())["printing_setups"],
             sealed["printing_setups"]
         );
     }
