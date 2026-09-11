@@ -1573,7 +1573,7 @@ mod tests {
             json!({"all": 4, "error": 0, "fast": 1, "standard": 1, "unsaved": 1, "warning": 1})
         );
         let picker = reply(
-            json!({"op": "picker", "schema": SCHEMA, "options": options, "filter": "warning", "search": "BE-TA"}),
+            json!({"op": "picker", "schema": SCHEMA, "options": options, "filter": "warning", "search": " BETA "}),
         );
         assert_eq!(names(&picker["ordered"]), ["beta"]);
         let picker = reply(
