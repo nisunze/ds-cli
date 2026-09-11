@@ -153,9 +153,19 @@ pub fn run(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
             .map_err(|_| invalid("--now-ms must be a whole number of milliseconds"))?,
         None => now_ms(),
     };
+    let personal = i.switch("personal");
+    let project = i.value("project").unwrap_or("");
+    if personal == !project.is_empty() {
+        return Err(invalid(if personal {
+            "--personal takes no --project"
+        } else {
+            "pass --project <id> or --personal"
+        }));
+    }
     let mut request = json!({
         "schema": "ds.sync-plan/v1",
-        "project": i.require("project")?,
+        "project": project,
+        "personal": personal,
         "install_id": i.value("install-id").unwrap_or("headless"),
         "now_ms": now,
         "online": !i.switch("offline"),
@@ -182,7 +192,11 @@ pub fn render(data: &Value) -> String {
     let summary = &data["summary"];
     out.push_str(&format!(
         "{}: {} to upload, {} to download, {} conflicts, {} refused, {} in sync; grant {}\n",
-        data["project"].as_str().unwrap_or("-"),
+        if data["personal"].as_bool().unwrap_or(false) {
+            "personal"
+        } else {
+            data["project"].as_str().unwrap_or("-")
+        },
         summary["uploads"],
         summary["downloads"],
         summary["conflicts"],

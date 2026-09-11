@@ -171,8 +171,10 @@ section.
 
 ## `ds desktop sync plan` — the sync gate's one decision, headless
 
-Authority `none`: no pairing, no credential. Hand the kernel what an install
-holds (`--local <file>`) and what the project's shared record holds
+Authority `none`: no pairing, no credential. Name the scope — `--project <id>`,
+or `--personal` for the signed-in account's own bytes (user data, notes), which
+go through the same gate — hand the kernel what an install
+holds (`--local <file>`) and what the shared record holds
 (`--remote <file>`), optionally the work grant in hand (`--grant <file>`),
 `--now-ms` (server-observed time; defaults to this machine's clock), `--offline`,
 `--trigger` (why the plan is asked for now — `startup`, `navigation`,
