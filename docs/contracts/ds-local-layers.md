@@ -55,11 +55,19 @@ an aspiration.
   handle, folder, path and file name — missing one, the metadata is dropped,
   never half-kept. Imported-file metadata belongs only to an `import` layer.
   The file name is derived from the path and the format from the file name.
+  That kind rule is the descriptor's, not one op's: `register` and `restore`
+  drop metadata that does not belong, and the whole-registry validation every
+  other op runs refuses a row carrying it, so a catalogue a host hands in
+  cannot smuggle in a row no path here could have minted.
 - **The project fence.** A layer prepared from a connected folder belongs to
   that folder's project; an `update` or `remove` naming another project is
   `project_context_changed`. An op that names no project is not fenced — the
   browser's catalogue is not project-bound — and an imported file belongs to no
   project, so nothing fences it.
+  A **source rename** moves every layer filed under that label, so the fence is
+  asked of every one of them and not only of the layer the op named; it is
+  asked before anything moves, so a refusal leaves the whole catalogue as it
+  was.
 - **Release is the removal proof.** `remove` and `restore` name **exactly**
   what the host may delete: `{"kind":"features_payload","id"}` — the layer's own
   record — and `{"kind":"upload_chunks","workspaceKey","fileName","parsedLayer"}`
@@ -72,6 +80,13 @@ an aspiration.
   space, so a retired row can never name a kept layer's payload — the same id
   twice refuses the whole store. The host deletes only what the receipt names;
   that is why a removal provably cannot touch an original.
+- **An id is one path segment.** It keys a record on a host that keeps records
+  in a file system — an IndexedDB key, `<id>.geojson` under the native store's
+  payload directory — so it carries no `/`, `\` or `:` and is never `.` or
+  `..`. Refused as `malformed_descriptor` at `register`, on every registry a
+  host hands in, and on `restore` — the one thing `restore` will not repair,
+  because an id minted anew would orphan the payload the row names, so the
+  store is refused and the host keeps its raw bytes.
 - **A rename is not a re-provenance.** A manual layer's name inside its source
   is its name, so a rename moves both; an imported layer keeps the name it had
   inside its file. A manual layer is never filed under its own name (the source
@@ -84,11 +99,77 @@ an aspiration.
   refused elsewhere. Feature storage a host offers must locate its chunks:
   `null` is no storage, an unreadable object is refused (`restore` drops it).
 
+### `pinned` — how a transformer's room is named
+
+A pinned-transformer row is **not** named by its host. The browser used to mint
+`pinned-<canonical transformer>__<canonical class>` itself, where the canonical
+name lower-cased and folded everything outside `[a-z0-9_]` into `_`: `Poles A`
+and `Poles-A` were ONE layer and the second overwrote the first. What a host
+offers now is the pair; the identity is the kernel's.
+
+**The draft** — `register`, `draft.pinned`, only for `sourceKind: "pinned"`:
+
+```json
+{"kind": "register", "registry": {...}, "scope": {"host": "browser"},
+ "now_ms": 1758000000000, "sequence": 3, "colorIndex": 0,
+ "draft": {"name": "MV line", "geometryType": "LineString", "sourceKind": "pinned",
+           "sourceName": "Poles A", "sourceLayerName": "mv_line", "featureCount": 12,
+           "pinned": {"transformer": "Poles A", "className": "mv_line",
+                      "fields": ["phase", "doc_id", "phase"]}}}
+```
+
+- `transformer` and `className` are the **raw** pair the row was materialised
+  from — not a canonical, slugged or humanised form of either. Both are
+  required: either one blank is `malformed_descriptor`, and so is a `pinned`
+  block on a layer of any other source kind.
+- `fields` (optional) are the property keys the pinned features carry, in any
+  order and with repeats. The columns are the kernel's answer: each name
+  sanitised like every schema field, ordered, de-duplicated, bounded at 256,
+  all of them `text`. A draft that carries `fields` carries no `schema` of its
+  own (`malformed_descriptor`) — one of them decides, and it is not the host.
+- `name`, `sourceName`, `sourceLayerName`, `geometryType` and `featureCount`
+  stay the host's: they are what it read, not what it decided.
+
+**The answer** is an ordinary register answer, `{registry, receipt, changed}`,
+the receipt being the admitted descriptor:
+
+```json
+{"id": "pinned-poles-a__mv-line-a1308e67", "name": "MV line", "sourceName": "Poles A",
+ "sourceLayerName": "mv_line", "sourceKind": "pinned", "geometryType": "LineString",
+ "color": "#64748b", "lineWidth": 2.5, "pointRadius": 5.0, "fillOpacity": 0.15,
+ "schema": [{"name": "doc_id", "type": "text"}, {"name": "phase", "type": "text"}],
+ "featureCount": 12, "visible": true, "createdAt": 1758000000000}
+```
+
+- **The id** is `pinned-<transformer slug>__<class slug>-<fingerprint>`. Each
+  slug is lowercase ASCII letters and digits with every other character one
+  `-`, bounded at 64 characters (`unnamed` when nothing is left); the
+  fingerprint is the first four bytes of the SHA-256 of the pair itself
+  (`<transformer>\u001f<class>`, each sanitised to 500 characters first),
+  in hex. Readable, one path segment, and two distinct pairs are never one id.
+- **The colour is the class colour** `#64748b` for every layer of kind
+  `pinned`, with the flat style's defaults (2.5 / 5 / 0.15) beside it: a pinned
+  row is one visual class, so it never takes a palette entry and `colorIndex`
+  does not reach it.
+- **Materialising the same pair again is not a second layer.** When the derived
+  id is already in the registry the answer is `changed: false`, the registry
+  the caller passed, and the descriptor **already held** as the receipt — with
+  the visibility and the style the user gave it. The host draws that descriptor
+  and writes nothing. A payload that actually changed is an `update`
+  (`{"kind":"payload",...}`) afterwards; `register` never overwrites what is
+  held.
+
+So a host materialises by calling `register` once per (transformer, class) and
+appends nothing to its own store: one un-admitted row makes every later op
+refuse the whole registry, for every layer in it.
+
 ## 3. Decisions to challenge
 
 - **D1 — Restore repairs; every other op refuses.** A legacy row is trimmed,
   clamped, defaulted and reopened, with each changed key named under
-  `repaired`; the same fault in a `register` or `update` (a style outside its
+  `repaired` — every text it carries, its source label included, and metadata
+  or storage it cannot admit dropped rather than refused. One unbounded string
+  in one row must never hide a whole catalogue from its owner; the same fault in a `register` or `update` (a style outside its
   range, a negative count, storage that cannot locate its chunks) is a refusal
   of the whole op — nothing is silently corrected or dropped. A store that
   refuses to reopen strands every layer in it, which is why the asymmetry
@@ -122,16 +203,31 @@ an aspiration.
   triple only when no other layer of the catalogue parks its payload there.
   *Alternative: trust the importer and always name the triple.*
 
+- **D10 — A pinned pair is an identity, so registering it twice is idempotent.**
+  `register` answers the descriptor already held — visibility and style
+  included — instead of `duplicate_layer`, because materialising a room again
+  is the same room. A payload that has actually changed is an `update`.
+  *Alternative: refuse the second register and make every host remove the row
+  first, which is what the browser did and why a re-materialise lost the
+  user's visibility.*
+- **D11 — A pinned id spells the pair out and fingerprints it.** A slug alone
+  cannot identify (`Poles A` and `Poles-A` slug the same, and that is exactly
+  the collision this replaces); a digest alone cannot be read in a receipt. So
+  the id is both, and the digest is over the raw pair. *Alternative: a pure
+  digest, or a host-supplied id — neither of which a receipt can be read
+  against.*
+
 ## 4. Proof
 
-`tests/fixtures/local-layers-cases.json` — 68 recorded cases, each saying why
+`tests/fixtures/local-layers-cases.json` — 76 recorded cases, each saying why
 it exists — replayed by `tests/local_layers_cases.rs`, byte-identical to
 ds-web's `src/tests/fixtures/local-layers/cases.json` for the browser's WASM
 replay and the native store's. Two boundary properties are asserted over the
 recorded answers themselves: a refusal answers no registry, and every release
-item names exactly one record the layer owns. 35 module tests hold each rule
-and each refusal on its own, the lane/uid fence of a native catalogue and the
-shared-id and shared-chunk release guards included.
+item names exactly one record the layer owns. 41 module tests hold each rule
+and each refusal on its own, the lane/uid fence of a native catalogue, the
+shared-id and shared-chunk release guards, the pinned pair's derived identity
+and the five fences a fixing review found missing included.
 
 ## 5. What hosts keep
 
