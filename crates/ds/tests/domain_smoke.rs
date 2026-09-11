@@ -92,6 +92,69 @@ fn run_ds(args: &[&str], native: bool) -> Run {
 }
 
 #[test]
+fn desktop_sync_plan_answers_headlessly_and_refuses_a_malformed_inventory() {
+    let dir = tempfile::tempdir().unwrap();
+    let local = dir.path().join("local.json");
+    let remote = dir.path().join("remote.json");
+    let sha = "a".repeat(64);
+    std::fs::write(
+        &local,
+        serde_json::json!([{"engine":"network_reporter","operation":"export-a","sha256":sha,"size_bytes":1,
+            "produced_at_ms":1,"engine_release":"ds-network-reporter@0.1.0+0123456789abcdef0123456789abcdef01234567"}])
+        .to_string(),
+    )
+    .unwrap();
+    std::fs::write(&remote, "[]").unwrap();
+    let plan = ok(&[
+        "desktop",
+        "sync",
+        "plan",
+        "--project",
+        "p",
+        "--local",
+        local.to_str().unwrap(),
+        "--remote",
+        remote.to_str().unwrap(),
+        "--now-ms",
+        "10000",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(plan["schema"], "ds.sync-plan/v1");
+    assert_eq!(plan["actions"][0]["kind"], "open_grant");
+    assert_eq!(plan["actions"][1]["kind"], "upload");
+    assert_eq!(plan["grant_valid"], false);
+    let offline = ok(&[
+        "desktop",
+        "sync",
+        "plan",
+        "--project",
+        "p",
+        "--offline",
+        "--now-ms",
+        "1",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(offline["actions"][0]["kind"], "offline");
+    std::fs::write(&local, "{not json").unwrap();
+    let refused = ds(&[
+        "desktop",
+        "sync",
+        "plan",
+        "--project",
+        "p",
+        "--local",
+        local.to_str().unwrap(),
+        "--output",
+        "json",
+    ]);
+    assert_eq!(refused.envelope["error"]["code"], "sync_plan_invalid");
+    let described = ok(&["capabilities", "desktop.sync.plan", "--output", "json"]);
+    assert_eq!(described["command"]["authority"], "none");
+}
+
+#[test]
 fn published_read_checks_selectors_and_never_falls_back_to_local_files() {
     let invalid = ds(&[
         "desktop",

@@ -37,6 +37,7 @@ pub mod project;
 pub mod published;
 pub mod status;
 pub mod sync;
+pub mod sync_plan;
 
 use ds_cli_contract::spec::Domain;
 
@@ -53,6 +54,7 @@ pub static DOMAIN: Domain = Domain {
         &printing::TRANSFORMERS_COMMAND,
         &printing::EXPORT_COMMAND,
         &printing::PREPARE_COMMAND,
+        &sync_plan::PLAN_COMMAND,
         &printing::SEED_CONTEXT_COMMAND,
         &custom_print::AREA_COMMAND,
         &custom_print::EXPORT_COMMAND,

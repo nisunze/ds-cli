@@ -168,3 +168,22 @@ section.
 
 - `ds-web/src-tauri/src/cli_bridge.rs` — the bridge, and the closed operation list
 - `ds-web/src/lib/desktop/cli-bridge.ts` — the typed CLI operations themselves
+
+## `ds desktop sync plan` — the sync gate's one decision, headless
+
+Authority `none`: no pairing, no credential. Hand the kernel what an install
+holds (`--local <file>`) and what the project's shared record holds
+(`--remote <file>`), optionally the work grant in hand (`--grant <file>`),
+`--now-ms` (server-observed time; defaults to this machine's clock) and
+`--offline`, and read back the ordered actions a host performs — `open_grant`
+(always first when an upload needs one), `upload`, `download`, `conflict` (a
+head that moved past the base a result was computed on; surfaced, never
+overwritten), `nothing`, `refused` (a malformed or duplicate row, refused on its
+own so one bad row never poisons the queue) — plus `next_check_ms` and a
+summary. Contract: `ds-command-kernel/docs/contracts/ds-sync-engine.md`.
+
+Inventory shapes: local rows are
+`{engine, operation, variant?, sha256, size_bytes, produced_at_ms, base_revision?, readable?, engine_release}`;
+remote heads are `{engine, operation, variant?, revision, sha256, published_at_ms}`;
+the grant is `{grant_id, install_id, project, engines[{name, release}], expires_at_ms}`.
+Refusal `sync_plan_invalid` names the file or the field the kernel refused.
