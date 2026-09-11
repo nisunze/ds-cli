@@ -174,6 +174,20 @@ enum Command {
         #[serde(default)]
         locator: String,
     },
+    /// What are one version's artifacts, and in what order are they read?
+    ArtifactGroups {
+        #[serde(default)]
+        locators: Vec<String>,
+    },
+    /// What is one stored version called, inside and out?
+    CombinedEntryNaming {
+        #[serde(default)]
+        display_name: String,
+        #[serde(default)]
+        version_label: String,
+        #[serde(default)]
+        prefix: String,
+    },
 }
 
 /// The archive layout as a registry entry or a dialog carries it.
@@ -528,7 +542,29 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
         }
         Command::ArchiveLayout { layout } => layout.describe(),
         Command::ArtifactName { locator } => {
-            serde_json::json!({"filename": crate::report_formats::artifact_filename(&locator)})
+            let filename = crate::report_formats::artifact_filename(&locator);
+            let opens_as_pdf = crate::report_formats::artifact_opens_as_pdf(&filename);
+            let kind = crate::report_formats::artifact_kind(&filename);
+            serde_json::json!({"filename": filename, "opens_as_pdf": opens_as_pdf, "kind": kind})
+        }
+        Command::ArtifactGroups { locators } => {
+            let groups: Vec<serde_json::Value> = crate::report_formats::artifact_groups(&locators)
+                .into_iter()
+                .map(|(kind, items)| serde_json::json!({"kind": kind, "items": items}))
+                .collect();
+            serde_json::json!({ "groups": groups })
+        }
+        Command::CombinedEntryNaming {
+            display_name,
+            version_label,
+            prefix,
+        } => {
+            let (label, folder, archive_name) = crate::report_formats::combined_entry_naming(
+                &display_name,
+                &version_label,
+                &prefix,
+            );
+            serde_json::json!({"label": label, "folder": folder, "archive_name": archive_name})
         }
     };
     serde_json::to_string(&serde_json::json!({"schema":"ds.report.command/v1","result":result}))
@@ -623,6 +659,98 @@ mod tests {
         )
         .unwrap();
         assert_eq!(reply["result"]["filename"], "b.xlsx");
+        assert_eq!(reply["result"]["opens_as_pdf"], false);
+        let reply: serde_json::Value = serde_json::from_str(
+            &evaluate(
+                serde_json::json!({"command":"artifact_name","locator":"https://h/v0/b/x/o/a%2FB.PDF?alt=media"})
+                    .to_string()
+                    .as_bytes(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(reply["result"]["filename"], "B.PDF");
+        assert_eq!(reply["result"]["opens_as_pdf"], true);
+        assert_eq!(reply["result"]["kind"], "other");
+    }
+
+    #[test]
+    fn a_version_reads_its_files_under_one_vocabulary_in_one_order() {
+        let command = |value: serde_json::Value| -> serde_json::Value {
+            serde_json::from_str(&evaluate(value.to_string().as_bytes()).unwrap()).unwrap()
+        };
+        // `.shp.zip` is a shapefile; a plain `.zip` is an archive. The browser
+        // drew that line itself, beside the colours it drew it for.
+        for (locator, kind) in [
+            ("a/b.xlsx", "excel"),
+            ("a/b.XLS", "excel"),
+            ("a/b.shp.zip", "shapefile"),
+            ("a/b.shp.7z", "shapefile"),
+            ("a/b.kmz", "kmz"),
+            ("a/b.gpkg", "gpkg"),
+            ("a/b.zip", "zip"),
+            ("a/b.pdf", "other"),
+            ("a/b", "other"),
+        ] {
+            let reply = command(serde_json::json!({"command":"artifact_name","locator":locator}));
+            assert_eq!(reply["result"]["kind"], kind, "{locator}");
+        }
+        // Groups are positions, in reading order, and a kind nothing matched
+        // is not an empty badge.
+        let reply = command(serde_json::json!({"command":"artifact_groups","locators":[
+            "p/one.zip", "p/two.xlsx", "p/three.shp.zip", "p/four.xlsx", "p/five.txt",
+        ]}));
+        assert_eq!(
+            reply["result"]["groups"],
+            serde_json::json!([
+                {"kind":"excel","items":[1,3]},
+                {"kind":"shapefile","items":[2]},
+                {"kind":"zip","items":[0]},
+                {"kind":"other","items":[4]},
+            ])
+        );
+        assert_eq!(
+            command(serde_json::json!({"command":"artifact_groups"}))["result"]["groups"],
+            serde_json::json!([])
+        );
+    }
+
+    #[test]
+    fn a_stored_version_is_named_once_inside_and_out() {
+        let naming = |value: serde_json::Value| -> serde_json::Value {
+            let mut request = value;
+            request["command"] = "combined_entry_naming".into();
+            serde_json::from_str::<serde_json::Value>(
+                &evaluate(request.to_string().as_bytes()).unwrap(),
+            )
+            .unwrap()["result"]
+                .clone()
+        };
+        // Display name, then the published label, then the prefix.
+        let named =
+            naming(serde_json::json!({"display_name":"Rev B","version_label":"v2","prefix":"p1"}));
+        assert_eq!(named["label"], "Rev B");
+        assert_eq!(named["folder"], "Rev B");
+        assert_eq!(named["archive_name"], "p1.zip");
+        assert_eq!(
+            naming(serde_json::json!({"version_label":"v2","prefix":"p1"}))["label"],
+            "v2"
+        );
+        assert_eq!(naming(serde_json::json!({"prefix":"p1"}))["label"], "p1");
+        // A run of characters a filesystem refuses is ONE separator.
+        let refused = naming(serde_json::json!({"display_name":"a//b:*c","prefix":"p1"}));
+        assert_eq!(refused["label"], "a//b:*c");
+        assert_eq!(refused["folder"], "a_b_c");
+        // A name that is nothing but refused characters is the prefix again,
+        // never an archive rooted at `/`.
+        assert_eq!(
+            naming(serde_json::json!({"display_name":"//","prefix":"p1"}))["folder"],
+            "_"
+        );
+        assert_eq!(
+            naming(serde_json::json!({"display_name":"","version_label":"","prefix":""}))["folder"],
+            ""
+        );
     }
     #[test]
     fn export_and_publication_are_separate() {

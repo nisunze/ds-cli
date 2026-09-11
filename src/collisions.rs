@@ -127,7 +127,13 @@ enum Request {
         response: Value,
     },
     /// What is the operator reading while detection runs?
-    Checking { transformer_count: u64 },
+    ///
+    /// The count arrives as the host holds it — the card used to clamp it
+    /// before calling, which is a decision and therefore `host_counts`'.
+    Checking {
+        #[serde(default, deserialize_with = "crate::host_counts::count")]
+        transformer_count: u64,
+    },
     /// What is the operator told once it answered?
     Completed {
         #[serde(default)]
@@ -288,6 +294,17 @@ mod tests {
         assert_eq!(reply, r#"{"pairs":2}"#);
         let reply = evaluate(br#"{"op":"checking","transformer_count":12}"#).unwrap();
         assert!(reply.contains("pctl_collisions_checking"));
+        assert!(reply.contains(r#""count":12"#));
+        // The card used to clamp this on its way in; `host_counts` decides now,
+        // so a count that is not one still reads as the phrase for none.
+        for malformed in [
+            br#"{"op":"checking","transformer_count":-1}"#.as_slice(),
+            br#"{"op":"checking","transformer_count":0.5}"#.as_slice(),
+            br#"{"op":"checking","transformer_count":null}"#.as_slice(),
+            br#"{"op":"checking"}"#.as_slice(),
+        ] {
+            assert!(evaluate(malformed).unwrap().contains(r#""count":0"#));
+        }
         let reply = evaluate(
             br#"{"op":"completed","cached":true,"status_row":{"layers":{"collisions":1}}}"#,
         )
