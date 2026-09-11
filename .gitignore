@@ -2,3 +2,6 @@
 /dist/
 /pkg/
 /target-wasm/
+
+# The detached host crate builds in its own target (scripts/test-detached-workspaces.sh)
+crates/ds-design-workspace/target/
