@@ -1169,8 +1169,16 @@ pub fn settings_equal(a: &Value, b: &Value) -> bool {
 const DESIGN_DATA_EXPLICIT: &str = "use_firestore_design_data";
 const DESIGN_DATA_LEGACY: [&str; 2] = ["design_data_source", "combined_source"];
 
-/// `trim().toLowerCase()`, every non-word run collapsed to one `_`, trimmed.
-/// `\w` is ASCII alphanumerics plus `_` — matching the host's `/[^\w]+/g`.
+/// `trim().toLowerCase()`, every separator run collapsed to one `_`, trimmed.
+///
+/// The host normalised in THREE passes — `/[^\w]+/g → '_'`, then `/_+/g → '_'`,
+/// then a trim — and the middle one is load-bearing: `_` is `\w`, so a spelling
+/// that already carried one next to a space (`Design_ Data Source`) or doubled
+/// one (`use__firestore__design_data`) reached the second pass as a RUN of
+/// underscores and left it as a single one. Keeping only the first pass answers
+/// `design__data_source`, which matches no key, and the project silently falls
+/// through to the next alias or to the default — a store switch nobody declared.
+/// Treating `_` as a separator here is both passes at once.
 fn config_token(value: &Value) -> String {
     let raw = match value {
         Value::String(s) => s.clone(),
@@ -1181,7 +1189,7 @@ fn config_token(value: &Value) -> String {
     let mut out = String::with_capacity(lowered.len());
     let mut pending = false;
     for ch in lowered.chars() {
-        if ch.is_ascii_alphanumeric() || ch == '_' {
+        if ch.is_ascii_alphanumeric() {
             if pending && !out.is_empty() {
                 out.push('_');
             }
@@ -1191,7 +1199,7 @@ fn config_token(value: &Value) -> String {
             pending = true;
         }
     }
-    out.trim_matches('_').to_string()
+    out
 }
 
 fn config_boolean(value: &Value) -> Option<bool> {
@@ -1336,6 +1344,35 @@ mod design_data_path_tests {
 
     fn path(document: Value) -> Value {
         design_data_path(&document)
+    }
+
+    #[test]
+    fn a_separator_beside_an_underscore_still_names_the_same_parameter() {
+        // The host collapsed underscore RUNS too (`/_+/g → '_'`), so every
+        // spelling below reached it as `use_firestore_design_data`. A token
+        // that keeps the run answers for no key at all, and the project falls
+        // through to a store it never declared.
+        for spelling in [
+            "Use_ Firestore Design Data",
+            "use__firestore__design_data",
+            "USE _ FIRESTORE _ DESIGN _ DATA",
+            "  use_firestore_design_data  ",
+        ] {
+            let document = json!({ spelling: false });
+            let result = path(document);
+            assert_eq!(result["path"], "mirrored", "{spelling}");
+            assert_eq!(result["source"], "explicit", "{spelling}");
+        }
+        // The same collapse decides a legacy alias and a row-shaped setting.
+        let rows = json!({
+            "project_settings": [{ "Parameter": "design__data_source", "Value": "bigquery" }],
+        });
+        assert_eq!(path(rows)["path"], "mirrored");
+        // And a legacy alias spelt with the same seam still names itself.
+        let legacy = path(json!({ "Combined_ Source": "bigquery" }));
+        assert_eq!(legacy["path"], "mirrored");
+        assert_eq!(legacy["source"], "legacy");
+        assert_eq!(legacy["parameter"], "combined_source");
     }
 
     #[test]
