@@ -1908,6 +1908,11 @@ static DESKTOP_ENTRIES: &[Entry] = &[
         render: ds_cli_desktop::sync::render,
     },
     Entry {
+        command: &ds_cli_desktop::sync_plan::PLAN_COMMAND,
+        handler: ds_cli_desktop::sync_plan::run,
+        render: ds_cli_desktop::sync_plan::render,
+    },
+    Entry {
         command: &ds_cli_desktop::sync::RETRY_COMMAND,
         handler: ds_cli_desktop::sync::retry,
         render: ds_cli_desktop::sync::render,

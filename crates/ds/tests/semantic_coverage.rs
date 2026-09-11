@@ -116,6 +116,7 @@ const EXPECTED: &[(&str, &str, &str)] = &[
         "desktop_user",
     ),
     ("desktop.sync.status", "read_only", "desktop_user"),
+    ("desktop.sync.plan", "read_only", "none"),
     ("desktop.sync.published", "read_only", "desktop_user"),
     ("desktop.sync.retry", "global_write", "desktop_user"),
     ("desktop.data.rwanda.status", "read_only", "desktop_user"),
