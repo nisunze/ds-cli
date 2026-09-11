@@ -591,6 +591,7 @@ belongs to the governance surface, not to a headless command.
 | `design_plan_stale` | the project moved after the plan was previewed; preview again |
 | `invalid_transformer_scope` | no transformer named, or a name is blank, repeated or over 200 characters, or over 500 named |
 | `invalid_reason` | `--reason` is blank, untrimmed or over 512 characters |
+| `design_plan_invalid` | the shared kernel refused the assembled preview: an unknown verb or format, or more rows than the register holds |
 
 Those four replace what `desktop_refused` used to carry for the collaboration
 surfaces, and the class is what a caller acts on: an exceeded bound and an
@@ -648,6 +649,80 @@ over this project (`admin`, `legacy`, `process`, `report`, `combined`,
 headless client holds no browser session, pins, tags or saved selection, so
 those members of the selector are empty here; `ds` answers what the register
 would show a fresh browser.
+
+## Previews: what a batch, a download or an overwrite would do
+
+Five reads answer questions the register used to keep to itself. Each reads
+the same `list_transformers_status` rows `ds design status` reads, folds them
+once through the shared kernel, and performs nothing.
+
+`ds design bulk plan --action <verb> [--transformer <name>…]
+[--capability <name>…] [--combined-mirror]` previews one batch verb:
+`add_to_combined`, `combined_and_export`, `generate_reports`, `retry_process`,
+`save`, `delete` or `version`. The answer's `targets` are the rows the verb
+would actually dispatch, each with `fresh` — true when the work is already
+current, so running it would re-do finished work — and `fresh`/`stale` are
+their counts, the same denominators the Status page draws beside its buttons.
+`skipped` names every other row with a reason: `not_selected`,
+`not_combinable`, `not_versionable`, `not_deletable`, `special_row`,
+`retry_refused`, `already_saved`, `combined_mirror_disabled` or
+`capability_missing`. A row carrying unsaved local work counts as stale for
+every published-state verb, because whatever the server calls current is
+current about something else. `--capability` is what this operator holds;
+without the one a verb is gated on, `unavailable` refuses the whole verb by
+name rather than silently returning nothing. Naming no transformer previews an
+empty tick set, which is what the page shows before a tick. ds-brain re-reads
+its own state before dispatching, so this is a preview, never the authority.
+
+`ds design download plan [--transformer <name>…] [--format xlsx|shp|kmz|gpkg]…`
+previews a download. `scope` is the rows in it — naming transformers narrows
+it, naming none takes the project, and reserved rows are never in it, which
+`scope_precedence` states. `urls` is every artifact those rows deliver, in
+order; `filtered_urls` is the same list under the format flags. `summary`
+counts them `fresh` / `stale` / `missing`, with `stale_with_files` and
+`cached` for the rows whose artifacts are already listed. `placement` is the
+rule worth knowing: when one artifact NAME appears twice for a row — a cloud
+pointer and a copy already on disk — the LOCAL copy wins, whatever order they
+arrived in, and among two copies of the same kind the later one wins. Each
+entry names the row, the artifact, the copy it resolved to and `why`
+(`only`, `local_wins`, `later_wins`). `source_uploads` counts the draft,
+sketch and process files the scope carries and how many have a URL. The fetch
+itself stays with the caller.
+
+`ds design version status [--transformer <name>…]` says whether beginning a
+deliberate version is warranted. Per row: `version` in force, `latest` ever
+assigned, `next` ordinal (one past the highest, so restoring to v7 and cutting
+again gives v11, never a second v8), `count`, `restored`, `unversioned`,
+`versionable`, the lead's `reason`, and `changed_since_version` — whether the
+SAVED state has moved since the lead was cut. That last one is the answer
+`ds map design version begin` never gave: a backend that reports neither the
+frozen save generation nor the current one cannot prove the document is
+unchanged, so it reports changed and the cut is offered rather than silently
+skipped. The ordinal itself stays ds-brain's to assign.
+
+`ds design conflict list` and `ds design conflict check --transformer <name>`
+answer overwrite admissibility. `list` applies the kernel's detection rule —
+a room this browser holds, dirty and server-known, whose save counter moved
+past the base it was taken from — and `check` runs the ordered preflight,
+naming the FIRST refusal rather than a bare no: `force_capability_missing`,
+`overwrite_not_selected`, `no_conflict_recorded`, `review_missing`,
+`local_copy_changed`, `local_base_version_changed`, `review_not_pinned`,
+`conflict_base_version_mismatch`, `cloud_head_moved` — and, for the tick
+alone, `review_not_finished`. `eligible` is whether the overwrite may be SENT;
+`tick_admissible` whether the box may be TICKED. Both come from one
+evaluation, so they cannot disagree.
+
+`ds design presence status` reports the lease pass: which rooms should hold a
+server lease, which should release, which waited, and `bounds` — the hold
+refresh window, the draft interval, and the per-pass lock-call cap that the
+hold and release loops SHARE, so a pass that spends the cap on holds defers
+every release to the next one.
+
+A conflict, a comparison and a lease are all facts about a working copy. A
+headless client holds none, so `conflict list`, `conflict check` and
+`presence status` stamp `room_state: "unknown"` and answer from what the rows
+themselves carry — never a confident zero, and never an invented room. Run
+them where the rooms are and the same kernel answers over real ones.
 
 ## Process settings, resolved headlessly
 
