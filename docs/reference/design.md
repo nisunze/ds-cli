@@ -666,3 +666,25 @@ alone resolves; pass the project's configuration document to include its
 tolerances and preset rows. The dependency collapse follows the engine's five
 property-keep keys: `keep_flying_stay` alone never preserved computed
 properties on the engine side, and no longer pretends to here.
+
+### Project Settings
+
+`ds design config sheets` lists the fresh selected project's kernel model.
+`read --sheet KEY` returns a page of rows (for rules, `--rule-set NAME` selects
+one set). `--limit` is 1–100 and `--offset` pages; `more` counts omitted rows,
+while `truncated` identifies shortened cell/metadata evidence. Use
+`read --sheet KEY --out NEW_PATH` for complete, untruncated sheet JSON.
+
+`diff --sheet KEY --file BASELINE.json` compares that file to the current
+sheet. Object key order is immaterial; row order, missing values and whitespace
+edits remain meaningful. `set --sheet project_settings --parameter NAME
+--value TEXT --yes` changes one existing parameter using the Settings model's
+control. `save --sheet KEY --file SHEET.json --yes` validates and saves a whole
+sheet. `rule-set duplicate --sheet lv_poles_rules --source NAME --target NAME
+--yes` copies compacted rows and metadata while preserving sibling sets.
+
+All six commands use native selected-project authentication. Writes are
+kernel-prepared, server-authorized and verified with fresh readback. A failed
+readback never reports success; inspect current state before repeating an
+uncertain write. The server's existing whole-sheet persistence is unchanged:
+this family does not claim a cross-client editing lock.

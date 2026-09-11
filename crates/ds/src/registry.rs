@@ -1477,6 +1477,36 @@ static DESIGN_ENTRIES: &[Entry] = &[
         render: ds_cli_design::known_columns::list::render,
     },
     Entry {
+        command: &ds_cli_design::config::SHEETS,
+        handler: ds_cli_design::config::sheets,
+        render: ds_cli_design::config::render,
+    },
+    Entry {
+        command: &ds_cli_design::config::READ,
+        handler: ds_cli_design::config::read,
+        render: ds_cli_design::config::render,
+    },
+    Entry {
+        command: &ds_cli_design::config::DIFF,
+        handler: ds_cli_design::config::diff,
+        render: ds_cli_design::config::render,
+    },
+    Entry {
+        command: &ds_cli_design::config::SET,
+        handler: ds_cli_design::config::set,
+        render: ds_cli_design::config::render,
+    },
+    Entry {
+        command: &ds_cli_design::config::SAVE,
+        handler: ds_cli_design::config::save,
+        render: ds_cli_design::config::render,
+    },
+    Entry {
+        command: &ds_cli_design::config::DUPLICATE,
+        handler: ds_cli_design::config::duplicate,
+        render: ds_cli_design::config::render,
+    },
+    Entry {
         command: &ds_cli_design::feeder_limits::READ,
         handler: ds_cli_design::feeder_limits::read,
         render: ds_cli_design::feeder_limits::render,

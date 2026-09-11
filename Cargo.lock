@@ -774,6 +774,7 @@ dependencies = [
  "ds-cli-desktop",
  "ds-cli-exec",
  "ds-cli-report",
+ "ds-client-core",
  "ds-command-kernel",
  "ds-design-workspace",
  "ds-geo",

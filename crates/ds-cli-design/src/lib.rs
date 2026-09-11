@@ -63,6 +63,7 @@
 pub mod attachment;
 pub mod category_catalog;
 pub mod comment;
+pub mod config;
 pub mod features;
 pub mod feeder_limits;
 pub mod group;
@@ -97,6 +98,12 @@ pub static DOMAIN: Domain = Domain {
     id: "design",
     summary: "Headless reads, offline LV compute, and governed collaboration.",
     commands: &[
+        &config::SHEETS,
+        &config::READ,
+        &config::DIFF,
+        &config::SET,
+        &config::SAVE,
+        &config::DUPLICATE,
         &sync::STATUS,
         &sync::CANCEL,
         &sync::RESUME,

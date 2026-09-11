@@ -4700,7 +4700,7 @@ fn every_design_command_is_discoverable_without_the_desktop_installed() {
     let commands = index["commands"].as_array().expect("commands");
     assert_eq!(
         commands.len(),
-        63,
+        69,
         "the design domain should expose its whole family: {commands:?}"
     );
     for command in commands {
@@ -4710,6 +4710,12 @@ fn every_design_command_is_discoverable_without_the_desktop_installed() {
             if matches!(
                 id,
                 "design.features.select"
+                    | "design.config.sheets"
+                    | "design.config.read"
+                    | "design.config.diff"
+                    | "design.config.set"
+                    | "design.config.save"
+                    | "design.config.rule-set.duplicate"
                     | "design.feeder-limits.read"
                     | "design.feeder-limits.set"
                     | "design.categories.read"
@@ -4849,6 +4855,7 @@ fn design_collaboration_is_a_complete_headless_project_surface() {
             !id.starts_with("design.lv.")
                 && !id.starts_with("design.transformer.")
                 && !id.starts_with("design.project.")
+                && !id.starts_with("design.config.")
                 && !id.starts_with("design.feeder-limits.")
                 && !id.starts_with("design.categories.")
                 && !id.starts_with("design.meter-types.")
@@ -4950,6 +4957,7 @@ fn design_collaboration_is_a_complete_headless_project_surface() {
         if id.starts_with("design.lv.")
             || id.starts_with("design.transformer.")
             || id.starts_with("design.project.")
+            || id.starts_with("design.config.")
             || id.starts_with("design.feeder-limits.")
             || id.starts_with("design.categories.")
             || id.starts_with("design.meter-types.")
@@ -7978,4 +7986,46 @@ fn printing_plans_answer_headlessly_from_the_same_kernel() {
         ])["ready"],
         true
     );
+}
+
+#[test]
+fn settings_writes_require_confirmation_before_file_or_native_io() {
+    for args in [
+        vec![
+            "design",
+            "config",
+            "set",
+            "--sheet",
+            "project_settings",
+            "--parameter",
+            "max_feeder_cable_size",
+            "--value",
+            "70",
+        ],
+        vec![
+            "design",
+            "config",
+            "save",
+            "--sheet",
+            "lv_poles_rules",
+            "--file",
+            "/this-settings-file-does-not-exist.json",
+        ],
+        vec![
+            "design",
+            "config",
+            "rule-set",
+            "duplicate",
+            "--sheet",
+            "lv_poles_rules",
+            "--source",
+            "rule_edcl",
+            "--target",
+            "copy",
+        ],
+    ] {
+        let mut args = args;
+        args.extend(["--output", "json"]);
+        assert_eq!(refusal(&args), "confirmation_required");
+    }
 }

@@ -1603,6 +1603,20 @@ pub fn feeder_configuration(
     .map(|receipt| receipt.result)
 }
 
+/// Settings uses the same selected-project transport and fresh readback as
+/// feeder edits; the core validates the closed mutation against fetched sheets.
+pub fn settings_configuration(
+    lane: &str,
+    change: ds_client_core::ProjectConfigurationChange,
+) -> Result<ds_client_core::FeederConfiguration, Failure> {
+    headless_project_report(
+        lane,
+        |device, project| device.feeder_configuration(project, Some(&change)),
+        |client, project| client.feeder_configuration(project, Some(&change), now()),
+    )
+    .map(|receipt| receipt.result)
+}
+
 pub fn ensure_meter_type(
     lane: &str,
     name: &str,

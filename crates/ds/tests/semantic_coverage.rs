@@ -160,6 +160,20 @@ const EXPECTED: &[(&str, &str, &str)] = &[
         "headless_project",
     ),
     (
+        "design.config.sheets",
+        "local_auth_state",
+        "headless_project",
+    ),
+    ("design.config.read", "local_file_write", "headless_project"),
+    ("design.config.diff", "local_auth_state", "headless_project"),
+    ("design.config.set", "global_write", "headless_project"),
+    ("design.config.save", "global_write", "headless_project"),
+    (
+        "design.config.rule-set.duplicate",
+        "global_write",
+        "headless_project",
+    ),
+    (
         "design.feeder-limits.read",
         "local_file_write",
         "headless_project",
