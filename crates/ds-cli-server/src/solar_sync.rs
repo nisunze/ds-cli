@@ -53,6 +53,79 @@ pub struct SolarSyncPump {
     worker: Option<thread::JoinHandle<()>>,
 }
 
+/// The shared runtime owns report retry truth. This host only remembers the
+/// last sealed producer observation and translates the runtime's typed wake
+/// decision into the existing background thread's next trigger.
+#[derive(Default)]
+struct ReportWake {
+    startup: bool,
+    fingerprint: Option<String>,
+    retry_eligible: bool,
+    offline: bool,
+    reconnect_pending: bool,
+    wake_at_ms: Option<u64>,
+}
+
+impl ReportWake {
+    fn new() -> Self {
+        Self {
+            startup: true,
+            ..Self::default()
+        }
+    }
+
+    fn needs_observation(&self, now_ms: u64, recovery_due: bool) -> bool {
+        // Inventory scans are local-only and retain the established 30-second
+        // recovery cadence. An actual kernel deadline or a proven online
+        // transition is an event, so it may wake the same thread sooner.
+        recovery_due
+            || self.reconnect_pending
+            || self.wake_at_ms.is_some_and(|at_ms| at_ms <= now_ms)
+    }
+
+    fn trigger(
+        &self,
+        inventory: &crate::server_reports::Inventory,
+        now_ms: u64,
+        recovery_due: bool,
+    ) -> Option<ds_sync_runtime::Trigger> {
+        if self.reconnect_pending {
+            return Some(ds_sync_runtime::Trigger::Reconnect);
+        }
+        if self.startup {
+            return recovery_due.then_some(ds_sync_runtime::Trigger::Startup);
+        }
+        let deadline_due = self.wake_at_ms.is_some_and(|at_ms| at_ms <= now_ms);
+        let changed = self.fingerprint.as_deref() != Some(inventory.fingerprint.as_str());
+        if !deadline_due && !recovery_due {
+            return None;
+        }
+        // `Offline` is a kernel observation, not a timer reason. Retry the
+        // pending local work at the recovery boundary; only a later successful
+        // pass can prove that a `Reconnect` record read is warranted.
+        (changed || self.retry_eligible || self.offline || deadline_due)
+            .then_some(ds_sync_runtime::Trigger::LocalChange)
+    }
+
+    fn applied(&mut self, pass: crate::server_reports::Pass) {
+        let reconnected = self.offline && !pass.offline && !self.reconnect_pending;
+        self.startup = false;
+        self.fingerprint = Some(pass.inventory.fingerprint);
+        self.retry_eligible = pass.retry_eligible;
+        self.offline = pass.offline;
+        self.reconnect_pending = reconnected;
+        self.wake_at_ms = pass.wake_at_ms;
+    }
+
+    fn failed(&mut self) {
+        // Consume an attempted startup/deadline until the next local recovery
+        // boundary. A failed request cannot spin the background thread.
+        self.fingerprint = None;
+        self.reconnect_pending = false;
+        self.wake_at_ms = None;
+    }
+}
+
 impl SolarSyncPump {
     pub fn stop(&self) {
         self.stop.store(true, Ordering::Release);
@@ -168,16 +241,56 @@ impl SolarActivity {
         let worker_stop = stop.clone();
         let worker = thread::spawn(move || {
             let mut last_recovery = Instant::now() - Duration::from_secs(30);
+            let mut last_report_recovery = Instant::now() - Duration::from_secs(30);
+            let mut reports = ReportWake::new();
             while !worker_stop.load(Ordering::Acquire) {
                 let woken = activity.wake.swap(false, Ordering::AcqRel);
-                if woken || last_recovery.elapsed() >= Duration::from_secs(30) {
-                    // The receipt records the actionable state. Keep stderr
-                    // token-free and bounded if offline authority work fails.
+                let recovery_due = last_recovery.elapsed() >= Duration::from_secs(30);
+                let report_recovery_due = last_report_recovery.elapsed() >= Duration::from_secs(30);
+                let now = now_ms();
+
+                if woken || recovery_due {
+                    // The receipt records the actionable Solar state. Keep
+                    // stderr token-free and bounded if its authority work fails.
                     match activity.publish_pending() {
                         Ok(()) => activity.clear_publication_failure(),
                         Err(error) => activity.note_publication_failure(&error),
                     }
                     last_recovery = Instant::now();
+                }
+
+                // Reports are a separate shared-runtime producer. A completed
+                // Solar job never turns into a report `Manual` sync or a remote
+                // head poll; only report inventory and runtime wake facts can.
+                if reports.needs_observation(now, report_recovery_due) {
+                    match crate::server_reports::inventory(&activity.database, &activity.session) {
+                        Ok(inventory) => {
+                            if let Some(trigger) =
+                                reports.trigger(&inventory, now, report_recovery_due)
+                            {
+                                match crate::server_reports::drain(
+                                    &activity.database,
+                                    &activity.session,
+                                    &activity.reads,
+                                    trigger,
+                                ) {
+                                    Ok(pass) => reports.applied(pass),
+                                    Err(error) => {
+                                        reports.failed();
+                                        activity.note_publication_failure(&error);
+                                    }
+                                }
+                            }
+                        }
+                        Err(error) => {
+                            reports.failed();
+                            activity.note_publication_failure(&error);
+                        }
+                    }
+                    // Every actual observation consumes this recovery slot. A
+                    // failed startup or expired deadline retries at the next
+                    // bounded local recovery, never in the next 100ms loop.
+                    last_report_recovery = Instant::now();
                 }
                 for _ in 0..10 {
                     if worker_stop.load(Ordering::Acquire) || activity.wake.load(Ordering::Acquire)
@@ -202,13 +315,10 @@ impl SolarActivity {
         let producer = SolarProducer { activity: self };
         let publisher = SolarComputeArtifactsPublisher { activity: self };
         let project = self.session.project().to_owned();
-        let solar = self
-            .session
+        self.session
             .with_host_for_project(&project, &producer, &self.reads, |host| {
                 host.run_solar_publications(&publisher).map(|_| ())
-            });
-        let reports = crate::server_reports::drain(&self.database, &self.session, &self.reads);
-        solar.and(reports)
+            })
     }
 
     fn note_publication_failure(&self, error: &str) {
@@ -563,5 +673,114 @@ impl SolarPublisher for SolarComputeArtifactsPublisher<'_> {
             }
             Err(ds_cli_auth::sync::SolarPublicationError::Retryable(detail)) => Err(detail),
         }
+    }
+}
+
+#[cfg(test)]
+mod report_wake_tests {
+    use super::*;
+
+    fn inventory(value: &str) -> crate::server_reports::Inventory {
+        crate::server_reports::Inventory {
+            fingerprint: value.into(),
+        }
+    }
+
+    #[test]
+    fn event_wake_does_not_rescan_an_idle_report_inventory() {
+        let wake = ReportWake {
+            startup: false,
+            fingerprint: Some("same".into()),
+            retry_eligible: false,
+            offline: false,
+            reconnect_pending: false,
+            wake_at_ms: None,
+        };
+        assert!(!wake.needs_observation(10, false));
+        assert!(wake.needs_observation(10, true));
+    }
+
+    #[test]
+    fn startup_is_once_then_idle_report_inventory_never_creates_a_gateway_trigger() {
+        let mut wake = ReportWake::new();
+        assert_eq!(
+            wake.trigger(&inventory("first"), 10, true),
+            Some(ds_sync_runtime::Trigger::Startup)
+        );
+        wake.startup = false;
+        wake.fingerprint = Some("first".into());
+        assert_eq!(wake.trigger(&inventory("first"), 11, true), None);
+    }
+
+    #[test]
+    fn sealed_inventory_change_and_retained_work_are_local_change_triggers() {
+        let mut wake = ReportWake {
+            startup: false,
+            fingerprint: Some("old".into()),
+            retry_eligible: false,
+            offline: false,
+            reconnect_pending: false,
+            wake_at_ms: None,
+        };
+        assert_eq!(
+            wake.trigger(&inventory("new"), 10, true),
+            Some(ds_sync_runtime::Trigger::LocalChange)
+        );
+        wake.fingerprint = Some("new".into());
+        wake.retry_eligible = true;
+        assert_eq!(
+            wake.trigger(&inventory("new"), 11, true),
+            Some(ds_sync_runtime::Trigger::LocalChange)
+        );
+    }
+
+    #[test]
+    fn reconnect_requires_a_successful_post_offline_observation() {
+        let mut wake = ReportWake {
+            startup: false,
+            fingerprint: Some("same".into()),
+            retry_eligible: false,
+            offline: true,
+            reconnect_pending: false,
+            wake_at_ms: None,
+        };
+        wake.applied(crate::server_reports::Pass {
+            inventory: inventory("same"),
+            retry_eligible: false,
+            offline: false,
+            wake_at_ms: None,
+        });
+        assert_eq!(
+            wake.trigger(&inventory("same"), 10, false),
+            Some(ds_sync_runtime::Trigger::Reconnect)
+        );
+    }
+
+    #[test]
+    fn offline_recovery_and_kernel_deadline_are_explicit_typed_triggers() {
+        let wake = ReportWake {
+            startup: false,
+            fingerprint: Some("same".into()),
+            retry_eligible: false,
+            offline: true,
+            reconnect_pending: false,
+            wake_at_ms: None,
+        };
+        assert_eq!(
+            wake.trigger(&inventory("same"), 10, true),
+            Some(ds_sync_runtime::Trigger::LocalChange)
+        );
+        let wake = ReportWake {
+            startup: false,
+            fingerprint: Some("same".into()),
+            retry_eligible: false,
+            offline: false,
+            reconnect_pending: false,
+            wake_at_ms: Some(10),
+        };
+        assert_eq!(
+            wake.trigger(&inventory("same"), 10, false),
+            Some(ds_sync_runtime::Trigger::LocalChange)
+        );
     }
 }
