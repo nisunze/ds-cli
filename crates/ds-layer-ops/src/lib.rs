@@ -134,22 +134,41 @@ impl Preferences {
 /// selected project on one lane. The identity is observed before and after
 /// the read so an account or project switch during a request is a typed
 /// refusal, never a document applied under the wrong scope.
+type NativeGuard = Box<dyn Fn(&ds_cli_auth::LayerScopeFence) -> Result<(), Failure> + Send>;
+
 pub struct Native {
     lane: String,
     fence: Option<ds_cli_auth::LayerScopeFence>,
+    guard: Option<NativeGuard>,
 }
 impl Native {
     pub fn new(lane: &str) -> Self {
         Self {
             lane: lane.to_owned(),
             fence: None,
+            guard: None,
         }
+    }
+    pub fn guarded(lane: &str, guard: NativeGuard) -> Self {
+        Self {
+            lane: lane.to_owned(),
+            fence: None,
+            guard: Some(guard),
+        }
+    }
+    fn authorize(&self, fence: &ds_cli_auth::LayerScopeFence) -> Result<(), Failure> {
+        if let Some(guard) = &self.guard {
+            guard(fence)?;
+        }
+        Ok(())
     }
 }
 impl LayerDocuments for Native {
     fn read(&mut self, refresh: bool) -> Result<DocumentRead, Failure> {
         let fence = ds_cli_auth::capture_layer_scope_fence(&self.lane)?;
+        self.authorize(&fence)?;
         let headless = ds_cli_auth::layer_config_fenced(&self.lane, refresh, &fence)?;
+        self.authorize(&fence)?;
         self.fence = Some(fence);
         Ok(DocumentRead {
             scope: Scope {
@@ -163,21 +182,23 @@ impl LayerDocuments for Native {
     fn check_scope(&mut self, expected: &Scope) -> Result<(), Failure> {
         let fence = self.fence.as_ref().ok_or_else(|| {
             Failure::conflict(
-                "layer_scope_missing",
+                "layer_state_refused",
                 "read the layer document before applying a scoped operation",
             )
             .remedy("repeat the layer request")
         })?;
+        self.authorize(fence)?;
         ds_cli_auth::verify_layer_scope_fence(&self.lane, fence, &expected.uid, &expected.project)
     }
     fn reorder(&mut self, orders: &[Order]) -> Result<OrderReceipt, Failure> {
         let fence = self.fence.as_ref().ok_or_else(|| {
             Failure::conflict(
-                "layer_scope_missing",
+                "layer_state_refused",
                 "read the layer document before applying a scoped operation",
             )
             .remedy("repeat the layer request")
         })?;
+        self.authorize(fence)?;
         let receipt = ds_cli_auth::layer_reorder_fenced(&self.lane, orders, fence)?;
         Ok(OrderReceipt {
             project: receipt.project_id().to_owned(),
@@ -601,6 +622,55 @@ mod tests {
     }
 
     #[test]
+    fn concurrent_layer_toggles_preserve_both_families() {
+        struct Concurrent(Fixture, std::sync::Arc<std::sync::Barrier>);
+        impl LayerDocuments for Concurrent {
+            fn read(&mut self, refresh: bool) -> Result<DocumentRead, Failure> {
+                let read = self.0.read(refresh)?;
+                self.1.wait();
+                Ok(read)
+            }
+            fn check_scope(&mut self, expected: &Scope) -> Result<(), Failure> {
+                self.0.check_scope(expected)
+            }
+            fn reorder(&mut self, orders: &[Order]) -> Result<OrderReceipt, Failure> {
+                self.0.reorder(orders)
+            }
+        }
+        let tmp = tempfile::tempdir().unwrap();
+        let preferences = Preferences::at(tmp.path().to_owned());
+        let barrier = std::sync::Arc::new(std::sync::Barrier::new(2));
+        std::thread::scope(|threads| {
+            for layer in ["survey/poles", "design/lines"] {
+                let barrier = barrier.clone();
+                let preferences = &preferences;
+                threads.spawn(move || {
+                    let mut docs = Concurrent(Fixture::new("u1", "p1"), barrier);
+                    set_visibility(
+                        &mut docs,
+                        preferences,
+                        &VisibilityRequest {
+                            layers: vec![layer.into()],
+                            visible: false,
+                        },
+                    )
+                    .unwrap();
+                });
+            }
+        });
+        let stored = preferences
+            .read(&Scope {
+                lane: "canary".into(),
+                uid: "u1".into(),
+                project: "p1".into(),
+            })
+            .unwrap();
+        assert_eq!(stored.get("ds-poles"), Some(&false));
+        assert_eq!(stored.get("ds-poles__label"), Some(&false));
+        assert_eq!(stored.get("ds-lines"), Some(&false));
+    }
+
+    #[test]
     fn list_hide_show_read_the_same_scoped_preferences() {
         let tmp = tempfile::tempdir().unwrap();
         let preferences = Preferences::at(tmp.path().to_owned());
@@ -670,9 +740,8 @@ mod tests {
         )
         .unwrap();
         assert_eq!(again["changed"], json!([]));
-        assert_eq!(
-            ds_layer_store::visibility::read_at(tmp.path(), "canary", "u1", "p1").unwrap()["ds-poles"],
-            true
+        assert!(
+            ds_layer_store::visibility::read_at(tmp.path(), "canary", "u1", "p1").unwrap()["ds-poles"]
         );
     }
 

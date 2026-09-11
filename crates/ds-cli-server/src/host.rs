@@ -456,7 +456,7 @@ mod tests {
             auth: Arc::new(Auth(authorized)),
             requests: Arc::new(tokio::sync::Semaphore::new(2)),
             activity: None,
-            layers: crate::layers::NativeLayerHost::new("stable"),
+            layers: crate::layers::NativeLayerHost::fixture_native("stable"),
         }
     }
     #[tokio::test]

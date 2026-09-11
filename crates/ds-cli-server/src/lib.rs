@@ -257,6 +257,11 @@ pub static RESULT: Command = command(
 
 const LAYER_REFUSALS: &[Refusal] = &[
     Refusal {
+        code: "server_owner_changed",
+        when: "the captured account differs from the Server owner or its original credential was revoked or replaced",
+        remedy: "sign in under the intended Server account and explicitly restart ds server serve",
+    },
+    Refusal {
         code: "server_refused",
         when: "the protected server is not running, refuses the connection lane, or answers outside its contract",
         remedy: "verify ds auth status, the protected state directory and that ds server serve is running",
@@ -469,6 +474,7 @@ fn typed_refusal(status: u16, body: &[u8]) -> Failure {
     };
     let remedy = value["remedy"].as_str().map(str::to_owned);
     let refusal = match value["code"].as_str() {
+        Some("server_owner_changed") => Failure::new(class, "server_owner_changed", message),
         Some("unknown_layer") => Failure::new(class, "unknown_layer", message),
         Some("duplicate_layer") => Failure::new(class, "duplicate_layer", message),
         Some("invalid_order") => Failure::new(class, "invalid_order", message),
@@ -607,11 +613,15 @@ pub fn serve(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
         )));
     }
     let connection = host::connection(&directory, address, owner, lane.clone()).map_err(failure)?;
+    let layer_auth: Arc<dyn ds_compute_runtime::Authorizer> =
+        Arc::new(auth::NativeAuthorizer::new(lane.clone()).map_err(failure)?);
+    let layer_host =
+        layers::NativeLayerHost::bound(&lane, connection.owner.clone(), layer_auth.clone());
     let app = host::App {
         database: directory.join("store.sqlite"),
         connection,
-        layers: layers::NativeLayerHost::new(&lane),
-        auth: Arc::new(auth::NativeAuthorizer::new(lane).map_err(failure)?),
+        layers: layer_host,
+        auth: layer_auth,
         requests: Arc::new(tokio::sync::Semaphore::new(workers.min(8))),
         activity: None,
     };

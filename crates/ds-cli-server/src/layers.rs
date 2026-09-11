@@ -41,21 +41,67 @@ pub trait LayerHost: Send + Sync + 'static {
 /// shared native layer store (`DS_LAYER_HOME` or the local data directory).
 pub struct NativeLayerHost {
     lane: String,
+    binding: Option<(String, Arc<dyn ds_compute_runtime::Authorizer>)>,
 }
 impl NativeLayerHost {
-    pub fn new(lane: &str) -> Arc<dyn LayerHost> {
+    #[cfg(test)]
+    pub fn fixture_native(lane: &str) -> Arc<dyn LayerHost> {
         Arc::new(Self {
             lane: lane.to_owned(),
+            binding: None,
+        })
+    }
+    pub fn bound(
+        lane: &str,
+        owner: String,
+        auth: Arc<dyn ds_compute_runtime::Authorizer>,
+    ) -> Arc<dyn LayerHost> {
+        Arc::new(Self {
+            lane: lane.to_owned(),
+            binding: Some((owner, auth)),
         })
     }
 }
 impl LayerHost for NativeLayerHost {
     fn documents(&self) -> Result<Box<dyn LayerDocuments + Send>, Failure> {
+        if let Some((owner, auth)) = &self.binding {
+            let owner = owner.clone();
+            let auth = auth.clone();
+            let lane = self.lane.clone();
+            return Ok(Box::new(ds_layer_ops::Native::guarded(
+                &self.lane,
+                Box::new(move |fence| {
+                    let actual = ds_compute_runtime::digest(
+                        &serde_json::to_vec(&(fence.uid(), &lane, fence.audience()))
+                            .expect("identity tuple"),
+                    );
+                    authorize_captured_owner(auth.as_ref(), &owner, &actual)
+                }),
+            )));
+        }
         Ok(Box::new(ds_layer_ops::Native::new(&self.lane)))
     }
     fn preferences(&self) -> Result<Preferences, Failure> {
         Preferences::native()
     }
+}
+
+fn authorize_captured_owner(
+    auth: &dyn ds_compute_runtime::Authorizer,
+    owner: &str,
+    captured: &str,
+) -> Result<(), Failure> {
+    if captured != owner {
+        return Err(Failure::unauthorized(
+            "server_owner_changed",
+            "the captured layer account differs from the Server owner",
+        )
+        .remedy("restart the Server under the intended account"));
+    }
+    auth.authorize(owner).map_err(|message| {
+        Failure::unauthorized("server_owner_changed", message)
+            .remedy("restart the Server under the intended account")
+    })
 }
 
 /// A typed refusal on the wire: the CLI's class and code, the sentence and
@@ -170,11 +216,30 @@ pub async fn order(State(app): State<App>, body: axum::body::Bytes) -> Response 
 
 #[cfg(test)]
 mod tests {
-    //! The realistic workflow through a REAL loopback listener with a fixture
-    //! identity and a fixture upstream: list, hide, restart, list the retained
-    //! state, show, reorder, invalid id, unauthorized, revoked, project change
-    //! during a request, account change across restart. Fixtures are not a
-    //! Canary proof; they prove the host boundary and the shared owner.
+    #[test]
+    fn captured_account_cannot_pass_after_current_account_switches_back() {
+        struct Accept;
+        impl ds_compute_runtime::Authorizer for Accept {
+            fn authorize(&self, _: &str) -> Result<(), String> {
+                Ok(())
+            }
+        }
+        assert!(super::authorize_captured_owner(&Accept, "owner-a", "owner-a").is_ok());
+        let error = super::authorize_captured_owner(&Accept, "owner-a", "owner-b").unwrap_err();
+        assert_eq!(error.code(), "server_owner_changed");
+        struct Revoked;
+        impl ds_compute_runtime::Authorizer for Revoked {
+            fn authorize(&self, _: &str) -> Result<(), String> {
+                Err("credential revoked".into())
+            }
+        }
+        assert!(super::authorize_captured_owner(&Revoked, "owner-a", "owner-a").is_err());
+    }
+    // The realistic workflow through a REAL loopback listener with a fixture
+    // identity and a fixture upstream: list, hide, restart, list the retained
+    // state, show, reorder, invalid id, unauthorized, revoked, project change
+    // during a request, account change across restart. Fixtures are not a
+    // Canary proof; they prove the host boundary and the shared owner.
     use super::*;
     use crate::host::{Connection, router};
     use ds_compute_runtime::Authorizer;
@@ -560,25 +625,23 @@ mod tests {
             true,
             "account b never inherited account a's toggles"
         );
-        assert_eq!(
+        assert!(
             ds_layer_store::visibility::read_at(
                 &dir.path().join("layers"),
                 "canary",
                 "uid-a",
                 "proj-kigali"
             )
-            .unwrap()["ds-poles"],
-            true
+            .unwrap()["ds-poles"]
         );
-        assert_eq!(
-            ds_layer_store::visibility::read_at(
+        assert!(
+            !ds_layer_store::visibility::read_at(
                 &dir.path().join("layers"),
                 "canary",
                 "uid-b",
                 "proj-kigali"
             )
-            .unwrap()["ds-lines"],
-            false
+            .unwrap()["ds-lines"]
         );
         server.handle.abort();
     }
