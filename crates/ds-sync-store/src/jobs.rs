@@ -60,6 +60,26 @@ impl Store {
         })?;
         rows.map(|row| Ok(serde_json::from_str(&row?)?)).collect()
     }
+    /// Stable newest-first keyset page over this owner's durable jobs.  The
+    /// cursor is the last `(created_at_ms,id)` returned; callers can walk past
+    /// unrelated engines without making old recoverable work disappear.
+    pub fn jobs_page(
+        &self,
+        owner: &str,
+        lane: &str,
+        before: Option<(u64, &str)>,
+        limit: usize,
+    ) -> Result<Vec<Job>> {
+        let (created, id) = before.unwrap_or((u64::MAX, "~"));
+        let mut statement = self.connection.prepare(
+            "SELECT row FROM compute_jobs WHERE owner=?1 AND lane=?2 AND (created<?3 OR (created=?3 AND id<?4)) ORDER BY created DESC,id DESC LIMIT ?5",
+        )?;
+        let rows = statement.query_map(
+            params![owner, lane, created, id, limit.clamp(1, 1000)],
+            |row| row.get::<_, String>(0),
+        )?;
+        rows.map(|row| Ok(serde_json::from_str(&row?)?)).collect()
+    }
     pub fn job(&self, owner: &str, lane: &str, id: &str) -> Result<Option<Job>> {
         let row: Option<String> = self
             .connection
