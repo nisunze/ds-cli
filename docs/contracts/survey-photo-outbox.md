@@ -14,9 +14,10 @@ require explicit provenance binding; the current account alone is not evidence.
 
 Hosts persist bytes and row changes atomically, enforce cross-tab execution
 ownership, report account/project identity, and execute timers and network IO.
-An outbox attempt uses the existing `transfer` machine. Its browser driver yields
-at the first retry decision so the durable outbox owns the retry budget; it does
-not run another retry loop inside each attempt. The gateway verifies the exact
+An outbox attempt uses the host's existing `transfer` machine for each ordered
+target. Its browser driver yields at the first retry decision so the durable
+outbox owns the retry budget; it does not run another retry loop inside each
+attempt. The gateway verifies the exact
 stored generation and SHA-256 before success is reported. The host removes the
 queue row and unpins bytes only when the kernel permits it. Cached bytes remain
 available; cancellation never deletes the image cache.

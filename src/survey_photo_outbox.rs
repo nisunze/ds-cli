@@ -1,11 +1,9 @@
 //! Durable survey-photo outbox decisions.
 //!
-//! Photo bytes, IndexedDB, credentials, timers, and the upload request belong
-//! to the host.  This module owns the durable row transition around exactly
-//! one governed upload attempt (descriptor, whole-blob PUT, and verification).
-//! It deliberately does not invoke `transfer`:
-//! that machine retries a resumable session internally, while this outbox has
-//! one persisted ten-attempt budget.  Nesting the two would multiply retries.
+//! Photo bytes, IndexedDB, credentials, timers, and per-target upload IO belong
+//! to the host. This module owns the durable transition around one ordered,
+//! whole-plan attempt. The host's transfer driver yields its retryable outcome
+//! back here; this outbox alone owns the persisted ten-attempt budget.
 
 use serde::{Deserialize, Serialize};
 
@@ -106,6 +104,9 @@ pub fn thumbnail_path_for(path: &str) -> Result<String, String> {
     if filename.is_empty() || filename == "." || filename == ".." {
         return Err("Survey-photo original path needs a filename for its thumbnail.".into());
     }
+    if filename.to_ascii_lowercase().ends_with("_thunder.jpeg") {
+        return Ok(path.into());
+    }
     let stem = filename
         .rfind('.')
         .filter(|index| *index > 0)
@@ -122,7 +123,8 @@ pub fn thumbnail_path_for(path: &str) -> Result<String, String> {
 /// thumbnail cannot become visible for a failed original replacement.
 pub fn upload_plan(row: &Row) -> Result<Vec<UploadTarget>, String> {
     if let Some(companion) = &row.companion {
-        if companion.path != thumbnail_path_for(&row.path)?
+        if companion.path == row.path
+            || companion.path != thumbnail_path_for(&row.path)?
             || companion.content_type != "image/jpeg"
             || companion.size == 0
             || !valid_expected_generation(companion.expected_generation.as_deref())
@@ -285,7 +287,8 @@ fn ensure_row(row: Option<Row>) -> Result<Row, String> {
         return Err("Survey-photo expected generation must be a positive decimal string.".into());
     }
     if let Some(companion) = &row.companion {
-        if companion.path != thumbnail_path_for(&row.path)?
+        if companion.path == row.path
+            || companion.path != thumbnail_path_for(&row.path)?
             || companion.content_type != "image/jpeg"
             || companion.size == 0
             || !valid_expected_generation(companion.expected_generation.as_deref())
@@ -728,6 +731,18 @@ mod tests {
             thumbnail_path_for("folder/field.capture.png").unwrap(),
             "folder/field.capture_thunder.jpeg"
         );
+        assert_eq!(
+            thumbnail_path_for("folder/field_thunder.JPEG").unwrap(),
+            "folder/field_thunder.JPEG"
+        );
+        let mut same_path = row();
+        same_path.companion = Some(Companion {
+            path: same_path.path.clone(),
+            content_type: "image/jpeg".into(),
+            size: 3,
+            expected_generation: None,
+        });
+        assert!(apply(1, Some(same_path), Event::Recover).is_err());
     }
 
     #[test]
