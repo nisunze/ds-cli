@@ -64,25 +64,34 @@ an aspiration.
   what the host may delete: `{"kind":"features_payload","id"}` — the layer's own
   record — and `{"kind":"upload_chunks","workspaceKey","fileName","parsedLayer"}`
   — its own parked chunks. The kernel never names a source file path, a folder
-  handle, an asset, a project layer or another layer's storage, and a replaced
-  payload releases the chunks it left behind unless the replacement is those
-  same chunks. The host deletes only what the receipt names; that is why a
-  removal provably cannot touch an original.
+  handle, an asset, a project layer or another layer's storage: chunks another
+  layer of the catalogue still parks its payload in are that layer's storage and
+  are not named, on `remove`, on a replaced payload and for a retired row alike.
+  A replaced payload releases the chunks it left behind unless the replacement
+  is those same chunks. On `restore`, retired and reopened rows share one id
+  space, so a retired row can never name a kept layer's payload — the same id
+  twice refuses the whole store. The host deletes only what the receipt names;
+  that is why a removal provably cannot touch an original.
 - **A rename is not a re-provenance.** A manual layer's name inside its source
   is its name, so a rename moves both; an imported layer keeps the name it had
   inside its file. A manual layer is never filed under its own name (the source
   label rule), and renaming a *source* moves every layer of that kind filed
-  under that label.
+  under that label — the label rule holding through it, so the admitted
+  registry reopens without repair.
 - **Bounds:** 2 000 layers per catalogue, 200 characters per name and id, 500
   per source text, 256 schema fields, 16 MiB per request; `lineWidth` 0.5–12,
-  `pointRadius` 1–24, `fillOpacity` 0–1, clamped on restore, refused elsewhere.
+  `pointRadius` 1–24, `fillOpacity` 0–1, `featureCount` ≥ 0, clamped on restore,
+  refused elsewhere. Feature storage a host offers must locate its chunks:
+  `null` is no storage, an unreadable object is refused (`restore` drops it).
 
 ## 3. Decisions to challenge
 
 - **D1 — Restore repairs; every other op refuses.** A legacy row is trimmed,
   clamped, defaulted and reopened, with each changed key named under
-  `repaired`; the same fault in a `register` or `update` is a refusal. A store
-  that refuses to reopen strands every layer in it, which is why the asymmetry
+  `repaired`; the same fault in a `register` or `update` (a style outside its
+  range, a negative count, storage that cannot locate its chunks) is a refusal
+  of the whole op — nothing is silently corrected or dropped. A store that
+  refuses to reopen strands every layer in it, which is why the asymmetry
   exists. *Alternative: refuse a bad row on restore too.*
 - **D2 — `repaired.fields` means "what the host must rewrite",** not "what was
   wrong": it is every descriptor key whose admitted value differs from what the
@@ -107,16 +116,22 @@ an aspiration.
   changed}`), per the lifecycle contract; hosts branch on `outcome ===
   "refused"`. An over-full catalogue refuses `malformed_descriptor` — there is
   no dedicated code for it.
+- **D9 — Shared chunks are never released.** Two layers naming the same
+  `upload_chunks` triple should not exist (the importer clears a triple before
+  re-parsing into it), but the kernel does not rely on that: a release names a
+  triple only when no other layer of the catalogue parks its payload there.
+  *Alternative: trust the importer and always name the triple.*
 
 ## 4. Proof
 
-`tests/fixtures/local-layers-cases.json` — 59 recorded cases, each saying why
+`tests/fixtures/local-layers-cases.json` — 68 recorded cases, each saying why
 it exists — replayed by `tests/local_layers_cases.rs`, byte-identical to
 ds-web's `src/tests/fixtures/local-layers/cases.json` for the browser's WASM
 replay and the native store's. Two boundary properties are asserted over the
 recorded answers themselves: a refusal answers no registry, and every release
-item names exactly one record the layer owns. 31 module tests hold each rule
-and each refusal on its own.
+item names exactly one record the layer owns. 35 module tests hold each rule
+and each refusal on its own, the lane/uid fence of a native catalogue and the
+shared-id and shared-chunk release guards included.
 
 ## 5. What hosts keep
 
