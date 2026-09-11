@@ -176,6 +176,22 @@ pub struct SolarOutput {
     pub bytes: Vec<u8>,
 }
 
+#[derive(Debug, Clone)]
+pub struct SolarPublicationMetadata {
+    pub project_id: String,
+    pub city_id: String,
+    pub engine_release: String,
+    pub engine_build_manifest_sha256: String,
+    pub outputs: Vec<SolarOutputMetadata>,
+}
+#[derive(Debug, Clone)]
+pub struct SolarOutputMetadata {
+    pub output_id: String,
+    pub content_type: String,
+    pub sha256: String,
+    pub size_bytes: u64,
+}
+
 /// Read the sealed project scope before completion so a host can project the
 /// same durable queued/running/cancelled lifecycle into Sync Center.
 pub fn solar_job_scope(job: &Job, input: &[u8]) -> Result<SolarJobScope, String> {
@@ -224,6 +240,52 @@ pub fn solar_publication(job: &Job, input: &[u8], result: &[u8]) -> Result<Solar
         return Err("completed Solar result has no publishable outputs".into());
     }
     Ok(SolarPublication {
+        project_id: scope.project_id,
+        city_id: scope.city_id,
+        engine_release: format!(
+            "{}@{}",
+            response.result.engine.name, response.result.engine.version
+        ),
+        engine_build_manifest_sha256: response.result.engine.build_manifest_sha256,
+        outputs,
+    })
+}
+
+/// Publication inventory without materialising output byte bodies. The bytes
+/// are decoded and verified only by `solar_publication` during a requested
+/// transfer.
+pub fn solar_publication_metadata(
+    job: &Job,
+    input: &[u8],
+    result: &[u8],
+) -> Result<SolarPublicationMetadata, String> {
+    let scope = solar_job_scope(job, input)?;
+    if job.phase != Phase::Completed
+        || digest(result) != job.result_sha256.as_deref().unwrap_or_default()
+    {
+        return Err("Solar publication result is not a completed durable result".into());
+    }
+    let response: PreparedSolarResponse = serde_json::from_slice(result)
+        .map_err(|error| format!("durable Solar response cannot be published: {error}"))?;
+    let outputs = response
+        .outputs
+        .into_iter()
+        .map(|output| {
+            let entry = output.entry;
+            let sha256 = entry
+                .content_digest
+                .strip_prefix("sha256:")
+                .filter(|value| value.len() == 64)
+                .ok_or("durable Solar output has an invalid declared digest")?;
+            Ok(SolarOutputMetadata {
+                output_id: entry.name,
+                content_type: entry.media_type,
+                sha256: sha256.into(),
+                size_bytes: entry.byte_count,
+            })
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+    Ok(SolarPublicationMetadata {
         project_id: scope.project_id,
         city_id: scope.city_id,
         engine_release: format!(
