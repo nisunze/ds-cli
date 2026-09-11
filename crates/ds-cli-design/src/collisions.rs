@@ -13,6 +13,10 @@
 //! `ds_command_kernel::collisions`', so the card and this command report the
 //! same number under the same words.
 
+/// The key an operator reads the answer under is the kernel's fold, not a
+/// second `match` here: this command and the card name one condition one way.
+use ds_command_kernel::collisions::state_key;
+
 use ds_cli_auth::TransformerSet;
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{Authority, Chapter, Command, Effect, Example, Execution};
@@ -87,18 +91,6 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     Ok(output)
 }
 
-/// The key an operator reads the answer under. Keys, never prose: the words
-/// belong to whichever surface is rendering them.
-fn state_key(checked: bool, pairs: Option<u64>) -> &'static str {
-    match (checked, pairs) {
-        (false, _) => "pctl_collisions_never_checked",
-        (true, None) => "pctl_collisions_unknown",
-        (true, Some(0)) => "pctl_collisions_pairs_none",
-        (true, Some(1)) => "pctl_collisions_pairs_one",
-        (true, Some(_)) => "pctl_collisions_pairs_many",
-    }
-}
-
 /// The project-wide rows that are documents rather than transformers.
 fn is_reserved(name: &str) -> bool {
     matches!(name, COLLISIONS_ROW | "combined_transformer" | "mv_data")
@@ -124,6 +116,8 @@ pub fn render(data: &Value) -> String {
 mod tests {
     use super::*;
 
+    /// The keys are the kernel's; this pins that the command reads them from
+    /// there rather than restating the fold.
     #[test]
     fn the_state_key_separates_never_checked_from_unknown_and_from_zero() {
         assert_eq!(state_key(false, None), "pctl_collisions_never_checked");
