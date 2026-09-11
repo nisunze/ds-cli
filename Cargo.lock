@@ -1377,6 +1377,7 @@ dependencies = [
  "ds-command-kernel",
  "fs2",
  "rusqlite",
+ "serde",
  "serde_json",
  "tempfile",
  "uuid",

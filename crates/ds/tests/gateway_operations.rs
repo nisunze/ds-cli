@@ -37,13 +37,13 @@ use ds_client_core::gateway::{
 };
 use ds_client_core::{
     CLIENT_PROFILE_SCHEMA, ClientProfile, ClientProfileInput, DESIGN_SELECTIONS_ACTIONS,
-    DeploymentLane, LAYERS_ACTIONS, LAYERS_METHOD, LAYERS_PATH, PRINTING_ACTIONS,
-    PROCESSING_LANE_HEADER, PROJECT_DATA_ACTIONS, PROJECT_FORM_EDITOR_ACTION, PROJECT_FORMS_ACTION,
-    PROJECT_REPORT_ACTIONS, ProfileError, SOLAR_SNAPSHOT_ACTION, STYLES_ACTION,
-    SURVEY_CONTROL_ROUTES, SURVEY_ENTRIES_CHANGES_METHOD, SURVEY_ENTRIES_CHANGES_PATH,
-    SURVEY_ENTRIES_SELECT_METHOD, SURVEY_ENTRIES_SELECT_PATH, SURVEY_ENTRY_CREATE_OPERATION,
-    SURVEY_QUERY_METHOD, SURVEY_QUERY_PATH, TILES_ACTIONS, TRANSFORMER_CONTEXT_ACTION,
-    TRANSFORMER_CONTEXT_FIELDS, TRANSFORMER_CONTEXT_METHOD, TRANSFORMER_CONTEXT_PATH,
+    DeploymentLane, LAYERS_ACTIONS, PRINTING_ACTIONS, PROCESSING_LANE_HEADER, PROJECT_DATA_ACTIONS,
+    PROJECT_FORM_EDITOR_ACTION, PROJECT_FORMS_ACTION, PROJECT_REPORT_ACTIONS, ProfileError,
+    SOLAR_SNAPSHOT_ACTION, STYLES_ACTION, SURVEY_CONTROL_ROUTES, SURVEY_ENTRIES_CHANGES_METHOD,
+    SURVEY_ENTRIES_CHANGES_PATH, SURVEY_ENTRIES_SELECT_METHOD, SURVEY_ENTRIES_SELECT_PATH,
+    SURVEY_ENTRY_CREATE_OPERATION, SURVEY_QUERY_METHOD, SURVEY_QUERY_PATH, TILES_ACTIONS,
+    TRANSFORMER_CONTEXT_ACTION, TRANSFORMER_CONTEXT_FIELDS, TRANSFORMER_CONTEXT_METHOD,
+    TRANSFORMER_CONTEXT_PATH,
 };
 
 /// Every registry operation `ds` can issue, and which of its typed calls does.
@@ -88,10 +88,6 @@ const CLI_ONLY: &[(&str, &str)] = &[
          descriptor does not list as a public backend.",
     ),
     (
-        "POST /api/v1/layers",
-        "Routed at the same ds_brain_bulk_url lane as /api/v1/data.",
-    ),
-    (
         "POST /api/v1/survey/query",
         "No matching path exists in ds-apis-tf, so the gateway contract test could not validate a \
          declaration. Native client only.",
@@ -133,6 +129,7 @@ fn profile_from_registry(lane: DeploymentLane, gateway_origin: &str) -> ClientPr
     let (styles_method, styles_path) = route("domains.styles.update");
     let (printing_method, printing_path) = route("domains.printing.list");
     let (tiles_method, tiles_path) = route("domains.tiles.action");
+    let (layers_method, layers_path) = route("domains.layers.action");
     let (project_report_method, project_report_path) = route("domains.project_report.action");
     let (survey_entry_create_method, survey_entry_create_path) =
         route("domains.survey_entries.create");
@@ -199,8 +196,8 @@ fn profile_from_registry(lane: DeploymentLane, gateway_origin: &str) -> ClientPr
         // The registry splits printing into one id per action, so it has no
         // single vocabulary to copy. Named in `printing_is_one_profile_route`.
         printing_actions: PRINTING_ACTIONS.map(str::to_owned).to_vec(),
-        layers_method: LAYERS_METHOD.to_owned(),
-        layers_path: LAYERS_PATH.to_owned(),
+        layers_method,
+        layers_path,
         layers_actions: LAYERS_ACTIONS.map(str::to_owned).to_vec(),
         tiles_method,
         tiles_path,

@@ -22,15 +22,15 @@ const ORDER_ARG: Arg = Arg {
 pub static COMMAND: Command = Command {
     id: "map.layer.reorder",
     path: &["map", "layer", "reorder"],
-    contract: 2,
+    contract: 3,
     summary: "Save canonical project-layer order overrides (needs --yes).",
-    purpose: "Validates every id against a fresh-enough assembled project layer response, then saves explicit order overrides through ds-brain. Runtime MapLibre ids are refused. Geometry and platform stack safety still govern final draw grouping.",
+    purpose: "Reads the selected project's assembled layer document and asks the shared layer kernel to admit the request: unknown ids (runtime MapLibre ids included), repeated ids and out-of-bound orders are typed refusals before anything is sent; a partial order is accepted and names the canonical layers it leaves unlisted. Admitted overrides are saved through ds-brain. Geometry and platform stack safety still govern final draw grouping.",
     chapter: Chapter::Survey,
     effect: Effect::GlobalWrite,
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
     args: &[ORDER_ARG, LANE_ARG],
-    output: "Project, the exact reviewed id/order pairs, and applied/persisted flags.",
+    output: "Project, the exact reviewed id/order pairs, applied/persisted flags, canonical_count, whether the order is complete and the canonical ids it leaves unlisted.",
     examples: &[Example {
         command: "ds map layer reorder --order gt/roads=120 --order gt/schools=220 --yes --output json",
         note: "Take ids from `ds map layer list`; never construct them.",
@@ -81,6 +81,41 @@ fn parse_orders(values: &[String]) -> Result<Vec<Value>, Failure> {
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let orders = parse_orders(inputs.repeated("order"))?;
+    let lane = inputs.require("lane")?;
+    // Admission against the current document, before any write: the kernel
+    // names unknown and repeated ids and what a partial order leaves unlisted.
+    let headless = ds_cli_auth::layer_config(lane, false)?;
+    let admission = super::ask_layer_state(&json!({
+        "schema": ds_command_kernel::layer_state::SCHEMA,
+        "project": headless.project_id(),
+        "document": headless.result().document(),
+        "op": {"kind": "reorder", "orders": orders.iter().map(|row| json!({"layer_id": row["layerId"], "order": row["order"]})).collect::<Vec<_>>()},
+    }))?;
+    if admission["outcome"] == "refused" {
+        let ids = admission["ids"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(Value::as_str)
+            .collect::<Vec<_>>()
+            .join(", ");
+        let message = admission["message"].as_str().unwrap_or("order refused");
+        let message = if ids.is_empty() {
+            message.to_owned()
+        } else {
+            format!("{message}: {ids}")
+        };
+        let remedy = "copy ids from `ds map layer list --output json`; pass each canonical id once";
+        return Err(match admission["code"].as_str() {
+            Some("unknown_layer") => {
+                Failure::invalid(super::native::UNKNOWN_LAYER.code, message).remedy(remedy)
+            }
+            Some("duplicate_layer") => {
+                Failure::invalid(super::native::DUPLICATE_LAYER.code, message).remedy(remedy)
+            }
+            _ => Failure::invalid(super::native::INVALID_ORDER.code, message).remedy(remedy),
+        });
+    }
     let request: Vec<ds_cli_auth::LayerOrder> = orders
         .iter()
         .map(|row| ds_cli_auth::LayerOrder {
@@ -88,10 +123,17 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             order: row["order"].as_i64().expect("parsed order"),
         })
         .collect();
-    let result = ds_cli_auth::layer_reorder(inputs.require("lane")?, &request)?;
-    Ok(
-        json!({"lane": result.lane(), "project": result.project_id(), "orders": orders, "applied": true, "persisted": true}),
-    )
+    let result = ds_cli_auth::layer_reorder(lane, &request)?;
+    Ok(json!({
+        "lane": result.lane(),
+        "project": result.project_id(),
+        "orders": orders,
+        "applied": true,
+        "persisted": true,
+        "canonical_count": admission["canonical_count"],
+        "complete": admission["complete"],
+        "unlisted": admission["unlisted"],
+    }))
 }
 
 pub fn render(data: &Value) -> String {

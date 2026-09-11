@@ -3,6 +3,7 @@
 pub mod add;
 pub mod list;
 pub mod native;
+pub mod project_visibility;
 pub mod remote_list;
 pub mod remove;
 pub mod reorder;
@@ -60,4 +61,30 @@ pub fn local_edit(edit: ds_layer_store::OverlayEdit) -> Result<Value, Failure> {
 
 pub fn local_availability() -> ds_cli_contract::spec::Availability {
     ds_cli_contract::spec::Availability::Available
+}
+
+/// One shared layer-state question. The kernel's own request errors are ours
+/// (a malformed question or a stale project), never the backend's.
+pub fn ask_layer_state(request: &Value) -> Result<Value, Failure> {
+    let bytes = serde_json::to_vec(request).expect("layer state request encodes");
+    let answer = ds_command_kernel::layer_state::evaluate(&bytes).map_err(|message| {
+        if message.starts_with("project_context_changed") {
+            Failure::conflict("project_context_changed", message)
+                .remedy("run the command again against the current selected project")
+        } else {
+            Failure::internal("layer_state_refused", message)
+                .remedy("update ds and report the layer-state contract failure")
+        }
+    })?;
+    Ok(serde_json::from_str(&answer).expect("kernel answers JSON"))
+}
+
+/// This machine's remembered toggles for one lane and project.
+pub fn read_preferences(
+    lane: &str,
+    project: &str,
+) -> Result<std::collections::BTreeMap<String, bool>, Failure> {
+    ds_layer_store::visibility::read(lane, project).map_err(|message| {
+        Failure::invalid("local_layer_refused", message).remedy(LOCAL_STORE_REFUSAL.remedy)
+    })
 }

@@ -3892,6 +3892,8 @@ fn every_map_command_is_reachable_without_the_desktop_installed() {
         "map.layer.add",
         "map.layer.remove",
         "map.layer.visibility",
+        "map.layer.show",
+        "map.layer.hide",
         "map.ui.open",
         "map.evidence.capture",
         "map.points-along",
@@ -3948,6 +3950,8 @@ fn every_map_command_is_reachable_without_the_desktop_installed() {
                 Some(
                     "map.layer.list"
                         | "map.layer.reorder"
+                        | "map.layer.show"
+                        | "map.layer.hide"
                         | "map.data.list"
                         | "map.data.upload"
                         | "map.data.remove"

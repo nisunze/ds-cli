@@ -131,8 +131,21 @@ not be able to reach the project.
 
 ## Layer management without a desktop
 
-Canonical project layers use `map layer list/reorder`; take reorder IDs only from
-`layers[].id`. Local raster references use `map layer add/remote-list/visibility/remove`.
+Canonical project layers use `map layer list/reorder/show/hide`; take ids only
+from `layers[].id`. `list` projects the assembled document through the shared
+layer kernel (`ds-command-kernel::layer_state`): one row per canonical layer
+with its runtime family and roles (primary, label, boundary, d3), this
+machine's remembered visibility folded over the family exactly as the drawer
+shows it, `source_state`, and with `--zoom` whether the family renders there.
+`show`/`hide` remember canonical layers visible or hidden for this machine's
+user (lane- and project-fenced, in the native layer store next to the overlay
+registry); the kernel names the runtime layers the family holds, and authored
+`visibility: none` or 3D-only companions stay hidden at runtime and say so.
+`reorder` is admitted by the same kernel before anything is sent: unknown ids,
+repeated ids and out-of-bound orders are typed refusals (`unknown_layer`,
+`duplicate_layer`, `invalid_order`); a partial order is accepted and reports
+`complete: false` with the canonical ids it leaves `unlisted`.
+Local raster references use `map layer add/remote-list/visibility/remove`.
 Governed survey/design outputs use `tile add/remove`; raw project GIS uploads use
 `map data inspect/list/upload/remove`. Their storage and authentication differ;
 see Native layers and project GIS files below.
