@@ -88,7 +88,7 @@ pub struct EngineRelease {
 /// The signed work grant as the host holds it. Parsed, never verified here:
 /// the signature is the server's to check, and the server re-authorizes at
 /// publish anyway. This module only reads the scope it claims.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct Grant {
     pub grant_id: String,
@@ -99,7 +99,7 @@ pub struct Grant {
     pub expires_at_ms: u64,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct LocalArtifact {
     #[serde(flatten)]
@@ -122,7 +122,7 @@ fn default_true() -> bool {
     true
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct RemoteHead {
     #[serde(flatten)]
