@@ -52,6 +52,30 @@ const NOW: Arg = Arg::value(
     "Server-observed time in ms; defaults to this machine's clock.",
 );
 const OFFLINE: Arg = Arg::switch("offline", "Plan as if the network were unreachable.");
+const TRIGGER: Arg = Arg {
+    name: "trigger",
+    kind: ds_cli_contract::spec::ArgKind::Value,
+    value: "<trigger>",
+    required: false,
+    default: Some("manual"),
+    choices: &[
+        "startup",
+        "navigation",
+        "local_change",
+        "publish_completed",
+        "download_completed",
+        "reconnect",
+        "remote_push",
+        "manual",
+        "grant_opened",
+    ],
+    summary: "Why the plan is asked for now; a plan is never asked for because time passed.",
+};
+const REMOTE_READ_AT: Arg = Arg::value(
+    "remote-read-at-ms",
+    "<ms>",
+    "When the held remote heads were last read; omit when never.",
+);
 
 const REFUSALS: &[Refusal] = &[Refusal {
     code: "sync_plan_invalid",
@@ -69,8 +93,18 @@ pub static PLAN_COMMAND: Command = Command {
     effect: Effect::ReadOnly,
     authority: Authority::None,
     execution: Execution::Sync,
-    args: &[PROJECT, INSTALL, LOCAL, REMOTE, GRANT, NOW, OFFLINE],
-    output: "{schema, project, actions[{kind, identity?, reason, …}], next_check_ms, grant_valid, summary{uploads, downloads, conflicts, refused, in_sync}}.",
+    args: &[
+        PROJECT,
+        INSTALL,
+        LOCAL,
+        REMOTE,
+        GRANT,
+        NOW,
+        OFFLINE,
+        TRIGGER,
+        REMOTE_READ_AT,
+    ],
+    output: "{schema, project, actions[{kind, identity?, reason, …}], refresh_remote{needed, reason}, wake{kind, at_ms?, reason?}, grant_valid, summary{uploads, downloads, conflicts, refused, in_sync}}.",
     examples: &[Example {
         command: "ds desktop sync plan --project my-project --local local.json --remote remote.json --output json",
         note: "`.data.actions` is what a host performs, in order; `open_grant` always comes first when an upload needs one.",
@@ -125,11 +159,18 @@ pub fn run(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
         "install_id": i.value("install-id").unwrap_or("headless"),
         "now_ms": now,
         "online": !i.switch("offline"),
+        "trigger": i.value("trigger").unwrap_or("manual"),
         "local": match i.value("local") { Some(path) => json_file(path)?, None => json!([]) },
         "remote": match i.value("remote") { Some(path) => json_file(path)?, None => json!([]) },
     });
     if let Some(path) = i.value("grant") {
         request["grant"] = json_file(path)?;
+    }
+    if let Some(raw) = i.value("remote-read-at-ms") {
+        request["remote_read_at_ms"] =
+            json!(raw.trim().parse::<u64>().map_err(|_| invalid(
+                "--remote-read-at-ms must be a whole number of milliseconds"
+            ))?);
     }
     let input = serde_json::to_vec(&request).map_err(invalid)?;
     let reply = ds_command_kernel::sync::evaluate(&input).map_err(invalid)?;
@@ -172,6 +213,22 @@ pub fn render(data: &Value) -> String {
             action["reason"].as_str().unwrap_or("")
         ));
     }
-    out.push_str(&format!("next check at {} ms\n", data["next_check_ms"]));
+    out.push_str(&format!(
+        "remote heads: {} ({}); wake: {}\n",
+        if data["refresh_remote"]["needed"].as_bool().unwrap_or(false) {
+            "re-read"
+        } else {
+            "held"
+        },
+        data["refresh_remote"]["reason"].as_str().unwrap_or(""),
+        match data["wake"]["kind"].as_str() {
+            Some("at") => format!(
+                "at {} ms ({})",
+                data["wake"]["at_ms"],
+                data["wake"]["reason"].as_str().unwrap_or("")
+            ),
+            _ => String::from("next trigger"),
+        }
+    ));
     out
 }
