@@ -744,10 +744,10 @@ fn enumerate_options(facts: &[RowFacts], admin_level: &str, combined_ui: bool) -
         .into_iter()
         .collect();
     user.sort_by(|a, b| locale_cmp(a, b));
-    // Warning types are counted over EVERY row (the page folded every row's
-    // health), once per row, in order of first appearance.
+    // Warning types are counted over the fleet, once per row, in order of
+    // first appearance.
     let mut warning_types: Vec<WarningTypeOption> = Vec::new();
-    for row in facts {
+    for row in &fleet {
         for warning in row.warning_types() {
             match warning_types
                 .iter_mut()
