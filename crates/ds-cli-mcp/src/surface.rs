@@ -411,6 +411,8 @@ const LAYER_COMMANDS: &[&str] = &[
     "map.layer.add",
     "map.layer.remove",
     "map.layer.visibility",
+    "map.layer.show",
+    "map.layer.hide",
 ];
 
 const FORM_FACTORY_COMMANDS: &[&str] = &[

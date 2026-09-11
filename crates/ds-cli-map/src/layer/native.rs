@@ -16,6 +16,26 @@ pub const INVALID_ORDER: Refusal = Refusal {
     when: "a repeated order is not a unique canonical-id=integer",
     remedy: "copy ids from ds map layer list",
 };
+pub const UNKNOWN_LAYER: Refusal = Refusal {
+    code: "unknown_layer",
+    when: "an id is not a canonical layer of the selected project (runtime ids are never accepted)",
+    remedy: "copy ids from ds map layer list --output json",
+};
+pub const DUPLICATE_LAYER: Refusal = Refusal {
+    code: "duplicate_layer",
+    when: "a canonical layer is listed more than once",
+    remedy: "pass each canonical id once",
+};
+pub const LAYER_STATE_REFUSED: Refusal = Refusal {
+    code: "layer_state_refused",
+    when: "the shared layer kernel refused the question this build asked",
+    remedy: "update ds and report the layer-state contract failure",
+};
+pub const LAYER_STATE_STALE: Refusal = Refusal {
+    code: "project_context_changed",
+    when: "the layer document belongs to another project than the one selected",
+    remedy: "run the command again against the current selected project",
+};
 macro_rules! native_refusal {
     ($name:ident, $code:literal, $when:literal, $remedy:literal) => {
         pub const $name: Refusal = Refusal {
@@ -236,4 +256,34 @@ pub const NATIVE_WRITE_REFUSALS: &[Refusal] = &[
     AUTH_UNREADABLE,
     CONFIRMATION_REQUIRED,
     INVALID_ORDER,
+    UNKNOWN_LAYER,
+    DUPLICATE_LAYER,
+    LAYER_STATE_REFUSED,
+    LAYER_STATE_STALE,
+];
+
+pub const NATIVE_VISIBILITY_REFUSALS: &[Refusal] = &[
+    NATIVE_PROFILE,
+    NATIVE_PROFILE_DIGEST,
+    NATIVE_PROFILE_UNSAFE,
+    HEADLESS_SIGNED_OUT,
+    HEADLESS_NO_PROJECT,
+    PROJECT_CONTEXT_STALE,
+    NATIVE_STATE_UNSAFE,
+    NATIVE_STATE_UNAVAILABLE,
+    NATIVE_STATE_PROTECTION,
+    NATIVE_STATE_ROOT,
+    NATIVE_STATE_CONFLICT,
+    NATIVE_CLEANUP,
+    AUTH_CONTEXT_MISMATCH,
+    AUTH_INPUT,
+    AUTH_REJECTED,
+    AUTH_REVOKED,
+    AUTH_IDENTITY_MISMATCH,
+    AUTH_TRANSIENT,
+    AUTH_UNREADABLE,
+    UNKNOWN_LAYER,
+    LAYER_STATE_REFUSED,
+    LAYER_STATE_STALE,
+    super::LOCAL_STORE_REFUSAL,
 ];

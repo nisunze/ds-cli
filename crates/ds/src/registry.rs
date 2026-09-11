@@ -758,6 +758,16 @@ static MAP_ENTRIES: &[Entry] = &[
         render: ds_cli_map::layer::visibility::render,
     },
     Entry {
+        command: &ds_cli_map::layer::project_visibility::SHOW,
+        handler: ds_cli_map::layer::project_visibility::run_show,
+        render: ds_cli_map::layer::project_visibility::render,
+    },
+    Entry {
+        command: &ds_cli_map::layer::project_visibility::HIDE,
+        handler: ds_cli_map::layer::project_visibility::run_hide,
+        render: ds_cli_map::layer::project_visibility::render,
+    },
+    Entry {
         command: &ds_cli_map::ui::open::COMMAND,
         handler: ds_cli_map::ui::open::run,
         render: ds_cli_map::ui::open::render,

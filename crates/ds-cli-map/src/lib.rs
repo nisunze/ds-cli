@@ -64,6 +64,8 @@ pub static DOMAIN: Domain = Domain {
         &layer::add::COMMAND,
         &layer::remove::COMMAND,
         &layer::visibility::COMMAND,
+        &layer::project_visibility::SHOW,
+        &layer::project_visibility::HIDE,
         &ui::open::COMMAND,
         &evidence::capture::COMMAND,
         &points_along::COMMAND,
