@@ -50,6 +50,35 @@ pub fn open(path: &Path) -> Result<Store, String> {
     Ok(store)
 }
 
+/// Resolve the protected native Server state directory shared by Server jobs
+/// and report publication. A custom path is the exact `ds server serve
+/// --state-dir` directory; callers place `store.sqlite`, `report-artifacts`,
+/// and other Server-owned durable children below it.
+///
+/// This deliberately does not read `DS_CONFIG_HOME`: that namespace belongs
+/// to a native user's credentials, while the Server's durable queue lives in
+/// its XDG state namespace. Keeping this here prevents independent Server
+/// consumers from silently selecting different queues.
+pub fn server_state_directory(lane: &str, explicit: Option<&Path>) -> Result<PathBuf, String> {
+    if !matches!(lane, "stable" | "canary") {
+        return Err("server lane must be stable or canary".into());
+    }
+    if let Some(path) = explicit {
+        if !path.is_absolute() {
+            return Err("server state directory must be absolute".into());
+        }
+        return Ok(path.to_path_buf());
+    }
+    let root = std::env::var_os("XDG_STATE_HOME")
+        .map(PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|path| PathBuf::from(path).join(".local/state")))
+        .ok_or_else(|| "provide an absolute server state directory".to_string())?;
+    if !root.is_absolute() {
+        return Err("server state directory must be absolute".into());
+    }
+    Ok(root.join("ds/server").join(lane))
+}
+
 pub fn submit(
     path: &Path,
     owner: &str,
@@ -763,4 +792,17 @@ pub fn capacity() -> usize {
     #[cfg(not(target_os = "linux"))]
     let memory = None;
     compute_jobs::concurrent_jobs(cpus, memory).min(256)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn server_state_directory_uses_an_explicit_absolute_server_root() {
+        let root = Path::new("/var/lib/ds-server");
+        assert_eq!(server_state_directory("stable", Some(root)).unwrap(), root);
+        assert!(server_state_directory("stable", Some(Path::new("relative"))).is_err());
+        assert!(server_state_directory("preview", Some(root)).is_err());
+    }
 }
