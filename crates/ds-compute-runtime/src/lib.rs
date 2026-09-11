@@ -246,6 +246,11 @@ pub trait Authorizer: Send + Sync + 'static {
 /// it to project completed work into their existing durable activity owner.
 pub trait CompletionObserver: Send + Sync + 'static {
     fn completed(&self, job: &Job) -> Result<(), String>;
+    /// Reconcile existing terminal work after restart and after transient
+    /// publication failures. The observer owns its durable activity store.
+    fn recover(&self) -> Result<(), String> {
+        Ok(())
+    }
 }
 
 pub struct Workers {
@@ -276,6 +281,9 @@ impl Workers {
                     eprintln!("compute activity recovery: {error}");
                 }
             }
+            if let Err(error) = observer.recover() {
+                eprintln!("compute activity recovery: {error}");
+            }
         }
         // All batches share this bounded pool, including the engine's nested
         // parallel transformer work. A batch cannot escape memory admission by
@@ -301,14 +309,26 @@ impl Workers {
             let pool = pool.clone();
             let worker = format!("{}-{}-{index}", std::process::id(), now_ms());
             threads.push(thread::spawn(move || {
+                let mut idle_ticks = 0_u32;
                 while !stop.load(Ordering::Acquire) {
                     if auth.authorize(&owner).is_err() {
                         thread::sleep(Duration::from_millis(500));
                         continue;
                     }
                     match pool.install(|| run_one(&path, &owner, &lane, &worker, auth.clone(), observer.as_deref())) {
-                        Ok(true) => {}
-                        Ok(false) => thread::sleep(Duration::from_millis(200)),
+                        Ok(true) => idle_ticks = 0,
+                        Ok(false) => {
+                            idle_ticks = idle_ticks.saturating_add(1);
+                            if idle_ticks >= 25 {
+                                idle_ticks = 0;
+                                if let Some(observer) = observer.as_deref() {
+                                    if let Err(error) = observer.recover() {
+                                        eprintln!("compute activity retry: {error}");
+                                    }
+                                }
+                            }
+                            thread::sleep(Duration::from_millis(200));
+                        }
                         Err(error) => {
                             eprintln!("compute worker: {error}");
                             thread::sleep(Duration::from_secs(1));
