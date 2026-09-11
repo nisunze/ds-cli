@@ -624,6 +624,31 @@ and why — ds-brain's published verdict is authoritative when present), `kind`
 versionable, reportable, deletable). A headless client holds no browser rooms,
 so every row is remote and nothing is dirty here by construction.
 
+## Status query — the register's selector, headless
+
+`ds design status --search <text> --sort <key> [--desc] --filter <dimension=value>…`
+answers the Transformers register's own question with no browser: which rows
+the operator would see and in what order, decided by
+`ds-command-kernel::design_status_query` — the same selector the register and
+the transformer picker read. A quoted `--search` ("tx_12") is an exact name;
+a bare one is a substring. `--sort` takes `name`, `district`, `tags`,
+`legacy`, `process`, `report`, `combined`, `governance`, `user`, `updated` or
+`version`; special rows (`combined_transformer`, `mv_data`, `collisions`,
+`compounded_report`) lead in their fixed order, except that `mv_data` joins
+an `updated` sort. `--filter` repeats: `sync=saved|unsaved`,
+`legacy|process|report=<phase status>`, `combined=<state>`,
+`governance=locked|draft`, `user=<account>`, `lane=standard|fast`,
+`warning-type=<code>` and one `admin-<district|sector|cell|village>=<value>`
+(`__admin_bounds_none__` selects rows with no bounds at that level). Any
+secondary filter hides the special rows, as the register does. The answer's
+`transformers` are the selection in order, `count` its size, and `query`
+carries the selector, the sort and `options` — what each filter may offer
+over this project (`admin`, `legacy`, `process`, `report`, `combined`,
+`governance`, `user`, `warning_types` with counts, `sync`, `lane`). A
+headless client holds no browser session, pins, tags or saved selection, so
+those members of the selector are empty here; `ds` answers what the register
+would show a fresh browser.
+
 ## Process settings, resolved headlessly
 
 `ds design process settings --preset drafting|sketch [--lane standard|fast]
