@@ -1208,17 +1208,21 @@ fn config_boolean(value: &Value) -> Option<bool> {
     }
 }
 
-fn matching_row_value(row: &Value, keys: &[&str]) -> Option<Value> {
+fn matching_row_indexed(row: &Value, keys: &[&str]) -> Option<(usize, Value)> {
     let object = row.as_object()?;
-    for key in keys {
+    for (index, key) in keys.iter().enumerate() {
         let wanted = config_token(&Value::String((*key).to_string()));
         for (raw, value) in object {
             if config_token(&Value::String(raw.clone())) == wanted {
-                return Some(value.clone());
+                return Some((index, value.clone()));
             }
         }
     }
     None
+}
+
+fn matching_row_value(row: &Value, keys: &[&str]) -> Option<Value> {
+    matching_row_indexed(row, keys).map(|(_, value)| value)
 }
 
 fn config_rows(value: Option<Value>) -> Vec<Value> {
@@ -1241,7 +1245,14 @@ fn project_settings_rows(config: &Value) -> Vec<Value> {
     rows
 }
 
-fn config_parameter_value(config: &Value, parameters: &[&str]) -> Option<Value> {
+/// The index of the spelling that answered, with its value.
+///
+/// The walk is SOURCE-major and spelling-minor, exactly as the deleted
+/// `configParameterValue` was: every alias is looked for in one source before
+/// the next source is opened. Asking spelling-major instead would let a legacy
+/// alias buried in `parameters` outrank a newer one written at the top level —
+/// the precedence chain a config read must never reorder.
+fn config_parameter_indexed(config: &Value, parameters: &[&str]) -> Option<(usize, Value)> {
     if !config.is_object() {
         return None;
     }
@@ -1252,26 +1263,30 @@ fn config_parameter_value(config: &Value, parameters: &[&str]) -> Option<Value> 
         }
     }
     for source in &direct {
-        if let Some(value) = matching_row_value(source, parameters) {
-            return Some(value);
+        if let Some(found) = matching_row_indexed(source, parameters) {
+            return Some(found);
         }
     }
     for row in project_settings_rows(config) {
         let parameter = matching_row_value(&row, &["parameter", "setting", "name", "key"])
             .unwrap_or(Value::Null);
         let parameter_token = config_token(&parameter);
-        if !parameters.iter().any(|candidate| {
+        let Some(index) = parameters.iter().position(|candidate| {
             config_token(&Value::String((*candidate).to_string())) == parameter_token
-        }) {
+        }) else {
             continue;
-        }
+        };
         if let Some(value) =
             matching_row_value(&row, &["value", "setting_value", "default", "enabled"])
         {
-            return Some(value);
+            return Some((index, value));
         }
     }
     None
+}
+
+fn config_parameter_value(config: &Value, parameters: &[&str]) -> Option<Value> {
+    config_parameter_indexed(config, parameters).map(|(_, value)| value)
 }
 
 pub fn design_data_path(document: &Value) -> Value {
@@ -1284,19 +1299,21 @@ pub fn design_data_path(document: &Value) -> Value {
             "reason_key": if firestore { "design_data_path_firestore_declared" } else { "design_data_path_mirrored_declared" },
         });
     }
-    for parameter in DESIGN_DATA_LEGACY {
-        let Some(value) = config_parameter_value(document, &[parameter]) else {
-            continue;
-        };
-        let Some(firestore) = config_boolean(&value) else {
-            continue;
-        };
-        return json!({
-            "path": if firestore { "firestore" } else { "mirrored" },
-            "source": "legacy",
-            "parameter": parameter,
-            "reason_key": if firestore { "design_data_path_firestore_legacy" } else { "design_data_path_mirrored_legacy" },
-        });
+    // ONE lookup over both spellings, because that is what the host asked:
+    // `configParameterValue(config, ['design_data_source', 'combined_source'])`.
+    // The value it finds decides or it does not; `parsedLegacy ?? true` never
+    // reached past it to a second alias, and a config read that invents a
+    // longer precedence chain than the documents were written against answers
+    // for rows nobody declared.
+    if let Some((index, value)) = config_parameter_indexed(document, &DESIGN_DATA_LEGACY) {
+        if let Some(firestore) = config_boolean(&value) {
+            return json!({
+                "path": if firestore { "firestore" } else { "mirrored" },
+                "source": "legacy",
+                "parameter": DESIGN_DATA_LEGACY[index],
+                "reason_key": if firestore { "design_data_path_firestore_legacy" } else { "design_data_path_mirrored_legacy" },
+            });
+        }
     }
     json!({
         "path": "firestore",
@@ -1354,6 +1371,33 @@ mod design_data_path_tests {
         let result = path(document);
         assert_eq!(result["path"], "mirrored");
         assert_eq!(result["source"], "explicit");
+    }
+
+    #[test]
+    fn a_legacy_alias_never_outranks_the_source_it_was_found_after() {
+        // The deleted host asked both spellings of ONE source before opening
+        // the next: `combined_source` at the top level answers even though
+        // `design_data_source` sits in `parameters`. Asking spelling-major
+        // would have answered `mirrored` for a project that declared
+        // Firestore where the operator could see it.
+        let document = json!({
+            "parameters": {"design_data_source": "bigquery"},
+            "combined_source": "firestore",
+        });
+        let result = path(document);
+        assert_eq!(result["path"], "firestore");
+        assert_eq!(result["parameter"], "combined_source");
+    }
+
+    #[test]
+    fn an_unparseable_legacy_value_answers_the_default_not_the_next_alias() {
+        // `parsedLegacy ?? true`: the legacy lookup returned ONE value, and an
+        // unreadable one left the default standing. Reaching past it to a
+        // second alias decides for a project on a row its author never meant
+        // to be read.
+        let result = path(json!({"design_data_source": "maybe", "combined_source": "off"}));
+        assert_eq!(result["path"], "firestore");
+        assert_eq!(result["source"], "default");
     }
 
     #[test]

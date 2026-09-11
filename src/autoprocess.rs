@@ -235,8 +235,17 @@ fn differential_scope(request: &DifferentialScopeRequest) -> serde_json::Value {
     if mapping.feeder_ids.is_empty() {
         return full("differential_full_no_feeders");
     }
-    let mut feeders = mapping.feeder_ids.clone();
-    feeders.dedup();
+    // Order-preserving unique. `Vec::dedup` drops only ADJACENT repeats: the
+    // browser hands this in from a Set, but `ds design autoprocess plan` hands
+    // in whatever the document says, and a feeder listed twice apart would
+    // have been narrowed to twice.
+    let mut seen = BTreeSet::new();
+    let feeders: Vec<String> = mapping
+        .feeder_ids
+        .iter()
+        .filter(|id| seen.insert((*id).clone()))
+        .cloned()
+        .collect();
     json!({"scope": "feeders", "feeders": feeders, "reason_key": "differential_narrowed"})
 }
 
@@ -251,6 +260,12 @@ fn cadence(request: &CadenceRequest) -> Result<serde_json::Value, String> {
             "decision": decision,
             "reason_key": key,
             "waiting_not_executing": decision != "dispatch",
+            // The coalescing window this verdict was decided with. It is here
+            // because the host arms ONE more timer the cadence never sees: the
+            // retry that keeps queued work alive while the engine latch is
+            // held. That retry is this window, and a second copy of the number
+            // in TypeScript is a cadence rule living outside the kernel.
+            "settle_ms": SETTLE_MS,
         });
         if let Some(ms) = wait_ms {
             value["wait_ms"] = json!(ms);
@@ -451,6 +466,18 @@ mod tests {
     }
 
     #[test]
+    fn a_feeder_named_twice_apart_is_narrowed_to_once() {
+        let out = run(json!({
+            "op": "differential_scope", "differential_enabled": true, "is_mv_session": false,
+            "accumulator_bound": true, "force_full": false, "change_count": 3,
+            "blocking_diagnostics": false,
+            "mapping": {"unmapped": false, "feeder_ids": ["f1", "f2", "f1"]},
+        }));
+        assert_eq!(out["scope"], "feeders");
+        assert_eq!(out["feeders"], json!(["f1", "f2"]));
+    }
+
+    #[test]
     fn a_run_holding_the_engine_waits_without_a_timer() {
         let out = run(json!({
             "op": "cadence", "enabled": true, "running": true, "queued": true, "force": false,
@@ -461,6 +488,10 @@ mod tests {
         assert_eq!(out["reason_key"], "autoprocess_engine_busy");
         assert!(out.get("wait_ms").is_none());
         assert_eq!(out["waiting_not_executing"], true);
+        // No dispatch timer, but the host still re-asks while the latch is
+        // held — `queued: true` with nothing armed is the forever-spinner. The
+        // window it re-asks after is this one, owned here and nowhere else.
+        assert_eq!(out["settle_ms"], SETTLE_MS);
     }
 
     #[test]
