@@ -7,8 +7,6 @@ use serde_json::{json, Value};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "operation", content = "arguments", deny_unknown_fields)]
 pub enum SurveyControlCommand {
-    #[serde(rename = "survey.workspace.snapshot")]
-    WorkspaceSnapshot { project: String },
     #[serde(rename = "survey.forms.list")]
     FormsList(CatalogQuery),
     #[serde(rename = "survey.form.read")]
@@ -186,7 +184,6 @@ fn slug(s: &str) -> bool {
 impl SurveyControlCommand {
     pub fn project_hint(&self) -> Option<&str> {
         match self {
-            Self::WorkspaceSnapshot { project } => Some(project),
             Self::ProjectFormsRead(v) => Some(&v.project),
             Self::ProjectFormEditor(v) => Some(&v.project),
             Self::ProjectFormsPlan(v) | Self::ProjectFormsApply(v) => Some(&v.project),
@@ -197,7 +194,6 @@ impl SurveyControlCommand {
     }
     pub fn validate(&self) -> Result<(), Refusal> {
         let valid = match self {
-            Self::WorkspaceSnapshot { project } => text(project, 200),
             Self::FormsList(q) | Self::TemplatesList(q) => {
                 (1..=500).contains(&q.limit)
                     && q.query.as_deref().is_none_or(|s| text(s, 200))
