@@ -10,10 +10,11 @@ It is an implementation mandate, not a new wire protocol or command registry.
 
 ## 1. Mandate
 
-Build a shared, headless Rust application runtime with **web/PWA, Linux, Windows
-and server as the supported targets**. TypeScript/Svelte is a thin
-presentation client. Optimize execution for each platform without duplicating
-application logic.
+Build a shared, headless Rust application runtime with **Linux server as the
+primary execution target**. Web/PWA is a first-class online presentation client;
+Linux and Windows desktop use the same Rust application authority through their
+native hosts. TypeScript/Svelte renders state and forwards typed intentions.
+Optimize each deployment without duplicating application logic.
 
 **Product boundary, clarified by the owner on 2026-09-11:** this product has
 no native Android or iOS deployment requirement, now or as a planned future
@@ -23,15 +24,22 @@ background schedulers, packaging, acceptance gates or speculative abstractions
 to this product. Preserve existing Flutter code. This supersedes the earlier
 all-platform requirement and the subsequent wording that merely deferred it.
 
-On desktop, closing the application window must not stop synchronization when
-background operation is enabled. Server operations must run without a browser,
-webview, DOM or paired desktop. Web must remain fully functional within browser
-capabilities, including prepared offline work, without a native companion.
+**Server-first clarification:** web/PWA does not require a separate offline
+application replica or browser-owned synchronization engine. Its authoritative
+work runs on the authenticated Rust server. This supersedes the earlier
+prepared-offline-browser requirement. Preserve existing pending data through a
+verified handoff; changing direction does not authorize dropping it.
 
-The universal guarantee is **durable progress and safe resumption whenever
-execution and connectivity are available**. Continuous background execution is
-a platform-specific capability, not a guarantee that a browser will keep a
-process alive.
+On desktop, closing the application window must not stop enabled transformer
+processing and publication. Server operations run without a browser, webview,
+DOM or paired desktop. Closing a browser tab does not cancel accepted server
+jobs. The guarantee is **durable progress and safe resumption in the owning
+native host**, not continuous execution in a browser.
+
+Keep Survey simple. Do not recreate the removed SQLite-based native Survey
+workspace. Web image/thumbnail preparation can use local Rust/WASM during
+capture; Flutter retains its existing field workflow and backend thumbnail
+support. This direction does not migrate Flutter into this product.
 
 ## 2. One application authority
 
@@ -56,10 +64,11 @@ with the presentation layer. Canonical selection, edits, workflow state and
 delivery status belong to the Rust application.
 
 Backend route knowledge belongs to the Rust client, not frontend call sites or
-a frontend-maintained route catalogue. A necessary browser binding may execute
-an opaque Rust-constructed request using browser APIs; it must not select a
-backend route, construct its domain payload or interpret its response. This is
-an ownership boundary, not a claim that client-side routes or bytes are secret.
+a frontend-maintained route catalogue. Server-hosted web clients call the
+kernel host rather than domain backend routes. Necessary browser bindings
+perform explicit Rust-directed platform effects; they do not choose backend
+routes, build domain payloads or interpret domain responses. This is an
+ownership boundary, not a claim that routes or bytes are secret.
 
 The parent contract's statement that hosts perform effects does **not** require
 TypeScript to own the API client, credential lifecycle, persistence
@@ -85,14 +94,14 @@ dependency or operating-system integration into the pure kernel crate.
 
 | Target | Required execution model | Lifecycle obligation |
 | --- | --- | --- |
-| Web/PWA | Local Rust/WASM with browser-native persistence and workers where supported. Local decisions and prepared offline work require neither a server round trip nor a native companion. | Browser background execution is opportunistic. Preserve work across suspension and browser closure, then resume when execution becomes available. A worker alone does not guarantee continued execution after closure. |
+| Web/PWA | Online presentation client of the authenticated Rust server. Local WASM serves explicit browser computation, such as image preparation, using the shared owners. | Accepted jobs belong to the server and continue after tab closure. Reconnection projects retained status; it does not start a competing browser queue. |
 | Linux | A native background host independent of the application window, integrated with installation, startup, shutdown and updates. | Closing the UI leaves enabled background work running. Explicit shutdown, logout, restart and update behavior must be defined and recoverable. |
 | Windows | A native background host independent of the application window, integrated with installation, startup, shutdown and updates. | The same durability and background-operation guarantees as Linux, using appropriate Windows lifecycle integration. |
-| Server | A supervised headless host with durable storage, explicit identity, bounded concurrency, graceful shutdown and restart recovery. | Work survives process replacement and restart when its storage is retained. Multiple workers have explicit ownership and safe idempotent effects. |
+| Linux server (primary) | A supervised headless host with durable storage, explicit identity, bounded concurrency, graceful shutdown and restart recovery. | Work survives process replacement and restart when its storage is retained. Multiple workers have explicit ownership and safe idempotent effects. |
 
-Share behavior, not assumptions about execution. A browser worker, desktop
-background process and server worker have different
-lifetimes; each executes the same durable state machine correctly.
+Share domain behavior while keeping execution ownership explicit. Browser
+workers perform bounded local effects; native desktop/server hosts execute the
+durable state machine independently of presentation lifetimes.
 
 CLI and MCP must reach equivalent application operations without frontend
 participation. Where a desktop background host owns a local queue, headless
@@ -109,9 +118,11 @@ store or storage abstraction solely for a hypothetical mobile port. The contract
 requires durable behavior; it does not mandate one database technology on every
 target.
 
-Browser persistence remains appropriate for the web. Browser IndexedDB cannot
-remain the sole owner of desktop work expected to continue after its webview
-closes. Do not make a native service scrape or reverse-engineer browser storage.
+Browser persistence may retain presentation caches and unfinished local inputs.
+It is not the authoritative transformer processing/publication queue. IndexedDB
+cannot remain the sole owner of native work expected to continue after a
+webview closes. Do not make a service scrape browser storage; use a supported
+handoff for existing pending work.
 
 Migrate existing pending work through a supported, verified handoff:
 
@@ -151,6 +162,16 @@ supported recovery action, including explicit absence of an automatic remedy.
   request-header managers.
 - Server execution uses an explicitly supported identity model. Do not
   substitute ambient credentials or silently broaden authority.
+  Reuse native `ds auth login` or approved device linking over SSH under the
+  exact Linux user that runs the service. A running host must not silently
+  change credential providers after revocation or account changes.
+- Account device management must show linked devices, login/last-seen times
+  and revocation. Google and password access link to the same canonical UID
+  through verified account linking; matching email text alone is insufficient.
+- Transfer tooling, including an rclone integration, remains behind Rust.
+  Bucket addresses are destinations, not authorization. Preserve scoped
+  grants, object identity, publication preconditions and DS receipts regardless
+  of which tool transfers the bytes.
 - Keep local UI/runtime communication typed, bounded and restricted to its
   intended caller. Do not expose arbitrary HTTP, filesystem or code-execution
   access through a bridge.
@@ -164,8 +185,10 @@ Optimize startup, WASM size, memory, battery, bandwidth and storage access for
 each platform. Share the application rules while choosing appropriate adapter
 implementations and execution strategies.
 
-Use bounded batches, incremental view-state projections, suitable concurrency
-and efficient byte transfer. Avoid copying entire datasets or large artifacts
+Independent work runs concurrently by default, bounded by CPU, memory, storage
+and network capacity. This includes nested engine work, not just the outer job
+queue. Use bounded batches, incremental view-state projections and efficient
+byte transfer. Avoid copying entire datasets or large artifacts
 across the UI boundary. Avoid unnecessary polling and background wakeups.
 
 Measure representative workloads on the relevant target. Record the workload,
@@ -207,8 +230,8 @@ The following are required outcomes, not claims of current completion:
 
 - Desktop work continues after the UI closes when background operation is
   enabled; reopening shows the same authoritative state.
-- Web performs prepared local work offline without a native companion and
-  resumes retained work after browser restart.
+- Web submits typed intentions to the Rust server, closes, and reconnects to
+  the same retained jobs and results without running a browser sync engine.
 - Interrupted delivery resumes without losing work or duplicating committed
   effects, including interruptions during transfer and acknowledgement.
 - Equivalent operations run on a headless server without frontend dependencies.
