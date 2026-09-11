@@ -77,6 +77,12 @@ fn default_variant() -> String {
 pub struct EngineRelease {
     pub name: String,
     pub release: String,
+    /// The exact `ds.engine-build/v1` manifest digest the server admitted for
+    /// this release, when the grant carries it (ds-brain registers one entry
+    /// per digest). Additive: the plan matches on `release`; the digest is the
+    /// server's per-row claim.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub manifest_sha256: Option<String>,
 }
 
 /// The signed work grant as the host holds it. Parsed, never verified here:
@@ -564,6 +570,7 @@ mod tests {
             engines: vec![EngineRelease {
                 name: "network_reporter".into(),
                 release: REL.into(),
+                manifest_sha256: None,
             }],
             expires_at_ms,
         }
