@@ -834,6 +834,11 @@ pub fn discover_tools(executable: &PathBuf) -> Result<Vec<Tool>, Failure> {
             if matches!(id, "auth.login" | "auth.link.approve") {
                 continue;
             }
+            // A foreground host does not return an MCP response. Operators
+            // start it through the launcher/service; MCP drives its jobs.
+            if id == "server.serve" {
+                continue;
+            }
             let descriptor = capabilities(executable, Some(id), true)?;
             let command = descriptor.get("command").ok_or_else(|| {
                 Failure::failed(

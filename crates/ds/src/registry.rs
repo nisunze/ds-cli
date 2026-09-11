@@ -1981,7 +1981,39 @@ static MCP_ENTRIES: &[Entry] = &[
     },
 ];
 
+static SERVER_ENTRIES: &[Entry] = &[
+    Entry {
+        command: &ds_cli_server::SERVE,
+        handler: ds_cli_server::serve,
+        render: ds_cli_server::render,
+    },
+    Entry {
+        command: &ds_cli_server::SUBMIT,
+        handler: ds_cli_server::submit,
+        render: ds_cli_server::render,
+    },
+    Entry {
+        command: &ds_cli_server::STATUS,
+        handler: ds_cli_server::status,
+        render: ds_cli_server::render,
+    },
+    Entry {
+        command: &ds_cli_server::CANCEL,
+        handler: ds_cli_server::cancel,
+        render: ds_cli_server::render,
+    },
+    Entry {
+        command: &ds_cli_server::RESULT,
+        handler: ds_cli_server::result,
+        render: ds_cli_server::render,
+    },
+];
+
 static DOMAINS: &[Registered] = &[
+    Registered {
+        domain: &ds_cli_server::DOMAIN,
+        entries: SERVER_ENTRIES,
+    },
     Registered {
         domain: &ds_cli_dsgrid::DOMAIN,
         entries: DSGRID_ENTRIES,

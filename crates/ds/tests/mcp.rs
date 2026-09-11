@@ -1539,6 +1539,9 @@ fn auth_context_profile_hands_off_only_non_secret_native_identity_commands() {
         .collect::<Vec<_>>();
     assert!(!broad_names.contains(&"auth_login"));
     assert!(!broad_names.contains(&"auth_link_approve"));
+    assert!(!broad_names.contains(&"server_serve"));
+    assert!(broad_names.contains(&"server_submit"));
+    assert!(broad_names.contains(&"server_status"));
     assert_eq!(response(&broad, 2)["error"]["code"], -32602);
     assert_eq!(response(&broad, 3)["error"]["code"], -32602);
 }

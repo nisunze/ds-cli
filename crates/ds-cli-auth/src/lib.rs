@@ -114,6 +114,41 @@ pub fn probe_headless_identity(
     }
 }
 
+/// Validate a long-running native host against the real credential authority.
+/// The public result is an identity fence; credentials remain in native state.
+pub fn refresh_runtime_identity(lane_value: &str) -> Result<ProviderIdentity, Failure> {
+    let lane = Lane::parse(lane_value)?;
+    let before = probe_headless_identity(lane_value)?
+        .ok_or_else(|| {
+            Failure::conflict("headless_signed_out", "the server has no native identity").remedy(
+                "sign in with ds auth login or ds auth link under the server's Linux account",
+            )
+        })?
+        .0;
+    if device::restore_session(lane)?.is_none() {
+        let profile = profile::load(lane)?;
+        let store = NativeRefreshStore::open()?;
+        let mut client = Client::new(profile, NativeTransport, store);
+        let user = require_restore_before_context(&mut client)?;
+        if user.uid() != before.uid() {
+            return Err(Failure::conflict(
+                "auth_identity_mismatch",
+                "native identity changed while restoring the server",
+            ));
+        }
+    }
+    let after = probe_headless_identity(lane_value)?
+        .ok_or_else(|| Failure::conflict("headless_signed_out", "native identity was removed"))?
+        .0;
+    if before != after {
+        return Err(Failure::conflict(
+            "auth_context_mismatch",
+            "native identity changed during server authorization",
+        ));
+    }
+    Ok(after)
+}
+
 pub static DOMAIN: Domain = Domain {
     id: "auth",
     summary: "Sign in headlessly and select a visible project.",
