@@ -69,7 +69,7 @@ fn the_refusals_keep_the_order_the_review_numbered_them_in() {
 }
 
 #[test]
-fn the_only_declared_divergence_is_the_detection_of_special_rows() {
+fn declared_divergences_preserve_historical_answers_and_explain_new_admission() {
     let corpus = corpus();
     let declared: Vec<&str> = corpus["cases"]
         .as_array()
@@ -78,10 +78,7 @@ fn the_only_declared_divergence_is_the_detection_of_special_rows() {
         .filter(|case| case.get("why").is_some())
         .map(|case| case["id"].as_str().expect("case id"))
         .collect();
-    assert!(
-        declared.is_empty(),
-        "{declared:?} newly declare a divergence"
-    );
+    assert_eq!(declared, vec!["local-base-version-zero", "review-not-finished"]);
     let why = corpus["detect"]["why"]
         .as_str()
         .expect("the detect divergence is declared");

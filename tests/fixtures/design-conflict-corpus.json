@@ -366,8 +366,8 @@
 			},
 			"expected_ts": {
 				"eligible": false,
-				"reason": "No typed version conflict is recorded.",
-				"tick": false,
+				"reason": "The local base version changed after comparison. Compare again.",
+				"tick": true,
 				"force_fields": null
 			},
 			"expected": {
@@ -386,7 +386,8 @@
 					"message_key": "dscf_no_conflict_recorded",
 					"ordinal": 3
 				}
-			}
+			},
+			"why": "A zero base cannot represent an existing transformer version. The kernel now refuses the conflict itself and disables selection, rather than allowing the old tick predicate to admit it."
 		},
 		{
 			"id": "review-not-pinned",
@@ -548,7 +549,7 @@
 				"current_base_version": 4
 			},
 			"expected_ts": {
-				"eligible": false,
+				"eligible": true,
 				"tick": false,
 				"force_fields": {
 					"forceVersionConflict": true,
@@ -571,7 +572,8 @@
 					"message_key": "dscf_review_not_finished",
 					"ordinal": 10
 				}
-			}
+			},
+			"why": "The old send predicate did not require a finished comparison. The kernel now refuses both selection and send until the review has completed; no force fields are minted prematurely."
 		},
 		{
 			"id": "tick-without-capability",
@@ -617,7 +619,7 @@
 	],
 	"detect": {
 		"note": "The rule that MAKES a conflict, moved out of a Svelte $effect.",
-		"why": "The kernel skips special rows itself; the $effect did not. It was only ever safe because its ONE caller pre-filtered the list (StatusTable`s `statusRows` drops every special row before the loop), so the rule depended on a filter written somewhere else. `collisions` is a reserved analysis document its producer full-replaces on every run, and mv_data/the aggregates are not transformer rooms either — a version conflict on any of them is meaningless, and a second caller (a headless `ds design conflict list`) would have recorded one. Rust is right: the refusal belongs to the rule, not to the caller.",
+		"why": "The kernel skips special rows itself; the $effect did not. It was only ever safe because its ONE caller pre-filtered the list (StatusTable`s `statusRows` drops every special row before the loop), so the rule depended on a filter written somewhere else. `collisions` is a reserved analysis document its producer full-replaces on every run, and mv_data/the aggregates are not transformer rooms either — a version conflict on any of them is meaningless, and a second caller (a headless `ds design conflict list`) would have recorded one. Rust is right: the refusal belongs to the rule, not to the caller. The kernel also admits a positive local base ahead of the cloud head (base 3, current 2); the old greater-than test hid that recoverable version mismatch.",
 		"request": {
 			"op": "detect",
 			"schema": "ds.design-conflict/v1",
@@ -689,11 +691,6 @@
 				"name": "tx_1",
 				"baseVersion": 4,
 				"currentVersion": 7
-			},
-			{
-				"name": "tx_base_ahead",
-				"baseVersion": 3,
-				"currentVersion": 2
 			},
 			{
 				"name": "collisions",
