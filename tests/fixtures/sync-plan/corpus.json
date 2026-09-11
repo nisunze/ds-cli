@@ -11,6 +11,8 @@
         "install_id": "install-1",
         "now_ms": 10000,
         "online": true,
+        "trigger": "navigation",
+        "remote_read_at_ms": 9000,
         "local": [],
         "remote": [],
         "grant": {
@@ -34,7 +36,13 @@
         "schema": "ds.sync-plan/v1",
         "project": "p",
         "actions": [],
-        "next_check_ms": 310000,
+        "refresh_remote": {
+          "needed": true,
+          "reason": "trigger_reads_record"
+        },
+        "wake": {
+          "kind": "event"
+        },
         "grant_valid": true,
         "summary": {
           "uploads": 0,
@@ -54,6 +62,8 @@
         "install_id": "install-1",
         "now_ms": 10000,
         "online": false,
+        "trigger": "navigation",
+        "remote_read_at_ms": 9000,
         "local": [
           {
             "engine": "network_reporter",
@@ -92,7 +102,13 @@
             "kind": "offline"
           }
         ],
-        "next_check_ms": 310000,
+        "refresh_remote": {
+          "needed": false,
+          "reason": "offline"
+        },
+        "wake": {
+          "kind": "event"
+        },
         "grant_valid": false,
         "summary": {
           "uploads": 0,
@@ -112,6 +128,8 @@
         "install_id": "install-1",
         "now_ms": 10000,
         "online": true,
+        "trigger": "navigation",
+        "remote_read_at_ms": 9000,
         "local": [
           {
             "engine": "network_reporter",
@@ -158,7 +176,15 @@
             "reason": "absent_remotely"
           }
         ],
-        "next_check_ms": 40000,
+        "refresh_remote": {
+          "needed": true,
+          "reason": "trigger_reads_record"
+        },
+        "wake": {
+          "kind": "at",
+          "at_ms": 9400000,
+          "reason": "grant_renewal"
+        },
         "grant_valid": true,
         "summary": {
           "uploads": 1,
@@ -178,6 +204,8 @@
         "install_id": "install-1",
         "now_ms": 10000,
         "online": true,
+        "trigger": "navigation",
+        "remote_read_at_ms": 9000,
         "local": [
           {
             "engine": "network_reporter",
@@ -212,7 +240,13 @@
             "reason": "absent_remotely"
           }
         ],
-        "next_check_ms": 40000,
+        "refresh_remote": {
+          "needed": true,
+          "reason": "trigger_reads_record"
+        },
+        "wake": {
+          "kind": "event"
+        },
         "grant_valid": false,
         "summary": {
           "uploads": 1,
@@ -232,6 +266,8 @@
         "install_id": "install-1",
         "now_ms": 10000,
         "online": true,
+        "trigger": "navigation",
+        "remote_read_at_ms": 9000,
         "local": [
           {
             "engine": "network_reporter",
@@ -278,7 +314,13 @@
             "reason": "absent_remotely"
           }
         ],
-        "next_check_ms": 40000,
+        "refresh_remote": {
+          "needed": true,
+          "reason": "trigger_reads_record"
+        },
+        "wake": {
+          "kind": "event"
+        },
         "grant_valid": false,
         "summary": {
           "uploads": 1,
@@ -298,6 +340,8 @@
         "install_id": "install-1",
         "now_ms": 10000,
         "online": true,
+        "trigger": "navigation",
+        "remote_read_at_ms": 9000,
         "local": [
           {
             "engine": "network_reporter",
@@ -344,7 +388,13 @@
             "reason": "absent_remotely"
           }
         ],
-        "next_check_ms": 40000,
+        "refresh_remote": {
+          "needed": true,
+          "reason": "trigger_reads_record"
+        },
+        "wake": {
+          "kind": "event"
+        },
         "grant_valid": false,
         "summary": {
           "uploads": 1,
@@ -364,6 +414,8 @@
         "install_id": "install-1",
         "now_ms": 10000,
         "online": true,
+        "trigger": "navigation",
+        "remote_read_at_ms": 9000,
         "local": [],
         "remote": [
           {
@@ -392,7 +444,13 @@
             "reason": "absent_locally"
           }
         ],
-        "next_check_ms": 40000,
+        "refresh_remote": {
+          "needed": true,
+          "reason": "trigger_reads_record"
+        },
+        "wake": {
+          "kind": "event"
+        },
         "grant_valid": false,
         "summary": {
           "uploads": 0,
@@ -412,6 +470,8 @@
         "install_id": "install-1",
         "now_ms": 10000,
         "online": true,
+        "trigger": "navigation",
+        "remote_read_at_ms": 9000,
         "local": [
           {
             "engine": "network_reporter",
@@ -466,7 +526,13 @@
             "reason": "in_sync"
           }
         ],
-        "next_check_ms": 310000,
+        "refresh_remote": {
+          "needed": true,
+          "reason": "trigger_reads_record"
+        },
+        "wake": {
+          "kind": "event"
+        },
         "grant_valid": true,
         "summary": {
           "uploads": 0,
@@ -486,6 +552,8 @@
         "install_id": "install-1",
         "now_ms": 10000,
         "online": true,
+        "trigger": "navigation",
+        "remote_read_at_ms": 9000,
         "local": [
           {
             "engine": "network_reporter",
@@ -542,7 +610,15 @@
             "reason": "local_newer"
           }
         ],
-        "next_check_ms": 40000,
+        "refresh_remote": {
+          "needed": true,
+          "reason": "trigger_reads_record"
+        },
+        "wake": {
+          "kind": "at",
+          "at_ms": 9400000,
+          "reason": "grant_renewal"
+        },
         "grant_valid": true,
         "summary": {
           "uploads": 1,
@@ -562,6 +638,8 @@
         "install_id": "install-1",
         "now_ms": 10000,
         "online": true,
+        "trigger": "navigation",
+        "remote_read_at_ms": 9000,
         "local": [
           {
             "engine": "network_reporter",
@@ -618,7 +696,13 @@
             "reason": "base_moved"
           }
         ],
-        "next_check_ms": 310000,
+        "refresh_remote": {
+          "needed": true,
+          "reason": "trigger_reads_record"
+        },
+        "wake": {
+          "kind": "event"
+        },
         "grant_valid": true,
         "summary": {
           "uploads": 0,
@@ -638,6 +722,8 @@
         "install_id": "install-1",
         "now_ms": 10000,
         "online": true,
+        "trigger": "navigation",
+        "remote_read_at_ms": 9000,
         "local": [
           {
             "engine": "network_reporter",
@@ -693,7 +779,13 @@
             "reason": "base_moved"
           }
         ],
-        "next_check_ms": 310000,
+        "refresh_remote": {
+          "needed": true,
+          "reason": "trigger_reads_record"
+        },
+        "wake": {
+          "kind": "event"
+        },
         "grant_valid": true,
         "summary": {
           "uploads": 0,
@@ -713,6 +805,8 @@
         "install_id": "install-1",
         "now_ms": 10000,
         "online": true,
+        "trigger": "navigation",
+        "remote_read_at_ms": 9000,
         "local": [
           {
             "engine": "network_reporter",
@@ -757,7 +851,13 @@
             "reason": "local_unreadable"
           }
         ],
-        "next_check_ms": 310000,
+        "refresh_remote": {
+          "needed": true,
+          "reason": "trigger_reads_record"
+        },
+        "wake": {
+          "kind": "event"
+        },
         "grant_valid": true,
         "summary": {
           "uploads": 0,
@@ -777,6 +877,8 @@
         "install_id": "install-1",
         "now_ms": 10000,
         "online": true,
+        "trigger": "navigation",
+        "remote_read_at_ms": 9000,
         "local": [
           {
             "engine": "network_reporter",
@@ -833,7 +935,13 @@
             "reason": "local_unreadable"
           }
         ],
-        "next_check_ms": 40000,
+        "refresh_remote": {
+          "needed": true,
+          "reason": "trigger_reads_record"
+        },
+        "wake": {
+          "kind": "event"
+        },
         "grant_valid": true,
         "summary": {
           "uploads": 0,
@@ -853,6 +961,8 @@
         "install_id": "install-1",
         "now_ms": 10000,
         "online": true,
+        "trigger": "navigation",
+        "remote_read_at_ms": 9000,
         "local": [
           {
             "engine": "network_reporter",
@@ -947,7 +1057,15 @@
             "reason": "duplicate_identity"
           }
         ],
-        "next_check_ms": 40000,
+        "refresh_remote": {
+          "needed": true,
+          "reason": "trigger_reads_record"
+        },
+        "wake": {
+          "kind": "at",
+          "at_ms": 9400000,
+          "reason": "grant_renewal"
+        },
         "grant_valid": true,
         "summary": {
           "uploads": 1,
@@ -967,6 +1085,8 @@
         "install_id": "install-1",
         "now_ms": 10000,
         "online": true,
+        "trigger": "navigation",
+        "remote_read_at_ms": 9000,
         "local": [
           {
             "engine": "solar",
@@ -1082,7 +1202,15 @@
             "reason": "absent_remotely"
           }
         ],
-        "next_check_ms": 40000,
+        "refresh_remote": {
+          "needed": true,
+          "reason": "trigger_reads_record"
+        },
+        "wake": {
+          "kind": "at",
+          "at_ms": 9400000,
+          "reason": "grant_renewal"
+        },
         "grant_valid": true,
         "summary": {
           "uploads": 2,
@@ -1094,14 +1222,16 @@
       }
     },
     {
-      "id": "grant-near-expiry",
-      "why": "In sync but the grant expires soon: the next check is the renewal lead.",
+      "id": "grant-renewal-is-the-only-timer",
+      "why": "An upload pending under a grant that expires soon: the one timed wake, renewal before expiry.",
       "request": {
         "schema": "ds.sync-plan/v1",
         "project": "p",
         "install_id": "install-1",
         "now_ms": 10000,
         "online": true,
+        "trigger": "navigation",
+        "remote_read_at_ms": 9000,
         "local": [
           {
             "engine": "network_reporter",
@@ -1111,20 +1241,10 @@
             "size_bytes": 4096,
             "produced_at_ms": 1000,
             "readable": true,
-            "engine_release": "ds-network-reporter@0.1.0+0123456789abcdef0123456789abcdef01234567",
-            "base_revision": "r1"
+            "engine_release": "ds-network-reporter@0.1.0+0123456789abcdef0123456789abcdef01234567"
           }
         ],
-        "remote": [
-          {
-            "engine": "network_reporter",
-            "operation": "export-a",
-            "variant": "default",
-            "revision": "r1",
-            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-            "published_at_ms": 900
-          }
-        ],
+        "remote": [],
         "grant": {
           "grant_id": "g1",
           "install_id": "install-1",
@@ -1143,23 +1263,210 @@
         "project": "p",
         "actions": [
           {
-            "kind": "nothing",
+            "kind": "upload",
             "identity": {
               "engine": "network_reporter",
               "operation": "export-a",
               "variant": "default"
             },
-            "reason": "in_sync"
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "size_bytes": 4096,
+            "reason": "absent_remotely"
           }
         ],
-        "next_check_ms": 11000,
+        "refresh_remote": {
+          "needed": true,
+          "reason": "trigger_reads_record"
+        },
+        "wake": {
+          "kind": "at",
+          "at_ms": 11000,
+          "reason": "grant_renewal"
+        },
+        "grant_valid": true,
+        "summary": {
+          "uploads": 1,
+          "downloads": 0,
+          "conflicts": 0,
+          "refused": 0,
+          "in_sync": 0
+        }
+      }
+    },
+    {
+      "id": "local-change-uses-held-heads",
+      "why": "A local change never re-reads the record; the held heads decide.",
+      "request": {
+        "schema": "ds.sync-plan/v1",
+        "project": "p",
+        "install_id": "install-1",
+        "now_ms": 10000,
+        "online": true,
+        "trigger": "local_change",
+        "remote_read_at_ms": 9000,
+        "local": [
+          {
+            "engine": "network_reporter",
+            "operation": "export-a",
+            "variant": "default",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "size_bytes": 4096,
+            "produced_at_ms": 1000,
+            "readable": true,
+            "engine_release": "ds-network-reporter@0.1.0+0123456789abcdef0123456789abcdef01234567"
+          }
+        ],
+        "remote": [],
+        "grant": {
+          "grant_id": "g1",
+          "install_id": "install-1",
+          "project": "p",
+          "engines": [
+            {
+              "name": "network_reporter",
+              "release": "ds-network-reporter@0.1.0+0123456789abcdef0123456789abcdef01234567"
+            },
+            {
+              "name": "solar",
+              "release": "ds-solar-engine@0.1.0"
+            }
+          ],
+          "expires_at_ms": 10000000
+        }
+      },
+      "expected": {
+        "schema": "ds.sync-plan/v1",
+        "project": "p",
+        "actions": [
+          {
+            "kind": "upload",
+            "identity": {
+              "engine": "network_reporter",
+              "operation": "export-a",
+              "variant": "default"
+            },
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "size_bytes": 4096,
+            "reason": "absent_remotely"
+          }
+        ],
+        "refresh_remote": {
+          "needed": false,
+          "reason": "held_heads_suffice"
+        },
+        "wake": {
+          "kind": "at",
+          "at_ms": 9400000,
+          "reason": "grant_renewal"
+        },
+        "grant_valid": true,
+        "summary": {
+          "uploads": 1,
+          "downloads": 0,
+          "conflicts": 0,
+          "refused": 0,
+          "in_sync": 0
+        }
+      }
+    },
+    {
+      "id": "remote-push-reads-the-record",
+      "why": "A push from the messaging stream is the one reason to re-read without navigating.",
+      "request": {
+        "schema": "ds.sync-plan/v1",
+        "project": "p",
+        "install_id": "install-1",
+        "now_ms": 10000,
+        "online": true,
+        "trigger": "remote_push",
+        "remote_read_at_ms": 9000,
+        "local": [],
+        "remote": [],
+        "grant": {
+          "grant_id": "g1",
+          "install_id": "install-1",
+          "project": "p",
+          "engines": [
+            {
+              "name": "network_reporter",
+              "release": "ds-network-reporter@0.1.0+0123456789abcdef0123456789abcdef01234567"
+            },
+            {
+              "name": "solar",
+              "release": "ds-solar-engine@0.1.0"
+            }
+          ],
+          "expires_at_ms": 10000000
+        }
+      },
+      "expected": {
+        "schema": "ds.sync-plan/v1",
+        "project": "p",
+        "actions": [],
+        "refresh_remote": {
+          "needed": true,
+          "reason": "record_changed"
+        },
+        "wake": {
+          "kind": "event"
+        },
         "grant_valid": true,
         "summary": {
           "uploads": 0,
           "downloads": 0,
           "conflicts": 0,
           "refused": 0,
-          "in_sync": 1
+          "in_sync": 0
+        }
+      }
+    },
+    {
+      "id": "never-read-reads-once",
+      "why": "Heads never read are read once, whatever the trigger.",
+      "request": {
+        "schema": "ds.sync-plan/v1",
+        "project": "p",
+        "install_id": "install-1",
+        "now_ms": 10000,
+        "online": true,
+        "trigger": "local_change",
+        "grant": {
+          "grant_id": "g1",
+          "install_id": "install-1",
+          "project": "p",
+          "engines": [
+            {
+              "name": "network_reporter",
+              "release": "ds-network-reporter@0.1.0+0123456789abcdef0123456789abcdef01234567"
+            },
+            {
+              "name": "solar",
+              "release": "ds-solar-engine@0.1.0"
+            }
+          ],
+          "expires_at_ms": 10000000
+        },
+        "local": [],
+        "remote": []
+      },
+      "expected": {
+        "schema": "ds.sync-plan/v1",
+        "project": "p",
+        "actions": [],
+        "refresh_remote": {
+          "needed": true,
+          "reason": "never_read"
+        },
+        "wake": {
+          "kind": "event"
+        },
+        "grant_valid": true,
+        "summary": {
+          "uploads": 0,
+          "downloads": 0,
+          "conflicts": 0,
+          "refused": 0,
+          "in_sync": 0
         }
       }
     }

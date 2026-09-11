@@ -13,7 +13,14 @@
 //! Owner rulings this module implements (2026-09-11): one function; project
 //! data, not personal; no fallback path; the desktop uses the credential
 //! ds-brain issued to upload resumably regardless of size; remote conflict and
-//! freshness are checked here; the cadence of looking again is decided here.
+//! freshness are checked here; WHEN to look again is decided here — and it is
+//! never a timer: "we cannot afford passive aggressive polling; this should be
+//! triggered by dependencies and navigations, not background hammering of
+//! Firestore". A plan is asked for on a trigger (start, navigation, a local
+//! change, a completed publish or download, reconnect, a push from the
+//! messaging stream, an explicit sync) and says whether the remote heads must
+//! be re-read for THIS trigger; the only timed wakes are renewing a grant
+//! before an upload and the transport's own retry.
 //! Dangling rows of the retired per-user outbox are not an input.
 
 use serde::{Deserialize, Serialize};
@@ -25,15 +32,32 @@ const INPUT_BOUND: usize = 8 * 1024 * 1024;
 const MAX_ARTIFACTS: usize = 4096;
 const MAX_ID_LEN: usize = 128;
 
-/// How long an idle, in-sync, online loop waits before it looks again.
-pub const POLL_IDLE_MS: u64 = 5 * 60 * 1000;
-/// How long a loop with work pending waits before re-planning if a host
-/// event has not woken it first.
-pub const POLL_ACTIVE_MS: u64 = 30 * 1000;
-/// How long an offline loop waits; reconnect is the real wake.
-pub const POLL_OFFLINE_MS: u64 = 5 * 60 * 1000;
 /// Renew a grant this long before it expires so publish never races expiry.
+/// This is the ONE timed wake the plan may ask for besides the transport's
+/// own retry; there is no poll.
 pub const GRANT_RENEW_LEAD_MS: u64 = 10 * 60 * 1000;
+
+/// Why the host is asking now. Every plan is asked for a reason; none is
+/// asked because time passed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Trigger {
+    /// The app started or the project was opened; also the Sync Center opening.
+    Startup,
+    Navigation,
+    /// A local artifact finished or changed on this machine.
+    LocalChange,
+    /// A `work/publish` completed; the receipt carries the new head.
+    PublishCompleted,
+    DownloadCompleted,
+    Reconnect,
+    /// The messaging stream said the project's record changed.
+    RemotePush,
+    /// The operator pressed "Sync now".
+    Manual,
+    /// A grant was just opened; the plan is re-asked to proceed with uploads.
+    GrantOpened,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -111,12 +135,33 @@ pub struct Input {
     /// The host's monotonic high-water mark of server-observed time.
     pub now_ms: u64,
     pub online: bool,
+    pub trigger: Trigger,
+    /// When the held `remote` heads were last read from the record; absent
+    /// when they never were. Never a reason to read again by itself.
+    #[serde(default)]
+    pub remote_read_at_ms: Option<u64>,
     #[serde(default)]
     pub grant: Option<Grant>,
     #[serde(default)]
     pub local: Vec<LocalArtifact>,
     #[serde(default)]
     pub remote: Vec<RemoteHead>,
+}
+
+/// Whether the remote heads must be re-read for this trigger.
+#[derive(Debug, Serialize, PartialEq, Eq)]
+pub struct RefreshRemote {
+    pub needed: bool,
+    pub reason: &'static str,
+}
+
+/// When the host must plan again if no trigger arrives first. `event` means
+/// never on a timer.
+#[derive(Debug, Serialize, PartialEq, Eq)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum Wake {
+    Event,
+    At { at_ms: u64, reason: &'static str },
 }
 
 #[derive(Debug, Serialize, PartialEq, Eq)]
@@ -173,11 +218,45 @@ pub struct Plan {
     pub project: String,
     /// Ordered: the host performs these top to bottom and re-plans after.
     pub actions: Vec<Action>,
-    /// Absolute server time at which the host must re-plan if no event
-    /// (local change, remote push, reconnect) woke it first.
-    pub next_check_ms: u64,
+    /// Whether to re-read the remote heads for this trigger before acting.
+    pub refresh_remote: RefreshRemote,
+    /// The only timed wake, if any; otherwise wait for a trigger.
+    pub wake: Wake,
     pub grant_valid: bool,
     pub summary: Summary,
+}
+
+fn refresh_remote(input: &Input) -> RefreshRemote {
+    if input.remote_read_at_ms.is_none() {
+        return RefreshRemote {
+            needed: true,
+            reason: "never_read",
+        };
+    }
+    match input.trigger {
+        Trigger::Startup | Trigger::Navigation | Trigger::Reconnect | Trigger::Manual => {
+            RefreshRemote {
+                needed: true,
+                reason: "trigger_reads_record",
+            }
+        }
+        Trigger::RemotePush => RefreshRemote {
+            needed: true,
+            reason: "record_changed",
+        },
+        Trigger::LocalChange => RefreshRemote {
+            needed: false,
+            reason: "held_heads_suffice",
+        },
+        Trigger::PublishCompleted => RefreshRemote {
+            needed: false,
+            reason: "receipt_carries_the_head",
+        },
+        Trigger::DownloadCompleted | Trigger::GrantOpened => RefreshRemote {
+            needed: false,
+            reason: "nothing_remote_changed",
+        },
+    }
 }
 
 fn valid_id(value: &str) -> bool {
@@ -239,15 +318,20 @@ pub fn plan(input: &Input) -> Result<Plan, String> {
         schema: SCHEMA,
         project: input.project.clone(),
         actions: Vec::new(),
-        next_check_ms: input.now_ms.saturating_add(POLL_IDLE_MS),
+        refresh_remote: RefreshRemote {
+            needed: false,
+            reason: "offline",
+        },
+        wake: Wake::Event,
         grant_valid: false,
         summary: Summary::default(),
     };
     if !input.online {
+        // Reconnect is the wake; nothing is read and nothing is timed.
         plan.actions.push(Action::Offline);
-        plan.next_check_ms = input.now_ms.saturating_add(POLL_OFFLINE_MS);
         return Ok(plan);
     }
+    plan.refresh_remote = refresh_remote(input);
 
     // Index both inventories; a malformed or duplicated identity is refused
     // and takes no further part, so one bad row never poisons the queue.
@@ -387,18 +471,16 @@ pub fn plan(input: &Input) -> Result<Plan, String> {
             Action::OpenGrant { .. } | Action::Offline => {}
         }
     }
-    let busy = plan.summary.uploads > 0
-        || plan.summary.downloads > 0
-        || !plan.grant_valid && uploads_pending;
-    plan.next_check_ms =
-        input
-            .now_ms
-            .saturating_add(if busy { POLL_ACTIVE_MS } else { POLL_IDLE_MS });
+    // The only timed wake: renew a valid grant before an upload can race its
+    // expiry. Everything else waits for a trigger.
     if let Some(grant) = &input.grant {
-        if plan.grant_valid {
+        if plan.grant_valid && uploads_pending {
             let renew_at = grant.expires_at_ms.saturating_sub(GRANT_RENEW_LEAD_MS);
             if renew_at > input.now_ms {
-                plan.next_check_ms = plan.next_check_ms.min(renew_at);
+                plan.wake = Wake::At {
+                    at_ms: renew_at,
+                    reason: "grant_renewal",
+                };
             }
         }
     }
@@ -469,6 +551,8 @@ mod tests {
             install_id: "install-1".into(),
             now_ms: 10_000,
             online: true,
+            trigger: Trigger::Navigation,
+            remote_read_at_ms: Some(9_000),
             grant,
             local,
             remote,
@@ -511,7 +595,8 @@ mod tests {
         })
         .unwrap();
         assert_eq!(kinds(&p), vec!["offline"]);
-        assert_eq!(p.next_check_ms, 10_000 + POLL_OFFLINE_MS);
+        assert_eq!(p.wake, Wake::Event);
+        assert!(!p.refresh_remote.needed);
     }
 
     #[test]
@@ -525,7 +610,13 @@ mod tests {
         assert_eq!(kinds(&p), vec!["upload:a:absent_remotely"]);
         assert!(p.grant_valid);
         assert_eq!(p.summary.uploads, 1);
-        assert_eq!(p.next_check_ms, 10_000 + POLL_ACTIVE_MS);
+        assert_eq!(
+            p.wake,
+            Wake::At {
+                at_ms: 10_000_000 - GRANT_RENEW_LEAD_MS,
+                reason: "grant_renewal"
+            }
+        );
     }
 
     #[test]
@@ -578,7 +669,7 @@ mod tests {
         ))
         .unwrap();
         assert_eq!(kinds(&p), vec!["nothing:a:in_sync"]);
-        assert_eq!(p.next_check_ms, 10_000 + POLL_IDLE_MS);
+        assert_eq!(p.wake, Wake::Event);
     }
 
     #[test]
@@ -653,17 +744,6 @@ mod tests {
     }
 
     #[test]
-    fn a_grant_near_expiry_shortens_the_next_check() {
-        let p = plan(&input(
-            vec![local("a", SHA_A, Some("r1"))],
-            vec![remote("a", SHA_A, "r1")],
-            Some(grant(10_000 + GRANT_RENEW_LEAD_MS + 1_000)),
-        ))
-        .unwrap();
-        assert_eq!(p.next_check_ms, 11_000);
-    }
-
-    #[test]
     fn the_plan_is_ordered_by_identity_and_serialises_closed() {
         let p = plan(&input(
             vec![local("b", SHA_A, None), local("a", SHA_A, None)],
@@ -680,7 +760,7 @@ mod tests {
             ]
         );
         let text = evaluate(serde_json::to_string(&json!({
-            "schema": SCHEMA, "project": "p", "install_id": "install-1", "now_ms": 10_000, "online": true,
+            "schema": SCHEMA, "project": "p", "install_id": "install-1", "now_ms": 10_000, "online": true, "trigger": "local_change",
             "local": [{"engine":"solar","operation":"calculate-x","sha256":SHA_A,"size_bytes":1,"produced_at_ms":1,"engine_release":"ds-solar-engine@0.1.0"}],
             "remote": []
         })).unwrap().as_bytes()).unwrap();
