@@ -11,7 +11,7 @@ use ds_cli_contract::spec::{
     Arg, ArgKind, Authority, Chapter, Command, Effect, Example, Execution,
 };
 use ds_cli_contract::{Context, Inputs};
-use serde_json::{Value, json};
+use serde_json::Value;
 
 use super::native::LANE_ARG;
 
@@ -86,107 +86,18 @@ pub fn run_hide(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
 }
 
 fn set(inputs: &Inputs, visible: bool) -> Result<Value, Failure> {
-    let lane = inputs.require("lane")?;
-    let wanted: Vec<String> = inputs
-        .repeated("layer")
-        .iter()
-        .map(|id| id.trim().to_owned())
-        .filter(|id| !id.is_empty())
-        .collect();
-    if wanted.is_empty() {
-        return Err(Failure::invalid(
-            "unknown_layer",
-            "--layer names at least one canonical layer id",
-        )
-        .remedy("copy ids from `ds map layer list --output json`"));
-    }
-    let headless = ds_cli_auth::layer_config(lane, false)?;
-    let project = headless.project_id().to_owned();
-    let document = headless.result().document().clone();
-    let preferences = super::read_preferences(lane, &project)?;
-    let identity = super::ask_layer_state(
-        &json!({"schema": ds_command_kernel::layer_state::SCHEMA, "project": project, "document": document, "preferences": preferences, "op": {"kind": "classify"}}),
-    )?;
-    let mut runtime_ids = Vec::new();
-    let mut unknown = Vec::new();
-    for id in &wanted {
-        let members: Vec<&str> = identity["layers"]
-            .as_array()
-            .into_iter()
-            .flatten()
-            .filter(|row| row["canonical_id"].as_str() == Some(id))
-            .filter_map(|row| row["id"].as_str())
-            .collect();
-        if members.is_empty() {
-            unknown.push(id.as_str());
-        }
-        runtime_ids.extend(members.into_iter().map(str::to_owned));
-    }
-    if !unknown.is_empty() {
-        return Err(Failure::invalid(
-            "unknown_layer",
-            format!(
-                "not canonical layers of the selected project: {}",
-                unknown.join(", ")
-            ),
-        )
-        .remedy("copy ids from `ds map layer list --output json`"));
-    }
-    let transition = super::ask_layer_state(
-        &json!({"schema": ds_command_kernel::layer_state::SCHEMA, "project": project, "document": document, "preferences": preferences, "op": {"kind": "set", "ids": runtime_ids, "visible": visible, "expand": true}}),
-    )?;
-    let next: std::collections::BTreeMap<String, bool> =
-        serde_json::from_value(transition["preferences"].clone())
-            .expect("kernel preferences are a boolean map");
-    let receipt =
-        ds_layer_store::visibility::replace(lane, &project, &next).map_err(|message| {
-            Failure::invalid("local_layer_refused", message)
-                .remedy(super::LOCAL_STORE_REFUSAL.remedy)
-        })?;
-    let catalog = super::ask_layer_state(
-        &json!({"schema": ds_command_kernel::layer_state::SCHEMA, "project": project, "document": document, "preferences": next, "op": {"kind": "catalog", "limit": 500}}),
-    )?;
-    let rows: Vec<Value> = catalog["layers"]
-        .as_array()
-        .into_iter()
-        .flatten()
-        .filter(|row| {
-            row["id"]
-                .as_str()
-                .is_some_and(|id| wanted.iter().any(|w| w == id))
-        })
-        .cloned()
-        .collect();
-    Ok(json!({
-        "lane": headless.lane(),
-        "project": project,
-        "visible": visible,
-        "layers": rows,
-        "changed": transition["changed"],
-        "writes": transition["writes"],
-        "persisted": receipt["persisted"],
-        "revision": receipt["revision"],
-    }))
+    let request = ds_layer_ops::VisibilityRequest {
+        layers: inputs.repeated("layer").to_vec(),
+        visible,
+    };
+    let mut documents = ds_layer_ops::Native::new(inputs.require("lane")?);
+    ds_layer_ops::set_visibility(
+        &mut documents,
+        &ds_layer_ops::Preferences::native()?,
+        &request,
+    )
 }
 
 pub fn render(data: &Value) -> String {
-    let mut out = format!(
-        "{} {} canonical layers for {} · saved locally (revision {})\n",
-        if data["visible"].as_bool().unwrap_or(false) {
-            "showed"
-        } else {
-            "hid"
-        },
-        data["layers"].as_array().map_or(0, Vec::len),
-        data["project"].as_str().unwrap_or("?"),
-        data["revision"],
-    );
-    for row in data["layers"].as_array().into_iter().flatten() {
-        out.push_str(&format!(
-            "{:<38} {}\n",
-            row["id"].as_str().unwrap_or("?"),
-            super::list::visibility_word(&row["visibility"]),
-        ));
-    }
-    out
+    ds_layer_ops::render_visibility(data)
 }

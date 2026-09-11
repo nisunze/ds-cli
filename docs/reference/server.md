@@ -49,6 +49,46 @@ prepared input. The envelope is owner-private because the claim carries the
 actor-bound receipt. It is a sealed request body, not a server-readable client
 path or a browser cache reference.
 
+## Layers on the running Server
+
+`ds server layers list|show|hide|reorder` drive the layer drawer's catalogue,
+visibility and order on the running Server with no Tauri process, browser,
+paired map or rendering engine. The Server and `ds map layer …` call ONE
+shared Rust owner (`ds-layer-ops` over `ds-command-kernel::layer_state`); the
+HTTP host and the CLI embed no rule of their own. Requests travel over the
+protected owner-only loopback connection (`connection.json` bearer, native
+authority renewed and revocation observed as for jobs); remote operators use
+SSH. The Server reads the assembled document under its native account and
+selected project, remembers visibility in its native layer store fenced by
+lane, account and project, and admits order overrides through the kernel
+before the governed write. Preferences never become another account's
+visibility because both reached one host: a restart under another account
+reads that account's own scope and leaves the previous one untouched.
+
+```bash
+ds server layers list --lane canary --zoom 12 --output json
+ds server layers hide --layer survey/poles --lane canary --output json
+ds server layers list --lane canary --output json          # retained across restart
+ds server layers show --layer survey/poles --lane canary --output json
+ds server layers reorder --order survey/poles=100 --yes --lane canary --output json
+```
+
+Routes: `GET /v1/layers?refresh=&limit=&zoom=`, `POST /v1/layers/visibility`
+`{"layers": [canonical ids], "visible": bool}`, `POST /v1/layers/order`
+`{"orders": [{"layer_id", "order"}]}`. Refusals are typed on the wire
+(`class`, `code`, `error`, `remedy`) and re-raised by the CLI under the same
+code: `unknown_layer` (runtime ids are never accepted), `duplicate_layer`,
+`invalid_order`, `invalid_number`, `local_layer_refused`,
+`project_context_changed` (the document no longer matches the selected
+project), `auth_identity_mismatch`, `headless_signed_out`. Nothing here
+pretends a renderer mounted anything: `writes` name the layout word a
+renderer would apply to each runtime layer.
+
+Browser-to-Server layer control is **not** provided: the connection bearer is
+an owner-only local control credential and must not reach a web visitor.
+Remote presentation waits on an authenticated host transport for browsers,
+which is a separate authority change.
+
 The default state root is `$XDG_STATE_HOME/ds/server/<lane>` or
 `~/.local/state/ds/server/<lane>`. `--state-dir` overrides it explicitly. It must
 be owner-only. `connection.json` is a local control credential and must never

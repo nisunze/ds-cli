@@ -1,0 +1,15 @@
+[package]
+name = "ds-layer-ops"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+description = "The layer drawer's application operations for native hosts: one owner the CLI and the Server call."
+[dependencies]
+ds-cli-contract.workspace = true
+ds-cli-auth.workspace = true
+ds-command-kernel.workspace = true
+ds-layer-store = { path = "../../../ds-web/crates/ds-layer-store" }
+serde.workspace = true
+serde_json.workspace = true
+[dev-dependencies]
+tempfile = "3"

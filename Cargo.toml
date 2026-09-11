@@ -97,6 +97,7 @@ ds-cli-desktop = { path = "crates/ds-cli-desktop" }
 ds-cli-design = { path = "crates/ds-cli-design" }
 ds-cli-exec = { path = "crates/ds-cli-exec" }
 ds-cli-map = { path = "crates/ds-cli-map" }
+ds-layer-ops = { path = "crates/ds-layer-ops" }
 ds-cli-dsgrid = { path = "crates/ds-cli-dsgrid" }
 ds-cli-dsgrid-exchange = { path = "crates/ds-cli-dsgrid-exchange" }
 ds-cli-library = { path = "crates/ds-cli-library" }
