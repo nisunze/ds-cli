@@ -78,6 +78,11 @@ pub enum Request {
         metadata: Value,
         models: Value,
     },
+    /// Which design-data path does this project use — the Firestore documents,
+    /// or the mirrored dataset the Combined column reflects?
+    DesignDataPath {
+        document: Value,
+    },
     IsRuleSetSheet {
         sheet_key: String,
         #[serde(default)]
@@ -234,6 +239,7 @@ pub fn apply(request: Request) -> Result<Value, String> {
     use Request::*;
     Ok(match request {
         SurveyOptions {forms,project_matches} => json!(forms.iter().filter(|f|project_matches && f["enabled"]!=false && f["project_settings"]["enabled"]!=false).map(|f|json!({"slug":f["slug"],"label":f["display_name"].as_str().filter(|s|!s.is_empty()).or_else(||f["slug"].as_str()).unwrap_or_default()})).collect::<Vec<_>>()),
+        DesignDataPath { document } => design_data_path(&document),
         MetadataField {mut metadata,field,value} => {if value.is_null() || value=="" {metadata.shift_remove(&field);} else {metadata.insert(field,value);} Value::Object(metadata)},
         Read {
             document,
@@ -1146,5 +1152,216 @@ pub fn settings_equal(a: &Value, b: &Value) -> bool {
                     .all(|(key, a)| b.get(key).is_some_and(|b| settings_equal(a, b)))
         }
         _ => a == b,
+    }
+}
+
+// ── Design data path ──────────────────────────────────────────────────────
+// Which store the project's design data lives in: the Firestore documents
+// (`firestore`) or the mirrored dataset the Combined column reflects
+// (`mirrored`). The explicit parameter wins; two legacy spellings answer for
+// projects that never had it; absent means Firestore.
+//
+// ds-brain keeps its own `useFirestoreDesignDataFromConfig` twin. That is NOT
+// a duplicate to delete: it is the grant-side fence, evaluated where the caller
+// cannot reach, and a client answer is never a substitute for it. This op is
+// the CLIENT answer — one of them, instead of the browser's and the CLI's.
+
+const DESIGN_DATA_EXPLICIT: &str = "use_firestore_design_data";
+const DESIGN_DATA_LEGACY: [&str; 2] = ["design_data_source", "combined_source"];
+
+/// `trim().toLowerCase()`, every non-word run collapsed to one `_`, trimmed.
+/// `\w` is ASCII alphanumerics plus `_` — matching the host's `/[^\w]+/g`.
+fn config_token(value: &Value) -> String {
+    let raw = match value {
+        Value::String(s) => s.clone(),
+        Value::Null => String::new(),
+        other => other.to_string(),
+    };
+    let lowered = raw.trim().to_lowercase();
+    let mut out = String::with_capacity(lowered.len());
+    let mut pending = false;
+    for ch in lowered.chars() {
+        if ch.is_ascii_alphanumeric() || ch == '_' {
+            if pending && !out.is_empty() {
+                out.push('_');
+            }
+            pending = false;
+            out.push(ch);
+        } else {
+            pending = true;
+        }
+    }
+    out.trim_matches('_').to_string()
+}
+
+fn config_boolean(value: &Value) -> Option<bool> {
+    if let Some(flag) = value.as_bool() {
+        return Some(flag);
+    }
+    if let Some(number) = value.as_f64() {
+        return Some(number != 0.0);
+    }
+    match config_token(value).as_str() {
+        "true" | "yes" | "y" | "1" | "on" | "firestore" | "fs" => Some(true),
+        "false" | "no" | "n" | "0" | "off" | "bigquery" | "bq" => Some(false),
+        _ => None,
+    }
+}
+
+fn matching_row_value(row: &Value, keys: &[&str]) -> Option<Value> {
+    let object = row.as_object()?;
+    for key in keys {
+        let wanted = config_token(&Value::String((*key).to_string()));
+        for (raw, value) in object {
+            if config_token(&Value::String(raw.clone())) == wanted {
+                return Some(value.clone());
+            }
+        }
+    }
+    None
+}
+
+fn config_rows(value: Option<Value>) -> Vec<Value> {
+    value
+        .and_then(|v| v.as_array().cloned())
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|row| row.is_object())
+        .collect()
+}
+
+fn project_settings_rows(config: &Value) -> Vec<Value> {
+    let settings_keys = ["project_settings", "project settings"];
+    let mut rows = config_rows(matching_row_value(config, &settings_keys));
+    for nested in ["sheets", "parameters", "config", "data"] {
+        if let Some(value) = config.get(nested) {
+            rows.extend(config_rows(matching_row_value(value, &settings_keys)));
+        }
+    }
+    rows
+}
+
+fn config_parameter_value(config: &Value, parameters: &[&str]) -> Option<Value> {
+    if !config.is_object() {
+        return None;
+    }
+    let mut direct = vec![config.clone()];
+    for key in ["parameters", "settings", "project_settings"] {
+        if let Some(value) = config.get(key) {
+            direct.push(value.clone());
+        }
+    }
+    for source in &direct {
+        if let Some(value) = matching_row_value(source, parameters) {
+            return Some(value);
+        }
+    }
+    for row in project_settings_rows(config) {
+        let parameter = matching_row_value(&row, &["parameter", "setting", "name", "key"])
+            .unwrap_or(Value::Null);
+        let parameter_token = config_token(&parameter);
+        if !parameters.iter().any(|candidate| {
+            config_token(&Value::String((*candidate).to_string())) == parameter_token
+        }) {
+            continue;
+        }
+        if let Some(value) =
+            matching_row_value(&row, &["value", "setting_value", "default", "enabled"])
+        {
+            return Some(value);
+        }
+    }
+    None
+}
+
+pub fn design_data_path(document: &Value) -> Value {
+    let explicit = config_parameter_value(document, &[DESIGN_DATA_EXPLICIT]);
+    if let Some(firestore) = explicit.as_ref().and_then(config_boolean) {
+        return json!({
+            "path": if firestore { "firestore" } else { "mirrored" },
+            "source": "explicit",
+            "parameter": DESIGN_DATA_EXPLICIT,
+            "reason_key": if firestore { "design_data_path_firestore_declared" } else { "design_data_path_mirrored_declared" },
+        });
+    }
+    for parameter in DESIGN_DATA_LEGACY {
+        let Some(value) = config_parameter_value(document, &[parameter]) else {
+            continue;
+        };
+        let Some(firestore) = config_boolean(&value) else {
+            continue;
+        };
+        return json!({
+            "path": if firestore { "firestore" } else { "mirrored" },
+            "source": "legacy",
+            "parameter": parameter,
+            "reason_key": if firestore { "design_data_path_firestore_legacy" } else { "design_data_path_mirrored_legacy" },
+        });
+    }
+    json!({
+        "path": "firestore",
+        "source": "default",
+        "parameter": "",
+        "reason_key": "design_data_path_firestore_default",
+    })
+}
+
+#[cfg(test)]
+mod design_data_path_tests {
+    use super::*;
+
+    fn path(document: Value) -> Value {
+        design_data_path(&document)
+    }
+
+    #[test]
+    fn the_explicit_parameter_wins_over_every_legacy_spelling() {
+        let document = json!({
+            "use_firestore_design_data": false,
+            "design_data_source": "firestore",
+            "combined_source": "firestore",
+        });
+        let result = path(document);
+        assert_eq!(result["path"], "mirrored");
+        assert_eq!(result["source"], "explicit");
+    }
+
+    #[test]
+    fn legacy_aliases_answer_in_order_and_absence_defaults_to_firestore() {
+        assert_eq!(
+            path(json!({"design_data_source": "bigquery"}))["path"],
+            "mirrored"
+        );
+        assert_eq!(
+            path(json!({"combined_source": "BQ"}))["parameter"],
+            "combined_source"
+        );
+        assert_eq!(
+            path(json!({}))["reason_key"],
+            "design_data_path_firestore_default"
+        );
+        assert_eq!(path(Value::Null)["path"], "firestore");
+    }
+
+    #[test]
+    fn the_value_is_found_in_a_project_settings_sheet_row() {
+        let document = json!({
+            "sheets": {"project_settings": [
+                {"parameter": "unrelated", "value": "x"},
+                {"Parameter": "Use Firestore Design Data", "Value": "no"},
+            ]},
+        });
+        let result = path(document);
+        assert_eq!(result["path"], "mirrored");
+        assert_eq!(result["source"], "explicit");
+    }
+
+    #[test]
+    fn an_unparseable_token_falls_through_rather_than_deciding() {
+        let document = json!({"use_firestore_design_data": "maybe", "combined_source": "off"});
+        let result = path(document);
+        assert_eq!(result["path"], "mirrored");
+        assert_eq!(result["source"], "legacy");
+        assert_eq!(result["parameter"], "combined_source");
     }
 }
