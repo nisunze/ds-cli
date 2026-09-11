@@ -187,6 +187,54 @@ can legitimately answer more rows than any single request could have named.
 Above either bound, or past the fixed response size cap, the answer is refused
 as `auth_response_unreadable` rather than truncated.
 
+## The project's whole Dashboard, without a browser
+
+`ds design dashboard` folds those same rows once into the model the
+application's Design wall renders — the project's progress story, read from a
+terminal. Same credential, same fixed status call, same refusals: no
+`--project`, no Desktop descriptor, no fallback to a browser.
+
+```bash
+ds design dashboard --output json
+ds design dashboard --fast --output json
+ds design dashboard --output json | jq '.data.dashboard.health'
+```
+
+There is no `--transformer`: every percentage here is measured against the
+whole fleet, so a dashboard over a subset would be a different question.
+`--fast` reads the project the way the application's Fast lane does — no
+Draft/Sketch phase summary, no legacy-phase attention note, and the Standard
+lane named as the legacy it is.
+
+`.data.dashboard` carries, in one object:
+
+| Member | What it answers |
+|---|---|
+| `total`, `designed_count`, `process_lane_count`, `report_ready_count`, `combined_count` | how far the fleet has come. A transformer is *designed* through ANY compute phase — sketch, draft or process — and a green Process stamp whose saved output layers are missing is not designed at all |
+| `pipeline` | the same four counts as stages with `pct_of_total`. Deliberately NOT a funnel: the phases are independent over one record, so a later stage can out-count an earlier one |
+| `momentum` | designs per local day (`points`, `key` is `YYYY-MM-DD`), the 7-day split (`last7`, `prev7`, `trend`), `busiest`, `active_days`, `avg_per_active_day`. Days are bucketed at the host's UTC offset; `ds` uses this machine's |
+| `crew`, `errors_by_user` | who designed what, and who ran the phases that failed. A bucket with no attributable account carries `unknown: true` and an empty name — the reader names it |
+| `districts`, `district_count`, `sector_count` | where the work is. The leftovers chip carries `unassigned: true` and an empty label, for the same reason |
+| `phase_summaries` | per phase slot, how many rows sit in each status |
+| `lanes`, `fast_pct` | which lane ran the rows whose Process actually ran |
+| `governance` | how many rows are locked and how many are open |
+| `attention` | the pile, ranked red → amber → blue then by name. Each note is that row's `design_health` verdict: the same finding the register shows, with the backend's own sanitised `message` |
+| `health` | `score` (clean rows over total), its band as `label_key`, and the red/amber/blue counts |
+| `recent`, `latest` | the last thing that happened, per row and overall, through the same `design_status_row` ladder `ds design status` reports |
+| `facts` | the wall's fun facts, in order, as a key with its parameters |
+
+**Labels are i18n keys, not sentences.** `label_key`, `detail_key` and a
+fact's `key` name an entry in the application's catalogue; the only English
+that can appear is backend text `design_health` already bounded and sanitised,
+in `message`. Timestamps are epoch millis. A reader that wants sentences
+resolves the keys; the text renderer here spells only the few it prints.
+
+**A headless client holds no browser rooms and no live process diagnostics.**
+The application folds in the verdicts of runs that have just finished and are
+not in the documents yet; `ds` has none, so `diagnostics` is empty and the
+model is exactly what the project's documents say. Nothing this machine holds
+unsaved can appear here, because a headless client holds nothing unsaved.
+
 ## Local transformer rooms for background work
 
 `ds design transformer download` materializes saved transformer rooms into the
