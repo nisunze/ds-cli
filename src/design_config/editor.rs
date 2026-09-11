@@ -78,6 +78,11 @@ pub enum Request {
         metadata: Value,
         models: Value,
     },
+    /// Which design-data path does this project use — the Firestore documents,
+    /// or the mirrored dataset the Combined column reflects?
+    DesignDataPath {
+        document: Value,
+    },
     IsRuleSetSheet {
         sheet_key: String,
         #[serde(default)]
@@ -234,6 +239,7 @@ pub fn apply(request: Request) -> Result<Value, String> {
     use Request::*;
     Ok(match request {
         SurveyOptions {forms,project_matches} => json!(forms.iter().filter(|f|project_matches && f["enabled"]!=false && f["project_settings"]["enabled"]!=false).map(|f|json!({"slug":f["slug"],"label":f["display_name"].as_str().filter(|s|!s.is_empty()).or_else(||f["slug"].as_str()).unwrap_or_default()})).collect::<Vec<_>>()),
+        DesignDataPath { document } => design_data_path(&document),
         MetadataField {mut metadata,field,value} => {if value.is_null() || value=="" {metadata.shift_remove(&field);} else {metadata.insert(field,value);} Value::Object(metadata)},
         Read {
             document,
@@ -1146,5 +1152,318 @@ pub fn settings_equal(a: &Value, b: &Value) -> bool {
                     .all(|(key, a)| b.get(key).is_some_and(|b| settings_equal(a, b)))
         }
         _ => a == b,
+    }
+}
+
+// ── Design data path ──────────────────────────────────────────────────────
+// Which store the project's design data lives in: the Firestore documents
+// (`firestore`) or the mirrored dataset the Combined column reflects
+// (`mirrored`). The explicit parameter wins; two legacy spellings answer for
+// projects that never had it; absent means Firestore.
+//
+// ds-brain keeps its own `useFirestoreDesignDataFromConfig` twin. That is NOT
+// a duplicate to delete: it is the grant-side fence, evaluated where the caller
+// cannot reach, and a client answer is never a substitute for it. This op is
+// the CLIENT answer — one of them, instead of the browser's and the CLI's.
+
+const DESIGN_DATA_EXPLICIT: &str = "use_firestore_design_data";
+const DESIGN_DATA_LEGACY: [&str; 2] = ["design_data_source", "combined_source"];
+
+/// `trim().toLowerCase()`, every separator run collapsed to one `_`, trimmed.
+///
+/// The host normalised in THREE passes — `/[^\w]+/g → '_'`, then `/_+/g → '_'`,
+/// then a trim — and the middle one is load-bearing: `_` is `\w`, so a spelling
+/// that already carried one next to a space (`Design_ Data Source`) or doubled
+/// one (`use__firestore__design_data`) reached the second pass as a RUN of
+/// underscores and left it as a single one. Keeping only the first pass answers
+/// `design__data_source`, which matches no key, and the project silently falls
+/// through to the next alias or to the default — a store switch nobody declared.
+/// Treating `_` as a separator here is both passes at once.
+fn config_token(value: &Value) -> String {
+    let raw = match value {
+        Value::String(s) => s.clone(),
+        Value::Null => String::new(),
+        other => other.to_string(),
+    };
+    let lowered = raw.trim().to_lowercase();
+    let mut out = String::with_capacity(lowered.len());
+    let mut pending = false;
+    for ch in lowered.chars() {
+        if ch.is_ascii_alphanumeric() {
+            if pending && !out.is_empty() {
+                out.push('_');
+            }
+            pending = false;
+            out.push(ch);
+        } else {
+            pending = true;
+        }
+    }
+    out
+}
+
+fn config_boolean(value: &Value) -> Option<bool> {
+    if let Some(flag) = value.as_bool() {
+        return Some(flag);
+    }
+    if let Some(number) = value.as_f64() {
+        return Some(number != 0.0);
+    }
+    match config_token(value).as_str() {
+        "true" | "yes" | "y" | "1" | "on" | "firestore" | "fs" => Some(true),
+        "false" | "no" | "n" | "0" | "off" | "bigquery" | "bq" => Some(false),
+        _ => None,
+    }
+}
+
+/// The LAST raw key that normalises to the wanted spelling answers, not the
+/// first. The deleted host built `new Map(Object.keys(row).map(...))` and read
+/// it back, and a `Map` keeps the last write: a document carrying both
+/// `Design Data Source` and `design_data_source` was read from the second one.
+/// Returning the first instead silently answers from the row the operator
+/// replaced.
+fn matching_row_indexed(row: &Value, keys: &[&str]) -> Option<(usize, Value)> {
+    let object = row.as_object()?;
+    for (index, key) in keys.iter().enumerate() {
+        let wanted = config_token(&Value::String((*key).to_string()));
+        let found = object
+            .iter()
+            .rfind(|(raw, _)| config_token(&Value::String((*raw).clone())) == wanted);
+        if let Some((_, value)) = found {
+            return Some((index, value.clone()));
+        }
+    }
+    None
+}
+
+fn matching_row_value(row: &Value, keys: &[&str]) -> Option<Value> {
+    matching_row_indexed(row, keys).map(|(_, value)| value)
+}
+
+fn config_rows(value: Option<Value>) -> Vec<Value> {
+    value
+        .and_then(|v| v.as_array().cloned())
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|row| row.is_object())
+        .collect()
+}
+
+fn project_settings_rows(config: &Value) -> Vec<Value> {
+    let settings_keys = ["project_settings", "project settings"];
+    let mut rows = config_rows(matching_row_value(config, &settings_keys));
+    for nested in ["sheets", "parameters", "config", "data"] {
+        if let Some(value) = config.get(nested) {
+            rows.extend(config_rows(matching_row_value(value, &settings_keys)));
+        }
+    }
+    rows
+}
+
+/// The index of the spelling that answered, with its value.
+///
+/// The walk is SOURCE-major and spelling-minor, exactly as the deleted
+/// `configParameterValue` was: every alias is looked for in one source before
+/// the next source is opened. Asking spelling-major instead would let a legacy
+/// alias buried in `parameters` outrank a newer one written at the top level —
+/// the precedence chain a config read must never reorder.
+fn config_parameter_indexed(config: &Value, parameters: &[&str]) -> Option<(usize, Value)> {
+    if !config.is_object() {
+        return None;
+    }
+    let mut direct = vec![config.clone()];
+    for key in ["parameters", "settings", "project_settings"] {
+        if let Some(value) = config.get(key) {
+            direct.push(value.clone());
+        }
+    }
+    for source in &direct {
+        if let Some(found) = matching_row_indexed(source, parameters) {
+            return Some(found);
+        }
+    }
+    for row in project_settings_rows(config) {
+        let parameter = matching_row_value(&row, &["parameter", "setting", "name", "key"])
+            .unwrap_or(Value::Null);
+        let parameter_token = config_token(&parameter);
+        let Some(index) = parameters.iter().position(|candidate| {
+            config_token(&Value::String((*candidate).to_string())) == parameter_token
+        }) else {
+            continue;
+        };
+        if let Some(value) =
+            matching_row_value(&row, &["value", "setting_value", "default", "enabled"])
+        {
+            return Some((index, value));
+        }
+    }
+    None
+}
+
+fn config_parameter_value(config: &Value, parameters: &[&str]) -> Option<Value> {
+    config_parameter_indexed(config, parameters).map(|(_, value)| value)
+}
+
+pub fn design_data_path(document: &Value) -> Value {
+    let explicit = config_parameter_value(document, &[DESIGN_DATA_EXPLICIT]);
+    if let Some(firestore) = explicit.as_ref().and_then(config_boolean) {
+        return json!({
+            "path": if firestore { "firestore" } else { "mirrored" },
+            "source": "explicit",
+            "parameter": DESIGN_DATA_EXPLICIT,
+            "reason_key": if firestore { "design_data_path_firestore_declared" } else { "design_data_path_mirrored_declared" },
+        });
+    }
+    // ONE lookup over both spellings, because that is what the host asked:
+    // `configParameterValue(config, ['design_data_source', 'combined_source'])`.
+    // The value it finds decides or it does not; `parsedLegacy ?? true` never
+    // reached past it to a second alias, and a config read that invents a
+    // longer precedence chain than the documents were written against answers
+    // for rows nobody declared.
+    if let Some((index, value)) = config_parameter_indexed(document, &DESIGN_DATA_LEGACY) {
+        if let Some(firestore) = config_boolean(&value) {
+            return json!({
+                "path": if firestore { "firestore" } else { "mirrored" },
+                "source": "legacy",
+                "parameter": DESIGN_DATA_LEGACY[index],
+                "reason_key": if firestore { "design_data_path_firestore_legacy" } else { "design_data_path_mirrored_legacy" },
+            });
+        }
+    }
+    json!({
+        "path": "firestore",
+        "source": "default",
+        "parameter": "",
+        "reason_key": "design_data_path_firestore_default",
+    })
+}
+
+#[cfg(test)]
+mod design_data_path_tests {
+    use super::*;
+
+    fn path(document: Value) -> Value {
+        design_data_path(&document)
+    }
+
+    #[test]
+    fn a_separator_beside_an_underscore_still_names_the_same_parameter() {
+        // The host collapsed underscore RUNS too (`/_+/g → '_'`), so every
+        // spelling below reached it as `use_firestore_design_data`. A token
+        // that keeps the run answers for no key at all, and the project falls
+        // through to a store it never declared.
+        for spelling in [
+            "Use_ Firestore Design Data",
+            "use__firestore__design_data",
+            "USE _ FIRESTORE _ DESIGN _ DATA",
+            "  use_firestore_design_data  ",
+        ] {
+            let document = json!({ spelling: false });
+            let result = path(document);
+            assert_eq!(result["path"], "mirrored", "{spelling}");
+            assert_eq!(result["source"], "explicit", "{spelling}");
+        }
+        // The same collapse decides a legacy alias and a row-shaped setting.
+        let rows = json!({
+            "project_settings": [{ "Parameter": "design__data_source", "Value": "bigquery" }],
+        });
+        assert_eq!(path(rows)["path"], "mirrored");
+        // And a legacy alias spelt with the same seam still names itself.
+        let legacy = path(json!({ "Combined_ Source": "bigquery" }));
+        assert_eq!(legacy["path"], "mirrored");
+        assert_eq!(legacy["source"], "legacy");
+        assert_eq!(legacy["parameter"], "combined_source");
+    }
+
+    #[test]
+    fn two_spellings_of_one_key_in_one_object_answer_from_the_last() {
+        // `new Map(Object.keys(row).map(...))` keeps the LAST write, so the
+        // host read the second spelling. Reading the first answers from the row
+        // the operator replaced rather than the one they wrote.
+        let document = json!({
+            "Use Firestore Design Data": true,
+            "use_firestore_design_data": false,
+        });
+        let result = path(document);
+        assert_eq!(result["path"], "mirrored");
+        assert_eq!(result["source"], "explicit");
+    }
+
+    #[test]
+    fn the_explicit_parameter_wins_over_every_legacy_spelling() {
+        let document = json!({
+            "use_firestore_design_data": false,
+            "design_data_source": "firestore",
+            "combined_source": "firestore",
+        });
+        let result = path(document);
+        assert_eq!(result["path"], "mirrored");
+        assert_eq!(result["source"], "explicit");
+    }
+
+    #[test]
+    fn legacy_aliases_answer_in_order_and_absence_defaults_to_firestore() {
+        assert_eq!(
+            path(json!({"design_data_source": "bigquery"}))["path"],
+            "mirrored"
+        );
+        assert_eq!(
+            path(json!({"combined_source": "BQ"}))["parameter"],
+            "combined_source"
+        );
+        assert_eq!(
+            path(json!({}))["reason_key"],
+            "design_data_path_firestore_default"
+        );
+        assert_eq!(path(Value::Null)["path"], "firestore");
+    }
+
+    #[test]
+    fn the_value_is_found_in_a_project_settings_sheet_row() {
+        let document = json!({
+            "sheets": {"project_settings": [
+                {"parameter": "unrelated", "value": "x"},
+                {"Parameter": "Use Firestore Design Data", "Value": "no"},
+            ]},
+        });
+        let result = path(document);
+        assert_eq!(result["path"], "mirrored");
+        assert_eq!(result["source"], "explicit");
+    }
+
+    #[test]
+    fn a_legacy_alias_never_outranks_the_source_it_was_found_after() {
+        // The deleted host asked both spellings of ONE source before opening
+        // the next: `combined_source` at the top level answers even though
+        // `design_data_source` sits in `parameters`. Asking spelling-major
+        // would have answered `mirrored` for a project that declared
+        // Firestore where the operator could see it.
+        let document = json!({
+            "parameters": {"design_data_source": "bigquery"},
+            "combined_source": "firestore",
+        });
+        let result = path(document);
+        assert_eq!(result["path"], "firestore");
+        assert_eq!(result["parameter"], "combined_source");
+    }
+
+    #[test]
+    fn an_unparseable_legacy_value_answers_the_default_not_the_next_alias() {
+        // `parsedLegacy ?? true`: the legacy lookup returned ONE value, and an
+        // unreadable one left the default standing. Reaching past it to a
+        // second alias decides for a project on a row its author never meant
+        // to be read.
+        let result = path(json!({"design_data_source": "maybe", "combined_source": "off"}));
+        assert_eq!(result["path"], "firestore");
+        assert_eq!(result["source"], "default");
+    }
+
+    #[test]
+    fn an_unparseable_token_falls_through_rather_than_deciding() {
+        let document = json!({"use_firestore_design_data": "maybe", "combined_source": "off"});
+        let result = path(document);
+        assert_eq!(result["path"], "mirrored");
+        assert_eq!(result["source"], "legacy");
+        assert_eq!(result["parameter"], "combined_source");
     }
 }

@@ -1382,6 +1382,20 @@ pub fn design_config_inspect_wasm(input: &[u8]) -> Result<String, wasm_bindgen::
     design_config::inspect(input).map_err(|e| wasm_bindgen::JsValue::from_str(&e))
 }
 
+pub mod autoprocess;
+#[cfg(feature = "wasm")]
+#[wasm_bindgen::prelude::wasm_bindgen(js_name = designAutoprocess)]
+pub fn design_autoprocess_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
+    autoprocess::evaluate(input).map_err(|e| wasm_bindgen::JsValue::from_str(&e))
+}
+
+pub mod force_gate;
+#[cfg(feature = "wasm")]
+#[wasm_bindgen::prelude::wasm_bindgen(js_name = designForceGate)]
+pub fn design_force_gate_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
+    force_gate::evaluate(input).map_err(|e| wasm_bindgen::JsValue::from_str(&e))
+}
+
 pub mod backup_ledger;
 #[cfg(feature = "wasm")]
 #[wasm_bindgen::prelude::wasm_bindgen(js_name = backupLedgerCommand)]
