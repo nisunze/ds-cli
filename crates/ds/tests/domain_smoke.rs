@@ -3019,7 +3019,15 @@ fn background_project_operations_are_map_independent_and_use_the_declared_projec
         (
             "design.status",
             "local_auth_state",
-            BTreeSet::from(["findings", "lane", "transformer"]),
+            BTreeSet::from([
+                "desc",
+                "filter",
+                "findings",
+                "lane",
+                "search",
+                "sort",
+                "transformer",
+            ]),
         ),
         (
             "design.dashboard",
@@ -3305,7 +3313,18 @@ fn design_status_reads_the_headless_project_and_never_reaches_for_a_browser() {
         .iter()
         .map(|input| input["name"].as_str().expect("input name"))
         .collect::<BTreeSet<_>>();
-    assert_eq!(inputs, BTreeSet::from(["findings", "lane", "transformer"]));
+    assert_eq!(
+        inputs,
+        BTreeSet::from([
+            "desc",
+            "filter",
+            "findings",
+            "lane",
+            "search",
+            "sort",
+            "transformer"
+        ])
+    );
 
     // A flag the command does not declare is refused, not ignored: there is
     // no project override on the headless read spine.
@@ -3326,6 +3345,41 @@ fn design_status_reads_the_headless_project_and_never_reaches_for_a_browser() {
             "json"
         ]),
         "invalid_transformer_scope"
+    );
+
+    // So is a malformed selector: the register's question is validated before
+    // any credential is touched, and each way of being wrong is named.
+    for (filter, why) in [
+        ("bogus", "not <dimension=value>"),
+        ("colour=red", "an unknown dimension"),
+        ("admin-planet=x", "an unknown admin level"),
+        ("sync=", "no value"),
+    ] {
+        let run = native_ds(&["design", "status", "--filter", filter, "--output", "json"]);
+        assert_eq!(
+            run.envelope["error"]["code"], "design_status_query_invalid",
+            "--filter {filter} ({why})"
+        );
+        assert_eq!(run.envelope["error"]["class"], "invalid_input");
+    }
+    assert_eq!(
+        native_refusal(&[
+            "design",
+            "status",
+            "--filter",
+            "admin-district=Karongi",
+            "--filter",
+            "admin-sector=Gihango",
+            "--output",
+            "json"
+        ]),
+        "design_status_query_invalid"
+    );
+    // A sort key outside the vocabulary is the CLI's own choices refusal.
+    assert_eq!(
+        native_ds(&["design", "status", "--sort", "colour", "--output", "json"]).envelope["error"]
+            ["code"],
+        "invalid_choice"
     );
 
     // With the development catalogue and no restorable native user, the read
