@@ -165,6 +165,7 @@ pub fn project_design_extent_wasm(input: &[u8]) -> Result<String, wasm_bindgen::
 }
 pub mod reference_cache;
 pub mod report;
+pub mod report_export;
 pub mod solar_batch;
 mod solar_network_seed;
 mod solar_portfolio;
