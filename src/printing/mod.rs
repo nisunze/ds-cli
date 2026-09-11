@@ -1278,7 +1278,7 @@ pub enum Command {
     PrintableTransformers {
         rows: Vec<serde_json::Value>,
         #[serde(default)]
-        rooms: Vec<inventory::Room>,
+        rooms: Option<Vec<inventory::Room>>,
         #[serde(default)]
         current_user: String,
         limit: usize,
@@ -1608,8 +1608,27 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
             rooms,
             current_user,
             limit,
-        } => serde_json::to_value(inventory::printable(&rows, &rooms, &current_user, limit)?)
-            .map_err(|e| e.to_string())?,
+        } => {
+            let mut result = serde_json::to_value(inventory::printable(
+                &rows,
+                rooms.as_deref().unwrap_or_default(),
+                &current_user,
+                limit,
+            )?)
+            .map_err(|e| e.to_string())?;
+            // Absence of a host room inventory is unknown, not proof of no cache.
+            result["local_rooms_known"] = json!(rooms.is_some());
+            if rooms.is_none() {
+                for row in result["transformers"]
+                    .as_array_mut()
+                    .expect("inventory rows")
+                {
+                    row["cached"] = serde_json::Value::Null;
+                    row["dirty"] = serde_json::Value::Null;
+                }
+            }
+            result
+        }
         Command::RenderPlan {
             layout,
             available_style_refs,
@@ -2059,9 +2078,6 @@ mod tests {
         assert!(evaluate(br#"{"op":"transformer_views","views":{"tx_1":{"map":{"mode":"fit","extent_wgs84":[30,-2,29,-1]}}}}"#).is_err());
     }
 
-    /// The whole settings patch `prepare.ts:251-280` wrote by hand: the export
-    /// row found through every alias (not the two it knew) or created, and the
-    /// `printing_views` row nested exactly as the native reporter reads it.
     #[test]
     fn a_render_plan_admits_a_preview_only_with_its_styles_and_some_map_data() {
         let mut layout: serde_json::Value =
@@ -2098,6 +2114,23 @@ mod tests {
         let empty = plan(&layout, serde_json::json!([]), 0);
         assert_eq!(empty["refusals"][0]["code"], "print_preview_needs_layers");
         assert_eq!(empty["print_style_refs"], serde_json::json!([]));
+    }
+
+    #[test]
+    fn native_inventory_excludes_reserved_names_and_marks_unobserved_rooms_unknown() {
+        let request = json!({"op":"printable_transformers","rows":[
+            {"name":"combined_transformer"},{"name":"MV_DATA","kind":"individual"},
+            {"name":"collisions"},{"name":"compounded_report"},{"name":"  "},
+            {"name":"tx_a","metadata":{"version":"0x10"}}
+        ],"limit":10});
+        let out: serde_json::Value =
+            serde_json::from_str(&evaluate(&serde_json::to_vec(&request).unwrap()).unwrap())
+                .unwrap();
+        assert_eq!(out["total"], 1);
+        assert_eq!(out["local_rooms_known"], false);
+        assert_eq!(out["transformers"][0]["server_version"], 16.0);
+        assert!(out["transformers"][0]["cached"].is_null());
+        assert!(out["transformers"][0]["dirty"].is_null());
     }
 
     #[test]

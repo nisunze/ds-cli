@@ -8,7 +8,7 @@
 //! and the bound are this module's. It performs no IO: the host reports the
 //! rows, the rooms and the account.
 
-use crate::design::canonical_row_name;
+use crate::design::{canonical_row_name, is_special_row};
 use crate::design_status_query::locale_cmp;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -51,7 +51,7 @@ pub struct Inventory {
     pub more: More,
 }
 
-/// `Number(value)` for the shapes a status row carries.
+/// Numeric version coercion for JSON status values, matching Number().
 fn js_number(value: &Value) -> Value {
     let number = match value {
         Value::Number(n) => n.as_f64().unwrap_or(f64::NAN),
@@ -67,8 +67,45 @@ fn js_number(value: &Value) -> Value {
             if trimmed.is_empty() {
                 0.0
             } else {
-                trimmed.parse::<f64>().unwrap_or(f64::NAN)
+                if let Some(digits) = trimmed
+                    .strip_prefix("0x")
+                    .or_else(|| trimmed.strip_prefix("0X"))
+                {
+                    u64::from_str_radix(digits, 16)
+                        .map(|n| n as f64)
+                        .unwrap_or(f64::NAN)
+                } else if let Some(digits) = trimmed
+                    .strip_prefix("0b")
+                    .or_else(|| trimmed.strip_prefix("0B"))
+                {
+                    u64::from_str_radix(digits, 2)
+                        .map(|n| n as f64)
+                        .unwrap_or(f64::NAN)
+                } else if let Some(digits) = trimmed
+                    .strip_prefix("0o")
+                    .or_else(|| trimmed.strip_prefix("0O"))
+                {
+                    u64::from_str_radix(digits, 8)
+                        .map(|n| n as f64)
+                        .unwrap_or(f64::NAN)
+                } else {
+                    trimmed.parse::<f64>().unwrap_or(f64::NAN)
+                }
             }
+        }
+        Value::Array(values) => {
+            fn text(value: &Value) -> String {
+                match value {
+                    Value::Null => String::new(),
+                    Value::String(s) => s.clone(),
+                    Value::Array(values) => values.iter().map(text).collect::<Vec<_>>().join(","),
+                    Value::Object(_) => "[object Object]".into(),
+                    other => other.to_string(),
+                }
+            }
+            return js_number(&Value::String(
+                values.iter().map(text).collect::<Vec<_>>().join(","),
+            ));
         }
         Value::Null => 0.0,
         _ => f64::NAN,
@@ -87,6 +124,10 @@ fn first_present(candidates: [Option<&Value>; 2]) -> Option<&Value> {
 }
 
 fn printable_kind(row: &Map<String, Value>) -> Option<String> {
+    let name = row.get("name").and_then(Value::as_str)?;
+    if canonical_row_name(name).is_empty() || is_special_row(name) {
+        return None;
+    }
     match row.get("kind") {
         // Absent means an ordinary transformer; `null` never did.
         None => Some("individual".to_string()),
