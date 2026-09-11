@@ -329,22 +329,15 @@ impl SourceMetadata {
     /// and, for a folder connection, which project it belongs to. Never the
     /// handle key — a list is not a capability.
     fn row(&self) -> Value {
-        match self {
+        let mut row = match self {
             Self::GisFolder {
                 ds_project,
                 file_path,
-                dirty_since_refresh,
                 ..
-            } => json!({
-                "kind": "gis_folder",
-                "label": file_path,
-                "dsProject": ds_project,
-                "dirtySinceRefresh": dirty_since_refresh,
-            }),
+            } => json!({"kind": "gis_folder", "label": file_path, "dsProject": ds_project}),
             Self::ImportFile {
                 file_name,
                 archive_inner_name,
-                dirty_since_refresh,
                 ..
             } => json!({
                 "kind": "import_file",
@@ -352,9 +345,20 @@ impl SourceMetadata {
                     Some(inner) => format!("{file_name} → {inner}"),
                     None => file_name.clone(),
                 },
-                "dirtySinceRefresh": dirty_since_refresh,
             }),
+        };
+        let (Self::GisFolder {
+            dirty_since_refresh,
+            ..
         }
+        | Self::ImportFile {
+            dirty_since_refresh,
+            ..
+        }) = self;
+        if let (Some(map), Some(dirty)) = (row.as_object_mut(), dirty_since_refresh) {
+            map.insert("dirtySinceRefresh".into(), json!(dirty));
+        }
+        row
     }
 
     /// `normalizeSourceMetadata`. A folder connection is admitted for any
