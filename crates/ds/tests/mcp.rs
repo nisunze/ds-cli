@@ -1317,6 +1317,9 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
             "grid" => 19,
             "survey-projects" => 18,
             "design-edit" => 23,
+            // Fifteen printing leaves plus both bootstrap tools since the
+            // kernel's context-layer decision joined the workflow.
+            "printing" => 17,
             _ => 16,
         };
         assert!(

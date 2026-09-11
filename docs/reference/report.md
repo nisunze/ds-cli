@@ -291,7 +291,7 @@ schema with `report.tasks --task render_print_layout`. It writes SVG/PDF to a
 fresh directory and returns paths and hashes. No network or desktop is required.
 Published setup reads use Brain; a held layout/render file prints offline.
 
-`ds mcp serve --exposure commands --profile printing` exposes all eleven layout
+`ds mcp serve --exposure commands --profile printing` exposes all twelve layout
 commands together. The grid profile keeps its existing report-export workflow.
 Reference A3/A4 layouts and runnable synthetic-data proofs live in
 `ds-network-reporter/examples/printing/`; importing them never publishes them.
@@ -307,6 +307,23 @@ A1–A5. `{"op":"rename","layout":{...},"name":"New name"}` preserves identity;
 `{"op":"duplicate","layout":{...},"id":"new-id","name":"Copy"}` requires a
 new identity. Shared saves still require an expected revision and explicit
 confirmation. Rendering a held layout does not mutate its shared template.
+
+## Context layers
+
+`ds report layout context` answers what the Printing setup page's context
+picker answers, from the same kernel module (`printing::context`), with no
+browser: `--action defaults` (the default) lists the derived sources every
+template may carry — project DS Grid MV, building footprints, elevation
+contours — with their print styles and the catalogue layers excluded from a
+default selection; `--action catalog --resources facts.json` takes the
+catalogue as facts (`[{layer,label,country,ready,downloadable,unavailable}]`)
+and returns one row per dataset saying whether it may be switched on and
+whether a fresh template starts with it; `--action select --layout l.json
+--resources facts.json` applies that default selection to a held layout;
+`--action toggle --layout l.json --layer ID --enabled true|false` switches one
+layer, seeding its print styles, refusing `printing_context_no_dataset` for a
+catalogue layer that is neither held nor downloadable unless it is already
+selected. `report.layout.edit` accepts the same `context_*` ops as raw requests.
 
 ## Publishing a setup
 

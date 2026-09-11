@@ -172,6 +172,11 @@ impl Profile {
             // same bounded desktop-owned workflow without transporting
             // features through MCP.
             Self::DesignEdit => 23,
+            // Fifteen printing leaves plus both bootstrap tools: the kernel's
+            // context-layer decision (`report.layout.context`) joined the
+            // workflow that already carried authoring, published setups,
+            // preparation, export and delivery.
+            Self::Printing => 17,
             _ => 16,
         }
     }
@@ -1229,6 +1234,7 @@ pub const fn chapter_description(chapter: Chapter) -> &'static str {
 // paired leaves are the ones that need the desktop's held rooms and cache.
 const PRINTING_COMMANDS: &[&str] = &[
     "map.print.schema",
+    "report.layout.context",
     "desktop.printing.settings",
     "report.layout.list",
     "report.layout.get",

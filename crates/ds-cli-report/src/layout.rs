@@ -108,6 +108,71 @@ pub static SCHEMA: Command = Command {
     reference: Some("docs/reference/report.md"),
     availability: local,
 };
+const ACTION: Arg = Arg::value(
+    "action",
+    "<action>",
+    "defaults: derived sources, fallback styles, exclusions; catalog: which datasets may be selected; select: apply the default selection; toggle: switch one layer.",
+)
+.choices(&["defaults", "catalog", "select", "toggle"])
+.default("defaults");
+const LAYOUT_FILE: Arg = Arg::value(
+    "layout",
+    "<json-file>",
+    "Held print layout (select, toggle).",
+);
+const RESOURCES: Arg = Arg::value(
+    "resources",
+    "<json-file>",
+    "Catalogue facts: [{layer,label,country,ready,downloadable,unavailable}] (catalog, select; toggle of a catalogue layer).",
+);
+const LAYER: Arg = Arg::value(
+    "layer",
+    "<layer-id>",
+    "Context layer id to toggle: a derived source or a catalogue layer.",
+);
+const ENABLED: Arg = Arg::value("enabled", "<bool>", "Switch the layer on or off.")
+    .choices(&["true", "false"])
+    .default("true");
+pub static CONTEXT: Command = Command {
+    id: "report.layout.context",
+    path: &["report", "layout", "context"],
+    contract: 1,
+    summary: "Decide a layout's context layers: defaults, catalogue, selection.",
+    purpose: "Which context layers exist, which a template starts with, and whether a catalogue dataset may be switched on are decided once in ds-command-kernel (printing::context) for the desktop page and this command alike. The host reports the catalogue's facts; the kernel returns rows, a selection or a refusal.",
+    chapter: Chapter::Reports,
+    effect: Effect::ReadOnly,
+    authority: Authority::None,
+    execution: Execution::Sync,
+    args: &[ACTION, LAYOUT_FILE, RESOURCES, LAYER, ENABLED],
+    output: "defaults: {derived,fallback_styles,excluded_catalog_layers}; catalog: {rows}; select/toggle: {layout}.",
+    examples: &[
+        Example {
+            command: "ds report layout context --output json",
+            note: "The derived sources every template may carry and their print styles.",
+            runnable: true,
+        },
+        Example {
+            command: "ds report layout context --action toggle --layout layout.json --layer elevation_contours --enabled true --output json",
+            note: "Switch a derived source on; its print styles are seeded.",
+            runnable: false,
+        },
+    ],
+    refusals: CONTEXT_REFUSALS,
+    reference: Some("docs/reference/report.md"),
+    availability: local,
+};
+const CONTEXT_REFUSALS: &[Refusal] = &[
+    Refusal {
+        code: "printing_invalid",
+        when: "The bounded print document, catalogue facts or layer id is invalid",
+        remedy: "Use report.layout.schema and correct the reported layout constraint",
+    },
+    Refusal {
+        code: "printing_context_no_dataset",
+        when: "The catalogue layer is unavailable, or neither held nor downloadable",
+        remedy: "Download the dataset first, or choose one the catalogue reports as ready",
+    },
+];
 pub static RENDER: Command = Command {
     id: "report.layout.render",
     path: &["report", "layout", "render"],
@@ -293,6 +358,88 @@ pub fn edit(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
     )?;
     let result = ds_command_kernel::printing::evaluate(&input).map_err(invalid)?;
     serde_json::from_str(&result).map_err(invalid)
+}
+fn context_eval(request: Value) -> Result<Value, Failure> {
+    let input = serde_json::to_vec(&request).map_err(invalid)?;
+    let result = ds_command_kernel::printing::evaluate(&input).map_err(|e| {
+        if e.contains("printing_context_no_dataset") {
+            Failure::invalid("printing_context_no_dataset", e)
+                .remedy("Download the dataset first, or choose one the catalogue reports as ready")
+        } else {
+            invalid(e)
+        }
+    })?;
+    serde_json::from_str(&result).map_err(invalid)
+}
+fn json_file(i: &Inputs, name: &str) -> Result<Value, Failure> {
+    serde_json::from_slice(&bytes(i.require(name)?, 800_000)?).map_err(invalid)
+}
+fn optional_json_file(i: &Inputs, name: &str) -> Result<Value, Failure> {
+    match i.value(name) {
+        Some(path) => serde_json::from_slice(&bytes(path, 800_000)?).map_err(invalid),
+        None => Ok(json!([])),
+    }
+}
+pub fn context(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
+    match i.require("action")? {
+        "defaults" => context_eval(json!({"op": "context_defaults"})),
+        "catalog" => context_eval(json!({
+            "op": "context_catalog",
+            "resources": json_file(i, "resources")?,
+        })),
+        "select" => context_eval(json!({
+            "op": "context_default_selection",
+            "layout": json_file(i, "layout")?,
+            "resources": optional_json_file(i, "resources")?,
+        })),
+        "toggle" => {
+            let id = i.require("layer")?;
+            let enabled = i.require("enabled")? == "true";
+            let resources = optional_json_file(i, "resources")?;
+            let derived = context_eval(json!({"op": "context_defaults"}))?;
+            let mut layer = derived["derived"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .find(|row| row["id"] == id)
+                .cloned();
+            let mut resource = Value::Null;
+            if layer.is_none() {
+                let rows = context_eval(json!({"op": "context_catalog", "resources": resources}))?;
+                if let Some(row) = rows["rows"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .find(|row| row["layer"]["id"] == id)
+                {
+                    layer = Some(row["layer"].clone());
+                    resource = resources
+                        .as_array()
+                        .into_iter()
+                        .flatten()
+                        .find(|fact| fact["layer"] == id)
+                        .cloned()
+                        .unwrap_or(Value::Null);
+                }
+            }
+            let Some(layer) = layer else {
+                return Err(invalid(format!(
+                    "unknown context layer `{id}`: not a derived source and not in --resources"
+                )));
+            };
+            let mut request = json!({
+                "op": "context_toggle",
+                "layout": json_file(i, "layout")?,
+                "layer": layer,
+                "enabled": enabled,
+            });
+            if !resource.is_null() {
+                request["resource"] = resource;
+            }
+            context_eval(request)
+        }
+        other => Err(invalid(format!("unknown action `{other}`"))),
+    }
 }
 pub fn list(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
     ds_cli_auth::printing(
