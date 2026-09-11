@@ -1457,3 +1457,24 @@ pub mod project_config;
 pub fn project_config_admit_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
     project_config::evaluate(input).map_err(|e| wasm_bindgen::JsValue::from_str(&e))
 }
+
+pub mod design_tags;
+#[cfg(feature = "wasm")]
+#[wasm_bindgen::prelude::wasm_bindgen(js_name = designTags)]
+pub fn design_tags_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
+    design_tags::evaluate(input).map_err(|e| wasm_bindgen::JsValue::from_str(&e))
+}
+
+pub mod collisions;
+#[cfg(feature = "wasm")]
+#[wasm_bindgen::prelude::wasm_bindgen(js_name = collisions)]
+pub fn collisions_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
+    collisions::evaluate(input).map_err(|e| wasm_bindgen::JsValue::from_str(&e))
+}
+
+pub mod solar_seed;
+#[cfg(feature = "wasm")]
+#[wasm_bindgen::prelude::wasm_bindgen(js_name = solarSeed)]
+pub fn solar_seed_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
+    solar_seed::evaluate(input).map_err(|e| wasm_bindgen::JsValue::from_str(&e))
+}

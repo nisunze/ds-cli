@@ -222,6 +222,59 @@ pub fn material_propagation_request(input: &[u8]) -> Result<String, String> {
     serde_json::to_string(&request).map_err(|e| e.to_string())
 }
 
+/// The receipt half of the same command: does what came back describe the
+/// request that went out?
+///
+/// The request half has always been Rust; the verdict over the answer was a
+/// conditional in the browser's API client, so a headless caller had no way to
+/// tell a governed receipt from an unrelated document. Both halves are one
+/// decision — a fenced write is only fenced if its acknowledgement is checked
+/// against the fence — so they live together.
+///
+/// `request` is the exact envelope `material_propagation_request` returned.
+pub fn material_propagation_receipt(input: &[u8]) -> Result<String, String> {
+    #[derive(serde::Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct Verdict {
+        request: Value,
+        receipt: Value,
+    }
+    if input.len() > 64 * 1024 {
+        return Err("material propagation receipt exceeds 64 KiB".into());
+    }
+    let Verdict { request, receipt } = serde_json::from_slice(input).map_err(|e| e.to_string())?;
+    let digest = receipt["digest"].as_str().unwrap_or_default();
+    let applied = request["mode"] == "apply";
+    let mismatch = if receipt["schema"] != request["schema"] {
+        "schema"
+    } else if digest.len() != 64
+        || !digest
+            .bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+    {
+        "digest"
+    } else if receipt["source_project"] != request["source_project"] {
+        "source_project"
+    } else if receipt["template"] != request["template"] {
+        "template"
+    } else if receipt["rule_set"] != request["rule_set"] {
+        "rule_set"
+    } else if receipt["applied"] != Value::Bool(applied) {
+        "applied"
+    } else if applied && digest != request["expected_digest"].as_str().unwrap_or_default() {
+        "expected_digest"
+    } else {
+        return serde_json::to_string(&json!({"ok": true})).map_err(|e| e.to_string());
+    };
+    serde_json::to_string(&json!({"ok": false, "mismatch": mismatch})).map_err(|e| e.to_string())
+}
+
+#[cfg(feature = "wasm")]
+#[wasm_bindgen::prelude::wasm_bindgen(js_name = designMaterialPropagationReceipt)]
+pub fn material_propagation_receipt_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
+    material_propagation_receipt(input).map_err(|e| wasm_bindgen::JsValue::from_str(&e))
+}
+
 #[cfg(feature = "wasm")]
 #[wasm_bindgen::prelude::wasm_bindgen(js_name = designMaterialPropagationRequest)]
 pub fn material_propagation_request_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
@@ -247,6 +300,56 @@ mod material_request_tests {
         assert!(material_propagation_request(apply.to_string().as_bytes()).is_ok());
         apply["all_projects"] = json!(true);
         assert!(material_propagation_request(apply.to_string().as_bytes()).is_err());
+    }
+
+    /// A receipt is a governed acknowledgement only when every fenced member of
+    /// the request comes back in it. Each mismatch is named, so a caller can
+    /// say WHICH fence the answer broke rather than "invalid receipt".
+    #[test]
+    fn a_receipt_is_checked_against_its_own_fence() {
+        let digest = "a".repeat(64);
+        let request = json!({"schema":"ds.design.material-propagation/v1","source_project":"p","template":"master","rule_set":"rule_x","rows":["pole_a"],"mode":"apply","expected_digest":digest});
+        let receipt = json!({"schema":"ds.design.material-propagation/v1","source_project":"p","template":"master","rule_set":"rule_x","applied":true,"digest":digest});
+        let verdict = |request: &Value, receipt: &Value| -> Value {
+            serde_json::from_str(
+                &material_propagation_receipt(
+                    json!({"request":request,"receipt":receipt})
+                        .to_string()
+                        .as_bytes(),
+                )
+                .unwrap(),
+            )
+            .unwrap()
+        };
+        assert_eq!(verdict(&request, &receipt)["ok"], true);
+        for (member, value) in [
+            ("schema", json!("other")),
+            ("source_project", json!("q")),
+            ("template", json!("other")),
+            ("rule_set", json!("other")),
+            ("applied", json!(false)),
+            ("digest", json!("b".repeat(64))),
+        ] {
+            let mut broken = receipt.clone();
+            broken[member] = value;
+            let answer = verdict(&request, &broken);
+            assert_eq!(answer["ok"], false, "{member} must break the fence");
+            assert!(answer["mismatch"].is_string());
+        }
+        // A preview must NOT come back applied, and its digest is simply the
+        // fence a later apply will echo — it is never compared to one here.
+        let mut preview = request.clone();
+        preview["mode"] = json!("preview");
+        preview["expected_digest"] = json!("");
+        let mut answered = receipt.clone();
+        answered["applied"] = json!(false);
+        answered["digest"] = json!("c".repeat(64));
+        assert_eq!(verdict(&preview, &answered)["ok"], true);
+        assert_eq!(verdict(&preview, &receipt)["ok"], false);
+        // A non-hex digest is refused before any member comparison.
+        let mut unhexed = receipt.clone();
+        unhexed["digest"] = json!("Z".repeat(64));
+        assert_eq!(verdict(&request, &unhexed)["mismatch"], "digest");
     }
 }
 
