@@ -92,7 +92,6 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         "op": {"kind": "reorder", "orders": orders.iter().map(|row| json!({"layer_id": row["layerId"], "order": row["order"]})).collect::<Vec<_>>()},
     }))?;
     if admission["outcome"] == "refused" {
-        let code = admission["code"].as_str().unwrap_or("invalid_order");
         let ids = admission["ids"]
             .as_array()
             .into_iter()
@@ -101,11 +100,21 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             .collect::<Vec<_>>()
             .join(", ");
         let message = admission["message"].as_str().unwrap_or("order refused");
-        return Err(Failure::invalid(
-            code,
-            if ids.is_empty() { message.to_owned() } else { format!("{message}: {ids}") },
-        )
-        .remedy("copy ids from `ds map layer list --output json`; pass each canonical id once"));
+        let message = if ids.is_empty() {
+            message.to_owned()
+        } else {
+            format!("{message}: {ids}")
+        };
+        let remedy = "copy ids from `ds map layer list --output json`; pass each canonical id once";
+        return Err(match admission["code"].as_str() {
+            Some("unknown_layer") => {
+                Failure::invalid(super::native::UNKNOWN_LAYER.code, message).remedy(remedy)
+            }
+            Some("duplicate_layer") => {
+                Failure::invalid(super::native::DUPLICATE_LAYER.code, message).remedy(remedy)
+            }
+            _ => Failure::invalid(super::native::INVALID_ORDER.code, message).remedy(remedy),
+        });
     }
     let request: Vec<ds_cli_auth::LayerOrder> = orders
         .iter()

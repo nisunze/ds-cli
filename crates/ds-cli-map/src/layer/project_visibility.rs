@@ -94,8 +94,11 @@ fn set(inputs: &Inputs, visible: bool) -> Result<Value, Failure> {
         .filter(|id| !id.is_empty())
         .collect();
     if wanted.is_empty() {
-        return Err(Failure::invalid("unknown_layer", "--layer names at least one canonical layer id")
-            .remedy("copy ids from `ds map layer list --output json`"));
+        return Err(Failure::invalid(
+            "unknown_layer",
+            "--layer names at least one canonical layer id",
+        )
+        .remedy("copy ids from `ds map layer list --output json`"));
     }
     let headless = ds_cli_auth::layer_config(lane, false)?;
     let project = headless.project_id().to_owned();
@@ -122,7 +125,10 @@ fn set(inputs: &Inputs, visible: bool) -> Result<Value, Failure> {
     if !unknown.is_empty() {
         return Err(Failure::invalid(
             "unknown_layer",
-            format!("not canonical layers of the selected project: {}", unknown.join(", ")),
+            format!(
+                "not canonical layers of the selected project: {}",
+                unknown.join(", ")
+            ),
         )
         .remedy("copy ids from `ds map layer list --output json`"));
     }
@@ -130,10 +136,13 @@ fn set(inputs: &Inputs, visible: bool) -> Result<Value, Failure> {
         &json!({"schema": ds_command_kernel::layer_state::SCHEMA, "project": project, "document": document, "preferences": preferences, "op": {"kind": "set", "ids": runtime_ids, "visible": visible, "expand": true}}),
     )?;
     let next: std::collections::BTreeMap<String, bool> =
-        serde_json::from_value(transition["preferences"].clone()).expect("kernel preferences are a boolean map");
-    let receipt = ds_layer_store::visibility::replace(lane, &project, &next).map_err(|message| {
-        Failure::invalid("local_layer_refused", message).remedy(super::LOCAL_STORE_REFUSAL.remedy)
-    })?;
+        serde_json::from_value(transition["preferences"].clone())
+            .expect("kernel preferences are a boolean map");
+    let receipt =
+        ds_layer_store::visibility::replace(lane, &project, &next).map_err(|message| {
+            Failure::invalid("local_layer_refused", message)
+                .remedy(super::LOCAL_STORE_REFUSAL.remedy)
+        })?;
     let catalog = super::ask_layer_state(
         &json!({"schema": ds_command_kernel::layer_state::SCHEMA, "project": project, "document": document, "preferences": next, "op": {"kind": "catalog", "limit": 500}}),
     )?;
@@ -141,7 +150,11 @@ fn set(inputs: &Inputs, visible: bool) -> Result<Value, Failure> {
         .as_array()
         .into_iter()
         .flatten()
-        .filter(|row| row["id"].as_str().is_some_and(|id| wanted.iter().any(|w| w == id)))
+        .filter(|row| {
+            row["id"]
+                .as_str()
+                .is_some_and(|id| wanted.iter().any(|w| w == id))
+        })
         .cloned()
         .collect();
     Ok(json!({
@@ -159,7 +172,11 @@ fn set(inputs: &Inputs, visible: bool) -> Result<Value, Failure> {
 pub fn render(data: &Value) -> String {
     let mut out = format!(
         "{} {} canonical layers for {} · saved locally (revision {})\n",
-        if data["visible"].as_bool().unwrap_or(false) { "showed" } else { "hid" },
+        if data["visible"].as_bool().unwrap_or(false) {
+            "showed"
+        } else {
+            "hid"
+        },
         data["layers"].as_array().map_or(0, Vec::len),
         data["project"].as_str().unwrap_or("?"),
         data["revision"],
