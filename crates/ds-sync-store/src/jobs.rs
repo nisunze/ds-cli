@@ -19,6 +19,7 @@ impl Store {
     pub fn submit_job(&mut self, job: &Job, input: &[u8]) -> Result<Job> {
         if !compute_jobs::digest(&job.id)
             || !compute_jobs::digest(&job.input_sha256)
+            || !valid_input_tag(&job.engine, &job.input_tag)
             || job.owner.is_empty()
             || job.owner.len() > 512
             || !matches!(job.lane.as_str(), "stable" | "canary")
@@ -57,6 +58,26 @@ impl Store {
         let rows = statement.query_map(params![owner, lane, limit.clamp(1, 1000)], |r| {
             r.get::<_, String>(0)
         })?;
+        rows.map(|row| Ok(serde_json::from_str(&row?)?)).collect()
+    }
+    /// Stable newest-first keyset page over this owner's durable jobs.  The
+    /// cursor is the last `(created_at_ms,id)` returned; callers can walk past
+    /// unrelated engines without making old recoverable work disappear.
+    pub fn jobs_page(
+        &self,
+        owner: &str,
+        lane: &str,
+        before: Option<(u64, &str)>,
+        limit: usize,
+    ) -> Result<Vec<Job>> {
+        let (created, id) = before.unwrap_or((u64::MAX, "~"));
+        let mut statement = self.connection.prepare(
+            "SELECT row FROM compute_jobs WHERE owner=?1 AND lane=?2 AND (created<?3 OR (created=?3 AND id<?4)) ORDER BY created DESC,id DESC LIMIT ?5",
+        )?;
+        let rows = statement.query_map(
+            params![owner, lane, created, id, limit.clamp(1, 1000)],
+            |row| row.get::<_, String>(0),
+        )?;
         rows.map(|row| Ok(serde_json::from_str(&row?)?)).collect()
     }
     pub fn job(&self, owner: &str, lane: &str, id: &str) -> Result<Option<Job>> {
@@ -135,4 +156,57 @@ impl Store {
     pub fn job_result(&self, owner: &str, lane: &str, id: &str) -> Result<Option<Vec<u8>>> {
         Ok(self.connection.query_row("SELECT result FROM compute_jobs WHERE id=?1 AND owner=?2 AND lane=?3 AND phase='completed'",params![id,owner,lane],|r|r.get(0)).optional()?.flatten())
     }
+    /// The sealed request retained with a job, visible only to its native
+    /// owner/lane. Hosts use it to reconstruct a publication after restart;
+    /// it is never a caller-supplied file reference.
+    pub fn job_input(&self, owner: &str, lane: &str, id: &str) -> Result<Option<Vec<u8>>> {
+        self.connection
+            .query_row(
+                "SELECT input FROM compute_jobs WHERE id=?1 AND owner=?2 AND lane=?3",
+                params![id, owner, lane],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(Into::into)
+    }
+
+    /// True only while this exact leased worker is still entitled to commit.
+    /// Native engines use it for cooperative cancellation after `Cancel` or a
+    /// lease takeover; it does not change job ownership.
+    pub fn worker_still_current(
+        &self,
+        owner: &str,
+        lane: &str,
+        id: &str,
+        worker: &str,
+        now: u64,
+    ) -> Result<bool> {
+        let row: Option<String> = self
+            .connection
+            .query_row(
+                "SELECT row FROM compute_jobs WHERE id=?1 AND owner=?2 AND lane=?3",
+                params![id, owner, lane],
+                |row| row.get(0),
+            )
+            .optional()?;
+        Ok(row
+            .map(|row| serde_json::from_str::<Job>(&row))
+            .transpose()?
+            .is_some_and(|job| {
+                job.phase == Phase::Running
+                    && job.worker.as_deref() == Some(worker)
+                    && job.lease_until_ms > now
+            }))
+    }
+}
+
+fn valid_input_tag(engine: &compute_jobs::EngineKind, input_tag: &str) -> bool {
+    matches!(
+        (engine, input_tag),
+        (compute_jobs::EngineKind::FastLv, "ds.fast-lv.request/v1")
+            | (
+                compute_jobs::EngineKind::SolarPrepared,
+                "ds.solar.calculate.prepared/v1"
+            )
+    )
 }

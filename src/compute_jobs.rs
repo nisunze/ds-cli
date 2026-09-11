@@ -12,6 +12,16 @@ pub enum Phase {
     Cancelled,
 }
 
+/// The closed engine request admitted with a durable compute job.  It is
+/// persisted instead of inferred from a failed decoder, so a legacy endpoint
+/// can never silently become an authority for another engine.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum EngineKind {
+    FastLv,
+    SolarPrepared,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct Job {
@@ -19,6 +29,9 @@ pub struct Job {
     pub owner: String,
     pub lane: String,
     pub input_sha256: String,
+    pub engine: EngineKind,
+    /// Exact sealed input vocabulary admitted for this engine.
+    pub input_tag: String,
     pub phase: Phase,
     pub attempts: u32,
     pub created_at_ms: u64,
@@ -146,6 +159,8 @@ mod tests {
             owner: "owner".into(),
             lane: "stable".into(),
             input_sha256: "2".repeat(64),
+            engine: EngineKind::FastLv,
+            input_tag: "ds.fast-lv.request/v1".into(),
             phase: Phase::Queued,
             attempts: 0,
             created_at_ms: 1,
