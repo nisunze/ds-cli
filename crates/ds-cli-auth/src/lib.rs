@@ -1558,6 +1558,22 @@ impl LayerScopeFence {
     }
 }
 
+fn verify_restored_layer_identity(
+    fence: &LayerScopeFence,
+    uid: &str,
+    audience: &str,
+    project: &str,
+) -> Result<(), Failure> {
+    if uid != fence.uid || audience != fence.audience || project != fence.project {
+        return Err(Failure::conflict(
+            "project_context_changed",
+            "the restored native client differs from the fenced layer identity",
+        )
+        .remedy("repeat the layer request under the current native account and project"));
+    }
+    Ok(())
+}
+
 pub fn capture_layer_scope_fence(lane_value: &str) -> Result<LayerScopeFence, Failure> {
     let (identity, project) = probe_headless_identity(lane_value)?.ok_or_else(|| {
         Failure::unauthorized(
@@ -1694,6 +1710,12 @@ pub fn layer_reorder_fenced(
 ) -> Result<HeadlessLayerOrderReceipt, Failure> {
     let lane = Lane::parse(lane_value)?;
     if let Some((mut device, selected)) = restored_device_project(lane)? {
+        verify_restored_layer_identity(
+            fence,
+            device.context().uid(),
+            device.profile().credential_audience_sha256(),
+            selected.project_id(),
+        )?;
         verify_layer_scope_fence(lane_value, fence, fence.uid(), fence.project())?;
         if selected.project_id() != fence.project() {
             return Err(Failure::conflict(
@@ -1718,6 +1740,12 @@ pub fn layer_reorder_fenced(
     let mut client = Client::new(profile, NativeTransport, store);
     let user = require_restore_before_context(&mut client)?;
     let selected = load_selected_project(client.profile(), &user)?;
+    verify_restored_layer_identity(
+        fence,
+        user.uid(),
+        client.profile().credential_audience_sha256(),
+        selected.project_id(),
+    )?;
     verify_layer_scope_fence(lane_value, fence, fence.uid(), fence.project())?;
     if selected.project_id() != fence.project() {
         return Err(Failure::conflict(
