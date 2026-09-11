@@ -416,9 +416,12 @@ PDF rendering still uses the existing renderer.
 
 `ds report project export` produces individual transformer reports — prints
 included — with no browser, no room cache and no Desktop. It is the door a
-Linux server host calls, and the desktop's Report button reaches the same
-owner: the decisions are `ds-command-kernel::report_export`'s, the IO is
-`ds-web/crates/ds-report-host`'s, and the engine is the installed `ds-report`.
+Linux operator calls. Decisions and fingerprints come from
+`ds-command-kernel::report_export`; the shared native IO host is
+`ds-web/crates/ds-report-host`, and the engine is the installed `ds-report`.
+Desktop now uses the kernel's fingerprints, while its existing sidecar and
+publication pipeline still perform the desktop IO. Full IO unification is
+pending.
 
 ```bash
 ds report project export --out-dir ./reports --output json                        # every active saved transformer
@@ -449,7 +452,12 @@ every result in the kernel's stable order; a transformer the engine refused is
 one `error` row with its typed blockers, never the end of the batch. The
 command exits non-zero only when no transformer completed
 (`report_batch_failed`). Nothing here publishes: the receipts carry what a
-publication needs, and the durable store decides delivery.
+publication needs, but no publication row is enqueued by this command
+(`publication_enqueued: false`). Configuration and room receipts must keep
+the same principal, audience, lane and project throughout acquisition. A
+saved content digest mismatch refuses before computation. A completed report
+is promoted as one directory after every artifact and its receipt are flushed;
+interrupted private delivery scratch never becomes a partial final report.
 
 What is not headless yet: print context layers (survey, local, catalog,
 buildings, contours, project MV) are prepared by the desktop from its caches,

@@ -182,18 +182,7 @@ pub static COMMAND: Command = Command {
     path: &["report", "project", "export"],
     contract: 1,
     summary: "Produce transformer reports, prints included, headlessly.",
-    purpose: "\
-Restores the native user and produces, for its audience-fenced selected \
-project, each transformer's individual report with the installed reporter \
-engine: every geospatial and tabular output the project's policy names and \
-every named print output, rendered from the saved printing setups. The inputs \
-are governed — the reporter input receipt ds-brain mints beside the \
-configuration and each transformer's exact saved layers — so no browser, room \
-cache or Desktop is needed, and receipts carry the desktop's fingerprint and \
-room digest. Without --transformer the scope is every active saved \
-transformer. Independent transformers run under a bounded number of resident \
-engines; one failure is one batch row. No project, URL or action override is \
-accepted.",
+    purpose: "Export saved transformers from the native user's selected project using its governed configuration, saved layers and installed reporter. Includes data outputs and named print outputs from saved printing setups; no browser or Desktop is required. Scope defaults to all active transformers. Runs bounded parallel engines and verifies every artifact. Fences account, lane, audience and project across input reads. Delivers local files only, without enqueueing publication. External print context is not supplied; the engine reports omitted layers. Photo references require a media grant and currently refuse. Inspect each batch row and print warning before delivery.",
     chapter: Chapter::Reports,
     effect: Effect::LocalFileWrite,
     authority: Authority::HeadlessProject,
@@ -532,6 +521,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let publication_state = outcome.engine.publication_state().ok();
     output["out_dir"] = json!(out_dir.display().to_string());
     output["scope"] = scope;
+    output["publication_enqueued"] = json!(false);
     output["engine"] = json!({
         "engine_version": outcome.engine.engine_version,
         "build_manifest_sha256": outcome.engine.build_manifest_sha256,

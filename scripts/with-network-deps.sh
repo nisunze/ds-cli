@@ -72,7 +72,7 @@ if [[ "$(git -C "$web_checkout" remote get-url origin)" != *nisunze/ds-web.git ]
     echo "with-network-deps: $web_checkout is not the nisunze/ds-web checkout" >&2
     exit 66
 fi
-# The pin names the ds-web commit whose crates/ds-client-core is linked. The
+# The pin names the ds-web commit whose native client and report host are linked. The
 # sibling checkout may sit at a later commit as long as that crate's tree is
 # byte-identical — the same rule the desktop sidecar applies — so a docs or
 # scripts push to ds-web does not silence this gate.
@@ -80,16 +80,18 @@ if ! git -C "$web_checkout" cat-file -e "$expected_web_core_sha^{commit}" 2>/dev
     echo "with-network-deps: the pinned ds-client-core revision $expected_web_core_sha is unavailable in $web_checkout" >&2
     exit 66
 fi
-pinned_core_tree=$(git -C "$web_checkout" rev-parse "$expected_web_core_sha:crates/ds-client-core" 2>/dev/null || true)
-actual_core_tree=$(git -C "$web_checkout" rev-parse "HEAD:crates/ds-client-core" 2>/dev/null || true)
-if [[ -z "$pinned_core_tree" || "$pinned_core_tree" != "$actual_core_tree" ]]; then
-    echo "with-network-deps: ds-web's crates/ds-client-core differs from the pinned revision $expected_web_core_sha" >&2
-    exit 66
-fi
-if [[ -n "$(git -C "$web_checkout" status --porcelain -- crates/ds-client-core)" ]]; then
-    echo "with-network-deps: ds-web client core differs from its pinned commit" >&2
-    exit 66
-fi
+for native_crate in ds-client-core ds-report-host; do
+    pinned_core_tree=$(git -C "$web_checkout" rev-parse "$expected_web_core_sha:crates/$native_crate" 2>/dev/null || true)
+    actual_core_tree=$(git -C "$web_checkout" rev-parse "HEAD:crates/$native_crate" 2>/dev/null || true)
+    if [[ -z "$pinned_core_tree" || "$pinned_core_tree" != "$actual_core_tree" ]]; then
+        echo "with-network-deps: ds-web's $native_crate differs from the pinned revision $expected_web_core_sha" >&2
+        exit 66
+    fi
+    if [[ -n "$(git -C "$web_checkout" status --porcelain -- "crates/$native_crate")" ]]; then
+        echo "with-network-deps: ds-web's $native_crate has uncommitted inputs" >&2
+        exit 66
+    fi
+done
 if [[ ! -f "$command_kernel_checkout/Cargo.toml" ]]; then
     echo "with-network-deps: expected $command_kernel_checkout/Cargo.toml" >&2
     exit 66

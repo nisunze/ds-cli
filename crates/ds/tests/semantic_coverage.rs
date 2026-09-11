@@ -21,6 +21,11 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("server.cancel", "local_file_write", "headless_user"),
     ("server.result", "local_file_write", "headless_user"),
     (
+        "report.project.export",
+        "local_file_write",
+        "headless_project",
+    ),
+    (
         "design.features.select",
         "local_auth_state",
         "headless_project",

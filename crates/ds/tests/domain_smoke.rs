@@ -5124,7 +5124,10 @@ fn autoprocess_plan_answers_the_three_admissions_from_one_document() {
         "json",
     ]);
     assert_eq!(clocked["cadence"]["decision"], "wait");
-    assert_eq!(clocked["cadence"]["reason_key"], "autoprocess_forced_settle");
+    assert_eq!(
+        clocked["cadence"]["reason_key"],
+        "autoprocess_forced_settle"
+    );
 
     // A section the kernel does not answer is named, not silently dropped.
     let stray = root.join("stray.json");

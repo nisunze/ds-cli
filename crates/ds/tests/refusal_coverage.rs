@@ -255,6 +255,15 @@ fn codes_in_source(
         while let Some(at) = source[offset..].find(constructor) {
             let call = offset + at;
             offset = call + constructor.len();
+            // Match a whole type name: HostFailure has a code-first
+            // constructor, unlike the class-first contract Failure.
+            if source[..call]
+                .chars()
+                .next_back()
+                .is_some_and(|c| c.is_alphanumeric() || c == '_')
+            {
+                continue;
+            }
             let mut scan = &source[offset..];
             // `Failure::new` takes the class first; skip to the next argument
             // before reading the code.
@@ -485,6 +494,9 @@ fn wrapped() -> Failure {
     )
     .remedy("the remedy is not a code")
 }
+
+fn host_error() { HostFailure::new("host_literal", "message"); }
+fn unrelated() { DifferentFailure::new("unrelated", "not_a_code"); }
 
 fn through_a_const() -> Failure {
     Failure::conflict(PROJECT_CONTEXT_CHANGED.code, "the project changed")
