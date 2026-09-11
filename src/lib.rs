@@ -1399,6 +1399,14 @@ pub fn response_policy_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValu
     response_policy::evaluate(input).map_err(|error| wasm_bindgen::JsValue::from_str(&error))
 }
 
+/// Durable lifecycle decisions for host-held survey-photo bytes.
+pub mod survey_photo_outbox;
+#[cfg(feature = "wasm")]
+#[wasm_bindgen::prelude::wasm_bindgen(js_name = surveyPhotoOutboxStep)]
+pub fn survey_photo_outbox_step_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
+    survey_photo_outbox::evaluate(input).map_err(|error| wasm_bindgen::JsValue::from_str(&error))
+}
+
 pub mod project_config;
 #[cfg(feature = "wasm")]
 #[wasm_bindgen::prelude::wasm_bindgen(js_name = projectConfigAdmit)]
