@@ -1,6 +1,9 @@
 //! Portable native compute host shared by headless Server and Desktop.
 //! Domain lifecycle/admission belongs to the kernel; domain engines run only
 //! after their complete, durable input has been admitted.
+mod claim;
+pub use claim::decode_solar_server_submission;
+
 use base64::Engine;
 use ds_command_kernel::compute_jobs::{self, EngineKind, Event, Job, Phase};
 use ds_network::network::native_fast_lv::{
@@ -227,6 +230,9 @@ fn validate_provenance(
     if provenance.project_id != prepared.city.identity.project_id
         || provenance.root != prepared.city.identity.root
         || provenance.template_id != prepared.city.identity.city_id
+        || prepared.city.revision.source != "ds-brain"
+        || prepared.city.revision.revision.as_deref()
+            != Some(provenance.input_base_fingerprint.as_str())
         || !digest(&provenance.input_base_fingerprint)
         || !digest(&provenance.source_snapshot_sha256)
         || !uuid

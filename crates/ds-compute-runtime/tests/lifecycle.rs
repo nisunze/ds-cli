@@ -41,10 +41,10 @@ fn prepared_solar_request() -> Vec<u8> {
                 .to_string(),
         },
         SnapshotRevision {
-            source: "fixture".to_string(),
+            source: "ds-brain".to_string(),
             captured_at: "2026-08-08T00:00:00Z".to_string(),
             record_updated_at_ms: None,
-            revision: None,
+            revision: Some("a".repeat(64)),
         },
         RunOptions::default(),
         &snapshot,
@@ -189,6 +189,66 @@ fn valid_provenance() -> serde_json::Value {
 }
 
 #[test]
+fn server_submission_binds_existing_preparation_claim_to_exact_sealed_input() {
+    let mut envelope: serde_json::Value =
+        serde_json::from_slice(&prepared_solar_request()).unwrap();
+    envelope["schema_version"] = json!("ds.solar.server-submission/v1");
+    envelope["publication_claim"] = json!({
+        "schema_version": "ds-solar.prepared-publication-claim/v1",
+        "claim_kind": "server-revalidated-publication-handoff",
+        "project_id": "durable-server-test", "city_id": "aderm_bere",
+        "city_content_digest": envelope["prepared"]["city"]["content_digest"],
+        "prepared_input_digest": envelope["prepared"]["input_digest"],
+        "source_snapshot_sha256": "b".repeat(64),
+        "input_base_fingerprint": "a".repeat(64),
+        "snapshot_receipt_id": "550e8400-e29b-51d4-a716-446655440000",
+        "snapshot_receipt_expires_at": "2026-09-12T00:00:00Z"
+    });
+    let (input, provenance) =
+        runtime::decode_solar_server_submission(&serde_json::to_vec(&envelope).unwrap()).unwrap();
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("store.sqlite");
+    let job = runtime::submit_solar_with_provenance(
+        &path, "owner", "canary", "claim", &input, provenance,
+    )
+    .unwrap();
+    let sealed = runtime::open(&path)
+        .unwrap()
+        .job_input("owner", "canary", &job.id)
+        .unwrap()
+        .unwrap();
+    let sealed: serde_json::Value = serde_json::from_slice(&sealed).unwrap();
+    assert_eq!(
+        sealed["provenance"]["input_base_fingerprint"],
+        "a".repeat(64)
+    );
+    assert!(sealed.get("publication_claim").is_none());
+    for (field, value) in [
+        ("prepared_input_digest", "sha256:other".to_owned()),
+        ("city_content_digest", "sha256:other".to_owned()),
+        ("input_base_fingerprint", "c".repeat(64)),
+        ("project_id", "other".to_owned()),
+        ("city_id", "other".to_owned()),
+    ] {
+        let mut stale = envelope.clone();
+        stale["publication_claim"][field] = json!(value);
+        assert!(
+            runtime::decode_solar_server_submission(&serde_json::to_vec(&stale).unwrap()).is_err(),
+            "{field}"
+        );
+    }
+    envelope
+        .as_object_mut()
+        .unwrap()
+        .remove("publication_claim");
+    assert!(
+        runtime::decode_solar_server_submission(&serde_json::to_vec(&envelope).unwrap())
+            .unwrap_err()
+            .contains("claim_missing")
+    );
+}
+
+#[test]
 fn direct_submission_and_durable_replay_reject_invalid_snapshot_provenance() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("store.sqlite");
@@ -198,6 +258,10 @@ fn direct_submission_and_durable_replay_reject_invalid_snapshot_provenance() {
         ("root", "another-root"),
         ("template_id", "another-city"),
         ("input_base_fingerprint", "invalid"),
+        (
+            "input_base_fingerprint",
+            "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        ),
         ("source_snapshot_sha256", "invalid"),
         (
             "snapshot_receipt_id",
