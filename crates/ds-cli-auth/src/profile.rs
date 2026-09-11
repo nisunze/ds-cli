@@ -95,6 +95,9 @@ struct Entry {
     /// Saved Transformer Status selections. Membership is ds-brain's decision;
     /// this route is only how a headless caller reaches the same answer.
     design_selections: Tiles,
+    /// The seeding door: the reference catalogue and the derived buildings or
+    /// contours acquisition. Bundle bytes are not a route; the core pins them.
+    data_distribution: Tiles,
     provenance: Provenance,
 }
 
@@ -394,6 +397,9 @@ fn load_path(
         design_selections_method: entry.design_selections.method,
         design_selections_path: entry.design_selections.path,
         design_selections_actions: entry.design_selections.actions,
+        data_distribution_method: entry.data_distribution.method,
+        data_distribution_path: entry.data_distribution.path,
+        data_distribution_actions: entry.data_distribution.actions,
     })
     .map_err(|_| unsafe_catalog())
 }
@@ -460,6 +466,7 @@ mod tests {
                     "tiles": { "method": "POST", "path": "/api/v1/tiles", "actions": ["status", "preflight", "generate", "list", "add", "remove"] },
                     "project_report": { "method": "POST", "path": "/report", "actions": ["download_transfo", "list_compounded_reports", "transformer_inventory", "retire_transformer", "restore_transformer", "list_transformers_status"] },
                     "design_selections": {"method":"POST","path":"/api/v1/design/selections","actions":["list","get","save","archive","promote_task"]},
+                    "data_distribution": {"method":"POST","path":"/api/v1/data-distribution","actions":["list_datasets","query_print_context"]},
                     "provenance": { "source_revision": "abc123", "descriptor_sha256": "a".repeat(64) }
                 },
                 "canary": {
@@ -488,6 +495,7 @@ mod tests {
                     "tiles": { "method": "POST", "path": "/api/v1/tiles", "actions": ["status", "preflight", "generate", "list", "add", "remove"] },
                     "project_report": { "method": "POST", "path": "/report", "actions": ["download_transfo", "list_compounded_reports", "transformer_inventory", "retire_transformer", "restore_transformer", "list_transformers_status"] },
                     "design_selections": {"method":"POST","path":"/api/v1/design/selections","actions":["list","get","save","archive","promote_task"]},
+                    "data_distribution": {"method":"POST","path":"/api/v1/data-distribution","actions":["list_datasets","query_print_context"]},
                     "provenance": { "source_revision": "def456", "descriptor_sha256": "b".repeat(64) }
                 }
             }

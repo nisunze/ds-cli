@@ -24,6 +24,7 @@ pub use upload::weak_network_harness;
 #[cfg(unix)]
 use std::io::Write;
 use std::io::{self, BufRead, Read};
+use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use context::CredentialProvider;
@@ -50,6 +51,9 @@ pub use context::{
     AuthContext, CanonicalPrincipal, CredentialProviderKind, DeviceIdentity, MapProjectAddress,
     MapState, ProfileFence, ProviderIdentity, ProviderSelection, ProviderTarget, SelectedProject,
     SessionState, arbitrate_provider,
+};
+pub use ds_client_core::{
+    BundleDownloadReceipt, ContourParameters, DataDistributionRequest, PrintContextKind,
 };
 pub use ds_client_core::{
     CompoundedArchive, CompoundedArchiveLayout, CompoundedReportReceipt, CompoundedReportRequest,
@@ -3775,6 +3779,149 @@ impl HeadlessSolarProjectSession {
         };
         with_released_context_disposition(profile, &self.selected, result)
     }
+}
+
+/// The seeding door's own refusals, published beside the hosts that emit them.
+///
+/// No command declares these yet: the headless `ds data project-cache
+/// status|seed` commands of the context-seeding design land in a later slice
+/// and will declare them by reference. Until then `refusal_coverage.rs` names
+/// both codes as unreachable, and that entry is the reminder.
+pub const DATA_DISTRIBUTION_UNAVAILABLE_REFUSAL: Refusal = Refusal {
+    code: "data_distribution_unavailable",
+    when: "ds-brain's geographic data-distribution route could not answer: unreachable, past the gateway deadline, a server fault, or an answer outside its closed contract",
+    remedy: "retry without changing local state; a repeated refusal is a deployment or provider outage, not a request defect",
+};
+pub const REFERENCE_BUNDLE_DOWNLOAD_FAILED_REFUSAL: Refusal = Refusal {
+    code: "reference_bundle_download_failed",
+    when: "the published reference bundle could not be fetched from storage.googleapis.com, could not be written, or its bytes did not carry the catalogue row's size and SHA-256",
+    remedy: "retry the download; if the digest keeps failing the catalogue row is stale, so read the catalogue again before installing",
+};
+
+/// One data-distribution action against the fenced selected project: the
+/// reference catalogue, or one bounded derived print-context acquisition.
+/// There is deliberately no project, URL, action or credential override, and
+/// the billed `query_dataset` page read is not in the vocabulary at all.
+pub fn data_distribution(
+    lane_value: &str,
+    request: &DataDistributionRequest,
+) -> Result<Value, Failure> {
+    request.validate().map_err(map_client)?;
+    let lane = Lane::parse(lane_value)?;
+    if let Some((mut device, selected)) = restored_device_project(lane)? {
+        return device
+            .data_distribution(selected.project_id(), request)
+            .map_err(map_data_distribution);
+    }
+    let profile = profile::load(lane)?;
+    let store = NativeRefreshStore::open()?;
+    let mut client = Client::new(profile, NativeTransport, store);
+    let user = require_restore_before_context(&mut client)?;
+    let selected = load_selected_project(client.profile(), &user)?;
+    match client.data_distribution(selected.project_id(), request, now()) {
+        Err(error) if is_data_distribution_outage(&error) => Err(map_data_distribution(error)),
+        result => with_released_context_disposition(client.profile(), &selected, result),
+    }
+}
+
+/// The route itself could not answer — as opposed to the credential refresh
+/// ahead of it, whose failures keep their auth codes. The core's messages for
+/// this route all name it, which is what tells the two apart.
+fn is_data_distribution_outage(error: &ClientError) -> bool {
+    matches!(
+        error.kind(),
+        ErrorKind::Transient | ErrorKind::UnreadableResponse
+    ) && error
+        .to_string()
+        .to_ascii_lowercase()
+        .contains("data distribution")
+}
+
+fn map_data_distribution(error: ClientError) -> Failure {
+    if !is_data_distribution_outage(&error) {
+        return map_client(error);
+    }
+    let owner_message = error.to_string();
+    let mut message = owner_message.clone();
+    let mut detail = json!({ "owner_message": owner_message });
+    if let Some(refusal) = error.service_refusal() {
+        message = match refusal.message() {
+            Some(sentence) => format!("{message} (HTTP {}): {sentence}", refusal.status()),
+            None => format!("{message} (HTTP {})", refusal.status()),
+        };
+        detail["http_status"] = json!(refusal.status());
+        if let Some(code) = refusal.code() {
+            detail["service_code"] = json!(code);
+        }
+        if let Some(sentence) = refusal.message() {
+            detail["service_message"] = json!(sentence);
+        }
+    }
+    Failure::unavailable(DATA_DISTRIBUTION_UNAVAILABLE_REFUSAL.code, message)
+        .remedy(DATA_DISTRIBUTION_UNAVAILABLE_REFUSAL.remedy)
+        .detail(detail)
+}
+
+/// Fetch one published reference bundle to `dest`, admitted only when its
+/// bytes carry the catalogue row's exact size and SHA-256.
+///
+/// The URL is pinned by the core to one unsigned object on
+/// `storage.googleapis.com` and the transport attaches no DS credential; the
+/// lane is required so the fetch runs only for a machine that holds a valid
+/// packaged profile and a signed-in native identity — the same fence the
+/// catalogue read that named the bundle went through. A refused or failed
+/// fetch leaves nothing at `dest`.
+pub fn download_reference_bundle(
+    lane_value: &str,
+    url: &str,
+    expected_sha256: &str,
+    expected_bytes: u64,
+    dest: &Path,
+) -> Result<(), Failure> {
+    let call = ds_client_core::BundleDownloadCall::new(url, expected_sha256, expected_bytes)
+        .map_err(map_client)?;
+    let lane = Lane::parse(lane_value)?;
+    let _ = profile::load(lane)?;
+    probe_headless_identity(lane.token())?.ok_or_else(|| {
+        Failure::unauthorized(
+            "headless_signed_out",
+            "no native user is signed in for this lane and profile",
+        )
+        .remedy("run ds auth login --email <address>")
+        .next("ds auth status")
+    })?;
+    let failed = |message: String| {
+        Failure::unavailable(REFERENCE_BUNDLE_DOWNLOAD_FAILED_REFUSAL.code, message)
+            .remedy(REFERENCE_BUNDLE_DOWNLOAD_FAILED_REFUSAL.remedy)
+    };
+    let mut file = open_bundle_destination(dest)
+        .map_err(|_| failed("the reference bundle destination could not be created".into()))?;
+    let outcome = ds_client_core::download_bundle(&mut NativeTransport, call, &mut file)
+        .map_err(|error| failed(error.to_string()))
+        .and_then(|receipt| {
+            file.sync_all()
+                .map(|_| receipt)
+                .map_err(|_| failed("the reference bundle could not be committed to disk".into()))
+        });
+    drop(file);
+    match outcome {
+        Ok(_) => Ok(()),
+        Err(failure) => {
+            let _ = std::fs::remove_file(dest);
+            Err(failure)
+        }
+    }
+}
+
+fn open_bundle_destination(dest: &Path) -> io::Result<std::fs::File> {
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create(true).truncate(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    options.open(dest)
 }
 
 pub use ds_client_core::PrintingRequest;

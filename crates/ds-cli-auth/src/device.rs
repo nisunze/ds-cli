@@ -699,6 +699,13 @@ impl DeviceSession {
     ) -> Result<ds_client_core::DesignSelectionAnswer, ClientError> {
         fixed_device_call!(self, design_selections, project, request)
     }
+    pub fn data_distribution(
+        &mut self,
+        project: &str,
+        request: &ds_client_core::DataDistributionRequest,
+    ) -> Result<serde_json::Value, ClientError> {
+        fixed_device_call!(self, data_distribution, project, request)
+    }
     pub fn transformer_retirement(
         &mut self,
         project: &str,

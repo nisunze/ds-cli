@@ -1173,6 +1173,12 @@ mod tests {
                 "archive".to_owned(),
                 "promote_task".to_owned(),
             ],
+            data_distribution_method: "POST".to_owned(),
+            data_distribution_path: "/api/v1/data-distribution".to_owned(),
+            data_distribution_actions: vec![
+                "list_datasets".to_owned(),
+                "query_print_context".to_owned(),
+            ],
         })
         .unwrap()
     }

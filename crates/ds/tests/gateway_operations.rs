@@ -36,14 +36,14 @@ use ds_client_core::gateway::{
     GatewayOperation, OPERATIONS, PROFILE_CONSTANTS_WITHOUT_REGISTRY_ENTRY, operation,
 };
 use ds_client_core::{
-    CLIENT_PROFILE_SCHEMA, ClientProfile, ClientProfileInput, DESIGN_SELECTIONS_ACTIONS,
-    DeploymentLane, LAYERS_ACTIONS, PRINTING_ACTIONS, PROCESSING_LANE_HEADER, PROJECT_DATA_ACTIONS,
-    PROJECT_FORM_EDITOR_ACTION, PROJECT_FORMS_ACTION, PROJECT_REPORT_ACTIONS, ProfileError,
-    SOLAR_SNAPSHOT_ACTION, STYLES_ACTION, SURVEY_CONTROL_ROUTES, SURVEY_ENTRIES_CHANGES_METHOD,
-    SURVEY_ENTRIES_CHANGES_PATH, SURVEY_ENTRIES_SELECT_METHOD, SURVEY_ENTRIES_SELECT_PATH,
-    SURVEY_ENTRY_CREATE_OPERATION, SURVEY_QUERY_METHOD, SURVEY_QUERY_PATH, TILES_ACTIONS,
-    TRANSFORMER_CONTEXT_ACTION, TRANSFORMER_CONTEXT_FIELDS, TRANSFORMER_CONTEXT_METHOD,
-    TRANSFORMER_CONTEXT_PATH,
+    CLIENT_PROFILE_SCHEMA, ClientProfile, ClientProfileInput, DATA_DISTRIBUTION_ACTIONS,
+    DESIGN_SELECTIONS_ACTIONS, DeploymentLane, LAYERS_ACTIONS, PRINTING_ACTIONS,
+    PROCESSING_LANE_HEADER, PROJECT_DATA_ACTIONS, PROJECT_FORM_EDITOR_ACTION, PROJECT_FORMS_ACTION,
+    PROJECT_REPORT_ACTIONS, ProfileError, SOLAR_SNAPSHOT_ACTION, STYLES_ACTION,
+    SURVEY_CONTROL_ROUTES, SURVEY_ENTRIES_CHANGES_METHOD, SURVEY_ENTRIES_CHANGES_PATH,
+    SURVEY_ENTRIES_SELECT_METHOD, SURVEY_ENTRIES_SELECT_PATH, SURVEY_ENTRY_CREATE_OPERATION,
+    SURVEY_QUERY_METHOD, SURVEY_QUERY_PATH, TILES_ACTIONS, TRANSFORMER_CONTEXT_ACTION,
+    TRANSFORMER_CONTEXT_FIELDS, TRANSFORMER_CONTEXT_METHOD, TRANSFORMER_CONTEXT_PATH,
 };
 
 /// Every registry operation `ds` can issue, and which of its typed calls does.
@@ -66,6 +66,10 @@ const CLI_ISSUED: &[(&str, &str)] = &[
     ("domains.tiles.action", "ds tile"),
     ("domains.solar.desktop_snapshot", "ds solar"),
     ("domains.printing.list", "ds map print"),
+    (
+        "domains.data_distribution.action",
+        "ds-cli-auth data_distribution (headless seeding host; its commands land in a later slice)",
+    ),
 ];
 
 fn op(id: &str) -> &'static GatewayOperation {
@@ -130,6 +134,8 @@ fn profile_from_registry(lane: DeploymentLane, gateway_origin: &str) -> ClientPr
         route("domains.survey_entries.create");
     let (design_selections_method, design_selections_path) =
         route("domains.design_collaboration.selections");
+    let (data_distribution_method, data_distribution_path) =
+        route("domains.data_distribution.action");
 
     ClientProfileInput {
         schema_version: CLIENT_PROFILE_SCHEMA.to_owned(),
@@ -205,6 +211,11 @@ fn profile_from_registry(lane: DeploymentLane, gateway_origin: &str) -> ClientPr
         // The registry declares this vocabulary too; it is asserted separately
         // in `the_action_vocabularies_the_cli_may_send_are_declared`.
         design_selections_actions: DESIGN_SELECTIONS_ACTIONS.map(str::to_owned).to_vec(),
+        data_distribution_method,
+        data_distribution_path,
+        // The registry declares this vocabulary too; it is asserted separately
+        // in `the_action_vocabularies_the_cli_may_send_are_declared`.
+        data_distribution_actions: DATA_DISTRIBUTION_ACTIONS.map(str::to_owned).to_vec(),
     }
 }
 
@@ -261,6 +272,9 @@ fn a_drifted_registry_route_is_refused() {
         }),
         ("auth_device_revoke_path_template", |input| {
             input.auth_device_revoke_path_template = "/api/v1/auth/devices".to_owned()
+        }),
+        ("data_distribution_path", |input| {
+            input.data_distribution_path = "/api/v1/data_distribution".to_owned()
         }),
     ];
     for (field, drift) in cases {
@@ -337,6 +351,14 @@ fn the_action_vocabularies_the_cli_may_send_are_declared() {
         op("domains.design_collaboration.selections").actions,
         &DESIGN_SELECTIONS_ACTIONS[..]
     );
+    // The seeding door sends the catalogue read and the derived acquisition
+    // and nothing else: the billed page query and publication stay browser
+    // surfaces.
+    let distribution = op("domains.data_distribution.action");
+    assert_eq!(distribution.actions, &DATA_DISTRIBUTION_ACTIONS[..]);
+    assert!(!distribution.allows_action("query_dataset"));
+    assert!(!distribution.allows_action("publish_dataset"));
+    assert_eq!(distribution.timeout_s, 180);
     assert_eq!(op("domains.styles.update").actions, &[STYLES_ACTION]);
     assert_eq!(
         op("domains.solar.desktop_snapshot").actions,

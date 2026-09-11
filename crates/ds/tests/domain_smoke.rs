@@ -4444,13 +4444,18 @@ fn design_lv_project_export_refuses_an_existing_artifact_before_auth_or_desktop(
                 "path": "/api/v1/design/selections",
                 "actions": ["list", "get", "save", "archive", "promote_task"]
             },
+            "data_distribution": {
+                "method": "POST",
+                "path": "/api/v1/data-distribution",
+                "actions": ["list_datasets", "query_print_context"]
+            },
             "provenance": { "source_revision": "abc123", "descriptor_sha256": digest }
         })
     };
     std::fs::write(
         &profile_path,
         serde_json::to_vec(&json!({
-            "schema_version": "ds.native-client-profiles/v20",
+            "schema_version": "ds.native-client-profiles/v21",
             "development": true,
             "profiles": {
                 "stable": profile(

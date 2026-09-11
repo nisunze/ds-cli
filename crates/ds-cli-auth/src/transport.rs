@@ -1,6 +1,6 @@
 //! Fixed-origin ureq adapter for ds-client-core's closed calls.
 
-use std::io::Read;
+use std::io::{Read, Write};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -627,6 +627,61 @@ impl Transport for NativeTransport {
         bounded(response, call.response_limit())
     }
 
+    fn data_distribution(
+        &mut self,
+        call: ds_client_core::DataDistributionCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        debug_assert_eq!(call.method(), "POST");
+        debug_assert_eq!(call.path(), "/api/v1/data-distribution");
+        debug_assert_eq!(call.timeout_seconds(), 180);
+        let (request_id, action_id) = correlation_headers();
+        let mut bearer = format!("Bearer {}", call.bearer_token());
+        let body = call.body();
+        let url = data_distribution_url(call.gateway_origin());
+        let result = ureq::post(url)
+            .header("Accept", call.content_type())
+            .header("Content-Type", call.content_type())
+            .header("X-App-Id", call.client_id())
+            .header("X-Request-Id", &request_id)
+            .header("X-DS-Action-Id", &action_id)
+            .header("X-User-Email", call.canonical_email())
+            .header("x-api-key", call.gateway_api_key())
+            .header("Authorization", &bearer)
+            .header("X-Forwarded-Authorization", &bearer)
+            .config()
+            .max_redirects(0)
+            .http_status_as_error(false)
+            .timeout_connect(Some(CONNECT_TIMEOUT))
+            .timeout_global(Some(Duration::from_secs(call.timeout_seconds())))
+            .build()
+            .send(body.as_bytes());
+        bearer.zeroize();
+        let response = result.map_err(classify)?;
+        bounded(response, call.response_limit())
+    }
+
+    /// One public reference-bundle object, streamed into the caller's sink.
+    ///
+    /// This call carries NO DS credential: no bearer, api key, user email or
+    /// app id, and no correlation ids either — the object is public and the
+    /// origin is not ours, so nothing of ours travels with the request. The
+    /// core pinned the host before this adapter saw the URL, and the bytes are
+    /// verified by the core (`ds_client_core::download_bundle`), not here.
+    fn download_bundle(
+        &mut self,
+        call: ds_client_core::BundleDownloadCall<'_>,
+        sink: &mut dyn Write,
+    ) -> Result<(), TransportError> {
+        debug_assert_eq!(call.method(), "GET");
+        fetch_bundle(
+            call.url(),
+            BundleOrigin::Storage,
+            call.response_limit(),
+            call.timeout_seconds(),
+            sink,
+        )
+    }
+
     fn design_selections(
         &mut self,
         call: ds_client_core::DesignSelectionsCall<'_>,
@@ -807,6 +862,65 @@ fn tiles_url(origin: &str) -> String {
     format!("{origin}{}", ds_client_core::TILES_PATH)
 }
 
+fn data_distribution_url(origin: &str) -> String {
+    format!("{origin}{}", ds_client_core::DATA_DISTRIBUTION_PATH)
+}
+
+/// Where a bundle `GET` may go. Production names only the TLS storage host
+/// the core pinned; tests name a scripted loopback listener, which is the one
+/// thing this adapter can do that production cannot.
+#[derive(Clone, Copy)]
+enum BundleOrigin {
+    Storage,
+    #[cfg(test)]
+    Loopback,
+}
+
+/// The slice handed to the sink per read. Bounded memory: a bundle is never
+/// held whole.
+const BUNDLE_READ_BYTES: usize = 64 * 1024;
+
+/// Stream one `GET` body into `sink`, at most `limit` bytes. Redirects are
+/// off — a redirect could move the fetch to an origin nobody reviewed — and a
+/// status other than 200 is a refusal with nothing written.
+fn fetch_bundle(
+    url: &str,
+    origin: BundleOrigin,
+    limit: u64,
+    timeout_seconds: u64,
+    sink: &mut dyn Write,
+) -> Result<(), TransportError> {
+    let agent = ureq::Agent::config_builder()
+        .max_redirects(0)
+        .http_status_as_error(false)
+        .https_only(matches!(origin, BundleOrigin::Storage))
+        .timeout_connect(Some(CONNECT_TIMEOUT))
+        .timeout_global(Some(Duration::from_secs(timeout_seconds)))
+        .build()
+        .new_agent();
+    let mut response = agent
+        .get(url)
+        .header("Accept", "application/octet-stream")
+        .call()
+        .map_err(classify)?;
+    if response.status().as_u16() != 200 {
+        return Err(TransportError::Unreachable);
+    }
+    let mut reader = response.body_mut().with_config().limit(limit).reader();
+    let mut buffer = [0u8; BUNDLE_READ_BYTES];
+    loop {
+        let read = reader
+            .read(&mut buffer)
+            .map_err(|_| TransportError::Unreachable)?;
+        if read == 0 {
+            break;
+        }
+        sink.write_all(&buffer[..read])
+            .map_err(|_| TransportError::Unreachable)?;
+    }
+    sink.flush().map_err(|_| TransportError::Unreachable)
+}
+
 fn project_report_url(origin: &str) -> String {
     format!("{origin}{}", ds_client_core::PROJECT_REPORT_PATH)
 }
@@ -880,6 +994,143 @@ fn correlation_headers() -> (String, String) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::{BufRead, BufReader};
+    use std::net::TcpListener;
+
+    /// One scripted loopback `GET` answer. Returns the port and the thread that
+    /// yields the request line and the lower-cased header names it saw.
+    fn serve_once(
+        status: u16,
+        body: Vec<u8>,
+    ) -> (u16, std::thread::JoinHandle<(String, Vec<String>)>) {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind loopback");
+        let port = listener.local_addr().expect("local addr").port();
+        let worker = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("one request");
+            let mut reader = BufReader::new(stream.try_clone().expect("clone"));
+            let mut request_line = String::new();
+            reader.read_line(&mut request_line).expect("request line");
+            let mut names = Vec::new();
+            loop {
+                let mut line = String::new();
+                reader.read_line(&mut line).expect("header line");
+                if line.trim().is_empty() {
+                    break;
+                }
+                names.push(
+                    line.split(':')
+                        .next()
+                        .unwrap_or_default()
+                        .trim()
+                        .to_ascii_lowercase(),
+                );
+            }
+            let head = format!(
+                "HTTP/1.1 {status} X\r\nContent-Length: {}\r\nContent-Type: application/octet-stream\r\nConnection: close\r\n\r\n",
+                body.len()
+            );
+            stream.write_all(head.as_bytes()).expect("head");
+            stream.write_all(&body).expect("body");
+            stream.flush().expect("flush");
+            (request_line, names)
+        });
+        (port, worker)
+    }
+
+    /// Mirrors `upload::tests::a_storage_session_carries_no_ds_credential`:
+    /// the bundle host is not ours, so nothing of ours travels with the GET.
+    #[test]
+    fn a_bundle_download_carries_no_ds_credential() {
+        let body = b"a national reference bundle".to_vec();
+        let (port, worker) = serve_once(200, body.clone());
+        let mut sink = Vec::new();
+        fetch_bundle(
+            &format!("http://127.0.0.1:{port}/edcl/reference/roads.geojsonl.gz"),
+            BundleOrigin::Loopback,
+            body.len() as u64 + 1,
+            30,
+            &mut sink,
+        )
+        .expect("the scripted object streams");
+        let (request_line, names) = worker.join().expect("server thread");
+        assert_eq!(sink, body);
+        assert!(
+            request_line.starts_with("GET /edcl/reference/roads.geojsonl.gz HTTP/1.1"),
+            "{request_line}"
+        );
+        for forbidden in [
+            "authorization",
+            "x-forwarded-authorization",
+            "x-api-key",
+            "x-user-email",
+            "x-app-id",
+            "x-ds-processing-lane",
+            "x-request-id",
+            "x-ds-action-id",
+            "cookie",
+        ] {
+            assert!(
+                !names.iter().any(|name| name == forbidden),
+                "{forbidden} must never reach the bundle host"
+            );
+        }
+    }
+
+    #[test]
+    fn a_bundle_download_refuses_a_non_200_answer_and_writes_nothing() {
+        let (port, worker) = serve_once(404, b"<xml>NoSuchKey</xml>".to_vec());
+        let mut sink = Vec::new();
+        let refused = fetch_bundle(
+            &format!("http://127.0.0.1:{port}/edcl/reference/missing.geojsonl.gz"),
+            BundleOrigin::Loopback,
+            1024,
+            30,
+            &mut sink,
+        );
+        let _ = worker.join();
+        assert_eq!(refused, Err(TransportError::Unreachable));
+        assert!(sink.is_empty());
+    }
+
+    /// Production names only the TLS storage origin: a plaintext URL is
+    /// refused before any socket opens, so the host pin cannot be downgraded.
+    #[test]
+    fn a_bundle_download_never_leaves_tls_in_production() {
+        let mut sink = Vec::new();
+        assert_eq!(
+            fetch_bundle(
+                "http://127.0.0.1:9/edcl/reference/roads.geojsonl.gz",
+                BundleOrigin::Storage,
+                16,
+                5,
+                &mut sink,
+            ),
+            Err(TransportError::Unreachable)
+        );
+        assert!(sink.is_empty());
+    }
+
+    #[test]
+    fn data_distribution_wire_target_and_limits_are_fixed() {
+        assert_eq!(
+            data_distribution_url("https://fixture.ue.gateway.dev"),
+            "https://fixture.ue.gateway.dev/api/v1/data-distribution"
+        );
+        assert_eq!(ds_client_core::DATA_DISTRIBUTION_METHOD, "POST");
+        assert_eq!(ds_client_core::DATA_DISTRIBUTION_TIMEOUT_SECONDS, 180);
+        assert_eq!(
+            ds_client_core::DATA_DISTRIBUTION_RESPONSE_LIMIT,
+            32 * 1024 * 1024
+        );
+        assert_eq!(
+            ds_client_core::DATA_DISTRIBUTION_ACTIONS,
+            ["list_datasets", "query_print_context"]
+        );
+        assert_eq!(
+            ds_client_core::BUNDLE_DOWNLOAD_HOST,
+            "storage.googleapis.com"
+        );
+    }
 
     #[test]
     fn correlation_values_are_fresh_bounded_and_nonsecret() {

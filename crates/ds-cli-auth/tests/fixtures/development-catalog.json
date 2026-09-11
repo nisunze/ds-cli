@@ -1,5 +1,5 @@
 {
-  "schema_version": "ds.native-client-profiles/v20",
+  "schema_version": "ds.native-client-profiles/v21",
   "development": true,
   "profiles": {
     "stable": {
@@ -93,6 +93,11 @@
         "method": "POST",
         "path": "/api/v1/design/selections",
         "actions": ["list", "get", "save", "archive", "promote_task"]
+      },
+      "data_distribution": {
+        "method": "POST",
+        "path": "/api/v1/data-distribution",
+        "actions": ["list_datasets", "query_print_context"]
       },
       "project_report": {
         "method": "POST",
@@ -248,6 +253,11 @@
         "method": "POST",
         "path": "/api/v1/design/selections",
         "actions": ["list", "get", "save", "archive", "promote_task"]
+      },
+      "data_distribution": {
+        "method": "POST",
+        "path": "/api/v1/data-distribution",
+        "actions": ["list_datasets", "query_print_context"]
       },
       "project_report": {
         "method": "POST",
