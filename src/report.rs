@@ -162,6 +162,103 @@ enum Command {
         lifecycle: Option<String>,
         groups: Vec<Group>,
     },
+    /// How a compounded archive is laid out — the level vocabulary, its legacy
+    /// spelling, and the keys an operator reads it under.
+    ArchiveLayout {
+        #[serde(default)]
+        layout: ArchiveLayout,
+    },
+    /// What is this artifact called? One answer for a local outbox file and for
+    /// a signed storage locator.
+    ArtifactName {
+        #[serde(default)]
+        locator: String,
+    },
+    /// What are one version's artifacts, and in what order are they read?
+    ArtifactGroups {
+        #[serde(default)]
+        locators: Vec<String>,
+    },
+    /// What is one stored version called, inside and out?
+    CombinedEntryNaming {
+        #[serde(default)]
+        display_name: String,
+        #[serde(default)]
+        version_label: String,
+        #[serde(default)]
+        prefix: String,
+    },
+}
+
+/// The archive layout as a registry entry or a dialog carries it.
+///
+/// Two spellings describe one choice: `file_level` is current, and
+/// `transformer_grouping` is the legacy twin older archives were written with.
+/// Both, plus the default, were folded in one expression inside a Svelte
+/// component — so an archive written by the command line and one written by the
+/// dialog could be described to an operator under different words. The fold
+/// lives here now, and it answers in keys.
+#[derive(Clone, Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ArchiveLayout {
+    #[serde(default)]
+    pub file_level: Option<String>,
+    /// Legacy spelling accepted for archives and clients written before
+    /// `file_level`.
+    #[serde(default)]
+    pub transformer_grouping: Option<String>,
+    #[serde(default)]
+    pub combine_per_district: Option<bool>,
+    #[serde(default)]
+    pub combine_per_group: Option<bool>,
+}
+
+/// Every level a compounded archive may nest to, in nesting order. `flat` and
+/// `district_sector` are the legacy twin's spellings of the ends of the same
+/// scale.
+pub const ARCHIVE_LEVELS: &[&str] = &["root", "district", "sector", "district_sector", "flat"];
+
+/// The label key a level is read under. Two levels deliberately share one:
+/// `district_sector` IS a sector-level archive under the legacy spelling, and
+/// anything this module does not recognise is the default, transformer.
+pub fn archive_level_key(level: &str) -> &'static str {
+    match level {
+        "root" => "pctl_layout_root",
+        "district" => "pctl_layout_district",
+        "sector" | "district_sector" => "pctl_layout_sector",
+        _ => "pctl_layout_transformer",
+    }
+}
+
+impl ArchiveLayout {
+    /// The level this layout names: the current spelling, then the legacy twin,
+    /// then the default. One expression, one answer.
+    pub fn level(&self) -> &str {
+        self.file_level
+            .as_deref()
+            .filter(|value| !value.is_empty())
+            .or(self
+                .transformer_grouping
+                .as_deref()
+                .filter(|value| !value.is_empty()))
+            .unwrap_or("transformer")
+    }
+
+    pub fn describe(&self) -> serde_json::Value {
+        let level = self.level();
+        let level_key = archive_level_key(level);
+        let combine_per_district = self.combine_per_district == Some(true);
+        serde_json::json!({
+            "level": level,
+            "level_key": level_key,
+            "combine_per_district": combine_per_district,
+            "combine_per_group": self.combine_per_group == Some(true),
+            // The phrase the operator reads: the level alone, or the
+            // per-district phrase taking that level as its parameter.
+            "label_key": if combine_per_district { "pctl_layout_per_district" } else { level_key },
+            "label_level_key": if combine_per_district { Some(level_key) } else { None },
+        })
+    }
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -443,6 +540,32 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
             }
             serde_json::json!({"groups":output})
         }
+        Command::ArchiveLayout { layout } => layout.describe(),
+        Command::ArtifactName { locator } => {
+            let filename = crate::report_formats::artifact_filename(&locator);
+            let opens_as_pdf = crate::report_formats::artifact_opens_as_pdf(&filename);
+            let kind = crate::report_formats::artifact_kind(&filename);
+            serde_json::json!({"filename": filename, "opens_as_pdf": opens_as_pdf, "kind": kind})
+        }
+        Command::ArtifactGroups { locators } => {
+            let groups: Vec<serde_json::Value> = crate::report_formats::artifact_groups(&locators)
+                .into_iter()
+                .map(|(kind, items)| serde_json::json!({"kind": kind, "items": items}))
+                .collect();
+            serde_json::json!({ "groups": groups })
+        }
+        Command::CombinedEntryNaming {
+            display_name,
+            version_label,
+            prefix,
+        } => {
+            let (label, folder, archive_name) = crate::report_formats::combined_entry_naming(
+                &display_name,
+                &version_label,
+                &prefix,
+            );
+            serde_json::json!({"label": label, "folder": folder, "archive_name": archive_name})
+        }
     };
     serde_json::to_string(&serde_json::json!({"schema":"ds.report.command/v1","result":result}))
         .map_err(|e| e.to_string())
@@ -455,6 +578,180 @@ pub fn report_command_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Five level tokens, four labels, one legacy twin and one default — the
+    /// whole vocabulary, asserted as a table so a new spelling has to be added
+    /// here before it can be read anywhere.
+    #[test]
+    fn the_archive_layout_vocabulary_is_five_tokens_and_four_labels() {
+        let describe = |value: serde_json::Value| -> serde_json::Value {
+            let request = serde_json::json!({"command":"archive_layout","layout":value});
+            let reply: serde_json::Value =
+                serde_json::from_str(&evaluate(request.to_string().as_bytes()).unwrap()).unwrap();
+            reply["result"].clone()
+        };
+        for (layout, level, key) in [
+            (
+                serde_json::json!({"file_level":"root"}),
+                "root",
+                "pctl_layout_root",
+            ),
+            (
+                serde_json::json!({"file_level":"district"}),
+                "district",
+                "pctl_layout_district",
+            ),
+            (
+                serde_json::json!({"file_level":"sector"}),
+                "sector",
+                "pctl_layout_sector",
+            ),
+            (
+                serde_json::json!({"transformer_grouping":"district_sector"}),
+                "district_sector",
+                "pctl_layout_sector",
+            ),
+            (
+                serde_json::json!({"file_level":"transformer"}),
+                "transformer",
+                "pctl_layout_transformer",
+            ),
+            // The legacy twin's own flat spelling and the empty layout both
+            // land on the default, exactly as the archive registry reads them.
+            (
+                serde_json::json!({"transformer_grouping":"flat"}),
+                "flat",
+                "pctl_layout_transformer",
+            ),
+            (
+                serde_json::json!({}),
+                "transformer",
+                "pctl_layout_transformer",
+            ),
+        ] {
+            let answer = describe(layout);
+            assert_eq!(answer["level"], level);
+            assert_eq!(answer["level_key"], key);
+            assert_eq!(answer["label_key"], key);
+            assert_eq!(answer["label_level_key"], serde_json::Value::Null);
+        }
+        // The current spelling wins over the legacy twin when both are present.
+        let both = describe(
+            serde_json::json!({"file_level":"root","transformer_grouping":"district_sector"}),
+        );
+        assert_eq!(both["level"], "root");
+        // Combining per district wraps the level rather than replacing it.
+        let combined =
+            describe(serde_json::json!({"file_level":"sector","combine_per_district":true}));
+        assert_eq!(combined["label_key"], "pctl_layout_per_district");
+        assert_eq!(combined["label_level_key"], "pctl_layout_sector");
+        assert_eq!(combined["combine_per_district"], true);
+        assert!(ARCHIVE_LEVELS.contains(&"district_sector"));
+        // The artifact name rides the same command surface, so a card and a
+        // headless caller ask one question of one owner.
+        let reply: serde_json::Value = serde_json::from_str(
+            &evaluate(
+                serde_json::json!({"command":"artifact_name","locator":"https://h/v0/b/x/o/a%2Fb.xlsx?alt=media"})
+                    .to_string()
+                    .as_bytes(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(reply["result"]["filename"], "b.xlsx");
+        assert_eq!(reply["result"]["opens_as_pdf"], false);
+        let reply: serde_json::Value = serde_json::from_str(
+            &evaluate(
+                serde_json::json!({"command":"artifact_name","locator":"https://h/v0/b/x/o/a%2FB.PDF?alt=media"})
+                    .to_string()
+                    .as_bytes(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(reply["result"]["filename"], "B.PDF");
+        assert_eq!(reply["result"]["opens_as_pdf"], true);
+        assert_eq!(reply["result"]["kind"], "other");
+    }
+
+    #[test]
+    fn a_version_reads_its_files_under_one_vocabulary_in_one_order() {
+        let command = |value: serde_json::Value| -> serde_json::Value {
+            serde_json::from_str(&evaluate(value.to_string().as_bytes()).unwrap()).unwrap()
+        };
+        // `.shp.zip` is a shapefile; a plain `.zip` is an archive. The browser
+        // drew that line itself, beside the colours it drew it for.
+        for (locator, kind) in [
+            ("a/b.xlsx", "excel"),
+            ("a/b.XLS", "excel"),
+            ("a/b.shp.zip", "shapefile"),
+            ("a/b.shp.7z", "shapefile"),
+            ("a/b.kmz", "kmz"),
+            ("a/b.gpkg", "gpkg"),
+            ("a/b.zip", "zip"),
+            ("a/b.pdf", "other"),
+            ("a/b", "other"),
+        ] {
+            let reply = command(serde_json::json!({"command":"artifact_name","locator":locator}));
+            assert_eq!(reply["result"]["kind"], kind, "{locator}");
+        }
+        // Groups are positions, in reading order, and a kind nothing matched
+        // is not an empty badge.
+        let reply = command(serde_json::json!({"command":"artifact_groups","locators":[
+            "p/one.zip", "p/two.xlsx", "p/three.shp.zip", "p/four.xlsx", "p/five.txt",
+        ]}));
+        assert_eq!(
+            reply["result"]["groups"],
+            serde_json::json!([
+                {"kind":"excel","items":[1,3]},
+                {"kind":"shapefile","items":[2]},
+                {"kind":"zip","items":[0]},
+                {"kind":"other","items":[4]},
+            ])
+        );
+        assert_eq!(
+            command(serde_json::json!({"command":"artifact_groups"}))["result"]["groups"],
+            serde_json::json!([])
+        );
+    }
+
+    #[test]
+    fn a_stored_version_is_named_once_inside_and_out() {
+        let naming = |value: serde_json::Value| -> serde_json::Value {
+            let mut request = value;
+            request["command"] = "combined_entry_naming".into();
+            serde_json::from_str::<serde_json::Value>(
+                &evaluate(request.to_string().as_bytes()).unwrap(),
+            )
+            .unwrap()["result"]
+                .clone()
+        };
+        // Display name, then the published label, then the prefix.
+        let named =
+            naming(serde_json::json!({"display_name":"Rev B","version_label":"v2","prefix":"p1"}));
+        assert_eq!(named["label"], "Rev B");
+        assert_eq!(named["folder"], "Rev B");
+        assert_eq!(named["archive_name"], "p1.zip");
+        assert_eq!(
+            naming(serde_json::json!({"version_label":"v2","prefix":"p1"}))["label"],
+            "v2"
+        );
+        assert_eq!(naming(serde_json::json!({"prefix":"p1"}))["label"], "p1");
+        // A run of characters a filesystem refuses is ONE separator.
+        let refused = naming(serde_json::json!({"display_name":"a//b:*c","prefix":"p1"}));
+        assert_eq!(refused["label"], "a//b:*c");
+        assert_eq!(refused["folder"], "a_b_c");
+        // A name that is nothing but refused characters is the prefix again,
+        // never an archive rooted at `/`.
+        assert_eq!(
+            naming(serde_json::json!({"display_name":"//","prefix":"p1"}))["folder"],
+            "_"
+        );
+        assert_eq!(
+            naming(serde_json::json!({"display_name":"","version_label":"","prefix":""}))["folder"],
+            ""
+        );
+    }
     #[test]
     fn export_and_publication_are_separate() {
         let release = format!("ds-network-reporter@0.1.0+{}", "a".repeat(40));

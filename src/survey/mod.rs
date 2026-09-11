@@ -1,22 +1,38 @@
 //! Offline survey semantics shared by native hosts and WASM. Hosts own IO only.
+mod access;
+mod bridge;
 mod draft;
 mod entry;
 mod factory;
 mod fields;
+mod fill;
+mod mutation;
 mod policy;
 pub mod project_forms;
+mod read;
 
 use serde_json::{json, Value};
 pub const MAX_SURVEY_INPUT_BYTES: usize = 1024 * 1024;
 pub const MAX_SURVEY_FIELDS: usize = 512;
 
 pub fn survey_evaluate(bytes: &[u8]) -> Result<Value, String> {
-    if bytes.len() > MAX_SURVEY_INPUT_BYTES {
-        return Err("Survey request exceeds 1 MiB".into());
+    if bytes.len() > 3 * MAX_SURVEY_INPUT_BYTES {
+        return Err("Survey request exceeds 3 MiB".into());
     }
     let request: Value =
         serde_json::from_slice(bytes).map_err(|_| "Survey request must be JSON")?;
+    // Mutations carry one prior entry plus one bounded delta. Neither crosses
+    // the 900 KiB wire-entry bound, but their combined request can exceed 1 MiB.
+    if bytes.len() > MAX_SURVEY_INPUT_BYTES && request["operation"] != "mutation" {
+        return Err("Survey request exceeds 1 MiB".into());
+    }
     match request["operation"].as_str() {
+        Some("fill") => fill::evaluate(&request),
+        Some("factory") => factory::evaluate(&request),
+        Some("bridge") => bridge::evaluate(&request),
+        Some("access") => access::evaluate(&request),
+        Some("read") => read::evaluate(&request),
+        Some("mutation") => mutation::evaluate(&request),
         Some("policy") => policy::evaluate(&request),
         Some("draft") => draft::evaluate(&request),
         Some("fields") => fields::evaluate(&request),
@@ -31,6 +47,7 @@ pub fn survey_evaluate(bytes: &[u8]) -> Result<Value, String> {
             Ok(json!(ds_geo_lite::haversine_m(a.0, a.1, b.0, b.1)))
         }
         Some("length") => Ok(json!(entry::length(&request["geometry"])?)),
+        Some("project_forms") => project_forms::evaluate(&request),
         Some("project_plan") => {
             let changes: Vec<project_forms::ProjectFormChange> =
                 serde_json::from_value(request["changes"].clone())
@@ -65,6 +82,19 @@ mod tests {
         assert_eq!(
             result["errors"]["s"],
             "Invalid validation pattern in form schema"
+        );
+    }
+    #[test]
+    fn a_bounded_update_can_carry_its_prior_entry_without_halving_the_entry_limit() {
+        let request = json!({"operation":"mutation","mode":"mutate","payload":{"project_id":"p","form_id":"f","doc_id":"d","operation":"update","updated_data":{"value":"n".repeat(600_000)}},"prior":{"type":"Feature","properties":{"data":{"value":"o".repeat(600_000)}}},"grants":{"entries.edit_all":true},"mutation_id":"key","now":"2026-09-11T00:00:00Z"});
+        let bytes = serde_json::to_vec(&request).unwrap();
+        assert!(bytes.len() > MAX_SURVEY_INPUT_BYTES);
+        assert_eq!(
+            survey_evaluate(&bytes).unwrap()["payload"]["updated_data"]["value"]
+                .as_str()
+                .unwrap()
+                .len(),
+            600_000
         );
     }
     #[test]
