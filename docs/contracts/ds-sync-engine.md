@@ -77,3 +77,15 @@ computes nothing.
    `sync-delivery-root`; `ds-brain/docs/contracts/edge-admission-and-publish.md`.)
 5. **Dangling data is ignored.** The retired per-user outbox is not an input and
    is not migrated.
+6. **One gate for every project byte.** Compute artifacts, survey photos and
+   entry attachments, and project assets are all artifacts to this plan
+   (engines such as `network_reporter`, `solar`, `survey_media`,
+   `project_assets`), uploaded under the same grant through the same resumable
+   transport, with `transfer` + `response_policy` owning every retry. No
+   per-outbox engine, budget or retry policy exists beside it. Owner,
+   2026-09-11: "confirm that even survey photos and attachments will use the
+   same thing." State on that day: project assets already move through the one
+   transport but decide what to upload on their own; survey photos moved that
+   day onto ds-brain's governed resumable route through a separate outbox with
+   its own ten-attempt budget (`survey_photo_outbox.rs`). Both fold under this
+   plan next; until then they are the named exceptions, not the design.
