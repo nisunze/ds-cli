@@ -1,0 +1,1798 @@
+{
+ "schema": "ds.buildings-decode-parity/v1",
+ "note": "Every case `ds_command_kernel::project_dataset_cache::decode_buildings` decides, recorded as the one named proof for the four distinct refusals that replaced a single compound sentence. Areas and footprints are synthetic; the thin-sliver case reproduces the SHAPE of a real failed acquisition (a ~3.7 km by ~22 m residue of rect decomposition) at coordinates that belong to no project. Error strings are exact: they are persisted as a room's last_error and read by an operator, so a change to one is a change to the product.",
+ "cases": [
+  {
+   "id": "sliver_overlapping_footprint",
+   "note": "A ~22 m tall request area is a legitimate residue of rect decomposition. A footprint that actually overlaps it is admitted, so a thin area is not by itself a refusal.",
+   "area": {
+    "type": "Polygon",
+    "coordinates": [
+     [
+      [
+       30.0,
+       -1.0
+      ],
+      [
+       30.033,
+       -1.0
+      ],
+      [
+       30.033,
+       -0.999795
+      ],
+      [
+       30.0,
+       -0.999795
+      ],
+      [
+       30.0,
+       -1.0
+      ]
+     ]
+    ]
+   },
+   "response": {
+    "status": "success",
+    "provider": "google",
+    "coverage": {
+     "status": "features_returned",
+     "truncated": false
+    },
+    "layers": {
+     "buildings_context": {
+      "type": "FeatureCollection",
+      "features": [
+       {
+        "type": "Feature",
+        "properties": {
+         "area_in_meters": 120.0,
+         "confidence": 0.82
+        },
+        "id": "sliver-overlap",
+        "geometry": {
+         "type": "Polygon",
+         "coordinates": [
+          [
+           [
+            30.001,
+            -1.0001
+           ],
+           [
+            30.001135,
+            -1.0001
+           ],
+           [
+            30.001135,
+            -0.999965
+           ],
+           [
+            30.001,
+            -0.999965
+           ],
+           [
+            30.001,
+            -1.0001
+           ]
+          ]
+         ]
+        }
+       }
+      ]
+     }
+    },
+    "counts": {
+     "buildings_context": 1
+    },
+    "source_receipt": {
+     "provider": "google",
+     "dataset_version": "v3",
+     "region_predicate": "upstream listFeatures region (intersects)",
+     "server_side_filter_is_advisory": true
+    }
+   },
+   "expect": {
+    "ok": true,
+    "features": 1,
+    "source_version": "v3"
+   }
+  },
+  {
+   "id": "footprint_outside_area",
+   "note": "The provider returned a row south of everything it was asked for. This is the case the one compound sentence used to hide; the refusal now carries the rule and both rectangles.",
+   "area": {
+    "type": "Polygon",
+    "coordinates": [
+     [
+      [
+       30.0,
+       -1.0
+      ],
+      [
+       30.033,
+       -1.0
+      ],
+      [
+       30.033,
+       -0.999795
+      ],
+      [
+       30.0,
+       -0.999795
+      ],
+      [
+       30.0,
+       -1.0
+      ]
+     ]
+    ]
+   },
+   "response": {
+    "status": "success",
+    "provider": "google",
+    "coverage": {
+     "status": "features_returned",
+     "truncated": false
+    },
+    "layers": {
+     "buildings_context": {
+      "type": "FeatureCollection",
+      "features": [
+       {
+        "type": "Feature",
+        "properties": {
+         "area_in_meters": 120.0,
+         "confidence": 0.82
+        },
+        "id": "outside-south",
+        "geometry": {
+         "type": "Polygon",
+         "coordinates": [
+          [
+           [
+            30.001,
+            -1.0005
+           ],
+           [
+            30.001135,
+            -1.0005
+           ],
+           [
+            30.001135,
+            -1.000365
+           ],
+           [
+            30.001,
+            -1.000365
+           ],
+           [
+            30.001,
+            -1.0005
+           ]
+          ]
+         ]
+        }
+       }
+      ]
+     }
+    },
+    "counts": {
+     "buildings_context": 1
+    },
+    "source_receipt": {
+     "provider": "google",
+     "dataset_version": "v3",
+     "region_predicate": "upstream listFeatures region (intersects)",
+     "server_side_filter_is_advisory": true
+    }
+   },
+   "expect": {
+    "ok": false,
+    "error": "building footprint #0 `outside-south` lies outside the requested area (rule: intersects; footprint bounds [30.001000, -1.000500, 30.001135, -1.000365]; area bounds [30.000000, -1.000000, 30.033000, -0.999795])"
+   }
+  },
+  {
+   "id": "footprint_straddles_north_edge",
+   "note": "Half in, half out. Intersects keeps it and CentroidInside would not, which is why the rule is named rather than hard-coded.",
+   "area": {
+    "type": "Polygon",
+    "coordinates": [
+     [
+      [
+       30.0,
+       -1.0
+      ],
+      [
+       30.033,
+       -1.0
+      ],
+      [
+       30.033,
+       -0.999795
+      ],
+      [
+       30.0,
+       -0.999795
+      ],
+      [
+       30.0,
+       -1.0
+      ]
+     ]
+    ]
+   },
+   "response": {
+    "status": "success",
+    "provider": "google",
+    "coverage": {
+     "status": "features_returned",
+     "truncated": false
+    },
+    "layers": {
+     "buildings_context": {
+      "type": "FeatureCollection",
+      "features": [
+       {
+        "type": "Feature",
+        "properties": {
+         "area_in_meters": 120.0,
+         "confidence": 0.82
+        },
+        "id": "straddle-north",
+        "geometry": {
+         "type": "Polygon",
+         "coordinates": [
+          [
+           [
+            30.004,
+            -0.99985
+           ],
+           [
+            30.004135,
+            -0.99985
+           ],
+           [
+            30.004135,
+            -0.999715
+           ],
+           [
+            30.004,
+            -0.999715
+           ],
+           [
+            30.004,
+            -0.99985
+           ]
+          ]
+         ]
+        }
+       }
+      ]
+     }
+    },
+    "counts": {
+     "buildings_context": 1
+    },
+    "source_receipt": {
+     "provider": "google",
+     "dataset_version": "v3",
+     "region_predicate": "upstream listFeatures region (intersects)",
+     "server_side_filter_is_advisory": true
+    }
+   },
+   "expect": {
+    "ok": true,
+    "features": 1,
+    "source_version": "v3"
+   }
+  },
+  {
+   "id": "footprint_covers_area_corner",
+   "note": "The footprint contains the area's south-west corner. No vertex of either ring lies inside the other's interior on one axis alone, so a bounds-only test and an exact test agree here only by luck.",
+   "area": {
+    "type": "Polygon",
+    "coordinates": [
+     [
+      [
+       30.0,
+       -1.0
+      ],
+      [
+       30.033,
+       -1.0
+      ],
+      [
+       30.033,
+       -0.999795
+      ],
+      [
+       30.0,
+       -0.999795
+      ],
+      [
+       30.0,
+       -1.0
+      ]
+     ]
+    ]
+   },
+   "response": {
+    "status": "success",
+    "provider": "google",
+    "coverage": {
+     "status": "features_returned",
+     "truncated": false
+    },
+    "layers": {
+     "buildings_context": {
+      "type": "FeatureCollection",
+      "features": [
+       {
+        "type": "Feature",
+        "properties": {
+         "area_in_meters": 120.0,
+         "confidence": 0.82
+        },
+        "id": "corner-west",
+        "geometry": {
+         "type": "Polygon",
+         "coordinates": [
+          [
+           [
+            29.9999,
+            -1.00005
+           ],
+           [
+            30.0001,
+            -1.00005
+           ],
+           [
+            30.0001,
+            -0.99995
+           ],
+           [
+            29.9999,
+            -0.99995
+           ],
+           [
+            29.9999,
+            -1.00005
+           ]
+          ]
+         ]
+        }
+       }
+      ]
+     }
+    },
+    "counts": {
+     "buildings_context": 1
+    },
+    "source_receipt": {
+     "provider": "google",
+     "dataset_version": "v3",
+     "region_predicate": "upstream listFeatures region (intersects)",
+     "server_side_filter_is_advisory": true
+    }
+   },
+   "expect": {
+    "ok": true,
+    "features": 1,
+    "source_version": "v3"
+   }
+  },
+  {
+   "id": "multipolygon_with_holes",
+   "note": "A courtyard building. Both parts are admitted as one row; the hole changes nothing about selection because the outer ring still overlaps the area.",
+   "area": {
+    "type": "Polygon",
+    "coordinates": [
+     [
+      [
+       30.0,
+       -1.0
+      ],
+      [
+       30.033,
+       -1.0
+      ],
+      [
+       30.033,
+       -0.999795
+      ],
+      [
+       30.0,
+       -0.999795
+      ],
+      [
+       30.0,
+       -1.0
+      ]
+     ]
+    ]
+   },
+   "response": {
+    "status": "success",
+    "provider": "google",
+    "coverage": {
+     "status": "features_returned",
+     "truncated": false
+    },
+    "layers": {
+     "buildings_context": {
+      "type": "FeatureCollection",
+      "features": [
+       {
+        "type": "Feature",
+        "properties": {
+         "area_in_meters": 120.0,
+         "confidence": 0.82
+        },
+        "id": "courtyard",
+        "geometry": {
+         "type": "MultiPolygon",
+         "coordinates": [
+          [
+           [
+            [
+             30.006,
+             -1.0001
+            ],
+            [
+             30.00648,
+             -1.0001
+            ],
+            [
+             30.00648,
+             -0.99986
+            ],
+            [
+             30.006,
+             -0.99986
+            ],
+            [
+             30.006,
+             -1.0001
+            ]
+           ],
+           [
+            [
+             30.00615,
+             -1.00003
+            ],
+            [
+             30.00633,
+             -1.00003
+            ],
+            [
+             30.00633,
+             -0.99993
+            ],
+            [
+             30.00615,
+             -0.99993
+            ],
+            [
+             30.00615,
+             -1.00003
+            ]
+           ]
+          ],
+          [
+           [
+            [
+             30.0071,
+             -1.00005
+            ],
+            [
+             30.00722,
+             -1.00005
+            ],
+            [
+             30.00722,
+             -0.99993
+            ],
+            [
+             30.0071,
+             -0.99993
+            ],
+            [
+             30.0071,
+             -1.00005
+            ]
+           ]
+          ]
+         ]
+        }
+       }
+      ]
+     }
+    },
+    "counts": {
+     "buildings_context": 1
+    },
+    "source_receipt": {
+     "provider": "google",
+     "dataset_version": "v3",
+     "region_predicate": "upstream listFeatures region (intersects)",
+     "server_side_filter_is_advisory": true
+    }
+   },
+   "expect": {
+    "ok": true,
+    "features": 1,
+    "source_version": "v3"
+   }
+  },
+  {
+   "id": "footprint_inside_area_hole",
+   "note": "The proof that the predicate is exact rather than bounds-only: this footprint's bounds lie inside the area's bounds, and it still does not intersect the area.",
+   "area": {
+    "type": "Polygon",
+    "coordinates": [
+     [
+      [
+       30.0,
+       -1.0
+      ],
+      [
+       30.033,
+       -1.0
+      ],
+      [
+       30.033,
+       -0.9995
+      ],
+      [
+       30.0,
+       -0.9995
+      ],
+      [
+       30.0,
+       -1.0
+      ]
+     ],
+     [
+      [
+       30.01,
+       -0.9998
+      ],
+      [
+       30.02,
+       -0.9998
+      ],
+      [
+       30.02,
+       -0.9996
+      ],
+      [
+       30.01,
+       -0.9996
+      ],
+      [
+       30.01,
+       -0.9998
+      ]
+     ]
+    ]
+   },
+   "response": {
+    "status": "success",
+    "provider": "google",
+    "coverage": {
+     "status": "features_returned",
+     "truncated": false
+    },
+    "layers": {
+     "buildings_context": {
+      "type": "FeatureCollection",
+      "features": [
+       {
+        "type": "Feature",
+        "properties": {
+         "area_in_meters": 120.0,
+         "confidence": 0.82
+        },
+        "id": "in-hole",
+        "geometry": {
+         "type": "Polygon",
+         "coordinates": [
+          [
+           [
+            30.0145,
+            -0.99975
+           ],
+           [
+            30.0146,
+            -0.99975
+           ],
+           [
+            30.0146,
+            -0.99965
+           ],
+           [
+            30.0145,
+            -0.99965
+           ],
+           [
+            30.0145,
+            -0.99975
+           ]
+          ]
+         ]
+        }
+       }
+      ]
+     }
+    },
+    "counts": {
+     "buildings_context": 1
+    },
+    "source_receipt": {
+     "provider": "google",
+     "dataset_version": "v3",
+     "region_predicate": "upstream listFeatures region (intersects)",
+     "server_side_filter_is_advisory": true
+    }
+   },
+   "expect": {
+    "ok": false,
+    "error": "building footprint #0 `in-hole` lies outside the requested area (rule: intersects; footprint bounds [30.014500, -0.999750, 30.014600, -0.999650]; area bounds [30.000000, -1.000000, 30.033000, -0.999500])"
+   }
+  },
+  {
+   "id": "degenerate_ring",
+   "note": "Three coordinates is not a ring. Bounds exist, so this reaches the predicate and is reported as unreadable geometry rather than as an out-of-area row.",
+   "area": {
+    "type": "Polygon",
+    "coordinates": [
+     [
+      [
+       30.0,
+       -1.0
+      ],
+      [
+       30.033,
+       -1.0
+      ],
+      [
+       30.033,
+       -0.999795
+      ],
+      [
+       30.0,
+       -0.999795
+      ],
+      [
+       30.0,
+       -1.0
+      ]
+     ]
+    ]
+   },
+   "response": {
+    "status": "success",
+    "provider": "google",
+    "coverage": {
+     "status": "features_returned",
+     "truncated": false
+    },
+    "layers": {
+     "buildings_context": {
+      "type": "FeatureCollection",
+      "features": [
+       {
+        "type": "Feature",
+        "properties": {
+         "area_in_meters": 120.0,
+         "confidence": 0.82
+        },
+        "id": "degenerate",
+        "geometry": {
+         "type": "Polygon",
+         "coordinates": [
+          [
+           [
+            30.001,
+            -1.0
+           ],
+           [
+            30.002,
+            -1.0
+           ],
+           [
+            30.001,
+            -0.9999
+           ]
+          ]
+         ]
+        }
+       }
+      ]
+     }
+    },
+    "counts": {
+     "buildings_context": 1
+    },
+    "source_receipt": {
+     "provider": "google",
+     "dataset_version": "v3",
+     "region_predicate": "upstream listFeatures region (intersects)",
+     "server_side_filter_is_advisory": true
+    }
+   },
+   "expect": {
+    "ok": false,
+    "error": "building footprint #0 `degenerate` has unreadable geometry: GeoJSON polygon rings need at least four coordinates and must be closed"
+   }
+  },
+  {
+   "id": "null_geometry",
+   "note": "A row with no geometry at all. Silently dropping it would understate the room; admitting it would put an unindexable row in a spatial index.",
+   "area": {
+    "type": "Polygon",
+    "coordinates": [
+     [
+      [
+       30.0,
+       -1.0
+      ],
+      [
+       30.033,
+       -1.0
+      ],
+      [
+       30.033,
+       -0.999795
+      ],
+      [
+       30.0,
+       -0.999795
+      ],
+      [
+       30.0,
+       -1.0
+      ]
+     ]
+    ]
+   },
+   "response": {
+    "status": "success",
+    "provider": "google",
+    "coverage": {
+     "status": "features_returned",
+     "truncated": false
+    },
+    "layers": {
+     "buildings_context": {
+      "type": "FeatureCollection",
+      "features": [
+       {
+        "type": "Feature",
+        "properties": {
+         "area_in_meters": 120.0,
+         "confidence": 0.82
+        },
+        "id": "no-geometry",
+        "geometry": null
+       }
+      ]
+     }
+    },
+    "counts": {
+     "buildings_context": 1
+    },
+    "source_receipt": {
+     "provider": "google",
+     "dataset_version": "v3",
+     "region_predicate": "upstream listFeatures region (intersects)",
+     "server_side_filter_is_advisory": true
+    }
+   },
+   "expect": {
+    "ok": false,
+    "error": "building footprint #0 `no-geometry` geometry is absent, not Polygon/MultiPolygon"
+   }
+  },
+  {
+   "id": "polygon_without_coordinates",
+   "note": "Type says Polygon, coordinates say nothing. This is the `has no bounds` case, reached before the predicate because an unbounded row cannot be indexed.",
+   "area": {
+    "type": "Polygon",
+    "coordinates": [
+     [
+      [
+       30.0,
+       -1.0
+      ],
+      [
+       30.033,
+       -1.0
+      ],
+      [
+       30.033,
+       -0.999795
+      ],
+      [
+       30.0,
+       -0.999795
+      ],
+      [
+       30.0,
+       -1.0
+      ]
+     ]
+    ]
+   },
+   "response": {
+    "status": "success",
+    "provider": "google",
+    "coverage": {
+     "status": "features_returned",
+     "truncated": false
+    },
+    "layers": {
+     "buildings_context": {
+      "type": "FeatureCollection",
+      "features": [
+       {
+        "type": "Feature",
+        "properties": {
+         "area_in_meters": 120.0,
+         "confidence": 0.82
+        },
+        "id": "empty-rings",
+        "geometry": {
+         "type": "Polygon",
+         "coordinates": []
+        }
+       }
+      ]
+     }
+    },
+    "counts": {
+     "buildings_context": 1
+    },
+    "source_receipt": {
+     "provider": "google",
+     "dataset_version": "v3",
+     "region_predicate": "upstream listFeatures region (intersects)",
+     "server_side_filter_is_advisory": true
+    }
+   },
+   "expect": {
+    "ok": false,
+    "error": "building footprint #0 `empty-rings` has no bounds: its geometry carries no usable coordinate"
+   }
+  },
+  {
+   "id": "line_geometry",
+   "note": "A centreline is not a footprint. The refusal names the type it actually received.",
+   "area": {
+    "type": "Polygon",
+    "coordinates": [
+     [
+      [
+       30.0,
+       -1.0
+      ],
+      [
+       30.033,
+       -1.0
+      ],
+      [
+       30.033,
+       -0.999795
+      ],
+      [
+       30.0,
+       -0.999795
+      ],
+      [
+       30.0,
+       -1.0
+      ]
+     ]
+    ]
+   },
+   "response": {
+    "status": "success",
+    "provider": "google",
+    "coverage": {
+     "status": "features_returned",
+     "truncated": false
+    },
+    "layers": {
+     "buildings_context": {
+      "type": "FeatureCollection",
+      "features": [
+       {
+        "type": "Feature",
+        "properties": {
+         "area_in_meters": 120.0,
+         "confidence": 0.82
+        },
+        "id": "centreline",
+        "geometry": {
+         "type": "LineString",
+         "coordinates": [
+          [
+           30.001,
+           -1.0
+          ],
+          [
+           30.002,
+           -0.9999
+          ]
+         ]
+        }
+       }
+      ]
+     }
+    },
+    "counts": {
+     "buildings_context": 1
+    },
+    "source_receipt": {
+     "provider": "google",
+     "dataset_version": "v3",
+     "region_predicate": "upstream listFeatures region (intersects)",
+     "server_side_filter_is_advisory": true
+    }
+   },
+   "expect": {
+    "ok": false,
+    "error": "building footprint #0 `centreline` geometry is `LineString`, not Polygon/MultiPolygon"
+   }
+  },
+  {
+   "id": "properties_not_an_object",
+   "note": "A provider row whose properties are a string is not a Feature this room can hold.",
+   "area": {
+    "type": "Polygon",
+    "coordinates": [
+     [
+      [
+       30.0,
+       -1.0
+      ],
+      [
+       30.033,
+       -1.0
+      ],
+      [
+       30.033,
+       -0.999795
+      ],
+      [
+       30.0,
+       -0.999795
+      ],
+      [
+       30.0,
+       -1.0
+      ]
+     ]
+    ]
+   },
+   "response": {
+    "status": "success",
+    "provider": "google",
+    "coverage": {
+     "status": "features_returned",
+     "truncated": false
+    },
+    "layers": {
+     "buildings_context": {
+      "type": "FeatureCollection",
+      "features": [
+       {
+        "type": "Feature",
+        "properties": "none",
+        "id": "bad-shape",
+        "geometry": {
+         "type": "Polygon",
+         "coordinates": [
+          [
+           [
+            30.001,
+            -1.0001
+           ],
+           [
+            30.001135,
+            -1.0001
+           ],
+           [
+            30.001135,
+            -0.999965
+           ],
+           [
+            30.001,
+            -0.999965
+           ],
+           [
+            30.001,
+            -1.0001
+           ]
+          ]
+         ]
+        }
+       }
+      ]
+     }
+    },
+    "counts": {
+     "buildings_context": 1
+    },
+    "source_receipt": {
+     "provider": "google",
+     "dataset_version": "v3",
+     "region_predicate": "upstream listFeatures region (intersects)",
+     "server_side_filter_is_advisory": true
+    }
+   },
+   "expect": {
+    "ok": false,
+    "error": "building footprint #0 `bad-shape` has an invalid shape: a provider row must be a GeoJSON Feature with a properties object"
+   }
+  },
+  {
+   "id": "second_row_named_by_position",
+   "note": "The first two rows are fine. The refusal has to say WHICH row, or an operator is reading 2,000 of them by hand.",
+   "area": {
+    "type": "Polygon",
+    "coordinates": [
+     [
+      [
+       30.0,
+       -1.0
+      ],
+      [
+       30.033,
+       -1.0
+      ],
+      [
+       30.033,
+       -0.999795
+      ],
+      [
+       30.0,
+       -0.999795
+      ],
+      [
+       30.0,
+       -1.0
+      ]
+     ]
+    ]
+   },
+   "response": {
+    "status": "success",
+    "provider": "google",
+    "coverage": {
+     "status": "features_returned",
+     "truncated": false
+    },
+    "layers": {
+     "buildings_context": {
+      "type": "FeatureCollection",
+      "features": [
+       {
+        "type": "Feature",
+        "properties": {
+         "area_in_meters": 120.0,
+         "confidence": 0.82
+        },
+        "geometry": {
+         "type": "Polygon",
+         "coordinates": [
+          [
+           [
+            30.001,
+            -1.0001
+           ],
+           [
+            30.001135,
+            -1.0001
+           ],
+           [
+            30.001135,
+            -0.999965
+           ],
+           [
+            30.001,
+            -0.999965
+           ],
+           [
+            30.001,
+            -1.0001
+           ]
+          ]
+         ]
+        }
+       },
+       {
+        "type": "Feature",
+        "properties": {
+         "area_in_meters": 120.0,
+         "confidence": 0.82
+        },
+        "geometry": {
+         "type": "Polygon",
+         "coordinates": [
+          [
+           [
+            30.002,
+            -1.0001
+           ],
+           [
+            30.002135,
+            -1.0001
+           ],
+           [
+            30.002135,
+            -0.999965
+           ],
+           [
+            30.002,
+            -0.999965
+           ],
+           [
+            30.002,
+            -1.0001
+           ]
+          ]
+         ]
+        }
+       },
+       {
+        "type": "Feature",
+        "properties": {
+         "area_in_meters": 120.0,
+         "confidence": 0.82
+        },
+        "geometry": {
+         "type": "Polygon",
+         "coordinates": [
+          [
+           [
+            30.003,
+            -1.0005
+           ],
+           [
+            30.003135,
+            -1.0005
+           ],
+           [
+            30.003135,
+            -1.000365
+           ],
+           [
+            30.003,
+            -1.000365
+           ],
+           [
+            30.003,
+            -1.0005
+           ]
+          ]
+         ]
+        }
+       }
+      ]
+     }
+    },
+    "counts": {
+     "buildings_context": 3
+    },
+    "source_receipt": {
+     "provider": "google",
+     "dataset_version": "v3",
+     "region_predicate": "upstream listFeatures region (intersects)",
+     "server_side_filter_is_advisory": true
+    }
+   },
+   "expect": {
+    "ok": false,
+    "error": "building footprint #2 lies outside the requested area (rule: intersects; footprint bounds [30.003000, -1.000500, 30.003135, -1.000365]; area bounds [30.000000, -1.000000, 30.033000, -0.999795])"
+   }
+  },
+  {
+   "id": "named_by_provider_identifier",
+   "note": "Open Buildings rows carry a stable plus code. When a provider names its row, the refusal uses that name so the same footprint can be looked up upstream.",
+   "area": {
+    "type": "Polygon",
+    "coordinates": [
+     [
+      [
+       30.0,
+       -1.0
+      ],
+      [
+       30.033,
+       -1.0
+      ],
+      [
+       30.033,
+       -0.999795
+      ],
+      [
+       30.0,
+       -0.999795
+      ],
+      [
+       30.0,
+       -1.0
+      ]
+     ]
+    ]
+   },
+   "response": {
+    "status": "success",
+    "provider": "google",
+    "coverage": {
+     "status": "features_returned",
+     "truncated": false
+    },
+    "layers": {
+     "buildings_context": {
+      "type": "FeatureCollection",
+      "features": [
+       {
+        "type": "Feature",
+        "properties": {
+         "full_plus_code": "6FR5X2XV+2G",
+         "area_in_meters": 88.0,
+         "confidence": 0.74
+        },
+        "geometry": {
+         "type": "Polygon",
+         "coordinates": [
+          [
+           [
+            30.005,
+            -1.0005
+           ],
+           [
+            30.005135,
+            -1.0005
+           ],
+           [
+            30.005135,
+            -1.000365
+           ],
+           [
+            30.005,
+            -1.000365
+           ],
+           [
+            30.005,
+            -1.0005
+           ]
+          ]
+         ]
+        }
+       }
+      ]
+     }
+    },
+    "counts": {
+     "buildings_context": 1
+    },
+    "source_receipt": {
+     "provider": "google",
+     "dataset_version": "v3",
+     "region_predicate": "upstream listFeatures region (intersects)",
+     "server_side_filter_is_advisory": true
+    }
+   },
+   "expect": {
+    "ok": false,
+    "error": "building footprint #0 `6FR5X2XV+2G` lies outside the requested area (rule: intersects; footprint bounds [30.005000, -1.000500, 30.005135, -1.000365]; area bounds [30.000000, -1.000000, 30.033000, -0.999795])"
+   }
+  },
+  {
+   "id": "counts_disagree_with_collection",
+   "note": "The provider's own count is the completeness receipt for the page. A mismatch is a refusal before any row is examined — a short page must never extend coverage.",
+   "area": {
+    "type": "Polygon",
+    "coordinates": [
+     [
+      [
+       30.0,
+       -1.0
+      ],
+      [
+       30.033,
+       -1.0
+      ],
+      [
+       30.033,
+       -0.999795
+      ],
+      [
+       30.0,
+       -0.999795
+      ],
+      [
+       30.0,
+       -1.0
+      ]
+     ]
+    ]
+   },
+   "response": {
+    "status": "success",
+    "provider": "google",
+    "coverage": {
+     "status": "features_returned",
+     "truncated": false
+    },
+    "layers": {
+     "buildings_context": {
+      "type": "FeatureCollection",
+      "features": [
+       {
+        "type": "Feature",
+        "properties": {
+         "area_in_meters": 120.0,
+         "confidence": 0.82
+        },
+        "geometry": {
+         "type": "Polygon",
+         "coordinates": [
+          [
+           [
+            30.001,
+            -1.0001
+           ],
+           [
+            30.001135,
+            -1.0001
+           ],
+           [
+            30.001135,
+            -0.999965
+           ],
+           [
+            30.001,
+            -0.999965
+           ],
+           [
+            30.001,
+            -1.0001
+           ]
+          ]
+         ]
+        }
+       }
+      ]
+     }
+    },
+    "counts": {
+     "buildings_context": 2
+    },
+    "source_receipt": {
+     "provider": "google",
+     "dataset_version": "v3",
+     "region_predicate": "upstream listFeatures region (intersects)",
+     "server_side_filter_is_advisory": true
+    }
+   },
+   "expect": {
+    "ok": false,
+    "error": "building acquisition count does not match its footprint collection"
+   }
+  },
+  {
+   "id": "complete_empty_response",
+   "note": "Nothing stands there. Retained deliberately: an empty complete page still completes coverage, and re-asking for it forever is what spends money for no rows.",
+   "area": {
+    "type": "Polygon",
+    "coordinates": [
+     [
+      [
+       30.0,
+       -1.0
+      ],
+      [
+       30.033,
+       -1.0
+      ],
+      [
+       30.033,
+       -0.999795
+      ],
+      [
+       30.0,
+       -0.999795
+      ],
+      [
+       30.0,
+       -1.0
+      ]
+     ]
+    ]
+   },
+   "response": {
+    "status": "success",
+    "provider": "google",
+    "coverage": {
+     "status": "features_returned",
+     "truncated": false
+    },
+    "layers": {
+     "buildings_context": {
+      "type": "FeatureCollection",
+      "features": []
+     }
+    },
+    "counts": {
+     "buildings_context": 0
+    },
+    "source_receipt": {
+     "provider": "google",
+     "dataset_version": "v3",
+     "region_predicate": "upstream listFeatures region (intersects)",
+     "server_side_filter_is_advisory": true
+    }
+   },
+   "expect": {
+    "ok": true,
+    "features": 0,
+    "source_version": "v3"
+   }
+  },
+  {
+   "id": "truncated_response",
+   "note": "A page the provider could not finish cannot complete coverage.",
+   "area": {
+    "type": "Polygon",
+    "coordinates": [
+     [
+      [
+       30.0,
+       -1.0
+      ],
+      [
+       30.033,
+       -1.0
+      ],
+      [
+       30.033,
+       -0.999795
+      ],
+      [
+       30.0,
+       -0.999795
+      ],
+      [
+       30.0,
+       -1.0
+      ]
+     ]
+    ]
+   },
+   "response": {
+    "status": "success",
+    "provider": "google",
+    "coverage": {
+     "status": "features_returned",
+     "truncated": true
+    },
+    "layers": {
+     "buildings_context": {
+      "type": "FeatureCollection",
+      "features": [
+       {
+        "type": "Feature",
+        "properties": {
+         "area_in_meters": 120.0,
+         "confidence": 0.82
+        },
+        "geometry": {
+         "type": "Polygon",
+         "coordinates": [
+          [
+           [
+            30.001,
+            -1.0001
+           ],
+           [
+            30.001135,
+            -1.0001
+           ],
+           [
+            30.001135,
+            -0.999965
+           ],
+           [
+            30.001,
+            -0.999965
+           ],
+           [
+            30.001,
+            -1.0001
+           ]
+          ]
+         ]
+        }
+       }
+      ]
+     }
+    },
+    "counts": {
+     "buildings_context": 1
+    },
+    "source_receipt": {
+     "provider": "google",
+     "dataset_version": "v3",
+     "region_predicate": "upstream listFeatures region (intersects)",
+     "server_side_filter_is_advisory": true
+    }
+   },
+   "expect": {
+    "ok": false,
+    "error": "building acquisition is incomplete or has no completeness receipt"
+   }
+  },
+  {
+   "id": "other_provider",
+   "note": "A centroid-selecting provider's rows would be admitted under the wrong rule, so the provider identity is checked before anything else.",
+   "area": {
+    "type": "Polygon",
+    "coordinates": [
+     [
+      [
+       30.0,
+       -1.0
+      ],
+      [
+       30.033,
+       -1.0
+      ],
+      [
+       30.033,
+       -0.999795
+      ],
+      [
+       30.0,
+       -0.999795
+      ],
+      [
+       30.0,
+       -1.0
+      ]
+     ]
+    ]
+   },
+   "response": {
+    "status": "success",
+    "provider": "microsoft",
+    "coverage": {
+     "status": "features_returned",
+     "truncated": false
+    },
+    "layers": {
+     "buildings_context": {
+      "type": "FeatureCollection",
+      "features": [
+       {
+        "type": "Feature",
+        "properties": {
+         "area_in_meters": 120.0,
+         "confidence": 0.82
+        },
+        "geometry": {
+         "type": "Polygon",
+         "coordinates": [
+          [
+           [
+            30.001,
+            -1.0001
+           ],
+           [
+            30.001135,
+            -1.0001
+           ],
+           [
+            30.001135,
+            -0.999965
+           ],
+           [
+            30.001,
+            -0.999965
+           ],
+           [
+            30.001,
+            -1.0001
+           ]
+          ]
+         ]
+        }
+       }
+      ]
+     }
+    },
+    "counts": {
+     "buildings_context": 1
+    },
+    "source_receipt": {
+     "provider": "google",
+     "dataset_version": "v3",
+     "region_predicate": "upstream listFeatures region (intersects)",
+     "server_side_filter_is_advisory": true
+    }
+   },
+   "expect": {
+    "ok": false,
+    "error": "building acquisition did not return the requested provider"
+   }
+  },
+  {
+   "id": "request_area_is_not_a_polygon",
+   "note": "The area is validated first: without it there is no rule to admit anything under.",
+   "area": {
+    "type": "Point",
+    "coordinates": [
+     30.0,
+     -1.0
+    ]
+   },
+   "response": {
+    "status": "success",
+    "provider": "google",
+    "coverage": {
+     "status": "features_returned",
+     "truncated": false
+    },
+    "layers": {
+     "buildings_context": {
+      "type": "FeatureCollection",
+      "features": [
+       {
+        "type": "Feature",
+        "properties": {
+         "area_in_meters": 120.0,
+         "confidence": 0.82
+        },
+        "geometry": {
+         "type": "Polygon",
+         "coordinates": [
+          [
+           [
+            30.001,
+            -1.0001
+           ],
+           [
+            30.001135,
+            -1.0001
+           ],
+           [
+            30.001135,
+            -0.999965
+           ],
+           [
+            30.001,
+            -0.999965
+           ],
+           [
+            30.001,
+            -1.0001
+           ]
+          ]
+         ]
+        }
+       }
+      ]
+     }
+    },
+    "counts": {
+     "buildings_context": 1
+    },
+    "source_receipt": {
+     "provider": "google",
+     "dataset_version": "v3",
+     "region_predicate": "upstream listFeatures region (intersects)",
+     "server_side_filter_is_advisory": true
+    }
+   },
+   "expect": {
+    "ok": false,
+    "error": "query area must be a GeoJSON Polygon or MultiPolygon"
+   }
+  },
+  {
+   "id": "version_from_asset",
+   "note": "Two receipt spellings name the same thing. The room records whichever the provider used, and records nothing rather than guessing when neither is present.",
+   "area": {
+    "type": "Polygon",
+    "coordinates": [
+     [
+      [
+       30.0,
+       -1.0
+      ],
+      [
+       30.033,
+       -1.0
+      ],
+      [
+       30.033,
+       -0.999795
+      ],
+      [
+       30.0,
+       -0.999795
+      ],
+      [
+       30.0,
+       -1.0
+      ]
+     ]
+    ]
+   },
+   "response": {
+    "status": "success",
+    "provider": "google",
+    "coverage": {
+     "status": "features_returned",
+     "truncated": false
+    },
+    "layers": {
+     "buildings_context": {
+      "type": "FeatureCollection",
+      "features": [
+       {
+        "type": "Feature",
+        "properties": {
+         "area_in_meters": 120.0,
+         "confidence": 0.82
+        },
+        "geometry": {
+         "type": "Polygon",
+         "coordinates": [
+          [
+           [
+            30.001,
+            -1.0001
+           ],
+           [
+            30.001135,
+            -1.0001
+           ],
+           [
+            30.001135,
+            -0.999965
+           ],
+           [
+            30.001,
+            -0.999965
+           ],
+           [
+            30.001,
+            -1.0001
+           ]
+          ]
+         ]
+        }
+       }
+      ]
+     }
+    },
+    "counts": {
+     "buildings_context": 1
+    },
+    "source_receipt": {
+     "provider": "google",
+     "asset": "GOOGLE/Research/open-buildings/v3/polygons"
+    }
+   },
+   "expect": {
+    "ok": true,
+    "features": 1,
+    "source_version": "GOOGLE/Research/open-buildings/v3/polygons"
+   }
+  }
+ ]
+}
