@@ -1,4 +1,4 @@
-# Headless application runtime across all platforms
+# Headless application runtime for web, desktop and server
 
 **Status:** normative owner direction, 2026-09-11. This contract defines the
 destination and acceptance criteria; it does not claim that migration, release,
@@ -10,10 +10,18 @@ It is an implementation mandate, not a new wire protocol or command registry.
 
 ## 1. Mandate
 
-Build a shared, headless Rust application runtime with **web, Android, iOS,
-Linux, Windows and server as first-class targets**. TypeScript/Svelte is a thin
+Build a shared, headless Rust application runtime with **web/PWA, Linux, Windows
+and server as the supported targets**. TypeScript/Svelte is a thin
 presentation client. Optimize execution for each platform without duplicating
 application logic.
+
+**Product boundary, clarified by the owner on 2026-09-11:** this product has
+no native Android or iOS deployment requirement, now or as a planned future
+phase. Web/PWA remains first-class; Flutter remains the separate mobile
+application. Keep Survey, ds-cli and MCP. Do not add native-mobile adapters,
+background schedulers, packaging, acceptance gates or speculative abstractions
+to this product. Preserve existing Flutter code. This supersedes the earlier
+all-platform requirement and the subsequent wording that merely deferred it.
 
 On desktop, closing the application window must not stop synchronization when
 background operation is enabled. Server operations must run without a browser,
@@ -22,8 +30,8 @@ capabilities, including prepared offline work, without a native companion.
 
 The universal guarantee is **durable progress and safe resumption whenever
 execution and connectivity are available**. Continuous background execution is
-a platform-specific capability, not a guarantee that a browser or mobile OS
-will keep a process alive.
+a platform-specific capability, not a guarantee that a browser will keep a
+process alive.
 
 ## 2. One application authority
 
@@ -77,15 +85,13 @@ dependency or operating-system integration into the pure kernel crate.
 
 | Target | Required execution model | Lifecycle obligation |
 | --- | --- | --- |
-| Web | Local Rust/WASM with browser-native persistence and workers where supported. Local decisions and prepared offline work require neither a server round trip nor a native companion. | Browser background execution is opportunistic. Preserve work across suspension and browser closure, then resume when execution becomes available. A worker alone does not guarantee continued execution after closure. |
-| Android | Native Rust application behavior behind supported platform networking, durable storage, secure credential storage and background scheduling. | Checkpoint work across background limits, process termination and restart. Resume during permitted execution; do not require a continuously running process. |
-| iOS | The same Rust application behavior with iOS-supported storage, credentials, background transfer/scheduling and lifecycle integration. | Preserve work across suspension and termination. Use OS-supported opportunities and report their limits; do not promise an always-running service. |
+| Web/PWA | Local Rust/WASM with browser-native persistence and workers where supported. Local decisions and prepared offline work require neither a server round trip nor a native companion. | Browser background execution is opportunistic. Preserve work across suspension and browser closure, then resume when execution becomes available. A worker alone does not guarantee continued execution after closure. |
 | Linux | A native background host independent of the application window, integrated with installation, startup, shutdown and updates. | Closing the UI leaves enabled background work running. Explicit shutdown, logout, restart and update behavior must be defined and recoverable. |
 | Windows | A native background host independent of the application window, integrated with installation, startup, shutdown and updates. | The same durability and background-operation guarantees as Linux, using appropriate Windows lifecycle integration. |
 | Server | A supervised headless host with durable storage, explicit identity, bounded concurrency, graceful shutdown and restart recovery. | Work survives process replacement and restart when its storage is retained. Multiple workers have explicit ownership and safe idempotent effects. |
 
-Share behavior, not assumptions about execution. A browser worker, mobile
-scheduled task, desktop background process and server worker have different
+Share behavior, not assumptions about execution. A browser worker, desktop
+background process and server worker have different
 lifetimes; each executes the same durable state machine correctly.
 
 CLI and MCP must reach equivalent application operations without frontend
@@ -97,8 +103,11 @@ database; cross-device reconciliation still follows the governed contracts.
 ## 5. Durable state and safe handoff
 
 Establish one authoritative persistent queue and artifact store for each
-execution context. Use platform-appropriate storage behind the shared Rust
-application boundary.
+execution context. Use storage appropriate to the current web, desktop and
+server requirements behind the shared Rust application boundary. Do not add a
+store or storage abstraction solely for a hypothetical mobile port. The contract
+requires durable behavior; it does not mandate one database technology on every
+target.
 
 Browser persistence remains appropriate for the web. Browser IndexedDB cannot
 remain the sole owner of desktop work expected to continue after its webview
@@ -161,7 +170,7 @@ across the UI boundary. Avoid unnecessary polling and background wakeups.
 
 Measure representative workloads on the relevant target. Record the workload,
 resource constraints and observed result; a fast native build does not prove
-acceptable web startup, mobile battery use or server memory consumption.
+acceptable web startup, desktop resource use or server memory consumption.
 
 ## 8. Implementation and landing method
 
@@ -200,8 +209,6 @@ The following are required outcomes, not claims of current completion:
   enabled; reopening shows the same authoritative state.
 - Web performs prepared local work offline without a native companion and
   resumes retained work after browser restart.
-- Android and iOS suspension/termination preserve committed local work and
-  permit safe resumption during supported execution opportunities.
 - Interrupted delivery resumes without losing work or duplicating committed
   effects, including interruptions during transfer and acknowledgement.
 - Equivalent operations run on a headless server without frontend dependencies.
@@ -213,9 +220,10 @@ The following are required outcomes, not claims of current completion:
 - No migrated frontend workflow can bypass the Rust application boundary.
 - Resource measurements demonstrate suitability for each supported target.
 
-Record platform results separately: implemented, tested or not yet verified.
+Record current-target results separately: implemented, tested or not yet verified.
+Native Android/iOS ports are outside this product and are not acceptance gaps.
 Distinguish **implemented, landed, deployed and operationally proven** states.
-Desktop success does not certify mobile, web or server behavior. Do not declare
+Desktop success does not certify web or server behavior. Do not declare
 the transition complete while competing frontend authority remains.
 
 ## 10. Campaign instruction

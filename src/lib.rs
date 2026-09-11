@@ -1503,6 +1503,10 @@ pub fn project_config_admit_wasm(input: &[u8]) -> Result<String, wasm_bindgen::J
     project_config::evaluate(input).map_err(|e| wasm_bindgen::JsValue::from_str(&e))
 }
 
+/// The one rule for reading a count off a host-supplied value, so no caller
+/// clamps on its way in. Declared in the module.
+pub mod host_counts;
+
 pub mod design_tags;
 #[cfg(feature = "wasm")]
 #[wasm_bindgen::prelude::wasm_bindgen(js_name = designTags)]
