@@ -91,6 +91,14 @@ async fn run<T: Send + 'static>(
     operation: impl FnOnce(&mut dyn LayerDocuments, &Preferences) -> Result<T, Failure> + Send + 'static,
 ) -> Result<T, Response> {
     tokio::task::spawn_blocking(move || {
+        // Middleware admission can be separated from this queued native task.
+        // Recheck the original Server owner at the effect boundary.
+        app.auth
+            .authorize(&app.connection.owner)
+            .map_err(|message| {
+                Failure::unauthorized("server_owner_changed", message)
+                    .remedy("restart the Server under the current native account")
+            })?;
         let mut documents = app.layers.documents()?;
         let preferences = app.layers.preferences()?;
         operation(documents.as_mut(), &preferences)
@@ -210,6 +218,21 @@ mod tests {
                 },
                 document,
             })
+        }
+        fn check_scope(&mut self, expected: &Scope) -> Result<(), Failure> {
+            let actual = Scope {
+                lane: "canary".into(),
+                uid: self.0.uid.clone(),
+                project: self.0.project.clone(),
+            };
+            if &actual == expected {
+                Ok(())
+            } else {
+                Err(
+                    Failure::conflict("project_context_changed", "fixture scope changed")
+                        .remedy("repeat the layer request"),
+                )
+            }
         }
         fn reorder(&mut self, orders: &[Order]) -> Result<OrderReceipt, Failure> {
             self.0.reorders.lock().unwrap().push(orders.to_vec());

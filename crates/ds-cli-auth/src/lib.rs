@@ -1539,6 +1539,91 @@ pub fn layer_config(lane_value: &str, refresh: bool) -> Result<HeadlessLayerSnap
     })
 }
 
+/// Opaque identity, audience, selected-project and credential binding captured
+/// for one layer operation. It can fence fixed layer calls, never construct a
+/// client or reveal a credential.
+#[derive(Clone, Debug)]
+pub struct LayerScopeFence {
+    uid: String,
+    audience: String,
+    project: String,
+    credential: String,
+}
+impl LayerScopeFence {
+    pub fn uid(&self) -> &str {
+        &self.uid
+    }
+    pub fn project(&self) -> &str {
+        &self.project
+    }
+}
+
+pub fn capture_layer_scope_fence(lane_value: &str) -> Result<LayerScopeFence, Failure> {
+    let (identity, project) = probe_headless_identity(lane_value)?.ok_or_else(|| {
+        Failure::unauthorized(
+            "headless_signed_out",
+            "no native user is signed in for this lane and profile",
+        )
+        .remedy("run ds auth login --email <address>")
+    })?;
+    let project = project.ok_or_else(|| {
+        Failure::conflict(
+            "project_context_changed",
+            "no selected project is available for the native layer operation",
+        )
+        .remedy("select a project and repeat the layer request")
+    })?;
+    Ok(LayerScopeFence {
+        uid: identity.uid().to_owned(),
+        audience: identity.credential_audience_sha256().to_owned(),
+        project,
+        credential: runtime_credential_binding(lane_value)?,
+    })
+}
+
+pub fn verify_layer_scope_fence(
+    lane_value: &str,
+    fence: &LayerScopeFence,
+    expected_uid: &str,
+    expected_project: &str,
+) -> Result<(), Failure> {
+    if fence.uid != expected_uid || fence.project != expected_project {
+        return Err(Failure::conflict(
+            "project_context_changed",
+            "the layer operation no longer has its read scope",
+        )
+        .remedy("repeat the layer request"));
+    }
+    let current = capture_layer_scope_fence(lane_value)?;
+    if current.uid != fence.uid
+        || current.audience != fence.audience
+        || current.project != fence.project
+        || current.credential != fence.credential
+    {
+        return Err(Failure::conflict("project_context_changed", "the native account, credential, or selected project changed during the layer operation")
+            .remedy("repeat the layer request under the current native account and project"));
+    }
+    Ok(())
+}
+
+pub fn layer_config_fenced(
+    lane_value: &str,
+    refresh: bool,
+    fence: &LayerScopeFence,
+) -> Result<HeadlessLayerSnapshot, Failure> {
+    verify_layer_scope_fence(lane_value, fence, fence.uid(), fence.project())?;
+    let snapshot = layer_config(lane_value, refresh)?;
+    if snapshot.project_id() != fence.project() {
+        return Err(Failure::conflict(
+            "project_context_changed",
+            "the layer document was read from another selected project",
+        )
+        .remedy("repeat the layer request"));
+    }
+    verify_layer_scope_fence(lane_value, fence, fence.uid(), fence.project())?;
+    Ok(snapshot)
+}
+
 pub fn style_catalog(lane_value: &str) -> Result<HeadlessStyleSnapshot, Failure> {
     let lane = Lane::parse(lane_value)?;
     if let Some((mut device, selected)) = restored_device_project(lane)? {
@@ -1600,6 +1685,24 @@ pub fn layer_reorder(
         project_status: selected.status().to_owned(),
         result,
     })
+}
+
+pub fn layer_reorder_fenced(
+    lane_value: &str,
+    orders: &[crate::LayerOrder],
+    fence: &LayerScopeFence,
+) -> Result<HeadlessLayerOrderReceipt, Failure> {
+    verify_layer_scope_fence(lane_value, fence, fence.uid(), fence.project())?;
+    let receipt = layer_reorder(lane_value, orders)?;
+    if receipt.project_id() != fence.project() {
+        return Err(Failure::conflict(
+            "project_context_changed",
+            "the layer order receipt names another selected project",
+        )
+        .remedy("repeat the layer request"));
+    }
+    verify_layer_scope_fence(lane_value, fence, fence.uid(), fence.project())?;
+    Ok(receipt)
 }
 
 pub fn tile_status(

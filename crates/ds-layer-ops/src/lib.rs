@@ -61,6 +61,10 @@ pub struct OrderReceipt {
 /// the identity and selected project the host is bound to.
 pub trait LayerDocuments {
     fn read(&mut self, refresh: bool) -> Result<DocumentRead, Failure>;
+    /// Recheck the exact principal/project captured by `read` before a local
+    /// preference or governed order effect. Implementations must refuse before
+    /// the effect if their native scope changed.
+    fn check_scope(&mut self, expected: &Scope) -> Result<(), Failure>;
     fn reorder(&mut self, orders: &[Order]) -> Result<OrderReceipt, Failure>;
 }
 
@@ -102,6 +106,26 @@ impl Preferences {
             Failure::invalid("local_layer_refused", message).remedy(LOCAL_STORE_REMEDY)
         })
     }
+
+    pub fn update<T>(
+        &self,
+        scope: &Scope,
+        transition: impl FnOnce(&BTreeMap<String, bool>) -> Result<(BTreeMap<String, bool>, T), Failure>,
+    ) -> Result<(Value, T), Failure> {
+        ds_layer_store::visibility::update_at(
+            &self.root,
+            &scope.lane,
+            &scope.uid,
+            &scope.project,
+            transition,
+        )
+        .map_err(|error| match error {
+            ds_layer_store::visibility::UpdateError::Store(message) => {
+                Failure::invalid("local_layer_refused", message).remedy(LOCAL_STORE_REMEDY)
+            }
+            ds_layer_store::visibility::UpdateError::Transition(failure) => failure,
+        })
+    }
 }
 
 // ── the native adapter ──────────────────────────────────────────────────
@@ -112,48 +136,49 @@ impl Preferences {
 /// refusal, never a document applied under the wrong scope.
 pub struct Native {
     lane: String,
+    fence: Option<ds_cli_auth::LayerScopeFence>,
 }
 impl Native {
     pub fn new(lane: &str) -> Self {
         Self {
             lane: lane.to_owned(),
+            fence: None,
         }
-    }
-    fn identity(&self) -> Result<(String, Option<String>), Failure> {
-        let (identity, project) =
-            ds_cli_auth::probe_headless_identity(&self.lane)?.ok_or_else(|| {
-                Failure::unauthorized(
-                    "headless_signed_out",
-                    "no native user is signed in for this lane and profile",
-                )
-                .remedy("run ds auth login --email <address>")
-            })?;
-        Ok((identity.uid().to_owned(), project))
     }
 }
 impl LayerDocuments for Native {
     fn read(&mut self, refresh: bool) -> Result<DocumentRead, Failure> {
-        let (uid, _) = self.identity()?;
-        let headless = ds_cli_auth::layer_config(&self.lane, refresh)?;
-        let (uid_after, _) = self.identity()?;
-        if uid_after != uid {
-            return Err(Failure::unauthorized(
-                "auth_identity_mismatch",
-                "the native account changed while the layer document was read",
-            )
-            .remedy("sign in again and repeat the command"));
-        }
+        let fence = ds_cli_auth::capture_layer_scope_fence(&self.lane)?;
+        let headless = ds_cli_auth::layer_config_fenced(&self.lane, refresh, &fence)?;
+        self.fence = Some(fence);
         Ok(DocumentRead {
             scope: Scope {
                 lane: headless.lane().to_owned(),
-                uid,
+                uid: self.fence.as_ref().expect("fence stored").uid().to_owned(),
                 project: headless.project_id().to_owned(),
             },
             document: headless.result().document().clone(),
         })
     }
+    fn check_scope(&mut self, expected: &Scope) -> Result<(), Failure> {
+        let fence = self.fence.as_ref().ok_or_else(|| {
+            Failure::conflict(
+                "layer_scope_missing",
+                "read the layer document before applying a scoped operation",
+            )
+            .remedy("repeat the layer request")
+        })?;
+        ds_cli_auth::verify_layer_scope_fence(&self.lane, fence, &expected.uid, &expected.project)
+    }
     fn reorder(&mut self, orders: &[Order]) -> Result<OrderReceipt, Failure> {
-        let receipt = ds_cli_auth::layer_reorder(&self.lane, orders)?;
+        let fence = self.fence.as_ref().ok_or_else(|| {
+            Failure::conflict(
+                "layer_scope_missing",
+                "read the layer document before applying a scoped operation",
+            )
+            .remedy("repeat the layer request")
+        })?;
+        let receipt = ds_cli_auth::layer_reorder_fenced(&self.lane, orders, fence)?;
         Ok(OrderReceipt {
             project: receipt.project_id().to_owned(),
             reordered: orders.len(),
@@ -288,14 +313,18 @@ pub fn set_visibility(
         )
         .remedy(ID_REMEDY));
     }
-    let transition = ask_layer_state(&question(
-        &read,
-        &remembered,
-        json!({"kind": "set", "ids": runtime_ids, "visible": request.visible, "expand": true}),
-    ))?;
-    let next: BTreeMap<String, bool> = serde_json::from_value(transition["preferences"].clone())
-        .expect("kernel preferences are a boolean map");
-    let receipt = preferences.replace(&read.scope, &next)?;
+    let (receipt, (transition, next)) = preferences.update(&read.scope, |current| {
+        documents.check_scope(&read.scope)?;
+        let transition = ask_layer_state(&question(
+            &read,
+            current,
+            json!({"kind": "set", "ids": runtime_ids, "visible": request.visible, "expand": true}),
+        ))?;
+        let next: BTreeMap<String, bool> =
+            serde_json::from_value(transition["preferences"].clone())
+                .expect("kernel preferences are a boolean map");
+        Ok((next.clone(), (transition, next)))
+    })?;
     let catalog = ask_layer_state(&question(
         &read,
         &next,
@@ -340,6 +369,9 @@ pub fn reorder(
     request: &OrderRequest,
 ) -> Result<Value, Failure> {
     let read = documents.read(false)?;
+    // Revalidate native identity/project before admitting any governed write;
+    // the receipt is evidence, never the precondition for the effect.
+    documents.check_scope(&read.scope)?;
     let admission = ask_layer_state(&json!({
         "schema": ds_command_kernel::layer_state::SCHEMA,
         "project": read.scope.project,
@@ -482,6 +514,8 @@ mod tests {
         pub reorders: Vec<Vec<Order>>,
         /// The project the order receipt names; defaults to the scope's.
         pub receipt_project: Option<String>,
+        /// Test-only context movement after a read, before an effect fence.
+        pub scope_after_read: Option<Scope>,
     }
     impl Fixture {
         pub fn new(uid: &str, project: &str) -> Self {
@@ -496,15 +530,31 @@ mod tests {
                 document,
                 reorders: vec![],
                 receipt_project: None,
+                scope_after_read: None,
             }
         }
     }
     impl LayerDocuments for Fixture {
         fn read(&mut self, _refresh: bool) -> Result<DocumentRead, Failure> {
-            Ok(DocumentRead {
+            let read = DocumentRead {
                 scope: self.scope.clone(),
                 document: self.document.clone(),
-            })
+            };
+            if let Some(next) = self.scope_after_read.take() {
+                self.scope = next;
+            }
+            Ok(read)
+        }
+        fn check_scope(&mut self, expected: &Scope) -> Result<(), Failure> {
+            let actual = self.scope.clone();
+            if &actual == expected {
+                Ok(())
+            } else {
+                Err(
+                    Failure::conflict("project_context_changed", "fixture scope changed")
+                        .remedy("repeat the layer request"),
+                )
+            }
         }
         fn reorder(&mut self, orders: &[Order]) -> Result<OrderReceipt, Failure> {
             self.reorders.push(orders.to_vec());
@@ -699,6 +749,21 @@ mod tests {
         assert_eq!(saved["unlisted"], json!(["design/lines"]));
         assert_eq!(saved["reordered"], 1);
         assert_eq!(docs.reorders.len(), 1);
+        docs.scope_after_read = Some(Scope {
+            lane: "canary".into(),
+            uid: "u1".into(),
+            project: "p2".into(),
+        });
+        let refused = reorder(
+            &mut docs,
+            &OrderRequest {
+                orders: orders(&[("survey/poles", 101)]),
+            },
+        )
+        .unwrap_err();
+        assert_eq!(refused.code(), "project_context_changed");
+        assert_eq!(docs.reorders.len(), 1, "scope change must send no reorder");
+        docs.scope.project = "p1".into();
         let refused = reorder(
             &mut docs,
             &OrderRequest {
