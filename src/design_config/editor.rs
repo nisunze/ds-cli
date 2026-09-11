@@ -1208,14 +1208,21 @@ fn config_boolean(value: &Value) -> Option<bool> {
     }
 }
 
+/// The LAST raw key that normalises to the wanted spelling answers, not the
+/// first. The deleted host built `new Map(Object.keys(row).map(...))` and read
+/// it back, and a `Map` keeps the last write: a document carrying both
+/// `Design Data Source` and `design_data_source` was read from the second one.
+/// Returning the first instead silently answers from the row the operator
+/// replaced.
 fn matching_row_indexed(row: &Value, keys: &[&str]) -> Option<(usize, Value)> {
     let object = row.as_object()?;
     for (index, key) in keys.iter().enumerate() {
         let wanted = config_token(&Value::String((*key).to_string()));
-        for (raw, value) in object {
-            if config_token(&Value::String(raw.clone())) == wanted {
-                return Some((index, value.clone()));
-            }
+        let found = object
+            .iter()
+            .rfind(|(raw, _)| config_token(&Value::String((*raw).clone())) == wanted);
+        if let Some((_, value)) = found {
+            return Some((index, value.clone()));
         }
     }
     None
@@ -1329,6 +1336,20 @@ mod design_data_path_tests {
 
     fn path(document: Value) -> Value {
         design_data_path(&document)
+    }
+
+    #[test]
+    fn two_spellings_of_one_key_in_one_object_answer_from_the_last() {
+        // `new Map(Object.keys(row).map(...))` keeps the LAST write, so the
+        // host read the second spelling. Reading the first answers from the row
+        // the operator replaced rather than the one they wrote.
+        let document = json!({
+            "Use Firestore Design Data": true,
+            "use_firestore_design_data": false,
+        });
+        let result = path(document);
+        assert_eq!(result["path"], "mirrored");
+        assert_eq!(result["source"], "explicit");
     }
 
     #[test]
