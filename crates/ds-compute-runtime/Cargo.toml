@@ -11,5 +11,6 @@ ds-sync-store = { path = "../ds-sync-store" }
 ds-network = { path = "../../../ds-network/crates/ds-network" }
 serde_json = "1"
 sha2 = "0.10"
+rayon = "1"
 [dev-dependencies]
 tempfile = "3"

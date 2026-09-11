@@ -91,6 +91,16 @@ impl Workers {
             return Err("worker count must be 1..256".into());
         }
         open(&path)?;
+        // All batches share this bounded pool, including the engine's nested
+        // parallel transformer work. A batch cannot escape memory admission by
+        // starting another machine-wide pool for its individual transformers.
+        let pool = Arc::new(
+            rayon::ThreadPoolBuilder::new()
+                .num_threads(count)
+                .thread_name(|i| format!("ds-compute-{i}"))
+                .build()
+                .map_err(|e| e.to_string())?,
+        );
         let stop = Arc::new(AtomicBool::new(false));
         let mut threads = Vec::with_capacity(count);
         for index in 0..count {
@@ -101,6 +111,7 @@ impl Workers {
                 auth.clone(),
                 stop.clone(),
             );
+            let pool = pool.clone();
             let worker = format!("{}-{}-{index}", std::process::id(), now_ms());
             threads.push(thread::spawn(move || {
                 while !stop.load(Ordering::Acquire) {
@@ -108,7 +119,7 @@ impl Workers {
                         thread::sleep(Duration::from_millis(500));
                         continue;
                     }
-                    match run_one(&path, &owner, &lane, &worker, auth.clone()) {
+                    match pool.install(|| run_one(&path, &owner, &lane, &worker, auth.clone())) {
                         Ok(true) => {}
                         Ok(false) => thread::sleep(Duration::from_millis(200)),
                         Err(error) => {

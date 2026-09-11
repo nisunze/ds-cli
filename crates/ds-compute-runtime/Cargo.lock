@@ -309,6 +309,7 @@ dependencies = [
  "ds-command-kernel",
  "ds-network",
  "ds-sync-store",
+ "rayon",
  "serde_json",
  "sha2",
  "tempfile",

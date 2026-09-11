@@ -119,3 +119,52 @@ fn parallel_claims_are_unique_and_revocation_and_cancellation_stop_work() {
     )
     .is_err());
 }
+
+#[test]
+fn workers_complete_real_batches_inside_the_shared_resource_bound() {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::time::{Duration, Instant};
+    struct Bound(Arc<AtomicBool>);
+    impl Authorizer for Bound {
+        fn authorize(&self, _: &str) -> Result<(), String> {
+            if rayon::current_thread_index().is_some() {
+                assert_eq!(rayon::current_num_threads(), 2);
+                self.0.store(true, Ordering::Release);
+            }
+            Ok(())
+        }
+    }
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("store.sqlite");
+    for key in ["first", "second"] {
+        runtime::submit(&path, "owner", "stable", key, &request()).unwrap();
+    }
+    let observed = Arc::new(AtomicBool::new(false));
+    let workers = runtime::Workers::start(
+        path.clone(),
+        "owner".into(),
+        "stable".into(),
+        2,
+        Arc::new(Bound(observed.clone())),
+    )
+    .unwrap();
+    let deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+        let jobs = runtime::open(&path)
+            .unwrap()
+            .jobs("owner", "stable", 10)
+            .unwrap();
+        if jobs.iter().all(|job| job.phase == Phase::Completed) {
+            assert_eq!(jobs.len(), 2);
+            assert!(jobs.iter().all(|job| job.attempts == 1));
+            break;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "workers did not complete: {jobs:?}"
+        );
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    drop(workers);
+    assert!(observed.load(Ordering::Acquire));
+}
