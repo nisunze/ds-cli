@@ -23,7 +23,7 @@ use ds_cli_contract::{Context, Inputs};
 #[cfg(test)]
 use ds_command_kernel::report_formats::Placement;
 use ds_command_kernel::report_formats::{
-    DesignOutputSelection, ReadinessMode, apply_output_selection,
+    DesignOutputSelection, ReadinessMode, apply_output_selection, named_layouts,
 };
 use serde_json::{Value, json};
 
@@ -53,6 +53,17 @@ const SETTINGS_UNREADABLE: Refusal = Refusal {
     code: "project_settings_unreadable",
     when: "the project's settings sheet cannot be read as printing configuration",
     remedy: "inspect the project configuration and repair the settings sheet",
+};
+/// Naming a global printing setup is not adopting it. The kernel's rule is
+/// right and unchanged — `report_formats` refuses an export whose selection
+/// names a setup the project does not hold. What was missing was the way out:
+/// the refusal arrived at export time, from a command that had no idea which
+/// command adopts a setup. It is raised here instead, before the write, and
+/// it names the adoption command.
+const SETUP_NOT_ADOPTED: Refusal = Refusal {
+    code: "print_setup_not_adopted",
+    when: "the selection names a printing setup this project does not hold; naming a global template is not adoption",
+    remedy: "copy the global setup into this project with `ds report layout copy`, then save the selection again",
 };
 const CONFIRM: Refusal = Refusal {
     code: "confirmation_required",
@@ -88,6 +99,7 @@ const CONFIG_REFUSALS: &[Refusal] = &[
 
 const WRITE_REFUSALS: &[Refusal] = &[
     SELECTION_INVALID,
+    SETUP_NOT_ADOPTED,
     CONFIRM,
     super::NATIVE_PROFILE,
     super::NATIVE_PROFILE_DIGEST,
@@ -230,10 +242,44 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     Ok(output)
 }
 
+/// Refuse a selection naming a printing setup this project does not hold.
+///
+/// The facts are the kernel's: `named_layouts` is the project's sealed
+/// printing catalogue, and `enabled` is what `tokens()` uses to decide a print
+/// is actually produced. No rule is restated here — only the moment it is
+/// applied moves, from the export that would have failed to the write that
+/// would have guaranteed it.
+fn adoption(sheets: &Value, selection: &DesignOutputSelection) -> Result<(), Failure> {
+    let layouts = named_layouts(sheets)
+        .map_err(|_| unreadable("the project's sealed printing setup catalogue is not readable"))?;
+    let missing = selection
+        .prints
+        .iter()
+        .filter(|print| print.enabled && !layouts.contains_key(&print.layout_id))
+        .map(|print| print.layout_id.as_str())
+        .collect::<Vec<_>>();
+    if missing.is_empty() {
+        return Ok(());
+    }
+    Err(
+        Failure::invalid(
+            SETUP_NOT_ADOPTED.code,
+            format!(
+                "this project holds no printing setup named {}; naming a global template does not adopt it",
+                missing.join(", ")
+            ),
+        )
+        .remedy(SETUP_NOT_ADOPTED.remedy)
+        .next("ds report layout copy --request <copy.json> --output json"),
+    )
+}
+
 pub fn set(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let selection = selection(inputs)?;
     let lane = inputs.require("lane")?;
     let configuration = ds_cli_auth::feeder_configuration(lane, None)?;
+    // A selection that cannot execute must not be saved as if it could.
+    adoption(&configuration.document["sheets"], &selection)?;
     let mut rows = configuration.document["sheets"]["project_settings"]
         .as_array()
         .cloned()
@@ -464,5 +510,58 @@ mod tests {
         assert!(text.contains("tr_export_formats"), "{text}");
         assert!(text.contains("row created"), "{text}");
         assert!(text.contains("saved=true"), "{text}");
+    }
+
+    /// The whole production failure in one test: a project selects a global
+    /// printout it never adopted, and every surface that could have said so
+    /// said something else. The write is refused before it happens, and the
+    /// refusal names the command that fixes it.
+    #[test]
+    fn a_selection_naming_an_unadopted_setup_is_refused_with_the_adoption_command() {
+        let layout = |id: &str| {
+            let mut layout = ds_command_kernel::printing::default_layout();
+            layout.id = id.to_owned();
+            json!({"id":id,"revision":"a".repeat(64),"layout":layout})
+        };
+        let sheets = json!({"printing_setups":[layout("project_a3")]});
+        let select = |id: &str, enabled: bool| DesignOutputSelection {
+            schema: "ds.design-output-selection/v1".to_owned(),
+            prints: vec![ds_command_kernel::report_formats::NamedPrintSelection {
+                layout_id: id.to_owned(),
+                enabled,
+                formats: vec![ds_command_kernel::report_formats::PrintArtifactFormat::Pdf],
+            }],
+            geospatial: Vec::new(),
+            tabular: Vec::new(),
+            execution: Default::default(),
+        };
+
+        // The setup the project actually holds is accepted.
+        adoption(&sheets, &select("project_a3", true)).expect("an adopted setup is selectable");
+        // A global template the project has merely NAMED is not.
+        let refusal = adoption(&sheets, &select("a3_landscape_rwanda_project_lv", true))
+            .expect_err("naming a global template is not adoption");
+        let rendered = format!("{refusal:?}");
+        assert!(rendered.contains("print_setup_not_adopted"), "{rendered}");
+        assert!(
+            rendered.contains("a3_landscape_rwanda_project_lv"),
+            "{rendered}"
+        );
+        assert!(rendered.contains("ds report layout copy"), "{rendered}");
+        assert_eq!(refusal.remedy_text(), Some(SETUP_NOT_ADOPTED.remedy));
+        assert!(
+            refusal
+                .next_commands()
+                .iter()
+                .any(|command| command.starts_with("ds report layout copy")),
+            "{rendered}"
+        );
+
+        // A print the operator switched off produces nothing, so it cannot
+        // make an export fail and must not block the save.
+        adoption(&sheets, &select("a3_landscape_rwanda_project_lv", false))
+            .expect("a disabled print is not selected");
+        // A project with no sealed catalogue at all refuses the same way.
+        assert!(adoption(&json!({}), &select("project_a3", true)).is_err());
     }
 }

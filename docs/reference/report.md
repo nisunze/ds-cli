@@ -150,7 +150,11 @@ array, a truthy map, or the versioned `ds.design-output-selection/v1` document
 `outputs set` takes that versioned document (`ds report layout schema` returns
 its schema under `output_selection`). It is validated against the kernel's
 closed type *before* any credential is restored, so a malformed selection costs
-no round trip. The kernel then writes it into the project's settings sheet —
+no round trip. A selection naming a printing setup this project does not
+hold is refused the same way, before the write: naming a global template is not
+adopting it, and `print_setup_not_adopted` names `ds report layout copy` as the
+way to adopt one. A selection that cannot execute is never saved as though it
+could. The kernel then writes it into the project's settings sheet —
 into whichever of the five export-row aliases the project already uses
 (`design_export_format`, `design_export_formats`, `transformer_export_formats`,
 `tr_export_formats`, `report_formats`, in any case and with hyphens), or a new
@@ -362,7 +366,9 @@ has agreed to drop unsaved edits. Documents never cross this boundary.
 
 ## Publishing a setup
 
-`ds report layout save --scope <global|project> --request <file>` takes a `save` request carrying `layout` and `expected_revision`. The kernel's setup lifecycle plan (`printing::lifecycle`) decides whether that publish is a create (empty revision) or an update (with one) — the same decision the Printing setup page takes — so `ds` never sends the compatibility `save` action itself.
+`ds report layout save --scope <global|project> --request <file>` takes a `save`, `create` or `update` request carrying `layout` and, for the latter two shapes, `expected_revision`. All three publish the same way: the kernel's setup lifecycle plan (`printing::lifecycle`) decides whether a publish is a create (no revision) or an update (an exact one) — the same decision the Printing setup page takes — so `ds` never sends the compatibility `save` action itself, and the word in the request never overrides the facts. `copy` and `delete` are different transactions and keep their own commands; `save` refuses them by name.
+
+`ds report layout schema` documents all four transactions, `save` included, so a request derived from discovery is one a command accepts. A layout the deployed validator refuses comes back as `print_layout_invalid` naming the offending field, and a validator that cannot answer at all as `print_validator_unavailable` — never as an authentication failure.
 
 ## Printable inventory and report plans
 
