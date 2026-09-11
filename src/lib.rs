@@ -40,6 +40,12 @@ pub fn design_health_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue>
 }
 pub mod design_status_query;
 pub mod design_status_row;
+pub mod sync;
+#[cfg(feature = "wasm")]
+#[wasm_bindgen::prelude::wasm_bindgen(js_name = syncPlan)]
+pub fn sync_plan_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
+    sync::evaluate(input).map_err(|error| wasm_bindgen::JsValue::from_str(&error))
+}
 #[cfg(feature = "wasm")]
 #[wasm_bindgen::prelude::wasm_bindgen(js_name = designStatusQuery)]
 pub fn design_status_query_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
