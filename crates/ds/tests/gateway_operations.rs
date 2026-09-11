@@ -41,9 +41,9 @@ use ds_client_core::{
     PROJECT_FORM_EDITOR_ACTION, PROJECT_FORMS_ACTION, PROJECT_REPORT_ACTIONS, ProfileError,
     SOLAR_SNAPSHOT_ACTION, STYLES_ACTION, SURVEY_CONTROL_ROUTES, SURVEY_ENTRIES_CHANGES_METHOD,
     SURVEY_ENTRIES_CHANGES_PATH, SURVEY_ENTRIES_SELECT_METHOD, SURVEY_ENTRIES_SELECT_PATH,
-    SURVEY_ENTRY_CREATE_METHOD, SURVEY_ENTRY_CREATE_OPERATION, SURVEY_ENTRY_CREATE_PATH,
-    SURVEY_QUERY_METHOD, SURVEY_QUERY_PATH, TILES_ACTIONS, TRANSFORMER_CONTEXT_ACTION,
-    TRANSFORMER_CONTEXT_FIELDS, TRANSFORMER_CONTEXT_METHOD, TRANSFORMER_CONTEXT_PATH,
+    SURVEY_ENTRY_CREATE_OPERATION, SURVEY_QUERY_METHOD, SURVEY_QUERY_PATH, TILES_ACTIONS,
+    TRANSFORMER_CONTEXT_ACTION, TRANSFORMER_CONTEXT_FIELDS, TRANSFORMER_CONTEXT_METHOD,
+    TRANSFORMER_CONTEXT_PATH,
 };
 
 /// Every registry operation `ds` can issue, and which of its typed calls does.
@@ -105,10 +105,6 @@ const CLI_ONLY: &[(&str, &str)] = &[
         "No matching path in ds-apis-tf; native client only.",
     ),
     (
-        "POST /api/v1/entries/mutate",
-        "Survey entry creation is native-client owned and not declared yet.",
-    ),
-    (
         "SURVEY_CONTROL_ROUTES",
         "Six form-factory / template routes pinned as one profile string.",
     ),
@@ -138,6 +134,8 @@ fn profile_from_registry(lane: DeploymentLane, gateway_origin: &str) -> ClientPr
     let (printing_method, printing_path) = route("domains.printing.list");
     let (tiles_method, tiles_path) = route("domains.tiles.action");
     let (project_report_method, project_report_path) = route("domains.project_report.action");
+    let (survey_entry_create_method, survey_entry_create_path) =
+        route("domains.survey_entries.create");
 
     ClientProfileInput {
         schema_version: CLIENT_PROFILE_SCHEMA.to_owned(),
@@ -182,8 +180,8 @@ fn profile_from_registry(lane: DeploymentLane, gateway_origin: &str) -> ClientPr
         survey_entries_select_path: SURVEY_ENTRIES_SELECT_PATH.to_owned(),
         survey_entries_changes_method: SURVEY_ENTRIES_CHANGES_METHOD.to_owned(),
         survey_entries_changes_path: SURVEY_ENTRIES_CHANGES_PATH.to_owned(),
-        survey_entry_create_method: SURVEY_ENTRY_CREATE_METHOD.to_owned(),
-        survey_entry_create_path: SURVEY_ENTRY_CREATE_PATH.to_owned(),
+        survey_entry_create_method,
+        survey_entry_create_path,
         survey_entry_create_operation: SURVEY_ENTRY_CREATE_OPERATION.to_owned(),
         project_data_method,
         project_data_path,
@@ -258,6 +256,9 @@ fn a_drifted_registry_route_is_refused() {
         }),
         ("project_report_path", |input| {
             input.project_report_path = "/reports".to_owned()
+        }),
+        ("survey_entry_create_path", |input| {
+            input.survey_entry_create_path = "/api/v1/entries/create".to_owned()
         }),
         ("auth_device_revoke_path_template", |input| {
             input.auth_device_revoke_path_template = "/api/v1/auth/devices".to_owned()
