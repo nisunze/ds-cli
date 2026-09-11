@@ -249,6 +249,35 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     // inventory because restoring the native session may rotate it.
     ("design.status", "local_auth_state", "headless_project"),
     ("design.collisions", "local_auth_state", "headless_project"),
+    // Slice 14a: the previews the register kept to itself. Each reads the
+    // same status rows on the same native credential class and answers from
+    // the shared kernel, so an agent learns what a batch would skip.
+    ("design.bulk.plan", "local_auth_state", "headless_project"),
+    (
+        "design.download.plan",
+        "local_auth_state",
+        "headless_project",
+    ),
+    (
+        "design.version.status",
+        "local_auth_state",
+        "headless_project",
+    ),
+    (
+        "design.conflict.list",
+        "local_auth_state",
+        "headless_project",
+    ),
+    (
+        "design.conflict.check",
+        "local_auth_state",
+        "headless_project",
+    ),
+    (
+        "design.presence.status",
+        "local_auth_state",
+        "headless_project",
+    ),
     ("design.dashboard", "local_auth_state", "headless_project"),
     ("design.transformer.download", "local_ui", "project"),
     (
