@@ -1,17 +1,17 @@
 use axum::extract::Request;
 use axum::middleware::{self, Next};
 use axum::{
-    Json, Router,
     body::Bytes,
     extract::{DefaultBodyLimit, Path as Param, State},
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
     routing::{get, post},
+    Json, Router,
 };
 use ds_command_kernel::compute_jobs::Event;
 use ds_compute_runtime::{self as runtime, Authorizer};
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use std::{
     fs::{self, OpenOptions},
     io::{Read, Write},
@@ -34,6 +34,7 @@ pub struct App {
     pub connection: Connection,
     pub auth: Arc<dyn Authorizer>,
     pub requests: Arc<tokio::sync::Semaphore>,
+    pub activity: Option<Arc<crate::solar_sync::SolarActivity>>,
 }
 
 type ApiError = (StatusCode, Json<Value>);
@@ -68,7 +69,9 @@ pub fn router(app: App) -> Router {
         .route("/v1/jobs/:id", get(status))
         .route("/v1/jobs/:id/cancel", post(cancel))
         .route("/v1/jobs/:id/result", get(result))
+        .route("/v1/activity", get(activity))
         .route("/v1/transformer-processing/:key", post(submit))
+        .route("/v1/solar-processing/:key", post(submit_solar))
         .layer(DefaultBodyLimit::max(64 * 1024 * 1024))
         .layer(middleware::from_fn_with_state(app.clone(), access))
         .with_state(app)
@@ -149,6 +152,27 @@ async fn submit(
     })
     .await
 }
+/// The only native Server entry point for a sealed prepared Solar request.
+/// Keeping this separate from legacy transformer processing prevents a failed
+/// Fast LV decode from becoming an alternate engine-dispatch authority.
+async fn submit_solar(
+    State(app): State<App>,
+    _headers: HeaderMap,
+    Param(key): Param<String>,
+    body: Bytes,
+) -> Result<(StatusCode, Json<Value>), ApiError> {
+    blocking(move || {
+        let job = runtime::submit_solar(
+            &app.database,
+            &app.connection.owner,
+            &app.connection.lane,
+            &key,
+            &body,
+        )?;
+        Ok((StatusCode::ACCEPTED, Json(json!({"job":job}))))
+    })
+    .await
+}
 async fn cancel(
     State(app): State<App>,
     _headers: HeaderMap,
@@ -187,6 +211,15 @@ async fn result(
             bytes,
         )
             .into_response())
+    })
+    .await
+}
+async fn activity(State(app): State<App>, _headers: HeaderMap) -> Result<Json<Value>, ApiError> {
+    blocking(move || {
+        let activity = app
+            .activity
+            .ok_or("Solar Sync Center activity is unavailable before server startup")?;
+        activity.store_read().map(Json)
     })
     .await
 }
@@ -306,7 +339,7 @@ pub fn connection(
         .map_err(|e| e.to_string())?;
     Ok(connection)
 }
-pub async fn serve(app: App, workers: usize) -> Result<(), String> {
+pub async fn serve(mut app: App, workers: usize) -> Result<(), String> {
     let listener = tokio::net::TcpListener::bind(app.connection.address)
         .await
         .map_err(|e| {
@@ -316,12 +349,16 @@ pub async fn serve(app: App, workers: usize) -> Result<(), String> {
                 format!("cannot bind {}: {e}", app.connection.address)
             }
         })?;
+    let activity =
+        crate::solar_sync::SolarActivity::open(app.database.clone(), app.connection.clone())?;
+    app.activity = Some(activity.clone());
     let workers = runtime::Workers::start(
         app.database.clone(),
         app.connection.owner.clone(),
         app.connection.lane.clone(),
         workers,
         app.auth.clone(),
+        Some(activity),
     )?;
     eprintln!(
         "DS server ready at {} (protected owner access)",
@@ -375,6 +412,7 @@ mod tests {
             },
             auth: Arc::new(Auth(authorized)),
             requests: Arc::new(tokio::sync::Semaphore::new(2)),
+            activity: None,
         }
     }
     #[tokio::test]

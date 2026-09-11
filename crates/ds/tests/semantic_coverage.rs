@@ -17,6 +17,7 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     // credential only connects to that host; it grants no Desktop authority.
     ("server.serve", "local_file_write", "headless_user"),
     ("server.submit", "local_file_write", "headless_user"),
+    ("server.solar.submit", "local_file_write", "headless_user"),
     ("server.status", "read_only", "headless_user"),
     ("server.cancel", "local_file_write", "headless_user"),
     ("server.result", "local_file_write", "headless_user"),

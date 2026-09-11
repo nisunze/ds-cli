@@ -2013,6 +2013,11 @@ static SERVER_ENTRIES: &[Entry] = &[
         render: ds_cli_server::render,
     },
     Entry {
+        command: &ds_cli_server::SOLAR_SUBMIT,
+        handler: ds_cli_server::solar_submit,
+        render: ds_cli_server::render,
+    },
+    Entry {
         command: &ds_cli_server::STATUS,
         handler: ds_cli_server::status,
         render: ds_cli_server::render,

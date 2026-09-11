@@ -1,13 +1,15 @@
 //! Thin command/HTTP host for the shared native compute runtime.
 mod auth;
 mod host;
+pub mod server_sync;
+mod solar_sync;
 use ds_cli_contract::{
-    Context, Failure, Inputs,
     spec::{
         Arg, Authority, Availability, Chapter, Command, Domain, Effect, Example, Execution, Refusal,
     },
+    Context, Failure, Inputs,
 };
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use std::{io::Read, path::PathBuf, sync::Arc};
 
 const STATE: Arg = Arg::value(
@@ -50,7 +52,7 @@ const fn command(
         path,
         contract: 1,
         summary,
-        purpose: "Drive persistent native transformer computation through the same Rust kernel and ds-network engine as Desktop. Jobs survive UI closure and server restart; input and result bytes are retained under the initiating native identity. Server control uses an owner-only local connection credential on loopback. Remote administration uses SSH. This initial host processes explicit ds.fast-lv.request/v1 documents; cloud publication and multi-user browser delegation are not provided by these commands.",
+        purpose: "Drive persistent native transformer and prepared Solar computation through the shared Rust runtime. Jobs survive UI closure and server restart; complete request and result bytes are retained under the initiating native identity. A Solar request carries the sealed prepared input itself, never a client path or browser cache reference. Server control uses an owner-only local connection credential on loopback. Remote administration uses SSH. Publication is represented through Sync Center's shared durable activity owner; these controls never create a browser queue.",
         chapter: Chapter::Design,
         effect,
         authority: Authority::HeadlessUser,
@@ -120,7 +122,35 @@ pub static SUBMIT: Command = command(
     ],
     &[Example {
         command: "ds server submit --input transformer-batch.json --key processing-001",
-        note: "Queue an explicit native request on the running server.",
+        note: "Queue an explicit native transformer request on the running server.",
+        runnable: false,
+    }],
+);
+pub static SOLAR_SUBMIT: Command = command(
+    "server.solar.submit",
+    &["server", "solar", "submit"],
+    "Queue one sealed prepared Solar calculation and return immediately.",
+    Effect::LocalFileWrite,
+    Execution::Job,
+    &[
+        STATE,
+        LANE,
+        Arg::value(
+            "input",
+            "<path>",
+            "Complete ds-solar prepared calculate request; at most 64 MiB.",
+        )
+        .required(),
+        Arg::value(
+            "key",
+            "<idempotency-key>",
+            "Stable caller key: resubmission preserves the existing job, changed bytes refuse.",
+        )
+        .required(),
+    ],
+    &[Example {
+        command: "ds server solar submit --input solar-prepared.json --key solar-001",
+        note: "The input embeds prepared weather and reference bytes; no browser cache or client path is read.",
         runnable: false,
     }],
 );
@@ -179,7 +209,7 @@ pub static RESULT: Command = command(
 pub static DOMAIN: Domain = Domain {
     id: "server",
     summary: "Native server.",
-    commands: &[&SERVE, &SUBMIT, &STATUS, &CANCEL, &RESULT],
+    commands: &[&SERVE, &SUBMIT, &SOLAR_SUBMIT, &STATUS, &CANCEL, &RESULT],
 };
 fn failure(e: impl ToString) -> Failure {
     Failure::failed("server_refused", e.to_string())
@@ -218,6 +248,7 @@ pub fn serve(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
         connection,
         auth: Arc::new(auth::NativeAuthorizer::new(lane).map_err(failure)?),
         requests: Arc::new(tokio::sync::Semaphore::new(workers.min(8))),
+        activity: None,
     };
     tokio::runtime::Builder::new_multi_thread()
         .enable_all()
@@ -290,6 +321,12 @@ fn id(inputs: &Inputs) -> Result<&str, Failure> {
     Ok(id)
 }
 pub fn submit(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
+    submit_at(inputs, "/v1/transformer-processing")
+}
+pub fn solar_submit(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
+    submit_at(inputs, "/v1/solar-processing")
+}
+fn submit_at(inputs: &Inputs, endpoint: &str) -> Result<Value, Failure> {
     let key = inputs.require("key")?;
     if key.is_empty()
         || key.len() > 128
@@ -310,12 +347,7 @@ pub fn submit(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
     if bytes.len() > 64 * 1024 * 1024 {
         return Err(failure("input exceeds 64 MiB"));
     }
-    json_request(
-        inputs,
-        "POST",
-        &format!("/v1/transformer-processing/{key}"),
-        Some(&bytes),
-    )
+    json_request(inputs, "POST", &format!("{endpoint}/{key}"), Some(&bytes))
 }
 pub fn status(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
     let path = if inputs.value("job").is_some() {
