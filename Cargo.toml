@@ -38,6 +38,7 @@ imagesize = "0.13"
 # The survey capture pipeline deliberately carries only the codecs it admits.
 # Keeping defaults off keeps native and WASM builds free of the larger codec set.
 image = { version = "0.25.10", default-features = false, features = ["jpeg", "png"] }
+time = { version = "=0.3.47", features = ["formatting", "parsing"] }
 
 [dev-dependencies]
 wasm-bindgen-test = "0.3"
