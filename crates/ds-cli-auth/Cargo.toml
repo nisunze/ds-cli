@@ -21,6 +21,8 @@ base64 = { workspace = true }
 ds-cli-contract = { workspace = true }
 ds-cli-desktop = { workspace = true }
 ds-client-core = { workspace = true }
+ds-edge-authority = { workspace = true }
+ds-sync-runtime = { workspace = true }
 # The resumable transfer protocol, owned once and shared with the desktop
 # shell. This crate hosts its IO; it never re-decides what a status means.
 ds-command-kernel = { workspace = true }

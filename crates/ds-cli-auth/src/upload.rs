@@ -807,6 +807,41 @@ pub(crate) fn transfer(
     report.into_response()
 }
 
+/// Drive one already-declared Sync Center output through a DS-minted storage
+/// session. The server producer owns the reader; this is the only native HTTP
+/// path it may use for bytes, and the session URI never crosses back out.
+pub fn transfer_sync_output(
+    output_id: &str,
+    session_uri: &str,
+    total_bytes: u64,
+    reader: &mut dyn Read,
+) -> Result<ds_sync_runtime::TransferReceipt, String> {
+    if output_id.is_empty() || output_id.len() > 256 || output_id.chars().any(char::is_control) {
+        return Err("native Sync Center output identity is invalid".into());
+    }
+    let session_uri = validated_session_uri(session_uri, SessionOrigin::Storage)
+        .map_err(|_| "native Sync Center storage session is invalid")?;
+    let (report, _) = drive(
+        session_uri,
+        SessionOrigin::Storage,
+        total_bytes,
+        reader,
+        &|| false,
+    )
+    .map_err(|_| "native Sync Center transfer did not reach a terminal outcome")?;
+    Ok(ds_sync_runtime::TransferReceipt {
+        output_id: output_id.to_owned(),
+        outcome: if report.done {
+            "completed"
+        } else {
+            "not_committed"
+        }
+        .into(),
+        committed_bytes: report.committed,
+        total_bytes: report.total,
+    })
+}
+
 // ---------------------------------------------------------------------------
 // Weak-network harness seam
 // ---------------------------------------------------------------------------

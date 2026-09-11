@@ -537,6 +537,14 @@ fn state_root() -> Result<PathBuf, Failure> {
     }
 }
 
+/// A host-owned private authority directory. It deliberately shares the same
+/// protected user root as refresh credentials but never contains a credential.
+pub(crate) fn edge_authority_dir(lane: &str) -> Result<PathBuf, Failure> {
+    let root = state_root()?.join("edge-admission").join(lane);
+    secure_dir(&root).map_err(state_failure)?;
+    Ok(root)
+}
+
 pub(crate) fn availability() -> ds_cli_contract::spec::Availability {
     #[cfg(windows)]
     let result = state_windows::probe();
