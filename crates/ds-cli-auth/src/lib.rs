@@ -114,8 +114,17 @@ pub fn probe_headless_identity(
     }
 }
 
-/// Validate a long-running native host against the real credential authority.
-/// The public result is an identity fence; credentials remain in native state.
+/// Observe the provider/device binding without exposing its credentials.
+/// The caller separately verifies the account and refreshes native authority.
+pub fn runtime_credential_binding(lane_value: &str) -> Result<String, Failure> {
+    let lane = Lane::parse(lane_value)?;
+    Ok(match device::probe_context(lane)? {
+        Some(device) => format!("ds_device:{}:{}", device.device_id(), device.fingerprint()),
+        None => "firebase".to_owned(),
+    })
+}
+
+/// Refresh native authority while preserving its canonical account identity.
 pub fn refresh_runtime_identity(lane_value: &str) -> Result<ProviderIdentity, Failure> {
     let lane = Lane::parse(lane_value)?;
     let before = probe_headless_identity(lane_value)?

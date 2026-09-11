@@ -216,7 +216,7 @@ pub fn serve(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
     let app = host::App {
         database: directory.join("store.sqlite"),
         connection,
-        auth: Arc::new(auth::NativeAuthorizer::new(lane)),
+        auth: Arc::new(auth::NativeAuthorizer::new(lane).map_err(failure)?),
         requests: Arc::new(tokio::sync::Semaphore::new(workers.min(8))),
     };
     tokio::runtime::Builder::new_multi_thread()

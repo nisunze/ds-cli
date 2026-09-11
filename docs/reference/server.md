@@ -33,6 +33,10 @@ audience. Native authority is renewed at most every 15 seconds across workers;
 sign-out/account changes fence work immediately when observed. Upstream device
 revocation is observed on renewal. Loss of authority pauses execution and fences
 result commits. Restoring the same identity permits pending work to recover.
+Each running host also retains its starting provider/device binding. It cannot
+silently fall back from a revoked or removed device to a stored password login
+for the same UID. Changing that binding requires restarting the host; retained
+jobs still belong to the same canonical account, lane and audience.
 
 Worker leases renew during computation. After a killed process, an expired
 30-second lease can be reclaimed; completed jobs are never rerun. Cancellation
