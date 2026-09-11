@@ -4,12 +4,12 @@ mod host;
 pub mod server_sync;
 mod solar_sync;
 use ds_cli_contract::{
-    Context, Failure, Inputs,
     spec::{
         Arg, Authority, Availability, Chapter, Command, Domain, Effect, Example, Execution, Refusal,
     },
+    Context, Failure, Inputs,
 };
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use std::{io::Read, path::PathBuf, sync::Arc};
 
 const STATE: Arg = Arg::value(
@@ -138,7 +138,7 @@ pub static SOLAR_SUBMIT: Command = command(
         Arg::value(
             "input",
             "<path>",
-            "Complete ds-solar prepared calculate request; at most 64 MiB.",
+            "Private ds.solar.server-submission/v1 envelope: prepared request plus matching governed publication claim; at most 64 MiB.",
         )
         .required(),
         Arg::value(
@@ -149,8 +149,8 @@ pub static SOLAR_SUBMIT: Command = command(
         .required(),
     ],
     &[Example {
-        command: "ds server solar submit --input solar-prepared.json --key solar-001",
-        note: "The input embeds prepared weather and reference bytes; no browser cache or client path is read.",
+        command: "ds server solar submit --input pala.server-submission.json --key solar-001",
+        note: "The envelope binds the prepared input digest to its governed snapshot claim; no browser cache or client path is read.",
         runnable: false,
     }],
 );
@@ -183,7 +183,7 @@ pub static ACTIVITY: Command = command(
     Execution::Sync,
     &[STATE, LANE],
     &[Example {
-        command: "ds server activity --lane canary --output json",
+        command: "ds server activity --lane stable --output json",
         note: "Read running jobs and held publication state from the authenticated server.",
         runnable: false,
     }],

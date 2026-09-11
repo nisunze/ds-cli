@@ -10,8 +10,9 @@ operators use SSH. Public multi-user web delegation is not yet implemented.
 ds server serve --lane stable
 # From another terminal under the same account:
 ds server submit --input transformer-batch.json --key processing-001
+ds server solar submit --input pala.server-submission.json --key solar-001
 ds server status
-ds server activity --lane canary --output json
+ds server activity --lane stable --output json
 ds server status --job <id>
 ds server result --job <id> --out result.json
 ```
@@ -24,6 +25,22 @@ requests execute concurrently up to kernel CPU/memory admission; the engine
 uses its shared native Rayon pool inside each request. `--workers` can reduce
 that capacity. Results preserve per-transformer engineering outcomes, including
 failures; `completed` means the complete result document was produced.
+
+`server solar submit` accepts one private `ds.solar.server-submission/v1`
+envelope. It contains the existing prepared calculation fields (`prepared`,
+optional `render_charts`, optional `run_id`) and the exact matching
+`ds-solar.prepared-publication-claim/v1` as `publication_claim`. The Server
+checks the claim's project, city, city-content digest and prepared-input digest
+against the prepared calculation, and seals the claim's snapshot SHA-256,
+input-base fingerprint and actor-bound receipt into the durable job. The
+existing compute-artifact authority revalidates that sealed claim under the
+selected native project before publication. A missing, malformed, expired or
+stale claim is never published: missing or malformed claims refuse at
+admission, and an expired or stale claim is recorded by the publication
+authority. A server never stamps a newly fetched snapshot onto an older
+prepared input. The envelope is owner-private because the claim carries the
+actor-bound receipt. It is a sealed request body, not a server-readable client
+path or a browser cache reference.
 
 The default state root is `$XDG_STATE_HOME/ds/server/<lane>` or
 `~/.local/state/ds/server/<lane>`. `--state-dir` overrides it explicitly. It must
