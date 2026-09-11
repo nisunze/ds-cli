@@ -22,17 +22,14 @@ kernel_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 manifests=(
 	"crates/ds-design-workspace/Cargo.toml"
 	"crates/ds-compute-runtime/Cargo.toml"
+	"crates/ds-report-artifacts/Cargo.toml"
 )
 
-if [[ ! -d "${kernel_root}/../ds-network" ]]; then
-	# Not a failure: a kernel checkout without ds-network is the severance
-	# working as designed. These crates are the ones that legitimately need
-	# the engine, so they simply cannot be built here.
-	echo "SKIPPED: ../ds-network is not on disk, so no detached workspace can build."
-	exit 0
-fi
-
 for manifest in "${manifests[@]}"; do
+	if [[ ! -d "${kernel_root}/../ds-network" && "$manifest" != "crates/ds-report-artifacts/Cargo.toml" ]]; then
+		echo "SKIPPED: $manifest requires ../ds-network."
+		continue
+	fi
 	echo "==> ${manifest}"
 	cargo test --locked --manifest-path "${kernel_root}/${manifest}" "$@"
 done
