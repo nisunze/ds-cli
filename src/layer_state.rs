@@ -225,6 +225,14 @@ enum Op {
     Restore,
     /// Whether the held snapshot still applies to this document.
     Isolation,
+    /// The layout word each named runtime layer gets right now — document
+    /// layers from their effective desired visibility, foreign layers from
+    /// their own entry — or forced on when the caller loads them explicitly.
+    Runtime {
+        ids: Vec<String>,
+        #[serde(default)]
+        force_visible: bool,
+    },
     /// Canonical rows with their families and folded visibility.
     Catalog {
         #[serde(default = "default_limit")]
@@ -896,6 +904,18 @@ impl<'a> Context<'a> {
         })
     }
 
+    fn runtime(&self, ids: &[String], force_visible: bool) -> Value {
+        let writes: Vec<Value> = ids
+            .iter()
+            .filter(|id| !id.is_empty())
+            .map(|id| {
+                let desired = force_visible || self.remembered.desired_of(&self.facts, id);
+                write(&self.facts, id, desired, self.mode)
+            })
+            .collect();
+        json!({"writes": writes})
+    }
+
     fn catalog(&self, limit: usize) -> Result<Value, String> {
         if !(1..=MAX_CATALOG_LIMIT).contains(&limit) {
             return Err(format!("catalogue limit must be 1..={MAX_CATALOG_LIMIT}"));
@@ -1277,6 +1297,10 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
                     "active": context.isolation_active(),
                     "snapshot": context.isolation.is_some(),
                 }),
+                Op::Runtime { ids, force_visible } => {
+                    ids_bound(ids)?;
+                    context.runtime(ids, *force_visible)
+                }
                 Op::Catalog { limit } => context.catalog(*limit)?,
                 Op::Matrix => context.matrix(document),
                 Op::Reorder { orders } => context.reorder(orders),
@@ -1679,6 +1703,39 @@ mod tests {
             json!({"kind": "plan"}),
         );
         assert_eq!(plan["isolation_active"], true);
+        let state = ask(
+            json!({"isolation": snapshot.clone()}),
+            json!({"kind": "isolation"}),
+        );
+        assert_eq!(state, json!({"active": true, "snapshot": true}));
+        assert_eq!(
+            ask(json!({}), json!({"kind": "isolation"})),
+            json!({"active": false, "snapshot": false})
+        );
+        // the layout word right now, for document and foreign layers alike, or forced on
+        let out = ask(
+            json!({"preferences": {"poles": false, "sketch": false}}),
+            json!({"kind": "runtime", "ids": ["poles", "roads__label", "sketch", "other"]}),
+        );
+        assert_eq!(
+            out["writes"][0],
+            json!({"id": "poles", "runtime": "none", "reasons": ["user_hidden"]})
+        );
+        assert_eq!(
+            out["writes"][1]["reasons"],
+            json!(["user_hidden", "authored_hidden"])
+        );
+        assert_eq!(out["writes"][2]["runtime"], "none");
+        assert_eq!(out["writes"][3]["runtime"], "visible");
+        let out = ask(
+            json!({"preferences": {"poles": false}}),
+            json!({"kind": "runtime", "ids": ["poles", "roads__label"], "force_visible": true}),
+        );
+        assert_eq!(out["writes"][0]["runtime"], "visible");
+        assert_eq!(
+            out["writes"][1],
+            json!({"id": "roads__label", "runtime": "none", "reasons": ["authored_hidden"]})
+        );
         let mut stale = snapshot.clone();
         stale["layer_ids"].as_array_mut().unwrap().pop();
         let out = ask(json!({"isolation": stale}), json!({"kind": "restore"}));
