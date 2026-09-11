@@ -765,6 +765,429 @@
       }
     },
     {
+      "id": "register-into-a-catalogue-holding-a-traversal-id-refused",
+      "why": "An id keys a record on a host that keeps records in a file system, so it is one path segment. A catalogue carrying a traversal-shaped id is refused before anything is admitted into it, rather than each host neutralising the id on its own.",
+      "request": {
+        "kind": "register",
+        "registry": {
+          "schema": 1,
+          "revision": 4,
+          "scope": {
+            "host": "browser"
+          },
+          "layers": [
+            {
+              "id": "../../etc/original",
+              "name": "Access road",
+              "sourceName": "Manual layers",
+              "sourceLayerName": "Access road",
+              "sourceKind": "manual",
+              "geometryType": "LineString",
+              "color": "#2563eb",
+              "lineWidth": 2.5,
+              "pointRadius": 5.0,
+              "fillOpacity": 0.15,
+              "schema": [],
+              "featureCount": 0,
+              "visible": true,
+              "createdAt": 1758000000000
+            }
+          ]
+        },
+        "scope": {
+          "host": "browser"
+        },
+        "now_ms": 1758000000000,
+        "sequence": 2,
+        "colorIndex": 0,
+        "draft": {
+          "name": "Access road",
+          "geometryType": "LineString"
+        }
+      },
+      "expected": {
+        "outcome": "refused",
+        "refusal": {
+          "code": "malformed_descriptor",
+          "message": "a local layer id is one path segment: no separator, and never . or .."
+        }
+      }
+    },
+    {
+      "id": "register-a-pinned-pair-names-its-own-layer",
+      "why": "A pinned transformer row is named by the pair it was materialised from, not by the host and not by the clock: the kernel derives the id, the class colour and the columns, so the browser mints nothing.",
+      "request": {
+        "kind": "register",
+        "registry": {
+          "schema": 1,
+          "revision": 4,
+          "scope": {
+            "host": "browser"
+          },
+          "layers": []
+        },
+        "scope": {
+          "host": "browser"
+        },
+        "now_ms": 1758000000000,
+        "sequence": 1,
+        "colorIndex": 0,
+        "draft": {
+          "name": "MV line",
+          "geometryType": "LineString",
+          "sourceKind": "pinned",
+          "sourceName": "Poles A",
+          "sourceLayerName": "mv_line",
+          "featureCount": 12,
+          "pinned": {
+            "transformer": "Poles A",
+            "className": "mv_line",
+            "fields": [
+              "phase",
+              "doc_id",
+              "phase"
+            ]
+          }
+        }
+      },
+      "expected": {
+        "registry": {
+          "schema": 1,
+          "revision": 5,
+          "scope": {
+            "host": "browser"
+          },
+          "layers": [
+            {
+              "id": "pinned-poles-a__mv-line-a1308e67",
+              "name": "MV line",
+              "sourceName": "Poles A",
+              "sourceLayerName": "mv_line",
+              "sourceKind": "pinned",
+              "geometryType": "LineString",
+              "color": "#64748b",
+              "lineWidth": 2.5,
+              "pointRadius": 5.0,
+              "fillOpacity": 0.15,
+              "schema": [
+                {
+                  "name": "doc_id",
+                  "type": "text"
+                },
+                {
+                  "name": "phase",
+                  "type": "text"
+                }
+              ],
+              "featureCount": 12,
+              "visible": true,
+              "createdAt": 1758000000000
+            }
+          ]
+        },
+        "receipt": {
+          "id": "pinned-poles-a__mv-line-a1308e67",
+          "name": "MV line",
+          "sourceName": "Poles A",
+          "sourceLayerName": "mv_line",
+          "sourceKind": "pinned",
+          "geometryType": "LineString",
+          "color": "#64748b",
+          "lineWidth": 2.5,
+          "pointRadius": 5.0,
+          "fillOpacity": 0.15,
+          "schema": [
+            {
+              "name": "doc_id",
+              "type": "text"
+            },
+            {
+              "name": "phase",
+              "type": "text"
+            }
+          ],
+          "featureCount": 12,
+          "visible": true,
+          "createdAt": 1758000000000
+        },
+        "changed": true
+      }
+    },
+    {
+      "id": "register-the-same-pinned-pair-again-changes-nothing",
+      "why": "Materialising the pinned rooms again is not a second layer: the pair already has a descriptor, so the catalogue answers the one it holds, with the visibility and the style the user gave it, and nothing is rewritten.",
+      "request": {
+        "kind": "register",
+        "registry": {
+          "schema": 1,
+          "revision": 5,
+          "scope": {
+            "host": "browser"
+          },
+          "layers": [
+            {
+              "id": "pinned-poles-a__mv-line-a1308e67",
+              "name": "MV line",
+              "sourceName": "Poles A",
+              "sourceLayerName": "mv_line",
+              "sourceKind": "pinned",
+              "geometryType": "LineString",
+              "color": "#ff0000",
+              "lineWidth": 2.5,
+              "pointRadius": 5.0,
+              "fillOpacity": 0.15,
+              "schema": [
+                {
+                  "name": "doc_id",
+                  "type": "text"
+                },
+                {
+                  "name": "phase",
+                  "type": "text"
+                }
+              ],
+              "featureCount": 12,
+              "visible": false,
+              "createdAt": 1758000000000
+            }
+          ]
+        },
+        "scope": {
+          "host": "browser"
+        },
+        "now_ms": 1758000000000,
+        "sequence": 3,
+        "colorIndex": 0,
+        "draft": {
+          "name": "MV line",
+          "geometryType": "LineString",
+          "sourceKind": "pinned",
+          "sourceName": "Poles A",
+          "sourceLayerName": "mv_line",
+          "featureCount": 12,
+          "pinned": {
+            "transformer": "Poles A",
+            "className": "mv_line",
+            "fields": [
+              "phase"
+            ]
+          }
+        }
+      },
+      "expected": {
+        "registry": {
+          "schema": 1,
+          "revision": 5,
+          "scope": {
+            "host": "browser"
+          },
+          "layers": [
+            {
+              "id": "pinned-poles-a__mv-line-a1308e67",
+              "name": "MV line",
+              "sourceName": "Poles A",
+              "sourceLayerName": "mv_line",
+              "sourceKind": "pinned",
+              "geometryType": "LineString",
+              "color": "#ff0000",
+              "lineWidth": 2.5,
+              "pointRadius": 5.0,
+              "fillOpacity": 0.15,
+              "schema": [
+                {
+                  "name": "doc_id",
+                  "type": "text"
+                },
+                {
+                  "name": "phase",
+                  "type": "text"
+                }
+              ],
+              "featureCount": 12,
+              "visible": false,
+              "createdAt": 1758000000000
+            }
+          ]
+        },
+        "receipt": {
+          "id": "pinned-poles-a__mv-line-a1308e67",
+          "name": "MV line",
+          "sourceName": "Poles A",
+          "sourceLayerName": "mv_line",
+          "sourceKind": "pinned",
+          "geometryType": "LineString",
+          "color": "#ff0000",
+          "lineWidth": 2.5,
+          "pointRadius": 5.0,
+          "fillOpacity": 0.15,
+          "schema": [
+            {
+              "name": "doc_id",
+              "type": "text"
+            },
+            {
+              "name": "phase",
+              "type": "text"
+            }
+          ],
+          "featureCount": 12,
+          "visible": false,
+          "createdAt": 1758000000000
+        },
+        "changed": false
+      }
+    },
+    {
+      "id": "register-a-pinned-pair-that-slugs-the-same-is-another-layer",
+      "why": "The browser lower-cased both names and folded every other character into one, so Poles A and Poles-A were ONE layer and one overwrote the other. The fingerprint is taken over the pair itself, so two distinct pairs stay two distinct layers under readable ids.",
+      "request": {
+        "kind": "register",
+        "registry": {
+          "schema": 1,
+          "revision": 5,
+          "scope": {
+            "host": "browser"
+          },
+          "layers": [
+            {
+              "id": "pinned-poles-a__mv-line-a1308e67",
+              "name": "MV line",
+              "sourceName": "Poles A",
+              "sourceLayerName": "mv_line",
+              "sourceKind": "pinned",
+              "geometryType": "LineString",
+              "color": "#64748b",
+              "lineWidth": 2.5,
+              "pointRadius": 5.0,
+              "fillOpacity": 0.15,
+              "schema": [
+                {
+                  "name": "doc_id",
+                  "type": "text"
+                },
+                {
+                  "name": "phase",
+                  "type": "text"
+                }
+              ],
+              "featureCount": 12,
+              "visible": true,
+              "createdAt": 1758000000000
+            }
+          ]
+        },
+        "scope": {
+          "host": "browser"
+        },
+        "now_ms": 1758000000000,
+        "sequence": 2,
+        "colorIndex": 0,
+        "draft": {
+          "name": "MV line",
+          "geometryType": "LineString",
+          "sourceKind": "pinned",
+          "sourceName": "Poles-A",
+          "sourceLayerName": "mv_line",
+          "featureCount": 12,
+          "pinned": {
+            "transformer": "Poles-A",
+            "className": "mv_line",
+            "fields": [
+              "phase",
+              "doc_id"
+            ]
+          }
+        }
+      },
+      "expected": {
+        "registry": {
+          "schema": 1,
+          "revision": 6,
+          "scope": {
+            "host": "browser"
+          },
+          "layers": [
+            {
+              "id": "pinned-poles-a__mv-line-a1308e67",
+              "name": "MV line",
+              "sourceName": "Poles A",
+              "sourceLayerName": "mv_line",
+              "sourceKind": "pinned",
+              "geometryType": "LineString",
+              "color": "#64748b",
+              "lineWidth": 2.5,
+              "pointRadius": 5.0,
+              "fillOpacity": 0.15,
+              "schema": [
+                {
+                  "name": "doc_id",
+                  "type": "text"
+                },
+                {
+                  "name": "phase",
+                  "type": "text"
+                }
+              ],
+              "featureCount": 12,
+              "visible": true,
+              "createdAt": 1758000000000
+            },
+            {
+              "id": "pinned-poles-a__mv-line-cb2ef9ff",
+              "name": "MV line",
+              "sourceName": "Poles-A",
+              "sourceLayerName": "mv_line",
+              "sourceKind": "pinned",
+              "geometryType": "LineString",
+              "color": "#64748b",
+              "lineWidth": 2.5,
+              "pointRadius": 5.0,
+              "fillOpacity": 0.15,
+              "schema": [
+                {
+                  "name": "doc_id",
+                  "type": "text"
+                },
+                {
+                  "name": "phase",
+                  "type": "text"
+                }
+              ],
+              "featureCount": 12,
+              "visible": true,
+              "createdAt": 1758000000000
+            }
+          ]
+        },
+        "receipt": {
+          "id": "pinned-poles-a__mv-line-cb2ef9ff",
+          "name": "MV line",
+          "sourceName": "Poles-A",
+          "sourceLayerName": "mv_line",
+          "sourceKind": "pinned",
+          "geometryType": "LineString",
+          "color": "#64748b",
+          "lineWidth": 2.5,
+          "pointRadius": 5.0,
+          "fillOpacity": 0.15,
+          "schema": [
+            {
+              "name": "doc_id",
+              "type": "text"
+            },
+            {
+              "name": "phase",
+              "type": "text"
+            }
+          ],
+          "featureCount": 12,
+          "visible": true,
+          "createdAt": 1758000000000
+        },
+        "changed": true
+      }
+    },
+    {
       "id": "register-name-over-two-hundred-refused",
       "why": "A descriptor name is bounded at 200 characters, so no host can persist an unbounded label into a shared catalogue.",
       "request": {
@@ -1167,6 +1590,114 @@
                 "pointRadius",
                 "fillOpacity",
                 "featureCount"
+              ]
+            }
+          ],
+          "release": []
+        },
+        "changed": true
+      }
+    },
+    {
+      "id": "restore-an-unbounded-source-label-is-repaired-not-refused",
+      "why": "A legacy row filed under an unbounded label used to refuse the whole reopen, which leaves the browser with no layer at all. The label is repaired like every other text field and named under repaired; a label with nothing left in it falls back to the kind's own.",
+      "request": {
+        "kind": "restore",
+        "scope": {
+          "host": "browser"
+        },
+        "records": [
+          {
+            "id": "a",
+            "name": "Roads",
+            "sourceName": "Field survey xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+            "geometryType": "LineString",
+            "color": "#111111",
+            "createdAt": 1757000000000
+          },
+          {
+            "id": "b",
+            "name": "Poles",
+            "sourceName": "   ",
+            "geometryType": "Point",
+            "color": "#111111",
+            "createdAt": 1757000000000
+          }
+        ],
+        "now_ms": 1758000000000
+      },
+      "expected": {
+        "registry": {
+          "schema": 1,
+          "revision": 1,
+          "scope": {
+            "host": "browser"
+          },
+          "layers": [
+            {
+              "id": "a",
+              "name": "Roads",
+              "sourceName": "Field survey xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+              "sourceLayerName": "Roads",
+              "sourceKind": "manual",
+              "geometryType": "LineString",
+              "color": "#111111",
+              "lineWidth": 2.5,
+              "pointRadius": 5.0,
+              "fillOpacity": 0.15,
+              "schema": [],
+              "featureCount": 0,
+              "visible": true,
+              "createdAt": 1757000000000
+            },
+            {
+              "id": "b",
+              "name": "Poles",
+              "sourceName": "Manual layers",
+              "sourceLayerName": "Poles",
+              "sourceKind": "manual",
+              "geometryType": "Point",
+              "color": "#111111",
+              "lineWidth": 2.5,
+              "pointRadius": 5.0,
+              "fillOpacity": 0.15,
+              "schema": [],
+              "featureCount": 0,
+              "visible": true,
+              "createdAt": 1757000000000
+            }
+          ]
+        },
+        "receipt": {
+          "restored": 2,
+          "retired": [],
+          "repaired": [
+            {
+              "id": "a",
+              "fields": [
+                "sourceName",
+                "sourceLayerName",
+                "sourceKind",
+                "lineWidth",
+                "pointRadius",
+                "fillOpacity",
+                "schema",
+                "featureCount",
+                "visible"
+              ]
+            },
+            {
+              "id": "b",
+              "fields": [
+                "sourceName",
+                "sourceLayerName",
+                "sourceKind",
+                "lineWidth",
+                "pointRadius",
+                "fillOpacity",
+                "schema",
+                "featureCount",
+                "visible"
               ]
             }
           ],
@@ -3200,6 +3731,91 @@
       }
     },
     {
+      "id": "update-rename-a-source-is-fenced-by-every-layer-it-would-move",
+      "why": "A source rename moves every layer filed under that label, so the project fence is asked of every one of them and not only of the layer the op named: a rename raised under one project would otherwise rewrite another project's folder layers. Nothing moves.",
+      "request": {
+        "kind": "update",
+        "registry": {
+          "schema": 1,
+          "revision": 4,
+          "scope": {
+            "host": "browser"
+          },
+          "layers": [
+            {
+              "id": "sketch-1758000000000-1",
+              "name": "Access road",
+              "sourceName": "Shared folder",
+              "sourceLayerName": "Access road",
+              "sourceKind": "manual",
+              "sourceMetadata": {
+                "kind": "gis_folder",
+                "dsProject": "p-kigali",
+                "handleKey": "handle-7",
+                "folderName": "gis",
+                "filePath": "survey/gis/roads.geojson",
+                "fileName": "roads.geojson",
+                "format": "geojson",
+                "lastRefreshAt": 1757000000000
+              },
+              "geometryType": "LineString",
+              "color": "#2563eb",
+              "lineWidth": 2.5,
+              "pointRadius": 5.0,
+              "fillOpacity": 0.15,
+              "schema": [],
+              "featureCount": 0,
+              "visible": true,
+              "createdAt": 1758000000000
+            },
+            {
+              "id": "sketch-1758000000000-2",
+              "name": "Poles",
+              "sourceName": "Shared folder",
+              "sourceLayerName": "Access road",
+              "sourceKind": "manual",
+              "sourceMetadata": {
+                "kind": "gis_folder",
+                "dsProject": "p-musanze",
+                "handleKey": "handle-7",
+                "folderName": "gis",
+                "filePath": "survey/gis/poles.geojson",
+                "fileName": "poles.geojson",
+                "format": "geojson",
+                "lastRefreshAt": 1757000000000
+              },
+              "geometryType": "LineString",
+              "color": "#2563eb",
+              "lineWidth": 2.5,
+              "pointRadius": 5.0,
+              "fillOpacity": 0.15,
+              "schema": [],
+              "featureCount": 0,
+              "visible": true,
+              "createdAt": 1758000000000
+            }
+          ]
+        },
+        "scope": {
+          "host": "browser"
+        },
+        "id": "sketch-1758000000000-1",
+        "project": "p-kigali",
+        "change": {
+          "kind": "rename_source",
+          "sourceName": "Shared folder",
+          "name": "Renamed folder"
+        }
+      },
+      "expected": {
+        "outcome": "refused",
+        "refusal": {
+          "code": "project_context_changed",
+          "message": "local layer sketch-1758000000000-2 belongs to project p-musanze"
+        }
+      }
+    },
+    {
       "id": "update-style-in-bounds-and-the-document-is-carried",
       "why": "A style change inside the descriptor’s range is admitted as given and carries the rich style document untouched — the kernel never reads it.",
       "request": {
@@ -4769,6 +5385,96 @@
         "refusal": {
           "code": "unsupported_source_kind",
           "message": "Project Work is an ephemeral governed map root, not a prepared local layer"
+        }
+      }
+    },
+    {
+      "id": "list-refuses-imported-file-metadata-on-a-manual-row",
+      "why": "An imported file belongs to an imported layer: register and restore drop metadata that does not belong, and the whole-registry validation now holds every other op to the same rule rather than carrying on a row no path here could have minted.",
+      "request": {
+        "kind": "list",
+        "registry": {
+          "schema": 1,
+          "revision": 4,
+          "scope": {
+            "host": "browser"
+          },
+          "layers": [
+            {
+              "id": "sketch-1758000000000-1",
+              "name": "Access road",
+              "sourceName": "Manual layers",
+              "sourceLayerName": "Access road",
+              "sourceKind": "manual",
+              "sourceMetadata": {
+                "kind": "import_file",
+                "fileName": "roads.geojson",
+                "sourceName": "roads.geojson",
+                "lastRefreshAt": 1757000000000
+              },
+              "geometryType": "LineString",
+              "color": "#2563eb",
+              "lineWidth": 2.5,
+              "pointRadius": 5.0,
+              "fillOpacity": 0.15,
+              "schema": [],
+              "featureCount": 0,
+              "visible": true,
+              "createdAt": 1758000000000
+            }
+          ]
+        },
+        "scope": {
+          "host": "browser"
+        }
+      },
+      "expected": {
+        "outcome": "refused",
+        "refusal": {
+          "code": "malformed_descriptor",
+          "message": "imported-file metadata belongs only to a layer imported from a file"
+        }
+      }
+    },
+    {
+      "id": "list-refuses-an-id-that-is-not-one-path-segment",
+      "why": "A traversal-shaped id used to pass the kernel and be named in a release receipt. It is refused wherever a catalogue is read, so no host has to neutralise an id the kernel itself handed it.",
+      "request": {
+        "kind": "list",
+        "registry": {
+          "schema": 1,
+          "revision": 4,
+          "scope": {
+            "host": "browser"
+          },
+          "layers": [
+            {
+              "id": "../../etc/original",
+              "name": "Access road",
+              "sourceName": "Manual layers",
+              "sourceLayerName": "Access road",
+              "sourceKind": "manual",
+              "geometryType": "LineString",
+              "color": "#2563eb",
+              "lineWidth": 2.5,
+              "pointRadius": 5.0,
+              "fillOpacity": 0.15,
+              "schema": [],
+              "featureCount": 0,
+              "visible": true,
+              "createdAt": 1758000000000
+            }
+          ]
+        },
+        "scope": {
+          "host": "browser"
+        }
+      },
+      "expected": {
+        "outcome": "refused",
+        "refusal": {
+          "code": "malformed_descriptor",
+          "message": "a local layer id is one path segment: no separator, and never . or .."
         }
       }
     },
