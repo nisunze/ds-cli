@@ -8296,6 +8296,31 @@ fn prepared_local_layers_live_a_whole_life_on_disk_and_never_touch_the_original(
     assert_eq!(ok(&["map", "local", "list"])["layer_count"], 0);
     assert!(!root.join("layers").exists());
 
+    // Neither does a refused write. The kernel is asked over the catalogue as
+    // it was read — an absent one is an empty registry — so the refusal
+    // arrives before this host has created the lane's directory, its lock or
+    // anything else under DS_LAYER_HOME.
+    assert_eq!(
+        refused(&["map", "local", "remove", "--layer", "sketch-nope", "--yes"]),
+        "unknown_layer"
+    );
+    assert_eq!(
+        refused(&[
+            "map",
+            "local",
+            "rename",
+            "--layer",
+            "sketch-nope",
+            "--name",
+            "Trunk roads"
+        ]),
+        "unknown_layer"
+    );
+    assert!(
+        !root.join("layers").exists(),
+        "a refused write opened a store that was never opened"
+    );
+
     let prepared = ok(&[
         "map",
         "local",
