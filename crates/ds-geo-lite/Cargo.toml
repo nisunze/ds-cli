@@ -1,0 +1,21 @@
+[package]
+name = "ds-geo-lite"
+description = "Portable geometry the kernel carries: great-circle distance, GeoJSON extent, exact area predicates, layer comparison. Digest-pinned snapshot of ds-network source — see vendor/ds-geo-lite/MANIFEST.json."
+version = "0.1.0"
+# The snapshot is taken from ds-network, whose workspace is edition 2024
+# (comparison.rs uses a let-chain). Compiling the bytes as they were written is
+# part of snapshotting rather than rewriting them.
+edition = "2024"
+rust-version = "1.90"
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+# Exact polygon predicates only (BooleanOps, BoundingRect, Centroid, Intersects).
+# Pinned to the version ds-network resolves, so the snapshot compiles against
+# the same geo the source was written for.
+geo = { version = "0.33.1", default-features = false }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

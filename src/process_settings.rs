@@ -930,8 +930,7 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
 mod tests {
     use super::*;
 
-    const CATALOG: &str =
-        include_str!("../../ds-network/crates/ds-network/src/network/processor_presets.json");
+    const CATALOG: &str = include_str!("../vendor/ds-geo-lite/network/processor_presets.json");
 
     fn catalog() -> Catalog {
         serde_json::from_str(CATALOG).expect("the engine's catalogue parses")

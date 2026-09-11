@@ -28,7 +28,7 @@ pub fn survey_evaluate(bytes: &[u8]) -> Result<Value, String> {
         Some("distance") => {
             let a = entry::point(&request["a"])?;
             let b = entry::point(&request["b"])?;
-            Ok(json!(ds_geo_ops::haversine_m(a.0, a.1, b.0, b.1)))
+            Ok(json!(ds_geo_lite::haversine_m(a.0, a.1, b.0, b.1)))
         }
         Some("length") => Ok(json!(entry::length(&request["geometry"])?)),
         Some("project_plan") => {
