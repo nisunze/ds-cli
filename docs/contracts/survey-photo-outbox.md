@@ -47,3 +47,42 @@ Server transport is documented in ds-brain's
 `docs/contracts/survey-media-upload.md`. It preserves the canonical survey
 project/form/entry/file path. The new endpoint and frontend must be released
 together; old server rotation requests receive an explicit retirement refusal.
+
+## Survey media address
+
+That canonical path is one of three. `survey_media_address` owns the whole
+grammar, natively through `parse`/`wire` and in WASM through
+`surveyMediaAddress`; requests carry `ds.survey-media-address/v1` with the op
+`parse {path}` or `wire {path}`. Three writers produced three stored layouts:
+`web` (`{project}/forms/{form}/{entry}/{file}`, every browser upload),
+`projects` (the same under a `projects/` root) and `field_app`
+(`projects/{p}/forms/{f}/{e}/{field}/{file}`, what the field app's
+`entry_engine.dart` uploads, one folder per media field). ds-web's client
+parser admitted only the first and ds-brain's `surveyMediaPath` composed only
+the first, so a photo taken on a phone could be shown but never inspected,
+rotated or replaced.
+
+`parse` answers `{layout, project, form, entry, field?, file, object_path,
+thumbnail_object_path}`; `field` is present for `field_app` only.
+`object_path` is the reference itself, normalised only of a leading slash —
+the stored object's name is evidence, never something the kernel rewrites —
+and `thumbnail_object_path` is `thumbnail_path_for(object_path)`, the outbox's
+one companion rule, never re-derived. Segment (`^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$`,
+never containing `..`) and filename (`^[A-Za-z0-9_.-]{1,255}$`, never `.` or
+`..`) rules are transcribed from ds-brain, so an admitted reference is one the
+gateway can compose; a reference whose `_thunder.jpeg` companion could not be a
+bounded object name is refused with it. The refusal vocabulary is exactly one
+sentence — `Media path must identify a project, form, entry and file`, the
+browser's existing words — so no host string moves. A bucket-qualified
+spelling is a host cache key, not an address: hosts strip the bucket first.
+
+`wire` answers the body for ds-brain's `survey_media` actions:
+`{project_id, form_slug, entry_id, file_name}` plus `layout` and, for
+`field_app`, `media_field`. The web layout omits both, so today's requests stay
+byte-identical and an unreleased gateway keeps serving them. ds-brain
+recomposes the path from `layout` rather than trusting a client-sent string,
+and authorization is unchanged: it is keyed by `project_id`, so choosing a
+layout cannot reach another project. Hosts marshal only; no TypeScript, Go or
+Dart re-derives any of this. `tests/fixtures/survey-media-address-cases.json`
+is the proof, replayed by the kernel and byte-identically by ds-web through the
+vendored WASM.
