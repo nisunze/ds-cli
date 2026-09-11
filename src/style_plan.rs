@@ -526,24 +526,31 @@ fn normalize_icon(value: &Value, images: &[Value]) -> Value {
     }
     next
 }
+/// Where a style ref that `/layers.style_editors` never registered writes
+/// itself. The shared-class shapes `ud/<slug>`, `pd/<slug>` and `gt/<slug>`
+/// name their own collection, so the routing is a fact of the reference, not
+/// a guess: `<slug>` is the layer name and the target is the shared class.
+/// Anything else fails closed — a guessed target hides backend drift.
+fn derived_style_target(reference: &str) -> Option<(&'static str, &str)> {
+    for (prefix, target) in [
+        ("ud/", "user_data"),
+        ("pd/", "project_data"),
+        ("gt/", "global_tile"),
+    ] {
+        if let Some(slug) = reference.strip_prefix(prefix) {
+            let slug = slug.trim();
+            return (!slug.is_empty()).then_some((target, slug));
+        }
+    }
+    None
+}
+
 pub fn style_save_payload(
     snapshot: &Value,
     reference: &str,
     document: &Value,
 ) -> Result<Value, String> {
-    let editor = style_editor(snapshot, reference)?;
-    let target = editor["style_target"]
-        .as_str()
-        .filter(|s| !s.is_empty())
-        .ok_or("backend style target is missing")?;
-    if editor["layer_name"]
-        .as_str()
-        .filter(|s| !s.is_empty())
-        .is_none()
-        && editor["slug"].as_str().filter(|s| !s.is_empty()).is_none()
-    {
-        return Err("backend style target identity is missing".into());
-    }
+    let editor = style_editor(snapshot, reference).ok();
     let mut document = document.clone();
     if document["type"] == "symbol" {
         if let Some(icon) = document["layout"].get("icon-image").cloned() {
@@ -572,19 +579,40 @@ pub fn style_save_payload(
         }
     }
     let mut payload = json!({"style_ref":reference,"style_data":document});
-    for key in [
-        "style_target",
-        "slug",
-        "template_name",
-        "styling_template_id",
-        "layer_name",
-        "available_fields",
-        "field_values",
-    ] {
-        if let Some(value) = editor.get(key) {
-            payload[key] = value.clone();
+    if let Some(editor) = editor {
+        for key in [
+            "style_target",
+            "slug",
+            "template_name",
+            "styling_template_id",
+            "layer_name",
+            "available_fields",
+            "field_values",
+        ] {
+            if let Some(value) = editor.get(key) {
+                payload[key] = value.clone();
+            }
         }
     }
+    let named =
+        |payload: &Value, key: &str| payload[key].as_str().is_some_and(|value| !value.is_empty());
+    if !named(&payload, "style_target")
+        || !(named(&payload, "layer_name") || named(&payload, "slug"))
+    {
+        // The declared editor row could not route this write. A shared-class
+        // reference routes itself; anything else fails closed with the words
+        // that name what the backend owes.
+        let (target, slug) = derived_style_target(reference).ok_or_else(|| match editor {
+            None => format!(
+                "no backend style routing for {reference}: /layers.style_editors must declare style_target plus layer_name or slug"
+            ),
+            Some(_) if !named(&payload, "style_target") => "backend style target is missing".into(),
+            Some(_) => "backend style target identity is missing".into(),
+        })?;
+        payload["style_target"] = json!(target);
+        payload["layer_name"] = json!(slug);
+    }
+    let target = payload["style_target"].as_str().unwrap_or_default();
     if ![
         "design",
         "design_vt",
@@ -1220,6 +1248,86 @@ mod tests {
         // The report is the one vocabulary: a canonical value the published
         // editor never listed still reaches the caller.
         assert_eq!(described["fieldValues"]["kind"], json!(["wood"]));
+    }
+
+    /// A reference the backend never registered — or registered without a
+    /// write target — routes itself when its shape names the shared class it
+    /// lives in. Everything else fails closed, by name.
+    #[test]
+    fn a_shared_class_reference_routes_itself_when_the_editor_row_cannot() {
+        let doc = json!({"type": "circle", "paint": {"circle-radius": 4}});
+        let state = json!({"project_id": "p", "styles": {}, "style_editors": []});
+        for (reference, target, layer) in [
+            (
+                "ud/non_snapping_lv_lines",
+                "user_data",
+                "non_snapping_lv_lines",
+            ),
+            ("pd/network_a", "project_data", "network_a"),
+            ("gt/rwanda_roads", "global_tile", "rwanda_roads"),
+        ] {
+            let payload = style_save_payload(&state, reference, &doc).unwrap();
+            assert_eq!(
+                payload,
+                json!({
+                    "style_ref": reference, "style_data": doc,
+                    "style_target": target, "layer_name": layer
+                }),
+                "{reference}"
+            );
+        }
+        // An editor row that exists but cannot route reaches the same rule,
+        // and keeps every other field the row declared.
+        let unroutable = json!({
+            "project_id": "p", "styles": {},
+            "style_editors": [{"style_ref": "ud/sketch_a", "template_name": "t"}]
+        });
+        let payload = style_save_payload(&unroutable, "ud/sketch_a", &doc).unwrap();
+        assert_eq!(payload["style_target"], "user_data");
+        assert_eq!(payload["layer_name"], "sketch_a");
+        assert_eq!(payload["template_name"], "t");
+        assert!(payload.get("project_id").is_none());
+        // Not derived, no row: the words name what /layers owes.
+        assert_eq!(
+            style_save_payload(&state, "master/lv_poles", &doc).unwrap_err(),
+            "no backend style routing for master/lv_poles: /layers.style_editors must declare style_target plus layer_name or slug"
+        );
+        // Not derived, with a row: today's words for the missing half.
+        let half = json!({
+            "project_id": "p", "styles": {},
+            "style_editors": [{"style_ref": "master/lv_poles", "layer_name": "lv_poles"}]
+        });
+        assert_eq!(
+            style_save_payload(&half, "master/lv_poles", &doc).unwrap_err(),
+            "backend style target is missing"
+        );
+        let nameless = json!({
+            "project_id": "p", "styles": {},
+            "style_editors": [{"style_ref": "master/lv_poles", "style_target": "survey"}]
+        });
+        assert_eq!(
+            style_save_payload(&nameless, "master/lv_poles", &doc).unwrap_err(),
+            "backend style target identity is missing"
+        );
+        // An empty tail is not a slug.
+        assert!(style_save_payload(&state, "ud/", &doc).is_err());
+        assert!(style_save_payload(&state, "ud/   ", &doc).is_err());
+        // A project-scoped target still carries the project.
+        let scoped = json!({
+            "project_id": "p", "styles": {},
+            "style_editors": [{"style_ref": "survey_layer", "style_target": "survey", "slug": "poles"}]
+        });
+        assert_eq!(
+            style_save_payload(&scoped, "survey_layer", &doc).unwrap()["project_id"],
+            "p"
+        );
+        // Guided native authoring is unchanged: it requires the row first.
+        assert!(plan_style_edit(
+            &state,
+            "ud/non_snapping_lv_lines",
+            &StyleInstruction::ClearDimension
+        )
+        .is_err());
     }
 
     fn snapshot(style: Value) -> Value {

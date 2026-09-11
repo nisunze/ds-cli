@@ -44,6 +44,8 @@ pub const MAX_WARNINGS: usize = 1_000;
 pub const MAX_WARNING_CHARS: usize = 4_096;
 /// Issues named in a contract refusal before the count of the rest.
 pub const ISSUE_SAMPLE: usize = 6;
+/// What a backend that refused without words is reported as.
+const LAYER_FALLBACK: &str = "Failed to load layers";
 
 #[derive(Deserialize, Serialize, Clone, Copy, Debug, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -143,13 +145,19 @@ fn violation(issues: Vec<String>) -> Refusal {
     }
 }
 
-fn text(value: &Value) -> Option<&str> {
+pub(crate) fn text(value: &Value) -> Option<&str> {
     value.as_str().map(str::trim).filter(|s| !s.is_empty())
 }
 
-/// The `{success, data}` envelope every layer action answers with. A failure
-/// envelope is the backend's refusal, reported in its words with its status.
-fn envelope(response: &Value) -> Result<&Map<String, Value>, Refusal> {
+/// The `{success, data}` envelope every layer and style action answers with.
+/// A failure envelope is the backend's refusal, reported in its words with its
+/// status; `fallback` is what a silent backend is reported as. Shared with
+/// `style_document`, which reads the same envelope and adds the style family's
+/// issue list.
+pub(crate) fn envelope<'a>(
+    response: &'a Value,
+    fallback: &str,
+) -> Result<&'a Map<String, Value>, Refusal> {
     if response["success"] == true {
         if let Some(data) = response["data"].as_object() {
             return Ok(data);
@@ -157,7 +165,7 @@ fn envelope(response: &Value) -> Result<&Map<String, Value>, Refusal> {
     }
     let message = text(&response["error"])
         .or_else(|| text(&response["message"]))
-        .unwrap_or("Failed to load layers");
+        .unwrap_or(fallback);
     let status = response["status"].as_i64();
     let code = text(&response["error_code"]).unwrap_or("");
     let message = match (status, code.is_empty()) {
@@ -215,7 +223,7 @@ fn unknown_references(issues: &mut Vec<String>, label: &str, ids: &Value, known:
 /// document's shape and bounds, and every cross-reference the drawer relies on
 /// (sources, parents, matrix rows, sidebar groups, dedicated sections).
 pub fn admit_document(project: &str, response: &Value) -> Result<Value, Refusal> {
-    let data = envelope(response)?;
+    let data = envelope(response, LAYER_FALLBACK)?;
     let unreadable = || Refusal {
         code: "unreadable_response",
         message: "invalid governed layer response".into(),
@@ -338,7 +346,7 @@ pub fn admit_document(project: &str, response: &Value) -> Result<Value, Refusal>
 /// Admit the Style Center's metadata-only snapshot: no renderer members, the
 /// authoring catalogues present, styles and editors bounded, warnings text.
 pub fn admit_style_catalog(project: &str, response: &Value) -> Result<Value, Refusal> {
-    let data = envelope(response)?;
+    let data = envelope(response, LAYER_FALLBACK)?;
     let unreadable = || Refusal {
         code: "unreadable_response",
         message:
@@ -409,7 +417,7 @@ pub fn admit_order_receipt(
     count: usize,
     response: &Value,
 ) -> Result<Value, Refusal> {
-    let data = envelope(response)?;
+    let data = envelope(response, LAYER_FALLBACK)?;
     if data.get("project_id").and_then(Value::as_str) != Some(project)
         || data.get("reordered").and_then(Value::as_u64) != Some(count as u64)
     {
