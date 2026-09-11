@@ -125,6 +125,26 @@ mod tests {
         }
     }
     #[test]
+    fn password_relogin_for_the_same_uid_fences_the_old_server() {
+        let mut auth = authorizer();
+        auth.credential = "firebase:first-login".into();
+        auth.authorize_with(
+            "owner",
+            || Ok(("owner".into(), "firebase:first-login".into())),
+            || Ok("owner".into()),
+        )
+        .unwrap();
+        assert!(
+            auth.authorize_with(
+                "owner",
+                || Ok(("owner".into(), "firebase:second-login".into())),
+                || panic!("a replacement session must not refresh old work"),
+            )
+            .unwrap_err()
+            .contains("credential changed")
+        );
+    }
+    #[test]
     fn cached_authority_still_checks_logout_and_credential_changes() {
         let auth = authorizer();
         auth.authorize_with(

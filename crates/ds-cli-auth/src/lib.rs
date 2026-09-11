@@ -120,7 +120,14 @@ pub fn runtime_credential_binding(lane_value: &str) -> Result<String, Failure> {
     let lane = Lane::parse(lane_value)?;
     Ok(match device::probe_context(lane)? {
         Some(device) => format!("ds_device:{}:{}", device.device_id(), device.fingerprint()),
-        None => "firebase".to_owned(),
+        None => {
+            let profile = profile::load(lane)?;
+            let context = NativeRefreshStore::probe(&profile)?.ok_or_else(|| {
+                Failure::conflict("headless_signed_out", "the server has no native identity")
+                    .remedy("sign in under the server's Linux account")
+            })?;
+            format!("firebase:{}", context.credential_instance_sha256())
+        }
     })
 }
 

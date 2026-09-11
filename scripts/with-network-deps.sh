@@ -80,7 +80,7 @@ if ! git -C "$web_checkout" cat-file -e "$expected_web_core_sha^{commit}" 2>/dev
     echo "with-network-deps: the pinned ds-client-core revision $expected_web_core_sha is unavailable in $web_checkout" >&2
     exit 66
 fi
-for native_crate in ds-client-core ds-report-host; do
+for native_crate in ds-client-core ds-report-host ds-sync-runtime; do
     pinned_core_tree=$(git -C "$web_checkout" rev-parse "$expected_web_core_sha:crates/$native_crate" 2>/dev/null || true)
     actual_core_tree=$(git -C "$web_checkout" rev-parse "HEAD:crates/$native_crate" 2>/dev/null || true)
     if [[ -z "$pinned_core_tree" || "$pinned_core_tree" != "$actual_core_tree" ]]; then
