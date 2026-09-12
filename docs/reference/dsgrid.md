@@ -8,7 +8,7 @@ Tier-4 reference. `ds dsgrid <command> --help` is the contract.
 `ds-grid-model`, `ds-grid-engine` and `ds-grid-exchange` are pure libraries
 with a clean boundary — no ambient state, no process contract, no documented
 reason to stay separate. `ds-web/src-tauri` links them; so does `ds` for the
-file commands (`inspect`, `validate`, `describe`, and `apply`).
+file commands (`create`, `inspect`, `validate`, `describe`, `run`, and `apply`).
 
 The local-model commands have a different owner. A browser-local DS Grid model
 is a live worker session and durable application store, not a file the CLI can
@@ -19,10 +19,38 @@ They are project-independent; a projectless paired session is valid.
 resolves and caches exact project MV heads, while the second registers one
 immutable revision in the paired session's selected project.
 
-This split is visible in availability. The four file commands remain available
+This split is visible in availability. The native file commands remain available
 without a Desktop, sidecar, or populated `PATH`. The local-model family needs a
 paired Desktop, and publication additionally needs its signed-in project. No
 command in this domain calls a sidecar process.
+
+## Create and manipulate a model without TypeScript
+
+`create` writes a canonical `.dsgrid` through `ds-grid-exchange::blank_model`,
+the same authority used by the WASM host. It needs no application, project,
+credentials, Node, or browser storage. Optional `--standards` names a verified
+`.dsgrid-template`; its engineering definitions and exact resources initialize
+the model. Foreign files must first pass the exchange/template compiler.
+CRS support and omitted-value defaults belong to the engine.
+
+```bash
+ds dsgrid create --model-id mv-line --crs EPSG:32735 --out new.dsgrid --output json
+ds dsgrid describe --kind commands --id create_alignment --output json
+ds dsgrid apply --model new.dsgrid --envelope alignment.json --dry-run --output json
+ds dsgrid apply --model new.dsgrid --envelope alignment.json --out revised.dsgrid --output json
+ds dsgrid validate --model revised.dsgrid --output json
+```
+
+Build the typed envelope against `create`'s `authored_revision`, not its package
+revision number. Each apply returns the next authored revision. Source packages
+and existing output paths are preserved, including when an output name races
+another writer. A refused create leaves no model file. There is no implicit
+desktop fallback or project registration.
+
+These file commands provide native model creation, engineering reads/solves,
+revision-gated mutation and persistence. They do not make the paired model
+catalogue, active-model selection or project publication headless; those
+commands retain their explicitly declared authority below.
 
 ## Local acquisition, activity, and publication
 
@@ -121,7 +149,7 @@ with `--include authored-revision`, which deliberately decodes the model.
 
 ## Applying one canonical revision
 
-`dsgrid apply` is the one file-writing command in this domain. It consumes the
+`dsgrid apply` revises an existing model file. It consumes the
 engine's own `CommandEnvelope`, evaluates its expected authored revision and
 model invariants, and writes a new package. It never edits the source and
 never overwrites an existing output. Assets and PLS exchange bindings survive
@@ -161,6 +189,7 @@ identity still reaches it without loading exchange planning.
 
 | Command | Owner |
 |---|---|
+| `create` | `ds_grid_exchange::create_blank_model` |
 | `inspect` | `ds_grid_exchange::dsgrid::inspect`, `package::unpack`, `ds_grid_model::GridModelSummary` |
 | `validate` | `ds_grid_exchange::package::unpack`, `ds_grid_model::validate_snapshot` |
 | `describe` | `ds_grid_engine::{describe_commands, describe_operations, describe_projections}` |

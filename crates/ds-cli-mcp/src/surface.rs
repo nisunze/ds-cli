@@ -13,6 +13,7 @@ pub const PROFILE_IDS: &[&str] = &[
     "auth-context",
     "admin-bounds",
     "grid",
+    "grid-native",
     "printing",
     "grid-local-model",
     "pls",
@@ -66,6 +67,7 @@ pub enum Profile {
     AuthContext,
     AdminBounds,
     Grid,
+    GridNative,
     Printing,
     GridLocalModel,
     Pls,
@@ -97,6 +99,7 @@ impl Profile {
             "auth-context" => Some(Self::AuthContext),
             "admin-bounds" => Some(Self::AdminBounds),
             "grid" => Some(Self::Grid),
+            "grid-native" => Some(Self::GridNative),
             "printing" => Some(Self::Printing),
             "grid-local-model" => Some(Self::GridLocalModel),
             "pls" => Some(Self::Pls),
@@ -129,6 +132,7 @@ impl Profile {
             Self::AuthContext => "auth-context",
             Self::AdminBounds => "admin-bounds",
             Self::Grid => "grid",
+            Self::GridNative => "grid-native",
             Self::Printing => "printing",
             Self::GridLocalModel => "grid-local-model",
             Self::Pls => "pls",
@@ -159,10 +163,11 @@ impl Profile {
         match self {
             // The broad Grid chapter router now also carries the paired
             // application's local model lifecycle and its one project
-            // publication. Seventeen leaves plus both bootstrap tools; the
-            // narrow `grid-local-model` profile exists for an agent that
-            // wants only that workflow.
-            Self::Grid => 19,
+            // publication. Native `dsgrid.create` adds the missing entry into
+            // file editing: eighteen leaves plus bootstrap, one more than the
+            // previous budget. Focused callers use `grid-native` (file work)
+            // or `grid-local-model` (paired lifecycle).
+            Self::Grid => 20,
             // Query, spatial selection, fenced changes, and governed
             // single-entry create belong to the same selected-project Survey
             // workflow. The count includes both bootstrap tools.
@@ -199,6 +204,10 @@ impl Profile {
         match self {
             Self::AuthContext => AUTH_CONTEXT_COMMANDS.contains(&tool.id.as_str()),
             Self::AdminBounds => ADMIN_BOUNDS_COMMANDS.contains(&tool.id.as_str()),
+            Self::GridNative => {
+                tool.authority == ds_cli_contract::spec::Authority::None
+                    && (tool.id.starts_with("dsgrid.") || tool.id.starts_with("dsgrid-exchange."))
+            }
             Self::Grid => {
                 matches!(tool.chapter, Chapter::GridModel | Chapter::Reports)
                     && !PROJECT_OPERATIONS_COMMANDS.contains(&tool.id.as_str())
@@ -276,6 +285,7 @@ impl Profile {
             Self::LibraryGovernance => LIBRARY_GOVERNANCE_COMMANDS,
             Self::ProjectOperations => PROJECT_OPERATIONS_COMMANDS,
             Self::Grid
+            | Self::GridNative
             | Self::Pls
             | Self::Map
             | Self::Tiling
@@ -289,6 +299,7 @@ impl Profile {
             Self::AuthContext => chapter == Chapter::Project,
             Self::AdminBounds => chapter == Chapter::Data,
             Self::Grid => matches!(chapter, Chapter::GridModel | Chapter::Reports),
+            Self::GridNative => chapter == Chapter::GridModel,
             Self::Printing => matches!(chapter, Chapter::Reports | Chapter::MapPresentation),
             Self::GridLocalModel => chapter == Chapter::GridModel,
             Self::Pls | Self::PlsLibrary | Self::LibraryGovernance => chapter == Chapter::PlsCadd,

@@ -12,9 +12,10 @@
 //! Manufacturing a `.dsgrid` — classifying foreign sources, planning a
 //! conversion, executing one — is deliberately *not* here. It lives in
 //! `ds-cli-dsgrid-exchange`. The split is not tidiness: every command in this
-//! domain reads or revision-gates one canonical package the caller already
-//! has. `apply` writes a new package, never the source; manufacturing from a
-//! foreign format remains in the exchange domain.
+//! domain creates a blank canonical package or reads/revision-gates an
+//! existing one. `create` calls the shared blank-model authority; `apply`
+//! writes a new package, never the source. Conversion from a foreign format
+//! remains in the exchange domain.
 //!
 //! One family in this domain reaches an owner instead of linking one. A
 //! *local model* is a live session and a durable store inside the running
@@ -23,6 +24,7 @@
 //! nothing in it manufactures a `.dsgrid` either.
 
 pub mod apply;
+pub mod create;
 pub mod describe;
 pub mod inspect;
 pub mod model;
@@ -36,6 +38,7 @@ pub static DOMAIN: Domain = Domain {
     id: "dsgrid",
     summary: "Canonical .dsgrid models: inspect, validate, revise, publish.",
     commands: &[
+        &create::COMMAND,
         &inspect::COMMAND,
         &validate::COMMAND,
         &describe::COMMAND,

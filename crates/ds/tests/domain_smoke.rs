@@ -1198,6 +1198,138 @@ fn dsgrid_inspect_and_validate_expose_the_authored_revision() {
 }
 
 #[test]
+fn dsgrid_create_edit_and_reopen_require_no_typescript_or_pairing() {
+    let root = temp_root("dsgrid-native-create");
+    std::fs::create_dir_all(&root).unwrap();
+    let source = root.join("new.dsgrid");
+    let source_text = source.to_str().unwrap();
+    let created = ok(&[
+        "dsgrid",
+        "create",
+        "--out",
+        source_text,
+        "--model-id",
+        "native-mv",
+        "--crs",
+        "EPSG:32735",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(created["model_id"], "native-mv");
+    assert_eq!(created["coordinate_system"], "EPSG:32735");
+    assert_eq!(created["package_revision"], 0);
+    let bytes = std::fs::read(&source).unwrap();
+    let blank = unpack(&bytes).unwrap();
+    assert!(blank.snapshot.alignments.is_empty());
+    let session = GridSession::open(blank.snapshot);
+    assert_eq!(
+        created["authored_revision"],
+        session.current_revision().revision_id.as_str()
+    );
+    let command: GridCommand = serde_json::from_value(json!({
+        "command_kind": "create_alignment",
+        "row": {"id": "native-route", "parent_id": null, "label": "Native MV route"}
+    }))
+    .unwrap();
+    let envelope = CommandEnvelope::new(
+        "native-create-route",
+        session.current_revision().revision_id.clone(),
+        command,
+    );
+    let request = root.join("route.json");
+    std::fs::write(&request, serde_json::to_vec(&envelope).unwrap()).unwrap();
+    let revised = root.join("revised.dsgrid");
+    let result = ok(&[
+        "dsgrid",
+        "apply",
+        "--model",
+        source_text,
+        "--envelope",
+        request.to_str().unwrap(),
+        "--out",
+        revised.to_str().unwrap(),
+        "--output",
+        "json",
+    ]);
+    assert_eq!(result["persisted"], true);
+    let reopened = unpack(&std::fs::read(&revised).unwrap()).unwrap();
+    assert_eq!(reopened.manifest.model.model_id.as_str(), "native-mv");
+    assert_eq!(reopened.manifest.model.model_revision, 1);
+    assert_eq!(reopened.snapshot.alignments[0].label, "Native MV route");
+    assert_eq!(
+        std::fs::read(&source).unwrap(),
+        bytes,
+        "editing preserves the source"
+    );
+    let validation = ok(&[
+        "dsgrid",
+        "validate",
+        "--model",
+        revised.to_str().unwrap(),
+        "--output",
+        "json",
+    ]);
+    assert_eq!(validation["model"]["valid"], true);
+    let collision = ds(&["dsgrid", "create", "--out", source_text, "--output", "json"]);
+    assert_eq!(collision.envelope["error"]["code"], "output_exists");
+    assert_eq!(std::fs::read(&source).unwrap(), bytes);
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn dsgrid_create_uses_native_crs_and_template_admission() {
+    let root = temp_root("dsgrid-native-create-refusals");
+    std::fs::create_dir_all(&root).unwrap();
+    let out = root.join("new.dsgrid");
+    let template = root.join("standards.dsgrid-template");
+    std::fs::write(
+        &template,
+        ds_grid_exchange::blank_model::empty_standards_template().unwrap(),
+    )
+    .unwrap();
+    let valid = ok(&[
+        "dsgrid",
+        "create",
+        "--out",
+        out.to_str().unwrap(),
+        "--standards",
+        template.to_str().unwrap(),
+        "--output",
+        "json",
+    ]);
+    assert_eq!(
+        valid["coordinate_system"],
+        ds_grid_exchange::blank_model::DEFAULT_BLANK_MODEL_CRS
+    );
+    assert!(unpack(&std::fs::read(&out).unwrap()).is_ok());
+    let rejected = root.join("rejected.dsgrid");
+    for (flag, value, code) in [
+        ("--crs", "EPSG:4326", "unsupported_coordinate_system"),
+        ("--model-id", "", "invalid_id"),
+        ("--standards", out.to_str().unwrap(), "standards_refused"),
+        (
+            "--standards",
+            root.to_str().unwrap(),
+            "standards_unreadable",
+        ),
+    ] {
+        let result = ds(&[
+            "dsgrid",
+            "create",
+            "--out",
+            rejected.to_str().unwrap(),
+            flag,
+            value,
+            "--output",
+            "json",
+        ]);
+        assert_eq!(result.envelope["error"]["code"], code, "{}", result.stdout);
+        assert!(!rejected.exists());
+    }
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn dsgrid_apply_dry_runs_then_writes_one_revision_without_overwriting_source() {
     let model = common::fixture();
     let bytes = std::fs::read(&model).expect("read fixture package");

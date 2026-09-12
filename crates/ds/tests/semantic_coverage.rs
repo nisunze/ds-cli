@@ -340,6 +340,7 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("dsgrid-exchange.inspect", "discovery", "none"),
     ("dsgrid-exchange.plan", "discovery", "none"),
     ("dsgrid.apply", "local_file_write", "none"),
+    ("dsgrid.create", "local_file_write", "none"),
     ("dsgrid.describe", "discovery", "none"),
     ("dsgrid.inspect", "discovery", "none"),
     ("dsgrid.run", "read_only", "none"),

@@ -103,6 +103,11 @@ static AUTH_ENTRIES: &[Entry] = &[
 /// and all three must be looking at the same thing.
 static DSGRID_ENTRIES: &[Entry] = &[
     Entry {
+        command: &ds_cli_dsgrid::create::COMMAND,
+        handler: ds_cli_dsgrid::create::run,
+        render: ds_cli_dsgrid::create::render,
+    },
+    Entry {
         command: &ds_cli_dsgrid::inspect::COMMAND,
         handler: ds_cli_dsgrid::inspect::run,
         render: ds_cli_dsgrid::inspect::render,

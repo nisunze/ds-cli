@@ -49,7 +49,7 @@ Specialized profiles publish conventional typed leaf tools for one workflow:
 ds mcp serve --exposure commands --profile pls
 ```
 
-Profiles are `auth-context`, `grid`, `pls`, `pls-library`, `library-governance`, `survey`,
+Profiles are `auth-context`, `grid`, `grid-native`, `pls`, `pls-library`, `library-governance`, `survey`,
 `form-factory`, `survey-projects`, `survey-migration`, `design-edit`, `design-run`, `map`, `layers`,
 `tiling`, `project`, `solar-input`, `solar-run`, `solar-delivery`, `solar-portfolio-batch`,
 `operations`, and `project-operations`. `survey`
@@ -70,6 +70,12 @@ A profile is only an allowlist: omitted
 commands are unavailable and authority, effects, confirmation, output, and
 refusals are unchanged. Plain `--exposure commands` retains the previous
 all-command publication temporarily for compatibility.
+
+`grid-native` contains only native `.dsgrid` file creation, inspection,
+validation, command discovery, reads/solves, revision-gated edits and exchange.
+Its nine command leaves require no desktop, TypeScript runtime or signed-in
+project. `grid-local-model` retains the paired application lifecycle and
+project publication; the broad `grid` profile includes both kinds of control.
 
 The `design-edit` profile includes the same canonical `map.design.open`,
 map-owned `map.design.pin` Working-set operation, and

@@ -1278,6 +1278,7 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
         "auth-context",
         "printing",
         "grid",
+        "grid-native",
         "grid-local-model",
         "pls",
         "pls-library",
@@ -1314,7 +1315,9 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
             // need only that workflow use `grid-local-model` below.
             // Project cache preparation stays in the narrower
             // grid-local-model profile so this broad router remains bounded.
-            "grid" => 19,
+            // Native creation completes the file workflow: one new bounded
+            // leaf. Focused clients can use grid-native or grid-local-model.
+            "grid" => 20,
             "survey-projects" => 18,
             "design-edit" => 23,
             // Twenty-two printing leaves plus bootstrap: the headless loop
@@ -1369,6 +1372,24 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
     }
     assert!(!published["grid"].contains("report_transformers"));
     assert!(!published["grid"].contains("report_plan"));
+    for native in [
+        "dsgrid_create",
+        "dsgrid_inspect",
+        "dsgrid_validate",
+        "dsgrid_describe",
+        "dsgrid_run",
+        "dsgrid_apply",
+        "dsgrid-exchange_inspect",
+        "dsgrid-exchange_plan",
+        "dsgrid-exchange_convert",
+    ] {
+        assert!(
+            published["grid-native"].contains(native),
+            "native grid workflow is missing {native}"
+        );
+    }
+    assert!(!published["grid-native"].contains("dsgrid_model_create-local"));
+    assert!(!published["grid-native"].contains("dsgrid_publish-version"));
     assert!(
         published["grid-local-model"].contains("dsgrid_model_list")
             && published["grid-local-model"].contains("dsgrid_model_create-local")

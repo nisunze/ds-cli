@@ -367,12 +367,12 @@ fn map_command_error(error: CommandError) -> Failure {
     }
 }
 
-fn validate_output_path(raw_path: &str) -> Result<(), Failure> {
+pub(crate) fn validate_output_path(raw_path: &str) -> Result<(), Failure> {
     let path = Path::new(raw_path);
     if path.exists() {
         return Err(
             Failure::conflict("output_exists", format!("`{raw_path}` already exists"))
-                .remedy("choose a new output path; apply never overwrites"),
+                .remedy("choose a new output path; native file commands never overwrite"),
         );
     }
     let parent = path
@@ -388,7 +388,7 @@ fn validate_output_path(raw_path: &str) -> Result<(), Failure> {
     Ok(())
 }
 
-fn write_new(raw_path: &str, bytes: &[u8]) -> Result<(), Failure> {
+pub(crate) fn write_new(raw_path: &str, bytes: &[u8]) -> Result<(), Failure> {
     let mut file = OpenOptions::new()
         .write(true)
         .create_new(true)
@@ -396,7 +396,7 @@ fn write_new(raw_path: &str, bytes: &[u8]) -> Result<(), Failure> {
         .map_err(|error| {
             if error.kind() == std::io::ErrorKind::AlreadyExists {
                 Failure::conflict("output_exists", format!("`{raw_path}` already exists"))
-                    .remedy("choose a new output path; apply never overwrites")
+                    .remedy("choose a new output path; native file commands never overwrite")
             } else {
                 Failure::failed("output_unwritable", format!("cannot create `{raw_path}`"))
                     .remedy("choose a new writable output path")
