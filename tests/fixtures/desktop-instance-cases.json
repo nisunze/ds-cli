@@ -567,8 +567,8 @@
       }
     },
     {
-      "id": "descriptor-refuses-a-member-it-does-not-know",
-      "why": "The descriptor is a closed shape: an unknown member means a host wrote a field this build cannot honour, and honouring the rest silently would hide that.",
+      "id": "descriptor-ignores-a-member-it-does-not-know",
+      "why": "The descriptor is the one record a differently versioned build wrote, so a member this build does not know decides nothing and is ignored: closing the shape would turn the next additive field into the coordinated upgrade that keeping the version at 1 exists to avoid.",
       "request": {
         "kind": "admit_descriptor",
         "descriptor": {
@@ -576,11 +576,21 @@
           "url": "http://127.0.0.1:41234",
           "token": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
           "pid": 4711,
-          "window": "main"
+          "a_field_a_later_build_added": "whatever it means"
         }
       },
       "expected": {
-        "error": "invalid desktop instance request: unknown field `window`, expected one of `version`, `url`, `token`, `pid`, `instance_id`, `lane`, `build`, `started_at_ms`, `profile` at line 1 column 228"
+        "outcome": "admitted",
+        "instance": {
+          "instance_id": "e25c3ac7a44c481d6893fed817700f36",
+          "identity": "derived",
+          "origin": "http://127.0.0.1:41234",
+          "profile": null,
+          "lane": null,
+          "build": null,
+          "started_at_ms": null,
+          "pid": 4711
+        }
       }
     },
     {
@@ -2141,7 +2151,7 @@
     },
     {
       "id": "list-marks-which-instances-this-caller-can-use",
-      "why": "Listing is also how a caller finds out why an instance is not an option, so the compatible ones are named when a requirement is given.",
+      "why": "A caller sees its own instances and no one else's: the session signed in as another account is not listed, not counted and not hinted at, while its own instance on another lane is listed and marked incompatible so listing can still say why that one is not an option.",
       "request": {
         "kind": "list",
         "candidates": [
@@ -2193,15 +2203,6 @@
             "profile": "canary",
             "lane": "canary",
             "project": "project-a",
-            "build": "2026.9.12+1",
-            "started_at_ms": 1757000000000,
-            "windows": 0
-          },
-          {
-            "instance_id": "22222222222222222222222222222222",
-            "profile": "canary",
-            "lane": "canary",
-            "project": "project-b",
             "build": "2026.9.12+1",
             "started_at_ms": 1757000000000,
             "windows": 0
@@ -2473,6 +2474,25 @@
           "remedy": "a request id is cli-<instance_id>-<n>, minted by the instance that dispatched it",
           "detail": {
             "request_id": "cli-11111111111111111111111111111111-007"
+          }
+        }
+      }
+    },
+    {
+      "id": "request-id-read-refuses-a-signed-sequence",
+      "why": "A leading plus parses as the same number, so admitting it would give one request two texts and let a host that keys pending work by the id it dispatched admit one completion twice.",
+      "request": {
+        "kind": "read_request_id",
+        "request_id": "cli-11111111111111111111111111111111-+1"
+      },
+      "expected": {
+        "outcome": "refused",
+        "refusal": {
+          "code": "request_id_malformed",
+          "message": "that is not a bridge request id",
+          "remedy": "a request id is cli-<instance_id>-<n>, minted by the instance that dispatched it",
+          "detail": {
+            "request_id": "cli-11111111111111111111111111111111-+1"
           }
         }
       }

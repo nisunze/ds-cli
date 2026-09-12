@@ -53,10 +53,17 @@ Descriptor { version: 1, url, token, pid,          // the four fields v1 always 
 
 `version` stays **1** and every field added is optional, in both directions:
 
-- an **older `ds` reading a newer file** sees the four fields it knows and
-  ignores the rest (its reader has no `deny_unknown_fields`);
+- an **older `ds` reading a newer file** sees the fields it knows and ignores
+  the rest — including this reader, which is the one type in the module that is
+  deliberately *not* `deny_unknown_fields`, because closing it would make the
+  next additive field refuse `descriptor_unusable` on every already-shipped
+  build and so re-create the coordinated upgrade this section exists to avoid;
 - a **newer `ds` reading an older file** derives an identity rather than
   refusing (§3), so no operator whose app and CLI upgrade apart loses pairing.
+
+Every field that decides anything is still validated below, and everything a
+host builds in-process — the requests, the handshake, the target — stays a
+closed shape.
 
 A version bump would have made every older `ds` report `descriptor speaks
 version 2` on every command until both sides were upgraded together. There is no
@@ -162,9 +169,10 @@ JavaScript reads.
 
 `cli-<instance_id>-<n>` — 32 hex, then a decimal sequence from 1 with no
 padding. The old grammar was `cli-<pid>-<n>`, which named a process and not an
-instance; `cli-4711-1` is now `request_id_malformed`, as is a case-shifted id
-and a padded sequence (one request, one spelling, so a completion cannot be
-replayed under a second text). This is what lets the shell bind a completion to
+instance; `cli-4711-1` is now `request_id_malformed`, as is a case-shifted id,
+a padded sequence and a signed one — `"+1"` parses as 1, so `cli-…-+1` would
+be a second text for one request (one request, one spelling, so a completion
+cannot be replayed under a second text). This is what lets the shell bind a completion to
 the window that was dispatched rather than to any window that calls back.
 
 ## 7. What `project_context` decides now
@@ -201,7 +209,13 @@ and `route` decides only what happens inside it.
 Safe metadata is exactly `InstanceSummary { instance_id, profile, lane, project,
 build, started_at_ms, windows }`. Not a token, not a url, not a uid, not an
 email — those fields do not exist on the type, so no host can decide to include
-them. The one place an address is answered is `admit_descriptor`'s normalised
+them. And `list` applies the same account boundary `select` does: a caller that
+names itself is shown **its own** instances — same account, same credential
+audience — and no others, so another person's session on this machine is not
+listed and neither is the project it holds. Which of its own may serve the
+operation is the narrower `compatible` answer, so an operator's own instance on
+the other lane is still listed and still explained. With no requirement the
+host has named no caller and nothing is filtered. The one place an address is answered is `admit_descriptor`'s normalised
 `origin`, to the host that already holds the file and is about to send the token
 there; no refusal carries one, and the corpus asserts that too.
 
@@ -268,10 +282,11 @@ result.
    successor answer to its predecessor's name, which is the impersonation the
    contract forbids. Chosen: stability loses to non-impersonation.
 3. **`desktop_not_paired` names nothing.** An instance signed in as another
-   account is not listed, not counted and not hinted at, so `select` cannot be
-   used to learn who else uses this machine. The cost is a thinner error when an
-   operator is simply signed into the wrong account; `ds desktop list` shows
-   their own instances and answers that question directly.
+   account is not listed, not counted and not hinted at, so neither `select`
+   nor `list` can be used to learn who else uses this machine. The cost is a
+   thinner error when an operator is simply signed into the wrong account;
+   `ds desktop list` shows their own instances — including one on another lane,
+   marked incompatible — and answers that question directly.
 4. **The kernel routes to an instance, not to a window, unless one is named.**
    Two windows of one instance on the same project are not an ambiguity here —
    the contract explicitly wants same-project windows to work — so the shell's
