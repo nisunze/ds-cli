@@ -40,6 +40,11 @@
 //!   that contradicts the bytes is `scope_mismatch`. Naming a project is not
 //!   being entitled to it: that is the gateway's answer on the effect that
 //!   leaves the machine, at publication and at sync.
+//! - **A project id is one path segment.** No `/`, no `\`, not `.` or `..`,
+//!   no whitespace, no control character, at most 200 characters. Hosts
+//!   partition durable state by this name — store rows, dataset caches,
+//!   staging directories, report names — so an id that could mean a different
+//!   place on disk is `context_corrupt` at every door it reaches.
 //! - **An id never authorizes.** `visible` answers one word, `job not found`,
 //!   to a foreign principal, a foreign lane, a foreign deployment, a caller
 //!   naming the wrong project, and a caller naming an id that does not exist.
@@ -52,6 +57,14 @@
 //!   its own share has queued work; two projects both at their share never
 //!   idle a worker between them. Saturation is a typed answer with retry
 //!   guidance, never a dropped request.
+//! - **A share is smaller than the pool it divides.** Limits whose
+//!   `per_project_*` is not below its `global_*` give one project the whole
+//!   host while another waits, which is the thing the share exists to prevent,
+//!   so they are refused here as a host configuration fault — not silently
+//!   honoured because a host's own flag parser happened to check. The one
+//!   exception is a pool of exactly one: a single-worker host (the smallest
+//!   rented VM) has no share to give, its one project at a time holds
+//!   everything by definition, and its `per_project_*` must therefore be 1.
 //! - **Recovery reconstructs; it does not guess.** A row written by a released
 //!   Server gets its project from its own sealed input (Solar, which carries
 //!   it) and from nothing else — never from whichever project happens to be
@@ -75,8 +88,12 @@ pub const MAX_INPUT_BYTES: usize = 8 * 1024 * 1024;
 pub const MAX_UID_CHARS: usize = 200;
 pub const MAX_DEPLOYMENT_CHARS: usize = 300;
 pub const MAX_INSTALL_CHARS: usize = 200;
-/// The same project bound `layer_document::request_body` admits.
-pub const MAX_PROJECT_CHARS: usize = 500;
+/// The kernel's own project bound, as `survey_query` and
+/// `survey_entries_changes` already read it. It is deliberately not
+/// `layer_document`'s 500-character free-form bound: a project id that reaches
+/// a durable job row is a name hosts partition by, so it is bounded by
+/// [`valid_project`]'s grammar as well as by this number.
+pub const MAX_PROJECT_CHARS: usize = 200;
 pub const MAX_CLIENT_CHARS: usize = 120;
 pub const MAX_KEY_CHARS: usize = 200;
 pub const MAX_JOB_ID_CHARS: usize = 200;
@@ -151,8 +168,9 @@ pub struct ExecutionContext {
     /// The registered native install this work was admitted from.
     pub install_id: String,
     /// The project this operation is about, as the owner named it or as its
-    /// sealed bytes named it. Entitlement to it is the gateway's answer where
-    /// an effect leaves the machine, never a decision made here.
+    /// sealed bytes named it — one path segment ([`valid_project`]).
+    /// Entitlement to it is the gateway's answer where an effect leaves the
+    /// machine, never a decision made here.
     pub project: String,
     /// The originating client or session label, e.g. `cli:4711`.
     pub client: String,
@@ -184,8 +202,8 @@ impl ExecutionContext {
         if !bounded(&self.install_id, MAX_INSTALL_CHARS) {
             return bad("install_id");
         }
-        if !bounded(&self.project, MAX_PROJECT_CHARS) {
-            return bad("project");
+        if !valid_project(&self.project) {
+            return Err(not_a_segment("project"));
         }
         if !bounded(&self.client, MAX_CLIENT_CHARS) {
             return bad("client");
@@ -378,6 +396,16 @@ fn corrupt(field: &str) -> Fault {
         format!("execution context field {field} is not a bounded value"),
     )
 }
+/// The project fields answer with the grammar itself, so an operator reads the
+/// rule off the refusal instead of guessing which character was the problem.
+fn not_a_segment(field: &str) -> Fault {
+    refused(
+        CONTEXT_CORRUPT,
+        format!(
+            "execution context field {field} is not a project id: one path segment of 1..={MAX_PROJECT_CHARS} characters, no separator, no traversal, no whitespace"
+        ),
+    )
+}
 fn hard(message: impl Into<String>) -> Fault {
     Fault::Hard(message.into())
 }
@@ -398,6 +426,28 @@ fn bounded(value: &str, max: usize) -> bool {
 }
 fn valid_lane(lane: &str) -> bool {
     matches!(lane, "stable" | "canary")
+}
+
+/// A project id is **one path segment**, and nothing that could mean a
+/// different place on disk.
+///
+/// The record is durable and every host partitions by the project in it — a
+/// store row, a dataset cache, a staging directory, a report name. So an id
+/// that traverses (`.`, `..`, `A/../B`), that carries a separator (`A/B`,
+/// `A\B`) or that is padded, split or replaced by whitespace (`A B`, ` A`) is
+/// not a project id but a path expression, and it is `context_corrupt`
+/// wherever it appears: named by a caller, sealed in the bytes, defaulted from
+/// a saved selection, counted in a census or stored in a record. One rule, one
+/// answer, at every door — a host may then use the id in a path without
+/// asking again what it might be.
+pub fn valid_project(project: &str) -> bool {
+    !project.is_empty()
+        && project.chars().count() <= MAX_PROJECT_CHARS
+        && project != "."
+        && project != ".."
+        && !project.chars().any(|character| {
+            matches!(character, '/' | '\\') || character.is_whitespace() || character.is_control()
+        })
 }
 
 // ── admit ───────────────────────────────────────────────────────────────
@@ -496,6 +546,18 @@ pub fn admit(request: &AdmitRequest) -> Result<Admitted, Fault> {
                 "the stored context is bound to another job id",
             ));
         }
+        // The reachable half of this is the operation: within one project a
+        // key is one handle on one piece of work, and reusing it for a
+        // different operation is a collision, not a resubmit.
+        //
+        // The project half is a fence, not a promise. A durable id digests the
+        // project (`ds_compute_runtime::job_id`), so the same key in two
+        // projects is two ids and two jobs — a host looking this key up in
+        // project B finds nothing at all and admits fresh, and a host that
+        // somehow handed over another project's record would already have been
+        // stopped by the job-id check above. The kernel still refuses it,
+        // because it does not assume any host's id scheme; the corpus records
+        // no case for it, because in this build no host can produce one.
         if existing.project != project || existing.operation != request.operation {
             return Err(refused(
                 SCOPE_MISMATCH_FOR_KEY,
@@ -573,8 +635,8 @@ pub fn project_for(
 
 fn optional_project<'a>(value: Option<&'a str>, field: &str) -> Result<Option<&'a str>, Fault> {
     match value {
-        Some(project) if bounded(project, MAX_PROJECT_CHARS) => Ok(Some(project)),
-        Some(_) => Err(corrupt(field)),
+        Some(project) if valid_project(project) => Ok(Some(project)),
+        Some(_) => Err(not_a_segment(field)),
         None => Ok(None),
     }
 }
@@ -616,7 +678,11 @@ pub fn retain(context: &ExecutionContext, _event: RetainEvent) -> Result<Executi
 ///
 /// Every input is the host's own: configured limits, and the store's current
 /// queue and running set. Nothing here is caller-supplied, so a malformed
-/// input is a host bug (`Fault::Hard`), never a client refusal.
+/// input is a host bug (`Fault::Hard`), never a client refusal — including
+/// limits that do not make a share: each is 1..=4096 and each `per_project_*`
+/// must [`divides`] its `global_*`, so a host cannot configure away the
+/// fairness this op exists to apply. A single-slot pool is the exception it
+/// has to be.
 ///
 /// `Intent::Admit` bounds the queue a submission enters. `Intent::Claim`
 /// bounds the running pool and applies the fairness share: a project may hold
@@ -646,16 +712,38 @@ pub fn capacity(
             return Err(hard(format!("capacity limit {name} must be 1..=4096")));
         }
     }
+    for (share, share_name, pool, pool_name) in [
+        (
+            limits.per_project_running,
+            "per_project_running",
+            limits.global_running,
+            "global_running",
+        ),
+        (
+            limits.per_project_queued,
+            "per_project_queued",
+            limits.global_queued,
+            "global_queued",
+        ),
+    ] {
+        if !divides(share, pool) {
+            return Err(hard(format!(
+                "capacity limit {share_name} is {share} and {pool_name} is {pool}: a share must be smaller than the pool it divides, or one project holds the whole host while another waits; only a single-slot host ({pool_name} 1) has no share, and there {share_name} must be 1"
+            )));
+        }
+    }
     if running.len() > MAX_SLOTS || queued.len() > MAX_SLOTS {
         return Err(hard("capacity census exceeds its bound"));
     }
-    if !bounded(project, MAX_PROJECT_CHARS)
+    if !valid_project(project)
         || running
             .iter()
             .chain(queued)
-            .any(|slot| !bounded(&slot.project, MAX_PROJECT_CHARS))
+            .any(|slot| !valid_project(&slot.project))
     {
-        return Err(hard("capacity census names an unbounded project"));
+        return Err(hard(
+            "capacity was asked about a project id that is not one path segment",
+        ));
     }
     let queued_here = queued.iter().filter(|slot| slot.project == project).count();
     let mut running_by_project: std::collections::BTreeMap<&str, usize> =
@@ -730,6 +818,23 @@ pub fn capacity(
         }
     }
     Ok(())
+}
+
+/// Whether one project's share actually divides the host's pool.
+///
+/// A share equal to the pool is not a share: the first project to arrive may
+/// hold every slot while a second waits, which is exactly what the share
+/// exists to prevent, and a share larger than the pool says even less. The one
+/// exception is a pool of one — the smallest rented VM, `--workers 1`. It
+/// cannot be divided at all: whatever runs holds the machine, and the honest
+/// configuration is a share of exactly 1. So `1/1` is admitted and `2/1` is
+/// not, and from two slots up the share must be strictly smaller.
+const fn divides(share: usize, pool: usize) -> bool {
+    if pool == 1 {
+        share == 1
+    } else {
+        share < pool
+    }
 }
 
 /// Deterministic guidance: one second per unit of work that must go first,
@@ -1070,7 +1175,7 @@ mod tests {
     #[test]
     fn every_field_of_the_record_is_bounded_and_named_when_it_is_not() {
         assert!(context("project-a").validate().is_ok());
-        let cases: [(&str, fn(&mut ExecutionContext)); 12] = [
+        let cases: [(&str, fn(&mut ExecutionContext)); 16] = [
             ("principal_uid", |c| c.principal_uid = String::new()),
             ("principal_uid", |c| c.principal_uid = " uid".into()),
             ("lane", |c| c.lane = "development".into()),
@@ -1078,6 +1183,10 @@ mod tests {
             ("install_id", |c| c.install_id = "a\u{0}b".into()),
             ("project", |c| c.project = "  ".into()),
             ("project", |c| c.project = "p".repeat(MAX_PROJECT_CHARS + 1)),
+            ("project", |c| c.project = "..".into()),
+            ("project", |c| c.project = "a/b".into()),
+            ("project", |c| c.project = "a\\b".into()),
+            ("project", |c| c.project = "a b".into()),
             ("client", |c| c.client = "c".repeat(MAX_CLIENT_CHARS + 1)),
             ("operation", |c| c.operation = "everything".into()),
             ("job_id", |c| c.job_id = String::new()),
@@ -1166,6 +1275,100 @@ mod tests {
             sealed.sealed_project = Some(project.into());
             assert_eq!(admit(&sealed).unwrap().context().project, project);
         }
+    }
+
+    #[test]
+    fn a_project_id_is_one_path_segment_wherever_it_is_named() {
+        // What a host may safely put in a path: the ids the product actually
+        // uses, a single character, and the bound exactly.
+        for ordinary in [
+            "aderm",
+            "project-a",
+            "p",
+            "A_b.2",
+            &"p".repeat(MAX_PROJECT_CHARS),
+        ] {
+            assert!(valid_project(ordinary), "{ordinary}");
+        }
+        // …and what would name a different place on disk, or no place at all.
+        let rejected = [
+            ".", "..", "a/b", "/a", "a/../b", "a\\b", "a b", " a", "a\u{a0}b", "a\tb", "a\nb", "",
+        ];
+        for shape in rejected {
+            assert!(!valid_project(shape), "{shape:?} is not one segment");
+            // Named by the caller… and told the grammar, not just refused.
+            let mut named = request();
+            named.requested_project = Some(shape.into());
+            let refused = refusal(admit(&named).unwrap_err());
+            assert_eq!(refused.code, CONTEXT_CORRUPT, "{shape:?}");
+            assert!(
+                refused.message.contains("requested_project")
+                    && refused.message.contains("one path segment"),
+                "{shape:?}: {}",
+                refused.message
+            );
+            // …defaulted from the caller's own saved selection…
+            let mut defaulted = request();
+            defaulted.saved_project = Some(shape.into());
+            assert_eq!(
+                code(&admit(&defaulted).unwrap_err()),
+                CONTEXT_CORRUPT,
+                "{shape:?}"
+            );
+            // …sealed in the bytes…
+            let mut sealed = request();
+            sealed.sealed_project = Some(shape.into());
+            assert_eq!(
+                code(&admit(&sealed).unwrap_err()),
+                CONTEXT_CORRUPT,
+                "{shape:?}"
+            );
+            // …carried by a stored record…
+            let mut stored = request();
+            stored.requested_project = Some("project-a".into());
+            stored.existing = Some(ExecutionContext {
+                project: shape.into(),
+                ..context("project-a")
+            });
+            assert_eq!(
+                code(&admit(&stored).unwrap_err()),
+                CONTEXT_CORRUPT,
+                "{shape:?}"
+            );
+            // …offered to a legacy row by its own sealed input…
+            assert_eq!(
+                code(
+                    &recover(
+                        row("solar_prepared", None),
+                        &principal(),
+                        Some(shape),
+                        5_000
+                    )
+                    .unwrap_err()
+                ),
+                CONTEXT_CORRUPT,
+                "{shape:?}"
+            );
+            // …or counted in a census, where it is the host's own bug.
+            assert!(
+                matches!(
+                    capacity(limits(), Intent::Admit, &[], &slots(&[shape]), "project-a")
+                        .unwrap_err(),
+                    Fault::Hard(_)
+                ),
+                "{shape:?}"
+            );
+            assert!(
+                matches!(
+                    capacity(limits(), Intent::Admit, &[], &[], shape).unwrap_err(),
+                    Fault::Hard(_)
+                ),
+                "{shape:?}"
+            );
+        }
+        // The bound is the kernel's own 200, not layer_document's 500.
+        assert_eq!(MAX_PROJECT_CHARS, 200);
+        assert!(!valid_project(&"p".repeat(MAX_PROJECT_CHARS + 1)));
     }
 
     #[test]
@@ -1527,6 +1730,114 @@ mod tests {
             "project-c"
         )
         .is_ok());
+    }
+
+    #[test]
+    fn a_share_that_does_not_divide_its_pool_is_a_host_configuration_fault() {
+        // The fairness this op applies is only real if the numbers leave room
+        // for a second project. A host that configures the share as the whole
+        // pool has configured the share away, and that is its own bug — not a
+        // refusal for whoever happens to submit next.
+        for (broken, share_name, pool_name) in [
+            (
+                Limits {
+                    global_running: 4,
+                    per_project_running: 4,
+                    ..limits()
+                },
+                "per_project_running",
+                "global_running",
+            ),
+            (
+                Limits {
+                    global_running: 4,
+                    per_project_running: 5,
+                    ..limits()
+                },
+                "per_project_running",
+                "global_running",
+            ),
+            (
+                Limits {
+                    per_project_queued: 8,
+                    global_queued: 8,
+                    ..limits()
+                },
+                "per_project_queued",
+                "global_queued",
+            ),
+            (
+                Limits {
+                    per_project_queued: 9,
+                    global_queued: 8,
+                    ..limits()
+                },
+                "per_project_queued",
+                "global_queued",
+            ),
+            // A pool of one that hands out more than it has.
+            (
+                Limits {
+                    global_running: 1,
+                    per_project_running: 2,
+                    ..limits()
+                },
+                "per_project_running",
+                "global_running",
+            ),
+        ] {
+            for intent in [Intent::Admit, Intent::Claim] {
+                let fault = capacity(broken, intent, &[], &[], "project-a").unwrap_err();
+                let Fault::Hard(message) = &fault else {
+                    panic!("a misconfigured share is the host's bug, not a client answer: {fault}");
+                };
+                // Both numbers, so the operator reads the fix off the message.
+                assert!(
+                    message.contains(share_name) && message.contains(pool_name),
+                    "{message}"
+                );
+                assert!(fault.code().is_none(), "{message}");
+            }
+        }
+    }
+
+    #[test]
+    fn a_single_worker_host_has_no_share_and_is_configured_as_such() {
+        // The smallest rented VM: one worker, one project at a time, the share
+        // equal to the pool because there is nothing to divide. It admits and
+        // it claims, and its one slot still bounds it.
+        let alone = Limits {
+            global_running: 1,
+            per_project_running: 1,
+            per_project_queued: 1,
+            global_queued: 1,
+        };
+        assert!(capacity(alone, Intent::Admit, &[], &[], "project-a").is_ok());
+        assert!(capacity(alone, Intent::Claim, &[], &[], "project-a").is_ok());
+        // The pool of one is still a bound: the second claim waits, and the
+        // second submission waits, whichever project asks.
+        for project in ["project-a", "project-b"] {
+            let running = refusal(
+                capacity(alone, Intent::Claim, &slots(&["project-a"]), &[], project).unwrap_err(),
+            );
+            assert_eq!(running.code, CAPACITY_EXHAUSTED);
+            assert_eq!(running.scope, Some("global"));
+            let queued = refusal(
+                capacity(alone, Intent::Admit, &[], &slots(&["project-a"]), project).unwrap_err(),
+            );
+            assert_eq!(queued.code, CAPACITY_EXHAUSTED);
+            assert_eq!(queued.scope, Some("global"));
+        }
+        // A single-slot queue in front of several workers is the same
+        // statement about that queue, and it is admitted too.
+        let deep_pool = Limits {
+            global_running: 4,
+            per_project_running: 2,
+            per_project_queued: 1,
+            global_queued: 1,
+        };
+        assert!(capacity(deep_pool, Intent::Admit, &[], &[], "project-a").is_ok());
+        assert!(divides(1, 1) && !divides(2, 1) && divides(1, 2) && !divides(2, 2));
     }
 
     #[test]
