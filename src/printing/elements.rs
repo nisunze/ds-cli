@@ -82,6 +82,7 @@ pub fn new_element(kind: ElementKind, id: String, asset: &str) -> Element {
             view_slot: "primary_map".into(),
             clip: true,
             fit_around: Vec::new(),
+            graticule: None,
         }),
         flow: None,
     }
