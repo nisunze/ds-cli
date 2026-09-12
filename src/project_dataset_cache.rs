@@ -147,13 +147,16 @@ pub struct BufferPolicy {
     #[serde(default)]
     pub provisional: bool,
     /// The sheets a design prints on; the capture covers what every one of
-    /// them shows, so a frame in either orientation is filled. Empty means
-    /// the metre buffer alone.
-    #[serde(default = "both_orientations")]
+    /// them shows, so a frame in either orientation is filled. Empty — the
+    /// default, and absent on the wire — is the metre buffer alone: a
+    /// policy authored without sheets reads back exactly as it was given.
+    /// A seed that prints names its sheets (`both_orientations`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub sheets: Vec<SheetShape>,
 }
 
-fn both_orientations() -> Vec<SheetShape> {
+/// The sheets an LV drawing set prints on, either way round.
+pub fn both_orientations() -> Vec<SheetShape> {
     vec![LANDSCAPE_SHEET, PORTRAIT_SHEET]
 }
 
@@ -164,7 +167,7 @@ impl Default for BufferPolicy {
             isolated_buffer_m: 1000.,
             isolated_rule: IsolatedRule::PointOnly,
             provisional: false,
-            sheets: both_orientations(),
+            sheets: Vec::new(),
         }
     }
 }
@@ -2565,9 +2568,22 @@ mod tests {
             capture(point, 1_000.0, &[LANDSCAPE_SHEET]),
             buffered(point, 1_000.0)
         );
-        // Serialized policies without sheets read back with both orientations.
+        // A policy authored without sheets is the metre buffer alone and
+        // reads back exactly as it was given; a seed that prints names its
+        // sheets, and those ride along.
         let old: BufferPolicy = serde_json::from_value(json!({"design_buffer_m":200.0,"isolated_buffer_m":1000.0,"isolated_rule":"point_only"})).unwrap();
-        assert_eq!(old.sheets, vec![LANDSCAPE_SHEET, PORTRAIT_SHEET]);
+        assert!(old.sheets.is_empty());
+        assert_eq!(old, BufferPolicy::default());
+        let written = serde_json::to_value(&old).unwrap();
+        assert!(written.get("sheets").is_none(), "{written}");
+        let printing = BufferPolicy {
+            sheets: both_orientations(),
+            ..old.clone()
+        };
+        let written = serde_json::to_value(&printing).unwrap();
+        assert_eq!(written["sheets"].as_array().map(Vec::len), Some(2));
+        let back: BufferPolicy = serde_json::from_value(written).unwrap();
+        assert_eq!(back.sheets, both_orientations());
     }
 
     #[test]
