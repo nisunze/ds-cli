@@ -1325,18 +1325,14 @@ export const settings = { code: 'metric', label: 'Settings' };
 /// The application-side counterpart of [`CODE_NOT_A_LITERAL`]: a mint whose
 /// code this scan cannot read, because the code is not the file's to choose.
 ///
-/// One entry, and it is the same shape as the Rust relays: the browser asks
-/// the kernel and re-raises the answer. Keep it that way — a file listed here
-/// is a file whose *new* codes would be invisible, so nothing belongs here
-/// that mints a code of its own.
-const APPLICATION_CODE_NOT_A_LITERAL: &[(&str, &str)] = &[(
-    "src/lib/desktop/context-generation.ts",
-    "the code is `desktop_instance::admit_result`'s own, re-raised so `ds` \
-     receives the kernel's decision rather than a renamed copy of it. That \
-     vocabulary is closed and \
-     `every_desktop_instance_refusal_is_declared_by_a_command` iterates it \
-     against the published rosters",
-)];
+/// Empty since the slice 2 unwind: the one entry it held was
+/// `src/lib/desktop/context-generation.ts`, which re-raised
+/// `desktop_instance::admit_result`'s code; that module was removed with the
+/// browser half, and the shell (`src-tauri/src/cli_bridge.rs`) now relays the
+/// kernel's decision, which the Rust relays above account for. Keep the shape:
+/// a file listed here is a file whose *new* codes would be invisible, so
+/// nothing belongs here that mints a code of its own.
+const APPLICATION_CODE_NOT_A_LITERAL: &[(&str, &str)] = &[];
 
 /// Every way the desktop-instance owner can refuse is a code some command
 /// publishes.
