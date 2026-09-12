@@ -521,7 +521,7 @@ fn resolve_project(request: &AdmitRequest) -> Result<String, Fault> {
                 return Err(refused(
                     SCOPE_MISMATCH,
                     format!(
-                        "this request names project {requested}, but its sealed input was prepared for another project"
+                        "this request is for {requested}, but its sealed input was prepared for another project"
                     ),
                 ));
             }
