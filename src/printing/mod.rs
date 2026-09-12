@@ -626,7 +626,7 @@ pub fn validate(layout: &Layout) -> Result<(), String> {
     }
     if layout.page_mm.iter().any(|v| !bounded(*v, 50., 2000.))
         || layout.elements.is_empty()
-        || layout.elements.len() > 64
+        || layout.elements.len() > 200
     {
         return Err("invalid page dimensions or element count".into());
     }
