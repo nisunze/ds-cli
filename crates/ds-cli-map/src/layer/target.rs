@@ -65,6 +65,11 @@ pub const SERVER_REFUSED: Refusal = Refusal {
     when: "--target server was passed and the host is unreachable, or it refused the request",
     remedy: "read the stated reason; verify ds server serve is running under this lane",
 };
+/// A second ACCOUNT is not something a layer request can meet: one Server is
+/// signed in as one owner, its bearer is that owner's, and a request under any
+/// other bearer never reaches an operation. `multi_principal_unsupported` is
+/// therefore declared by `ds server serve`, which is where a second account
+/// actually meets one Server, and claimed by nothing here.
 pub const SERVER_OWNER_CHANGED: Refusal = Refusal {
     code: "server_owner_changed",
     when: "the Server's account differs from this caller's, or its credential was revoked",
@@ -80,12 +85,6 @@ pub const CONTEXT_CORRUPT: Refusal = Refusal {
     when: "a --project id is empty, padded, over 500 characters or holds a control character",
     remedy: "copy one exact ds_project value from ds auth project list",
 };
-pub const MULTI_PRINCIPAL: Refusal = Refusal {
-    code: "multi_principal_unsupported",
-    when: "the Server is bound to a different native account than this caller's",
-    remedy: "run one Server per native account, each with its own --state-dir and --listen",
-};
-
 /// The host, resolved once, before anything is read or sent.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Target {

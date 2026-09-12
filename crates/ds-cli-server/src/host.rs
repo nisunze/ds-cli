@@ -607,26 +607,54 @@ pub fn load_connection(directory: &Path) -> Result<Connection, String> {
     }
     Ok(connection)
 }
+/// One Server serves one owner, and this is the sentence a second account
+/// meets when it asks one Server to serve it too: the protected state it
+/// pointed at is already another account's. Many users are many machines, so
+/// the remedy is a host of one's own, never a second identity in this process.
+pub const MULTI_PRINCIPAL_UNSUPPORTED: &str = "multi_principal_unsupported";
+
 pub fn connection(
     directory: &Path,
     address: SocketAddr,
     owner: String,
     lane: String,
-) -> Result<Connection, String> {
-    prepare_directory(directory)?;
+) -> Result<Connection, Failure> {
+    prepare_directory(directory).map_err(host_failure)?;
     if !address.ip().is_loopback() || address.port() == 0 {
-        return Err("server must listen on a fixed loopback port".into());
+        return Err(Failure::invalid(
+            "server_refused",
+            "server must listen on a fixed loopback port",
+        )
+        .remedy("pass --listen 127.0.0.1:<port>"));
     }
     let path = directory.join("connection.json");
     if path.exists() {
-        let existing = load_connection(directory)?;
-        if existing.owner != owner || existing.lane != lane || existing.address != address {
-            return Err("existing server connection belongs to another identity, lane or address; use a separate state directory".into());
+        let existing = load_connection(directory).map_err(host_failure)?;
+        // A second ACCOUNT is the one thing this Server can never become, so
+        // it is answered by its own name rather than as a generic refusal —
+        // and separately from a lane or address that simply does not match,
+        // which is one owner's own misconfiguration.
+        if existing.owner != owner {
+            return Err(Failure::conflict(
+                // Written out, like `needs_paired_map` above: the
+                // refusal-coverage scan reads a literal, and a code it cannot
+                // read is a code nothing checks is documented.
+                "multi_principal_unsupported",
+                "this protected server state belongs to another account; one Server serves exactly one owner",
+            )
+            .remedy(
+                "run that account its own ds server serve, with its own --state-dir and --listen",
+            ));
+        }
+        if existing.lane != lane || existing.address != address {
+            return Err(host_failure(
+                "the existing server connection is on another lane or address; use a separate state directory",
+            ));
         }
         return Ok(existing);
     }
     let mut secret = [0u8; 32];
-    getrandom::getrandom(&mut secret).map_err(|e| e.to_string())?;
+    getrandom::getrandom(&mut secret).map_err(host_failure)?;
     let connection = Connection {
         address,
         owner,
@@ -640,14 +668,14 @@ pub fn connection(
         use std::os::unix::fs::OpenOptionsExt;
         options.mode(0o600);
     }
-    let mut file = options.open(&path).map_err(|e| e.to_string())?;
-    file.write_all(&serde_json::to_vec(&connection).map_err(|e| e.to_string())?)
-        .map_err(|e| e.to_string())?;
-    file.sync_all().map_err(|e| e.to_string())?;
+    let mut file = options.open(&path).map_err(host_failure)?;
+    file.write_all(&serde_json::to_vec(&connection).map_err(host_failure)?)
+        .map_err(host_failure)?;
+    file.sync_all().map_err(host_failure)?;
     #[cfg(unix)]
     fs::File::open(directory)
         .and_then(|d| d.sync_all())
-        .map_err(|e| e.to_string())?;
+        .map_err(host_failure)?;
     Ok(connection)
 }
 pub async fn serve(mut app: App, workers: usize) -> Result<(), String> {
@@ -1492,9 +1520,39 @@ pub(crate) mod tests {
         )
         .unwrap();
         assert_eq!(load_connection(dir.path()).unwrap().token, first.token);
-        assert!(
-            super::connection(dir.path(), first.address, "other".into(), "stable".into()).is_err()
+        // The same owner, restarted: the same protected connection, so a
+        // running host's bearer survives a restart rather than rotating.
+        assert_eq!(
+            super::connection(dir.path(), first.address, "owner".into(), "stable".into())
+                .unwrap()
+                .token,
+            first.token
         );
+        // A SECOND ACCOUNT pointed at one Server's protected state is the one
+        // place many users meet one host, and it is answered by its own name
+        // with the remedy that is the whole model: a host of one's own.
+        // `.err()` rather than `expect_err`: `Connection` has no `Debug` on
+        // purpose, because a panic message must never carry the bearer.
+        let second_account =
+            super::connection(dir.path(), first.address, "other".into(), "stable".into())
+                .err()
+                .expect("one Server serves one owner");
+        assert_eq!(second_account.code(), MULTI_PRINCIPAL_UNSUPPORTED);
+        assert_eq!(second_account.class(), ExitClass::Conflict);
+        assert!(
+            second_account
+                .remedy_text()
+                .is_some_and(|remedy| remedy.contains("--state-dir")),
+            "the remedy is a host of its own: {second_account:?}"
+        );
+        // The same owner on another lane or address is that owner's own
+        // misconfiguration, and says so instead of accusing them of being
+        // somebody else.
+        let other_lane =
+            super::connection(dir.path(), first.address, "owner".into(), "canary".into())
+                .err()
+                .expect("one state directory, one lane");
+        assert_eq!(other_lane.code(), "server_refused");
         fs::set_permissions(
             dir.path().join("connection.json"),
             fs::Permissions::from_mode(0o644),

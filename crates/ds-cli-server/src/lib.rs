@@ -123,6 +123,17 @@ const OUTPUT_EXISTS: Refusal = Refusal {
     remedy: "choose an absent output file; existing files are never overwritten",
 };
 
+/// The one refusal a second account meets on one Server, declared on the
+/// command that answers it. `ds server serve` refuses to adopt a protected
+/// state directory that already belongs to another owner; there is no second
+/// identity a running host can have, so this is the whole of "many users":
+/// many machines, or at least many hosts, never many accounts in one process.
+const MULTI_PRINCIPAL: Refusal = Refusal {
+    code: host::MULTI_PRINCIPAL_UNSUPPORTED,
+    when: "the protected state directory already belongs to another account",
+    remedy: "run that account its own ds server serve, with its own --state-dir and --listen",
+};
+
 const INSTALL_UNAVAILABLE: Refusal = Refusal {
     code: "headless_install_unavailable",
     when: "the registered install this host runs under cannot be read or created in the protected DS state root",
@@ -154,6 +165,7 @@ const SERVE_REFUSALS: &[Refusal] = &[
     PLATFORM,
     REFUSED,
     OWNER_CHANGED,
+    MULTI_PRINCIPAL,
     NEEDS_MAP,
     UNSUPPORTED,
     INSTALL_UNAVAILABLE,
@@ -841,7 +853,9 @@ pub fn serve(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
     // an account that never ran `ds auth project use` start a host at all.
     let owner = auth::identity(&lane).map_err(failure)?;
     let directory = state(inputs)?;
-    let connection = host::connection(&directory, address, owner, lane.clone()).map_err(failure)?;
+    // Typed as the host decided it: a protected state directory that already
+    // belongs to another account is `multi_principal_unsupported`, by name.
+    let connection = host::connection(&directory, address, owner, lane.clone())?;
     let database = directory.join("store.sqlite");
     let sessions =
         server_sync::sessions::ServerSessions::native(connection.clone(), database.clone(), limits)
