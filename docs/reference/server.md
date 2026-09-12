@@ -109,7 +109,10 @@ operation fails identically whichever host executed it.
 `not_visible` says `job not found` and nothing more. It never names the
 project, the owner or whether the id exists — the class, the code and the
 sentence are identical in all four cases, because anything that differed would
-itself be the disclosure.
+itself be the disclosure. Inside a project the distinction you do want is
+kept: a job you can see that simply has not finished answers `server_refused`
+with "job has no completed result", so "not yours" and "not yet" stay
+distinguishable where that is safe and identical where it is not.
 
 ### Multi-principal is explicitly not supported
 
@@ -185,6 +188,16 @@ Server's document is on another project than the one named),
 `auth_identity_mismatch`, `headless_signed_out`, plus the project refusals
 above. Nothing here pretends a renderer mounted anything: `writes` name the
 layout word a renderer would apply to each runtime layer.
+
+**One limitation to know before you rely on it.** The project is required,
+verified against membership and checked against the document that comes back,
+so a layer answer is never served under the wrong project. But the Server's
+document source still reads its account's saved selection to decide *which*
+project's document to fetch, so naming a second authorized project answers
+`project_context_changed` — naming both projects — rather than that project's
+catalogue. Layers are therefore single-project per Server today, safely rather
+than silently. Closing it is a `ds-cli-auth` change (an explicit-project layer
+fence), not a Server one.
 
 Browser-to-Server layer control is **not** provided: the connection bearer is
 an owner-only local control credential and must not reach a web visitor.
