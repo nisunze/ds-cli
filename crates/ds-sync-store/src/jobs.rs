@@ -15,7 +15,8 @@
 use crate::{Error, Result, Store};
 use ds_command_kernel::compute_jobs::{self, Event, Job, Phase};
 use ds_command_kernel::execution_context::{
-    self, ExecutionContext, Fault, Intent, Limits, Principal, Provenance, Slot,
+    self, ExecutionContext, Fault, Intent, Limits, Principal, Provenance, Refusal, Slot,
+    CONTEXT_UNRECOVERABLE,
 };
 use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
 
@@ -112,11 +113,10 @@ pub struct Recovery {
     pub stored: usize,
     /// Rows rebuilt from the sealed input (Solar names its own project).
     pub from_sealed_input: usize,
-    /// Rows rebuilt from the caller's saved selection (transformer work).
-    pub from_saved_selection: usize,
-    /// Rows with no honest source for a project. They are left exactly as
-    /// they are: readable, never claimed, never executed — until the caller
-    /// resubmits the same key and bytes naming a project, which adopts it.
+    /// Rows with no project of their own to be recovered into. They are left
+    /// exactly as they are: readable, never claimed, never executed, never
+    /// published — the owner reads such a job's result and resubmits under an
+    /// explicit project, which is a new job with its own id.
     pub unrecoverable: Vec<String>,
 }
 
@@ -139,11 +139,12 @@ impl Store {
     ///
     /// A row already present under this id is returned unchanged when it
     /// carries a context (an idempotent resubmit; no capacity is consumed).
-    /// A row present under this id that predates execution contexts, with
-    /// the same bytes, **adopts** the submitted context: the caller has just
-    /// named the project for exactly this key and these bytes, which is the
-    /// one honest source a transformer row written by a released Server can
-    /// have — it is not a guess, and it is how such a row starts running.
+    /// A row under this id that predates execution contexts is
+    /// `context_unrecoverable` and is left exactly as it is: this build's ids
+    /// digest the project, so a released Server's id cannot be re-derived and
+    /// such a row can only be reached deliberately. It is readable and never
+    /// executed; the owner resubmits under an explicit project, which is a
+    /// new job with its own id.
     pub fn submit_job(&mut self, job: &Job, input: &[u8], limits: Limits) -> Result<Job> {
         if !compute_jobs::digest(&job.id)
             || !compute_jobs::digest(&job.input_sha256)
@@ -211,13 +212,14 @@ impl Store {
                 }
                 Some(_) => return Ok(existing),
                 None => {
-                    existing.context = Some(context.clone());
-                    transaction.execute(
-                        "UPDATE compute_jobs SET row=?2 WHERE id=?1",
-                        params![existing.id, serde_json::to_string(&existing)?],
-                    )?;
-                    transaction.commit()?;
-                    return Ok(existing);
+                    return Err(Error::Refused(Refusal {
+                        code: CONTEXT_UNRECOVERABLE,
+                        message:
+                            "that job was stored before execution contexts and names no project"
+                                .into(),
+                        retry_after_ms: None,
+                        scope: None,
+                    }));
                 }
             }
         }
@@ -432,12 +434,13 @@ impl Store {
     /// callback and not a decision here. `recover` in the kernel decides what
     /// a row is about; this loop only persists the answer and counts what it
     /// could not honestly reconstruct. A row that already carries a context is
-    /// never rewritten, so reopening a live queue writes nothing.
+    /// never rewritten, so reopening a live queue writes nothing. Nothing
+    /// outside a row's own bytes is offered: no selection of the moment can
+    /// name a project for work admitted before this build.
     pub fn recover_contexts(
         &mut self,
         principal: &Principal,
         owner: &str,
-        saved_project: Option<&str>,
         sealed_project: &dyn Fn(&Job, &[u8]) -> Option<String>,
         now_ms: u64,
     ) -> Result<Recovery> {
@@ -462,13 +465,7 @@ impl Store {
             }
             let sealed = sealed_project(&job, &input);
             let row = serde_json::to_value(&job)?;
-            match execution_context::recover(
-                row,
-                principal,
-                saved_project,
-                sealed.as_deref(),
-                now_ms,
-            ) {
+            match execution_context::recover(row, principal, sealed.as_deref(), now_ms) {
                 Ok((context, provenance)) => {
                     let mut recovered = job.clone();
                     recovered.context = Some(context);
@@ -479,7 +476,6 @@ impl Store {
                     match provenance {
                         Provenance::Stored => recovery.stored += 1,
                         Provenance::SealedInput => recovery.from_sealed_input += 1,
-                        Provenance::SavedSelection => recovery.from_saved_selection += 1,
                     }
                 }
                 Err(_) => recovery.unrecoverable.push(job.id.clone()),

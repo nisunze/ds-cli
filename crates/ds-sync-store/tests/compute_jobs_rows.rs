@@ -225,7 +225,7 @@ fn a_row_written_before_the_context_existed_reads_but_is_never_claimed() {
 }
 
 #[test]
-fn a_legacy_solar_row_recovers_from_its_sealed_input_and_a_transformer_row_from_the_selection() {
+fn a_legacy_solar_row_recovers_from_its_sealed_input_and_a_transformer_row_never_does() {
     let directory = tempfile::tempdir().expect("temp");
     drop(store(directory.path()));
     insert_legacy(
@@ -247,17 +247,14 @@ fn a_legacy_solar_row_recovers_from_its_sealed_input_and_a_transformer_row_from_
             .then(|| "project-b".to_owned())
     };
     let recovery = store(directory.path())
-        .recover_contexts(
-            &principal(),
-            "owner-digest",
-            Some("project-a"),
-            &sealed,
-            1_700_000_500_000,
-        )
+        .recover_contexts(&principal(), "owner-digest", &sealed, 1_700_000_500_000)
         .expect("recover");
     assert_eq!(recovery.from_sealed_input, 1);
-    assert_eq!(recovery.from_saved_selection, 1);
-    assert!(recovery.unrecoverable.is_empty());
+    assert_eq!(
+        recovery.unrecoverable,
+        vec![ID_B.to_owned()],
+        "a transformer row names no project and nothing else may name one for it"
+    );
     let solar = store(directory.path())
         .job(&caller(), ID)
         .expect("read")
@@ -270,15 +267,16 @@ fn a_legacy_solar_row_recovers_from_its_sealed_input_and_a_transformer_row_from_
         solar.admitted_at_ms, 1_700_000_000_000,
         "the row's own admission moment, not the moment it reopened"
     );
-    let transformer = store(directory.path())
-        .job(&caller(), ID_B)
-        .expect("read")
-        .expect("present")
-        .context
-        .expect("recovered");
-    assert_eq!(transformer.project, "project-a", "the saved selection");
-    assert_eq!(transformer.operation, TRANSFORMER_PROCESSING);
-    // Recovered rows are visible per project now, and claimable.
+    assert!(
+        store(directory.path())
+            .job(&caller(), ID_B)
+            .expect("read")
+            .expect("present")
+            .context
+            .is_none(),
+        "the transformer row is left exactly as it was written"
+    );
+    // The recovered row is visible per project now, and claimable.
     assert_eq!(
         store(directory.path())
             .jobs(&caller().about(Some("project-b")), 10)
@@ -286,22 +284,18 @@ fn a_legacy_solar_row_recovers_from_its_sealed_input_and_a_transformer_row_from_
             .len(),
         1
     );
-    // A second pass rewrites nothing: they are stored now.
+    // A second pass rewrites nothing: the one it could recover is stored now,
+    // and the one it could not is named again rather than guessed at.
     let again = store(directory.path())
-        .recover_contexts(
-            &principal(),
-            "owner-digest",
-            Some("project-a"),
-            &sealed,
-            1_700_000_600_000,
-        )
+        .recover_contexts(&principal(), "owner-digest", &sealed, 1_700_000_600_000)
         .expect("recover");
-    assert_eq!(again.stored, 2);
-    assert_eq!(again.from_sealed_input + again.from_saved_selection, 0);
+    assert_eq!(again.stored, 1);
+    assert_eq!(again.from_sealed_input, 0);
+    assert_eq!(again.unrecoverable, vec![ID_B.to_owned()]);
 }
 
 #[test]
-fn a_transformer_row_with_no_saved_selection_is_named_unrecoverable_not_guessed() {
+fn a_transformer_row_written_before_contexts_is_named_unrecoverable_not_guessed() {
     let directory = tempfile::tempdir().expect("temp");
     drop(store(directory.path()));
     insert_legacy(
@@ -315,7 +309,6 @@ fn a_transformer_row_with_no_saved_selection_is_named_unrecoverable_not_guessed(
         .recover_contexts(
             &principal(),
             "owner-digest",
-            None,
             &|_, _| None,
             1_700_000_500_000,
         )
@@ -360,7 +353,7 @@ fn a_transformer_row_with_no_saved_selection_is_named_unrecoverable_not_guessed(
 }
 
 #[test]
-fn a_resubmission_naming_a_project_adopts_a_row_written_before_contexts() {
+fn a_row_written_before_contexts_is_never_adopted_by_a_later_submission() {
     let directory = tempfile::tempdir().expect("temp");
     drop(store(directory.path()));
     insert_legacy(
@@ -371,9 +364,10 @@ fn a_resubmission_naming_a_project_adopts_a_row_written_before_contexts() {
         b"a transformer batch",
     );
     let mut store = store(directory.path());
-    // The same key (so the same id) and the same bytes, now naming a project:
-    // the one honest source a transformer row can have. Other bytes under the
-    // same key are the row's identity conflict, exactly as for any row.
+    // This build's job ids digest the project, so a released Server's id can
+    // no longer be re-derived from a key: reaching this row at all takes
+    // deliberate aim. Even then it is not adopted — a row admitted before
+    // contexts stays exactly as it was written, readable and unrun.
     let mut named = job(Some(ExecutionContext {
         project: "project-a".into(),
         job_id: ID_B.into(),
@@ -389,35 +383,37 @@ fn a_resubmission_naming_a_project_adopts_a_row_written_before_contexts() {
         .expect_err("other bytes")
         .to_string()
         .contains("compute_job_identity_conflict"));
-    let adopted = store
+    let refused = store
         .submit_job(&named, b"a transformer batch", roomy())
-        .expect("adopted");
-    assert_eq!(adopted.id, ID_B);
-    assert_eq!(adopted.context, named.context);
-    assert_eq!(
-        adopted.created_at_ms, 1_700_000_000_000,
-        "the row itself is the released one, not a second job"
+        .expect_err("never adopted");
+    assert!(
+        refused.to_string().contains("context_unrecoverable"),
+        "{refused}"
     );
-    // Visible under its project now, claimable, and stored for the next reopen.
+    assert!(
+        store
+            .job(&caller(), ID_B)
+            .expect("read")
+            .expect("present")
+            .context
+            .is_none(),
+        "the released row is left exactly as it was"
+    );
     assert!(store
         .job(&caller().about(Some("project-a")), ID_B)
         .expect("read")
-        .is_some());
-    assert_eq!(
-        claim(&mut store, "worker-1", 1_700_000_600_000, roomy()).as_deref(),
-        Some("project-a")
-    );
+        .is_none());
+    assert!(claim(&mut store, "worker-1", 1_700_000_600_000, roomy()).is_none());
     let again = store
         .recover_contexts(
             &principal(),
             "owner-digest",
-            None,
             &|_, _| None,
             1_700_000_700_000,
         )
         .expect("recover");
-    assert_eq!(again.stored, 1);
-    assert!(again.unrecoverable.is_empty());
+    assert_eq!(again.stored, 0);
+    assert_eq!(again.unrecoverable, vec![ID_B.to_owned()]);
 }
 
 #[test]

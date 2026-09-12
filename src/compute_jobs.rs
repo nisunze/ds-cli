@@ -41,7 +41,7 @@ pub struct Job {
     pub result_sha256: Option<String>,
     pub error: Option<String>,
     /// The immutable execution context admitted with this job: principal,
-    /// lane, deployment, install, the **verified** project, client, operation,
+    /// lane, deployment, install, the project it is about, client, operation,
     /// job id and input digest (`crate::execution_context`). Rows are stored
     /// as one JSON blob, so this is a compatible addition with no SQL schema
     /// change: a row written by a Server released before it deserialises with

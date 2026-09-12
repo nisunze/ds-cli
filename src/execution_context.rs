@@ -1,15 +1,26 @@
 //! The execution context — one immutable record per admitted operation, and
 //! the five decisions that keep it honest.
 //!
-//! A Server admits work for several authorized projects at once. Nothing about
-//! that work may be read from a process-wide "current project", a saved CLI
-//! selection captured at startup, or an id a caller happens to hold. Every
+//! A Server admits work for several of its owner's projects at once. Nothing
+//! about that work may be read from a process-wide "current project", a saved
+//! CLI selection captured at startup, or an id a caller happens to hold. Every
 //! admitted operation instead carries a record decided here, once: who is
 //! authenticated, on which lane and deployment, from which install, for which
-//! **verified** project, from which client, which operation, which job, which
-//! exact input bytes, and when it was admitted. The record is written with the
-//! job row and never rewritten — a retry, a restart, a claim, a publication and
-//! a cancellation all present the same context they started with.
+//! project, from which client, which operation, which job, which exact input
+//! bytes, and when it was admitted. The record is written with the job row and
+//! never rewritten — a retry, a restart, a claim, a publication and a
+//! cancellation all present the same context they started with.
+//!
+//! **The boundary.** The Server is the desktop's core, wrapped by the desktop,
+//! and it stands on the desktop's side of the desktop's one boundary with
+//! ds-brain: entitlement is decided at that boundary and never re-decided
+//! here. So this owner fetches, caches and refreshes no project directory, and
+//! carries no online/offline conditional. An admission is the authenticated
+//! connection, the project the work names — a sealed input's own project
+//! outranks the named one — and the caller's key with the digest of its exact
+//! bytes. Nothing else. Offline-first falls out of that: admission, queueing,
+//! execution, retry, restart recovery and capacity are all decided with no
+//! upstream present at all.
 //!
 //! The five questions this owner answers:
 //!
@@ -23,10 +34,12 @@
 //!
 //! Rules worth stating up front:
 //!
-//! - **A saved selection is a default, not authority.** `saved_project` is
-//!   verified against fresh membership exactly like an explicitly requested
-//!   one. A sealed input that already names its project (Solar) outranks both;
-//!   an explicit request that contradicts the bytes is `scope_mismatch`.
+//! - **A named project is the operation's project.** `saved_project` is the
+//!   caller's own default, used exactly like a name it typed. A sealed input
+//!   that already names its project (Solar) outranks both; an explicit request
+//!   that contradicts the bytes is `scope_mismatch`. Naming a project is not
+//!   being entitled to it: that is the gateway's answer on the effect that
+//!   leaves the machine, at publication and at sync.
 //! - **An id never authorizes.** `visible` answers one word, `job not found`,
 //!   to a foreign principal, a foreign lane, a foreign deployment, a caller
 //!   naming the wrong project, and a caller naming an id that does not exist.
@@ -39,11 +52,12 @@
 //!   its own share has queued work; two projects both at their share never
 //!   idle a worker between them. Saturation is a typed answer with retry
 //!   guidance, never a dropped request.
-//! - **Recovery reconstructs; it does not authorize.** A row written by a
-//!   released Server gets its project from the sealed input (Solar, which
-//!   carries it) or from the saved selection (transformer work, which by
-//!   design carries none) — and from nothing else. The host re-verifies
-//!   membership before the next effect either way.
+//! - **Recovery reconstructs; it does not guess.** A row written by a released
+//!   Server gets its project from its own sealed input (Solar, which carries
+//!   it) and from nothing else — never from whichever project happens to be
+//!   selected now. A transformer row carries no project by design, so it is
+//!   `context_unrecoverable`: readable, never claimed, never published, until
+//!   its owner reads its result and resubmits under an explicit project.
 //!
 //! Pure: `now_ms` is an input, every list is bounded, and the same request
 //! always has the same answer. `tests/fixtures/execution-context-cases.json`
@@ -66,8 +80,6 @@ pub const MAX_PROJECT_CHARS: usize = 500;
 pub const MAX_CLIENT_CHARS: usize = 120;
 pub const MAX_KEY_CHARS: usize = 200;
 pub const MAX_JOB_ID_CHARS: usize = 200;
-pub const MAX_MEMBERSHIP_PROJECTS: usize = 5_000;
-pub const MAX_MEMBERSHIP_TTL_MS: u64 = 24 * 60 * 60 * 1_000;
 pub const MAX_SLOTS: usize = 100_000;
 pub const MAX_LIMIT: usize = 4_096;
 
@@ -77,9 +89,9 @@ pub const RETRY_AFTER_BASE_MS: u64 = 1_000;
 pub const RETRY_AFTER_MAX_MS: u64 = 60_000;
 
 /// What a reconstructed context records instead of the client and key a
-/// released Server never persisted. The durable id is the digest of
-/// `(owner, lane, key)` and cannot be inverted, so the key is not recoverable;
-/// reuse is decided by project, operation and input digest, never by the text.
+/// released Server never persisted. The durable id is a digest and cannot be
+/// inverted, so the key is not recoverable; reuse is decided by project,
+/// operation and input digest, never by the text.
 pub const RECOVERED_CLIENT: &str = "recovery:legacy-row";
 pub const RECOVERED_KEY: &str = "recovered";
 
@@ -99,7 +111,6 @@ pub const OPERATIONS: [&str; 5] = [
 
 // ── The refusal vocabulary (closed) ─────────────────────────────────────
 pub const PROJECT_REQUIRED: &str = "project_required";
-pub const PROJECT_NOT_VISIBLE: &str = "project_not_visible";
 pub const SCOPE_MISMATCH: &str = "scope_mismatch";
 pub const SCOPE_MISMATCH_FOR_KEY: &str = "scope_mismatch_for_key";
 pub const PAYLOAD_CHANGED_FOR_KEY: &str = "payload_changed_for_key";
@@ -108,9 +119,8 @@ pub const NOT_VISIBLE: &str = "not_visible";
 pub const CAPACITY_EXHAUSTED: &str = "capacity_exhausted";
 pub const CONTEXT_CORRUPT: &str = "context_corrupt";
 pub const CONTEXT_UNRECOVERABLE: &str = "context_unrecoverable";
-pub const REFUSALS: [&str; 10] = [
+pub const REFUSALS: [&str; 9] = [
     PROJECT_REQUIRED,
-    PROJECT_NOT_VISIBLE,
     SCOPE_MISMATCH,
     SCOPE_MISMATCH_FOR_KEY,
     PAYLOAD_CHANGED_FOR_KEY,
@@ -123,10 +133,6 @@ pub const REFUSALS: [&str; 10] = [
 
 /// The one sentence a caller gets for every invisible job, whatever the reason.
 pub const NOT_FOUND: &str = "job not found";
-/// The one sentence a caller gets for a project they may not act in, whether
-/// they are not a member or the host's membership snapshot has expired. The
-/// host knows which — it holds `fetched_at_ms`; the caller learns nothing.
-pub const NOT_VISIBLE_MESSAGE: &str = "that project is not visible to this connection";
 
 // ── The record ──────────────────────────────────────────────────────────
 
@@ -144,7 +150,9 @@ pub struct ExecutionContext {
     pub deployment: String,
     /// The registered native install this work was admitted from.
     pub install_id: String,
-    /// The **authorized** project. Verified membership at admission.
+    /// The project this operation is about, as the owner named it or as its
+    /// sealed bytes named it. Entitlement to it is the gateway's answer where
+    /// an effect leaves the machine, never a decision made here.
     pub project: String,
     /// The originating client or session label, e.g. `cli:4711`.
     pub client: String,
@@ -239,15 +247,6 @@ pub struct Caller {
     pub deployment: String,
 }
 
-/// The host's project-membership snapshot and how long it stays usable.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Membership {
-    pub projects: Vec<String>,
-    pub fetched_at_ms: u64,
-    pub ttl_ms: u64,
-}
-
 /// One occupied or waiting unit of work, named only by its project.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -305,9 +304,6 @@ pub enum Provenance {
     Stored,
     /// Rebuilt from the sealed Solar input, which names its own project.
     SealedInput,
-    /// Rebuilt from the caller's saved selection, the only project a
-    /// transformer row (which carries none by design) can belong to.
-    SavedSelection,
 }
 
 impl Provenance {
@@ -315,7 +311,6 @@ impl Provenance {
         match self {
             Self::Stored => "stored",
             Self::SealedInput => "sealed_input",
-            Self::SavedSelection => "saved_selection",
         }
     }
 }
@@ -429,7 +424,6 @@ pub struct AdmitRequest {
     /// The project the sealed input itself names (Solar). Authoritative.
     #[serde(default)]
     pub sealed_project: Option<String>,
-    pub membership: Membership,
     /// The context already stored for this key, if the host found one.
     #[serde(default)]
     pub existing: Option<ExecutionContext>,
@@ -459,12 +453,11 @@ impl Admitted {
     }
 }
 
-/// Admit one operation under one verified project, or refuse it by name.
+/// Admit one operation under the project it names, or refuse it by name.
 ///
-/// The order of the checks is itself a rule: the project is resolved and its
-/// membership verified **before** anything stored under the caller's key is
-/// consulted, so a caller can never learn about a job in a project they are
-/// not a member of by reusing a key.
+/// The order of the checks is itself a rule: the project is resolved **before**
+/// anything stored under the caller's key is consulted, so what a key already
+/// holds can never decide what the request is about.
 pub fn admit(request: &AdmitRequest) -> Result<Admitted, Fault> {
     if request.now_ms == 0 {
         return Err(hard("admission needs the host's clock in now_ms"));
@@ -486,7 +479,6 @@ pub fn admit(request: &AdmitRequest) -> Result<Admitted, Fault> {
         return Err(corrupt("input_sha256"));
     }
     let project = resolve_project(request)?;
-    verify_membership(&request.membership, request.now_ms, &project)?;
     if let Some(existing) = &request.existing {
         existing.validate()?;
         if existing.principal_uid != request.principal.uid
@@ -535,13 +527,31 @@ pub fn admit(request: &AdmitRequest) -> Result<Admitted, Fault> {
     Ok(Admitted::Fresh(context))
 }
 
-/// Sealed bytes outrank an explicit request, which outranks a saved default.
-/// A saved default that disagrees with the bytes is simply not used — only a
-/// caller who *named* a contradicting project is refused.
 fn resolve_project(request: &AdmitRequest) -> Result<String, Fault> {
-    let requested = optional_project(request.requested_project.as_deref(), "requested_project")?;
-    let saved = optional_project(request.saved_project.as_deref(), "saved_project")?;
-    let sealed = optional_project(request.sealed_project.as_deref(), "sealed_project")?;
+    project_for(
+        request.requested_project.as_deref(),
+        request.saved_project.as_deref(),
+        request.sealed_project.as_deref(),
+    )
+}
+
+/// Which project one operation is about: sealed bytes outrank an explicit
+/// request, which outranks the caller's saved default. A saved default that
+/// disagrees with the bytes is simply not used — only a caller who *named* a
+/// contradicting project is refused.
+///
+/// Public because a host must know the project before it can derive the
+/// durable job id it then hands to [`admit`]: the id digests the project, so
+/// the same key in two projects is two pieces of work rather than a collision.
+/// `admit` asks this again and gets the same answer; nothing decides twice.
+pub fn project_for(
+    requested: Option<&str>,
+    saved: Option<&str>,
+    sealed: Option<&str>,
+) -> Result<String, Fault> {
+    let requested = optional_project(requested, "requested_project")?;
+    let saved = optional_project(saved, "saved_project")?;
+    let sealed = optional_project(sealed, "sealed_project")?;
     if let Some(sealed) = sealed {
         if let Some(requested) = requested {
             if requested != sealed {
@@ -567,25 +577,6 @@ fn optional_project<'a>(value: Option<&'a str>, field: &str) -> Result<Option<&'
         Some(_) => Err(corrupt(field)),
         None => Ok(None),
     }
-}
-
-/// A project is visible only from a snapshot that is still fresh and actually
-/// contains it. A snapshot stamped in the future is treated as unusable, not
-/// as eternally fresh.
-fn verify_membership(membership: &Membership, now_ms: u64, project: &str) -> Result<(), Fault> {
-    if membership.projects.len() > MAX_MEMBERSHIP_PROJECTS {
-        return Err(hard("membership snapshot exceeds its bound"));
-    }
-    if membership.ttl_ms == 0 || membership.ttl_ms > MAX_MEMBERSHIP_TTL_MS {
-        return Err(hard("membership ttl_ms must be 1..=86400000"));
-    }
-    let stale = membership.fetched_at_ms == 0
-        || membership.fetched_at_ms > now_ms
-        || now_ms - membership.fetched_at_ms > membership.ttl_ms;
-    if stale || !membership.projects.iter().any(|known| known == project) {
-        return Err(refused(PROJECT_NOT_VISIBLE, NOT_VISIBLE_MESSAGE));
-    }
-    Ok(())
 }
 
 // ── visible ─────────────────────────────────────────────────────────────
@@ -764,18 +755,17 @@ fn exhausted(scope: &'static str, message: String, ahead: usize) -> Fault {
 /// released before this slice, which has none.
 ///
 /// A row that already carries a context is returned unchanged. A legacy Solar
-/// row takes its project from the sealed input, which is authoritative because
-/// the bytes themselves name it. A legacy transformer row carries no project
-/// by design, so the caller's saved selection is the only honest source; with
-/// no saved selection the row is `context_unrecoverable` and the host must ask
-/// rather than guess.
-///
-/// Recovery reconstructs; it does not authorize. The host re-verifies
-/// membership before the next effect.
+/// row takes its project from its own sealed input, which is authoritative
+/// because the bytes themselves name it. A legacy transformer row carries no
+/// project by design and there is no second source for one: it is
+/// `context_unrecoverable`. It is never recovered into whichever project
+/// happens to be selected when the host reopens the queue — that would run one
+/// owner's retained work, and publish it, somewhere it was never admitted for.
+/// Such a row stays readable; its owner reads its result and resubmits under
+/// an explicit project.
 pub fn recover(
     row: Value,
     principal: &Principal,
-    saved_project: Option<&str>,
     sealed_project: Option<&str>,
     now_ms: u64,
 ) -> Result<(ExecutionContext, Provenance), Fault> {
@@ -783,7 +773,6 @@ pub fn recover(
         return Err(hard("recovery needs the host's clock in now_ms"));
     }
     principal.validate()?;
-    let saved = optional_project(saved_project, "saved_project")?;
     let sealed = optional_project(sealed_project, "sealed_project")?;
     let Ok(job) = serde_json::from_value::<Job>(row) else {
         return Err(refused(
@@ -837,11 +826,9 @@ pub fn recover(
             Provenance::SealedInput,
             SOLAR_PROCESSING,
         ),
-        EngineKind::FastLv => (
-            saved.ok_or_else(|| unrecoverable("no project was selected to recover it into"))?,
-            Provenance::SavedSelection,
-            TRANSFORMER_PROCESSING,
-        ),
+        EngineKind::FastLv => {
+            return Err(unrecoverable("a transformer request names no project"));
+        }
     };
     let context = ExecutionContext {
         principal_uid: principal.uid.clone(),
@@ -924,8 +911,6 @@ struct RecoverRequest {
     row: Value,
     principal: Principal,
     #[serde(default)]
-    saved_project: Option<String>,
-    #[serde(default)]
     sealed_project: Option<String>,
     now_ms: u64,
 }
@@ -966,7 +951,6 @@ fn answer(op: Op) -> Result<Value, Fault> {
             let (context, provenance) = recover(
                 request.row,
                 &request.principal,
-                request.saved_project.as_deref(),
                 request.sealed_project.as_deref(),
                 request.now_ms,
             )?;
@@ -1018,13 +1002,6 @@ mod tests {
             deployment: "https://gateway.example".into(),
         }
     }
-    fn membership(projects: &[&str]) -> Membership {
-        Membership {
-            projects: projects.iter().map(|p| (*p).to_owned()).collect(),
-            fetched_at_ms: 1_000,
-            ttl_ms: 600_000,
-        }
-    }
     fn request() -> AdmitRequest {
         AdmitRequest {
             now_ms: 2_000,
@@ -1037,7 +1014,6 @@ mod tests {
             requested_project: None,
             saved_project: None,
             sealed_project: None,
-            membership: membership(&["project-a", "project-b"]),
             existing: None,
         }
     }
@@ -1174,61 +1150,22 @@ mod tests {
     }
 
     #[test]
-    fn a_project_is_admitted_only_from_a_fresh_membership_that_contains_it() {
-        let mut fresh = request();
-        fresh.requested_project = Some("project-c".into());
-        assert_eq!(
-            code(&admit(&fresh).unwrap_err()),
-            PROJECT_NOT_VISIBLE,
-            "a project outside the snapshot is not visible"
-        );
-        let mut saved_but_unverified = request();
-        saved_but_unverified.saved_project = Some("project-c".into());
-        assert_eq!(
-            code(&admit(&saved_but_unverified).unwrap_err()),
-            PROJECT_NOT_VISIBLE,
-            "a saved selection is verified exactly like a requested one"
-        );
-        let mut sealed_but_unverified = request();
-        sealed_but_unverified.sealed_project = Some("project-c".into());
-        assert_eq!(
-            code(&admit(&sealed_but_unverified).unwrap_err()),
-            PROJECT_NOT_VISIBLE,
-            "sealed bytes name a project; they do not authorize it"
-        );
-        // Stale, future-stamped and empty snapshots all refuse the same way.
-        for snapshot in [
-            Membership {
-                projects: vec!["project-a".into()],
-                fetched_at_ms: 1_000,
-                ttl_ms: 500,
-            },
-            Membership {
-                projects: vec!["project-a".into()],
-                fetched_at_ms: 9_000,
-                ttl_ms: 600_000,
-            },
-            Membership {
-                projects: vec![],
-                fetched_at_ms: 1_000,
-                ttl_ms: 600_000,
-            },
-        ] {
-            let mut stale = request();
-            stale.requested_project = Some("project-a".into());
-            stale.membership = snapshot;
-            let refused = refusal(admit(&stale).unwrap_err());
-            assert_eq!(refused.code, PROJECT_NOT_VISIBLE);
-            assert_eq!(
-                refused.message, NOT_VISIBLE_MESSAGE,
-                "stale and absent read alike to the caller"
-            );
+    fn a_project_this_host_has_never_seen_is_admitted_on_the_owner_s_word() {
+        // The boundary: there is no directory here to consult, no snapshot to
+        // be stale and no refusal to refresh. A project the owner names for
+        // the first time is admitted, and whether its effects may leave the
+        // machine is the gateway's answer at publication and sync.
+        for project in ["project-a", "a-project-never-seen", "p"] {
+            let mut named = request();
+            named.requested_project = Some(project.into());
+            assert_eq!(admit(&named).unwrap().context().project, project);
+            let mut defaulted = request();
+            defaulted.saved_project = Some(project.into());
+            assert_eq!(admit(&defaulted).unwrap().context().project, project);
+            let mut sealed = request();
+            sealed.sealed_project = Some(project.into());
+            assert_eq!(admit(&sealed).unwrap().context().project, project);
         }
-        // An unusable ttl is the host's bug, not the caller's refusal.
-        let mut broken = request();
-        broken.requested_project = Some("project-a".into());
-        broken.membership.ttl_ms = 0;
-        assert!(matches!(admit(&broken).unwrap_err(), Fault::Hard(_)));
     }
 
     #[test]
@@ -1290,15 +1227,18 @@ mod tests {
     }
 
     #[test]
-    fn membership_is_verified_before_any_stored_key_is_consulted() {
-        // The caller reuses a key that exists for project-a, but names a
-        // project they are not a member of: they learn nothing about the key.
-        let mut probe = request();
-        probe.requested_project = Some("project-c".into());
-        probe.existing = Some(context("project-a"));
-        let refused = refusal(admit(&probe).unwrap_err());
-        assert_eq!(refused.code, PROJECT_NOT_VISIBLE);
-        assert_eq!(refused.message, NOT_VISIBLE_MESSAGE);
+    fn the_project_is_resolved_before_any_stored_key_is_consulted() {
+        // A key that already holds a context never decides what the request
+        // is about: a request that names no project is refused for that, and
+        // the stored record is not consulted at all.
+        let mut unnamed = request();
+        unnamed.existing = Some(context("project-a"));
+        assert_eq!(code(&admit(&unnamed).unwrap_err()), PROJECT_REQUIRED);
+        // …and a project the request cannot even spell is refused before it.
+        let mut unbounded = request();
+        unbounded.requested_project = Some(" project-a".into());
+        unbounded.existing = Some(context("project-a"));
+        assert_eq!(code(&admit(&unbounded).unwrap_err()), CONTEXT_CORRUPT);
     }
 
     #[test]
@@ -1655,7 +1595,6 @@ mod tests {
         let (recovered, provenance) = recover(
             row("solar_prepared", Some(&stored)),
             &principal(),
-            Some("project-z"),
             Some("project-a"),
             5_000,
         )
@@ -1663,11 +1602,10 @@ mod tests {
         assert_eq!(recovered, stored);
         assert_eq!(provenance, Provenance::Stored);
         assert_eq!(provenance.wire(), "stored");
-        // A saved selection cannot overwrite what the row already records.
+        // Nothing outside the row can restate what the row already records.
         let (again, _) = recover(
             row("solar_prepared", Some(&stored)),
             &principal(),
-            Some("project-z"),
             None,
             5_000,
         )
@@ -1679,7 +1617,6 @@ mod tests {
                 &recover(
                     row("solar_prepared", Some(&stored)),
                     &principal(),
-                    None,
                     Some("project-b"),
                     5_000,
                 )
@@ -1690,20 +1627,16 @@ mod tests {
     }
 
     #[test]
-    fn a_legacy_row_recovers_from_the_sealed_input_or_the_saved_selection() {
+    fn a_legacy_row_recovers_from_its_own_sealed_input_and_from_nothing_else() {
         let (solar, provenance) = recover(
             row("solar_prepared", None),
             &principal(),
-            Some("project-b"),
             Some("project-a"),
             5_000,
         )
         .unwrap();
         assert_eq!(provenance, Provenance::SealedInput);
-        assert_eq!(
-            solar.project, "project-a",
-            "the sealed input outranks a saved selection at recovery too"
-        );
+        assert_eq!(solar.project, "project-a");
         assert_eq!(solar.operation, SOLAR_PROCESSING);
         assert_eq!(solar.client, RECOVERED_CLIENT);
         assert_eq!(solar.idempotency_key, RECOVERED_KEY);
@@ -1713,49 +1646,39 @@ mod tests {
             solar.admitted_at_ms, 1_700_000_000_000,
             "recovery keeps the row's own admission moment"
         );
-        let (transformer, provenance) = recover(
-            row("fast_lv", None),
-            &principal(),
-            Some("project-b"),
-            None,
-            5_000,
-        )
-        .unwrap();
-        assert_eq!(provenance, Provenance::SavedSelection);
-        assert_eq!(transformer.project, "project-b");
-        assert_eq!(transformer.operation, TRANSFORMER_PROCESSING);
     }
 
     #[test]
     fn a_legacy_row_with_nothing_to_recover_from_is_never_guessed() {
+        // A transformer row carries no project by design, and there is no
+        // second source for one: not a selection, not the last project used,
+        // not the only project on the host. It stays readable and unrun.
+        let refused =
+            refusal(recover(row("fast_lv", None), &principal(), None, 5_000).unwrap_err());
+        assert_eq!(refused.code, CONTEXT_UNRECOVERABLE);
+        assert!(
+            refused
+                .message
+                .contains("transformer request names no project"),
+            "{}",
+            refused.message
+        );
+        // Naming a project alongside such a row changes nothing: the only
+        // project a legacy row can be recovered into is one its own bytes name.
         assert_eq!(
-            code(&recover(row("fast_lv", None), &principal(), None, None, 5_000).unwrap_err()),
+            code(&recover(row("solar_prepared", None), &principal(), None, 5_000).unwrap_err()),
             CONTEXT_UNRECOVERABLE,
-            "a transformer row carries no project by design"
+            "a Solar row's project comes from its bytes or from nowhere"
         );
         assert_eq!(
-            code(
-                &recover(
-                    row("solar_prepared", None),
-                    &principal(),
-                    Some("project-b"),
-                    None,
-                    5_000
-                )
-                .unwrap_err()
-            ),
-            CONTEXT_UNRECOVERABLE,
-            "a Solar row's project comes from its bytes, never from a selection"
-        );
-        assert_eq!(
-            code(&recover(json!({"id": JOB_ID}), &principal(), None, None, 5_000).unwrap_err()),
+            code(&recover(json!({"id": JOB_ID}), &principal(), None, 5_000).unwrap_err()),
             CONTEXT_UNRECOVERABLE
         );
         // Another lane's row is never reopened under this principal.
         let mut other_lane = row("fast_lv", None);
         other_lane["lane"] = json!("stable");
         assert_eq!(
-            code(&recover(other_lane, &principal(), Some("project-b"), None, 5_000).unwrap_err()),
+            code(&recover(other_lane, &principal(), None, 5_000).unwrap_err()),
             PRINCIPAL_MISMATCH
         );
         // Nor is a stored context belonging to another identity.
@@ -1766,7 +1689,6 @@ mod tests {
                 &recover(
                     row("solar_prepared", Some(&foreign)),
                     &principal(),
-                    None,
                     None,
                     5_000
                 )
@@ -1783,7 +1705,6 @@ mod tests {
                     row("solar_prepared", Some(&misbound)),
                     &principal(),
                     None,
-                    None,
                     5_000
                 )
                 .unwrap_err()
@@ -1791,7 +1712,7 @@ mod tests {
             CONTEXT_CORRUPT
         );
         assert!(matches!(
-            recover(row("fast_lv", None), &principal(), Some("p"), None, 0).unwrap_err(),
+            recover(row("fast_lv", None), &principal(), None, 0).unwrap_err(),
             Fault::Hard(_)
         ));
     }
@@ -1810,7 +1731,6 @@ mod tests {
             "idempotency_key": "key-a",
             "input_sha256": DIGEST_A,
             "requested_project": "project-a",
-            "membership": membership(&["project-a"]),
         }))
         .unwrap();
         assert_eq!(admitted["outcome"], "admitted");
@@ -1824,7 +1744,6 @@ mod tests {
             "job_id": JOB_ID,
             "idempotency_key": "key-a",
             "input_sha256": DIGEST_A,
-            "membership": membership(&["project-a"]),
         }))
         .unwrap();
         assert_eq!(
@@ -1852,12 +1771,12 @@ mod tests {
         assert_eq!(saturated["refusal"]["scope"], "global");
         assert_eq!(saturated["refusal"]["retry_after_ms"], 1_000);
         let recovered = wire(json!({
-            "kind": "recover", "row": row("fast_lv", None), "principal": principal(),
-            "saved_project": "project-b", "now_ms": 5_000
+            "kind": "recover", "row": row("solar_prepared", None), "principal": principal(),
+            "sealed_project": "project-b", "now_ms": 5_000
         }))
         .unwrap();
         assert_eq!(recovered["outcome"], "recovered");
-        assert_eq!(recovered["provenance"], "saved_selection");
+        assert_eq!(recovered["provenance"], "sealed_input");
         assert_eq!(recovered["context"]["project"], "project-b");
     }
 
@@ -1901,7 +1820,7 @@ mod tests {
 
     #[test]
     fn the_refusal_vocabulary_is_closed() {
-        assert_eq!(REFUSALS.len(), 10);
+        assert_eq!(REFUSALS.len(), 9);
         let unique: std::collections::BTreeSet<&str> = REFUSALS.into_iter().collect();
         assert_eq!(unique.len(), REFUSALS.len(), "a code is listed twice");
         assert_eq!(OPERATIONS.len(), 5);
