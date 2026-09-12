@@ -69,6 +69,14 @@ pub struct Layout {
     pub style_overrides: BTreeMap<String, PrintStyleOverride>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub focus: Option<PrintFocus>,
+    /// The words a title block prints for this project — client, contractor,
+    /// consultant, project title, contract number, drawing status, the
+    /// people who draw, check and approve — as `{key}` bindings the text
+    /// elements name. Deterministic: the layout carries its own values, a
+    /// project customises by editing them, a transformer overrides one
+    /// element's text. Keys are identifiers; values at most 2000 bytes.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub title_block: BTreeMap<String, String>,
 }
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Default)]
 #[serde(deny_unknown_fields)]
@@ -865,6 +873,14 @@ pub fn validate(layout: &Layout) -> Result<(), String> {
             return Err("style field or category is too long".into());
         }
     }
+    if layout.title_block.len() > 64
+        || layout
+            .title_block
+            .iter()
+            .any(|(key, value)| !identifier(key) || value.len() > 2000)
+    {
+        return Err("title block carries at most 64 identifier keys of up to 2000 bytes".into());
+    }
     if layout.style_refs.len() > 100
         || layout.style_refs.iter().any(|(layer, reference)| {
             !identifier(layer)
@@ -1023,6 +1039,7 @@ pub fn default_layout() -> Layout {
         layer_order: Vec::new(),
         style_overrides: BTreeMap::new(),
         focus: None,
+        title_block: BTreeMap::new(),
         schema: SCHEMA.into(),
         id: "network-map".into(),
         name: "Network map · A3 landscape".into(),
