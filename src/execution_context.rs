@@ -35,9 +35,10 @@
 //!   is the point: time, a retry, a restart or a publication cannot move a job
 //!   to another project.
 //! - **Capacity is bounded and fair.** A project may exceed its running share
-//!   while nothing else is waiting, and may not while another project has
-//!   queued work. Saturation is a typed answer with retry guidance, never a
-//!   dropped request.
+//!   while nothing else is waiting, and may not while another project under
+//!   its own share has queued work; two projects both at their share never
+//!   idle a worker between them. Saturation is a typed answer with retry
+//!   guidance, never a dropped request.
 //! - **Recovery reconstructs; it does not authorize.** A row written by a
 //!   released Server gets its project from the sealed input (Solar, which
 //!   carries it) or from the saved selection (transformer work, which by
@@ -629,7 +630,14 @@ pub fn retain(context: &ExecutionContext, _event: RetainEvent) -> Result<Executi
 /// `Intent::Admit` bounds the queue a submission enters. `Intent::Claim`
 /// bounds the running pool and applies the fairness share: a project may hold
 /// more than `per_project_running` slots while nothing else is waiting, and
-/// may not while another project has queued work.
+/// may not while another project **under its own share** has queued work —
+/// the slot it is refused is one that project can actually take. When every
+/// waiting project is at its share too, refusing would idle the worker, not
+/// share it, so the claim is admitted and queue order decides.
+///
+/// The host asks this inside the same store transaction that claims, with a
+/// census read there: a census read earlier is a fairness decision about a
+/// pool that no longer exists.
 pub fn capacity(
     limits: Limits,
     intent: Intent,
@@ -659,11 +667,12 @@ pub fn capacity(
         return Err(hard("capacity census names an unbounded project"));
     }
     let queued_here = queued.iter().filter(|slot| slot.project == project).count();
-    let queued_elsewhere = queued.len() - queued_here;
-    let running_here = running
-        .iter()
-        .filter(|slot| slot.project == project)
-        .count();
+    let mut running_by_project: std::collections::BTreeMap<&str, usize> =
+        std::collections::BTreeMap::new();
+    for slot in running {
+        *running_by_project.entry(slot.project.as_str()).or_default() += 1;
+    }
+    let running_here = running_by_project.get(project).copied().unwrap_or(0);
     match intent {
         Intent::Admit => {
             if queued.len() >= limits.global_queued {
@@ -700,15 +709,32 @@ pub fn capacity(
                     queued.len(),
                 ));
             }
-            if running_here >= limits.per_project_running && queued_elsewhere > 0 {
-                return Err(exhausted(
-                    "project",
-                    format!(
-                        "this project holds {running_here} of {} running slots while other projects are waiting",
-                        limits.per_project_running
-                    ),
-                    queued_elsewhere,
-                ));
+            if running_here >= limits.per_project_running {
+                // Waiting work of projects that are under their share: the
+                // work this slot would go to instead. A waiting project that
+                // is itself at its share cannot take the slot, so it is not
+                // a reason to leave the worker idle.
+                let yields_to = queued
+                    .iter()
+                    .filter(|slot| slot.project != project)
+                    .filter(|slot| {
+                        running_by_project
+                            .get(slot.project.as_str())
+                            .copied()
+                            .unwrap_or(0)
+                            < limits.per_project_running
+                    })
+                    .count();
+                if yields_to > 0 {
+                    return Err(exhausted(
+                        "project",
+                        format!(
+                            "this project holds {running_here} of {} running slots while other projects are waiting",
+                            limits.per_project_running
+                        ),
+                        yields_to,
+                    ));
+                }
             }
         }
     }
@@ -1521,6 +1547,46 @@ mod tests {
         );
         assert_eq!(global.scope, Some("global"));
         assert_eq!(global.retry_after_ms, Some(1_000));
+        // Both at their share, both waiting, room in the pool: refusing A
+        // would refuse B for the same reason and idle two workers while both
+        // have work. The share only yields to a project that can take the slot.
+        let roomy = Limits {
+            global_running: 6,
+            ..limits()
+        };
+        let both_at_share = slots(&["project-a", "project-a", "project-b", "project-b"]);
+        let both_waiting = slots(&["project-a", "project-b"]);
+        for project in ["project-a", "project-b"] {
+            assert!(
+                capacity(roomy, Intent::Claim, &both_at_share, &both_waiting, project).is_ok(),
+                "{project} is admitted when every waiting project is at its share too"
+            );
+        }
+        // …but the moment a third project under its share waits, both yield
+        // to it, and the guidance counts only the work that can go first.
+        let third_waiting = slots(&["project-a", "project-b", "project-c"]);
+        for project in ["project-a", "project-b"] {
+            let refused = refusal(
+                capacity(
+                    roomy,
+                    Intent::Claim,
+                    &both_at_share,
+                    &third_waiting,
+                    project,
+                )
+                .unwrap_err(),
+            );
+            assert_eq!(refused.scope, Some("project"), "{project}");
+            assert_eq!(refused.retry_after_ms, Some(2_000), "{project}");
+        }
+        assert!(capacity(
+            roomy,
+            Intent::Claim,
+            &both_at_share,
+            &third_waiting,
+            "project-c"
+        )
+        .is_ok());
     }
 
     #[test]

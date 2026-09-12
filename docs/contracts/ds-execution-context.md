@@ -93,9 +93,17 @@ census — so a malformed input is a hard fault, never a client refusal.
 full *running* pool never refuses a submission, the job queues. `Intent::Claim`
 bounds the running pool (`global_running`) and the fairness share: a project may
 exceed `per_project_running` while nothing else waits and may not while another
-project has queued work — room for printing during a long Solar run without
-idling the machine to defend an unwanted share. `retry_after_ms` is a second per
-unit of work that must go first, capped at sixty. No clock, no randomness.
+project **under its own share** has queued work — room for printing during a
+long Solar run without idling the machine to defend an unwanted share. Two
+projects both at their share and both waiting never refuse each other: the share
+yields only to a project that could take the slot, otherwise queue order decides
+(cases `capacity-claim-every-waiting-project-at-its-share`,
+`capacity-claim-yields-only-to-a-project-under-its-share`). `retry_after_ms` is
+a second per unit of work that can go first, capped at sixty. No clock, no
+randomness. The host asks inside the store transaction that claims, from a
+census read there — a census read before the transaction describes a pool that
+no longer exists, and under several workers it lets one project take every slot
+the burst offers.
 
 ## 6. Recovery provenance
 
@@ -135,6 +143,6 @@ opening a store; `ds-cli-server` opens per-(principal, project) sessions from an
 admitted context instead of a process-wide selection; `ds` re-raises refusals
 literally. The kernel holds no credential material, so the owner digest stays
 the store's fence; `recover` checks the lane it can see. Proof:
-`tests/fixtures/execution-context-cases.json`, 72 recorded cases, byte-identical
+`tests/fixtures/execution-context-cases.json`, 74 recorded cases, byte-identical
 to ds-web's `src/tests/fixtures/execution-context/cases.json` and replayed there
 through the vendored WASM, plus the unit tests above.

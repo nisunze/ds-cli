@@ -2147,6 +2147,95 @@
       }
     },
     {
+      "id": "capacity-claim-every-waiting-project-at-its-share",
+      "why": "Two projects both at their share and both with work waiting must not refuse each other: that would idle every free worker while both have work. The share yields only to a waiting project that is under its own share and could take the slot; here none is, so queue order decides.",
+      "request": {
+        "kind": "capacity",
+        "limits": {
+          "global_running": 6,
+          "per_project_running": 2,
+          "per_project_queued": 3,
+          "global_queued": 8
+        },
+        "intent": "claim",
+        "running": [
+          {
+            "project": "project-a"
+          },
+          {
+            "project": "project-a"
+          },
+          {
+            "project": "project-b"
+          },
+          {
+            "project": "project-b"
+          }
+        ],
+        "queued": [
+          {
+            "project": "project-a"
+          },
+          {
+            "project": "project-b"
+          }
+        ],
+        "project": "project-a"
+      },
+      "expected": {
+        "outcome": "admitted"
+      }
+    },
+    {
+      "id": "capacity-claim-yields-only-to-a-project-under-its-share",
+      "why": "The same pool with a third project waiting under its share: both projects at their share now yield, and the retry guidance counts only the work that can actually go first, never the waiting work of projects that could not take the slot either.",
+      "request": {
+        "kind": "capacity",
+        "limits": {
+          "global_running": 6,
+          "per_project_running": 2,
+          "per_project_queued": 3,
+          "global_queued": 8
+        },
+        "intent": "claim",
+        "running": [
+          {
+            "project": "project-a"
+          },
+          {
+            "project": "project-a"
+          },
+          {
+            "project": "project-b"
+          },
+          {
+            "project": "project-b"
+          }
+        ],
+        "queued": [
+          {
+            "project": "project-a"
+          },
+          {
+            "project": "project-b"
+          },
+          {
+            "project": "project-c"
+          }
+        ],
+        "project": "project-b"
+      },
+      "expected": {
+        "outcome": "refused",
+        "refusal": {
+          "code": "capacity_exhausted",
+          "message": "this project holds 2 of 2 running slots while other projects are waiting",
+          "retry_after_ms": 2000,
+          "scope": "project"
+        }
+      }
+    },
+    {
       "id": "capacity-claim-global-running-full",
       "why": "Every worker busy refuses the claim globally, whichever project asks, with retry guidance derived from the queue rather than from a clock.",
       "request": {
