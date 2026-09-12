@@ -1320,22 +1320,28 @@ mod tests {
     /// replaced by a launch of some other one.
     #[test]
     fn a_named_instance_is_never_replaced_by_an_automatic_launch() {
-        for named in [true] {
-            let mut launched = 0usize;
-            let failure = ensure_desktop_with(
-                Authority::DesktopUser,
-                named,
-                &mut || Ok(DesktopState::Absent),
-                &mut || {
-                    launched += 1;
-                    Ok(())
-                },
-                &mut || panic!("a named runtime must not enter launch polling"),
-            )
-            .expect_err("the named runtime is not live");
-            assert_eq!(failure.code(), "desktop_not_paired");
-            assert_eq!(launched, 0);
-        }
+        let mut launched = 0usize;
+        let failure = ensure_desktop_with(
+            Authority::DesktopUser,
+            true,
+            &mut || Ok(DesktopState::Absent),
+            &mut || {
+                launched += 1;
+                Ok(())
+            },
+            &mut || panic!("a named runtime must not enter launch polling"),
+        )
+        .expect_err("the named runtime is not live");
+        assert_eq!(failure.code(), "desktop_not_paired");
+        assert_eq!(launched, 0);
+        assert!(
+            failure
+                .detail_value()
+                .and_then(|detail| detail["mcp_desktop_gate"].as_str())
+                .is_some_and(|detail| detail.contains("named runtime")),
+            "the refusal says which side of the gate answered: {:?}",
+            failure.detail_value()
+        );
     }
 
     #[test]
