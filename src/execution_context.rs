@@ -162,6 +162,19 @@ pub const REFUSALS: [&str; 9] = [
 /// The one sentence a caller gets for every invisible job, whatever the reason.
 pub const NOT_FOUND: &str = "job not found";
 
+/// The two sentences the durable row states independently of [`admit`].
+///
+/// A row is the second, racing statement of the same rule: two first
+/// submissions under one key can reach the insert together, and the one that
+/// loses is refused by the row rather than by this owner, which never saw the
+/// other's context. Its host then relays that as one of these codes — so the
+/// sentence is written once, here, and both statements are the same answer.
+/// Two spellings of one refusal are two answers to one question, and the
+/// spelling that drops the remedy is the dead end §3 forbids.
+pub const PAYLOAD_CHANGED_FOR_KEY_MESSAGE: &str = "that idempotency key was admitted with different input bytes; resubmit the bytes it was admitted with, or use a new key for these";
+pub const SCOPE_MISMATCH_FOR_KEY_MESSAGE: &str =
+    "that idempotency key already names another project or operation; submit this under a key of its own";
+
 // ── The record ──────────────────────────────────────────────────────────
 
 /// Immutable once admitted. Serialised in declaration order as the durable
@@ -200,39 +213,41 @@ impl ExecutionContext {
     /// Every field, on the way in and on the way out. A stored record that
     /// fails this is corrupt, not merely unexpected.
     pub fn validate(&self) -> Result<(), Fault> {
-        let bad = |field: &str| Err(corrupt(field));
         if !bounded(&self.principal_uid, MAX_UID_CHARS) {
-            return bad("principal_uid");
+            return Err(corrupt("principal_uid", text_rule(MAX_UID_CHARS)));
         }
         if !valid_lane(&self.lane) {
-            return bad("lane");
+            return Err(corrupt("lane", lane_rule()));
         }
         if !bounded(&self.deployment, MAX_DEPLOYMENT_CHARS) {
-            return bad("deployment");
+            return Err(corrupt("deployment", text_rule(MAX_DEPLOYMENT_CHARS)));
         }
         if !bounded(&self.install_id, MAX_INSTALL_CHARS) {
-            return bad("install_id");
+            return Err(corrupt("install_id", text_rule(MAX_INSTALL_CHARS)));
         }
         if !valid_project(&self.project) {
             return Err(not_a_segment("project"));
         }
         if !bounded(&self.client, MAX_CLIENT_CHARS) {
-            return bad("client");
+            return Err(corrupt("client", text_rule(MAX_CLIENT_CHARS)));
         }
         if !OPERATIONS.contains(&self.operation.as_str()) {
-            return bad("operation");
+            return Err(corrupt("operation", operation_rule()));
         }
         if !bounded(&self.job_id, MAX_JOB_ID_CHARS) {
-            return bad("job_id");
+            return Err(corrupt("job_id", text_rule(MAX_JOB_ID_CHARS)));
         }
         if !bounded(&self.idempotency_key, MAX_KEY_CHARS) {
-            return bad("idempotency_key");
+            return Err(corrupt("idempotency_key", text_rule(MAX_KEY_CHARS)));
         }
         if !compute_jobs::digest(&self.input_sha256) {
-            return bad("input_sha256");
+            return Err(corrupt("input_sha256", digest_rule()));
         }
         if self.admitted_at_ms == 0 {
-            return bad("admitted_at_ms");
+            return Err(corrupt(
+                "admitted_at_ms",
+                "the host's clock in milliseconds, never zero",
+            ));
         }
         Ok(())
     }
@@ -251,16 +266,22 @@ pub struct Principal {
 impl Principal {
     pub fn validate(&self) -> Result<(), Fault> {
         if !bounded(&self.uid, MAX_UID_CHARS) {
-            return Err(corrupt("principal.uid"));
+            return Err(corrupt("principal.uid", text_rule(MAX_UID_CHARS)));
         }
         if !valid_lane(&self.lane) {
-            return Err(corrupt("principal.lane"));
+            return Err(corrupt("principal.lane", lane_rule()));
         }
         if !bounded(&self.deployment, MAX_DEPLOYMENT_CHARS) {
-            return Err(corrupt("principal.deployment"));
+            return Err(corrupt(
+                "principal.deployment",
+                text_rule(MAX_DEPLOYMENT_CHARS),
+            ));
         }
         if !bounded(&self.install_id, MAX_INSTALL_CHARS) {
-            return Err(corrupt("principal.install_id"));
+            return Err(corrupt(
+                "principal.install_id",
+                text_rule(MAX_INSTALL_CHARS),
+            ));
         }
         Ok(())
     }
@@ -291,6 +312,58 @@ pub struct Limits {
     pub per_project_running: usize,
     pub per_project_queued: usize,
     pub global_queued: usize,
+}
+
+impl Limits {
+    /// Whether these four numbers are a configuration at all.
+    ///
+    /// Every one is 1..=[`MAX_LIMIT`], and each `per_project_*` must be
+    /// smaller than the `global_*` it shares — see [`divides`] for the one
+    /// exception, a pool of exactly one. A configuration that fails this is
+    /// the host's own bug, so it is [`Fault::Hard`] and never a refusal a
+    /// caller receives.
+    ///
+    /// [`capacity`] asks this before every decision, so no answer is ever
+    /// given under numbers that make no sense. It is public because that is
+    /// the wrong moment to find out: a host discovering it once per claim
+    /// logs the same fault several times a second and admits nothing, where a
+    /// host that asks before it starts its workers refuses to start and says
+    /// which two numbers to change.
+    pub fn validate(&self) -> Result<(), Fault> {
+        for (value, name) in [
+            (self.global_running, "global_running"),
+            (self.per_project_running, "per_project_running"),
+            (self.per_project_queued, "per_project_queued"),
+            (self.global_queued, "global_queued"),
+        ] {
+            if value == 0 || value > MAX_LIMIT {
+                return Err(hard(format!(
+                    "capacity limit {name} must be 1..={MAX_LIMIT}"
+                )));
+            }
+        }
+        for (share, share_name, pool, pool_name) in [
+            (
+                self.per_project_running,
+                "per_project_running",
+                self.global_running,
+                "global_running",
+            ),
+            (
+                self.per_project_queued,
+                "per_project_queued",
+                self.global_queued,
+                "global_queued",
+            ),
+        ] {
+            if !divides(share, pool) {
+                return Err(hard(format!(
+                    "capacity limit {share_name} is {share} and {pool_name} is {pool}: a share must be smaller than the pool it divides, or one project holds the whole host while another waits; only a single-slot host ({pool_name} 1) has no share, and there {share_name} must be 1"
+                )));
+            }
+        }
+        Ok(())
+    }
 }
 
 /// Which moment the host is asking about. Submission bounds the queue; a claim
@@ -401,11 +474,30 @@ fn refused(code: &'static str, message: impl Into<String>) -> Fault {
         scope: None,
     })
 }
-fn corrupt(field: &str) -> Fault {
+/// A field that is not what the record says it is — named, **and told the
+/// rule it broke**. A caller handed a refusal with no rule in it can read the
+/// code and still not know what to send instead, which is a dead end rather
+/// than an answer.
+fn corrupt(field: &str, rule: impl std::fmt::Display) -> Fault {
     refused(
         CONTEXT_CORRUPT,
-        format!("execution context field {field} is not a bounded value"),
+        format!("execution context field {field} is not valid: {rule}"),
     )
+}
+/// The rule every bounded text field of the record keeps.
+fn text_rule(max: usize) -> String {
+    format!("1..={max} characters, trimmed, with no control character")
+}
+/// The two closed vocabularies and the digest, said in full rather than
+/// named, because a caller cannot look up a constant.
+fn lane_rule() -> String {
+    "one of stable, canary".to_owned()
+}
+fn operation_rule() -> String {
+    format!("one of {}", OPERATIONS.join(", "))
+}
+fn digest_rule() -> String {
+    "a 64-character lowercase sha-256 digest".to_owned()
 }
 /// The project fields answer with the grammar itself, so an operator reads the
 /// rule off the refusal instead of guessing which character was the problem.
@@ -413,7 +505,7 @@ fn not_a_segment(field: &str) -> Fault {
     refused(
         CONTEXT_CORRUPT,
         format!(
-            "execution context field {field} is not a project id: one path segment of 1..={MAX_PROJECT_CHARS} characters, no separator, no traversal, no whitespace"
+            "execution context field {field} is not a project id: one path segment of 1..={MAX_PROJECT_CHARS} characters, with no separator, drive, traversal, trailing dot, whitespace, invisible character, wildcard or device name"
         ),
     )
 }
@@ -439,26 +531,91 @@ fn valid_lane(lane: &str) -> bool {
     matches!(lane, "stable" | "canary")
 }
 
+/// Characters no filesystem reads as part of a name: the two separators, and
+/// the drive-and-stream colon plus the wildcard and redirection set Win32
+/// refuses outright. The colon is the dangerous one — Rust's own
+/// `Path::join("C:")` **replaces** the whole path on Windows, because `C:` is a
+/// prefix, so a project id of `C:` would take a host's `state_dir.join(project)`
+/// clean out of the state directory.
+const NOT_IN_A_NAME: [char; 9] = ['/', '\\', ':', '*', '?', '"', '<', '>', '|'];
+
+/// The names Windows resolves to a device at any depth: `<store>/NUL` swallows
+/// what is written to it and `<store>/CON` reads the console, whatever
+/// directory they are under and whatever extension follows. Win32 matches them
+/// on the stem before the first `.`, case-insensitively, and so does this.
+const DEVICE_NAMES: [&str; 22] = [
+    "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8",
+    "COM9", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
+];
+
 /// A project id is **one path segment**, and nothing that could mean a
-/// different place on disk.
+/// different place on disk — on any machine the product runs on, which
+/// includes the Windows desktop.
 ///
 /// The record is durable and every host partitions by the project in it — a
-/// store row, a dataset cache, a staging directory, a report name. So an id
-/// that traverses (`.`, `..`, `A/../B`), that carries a separator (`A/B`,
-/// `A\B`) or that is padded, split or replaced by whitespace (`A B`, ` A`) is
-/// not a project id but a path expression, and it is `context_corrupt`
-/// wherever it appears: named by a caller, sealed in the bytes, defaulted from
-/// a saved selection, counted in a census or stored in a record. One rule, one
-/// answer, at every door — a host may then use the id in a path without
-/// asking again what it might be.
+/// store row, a dataset cache, a staging directory, a report name. So an id is
+/// refused when it traverses (`.`, `..`, `A/../B`), carries a separator (`A/B`,
+/// `A\B`), is padded, split or replaced by whitespace (`A B`, ` A`), names a
+/// drive or a stream (`C:`, `A:b`), holds a wildcard (`A*`), ends in a dot
+/// (`A.`, which Windows strips, so `A.` and `A` would be two ids and one
+/// directory), carries a character that draws nothing ([`renders_as_nothing`])
+/// or is a device (`NUL`, `con.json`). Each of those is a path expression
+/// rather than a name, and each is `context_corrupt` wherever it appears:
+/// named by a caller, sealed in the bytes, defaulted from a saved selection,
+/// counted in a census or stored in a record. One rule, one answer, at every
+/// door — a host may then use the id in a path without asking again what it
+/// might be.
 pub fn valid_project(project: &str) -> bool {
     !project.is_empty()
         && project.chars().count() <= MAX_PROJECT_CHARS
-        && project != "."
-        && project != ".."
+        // `.` and `..` end in a dot, so the trailing-dot rule is also the
+        // traversal rule; nothing else needs to name them.
+        && !project.ends_with('.')
         && !project.chars().any(|character| {
-            matches!(character, '/' | '\\') || character.is_whitespace() || character.is_control()
+            NOT_IN_A_NAME.contains(&character)
+                || character.is_whitespace()
+                || character.is_control()
+                || renders_as_nothing(character)
         })
+        && !names_a_device(project)
+}
+
+/// A character that occupies no space when it is drawn.
+///
+/// The reason whitespace is refused is that `A B` is one thing to a shell,
+/// another to a log line and a third to a path. A character with no glyph at
+/// all is that failure taken further: `project\u{200B}-a` and `project-a` are
+/// two ids, two directories and two sets of report names, and every screen an
+/// operator can look at — the CLI, the activity list, the refusal itself —
+/// draws them as the same word. Nothing legitimate needs one in a name, so
+/// they are refused with the whitespace they behave like: the soft hyphen, the
+/// zero-width and bidirectional format characters (including the overrides
+/// that make an id read backwards), the interlinear annotations, the byte
+/// order mark, the variation selectors and the tag block.
+///
+/// This is a named list rather than a Unicode category because the kernel
+/// carries no Unicode tables; it is the whole of the invisible surface an id
+/// can be spelled with, not a sample of it.
+const fn renders_as_nothing(character: char) -> bool {
+    matches!(character,
+        '\u{00ad}' | '\u{061c}' | '\u{180e}' | '\u{feff}'
+        | '\u{200b}'..='\u{200f}'
+        | '\u{202a}'..='\u{202e}'
+        | '\u{2060}'..='\u{2064}'
+        | '\u{2066}'..='\u{206f}'
+        | '\u{fe00}'..='\u{fe0f}'
+        | '\u{fff9}'..='\u{fffb}'
+        | '\u{e0000}'..='\u{e007f}'
+        | '\u{e0100}'..='\u{e01ef}')
+}
+
+/// Whether this id is one of the Windows device names, extension and case
+/// ignored exactly as Win32 ignores them.
+fn names_a_device(project: &str) -> bool {
+    let stem = project.split('.').next().unwrap_or(project);
+    DEVICE_NAMES
+        .iter()
+        .any(|device| stem.eq_ignore_ascii_case(device))
 }
 
 // ── admit ───────────────────────────────────────────────────────────────
@@ -525,19 +682,19 @@ pub fn admit(request: &AdmitRequest) -> Result<Admitted, Fault> {
     }
     request.principal.validate()?;
     if !bounded(&request.client, MAX_CLIENT_CHARS) {
-        return Err(corrupt("client"));
+        return Err(corrupt("client", text_rule(MAX_CLIENT_CHARS)));
     }
     if !OPERATIONS.contains(&request.operation.as_str()) {
-        return Err(corrupt("operation"));
+        return Err(corrupt("operation", operation_rule()));
     }
     if !bounded(&request.job_id, MAX_JOB_ID_CHARS) {
-        return Err(corrupt("job_id"));
+        return Err(corrupt("job_id", text_rule(MAX_JOB_ID_CHARS)));
     }
     if !bounded(&request.idempotency_key, MAX_KEY_CHARS) {
-        return Err(corrupt("idempotency_key"));
+        return Err(corrupt("idempotency_key", text_rule(MAX_KEY_CHARS)));
     }
     if !compute_jobs::digest(&request.input_sha256) {
-        return Err(corrupt("input_sha256"));
+        return Err(corrupt("input_sha256", digest_rule()));
     }
     let project = resolve_project(request)?;
     if let Some(existing) = &request.existing {
@@ -548,13 +705,13 @@ pub fn admit(request: &AdmitRequest) -> Result<Admitted, Fault> {
         {
             return Err(refused(
                 PRINCIPAL_MISMATCH,
-                "that key was admitted under another authenticated identity",
+                "that key was admitted under another authenticated identity; sign in as that account, on the lane and deployment it used, or submit under a key of your own",
             ));
         }
         if existing.job_id != request.job_id {
             return Err(refused(
                 CONTEXT_CORRUPT,
-                "the stored context is bound to another job id",
+                "the stored context is bound to another job id; the host looked this key up outside the project it is submitting for",
             ));
         }
         // The reachable half of this is the operation: within one project a
@@ -572,13 +729,13 @@ pub fn admit(request: &AdmitRequest) -> Result<Admitted, Fault> {
         if existing.project != project || existing.operation != request.operation {
             return Err(refused(
                 SCOPE_MISMATCH_FOR_KEY,
-                "that idempotency key already names another project or operation",
+                SCOPE_MISMATCH_FOR_KEY_MESSAGE,
             ));
         }
         if existing.input_sha256 != request.input_sha256 {
             return Err(refused(
                 PAYLOAD_CHANGED_FOR_KEY,
-                "that idempotency key was admitted with different input bytes",
+                PAYLOAD_CHANGED_FOR_KEY_MESSAGE,
             ));
         }
         return Ok(Admitted::Existing(existing.clone()));
@@ -631,17 +788,19 @@ pub fn project_for(
                 return Err(refused(
                     SCOPE_MISMATCH,
                     format!(
-                        "this request is for {requested}, but its sealed input was prepared for another project"
+                        "this request is for {requested}, but its sealed input was prepared for another project; submit it without naming a project, or prepare an input for {requested}"
                     ),
                 ));
             }
         }
         return Ok(sealed.to_owned());
     }
-    requested
-        .or(saved)
-        .map(str::to_owned)
-        .ok_or_else(|| refused(PROJECT_REQUIRED, "name a project, or select one first"))
+    requested.or(saved).map(str::to_owned).ok_or_else(|| {
+        refused(
+            PROJECT_REQUIRED,
+            "no project was named for this request; name one, or select one first",
+        )
+    })
 }
 
 fn optional_project<'a>(value: Option<&'a str>, field: &str) -> Result<Option<&'a str>, Fault> {
@@ -690,10 +849,10 @@ pub fn retain(context: &ExecutionContext, _event: RetainEvent) -> Result<Executi
 /// Every input is the host's own: configured limits, and the store's current
 /// queue and running set. Nothing here is caller-supplied, so a malformed
 /// input is a host bug (`Fault::Hard`), never a client refusal — including
-/// limits that do not make a share: each is 1..=4096 and each `per_project_*`
-/// must be smaller than its `global_*`, so a host cannot configure away the
-/// fairness this op exists to apply. A single-slot pool is the exception it
-/// has to be.
+/// limits that do not make a share ([`Limits::validate`], asked first here so
+/// no answer is given under numbers that make no sense, and asked by a host
+/// before it starts its workers so it never has to find out one claim at a
+/// time).
 ///
 /// `Intent::Admit` bounds the queue a submission enters. `Intent::Claim`
 /// bounds the running pool and applies the fairness share: a project may hold
@@ -713,36 +872,7 @@ pub fn capacity(
     queued: &[Slot],
     project: &str,
 ) -> Result<(), Fault> {
-    for (value, name) in [
-        (limits.global_running, "global_running"),
-        (limits.per_project_running, "per_project_running"),
-        (limits.per_project_queued, "per_project_queued"),
-        (limits.global_queued, "global_queued"),
-    ] {
-        if value == 0 || value > MAX_LIMIT {
-            return Err(hard(format!("capacity limit {name} must be 1..=4096")));
-        }
-    }
-    for (share, share_name, pool, pool_name) in [
-        (
-            limits.per_project_running,
-            "per_project_running",
-            limits.global_running,
-            "global_running",
-        ),
-        (
-            limits.per_project_queued,
-            "per_project_queued",
-            limits.global_queued,
-            "global_queued",
-        ),
-    ] {
-        if !divides(share, pool) {
-            return Err(hard(format!(
-                "capacity limit {share_name} is {share} and {pool_name} is {pool}: a share must be smaller than the pool it divides, or one project holds the whole host while another waits; only a single-slot host ({pool_name} 1) has no share, and there {share_name} must be 1"
-            )));
-        }
-    }
+    limits.validate()?;
     if running.len() > MAX_SLOTS || queued.len() > MAX_SLOTS {
         return Err(hard("capacity census exceeds its bound"));
     }
@@ -893,7 +1023,7 @@ pub fn recover(
     let Ok(job) = serde_json::from_value::<Job>(row) else {
         return Err(refused(
             CONTEXT_UNRECOVERABLE,
-            "that row is not a durable compute job",
+            "that row is not a durable compute job; nothing can be reopened from it",
         ));
     };
     // The store already reads rows by (owner, lane); the owner is a digest the
@@ -902,7 +1032,7 @@ pub fn recover(
     if job.lane != principal.lane {
         return Err(refused(
             PRINCIPAL_MISMATCH,
-            "that row belongs to another deployment lane",
+            "that row belongs to another deployment lane; reopen the queue on the lane it was admitted on",
         ));
     }
     if let Some(context) = job.context {
@@ -913,19 +1043,19 @@ pub fn recover(
         {
             return Err(refused(
                 PRINCIPAL_MISMATCH,
-                "that row was admitted under another authenticated identity",
+                "that row was admitted under another authenticated identity; reopen the queue as that account",
             ));
         }
         if context.job_id != job.id || context.input_sha256 != job.input_sha256 {
             return Err(refused(
                 CONTEXT_CORRUPT,
-                "the stored context is bound to another job id or input digest",
+                "the stored context is bound to another job id or input digest; that row was rewritten outside this owner and cannot be reopened",
             ));
         }
         if sealed.is_some_and(|sealed| sealed != context.project) {
             return Err(refused(
                 SCOPE_MISMATCH,
-                "that row's sealed input was prepared for another project",
+                "that row's sealed input was prepared for another project; reopen it with the project its own bytes name, or with none",
             ));
         }
         return Ok((context, Provenance::Stored));
@@ -1212,6 +1342,27 @@ mod tests {
             let refused = refusal(broken.validate().unwrap_err());
             assert_eq!(refused.code, CONTEXT_CORRUPT, "{field}");
             assert!(refused.message.contains(field), "{field}");
+            // Naming the field is half an answer. The rule it broke is the
+            // other half, and without it the caller knows only that
+            // something was wrong.
+            let (_, rule) = refused
+                .message
+                .split_once(": ")
+                .unwrap_or_else(|| panic!("{field}: {} states no rule", refused.message));
+            assert!(rule.len() > 15, "{field}: {rule}");
+        }
+        // The closed vocabularies are spelled out, not named: a caller cannot
+        // look up a constant it does not have.
+        let mut wrong_lane = context("project-a");
+        wrong_lane.lane = "development".into();
+        assert!(refusal(wrong_lane.validate().unwrap_err())
+            .message
+            .contains("one of stable, canary"));
+        let mut wrong_operation = context("project-a");
+        wrong_operation.operation = "everything".into();
+        let listed = refusal(wrong_operation.validate().unwrap_err()).message;
+        for operation in OPERATIONS {
+            assert!(listed.contains(operation), "{listed}");
         }
         let mut unstamped = context("project-a");
         unstamped.admitted_at_ms = 0;
@@ -1297,13 +1448,54 @@ mod tests {
             "project-a",
             "p",
             "A_b.2",
+            // Not over-reaching: a dot inside a name, a name that merely
+            // starts like a device, and a name that merely starts with dots.
+            "v1.2",
+            "console",
+            "nullify",
+            "..a",
+            // Not over-reaching the other way either: a name is refused for
+            // drawing nothing, never for being written in another script.
+            "projet-économie",
+            "проект",
+            "プロジェクト",
             &"p".repeat(MAX_PROJECT_CHARS),
         ] {
             assert!(valid_project(ordinary), "{ordinary}");
         }
         // …and what would name a different place on disk, or no place at all.
+        // The last six are Windows and only Windows: `Path::join("C:")`
+        // replaces the whole path, `a.` and `a` are one directory there, and
+        // a device name is a device however deep it is buried.
         let rejected = [
-            ".", "..", "a/b", "/a", "a/../b", "a\\b", "a b", " a", "a\u{a0}b", "a\tb", "a\nb", "",
+            ".",
+            "..",
+            "a/b",
+            "/a",
+            "a/../b",
+            "a\\b",
+            "a b",
+            " a",
+            "a\u{a0}b",
+            "a\tb",
+            "a\nb",
+            "",
+            "C:",
+            "a:b",
+            "a*",
+            "a?",
+            "a.",
+            // Characters that draw nothing: two ids one operator reads as one.
+            "a\u{200b}b",
+            "a\u{ad}b",
+            "a\u{202e}b",
+            "a\u{feff}",
+            "a\u{fe0f}",
+            "a\u{e0041}",
+            "nul",
+            "CON",
+            "com1",
+            "LPT9.json",
         ];
         for shape in rejected {
             assert!(!valid_project(shape), "{shape:?} is not one segment");
@@ -1815,8 +2007,13 @@ mod tests {
                     "{message}"
                 );
                 assert!(fault.code().is_none(), "{message}");
+                // The same gate, asked without a census — what a host asks
+                // before it starts its workers, so a configuration nothing
+                // can honour is answered once rather than once per claim.
+                assert_eq!(broken.validate().unwrap_err(), fault);
             }
         }
+        assert!(limits().validate().is_ok());
     }
 
     #[test]
@@ -1886,6 +2083,7 @@ mod tests {
                 capacity(broken, Intent::Admit, &[], &[], "project-a").unwrap_err(),
                 Fault::Hard(_)
             ));
+            assert!(matches!(broken.validate().unwrap_err(), Fault::Hard(_)));
         }
         assert!(matches!(
             capacity(limits(), Intent::Admit, &[], &slots(&[" p"]), "project-a").unwrap_err(),
@@ -2088,7 +2286,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             refused,
-            json!({"outcome": "refused", "refusal": {"code": PROJECT_REQUIRED, "message": "name a project, or select one first"}})
+            json!({"outcome": "refused", "refusal": {"code": PROJECT_REQUIRED, "message": "no project was named for this request; name one, or select one first"}})
         );
         assert_eq!(
             wire(json!({"kind": "visible", "caller": caller(), "context": context("project-a")}))
@@ -2145,10 +2343,13 @@ mod tests {
     fn a_fault_says_whether_a_host_may_relay_it() {
         let refused = admit(&request()).unwrap_err();
         assert_eq!(refused.code(), Some(PROJECT_REQUIRED));
-        assert_eq!(refused.message(), "name a project, or select one first");
+        assert_eq!(
+            refused.message(),
+            "no project was named for this request; name one, or select one first"
+        );
         assert_eq!(
             refused.to_string(),
-            "project_required: name a project, or select one first"
+            "project_required: no project was named for this request; name one, or select one first"
         );
         let mut clockless = request();
         clockless.saved_project = Some("project-a".into());

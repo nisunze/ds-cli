@@ -14,7 +14,7 @@
 //! present.
 
 use ds_command_kernel::execution_context::{
-    evaluate, NOT_FOUND, NOT_VISIBLE, OPERATIONS, REFUSALS, SCHEMA,
+    evaluate, CAPACITY_EXHAUSTED, NOT_FOUND, NOT_VISIBLE, OPERATIONS, REFUSALS, SCHEMA,
 };
 use serde_json::{json, Map, Value};
 use std::collections::BTreeSet;
@@ -285,5 +285,58 @@ fn the_corpus_keeps_the_order_of_keys_the_recorder_wrote() {
     assert_eq!(
         corpus.keys().collect::<Vec<_>>(),
         ["schema", "purpose", "source", "note", "cases"]
+    );
+}
+
+/// A refusal that says only what went wrong is a dead end: the caller reads
+/// the code, reads the sentence, and still does not know what to send
+/// instead. So every recorded refusal but one carries a second clause — the
+/// rule it broke, or the thing to do about it. The exception is deliberate
+/// and is the whole point of §4: `not_visible` says `job not found` and
+/// nothing else, because anything else would disclose that there is
+/// something to find.
+#[test]
+fn every_refusal_but_the_invisible_one_says_what_to_do_about_it() {
+    let corpus = corpus();
+    let mut seen: BTreeSet<String> = BTreeSet::new();
+    for case in corpus["cases"].as_array().expect("cases") {
+        let id = case["id"].as_str().expect("case id");
+        let expected = &case["expected"];
+        let Some(code) = expected["refusal"]["code"].as_str() else {
+            continue;
+        };
+        seen.insert(code.to_owned());
+        let message = expected["refusal"]["message"]
+            .as_str()
+            .unwrap_or_else(|| panic!("{id}: a refusal says something"));
+        if code == NOT_VISIBLE {
+            assert_eq!(message, NOT_FOUND, "{id}");
+            continue;
+        }
+        // Capacity's remedy is structured: retry after this many milliseconds.
+        if code == CAPACITY_EXHAUSTED {
+            assert!(
+                expected["refusal"]["retry_after_ms"].is_u64(),
+                "{id}: saturation without guidance is a dead end"
+            );
+            continue;
+        }
+        let clause = message
+            .split_once("; ")
+            .or_else(|| message.split_once(": "))
+            .map(|(_, clause)| clause)
+            .unwrap_or_else(|| panic!("{id}: `{message}` is one clause and no way out"));
+        assert!(
+            clause.len() > 15,
+            "{id}: `{clause}` does not say what to do"
+        );
+    }
+    assert_eq!(
+        seen,
+        REFUSALS
+            .iter()
+            .map(|code| (*code).to_owned())
+            .collect::<BTreeSet<String>>(),
+        "every code is held to this"
     );
 }

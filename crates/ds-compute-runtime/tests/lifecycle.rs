@@ -1003,3 +1003,132 @@ fn resubmitting_a_released_rows_key_under_a_project_is_new_work_beside_it() {
     assert!(legacy.context.is_none());
     assert!(!runtime::run_one(&worker, "worker-2").unwrap());
 }
+
+#[test]
+fn a_worker_pool_is_never_larger_than_the_running_pool_it_claims_from() {
+    // Two numbers name one pool: the threads this crate starts, and the
+    // kernel's `global_running` those threads claim under. A pool larger than
+    // the bound is threads that can never claim and will not idle quietly —
+    // each reopens the store and takes an immediate transaction five times a
+    // second for a slot the kernel is bound to refuse.
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("store.sqlite");
+    let identity = host("owner", "stable");
+    let context = || Arc::new(worker(&path, &identity, Arc::new(Allowed)));
+    assert_eq!(limits().global_running, 4);
+    let Err(refused) = runtime::Workers::start(context(), 5) else {
+        panic!("a pool larger than the bound started");
+    };
+    assert!(
+        refused.contains("worker count is 5") && refused.contains("global_running is 4"),
+        "{refused}"
+    );
+    // Both numbers, so an operator reads the fix off the message.
+    drop(runtime::Workers::start(context(), 4).expect("a pool the bound allows"));
+    drop(runtime::Workers::start(context(), 1).expect("one worker under a pool of four"));
+    assert!(runtime::Workers::start(context(), 0).is_err());
+}
+
+#[test]
+fn a_host_learns_its_limits_make_no_share_before_it_starts_workers_not_per_claim() {
+    // The kernel refuses a share that does not divide its pool. A host that
+    // meets that refusal only inside `claim_job` starts its threads, admits
+    // nothing, and prints the same host fault several times a second for as
+    // long as it runs. The numbers are wrong before the first request, so
+    // they are answered before the first worker — and the message names both.
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("store.sqlite");
+    let identity = host("owner", "stable");
+    for (broken, share, pool) in [
+        (
+            Limits {
+                global_running: 4,
+                per_project_running: 4,
+                per_project_queued: 8,
+                global_queued: 16,
+            },
+            "per_project_running is 4",
+            "global_running is 4",
+        ),
+        (
+            Limits {
+                global_running: 4,
+                per_project_running: 2,
+                per_project_queued: 16,
+                global_queued: 16,
+            },
+            "per_project_queued is 16",
+            "global_queued is 16",
+        ),
+        (
+            Limits {
+                global_running: 0,
+                per_project_running: 1,
+                per_project_queued: 8,
+                global_queued: 16,
+            },
+            "global_running",
+            "1..=4096",
+        ),
+    ] {
+        let context = Arc::new(WorkerContext {
+            path: path.clone(),
+            identity: identity.clone(),
+            limits: broken,
+            auth: Arc::new(Allowed),
+            observer: None,
+        });
+        let Err(refused) = runtime::Workers::start(context, 1) else {
+            panic!("{share}: a pool started under limits that are no configuration");
+        };
+        assert!(
+            refused.contains(share) && refused.contains(pool),
+            "{refused}"
+        );
+    }
+    // And the single-slot host — the smallest rented VM — still starts.
+    let alone = Arc::new(WorkerContext {
+        path: path.clone(),
+        identity: identity.clone(),
+        limits: Limits {
+            global_running: 1,
+            per_project_running: 1,
+            per_project_queued: 1,
+            global_queued: 1,
+        },
+        auth: Arc::new(Allowed),
+        observer: None,
+    });
+    drop(runtime::Workers::start(alone, 1).expect("a host with one worker and nothing to divide"));
+}
+
+/// The crate's headline claim — "this crate makes no network call" — asserted
+/// over its own dependency record rather than over its prose. A transport
+/// arriving through a feature flag, a default that flips, or a new dependency
+/// is caught here on the day it lands, not by a reader.
+#[test]
+fn nothing_in_this_crate_s_dependency_closure_can_open_a_socket() {
+    const LOCK: &str = include_str!("../Cargo.lock");
+    for transport in [
+        "reqwest",
+        "hyper",
+        "ureq",
+        "curl",
+        "isahc",
+        "surf",
+        "tokio",
+        "async-std",
+        "h2",
+        "native-tls",
+        "rustls",
+        "openssl",
+        "socket2",
+        "mio",
+    ] {
+        assert!(
+            !LOCK.contains(&format!("\nname = \"{transport}\"\n")),
+            "{transport} is in this crate's closure; the Solar runtime's http-provider feature \
+             is off for exactly this reason, and admission, execution and recovery are local"
+        );
+    }
+}

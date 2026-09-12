@@ -1,7 +1,7 @@
 {
   "schema": "ds.execution-context-cases/v1",
   "purpose": "The Server's execution context, replayed. Each case carries the op (without the schema wrapper) and the answer the kernel must give: the parsed answer, or {\"error\": \"<the exact Err string>\"} when the request itself is malformed. ds-web replays the same file through the vendored WASM, so no rule about who may see, admit, keep, queue or recover a project's work can be true on one host and not another.",
-  "source": "ds-web/docs/project-and-instance-isolation-contract.md (One verified context per operation; Server jobs and multiple clients; Concurrency and capacity; acceptance items 2, 5, 6, 7, 8), 2026-09-12, under the owner's boundary ruling of the same day: the Server is the desktop's core and holds no project directory, so admission is the connection, the named project and the key. Third pass, same day: a project id is one path segment, a per-project limit must divide the host limit it shares, and the cross-project half of scope_mismatch_for_key is gone because a durable id digests the project.",
+  "source": "ds-web/docs/project-and-instance-isolation-contract.md (One verified context per operation; Server jobs and multiple clients; Concurrency and capacity; acceptance items 2, 5, 6, 7, 8), 2026-09-12, under the owner's boundary ruling of the same day: the Server is the desktop's core and holds no project directory, so admission is the connection, the named project and the key. Third pass, same day: a project id is one path segment that no filesystem reads as a drive, a device or a stream, a per-project limit must divide the host limit it shares, and the cross-project half of scope_mismatch_for_key is gone because a durable id digests the project.",
   "note": "Re-record expected with DS_EXECUTION_CONTEXT_CASES_WRITE=1 cargo test --test execution_context_cases after a deliberate rule change, and say why in the commit.",
   "cases": [
     {
@@ -211,7 +211,7 @@
         "outcome": "refused",
         "refusal": {
           "code": "scope_mismatch",
-          "message": "this request is for project-b, but its sealed input was prepared for another project"
+          "message": "this request is for project-b, but its sealed input was prepared for another project; submit it without naming a project, or prepare an input for project-b"
         }
       }
     },
@@ -237,7 +237,7 @@
         "outcome": "refused",
         "refusal": {
           "code": "project_required",
-          "message": "name a project, or select one first"
+          "message": "no project was named for this request; name one, or select one first"
         }
       }
     },
@@ -326,7 +326,7 @@
         "outcome": "refused",
         "refusal": {
           "code": "scope_mismatch_for_key",
-          "message": "that idempotency key already names another project or operation"
+          "message": "that idempotency key already names another project or operation; submit this under a key of its own"
         }
       }
     },
@@ -366,7 +366,7 @@
         "outcome": "refused",
         "refusal": {
           "code": "payload_changed_for_key",
-          "message": "that idempotency key was admitted with different input bytes"
+          "message": "that idempotency key was admitted with different input bytes; resubmit the bytes it was admitted with, or use a new key for these"
         }
       }
     },
@@ -406,7 +406,7 @@
         "outcome": "refused",
         "refusal": {
           "code": "principal_mismatch",
-          "message": "that key was admitted under another authenticated identity"
+          "message": "that key was admitted under another authenticated identity; sign in as that account, on the lane and deployment it used, or submit under a key of your own"
         }
       }
     },
@@ -446,7 +446,7 @@
         "outcome": "refused",
         "refusal": {
           "code": "principal_mismatch",
-          "message": "that key was admitted under another authenticated identity"
+          "message": "that key was admitted under another authenticated identity; sign in as that account, on the lane and deployment it used, or submit under a key of your own"
         }
       }
     },
@@ -486,7 +486,7 @@
         "outcome": "refused",
         "refusal": {
           "code": "principal_mismatch",
-          "message": "that key was admitted under another authenticated identity"
+          "message": "that key was admitted under another authenticated identity; sign in as that account, on the lane and deployment it used, or submit under a key of your own"
         }
       }
     },
@@ -525,7 +525,7 @@
         "outcome": "refused",
         "refusal": {
           "code": "project_required",
-          "message": "name a project, or select one first"
+          "message": "no project was named for this request; name one, or select one first"
         }
       }
     },
@@ -565,7 +565,7 @@
         "outcome": "refused",
         "refusal": {
           "code": "context_corrupt",
-          "message": "the stored context is bound to another job id"
+          "message": "the stored context is bound to another job id; the host looked this key up outside the project it is submitting for"
         }
       }
     },
@@ -605,7 +605,7 @@
         "outcome": "refused",
         "refusal": {
           "code": "context_corrupt",
-          "message": "execution context field input_sha256 is not a bounded value"
+          "message": "execution context field input_sha256 is not valid: a 64-character lowercase sha-256 digest"
         }
       }
     },
@@ -632,7 +632,7 @@
         "outcome": "refused",
         "refusal": {
           "code": "context_corrupt",
-          "message": "execution context field client is not a bounded value"
+          "message": "execution context field client is not valid: 1..=120 characters, trimmed, with no control character"
         }
       }
     },
@@ -659,7 +659,7 @@
         "outcome": "refused",
         "refusal": {
           "code": "context_corrupt",
-          "message": "execution context field operation is not a bounded value"
+          "message": "execution context field operation is not valid: one of transformer_processing, solar_processing, report_export, layer_read, layer_write"
         }
       }
     },
@@ -686,7 +686,7 @@
         "outcome": "refused",
         "refusal": {
           "code": "context_corrupt",
-          "message": "execution context field input_sha256 is not a bounded value"
+          "message": "execution context field input_sha256 is not valid: a 64-character lowercase sha-256 digest"
         }
       }
     },
@@ -713,7 +713,7 @@
         "outcome": "refused",
         "refusal": {
           "code": "context_corrupt",
-          "message": "execution context field idempotency_key is not a bounded value"
+          "message": "execution context field idempotency_key is not valid: 1..=200 characters, trimmed, with no control character"
         }
       }
     },
@@ -740,7 +740,7 @@
         "outcome": "refused",
         "refusal": {
           "code": "context_corrupt",
-          "message": "execution context field principal.lane is not a bounded value"
+          "message": "execution context field principal.lane is not valid: one of stable, canary"
         }
       }
     },
@@ -767,7 +767,7 @@
         "outcome": "refused",
         "refusal": {
           "code": "context_corrupt",
-          "message": "execution context field requested_project is not a project id: one path segment of 1..=200 characters, no separator, no traversal, no whitespace"
+          "message": "execution context field requested_project is not a project id: one path segment of 1..=200 characters, with no separator, drive, traversal, trailing dot, whitespace, invisible character, wildcard or device name"
         }
       }
     },
@@ -794,7 +794,88 @@
         "outcome": "refused",
         "refusal": {
           "code": "context_corrupt",
-          "message": "execution context field requested_project is not a project id: one path segment of 1..=200 characters, no separator, no traversal, no whitespace"
+          "message": "execution context field requested_project is not a project id: one path segment of 1..=200 characters, with no separator, drive, traversal, trailing dot, whitespace, invisible character, wildcard or device name"
+        }
+      }
+    },
+    {
+      "id": "admit-project-id-that-names-a-drive",
+      "why": "A colon is a drive on Windows and Rust's own Path::join replaces the whole path with it, so a host joining this id to its state directory would leave that directory entirely; the grammar refuses the shape rather than asking every host to check.",
+      "request": {
+        "kind": "admit",
+        "now_ms": 2000,
+        "principal": {
+          "uid": "uid-a",
+          "lane": "canary",
+          "deployment": "https://gateway.example",
+          "install_id": "install-1"
+        },
+        "client": "cli:4711",
+        "operation": "solar_processing",
+        "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
+        "idempotency_key": "key-a",
+        "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "requested_project": "C:"
+      },
+      "expected": {
+        "outcome": "refused",
+        "refusal": {
+          "code": "context_corrupt",
+          "message": "execution context field requested_project is not a project id: one path segment of 1..=200 characters, with no separator, drive, traversal, trailing dot, whitespace, invisible character, wildcard or device name"
+        }
+      }
+    },
+    {
+      "id": "admit-project-id-that-ends-in-a-dot",
+      "why": "Windows strips a trailing dot from the last path component, so `project-a.` and `project-a` are two ids and one directory: two projects whose store rows, caches and report names would land on top of each other.",
+      "request": {
+        "kind": "admit",
+        "now_ms": 2000,
+        "principal": {
+          "uid": "uid-a",
+          "lane": "canary",
+          "deployment": "https://gateway.example",
+          "install_id": "install-1"
+        },
+        "client": "cli:4711",
+        "operation": "solar_processing",
+        "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
+        "idempotency_key": "key-a",
+        "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "requested_project": "project-a."
+      },
+      "expected": {
+        "outcome": "refused",
+        "refusal": {
+          "code": "context_corrupt",
+          "message": "execution context field requested_project is not a project id: one path segment of 1..=200 characters, with no separator, drive, traversal, trailing dot, whitespace, invisible character, wildcard or device name"
+        }
+      }
+    },
+    {
+      "id": "admit-project-id-that-names-a-device",
+      "why": "A device name is a device at any depth and with any extension: writing `<store>/NUL` discards the bytes and reading `<store>/CON` reads the console, so a project called NUL would silently lose everything a host wrote for it.",
+      "request": {
+        "kind": "admit",
+        "now_ms": 2000,
+        "principal": {
+          "uid": "uid-a",
+          "lane": "canary",
+          "deployment": "https://gateway.example",
+          "install_id": "install-1"
+        },
+        "client": "cli:4711",
+        "operation": "solar_processing",
+        "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
+        "idempotency_key": "key-a",
+        "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "requested_project": "NUL"
+      },
+      "expected": {
+        "outcome": "refused",
+        "refusal": {
+          "code": "context_corrupt",
+          "message": "execution context field requested_project is not a project id: one path segment of 1..=200 characters, with no separator, drive, traversal, trailing dot, whitespace, invisible character, wildcard or device name"
         }
       }
     },
@@ -821,7 +902,7 @@
         "outcome": "refused",
         "refusal": {
           "code": "context_corrupt",
-          "message": "execution context field requested_project is not a project id: one path segment of 1..=200 characters, no separator, no traversal, no whitespace"
+          "message": "execution context field requested_project is not a project id: one path segment of 1..=200 characters, with no separator, drive, traversal, trailing dot, whitespace, invisible character, wildcard or device name"
         }
       }
     },
@@ -848,7 +929,7 @@
         "outcome": "refused",
         "refusal": {
           "code": "context_corrupt",
-          "message": "execution context field requested_project is not a project id: one path segment of 1..=200 characters, no separator, no traversal, no whitespace"
+          "message": "execution context field requested_project is not a project id: one path segment of 1..=200 characters, with no separator, drive, traversal, trailing dot, whitespace, invisible character, wildcard or device name"
         }
       }
     },
@@ -875,7 +956,7 @@
         "outcome": "refused",
         "refusal": {
           "code": "context_corrupt",
-          "message": "execution context field requested_project is not a project id: one path segment of 1..=200 characters, no separator, no traversal, no whitespace"
+          "message": "execution context field requested_project is not a project id: one path segment of 1..=200 characters, with no separator, drive, traversal, trailing dot, whitespace, invisible character, wildcard or device name"
         }
       }
     },
@@ -902,7 +983,34 @@
         "outcome": "refused",
         "refusal": {
           "code": "context_corrupt",
-          "message": "execution context field requested_project is not a project id: one path segment of 1..=200 characters, no separator, no traversal, no whitespace"
+          "message": "execution context field requested_project is not a project id: one path segment of 1..=200 characters, with no separator, drive, traversal, trailing dot, whitespace, invisible character, wildcard or device name"
+        }
+      }
+    },
+    {
+      "id": "admit-project-id-with-an-invisible-character",
+      "why": "Whitespace is refused because a shell, a log line and a path each read it differently; a character with no glyph at all is that failure taken further. This id and project-a draw as the same word on every screen an operator has, and they are two directories and two sets of report names.",
+      "request": {
+        "kind": "admit",
+        "now_ms": 2000,
+        "principal": {
+          "uid": "uid-a",
+          "lane": "canary",
+          "deployment": "https://gateway.example",
+          "install_id": "install-1"
+        },
+        "client": "cli:4711",
+        "operation": "solar_processing",
+        "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
+        "idempotency_key": "key-a",
+        "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "requested_project": "project-​a"
+      },
+      "expected": {
+        "outcome": "refused",
+        "refusal": {
+          "code": "context_corrupt",
+          "message": "execution context field requested_project is not a project id: one path segment of 1..=200 characters, with no separator, drive, traversal, trailing dot, whitespace, invisible character, wildcard or device name"
         }
       }
     },
@@ -929,7 +1037,7 @@
         "outcome": "refused",
         "refusal": {
           "code": "context_corrupt",
-          "message": "execution context field requested_project is not a project id: one path segment of 1..=200 characters, no separator, no traversal, no whitespace"
+          "message": "execution context field requested_project is not a project id: one path segment of 1..=200 characters, with no separator, drive, traversal, trailing dot, whitespace, invisible character, wildcard or device name"
         }
       }
     },
@@ -956,7 +1064,7 @@
         "outcome": "refused",
         "refusal": {
           "code": "context_corrupt",
-          "message": "execution context field saved_project is not a project id: one path segment of 1..=200 characters, no separator, no traversal, no whitespace"
+          "message": "execution context field saved_project is not a project id: one path segment of 1..=200 characters, with no separator, drive, traversal, trailing dot, whitespace, invisible character, wildcard or device name"
         }
       }
     },
@@ -983,7 +1091,7 @@
         "outcome": "refused",
         "refusal": {
           "code": "context_corrupt",
-          "message": "execution context field sealed_project is not a project id: one path segment of 1..=200 characters, no separator, no traversal, no whitespace"
+          "message": "execution context field sealed_project is not a project id: one path segment of 1..=200 characters, with no separator, drive, traversal, trailing dot, whitespace, invisible character, wildcard or device name"
         }
       }
     },
@@ -1651,7 +1759,7 @@
         "outcome": "refused",
         "refusal": {
           "code": "context_corrupt",
-          "message": "execution context field project is not a project id: one path segment of 1..=200 characters, no separator, no traversal, no whitespace"
+          "message": "execution context field project is not a project id: one path segment of 1..=200 characters, with no separator, drive, traversal, trailing dot, whitespace, invisible character, wildcard or device name"
         }
       }
     },
@@ -2479,7 +2587,7 @@
         "outcome": "refused",
         "refusal": {
           "code": "context_corrupt",
-          "message": "execution context field sealed_project is not a project id: one path segment of 1..=200 characters, no separator, no traversal, no whitespace"
+          "message": "execution context field sealed_project is not a project id: one path segment of 1..=200 characters, with no separator, drive, traversal, trailing dot, whitespace, invisible character, wildcard or device name"
         }
       }
     },
@@ -2530,7 +2638,7 @@
         "outcome": "refused",
         "refusal": {
           "code": "scope_mismatch",
-          "message": "that row's sealed input was prepared for another project"
+          "message": "that row's sealed input was prepared for another project; reopen it with the project its own bytes name, or with none"
         }
       }
     },
@@ -2567,7 +2675,7 @@
         "outcome": "refused",
         "refusal": {
           "code": "principal_mismatch",
-          "message": "that row belongs to another deployment lane"
+          "message": "that row belongs to another deployment lane; reopen the queue on the lane it was admitted on"
         }
       }
     },
@@ -2617,7 +2725,7 @@
         "outcome": "refused",
         "refusal": {
           "code": "principal_mismatch",
-          "message": "that row was admitted under another authenticated identity"
+          "message": "that row was admitted under another authenticated identity; reopen the queue as that account"
         }
       }
     },
@@ -2642,7 +2750,7 @@
         "outcome": "refused",
         "refusal": {
           "code": "context_unrecoverable",
-          "message": "that row is not a durable compute job"
+          "message": "that row is not a durable compute job; nothing can be reopened from it"
         }
       }
     },

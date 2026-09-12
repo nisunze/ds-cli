@@ -6,7 +6,15 @@ compute runtime are implemented and proven on `fable/server-isolation`,
 slice. Third pass, same day, from the second adversarial verdict: a project id
 is one path segment (§2), a per-project limit must divide the host limit it
 shares (§5), and the corpus no longer records a cross-project
-`scope_mismatch_for_key` no host can produce (§6). Parent:
+`scope_mismatch_for_key` no host can produce (§6). Third-pass review, same
+day: that segment is also one no filesystem reads as a drive, a device or a
+stream (§2), and every refusal but
+`not_visible` says what to do about it (§3), `context_unrecoverable` included
+(§6). Third-pass review, second reading: a segment is also one that draws
+something (§2), the share invariant is asked before a host starts its workers
+and not once per claim (§5, `Limits::validate`), and the durable row's own key
+collisions answer the kernel's sentence rather than a shorter twin (§8).
+Parent:
 [project and instance isolation](../../../ds-web/docs/project-and-instance-isolation-contract.md);
 refines [Headless application runtime](ds-headless-application-runtime.md) §6.
 
@@ -46,20 +54,41 @@ ExecutionContext { principal_uid, lane, deployment, install_id, // the connectio
 `report_export`, `layer_read`, `layer_write`; `lane` is `stable` or `canary`;
 `input_sha256` is a 64-character lowercase digest. Every text field is
 non-empty, trimmed, control-free and bounded (`client` ≤ 120, `idempotency_key`
-≤ 200). One that is not is `context_corrupt`, named.
+≤ 200). One that is not is `context_corrupt`, **named and told the rule it
+broke** — `execution context field client is not valid: 1..=120 characters,
+trimmed, with no control character` — with the closed vocabularies spelled out
+rather than named, because a caller cannot look up a constant it does not have.
 
 **A project id is one path segment** (`valid_project`): 1..=200 characters, no
-`/`, no `\`, never `.` or `..`, no whitespace anywhere, no control character.
+`/` and no `\`, no whitespace anywhere, no control character, no character that
+draws nothing, no trailing dot (which also refuses `.` and `..`), none of
+`: * ? " < > |`, and not a Windows device name (`NUL`, `con.json`; the stem
+before the first dot, case ignored).
 200 is the kernel's own project bound, as `survey_query` and
 `survey_entries_changes` already read it — deliberately not `layer_document`'s
 500-character free-form bound, because this id is durable and hosts partition
-by it: store rows, dataset caches, staging directories, report names. An id
-that could mean a different place on disk (`..`, `A/../B`) or that a shell, a
-log line and a path each read differently (`A B`) is refused
-`context_corrupt` at every door it can arrive through — named by the caller,
-defaulted from a saved selection, sealed in the bytes, offered to a legacy row
-on recovery, stored in a record, or counted in a census (there it is the
-host's own bug, a hard fault). The refusal states the grammar, so an operator
+by it: store rows, dataset caches, staging directories, report names. The last
+three rules are Windows and only Windows, and the product ships a Windows
+desktop: `Path::join("C:")` **replaces** the whole path rather than appending
+to it, so `state_dir.join(project)` for a project called `C:` leaves the state
+directory altogether; a trailing dot is stripped, so `A.` and `A` would be two
+projects in one directory; and a device name is a device at any depth, so a
+project called `NUL` silently discards everything written for it. An id that
+could mean a different place on disk (`..`, `A/../B`, `C:`, `A.`, `NUL`) or
+that a shell, a log line and a path each read differently (`A B`) is refused
+`context_corrupt` at every door it can arrive through — and so is one written
+with a character that has no glyph (`renders_as_nothing`: the soft hyphen, the
+zero-width and bidirectional format characters, the interlinear annotations,
+the byte order mark, the variation selectors, the tag block), because
+`project-a` and the same id with a zero-width space inside it are two ids, two
+directories and two sets of report names that every screen an operator has —
+the CLI, the activity list, the refusal itself — draws as the same word. That
+list is named rather than derived, since the kernel carries no Unicode tables;
+it is the whole invisible surface, not a sample, and a name written in another
+script is refused by none of it. Every door: named by the caller, defaulted
+from a saved selection, sealed in the bytes, offered to a legacy row on
+recovery, stored in a record, or counted in a census (there it is the host's
+own bug, a hard fault). The refusal states the grammar, so an operator
 reads the rule rather than guessing which character was the problem. The
 Server's and `ds-cli-auth`'s own restatements of the bound (500) are theirs to
 narrow; the kernel refuses what they let through.
@@ -129,6 +158,14 @@ is a decision to challenge, not an omission.
   `scope_mismatch`, `scope_mismatch_for_key`, `payload_changed_for_key`,
   `principal_mismatch`, `not_visible`, `capacity_exhausted`, `context_corrupt`,
   `context_unrecoverable`.
+- **A refusal says what to do about it, or it is a dead end.** Every one but
+  `not_visible` carries a second clause after the `;` or the `:` — the rule
+  the value broke, or the thing the caller does instead; `capacity_exhausted`
+  carries `retry_after_ms` in the answer rather than in the sentence. The
+  exception is deliberate and is §4 itself: `job not found` says nothing else
+  because anything else would disclose that there is something to find. Held
+  over the recorded corpus, code by code
+  (`every_refusal_but_the_invisible_one_says_what_to_do_about_it`).
 
 ## 4. Non-disclosure
 
@@ -161,6 +198,11 @@ guidance. Until this pass the invariant lived only in `ds-cli-server`'s flag
 parser, so any other host — a test, a route building its own `Limits`, a
 future embedder — could configure the fairness away and this owner would
 apply it as written.
+The invariant is `Limits::validate`, which `capacity` asks before every
+decision and which a host asks before it starts its workers: a configuration
+nothing can honour is answered once, at the moment the operator can change it,
+rather than as the same host fault logged several times a second by a pool of
+threads that admits nothing.
 `Intent::Admit` bounds the queue (`global_queued`, then `per_project_queued`); a
 full *running* pool never refuses a submission, the job queues. `Intent::Claim`
 bounds the running pool (`global_running`) and the fairness share: a project may
@@ -265,19 +307,28 @@ cannot each take the same room; its census counts a running row whose lease has
 expired as waiting and a row nothing can claim as neither; and it reopens a
 queue by counting the rows that carry a context and reading only the ones that
 do not, so a long-lived Server does not pay its whole queue in memory to
-restart. `ds-compute-runtime` admits through the kernel, asks `recover` when it
-starts its workers, and makes no network call: a claimed job runs what was
-admitted, and the one thing it calls that a host *could* implement over the
-network — the `Authorizer` that says whether this Server's owner is still the
-authenticated one — gates only starting work. Neither the lease refresh nor the
-terminal commit asks it again, so an unreachable moment delays new work and can
-never destroy work already done. `ds-cli-server` opens per-(principal, project)
+restart. `ds-compute-runtime` admits through the kernel and makes no network call
+(asserted over its own `Cargo.lock`, not over its prose): a claimed job runs
+what was admitted, and the one thing it calls that a host *could* implement
+over the network — the `Authorizer` that says whether this Server's owner is
+still the authenticated one — gates only starting work. Neither the lease
+refresh nor the terminal commit asks it again, so an unreachable moment delays
+new work and can never destroy work already done. Before it starts a worker it
+asks the kernel three questions once rather than once per claim: are these
+limits a configuration at all (`Limits::validate`), is the thread pool no
+larger than the `global_running` it claims from — two numbers for one pool —
+and what context does each stored row have (`recover`). A queue holding rows
+that predate contexts is reported with their ids, because the remedy for such
+a row begins with one and no project-narrowed read will show it. It also says
+the row's own key-collision refusals in the kernel's words, since the store
+refuses a racing key without consulting the kernel and one collision may not
+have two sentences. `ds-cli-server` opens per-(principal, project)
 sessions from an admitted context instead of a process-wide selection, and it
 is where one owner per Server is actually enforced — the owner-only bearer of
 its `host.rs`, which is also where that fence is proven; `ds` re-raises refusals
 literally. The
 kernel holds no credential material, so the owner digest stays the store's
 fence; `recover` checks the lane it can see. Proof:
-`tests/fixtures/execution-context-cases.json`, 83 recorded cases, byte-identical
+`tests/fixtures/execution-context-cases.json`, 87 recorded cases, byte-identical
 to ds-web's `src/tests/fixtures/execution-context/cases.json` and replayed there
 through the vendored WASM, plus the unit tests above.

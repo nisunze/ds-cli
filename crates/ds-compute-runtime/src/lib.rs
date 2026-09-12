@@ -388,29 +388,44 @@ fn submit_validated(
         .submit_job(&job, input, limits)
         .map_err(|error| match error {
             ds_sync_store::Error::Refused(refusal) => SubmitError::Refused(refusal),
-            // The row's own statement of what the kernel decides from a stored
-            // context. It is the only statement there is for a key whose row
-            // predates contexts, or for two first submissions racing under one
-            // key — and it is the caller's answer, not the host's fault.
-            ds_sync_store::Error::Kernel(code) if code == "compute_job_identity_conflict" => {
-                SubmitError::Refused(Refusal {
-                    code: execution_context::PAYLOAD_CHANGED_FOR_KEY,
-                    message: "that idempotency key was admitted with different input bytes".into(),
-                    retry_after_ms: None,
-                    scope: None,
-                })
-            }
-            ds_sync_store::Error::Kernel(code) if code == "compute_job_scope_conflict" => {
-                SubmitError::Refused(Refusal {
-                    code: execution_context::SCOPE_MISMATCH_FOR_KEY,
-                    message: "that idempotency key already names another project or operation"
-                        .into(),
-                    retry_after_ms: None,
-                    scope: None,
-                })
-            }
+            ds_sync_store::Error::Kernel(code) => match key_conflict(&code) {
+                Some(refusal) => SubmitError::Refused(refusal),
+                // Every other kernel code is the host's own bug, and it keeps
+                // the sentence the store gives it.
+                None => SubmitError::Host(ds_sync_store::Error::Kernel(code).to_string()),
+            },
             other => SubmitError::Host(other.to_string()),
         })
+}
+
+/// The durable row's own statement of what the kernel decides from a stored
+/// context, in the kernel's own words.
+///
+/// It is the only statement there is for two first submissions racing under
+/// one key: the loser is refused by the row, because this host read the key
+/// before the winner wrote it and so handed `admit` no existing context. That
+/// is the caller's answer, not the host's fault — and it has to be the SAME
+/// answer, sentence included. Spelling it here shorter than the kernel spells
+/// it gave one collision two messages, and the one a caller was likeliest to
+/// receive was the one with no remedy in it.
+fn key_conflict(code: &str) -> Option<Refusal> {
+    let (code, message) = match code {
+        "compute_job_identity_conflict" => (
+            execution_context::PAYLOAD_CHANGED_FOR_KEY,
+            execution_context::PAYLOAD_CHANGED_FOR_KEY_MESSAGE,
+        ),
+        "compute_job_scope_conflict" => (
+            execution_context::SCOPE_MISMATCH_FOR_KEY,
+            execution_context::SCOPE_MISMATCH_FOR_KEY_MESSAGE,
+        ),
+        _ => return None,
+    };
+    Some(Refusal {
+        code,
+        message: message.to_owned(),
+        retry_after_ms: None,
+        scope: None,
+    })
 }
 
 fn valid_run_id(value: &str) -> bool {
@@ -722,6 +737,32 @@ pub fn recover_contexts(path: &Path, identity: &HostIdentity) -> Result<Recovery
         .map_err(|error| error.to_string())
 }
 
+/// How many ids one report names before it stops. A queue a released Server
+/// left behind can hold thousands of rows, and a startup line that prints
+/// every one of them is not a report anyone reads.
+const NAMED_IN_A_LINE: usize = 20;
+
+/// The ids themselves, because nothing else will say them.
+///
+/// The remedy for such a row begins with its id, and a stranded row is
+/// invisible to every project-narrowed read — which is every read `ds server
+/// status` performs, since it always sends a project. So this line is where an
+/// operator learns which rows they are, and it names them rather than counting
+/// them. It says plainly when it has stopped naming: an id it did not print is
+/// one nothing else prints either.
+fn named(ids: &[String]) -> String {
+    let mut line = ids
+        .iter()
+        .take(NAMED_IN_A_LINE)
+        .map(String::as_str)
+        .collect::<Vec<_>>()
+        .join(", ");
+    if let Some(rest) = ids.len().checked_sub(NAMED_IN_A_LINE).filter(|n| *n > 0) {
+        line.push_str(&format!(" and {rest} more this line does not name"));
+    }
+    line
+}
+
 pub struct Workers {
     stop: Arc<AtomicBool>,
     threads: Vec<thread::JoinHandle<()>>,
@@ -731,16 +772,45 @@ impl Workers {
         if count == 0 || count > 256 {
             return Err("worker count must be 1..256".into());
         }
+        // The kernel decides whether these four numbers are a configuration at
+        // all, and this is the moment to ask it. Every claim asks again, and a
+        // host that only ever asks there starts a pool of workers that log the
+        // same host fault several times a second and admit nothing — the
+        // configuration is wrong before the first request, so it is answered
+        // before the first worker.
+        context
+            .limits
+            .validate()
+            .map_err(|fault| fault.to_string())?;
+        // `global_running` is the same pool these threads take from, decided
+        // by the kernel; a pool of threads larger than it is threads that can
+        // never claim. They would not idle quietly either: each one reopens
+        // the store and takes an immediate transaction to read the census
+        // five times a second, for a slot the kernel is bound to refuse. Two
+        // numbers for one pool, so they are said once — the same statement
+        // `execution_context::capacity` makes about a share that does not
+        // divide its pool, and the same shape of message.
+        if count > context.limits.global_running {
+            return Err(format!(
+                "worker count is {count} and global_running is {}: a worker beyond the running pool can never claim a slot, so the two are one number",
+                context.limits.global_running
+            ));
+        }
         open(&context.path)?;
         // Reopening a queue is the moment a row written by a released Server
         // gets the context it never had. It happens once, before any worker
         // can claim, and it never guesses.
         let recovery = recover_contexts(&context.path, &context.identity)?;
         if !recovery.unrecoverable.is_empty() {
+            // The remedy is per row and starts with an id, so the line that
+            // states it names the rows. Telling an operator to run `ds server
+            // input --job <id>` without saying which ids leaves them to find
+            // the stranded rows among everything else the queue holds.
             eprintln!(
-                "compute queue: {} durable job(s) predate execution contexts and name no project; {} (`ds server input --job <id>`, then submit it with --project)",
+                "compute queue: {} durable job(s) predate execution contexts and name no project; for each one, {} (`ds server input --job <id> --out request.json`, then submit it with --project): {}",
                 recovery.unrecoverable.len(),
-                execution_context::UNRECOVERABLE_REMEDY
+                execution_context::UNRECOVERABLE_REMEDY,
+                named(&recovery.unrecoverable)
             );
         }
         if let Some(observer) = context.observer.as_ref() {
@@ -1064,5 +1134,88 @@ mod tests {
         assert_eq!(server_state_directory("stable", Some(root)).unwrap(), root);
         assert!(server_state_directory("stable", Some(Path::new("relative"))).is_err());
         assert!(server_state_directory("preview", Some(root)).is_err());
+    }
+
+    /// A report about rows nothing else can list names them, and says so when
+    /// it stops.
+    #[test]
+    fn the_stranded_rows_report_names_the_ids_its_remedy_needs() {
+        let ids: Vec<String> = (0..NAMED_IN_A_LINE + 3).map(|n| format!("job-{n}")).collect();
+        let one = named(&ids[..1]);
+        assert_eq!(one, "job-0");
+        let all = named(&ids);
+        for id in &ids[..NAMED_IN_A_LINE] {
+            assert!(all.contains(id.as_str()), "{all}");
+        }
+        assert!(all.ends_with("and 3 more this line does not name"), "{all}");
+        assert!(!all.contains("job-22"), "{all}");
+        assert!(named(&[]).is_empty());
+    }
+
+    /// One collision, one answer. The durable row refuses a racing key without
+    /// consulting the kernel, so this host translates it — and a translation
+    /// that drops the remedy hands the loser of a race a dead end where the
+    /// winner's twin would have been told what to send instead.
+    #[test]
+    fn the_row_s_key_conflicts_answer_exactly_what_the_kernel_answers() {
+        let digest_a = "a".repeat(64);
+        let digest_b = "b".repeat(64);
+        let stored = execution_context::ExecutionContext {
+            principal_uid: "uid-a".into(),
+            lane: "canary".into(),
+            deployment: "https://gateway.example".into(),
+            install_id: "install-1".into(),
+            project: "project-a".into(),
+            client: "cli:1".into(),
+            operation: SOLAR_PROCESSING.into(),
+            job_id: digest_a.clone(),
+            idempotency_key: "key-a".into(),
+            input_sha256: digest_a.clone(),
+            admitted_at_ms: 2_000,
+        };
+        let request = |operation: &str, input: &str| AdmitRequest {
+            now_ms: 3_000,
+            principal: stored_principal(&stored),
+            client: "cli:1".into(),
+            operation: operation.to_owned(),
+            job_id: digest_a.clone(),
+            idempotency_key: "key-a".into(),
+            input_sha256: input.to_owned(),
+            requested_project: Some("project-a".into()),
+            saved_project: None,
+            sealed_project: None,
+            existing: Some(stored.clone()),
+        };
+        for (code, admitted) in [
+            (
+                "compute_job_identity_conflict",
+                request(SOLAR_PROCESSING, &digest_b),
+            ),
+            (
+                "compute_job_scope_conflict",
+                request(execution_context::REPORT_EXPORT, &digest_a),
+            ),
+        ] {
+            let Err(Fault::Refused(kernel)) = execution_context::admit(&admitted) else {
+                panic!("{code}: the kernel refuses this collision");
+            };
+            assert_eq!(
+                key_conflict(code).expect("the row's code is one this host relays"),
+                kernel,
+                "{code}"
+            );
+        }
+        // Anything else the store calls a kernel fault is the host's own bug,
+        // never a refusal a caller is handed.
+        assert!(key_conflict("invalid_compute_job").is_none());
+    }
+
+    fn stored_principal(context: &execution_context::ExecutionContext) -> Principal {
+        Principal {
+            uid: context.principal_uid.clone(),
+            lane: context.lane.clone(),
+            deployment: context.deployment.clone(),
+            install_id: context.install_id.clone(),
+        }
     }
 }
