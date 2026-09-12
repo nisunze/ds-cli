@@ -162,7 +162,7 @@ enum DesignContextMode {
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let explicit = inputs.value("desktop-descriptor");
-    let target = ops::desktop_target(inputs.value("target"))?;
+    let target = ops::declared_target(inputs)?;
 
     // A named descriptor is used verbatim, exactly as it always has been: the
     // one thing a caller with a stale pinned terminal must be able to rely on

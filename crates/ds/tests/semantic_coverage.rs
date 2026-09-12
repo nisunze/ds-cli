@@ -92,6 +92,11 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("desktop.project.list", "read_only", "desktop_user"),
     ("desktop.project.switch", "local_ui", "desktop_user"),
     ("desktop.status", "discovery", "none"),
+    // The instance enumeration every instance-targeted refusal points at. It
+    // declares no authority for the same reason `desktop.status` does not: it
+    // must answer on a machine with nothing running, and about instances this
+    // caller may not be able to use.
+    ("desktop.list", "discovery", "none"),
     ("desktop.offline.status", "read_only", "desktop_user"),
     ("desktop.offline.set", "local_file_write", "desktop_user"),
     (

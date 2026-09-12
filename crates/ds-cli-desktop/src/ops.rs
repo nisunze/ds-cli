@@ -15,6 +15,7 @@
 use std::cell::RefCell;
 use std::time::Duration;
 
+use ds_cli_contract::Inputs;
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{Arg, ArgKind, Authority, Availability, Refusal};
 use ds_command_kernel::desktop_instance as kernel;
@@ -78,17 +79,22 @@ pub fn paired(explicit: Option<&str>) -> Result<Descriptor, Failure> {
     Ok(bridge::paired(explicit)?.descriptor)
 }
 
-/// The host `--target` named for this dispatch, as text. `DS_TARGET` is its
-/// default and never its override: a command that named a host has named it.
+/// The host this dispatch named, as text. Resolved once, by dispatch, from the
+/// command's own declared flag — so a command that does not declare a host
+/// never acquires one, and a `--target` that means something else in its own
+/// domain is never read as a host.
 pub fn scoped_target() -> Option<String> {
-    HEADLESS_IDENTITY
-        .with(|headless| headless.borrow().as_ref().and_then(|h| h.target.clone()))
-        .or_else(|| {
-            std::env::var(TARGET_ENV)
-                .ok()
-                .map(|value| value.trim().to_owned())
-                .filter(|value| !value.is_empty())
-        })
+    HEADLESS_IDENTITY.with(|headless| headless.borrow().as_ref().and_then(|h| h.target.clone()))
+}
+
+/// The session default for [`TARGET_ARG`], where that flag is declared. A
+/// default for the flag, never an override of it: a command that named a host
+/// has named it.
+pub fn env_target() -> Option<String> {
+    std::env::var(TARGET_ENV)
+        .ok()
+        .map(|value| value.trim().to_owned())
+        .filter(|value| !value.is_empty())
 }
 
 /// What this operation needs of the instance that serves it: the caller's own
@@ -579,6 +585,20 @@ pub fn host(named: Option<&str>) -> Result<Host, Failure> {
         )
         .remedy(UNKNOWN_TARGET.remedy)),
     }
+}
+
+/// The instance a command that holds its own `--target` is for, with
+/// `DS_TARGET` as that flag's session default.
+///
+/// Dispatch resolves the same thing for a paired invocation ([`scoped_target`]);
+/// this is for the commands that read their own inputs — the enumeration, the
+/// status check and the explicit switch.
+pub fn declared_target(inputs: &Inputs) -> Result<Option<kernel::Target>, Failure> {
+    let named = inputs
+        .value(TARGET_ARG.name)
+        .map(str::to_owned)
+        .or_else(env_target);
+    desktop_target(named.as_deref())
 }
 
 /// The instance a paired operation is for, or the named refusal for a host

@@ -2322,10 +2322,28 @@ fn scope_headless_identity(
             // holds both the command's declared inputs and the seam that will
             // route on them, so the target rides with the identity rather than
             // being re-read from a flag the shared seam cannot see.
-            target: inputs.value("target").map(str::to_owned),
+            target: host_target(command, inputs),
         },
     );
     Ok(ds_cli_desktop::ops::scope_headless_identity(observed))
+}
+
+/// The host this invocation named, for a command that declares the host flag.
+///
+/// `--target` is one flag with one grammar, and a handful of commands used the
+/// word first for something in their own domain — a panel to open, an export
+/// format. So the flag is recognised by its declaration rather than by its
+/// name: only a `--target` declared with the host's own placeholder routes,
+/// and `DS_TARGET` is that flag's session default, applying exactly where the
+/// flag itself does.
+fn host_target(command: &Command, inputs: &Inputs) -> Option<String> {
+    let declared = command
+        .arg(ds_cli_desktop::ops::TARGET_ARG.name)
+        .filter(|arg| arg.value == ds_cli_desktop::ops::TARGET_ARG.value)?;
+    inputs
+        .value(declared.name)
+        .map(str::to_owned)
+        .or_else(ds_cli_desktop::ops::env_target)
 }
 
 fn headless_probe_means_absent(error: &Failure) -> bool {

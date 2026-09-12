@@ -2731,14 +2731,22 @@ impl Machine {
     /// test at a descriptor that does not exist, and these tests are about
     /// what automatic enumeration finds.
     fn ds(&self, args: &[&str]) -> Run {
-        let output = Command::new(env!("CARGO_BIN_EXE_ds"))
+        self.ds_with(&[], args)
+    }
+
+    /// The same, for a session that set a default in its environment.
+    fn ds_with(&self, environment: &[(&str, &str)], args: &[&str]) -> Run {
+        let mut command = Command::new(env!("CARGO_BIN_EXE_ds"));
+        command
             .args(args)
             .env("NO_COLOR", "1")
             .env("XDG_DATA_HOME", &self.root)
             .env_remove("DS_DESKTOP_DESCRIPTOR")
-            .env_remove("DS_TARGET")
-            .output()
-            .expect("ds binary runs");
+            .env_remove("DS_TARGET");
+        for (name, value) in environment {
+            command.env(name, value);
+        }
+        let output = command.output().expect("ds binary runs");
         let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
         Run {
             envelope: serde_json::from_str(&stdout).unwrap_or(Value::Null),
@@ -2919,6 +2927,40 @@ fn two_live_instances_refuse_without_an_explicit_target() {
     assert_eq!(one.code, 0, "{}", one.stderr);
     assert_eq!(one.envelope["data"]["instance"], INSTANCE_TWO);
     assert_eq!(one.envelope["data"]["project"], "project-b");
+
+    // A session can name it once instead of on every command — and the flag
+    // still wins, because a default that overrode what a caller typed would
+    // not be a default.
+    let session = machine.ds_with(
+        &[("DS_TARGET", &format!("desktop:{INSTANCE_ONE}"))],
+        &["desktop", "status", "--output", "json"],
+    );
+    assert_eq!(session.code, 0, "{}", session.stderr);
+    assert_eq!(session.envelope["data"]["instance"], INSTANCE_ONE);
+    let overridden = machine.ds_with(
+        &[("DS_TARGET", &format!("desktop:{INSTANCE_ONE}"))],
+        &[
+            "desktop",
+            "status",
+            "--target",
+            &format!("desktop:{INSTANCE_TWO}"),
+            "--output",
+            "json",
+        ],
+    );
+    assert_eq!(overridden.envelope["data"]["instance"], INSTANCE_TWO);
+
+    // And a host that does not perform this operation is answered by name
+    // rather than by routing it somewhere that would.
+    let elsewhere = machine.ds_with(
+        &[("DS_TARGET", "server")],
+        &["desktop", "status", "--output", "json"],
+    );
+    assert_eq!(
+        elsewhere.envelope["error"]["code"], "target_host_unsupported",
+        "{}",
+        elsewhere.stdout
+    );
 }
 
 #[test]
