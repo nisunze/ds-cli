@@ -131,8 +131,21 @@ const OUTPUT_EXISTS: Refusal = Refusal {
     remedy: "choose an absent output file; existing files are never overwritten",
 };
 
-/// Hosting the process itself: no project is resolved, so none can refuse.
-const SERVE_REFUSALS: &[Refusal] = &[PLATFORM, REFUSED, OWNER_CHANGED, MULTI_PRINCIPAL];
+const INSTALL_UNAVAILABLE: Refusal = Refusal {
+    code: "headless_install_unavailable",
+    when: "the registered install this host would run under cannot be read or created in the protected DS state root",
+    remedy: "check the Server user's protected DS state root is present, owner-only and writable, then start the host again",
+};
+
+/// Hosting the process itself. No project is resolved, so none can refuse —
+/// but the host does need the registered install its sessions are fenced by.
+const SERVE_REFUSALS: &[Refusal] = &[
+    PLATFORM,
+    REFUSED,
+    OWNER_CHANGED,
+    MULTI_PRINCIPAL,
+    INSTALL_UNAVAILABLE,
+];
 /// Queueing work under an idempotency key.
 const SUBMIT_REFUSALS: &[Refusal] = &[
     PLATFORM,
@@ -1120,9 +1133,11 @@ mod tests {
     #[test]
     fn every_execution_context_code_is_declared_and_carries_a_remedy() {
         // The runtime mapping and the help text are one list, or they are two
-        // contracts. Every code this client re-raises must be declared by a
-        // `ds server` command and must have a remedy even when the Server
-        // sends none.
+        // contracts. The vocabulary is read from the kernel rather than copied
+        // here, so a code the execution context gains cannot ship undeclared:
+        // the Server relays that closed set verbatim, and `refusal_coverage`'s
+        // source scan cannot see through the relay, so this is what makes its
+        // exemption for `sessions.rs` a true statement rather than a hole.
         let declared: Vec<&str> = [
             SERVE_REFUSALS,
             SUBMIT_REFUSALS,
@@ -1133,21 +1148,15 @@ mod tests {
         .flat_map(|list| list.iter())
         .map(|refusal| refusal.code)
         .collect();
-        for code in [
-            "project_required",
-            "context_corrupt",
-            "project_not_visible",
-            "not_visible",
-            "principal_mismatch",
+        let kernel = ds_command_kernel::execution_context::REFUSALS;
+        assert!(kernel.contains(&"project_required"), "vocabulary moved");
+        for code in kernel.iter().copied().chain([
+            // The host's own two, which the kernel does not decide: one is a
+            // job outcome, the other is this Server's single-principal fence.
             "membership_revoked",
-            "scope_mismatch",
-            "scope_mismatch_for_key",
-            "payload_changed_for_key",
-            "capacity_exhausted",
-            "context_unrecoverable",
             "multi_principal_unsupported",
             "server_owner_changed",
-        ] {
+        ]) {
             assert!(declared.contains(&code), "`{code}` is declared nowhere");
             assert!(
                 default_remedy(Some(code), &Value::Null).is_some(),

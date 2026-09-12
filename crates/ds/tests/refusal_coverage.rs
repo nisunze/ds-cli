@@ -120,6 +120,16 @@ const CODE_NOT_A_LITERAL: &[(&str, &str)] = &[
         "the code is chosen with its remedy by a match above the constructor",
     ),
     (
+        "ds-cli-server/src/sessions.rs",
+        "the code is the kernel execution context's own `Refusal::code`, \
+         relayed to the caller rather than renamed — the same shape as \
+         `ds-cli-design/src/features.rs`. That vocabulary is closed \
+         (`execution_context::REFUSALS`), and `ds-cli-server`'s own \
+         `every_execution_context_code_is_declared_and_carries_a_remedy` \
+         iterates it against the `ds server` refusal rosters, so a code the \
+         kernel gains still cannot ship undeclared",
+    ),
+    (
         "ds-cli-solar/src/compare.rs",
         "`require_file` takes the code from the caller that names the flag",
     ),
