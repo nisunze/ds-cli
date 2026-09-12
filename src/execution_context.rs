@@ -162,6 +162,19 @@ pub const REFUSALS: [&str; 9] = [
 /// The one sentence a caller gets for every invisible job, whatever the reason.
 pub const NOT_FOUND: &str = "job not found";
 
+/// The two sentences the durable row states independently of [`admit`].
+///
+/// A row is the second, racing statement of the same rule: two first
+/// submissions under one key can reach the insert together, and the one that
+/// loses is refused by the row rather than by this owner, which never saw the
+/// other's context. Its host then relays that as one of these codes — so the
+/// sentence is written once, here, and both statements are the same answer.
+/// Two spellings of one refusal are two answers to one question, and the
+/// spelling that drops the remedy is the dead end §3 forbids.
+pub const PAYLOAD_CHANGED_FOR_KEY_MESSAGE: &str = "that idempotency key was admitted with different input bytes; resubmit the bytes it was admitted with, or use a new key for these";
+pub const SCOPE_MISMATCH_FOR_KEY_MESSAGE: &str =
+    "that idempotency key already names another project or operation; submit this under a key of its own";
+
 // ── The record ──────────────────────────────────────────────────────────
 
 /// Immutable once admitted. Serialised in declaration order as the durable
@@ -633,13 +646,13 @@ pub fn admit(request: &AdmitRequest) -> Result<Admitted, Fault> {
         if existing.project != project || existing.operation != request.operation {
             return Err(refused(
                 SCOPE_MISMATCH_FOR_KEY,
-                "that idempotency key already names another project or operation; submit this under a key of its own",
+                SCOPE_MISMATCH_FOR_KEY_MESSAGE,
             ));
         }
         if existing.input_sha256 != request.input_sha256 {
             return Err(refused(
                 PAYLOAD_CHANGED_FOR_KEY,
-                "that idempotency key was admitted with different input bytes; resubmit the bytes it was admitted with, or use a new key for these",
+                PAYLOAD_CHANGED_FOR_KEY_MESSAGE,
             ));
         }
         return Ok(Admitted::Existing(existing.clone()));

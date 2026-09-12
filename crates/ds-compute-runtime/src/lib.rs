@@ -388,29 +388,44 @@ fn submit_validated(
         .submit_job(&job, input, limits)
         .map_err(|error| match error {
             ds_sync_store::Error::Refused(refusal) => SubmitError::Refused(refusal),
-            // The row's own statement of what the kernel decides from a stored
-            // context. It is the only statement there is for a key whose row
-            // predates contexts, or for two first submissions racing under one
-            // key — and it is the caller's answer, not the host's fault.
-            ds_sync_store::Error::Kernel(code) if code == "compute_job_identity_conflict" => {
-                SubmitError::Refused(Refusal {
-                    code: execution_context::PAYLOAD_CHANGED_FOR_KEY,
-                    message: "that idempotency key was admitted with different input bytes".into(),
-                    retry_after_ms: None,
-                    scope: None,
-                })
-            }
-            ds_sync_store::Error::Kernel(code) if code == "compute_job_scope_conflict" => {
-                SubmitError::Refused(Refusal {
-                    code: execution_context::SCOPE_MISMATCH_FOR_KEY,
-                    message: "that idempotency key already names another project or operation"
-                        .into(),
-                    retry_after_ms: None,
-                    scope: None,
-                })
-            }
+            ds_sync_store::Error::Kernel(code) => match key_conflict(&code) {
+                Some(refusal) => SubmitError::Refused(refusal),
+                // Every other kernel code is the host's own bug, and it keeps
+                // the sentence the store gives it.
+                None => SubmitError::Host(ds_sync_store::Error::Kernel(code).to_string()),
+            },
             other => SubmitError::Host(other.to_string()),
         })
+}
+
+/// The durable row's own statement of what the kernel decides from a stored
+/// context, in the kernel's own words.
+///
+/// It is the only statement there is for two first submissions racing under
+/// one key: the loser is refused by the row, because this host read the key
+/// before the winner wrote it and so handed `admit` no existing context. That
+/// is the caller's answer, not the host's fault — and it has to be the SAME
+/// answer, sentence included. Spelling it here shorter than the kernel spells
+/// it gave one collision two messages, and the one a caller was likeliest to
+/// receive was the one with no remedy in it.
+fn key_conflict(code: &str) -> Option<Refusal> {
+    let (code, message) = match code {
+        "compute_job_identity_conflict" => (
+            execution_context::PAYLOAD_CHANGED_FOR_KEY,
+            execution_context::PAYLOAD_CHANGED_FOR_KEY_MESSAGE,
+        ),
+        "compute_job_scope_conflict" => (
+            execution_context::SCOPE_MISMATCH_FOR_KEY,
+            execution_context::SCOPE_MISMATCH_FOR_KEY_MESSAGE,
+        ),
+        _ => return None,
+    };
+    Some(Refusal {
+        code,
+        message: message.to_owned(),
+        retry_after_ms: None,
+        scope: None,
+    })
 }
 
 fn valid_run_id(value: &str) -> bool {
@@ -1078,5 +1093,72 @@ mod tests {
         assert_eq!(server_state_directory("stable", Some(root)).unwrap(), root);
         assert!(server_state_directory("stable", Some(Path::new("relative"))).is_err());
         assert!(server_state_directory("preview", Some(root)).is_err());
+    }
+
+    /// One collision, one answer. The durable row refuses a racing key without
+    /// consulting the kernel, so this host translates it — and a translation
+    /// that drops the remedy hands the loser of a race a dead end where the
+    /// winner's twin would have been told what to send instead.
+    #[test]
+    fn the_row_s_key_conflicts_answer_exactly_what_the_kernel_answers() {
+        let digest_a = "a".repeat(64);
+        let digest_b = "b".repeat(64);
+        let stored = execution_context::ExecutionContext {
+            principal_uid: "uid-a".into(),
+            lane: "canary".into(),
+            deployment: "https://gateway.example".into(),
+            install_id: "install-1".into(),
+            project: "project-a".into(),
+            client: "cli:1".into(),
+            operation: SOLAR_PROCESSING.into(),
+            job_id: digest_a.clone(),
+            idempotency_key: "key-a".into(),
+            input_sha256: digest_a.clone(),
+            admitted_at_ms: 2_000,
+        };
+        let request = |operation: &str, input: &str| AdmitRequest {
+            now_ms: 3_000,
+            principal: stored_principal(&stored),
+            client: "cli:1".into(),
+            operation: operation.to_owned(),
+            job_id: digest_a.clone(),
+            idempotency_key: "key-a".into(),
+            input_sha256: input.to_owned(),
+            requested_project: Some("project-a".into()),
+            saved_project: None,
+            sealed_project: None,
+            existing: Some(stored.clone()),
+        };
+        for (code, admitted) in [
+            (
+                "compute_job_identity_conflict",
+                request(SOLAR_PROCESSING, &digest_b),
+            ),
+            (
+                "compute_job_scope_conflict",
+                request(execution_context::REPORT_EXPORT, &digest_a),
+            ),
+        ] {
+            let Err(Fault::Refused(kernel)) = execution_context::admit(&admitted) else {
+                panic!("{code}: the kernel refuses this collision");
+            };
+            assert_eq!(
+                key_conflict(code).expect("the row's code is one this host relays"),
+                kernel,
+                "{code}"
+            );
+        }
+        // Anything else the store calls a kernel fault is the host's own bug,
+        // never a refusal a caller is handed.
+        assert!(key_conflict("invalid_compute_job").is_none());
+    }
+
+    fn stored_principal(context: &execution_context::ExecutionContext) -> Principal {
+        Principal {
+            uid: context.principal_uid.clone(),
+            lane: context.lane.clone(),
+            deployment: context.deployment.clone(),
+            install_id: context.install_id.clone(),
+        }
     }
 }
