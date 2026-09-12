@@ -1593,6 +1593,13 @@ pub fn local_layers_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> 
     local_layers::evaluate(input).map_err(|e| wasm_bindgen::JsValue::from_str(&e))
 }
 
+pub mod application_settings;
+#[cfg(feature = "wasm")]
+#[wasm_bindgen::prelude::wasm_bindgen(js_name = applicationSettings)]
+pub fn application_settings_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
+    application_settings::evaluate(input).map_err(|e| wasm_bindgen::JsValue::from_str(&e))
+}
+
 pub mod solar_seed;
 #[cfg(feature = "wasm")]
 #[wasm_bindgen::prelude::wasm_bindgen(js_name = solarSeed)]
