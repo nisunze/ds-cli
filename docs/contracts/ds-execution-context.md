@@ -112,7 +112,9 @@ takes its project from the sealed input if it is Solar (`sealed_input`,
 authoritative — the bytes name it) and from the saved selection if it is
 transformer work (`saved_selection`; such requests carry no project by design).
 With neither it is `context_unrecoverable` and the host asks rather than
-guesses. A reconstructed record keeps the row's own `created_at_ms` and records
+guesses — and the one honest answer it can then receive is the caller
+resubmitting the same key and the same bytes naming a project, which the store
+adopts onto the existing row (`Store::submit_job`; no second job, no guess). A reconstructed record keeps the row's own `created_at_ms` and records
 `recovery:legacy-row` / `recovered` for the client and key — the durable id
 digests `(owner, lane, key)` and cannot be inverted, so reuse is decided by
 project, operation and digest, never by key text. Recovery reconstructs, it does
@@ -136,10 +138,15 @@ not authorize: the host re-verifies membership before the next effect.
 
 ## 8. What hosts keep
 
-Hosts perform I/O on these answers and decide nothing: `ds-compute-runtime`
-stores the admitted context in the job row and asks `visible` before answering
-`jobs/job/job_input/job_result`, `capacity` before claiming, `recover` when
-opening a store; `ds-cli-server` opens per-(principal, project) sessions from an
+Hosts perform I/O on these answers and decide nothing: `ds-sync-store` writes
+the admitted context with the job row, narrows `jobs/jobs_page` to a caller's
+project in the query itself, asks `visible` before answering
+`jobs/job/job_input/job_result`, and asks `capacity` **inside the transaction
+that inserts (`Intent::Admit`) or claims (`Intent::Claim`)** from a census read
+there, so racing submissions cannot both take the last place and racing workers
+cannot each take the same room; its census counts a running row whose lease has
+expired as waiting and a row without a context as neither; `ds-compute-runtime`
+admits through the kernel and asks `recover` when it starts its workers; `ds-cli-server` opens per-(principal, project) sessions from an
 admitted context instead of a process-wide selection; `ds` re-raises refusals
 literally. The kernel holds no credential material, so the owner digest stays
 the store's fence; `recover` checks the lane it can see. Proof:

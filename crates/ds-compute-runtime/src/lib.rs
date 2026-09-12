@@ -5,19 +5,21 @@
 //! Admission means one thing here: `execution_context::admit` decided, from a
 //! verified membership snapshot, which project this operation is about, and
 //! that decision was written with the job row. Nothing downstream re-derives
-//! it. A read answers through `execution_context::visible`, a worker claims
-//! through `execution_context::capacity`, a run re-checks membership for the
-//! job's own project before it executes and before its completion is
-//! projected, and a queue reopened from disk recovers its rows through
-//! `execution_context::recover`. This crate performs the I/O; the kernel
-//! decides.
+//! it. A read answers through `execution_context::visible`; the queue bound
+//! and the fairness share are `execution_context::capacity`, asked by the
+//! store inside the transaction that inserts or claims, from a census read
+//! there — never from a census this crate read a moment earlier; a run
+//! re-checks membership for the job's own project before it executes and
+//! before its completion is projected; and a queue reopened from disk
+//! recovers its rows through `execution_context::recover`. This crate
+//! performs the I/O; the kernel decides.
 mod claim;
 pub use claim::decode_solar_server_submission;
 
 use base64::Engine;
 use ds_command_kernel::compute_jobs::{self, EngineKind, Event, Job, Phase};
 use ds_command_kernel::execution_context::{
-    self, AdmitRequest, Admitted, ExecutionContext, Fault, Intent, Membership, Principal, Refusal,
+    self, AdmitRequest, Admitted, ExecutionContext, Fault, Membership, Principal, Refusal,
     RetainEvent, SOLAR_PROCESSING, TRANSFORMER_PROCESSING,
 };
 use ds_network::network::native_fast_lv::{
@@ -389,16 +391,6 @@ fn submit_validated(
         return existing
             .ok_or_else(|| SubmitError::Host("an existing context has no durable job row".into()));
     }
-    let census = store
-        .census(&identity.owner, identity.lane())
-        .map_err(|error| SubmitError::Host(error.to_string()))?;
-    execution_context::capacity(
-        limits,
-        Intent::Admit,
-        &census.running,
-        &census.queued,
-        &admitted.context().project,
-    )?;
     let context = admitted.context().clone();
     let job = Job {
         id,
@@ -417,9 +409,38 @@ fn submit_validated(
         error: None,
         context: Some(context),
     };
+    // The queue bound is the store's to apply, inside the transaction that
+    // inserts: a census read here would describe a queue other submissions
+    // are changing. A refusal comes back typed and is relayed as the kernel
+    // said it. A row written by a released Server under this key and these
+    // bytes adopts the admitted context instead (see `Store::submit_job`).
     store
-        .submit_job(&job, input)
-        .map_err(|e| SubmitError::Host(e.to_string()))
+        .submit_job(&job, input, limits)
+        .map_err(|error| match error {
+            ds_sync_store::Error::Refused(refusal) => SubmitError::Refused(refusal),
+            // The row's own statement of what the kernel decides from a stored
+            // context. It is the only statement there is for a key whose row
+            // predates contexts, or for two first submissions racing under one
+            // key — and it is the caller's answer, not the host's fault.
+            ds_sync_store::Error::Kernel(code) if code == "compute_job_identity_conflict" => {
+                SubmitError::Refused(Refusal {
+                    code: execution_context::PAYLOAD_CHANGED_FOR_KEY,
+                    message: "that idempotency key was admitted with different input bytes".into(),
+                    retry_after_ms: None,
+                    scope: None,
+                })
+            }
+            ds_sync_store::Error::Kernel(code) if code == "compute_job_scope_conflict" => {
+                SubmitError::Refused(Refusal {
+                    code: execution_context::SCOPE_MISMATCH_FOR_KEY,
+                    message: "that idempotency key already names another project or operation"
+                        .into(),
+                    retry_after_ms: None,
+                    scope: None,
+                })
+            }
+            other => SubmitError::Host(other.to_string()),
+        })
 }
 
 fn valid_run_id(value: &str) -> bool {
@@ -841,30 +862,18 @@ pub fn run_one(context: &WorkerContext, worker: &str) -> Result<bool, String> {
     let (path, identity) = (context.path.as_path(), &context.identity);
     let (owner, lane) = (identity.owner.as_str(), identity.lane());
     context.auth.authorize(owner)?;
-    // Fairness is decided from the whole host's census, and asked once per
+    // Fairness is decided from the whole host's census, read by the store
+    // inside the transaction that claims and asked of the kernel once per
     // candidate project: a project over its share while another waits is
-    // skipped, so the next project's work starts instead of the pool idling.
-    let census = open(path)?
-        .census(owner, lane)
-        .map_err(|error| error.to_string())?;
-    let limits = context.limits;
-    let mut admits = |project: &str| {
-        execution_context::capacity(
-            limits,
-            Intent::Claim,
-            &census.running,
-            &census.queued,
-            project,
-        )
-        .is_ok()
-    };
+    // skipped, so the next project's work starts instead of the pool idling,
+    // and several workers claiming at once cannot each take the same room.
     let Some((job, input)) = open(path)?
         .claim_job(
             &identity.caller(None),
             worker,
             now_ms(),
             30_000,
-            &mut admits,
+            context.limits,
         )
         .map_err(|e| e.to_string())?
     else {

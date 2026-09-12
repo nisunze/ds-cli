@@ -7,7 +7,7 @@
 //! written by a released Server recovers before any worker can claim it.
 
 use ds_command_kernel::compute_jobs::{Event, Phase};
-use ds_command_kernel::execution_context::{Limits, Membership, Principal, Slot};
+use ds_command_kernel::execution_context::{Limits, Membership, Principal};
 use ds_compute_runtime::{
     self as runtime, Admission, Authorizer, HostIdentity, MembershipSource, WorkerContext,
 };
@@ -462,60 +462,46 @@ fn a_claim_keeps_one_projects_share_while_another_project_is_waiting() {
         per_project_queued: 8,
         global_queued: 16,
     };
-    let mut running: Vec<Slot> = Vec::new();
-    let mut queued = vec![A, A, B, B]
-        .into_iter()
-        .map(|project| Slot {
-            project: project.into(),
-        })
-        .collect::<Vec<_>>();
     let mut store = runtime::open(&path).unwrap();
-    let mut claim = |running: &Vec<Slot>, queued: &Vec<Slot>, worker: &str| {
-        let mut admits = |project: &str| {
-            ds_command_kernel::execution_context::capacity(
-                share,
-                ds_command_kernel::execution_context::Intent::Claim,
-                running,
-                queued,
-                project,
-            )
-            .is_ok()
-        };
+    let mut claim = |worker: &str, limits: Limits| {
         store
             .claim_job(
                 &identity.caller(None),
                 worker,
                 runtime::now_ms(),
                 30_000,
-                &mut admits,
+                limits,
             )
             .unwrap()
+            .map(|(job, _)| job.context.unwrap().project)
     };
     // A is first in queue order and takes the one slot its share allows. The
     // next claim skips A — its second batch is older than B's first — and
     // starts B, so a long queue in one project never idles the machine for
-    // another.
-    for (worker, expected) in [("worker-1", A), ("worker-2", B)] {
-        let (job, _) = claim(&running, &queued, worker).expect("a project still has room");
-        let project = job.context.unwrap().project;
-        assert_eq!(project, expected, "{worker}");
-        running.push(Slot {
-            project: project.clone(),
-        });
-        let position = queued
-            .iter()
-            .position(|slot| slot.project == project)
-            .unwrap();
-        queued.remove(position);
+    // another. Then both hold their share and both still wait: neither can
+    // yield to the other, so refusing would idle the pool, and queue order
+    // decides — A's second batch is older, then B's.
+    for (worker, expected) in [
+        ("worker-1", A),
+        ("worker-2", B),
+        ("worker-3", A),
+        ("worker-4", B),
+    ] {
+        assert_eq!(claim(worker, share).as_deref(), Some(expected), "{worker}");
     }
-    // Both hold their share and both still have work waiting: nothing more is
-    // claimable until one of them finishes.
-    assert!(claim(&running, &queued, "worker-3").is_none());
-    // When B's work is done and only A waits, A may exceed its share rather
-    // than leave the machine idle.
-    let queued = vec![Slot { project: A.into() }];
-    let running = vec![Slot { project: A.into() }];
-    assert!(claim(&running, &queued, "worker-4").is_some());
+    // Every worker busy: nothing more is claimable until one finishes.
+    assert_eq!(claim("worker-5", share), None);
+    // The census the share is judged from is the store's own, read inside the
+    // claim, so a live pool of exactly two admits exactly two.
+    let store = runtime::open(&path).unwrap();
+    assert_eq!(
+        store
+            .census("owner", "canary", runtime::now_ms())
+            .unwrap()
+            .running
+            .len(),
+        4
+    );
 }
 
 #[test]
@@ -839,7 +825,7 @@ fn direct_submission_and_durable_replay_reject_invalid_snapshot_provenance() {
     context.input_sha256 = job.input_sha256.clone();
     runtime::open(&replay_path)
         .unwrap()
-        .submit_job(&job, &invalid)
+        .submit_job(&job, &invalid, limits())
         .unwrap();
     let worker = worker(&replay_path, &identity, &directory, Arc::new(Allowed));
     assert!(runtime::run_one(&worker, "recovered").unwrap());
@@ -889,7 +875,7 @@ fn parallel_claims_are_unique_and_revocation_and_cancellation_stop_work() {
                         &format!("worker{i}"),
                         100,
                         1000,
-                        &mut |_| true,
+                        limits(),
                     )
                     .unwrap()
                     .unwrap()
@@ -925,9 +911,7 @@ fn parallel_claims_are_unique_and_revocation_and_cancellation_stop_work() {
         )
         .is_err());
     let recovered = store
-        .claim_job(&identity.caller(None), "recovered", 1100, 1000, &mut |_| {
-            true
-        })
+        .claim_job(&identity.caller(None), "recovered", 1100, 1000, limits())
         .unwrap()
         .unwrap()
         .0;
@@ -1006,4 +990,79 @@ fn workers_complete_real_batches_inside_the_shared_resource_bound() {
     }
     drop(workers);
     assert!(observed.load(Ordering::Acquire));
+}
+
+#[test]
+fn resubmitting_a_released_rows_key_and_bytes_with_a_project_adopts_it_and_runs_it() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("store.sqlite");
+    let identity = host("owner", "canary");
+    let bytes = request();
+    // A transformer row a released Server wrote: no context, and no saved
+    // selection to recover it into.
+    let id = runtime::job_id("owner", "canary", "released");
+    let row = json!({
+        "id": id, "owner": "owner", "lane": "canary", "input_sha256": runtime::digest(&bytes),
+        "engine": "fast_lv", "input_tag": "ds.fast-lv.request/v1", "phase": "queued",
+        "attempts": 0, "created_at_ms": 1_700_000_000_000u64, "updated_at_ms": 1_700_000_000_000u64,
+        "worker": serde_json::Value::Null, "lease_until_ms": 0,
+        "result_sha256": serde_json::Value::Null, "error": serde_json::Value::Null
+    });
+    runtime::open(&path).unwrap();
+    rusqlite::Connection::open(&path)
+        .unwrap()
+        .execute(
+            "INSERT INTO compute_jobs(id,owner,lane,phase,lease_until,created,row,input) VALUES (?1,'owner','canary','queued',0,1700000000000,?2,?3)",
+            rusqlite::params![id, row.to_string(), bytes.as_slice()],
+        )
+        .unwrap();
+    assert_eq!(
+        runtime::recover_contexts(&path, &identity, None)
+            .unwrap()
+            .unrecoverable,
+        vec![id.clone()]
+    );
+    let directory = Directory::new(&[A]);
+    let membership = directory.snapshot_now();
+    // The same key with other bytes is the caller's answer, typed, and the
+    // row is untouched.
+    let mut other: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    other["jobs"][0]["transformer_name"] = json!("T9");
+    let changed = runtime::submit(
+        &path,
+        &admission(&identity, "released", Some(A), &membership),
+        &serde_json::to_vec(&other).unwrap(),
+    )
+    .unwrap_err();
+    assert_eq!(changed.code(), Some("payload_changed_for_key"));
+    // The same key and bytes, naming a project: the row is adopted, not
+    // duplicated, and it runs in that project.
+    let adopted = runtime::submit(
+        &path,
+        &admission(&identity, "released", Some(A), &membership),
+        &bytes,
+    )
+    .unwrap();
+    assert_eq!(adopted.id, id);
+    assert_eq!(adopted.created_at_ms, 1_700_000_000_000);
+    let context = adopted.context.clone().unwrap();
+    assert_eq!(context.project, A);
+    assert_eq!(context.idempotency_key, "released");
+    assert_eq!(
+        runtime::open(&path)
+            .unwrap()
+            .jobs(&identity.caller(None), 10)
+            .unwrap()
+            .len(),
+        1
+    );
+    let worker = worker(&path, &identity, &directory, Arc::new(Allowed));
+    assert!(runtime::run_one(&worker, "worker-1").unwrap());
+    let done = runtime::open(&path)
+        .unwrap()
+        .job(&identity.caller(Some(A)), &id)
+        .unwrap()
+        .unwrap();
+    assert_eq!(done.phase, Phase::Completed);
+    assert_eq!(done.context.unwrap().project, A);
 }
