@@ -167,8 +167,17 @@ impl Store {
             // The kernel already refused a key whose scope or operation moved;
             // the durable row is the second, independent statement of it, so a
             // host that forgot to ask cannot re-scope work by resubmitting.
+            //
+            // The principal is part of that statement. A row is invisible to
+            // another authenticated identity, so `admit` is asked with no
+            // existing context and cannot answer `principal_mismatch` for it;
+            // the only thing that keeps two principals' keys apart is that the
+            // owner digest is derived from the uid. That is true today and
+            // this row must not depend on its staying true.
             if existing.context.as_ref().is_some_and(|stored| {
-                stored.project != context.project || stored.operation != context.operation
+                stored.project != context.project
+                    || stored.operation != context.operation
+                    || stored.principal_uid != context.principal_uid
             }) {
                 return Err(Error::Kernel("compute_job_scope_conflict".into()));
             }
