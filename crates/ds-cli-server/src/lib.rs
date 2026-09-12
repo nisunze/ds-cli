@@ -72,11 +72,6 @@ const OWNER_CHANGED: Refusal = Refusal {
     when: "the Server's account differs from the caller's, or its credential was revoked or replaced",
     remedy: "sign in under the intended Server account and explicitly restart ds server serve",
 };
-const MULTI_PRINCIPAL: Refusal = Refusal {
-    code: "multi_principal_unsupported",
-    when: "the request's credential names a different native account than the Server's",
-    remedy: "run one Server per native account, each with its own --state-dir and --listen",
-};
 const PROJECT_REQUIRED: Refusal = Refusal {
     code: "project_required",
     when: "no --project was passed and this account has no saved selection",
@@ -86,11 +81,6 @@ const CONTEXT_CORRUPT: Refusal = Refusal {
     code: "context_corrupt",
     when: "a project id is empty, padded, over 500 characters or holds a control character",
     remedy: "copy one exact ds_project value from ds auth project list",
-};
-const PROJECT_NOT_VISIBLE: Refusal = Refusal {
-    code: "project_not_visible",
-    when: "reserved by the kernel; this Server holds no directory and never raises it",
-    remedy: "run ds auth project list and pass one exact ds_project value",
 };
 const NOT_VISIBLE: Refusal = Refusal {
     code: "not_visible",
@@ -164,7 +154,6 @@ const SERVE_REFUSALS: &[Refusal] = &[
     PLATFORM,
     REFUSED,
     OWNER_CHANGED,
-    MULTI_PRINCIPAL,
     NEEDS_MAP,
     UNSUPPORTED,
     INSTALL_UNAVAILABLE,
@@ -174,10 +163,8 @@ const SUBMIT_REFUSALS: &[Refusal] = &[
     PLATFORM,
     REFUSED,
     OWNER_CHANGED,
-    MULTI_PRINCIPAL,
     PROJECT_REQUIRED,
     CONTEXT_CORRUPT,
-    PROJECT_NOT_VISIBLE,
     SCOPE_MISMATCH,
     SCOPE_MISMATCH_FOR_KEY,
     PAYLOAD_CHANGED_FOR_KEY,
@@ -189,10 +176,8 @@ const JOB_REFUSALS: &[Refusal] = &[
     PLATFORM,
     REFUSED,
     OWNER_CHANGED,
-    MULTI_PRINCIPAL,
     PROJECT_REQUIRED,
     CONTEXT_CORRUPT,
-    PROJECT_NOT_VISIBLE,
     NOT_VISIBLE,
     PRINCIPAL_MISMATCH,
     CONTEXT_UNRECOVERABLE,
@@ -202,16 +187,18 @@ const RESULT_REFUSALS: &[Refusal] = &[
     PLATFORM,
     REFUSED,
     OWNER_CHANGED,
-    MULTI_PRINCIPAL,
     PROJECT_REQUIRED,
     CONTEXT_CORRUPT,
-    PROJECT_NOT_VISIBLE,
     NOT_VISIBLE,
     PRINCIPAL_MISMATCH,
     CONTEXT_UNRECOVERABLE,
     OUTPUT_EXISTS,
 ];
 
+// Eight, because a command descriptor has eight parts and naming them at each
+// call site is what makes the list below readable. The same allow the two
+// test helpers in this repo already carry.
+#[allow(clippy::too_many_arguments)]
 const fn command(
     id: &'static str,
     path: &'static [&'static str],
@@ -374,7 +361,7 @@ pub static SOLAR_SUBMIT: Command = command(
         Arg::value(
             "input",
             "<path>",
-            "Private ds.solar.server-submission/v1 envelope: prepared request plus its governed publication claim; at most 64 MiB.",
+            "Private ds.solar.server-submission/v1 envelope on this machine; the Server reads this path itself. At most 64 MiB.",
         )
         .required(),
         Arg::value(
@@ -513,7 +500,6 @@ fn typed_refusal(status: u16, body: &[u8]) -> Failure {
         // learned these names on the desktop plans for them here unchanged.
         Some("project_required") => Failure::new(class, "project_required", message),
         Some("context_corrupt") => Failure::new(class, "context_corrupt", message),
-        Some("project_not_visible") => Failure::new(class, "project_not_visible", message),
         Some("not_visible") => Failure::new(class, "not_visible", message),
         Some("principal_mismatch") => Failure::new(class, "principal_mismatch", message),
         Some("scope_mismatch") => Failure::new(class, "scope_mismatch", message),
@@ -521,9 +507,6 @@ fn typed_refusal(status: u16, body: &[u8]) -> Failure {
         Some("payload_changed_for_key") => Failure::new(class, "payload_changed_for_key", message),
         Some("capacity_exhausted") => Failure::new(class, "capacity_exhausted", message),
         Some("context_unrecoverable") => Failure::new(class, "context_unrecoverable", message),
-        Some("multi_principal_unsupported") => {
-            Failure::new(class, "multi_principal_unsupported", message)
-        }
         // The Server connection's own fence.
         Some("server_owner_changed") => Failure::new(class, "server_owner_changed", message),
         // The shared layer owner's, re-raised for `ds map layer … --target server`.
@@ -565,10 +548,8 @@ fn typed_refusal(status: u16, body: &[u8]) -> Failure {
 /// the answer, and a differing class would disclose that the job exists.
 fn default_class(code: Option<&str>, status: u16) -> ExitClass {
     match code {
-        Some("project_required" | "project_not_visible" | "context_corrupt") => {
-            ExitClass::InvalidInput
-        }
-        Some("multi_principal_unsupported" | "server_owner_changed") => ExitClass::Unauthorized,
+        Some("project_required" | "context_corrupt") => ExitClass::InvalidInput,
+        Some("server_owner_changed") => ExitClass::Unauthorized,
         Some(
             "scope_mismatch"
             | "scope_mismatch_for_key"
@@ -797,6 +778,10 @@ fn with_known_project(path: &str, project: Option<&str>) -> String {
 /// The default share of a host's workers one project may hold: half, never
 /// fewer than one, so a single-worker host still admits work and a busy
 /// project cannot starve a second one on a host with room for two.
+///
+/// A share equal to the worker count is not a share at all -- one project
+/// could hold every worker while another waits -- so [`per_project`] refuses
+/// it on any host with more than one worker.
 pub const fn default_per_project(workers: usize) -> usize {
     let half = workers / 2;
     if half == 0 { 1 } else { half }
@@ -815,9 +800,10 @@ fn per_project(inputs: &Inputs, workers: usize) -> Result<usize, Failure> {
     let requested: usize = requested.parse().map_err(|_| {
         failure("--per-project must be a whole number of concurrently running jobs")
     })?;
-    if requested == 0 || requested > workers {
+    if requested == 0 || requested >= workers.max(2) {
         return Err(failure(format!(
-            "--per-project must be 1..{workers}, this host's worker count"
+            "--per-project must leave a worker for a second project: 1..{} on a host with {workers}",
+            workers.saturating_sub(1).max(1)
         )));
     }
     Ok(requested)
@@ -943,19 +929,7 @@ fn id(inputs: &Inputs) -> Result<&str, Failure> {
     }
     Ok(id)
 }
-/// A transformer request carries no project of its own by design, so one must
-/// be named or defaulted here or there is nothing for the Server to verify.
-pub fn submit(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
-    submit_at(inputs, "/v1/transformer-processing", true)
-}
-/// A sealed Solar envelope names its own project, and that name wins. The
-/// client still sends what it knows — it is how a caller learns it prepared the
-/// wrong city (`scope_mismatch`) — but an account with no selection can submit
-/// a sealed envelope without naming anything.
-pub fn solar_submit(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
-    submit_at(inputs, "/v1/solar-processing", false)
-}
-fn submit_at(inputs: &Inputs, endpoint: &str, needs_project: bool) -> Result<Value, Failure> {
+fn submit_key(inputs: &Inputs) -> Result<&str, Failure> {
     let key = inputs.require("key")?;
     if key.is_empty()
         || key.len() > 128
@@ -965,13 +939,20 @@ fn submit_at(inputs: &Inputs, endpoint: &str, needs_project: bool) -> Result<Val
     {
         return Err(failure("key must be 1..128 letters, digits, _ or -"));
     }
+    Ok(key)
+}
+
+/// A transformer request carries no project of its own by design, so one must
+/// be named or defaulted here or there is nothing for the Server to record.
+///
+/// Its bytes travel in the request, because the desktop's own transformer
+/// processing takes bytes: the request is assembled from what the caller
+/// holds, not read back out of a workspace file.
+pub fn submit(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
+    let key = submit_key(inputs)?.to_owned();
     // The project is resolved before the input is opened: an unscoped call
     // refuses without reading 64 MiB it would only have discarded.
-    let project = if needs_project {
-        Some(project(inputs)?)
-    } else {
-        known_project(inputs)?
-    };
+    let project = project(inputs)?;
     let file = std::fs::File::open(inputs.require("input")?).map_err(failure)?;
     if !file.metadata().map_err(failure)?.is_file() {
         return Err(failure("input must be a regular file"));
@@ -986,8 +967,34 @@ fn submit_at(inputs: &Inputs, endpoint: &str, needs_project: bool) -> Result<Val
     json_request(
         inputs,
         "POST",
-        &with_known_project(&format!("{endpoint}/{key}"), project.as_deref()),
+        &with_project(&format!("/v1/transformer-processing/{key}"), &project),
         Some(&bytes),
+    )
+}
+
+/// A sealed Solar envelope names its own project, and that name wins. The
+/// client still sends what it knows — it is how a caller learns it prepared the
+/// wrong city (`scope_mismatch`) — but an account with no selection can submit
+/// a sealed envelope without naming anything.
+///
+/// The envelope is a workspace file, and the Server reads the filesystem
+/// exactly as the desktop does — same machine, same user — so what travels is
+/// the PATH. The Server reads those bytes itself and digests what it read; the
+/// client neither copies 64 MiB through a socket nor decides what the bytes
+/// are.
+pub fn solar_submit(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
+    let key = submit_key(inputs)?.to_owned();
+    let project = known_project(inputs)?;
+    let path = std::fs::canonicalize(inputs.require("input")?).map_err(failure)?;
+    if !path.is_file() {
+        return Err(failure("input must be a regular file"));
+    }
+    let body = serde_json::to_vec(&json!({ "input_path": path })).expect("closed request");
+    json_request(
+        inputs,
+        "POST",
+        &with_known_project(&format!("/v1/solar-processing/{key}"), project.as_deref()),
+        Some(&body),
     )
 }
 pub fn status(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
@@ -1140,17 +1147,6 @@ mod tests {
     }
 
     #[test]
-    fn multi_principal_is_refused_by_name_rather_than_as_a_generic_failure() {
-        let error = refused(json!({
-            "code": "multi_principal_unsupported",
-            "error": "this connection's credential names another account",
-        }));
-        assert_eq!(error.code(), "multi_principal_unsupported");
-        assert_eq!(error.class(), ExitClass::Unauthorized);
-        assert_eq!(error.remedy_text(), Some(MULTI_PRINCIPAL.remedy));
-    }
-
-    #[test]
     fn every_execution_context_code_is_declared_and_carries_a_remedy() {
         // The runtime mapping and the help text are one list, or they are two
         // contracts. The vocabulary is read from the kernel rather than copied
@@ -1170,12 +1166,13 @@ mod tests {
         .collect();
         let kernel = ds_command_kernel::execution_context::REFUSALS;
         assert!(kernel.contains(&"project_required"), "vocabulary moved");
-        for code in kernel.iter().copied().chain([
-            // The host's own two, which the kernel does not decide: this
-            // Server's single-principal fence and its connection fence.
-            "multi_principal_unsupported",
-            "server_owner_changed",
-        ]) {
+        for code in kernel
+            .iter()
+            .copied()
+            // The host's own one, which the kernel does not decide: the
+            // Server connection's fence on its owner.
+            .chain(["server_owner_changed"])
+        {
             assert!(declared.contains(&code), "`{code}` is declared nowhere");
             assert!(
                 default_remedy(Some(code), &Value::Null).is_some(),
@@ -1234,20 +1231,28 @@ mod tests {
     }
 
     #[test]
-    fn a_project_may_hold_half_the_workers_and_never_fewer_than_one() {
+    fn a_project_may_hold_half_the_workers_and_never_all_of_them() {
         assert_eq!(default_per_project(1), 1);
         assert_eq!(default_per_project(2), 1);
         assert_eq!(default_per_project(9), 4);
         assert_eq!(per_project(&inputs(&SERVE, &[]), 8).unwrap(), 4);
         assert_eq!(
-            per_project(&inputs(&SERVE, &["--per-project", "8"]), 8).unwrap(),
-            8
+            per_project(&inputs(&SERVE, &["--per-project", "7"]), 8).unwrap(),
+            7
         );
-        for refused in ["9", "0", "half"] {
+        // A share equal to the worker count is no share: one project could
+        // hold every worker while another waits, which is the thing the
+        // fairness rule exists to prevent.
+        for refused in ["8", "9", "0", "half"] {
             assert!(
                 per_project(&inputs(&SERVE, &["--per-project", refused]), 8).is_err(),
                 "--per-project {refused} must refuse"
             );
         }
+        // A one-worker host has nothing to share, so its only share is one.
+        assert_eq!(
+            per_project(&inputs(&SERVE, &["--per-project", "1"]), 1).unwrap(),
+            1
+        );
     }
 }

@@ -38,9 +38,6 @@ use crate::server_sync::sessions::{self, ServerSessions};
 /// The activity envelope every `/v1/activity` answer carries, one entry per
 /// project. One shape whether the caller narrowed or not.
 pub const ACTIVITY_SCHEMA: &str = "ds.server-activity/v1";
-/// The header a caller may use to say which account it believes it is talking
-/// to. Honoured only when it is this Server's own.
-pub const PRINCIPAL_HEADER: &str = "x-ds-principal";
 /// The typed refusal for an operation that genuinely needs a rendered map.
 /// The operation keeps its id and its shape; only this host cannot run it.
 pub const NEEDS_PAIRED_MAP: &str = "needs_paired_map";
@@ -121,15 +118,11 @@ fn authorize(app: &App, headers: &HeaderMap) -> Result<(), ApiError> {
         .fold(wanted.len() ^ supplied.len(), |acc, (i, b)| {
             acc | usize::from(*b ^ supplied.get(i).copied().unwrap_or(0))
         });
+    // One Server, one owner: this bearer is that owner's, and there is no
+    // second identity for a request to name. Anything else is denied here,
+    // and that IS the rule -- many users are many machines.
     if mismatch != 0 {
         return Err(error(StatusCode::UNAUTHORIZED, "server access denied"));
-    }
-    // One Server, one account. A request that names another principal is told
-    // so by name instead of being served quietly under this one.
-    if let Some(named) = headers.get(PRINCIPAL_HEADER).and_then(|v| v.to_str().ok())
-        && named != app.sessions.principal_uid()
-    {
-        return Err(typed(&sessions::multi_principal()));
     }
     app.auth
         .authorize(&app.connection.owner)
@@ -292,13 +285,56 @@ async fn submit(
 ) -> Result<(StatusCode, Json<Value>), ApiError> {
     let project = project_query(query)?;
     admitting(move || {
-        let job = admitted(&app.sessions, &key, project.as_deref(), None, |admission| {
+        let job = admitted(&app.sessions, &key, project.as_deref(), |admission| {
             runtime::submit(&app.database, admission, &body)
         })?;
         Ok((StatusCode::ACCEPTED, Json(json!({"job":job}))))
     })
     .await
 }
+/// Where a submission's input is a file on this machine rather than bytes in
+/// the request. The Server accesses the filesystem exactly as the desktop
+/// does: a prepared Solar envelope IS a workspace file, so the route takes its
+/// path, reads it under the owner's identity and digests the bytes it read.
+/// `ds` passes `--input` straight through.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SealedInputPath {
+    pub input_path: String,
+}
+
+/// One local file, read as the owner. Absolute because the client and the
+/// host are one machine's user and a relative path would name whatever
+/// directory the host happens to be running in.
+fn read_owner_file(path: &str) -> Result<Vec<u8>, Failure> {
+    let refused = |message: &str| {
+        Failure::invalid("server_refused", message.to_owned())
+            .remedy("send input_path as an absolute path to a readable file on this machine")
+    };
+    let path = Path::new(path);
+    if !path.is_absolute() {
+        return Err(refused(
+            "input_path must be an absolute path on this machine",
+        ));
+    }
+    let file = fs::File::open(path).map_err(|error| refused(&error.to_string()))?;
+    if !file
+        .metadata()
+        .map_err(|error| refused(&error.to_string()))?
+        .is_file()
+    {
+        return Err(refused("input_path must name a regular file"));
+    }
+    let mut bytes = Vec::new();
+    file.take(64 * 1024 * 1024 + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|error| refused(&error.to_string()))?;
+    if bytes.len() > 64 * 1024 * 1024 {
+        return Err(refused("input exceeds 64 MiB"));
+    }
+    Ok(bytes)
+}
+
 /// The only native Server entry point for a sealed prepared Solar request.
 /// Keeping this separate from legacy transformer processing prevents a failed
 /// Fast LV decode from becoming an alternate engine-dispatch authority.
@@ -312,29 +348,29 @@ async fn submit_solar(
     let project = project_query(query)?;
     admitting(move || {
         let sessions = app.sessions.clone();
+        let named: SealedInputPath = serde_json::from_slice(&body).map_err(|error| {
+            Failure::invalid("server_refused", error.to_string())
+                .remedy("send {\"input_path\": \"<absolute path to the sealed envelope>\"}")
+        })?;
+        let envelope = read_owner_file(&named.input_path)?;
         let (sealed, provenance) =
-            runtime::decode_solar_server_submission(&body).map_err(|error| {
+            runtime::decode_solar_server_submission(&envelope).map_err(|error| {
                 Failure::invalid("server_refused", error)
                     .remedy("send the documented ds.solar.server-submission/v1 envelope")
             })?;
         // The claim's project is the sealed input's own — the decoder refused
         // anything else — so it is what the kernel's sealed-outranks-named
-        // rule is given, and what the request is admitted about.
-        let sealed_project = provenance.project_id.clone();
-        let job = admitted(
-            &sessions,
-            &key,
-            project.as_deref(),
-            Some(sealed_project.as_str()),
-            |admission| {
-                runtime::submit_solar_with_provenance(
-                    &app.database,
-                    admission,
-                    &sealed,
-                    provenance.clone(),
-                )
-            },
-        )?;
+        // rule is given, and what the request is admitted about. The project
+        // the caller named still reaches the kernel through the submission
+        // itself, which is how a contradicting name is refused.
+        let job = admitted(&sessions, &key, project.as_deref(), |admission| {
+            runtime::submit_solar_with_provenance(
+                &app.database,
+                admission,
+                &sealed,
+                provenance.clone(),
+            )
+        })?;
         Ok((StatusCode::ACCEPTED, Json(json!({"job":job}))))
     })
     .await
@@ -481,19 +517,16 @@ fn admitted<T>(
     sessions: &ServerSessions,
     key: &str,
     project: Option<&str>,
-    sealed_project: Option<&str>,
     submit: impl FnOnce(&Admission<'_>) -> Result<T, runtime::SubmitError>,
 ) -> Result<T, Failure> {
     let now_ms = runtime::now_ms();
     let client = sessions.client_label();
-    let membership = sessions.named(now_ms, [project, sealed_project]);
     submit(&Admission {
         identity: sessions.identity(),
         client: &client,
         key,
         requested_project: project,
         saved_project: None,
-        membership: &membership,
         limits: sessions.limits(),
         now_ms,
     })
@@ -639,18 +672,7 @@ pub async fn serve(mut app: App, workers: usize) -> Result<(), String> {
             identity: app.sessions.identity().clone(),
             limits: app.sessions.limits(),
             auth: app.auth.clone(),
-            membership: app.sessions.clone(),
             observer: Some(activity),
-            // Read once, locally, for one purpose the contract names: a
-            // transformer row written by a released Server carries no
-            // project, and the owner's saved selection is the only honest
-            // source for it. It is never consulted for anything admitted by
-            // this build, and it is never fetched: the probe reads the
-            // protected native state on this machine and nothing else.
-            saved_project: ds_cli_auth::probe_headless_identity(&app.connection.lane)
-                .ok()
-                .flatten()
-                .and_then(|(_, selected)| selected),
         }),
         workers,
     )?;
@@ -826,45 +848,52 @@ pub(crate) mod tests {
         assert_eq!(value, json!({"jobs":[],"more":false}));
     }
 
+    /// One owner per Server, enforced by the bearer and by nothing else.
+    /// There is no header that names an account and no second identity to
+    /// distinguish: anything but this owner's bearer is denied at the door,
+    /// and that is the whole of the rule. Many users are many machines.
     #[tokio::test]
-    async fn a_request_that_names_another_account_is_refused_by_name() {
+    async fn one_owner_per_server_is_the_bearer_and_nothing_else() {
         let dir = tempfile::tempdir().unwrap();
-        let response = router(app(dir.path(), true))
-            .oneshot(
-                Request::builder()
-                    .uri("/v1/jobs")
-                    .header("authorization", format!("Bearer {}", "a".repeat(64)))
-                    .header(PRINCIPAL_HEADER, "uid-somebody-else")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
+        let denied = |token: String| {
+            let app = app(dir.path(), true);
+            async move {
+                router(app)
+                    .oneshot(
+                        Request::builder()
+                            .uri("/v1/jobs")
+                            .header("authorization", format!("Bearer {token}"))
+                            .body(Body::empty())
+                            .unwrap(),
+                    )
+                    .await
+                    .unwrap()
+            }
+        };
+        let response = denied("b".repeat(64)).await;
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
         let bytes = axum::body::to_bytes(response.into_body(), 4096)
             .await
             .unwrap();
         let value: Value = serde_json::from_slice(&bytes).unwrap();
-        assert_eq!(value["code"], sessions::MULTI_PRINCIPAL_UNSUPPORTED);
-        assert!(
-            value["remedy"]
-                .as_str()
-                .unwrap()
-                .contains("second ds server serve")
-        );
-        // The Server's own account still passes the same door.
+        assert_eq!(value["error"], "server access denied");
+        // A header naming an account is not a thing this host reads.
         let response = router(app(dir.path(), true))
             .oneshot(
                 Request::builder()
                     .uri("/v1/jobs")
                     .header("authorization", format!("Bearer {}", "a".repeat(64)))
-                    .header(PRINCIPAL_HEADER, UID)
+                    .header("x-ds-principal", "uid-somebody-else")
                     .body(Body::empty())
                     .unwrap(),
             )
             .await
             .unwrap();
-        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response.status(),
+            StatusCode::OK,
+            "the owner's bearer is the only question asked"
+        );
     }
 
     /// One operation id, one shape, whichever host runs it — and where this
@@ -1005,7 +1034,7 @@ pub(crate) mod tests {
     }
 
     #[tokio::test]
-    async fn a_key_may_not_change_its_project_or_its_bytes() {
+    async fn a_key_is_one_handle_inside_its_project_and_other_work_outside_it() {
         let dir = tempfile::tempdir().unwrap();
         let app = app(dir.path(), true);
         let (status, first) = call(
@@ -1026,17 +1055,20 @@ pub(crate) mod tests {
         .await;
         assert_eq!(status, StatusCode::ACCEPTED);
         assert_eq!(again["job"]["id"], first["job"]["id"]);
-        // Same key, another project.
-        let (status, moved) = call(
+        // The same key in another project is another piece of work: the id
+        // digests the project, so the owner's daily key is theirs in each of
+        // their projects and neither row can reach the other.
+        let (status, elsewhere) = call(
             app.clone(),
             "POST",
             &format!("/v1/transformer-processing/shared?project={B}"),
             Some(transformer("T1")),
         )
         .await;
-        assert_eq!(status, StatusCode::CONFLICT);
-        assert_eq!(moved["code"], "scope_mismatch_for_key");
-        // Same key, other bytes.
+        assert_eq!(status, StatusCode::ACCEPTED, "{elsewhere}");
+        assert_ne!(elsewhere["job"]["id"], first["job"]["id"]);
+        assert_eq!(elsewhere["job"]["context"]["project"], B);
+        // Same key, other bytes, in the project that holds it.
         let (status, changed) = call(
             app.clone(),
             "POST",
@@ -1047,7 +1079,7 @@ pub(crate) mod tests {
         assert_eq!(status, StatusCode::CONFLICT);
         assert_eq!(changed["code"], "payload_changed_for_key");
         let (_, all) = call(app, "GET", "/v1/jobs", None).await;
-        assert_eq!(all["jobs"].as_array().unwrap().len(), 1);
+        assert_eq!(all["jobs"].as_array().unwrap().len(), 2);
     }
 
     #[tokio::test]
@@ -1290,23 +1322,60 @@ pub(crate) mod tests {
         assert!(project_scopes(&app, Some("project-z")).unwrap().is_empty());
     }
 
+    /// The Solar route takes the workspace file's PATH and reads it here, as
+    /// the desktop's own commands read local files: same machine, same user,
+    /// same filesystem. The envelope is still decoded before anything is
+    /// admitted, so a missing claim is the caller's malformed input (400).
     #[tokio::test]
-    async fn solar_submit_requires_the_kernel_claim_envelope_after_local_auth() {
+    async fn solar_submit_reads_the_named_workspace_file_and_still_requires_the_claim() {
         let dir = tempfile::tempdir().unwrap();
-        let (status, body) = call(
+        let envelope = dir.path().join("solar.server-submission.json");
+        fs::write(
+            &envelope,
+            br#"{"schema_version":"ds.solar.server-submission/v1"}"#,
+        )
+        .unwrap();
+        let body = |path: &str| Some(serde_json::to_vec(&json!({ "input_path": path })).unwrap());
+        let (status, refused) = call(
+            app(dir.path(), true),
+            "POST",
+            &format!("/v1/solar-processing/job-1?project={A}"),
+            body(&envelope.display().to_string()),
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{refused}");
+        assert!(
+            !dir.path().join("store.sqlite").exists(),
+            "a missing claim cannot create a compute-only Solar job"
+        );
+        // A path that is not absolute, and one that is not there at all, are
+        // the caller's own answer — never a silent fallback to bytes.
+        for path in ["solar.server-submission.json", "/nonexistent/solar.json"] {
+            let (status, refused) = call(
+                app(dir.path(), true),
+                "POST",
+                &format!("/v1/solar-processing/job-1?project={A}"),
+                body(path),
+            )
+            .await;
+            assert_eq!(status, StatusCode::BAD_REQUEST, "{refused}");
+            assert!(
+                refused["remedy"]
+                    .as_str()
+                    .unwrap()
+                    .contains("absolute path"),
+                "{refused}"
+            );
+        }
+        // And the bytes themselves are no longer a body this route accepts.
+        let (status, refused) = call(
             app(dir.path(), true),
             "POST",
             &format!("/v1/solar-processing/job-1?project={A}"),
             Some(br#"{"schema_version":"ds.solar.server-submission/v1"}"#.to_vec()),
         )
         .await;
-        // The envelope is decoded before anything is admitted, so a missing
-        // claim is the caller's malformed input (400), not a conflict.
-        assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
-        assert!(
-            !dir.path().join("store.sqlite").exists(),
-            "a missing claim cannot create a compute-only Solar job"
-        );
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{refused}");
     }
 
     #[tokio::test]
