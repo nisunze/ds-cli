@@ -767,7 +767,7 @@
         "outcome": "refused",
         "refusal": {
           "code": "context_corrupt",
-          "message": "execution context field requested_project is not a project id: one path segment of 1..=200 characters, with no separator, drive, traversal, trailing dot, whitespace, wildcard or device name"
+          "message": "execution context field requested_project is not a project id: one path segment of 1..=200 characters, with no separator, drive, traversal, trailing dot, whitespace, invisible character, wildcard or device name"
         }
       }
     },
@@ -794,7 +794,7 @@
         "outcome": "refused",
         "refusal": {
           "code": "context_corrupt",
-          "message": "execution context field requested_project is not a project id: one path segment of 1..=200 characters, with no separator, drive, traversal, trailing dot, whitespace, wildcard or device name"
+          "message": "execution context field requested_project is not a project id: one path segment of 1..=200 characters, with no separator, drive, traversal, trailing dot, whitespace, invisible character, wildcard or device name"
         }
       }
     },
@@ -821,7 +821,7 @@
         "outcome": "refused",
         "refusal": {
           "code": "context_corrupt",
-          "message": "execution context field requested_project is not a project id: one path segment of 1..=200 characters, with no separator, drive, traversal, trailing dot, whitespace, wildcard or device name"
+          "message": "execution context field requested_project is not a project id: one path segment of 1..=200 characters, with no separator, drive, traversal, trailing dot, whitespace, invisible character, wildcard or device name"
         }
       }
     },
@@ -848,7 +848,7 @@
         "outcome": "refused",
         "refusal": {
           "code": "context_corrupt",
-          "message": "execution context field requested_project is not a project id: one path segment of 1..=200 characters, with no separator, drive, traversal, trailing dot, whitespace, wildcard or device name"
+          "message": "execution context field requested_project is not a project id: one path segment of 1..=200 characters, with no separator, drive, traversal, trailing dot, whitespace, invisible character, wildcard or device name"
         }
       }
     },
@@ -875,7 +875,7 @@
         "outcome": "refused",
         "refusal": {
           "code": "context_corrupt",
-          "message": "execution context field requested_project is not a project id: one path segment of 1..=200 characters, with no separator, drive, traversal, trailing dot, whitespace, wildcard or device name"
+          "message": "execution context field requested_project is not a project id: one path segment of 1..=200 characters, with no separator, drive, traversal, trailing dot, whitespace, invisible character, wildcard or device name"
         }
       }
     },
@@ -902,7 +902,7 @@
         "outcome": "refused",
         "refusal": {
           "code": "context_corrupt",
-          "message": "execution context field requested_project is not a project id: one path segment of 1..=200 characters, with no separator, drive, traversal, trailing dot, whitespace, wildcard or device name"
+          "message": "execution context field requested_project is not a project id: one path segment of 1..=200 characters, with no separator, drive, traversal, trailing dot, whitespace, invisible character, wildcard or device name"
         }
       }
     },
@@ -929,7 +929,7 @@
         "outcome": "refused",
         "refusal": {
           "code": "context_corrupt",
-          "message": "execution context field requested_project is not a project id: one path segment of 1..=200 characters, with no separator, drive, traversal, trailing dot, whitespace, wildcard or device name"
+          "message": "execution context field requested_project is not a project id: one path segment of 1..=200 characters, with no separator, drive, traversal, trailing dot, whitespace, invisible character, wildcard or device name"
         }
       }
     },
@@ -956,7 +956,7 @@
         "outcome": "refused",
         "refusal": {
           "code": "context_corrupt",
-          "message": "execution context field requested_project is not a project id: one path segment of 1..=200 characters, with no separator, drive, traversal, trailing dot, whitespace, wildcard or device name"
+          "message": "execution context field requested_project is not a project id: one path segment of 1..=200 characters, with no separator, drive, traversal, trailing dot, whitespace, invisible character, wildcard or device name"
         }
       }
     },
@@ -983,7 +983,34 @@
         "outcome": "refused",
         "refusal": {
           "code": "context_corrupt",
-          "message": "execution context field requested_project is not a project id: one path segment of 1..=200 characters, with no separator, drive, traversal, trailing dot, whitespace, wildcard or device name"
+          "message": "execution context field requested_project is not a project id: one path segment of 1..=200 characters, with no separator, drive, traversal, trailing dot, whitespace, invisible character, wildcard or device name"
+        }
+      }
+    },
+    {
+      "id": "admit-project-id-with-an-invisible-character",
+      "why": "Whitespace is refused because a shell, a log line and a path each read it differently; a character with no glyph at all is that failure taken further. This id and project-a draw as the same word on every screen an operator has, and they are two directories and two sets of report names.",
+      "request": {
+        "kind": "admit",
+        "now_ms": 2000,
+        "principal": {
+          "uid": "uid-a",
+          "lane": "canary",
+          "deployment": "https://gateway.example",
+          "install_id": "install-1"
+        },
+        "client": "cli:4711",
+        "operation": "solar_processing",
+        "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
+        "idempotency_key": "key-a",
+        "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "requested_project": "project-​a"
+      },
+      "expected": {
+        "outcome": "refused",
+        "refusal": {
+          "code": "context_corrupt",
+          "message": "execution context field requested_project is not a project id: one path segment of 1..=200 characters, with no separator, drive, traversal, trailing dot, whitespace, invisible character, wildcard or device name"
         }
       }
     },
@@ -1010,7 +1037,7 @@
         "outcome": "refused",
         "refusal": {
           "code": "context_corrupt",
-          "message": "execution context field requested_project is not a project id: one path segment of 1..=200 characters, with no separator, drive, traversal, trailing dot, whitespace, wildcard or device name"
+          "message": "execution context field requested_project is not a project id: one path segment of 1..=200 characters, with no separator, drive, traversal, trailing dot, whitespace, invisible character, wildcard or device name"
         }
       }
     },
@@ -1037,7 +1064,7 @@
         "outcome": "refused",
         "refusal": {
           "code": "context_corrupt",
-          "message": "execution context field saved_project is not a project id: one path segment of 1..=200 characters, with no separator, drive, traversal, trailing dot, whitespace, wildcard or device name"
+          "message": "execution context field saved_project is not a project id: one path segment of 1..=200 characters, with no separator, drive, traversal, trailing dot, whitespace, invisible character, wildcard or device name"
         }
       }
     },
@@ -1064,7 +1091,7 @@
         "outcome": "refused",
         "refusal": {
           "code": "context_corrupt",
-          "message": "execution context field sealed_project is not a project id: one path segment of 1..=200 characters, with no separator, drive, traversal, trailing dot, whitespace, wildcard or device name"
+          "message": "execution context field sealed_project is not a project id: one path segment of 1..=200 characters, with no separator, drive, traversal, trailing dot, whitespace, invisible character, wildcard or device name"
         }
       }
     },
@@ -1732,7 +1759,7 @@
         "outcome": "refused",
         "refusal": {
           "code": "context_corrupt",
-          "message": "execution context field project is not a project id: one path segment of 1..=200 characters, with no separator, drive, traversal, trailing dot, whitespace, wildcard or device name"
+          "message": "execution context field project is not a project id: one path segment of 1..=200 characters, with no separator, drive, traversal, trailing dot, whitespace, invisible character, wildcard or device name"
         }
       }
     },
@@ -2560,7 +2587,7 @@
         "outcome": "refused",
         "refusal": {
           "code": "context_corrupt",
-          "message": "execution context field sealed_project is not a project id: one path segment of 1..=200 characters, with no separator, drive, traversal, trailing dot, whitespace, wildcard or device name"
+          "message": "execution context field sealed_project is not a project id: one path segment of 1..=200 characters, with no separator, drive, traversal, trailing dot, whitespace, invisible character, wildcard or device name"
         }
       }
     },

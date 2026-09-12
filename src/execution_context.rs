@@ -505,7 +505,7 @@ fn not_a_segment(field: &str) -> Fault {
     refused(
         CONTEXT_CORRUPT,
         format!(
-            "execution context field {field} is not a project id: one path segment of 1..={MAX_PROJECT_CHARS} characters, with no separator, drive, traversal, trailing dot, whitespace, wildcard or device name"
+            "execution context field {field} is not a project id: one path segment of 1..={MAX_PROJECT_CHARS} characters, with no separator, drive, traversal, trailing dot, whitespace, invisible character, wildcard or device name"
         ),
     )
 }
@@ -558,12 +558,13 @@ const DEVICE_NAMES: [&str; 22] = [
 /// `A\B`), is padded, split or replaced by whitespace (`A B`, ` A`), names a
 /// drive or a stream (`C:`, `A:b`), holds a wildcard (`A*`), ends in a dot
 /// (`A.`, which Windows strips, so `A.` and `A` would be two ids and one
-/// directory) or is a device (`NUL`, `con.json`). Each of those is a path
-/// expression rather than a name, and each is `context_corrupt` wherever it
-/// appears: named by a caller, sealed in the bytes, defaulted from a saved
-/// selection, counted in a census or stored in a record. One rule, one answer,
-/// at every door — a host may then use the id in a path without asking again
-/// what it might be.
+/// directory), carries a character that draws nothing ([`renders_as_nothing`])
+/// or is a device (`NUL`, `con.json`). Each of those is a path expression
+/// rather than a name, and each is `context_corrupt` wherever it appears:
+/// named by a caller, sealed in the bytes, defaulted from a saved selection,
+/// counted in a census or stored in a record. One rule, one answer, at every
+/// door — a host may then use the id in a path without asking again what it
+/// might be.
 pub fn valid_project(project: &str) -> bool {
     !project.is_empty()
         && project.chars().count() <= MAX_PROJECT_CHARS
@@ -574,8 +575,38 @@ pub fn valid_project(project: &str) -> bool {
             NOT_IN_A_NAME.contains(&character)
                 || character.is_whitespace()
                 || character.is_control()
+                || renders_as_nothing(character)
         })
         && !names_a_device(project)
+}
+
+/// A character that occupies no space when it is drawn.
+///
+/// The reason whitespace is refused is that `A B` is one thing to a shell,
+/// another to a log line and a third to a path. A character with no glyph at
+/// all is that failure taken further: `project\u{200B}-a` and `project-a` are
+/// two ids, two directories and two sets of report names, and every screen an
+/// operator can look at — the CLI, the activity list, the refusal itself —
+/// draws them as the same word. Nothing legitimate needs one in a name, so
+/// they are refused with the whitespace they behave like: the soft hyphen, the
+/// zero-width and bidirectional format characters (including the overrides
+/// that make an id read backwards), the interlinear annotations, the byte
+/// order mark, the variation selectors and the tag block.
+///
+/// This is a named list rather than a Unicode category because the kernel
+/// carries no Unicode tables; it is the whole of the invisible surface an id
+/// can be spelled with, not a sample of it.
+const fn renders_as_nothing(character: char) -> bool {
+    matches!(character,
+        '\u{00ad}' | '\u{061c}' | '\u{180e}' | '\u{feff}'
+        | '\u{200b}'..='\u{200f}'
+        | '\u{202a}'..='\u{202e}'
+        | '\u{2060}'..='\u{2064}'
+        | '\u{2066}'..='\u{206f}'
+        | '\u{fe00}'..='\u{fe0f}'
+        | '\u{fff9}'..='\u{fffb}'
+        | '\u{e0000}'..='\u{e007f}'
+        | '\u{e0100}'..='\u{e01ef}')
 }
 
 /// Whether this id is one of the Windows device names, extension and case
@@ -1423,6 +1454,11 @@ mod tests {
             "console",
             "nullify",
             "..a",
+            // Not over-reaching the other way either: a name is refused for
+            // drawing nothing, never for being written in another script.
+            "projet-économie",
+            "проект",
+            "プロジェクト",
             &"p".repeat(MAX_PROJECT_CHARS),
         ] {
             assert!(valid_project(ordinary), "{ordinary}");
@@ -1449,6 +1485,13 @@ mod tests {
             "a*",
             "a?",
             "a.",
+            // Characters that draw nothing: two ids one operator reads as one.
+            "a\u{200b}b",
+            "a\u{ad}b",
+            "a\u{202e}b",
+            "a\u{feff}",
+            "a\u{fe0f}",
+            "a\u{e0041}",
             "nul",
             "CON",
             "com1",

@@ -56,9 +56,10 @@ trimmed, with no control character` — with the closed vocabularies spelled out
 rather than named, because a caller cannot look up a constant it does not have.
 
 **A project id is one path segment** (`valid_project`): 1..=200 characters, no
-`/` and no `\`, no whitespace anywhere, no control character, no trailing dot
-(which also refuses `.` and `..`), none of `: * ? " < > |`, and not a Windows
-device name (`NUL`, `con.json`; the stem before the first dot, case ignored).
+`/` and no `\`, no whitespace anywhere, no control character, no character that
+draws nothing, no trailing dot (which also refuses `.` and `..`), none of
+`: * ? " < > |`, and not a Windows device name (`NUL`, `con.json`; the stem
+before the first dot, case ignored).
 200 is the kernel's own project bound, as `survey_query` and
 `survey_entries_changes` already read it — deliberately not `layer_document`'s
 500-character free-form bound, because this id is durable and hosts partition
@@ -71,10 +72,19 @@ projects in one directory; and a device name is a device at any depth, so a
 project called `NUL` silently discards everything written for it. An id that
 could mean a different place on disk (`..`, `A/../B`, `C:`, `A.`, `NUL`) or
 that a shell, a log line and a path each read differently (`A B`) is refused
-`context_corrupt` at every door it can arrive through — named by the caller,
-defaulted from a saved selection, sealed in the bytes, offered to a legacy row
-on recovery, stored in a record, or counted in a census (there it is the
-host's own bug, a hard fault). The refusal states the grammar, so an operator
+`context_corrupt` at every door it can arrive through — and so is one written
+with a character that has no glyph (`renders_as_nothing`: the soft hyphen, the
+zero-width and bidirectional format characters, the interlinear annotations,
+the byte order mark, the variation selectors, the tag block), because
+`project-a` and the same id with a zero-width space inside it are two ids, two
+directories and two sets of report names that every screen an operator has —
+the CLI, the activity list, the refusal itself — draws as the same word. That
+list is named rather than derived, since the kernel carries no Unicode tables;
+it is the whole invisible surface, not a sample, and a name written in another
+script is refused by none of it. Every door: named by the caller, defaulted
+from a saved selection, sealed in the bytes, offered to a legacy row on
+recovery, stored in a record, or counted in a census (there it is the host's
+own bug, a hard fault). The refusal states the grammar, so an operator
 reads the rule rather than guessing which character was the problem. The
 Server's and `ds-cli-auth`'s own restatements of the bound (500) are theirs to
 narrow; the kernel refuses what they let through.
@@ -301,6 +311,6 @@ its `host.rs`, which is also where that fence is proven; `ds` re-raises refusals
 literally. The
 kernel holds no credential material, so the owner digest stays the store's
 fence; `recover` checks the lane it can see. Proof:
-`tests/fixtures/execution-context-cases.json`, 86 recorded cases, byte-identical
+`tests/fixtures/execution-context-cases.json`, 87 recorded cases, byte-identical
 to ds-web's `src/tests/fixtures/execution-context/cases.json` and replayed there
 through the vendored WASM, plus the unit tests above.
