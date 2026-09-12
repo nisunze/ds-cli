@@ -481,7 +481,8 @@ fn a_claimed_job_runs_exactly_what_was_admitted_and_asks_no_one_first() {
 /// whether the result may leave the machine is asked at publication.
 #[test]
 fn a_finished_result_is_written_down_even_if_the_credential_check_stops_answering() {
-    /// Answers once — the check before the claim — and never again.
+    /// Answers once — the check before the claim — and never again, and says
+    /// how many times it was asked.
     struct Once(std::sync::atomic::AtomicUsize);
     impl Authorizer for Once {
         fn authorize(&self, _: &str) -> Result<(), String> {
@@ -495,12 +496,14 @@ fn a_finished_result_is_written_down_even_if_the_credential_check_stops_answerin
     let path = dir.path().join("store.sqlite");
     let identity = host("owner", "canary");
     let job = runtime::submit(&path, &admission(&identity, "for-a", Some(A)), &request()).unwrap();
-    let context = worker(
-        &path,
-        &identity,
-        Arc::new(Once(std::sync::atomic::AtomicUsize::new(0))),
-    );
+    let auth = Arc::new(Once(std::sync::atomic::AtomicUsize::new(0)));
+    let context = worker(&path, &identity, auth.clone());
     assert!(runtime::run_one(&context, "worker-1").unwrap());
+    assert_eq!(
+        auth.0.load(std::sync::atomic::Ordering::Acquire),
+        1,
+        "a run asks once, before the claim; neither the lease refresh nor the commit asks again"
+    );
     let store = runtime::open(&path).unwrap();
     let done = store
         .job(&identity.caller(Some(A)), &job.id)

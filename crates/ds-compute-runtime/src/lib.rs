@@ -842,8 +842,15 @@ pub fn run_one(context: &WorkerContext, worker: &str) -> Result<bool, String> {
     let done = Arc::new(AtomicBool::new(false));
     let renewed = Arc::new(AtomicBool::new(true));
     let cancelled = CancelToken::new();
+    // Keeping the lease alive is a local fact about a local row, so this
+    // thread asks nothing outside the machine. It used to re-authorize on
+    // every refresh and cancel the run when that failed, which meant one
+    // unreachable moment during a long job cancelled it and lost everything
+    // it had computed. Whether this host may START work is the check before
+    // the claim; whether a result may LEAVE the machine is the gateway's at
+    // publication. Between those two there is nothing to ask.
     let renew_thread = {
-        let (path, owner, lane, worker, id, done, renewed, auth, cancelled, caller_project) = (
+        let (path, owner, lane, worker, id, done, renewed, cancelled, caller_project) = (
             path.to_owned(),
             owner.to_owned(),
             lane.to_owned(),
@@ -851,7 +858,6 @@ pub fn run_one(context: &WorkerContext, worker: &str) -> Result<bool, String> {
             job.id.clone(),
             done.clone(),
             renewed.clone(),
-            context.auth.clone(),
             cancelled.clone(),
             job_context.project.clone(),
         );
@@ -877,8 +883,8 @@ pub fn run_one(context: &WorkerContext, worker: &str) -> Result<bool, String> {
                     continue;
                 }
                 ticks = 0;
-                let result = auth.authorize(&owner).and_then(|_| {
-                    open(&path)?
+                let result = open(&path).and_then(|mut store| {
+                    store
                         .update_job(
                             &identity.caller(Some(&caller_project)),
                             &id,
