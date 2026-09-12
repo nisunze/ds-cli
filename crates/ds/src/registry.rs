@@ -768,6 +768,26 @@ static MAP_ENTRIES: &[Entry] = &[
         render: ds_cli_map::layer::project_visibility::render,
     },
     Entry {
+        command: &ds_cli_map::local::list::COMMAND,
+        handler: ds_cli_map::local::list::run,
+        render: ds_cli_map::local::list::render,
+    },
+    Entry {
+        command: &ds_cli_map::local::register::COMMAND,
+        handler: ds_cli_map::local::register::run,
+        render: ds_cli_map::local::register::render,
+    },
+    Entry {
+        command: &ds_cli_map::local::rename::COMMAND,
+        handler: ds_cli_map::local::rename::run,
+        render: ds_cli_map::local::rename::render,
+    },
+    Entry {
+        command: &ds_cli_map::local::remove::COMMAND,
+        handler: ds_cli_map::local::remove::run,
+        render: ds_cli_map::local::remove::render,
+    },
+    Entry {
         command: &ds_cli_map::ui::open::COMMAND,
         handler: ds_cli_map::ui::open::run,
         render: ds_cli_map::ui::open::render,

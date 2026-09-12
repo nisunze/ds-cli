@@ -145,7 +145,10 @@ registry); the kernel names the runtime layers the family holds, and authored
 repeated ids and out-of-bound orders are typed refusals (`unknown_layer`,
 `duplicate_layer`, `invalid_order`); a partial order is accepted and reports
 `complete: false` with the canonical ids it leaves `unlisted`.
-Local raster references use `map layer add/remote-list/visibility/remove`.
+Local raster references use `map layer add/remote-list/visibility/remove`, and
+prepared local layers — this machine's own GeoJSON catalogue and its copied
+payloads — use `map local list/register/rename/remove`; see Prepared local
+layers below.
 Governed survey/design outputs use `tile add/remove`; raw project GIS uploads use
 `map data inspect/list/upload/remove`. Their storage and authentication differ;
 see Native layers and project GIS files below.
@@ -547,6 +550,49 @@ Browser-only overlays remain in that browser's IndexedDB. Native reads/writes
 serialize with an OS lock and replace the registry atomically. Only raster XYZ
 and raster PMTiles references are supported. The CLI reports stored visibility;
 it does not claim the pixels have been rendered.
+
+### Prepared local layers
+
+`map local list/register/rename/remove` keep the prepared local layers this
+machine has for itself. A prepared local layer is a catalogue row — a name, an
+origin, a geometry type, a style, a column schema, a feature count — with its
+features copied beside it, under the same root as the native layer registry
+(`DS_LAYER_HOME`, or `ds/layers` in the local data directory):
+`<root>/prepared/<lane>/<account>/catalogue.json` and
+`<root>/prepared/<lane>/<account>/payloads/<layer-id>.geojson`. The browser
+keeps the same descriptor in IndexedDB, and both ask one owner
+(`ds-command-kernel::local_layers`) the same five questions, so a rule is never
+true on one host and false on the other. No sign-in, no open map, no backend.
+
+`--lane` and `--account` say which catalogue: two lanes and two DS accounts on
+one machine never share one, and a catalogue whose file records a different
+lane or account is refused (`scope_mismatch`) rather than adopted. The defaults
+are `stable` and `local`, the account-less store this machine keeps for itself.
+
+`register --file <geojson> --name <text> --geometry <point|linestring|polygon>`
+copies a FeatureCollection of up to 64 MiB whose features all carry the declared
+geometry (or its `Multi` form) into the payload directory. `ds` reads the path
+on the host it is running on — a remote Server never reads a client path — and
+the file it reads is never moved, modified or deleted. The kernel mints the id
+(`sketch-<ms>-<n>`), picks the colour from the shared palette, fills every
+default and records the origin; `ds` supplies only the clock, the sequence and
+the palette cursor it counted from the catalogue under the lock.
+
+`remove --layer <id> --yes` deletes exactly the files the kernel's receipt
+releases: `{"kind":"features_payload","id":…}`, the layer's own copy. The
+receipt can never name a source file, a folder handle, a project asset or
+another layer's storage, so a removal provably cannot reach an original — the
+`release` array in the JSON answer is that proof, and `deleted_files` is what
+was acted on. `rename` moves a drawn layer's name inside its own source and
+leaves an imported layer's name inside its file alone.
+
+Refusals keep the kernel's own words — `malformed_descriptor`,
+`duplicate_layer`, `unknown_layer`, `scope_mismatch`, `unsupported_source_kind`
+— plus `invalid_payload` for a file that is not an admissible source and
+`local_layer_refused` for a store that cannot be read or written. A malformed
+catalogue is reported and left exactly as it is; it is never repaired for you.
+These are not project layers: `map layer list` is the governed catalogue, `tile
+add` is a governed tile, and nothing here publishes.
 
 `map data inspect --path <file>` inventories bytes and SHA-256 entirely offline.
 `map data upload --path <file> [--sha256 <inspection-digest>] --yes` streams an

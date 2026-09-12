@@ -176,6 +176,12 @@ impl Profile {
             // inventory and pure report planning join the browser-room IO
             // adapter; neither adds a second policy implementation.
             Self::Printing => 19,
+            // The layer drawer's profile also carries this machine's prepared
+            // local layer catalogue: sixteen leaves plus both bootstrap tools.
+            // Preparing, renaming and removing a local layer is the same
+            // operator workflow as the local tile references beside it — one
+            // host's own layers — so it is not a second profile.
+            Self::Layers => 18,
             _ => 16,
         }
     }
@@ -413,6 +419,10 @@ const LAYER_COMMANDS: &[&str] = &[
     "map.layer.visibility",
     "map.layer.show",
     "map.layer.hide",
+    "map.local.list",
+    "map.local.register",
+    "map.local.rename",
+    "map.local.remove",
 ];
 
 const FORM_FACTORY_COMMANDS: &[&str] = &[

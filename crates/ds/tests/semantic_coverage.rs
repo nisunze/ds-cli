@@ -435,6 +435,14 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("map.layer.reorder", "global_write", "headless_project"),
     ("map.layer.show", "local_file_write", "headless_project"),
     ("map.layer.visibility", "local_file_write", "none"),
+    // Prepared local layers are one machine's own catalogue and payload
+    // files: `none` authority is exact, because no project and no principal
+    // is involved in a file on the operator's own disk, and the effect is the
+    // write itself rather than any map the desktop may later paint from it.
+    ("map.local.list", "read_only", "none"),
+    ("map.local.register", "local_file_write", "none"),
+    ("map.local.rename", "local_file_write", "none"),
+    ("map.local.remove", "local_file_write", "none"),
     ("map.line-difference", "local_ui", "desktop_pairing"),
     ("map.outliers", "local_ui", "desktop_pairing"),
     ("map.points-along", "local_ui", "desktop_pairing"),

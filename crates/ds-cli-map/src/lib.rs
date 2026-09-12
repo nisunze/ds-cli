@@ -12,6 +12,7 @@ pub mod draw;
 pub mod evidence;
 pub mod layer;
 pub mod line_difference;
+pub mod local;
 pub mod outliers;
 pub mod points_along;
 pub mod print_schema;
@@ -66,6 +67,10 @@ pub static DOMAIN: Domain = Domain {
         &layer::visibility::COMMAND,
         &layer::project_visibility::SHOW,
         &layer::project_visibility::HIDE,
+        &local::list::COMMAND,
+        &local::register::COMMAND,
+        &local::rename::COMMAND,
+        &local::remove::COMMAND,
         &ui::open::COMMAND,
         &evidence::capture::COMMAND,
         &points_along::COMMAND,

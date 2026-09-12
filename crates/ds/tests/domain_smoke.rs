@@ -3894,6 +3894,10 @@ fn every_map_command_is_reachable_without_the_desktop_installed() {
         "map.layer.visibility",
         "map.layer.show",
         "map.layer.hide",
+        "map.local.list",
+        "map.local.register",
+        "map.local.rename",
+        "map.local.remove",
         "map.ui.open",
         "map.evidence.capture",
         "map.points-along",
@@ -8243,6 +8247,210 @@ fn native_layers_persist_without_a_desktop_and_gis_inspection_pins_exact_bytes()
             "map", "data", "remove", "--upload", "roads", "--output", "json"
         ]),
         "confirmation_required"
+    );
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn prepared_local_layers_live_a_whole_life_on_disk_and_never_touch_the_original() {
+    // The four `ds map local` commands against a real store: prepare a layer
+    // from a real GeoJSON file, reopen the store, rename, refuse the removal
+    // that was not confirmed, remove, and then look at the file the layer was
+    // prepared from. That last assertion is the one this command family exists
+    // to keep: the kernel's receipt names the layer's own payload and nothing
+    // else, so a removal cannot reach a source.
+    let root = temp_root("prepared-local-layers");
+    std::fs::create_dir_all(&root).unwrap();
+    let source = root.join("roads.geojson");
+    let original = br#"{"type":"FeatureCollection","features":[
+      {"type":"Feature","properties":{"n":1},"geometry":{"type":"LineString","coordinates":[[30.05,-1.95],[30.06,-1.94]]}},
+      {"type":"Feature","properties":{"n":2},"geometry":{"type":"LineString","coordinates":[[30.06,-1.94],[30.07,-1.93]]}}]}"#;
+    std::fs::write(&source, original).unwrap();
+
+    let run = |args: &[&str]| {
+        let output = Command::new(env!("CARGO_BIN_EXE_ds"))
+            .args(args)
+            .args(["--output", "json"])
+            .env("DS_LAYER_HOME", root.join("layers"))
+            .env("NO_COLOR", "1")
+            .output()
+            .unwrap();
+        let value: Value = serde_json::from_slice(&output.stdout).unwrap();
+        value
+    };
+    let ok = |args: &[&str]| {
+        let value = run(args);
+        assert_eq!(value["status"], "ok", "{value}");
+        value["data"].clone()
+    };
+    let refused = |args: &[&str]| {
+        let value = run(args);
+        assert_eq!(value["status"], "error", "{value}");
+        value["error"]["code"]
+            .as_str()
+            .unwrap_or_default()
+            .to_owned()
+    };
+
+    // Reading a store that was never opened creates nothing at all.
+    assert_eq!(ok(&["map", "local", "list"])["layer_count"], 0);
+    assert!(!root.join("layers").exists());
+
+    // Neither does a refused write. The kernel is asked over the catalogue as
+    // it was read — an absent one is an empty registry — so the refusal
+    // arrives before this host has created the lane's directory, its lock or
+    // anything else under DS_LAYER_HOME.
+    assert_eq!(
+        refused(&["map", "local", "remove", "--layer", "sketch-nope", "--yes"]),
+        "unknown_layer"
+    );
+    assert_eq!(
+        refused(&[
+            "map",
+            "local",
+            "rename",
+            "--layer",
+            "sketch-nope",
+            "--name",
+            "Trunk roads"
+        ]),
+        "unknown_layer"
+    );
+    assert!(
+        !root.join("layers").exists(),
+        "a refused write opened a store that was never opened"
+    );
+
+    let prepared = ok(&[
+        "map",
+        "local",
+        "register",
+        "--file",
+        source.to_str().unwrap(),
+        "--name",
+        "Access roads",
+        "--geometry",
+        "linestring",
+    ]);
+    let id = prepared["layer"].as_str().unwrap().to_owned();
+    assert!(id.starts_with("sketch-"), "the kernel mints the id: {id}");
+    assert_eq!(prepared["feature_count"], 2, "counted from the file itself");
+    assert_eq!(prepared["source_kind"], "import");
+    assert_eq!(prepared["color"], "#2563eb", "the palette is the kernel's");
+    assert_eq!(prepared["persisted"], "native_local");
+    let payload = PathBuf::from(prepared["payload"]["path"].as_str().unwrap());
+    assert_eq!(
+        std::fs::read(&payload).unwrap(),
+        original,
+        "a verbatim copy"
+    );
+
+    // A separate process is a restart: the catalogue is the only memory.
+    let listed = ok(&["map", "local", "list"]);
+    assert_eq!(listed["layer_count"], 1);
+    assert_eq!(listed["layers"][0]["layer"], id.as_str());
+    assert_eq!(listed["layers"][0]["origin"]["kind"], "import_file");
+    assert_eq!(listed["layers"][0]["origin"]["label"], "roads.geojson");
+
+    // Another DS account's catalogue, and another lane's, are their own: the
+    // layer is not there to list, rename or remove, the refusal is the
+    // kernel's `unknown_layer`, and this account's payload is not reached.
+    assert_eq!(
+        ok(&["map", "local", "list", "--account", "other"])["layer_count"],
+        0
+    );
+    assert_eq!(
+        ok(&["map", "local", "list", "--lane", "canary"])["layer_count"],
+        0
+    );
+    assert_eq!(
+        refused(&[
+            "map",
+            "local",
+            "remove",
+            "--layer",
+            &id,
+            "--account",
+            "other",
+            "--yes"
+        ]),
+        "unknown_layer"
+    );
+    assert_eq!(
+        refused(&[
+            "map", "local", "rename", "--layer", &id, "--lane", "canary", "--name", "Theirs"
+        ]),
+        "unknown_layer"
+    );
+    assert!(
+        payload.is_file(),
+        "a removal under another account never reaches this account's payload"
+    );
+    assert_eq!(
+        ok(&["map", "local", "list"])["layers"][0]["name"],
+        "Access roads"
+    );
+
+    let renamed = ok(&[
+        "map",
+        "local",
+        "rename",
+        "--layer",
+        &id,
+        "--name",
+        "Trunk roads",
+    ]);
+    assert_eq!(renamed["applied"], "rename");
+    assert_eq!(
+        ok(&["map", "local", "list"])["layers"][0]["name"],
+        "Trunk roads"
+    );
+    // An imported layer keeps the name it had inside its own file.
+    assert_eq!(
+        ok(&["map", "local", "list"])["layers"][0]["source_layer_name"],
+        "Access roads"
+    );
+
+    assert_eq!(
+        refused(&["map", "local", "remove", "--layer", &id]),
+        "confirmation_required"
+    );
+    assert_eq!(
+        refused(&["map", "local", "remove", "--layer", "sketch-nope", "--yes"]),
+        "unknown_layer",
+        "the kernel's own refusal code, not a local rewording"
+    );
+    assert_eq!(
+        refused(&[
+            "map",
+            "local",
+            "register",
+            "--file",
+            source.to_str().unwrap(),
+            "--name",
+            "Wrong",
+            "--geometry",
+            "point"
+        ]),
+        "invalid_payload",
+        "a file whose features are not the declared geometry is refused"
+    );
+
+    let removed = ok(&["map", "local", "remove", "--layer", &id, "--yes"]);
+    assert_eq!(removed["removed"], true);
+    assert_eq!(
+        removed["release"],
+        json!([{"kind": "features_payload", "id": id}]),
+        "the receipt names only the record the layer owns"
+    );
+    assert_eq!(removed["deleted"], 1);
+    assert!(!payload.exists(), "the copied payload is gone");
+    assert_eq!(ok(&["map", "local", "list"])["layer_count"], 0);
+
+    assert_eq!(
+        std::fs::read(&source).unwrap(),
+        original,
+        "the file the layer was prepared from is never moved, modified or deleted"
     );
     std::fs::remove_dir_all(root).unwrap();
 }
