@@ -4,6 +4,16 @@
 //! persistent registered installation and project fence. The native auth
 //! session is the only gateway door: it refreshes, registers and verifies the
 //! signed install lease before every work or artifact request.
+//!
+//! The project is now an argument, not a startup capture: one session per
+//! authorized project, opened by [`sessions::ServerSessions`] when an
+//! operation is first admitted into that project. Nothing here reads a saved
+//! selection.
+
+/// Declared from here rather than from `lib.rs` so the Server's per-project
+/// session map arrives without moving anything the CLI side owns.
+#[path = "sessions.rs"]
+pub mod sessions;
 
 use std::path::Path;
 
@@ -26,10 +36,13 @@ pub struct ServerSyncSession {
 
 impl ServerSyncSession {
     /// Open the Sync Center store in the same SQLite file the native server
-    /// already owns. A different native identity, lane, or connection token
-    /// cannot borrow this session.
-    pub fn open(database: &Path, connection: &Connection) -> Result<Self, String> {
-        let context = ds_cli_auth::headless_sync_context(&connection.lane)
+    /// already owns, for one explicitly named project. A different native
+    /// identity, lane, or connection token cannot borrow this session.
+    ///
+    /// The project is the caller's, verified before this is reached; this
+    /// function never asks what is selected.
+    pub fn open(database: &Path, connection: &Connection, project: &str) -> Result<Self, String> {
+        let context = ds_cli_auth::headless_principal(&connection.lane)
             .map_err(|error| error.message().to_owned())?;
         let principal = ds_cli_auth::refresh_runtime_identity(&connection.lane)
             .map_err(|error| error.message().to_owned())?;
@@ -55,7 +68,7 @@ impl ServerSyncSession {
             ds_cli_auth::Lane::parse(&connection.lane)
                 .map_err(|error| error.message().to_owned())?,
             principal,
-            context.project_id().to_owned(),
+            project.to_owned(),
             credential_binding,
         )?;
         let install_id = gateway.install_id().to_owned();
@@ -68,7 +81,7 @@ impl ServerSyncSession {
                 digest(gateway.credential_binding().as_bytes()),
                 std::process::id()
             ),
-            project: context.project_id().to_owned(),
+            project: project.to_owned(),
             owner,
             gateway,
             authorizer,
@@ -121,7 +134,7 @@ impl ServerSyncSession {
         reads: &dyn Reads,
         f: impl FnOnce(&StoreHost<'_>) -> Result<T, String>,
     ) -> Result<T, String> {
-        require_selected_project(project, &self.project)?;
+        require_session_project(project, &self.project)?;
         let online = || self.authorizer.authorize(&self.owner).is_ok();
         let host = StoreHost::new(
             self.store.clone(),
@@ -165,10 +178,13 @@ fn fence_for(account_uid: &str, deployment: &str, install_id: &str) -> Fence {
     }
 }
 
-fn require_selected_project(project: &str, selected_project: &str) -> Result<(), String> {
-    (project == selected_project)
-        .then_some(())
-        .ok_or_else(|| "the produced project differs from the authenticated native project".into())
+/// A session belongs to exactly one project. Asking it to produce another
+/// one is a host bug — the caller should have asked `ServerSessions` for that
+/// project's own session — and it is refused rather than silently retargeted.
+fn require_session_project(project: &str, session_project: &str) -> Result<(), String> {
+    (project == session_project).then_some(()).ok_or_else(|| {
+        "the produced project differs from the project this session was opened for".into()
+    })
 }
 
 #[cfg(test)]
@@ -211,8 +227,8 @@ mod tests {
     }
 
     #[test]
-    fn a_produced_project_must_match_the_authenticated_project() {
-        assert!(require_selected_project("project-a", "project-a").is_ok());
-        assert!(require_selected_project("project-b", "project-a").is_err());
+    fn a_produced_project_must_match_the_project_its_session_was_opened_for() {
+        assert!(require_session_project("project-a", "project-a").is_ok());
+        assert!(require_session_project("project-b", "project-a").is_err());
     }
 }

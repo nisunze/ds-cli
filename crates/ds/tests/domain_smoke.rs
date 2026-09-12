@@ -55,6 +55,308 @@ fn server_engine_reports_the_actual_linked_owner_without_auth_or_server() {
     );
 }
 
+#[test]
+fn a_server_call_names_its_project_before_it_needs_a_credential_or_a_host() {
+    // A project id outside its bound is the caller's mistake, and it is
+    // answered under the kernel's own name for that situation -- not a generic
+    // server failure, and not after a round trip. Nothing here signs in,
+    // reaches a socket or reads a state directory.
+    let padded = native_ds(&[
+        "server",
+        "status",
+        "--project",
+        " padded",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(padded.envelope["error"]["code"], "context_corrupt");
+    assert_eq!(padded.code, 2, "an unusable flag is invalid input");
+    assert!(
+        padded.envelope["error"]["remedy"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("ds auth project list"),
+        "a refused project must say where an exact one comes from: {}",
+        padded.stdout
+    );
+
+    // And with no project named and no saved selection to default to, the call
+    // refuses here rather than letting a Server pick one. `native_ds` runs
+    // against an empty DS_CONFIG_HOME, so this is the no-selection case.
+    let unscoped = native_refusal(&["server", "activity", "--output", "json"]);
+    assert!(
+        unscoped == "project_required" || NATIVE_AUTH_CODES.contains(&unscoped.as_str()),
+        "an unscoped Server call must refuse by name, not proceed; got `{unscoped}`"
+    );
+}
+
+#[test]
+fn hosting_answers_an_impossible_share_without_signing_in() {
+    // `--per-project` bounds one project's share of the host. It is measured
+    // and parsed locally, so an impossible value is refused on any machine --
+    // including one that has never run `ds auth login`, which is exactly the
+    // machine that can now start a host.
+    for (value, expected) in [("0", "1.."), ("100000", "1.."), ("half", "whole number")] {
+        let run = native_ds(&[
+            "server",
+            "serve",
+            "--per-project",
+            value,
+            "--output",
+            "json",
+        ]);
+        assert_ne!(run.code, 0, "`--per-project {value}` must refuse");
+        let message = run.envelope["error"]["message"]
+            .as_str()
+            .unwrap_or_default()
+            .to_owned();
+        assert!(
+            message.contains(expected),
+            "`--per-project {value}` refused with `{message}`, which does not state its bound"
+        );
+    }
+}
+
+#[test]
+fn the_layer_drawer_has_one_command_id_and_it_is_not_the_servers() {
+    // Retired, and retired means unreachable: `ds server layers …` must not
+    // resolve at all, so a caller is sent to the one id that names the
+    // operation instead of finding a second one that happens to still work.
+    let retired = ds(&["server", "layers", "list", "--output", "json"]);
+    assert_ne!(retired.code, 0, "`ds server layers list` still resolves");
+    assert_eq!(retired.envelope["status"], "error");
+    assert!(
+        !ds(&["server", "--help"]).stdout.contains("layers"),
+        "`ds server --help` still offers the retired layer commands"
+    );
+    // The surviving id is the one that takes a host, not a second name for it.
+    assert_eq!(ds(&["map", "layer", "list", "--help"]).code, 0);
+}
+
+/// The other half of the same ruling: the surviving id takes a HOST, and the
+/// default host is the one it always ran on.
+///
+/// "Nothing changed for a caller who does not pass `--target`" is the claim
+/// that makes this argument safe to add to four shipping commands, so it is
+/// asserted rather than assumed: the declared default is the desktop, and an
+/// invocation without the flag still ends exactly where it used to, at the
+/// native authentication boundary.
+#[test]
+fn the_default_target_is_the_desktop_as_before() {
+    for id in [
+        "map.layer.list",
+        "map.layer.show",
+        "map.layer.hide",
+        "map.layer.reorder",
+    ] {
+        let command = ok(&["capabilities", id, "--output", "json"])["command"].clone();
+        let inputs = command["inputs"].as_array().expect("inputs").clone();
+        let named = |name: &str| {
+            inputs
+                .iter()
+                .find(|input| input["name"] == name)
+                .unwrap_or_else(|| panic!("`{id}` declares --{name}"))
+                .clone()
+        };
+        let target = named("target");
+        assert_eq!(target["default"], "desktop", "`{id}`'s default host moved");
+        assert_eq!(target["required"], false);
+        // Deliberately NOT a closed choice set: `desktop:<instance>` has to
+        // reach the handler to be refused by its own name rather than by the
+        // parser's generic `invalid_choice`.
+        assert!(
+            target["choices"].is_null(),
+            "`{id}`'s --target must accept desktop:<instance> to refuse it by name"
+        );
+        // The project is for THIS call. Optional, because the saved selection
+        // is its default -- never because a host may choose one.
+        assert_eq!(named("project")["required"], false);
+        assert_eq!(named("state-dir")["required"], false);
+    }
+
+    // Untargeted, the four commands land where they always did.
+    for args in [
+        vec!["map", "layer", "list"],
+        vec!["map", "layer", "show", "--layer", "survey/poles"],
+        vec!["map", "layer", "hide", "--layer", "survey/poles"],
+        vec![
+            "map",
+            "layer",
+            "reorder",
+            "--order",
+            "survey/poles=10",
+            "--yes",
+        ],
+    ] {
+        let mut args = args;
+        args.extend_from_slice(&["--output", "json"]);
+        let code = native_refusal(&args);
+        assert!(
+            NATIVE_AUTH_CODES.contains(&code.as_str()),
+            "`ds {}` now ends in `{code}`, not at the native boundary it always ended at",
+            args.join(" ")
+        );
+    }
+}
+
+/// The layer drawer's four operations run against the Server under THEIR OWN
+/// ids, with the same arguments, and the routing decision is the only
+/// difference. Nothing here reaches a socket: what is proven is that
+/// `--target server` executes the Server transport rather than the desktop,
+/// that the project is resolved and sent by the client, and that every code
+/// this path can produce is one the command documents.
+#[test]
+fn a_map_layer_op_runs_the_same_against_the_server() {
+    // The client resolves the project before it sends anything: without one,
+    // and with no saved selection to default to, the call refuses here rather
+    // than letting a host pick.
+    for args in [
+        vec!["map", "layer", "list", "--target", "server"],
+        vec![
+            "map",
+            "layer",
+            "hide",
+            "--layer",
+            "survey/poles",
+            "--target",
+            "server",
+        ],
+        vec![
+            "map",
+            "layer",
+            "show",
+            "--layer",
+            "survey/poles",
+            "--target",
+            "server",
+        ],
+        vec![
+            "map",
+            "layer",
+            "reorder",
+            "--order",
+            "survey/poles=10",
+            "--yes",
+            "--target",
+            "server",
+        ],
+    ] {
+        let mut args = args;
+        args.extend_from_slice(&["--output", "json"]);
+        assert_eq!(
+            native_refusal(&args),
+            "project_required",
+            "`ds {}` did not resolve its own project",
+            args.join(" ")
+        );
+    }
+
+    // Named a project, the same call reaches for the Server's protected
+    // connection -- and says so when there is none, instead of silently
+    // running on the desktop.
+    let unreachable = native_ds(&[
+        "map",
+        "layer",
+        "hide",
+        "--layer",
+        "survey/poles",
+        "--target",
+        "server",
+        "--project",
+        "project-a",
+        "--state-dir",
+        "/nonexistent/ds-server-state",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(unreachable.envelope["error"]["code"], "server_refused");
+
+    // A project id outside the kernel's bound is the caller's mistake, under
+    // the kernel's own word for it, before a socket is opened.
+    let padded = native_ds(&[
+        "map",
+        "layer",
+        "list",
+        "--target",
+        "server",
+        "--project",
+        " padded",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(padded.envelope["error"]["code"], "context_corrupt");
+
+    // One host per invocation, named. An instance is a shape this build knows
+    // and refuses by name; anything else is not a host at all.
+    let instance = native_ds(&[
+        "map",
+        "layer",
+        "list",
+        "--target",
+        "desktop:kigali",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(
+        instance.envelope["error"]["code"],
+        "target_instance_unsupported"
+    );
+    assert!(
+        instance.envelope["error"]["message"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("kigali"),
+        "the refusal names the instance that was asked for: {}",
+        instance.stdout
+    );
+    assert_eq!(
+        native_refusal(&[
+            "map", "layer", "list", "--target", "cloud", "--output", "json"
+        ]),
+        "unknown_target"
+    );
+
+    // And every one of those codes is in the command's own documented
+    // refusals, so a caller plans for this path from --help alone.
+    for (id, expected) in [
+        ("map.layer.list", "context_corrupt"),
+        ("map.layer.list", "unknown_target"),
+        ("map.layer.list", "target_instance_unsupported"),
+        ("map.layer.hide", "project_required"),
+        ("map.layer.hide", "server_refused"),
+        ("map.layer.reorder", "server_owner_changed"),
+        ("map.layer.reorder", "multi_principal_unsupported"),
+    ] {
+        let command = ok(&["capabilities", id, "--output", "json"])["command"].clone();
+        let documented: Vec<&str> = command["refusals"]
+            .as_array()
+            .expect("refusals")
+            .iter()
+            .map(|refusal| refusal["code"].as_str().expect("code"))
+            .collect();
+        assert!(
+            documented.contains(&expected),
+            "`{id}` can answer `{expected}` and does not document it: {documented:?}"
+        );
+        // And the converse, because a documented refusal a command cannot
+        // reach is prose: no layer operation needs a rendered map, so none of
+        // them claims the refusal for one. That claim belongs to the host that
+        // answers it.
+        assert!(
+            !documented.contains(&"needs_paired_map"),
+            "`{id}` documents needs_paired_map; the layer drawer needs no map"
+        );
+    }
+    assert!(
+        ok(&["capabilities", "server.serve", "--output", "json"])["command"]["refusals"]
+            .as_array()
+            .expect("refusals")
+            .iter()
+            .any(|refusal| refusal["code"] == "needs_paired_map"),
+        "the host that answers needs_paired_map stopped declaring it"
+    );
+}
+
 struct Run {
     envelope: Value,
     stdout: String,

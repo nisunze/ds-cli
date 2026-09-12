@@ -155,6 +155,34 @@ see Native layers and project GIS files below.
 
 Session-only GeoJSON still uses `map draw/remove` and needs an open map.
 
+### One operation, either host: `--target`
+
+`map layer list/show/hide/reorder` are ONE command id each, whichever host
+executes them. `--target` is the only difference, and it is a routing decision,
+not a second argument shape:
+
+| `--target` | what runs it |
+|---|---|
+| `desktop` (default) | this machine's native client — exactly what these commands have always done |
+| `desktop:<instance>` | one named Desktop window; accepted and refused by name (`target_instance_unsupported`) until the instance registry lands |
+| `server` | the running `ds server serve` on this machine, over its protected loopback connection (`--state-dir` selects a non-default state directory) |
+
+The answer is the same shape from either host, because both hosts call the same
+owner (`ds-layer-ops`) over the same shared kernel; the Server's typed refusals
+are re-raised literally, so `unknown_layer`, `invalid_order`,
+`project_context_changed` and the rest carry the same code and the same remedy
+whichever host produced them. There is no `ds server layers …`: it was retired
+the day this argument landed.
+
+`--project <exact-id>` names the project for THAT CALL only. It never rewrites
+the saved selection and never switches a Desktop window that is open on another
+project. Without it, the subject is this machine's saved selection — the
+existing behaviour — and against `--target server` that selection is read here
+and sent explicitly, because the Server reads no selection of its own. An
+operation that genuinely needs a rendered map (a screenshot, a camera, canvas
+evidence) keeps its id and answers `needs_paired_map` on the Server, naming the
+host that can run it.
+
 ## Still evidence and semantic UI staging
 
 The CLI can stage and capture a deterministic still frame of the installed
@@ -537,9 +565,10 @@ not installed, which is every CI machine.
 
 ## Native layers and project GIS files
 
-`map layer list/reorder` use native sign-in and the selected project. Canonical
-IDs come from list; runtime MapLibre IDs are refused by reorder. No desktop is
-required. Governed tile references use `ds tile list/add/remove` on the same lane.
+`map layer list/reorder` use native sign-in and, by default, the selected
+project; `--project <exact-id>` reads one named project instead, for that call
+only. Canonical IDs come from list; runtime MapLibre IDs are refused by reorder.
+No desktop is required. Governed tile references use `ds tile list/add/remove` on the same lane.
 
 `map layer add/remote-list/visibility/remove` work offline and signed out. They
 share a native overlay registry with the installed desktop, which imports its

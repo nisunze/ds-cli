@@ -1,5 +1,5 @@
 //! The layer drawer's application operations for native hosts — list, show,
-//! hide and reorder — as ONE owner that `ds map layer …`, `ds server layers …`
+//! hide and reorder — as ONE owner that `ds map layer …` (natively or against a Server)
 //! and the Server's HTTP host all call. None of them embeds a rule of its own.
 //!
 //! The decisions are the kernel's (`ds_command_kernel::layer_state`); this
@@ -130,14 +130,28 @@ impl Preferences {
 
 // ── the native adapter ──────────────────────────────────────────────────
 
-/// The document as `ds` reads it headlessly: the native signed-in account's
-/// selected project on one lane. The identity is observed before and after
-/// the read so an account or project switch during a request is a typed
-/// refusal, never a document applied under the wrong scope.
+/// The document as `ds` reads it headlessly, under one lane and one account.
+/// The identity is observed before and after the read so an account switch
+/// during a request is a typed refusal, never a document applied under the
+/// wrong scope.
+///
+/// The PROJECT comes from one of two places, decided once when the source is
+/// built and never re-decided:
+///
+/// * [`Native::new`] / [`Native::guarded`] — this machine's saved selection.
+///   That is the desktop-paired CLI's own subject: `ds map layer list` with no
+///   `--project` asks about the project the operator selected.
+/// * [`Native::for_project`] / [`Native::guarded_for_project`] — the project
+///   the CALLER named. That is every host serving more than one project at a
+///   time: the Server's `/v1/layers*`, and `ds map layer … --project <id>`.
+///   Nothing here reads the selection, so a second authorized project is
+///   served on its own terms and no call rewrites what the operator selected.
 type NativeGuard = Box<dyn Fn(&ds_cli_auth::LayerScopeFence) -> Result<(), Failure> + Send>;
 
 pub struct Native {
     lane: String,
+    /// `None` = the saved selection is the subject; `Some(id)` = the caller's.
+    project: Option<String>,
     fence: Option<ds_cli_auth::LayerScopeFence>,
     guard: Option<NativeGuard>,
 }
@@ -145,6 +159,7 @@ impl Native {
     pub fn new(lane: &str) -> Self {
         Self {
             lane: lane.to_owned(),
+            project: None,
             fence: None,
             guard: None,
         }
@@ -152,6 +167,25 @@ impl Native {
     pub fn guarded(lane: &str, guard: NativeGuard) -> Self {
         Self {
             lane: lane.to_owned(),
+            project: None,
+            fence: None,
+            guard: Some(guard),
+        }
+    }
+    /// The named project's document source. The saved selection is not read.
+    pub fn for_project(lane: &str, project: &str) -> Self {
+        Self {
+            lane: lane.to_owned(),
+            project: Some(project.to_owned()),
+            fence: None,
+            guard: None,
+        }
+    }
+    /// The named project's document source under a host's own owner check.
+    pub fn guarded_for_project(lane: &str, project: &str, guard: NativeGuard) -> Self {
+        Self {
+            lane: lane.to_owned(),
+            project: Some(project.to_owned()),
             fence: None,
             guard: Some(guard),
         }
@@ -162,12 +196,34 @@ impl Native {
         }
         Ok(())
     }
+    fn capture(&self) -> Result<ds_cli_auth::LayerScopeFence, Failure> {
+        match &self.project {
+            Some(project) => {
+                ds_cli_auth::capture_layer_scope_fence_for_project(&self.lane, project)
+            }
+            None => ds_cli_auth::capture_layer_scope_fence(&self.lane),
+        }
+    }
+    fn read_fence(&self) -> Result<&ds_cli_auth::LayerScopeFence, Failure> {
+        self.fence.as_ref().ok_or_else(|| {
+            Failure::conflict(
+                "layer_state_refused",
+                "read the layer document before applying a scoped operation",
+            )
+            .remedy("repeat the layer request")
+        })
+    }
 }
 impl LayerDocuments for Native {
     fn read(&mut self, refresh: bool) -> Result<DocumentRead, Failure> {
-        let fence = ds_cli_auth::capture_layer_scope_fence(&self.lane)?;
+        let fence = self.capture()?;
         self.authorize(&fence)?;
-        let headless = ds_cli_auth::layer_config_fenced(&self.lane, refresh, &fence)?;
+        let headless = match &self.project {
+            Some(project) => {
+                ds_cli_auth::layer_config_for_project(&self.lane, project, refresh, &fence)?
+            }
+            None => ds_cli_auth::layer_config_fenced(&self.lane, refresh, &fence)?,
+        };
         self.authorize(&fence)?;
         self.fence = Some(fence);
         Ok(DocumentRead {
@@ -180,26 +236,32 @@ impl LayerDocuments for Native {
         })
     }
     fn check_scope(&mut self, expected: &Scope) -> Result<(), Failure> {
-        let fence = self.fence.as_ref().ok_or_else(|| {
-            Failure::conflict(
-                "layer_state_refused",
-                "read the layer document before applying a scoped operation",
-            )
-            .remedy("repeat the layer request")
-        })?;
+        let fence = self.read_fence()?;
         self.authorize(fence)?;
-        ds_cli_auth::verify_layer_scope_fence(&self.lane, fence, &expected.uid, &expected.project)
+        match &self.project {
+            Some(_) => ds_cli_auth::verify_layer_scope_fence_for_project(
+                &self.lane,
+                fence,
+                &expected.uid,
+                &expected.project,
+            ),
+            None => ds_cli_auth::verify_layer_scope_fence(
+                &self.lane,
+                fence,
+                &expected.uid,
+                &expected.project,
+            ),
+        }
     }
     fn reorder(&mut self, orders: &[Order]) -> Result<OrderReceipt, Failure> {
-        let fence = self.fence.as_ref().ok_or_else(|| {
-            Failure::conflict(
-                "layer_state_refused",
-                "read the layer document before applying a scoped operation",
-            )
-            .remedy("repeat the layer request")
-        })?;
+        let fence = self.read_fence()?;
         self.authorize(fence)?;
-        let receipt = ds_cli_auth::layer_reorder_fenced(&self.lane, orders, fence)?;
+        let receipt = match &self.project {
+            Some(project) => {
+                ds_cli_auth::layer_reorder_for_project(&self.lane, project, orders, fence)?
+            }
+            None => ds_cli_auth::layer_reorder_fenced(&self.lane, orders, fence)?,
+        };
         Ok(OrderReceipt {
             project: receipt.project_id().to_owned(),
             reordered: orders.len(),

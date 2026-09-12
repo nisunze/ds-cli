@@ -431,6 +431,31 @@ fn protected(
 pub fn probe_identity(
     lane: Lane,
 ) -> Result<Option<(crate::ProviderIdentity, Option<String>)>, Failure> {
+    let Some((profile, credential, identity)) = probe_credential_identity(lane)? else {
+        return Ok(None);
+    };
+    let selected = ProjectContextLease::acquire(&profile)?
+        .load_snapshot(&profile, credential.uid(), credential.email())?
+        .map(|project| project.project_id().to_owned());
+    Ok(Some((identity, selected)))
+}
+
+/// The same observation with this machine's saved selection left unread.
+///
+/// An operation whose project the CALLER named has no business reading the
+/// selection — and no business failing because two providers disagree about a
+/// selection neither of them will be asked for.
+pub fn probe_identity_without_selection(
+    lane: Lane,
+) -> Result<Option<crate::ProviderIdentity>, Failure> {
+    Ok(probe_credential_identity(lane)?.map(|(_, _, identity)| identity))
+}
+
+/// The device credential and the identity it names, with nothing about a
+/// project read at all.
+fn probe_credential_identity(
+    lane: Lane,
+) -> Result<Option<(ClientProfile, DeviceCredential, crate::ProviderIdentity)>, Failure> {
     let (profile, _, _) = profile::load_device(lane)?;
     let key = state_key(&profile);
     let mut store = NativeDeviceStore::open()?;
@@ -462,10 +487,7 @@ pub fn probe_identity(
         profile.credential_audience_sha256(),
         credential.uid(),
     )?;
-    let selected = ProjectContextLease::acquire(&profile)?
-        .load_snapshot(&profile, credential.uid(), credential.email())?
-        .map(|project| project.project_id().to_owned());
-    Ok(Some((identity, selected)))
+    Ok(Some((profile, credential, identity)))
 }
 
 macro_rules! fixed_device_call {

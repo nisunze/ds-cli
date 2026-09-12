@@ -977,6 +977,7 @@ dependencies = [
  "ds-cli-auth",
  "ds-cli-contract",
  "ds-cli-desktop",
+ "ds-cli-server",
  "ds-command-kernel",
  "ds-layer-ops",
  "ds-layer-store",
