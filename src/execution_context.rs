@@ -314,6 +314,58 @@ pub struct Limits {
     pub global_queued: usize,
 }
 
+impl Limits {
+    /// Whether these four numbers are a configuration at all.
+    ///
+    /// Every one is 1..=[`MAX_LIMIT`], and each `per_project_*` must be
+    /// smaller than the `global_*` it shares — see [`divides`] for the one
+    /// exception, a pool of exactly one. A configuration that fails this is
+    /// the host's own bug, so it is [`Fault::Hard`] and never a refusal a
+    /// caller receives.
+    ///
+    /// [`capacity`] asks this before every decision, so no answer is ever
+    /// given under numbers that make no sense. It is public because that is
+    /// the wrong moment to find out: a host discovering it once per claim
+    /// logs the same fault several times a second and admits nothing, where a
+    /// host that asks before it starts its workers refuses to start and says
+    /// which two numbers to change.
+    pub fn validate(&self) -> Result<(), Fault> {
+        for (value, name) in [
+            (self.global_running, "global_running"),
+            (self.per_project_running, "per_project_running"),
+            (self.per_project_queued, "per_project_queued"),
+            (self.global_queued, "global_queued"),
+        ] {
+            if value == 0 || value > MAX_LIMIT {
+                return Err(hard(format!(
+                    "capacity limit {name} must be 1..={MAX_LIMIT}"
+                )));
+            }
+        }
+        for (share, share_name, pool, pool_name) in [
+            (
+                self.per_project_running,
+                "per_project_running",
+                self.global_running,
+                "global_running",
+            ),
+            (
+                self.per_project_queued,
+                "per_project_queued",
+                self.global_queued,
+                "global_queued",
+            ),
+        ] {
+            if !divides(share, pool) {
+                return Err(hard(format!(
+                    "capacity limit {share_name} is {share} and {pool_name} is {pool}: a share must be smaller than the pool it divides, or one project holds the whole host while another waits; only a single-slot host ({pool_name} 1) has no share, and there {share_name} must be 1"
+                )));
+            }
+        }
+        Ok(())
+    }
+}
+
 /// Which moment the host is asking about. Submission bounds the queue; a claim
 /// bounds the running pool and enforces the fairness share.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -766,10 +818,10 @@ pub fn retain(context: &ExecutionContext, _event: RetainEvent) -> Result<Executi
 /// Every input is the host's own: configured limits, and the store's current
 /// queue and running set. Nothing here is caller-supplied, so a malformed
 /// input is a host bug (`Fault::Hard`), never a client refusal — including
-/// limits that do not make a share: each is 1..=4096 and each `per_project_*`
-/// must be smaller than its `global_*`, so a host cannot configure away the
-/// fairness this op exists to apply. A single-slot pool is the exception it
-/// has to be.
+/// limits that do not make a share ([`Limits::validate`], asked first here so
+/// no answer is given under numbers that make no sense, and asked by a host
+/// before it starts its workers so it never has to find out one claim at a
+/// time).
 ///
 /// `Intent::Admit` bounds the queue a submission enters. `Intent::Claim`
 /// bounds the running pool and applies the fairness share: a project may hold
@@ -789,36 +841,7 @@ pub fn capacity(
     queued: &[Slot],
     project: &str,
 ) -> Result<(), Fault> {
-    for (value, name) in [
-        (limits.global_running, "global_running"),
-        (limits.per_project_running, "per_project_running"),
-        (limits.per_project_queued, "per_project_queued"),
-        (limits.global_queued, "global_queued"),
-    ] {
-        if value == 0 || value > MAX_LIMIT {
-            return Err(hard(format!("capacity limit {name} must be 1..=4096")));
-        }
-    }
-    for (share, share_name, pool, pool_name) in [
-        (
-            limits.per_project_running,
-            "per_project_running",
-            limits.global_running,
-            "global_running",
-        ),
-        (
-            limits.per_project_queued,
-            "per_project_queued",
-            limits.global_queued,
-            "global_queued",
-        ),
-    ] {
-        if !divides(share, pool) {
-            return Err(hard(format!(
-                "capacity limit {share_name} is {share} and {pool_name} is {pool}: a share must be smaller than the pool it divides, or one project holds the whole host while another waits; only a single-slot host ({pool_name} 1) has no share, and there {share_name} must be 1"
-            )));
-        }
-    }
+    limits.validate()?;
     if running.len() > MAX_SLOTS || queued.len() > MAX_SLOTS {
         return Err(hard("capacity census exceeds its bound"));
     }
@@ -1941,8 +1964,13 @@ mod tests {
                     "{message}"
                 );
                 assert!(fault.code().is_none(), "{message}");
+                // The same gate, asked without a census — what a host asks
+                // before it starts its workers, so a configuration nothing
+                // can honour is answered once rather than once per claim.
+                assert_eq!(broken.validate().unwrap_err(), fault);
             }
         }
+        assert!(limits().validate().is_ok());
     }
 
     #[test]
@@ -2012,6 +2040,7 @@ mod tests {
                 capacity(broken, Intent::Admit, &[], &[], "project-a").unwrap_err(),
                 Fault::Hard(_)
             ));
+            assert!(matches!(broken.validate().unwrap_err(), Fault::Hard(_)));
         }
         assert!(matches!(
             capacity(limits(), Intent::Admit, &[], &slots(&[" p"]), "project-a").unwrap_err(),

@@ -746,6 +746,16 @@ impl Workers {
         if count == 0 || count > 256 {
             return Err("worker count must be 1..256".into());
         }
+        // The kernel decides whether these four numbers are a configuration at
+        // all, and this is the moment to ask it. Every claim asks again, and a
+        // host that only ever asks there starts a pool of workers that log the
+        // same host fault several times a second and admit nothing — the
+        // configuration is wrong before the first request, so it is answered
+        // before the first worker.
+        context
+            .limits
+            .validate()
+            .map_err(|fault| fault.to_string())?;
         // `global_running` is the same pool these threads take from, decided
         // by the kernel; a pool of threads larger than it is threads that can
         // never claim. They would not idle quietly either: each one reopens
