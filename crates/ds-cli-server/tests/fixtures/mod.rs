@@ -1011,17 +1011,17 @@ impl LiveServer {
         let machine = MACHINE.lock().unwrap_or_else(|held| held.into_inner());
         let state = tempfile::tempdir().expect("protected server state");
         owner_only(state.path());
-        // A COLD start converts a brand-new store.sqlite to WAL, which needs
-        // a moment with no second connection on it — and the Server opens
-        // that same file from three places within milliseconds (the Solar
-        // activity host, its pump, and the worker pool's recovery pass). On a
-        // loaded machine the conversion loses that race and the host exits
-        // `the sync store could not be read or written: database is locked`
-        // before it ever binds. That is a real cold-start defect of the
-        // shipped host, reported with this pass rather than papered over; it
-        // is not what these proofs are about, so the store is created here
-        // first — by the Server's own `open` — and every start below is warm.
-        runtime::open(&state.path().join("store.sqlite")).expect("the durable store");
+        // The state directory is EMPTY, deliberately: every start here is a
+        // cold start, store and all. It used to be warmed by this harness,
+        // because the host opened a brand-new store.sqlite from three places
+        // at once and lost the WAL conversion race often enough to exit
+        // `database is locked` before answering. `host::serve` now opens the
+        // store once itself before anything else touches it, so warming it
+        // here would only hide whether that holds.
+        assert!(
+            !state.path().join("store.sqlite").exists(),
+            "every live Server here starts cold, durable store included"
+        );
         let address = free_loopback_port();
         let mut child = ds_command(
             home.config_home(),

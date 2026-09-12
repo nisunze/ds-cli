@@ -843,6 +843,22 @@ pub async fn serve(mut app: App, workers: usize) -> Result<(), String> {
                 format!("cannot bind {}: {e}", app.connection.address)
             }
         })?;
+    // The durable store, created ONCE and by one thread, before anything that
+    // will open it concurrently.
+    //
+    // A cold start is the only moment this matters, and every Server has that
+    // moment exactly once: a brand-new `store.sqlite` must be converted to
+    // WAL, and SQLite refuses that conversion outright — no busy handler, no
+    // retry inside `busy_timeout` — while another connection holds the file.
+    // The Solar pump, the worker pool's recovery pass and the first request
+    // all open it within milliseconds of each other, so on a fresh state
+    // directory two of them raced and the loser killed the host with
+    // `the sync store could not be read or written: database is locked`
+    // before it ever answered. Opening it here, on this thread, leaves every
+    // later open finding a database that is already WAL, where the pragma is
+    // a no-op. An unusable store still stops the host, which is the honest
+    // answer for a process whose whole job is a durable queue.
+    runtime::open(&app.database)?;
     let activity =
         crate::solar_sync::SolarActivity::open(app.database.clone(), app.sessions.clone())?;
     app.activity = Some(activity.clone());
