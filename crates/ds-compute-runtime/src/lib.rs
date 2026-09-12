@@ -737,6 +737,32 @@ pub fn recover_contexts(path: &Path, identity: &HostIdentity) -> Result<Recovery
         .map_err(|error| error.to_string())
 }
 
+/// How many ids one report names before it stops. A queue a released Server
+/// left behind can hold thousands of rows, and a startup line that prints
+/// every one of them is not a report anyone reads.
+const NAMED_IN_A_LINE: usize = 20;
+
+/// The ids themselves, because nothing else will say them.
+///
+/// The remedy for such a row begins with its id, and a stranded row is
+/// invisible to every project-narrowed read — which is every read `ds server
+/// status` performs, since it always sends a project. So this line is where an
+/// operator learns which rows they are, and it names them rather than counting
+/// them. It says plainly when it has stopped naming: an id it did not print is
+/// one nothing else prints either.
+fn named(ids: &[String]) -> String {
+    let mut line = ids
+        .iter()
+        .take(NAMED_IN_A_LINE)
+        .map(String::as_str)
+        .collect::<Vec<_>>()
+        .join(", ");
+    if let Some(rest) = ids.len().checked_sub(NAMED_IN_A_LINE).filter(|n| *n > 0) {
+        line.push_str(&format!(" and {rest} more this line does not name"));
+    }
+    line
+}
+
 pub struct Workers {
     stop: Arc<AtomicBool>,
     threads: Vec<thread::JoinHandle<()>>,
@@ -776,10 +802,15 @@ impl Workers {
         // can claim, and it never guesses.
         let recovery = recover_contexts(&context.path, &context.identity)?;
         if !recovery.unrecoverable.is_empty() {
+            // The remedy is per row and starts with an id, so the line that
+            // states it names the rows. Telling an operator to run `ds server
+            // input --job <id>` without saying which ids leaves them to find
+            // the stranded rows among everything else the queue holds.
             eprintln!(
-                "compute queue: {} durable job(s) predate execution contexts and name no project; {} (`ds server input --job <id>`, then submit it with --project)",
+                "compute queue: {} durable job(s) predate execution contexts and name no project; for each one, {} (`ds server input --job <id> --out request.json`, then submit it with --project): {}",
                 recovery.unrecoverable.len(),
-                execution_context::UNRECOVERABLE_REMEDY
+                execution_context::UNRECOVERABLE_REMEDY,
+                named(&recovery.unrecoverable)
             );
         }
         if let Some(observer) = context.observer.as_ref() {
@@ -1103,6 +1134,22 @@ mod tests {
         assert_eq!(server_state_directory("stable", Some(root)).unwrap(), root);
         assert!(server_state_directory("stable", Some(Path::new("relative"))).is_err());
         assert!(server_state_directory("preview", Some(root)).is_err());
+    }
+
+    /// A report about rows nothing else can list names them, and says so when
+    /// it stops.
+    #[test]
+    fn the_stranded_rows_report_names_the_ids_its_remedy_needs() {
+        let ids: Vec<String> = (0..NAMED_IN_A_LINE + 3).map(|n| format!("job-{n}")).collect();
+        let one = named(&ids[..1]);
+        assert_eq!(one, "job-0");
+        let all = named(&ids);
+        for id in &ids[..NAMED_IN_A_LINE] {
+            assert!(all.contains(id.as_str()), "{all}");
+        }
+        assert!(all.ends_with("and 3 more this line does not name"), "{all}");
+        assert!(!all.contains("job-22"), "{all}");
+        assert!(named(&[]).is_empty());
     }
 
     /// One collision, one answer. The durable row refuses a racing key without
