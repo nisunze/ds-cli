@@ -67,6 +67,11 @@ pub const MAX_DESCRIPTOR_BYTES: u64 = kernel::MAX_DESCRIPTOR_BYTES;
 /// reports the overflow rather than silently choosing which ones to read.
 pub const MAX_INSTANCES: usize = kernel::MAX_CANDIDATES;
 
+/// The window that owns the session, and whose context generation an
+/// operation is fenced on. The shell decides which window that is; this is the
+/// label it publishes, pinned by `ds/tests/bridge_parity.rs`.
+pub const OWNER_WINDOW_LABEL: &str = "main";
+
 /// Automatic discovery probes every live endpoint it found. A dead descriptor
 /// must not make a live session ambiguous, and each dead probe must stay cheap.
 const LIVE_PROBE_TIMEOUT: Duration = Duration::from_millis(150);
@@ -381,7 +386,11 @@ where
 
 /// Read one live instance's handshake as the kernel's candidate, or say why it
 /// is not one.
-fn handshake_of(descriptor: &Descriptor, session: &Value) -> Handshake {
+///
+/// Public because it is half of a contract: the field names below are the ones
+/// the shell publishes, and `ds/tests/bridge_parity.rs` pins them against the
+/// shell's own source by handing this function a session spelled that way.
+pub fn handshake_of(descriptor: &Descriptor, session: &Value) -> Handshake {
     let text = |key: &str| {
         session
             .get(key)

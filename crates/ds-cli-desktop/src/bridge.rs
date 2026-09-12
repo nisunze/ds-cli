@@ -176,7 +176,10 @@ pub fn invoke(
         })?;
     let parsed: Value = serde_json::from_str(&body).unwrap_or(Value::Null);
 
-    if status == 422
+    // 422 is an operation's own refusal; 409 is the context fence's — the
+    // window's project or account moved while this was in flight. Both carry
+    // the same structured shape, and both keep the code the owner decided.
+    if matches!(status, 409 | 422)
         && let Some(failure) = structured_desktop_refusal(operation, &parsed, status)
     {
         return Err(failure);
@@ -292,6 +295,20 @@ pub struct IdentityFence {
     pub credential_audience_sha256: String,
     pub project: Option<String>,
     pub session_revision: u64,
+    /// The owner window's context generation when this session was read.
+    ///
+    /// The session revision fences *the CLI's snapshot of the identity*; this
+    /// fences *the view*. They are different numbers on purpose: a map
+    /// animation moves neither, and a project switch moves this one, so a slow
+    /// operation dispatched against project A cannot be applied to the window
+    /// that now shows B.
+    ///
+    /// Absent when the instance publishes no window roster — an older desktop —
+    /// and then the operation is fenced on the revision alone, exactly as
+    /// before. Absent is also how it is sent: the shell's fence denies unknown
+    /// fields and skips this one when it is `None`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub context_generation: Option<u64>,
 }
 
 impl IdentityFence {
@@ -308,6 +325,7 @@ impl IdentityFence {
                 .get("session_revision")
                 .cloned()
                 .unwrap_or(Value::Null),
+            "context_generation": owner_generation(value),
         }))
         .map_err(|_| {
             Failure::conflict(
@@ -342,6 +360,22 @@ impl IdentityFence {
         }
         Ok(fence)
     }
+}
+
+/// The generation of the window that owns this session, when the instance
+/// publishes a roster. Read from the roster rather than from a field of its
+/// own: which window owns the session is the shell's rule, and the roster is
+/// where it states it.
+fn owner_generation(session: &Value) -> Option<u64> {
+    session
+        .get("windows")?
+        .as_array()?
+        .iter()
+        .find(|window| {
+            window.get("label").and_then(Value::as_str) == Some(discover::OWNER_WINDOW_LABEL)
+        })?
+        .get("generation")?
+        .as_u64()
 }
 
 /// Print failures carry a bounded per-format receipt after the headline.
@@ -544,6 +578,69 @@ mod tests {
                     .expect("typed refusal");
             assert_eq!(failure.remedy_text(), None);
         }
+    }
+
+    /// The view a result would be written into is the view it was captured
+    /// in, or it is refused. `ds` carries the owner window's generation so the
+    /// application can answer that; an instance that publishes no roster is
+    /// fenced on the revision alone, as it always was.
+    #[test]
+    fn the_fence_carries_the_owner_windows_generation_when_there_is_one() {
+        let session = json!({
+            "uid": "uid-1",
+            "lane": "stable",
+            "credential_audience_sha256": "a".repeat(64),
+            "project": "project-1",
+            "session_revision": 7,
+            "windows": [
+                {"label": "workspace-2", "project": "project-2", "generation": 9},
+                {"label": crate::discover::OWNER_WINDOW_LABEL, "project": "project-1", "generation": 3},
+            ],
+        });
+        let fence = IdentityFence::from_session(&session).expect("a complete fence");
+        assert_eq!(
+            fence.context_generation,
+            Some(3),
+            "the owner window's generation is the one an operation is fenced on"
+        );
+        let sent = serde_json::to_value(&fence).expect("encodes");
+        assert_eq!(sent["context_generation"], json!(3));
+
+        let mut older = session.clone();
+        older.as_object_mut().expect("an object").remove("windows");
+        let fence = IdentityFence::from_session(&older).expect("a complete fence");
+        assert_eq!(fence.context_generation, None);
+        // The shell's fence denies unknown fields, so a null here would refuse
+        // every call to a desktop that predates the roster.
+        assert!(
+            serde_json::to_value(&fence)
+                .expect("encodes")
+                .get("context_generation")
+                .is_none()
+        );
+    }
+
+    /// The context fence answers 409 with the same structured refusal an
+    /// operation's own answers 422 with, and its code survives the trip.
+    #[test]
+    fn a_stale_context_generation_keeps_the_code_the_owner_decided() {
+        let failure = structured_desktop_refusal(
+            "map.zoom_to",
+            &json!({"error": {
+                "class": "conflict",
+                "code": "context_generation_stale",
+                "message": "this view's project or account changed while that was in flight",
+                "remedy": "retry the operation against the view as it is now"
+            }}),
+            409,
+        )
+        .expect("the context fence's refusal is structured");
+        assert_eq!(failure.code(), "context_generation_stale");
+        assert_eq!(failure.class().token(), "conflict");
+        assert_eq!(
+            failure.remedy_text(),
+            Some("retry the operation against the view as it is now")
+        );
     }
 
     #[test]
