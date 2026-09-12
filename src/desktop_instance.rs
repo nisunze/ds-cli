@@ -236,15 +236,16 @@ pub fn instance_id_valid(value: &str) -> bool {
     lowercase_hex(value, INSTANCE_ID_CHARS)
 }
 
-/// What a caller's own malformed input may be told back: bounded, control-free
-/// and truncated, so a refusal cannot be made to carry a payload.
+/// What a caller's own UNVALIDATED input may be told back: control-free and
+/// truncated, so a refusal cannot be made to carry a payload. Values this owner
+/// has already bounded are echoed whole — a truncated project id would be a
+/// different project id.
 fn echo(value: &str) -> String {
-    let cleaned: String = value
+    value
         .chars()
         .filter(|character| !character.is_control())
         .take(MAX_ECHO_CHARS)
-        .collect();
-    cleaned
+        .collect()
 }
 
 // ── The descriptor ──────────────────────────────────────────────────────
@@ -702,7 +703,7 @@ pub fn select(
         return Err(not_paired());
     }
     let Some(project) = requirement.narrowing_project() else {
-        return route_one(&compatible, None);
+        return route_one(&compatible);
     };
     let opening: Vec<&Candidate> = compatible
         .iter()
@@ -712,7 +713,7 @@ pub fn select(
     if opening.is_empty() {
         return Err(project_not_open(project, &[]));
     }
-    route_one(&opening, None)
+    route_one(&opening)
 }
 
 fn select_target(
@@ -795,12 +796,14 @@ fn select_target(
     })
 }
 
-fn route_one(eligible: &[&Candidate], window: Option<String>) -> Result<Route, Fault> {
+/// Automatic routing names an instance and never a window: which view inside
+/// it serves an unpinned operation is the shell's own rule.
+fn route_one(eligible: &[&Candidate]) -> Result<Route, Fault> {
     match eligible {
         [] => Err(not_paired()),
         [only] => Ok(Route {
             instance_id: only.instance_id.clone(),
-            window,
+            window: None,
         }),
         several => Err(refused_with(
             DESKTOP_AMBIGUOUS,
@@ -827,7 +830,7 @@ fn project_not_open(project: &str, elsewhere: &[&Candidate]) -> Fault {
         DESKTOP_PROJECT_NOT_OPEN,
         "no targeted DS GridDesign instance has that project open",
         "open it in the app, or switch one explicitly with `ds desktop project switch --target desktop:<instance_id> --project <project>`",
-        json!({ "project": echo(project), "instances": summaries(elsewhere) }),
+        json!({ "project": project, "instances": summaries(elsewhere) }),
     )
 }
 
