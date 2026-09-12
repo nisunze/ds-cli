@@ -41,6 +41,9 @@ pub const ACTIVITY_SCHEMA: &str = "ds.server-activity/v1";
 /// The header a caller may use to say which account it believes it is talking
 /// to. Honoured only when it is this Server's own.
 pub const PRINCIPAL_HEADER: &str = "x-ds-principal";
+/// The typed refusal for an operation that genuinely needs a rendered map.
+/// The operation keeps its id and its shape; only this host cannot run it.
+pub const NEEDS_PAIRED_MAP: &str = "needs_paired_map";
 
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -145,6 +148,7 @@ pub fn router(app: App) -> Router {
         .route("/v1/layers/order", post(crate::layers::order))
         .route("/v1/transformer-processing/:key", post(submit))
         .route("/v1/solar-processing/:key", post(submit_solar))
+        .fallback(unserved)
         .layer(DefaultBodyLimit::max(64 * 1024 * 1024))
         .layer(middleware::from_fn_with_state(app.clone(), access))
         .with_state(app)
@@ -173,6 +177,33 @@ async fn access(
     drop(permit);
     Ok(response)
 }
+/// Anything this host does not serve, said in words rather than as an empty
+/// 404. A Server is a real host of the shared operations — it answers the
+/// same ids and shapes the paired desktop answers — but it has no rendered
+/// map, so an operation that needs one is a named refusal with the remedy,
+/// never a different command and never silence.
+async fn unserved(request: Request) -> ApiError {
+    let path = request.uri().path().to_owned();
+    if path.starts_with("/v1/map/") || path.starts_with("/v1/invoke") {
+        return typed(
+            &Failure::unavailable(
+                NEEDS_PAIRED_MAP,
+                "this host runs the operation but has no rendered map to run it against",
+            )
+            .remedy(
+                "run the same command with --target desktop, against a window open on this project",
+            ),
+        );
+    }
+    typed(
+        &Failure::invalid(
+            "unsupported_operation",
+            format!("this server does not serve {path}"),
+        )
+        .remedy("update ds, or read ds server --help for what this host serves"),
+    )
+}
+
 async fn blocking<T: Send + 'static>(
     f: impl FnOnce() -> Result<T, String> + Send + 'static,
 ) -> Result<T, ApiError> {
@@ -849,6 +880,34 @@ pub(crate) mod tests {
             .await
             .unwrap();
         assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    /// One operation id, one shape, whichever host runs it — and where this
+    /// host genuinely cannot, it says which one can.
+    #[tokio::test]
+    async fn an_operation_that_needs_a_rendered_map_is_refused_by_name() {
+        let dir = tempfile::tempdir().unwrap();
+        let (status, refused) = call(
+            app(dir.path(), true),
+            "POST",
+            "/v1/map/screenshot",
+            Some(b"{}".to_vec()),
+        )
+        .await;
+        assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE, "{refused}");
+        assert_eq!(refused["code"], NEEDS_PAIRED_MAP);
+        assert!(
+            refused["remedy"]
+                .as_str()
+                .unwrap()
+                .contains("--target desktop")
+        );
+        // Anything else this host does not serve is still a sentence, not an
+        // empty 404 a client has to guess about.
+        let (status, unknown) = call(app(dir.path(), true), "GET", "/v1/nothing", None).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(unknown["code"], "unsupported_operation");
+        assert!(unknown["error"].as_str().unwrap().contains("/v1/nothing"));
     }
 
     #[tokio::test]

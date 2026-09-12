@@ -115,6 +115,21 @@ shapes changes). Three answers, all proven through the real listener:
 
 A refused layer request writes nothing, under any project.
 
+### Anything this host does not serve
+A request under `/v1/map/…` or `/v1/invoke` answers the standing ruling's
+typed refusal:
+
+```json
+{"error":"this host runs the operation but has no rendered map to run it against",
+ "class":"unavailable","code":"needs_paired_map","retryable":true,
+ "remedy":"run the same command with --target desktop, against a window open on this project"}
+```
+
+under HTTP 503. Every other unserved path answers `unsupported_operation`
+(400) naming the path, so no request to this host ends in an untyped 404. The
+same `needs_paired_map` code is what a map-bound command should raise from its
+descriptor before it calls out at all; this is the host-side half of it.
+
 ### Principal header (all routes)
 An optional `x-ds-principal: <uid>` is honoured only when it equals the
 Server's own account uid; any other value is `multi_principal_unsupported`
