@@ -106,9 +106,39 @@ pub enum IsolatedRule {
     SingleTransformerCluster,
 }
 
+/// The paper a design prints on, as far as the capture needs to know it:
+/// the map frame's proportion (width over height) and the share of the
+/// frame a fitted design may take once tables and the title block have
+/// taken theirs. The sheet shows the frame's own shape scaled by the
+/// design, so this — not a metre count — decides how much ground around
+/// the design must be held.
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(deny_unknown_fields)]
+pub struct SheetShape {
+    pub aspect: f64,
+    /// Usable share of the frame's width and height for the fitted design.
+    pub usable: [f64; 2],
+}
+
+/// The landscape ISO sheet an LV drawing set prints on (A0 and A3 share
+/// the proportion), with schedules on one side and the block on the other.
+pub const LANDSCAPE_SHEET: SheetShape = SheetShape {
+    aspect: 1.414,
+    usable: [0.5, 0.9],
+};
+/// The same sheet turned: schedules and block along the bottom.
+pub const PORTRAIT_SHEET: SheetShape = SheetShape {
+    aspect: 0.707,
+    usable: [0.9, 0.5],
+};
+/// Ground shown beyond the fitted frame, so a contour never ends inside it.
+const CAPTURE_MARGIN: f64 = 1.05;
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[serde(deny_unknown_fields)]
 pub struct BufferPolicy {
+    /// The floor around a designed extent, metres; the sheet shape usually
+    /// asks for more.
     pub design_buffer_m: f64,
     pub isolated_buffer_m: f64,
     pub isolated_rule: IsolatedRule,
@@ -116,6 +146,15 @@ pub struct BufferPolicy {
     /// this; it never changes geometry.
     #[serde(default)]
     pub provisional: bool,
+    /// The sheets a design prints on; the capture covers what every one of
+    /// them shows, so a frame in either orientation is filled. Empty means
+    /// the metre buffer alone.
+    #[serde(default = "both_orientations")]
+    pub sheets: Vec<SheetShape>,
+}
+
+fn both_orientations() -> Vec<SheetShape> {
+    vec![LANDSCAPE_SHEET, PORTRAIT_SHEET]
 }
 
 impl Default for BufferPolicy {
@@ -125,6 +164,7 @@ impl Default for BufferPolicy {
             isolated_buffer_m: 1000.,
             isolated_rule: IsolatedRule::PointOnly,
             provisional: false,
+            sheets: both_orientations(),
         }
     }
 }
@@ -148,8 +188,50 @@ impl BufferPolicy {
                 return Err("buffer distances must be between 0 and 50000 metres".into());
             }
         }
+        if self.sheets.len() > 8
+            || self.sheets.iter().any(|sheet| {
+                !(0.2..=5.0).contains(&sheet.aspect)
+                    || sheet
+                        .usable
+                        .iter()
+                        .any(|share| !(0.1..=1.0).contains(share))
+            })
+        {
+            return Err("sheet shapes need an aspect 0.2-5 and usable shares 0.1-1".into());
+        }
         Ok(())
     }
+}
+
+/// The ground a designed extent needs held: the metre buffer as a floor,
+/// and for every sheet the frame's shape scaled by the design — a design
+/// fitted into the usable share of the frame leaves the rest of the frame
+/// showing context, and that context must be there.
+pub(crate) fn capture(rect: Rect, metres: f64, sheets: &[SheetShape]) -> Rect {
+    let mut out = buffered(rect, metres);
+    if rect.degenerate() {
+        return out;
+    }
+    let mid = (rect.s + rect.n) / 2.0;
+    let width_m = (rect.e - rect.w) * metres_per_degree_longitude(mid);
+    let height_m = (rect.n - rect.s) * metres_per_degree_latitude(mid);
+    for sheet in sheets {
+        // Ground per unit of frame height when the design fills its usable share.
+        let per_unit = (width_m / (sheet.usable[0] * sheet.aspect)).max(height_m / sheet.usable[1]);
+        let shown_w = sheet.aspect * per_unit * CAPTURE_MARGIN;
+        let shown_h = per_unit * CAPTURE_MARGIN;
+        let half_w = (shown_w / 2.0) / metres_per_degree_longitude(mid);
+        let half_h = (shown_h / 2.0) / metres_per_degree_latitude(mid);
+        let centre = [(rect.w + rect.e) / 2.0, mid];
+        let sheet_rect = Rect {
+            w: (centre[0] - half_w).max(-180.0),
+            s: (centre[1] - half_h).max(-MAX_LATITUDE),
+            e: (centre[0] + half_w).min(180.0),
+            n: (centre[1] + half_h).min(MAX_LATITUDE),
+        };
+        out = out.union(sheet_rect);
+    }
+    out
 }
 
 /// The canonical dataset a room holds an extract of.
@@ -742,7 +824,13 @@ pub fn plan_focused(
     let expanded: Vec<Rect> = named
         .iter()
         .zip(&buffers)
-        .map(|((_, rect, _), &metres)| buffered(*rect, metres))
+        .map(|((_, rect, designed), &metres)| {
+            if *designed {
+                capture(*rect, metres, &policy.sheets)
+            } else {
+                buffered(*rect, metres)
+            }
+        })
         .collect();
     let groups = clusters(&expanded);
     let mut cells: Vec<Rect> = Vec::new();
@@ -799,7 +887,7 @@ pub fn plan_focused(
         dataset_key: dataset_key(scope, dataset),
         query_digest: query_digest(scope, dataset, policy, &coverage),
         coverage_digest: coverage.digest(),
-        buffer_policy: *policy,
+        buffer_policy: policy.clone(),
         clusters: reported,
         coverage_geometry: coverage.geometry(),
         extent_count: extents.len(),
@@ -2079,6 +2167,7 @@ mod tests {
             isolated_buffer_m: 1_000.0,
             isolated_rule: IsolatedRule::PointOnly,
             provisional: true,
+            sheets: both_orientations(),
         }
     }
 
@@ -2425,6 +2514,60 @@ mod tests {
         assert!(
             acquisition_selects("some_new_dataset", "some-provider", &crossing, &area).is_err()
         );
+    }
+
+    #[test]
+    fn the_capture_is_the_sheets_proportion_scaled_by_the_design_never_a_bare_metre_count() {
+        // Butezi: 1.45 km wide, 1.66 km tall. On a landscape sheet the design
+        // fills half the frame's width or nine tenths of its height, whichever
+        // binds; the frame then shows about 2.9 km × 2.0 km, which is what
+        // must be held — not the design plus 200 m.
+        let rect = Rect::from_bounds([29.910, -2.522, 29.923, -2.507]).unwrap();
+        let mid = -2.5145;
+        let size = |r: Rect| {
+            (
+                (r.e - r.w) * metres_per_degree_longitude(mid),
+                (r.n - r.s) * metres_per_degree_latitude(mid),
+            )
+        };
+        let (width_m, height_m) = size(capture(rect, 200.0, &[LANDSCAPE_SHEET]));
+        assert!((2_800.0..=3_300.0).contains(&width_m), "width {width_m}");
+        assert!((1_900.0..=2_200.0).contains(&height_m), "height {height_m}");
+        // Turned, the design takes half the height: about 2.4 km × 3.5 km.
+        let (width_m, height_m) = size(capture(rect, 200.0, &[PORTRAIT_SHEET]));
+        assert!(
+            (2_300.0..=2_600.0).contains(&width_m),
+            "portrait width {width_m}"
+        );
+        assert!(
+            (3_300.0..=3_600.0).contains(&height_m),
+            "portrait height {height_m}"
+        );
+        // Both: the union, so whichever sheet the set prints on is filled.
+        let held = capture(rect, 200.0, &[LANDSCAPE_SHEET, PORTRAIT_SHEET]);
+        let (width_m, height_m) = size(held);
+        assert!(
+            (2_800.0..=3_300.0).contains(&width_m),
+            "both width {width_m}"
+        );
+        assert!(
+            (3_300.0..=3_600.0).contains(&height_m),
+            "both height {height_m}"
+        );
+        // The floor still applies: a metre buffer larger than the sheet wins.
+        let floor = capture(rect, 5_000.0, &[LANDSCAPE_SHEET]);
+        assert!(floor.w < held.w && floor.e > held.e);
+        // No sheet: the metre buffer alone, as before.
+        assert_eq!(capture(rect, 200.0, &[]), buffered(rect, 200.0));
+        // A bare point is not a design; the plan keeps its isolated radius.
+        let point = Rect::from_bounds([30.0, -2.0, 30.0, -2.0]).unwrap();
+        assert_eq!(
+            capture(point, 1_000.0, &[LANDSCAPE_SHEET]),
+            buffered(point, 1_000.0)
+        );
+        // Serialized policies without sheets read back with both orientations.
+        let old: BufferPolicy = serde_json::from_value(json!({"design_buffer_m":200.0,"isolated_buffer_m":1000.0,"isolated_rule":"point_only"})).unwrap();
+        assert_eq!(old.sheets, vec![LANDSCAPE_SHEET, PORTRAIT_SHEET]);
     }
 
     #[test]
