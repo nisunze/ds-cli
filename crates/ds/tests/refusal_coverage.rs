@@ -67,19 +67,6 @@ const NOT_A_REFUSAL: &[(&str, &str)] = &[
         "catalog_action_not_allowed",
         "raised only if a parser-validated global catalog action escapes the exact read/write allowlist that declared it",
     ),
-    (
-        "data_distribution_unavailable",
-        "emitted by ds-cli-auth's `data_distribution` host, which no command calls yet: the \
-         headless `ds data project-cache status|seed` commands of the seeding design land in a \
-         later slice and must declare `DATA_DISTRIBUTION_UNAVAILABLE_REFUSAL`, at which point this \
-         entry has to go",
-    ),
-    (
-        "reference_bundle_download_failed",
-        "emitted by ds-cli-auth's `download_reference_bundle` host, which no command calls yet: \
-         the same later slice declares `REFERENCE_BUNDLE_DOWNLOAD_FAILED_REFUSAL` and removes this \
-         entry",
-    ),
 ];
 
 /// Call sites whose code argument this scan cannot read, and why.

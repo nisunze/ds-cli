@@ -163,6 +163,31 @@ neighbouring transformers share one acquisition.
 `status` costs nothing and reaches no provider. `seed` is the one command here
 that queries a geographic source, so it is confirmed.
 
+Both run headlessly, under the restored native user against its fenced
+selected project (`ds auth project use`), on this machine's holdings — no
+paired Desktop and no `--project`. The holdings live under the shared
+geographic data root (`rw.datasolutions.desktop.shared`, the same root the
+desktop uses), so a desktop signed in as the same account on the same machine
+reads the rooms a headless seed filled. The orchestration is
+`ds-web/crates/ds-project-data` (shared with the desktop shell); every decision
+is `ds-command-kernel`'s.
+
+Two families of dataset, seeded differently:
+
+* **National catalogue layers** (roads, rivers, wetlands, districts, … — what
+  ds-brain publishes for the country from its own BigQuery/GCS): the published
+  bundle is installed on the machine **once** (verified, expanded, indexed),
+  and each project holds a cheap local subset of it. Nothing is downloaded on a
+  read; a row without a published bundle is refused
+  (`reference_bundle_unavailable`), never fetched from BigQuery.
+* **Building footprints and elevation contours**: acquired **per project**
+  through ds-brain's governed `query_print_context` door, into the project's
+  rooms, decoded and bounded by the kernel.
+
+`ds report project export --seed` runs the same acquisition for the printed
+transformer only, so the first print request seeds; without `--seed` a print
+never reaches a provider.
+
 ### What an omitted `--dataset` seeds
 
 Every dataset this project's workflow **declares**, plus any it already holds.

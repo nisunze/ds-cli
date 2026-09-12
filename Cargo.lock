@@ -874,9 +874,13 @@ dependencies = [
 name = "ds-cli-data"
 version = "0.1.0"
 dependencies = [
+ "ds-cli-auth",
  "ds-cli-contract",
  "ds-cli-desktop",
  "ds-columnar",
+ "ds-command-kernel",
+ "ds-layer-store",
+ "ds-project-data",
  "serde_json",
 ]
 
@@ -1427,6 +1431,18 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror",
+]
+
+[[package]]
+name = "ds-project-data"
+version = "0.1.0"
+dependencies = [
+ "ds-command-kernel",
+ "ds-layer-store",
+ "flate2",
+ "serde",
+ "serde_json",
+ "sha2",
 ]
 
 [[package]]

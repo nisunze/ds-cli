@@ -1,6 +1,6 @@
 [package]
 name = "ds-cli-data"
-description = "The `ds data` domain: inspect a local source and convert it to the analytical format before analysis reads it."
+description = "The `ds data` domain: inspect a local source and convert it to the analytical format before analysis reads it; hold and seed the selected project's geographic context on this machine."
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -11,6 +11,15 @@ publish.workspace = true
 [dependencies]
 ds-cli-contract = { workspace = true }
 ds-cli-desktop = { workspace = true }
+# Headless project-cache status and seed restore the native user through the
+# fixed client: the reference catalogue and the governed print-context door.
+ds-cli-auth = { workspace = true }
+# The decisions (coverage, identity, seed order, decode, overview) are the
+# kernel's; the holdings, acquisition loop and bundle installation are
+# ds-project-data's, shared with the desktop shell; the rooms are ds-layer-store's.
+ds-command-kernel = { workspace = true }
+ds-layer-store = { path = "../../../ds-web/crates/ds-layer-store" }
+ds-project-data = { path = "../../../ds-web/crates/ds-project-data" }
 # The centralized converter. `ds` links the same implementation Desktop import
 # links; neither reimplements the format decisions it encodes. See
 # ds-network/docs/contracts/columnar-format-contract.md.

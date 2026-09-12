@@ -42,6 +42,8 @@ pub static DOMAIN: Domain = Domain {
 /// The paired operations in this otherwise local domain. File operations stay
 /// mapless; the exact boundary read can ask the frontend to materialize a
 /// Desktop-local layer while the bridge still returns only bounded evidence.
+/// The project-cache commands left this list on 2026-09-12: they run
+/// headlessly on this machine's holdings through `ds-project-data`.
 pub const BRIDGE_OPS: &[&ds_cli_desktop::ops::BridgeOp] = &[
     &elevation::OPERATION,
     &point_cloud::PLAN_OPERATION,
@@ -49,8 +51,6 @@ pub const BRIDGE_OPS: &[&ds_cli_desktop::ops::BridgeOp] = &[
     &admin_bounds::OPERATION,
     &admin_bounds::LIST_OPERATION,
     &admin_bounds::READ_OPERATION,
-    &project_cache::STATUS_OPERATION,
-    &project_cache::SEED_OPERATION,
 ];
 
 pub const SOURCE_ARG: Arg = Arg {
