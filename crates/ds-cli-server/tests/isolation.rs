@@ -121,6 +121,30 @@ fn item1_two_projects_overlap_on_one_server_with_distinct_contexts_and_no_leakag
     assert_eq!(solar_context["deployment"], DEPLOYMENT);
     let solar_id = solar.json()["job"]["id"].as_str().unwrap().to_owned();
 
+    // What the Server digested is what it READ, not the path it was handed:
+    // the same envelope at a second path is the same job, not a second one.
+    let elsewhere = host.raw(
+        "POST",
+        "/v1/solar-processing/solar-a",
+        Some(&host.sealed_at("solar-a-again.json", &solar_submission())),
+    );
+    assert_eq!(elsewhere.status, 202, "{:?}", elsewhere.json());
+    assert_eq!(elsewhere.json()["job"]["id"], json!(solar_id));
+    // And a path is a path on THIS machine: the client and the host share a
+    // filesystem but not a working directory, so a relative one is refused
+    // rather than resolved against wherever the host happens to run.
+    let relative = host.raw(
+        "POST",
+        &format!("/v1/solar-processing/solar-rel?project={A}"),
+        Some(br#"{"input_path":"prepared.json"}"#),
+    );
+    assert_eq!(relative.status, 400, "{:?}", relative.json());
+    assert!(
+        relative.stringify().contains("absolute"),
+        "{}",
+        relative.stringify()
+    );
+
     // A transformer batch for B, through the real `ds server submit`.
     let input = host.input("batch-b.json", &transformer("T-B"));
     let queued = ds_cli_server::submit(
@@ -1193,12 +1217,17 @@ fn item7_capacity_is_typed_bounded_fair_and_released_by_cancellation() {
     assert_eq!(host.stored(None).len(), 4);
 }
 
-/// A per-project share equal to the worker count is not a share: one project
-/// could hold every worker while another waits. `ds server serve` refuses it
-/// by name, before it authenticates anything, and the refusal states the
-/// usable range.
+/// A per-project share that could hold the whole pool is not a share: one
+/// project would run every worker while another waits. `ds server serve`
+/// refuses it by name, from the numbers alone — before it authenticates
+/// anything, opens a queue or binds a port — and the refusal states the
+/// usable range for THIS host.
+///
+/// Only refused shares are asked for here, deliberately: an accepted one
+/// would send `serve` on to `auth::identity`, which refreshes a real
+/// credential, and this proof touches no identity and no network.
 #[test]
-fn a_per_project_share_equal_to_the_worker_count_is_refused_as_no_share() {
+fn a_per_project_share_that_could_hold_the_whole_pool_is_refused_as_no_share() {
     let host = Host::start(limits());
     let serve = |workers: &str, share: &str| {
         ds_cli_server::serve(
@@ -1207,26 +1236,46 @@ fn a_per_project_share_equal_to_the_worker_count_is_refused_as_no_share() {
         )
     };
 
-    let equal = serve("4", "4").expect_err("a share equal to the pool is no share");
-    assert!(
-        equal.message().contains("1..3"),
-        "the refusal states the usable range: {}",
-        equal.message()
+    // A one-worker host is the case every machine can run, so its sentence is
+    // asserted whole: a share of the entire host, and a share of nothing, are
+    // one answer with the usable range in it.
+    let one = "--per-project must leave a worker for a second project: 1..1 on a host with 1";
+    assert_eq!(
+        serve("1", "2")
+            .expect_err("two of one worker is the whole host")
+            .message(),
+        one
     );
-    let over = serve("4", "9").expect_err("a share larger than the pool is no share either");
-    assert_eq!(over.message(), equal.message());
-    let none = serve("4", "0").expect_err("a share of nothing runs nothing");
-    assert_eq!(none.message(), equal.message());
+    assert_eq!(
+        serve("1", "0")
+            .expect_err("a share of nothing runs nothing")
+            .message(),
+        one
+    );
 
-    // A share inside the bound gets past it and stops on the next thing this
-    // box has not got — the authenticated native account — never on the share.
-    let inside = serve("4", "3").expect_err("no Canary identity on this box");
+    // And on this host at its measured size, where the pool is whatever the
+    // CPU and memory allow: a share equal to it is refused the same way, and
+    // the range scales.
+    let capacity = runtime::capacity();
+    let whole_pool = serve(&capacity.to_string(), &capacity.max(2).to_string())
+        .expect_err("a share that could hold the whole pool is no share");
     assert!(
-        !inside.message().contains("--per-project"),
-        "the share was accepted; the refusal is about something else: {}",
-        inside.message()
+        whole_pool
+            .message()
+            .starts_with("--per-project must leave a worker for a second project"),
+        "the share is what was refused, not --workers: {}",
+        whole_pool.message()
     );
-    // Nothing bound a port: the numbers are parsed before anything is opened.
+    assert!(
+        whole_pool
+            .message()
+            .contains(&format!("on a host with {capacity}")),
+        "{}",
+        whole_pool.message()
+    );
+
+    // Nothing was authenticated, nothing was bound and no queue was created:
+    // the numbers are decided before any of that.
     assert!(!host.database().exists());
 
     // And the default the declaration promises: half, never fewer than one.
