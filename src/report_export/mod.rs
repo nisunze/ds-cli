@@ -595,6 +595,9 @@ pub struct StagedInputs<'a> {
     pub media_grant: Option<&'a Path>,
     /// A `ds.print-context/v1` document and the SHA-256 of its exact bytes.
     pub print_context: Option<(&'a Path, &'a str)>,
+    /// This transformer's one-based position in the drawing set and the set's
+    /// size, so a sheet can print "12 of 86"; `None` prints a set of one.
+    pub sheet: Option<(u32, u32)>,
 }
 
 /// The exact typed request document `ds-report export-transformer-report`
@@ -635,6 +638,15 @@ pub fn engine_request(plan: &ExportPlan, staged: &StagedInputs<'_>) -> Result<Va
     }
     if let Some(path) = staged.media_grant {
         request.insert("media_grant".into(), json!(path));
+    }
+    if let Some((index, count)) = staged.sheet {
+        if index == 0 || count == 0 || index > count {
+            return Err(format!(
+                "sheet {index} of {count} is not a position in a drawing set"
+            ));
+        }
+        request.insert("sheet_index".into(), json!(index));
+        request.insert("sheet_count".into(), json!(count));
     }
     if let Some((path, digest)) = staged.print_context {
         request.insert("print_context_asset".into(), json!(path));
@@ -1589,6 +1601,7 @@ mod tests {
             admin_bounds: Some((Path::new("/assets/asset.dsab"), &"d".repeat(64))),
             media_grant: None,
             print_context: None,
+            sheet: None,
         };
         let request = engine_request(&plan, &staged).unwrap();
         assert_eq!(
@@ -1612,6 +1625,24 @@ mod tests {
         assert!(engine_request(&plan, &without)
             .unwrap_err()
             .contains("Rwanda"));
+        // A place in the drawing set reaches the engine as two integers, and
+        // only a real place does.
+        let numbered = StagedInputs {
+            sheet: Some((12, 86)),
+            ..staged.clone()
+        };
+        let request = engine_request(&plan, &numbered).unwrap();
+        assert_eq!(request["sheet_index"], json!(12));
+        assert_eq!(request["sheet_count"], json!(86));
+        for bad in [(0, 86), (87, 86), (1, 0)] {
+            let wrong = StagedInputs {
+                sheet: Some(bad),
+                ..staged.clone()
+            };
+            assert!(engine_request(&plan, &wrong)
+                .unwrap_err()
+                .contains("drawing set"));
+        }
         let benin = plan_transformer_export(
             "proj-1",
             &simple_receipt("Benin"),

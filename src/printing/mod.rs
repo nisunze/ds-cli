@@ -329,6 +329,57 @@ pub struct PrintViewport {
     /// Explicit geographic cameras keep their authored scale and centre.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub fit_around: Vec<String>,
+    /// An optional coordinate grid over the map: lines, edge ticks and edge
+    /// labels in Rwanda's planar grid or in WGS84 degrees.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub graticule: Option<Graticule>,
+}
+
+/// The grid a graticule is drawn and labelled in.
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, JsonSchema, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum GraticuleCrs {
+    /// Rwanda's NIX/ITRF 2005 Transverse Mercator grid, metres — the planar
+    /// default a field sheet is read against.
+    #[default]
+    TmRwanda,
+    /// Geographic degrees, labelled in degrees-minutes-seconds.
+    Wgs84,
+}
+
+/// A graticule as a layout authors it. The renderer keeps the grid
+/// subordinate to the map: a thin light neutral line, a round interval that
+/// puts about six lines across the frame when none is authored, coordinates
+/// read at the frame edges inside the neatline.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct Graticule {
+    #[serde(default)]
+    pub crs: GraticuleCrs,
+    /// Line spacing in the grid's units (metres, or degrees for WGS84);
+    /// omitted picks a round value from the frame.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub interval: Option<f64>,
+    /// Draw the grid lines across the map; ticks and labels stay at the edges.
+    #[serde(default = "yes")]
+    pub lines: bool,
+    #[serde(default = "yes")]
+    pub labels: bool,
+    #[serde(default = "graticule_color")]
+    pub color: String,
+    #[serde(default = "graticule_width")]
+    pub width_mm: f64,
+    #[serde(default = "graticule_font")]
+    pub font_pt: f64,
+}
+fn graticule_color() -> String {
+    "#6B7280".into()
+}
+fn graticule_width() -> f64 {
+    0.12
+}
+fn graticule_font() -> f64 {
+    6.
 }
 
 /// One reproducible geographic view bound to a layout viewport at render time.
@@ -396,6 +447,19 @@ impl GeographicView {
 fn yes() -> bool {
     true
 }
+fn is_left(align: &TextAlign) -> bool {
+    *align == TextAlign::Left
+}
+
+/// Where a text element's lines sit inside its frame.
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, JsonSchema, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum TextAlign {
+    #[default]
+    Left,
+    Center,
+    Right,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
 #[serde(deny_unknown_fields)]
@@ -405,6 +469,10 @@ pub struct Element {
     pub rect: [f64; 4],
     #[serde(default)]
     pub text: String,
+    /// Horizontal alignment of a text element inside its frame; other kinds
+    /// ignore it.
+    #[serde(default, skip_serializing_if = "is_left")]
+    pub align: TextAlign,
     #[serde(default)]
     pub asset: String,
     #[serde(default = "font")]
@@ -621,6 +689,20 @@ pub fn validate(layout: &Layout) -> Result<(), String> {
                 return Err("invalid or unclipped print viewport".into());
             }
             let mut obstacles = BTreeSet::new();
+            if let Some(graticule) = &viewport.graticule {
+                if graticule
+                    .interval
+                    .is_some_and(|step| !(step.is_finite() && step > 0.))
+                    || !bounded(graticule.width_mm, 0.05, 1.)
+                    || !bounded(graticule.font_pt, 4., 12.)
+                    || !color(&graticule.color)
+                {
+                    return Err(
+                        "graticule needs a positive interval, 0.05-1 mm lines, 4-12 pt labels and a hex colour"
+                            .into(),
+                    );
+                }
+            }
             if viewport.fit_around.len() > 32
                 || viewport.fit_around.iter().any(|id| {
                     !obstacles.insert(id)
@@ -927,6 +1009,7 @@ pub fn default_layout() -> Layout {
         kind,
         rect,
         text: text.into(),
+        align: TextAlign::Left,
         asset: String::new(),
         font_pt,
         color: ink(),
@@ -956,6 +1039,7 @@ pub fn default_layout() -> Layout {
                     view_slot: "primary_map".into(),
                     clip: true,
                     fit_around: Vec::new(),
+                    graticule: None,
                 }),
                 ..element("map", ElementKind::Map, [12., 32., 300., 235.], "", 10.)
             },
@@ -1126,6 +1210,7 @@ pub fn upgrade(mut layout: Layout) -> Result<Layout, String> {
                 view_slot: "primary_map".into(),
                 clip: true,
                 fit_around: Vec::new(),
+                graticule: None,
             });
         }
     }
@@ -1807,6 +1892,10 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
                     .as_ref()
                     .map(|v| v.fit_around.clone())
                     .unwrap_or_default(),
+                graticule: layout.elements[index]
+                    .viewport
+                    .as_ref()
+                    .and_then(|v| v.graticule.clone()),
             });
             validate(&layout)?;
             json!({"layout":layout})
@@ -2593,6 +2682,7 @@ mod tests {
             view_slot: "wrong".into(),
             clip: true,
             fit_around: Vec::new(),
+            graticule: None,
         });
         assert!(validate(&layout).is_err());
         assert!(evaluate(
