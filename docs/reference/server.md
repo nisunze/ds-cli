@@ -90,8 +90,9 @@ one entry per project the request covers.
 
 `ds server serve --workers N` bounds the whole host. `--per-project M` bounds
 what one project may hold while another has work queued; it defaults to
-`max(1, N / 2)`, so a busy project cannot starve a second one on a host with
-room for two. Exhaustion is a typed answer, not a hang: `capacity_exhausted`
+`max(1, N / 2)` and must leave a worker for a second project — `M` equal to `N`
+is refused on any host with more than one worker, because a project allowed
+every worker while another waits has no share at all. Exhaustion is a typed answer, not a hang: `capacity_exhausted`
 carries `retry_after_ms` and whether the `global` or the `project` scope filled.
 Cancelling a job releases its capacity immediately.
 
@@ -104,15 +105,13 @@ operation fails identically whichever host executed it.
 |---|---|
 | `project_required` | no `--project` and no saved selection to default to |
 | `context_corrupt` | a project id outside its bound (empty, padded, over 500 characters, control characters) |
-| `project_not_visible` | reserved by the kernel's execution context; this Server holds no directory and never raises it |
 | `not_visible` | `job not found` — one answer for an unknown id, a foreign principal, a foreign lane and the wrong project |
 | `principal_mismatch` | the stored job belongs to another account, lane or deployment |
 | `scope_mismatch` | the sealed Solar input names one project and `--project` names another |
-| `scope_mismatch_for_key` | that idempotency key already admitted a job in a different project |
+| `scope_mismatch_for_key` | that key, in this project, already admitted a job for another operation |
 | `payload_changed_for_key` | that key already admitted a job with different input bytes |
 | `capacity_exhausted` | the global or per-project queue is full; carries `retry_after_ms` and `scope` |
-| `context_unrecoverable` | a job stored by an older Server names no project and none can be recovered without guessing |
-| `multi_principal_unsupported` | the request's credential names an account other than the Server's |
+| `context_unrecoverable` | a job stored by an older Server names no project; read its result and resubmit under an explicit `--project` |
 
 `not_visible` says `job not found` and nothing more. It never names the
 project, the owner or whether the id exists — the class, the code and the
@@ -122,26 +121,28 @@ kept: a job you can see that simply has not finished answers `server_refused`
 with "job has no completed result", so "not yours" and "not yet" stay
 distinguishable where that is safe and identical where it is not.
 
-### Multi-principal is explicitly not supported
+### One owner per Server
 
 One `ds server serve` serves **one authenticated native account** and as many
-of that account's projects as it names. A request whose credential maps to a
-different principal is refused `multi_principal_unsupported`; nothing falls
-back, and no request is served under a second identity. A second account needs
-its own `ds server serve` with its own `--state-dir` and `--listen`. This is
-the model, not a gap to close: one user per machine, many users are many
-machines. Nothing in the Server is built for many users in one process — no
-per-principal limits, no multi-user auth, no fairness beyond the owner's own
-projects sharing one machine.
+of that account's projects as it names. The owner-only loopback bearer is that
+account's; any other bearer is `server access denied`, and that is the whole
+enforcement — there is no header naming an account and no second identity for
+this process to have. A second account needs its own `ds server serve` with its
+own `--state-dir` and `--listen`. This is the model, not a gap to close: one
+user per machine, many users are many machines. Nothing in the Server is built
+for many users in one process — no per-principal limits, no multi-user auth, no
+fairness beyond the owner's own projects sharing one machine.
 
 ## Jobs
 
 Input is the existing `ds.fast-lv.request/v1` contract documented in
 [design.md](design.md). Settings and configuration are explicit captured inputs.
 Submission acknowledges only after durable storage; retries with the same key
-and bytes return the same job. Changed bytes under that key refuse, and so does
-the same key under a different project — a key never moves a job between
-projects. Independent requests execute concurrently up to kernel CPU/memory
+and bytes return the same job. Changed bytes under that key refuse. The same
+key in a *different* project is different work: the durable job id digests
+(account, lane, project, key), so your daily key is yours in each of your
+projects and neither job can reach the other's rows or results. A key never
+moves a job between projects. Independent requests execute concurrently up to kernel CPU/memory
 admission; the engine uses its shared native Rayon pool inside each request.
 `--workers` can reduce that capacity. Results preserve per-transformer
 engineering outcomes, including failures; `completed` means the complete result
@@ -161,9 +162,12 @@ stale claim is never published: missing or malformed claims refuse at
 admission, and an expired or stale claim is recorded by the publication
 authority. A server never stamps a newly fetched snapshot onto an older
 prepared input. The envelope is owner-private because the claim carries the
-actor-bound receipt. The client reads the envelope from the workspace file
-and sends its bytes; the Server accesses the filesystem exactly as the
-desktop does, and taking the path itself on this route is recorded as open.
+actor-bound receipt. The envelope is a workspace file and the Server accesses
+the filesystem exactly as the desktop does — same machine, same user — so
+`--input` sends the **path**: the Server opens it, reads it under the owner's
+identity and digests the bytes it read. The path must be absolute and name a
+regular file of at most 64 MiB. A transformer batch still travels as bytes,
+because the desktop's own transformer processing takes bytes.
 
 ## Layers on the running Server
 
@@ -240,9 +244,11 @@ Worker leases renew during computation. After a killed process, an expired
 30-second lease can be reclaimed; completed jobs are never rerun. A job
 recovered after a restart keeps the exact context it was admitted under. A job
 row written by a Server released before per-job context recovers its project
-from the sealed input (Solar) or from the recorded saved selection
-(transformer); when neither exists it refuses `context_unrecoverable` rather
-than guessing. Cancellation retains input, fences late results and releases the
+from its own sealed input (Solar) and from nothing else: a transformer row
+carries no project by design, so it is `context_unrecoverable` — readable,
+never claimed, never published, whatever project happens to be selected when
+the host restarts. Read that job's result and resubmit under an explicit
+`--project`; the resubmission is new work beside it, with its own id. Cancellation retains input, fences late results and releases the
 job's capacity. The native engine finishes its current computation before
 releasing CPU; cancellation does not promise mid-algorithm interruption.
 Complete interactive Desktop workflow delegation, device management UI and

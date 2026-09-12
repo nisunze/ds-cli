@@ -16,9 +16,9 @@ desktop's side of the one boundary with ds-brain: it holds no project
 directory, fetches none, caches none and refreshes none to admit work, and it
 carries no online/offline conditional — admission, queueing, execution,
 restart recovery and capacity are local and are proven with no upstream
-present at all. It no longer reads `ds auth project use`'s saved selection as
-execution state — `serve` starts without a selection, and the saved selection
-is the *client's* default, which the client sends explicitly on every call. So:
+present at all. It reads `ds auth project use`'s saved selection nowhere at
+all — not at `serve`, not at recovery — because the saved selection is the
+*client's* default, which the client sends explicitly on every call. So:
 
 > `ds server …` MUST send `--project`'s value (defaulting to the client's saved
 > selection) on every submit, layer and, where it narrows, every read.
@@ -45,16 +45,14 @@ rosters (class → HTTP):
 | code | class | HTTP | when |
 |---|---|---|---|
 | `project_required` | invalid_input | 400 | no project named and none in the sealed input |
-| `project_not_visible` | invalid_input | 400 | reserved by the kernel; this Server holds no directory and never raises it |
 | `scope_mismatch` | conflict | 409 | the sealed Solar input names another project than `--project` |
-| `scope_mismatch_for_key` | conflict | 409 | that key already names another project or operation |
+| `scope_mismatch_for_key` | conflict | 409 | that key, **in this project**, already names another operation |
 | `payload_changed_for_key` | conflict | 409 | that key was admitted with other bytes |
 | `principal_mismatch` | conflict | 409 | that key/row belongs to another authenticated identity |
 | `not_visible` | conflict | 409 | `job not found` — the ONE sentence for every invisible job |
 | `capacity_exhausted` | unavailable | 429 | queue or worker admission is full; `retry_after_ms` |
 | `context_corrupt` | invalid_input | 400 | a caller field is out of bounds (e.g. an over-long project) |
-| `context_unrecoverable` | conflict | 409 | a pre-slice row has no project to recover into |
-| `multi_principal_unsupported` | unauthorized | 401 | the request names a principal other than the Server's |
+| `context_unrecoverable` | conflict | 409 | a pre-slice row names no project, and nothing outside its own bytes may name one |
 
 `not_visible` says **`job not found`** and nothing else, for a foreign
 principal, a foreign lane, the wrong project and an id that never existed.
@@ -64,7 +62,8 @@ Do not add prose to it, and do not print the requested project back.
 
 ### `POST /v1/transformer-processing/:key?project=<id>`
 `project` — REQUIRED in practice (transformer inputs carry no project by
-design). Body: `ds.fast-lv.request/v1`, ≤ 64 MiB. 202 →
+design). Body: `ds.fast-lv.request/v1` **bytes**, ≤ 64 MiB — the desktop's own
+transformer processing takes bytes, so this route does too. 202 →
 `{"job": <Job>}` where `<Job>` now carries `"context": {…}` (see §3).
 Refusals: `project_required`, `scope_mismatch_for_key`,
 `payload_changed_for_key`, `principal_mismatch`, `capacity_exhausted`,
@@ -72,10 +71,25 @@ Refusals: `project_required`, `scope_mismatch_for_key`,
 owner's word: nothing is fetched to allow it.
 
 ### `POST /v1/solar-processing/:key?project=<id>`
-`project` — OPTIONAL: the sealed `ds.solar.server-submission/v1` envelope names
-its own project and that name wins. Sending it is still recommended (it is how
-a caller learns it prepared the wrong city): a `project` that differs from the
-sealed input is `scope_mismatch`. 202 → `{"job": <Job>}`.
+**Body changed: the route takes the PATH, not the bytes.**
+
+```json
+{"input_path": "/absolute/path/to/pala.server-submission.json"}
+```
+
+The prepared `ds.solar.server-submission/v1` envelope is a workspace file, and
+the Server accesses the filesystem exactly as the desktop does — same machine,
+same user, same homes — so it opens that path itself, reads it under the owner's
+identity and digests the bytes it read for idempotency. `ds server solar submit
+--input <path>` passes the path straight through; nothing copies 64 MiB through
+a socket to the same machine's own user. The path must be absolute (the client
+and the host share a filesystem but not a working directory) and name a regular
+file of at most 64 MiB; anything else is `server_refused` (400) with the remedy.
+
+`project` — OPTIONAL: the sealed envelope names its own project and that name
+wins. Sending it is still recommended (it is how a caller learns it prepared the
+wrong city): a `project` that differs from the sealed input is `scope_mismatch`.
+202 → `{"job": <Job>}`.
 
 ### `GET /v1/jobs?project=<id>`
 `project` — OPTIONAL narrowing. Without it: every job visible to this
@@ -142,13 +156,15 @@ under HTTP 503. Every other unserved path answers `unsupported_operation`
 same `needs_paired_map` code is what a map-bound command should raise from its
 descriptor before it calls out at all; this is the host-side half of it.
 
-### Principal header (all routes)
-An optional `x-ds-principal: <uid>` is honoured only when it equals the
-Server's own account uid; any other value is `multi_principal_unsupported`
-(401). One Server serves one authenticated principal and many of its projects;
-a second principal needs a second `ds server serve` with its own
-`--state-dir`. `ds` never needs to send this header — it is the explicit,
-tested statement of the boundary.
+### One owner (all routes)
+One Server is signed in as exactly one owner, and its owner-only loopback
+bearer is that owner's. A request with any other bearer is
+`401 {"error": "server access denied"}` — that is the whole rule, and there is
+no header that names an account: a second identity is not something this
+process can have. Many users are many machines (`ds server serve` per machine,
+its own `--state-dir` and `--listen`), which is the deployment model, not a
+gap. The `x-ds-principal` header and the `multi_principal_unsupported` code
+are **deleted**; a client that still sends the header is simply not read.
 
 ## 3. `Job` gains `context`
 
@@ -186,10 +202,12 @@ let sessions = crate::server_sync::sessions::ServerSessions::native(
 `ServerSessions::native` performs **no** network call — it reads the
 protected native state on this machine and nothing else — and requires **no**
 saved project, so `ds server serve` now starts for an account that has never
-run `ds auth project use`, and starts with no upstream. Add `--per-project
-<count>` to `SERVE` (optional, 1..=workers, default `max(1, workers / 2)`)
-and drop `headless_project_not_selected` from the server refusal rosters
-where it only described the old startup requirement.
+run `ds auth project use`, and starts with no upstream. `--per-project <count>`
+is optional and **1..workers-1** on a host with more than one worker (a share
+equal to the worker count would let one project hold every worker while
+another waits, which is not a share); the default is `max(1, workers / 2)`.
+`headless_project_not_selected` is not in the server refusal rosters: it only
+ever described the old startup requirement.
 
 ## 5. One additive `ds-cli-auth` export this slice adds
 
@@ -202,19 +220,44 @@ The Server's connection identity **without** a saved selection —
 `headless_sync_context` minus the project, which is what a host that admits a
 project per operation actually needs — read from the local probe, never
 refreshed over the network to obtain. There is no project-directory export:
-the Server has no use for one. The saved selection a *pre-slice* transformer
-row is recovered into (execution-context contract §6, the one use it has) is
-read in `serve` through the same local probe.
+the Server has no use for one. And no saved selection is read anywhere in the
+Server, for any purpose: `serve` does not call `probe_headless_identity`.
 
-## 6. The kernel seam this host still satisfies
+## 6. The kernel seam, and two notes for the writers after this one
 
-The kernel's `AdmitRequest` still carries a `membership` input and the
-runtime a `MembershipSource`. The Server satisfies both from what it holds
-and nothing it fetches: an admission's membership is exactly the project(s)
-the request names (`ServerSessions::named`), and the worker's source is the
-projects of the owner's own durable rows (`ServerSessions::snapshot`). Both
-are local, both are the identity function on the owner's word, and both
-delete the day the kernel drops the input.
+The seam is gone rather than satisfied. `AdmitRequest` has no `membership`
+member (`deny_unknown_fields` refuses one), the runtime has no
+`MembershipSource`, `still_admitted`, `membership_holds` or
+`membership_revoked`, and `WorkerContext` has no saved selection. Admission is
+the connection identity, the named project (a sealed input's outranks it) and
+the key with its input digest. Nothing in the runtime touches the network at
+all, so a claimed job runs exactly what was admitted.
+
+**The durable job id changed.** `ds_compute_runtime::job_id` now digests
+`(owner, lane, project, key)`. Equal keys in projects A and B are two pieces of
+work with two ids rather than a `scope_mismatch_for_key`; inside one project a
+key reused for another operation or other bytes still refuses. Rows written
+before this scheme keep the ids they have, which can no longer be derived from
+a key, so such a row is never adopted by a later submission.
+
+**For the proof writer.** `tests/isolation.rs` and `tests/fixtures/mod.rs`
+assert some of the deleted behaviour and are yours to repair, not mine:
+`WorkerContext` has lost `membership` and `saved_project`;
+`runtime::recover_contexts(path, identity)` takes two arguments and
+`Recovery::from_saved_selection` is gone; a legacy transformer row now stays
+`context_unrecoverable` instead of recovering into project C
+(`item5_a_restart_recovers_every_context_including_rows_a_released_server_wrote`);
+`multi_principal_access_is_refused_by_name_rather_than_served_quietly` tests a
+deleted mechanism; and the Solar submissions must post
+`{"input_path": …}` rather than the envelope bytes. The one remedy sentence for
+`context_unrecoverable` is now identical in `sessions.rs` and in `ds server`'s
+rosters: *read that job's result and resubmit under an explicit --project*.
+
+**`ds-compute-runtime/Cargo.lock` gained `rusqlite` as a dev-dependency** (one
+line, commit `8d07f80`). It is legitimate and stays: writing a row exactly as a
+released Server wrote it — no `context` member — is the only honest way to
+prove recovery, and that needs the same SQLite the store itself uses. It was
+already in that lock through `ds-sync-store`, so nothing new is compiled.
 
 ## 7. What this slice does not do yet — say it, do not discover it
 
@@ -227,16 +270,18 @@ delete the day the kernel drops the input.
    can read is served; the saved selection is not read on this path at all.
    `capture_layer_scope_fence` / `layer_config_fenced` stay for the one caller
    whose subject IS the selection: `ds map layer …` with no `--project`.
-2. **Multi-principal is refused, not supported** (`multi_principal_unsupported`).
-   One authenticated owner per Server; many users are many machines, never
-   one process. A second account needs a second `ds server serve`.
+2. **One owner per Server is the model, not a gap.** One authenticated owner,
+   enforced by the bearer alone; a second account is a second `ds server serve`
+   (its own `--state-dir` and `--listen`) or, in the owner's deployment model,
+   a second machine. Nothing here is built for many users in one process: no
+   per-principal limits, no multi-user auth, no fairness beyond the owner's own
+   projects sharing one machine.
 3. **`/v1/activity` needs a gateway session per project**, so its per-project
    envelope is proven for its scope selection (`project_scopes`) and its
    pre-startup refusal, not for a live Sync Center projection.
-4. **The Solar route still takes the sealed envelope as bytes**, sent by the
-   client from the workspace file. The owner's filesystem ruling (the Server
-   reads local paths as the desktop's own commands do) has not yet changed
-   the route to take the path; the bytes it takes are the same bytes.
+4. **The Solar route takes the path now** (§2), which closes what this list
+   used to record as open. Where the desktop's own command takes bytes, the
+   route still takes bytes: transformer processing.
 5. **Two on-disk roots.** The Server state directory and the desktop data
    directory are still two homes; converging them into one is slice-2 work,
    alongside the instance registry.
