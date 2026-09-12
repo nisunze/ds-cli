@@ -65,7 +65,7 @@ const ADMIN_BOUNDS_ARG: Arg = Arg::value(
 );
 const SEED_ARG: Arg = Arg::switch(
     "seed",
-    "Acquire missing selected map context for each printed transformer before rendering; spends provider cost and downloads bundles. Without it, unheld context is omitted and named.",
+    "Acquire the printed transformer's missing map context first (provider cost); without it unheld context is omitted and named.",
 );
 const PUBLISH_ARG: Arg = Arg::switch(
     "publish",
@@ -108,7 +108,7 @@ const EXPORT_BLOCKED: Refusal = Refusal {
 };
 const INPUTS_INVALID: Refusal = Refusal {
     code: "report_inputs_invalid",
-    when: "the reporter input receipt, a transformer's saved layers or the output policy cannot be run as given",
+    when: "the input receipt, a transformer's saved layers or the output policy cannot be run as given",
     remedy: "refresh the project configuration; `ds report project settings` shows the output policy",
 };
 const STAGING_FAILED: Refusal = Refusal {
@@ -163,43 +163,38 @@ const PUBLISH_LOCAL_ONLY: Refusal = Refusal {
 };
 const PUBLISH_SCOPE_CHANGED: Refusal = Refusal {
     code: "report_publish_scope_changed",
-    when: "the native UID, lane, credential audience, selected project, or credential generation changed before sealed publication",
+    when: "the native identity, lane, audience, project or credential generation changed before sealing",
     remedy: "repeat the export under the current native account and project",
 };
 const PUBLISH_ROOT: Refusal = Refusal {
     code: "report_publish_root_invalid",
     when: "the Server state root is unavailable, relative, or cannot hold a sealed publication",
-    remedy: "start Server with its default state root or pass the same absolute --server-state-dir used by ds server serve",
+    remedy: "use Server's default state root, or the same absolute --server-state-dir as ds server serve",
 };
 const CONTEXT_UNSUPPORTED: Refusal = Refusal {
     code: "print_context_unsupported",
-    when: "a selected printing setup names a survey or local-layer context source, which no headless host can supply (a batch row carries it)",
-    remedy: "print that setup from the desktop, or remove the source from the setup's context layers",
+    when: "a setup names a survey or local-layer context source (desktop-held; batch row)",
+    remedy: "print that setup from the desktop, or drop the source from the setup",
 };
 const CONTEXT_INVALID: Refusal = Refusal {
     code: "print_context_invalid",
-    when: "the assembled print context exceeds the engine's bounds or this machine's holdings could not be read (a batch row carries it)",
-    remedy: "narrow the setup's context buffers, or repair the geographic data storage root",
+    when: "the print context exceeds the engine's bounds or the holdings are unreadable (batch row)",
+    remedy: "narrow the setup's context buffers, or repair the geographic data root",
 };
 const CONTEXT_CATALOG: Refusal = Refusal {
     code: "catalog_unavailable",
-    when: "the reference catalogue could not be read, so catalogue context layers were omitted from every print",
-    remedy: "retry when connected; held rooms still print",
+    when: "the reference catalogue could not be read; catalogue layers print from held rooms",
+    remedy: "retry when connected",
 };
 const CONTEXT_BUNDLE: Refusal = Refusal {
     code: "reference_bundle_unavailable",
-    when: "--seed needed a national bundle the catalogue does not publish, or it could not be installed (a batch row carries it)",
+    when: "--seed needed a national bundle that is unpublished or failed to install (batch row)",
     remedy: "publish the dataset's bundle, then print again with --seed",
-};
-const CONTEXT_PROVIDER: Refusal = Refusal {
-    code: "dataset_provider_unavailable",
-    when: "--seed could not reach the governed context provider (a batch row carries it)",
-    remedy: "restore the connection and print again; held context is kept",
 };
 const CONTEXT_ACQUISITION: Refusal = Refusal {
     code: "project_dataset_acquisition_failed",
-    when: "--seed acquired context the room refused (a batch row carries it)",
-    remedy: "read the row's message; `ds data project-cache status` shows the dataset's last error",
+    when: "--seed acquired context the room refused (batch row)",
+    remedy: "`ds data project-cache status` shows the last error",
 };
 
 const REFUSALS: &[Refusal] = &[
@@ -247,10 +242,8 @@ const REFUSALS: &[Refusal] = &[
     CONTEXT_INVALID,
     CONTEXT_CATALOG,
     CONTEXT_BUNDLE,
-    CONTEXT_PROVIDER,
     CONTEXT_ACQUISITION,
     ds_cli_auth::DATA_DISTRIBUTION_UNAVAILABLE_REFUSAL,
-    ds_cli_auth::REFERENCE_BUNDLE_DOWNLOAD_FAILED_REFUSAL,
 ];
 
 pub static COMMAND: Command = Command {
@@ -258,7 +251,7 @@ pub static COMMAND: Command = Command {
     path: &["report", "project", "export"],
     contract: 1,
     summary: "Produce transformer reports, prints included, headlessly.",
-    purpose: "Export the selected project's saved transformers and named print outputs with the native reporter. Defaults to all active transformers; engines run concurrently and outputs are verified. Files stay local unless --publish seals them for Server sync, which is not cloud completion. Each print carries the map context its setups select from this machine's project rooms; --seed acquires what is not held first, so the first print request seeds. Photos require a media grant and currently refuse. Inspect batch rows and warnings. Details: docs/reference/report.md.",
+    purpose: "Export the selected project's saved transformers and named print outputs with the native reporter. Defaults to all active transformers; engines run concurrently and outputs are verified. Files stay local unless --publish seals them for Server sync, which is not cloud completion. Each print carries the map context its setups select from this machine's project rooms; --seed acquires what is not held first. Photos need a media grant and refuse. Details: docs/reference/report.md.",
     chapter: Chapter::Reports,
     effect: Effect::LocalFileWrite,
     authority: Authority::HeadlessProject,
@@ -274,12 +267,11 @@ pub static COMMAND: Command = Command {
         LANE_ARG,
     ],
     output: "\
-Lane and selected-project identity/status, the scope, the engine identity and \
-publication state, the batch (status completed|partial|failed, counts, \
-concurrency, receipt path) and one result per transformer in stable order: \
-`ok` with its artifact count and `<transformer>/report-run.json`; --publish also \
-reports the durable local Server-sync queue identity, or `error` \
-with a typed code, message and detail.",
+Lane, project, scope, engine identity and publication state, the batch (status, \
+counts, concurrency, receipt path), `context` (selected layers, warnings, notes) \
+and one result per transformer in stable order: `ok` with its artifact count, \
+`print_context` and `<transformer>/report-run.json`, or `error` with a typed \
+code; --publish adds the Server-sync queue identity.",
     examples: &[
         Example {
             command: "ds report project export --out-dir ./reports --output json",
@@ -412,9 +404,9 @@ fn host_failure(failure: HostFailure) -> Failure {
             Failure::unavailable("reference_bundle_unavailable", message)
                 .remedy(CONTEXT_BUNDLE.remedy)
         }
-        "dataset_provider_unavailable" => {
-            Failure::unavailable("dataset_provider_unavailable", message)
-                .remedy(CONTEXT_PROVIDER.remedy)
+        "data_distribution_unavailable" => {
+            Failure::unavailable("data_distribution_unavailable", message)
+                .remedy(ds_cli_auth::DATA_DISTRIBUTION_UNAVAILABLE_REFUSAL.remedy)
         }
         "project_dataset_acquisition_failed" => {
             Failure::failed("project_dataset_acquisition_failed", message)
@@ -1080,7 +1072,10 @@ fn context_failure(error: ds_project_data::Failure) -> HostFailure {
     match error {
         Cause::Unsupported(_) => HostFailure::new(CONTEXT_UNSUPPORTED.code, message),
         Cause::BundleUnavailable(_) => HostFailure::new(CONTEXT_BUNDLE.code, message),
-        Cause::ProviderUnavailable(_) => HostFailure::new(CONTEXT_PROVIDER.code, message),
+        Cause::ProviderUnavailable(_) => HostFailure::new(
+            ds_cli_auth::DATA_DISTRIBUTION_UNAVAILABLE_REFUSAL.code,
+            message,
+        ),
         Cause::AcquisitionFailed(_) => HostFailure::new(CONTEXT_ACQUISITION.code, message),
         Cause::CatalogInvalid(_) => HostFailure::new(CONTEXT_CATALOG.code, message),
         Cause::NotHeld(_) | Cause::TooLarge(_) | Cause::Store(_) => {
