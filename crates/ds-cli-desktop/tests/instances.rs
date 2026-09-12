@@ -83,7 +83,8 @@ fn each_named_instance_performs_its_own_operation_and_the_others_perform_none() 
             )
             .expect("a named live instance performs the operation");
         assert_eq!(
-            answer["servedBy"], json!(bridge.instance_id),
+            answer["servedBy"],
+            json!(bridge.instance_id),
             "the answer came from the instance that was named",
         );
     }
@@ -195,7 +196,11 @@ fn the_enumeration_names_every_live_instance_and_no_token_address_or_account() {
         .iter()
         .filter_map(|row| row["instance_id"].as_str())
         .collect();
-    assert_eq!(ids, vec![ALPHA, BETA, GAMMA], "ordered by id, never by read order");
+    assert_eq!(
+        ids,
+        vec![ALPHA, BETA, GAMMA],
+        "ordered by id, never by read order"
+    );
     assert_eq!(listed["compatible"], json!([ALPHA, BETA, GAMMA]));
     for row in listed["instances"].as_array().expect("rows") {
         assert_eq!(row["state"], json!("ready"));
@@ -232,7 +237,11 @@ fn the_identity_fence_carries_the_owner_windows_generation_and_follows_it() {
         .invoke(Some(&target(ALPHA)), &PROJECT_OP, json!({}))
         .expect("the operation runs");
     let fence = alpha.fence(0);
-    assert_eq!(fence["context_generation"], json!(2), "the owner window's generation");
+    assert_eq!(
+        fence["context_generation"],
+        json!(2),
+        "the owner window's generation"
+    );
     assert_eq!(fence["session_revision"], json!(3));
     assert_eq!(fence["project"], json!("project-a"));
     assert_eq!(fence["uid"], json!(fixtures::UID));
@@ -345,9 +354,16 @@ fn a_stale_descriptor_is_skipped_only_after_a_failed_authenticated_probe() {
     assert_eq!(answer["servedBy"], json!(ALPHA));
 
     let attempted = squatter.received();
-    assert_eq!(attempted.len(), 1, "the stale endpoint was asked exactly once");
+    assert_eq!(
+        attempted.len(),
+        1,
+        "the stale endpoint was asked exactly once"
+    );
     assert_eq!(attempted[0].path, "/v1/session");
-    assert!(!attempted[0].authorized, "it could not answer as that instance");
+    assert!(
+        !attempted[0].authorized,
+        "it could not answer as that instance"
+    );
     assert!(squatter.invoked().is_empty(), "and was never given work");
     assert_eq!(alpha.invoked(), vec![PROJECT_OP.operation.to_owned()]);
 }
@@ -375,7 +391,10 @@ fn a_reused_port_never_answers_to_the_descriptor_of_the_instance_it_replaced() {
         "the descriptor's instance is gone",
     );
     assert_eq!(refusal.code(), "desktop_not_paired");
-    assert!(successor.probed(), "the successor was asked, with the old token");
+    assert!(
+        successor.probed(),
+        "the successor was asked, with the old token"
+    );
     untouched(&[&successor]);
 
     // The successor publishes its own descriptor. Now one instance is live —
@@ -628,12 +647,7 @@ fn a_pinned_descriptor_and_a_target_that_disagree_refuse_without_an_effect() {
     machine.publish(&beta);
 
     let refusal = refused(
-        Invocation::signed_in().invoke_pinned(
-            &pinned,
-            Some(&target(BETA)),
-            &PROJECT_OP,
-            json!({}),
-        ),
+        Invocation::signed_in().invoke_pinned(&pinned, Some(&target(BETA)), &PROJECT_OP, json!({})),
         "the pinned file is another instance than the target names",
     );
     assert_eq!(refusal.code(), "desktop_target_mismatch");
@@ -706,14 +720,25 @@ fn ignored_unless_the_ds_executable_is_built_argv_reaches_the_named_instance() {
     machine.publish(&beta);
     let executable = fixtures::ds_executable();
 
-    let listed = fixtures::run_ds(&executable, &machine, &["desktop", "list", "--output", "json"]);
+    let listed = fixtures::run_ds(
+        &executable,
+        &machine,
+        &["desktop", "list", "--output", "json"],
+    );
     assert_eq!(listed["status"], json!("ok"), "{listed}");
     assert_eq!(listed["data"]["live"], json!(2));
 
     let status = fixtures::run_ds(
         &executable,
         &machine,
-        &["desktop", "status", "--target", &target(BETA), "--output", "json"],
+        &[
+            "desktop",
+            "status",
+            "--target",
+            &target(BETA),
+            "--output",
+            "json",
+        ],
     );
     assert_eq!(status["data"]["instance"], json!(BETA));
     assert_eq!(status["data"]["project"], json!("project-b"));
@@ -721,7 +746,14 @@ fn ignored_unless_the_ds_executable_is_built_argv_reaches_the_named_instance() {
     let refusal = fixtures::run_ds(
         &executable,
         &machine,
-        &["desktop", "status", "--target", &target(DEAD), "--output", "json"],
+        &[
+            "desktop",
+            "status",
+            "--target",
+            &target(DEAD),
+            "--output",
+            "json",
+        ],
     );
     assert_eq!(refusal["error"]["code"], json!("desktop_target_not_live"));
     untouched(&[&alpha, &beta]);
@@ -754,12 +786,22 @@ fn every_refusal_this_proof_asserts_is_a_code_the_kernel_publishes() {
 /// reason `discover::adopted_requirement` exists — dispatch scopes NO headless
 /// observation (`registry::scope_headless_identity` maps the target *inside*
 /// the identity, and there is no identity to put it in). The host `--target` is
-/// dropped with it, so a paired command that explicitly names a dead instance
-/// routes to whichever live one is compatible instead of refusing:
+/// dropped with it — `DS_TARGET` too, since it is that flag's default and is
+/// read in the same place — so a paired command that explicitly names a dead
+/// instance routes to whichever live one is compatible instead of refusing.
+/// Measured through the built executable, against one live fixture instance:
 ///
 /// ```text
-/// PROBE: routed anyway to "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"   // --target desktop:dddd…
+/// $ ds desktop project list --target desktop:dddd…dddd --output json
+/// {"status":"ok","data":{…,"servedBy":"aaaa…aaaa"}}          exit 0
+/// $ ds desktop status       --target desktop:dddd…dddd --output json
+/// {"status":"error","error":{"code":"desktop_target_not_live",…}}   exit 2
 /// ```
+///
+/// `desktop status` is right because it reads its own declared flag
+/// (`ops::declared_target`); every command that takes the host from the scoped
+/// observation is wrong. `--desktop-descriptor` is unaffected: it is passed to
+/// the handler as an argument and never rides the observation.
 ///
 /// The contract is explicit — "An explicitly targeted dead or mismatched
 /// instance refuses; it never falls through to another instance" — so this test

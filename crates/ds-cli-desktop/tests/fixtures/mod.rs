@@ -447,9 +447,7 @@ fn serve(
     token: String,
     display_name: String,
 ) {
-    listener
-        .set_nonblocking(true)
-        .expect("a pollable listener");
+    listener.set_nonblocking(true).expect("a pollable listener");
     while !stop.load(Ordering::SeqCst) {
         match listener.accept() {
             Ok((stream, _)) => {
@@ -511,7 +509,8 @@ fn answer(
         return;
     }
     let body: Value = serde_json::from_slice(&body).unwrap_or(Value::Null);
-    let authorized = headers.get("authorization").map(String::as_str) == Some(&format!("Bearer {token}"));
+    let authorized =
+        headers.get("authorization").map(String::as_str) == Some(&format!("Bearer {token}"));
     log.lock().expect("log").push(Received {
         method: method.clone(),
         path: path.clone(),
@@ -549,17 +548,16 @@ fn answer(
 /// that produced it, and — for the one operation allowed to move a window's
 /// project — actually moving it, so `ds`'s own re-observation is answered by a
 /// session that really changed.
-fn perform(
-    request: &Value,
-    session: &Arc<Mutex<Value>>,
-    display_name: &str,
-) -> (u16, Value) {
+fn perform(request: &Value, session: &Arc<Mutex<Value>>, display_name: &str) -> (u16, Value) {
     let operation = request
         .get("operation")
         .and_then(Value::as_str)
         .unwrap_or_default();
     let mut session = session.lock().expect("session");
-    let instance = session["instance_id"].as_str().unwrap_or_default().to_owned();
+    let instance = session["instance_id"]
+        .as_str()
+        .unwrap_or_default()
+        .to_owned();
     let project = session["project"].as_str().map(str::to_owned);
     match operation {
         "project.list" => (
@@ -693,12 +691,7 @@ impl Invocation {
         }
         let _scope = ops::scope_headless_identity(identity);
         let found = ds_cli_desktop::bridge::paired(None)?;
-        ops::invoke(
-            &found.descriptor,
-            op,
-            arguments,
-            Duration::from_secs(10),
-        )
+        ops::invoke(&found.descriptor, op, arguments, Duration::from_secs(10))
     }
 
     /// The same, with a descriptor FILE pinned as well — the legacy explicit
