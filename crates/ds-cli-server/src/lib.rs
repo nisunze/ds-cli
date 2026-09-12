@@ -600,9 +600,16 @@ fn typed_refusal(status: u16, body: &[u8]) -> Failure {
         }
         _ => Failure::new(class, "server_refused", message),
     };
+    // A remedy the Server sent wins. Failing that, the sentence this command
+    // declares for the code the Server named -- and failing THAT, the one it
+    // declares for the code this client gave the answer, because a Server may
+    // legitimately answer without naming a code at all (a foreign bearer is
+    // `401 {"error": …}` and nothing else, by design), and an answer with a
+    // code and a class but no remedy leaves its caller nothing to do.
+    let declared = default_remedy(code.or_else(|| Some(refusal.code())), &value);
     let refusal = match value["remedy"].as_str() {
         Some(remedy) => refusal.remedy(remedy),
-        None => match default_remedy(code, &value) {
+        None => match declared {
             Some(remedy) => refusal.remedy(remedy),
             None => refusal,
         },
@@ -653,8 +660,11 @@ fn default_remedy(code: Option<&str>, body: &Value) -> Option<String> {
         // The door and the queue are different things to be full of, so they
         // are different sentences: nothing a caller cancels empties the door.
         return Some(if scope == "door" {
+            // The door is `max(MIN_REQUEST_PERMITS, workers)`, so naming
+            // `--workers` alone would send an operator to a knob that does
+            // nothing on every host below that floor. Say the arithmetic.
             format!(
-                "the request door is full; retry after {retry} ms, or restart the host with a larger --workers"
+                "the request door is full; retry after {retry} ms — it clears as requests finish, and only restarting the host with --workers above {MIN_REQUEST_PERMITS} widens it"
             )
         } else {
             format!(
@@ -894,7 +904,7 @@ pub const fn default_per_project(workers: usize) -> usize {
 /// machine: never fewer than [`MIN_REQUEST_PERMITS`], and the worker count
 /// where that is larger, since that count is what the host's CPU and memory
 /// were measured for.
-const MIN_REQUEST_PERMITS: usize = 8;
+pub(crate) const MIN_REQUEST_PERMITS: usize = 8;
 
 pub const fn request_permits(workers: usize) -> usize {
     if workers > MIN_REQUEST_PERMITS {
@@ -1162,10 +1172,13 @@ pub fn cancel(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
 pub fn result(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
     let output = PathBuf::from(inputs.require("out")?);
     if output.exists() {
-        return Err(Failure::conflict(
-            "server_output_exists",
-            "output already exists",
-        ));
+        return Err(
+            Failure::conflict("server_output_exists", "output already exists")
+                // Declared with a remedy in the roster, so it is raised with
+                // one: `--help` and the runtime answer must not disagree
+                // about what a caller is supposed to do next.
+                .remedy(OUTPUT_EXISTS.remedy),
+        );
     }
     let bytes = request(
         inputs,
@@ -1195,10 +1208,13 @@ pub fn result(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
 pub fn input(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
     let output = PathBuf::from(inputs.require("out")?);
     if output.exists() {
-        return Err(Failure::conflict(
-            "server_output_exists",
-            "output already exists",
-        ));
+        return Err(
+            Failure::conflict("server_output_exists", "output already exists")
+                // Declared with a remedy in the roster, so it is raised with
+                // one: `--help` and the runtime answer must not disagree
+                // about what a caller is supposed to do next.
+                .remedy(OUTPUT_EXISTS.remedy),
+        );
     }
     let project = named_project(inputs)?;
     let bytes = request(
@@ -1360,6 +1376,26 @@ mod tests {
     }
 
     #[test]
+    fn an_answer_that_names_no_code_is_still_one_a_caller_can_act_on() {
+        // A foreign bearer is `401 {"error": …}` and deliberately nothing
+        // else: naming a code there would say something about who owns this
+        // host. The client still has to leave its caller a class, a code and
+        // something to do, so it falls back to what `server_refused` declares.
+        let error = typed_refusal(401, br#"{"error":"server access denied"}"#);
+        assert_eq!(error.code(), "server_refused");
+        assert_eq!(error.class(), ExitClass::Unauthorized);
+        assert_eq!(
+            error.remedy_text(),
+            Some(REFUSED.remedy),
+            "a code with no remedy is a refusal a caller cannot act on"
+        );
+        // And nothing about the fallback invents a project, an owner or a
+        // retry it was not told about.
+        assert!(error.detail_value().is_none());
+        assert_eq!(error.message(), "server access denied");
+    }
+
+    #[test]
     fn the_doors_refusal_is_re_raised_with_its_own_scope_and_its_own_remedy() {
         // The host answers a full door in the kernel's own vocabulary, and
         // the client re-raises it unchanged — with the numbers as numbers, so
@@ -1381,6 +1417,12 @@ mod tests {
         // not the other, so the two never share a sentence.
         assert!(remedy.contains("request door"), "{remedy}");
         assert!(!remedy.contains("cancel"), "{remedy}");
+        // And it names the knob that actually widens a door whose floor is
+        // MIN_REQUEST_PERMITS, not `--workers` on its own.
+        assert!(
+            remedy.contains(&format!("above {MIN_REQUEST_PERMITS}")),
+            "{remedy}"
+        );
     }
 
     #[test]

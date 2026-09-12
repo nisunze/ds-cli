@@ -114,7 +114,10 @@ typed answer of its own — `capacity_exhausted` with `"scope": "door"`, its own
 `retry_after_ms` (a quarter second per request already inside it, capped at a
 minute) and a remedy that says so. It is deliberately not the queue's answer:
 cancelling work empties the queue and never the door, and the door clears by
-itself as requests finish.
+itself as requests finish. The only thing that widens it is restarting the host
+with `--workers` above eight, because its width is the larger of `--workers`
+and that floor — below it, more workers change nothing, and the remedy says
+which.
 
 ### Refusals, by their own names
 

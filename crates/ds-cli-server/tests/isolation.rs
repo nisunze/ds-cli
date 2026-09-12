@@ -59,7 +59,7 @@ use serde_json::{Value, json};
 use std::sync::Arc;
 use std::time::Duration;
 
-use ds_cli_server::{CANCEL, RESULT, SERVE, SOLAR_SUBMIT, STATUS, SUBMIT};
+use ds_cli_server::{ACTIVITY, CANCEL, RESULT, SERVE, SOLAR_SUBMIT, STATUS, SUBMIT};
 
 /// A 64-character digest that is a perfectly well-formed job id and has never
 /// named a job.
@@ -1718,6 +1718,30 @@ fn activity_scope_is_one_entry_per_project_that_holds_work() {
         "the pre-startup refusal, named: {}",
         answer.stringify()
     );
+    // And it is a REFUSAL, not a status line. This route's failures used to
+    // leave as a bare `{"error": …}` with no code, no class and no remedy, so
+    // a client had nothing to re-raise and its caller nothing to do.
+    assert_eq!(answer.code(), "server_refused");
+    assert_eq!(answer.json()["class"], "conflict");
+    assert!(
+        answer.json()["remedy"].is_string(),
+        "a refusal a caller cannot act on: {}",
+        answer.stringify()
+    );
+    // The same answer through the client half, which is where it is read.
+    let refused = ds_cli_server::activity(&host.args(&ACTIVITY, &["--project", A]), &context())
+        .expect_err("no Sync Center in this proof");
+    assert_eq!(refused.code(), "server_refused");
+    assert_eq!(
+        refused.class(),
+        ExitClass::Conflict,
+        "the class the host stated, not one inferred from a status code"
+    );
+    assert!(
+        refused.remedy_text().is_some(),
+        "{}",
+        refused.message().to_owned()
+    );
     assert_eq!(
         host.gateway.asked(),
         0,
@@ -2208,6 +2232,30 @@ fn a_legacy_queued_row_is_readable_by_input_and_resubmittable() {
     );
     assert_eq!(saved.envelope["data"]["byte_count"], stored.len());
 
+    // Writing over a file is never how bytes come back: a second save to the
+    // same path is refused by name, with the remedy it declares, and the file
+    // that is already there is untouched.
+    let overwrite = ds_cli_server::input(
+        &host.args(
+            &ds_cli_server::INPUT,
+            &["--job", &stranded, "--out", &out.display().to_string()],
+        ),
+        &context(),
+    )
+    .expect_err("an existing file is never overwritten");
+    assert_eq!(overwrite.code(), "server_output_exists");
+    assert_eq!(overwrite.class(), ExitClass::Conflict);
+    assert_eq!(
+        overwrite.remedy_text(),
+        Some("choose an absent output file; existing files are never overwritten"),
+        "a refusal declared with a remedy is raised with it"
+    );
+    assert_eq!(
+        std::fs::read(&out).expect("the saved input"),
+        stored,
+        "the file that was already there is untouched"
+    );
+
     // The remedy carried out: the same bytes, under an explicit project, are
     // new work with their own id — and the stranded row is untouched.
     let resubmitted = ds_cli_server::submit(
@@ -2380,6 +2428,193 @@ fn a_path_like_project_id_is_refused_before_anything_is_written() {
         assert_eq!(admitted.status, 202, "{ordinary}: {}", admitted.stringify());
         assert_eq!(admitted.json()["job"]["context"]["project"], *ordinary);
     }
+}
+
+/// The read routes speak the same grammar, and speak it first.
+///
+/// Every WRITE door refused `..` with the grammar sentence, while a READ
+/// route handed the same string to the visibility fence and answered as if
+/// the name were simply empty: `GET /v1/jobs?project=..` was `[]` and
+/// `/v1/jobs/:id?project=A/../B` was `job not found`. Two answers to one
+/// question, and both read as "nothing there" for a name that could never
+/// name anything. Now a read that names a path expression is told the rule —
+/// same code, class, sentence and remedy as the write door, byte for byte —
+/// and it is told before the store is consulted: the refusal is the same for
+/// an id that exists as for one that never did, and a cancel under such a
+/// name changes nothing.
+#[test]
+fn a_read_route_refuses_a_path_like_project_id_before_reading() {
+    let host = Host::start(limits());
+    // One real job under a real name, so the reads have something to find.
+    let admitted = host.raw(
+        "POST",
+        &format!("/v1/transformer-processing/real?project={A}"),
+        Some(&transformer("T-REAL")),
+    );
+    assert_eq!(admitted.status, 202, "{}", admitted.stringify());
+    let real = admitted.json()["job"]["id"]
+        .as_str()
+        .expect("a job id")
+        .to_owned();
+    let phase_before = host.stored(Some(A))[0].phase.clone();
+
+    let mut path_like: Vec<String> = [
+        "..",
+        "A/../B",
+        "A B",
+        "CON",
+        "con.json",
+        "A\0B",
+        "A\u{200B}B",
+        "C:",
+        "A.",
+        "",
+    ]
+    .iter()
+    .map(|value| (*value).to_string())
+    .collect();
+    path_like.push("p".repeat(500));
+
+    for value in path_like.iter().map(String::as_str) {
+        let query = as_query_value(value);
+        // What the write door says about this exact name is the standard the
+        // reads are held to — not a sentence copied into the test.
+        let written = host.raw(
+            "POST",
+            &format!("/v1/transformer-processing/path-like?project={query}"),
+            Some(&transformer("T-PATH")),
+        );
+        assert_eq!(written.status, 400, "{value:?}: {}", written.stringify());
+        assert_eq!(written.code(), "context_corrupt", "{value:?}");
+
+        let reads: [(&str, String); 6] = [
+            ("GET", format!("/v1/jobs?project={query}")),
+            ("GET", format!("/v1/jobs/{real}?project={query}")),
+            ("GET", format!("/v1/jobs/{real}/result?project={query}")),
+            ("GET", format!("/v1/jobs/{real}/input?project={query}")),
+            ("POST", format!("/v1/jobs/{real}/cancel?project={query}")),
+            ("GET", format!("/v1/activity?project={query}")),
+        ];
+        for (method, path) in &reads {
+            let read = host.raw(method, path, None);
+            assert_eq!(read.status, 400, "{method} {path}: {}", read.stringify());
+            assert_eq!(read.code(), "context_corrupt", "{method} {path}");
+            for field in ["code", "class", "error", "remedy", "retryable"] {
+                assert_eq!(
+                    read.json()[field],
+                    written.json()[field],
+                    "{method} {path}: the read and the write door disagree on {field}"
+                );
+            }
+            assert!(
+                read.json()["error"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .contains("one path segment"),
+                "{method} {path} must be told the grammar: {}",
+                read.stringify()
+            );
+        }
+        // Decided before visibility: a guessed id under the same name gets the
+        // very same refusal, not `job not found`.
+        let invented = host.raw(
+            "GET",
+            &format!("/v1/jobs/{}?project={query}", guessed()),
+            None,
+        );
+        assert_eq!(invented.status, 400, "{value:?}: {}", invented.stringify());
+        assert_eq!(invented.body, written.body, "{value:?}");
+    }
+
+    // The cancels under a path expression reached nothing: the job is exactly
+    // where it was, and only its own name still narrows to it.
+    assert_eq!(host.stored(Some(A))[0].phase, phase_before);
+    assert_eq!(host.stored(Some(A)).len(), 1);
+    let narrowed = host.raw("GET", &format!("/v1/jobs?project={A}"), None);
+    assert_eq!(narrowed.status, 200, "{}", narrowed.stringify());
+    assert_eq!(narrowed.json()["jobs"].as_array().map(Vec::len), Some(1));
+    let elsewhere = host.raw("GET", &format!("/v1/jobs?project={B}"), None);
+    assert_eq!(elsewhere.status, 200, "{}", elsewhere.stringify());
+    assert_eq!(elsewhere.json()["jobs"], json!([]));
+    // And naming nothing is still naming nothing: the host defaults no read.
+    let unnarrowed = host.raw("GET", "/v1/jobs", None);
+    assert_eq!(unnarrowed.status, 200, "{}", unnarrowed.stringify());
+    assert_eq!(unnarrowed.json()["jobs"].as_array().map(Vec::len), Some(1));
+    assert_eq!(host.gateway.asked(), 0);
+}
+
+/// `/v1/activity` is the read that genuinely wants a gateway, so it is the
+/// one where "before anything is read" is observable on this offline host:
+/// without a Sync Center the route refuses `before server startup` (409), and
+/// a device name as the project is refused by its grammar (400) BEFORE that
+/// — nothing about the projection was asked. The client refuses the same
+/// name before a request exists at all.
+#[test]
+fn an_activity_query_with_a_device_name_project_is_a_grammar_refusal() {
+    let host = Host::start(limits());
+    // The route's own answer on this host, with a real name and with none: a
+    // refusal about the projection, which the grammar refusal must precede.
+    for path in [
+        format!("/v1/activity?project={A}"),
+        "/v1/activity".to_owned(),
+    ] {
+        let projection = host.raw("GET", &path, None);
+        assert_eq!(projection.status, 409, "{path}: {}", projection.stringify());
+        assert_eq!(projection.code(), "server_refused");
+        assert!(projection.stringify().contains("before server startup"));
+    }
+
+    for device in ["CON", "con.json", "NUL", "Com1.txt", "lpt9"] {
+        let refused = host.raw("GET", &format!("/v1/activity?project={device}"), None);
+        assert_eq!(refused.status, 400, "{device}: {}", refused.stringify());
+        assert_eq!(refused.code(), "context_corrupt", "{device}");
+        assert_eq!(refused.json()["class"], "invalid_input", "{device}");
+        assert_eq!(refused.json()["retryable"], false, "{device}");
+        assert!(
+            refused.json()["error"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("device name"),
+            "{device} must be told the grammar, not merely refused: {}",
+            refused.stringify()
+        );
+        assert!(
+            refused.json()["remedy"].is_string(),
+            "{device}: a refusal a caller cannot act on: {}",
+            refused.stringify()
+        );
+        assert!(
+            !refused.stringify().contains("before server startup"),
+            "{device}: the grammar was decided after the projection was asked for: {}",
+            refused.stringify()
+        );
+
+        // In the client half, before the name becomes a query at all.
+        let client =
+            ds_cli_server::activity(&host.args(&ACTIVITY, &["--project", device]), &context())
+                .expect_err("a device name is not a project id");
+        assert_eq!(client.code(), "context_corrupt", "{device}");
+    }
+    // The real binary, the same way, with the one remedy an operator can act on.
+    let typed = host.ds(&[
+        "server",
+        "activity",
+        "--project",
+        "con.json",
+        "--output",
+        "json",
+    ]);
+    assert_ne!(typed.code, 0);
+    assert_eq!(typed.envelope["error"]["code"], "context_corrupt");
+    assert_eq!(
+        typed.envelope["error"]["remedy"],
+        "copy one exact ds_project value from ds auth project list"
+    );
+    assert_eq!(
+        host.gateway.asked(),
+        0,
+        "no refusal on this route constructed a gateway session"
+    );
 }
 
 // ─────────────────────────────────────────────────────────────────────────

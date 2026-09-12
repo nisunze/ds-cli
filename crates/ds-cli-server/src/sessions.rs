@@ -161,16 +161,11 @@ impl ServerSessions {
     /// that project's effects may leave the machine is the gateway's answer at
     /// publication and sync.
     pub fn admit(&self, request: &Request<'_>) -> Result<ExecutionContext, Failure> {
-        let fault = |fault| match fault {
-            execution_context::Fault::Refused(refusal) => refusal_failure(&refusal),
-            execution_context::Fault::Hard(message) => Failure::internal("server_refused", message)
-                .remedy("report this: the Server built a malformed admission"),
-        };
         // The project decides the durable id, so the kernel resolves it first
         // and answers the same way when it reads the three names again.
         let project =
             execution_context::project_for(request.requested_project, None, request.sealed_project)
-                .map_err(fault)?;
+                .map_err(fault_failure)?;
         let job_id = runtime::job_id(
             &self.identity.owner,
             self.identity.lane(),
@@ -191,7 +186,7 @@ impl ServerSessions {
             existing: None,
         })
         .map(|admitted| admitted.context().clone())
-        .map_err(fault)
+        .map_err(fault_failure)
     }
 
     /// A request id for an operation that has no durable job: a layer read or
@@ -292,6 +287,37 @@ impl ServerSessions {
             }
         }
         Ok(projects)
+    }
+}
+
+/// A project the caller NAMED on a route that only narrows by it, through the
+/// kernel's grammar before it becomes a query on the store.
+///
+/// The write doors reach the grammar through [`ServerSessions::admit`], where
+/// `project_for` refuses `..`, `A/../B`, `CON`, a padded or an over-long name
+/// as `context_corrupt` with the grammar sentence. A read route used to hand
+/// the same string to `visible`, which answers "no" to anything that is not a
+/// segment — so `GET /v1/jobs?project=..` was an empty list and
+/// `/v1/jobs/:id?project=A/../B` was `job not found`, two answers that read
+/// as "nothing there" for a name that could never name anything. It is the
+/// same `project_for` here, on the caller's field alone: a caller who named a
+/// project is told the rule, in the one shape every door answers with, and
+/// nothing is opened to decide it. Naming nothing is still naming nothing —
+/// the client sends the saved selection explicitly, so the host defaults no
+/// read.
+pub fn narrowing_project(requested: Option<&str>) -> Result<Option<String>, Failure> {
+    requested
+        .map(|named| execution_context::project_for(Some(named), None, None).map_err(fault_failure))
+        .transpose()
+}
+
+/// One kernel fault as the CLI's own typed failure: a refusal keeps its name,
+/// a hard fault is the host's own and says so.
+fn fault_failure(fault: execution_context::Fault) -> Failure {
+    match fault {
+        execution_context::Fault::Refused(refusal) => refusal_failure(&refusal),
+        execution_context::Fault::Hard(message) => Failure::internal("server_refused", message)
+            .remedy("report this: the Server built a malformed admission"),
     }
 }
 
@@ -487,6 +513,33 @@ mod tests {
             .expect_err("not a bounded project id");
         assert_eq!(padded.code(), "context_corrupt");
         assert_eq!(padded.class(), ExitClass::InvalidInput);
+    }
+
+    #[test]
+    fn a_narrowing_project_is_the_write_doors_refusal_or_nothing_at_all() {
+        // No name is no narrowing: the host defaults nothing on a read.
+        assert_eq!(narrowing_project(None).expect("nothing named"), None);
+        assert_eq!(
+            narrowing_project(Some("project-a")).expect("one segment"),
+            Some("project-a".to_owned())
+        );
+        // A path expression is refused by the same rule, the same code, the
+        // same class, the same sentence and the same remedy a submission gets.
+        let sessions = sessions(PathBuf::from("/tmp/does-not-exist/store.sqlite"));
+        let written = sessions
+            .admit_read("layer_read", Some("A/../B"), b"list", 1_700_000_000_000)
+            .expect_err("not a segment at a write door");
+        let read = narrowing_project(Some("A/../B")).expect_err("not a segment on a read");
+        assert_eq!(read.code(), written.code());
+        assert_eq!(read.class(), written.class());
+        assert_eq!(read.message(), written.message());
+        assert_eq!(read.remedy_text(), written.remedy_text());
+        assert_eq!(read.code(), "context_corrupt");
+        assert!(
+            read.message().contains("one path segment"),
+            "{}",
+            read.message()
+        );
     }
 
     #[test]

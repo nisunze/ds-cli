@@ -145,7 +145,9 @@ impl Door {
             ),
         )
         .remedy(format!(
-            "retry after {retry_after_ms} ms; the door clears as requests finish, and a host with more --workers opens a wider one"
+            "retry after {retry_after_ms} ms; the door clears as requests finish, and it is the larger of --workers and {}, so only a host restarted with --workers above {} opens a wider one",
+            crate::MIN_REQUEST_PERMITS,
+            crate::MIN_REQUEST_PERMITS
         ))
         .detail(json!({"retry_after_ms": retry_after_ms, "scope": "door"}))
     }
@@ -251,12 +253,7 @@ async fn access(
     let permit = app.requests.enter().map_err(|full| typed(&full))?;
     tokio::task::spawn_blocking(move || authorize(&app, &headers))
         .await
-        .map_err(|_| {
-            error(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "authorization worker unavailable",
-            )
-        })??;
+        .map_err(|_| typed(&worker_lost("authorization")))??;
     let response = next.run(request).await;
     drop(permit);
     Ok(response)
@@ -291,13 +288,33 @@ async fn unserved(request: Request) -> ApiError {
     )
 }
 
+/// A blocking worker that never came back. The host's fault, not the
+/// caller's — and still typed, because an answer with no code, no class and no
+/// remedy leaves whoever receives it nothing to plan for and nothing to do.
+fn worker_lost(what: &str) -> Failure {
+    Failure::internal(
+        "server_refused",
+        format!("this host's {what} worker did not return"),
+    )
+    .remedy("repeat the request; if it repeats, restart ds server serve and report it")
+}
+
+/// Work whose failure is a plain sentence rather than a typed refusal.
+///
+/// The sentence is the host's own — an unreadable durable store, a Sync Center
+/// projection that could not be built — and it used to leave here as a bare
+/// `409 {"error": …}`: no code, no class, no remedy. A client cannot re-raise
+/// what it was not told, so `ds` reported those as class `failed` with the
+/// generic `server_refused` fallback while the host had said `conflict`, and
+/// the caller got no remedy at all. It is the same failure `admitting` states
+/// through [`host_failure`], so it is stated that way here too.
 async fn blocking<T: Send + 'static>(
     f: impl FnOnce() -> Result<T, String> + Send + 'static,
 ) -> Result<T, ApiError> {
     tokio::task::spawn_blocking(f)
         .await
-        .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "native task failed"))?
-        .map_err(|e| error(StatusCode::CONFLICT, e))
+        .map_err(|_| typed(&worker_lost("native")))?
+        .map_err(|reason| typed(&host_failure(reason)))
 }
 /// The same queue, for work that answers with the kernel's own refusals.
 async fn admitting<T: Send + 'static>(
@@ -305,7 +322,7 @@ async fn admitting<T: Send + 'static>(
 ) -> Result<T, ApiError> {
     tokio::task::spawn_blocking(f)
         .await
-        .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "native task failed"))?
+        .map_err(|_| typed(&worker_lost("native")))?
         .map_err(|failure| typed(&failure))
 }
 
@@ -318,6 +335,11 @@ pub struct ProjectQuery {
     pub project: Option<String>,
 }
 
+/// The project a caller named, or nothing. A name that is not one path
+/// segment is refused HERE, before the handler opens anything — by the same
+/// kernel rule and in the same typed shape the write doors answer with
+/// ([`sessions::narrowing_project`]) — so a read route never turns `..` into
+/// an empty list or `A/../B` into `job not found`.
 fn project_query(query: Option<Query<ProjectQuery>>) -> Result<Option<String>, ApiError> {
     let Some(Query(query)) = query else {
         return Err(typed(
@@ -328,7 +350,7 @@ fn project_query(query: Option<Query<ProjectQuery>>) -> Result<Option<String>, A
             .remedy("send ?project=<exact-id>"),
         ));
     };
-    Ok(query.project)
+    sessions::narrowing_project(query.project.as_deref()).map_err(|failure| typed(&failure))
 }
 
 async fn list(
@@ -843,6 +865,22 @@ pub async fn serve(mut app: App, workers: usize) -> Result<(), String> {
                 format!("cannot bind {}: {e}", app.connection.address)
             }
         })?;
+    // The durable store, created ONCE and by one thread, before anything that
+    // will open it concurrently.
+    //
+    // A cold start is the only moment this matters, and every Server has that
+    // moment exactly once: a brand-new `store.sqlite` must be converted to
+    // WAL, and SQLite refuses that conversion outright — no busy handler, no
+    // retry inside `busy_timeout` — while another connection holds the file.
+    // The Solar pump, the worker pool's recovery pass and the first request
+    // all open it within milliseconds of each other, so on a fresh state
+    // directory two of them raced and the loser killed the host with
+    // `the sync store could not be read or written: database is locked`
+    // before it ever answered. Opening it here, on this thread, leaves every
+    // later open finding a database that is already WAL, where the pragma is
+    // a no-op. An unusable store still stops the host, which is the honest
+    // answer for a process whose whole job is a durable queue.
+    runtime::open(&app.database)?;
     let activity =
         crate::solar_sync::SolarActivity::open(app.database.clone(), app.sessions.clone())?;
     app.activity = Some(activity.clone());
@@ -1911,6 +1949,13 @@ pub(crate) mod tests {
         assert_eq!(refused["retry_after_ms"], 250);
         let remedy = refused["remedy"].as_str().unwrap_or_default();
         assert!(remedy.contains("250 ms"), "{remedy}");
+        // The knob it names has to be the knob that works: the door is the
+        // larger of `--workers` and the floor, so on any host at or under the
+        // floor "use more workers" is advice a caller cannot act on.
+        assert!(
+            remedy.contains(&format!("above {}", crate::MIN_REQUEST_PERMITS)),
+            "{remedy}"
+        );
         assert!(
             !refused["error"].as_str().unwrap_or_default().contains(A),
             "a capacity refusal names counts, never a project"
@@ -2005,6 +2050,44 @@ pub(crate) mod tests {
             assert_eq!(entry["more"], json!(more), "{entry}");
             assert!(entry["unavailable"].is_string(), "{entry}");
         }
+
+        // And `more` is a bound on the PROJECTION, not on the record: the
+        // oldest row on the host — four and a half thousand rows past where
+        // the projection stops — is still its owner's to read by id, status
+        // and stored input alike. That is the sentence the reference makes,
+        // so it is the sentence this asserts.
+        let oldest = runtime::digest(format!("{A}-0").as_bytes());
+        let (status, job) = call(
+            app.clone(),
+            "GET",
+            &format!("/v1/jobs/{oldest}?project={A}"),
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{job}");
+        assert_eq!(job["job"]["context"]["project"], A);
+        let (status, input) = raw(
+            app.clone(),
+            "GET",
+            &format!("/v1/jobs/{oldest}/input?project={A}"),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(
+            input,
+            format!("{{\"city\":\"{A}-0\"}}").into_bytes(),
+            "a row past the projection is read by id, byte for byte"
+        );
+        // …and it is still nobody else's.
+        let (status, hidden) = call(
+            app,
+            "GET",
+            &format!("/v1/jobs/{oldest}/input?project={B}"),
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::CONFLICT, "{hidden}");
+        assert_eq!(hidden["error"], "job not found");
     }
 
     /// Write `count` durable Solar rows for one project the way a Server that

@@ -80,9 +80,13 @@ pub const PROJECT_REQUIRED: Refusal = Refusal {
     when: "--target server was passed with no --project and no saved selection to send",
     remedy: "pass --project <exact-id> or run ds auth project use --project <exact-id>",
 };
+/// One grammar, whichever host runs the command: the kernel's. Declaring the
+/// desktop's old looser bound here said the same command id refuses different
+/// ids depending on `--target`, which is the difference the standing ruling
+/// removes.
 pub const CONTEXT_CORRUPT: Refusal = Refusal {
     code: "context_corrupt",
-    when: "a --project id is empty, padded, over 500 characters or holds a control character",
+    when: "a --project id is not one path segment: empty, over-long, or holding a separator, a traversal, whitespace or a control character",
     remedy: "copy one exact ds_project value from ds auth project list",
 };
 /// The host, resolved once, before anything is read or sent.

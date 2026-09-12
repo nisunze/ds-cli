@@ -44,7 +44,10 @@ emits, so `typed_refusal` in `lib.rs` re-raises it unchanged:
 request that arrives when every place is taken is refused with the same code,
 class and shape the kernel's queue uses. Its `retry_after_ms` is deterministic
 — 250 ms per request already inside the door, capped at a minute — and its
-remedy says so, because nothing a caller cancels empties a door.
+remedy says so, because nothing a caller cancels empties a door. The remedy
+names the knob that actually moves the width: `--workers` ABOVE
+`MIN_REQUEST_PERMITS` (eight), since below the floor a larger worker count
+leaves the door exactly as wide as it was.
 
 New codes to add to the `typed_refusal` match and to the command `Refusal`
 rosters (class → HTTP):
@@ -58,12 +61,33 @@ rosters (class → HTTP):
 | `principal_mismatch` | conflict | 409 | that key/row belongs to another authenticated identity |
 | `not_visible` | conflict | 409 | `job not found` — the ONE sentence for every invisible job |
 | `capacity_exhausted` | unavailable | 429 | queue or worker admission is full; `retry_after_ms` |
-| `context_corrupt` | invalid_input | 400 | a caller field is out of bounds (e.g. an over-long project) |
+| `context_corrupt` | invalid_input | 400 | a caller field is out of bounds (e.g. an over-long project), or a named project is not one path segment — on EVERY route that takes `?project=`, reads included |
 | `context_unrecoverable` | conflict | 409 | a pre-slice row names no project, and nothing outside its own bytes may name one |
 
 `not_visible` says **`job not found`** and nothing else, for a foreign
 principal, a foreign lane, the wrong project and an id that never existed.
 Do not add prose to it, and do not print the requested project back.
+
+`?project=` is one grammar at every door, reads included. A named project that
+is not one path segment — `..`, `A/../B`, `A B`, `CON`, `con.json`, a NUL or
+zero-width character, `C:`, `A.`, an empty or over-long value — is
+`context_corrupt` (400) with the grammar sentence, the same code, class,
+sentence and remedy the write doors answer, and it is decided **before the
+store is consulted** (`host::project_query` → `sessions::narrowing_project` →
+the kernel's `project_for`, the function admission asks). It used to be that
+only the write doors said so, while `GET /v1/jobs?project=..` answered `[]`
+and `/v1/jobs/:id?project=A/../B` answered `job not found`; two answers to one
+question, both reading as "nothing there" for a name that could never name
+anything. Exactly:
+
+```json
+{"error":"execution context field requested_project is not a project id: one path segment of 1..=200 characters, with no separator, drive, traversal, trailing dot, whitespace, invisible character, wildcard or device name",
+ "class":"invalid_input","code":"context_corrupt","retryable":false,
+ "remedy":"shorten the value the server refused and repeat the request"}
+```
+
+Naming nothing is unchanged: the host defaults no read, and `ds` sends the
+saved selection explicitly where a command defaults to it.
 
 ## 2. Routes
 
@@ -102,13 +126,17 @@ wrong city): a `project` that differs from the sealed input is `scope_mismatch`.
 `project` — OPTIONAL narrowing. Without it: every job visible to this
 connection, whatever its project. With it: only that project's, and a project
 that holds no work answers an empty list whether the owner ever named it or
-not (never a disclosure). Answer shape is unchanged:
-`{"jobs":[<Job>…],"more":<bool>}`.
+not (never a disclosure). A value that is not one path segment is
+`context_corrupt` (400, §1) before the store is read — never an empty list.
+Answer shape is unchanged: `{"jobs":[<Job>…],"more":<bool>}`.
 
 ### `GET /v1/jobs/:id?project=<id>`, `POST /v1/jobs/:id/cancel?project=<id>`, `GET /v1/jobs/:id/result?project=<id>`
 `project` — OPTIONAL narrowing. An id belonging to another project answers
 exactly `job not found` (`not_visible`, 409), identical to a guessed id, on
-all three. Shapes unchanged (`{"job":…}`, `{"job":…,"publication":…}`, raw
+all three. A `project` that is not one path segment is `context_corrupt`
+(400, §1) on all three, decided before visibility — so it is the same refusal
+for a real id and a guessed one, and a cancel under such a name changes
+nothing. Shapes unchanged (`{"job":…}`, `{"job":…,"publication":…}`, raw
 result bytes). One deliberate difference: a job the caller CAN see that simply
 has not finished answers `server_refused` / "job has no completed result", so
 "not yours" and "not yet" stay distinguishable *inside* a project and
@@ -120,7 +148,9 @@ NAMED (`ds server input`, unlike every other `ds server` command, does not
 default to the saved selection). Answers the exact request bytes the job was
 admitted with — `application/json`, `cache-control: no-store` — under the same
 visibility fence as `result`: another project's job and an id that never
-existed are one `job not found`. Two deliberate differences from `result`:
+existed are one `job not found`; a `project` that is not one path segment is
+`context_corrupt` (400, §1) before anything is read. Two deliberate
+differences from `result`:
 
 * no phase is required, so a queued job's input is as readable as a completed
   job's;
@@ -141,7 +171,9 @@ existed are one `job not found`. Two deliberate differences from `result`:
 Without `project`: one entry per project this connection has durable work in
 (ordered by project id), read by paging the whole durable queue rather than its
 newest page. With `project`: exactly that entry, or an empty `projects` array
-when the project is not visible. An entry whose Sync Center projection could
+when the project is not visible; a `project` that is not one path segment
+(`CON`, `con.json`, `..`) is `context_corrupt` (400, §1) before the projection
+— or its absence before startup — is even asked about. An entry whose Sync Center projection could
 not be read carries `"unavailable": "<reason>"` and no `activity` INSTEAD of
 failing the envelope — one project's gateway is never allowed to hide what the
 others are doing, and the reason is what keeps it from reading as "no work".
@@ -389,3 +421,12 @@ already in that lock through `ds-sync-store`, so nothing new is compiled.
    row stays readable by id (`ds server status`, `ds server result`, `ds
    server input`) however far past the bound it falls, and a project's older
    Solar work is out of its Sync Center projection, not out of its record.
+
+   One consequence of that assumption is owed a ruling with it, because the
+   producer draws from the same projection: a project whose backlog of
+   COMPLETED but UNPUBLISHED Solar work ever passes 512 rows keeps only its
+   newest 512 in reach of a Sync Center pass, and the older ones are readable
+   forever but never published. A pass that keeps up never meets the bound, so
+   this is the pathological case, not the ordinary one — but the honest fix if
+   the owner wants none of it is ordering, not a bigger number: publish the
+   oldest unpublished first, or bound how much unpublished work may wait.

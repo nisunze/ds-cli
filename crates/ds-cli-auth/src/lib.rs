@@ -1683,22 +1683,28 @@ fn verify_restored_layer_identity(
     Ok(())
 }
 
-/// The kernel's bound on a project id
-/// (`ds_command_kernel::execution_context::MAX_PROJECT_CHARS`), restated where
-/// a named project first enters this crate so an unusable name never becomes a
-/// request.
-const MAX_NAMED_PROJECT_CHARS: usize = 500;
-
+/// The kernel's rule on a project id, ASKED rather than restated, where a
+/// named project first enters this crate.
+///
+/// It used to be restated here — "1..500 characters, unpadded, free of control
+/// characters" — and a restatement of a rule is that rule right up until it
+/// drifts. It had. The kernel's grammar is ONE PATH SEGMENT of at most
+/// `MAX_PROJECT_CHARS` characters with no separator, traversal, drive,
+/// trailing dot, whitespace, wildcard or device name, and this door was
+/// admitting `a/b`, `..`, `C:`, `NUL`, `A B` and five hundred characters of
+/// them. Two consequences, both real: `ds map layer … --project a/b` is
+/// refused against a Server, which asks the kernel, and was admitted against
+/// the desktop, so ONE command id meant two different things depending on
+/// which host ran it — exactly what the host-transparency ruling ends; and
+/// what gets through this door is what becomes a preference key and a request
+/// path. One rule, one answer, at every door, so this asks for it.
 fn bounded_named_project(value: &str) -> Result<String, Failure> {
-    let usable = !value.is_empty()
-        && value.trim() == value
-        && value.chars().count() <= MAX_NAMED_PROJECT_CHARS
-        && !value.chars().any(char::is_control);
-    if !usable {
+    if !ds_command_kernel::execution_context::valid_project(value) {
         return Err(Failure::invalid(
             "context_corrupt",
             format!(
-                "a project id is 1..{MAX_NAMED_PROJECT_CHARS} characters, unpadded and free of control characters"
+                "a project id is one path segment of 1..={} characters: no separator, no traversal, no whitespace",
+                ds_command_kernel::execution_context::MAX_PROJECT_CHARS
             ),
         )
         .remedy("copy one exact ds_project value from ds auth project list"));
@@ -4273,6 +4279,57 @@ mod tests {
                     .code(),
                 "project_context_changed"
             );
+        }
+    }
+
+    /// The desktop door and the Server door read ONE grammar, because there is
+    /// one: whatever `execution_context::valid_project` says, said here with
+    /// the same code and a sentence that states the rule rather than a bound.
+    /// A test that only listed the ids this refuses would go stale the day the
+    /// kernel's grammar moves, so it asks the kernel about every case.
+    #[test]
+    fn a_named_project_is_bounded_by_the_kernels_grammar_and_nothing_else() {
+        for candidate in [
+            "proj-kigali",
+            "a/b",
+            "a\\b",
+            "..",
+            ".",
+            "a/../b",
+            "C:",
+            "a:b",
+            "NUL",
+            "con.json",
+            "A B",
+            " padded",
+            "padded ",
+            "trailing.",
+            "wild*card",
+            "",
+            &"p".repeat(ds_command_kernel::execution_context::MAX_PROJECT_CHARS),
+            &"p".repeat(ds_command_kernel::execution_context::MAX_PROJECT_CHARS + 1),
+        ] {
+            let admitted = bounded_named_project(candidate);
+            assert_eq!(
+                admitted.is_ok(),
+                ds_command_kernel::execution_context::valid_project(candidate),
+                "the door and the kernel disagree about {candidate:?}"
+            );
+            match admitted {
+                Ok(project) => assert_eq!(project, candidate, "an id is never repaired"),
+                Err(refusal) => {
+                    assert_eq!(refusal.code(), "context_corrupt");
+                    // The sentence states the RULE — an operator who reads it
+                    // knows which character was refused without guessing.
+                    let message = refusal.message();
+                    assert!(message.contains("one path segment"), "{message}");
+                    assert!(message.contains("no separator"), "{message}");
+                    assert!(
+                        refusal.remedy_text().is_some(),
+                        "a refusal with nothing to do next"
+                    );
+                }
+            }
         }
     }
 
