@@ -66,6 +66,13 @@ this owner has no directory in it at all:
 > - **Long-lived, and the long-term direction (owner, 08:20 UTC): "one can leave the server running as long as he wants — and the long-term objective is to connect a version of the browser on top of it (wasmless). But not now."** So the Server is a process the owner may keep up indefinitely (restart recovery, the lease and the durable jobs table already serve that; nothing more now), and one day the browser UI will talk to this Server instead of running the kernel in WASM. Not in scope for this slice or the next; only a constraint: do not build anything in the Server that assumes a short life or that a webview is the only client.
 > - Slice 2 consequence: a Desktop instance IS a Server instance with a webview; the desktop descriptor and the Server `connection.json` converge into one instance registry, and the two on-disk roots converge into one home.
 
+One line of that quote is superseded by the same day's later reading of it:
+`multi_principal_unsupported` is **deleted**, not kept as an honest refusal.
+One owner per Server is enforced by the owner-only bearer alone — any other
+bearer is `server access denied` — so there is no second identity for a
+request to name and no way to reach such a refusal. That is the whole rule,
+and a code nothing can raise is not one.
+
 What that means here, concretely: `admit` takes the connection identity, the
 project the work names (`requested_project`, the caller's own `saved_project`
 default, and `sealed_project` from the bytes), and the key with its input
