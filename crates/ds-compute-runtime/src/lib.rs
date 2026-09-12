@@ -361,7 +361,7 @@ fn submit_validated(
         ));
     }
     let id = job_id(&identity.owner, identity.lane(), key);
-    let store = open(path).map_err(SubmitError::Host)?;
+    let mut store = open(path).map_err(SubmitError::Host)?;
     // Read the key's existing row through the whole connection, never through
     // a narrowed caller: the kernel must be able to answer
     // `scope_mismatch_for_key` for a key that already names another project,
@@ -417,9 +417,7 @@ fn submit_validated(
         error: None,
         context: Some(context),
     };
-    drop(store);
-    open(path)
-        .map_err(SubmitError::Host)?
+    store
         .submit_job(&job, input)
         .map_err(|e| SubmitError::Host(e.to_string()))
 }
