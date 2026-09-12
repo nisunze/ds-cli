@@ -83,7 +83,18 @@ impl<'a> JobCaller<'a> {
     /// the operator must be able to see the work the host refuses to guess
     /// about — and is invisible to any caller narrowing to a project, because
     /// it is not known to be in one.
+    ///
+    /// The row's own `owner` and `lane` are compared here as well as in the
+    /// SQL that selected it. That is deliberate redundancy, for the reason
+    /// `submit_job` states: a row written before contexts existed has no
+    /// principal to compare, so the only thing keeping two identities apart
+    /// for it is that the owner digest is derived from the uid — and this
+    /// answer must not depend on a caller having built its `owner` and `uid`
+    /// from the same identity.
     fn sees(&self, job: &Job) -> bool {
+        if job.owner != self.owner || job.lane != self.lane {
+            return false;
+        }
         match &job.context {
             Some(context) => execution_context::visible(context, &self.kernel(), self.project),
             None => self.project.is_none(),
@@ -96,10 +107,13 @@ impl<'a> JobCaller<'a> {
 /// `running` is work a worker currently holds a live lease on; `queued` is
 /// work waiting for one, including a running row whose lease has expired —
 /// it is waiting to be claimed again, and counting it as running would let
-/// a dead worker's row fill the pool for ever. A row that predates execution
-/// contexts and could not be recovered is in neither: it is never claimed,
-/// so it is not in flight, and letting it stand as "waiting work of another
-/// project" would refuse every project its share for as long as it exists.
+/// a dead worker's row fill the pool for ever. A row no worker can ever claim
+/// is in neither — one that predates execution contexts, and equally one whose
+/// stored context does not survive `validate`, which `claim_job` skips for the
+/// same reason. Such a row is not in flight, so counting it would spend a
+/// project's queue bound on work that will never run and, worse, let it stand
+/// for ever as "waiting work of another project" and refuse every project its
+/// share.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Census {
     pub running: Vec<Slot>,
@@ -434,7 +448,9 @@ impl Store {
     /// callback and not a decision here. `recover` in the kernel decides what
     /// a row is about; this loop only persists the answer and counts what it
     /// could not honestly reconstruct. A row that already carries a context is
-    /// never rewritten, so reopening a live queue writes nothing. Nothing
+    /// never rewritten and never read — reopening a live queue counts it and
+    /// touches nothing, so a Server the owner leaves running for weeks does
+    /// not pay its whole queue in memory each time it restarts. Nothing
     /// outside a row's own bytes is offered: no selection of the moment can
     /// name a project for work admitted before this build.
     pub fn recover_contexts(
@@ -444,26 +460,48 @@ impl Store {
         sealed_project: &dyn Fn(&Job, &[u8]) -> Option<String>,
         now_ms: u64,
     ) -> Result<Recovery> {
-        let pending: Vec<(Job, Vec<u8>)> = {
-            let mut statement = self
-                .connection
-                .prepare("SELECT row,input FROM compute_jobs WHERE owner=?1 AND lane=?2")?;
-            let rows = statement.query_map(params![owner, principal.lane], |row| {
-                Ok((row.get::<_, String>(0)?, row.get::<_, Vec<u8>>(1)?))
-            })?;
-            rows.map(|row| {
-                let (row, input) = row?;
-                Ok((serde_json::from_str::<Job>(&row)?, input))
-            })
-            .collect::<Result<Vec<_>>>()?
+        // Only the rows that need a context are read, and their sealed bytes
+        // one row at a time. A long-lived queue holds hundreds of megabytes of
+        // sealed Solar inputs; reading every one of them in order to skip it
+        // would make reopening the queue cost the whole queue in memory at
+        // once — the unbounded allocation the contract forbids, paid on every
+        // restart of a Server that has nothing to recover.
+        let mut recovery = Recovery {
+            stored: self.connection.query_row(
+                "SELECT COUNT(*) FROM compute_jobs WHERE owner=?1 AND lane=?2 AND json_extract(row,'$.context') IS NOT NULL",
+                params![owner, principal.lane],
+                |row| row.get::<_, i64>(0),
+            )? as usize,
+            ..Recovery::default()
         };
-        let mut recovery = Recovery::default();
-        for (job, input) in pending {
+        let contextless: Vec<String> = {
+            let mut statement = self.connection.prepare(
+                "SELECT id FROM compute_jobs WHERE owner=?1 AND lane=?2 AND json_extract(row,'$.context') IS NULL ORDER BY created,id",
+            )?;
+            let rows = statement.query_map(params![owner, principal.lane], |row| {
+                row.get::<_, String>(0)
+            })?;
+            rows.collect::<rusqlite::Result<Vec<_>>>()?
+        };
+        for id in contextless {
+            let Some((row, input)) = self
+                .connection
+                .query_row(
+                    "SELECT row,input FROM compute_jobs WHERE id=?1 AND owner=?2 AND lane=?3",
+                    params![id, owner, principal.lane],
+                    |row| Ok((row.get::<_, String>(0)?, row.get::<_, Vec<u8>>(1)?)),
+                )
+                .optional()?
+            else {
+                continue;
+            };
+            let job: Job = serde_json::from_str(&row)?;
             if job.context.is_some() {
                 recovery.stored += 1;
                 continue;
             }
             let sealed = sealed_project(&job, &input);
+            drop(input);
             let row = serde_json::to_value(&job)?;
             match execution_context::recover(row, principal, sealed.as_deref(), now_ms) {
                 Ok((context, provenance)) => {
@@ -541,7 +579,14 @@ fn census_in(connection: &Connection, owner: &str, lane: &str, now: u64) -> Resu
     let mut census = Census::default();
     for row in rows {
         let job: Job = serde_json::from_str(&row?)?;
-        let Some(context) = job.context.as_ref() else {
+        // Exactly what `claim_job` will accept: a context that is there and
+        // that reads. Anything else is work no worker can take, and the
+        // capacity decision must not be made about it.
+        let Some(context) = job
+            .context
+            .as_ref()
+            .filter(|context| context.validate().is_ok())
+        else {
             continue;
         };
         let slot = Slot {

@@ -473,6 +473,60 @@ fn a_claimed_job_runs_exactly_what_was_admitted_and_asks_no_one_first() {
     }
 }
 
+/// A host may implement `Authorizer` over the network, and one unreachable
+/// moment must not destroy work that is already done. Starting is gated;
+/// finishing is not. Otherwise a three-hour Solar run whose credential check
+/// cannot answer at the last second is thrown away and recomputed after the
+/// lease expires — the silent work loss the contract forbids, for nothing:
+/// whether the result may leave the machine is asked at publication.
+#[test]
+fn a_finished_result_is_written_down_even_if_the_credential_check_stops_answering() {
+    /// Answers once — the check before the claim — and never again, and says
+    /// how many times it was asked.
+    struct Once(std::sync::atomic::AtomicUsize);
+    impl Authorizer for Once {
+        fn authorize(&self, _: &str) -> Result<(), String> {
+            match self.0.fetch_add(1, std::sync::atomic::Ordering::AcqRel) {
+                0 => Ok(()),
+                _ => Err("the gateway cannot be reached".into()),
+            }
+        }
+    }
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("store.sqlite");
+    let identity = host("owner", "canary");
+    let job = runtime::submit(&path, &admission(&identity, "for-a", Some(A)), &request()).unwrap();
+    let auth = Arc::new(Once(std::sync::atomic::AtomicUsize::new(0)));
+    let context = worker(&path, &identity, auth.clone());
+    assert!(runtime::run_one(&context, "worker-1").unwrap());
+    assert_eq!(
+        auth.0.load(std::sync::atomic::Ordering::Acquire),
+        1,
+        "a run asks once, before the claim; neither the lease refresh nor the commit asks again"
+    );
+    let store = runtime::open(&path).unwrap();
+    let done = store
+        .job(&identity.caller(Some(A)), &job.id)
+        .unwrap()
+        .unwrap();
+    assert_eq!(done.phase, Phase::Completed);
+    assert!(store
+        .job_result(&identity.caller(Some(A)), &job.id)
+        .unwrap()
+        .is_some());
+    // …and the same host still will not START anything while it cannot answer.
+    let next = runtime::submit(&path, &admission(&identity, "for-b", Some(B)), &request()).unwrap();
+    assert!(runtime::run_one(&context, "worker-2").is_err());
+    assert_eq!(
+        store
+            .job(&identity.caller(Some(B)), &next.id)
+            .unwrap()
+            .unwrap()
+            .phase,
+        Phase::Queued
+    );
+}
+
 #[test]
 fn a_transformer_row_written_by_a_released_server_is_named_and_never_claimed() {
     let dir = tempfile::tempdir().unwrap();

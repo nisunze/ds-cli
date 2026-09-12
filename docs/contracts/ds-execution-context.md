@@ -1,8 +1,9 @@
 # The execution context — one verified record per admitted operation
 
-**Status:** the kernel owner is implemented and proven on
-`fable/server-isolation`, 2026-09-12; the compute runtime, Server host and CLI
-that consume it are the rest of the slice. Parent:
+**Status:** the kernel owner, the durable jobs table (`ds-sync-store`) and the
+compute runtime are implemented and proven on `fable/server-isolation`,
+2026-09-12; the Server host and the CLI that consume them are the rest of the
+slice. Parent:
 [project and instance isolation](../../../ds-web/docs/project-and-instance-isolation-contract.md);
 refines [Headless application runtime](ds-headless-application-runtime.md) §6.
 
@@ -71,7 +72,9 @@ One line of that quote is superseded by the same day's later reading of it:
 One owner per Server is enforced by the owner-only bearer alone — any other
 bearer is `server access denied` — so there is no second identity for a
 request to name and no way to reach such a refusal. That is the whole rule,
-and a code nothing can raise is not one.
+and a code nothing can raise is not one. The bearer itself is `ds-cli-server`'s
+(`host.rs`, where it is proven); this owner records the consequence, which is
+that its refusal vocabulary stays at the nine codes below.
 
 What that means here, concretely: `admit` takes the connection identity, the
 project the work names (`requested_project`, the caller's own `saved_project`
@@ -134,7 +137,23 @@ a second per unit of work that can go first, capped at sixty. No clock, no
 randomness. The host asks inside the store transaction that claims, from a
 census read there — a census read before the transaction describes a pool that
 no longer exists, and under several workers it lets one project take every slot
-the burst offers.
+the burst offers. The census counts only work a worker could actually take: a
+row that predates contexts, and a row whose stored context does not read, are
+in neither list, or a row nothing can ever claim would spend a project's queue
+bound for ever and stand for ever as another project's waiting work.
+
+**The limit of the share, stated (2026-09-12 review).** It is enforced at claim
+time and there is no preemption. A project alone on the machine may therefore
+take every running slot, and it keeps them until those jobs finish: a long
+Solar run started while nothing else was queued does *not* leave room for
+printing submitted an hour later, however small `per_project_running` is. From
+that moment on the share bites every further claim, so the pool drains towards
+fairness rather than away from it. The alternative — refusing an over-share
+claim in case someone submits later — idles a worker on speculation, which the
+concurrency section forbids as plainly as it forbids the starvation. Taking a
+running job away from one project to give the slot to another is a product
+decision (preemption, priorities, or a reserved slot the operator configures),
+not something this owner may invent.
 
 ## 6. Recovery provenance, and the durable id
 
@@ -192,11 +211,20 @@ project in the query itself, asks `visible` before answering
 that inserts (`Intent::Admit`) or claims (`Intent::Claim`)** from a census read
 there, so racing submissions cannot both take the last place and racing workers
 cannot each take the same room; its census counts a running row whose lease has
-expired as waiting and a row without a context as neither; `ds-compute-runtime`
-admits through the kernel and asks `recover` when it starts its workers, and
-touches no network of any kind — a claimed job runs what was admitted;
-`ds-cli-server` opens per-(principal, project) sessions from an admitted context
-instead of a process-wide selection; `ds` re-raises refusals literally. The
+expired as waiting and a row nothing can claim as neither; and it reopens a
+queue by counting the rows that carry a context and reading only the ones that
+do not, so a long-lived Server does not pay its whole queue in memory to
+restart. `ds-compute-runtime` admits through the kernel, asks `recover` when it
+starts its workers, and makes no network call: a claimed job runs what was
+admitted, and the one thing it calls that a host *could* implement over the
+network — the `Authorizer` that says whether this Server's owner is still the
+authenticated one — gates only starting work. Neither the lease refresh nor the
+terminal commit asks it again, so an unreachable moment delays new work and can
+never destroy work already done. `ds-cli-server` opens per-(principal, project)
+sessions from an admitted context instead of a process-wide selection, and it
+is where one owner per Server is actually enforced — the owner-only bearer of
+its `host.rs`, which is also where that fence is proven; `ds` re-raises refusals
+literally. The
 kernel holds no credential material, so the owner digest stays the store's
 fence; `recover` checks the lane it can see. Proof:
 `tests/fixtures/execution-context-cases.json`, 67 recorded cases, byte-identical
