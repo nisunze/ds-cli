@@ -57,73 +57,73 @@ const PLATFORM: Refusal = Refusal {
 };
 const REFUSED: Refusal = Refusal {
     code: "server_refused",
-    when: "native authentication, protected state, job identity, worker capacity or the server request is invalid or unavailable",
-    remedy: "read the stated reason; verify ds auth status, the protected state directory and that ds server serve is running",
+    when: "native authentication, protected state, job identity, capacity or the request is invalid or unavailable",
+    remedy: "read the stated reason; verify ds auth status, the state directory and that ds server serve is running",
 };
 const OWNER_CHANGED: Refusal = Refusal {
     code: "server_owner_changed",
-    when: "the account this Server was started under differs from the caller's, or its original credential was revoked or replaced",
+    when: "the Server's account differs from the caller's, or its credential was revoked or replaced",
     remedy: "sign in under the intended Server account and explicitly restart ds server serve",
 };
 const MULTI_PRINCIPAL: Refusal = Refusal {
     code: "multi_principal_unsupported",
-    when: "the request's credential maps to a different native account than the one this Server was started under",
-    remedy: "run one Server per native account; a second account needs its own state directory, listen address and ds server serve",
+    when: "the request's credential names a different native account than the Server's",
+    remedy: "run one Server per native account, each with its own --state-dir and --listen",
 };
 const PROJECT_REQUIRED: Refusal = Refusal {
     code: "project_required",
-    when: "no --project was passed and this account has no saved selection to default to",
+    when: "no --project was passed and this account has no saved selection",
     remedy: "pass --project <exact-id> or run ds auth project use --project <exact-id>",
 };
 const CONTEXT_CORRUPT: Refusal = Refusal {
     code: "context_corrupt",
-    when: "a context field is outside its bound: a project id that is empty, padded, over 500 characters or holds a control character",
+    when: "a project id is empty, padded, over 500 characters or holds a control character",
     remedy: "copy one exact ds_project value from ds auth project list",
 };
 const PROJECT_NOT_VISIBLE: Refusal = Refusal {
     code: "project_not_visible",
-    when: "the Server's freshly verified membership for this account does not contain that project",
-    remedy: "run ds auth project list and pass one exact project this account is a member of",
+    when: "the account's freshly verified membership does not contain that project",
+    remedy: "run ds auth project list and pass one this account is a member of",
 };
 const NOT_VISIBLE: Refusal = Refusal {
     code: "not_visible",
-    when: "the job id is unknown, or belongs to another principal, lane, deployment or project; one answer for all four",
-    remedy: "read ds server status --project <exact-id> for the jobs this context can see",
+    when: "the job id is unknown, or belongs to another principal, lane, deployment or project",
+    remedy: "read ds server status --project <exact-id> for the jobs you can see",
 };
 const PRINCIPAL_MISMATCH: Refusal = Refusal {
     code: "principal_mismatch",
-    when: "the stored job belongs to another account, lane or deployment than the caller's",
-    remedy: "run the command under the account, lane and deployment that submitted the job",
+    when: "the stored job belongs to another account, lane or deployment",
+    remedy: "run it under the account, lane and deployment that submitted the job",
 };
 const SCOPE_MISMATCH: Refusal = Refusal {
     code: "scope_mismatch",
     when: "the sealed input names one project and --project names another",
-    remedy: "submit the sealed input under the project it names, or prepare it again for the project you want",
+    remedy: "submit the sealed input under the project it names, or prepare it again elsewhere",
 };
 const SCOPE_MISMATCH_FOR_KEY: Refusal = Refusal {
     code: "scope_mismatch_for_key",
     when: "that idempotency key already admitted a job in a different project",
-    remedy: "use a key that is unique per project; a key never moves a job between projects",
+    remedy: "use a key that is unique per project; a key never moves a job",
 };
 const PAYLOAD_CHANGED_FOR_KEY: Refusal = Refusal {
     code: "payload_changed_for_key",
     when: "that idempotency key already admitted a job whose input bytes differ from these",
-    remedy: "resubmit the identical bytes under that key, or choose a new key for the changed input",
+    remedy: "resubmit the identical bytes, or choose a new key for the changed input",
 };
 const CAPACITY_EXHAUSTED: Refusal = Refusal {
     code: "capacity_exhausted",
-    when: "the global or per-project queue is full; the answer names which scope filled and its retry_after_ms",
-    remedy: "retry after retry_after_ms, cancel work you no longer need, or restart the host with a larger --workers/--per-project",
+    when: "the global or per-project queue is full; the answer names the scope and retry_after_ms",
+    remedy: "retry after retry_after_ms, cancel work you no longer need, or raise --workers/--per-project",
 };
 const CONTEXT_UNRECOVERABLE: Refusal = Refusal {
     code: "context_unrecoverable",
-    when: "a job stored by an older Server names no project and none can be recovered without guessing",
-    remedy: "read that job's result and resubmit it under an explicit --project; nothing is inferred for it",
+    when: "a job stored by an older Server names no project and none can be recovered",
+    remedy: "read that job's result and resubmit under an explicit --project",
 };
 const MEMBERSHIP_REVOKED: Refusal = Refusal {
     code: "membership_revoked",
-    when: "membership of the job's project was lost while it was queued or running; only that project's work stops",
-    remedy: "regain membership of that project, then resubmit; other projects on this Server were unaffected",
+    when: "membership of the job's project was lost while it was queued or running",
+    remedy: "regain membership of that project and resubmit; other projects were unaffected",
 };
 const OUTPUT_EXISTS: Refusal = Refusal {
     code: "server_output_exists",
@@ -133,8 +133,8 @@ const OUTPUT_EXISTS: Refusal = Refusal {
 
 const INSTALL_UNAVAILABLE: Refusal = Refusal {
     code: "headless_install_unavailable",
-    when: "the registered install this host would run under cannot be read or created in the protected DS state root",
-    remedy: "check the Server user's protected DS state root is present, owner-only and writable, then start the host again",
+    when: "the registered install this host runs under cannot be read or created in the protected DS state root",
+    remedy: "make the Server user's protected DS state root present, owner-only and writable, then start the host again",
 };
 
 /// Hosting the process itself. No project is resolved, so none can refuse —
@@ -206,13 +206,13 @@ const fn command(
         path,
         contract: 1,
         summary,
-        purpose: "Drive persistent native transformer and prepared Solar computation through the shared Rust runtime. Jobs survive UI closure and server restart; complete request and result bytes are retained under the initiating native identity. Every call is about one project: --project names it, and without it the saved selection (ds auth project use) is sent as this client's DEFAULT, verified by the Server exactly like any named one and never held as Server state. So one Server serves several authorized projects at once, and a remote Server reads no client path, browser cache or selection of this machine's: a Solar request carries the sealed prepared input itself. Control is an owner-only loopback credential; remote administration uses SSH.",
+        purpose: "Drive persistent native transformer and prepared Solar computation through the shared Rust runtime. Jobs survive UI closure and server restart; complete request and result bytes are retained under the initiating native identity. Every call is about one project: --project names it, and without it the saved selection (ds auth project use) is sent as this client's DEFAULT, verified by the Server like any named one and never held as Server state -- so one Server serves several authorized projects at once. A remote Server reads no client path, browser cache or selection of this machine's: a Solar request carries the sealed prepared input itself.",
         chapter: Chapter::Design,
         effect,
         authority: Authority::HeadlessUser,
         execution,
         args,
-        output: "A bounded job receipt or job list, each naming its project; complete result bytes are saved only by server result. No credential is printed.",
+        output: "A bounded job receipt or list, each naming its project; full bytes only via server result. No credential is printed.",
         examples,
         refusals,
         reference: Some("docs/reference/server.md"),
@@ -329,7 +329,7 @@ pub static SUBMIT: Command = command(
         Arg::value(
             "key",
             "<idempotency-key>",
-            "Stable caller key: resubmission preserves the existing job; changed bytes or another project refuse.",
+            "Stable caller key: the same bytes reuse the job; changed bytes or another project refuse.",
         )
         .required(),
     ],
@@ -353,20 +353,20 @@ pub static SOLAR_SUBMIT: Command = command(
         Arg::value(
             "input",
             "<path>",
-            "Private ds.solar.server-submission/v1 envelope: prepared request plus matching governed publication claim; at most 64 MiB.",
+            "Private ds.solar.server-submission/v1 envelope: prepared request plus its governed publication claim; at most 64 MiB.",
         )
         .required(),
         Arg::value(
             "key",
             "<idempotency-key>",
-            "Stable caller key: resubmission preserves the existing job; changed bytes or another project refuse.",
+            "Stable caller key: the same bytes reuse the job; changed bytes or another project refuse.",
         )
         .required(),
     ],
     SUBMIT_REFUSALS,
     &[Example {
         command: "ds server solar submit --input pala.server-submission.json --key solar-001",
-        note: "The envelope's sealed project is authoritative; naming a different --project refuses scope_mismatch.",
+        note: "The sealed project is authoritative; a different --project refuses scope_mismatch.",
         runnable: false,
     }],
 );
@@ -402,8 +402,8 @@ pub static ACTIVITY: Command = command(
     &[STATE, LANE, PROJECT],
     JOB_REFUSALS,
     &[Example {
-        command: "ds server activity --lane stable --project <exact-id> --output json",
-        note: "Read running jobs and held publication state for one project on the authenticated server.",
+        command: "ds server activity --project <exact-id> --output json",
+        note: "Read running jobs and held publication state for one project.",
         runnable: false,
     }],
 );
