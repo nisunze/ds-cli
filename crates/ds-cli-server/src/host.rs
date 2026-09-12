@@ -569,6 +569,7 @@ mod tests {
             lease_until_ms: 0,
             result_sha256: None,
             error: None,
+            context: None,
         };
         let mut store = runtime::open(&database).unwrap();
         store.submit_job(&queued, input).unwrap();
