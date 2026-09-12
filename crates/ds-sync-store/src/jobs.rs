@@ -129,8 +129,9 @@ pub struct Recovery {
     pub from_sealed_input: usize,
     /// Rows with no project of their own to be recovered into. They are left
     /// exactly as they are: readable, never claimed, never executed, never
-    /// published — the owner reads such a job's result and resubmits under an
-    /// explicit project, which is a new job with its own id.
+    /// published — the owner reads such a job's stored INPUT (it never ran, so
+    /// it has no result) and submits it again naming the project, which is a
+    /// new job with its own id.
     pub unrecoverable: Vec<String>,
 }
 
@@ -157,8 +158,8 @@ impl Store {
     /// `context_unrecoverable` and is left exactly as it is: this build's ids
     /// digest the project, so a released Server's id cannot be re-derived and
     /// such a row can only be reached deliberately. It is readable and never
-    /// executed; the owner resubmits under an explicit project, which is a
-    /// new job with its own id.
+    /// executed; the owner submits its stored input again naming the project,
+    /// which is a new job with its own id.
     pub fn submit_job(&mut self, job: &Job, input: &[u8], limits: Limits) -> Result<Job> {
         if !compute_jobs::digest(&job.id)
             || !compute_jobs::digest(&job.input_sha256)
@@ -229,8 +230,10 @@ impl Store {
                     return Err(Error::Refused(Refusal {
                         code: CONTEXT_UNRECOVERABLE,
                         message:
-                            "that job was stored before execution contexts and names no project"
-                                .into(),
+                            format!(
+                                "that job was stored before execution contexts and names no project; {}",
+                                execution_context::UNRECOVERABLE_REMEDY
+                            ),
                         retry_after_ms: None,
                         scope: None,
                     }));

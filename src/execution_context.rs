@@ -70,7 +70,8 @@
 //!   it) and from nothing else — never from whichever project happens to be
 //!   selected now. A transformer row carries no project by design, so it is
 //!   `context_unrecoverable`: readable, never claimed, never published, until
-//!   its owner reads its result and resubmits under an explicit project.
+//!   its owner reads the bytes it was admitted with and submits them again
+//!   naming the project. Not its result — such a row never ran and has none.
 //!
 //! Pure: `now_ms` is an input, every list is bounded, and the same request
 //! always has the same answer. `tests/fixtures/execution-context-cases.json`
@@ -111,6 +112,16 @@ pub const RETRY_AFTER_MAX_MS: u64 = 60_000;
 /// operation and input digest, never by the text.
 pub const RECOVERED_CLIENT: &str = "recovery:legacy-row";
 pub const RECOVERED_KEY: &str = "recovered";
+
+/// The one thing the owner of a row this owner cannot place can actually do,
+/// said in the refusal itself so it travels with the answer to every host.
+///
+/// Deliberately **not** "read its result": such a row was never claimed and
+/// never ran, so it has none. What it has is the bytes it was admitted with,
+/// which a host returns (`GET /v1/jobs/:id/input`, `ds server input`);
+/// submitting them again under a named project is a new job with its own id.
+pub const UNRECOVERABLE_REMEDY: &str =
+    "read its stored input and submit it again naming the project";
 
 // ── The operation vocabulary ────────────────────────────────────────────
 pub const TRANSFORMER_PROCESSING: &str = "transformer_processing";
@@ -866,8 +877,8 @@ fn exhausted(scope: &'static str, message: String, ahead: usize) -> Fault {
 /// `context_unrecoverable`. It is never recovered into whichever project
 /// happens to be selected when the host reopens the queue — that would run one
 /// owner's retained work, and publish it, somewhere it was never admitted for.
-/// Such a row stays readable; its owner reads its result and resubmits under
-/// an explicit project.
+/// Such a row stays readable, and [`UNRECOVERABLE_REMEDY`] — carried in the
+/// refusal — is what its owner does with it.
 pub fn recover(
     row: Value,
     principal: &Principal,
@@ -922,7 +933,7 @@ pub fn recover(
     let unrecoverable = |what: &str| {
         refused(
             CONTEXT_UNRECOVERABLE,
-            format!("that row predates execution contexts and {what}"),
+            format!("that row predates execution contexts and {what}; {UNRECOVERABLE_REMEDY}"),
         )
     };
     let (project, provenance, operation) = match job.engine {
@@ -1980,6 +1991,17 @@ mod tests {
                 .contains("transformer request names no project"),
             "{}",
             refused.message
+        );
+        // …and the refusal says what to do about it, because nothing else the
+        // owner reads will. Not "read its result": the row never ran.
+        assert!(
+            refused.message.ends_with(UNRECOVERABLE_REMEDY),
+            "{}",
+            refused.message
+        );
+        assert!(
+            !UNRECOVERABLE_REMEDY.contains("result"),
+            "a row that never ran has no result to read"
         );
         // Naming a project alongside such a row changes nothing: the only
         // project a legacy row can be recovered into is one its own bytes name.

@@ -2366,7 +2366,7 @@
         "outcome": "refused",
         "refusal": {
           "code": "context_unrecoverable",
-          "message": "that row predates execution contexts and a transformer request names no project"
+          "message": "that row predates execution contexts and a transformer request names no project; read its stored input and submit it again naming the project"
         }
       }
     },
@@ -2404,7 +2404,7 @@
         "outcome": "refused",
         "refusal": {
           "code": "context_unrecoverable",
-          "message": "that row predates execution contexts and a transformer request names no project"
+          "message": "that row predates execution contexts and a transformer request names no project; read its stored input and submit it again naming the project"
         }
       }
     },
@@ -2441,7 +2441,7 @@
         "outcome": "refused",
         "refusal": {
           "code": "context_unrecoverable",
-          "message": "that row predates execution contexts and its sealed input names no project"
+          "message": "that row predates execution contexts and its sealed input names no project; read its stored input and submit it again naming the project"
         }
       }
     },

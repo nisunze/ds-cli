@@ -202,11 +202,16 @@ transformer row carries no project by design, so it is `context_unrecoverable`:
 readable by its own connection, never claimed, never executed, never published.
 It is not recovered into whichever project happens to be selected when the host
 reopens the queue — that would run one owner's retained work, and publish it,
-somewhere it was never admitted for. The one remedy, everywhere it is said:
-**read that job's result and resubmit under an explicit `--project`**, which is
-a new job with its own id. A reconstructed record keeps the row's own
-`created_at_ms` and records `recovery:legacy-row` / `recovered` for the client
-and key.
+somewhere it was never admitted for. The one remedy, and it travels **inside
+the refusal** (`UNRECOVERABLE_REMEDY`, appended to every
+`context_unrecoverable` sentence the kernel and the store produce, and printed
+by the runtime when a reopened queue finds such rows): **read its stored input
+and submit it again naming the project**. Not its result — such a row was never
+claimed and never ran, so it has none; what it has is the bytes it was admitted
+with, which a host returns (`GET /v1/jobs/:id/input`, `ds server input`), and
+submitting them under a named project is a new job with its own id. A
+reconstructed record keeps the row's own `created_at_ms` and records
+`recovery:legacy-row` / `recovered` for the client and key.
 
 The durable job id is `digest(owner, lane, project, key)` for every admission
 this build makes (`ds_compute_runtime::job_id`), so the same key in projects A
