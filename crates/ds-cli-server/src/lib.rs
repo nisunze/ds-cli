@@ -146,11 +146,32 @@ const INSTALL_UNAVAILABLE: Refusal = Refusal {
 
 /// Hosting the process itself. No project is resolved, so none can refuse —
 /// but the host does need the registered install its sessions are fenced by.
+// -- what the HOST answers, for a request its own commands do not make -----
+//
+// Both of these are `host.rs`'s answers to a path rather than to an argument:
+// one for an operation that genuinely needs a rendered map, one for a route
+// this build does not serve at all — which is what a caller of a different
+// version reaches. They are declared here, on the command that RUNS the host,
+// because that is the only `ds server` command they belong to; the map-bound
+// half belongs in `ds map …`'s own descriptor once `--target server` is wired
+// to this transport.
+const NEEDS_MAP: Refusal = Refusal {
+    code: "needs_paired_map",
+    when: "an operation that needs a rendered map reaches this host, which has none",
+    remedy: "run the same command with --target desktop, against a window open on this project",
+};
+const UNSUPPORTED: Refusal = Refusal {
+    code: "unsupported_operation",
+    when: "a request names a route this host does not serve, usually a version skew",
+    remedy: "update ds, or read ds server --help for what this host serves",
+};
 const SERVE_REFUSALS: &[Refusal] = &[
     PLATFORM,
     REFUSED,
     OWNER_CHANGED,
     MULTI_PRINCIPAL,
+    NEEDS_MAP,
+    UNSUPPORTED,
     INSTALL_UNAVAILABLE,
 ];
 /// Queueing work under an idempotency key.
@@ -275,7 +296,7 @@ pub static SERVE: Command = Command {
     id: "server.serve",
     path: &["server", "serve"],
     contract: 1,
-    summary: "Host durable parallel compute for every project this account may reach.",
+    summary: "Host durable parallel compute for every project this account reaches.",
     purpose: "Host the shared Rust compute runtime under this Linux user's native account. No project is selected here and none is captured: callers name the project on each request and the Server verifies its membership per call, so one host serves several projects at once and needs no ds auth project use to start. --workers bounds the whole host; --per-project bounds what one project may hold while another has work queued, so a busy project cannot starve a second one. Control is an owner-only loopback credential; remote administration uses SSH. This process runs in the foreground until it stops.",
     chapter: Chapter::Design,
     effect: Effect::LocalFileWrite,

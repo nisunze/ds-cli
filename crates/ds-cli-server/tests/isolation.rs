@@ -57,7 +57,11 @@ fn item1_two_projects_overlap_on_one_server_with_distinct_contexts_and_no_leakag
 
     // Solar for A. The project is not named at all: the sealed envelope names
     // its own, and that name is authoritative.
-    let solar = host.raw("POST", "/v1/solar-processing/solar-a", Some(&solar_submission()));
+    let solar = host.raw(
+        "POST",
+        "/v1/solar-processing/solar-a",
+        Some(&solar_submission()),
+    );
     assert_eq!(solar.status, 202, "{:?}", solar.json());
     let solar_context = solar.json()["job"]["context"].clone();
     assert_eq!(solar_context["project"], A);
@@ -70,12 +74,18 @@ fn item1_two_projects_overlap_on_one_server_with_distinct_contexts_and_no_leakag
     // A transformer batch for B, through the real `ds server submit`.
     let input = host.input("batch-b.json", &transformer("T-B"));
     let queued = ds_cli_server::submit(
-        &host.args(&SUBMIT, &["--key", "batch-b", "--input", &input, "--project", B]),
+        &host.args(
+            &SUBMIT,
+            &["--key", "batch-b", "--input", &input, "--project", B],
+        ),
         &context(),
     )
     .expect("B's batch is admitted");
     assert_eq!(queued["job"]["context"]["project"], B);
-    assert_eq!(queued["job"]["context"]["operation"], "transformer_processing");
+    assert_eq!(
+        queued["job"]["context"]["operation"],
+        "transformer_processing"
+    );
     let batch_id = queued["job"]["id"].as_str().unwrap().to_owned();
     assert_ne!(solar_id, batch_id);
 
@@ -95,7 +105,13 @@ fn item1_two_projects_overlap_on_one_server_with_distinct_contexts_and_no_leakag
     assert_eq!(rows.len(), 2);
     let projects: Vec<String> = rows
         .iter()
-        .map(|job| job.context.as_ref().expect("every row is about a project").project.clone())
+        .map(|job| {
+            job.context
+                .as_ref()
+                .expect("every row is about a project")
+                .project
+                .clone()
+        })
         .collect();
     assert!(projects.contains(&A.to_owned()) && projects.contains(&B.to_owned()));
     assert_eq!(host.stored(Some(A)).len(), 1);
@@ -152,7 +168,10 @@ fn item2_naming_a_project_for_one_call_never_rescopes_anything_else() {
     for (key, project, name) in [("a1", A, "T-A"), ("b1", B, "T-B")] {
         let input = host.input(&format!("{key}.json"), &transformer(name));
         let value = ds_cli_server::submit(
-            &host.args(&SUBMIT, &["--key", key, "--input", &input, "--project", project]),
+            &host.args(
+                &SUBMIT,
+                &["--key", key, "--input", &input, "--project", project],
+            ),
             &context(),
         )
         .expect("admitted");
@@ -199,7 +218,10 @@ fn item2_naming_a_project_for_one_call_never_rescopes_anything_else() {
     // bytes outrank the query, and the caller is told which is wrong.
     let sealed = host.input("solar.json", &solar_submission());
     let refused = ds_cli_server::solar_submit(
-        &host.args(&SOLAR_SUBMIT, &["--key", "solar-c", "--input", &sealed, "--project", C]),
+        &host.args(
+            &SOLAR_SUBMIT,
+            &["--key", "solar-c", "--input", &sealed, "--project", C],
+        ),
         &context(),
     )
     .expect_err("the sealed project wins");
@@ -208,7 +230,10 @@ fn item2_naming_a_project_for_one_call_never_rescopes_anything_else() {
     assert!(refused.remedy_text().is_some());
     // …and the same envelope named honestly is admitted under A.
     let admitted = ds_cli_server::solar_submit(
-        &host.args(&SOLAR_SUBMIT, &["--key", "solar-a", "--input", &sealed, "--project", A]),
+        &host.args(
+            &SOLAR_SUBMIT,
+            &["--key", "solar-a", "--input", &sealed, "--project", A],
+        ),
         &context(),
     )
     .expect("the sealed project, named");
@@ -241,7 +266,11 @@ fn item3_a_foreign_principal_lane_project_and_a_guessed_id_are_one_byte_identica
     // Two more listeners over the SAME durable queue: one signed in as another
     // account, one on the other lane. Each presents the durable owner fence
     // its identity really derives, as production does.
-    let stranger = host.shadow("uid-somebody-else", LANE, &owner_digest("uid-somebody-else", LANE));
+    let stranger = host.shadow(
+        "uid-somebody-else",
+        LANE,
+        &owner_digest("uid-somebody-else", LANE),
+    );
     let other_lane = host.shadow(UID, "canary", &owner_digest(UID, "canary"));
     // And one more that deliberately presents THIS Server's owner digest, so
     // the durable SQL fence separates nothing and only the execution context
@@ -258,10 +287,19 @@ fn item3_a_foreign_principal_lane_project_and_a_guessed_id_are_one_byte_identica
         let answers = vec![
             ("wrong project", host.raw(method, &own(&id, B), None)),
             ("guessed id", host.raw(method, &own(&unknown, B), None)),
-            ("guessed id, unnarrowed", host.raw(method, &route.replace("{}", &unknown), None)),
-            ("foreign principal", stranger.raw(method, &own(&id, A), None)),
+            (
+                "guessed id, unnarrowed",
+                host.raw(method, &route.replace("{}", &unknown), None),
+            ),
+            (
+                "foreign principal",
+                stranger.raw(method, &own(&id, A), None),
+            ),
             ("foreign lane", other_lane.raw(method, &own(&id, A), None)),
-            ("foreign principal, shared durable fence", unfenced.raw(method, &own(&id, A), None)),
+            (
+                "foreign principal, shared durable fence",
+                unfenced.raw(method, &own(&id, A), None),
+            ),
         ];
         let first = &answers[0].1;
         assert_eq!(first.status, 409, "{:?}", first.json());
@@ -306,9 +344,15 @@ fn item3_a_foreign_principal_lane_project_and_a_guessed_id_are_one_byte_identica
         Some(&transformer("T-A")),
     );
     assert_eq!(theirs.status, 202, "{:?}", theirs.json());
-    assert_eq!(theirs.json()["job"]["context"]["principal_uid"], "uid-somebody-else");
+    assert_eq!(
+        theirs.json()["job"]["context"]["principal_uid"],
+        "uid-somebody-else"
+    );
     let their_id = theirs.json()["job"]["id"].as_str().unwrap().to_owned();
-    assert_ne!(their_id, id, "the same key under another account is other work");
+    assert_ne!(
+        their_id, id,
+        "the same key under another account is other work"
+    );
     let listed = |answer: Value| -> Vec<String> {
         answer["jobs"]
             .as_array()
@@ -317,8 +361,14 @@ fn item3_a_foreign_principal_lane_project_and_a_guessed_id_are_one_byte_identica
             .map(|job| job["id"].as_str().unwrap().to_owned())
             .collect()
     };
-    assert_eq!(listed(host.raw("GET", "/v1/jobs", None).json()), vec![id.clone()]);
-    assert_eq!(listed(stranger.raw("GET", "/v1/jobs", None).json()), vec![their_id]);
+    assert_eq!(
+        listed(host.raw("GET", "/v1/jobs", None).json()),
+        vec![id.clone()]
+    );
+    assert_eq!(
+        listed(stranger.raw("GET", "/v1/jobs", None).json()),
+        vec![their_id]
+    );
 
     // Take the durable fence away and the same key DOES land on this
     // connection's row. It is still not handed over: the row itself refuses a
@@ -383,7 +433,10 @@ fn item4_a_reused_key_may_not_change_its_project_or_its_payload() {
     let other = host.input("other.json", &transformer("T2"));
     let submit = |key: &str, input: &str, project: &str| {
         ds_cli_server::submit(
-            &host.args(&SUBMIT, &["--key", key, "--input", input, "--project", project]),
+            &host.args(
+                &SUBMIT,
+                &["--key", key, "--input", input, "--project", project],
+            ),
             &context(),
         )
     };
@@ -465,7 +518,10 @@ fn item5_a_restart_recovers_every_context_including_rows_a_released_server_wrote
     );
     assert_eq!(solar.status, 200, "{:?}", solar.json());
     assert_eq!(solar.json()["job"]["context"]["project"], A);
-    assert_eq!(solar.json()["job"]["context"]["operation"], "solar_processing");
+    assert_eq!(
+        solar.json()["job"]["context"]["operation"],
+        "solar_processing"
+    );
     // … the transformer row, which carries no project by design, from the
     // operator's saved selection …
     let transformer_row = host.raw(
@@ -504,7 +560,11 @@ fn item5_a_restart_recovers_every_context_including_rows_a_released_server_wrote
     )
     .expect("the same job");
     assert_eq!(retried["job"]["id"], live);
-    assert_eq!(host.stored(None).len(), 3, "no duplicate row after a restart");
+    assert_eq!(
+        host.stored(None).len(),
+        3,
+        "no duplicate row after a restart"
+    );
 }
 
 /// A transformer row a released Server wrote, and no selection to recover it
@@ -512,8 +572,8 @@ fn item5_a_restart_recovers_every_context_including_rows_a_released_server_wrote
 #[test]
 fn item5_a_pre_slice_row_with_no_honest_project_is_named_not_guessed() {
     let host = Host::start_over(&[A, B], limits(), A, &legacy_queue_fixture());
-    let recovery = runtime::recover_contexts(&host.database(), &host.identity, None)
-        .expect("recovery runs");
+    let recovery =
+        runtime::recover_contexts(&host.database(), &host.identity, None).expect("recovery runs");
     assert_eq!(recovery.from_sealed_input, 1, "Solar names its own project");
     assert_eq!(recovery.from_saved_selection, 0);
     assert_eq!(
@@ -524,7 +584,11 @@ fn item5_a_pre_slice_row_with_no_honest_project_is_named_not_guessed() {
     // It is still the operator's own work: visible unnarrowed, absent from
     // every project, and it holds no project's capacity.
     assert_eq!(host.stored(None).len(), 2);
-    assert!(host.stored(Some(A)).iter().all(|job| job.id != legacy_transformer_id()));
+    assert!(
+        host.stored(Some(A))
+            .iter()
+            .all(|job| job.id != legacy_transformer_id())
+    );
     let nameless = host.raw("GET", "/v1/jobs", None);
     assert_eq!(nameless.json()["jobs"].as_array().unwrap().len(), 2);
 }
@@ -543,7 +607,10 @@ fn item6_a_membership_revoked_while_queued_fails_only_that_projects_job() {
     for (key, project, name) in [("a1", A, "T-A"), ("b1", B, "T-B")] {
         let input = host.input(&format!("{key}.json"), &transformer(name));
         let value = ds_cli_server::submit(
-            &host.args(&SUBMIT, &["--key", key, "--input", &input, "--project", project]),
+            &host.args(
+                &SUBMIT,
+                &["--key", key, "--input", &input, "--project", project],
+            ),
             &context(),
         )
         .expect("admitted");
@@ -555,10 +622,15 @@ fn item6_a_membership_revoked_while_queued_fails_only_that_projects_job() {
     let terminal = |id: &str, project: &str| -> Option<Value> {
         let answer = host.raw("GET", &format!("/v1/jobs/{id}?project={project}"), None);
         let job = answer.json()["job"].clone();
-        matches!(job["phase"].as_str(), Some("failed" | "completed" | "cancelled")).then_some(job)
+        matches!(
+            job["phase"].as_str(),
+            Some("failed" | "completed" | "cancelled")
+        )
+        .then_some(job)
     };
     assert!(
-        until(60, || terminal(&ids[0], A).is_some() && terminal(&ids[1], B).is_some()),
+        until(60, || terminal(&ids[0], A).is_some()
+            && terminal(&ids[1], B).is_some()),
         "both jobs reach a terminal phase"
     );
     workers.stop();
@@ -567,12 +639,22 @@ fn item6_a_membership_revoked_while_queued_fails_only_that_projects_job() {
     let doomed = terminal(&ids[0], A).expect("A's job is terminal");
     assert_eq!(doomed["phase"], "failed");
     assert!(
-        doomed["error"].as_str().unwrap().starts_with(runtime::MEMBERSHIP_REVOKED),
+        doomed["error"]
+            .as_str()
+            .unwrap()
+            .starts_with(runtime::MEMBERSHIP_REVOKED),
         "{doomed}"
     );
     assert_eq!(doomed["context"]["project"], A, "nothing re-scoped it");
-    let refused = host.raw("GET", &format!("/v1/jobs/{}/result?project={A}", ids[0]), None);
-    assert_eq!(refused.status, 409, "a revoked project's job produced nothing");
+    let refused = host.raw(
+        "GET",
+        &format!("/v1/jobs/{}/result?project={A}", ids[0]),
+        None,
+    );
+    assert_eq!(
+        refused.status, 409,
+        "a revoked project's job produced nothing"
+    );
 
     let survivor = terminal(&ids[1], B).expect("B's job is terminal");
     assert_eq!(survivor["phase"], "completed", "{survivor}");
@@ -580,7 +662,14 @@ fn item6_a_membership_revoked_while_queued_fails_only_that_projects_job() {
     let saved = ds_cli_server::result(
         &host.args(
             &RESULT,
-            &["--job", &ids[1], "--project", B, "--out", &out.display().to_string()],
+            &[
+                "--job",
+                &ids[1],
+                "--project",
+                B,
+                "--out",
+                &out.display().to_string(),
+            ],
         ),
         &context(),
     )
@@ -640,11 +729,16 @@ fn item7_capacity_is_typed_bounded_fair_and_released_by_cancellation() {
     .expect_err("A is full");
     assert_eq!(refused.code(), "capacity_exhausted");
     assert_eq!(refused.class(), ExitClass::Unavailable);
-    let detail = refused.detail_value().expect("machine-readable retry guidance");
+    let detail = refused
+        .detail_value()
+        .expect("machine-readable retry guidance");
     assert_eq!(detail["scope"], "project");
     assert!(detail["retry_after_ms"].as_u64().is_some_and(|ms| ms > 0));
     assert!(refused.remedy_text().unwrap().contains("retry after"));
-    assert!(!refused.message().contains(A), "a capacity refusal names no project");
+    assert!(
+        !refused.message().contains(A),
+        "a capacity refusal names no project"
+    );
     // On the wire it is a 429, so a generic HTTP client backs off correctly.
     let wire = host.raw(
         "POST",
@@ -706,7 +800,10 @@ fn item8_identical_work_in_two_projects_never_collides() {
     let mut ids = Vec::new();
     for (key, project) in [("daily-a", A), ("daily-b", B)] {
         let value = ds_cli_server::submit(
-            &host.args(&SUBMIT, &["--key", key, "--input", &input, "--project", project]),
+            &host.args(
+                &SUBMIT,
+                &["--key", key, "--input", &input, "--project", project],
+            ),
             &context(),
         )
         .expect("admitted");
@@ -721,7 +818,8 @@ fn item8_identical_work_in_two_projects_never_collides() {
     // Run them for real. Two results, computed independently.
     let workers = host.workers(Arc::new(Allow), 2, None);
     let done = |id: &str, project: &str| {
-        host.raw("GET", &format!("/v1/jobs/{id}?project={project}"), None).json()["job"]["phase"]
+        host.raw("GET", &format!("/v1/jobs/{id}?project={project}"), None)
+            .json()["job"]["phase"]
             == "completed"
     };
     assert!(
@@ -741,13 +839,24 @@ fn item8_identical_work_in_two_projects_never_collides() {
         let saved = ds_cli_server::result(
             &host.args(
                 &RESULT,
-                &["--job", id, "--project", own, "--out", &out.display().to_string()],
+                &[
+                    "--job",
+                    id,
+                    "--project",
+                    own,
+                    "--out",
+                    &out.display().to_string(),
+                ],
             ),
             &context(),
         )
         .expect("the owner's own result");
         assert!(saved["byte_count"].as_u64().unwrap() > 0);
-        let hidden = host.raw("GET", &format!("/v1/jobs/{id}/result?project={other}"), None);
+        let hidden = host.raw(
+            "GET",
+            &format!("/v1/jobs/{id}/result?project={other}"),
+            None,
+        );
         assert_eq!(hidden.status, 409);
         assert_eq!(hidden.json()["error"], "job not found");
     }
@@ -759,7 +868,10 @@ fn item8_identical_work_in_two_projects_never_collides() {
         assert!(row.result_sha256.is_some(), "a result each");
         let project = if row.id == ids[0] { A } else { B };
         assert_eq!(row.context.as_ref().expect("retained").project, project);
-        assert_eq!(row.context.as_ref().unwrap().operation, "transformer_processing");
+        assert_eq!(
+            row.context.as_ref().unwrap().operation,
+            "transformer_processing"
+        );
     }
 }
 
@@ -797,7 +909,11 @@ fn a_layer_request_names_its_project_and_is_fenced_to_the_document() {
     let remedy = elsewhere.json()["remedy"].as_str().unwrap().to_owned();
     assert!(remedy.contains(A) && remedy.contains(B), "{remedy}");
     // The project the document is for: the catalogue, applied.
-    let applied = host.raw("POST", &format!("/v1/layers/visibility?project={A}"), Some(body));
+    let applied = host.raw(
+        "POST",
+        &format!("/v1/layers/visibility?project={A}"),
+        Some(body),
+    );
     assert_eq!(applied.status, 200, "{:?}", applied.json());
     assert_eq!(applied.json()["project"], A);
 
@@ -839,11 +955,21 @@ fn an_operation_that_needs_a_rendered_map_is_refused_by_name_over_the_wire() {
     let refused = host.raw("POST", "/v1/map/screenshot", Some(b"{}"));
     assert_eq!(refused.status, 503, "{:?}", refused.json());
     assert_eq!(refused.code(), "needs_paired_map");
-    assert!(refused.json()["remedy"].as_str().unwrap().contains("--target desktop"));
+    assert!(
+        refused.json()["remedy"]
+            .as_str()
+            .unwrap()
+            .contains("--target desktop")
+    );
     let unknown = host.raw("GET", "/v1/nothing", None);
     assert_eq!(unknown.status, 400);
     assert_eq!(unknown.code(), "unsupported_operation");
-    assert!(unknown.json()["error"].as_str().unwrap().contains("/v1/nothing"));
+    assert!(
+        unknown.json()["error"]
+            .as_str()
+            .unwrap()
+            .contains("/v1/nothing")
+    );
 }
 
 /// `/v1/activity` reports per-project scope: one entry per project this
@@ -855,7 +981,10 @@ fn activity_scope_is_one_entry_per_project_that_holds_work() {
     for (key, project, name) in [("a1", A, "T-A"), ("b1", B, "T-B")] {
         let input = host.input(&format!("{key}.json"), &transformer(name));
         ds_cli_server::submit(
-            &host.args(&SUBMIT, &["--key", key, "--input", &input, "--project", project]),
+            &host.args(
+                &SUBMIT,
+                &["--key", key, "--input", &input, "--project", project],
+            ),
             &context(),
         )
         .expect("admitted");
@@ -868,8 +997,16 @@ fn activity_scope_is_one_entry_per_project_that_holds_work() {
         ds_cli_server::host::project_scopes(&host.app, Some(B)).unwrap(),
         vec![B.to_owned()]
     );
-    assert!(ds_cli_server::host::project_scopes(&host.app, Some(C)).unwrap().is_empty());
-    assert!(ds_cli_server::host::project_scopes(&host.app, Some(OUTSIDE)).unwrap().is_empty());
+    assert!(
+        ds_cli_server::host::project_scopes(&host.app, Some(C))
+            .unwrap()
+            .is_empty()
+    );
+    assert!(
+        ds_cli_server::host::project_scopes(&host.app, Some(OUTSIDE))
+            .unwrap()
+            .is_empty()
+    );
     // The projection itself needs a Sync Center session per project, which
     // this offline proof deliberately has none of, so the route says so rather
     // than answering an empty envelope that could be mistaken for "no work".
@@ -887,12 +1024,18 @@ fn an_unauthenticated_call_never_reads_or_creates_anything() {
         .http_status_as_error(false)
         .build()
         .new_agent()
-        .post(format!("http://{}/v1/transformer-processing/x?project={A}", host.address))
+        .post(format!(
+            "http://{}/v1/transformer-processing/x?project={A}",
+            host.address
+        ))
         .header("authorization", "Bearer wrong")
         .send(transformer("T1").as_slice())
         .expect("answered");
     assert_eq!(denied.status().as_u16(), 401);
-    assert!(!host.database().exists(), "an unauthenticated call created no queue");
+    assert!(
+        !host.database().exists(),
+        "an unauthenticated call created no queue"
+    );
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -959,12 +1102,24 @@ static LAYER_HIDE: Command = Command {
     authority: Authority::HeadlessUser,
     execution: Execution::Sync,
     args: &[
-        Arg::value("state-dir", "<absolute-path>", "Protected server state directory."),
+        Arg::value(
+            "state-dir",
+            "<absolute-path>",
+            "Protected server state directory.",
+        ),
         Arg::value("lane", "<stable|canary>", "Native authentication lane.")
             .default("stable")
             .choices(&["stable", "canary"]),
-        Arg::value("project", "<exact-id>", "Exact ds_project id this call is about."),
-        Arg::repeated("layer", "<canonical-id>", "Canonical layer id from the catalogue."),
+        Arg::value(
+            "project",
+            "<exact-id>",
+            "Exact ds_project id this call is about.",
+        ),
+        Arg::repeated(
+            "layer",
+            "<canonical-id>",
+            "Canonical layer id from the catalogue.",
+        ),
     ],
     output: "The changed families and this host's remembered visibility.",
     examples: &[],

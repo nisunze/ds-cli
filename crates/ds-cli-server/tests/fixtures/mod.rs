@@ -30,7 +30,9 @@ use std::{
     time::{Duration, Instant},
 };
 
-use ds_cli_contract::{Context, Failure, Inputs, output::Format, output::Output, parse, spec::Command};
+use ds_cli_contract::{
+    Context, Failure, Inputs, output::Format, output::Output, parse, spec::Command,
+};
 use ds_cli_server::host::{App, Connection};
 use ds_cli_server::layers::LayerHost;
 use ds_cli_server::server_sync::{
@@ -514,13 +516,9 @@ fn build_app_as(
     layers: Arc<LayerFixture>,
 ) -> App {
     owner_only(directory_path);
-    let connection = ds_cli_server::host::connection(
-        directory_path,
-        address,
-        owner.to_owned(),
-        lane.to_owned(),
-    )
-    .expect("protected connection");
+    let connection =
+        ds_cli_server::host::connection(directory_path, address, owner.to_owned(), lane.to_owned())
+            .expect("protected connection");
     let sessions = ServerSessions::with(
         connection.clone(),
         database.clone(),
@@ -586,7 +584,10 @@ fn raw_at(
         .build()
         .new_agent();
     let mut response = if method == "GET" {
-        agent.get(&url).header("authorization", &authorization).call()
+        agent
+            .get(&url)
+            .header("authorization", &authorization)
+            .call()
     } else {
         agent
             .post(&url)

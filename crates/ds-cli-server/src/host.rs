@@ -187,7 +187,10 @@ async fn unserved(request: Request) -> ApiError {
     if path.starts_with("/v1/map/") || path.starts_with("/v1/invoke") {
         return typed(
             &Failure::unavailable(
-                NEEDS_PAIRED_MAP,
+                // Written out, not named through the constant above: the
+                // refusal-coverage scan reads a literal, and a code it cannot
+                // read is a code nothing checks is documented.
+                "needs_paired_map",
                 "this host runs the operation but has no rendered map to run it against",
             )
             .remedy(
