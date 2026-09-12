@@ -74,7 +74,8 @@ fn any_visible(catalogue: &Value, family: &str) -> bool {
 
 /// One job's phase, straight off the wire.
 fn phase(host: &Host, id: &str, project: &str) -> String {
-    host.raw("GET", &format!("/v1/jobs/{id}?project={project}"), None).json()["job"]["phase"]
+    host.raw("GET", &format!("/v1/jobs/{id}?project={project}"), None)
+        .json()["job"]["phase"]
         .as_str()
         .unwrap_or_default()
         .to_owned()
@@ -719,8 +720,7 @@ fn item5_a_restart_recovers_every_context_including_rows_a_released_server_wrote
     // A second recovery pass rebuilds nothing: the Solar row is stored now,
     // which is what proves the first pass ran, and the transformer row is
     // named again rather than quietly adopted.
-    let again =
-        runtime::recover_contexts(&host.database(), &host.identity).expect("a second pass");
+    let again = runtime::recover_contexts(&host.database(), &host.identity).expect("a second pass");
     assert_eq!(again.stored, 2, "the recovered Solar row and the live one");
     assert_eq!(again.from_sealed_input, 0);
     assert_eq!(again.unrecoverable, vec![legacy_transformer_id()]);
@@ -749,7 +749,11 @@ fn item5_a_restart_recovers_every_context_including_rows_a_released_server_wrote
         assert_eq!(hidden.status, 409, "{:?}", hidden.json());
         assert_eq!(hidden.json()["error"], "job not found");
     }
-    let nameless = host.raw("GET", &format!("/v1/jobs/{}", legacy_transformer_id()), None);
+    let nameless = host.raw(
+        "GET",
+        &format!("/v1/jobs/{}", legacy_transformer_id()),
+        None,
+    );
     assert_eq!(nameless.status, 200, "{:?}", nameless.json());
     assert!(nameless.json()["job"]["context"].is_null());
     // … and the row this build admitted kept the project it was admitted into.
@@ -813,7 +817,11 @@ fn a_legacy_transformer_row_is_readable_but_never_recovered_into_the_saved_selec
             "the nameless row is not in {project}"
         );
     }
-    let readable = host.raw("GET", &format!("/v1/jobs/{}", legacy_transformer_id()), None);
+    let readable = host.raw(
+        "GET",
+        &format!("/v1/jobs/{}", legacy_transformer_id()),
+        None,
+    );
     assert_eq!(readable.status, 200, "{:?}", readable.json());
     assert_eq!(readable.json()["job"]["phase"], "queued");
     assert!(readable.json()["job"]["context"].is_null());
@@ -956,7 +964,8 @@ fn item6_execution_needs_no_directory_and_no_upstream_and_one_project_never_touc
         .then_some(job)
     };
     assert!(
-        until(60, || terminal(&ids[0], A).is_some() && terminal(&ids[1], B).is_some()),
+        until(60, || terminal(&ids[0], A).is_some()
+            && terminal(&ids[1], B).is_some()),
         "both jobs reach a terminal phase"
     );
     workers.stop();
@@ -1559,7 +1568,11 @@ fn ds_map_layer_list_target_server_answers_the_same_shape_as_the_desktop() {
     assert_eq!(served["lane"], LANE);
     assert_eq!(served["visibility_source"], "native_local");
     assert!(!any_visible(&served, "survey/poles"));
-    assert!(served["layer_count"].as_u64().is_some_and(|count| count > 0));
+    assert!(
+        served["layer_count"]
+            .as_u64()
+            .is_some_and(|count| count > 0)
+    );
 }
 
 /// The standing ruling's other half: the Server runs the same operation ids

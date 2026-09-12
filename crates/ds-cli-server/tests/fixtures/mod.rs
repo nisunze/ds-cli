@@ -404,11 +404,7 @@ impl Host {
         let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("loopback port");
         let address = listener.local_addr().expect("bound address");
         let identity = identity(UID, LANE);
-        let layers = Arc::new(LayerFixture::new(
-            UID,
-            prefs.path().to_owned(),
-            READABLE,
-        ));
+        let layers = Arc::new(LayerFixture::new(UID, prefs.path().to_owned(), READABLE));
         let gateway = Arc::new(NoGateway::default());
         let app = build_app(
             state.path(),
@@ -816,7 +812,10 @@ pub fn run_ds(args: &[&str]) -> DsRun {
         .env("NO_COLOR", "1")
         .env("DS_NATIVE_CLIENT_PROFILE_BUNDLE", &bundle)
         .env("DS_CONFIG_HOME", config.path())
-        .env("DS_DESKTOP_DESCRIPTOR", config.path().join("no-desktop.json"))
+        .env(
+            "DS_DESKTOP_DESCRIPTOR",
+            config.path().join("no-desktop.json"),
+        )
         .output()
         .expect("the ds binary runs");
     let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
