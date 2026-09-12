@@ -1,12 +1,12 @@
 {
   "schema": "ds.execution-context-cases/v1",
   "purpose": "The Server's execution context, replayed. Each case carries the op (without the schema wrapper) and the answer the kernel must give: the parsed answer, or {\"error\": \"<the exact Err string>\"} when the request itself is malformed. ds-web replays the same file through the vendored WASM, so no rule about who may see, admit, keep, queue or recover a project's work can be true on one host and not another.",
-  "source": "ds-web/docs/project-and-instance-isolation-contract.md (One verified context per operation; Server jobs and multiple clients; Concurrency and capacity; acceptance items 2, 5, 6, 7, 8), 2026-09-12.",
+  "source": "ds-web/docs/project-and-instance-isolation-contract.md (One verified context per operation; Server jobs and multiple clients; Concurrency and capacity; acceptance items 2, 5, 6, 7, 8), 2026-09-12, under the owner's boundary ruling of the same day: the Server is the desktop's core and holds no project directory, so admission is the connection, the named project and the key.",
   "note": "Re-record expected with DS_EXECUTION_CONTEXT_CASES_WRITE=1 cargo test --test execution_context_cases after a deliberate rule change, and say why in the commit.",
   "cases": [
     {
       "id": "admit-requested-project",
-      "why": "An explicitly named project that the fresh membership snapshot contains is the whole happy path: the record is stamped from the connection, not from anything the caller asserted about itself.",
+      "why": "An explicitly named project is the whole happy path: the record is stamped from the authenticated connection and the name the owner gave, not from anything the caller asserted about itself.",
       "request": {
         "kind": "admit",
         "now_ms": 2000,
@@ -21,14 +21,6 @@
         "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
         "idempotency_key": "key-a",
         "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-        "membership": {
-          "projects": [
-            "project-a",
-            "project-b"
-          ],
-          "fetched_at_ms": 1000,
-          "ttl_ms": 600000
-        },
         "requested_project": "project-a"
       },
       "expected": {
@@ -50,7 +42,7 @@
     },
     {
       "id": "admit-saved-selection-is-a-default",
-      "why": "A saved CLI selection is a caller default the Server still verifies; it is never Server execution state, and it admits exactly like a request would.",
+      "why": "A saved selection is the caller's own default, used exactly like a name it typed; it is a client-side convenience and never Server state.",
       "request": {
         "kind": "admit",
         "now_ms": 2000,
@@ -65,14 +57,6 @@
         "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
         "idempotency_key": "key-a",
         "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-        "membership": {
-          "projects": [
-            "project-a",
-            "project-b"
-          ],
-          "fetched_at_ms": 1000,
-          "ttl_ms": 600000
-        },
         "saved_project": "project-a"
       },
       "expected": {
@@ -94,7 +78,7 @@
     },
     {
       "id": "admit-requested-outranks-saved",
-      "why": "When the caller names a project explicitly, the saved selection is not consulted at all — a stale selection can never redirect an explicit request.",
+      "why": "When the caller names a project explicitly, its own saved default is not consulted at all - a stale default can never redirect an explicit request.",
       "request": {
         "kind": "admit",
         "now_ms": 2000,
@@ -109,14 +93,6 @@
         "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
         "idempotency_key": "key-a",
         "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-        "membership": {
-          "projects": [
-            "project-a",
-            "project-b"
-          ],
-          "fetched_at_ms": 1000,
-          "ttl_ms": 600000
-        },
         "requested_project": "project-b",
         "saved_project": "project-a"
       },
@@ -154,14 +130,6 @@
         "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
         "idempotency_key": "key-a",
         "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-        "membership": {
-          "projects": [
-            "project-a",
-            "project-b"
-          ],
-          "fetched_at_ms": 1000,
-          "ttl_ms": 600000
-        },
         "sealed_project": "project-b",
         "saved_project": "project-a"
       },
@@ -199,14 +167,6 @@
         "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
         "idempotency_key": "key-a",
         "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-        "membership": {
-          "projects": [
-            "project-a",
-            "project-b"
-          ],
-          "fetched_at_ms": 1000,
-          "ttl_ms": 600000
-        },
         "sealed_project": "project-a",
         "requested_project": "project-a"
       },
@@ -244,14 +204,6 @@
         "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
         "idempotency_key": "key-a",
         "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-        "membership": {
-          "projects": [
-            "project-a",
-            "project-b"
-          ],
-          "fetched_at_ms": 1000,
-          "ttl_ms": 600000
-        },
         "sealed_project": "project-a",
         "requested_project": "project-b"
       },
@@ -265,7 +217,7 @@
     },
     {
       "id": "admit-project-required",
-      "why": "No requested project, no saved selection and no sealed input means there is nothing to verify; the kernel refuses rather than inventing a default from process state.",
+      "why": "No requested project, no saved default and no sealed input means there is nothing to record; the kernel refuses rather than inventing one from process state.",
       "request": {
         "kind": "admit",
         "now_ms": 2000,
@@ -279,228 +231,13 @@
         "operation": "solar_processing",
         "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
         "idempotency_key": "key-a",
-        "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-        "membership": {
-          "projects": [
-            "project-a",
-            "project-b"
-          ],
-          "fetched_at_ms": 1000,
-          "ttl_ms": 600000
-        }
+        "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
       },
       "expected": {
         "outcome": "refused",
         "refusal": {
           "code": "project_required",
           "message": "name a project, or select one first"
-        }
-      }
-    },
-    {
-      "id": "admit-requested-project-not-visible",
-      "why": "A project outside the caller's verified membership is refused even though the caller named it explicitly: a caller-supplied id never grants access.",
-      "request": {
-        "kind": "admit",
-        "now_ms": 2000,
-        "principal": {
-          "uid": "uid-a",
-          "lane": "canary",
-          "deployment": "https://gateway.example",
-          "install_id": "install-1"
-        },
-        "client": "cli:4711",
-        "operation": "solar_processing",
-        "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
-        "idempotency_key": "key-a",
-        "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-        "membership": {
-          "projects": [
-            "project-a",
-            "project-b"
-          ],
-          "fetched_at_ms": 1000,
-          "ttl_ms": 600000
-        },
-        "requested_project": "project-c"
-      },
-      "expected": {
-        "outcome": "refused",
-        "refusal": {
-          "code": "project_not_visible",
-          "message": "that project is not visible to this connection"
-        }
-      }
-    },
-    {
-      "id": "admit-saved-project-not-visible",
-      "why": "A saved selection is verified exactly like a requested one, so a selection saved before a membership change cannot smuggle work into a project the caller has lost.",
-      "request": {
-        "kind": "admit",
-        "now_ms": 2000,
-        "principal": {
-          "uid": "uid-a",
-          "lane": "canary",
-          "deployment": "https://gateway.example",
-          "install_id": "install-1"
-        },
-        "client": "cli:4711",
-        "operation": "solar_processing",
-        "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
-        "idempotency_key": "key-a",
-        "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-        "membership": {
-          "projects": [
-            "project-a",
-            "project-b"
-          ],
-          "fetched_at_ms": 1000,
-          "ttl_ms": 600000
-        },
-        "saved_project": "project-c"
-      },
-      "expected": {
-        "outcome": "refused",
-        "refusal": {
-          "code": "project_not_visible",
-          "message": "that project is not visible to this connection"
-        }
-      }
-    },
-    {
-      "id": "admit-sealed-project-not-visible",
-      "why": "Sealed bytes name a project; they do not authorize it. A prepared input for a project the caller is not a member of is refused like any other.",
-      "request": {
-        "kind": "admit",
-        "now_ms": 2000,
-        "principal": {
-          "uid": "uid-a",
-          "lane": "canary",
-          "deployment": "https://gateway.example",
-          "install_id": "install-1"
-        },
-        "client": "cli:4711",
-        "operation": "solar_processing",
-        "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
-        "idempotency_key": "key-a",
-        "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-        "membership": {
-          "projects": [
-            "project-a",
-            "project-b"
-          ],
-          "fetched_at_ms": 1000,
-          "ttl_ms": 600000
-        },
-        "sealed_project": "project-c"
-      },
-      "expected": {
-        "outcome": "refused",
-        "refusal": {
-          "code": "project_not_visible",
-          "message": "that project is not visible to this connection"
-        }
-      }
-    },
-    {
-      "id": "admit-membership-snapshot-stale",
-      "why": "A membership snapshot older than its own ttl is not evidence of anything; it refuses with exactly the words an unauthorized project gets, so staleness is invisible to the caller.",
-      "request": {
-        "kind": "admit",
-        "now_ms": 2000,
-        "principal": {
-          "uid": "uid-a",
-          "lane": "canary",
-          "deployment": "https://gateway.example",
-          "install_id": "install-1"
-        },
-        "client": "cli:4711",
-        "operation": "solar_processing",
-        "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
-        "idempotency_key": "key-a",
-        "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-        "membership": {
-          "projects": [
-            "project-a",
-            "project-b"
-          ],
-          "fetched_at_ms": 1000,
-          "ttl_ms": 500
-        },
-        "requested_project": "project-a"
-      },
-      "expected": {
-        "outcome": "refused",
-        "refusal": {
-          "code": "project_not_visible",
-          "message": "that project is not visible to this connection"
-        }
-      }
-    },
-    {
-      "id": "admit-membership-snapshot-from-the-future",
-      "why": "A snapshot stamped after the host's clock is treated as unusable rather than eternally fresh, so a clock slip cannot extend a revoked membership.",
-      "request": {
-        "kind": "admit",
-        "now_ms": 2000,
-        "principal": {
-          "uid": "uid-a",
-          "lane": "canary",
-          "deployment": "https://gateway.example",
-          "install_id": "install-1"
-        },
-        "client": "cli:4711",
-        "operation": "solar_processing",
-        "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
-        "idempotency_key": "key-a",
-        "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-        "membership": {
-          "projects": [
-            "project-a",
-            "project-b"
-          ],
-          "fetched_at_ms": 9000,
-          "ttl_ms": 600000
-        },
-        "requested_project": "project-a"
-      },
-      "expected": {
-        "outcome": "refused",
-        "refusal": {
-          "code": "project_not_visible",
-          "message": "that project is not visible to this connection"
-        }
-      }
-    },
-    {
-      "id": "admit-membership-snapshot-empty",
-      "why": "An account with no authorized projects admits nothing; an empty snapshot is a real answer, never an unconstrained one.",
-      "request": {
-        "kind": "admit",
-        "now_ms": 2000,
-        "principal": {
-          "uid": "uid-a",
-          "lane": "canary",
-          "deployment": "https://gateway.example",
-          "install_id": "install-1"
-        },
-        "client": "cli:4711",
-        "operation": "solar_processing",
-        "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
-        "idempotency_key": "key-a",
-        "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-        "membership": {
-          "projects": [],
-          "fetched_at_ms": 1000,
-          "ttl_ms": 600000
-        },
-        "requested_project": "project-a"
-      },
-      "expected": {
-        "outcome": "refused",
-        "refusal": {
-          "code": "project_not_visible",
-          "message": "that project is not visible to this connection"
         }
       }
     },
@@ -521,14 +258,6 @@
         "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
         "idempotency_key": "key-a",
         "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-        "membership": {
-          "projects": [
-            "project-a",
-            "project-b"
-          ],
-          "fetched_at_ms": 1000,
-          "ttl_ms": 600000
-        },
         "requested_project": "project-a",
         "existing": {
           "principal_uid": "uid-a",
@@ -578,14 +307,6 @@
         "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
         "idempotency_key": "key-a",
         "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-        "membership": {
-          "projects": [
-            "project-a",
-            "project-b"
-          ],
-          "fetched_at_ms": 1000,
-          "ttl_ms": 600000
-        },
         "requested_project": "project-b",
         "existing": {
           "principal_uid": "uid-a",
@@ -626,14 +347,6 @@
         "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
         "idempotency_key": "key-a",
         "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-        "membership": {
-          "projects": [
-            "project-a",
-            "project-b"
-          ],
-          "fetched_at_ms": 1000,
-          "ttl_ms": 600000
-        },
         "requested_project": "project-a",
         "existing": {
           "principal_uid": "uid-a",
@@ -674,14 +387,6 @@
         "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
         "idempotency_key": "key-a",
         "input_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-        "membership": {
-          "projects": [
-            "project-a",
-            "project-b"
-          ],
-          "fetched_at_ms": 1000,
-          "ttl_ms": 600000
-        },
         "requested_project": "project-a",
         "existing": {
           "principal_uid": "uid-a",
@@ -722,14 +427,6 @@
         "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
         "idempotency_key": "key-a",
         "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-        "membership": {
-          "projects": [
-            "project-a",
-            "project-b"
-          ],
-          "fetched_at_ms": 1000,
-          "ttl_ms": 600000
-        },
         "requested_project": "project-a",
         "existing": {
           "principal_uid": "uid-b",
@@ -770,14 +467,6 @@
         "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
         "idempotency_key": "key-a",
         "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-        "membership": {
-          "projects": [
-            "project-a",
-            "project-b"
-          ],
-          "fetched_at_ms": 1000,
-          "ttl_ms": 600000
-        },
         "requested_project": "project-a",
         "existing": {
           "principal_uid": "uid-a",
@@ -818,14 +507,6 @@
         "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
         "idempotency_key": "key-a",
         "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-        "membership": {
-          "projects": [
-            "project-a",
-            "project-b"
-          ],
-          "fetched_at_ms": 1000,
-          "ttl_ms": 600000
-        },
         "requested_project": "project-a",
         "existing": {
           "principal_uid": "uid-a",
@@ -850,8 +531,8 @@
       }
     },
     {
-      "id": "admit-membership-is-verified-before-the-key",
-      "why": "Probing a key while naming a project the caller cannot see must answer the project refusal, never the key refusal: otherwise reusing keys would disclose which projects hold work.",
+      "id": "admit-the-project-is-resolved-before-the-key",
+      "why": "What a key already holds never decides what a request is about: a request that names no project is refused for that, and the stored record under the key is not consulted at all.",
       "request": {
         "kind": "admit",
         "now_ms": 2000,
@@ -866,15 +547,6 @@
         "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
         "idempotency_key": "key-a",
         "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-        "membership": {
-          "projects": [
-            "project-a",
-            "project-b"
-          ],
-          "fetched_at_ms": 1000,
-          "ttl_ms": 600000
-        },
-        "requested_project": "project-c",
         "existing": {
           "principal_uid": "uid-a",
           "lane": "canary",
@@ -892,8 +564,8 @@
       "expected": {
         "outcome": "refused",
         "refusal": {
-          "code": "project_not_visible",
-          "message": "that project is not visible to this connection"
+          "code": "project_required",
+          "message": "name a project, or select one first"
         }
       }
     },
@@ -914,14 +586,6 @@
         "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
         "idempotency_key": "key-a",
         "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-        "membership": {
-          "projects": [
-            "project-a",
-            "project-b"
-          ],
-          "fetched_at_ms": 1000,
-          "ttl_ms": 600000
-        },
         "requested_project": "project-a",
         "existing": {
           "principal_uid": "uid-a",
@@ -962,14 +626,6 @@
         "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
         "idempotency_key": "key-a",
         "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-        "membership": {
-          "projects": [
-            "project-a",
-            "project-b"
-          ],
-          "fetched_at_ms": 1000,
-          "ttl_ms": 600000
-        },
         "requested_project": "project-a",
         "existing": {
           "principal_uid": "uid-a",
@@ -1010,14 +666,6 @@
         "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
         "idempotency_key": "key-a",
         "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-        "membership": {
-          "projects": [
-            "project-a",
-            "project-b"
-          ],
-          "fetched_at_ms": 1000,
-          "ttl_ms": 600000
-        },
         "requested_project": "project-a"
       },
       "expected": {
@@ -1045,14 +693,6 @@
         "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
         "idempotency_key": "key-a",
         "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-        "membership": {
-          "projects": [
-            "project-a",
-            "project-b"
-          ],
-          "fetched_at_ms": 1000,
-          "ttl_ms": 600000
-        },
         "requested_project": "project-a"
       },
       "expected": {
@@ -1080,14 +720,6 @@
         "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
         "idempotency_key": "key-a",
         "input_sha256": "not-a-digest",
-        "membership": {
-          "projects": [
-            "project-a",
-            "project-b"
-          ],
-          "fetched_at_ms": 1000,
-          "ttl_ms": 600000
-        },
         "requested_project": "project-a"
       },
       "expected": {
@@ -1115,14 +747,6 @@
         "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
         "idempotency_key": "key\na",
         "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-        "membership": {
-          "projects": [
-            "project-a",
-            "project-b"
-          ],
-          "fetched_at_ms": 1000,
-          "ttl_ms": 600000
-        },
         "requested_project": "project-a"
       },
       "expected": {
@@ -1150,14 +774,6 @@
         "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
         "idempotency_key": "key-a",
         "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-        "membership": {
-          "projects": [
-            "project-a",
-            "project-b"
-          ],
-          "fetched_at_ms": 1000,
-          "ttl_ms": 600000
-        },
         "requested_project": "project-a"
       },
       "expected": {
@@ -1185,14 +801,6 @@
         "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
         "idempotency_key": "key-a",
         "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-        "membership": {
-          "projects": [
-            "project-a",
-            "project-b"
-          ],
-          "fetched_at_ms": 1000,
-          "ttl_ms": 600000
-        },
         "requested_project": "project-a"
       },
       "expected": {
@@ -1216,14 +824,6 @@
         "job_id": "2222222222222222222222222222222222222222222222222222222222222222",
         "idempotency_key": "report-inventory",
         "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-        "membership": {
-          "projects": [
-            "project-a",
-            "project-b"
-          ],
-          "fetched_at_ms": 1000,
-          "ttl_ms": 600000
-        },
         "requested_project": "project-b"
       },
       "expected": {
@@ -1260,14 +860,6 @@
         "job_id": "req-8f2c",
         "idempotency_key": "req-8f2c",
         "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-        "membership": {
-          "projects": [
-            "project-a",
-            "project-b"
-          ],
-          "fetched_at_ms": 1000,
-          "ttl_ms": 600000
-        },
         "requested_project": "project-b"
       },
       "expected": {
@@ -1304,14 +896,6 @@
         "job_id": "req-9a10",
         "idempotency_key": "req-9a10",
         "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-        "membership": {
-          "projects": [
-            "project-a",
-            "project-b"
-          ],
-          "fetched_at_ms": 1000,
-          "ttl_ms": 600000
-        },
         "requested_project": "project-a"
       },
       "expected": {
@@ -1333,7 +917,7 @@
     },
     {
       "id": "admit-transformer-operation",
-      "why": "Transformer processing carries no project inside its request by design, which is exactly why an admitted context must supply one from a verified selection.",
+      "why": "Transformer processing carries no project inside its request by design, which is exactly why an admitted context must be given one by the caller that submits it.",
       "request": {
         "kind": "admit",
         "now_ms": 2000,
@@ -1348,14 +932,6 @@
         "job_id": "2222222222222222222222222222222222222222222222222222222222222222",
         "idempotency_key": "lv-batch-1",
         "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-        "membership": {
-          "projects": [
-            "project-a",
-            "project-b"
-          ],
-          "fetched_at_ms": 1000,
-          "ttl_ms": 600000
-        },
         "saved_project": "project-a"
       },
       "expected": {
@@ -2147,6 +1723,95 @@
       }
     },
     {
+      "id": "capacity-claim-every-waiting-project-at-its-share",
+      "why": "Two projects both at their share and both with work waiting must not refuse each other: that would idle every free worker while both have work. The share yields only to a waiting project that is under its own share and could take the slot; here none is, so queue order decides.",
+      "request": {
+        "kind": "capacity",
+        "limits": {
+          "global_running": 6,
+          "per_project_running": 2,
+          "per_project_queued": 3,
+          "global_queued": 8
+        },
+        "intent": "claim",
+        "running": [
+          {
+            "project": "project-a"
+          },
+          {
+            "project": "project-a"
+          },
+          {
+            "project": "project-b"
+          },
+          {
+            "project": "project-b"
+          }
+        ],
+        "queued": [
+          {
+            "project": "project-a"
+          },
+          {
+            "project": "project-b"
+          }
+        ],
+        "project": "project-a"
+      },
+      "expected": {
+        "outcome": "admitted"
+      }
+    },
+    {
+      "id": "capacity-claim-yields-only-to-a-project-under-its-share",
+      "why": "The same pool with a third project waiting under its share: both projects at their share now yield, and the retry guidance counts only the work that can actually go first, never the waiting work of projects that could not take the slot either.",
+      "request": {
+        "kind": "capacity",
+        "limits": {
+          "global_running": 6,
+          "per_project_running": 2,
+          "per_project_queued": 3,
+          "global_queued": 8
+        },
+        "intent": "claim",
+        "running": [
+          {
+            "project": "project-a"
+          },
+          {
+            "project": "project-a"
+          },
+          {
+            "project": "project-b"
+          },
+          {
+            "project": "project-b"
+          }
+        ],
+        "queued": [
+          {
+            "project": "project-a"
+          },
+          {
+            "project": "project-b"
+          },
+          {
+            "project": "project-c"
+          }
+        ],
+        "project": "project-b"
+      },
+      "expected": {
+        "outcome": "refused",
+        "refusal": {
+          "code": "capacity_exhausted",
+          "message": "this project holds 2 of 2 running slots while other projects are waiting",
+          "retry_after_ms": 2000,
+          "scope": "project"
+        }
+      }
+    },
+    {
       "id": "capacity-claim-global-running-full",
       "why": "Every worker busy refuses the claim globally, whichever project asks, with retry guidance derived from the queue rather than from a clock.",
       "request": {
@@ -2244,69 +1909,7 @@
           "deployment": "https://gateway.example",
           "install_id": "install-1"
         },
-        "saved_project": "project-b",
         "sealed_project": "project-a",
-        "now_ms": 5000
-      },
-      "expected": {
-        "outcome": "recovered",
-        "provenance": "stored",
-        "context": {
-          "principal_uid": "uid-a",
-          "lane": "canary",
-          "deployment": "https://gateway.example",
-          "install_id": "install-1",
-          "project": "project-a",
-          "client": "cli:4711",
-          "operation": "solar_processing",
-          "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
-          "idempotency_key": "key-a",
-          "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-          "admitted_at_ms": 2000
-        }
-      }
-    },
-    {
-      "id": "recover-a-stored-context-ignores-the-saved-selection",
-      "why": "Whatever is selected at restart time is irrelevant to a row that already recorded its project; this is the rule that stops a restart from re-homing work.",
-      "request": {
-        "kind": "recover",
-        "row": {
-          "id": "1111111111111111111111111111111111111111111111111111111111111111",
-          "owner": "owner-digest",
-          "lane": "canary",
-          "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-          "engine": "solar_prepared",
-          "input_tag": "ds.solar.calculate.prepared/v1",
-          "phase": "queued",
-          "attempts": 0,
-          "created_at_ms": 1700000000000,
-          "updated_at_ms": 1700000000000,
-          "worker": null,
-          "lease_until_ms": 0,
-          "result_sha256": null,
-          "error": null,
-          "context": {
-            "principal_uid": "uid-a",
-            "lane": "canary",
-            "deployment": "https://gateway.example",
-            "install_id": "install-1",
-            "project": "project-a",
-            "client": "cli:4711",
-            "operation": "solar_processing",
-            "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
-            "idempotency_key": "key-a",
-            "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-            "admitted_at_ms": 2000
-          }
-        },
-        "principal": {
-          "uid": "uid-a",
-          "lane": "canary",
-          "deployment": "https://gateway.example",
-          "install_id": "install-1"
-        },
-        "saved_project": "project-b",
         "now_ms": 5000
       },
       "expected": {
@@ -2354,7 +1957,6 @@
           "deployment": "https://gateway.example",
           "install_id": "install-1"
         },
-        "saved_project": "project-b",
         "sealed_project": "project-a",
         "now_ms": 5000
       },
@@ -2377,56 +1979,8 @@
       }
     },
     {
-      "id": "recover-legacy-transformer-row-from-the-saved-selection",
-      "why": "A transformer row carries no project by design, so the caller's saved selection is the only honest source; the record says so in its provenance.",
-      "request": {
-        "kind": "recover",
-        "row": {
-          "id": "1111111111111111111111111111111111111111111111111111111111111111",
-          "owner": "owner-digest",
-          "lane": "canary",
-          "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-          "engine": "fast_lv",
-          "input_tag": "ds.fast-lv.request/v1",
-          "phase": "queued",
-          "attempts": 0,
-          "created_at_ms": 1700000000000,
-          "updated_at_ms": 1700000000000,
-          "worker": null,
-          "lease_until_ms": 0,
-          "result_sha256": null,
-          "error": null
-        },
-        "principal": {
-          "uid": "uid-a",
-          "lane": "canary",
-          "deployment": "https://gateway.example",
-          "install_id": "install-1"
-        },
-        "saved_project": "project-b",
-        "now_ms": 5000
-      },
-      "expected": {
-        "outcome": "recovered",
-        "provenance": "saved_selection",
-        "context": {
-          "principal_uid": "uid-a",
-          "lane": "canary",
-          "deployment": "https://gateway.example",
-          "install_id": "install-1",
-          "project": "project-b",
-          "client": "recovery:legacy-row",
-          "operation": "transformer_processing",
-          "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
-          "idempotency_key": "recovered",
-          "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-          "admitted_at_ms": 1700000000000
-        }
-      }
-    },
-    {
-      "id": "recover-legacy-transformer-row-without-a-selection",
-      "why": "With nothing to recover a project from, the kernel refuses instead of guessing. Extending admission must not strand a released Server's queue in the wrong project.",
+      "id": "recover-legacy-transformer-row-is-never-recovered",
+      "why": "A transformer row carries no project by design and there is no second source for one - not a selection, not the last project used, not the only project on the host. It stays readable and is never run.",
       "request": {
         "kind": "recover",
         "row": {
@@ -2457,7 +2011,45 @@
         "outcome": "refused",
         "refusal": {
           "code": "context_unrecoverable",
-          "message": "that row predates execution contexts and no project was selected to recover it into"
+          "message": "that row predates execution contexts and a transformer request names no project"
+        }
+      }
+    },
+    {
+      "id": "recover-legacy-transformer-row-refuses-a-project-offered-from-outside",
+      "why": "A project named from outside a legacy transformer row is exactly the guess this refuses: only bytes that name their own project recover one, and a transformer request has none.",
+      "request": {
+        "kind": "recover",
+        "row": {
+          "id": "1111111111111111111111111111111111111111111111111111111111111111",
+          "owner": "owner-digest",
+          "lane": "canary",
+          "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "engine": "fast_lv",
+          "input_tag": "ds.fast-lv.request/v1",
+          "phase": "queued",
+          "attempts": 0,
+          "created_at_ms": 1700000000000,
+          "updated_at_ms": 1700000000000,
+          "worker": null,
+          "lease_until_ms": 0,
+          "result_sha256": null,
+          "error": null
+        },
+        "principal": {
+          "uid": "uid-a",
+          "lane": "canary",
+          "deployment": "https://gateway.example",
+          "install_id": "install-1"
+        },
+        "now_ms": 5000,
+        "sealed_project": "project-b"
+      },
+      "expected": {
+        "outcome": "refused",
+        "refusal": {
+          "code": "context_unrecoverable",
+          "message": "that row predates execution contexts and a transformer request names no project"
         }
       }
     },
@@ -2488,7 +2080,6 @@
           "deployment": "https://gateway.example",
           "install_id": "install-1"
         },
-        "saved_project": "project-b",
         "now_ms": 5000
       },
       "expected": {
@@ -2577,7 +2168,6 @@
           "deployment": "https://gateway.example",
           "install_id": "install-1"
         },
-        "saved_project": "project-b",
         "now_ms": 5000
       },
       "expected": {
@@ -2653,7 +2243,6 @@
           "deployment": "https://gateway.example",
           "install_id": "install-1"
         },
-        "saved_project": "project-b",
         "now_ms": 5000
       },
       "expected": {

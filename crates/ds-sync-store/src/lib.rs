@@ -16,6 +16,8 @@
 
 mod jobs;
 
+pub use jobs::{Census, JobCaller, JobContext, Recovery};
+
 use ds_command_kernel::sync_store::{
     self as kernel, ArtifactRow, Event, Fence, GrantRow, HeadRow, LeaseRow, ReceiptRow, RowChange,
     Scope, Snapshot, Transition,
@@ -34,6 +36,11 @@ pub enum Error {
     Incompatible { found: i64, supported: i64 },
     #[error("the sync store refused: {0}")]
     Kernel(String),
+    /// A typed decision of the kernel's a caller must be told — today the
+    /// capacity of the compute queue — with its code, sentence and guidance
+    /// intact for the host to relay. Nothing was written.
+    #[error("{}: {}", .0.code, .0.message)]
+    Refused(ds_command_kernel::execution_context::Refusal),
     #[error("the sync store could not be read or written: {0}")]
     Storage(#[from] rusqlite::Error),
     #[error("a stored row is unreadable: {0}")]

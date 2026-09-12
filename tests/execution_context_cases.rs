@@ -14,8 +14,7 @@
 //! present.
 
 use ds_command_kernel::execution_context::{
-    evaluate, NOT_FOUND, NOT_VISIBLE, NOT_VISIBLE_MESSAGE, OPERATIONS, PROJECT_NOT_VISIBLE,
-    REFUSALS, SCHEMA,
+    evaluate, NOT_FOUND, NOT_VISIBLE, OPERATIONS, REFUSALS, SCHEMA,
 };
 use serde_json::{json, Map, Value};
 use std::collections::BTreeSet;
@@ -168,7 +167,7 @@ fn the_corpus_covers_every_op_refusal_provenance_and_operation() {
     );
     assert_eq!(
         provenance,
-        ["saved_selection", "sealed_input", "stored"]
+        ["sealed_input", "stored"]
             .iter()
             .map(|source| (*source).to_owned())
             .collect::<BTreeSet<String>>(),
@@ -211,12 +210,6 @@ fn no_recorded_answer_discloses_what_the_caller_may_not_see() {
                 "{id}: an invisible job answers nothing else at all"
             );
         }
-        if code == PROJECT_NOT_VISIBLE {
-            assert_eq!(
-                message, NOT_VISIBLE_MESSAGE,
-                "{id}: a stale snapshot and an unauthorized project read alike"
-            );
-        }
         // A capacity refusal reports counts and limits; naming a project would
         // tell one tenant what another is running.
         if expected["refusal"]["scope"].is_string() {
@@ -257,6 +250,30 @@ fn every_returned_context_is_the_one_that_went_in() {
         };
         if let Some(handed_in) = handed_in {
             assert_eq!(handed_in, answered, "{id}: the context came back changed");
+        }
+    }
+}
+
+/// The boundary, stated over the corpus itself: no case hands this owner a
+/// project directory to admit from, and no case offers a legacy row a project
+/// from outside its own bytes. Both are deleted shapes — `deny_unknown_fields`
+/// would refuse them — so this is the statement that they stay deleted, in the
+/// file a reader of the contract actually opens.
+#[test]
+fn no_recorded_case_offers_a_membership_or_a_selection_to_recover_into() {
+    let corpus = corpus();
+    for case in corpus["cases"].as_array().expect("cases") {
+        let id = case["id"].as_str().expect("case id");
+        let request = &case["request"];
+        assert!(
+            request.get("membership").is_none(),
+            "{id}: admission takes no membership snapshot; the gateway decides entitlement"
+        );
+        if request["kind"] == "recover" {
+            assert!(
+                request.get("saved_project").is_none(),
+                "{id}: a legacy row is recovered from its own bytes or not at all"
+            );
         }
     }
 }
