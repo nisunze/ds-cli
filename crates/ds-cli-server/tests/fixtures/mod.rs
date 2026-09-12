@@ -220,8 +220,11 @@ pub struct Host {
 }
 
 pub fn identity(uid: &str, lane: &str) -> HostIdentity {
+    identity_of(OWNER, uid, lane)
+}
+pub fn identity_of(owner: &str, uid: &str, lane: &str) -> HostIdentity {
     HostIdentity {
-        owner: OWNER.to_owned(),
+        owner: owner.to_owned(),
         principal: Principal {
             uid: uid.to_owned(),
             lane: lane.to_owned(),
@@ -229,6 +232,14 @@ pub fn identity(uid: &str, lane: &str) -> HostIdentity {
             install_id: "install-1".to_owned(),
         },
     }
+}
+
+/// The durable owner fence exactly as `ds-cli-server::auth::identity` derives
+/// it: the digest of (uid, lane, credential audience). Two principals
+/// therefore never share one in production, which is the thing a proof that
+/// deliberately shares it is testing the absence of.
+pub fn owner_digest(uid: &str, lane: &str) -> String {
+    runtime::digest(&serde_json::to_vec(&(uid, lane, DEPLOYMENT)).expect("identity tuple"))
 }
 
 pub const fn limits() -> Limits {
@@ -348,17 +359,22 @@ impl Host {
     /// A second Server, on its own protected state and port, over THIS
     /// Server's durable queue — the only honest way to ask the same store as
     /// another authenticated identity or another lane.
-    pub fn shadow(&mut self, uid: &str, lane: &str) -> Loopback {
+    ///
+    /// `owner` is the durable fence it presents. Pass `owner_digest(uid, lane)`
+    /// for the production-true configuration; pass this Server's own [`OWNER`]
+    /// to take the durable fence away and leave only the execution context.
+    pub fn shadow(&mut self, uid: &str, lane: &str, owner: &str) -> Loopback {
         let state = tempfile::tempdir().expect("shadow state");
         let prefs = tempfile::tempdir().expect("shadow preferences");
         let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("loopback port");
         let address = listener.local_addr().expect("bound address");
-        let app = build_app(
+        let app = build_app_as(
             state.path(),
             self.database(),
             address,
+            owner,
             lane,
-            identity(uid, lane),
+            identity_of(owner, uid, lane),
             self.limits,
             self.directory.clone(),
             Arc::new(LayerFixture {
@@ -472,11 +488,36 @@ fn build_app(
     projects: Arc<Directory>,
     layers: Arc<LayerFixture>,
 ) -> App {
+    build_app_as(
+        directory_path,
+        database,
+        address,
+        OWNER,
+        lane,
+        identity,
+        limits,
+        projects,
+        layers,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn build_app_as(
+    directory_path: &Path,
+    database: PathBuf,
+    address: SocketAddr,
+    owner: &str,
+    lane: &str,
+    identity: HostIdentity,
+    limits: Limits,
+    projects: Arc<Directory>,
+    layers: Arc<LayerFixture>,
+) -> App {
     owner_only(directory_path);
     let connection = ds_cli_server::host::connection(
         directory_path,
         address,
-        OWNER.to_owned(),
+        owner.to_owned(),
         lane.to_owned(),
     )
     .expect("protected connection");
