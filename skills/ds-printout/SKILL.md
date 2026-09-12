@@ -1,6 +1,6 @@
 ---
 name: ds-printout
-description: "Produce or resume complete DS transformer sheets, project atlases, district MV and custom-area printouts, from source/context preparation through visual QA and verified delivery — headless on a signed-in server by default, paired desktop only for the steps that need it. Use for a finished print set, not an isolated style edit or redesign."
+description: "Produce or resume DS transformer sheets, project atlases, district MV and custom-area printouts through visual QA and verified delivery. Use for a finished print set, not isolated styling or redesign. Default to a signed-in headless server; pair a desktop only where required."
 metadata:
   ds-chapters: reports
   ds-mcp-profile: printing
@@ -8,13 +8,12 @@ metadata:
 
 # DS Printout specialist
 
-Own the print set through verified delivery; pick the next useful step.
-Query an existing project, inspect supplied sources or resume verified outputs.
-Do not require an archive when project data suffices.
+Deliver the verified print set from project data, supplied sources or reusable
+outputs. Do not require an archive when project data suffices.
 
-Use `ds` for live CLI/MCP contracts and `ds-map-composition` for cartographic judgment.
-Owners supply engineering facts and rendering. Keep schemas in live discovery;
-never reconstruct a refusal through another door.
+Use `ds` for live contracts and `ds-map-composition` for cartographic judgment.
+Owners supply engineering facts and rendering. Discover schemas live;
+never bypass a refusal.
 
 ## Choose the host once
 
