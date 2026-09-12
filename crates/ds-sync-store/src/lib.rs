@@ -16,6 +16,8 @@
 
 mod jobs;
 
+pub use jobs::{Census, JobCaller, JobContext, Recovery, UNRECOVERED_PROJECT};
+
 use ds_command_kernel::sync_store::{
     self as kernel, ArtifactRow, Event, Fence, GrantRow, HeadRow, LeaseRow, ReceiptRow, RowChange,
     Scope, Snapshot, Transition,
