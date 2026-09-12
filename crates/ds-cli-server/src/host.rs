@@ -1138,6 +1138,114 @@ pub(crate) mod tests {
         assert_eq!(admitted["job"]["context"]["project"], B);
     }
 
+    /// Membership changing under a running Server moves nothing that was
+    /// already admitted: a job keeps the project it was admitted into, and
+    /// what changes is only what may be admitted next.
+    #[tokio::test]
+    async fn a_membership_change_mid_flight_never_re_scopes_queued_work() {
+        let dir = tempfile::tempdir().unwrap();
+        let (app, directory) = app_with(dir.path(), true, &[A, B], limits());
+        let mut ids = Vec::new();
+        for (key, project, name) in [("a1", A, "T1"), ("b1", B, "T2")] {
+            let (status, body) = call(
+                app.clone(),
+                "POST",
+                &format!("/v1/transformer-processing/{key}?project={project}"),
+                Some(transformer(name)),
+            )
+            .await;
+            assert_eq!(status, StatusCode::ACCEPTED, "{body}");
+            ids.push(body["job"]["id"].as_str().unwrap().to_owned());
+        }
+        // The account loses A and gains C while both jobs are queued.
+        *directory.0.lock().unwrap() = vec![B.to_owned(), "project-c".to_owned()];
+        app.sessions.forget_membership();
+
+        // Reading is by the job's own context, not by today's membership: the
+        // operator can still see and cancel work admitted yesterday.
+        let (status, still) = call(
+            app.clone(),
+            "GET",
+            &format!("/v1/jobs/{}?project={A}", ids[0]),
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{still}");
+        assert_eq!(still["job"]["context"]["project"], A);
+        // Admitting new work into A is not.
+        let (status, refused) = call(
+            app.clone(),
+            "POST",
+            &format!("/v1/transformer-processing/a2?project={A}"),
+            Some(transformer("T3")),
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(refused["code"], "project_not_visible");
+        // And the project just granted is admitted without a restart.
+        let (status, granted) = call(
+            app.clone(),
+            "POST",
+            "/v1/transformer-processing/c1?project=project-c",
+            Some(transformer("T4")),
+        )
+        .await;
+        assert_eq!(status, StatusCode::ACCEPTED, "{granted}");
+        assert_eq!(granted["job"]["context"]["project"], "project-c");
+        // B never noticed any of it.
+        let (_, b) = call(app, "GET", &format!("/v1/jobs?project={B}"), None).await;
+        assert_eq!(b["jobs"].as_array().unwrap().len(), 1);
+        assert_eq!(b["jobs"][0]["id"], ids[1]);
+    }
+
+    /// The same bytes submitted for two projects are two pieces of work with
+    /// two ids and two contexts. Only the caller's key is shared ground, and
+    /// sharing it across projects is the refusal proven above.
+    #[tokio::test]
+    async fn identical_work_in_two_projects_never_collides() {
+        let dir = tempfile::tempdir().unwrap();
+        let app = app(dir.path(), true);
+        let mut ids = Vec::new();
+        for (key, project) in [("daily-a", A), ("daily-b", B)] {
+            let (status, body) = call(
+                app.clone(),
+                "POST",
+                &format!("/v1/transformer-processing/{key}?project={project}"),
+                Some(transformer("T1")),
+            )
+            .await;
+            assert_eq!(status, StatusCode::ACCEPTED, "{body}");
+            assert_eq!(body["job"]["context"]["project"], project);
+            ids.push(body["job"]["id"].as_str().unwrap().to_owned());
+        }
+        assert_ne!(ids[0], ids[1], "one job id per project, not one shared row");
+        // Identical input bytes, and still two rows with the same digest.
+        let (_, all) = call(app.clone(), "GET", "/v1/jobs", None).await;
+        let rows = all["jobs"].as_array().unwrap();
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0]["input_sha256"], rows[1]["input_sha256"]);
+        // Each is reachable only under its own project.
+        for (id, own, other) in [(&ids[0], A, B), (&ids[1], B, A)] {
+            let (status, _) = call(
+                app.clone(),
+                "GET",
+                &format!("/v1/jobs/{id}?project={own}"),
+                None,
+            )
+            .await;
+            assert_eq!(status, StatusCode::OK);
+            let (status, hidden) = call(
+                app.clone(),
+                "GET",
+                &format!("/v1/jobs/{id}?project={other}"),
+                None,
+            )
+            .await;
+            assert_eq!(status, StatusCode::CONFLICT);
+            assert_eq!(hidden["error"], "job not found");
+        }
+    }
+
     #[tokio::test]
     async fn the_activity_scope_is_one_entry_per_project_that_holds_work() {
         let dir = tempfile::tempdir().unwrap();

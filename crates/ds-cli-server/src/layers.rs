@@ -575,6 +575,103 @@ mod tests {
             .unwrap()
     }
 
+    /// The project is the caller's word, and the Server checks it three ways:
+    /// it must be there, it must be one this account may act in, and it must
+    /// be the one the document that comes back is actually for.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn the_project_is_named_by_the_caller_and_never_assumed() {
+        let dir = tempfile::tempdir().unwrap();
+        let upstream = fixture_upstream("uid-a");
+        let allowed = Arc::new(AtomicBool::new(true));
+        let server = start(dir.path(), upstream.clone(), allowed).await;
+
+        // No project at all.
+        let (status, refused) = wire(server.address, "GET", "/v1/layers", None, TOKEN).await;
+        assert_eq!(status, 400, "{refused}");
+        assert_eq!(refused["code"], "project_required");
+        assert_eq!(refused["class"], "invalid_input");
+
+        // A project this account is not a member of.
+        let (status, stranger) = wire(
+            server.address,
+            "GET",
+            "/v1/layers?project=project-z",
+            None,
+            TOKEN,
+        )
+        .await;
+        assert_eq!(status, 400, "{stranger}");
+        assert_eq!(stranger["code"], "project_not_visible");
+
+        // A project this account IS a member of, but not the one this
+        // Server's document source is on: refused, never served under the
+        // wrong project, and the remedy names both.
+        let (status, elsewhere) = wire(
+            server.address,
+            "GET",
+            "/v1/layers?project=proj-lome",
+            None,
+            TOKEN,
+        )
+        .await;
+        assert_eq!(status, 409, "{elsewhere}");
+        assert_eq!(elsewhere["code"], "project_context_changed");
+        assert!(
+            elsewhere["remedy"]
+                .as_str()
+                .unwrap()
+                .contains("proj-kigali")
+        );
+
+        // A write is fenced the same way, and writes nothing.
+        let before = ds_layer_store::visibility::read_at(
+            &dir.path().join("layers"),
+            "canary",
+            "uid-a",
+            "proj-kigali",
+        )
+        .unwrap();
+        for (path, body) in [
+            (
+                "/v1/layers/visibility?project=proj-lome",
+                json!({"layers": ["survey/poles"], "visible": false}),
+            ),
+            (
+                "/v1/layers/order?project=proj-lome",
+                json!({"orders": [{"layer_id": "survey/poles", "order": 100}]}),
+            ),
+        ] {
+            let (status, refused) = call(server.address, "POST", path, Some(body), TOKEN);
+            assert_eq!(status, 409, "{refused}");
+            assert_eq!(refused["code"], "project_context_changed");
+        }
+        assert_eq!(
+            ds_layer_store::visibility::read_at(
+                &dir.path().join("layers"),
+                "canary",
+                "uid-a",
+                "proj-kigali"
+            )
+            .unwrap(),
+            before,
+            "a refused project wrote nothing under any project"
+        );
+        assert!(upstream.reorders.lock().unwrap().is_empty());
+
+        // Named correctly, the same request is served.
+        let (status, listing) = wire(
+            server.address,
+            "GET",
+            "/v1/layers?project=proj-kigali",
+            None,
+            TOKEN,
+        )
+        .await;
+        assert_eq!(status, 200, "{listing}");
+        assert_eq!(listing["project"], "proj-kigali");
+        server.handle.abort();
+    }
+
     #[tokio::test(flavor = "multi_thread")]
     async fn the_workflow_runs_through_a_real_listener_and_survives_restart() {
         let dir = tempfile::tempdir().unwrap();
