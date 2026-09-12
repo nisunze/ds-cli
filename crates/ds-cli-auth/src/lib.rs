@@ -219,7 +219,9 @@ pub fn headless_sync_context(lane_value: &str) -> Result<HeadlessSyncContext, Fa
 /// The connection identity a durable local host has **without** a selected
 /// project: the account, the deployment it is bound to, and the registered
 /// install. A host that admits a project per operation needs exactly this and
-/// must not be made to pick one at startup to obtain it.
+/// must not be made to pick one at startup to obtain it. Read from the
+/// protected native state on this machine — no refresh, no network — so a
+/// host can stand up with no upstream present.
 pub struct HeadlessPrincipal {
     account_uid: String,
     deployment: String,
@@ -240,8 +242,7 @@ impl HeadlessPrincipal {
 
 pub fn headless_principal(lane_value: &str) -> Result<HeadlessPrincipal, Failure> {
     let lane = Lane::parse(lane_value)?;
-    let identity = refresh_runtime_identity(lane.token())?;
-    probe_headless_identity(lane.token())?.ok_or_else(|| {
+    let (identity, _) = probe_headless_identity(lane.token())?.ok_or_else(|| {
         Failure::conflict("headless_signed_out", "the server has no native identity")
             .remedy("sign in under the server's Linux account")
     })?;
@@ -258,34 +259,6 @@ pub fn headless_principal(lane_value: &str) -> Result<HeadlessPrincipal, Failure
         deployment: profile.gateway_origin().to_owned(),
         install_id,
     })
-}
-
-/// The exact project ids this native account may act in, freshly fetched —
-/// the same directory `ds auth project use` verifies a selection against, and
-/// the membership snapshot a host admits an operation from. It is a snapshot,
-/// not a subscription: the caller stamps and bounds it.
-pub fn headless_projects(lane_value: &str) -> Result<Vec<String>, Failure> {
-    let lane = Lane::parse(lane_value)?;
-    let _ = probe_headless_identity(lane.token())?;
-    let exact = |directory: &ds_client_core::ProjectDirectory| {
-        directory
-            .projects()
-            .iter()
-            .map(|project| project.ds_project().to_owned())
-            .collect::<Vec<_>>()
-    };
-    if let Some(mut device) = device::restore_session(lane)? {
-        return Ok(exact(&device.list_projects().map_err(map_client)?));
-    }
-    let profile = profile::load(lane)?;
-    let store = NativeRefreshStore::open()?;
-    let mut client = Client::new(profile, NativeTransport, store);
-    let context = ProjectContextLease::acquire(client.profile())?;
-    require_restore(&mut client, &context)?;
-    Ok(exact(&with_disposition(
-        client.list_projects(now()),
-        &context,
-    )?))
 }
 
 pub static DOMAIN: Domain = Domain {

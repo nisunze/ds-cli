@@ -60,7 +60,7 @@ const MAX_PROJECT_CHARS: usize = 500;
 const PLATFORM: Refusal = Refusal {
     code: "server_platform_unsupported",
     when: "the native server is requested outside Linux",
-    remedy: "run these commands on the Linux server, locally or over SSH",
+    remedy: "run these commands on a Linux machine",
 };
 const REFUSED: Refusal = Refusal {
     code: "server_refused",
@@ -89,8 +89,8 @@ const CONTEXT_CORRUPT: Refusal = Refusal {
 };
 const PROJECT_NOT_VISIBLE: Refusal = Refusal {
     code: "project_not_visible",
-    when: "the account's freshly verified membership does not contain that project",
-    remedy: "run ds auth project list and pass one this account is a member of",
+    when: "reserved by the kernel; this Server holds no directory and never raises it",
+    remedy: "run ds auth project list and pass one exact ds_project value",
 };
 const NOT_VISIBLE: Refusal = Refusal {
     code: "not_visible",
@@ -126,11 +126,6 @@ const CONTEXT_UNRECOVERABLE: Refusal = Refusal {
     code: "context_unrecoverable",
     when: "a job stored by an older Server names no project and none can be recovered",
     remedy: "read that job's result and resubmit under an explicit --project",
-};
-const MEMBERSHIP_REVOKED: Refusal = Refusal {
-    code: "membership_revoked",
-    when: "membership of the job's project was lost while it was queued or running",
-    remedy: "regain membership of that project and resubmit; other projects were unaffected",
 };
 const OUTPUT_EXISTS: Refusal = Refusal {
     code: "server_output_exists",
@@ -200,7 +195,6 @@ const JOB_REFUSALS: &[Refusal] = &[
     PROJECT_NOT_VISIBLE,
     NOT_VISIBLE,
     PRINCIPAL_MISMATCH,
-    MEMBERSHIP_REVOKED,
     CONTEXT_UNRECOVERABLE,
 ];
 /// Naming a job and a destination file.
@@ -214,7 +208,6 @@ const RESULT_REFUSALS: &[Refusal] = &[
     PROJECT_NOT_VISIBLE,
     NOT_VISIBLE,
     PRINCIPAL_MISMATCH,
-    MEMBERSHIP_REVOKED,
     CONTEXT_UNRECOVERABLE,
     OUTPUT_EXISTS,
 ];
@@ -234,7 +227,7 @@ const fn command(
         path,
         contract: 1,
         summary,
-        purpose: "Drive persistent native transformer and prepared Solar computation through the shared Rust runtime. Jobs survive UI closure and server restart; complete request and result bytes are retained under the initiating native identity. Every call is about one project: --project names it, and without it the saved selection (ds auth project use) is sent as this client's DEFAULT, verified by the Server like any named one and never held as Server state -- so one Server serves several authorized projects at once. A remote Server reads no client path, browser cache or selection of this machine's: a Solar request carries the sealed prepared input itself.",
+        purpose: "Drive native transformer and prepared Solar computation on the shared Rust runtime. Jobs survive UI closure and server restart; request and result bytes are retained under the initiating identity. Every call is about one project: --project names it, else the saved selection (ds auth project use) is sent as this client's DEFAULT, recorded by the Server and never held as its state -- one Server serves several of its owner's projects at once. The Server runs what its owner hands it for the project named; the gateway enforces entitlement at publication and sync. A Solar request carries its sealed input, whose project is authoritative.",
         chapter: Chapter::Design,
         effect,
         authority: Authority::HeadlessUser,
@@ -251,7 +244,7 @@ const fn command(
                 Availability::unavailable(
                     "server_platform_unsupported",
                     "the native server currently requires Linux",
-                    "run these commands on the Linux server, locally or over SSH",
+                    "run these commands on a Linux machine",
                 )
             }
         },
@@ -297,7 +290,7 @@ pub static SERVE: Command = Command {
     path: &["server", "serve"],
     contract: 1,
     summary: "Host durable parallel compute for every project this account reaches.",
-    purpose: "Host the shared Rust compute runtime under this Linux user's native account. No project is selected here and none is captured: callers name the project on each request and the Server verifies its membership per call, so one host serves several projects at once and needs no ds auth project use to start. --workers bounds the whole host; --per-project bounds what one project may hold while another has work queued, so a busy project cannot starve a second one. Control is an owner-only loopback credential; remote administration uses SSH. This process runs in the foreground until it stops.",
+    purpose: "Host the shared Rust compute runtime under this Linux user's native account: the desktop's own core, without the desktop. No project is selected or captured here and no directory is fetched: callers name the project per request, the Server records it and runs what its owner hands it, and the gateway enforces entitlement at publication and sync -- so one host serves several projects at once, needs no ds auth project use to start, and runs with no upstream. One owner per Server; many users are many machines. --workers bounds the whole host; --per-project bounds what one project may hold while another has work queued. Control is an owner-only loopback credential. This process runs in the foreground until it stops.",
     chapter: Chapter::Design,
     effect: Effect::LocalFileWrite,
     authority: Authority::HeadlessUser,
@@ -333,7 +326,7 @@ pub static SERVE: Command = Command {
             Availability::unavailable(
                 "server_platform_unsupported",
                 "the native server currently requires Linux",
-                "run these commands on the Linux server, locally or over SSH",
+                "run these commands on a Linux machine",
             )
         }
     },
@@ -523,7 +516,6 @@ fn typed_refusal(status: u16, body: &[u8]) -> Failure {
         Some("project_not_visible") => Failure::new(class, "project_not_visible", message),
         Some("not_visible") => Failure::new(class, "not_visible", message),
         Some("principal_mismatch") => Failure::new(class, "principal_mismatch", message),
-        Some("membership_revoked") => Failure::new(class, "membership_revoked", message),
         Some("scope_mismatch") => Failure::new(class, "scope_mismatch", message),
         Some("scope_mismatch_for_key") => Failure::new(class, "scope_mismatch_for_key", message),
         Some("payload_changed_for_key") => Failure::new(class, "payload_changed_for_key", message),
@@ -583,7 +575,6 @@ fn default_class(code: Option<&str>, status: u16) -> ExitClass {
             | "payload_changed_for_key"
             | "principal_mismatch"
             | "not_visible"
-            | "membership_revoked"
             | "context_unrecoverable",
         ) => ExitClass::Conflict,
         Some("capacity_exhausted") => ExitClass::Unavailable,
@@ -724,11 +715,12 @@ fn state(inputs: &Inputs) -> Result<PathBuf, Failure> {
 /// machine's own protected context -- the same probe `ds auth project use`
 /// writes and `ds auth project status` reads -- and sent as if it had been
 /// typed. That is the whole role of a saved selection here: a client-side
-/// default. The Server verifies whichever name arrives against freshly
-/// fetched membership and refuses `project_not_visible` on its own authority;
-/// it never reads this machine's selection, its state directory or any other
-/// client path. With neither there is nothing to verify and nothing to guess,
-/// so the call refuses here rather than admitting an unscoped job.
+/// default. The Server records whichever name arrives as the job's project
+/// and executes what its owner handed it; whether that project's effects may
+/// leave the machine is the gateway's answer at publication and sync, never
+/// a directory the Server fetched. With neither there is nothing to record
+/// and nothing to guess, so the call refuses here rather than admitting an
+/// unscoped job.
 fn project(inputs: &Inputs) -> Result<String, Failure> {
     known_project(inputs)?.ok_or_else(|| {
         Failure::invalid(
@@ -1179,9 +1171,8 @@ mod tests {
         let kernel = ds_command_kernel::execution_context::REFUSALS;
         assert!(kernel.contains(&"project_required"), "vocabulary moved");
         for code in kernel.iter().copied().chain([
-            // The host's own two, which the kernel does not decide: one is a
-            // job outcome, the other is this Server's single-principal fence.
-            "membership_revoked",
+            // The host's own two, which the kernel does not decide: this
+            // Server's single-principal fence and its connection fence.
             "multi_principal_unsupported",
             "server_owner_changed",
         ]) {
