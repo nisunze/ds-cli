@@ -2073,7 +2073,8 @@ fn a_changed_on_disk_credential_stops_the_host_with_server_owner_changed() {
     // Signing the machine out entirely is the same answer, not a worse one.
     machine.unlink();
     assert!(
-        until(40, || server.raw("GET", "/v1/jobs", None).code() == "server_owner_changed"),
+        until(40, || server.raw("GET", "/v1/jobs", None).code()
+            == "server_owner_changed"),
         "a machine with no credential holds no host: {}",
         server.said()
     );
@@ -2163,7 +2164,10 @@ fn a_legacy_queued_row_is_readable_by_input_and_resubmittable() {
         .job_input(&host.identity.caller(None), &stranded)
         .expect("read")
         .expect("the row's own bytes");
-    assert_eq!(returned.body, stored, "the exact bytes it was admitted with");
+    assert_eq!(
+        returned.body, stored,
+        "the exact bytes it was admitted with"
+    );
 
     // And through the command the remedy names, typed by an operator.
     let out = host.state.path().join("stranded-input.json");
@@ -2206,7 +2210,8 @@ fn a_legacy_queued_row_is_readable_by_input_and_resubmittable() {
     assert_ne!(resubmitted["job"]["id"], json!(stranded));
     assert_eq!(host.stored(Some(C)).len(), 1);
     assert_eq!(
-        host.raw("GET", &format!("/v1/jobs/{stranded}"), None).json()["job"]["phase"],
+        host.raw("GET", &format!("/v1/jobs/{stranded}"), None)
+            .json()["job"]["phase"],
         "queued",
         "reading a row's input changes nothing about it"
     );
@@ -2466,6 +2471,112 @@ fn a_share_equal_to_the_pool_is_a_configuration_fault() {
         refused.stringify()
     );
     assert!(host.stored(None).is_empty(), "nothing was written");
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// The whole proof again, on a machine with no network at all
+// ─────────────────────────────────────────────────────────────────────────
+
+/// Every test in this file, re-run in a second process that cannot reach the
+/// network at all — and the same counts.
+///
+/// The proofs above arrange for there to be no gateway. This one removes the
+/// possibility of one: the child runs with `tests/fixtures/no_network.c`
+/// preloaded, so every non-loopback `connect` is `ENETUNREACH` and every
+/// non-loopback name lookup is `EAI_FAIL`, for it and for every `ds` and
+/// `ds server serve` it starts. Offline-first stops being a property of how
+/// these tests are written and becomes a property of the machine they run on.
+///
+/// The counts are not written down here. The child is asked how many tests
+/// this binary has (`--list`) and must account for exactly that many, with
+/// none failed — so the assertion cannot rot as tests are added.
+#[test]
+fn the_whole_proof_holds_again_with_the_network_cut() {
+    // In the child this test does not re-run the suite — it proves the cut it
+    // is running under is real, so that every other test in that run means
+    // what it says. Both halves are this test's own name.
+    if std::env::var_os(fixtures::CUT_NETWORK_SHIM).is_some() {
+        let gateway = std::net::TcpStream::connect(("fixture.ue.gateway.dev", 443));
+        assert!(
+            gateway.is_err(),
+            "a name lookup got out of a cut network: {gateway:?}"
+        );
+        let elsewhere =
+            std::net::TcpStream::connect((std::net::Ipv4Addr::new(203, 0, 113, 1), 443));
+        assert!(
+            elsewhere.is_err(),
+            "a connection got out of a cut network: {elsewhere:?}"
+        );
+        // …and the machine itself still works, or nothing else in this run
+        // would prove anything about the Server.
+        assert!(std::net::TcpListener::bind("127.0.0.1:0").is_ok());
+        return;
+    }
+    let Some(shim) = cut_network() else {
+        eprintln!(
+            "SKIPPED the_whole_proof_holds_again_with_the_network_cut: this machine has no C \
+             compiler (cc), so the LD_PRELOAD shim could not be built and the suite proves \
+             offline-first by arrangement rather than by force"
+        );
+        return;
+    };
+    let binary = std::env::current_exe().expect("this test binary");
+    // Build `ds` HERE, where the network is still whole: a child that had to
+    // build it might need a registry it cannot reach, and that would be this
+    // harness failing rather than the Server.
+    let _ = ds_binary();
+
+    let listed = std::process::Command::new(&binary)
+        .arg("--list")
+        .output()
+        .expect("this binary lists its own tests");
+    let expected = String::from_utf8_lossy(&listed.stdout)
+        .lines()
+        .filter(|line| line.ends_with(": test"))
+        .count();
+    assert!(expected > 20, "the listing found {expected} tests");
+
+    let again = std::process::Command::new(&binary)
+        .env("LD_PRELOAD", &shim)
+        .env(fixtures::CUT_NETWORK_SHIM, &shim)
+        .output()
+        .expect("the same tests run again");
+    let transcript = format!(
+        "{}{}",
+        String::from_utf8_lossy(&again.stdout),
+        String::from_utf8_lossy(&again.stderr)
+    );
+    assert!(
+        again.status.success(),
+        "the proof does not hold with the network cut:\n{transcript}"
+    );
+
+    let summary = transcript
+        .lines()
+        .find(|line| line.starts_with("test result:"))
+        .unwrap_or_else(|| panic!("no summary in:\n{transcript}"))
+        .to_owned();
+    let count = |what: &str| -> usize {
+        summary
+            .split(';')
+            .find(|part| part.trim_end().ends_with(what))
+            .and_then(|part| {
+                part.split_whitespace()
+                    .rev()
+                    .nth(1)
+                    .and_then(|value| value.parse().ok())
+            })
+            .unwrap_or_else(|| panic!("no {what} count in {summary}"))
+    };
+    assert_eq!(count("failed"), 0, "{summary}");
+    assert_eq!(
+        count("passed") + count("ignored"),
+        expected,
+        "every test this binary has must be accounted for with the network cut: {summary}"
+    );
+    // That the cut was REAL is the child's own first test, above: had the
+    // shim not loaded, that test would have failed and this run would not
+    // have succeeded.
 }
 
 // ─────────────────────────────────────────────────────────────────────────

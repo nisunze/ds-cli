@@ -919,6 +919,10 @@ fn ds_command(config: &Path, args: &[&str]) -> std::process::Command {
 
 // ── the network, cut ────────────────────────────────────────────────────
 
+/// Set on a run that is already under the shim, naming it. Its presence is
+/// also how the cut-network re-run recognises itself and does not recurse.
+pub const CUT_NETWORK_SHIM: &str = "DS_ISOLATION_NO_NETWORK";
+
 /// The compiled `LD_PRELOAD` shim, or `None` when this machine has no C
 /// compiler. Built once per test process, into a directory that outlives it.
 ///
@@ -931,9 +935,15 @@ pub fn cut_network() -> Option<PathBuf> {
         if !cfg!(target_os = "linux") {
             return None;
         }
+        // A run that is ALREADY under the cut network inherits the shim
+        // rather than rebuilding it: rewriting a shared object while other
+        // processes have it mapped is a way to break a machine, not a way to
+        // prove something about one.
+        if let Some(inherited) = std::env::var_os(CUT_NETWORK_SHIM) {
+            return Some(PathBuf::from(inherited));
+        }
         let compiler = std::env::var("CC").unwrap_or_else(|_| "cc".to_owned());
-        let source =
-            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/no_network.c");
+        let source = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/no_network.c");
         // Beside the test binary, not in a temp directory: the shim has to
         // outlive every child process that loads it, including one this
         // process is still waiting on when it panics.
