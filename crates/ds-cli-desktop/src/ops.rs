@@ -227,6 +227,11 @@ fn refused_route(refusal: project_context::Refusal<'_>) -> Failure {
 
 /// The project the caller selected is not the project this instance has open,
 /// and nothing here may move a live map to it.
+///
+/// This names no other instance, and it is the one place that cannot: an
+/// enumeration refuses first and names every compatible instance that *does*
+/// hold the project, so reaching here means the caller pinned one descriptor
+/// file and there was no enumeration to name anything from.
 pub fn project_not_open(project: &str) -> Failure {
     Failure::conflict(
         PROJECT_NOT_OPEN.code,
