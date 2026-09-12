@@ -163,8 +163,12 @@ bearer is that owner's. A request with any other bearer is
 no header that names an account: a second identity is not something this
 process can have. Many users are many machines (`ds server serve` per machine,
 its own `--state-dir` and `--listen`), which is the deployment model, not a
-gap. The `x-ds-principal` header and the `multi_principal_unsupported` code
-are **deleted**; a client that still sends the header is simply not read.
+gap. The `x-ds-principal` header is **deleted**; a client that still sends it
+is simply not read, and no route answers `multi_principal_unsupported` —
+there is no request a second account can make here. That code survives in the
+one place a second account really does meet one Server: `ds server serve`
+refuses to adopt a protected state directory that already belongs to another
+owner, by that name, with the remedy of a host of its own.
 
 ## 3. `Job` gains `context`
 
