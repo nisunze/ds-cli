@@ -335,6 +335,11 @@ pub struct ProjectQuery {
     pub project: Option<String>,
 }
 
+/// The project a caller named, or nothing. A name that is not one path
+/// segment is refused HERE, before the handler opens anything — by the same
+/// kernel rule and in the same typed shape the write doors answer with
+/// ([`sessions::narrowing_project`]) — so a read route never turns `..` into
+/// an empty list or `A/../B` into `job not found`.
 fn project_query(query: Option<Query<ProjectQuery>>) -> Result<Option<String>, ApiError> {
     let Some(Query(query)) = query else {
         return Err(typed(
@@ -345,7 +350,7 @@ fn project_query(query: Option<Query<ProjectQuery>>) -> Result<Option<String>, A
             .remedy("send ?project=<exact-id>"),
         ));
     };
-    Ok(query.project)
+    sessions::narrowing_project(query.project.as_deref()).map_err(|failure| typed(&failure))
 }
 
 async fn list(
