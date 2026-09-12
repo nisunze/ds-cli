@@ -36,7 +36,7 @@
 mod fixtures;
 
 use fixtures::{Bridge, Invocation, Machine, PROJECT_OP, refused, target, untouched};
-use serde_json::{Value, json};
+use serde_json::json;
 
 /// Three live instances. Two hold different projects whose display names are
 /// identical; the third holds the first's project. That is acceptance 1's
@@ -817,7 +817,6 @@ fn every_refusal_this_proof_asserts_is_a_code_the_kernel_publishes() {
     ] {
         assert!(published.contains(&code), "{code} is not a kernel refusal");
     }
-    let _: Value = json!({});
 }
 
 /// **The one sub-claim of acceptance 4 this slice does not yet meet.**
