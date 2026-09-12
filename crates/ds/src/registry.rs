@@ -2072,26 +2072,11 @@ static SERVER_ENTRIES: &[Entry] = &[
         handler: ds_cli_server::result,
         render: ds_cli_server::render,
     },
-    Entry {
-        command: &ds_cli_server::LAYERS_LIST,
-        handler: ds_cli_server::layers_list,
-        render: ds_cli_server::render_layers_list,
-    },
-    Entry {
-        command: &ds_cli_server::LAYERS_SHOW,
-        handler: ds_cli_server::layers_show,
-        render: ds_cli_server::render_layers_visibility,
-    },
-    Entry {
-        command: &ds_cli_server::LAYERS_HIDE,
-        handler: ds_cli_server::layers_hide,
-        render: ds_cli_server::render_layers_visibility,
-    },
-    Entry {
-        command: &ds_cli_server::LAYERS_REORDER,
-        handler: ds_cli_server::layers_reorder,
-        render: ds_cli_server::render_layers_reorder,
-    },
+    // `server.layers.*` are retired here deliberately. One operation has one
+    // command id whichever host executes it, so the drawer is
+    // `ds map layer list|show|hide|reorder` with an explicit
+    // `--target server|desktop[:instance]`; ds-cli-server keeps only the
+    // protected loopback transport those commands call for the Server target.
 ];
 
 static DOMAINS: &[Registered] = &[

@@ -23,10 +23,12 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("server.activity", "read_only", "headless_user"),
     ("server.cancel", "local_file_write", "headless_user"),
     ("server.result", "local_file_write", "headless_user"),
-    ("server.layers.list", "read_only", "headless_user"),
-    ("server.layers.show", "local_file_write", "headless_user"),
-    ("server.layers.hide", "local_file_write", "headless_user"),
-    ("server.layers.reorder", "global_write", "headless_user"),
+    // `server.layers.list|show|hide|reorder` were retired on 2026-09-12. One
+    // operation has one command id whichever host executes it, so the layer
+    // drawer is `ds map layer list|show|hide|reorder` with an explicit
+    // `--target server|desktop[:instance]`. A twin id that differed only by
+    // which host answered is precisely what that ruling ends, so this table
+    // must never regrow a `server.<operation>` beside a `map.<operation>`.
     (
         "report.project.export",
         "local_file_write",
@@ -713,6 +715,70 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("workstation.status", "discovery", "none"),
     ("workstation.verify", "read_only", "none"),
 ];
+
+/// The standing ruling, asserted on the live surface rather than trusted.
+///
+/// One operation has one command id whichever host executes it. `ds server …`
+/// is host administration — hosting the process, and the jobs that process
+/// holds. An operation that also exists on the desktop (the layer drawer, the
+/// design/report/solar operations) is reached by its own id with an explicit
+/// `--target`, never by a `server.` twin that differs only in who answered.
+/// And every `ds server` command that names or reads a job or a project takes
+/// `--project`, optional because the saved selection is its default and never
+/// because the Server may choose one.
+#[test]
+fn one_operation_has_one_command_id_whichever_host_executes_it() {
+    let commands = json(&["capabilities", "server", "--output", "json"]);
+    let mut checked = 0usize;
+    for command in commands["data"]["commands"].as_array().expect("commands") {
+        let id = command["id"].as_str().expect("command id");
+        assert!(
+            !id.starts_with("server.layers."),
+            "`{id}` is a host twin of `ds map layer …`; retire it and pass --target instead"
+        );
+        let descriptor = json(&["capabilities", id, "--output", "json"]);
+        let descriptor = &descriptor["data"]["command"];
+        let inputs: Vec<&str> = descriptor["inputs"]
+            .as_array()
+            .expect("inputs")
+            .iter()
+            .map(|input| input["name"].as_str().expect("input name"))
+            .collect();
+        for drawer in ["layer", "order"] {
+            assert!(
+                !inputs.contains(&drawer),
+                "`{id}` speaks the layer drawer's vocabulary (`--{drawer}`); that operation is `ds map layer …`"
+            );
+        }
+        if matches!(id, "server.engine" | "server.serve") {
+            assert!(
+                !inputs.contains(&"project"),
+                "`{id}` resolves no project: hosting and engine inspection are about the host"
+            );
+            continue;
+        }
+        let project = descriptor["inputs"]
+            .as_array()
+            .expect("inputs")
+            .iter()
+            .find(|input| input["name"] == "project")
+            .unwrap_or_else(|| panic!("`{id}` reads a job or a project and must declare --project"));
+        assert_eq!(
+            project["required"], false,
+            "`{id}`'s --project is optional: the saved selection is its default"
+        );
+        checked += 1;
+    }
+    assert!(checked >= 6, "the server surface lost its project-bearing commands");
+    assert!(
+        json(&["capabilities", "server.serve", "--output", "json"])["data"]["command"]["inputs"]
+            .as_array()
+            .expect("inputs")
+            .iter()
+            .any(|input| input["name"] == "per-project"),
+        "`ds server serve` must bound one project's share of the host"
+    );
+}
 
 fn json(args: &[&str]) -> Value {
     let output = Command::new(env!("CARGO_BIN_EXE_ds"))

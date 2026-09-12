@@ -634,56 +634,67 @@ fn every_constructible_refusal_code_is_documented() {
     let exempt: BTreeSet<&str> = NOT_A_REFUSAL.iter().map(|(code, _)| *code).collect();
     let root = crates_root();
 
-    // Domain crates map to the domain whose commands must document them.
-    // `ds-cli-contract` is excluded: its codes are the parser's own
-    // (unknown_flag, missing_value, invalid_choice …) and apply to every
-    // command equally, so they are documented once in the output contract
-    // rather than repeated in every REFUSALS section.
-    let domain_crates = [
+    // Domain crates map to the domain — or, since 2026-09-12, the domains —
+    // whose commands must document them. `ds-cli-contract` is excluded: its
+    // codes are the parser's own (unknown_flag, missing_value, invalid_choice
+    // …) and apply to every command equally, so they are documented once in
+    // the output contract rather than repeated in every REFUSALS section.
+    //
+    // An EMPTY list means "declared by a command in any domain", the escape
+    // hatch for a helper every domain borrows. Naming two domains is not that
+    // escape hatch and not a weakening: a crate that genuinely serves two
+    // surfaces is checked against exactly those two.
+    let domain_crates: &[(&str, &[&str])] = &[
         // Native auth is now a shared selected-project client boundary used by
         // Design, Survey/Forms, and Solar commands as well as `ds auth`.
         // Caller commands declare the relevant helper refusals.
-        ("ds-cli-auth", None),
-        ("ds-cli-data", Some("data")),
-        ("ds-cli-design", Some("design")),
-        ("ds-cli-map", Some("map")),
-        ("ds-cli-dsgrid", Some("dsgrid")),
-        ("ds-cli-dsgrid-exchange", Some("dsgrid-exchange")),
-        ("ds-cli-library", Some("library")),
-        ("ds-cli-pls", Some("pls")),
-        ("ds-cli-report", Some("report")),
-        ("ds-cli-server", Some("server")),
-        ("ds-cli-solar", Some("solar")),
-        ("ds-cli-work", Some("work")),
-        ("ds-cli-assets", Some("assets")),
-        ("ds-cli-sre", Some("sre")),
-        ("ds-cli-survey", Some("survey")),
-        ("ds-cli-style", Some("style")),
-        ("ds-cli-tile", Some("tile")),
-        ("ds-cli-feedback", Some("feedback")),
-        ("ds-cli-shell", Some("shell")),
-        ("ds-cli-workstation", Some("workstation")),
-        ("ds-cli-mcp", Some("mcp")),
+        ("ds-cli-auth", &[]),
+        ("ds-cli-data", &["data"]),
+        ("ds-cli-design", &["design"]),
+        ("ds-cli-map", &["map"]),
+        ("ds-cli-dsgrid", &["dsgrid"]),
+        ("ds-cli-dsgrid-exchange", &["dsgrid-exchange"]),
+        ("ds-cli-library", &["library"]),
+        ("ds-cli-pls", &["pls"]),
+        ("ds-cli-report", &["report"]),
+        // Two surfaces, and it is the same crate on purpose. `ds server …` is
+        // host administration, and this crate also owns the protected loopback
+        // transport `ds map layer … --target server` calls: `connection.json`,
+        // its bearer and the lane fence live here and nowhere else. So the
+        // Server's own codes are declared by `ds server` commands and the
+        // layer owner's, re-raised across that transport, by `ds map layer …`.
+        ("ds-cli-server", &["server", "map"]),
+        ("ds-cli-solar", &["solar"]),
+        ("ds-cli-work", &["work"]),
+        ("ds-cli-assets", &["assets"]),
+        ("ds-cli-sre", &["sre"]),
+        ("ds-cli-survey", &["survey"]),
+        ("ds-cli-style", &["style"]),
+        ("ds-cli-tile", &["tile"]),
+        ("ds-cli-feedback", &["feedback"]),
+        ("ds-cli-shell", &["shell"]),
+        ("ds-cli-workstation", &["workstation"]),
+        ("ds-cli-mcp", &["mcp"]),
         // Receipt verification returns bounded diagnostic strings to doctor
         // and MCP resources; it constructs no CLI Failure/refusal codes.
-        ("ds-cli-skills", None),
+        ("ds-cli-skills", &[]),
         // Shared across every calling domain; declaring it in any one of them
         // is enough for this check, and the per-command help of each caller
         // is what the domain checks above enforce.
-        ("ds-cli-exec", None),
+        ("ds-cli-exec", &[]),
         // Also shared, and it became so: `ds-cli-desktop` is the paired-session
         // authority surface, and `ds solar prepare` borrows it to have the
         // application perform an authenticated fetch. Its pairing refusals are
         // therefore reachable from more than the `desktop` domain, and each
         // caller declares them in its own REFUSALS — which is what a reader of
         // one command's help actually needs.
-        ("ds-cli-desktop", None),
-        // The layer drawer's shared application owner: `ds map layer …` and
-        // `ds server layers …` both call it, and each declares its refusals
-        // in its own command lists (`ds-cli-map::layer::native`,
-        // `ds-cli-server::LAYER_REFUSALS`), which is what a reader of one
-        // command's help needs.
-        ("ds-layer-ops", None),
+        ("ds-cli-desktop", &[]),
+        // The layer drawer's shared application owner. `ds map layer …` calls
+        // it on either host now — natively, or over the Server transport in
+        // `ds-cli-server` — and declares its refusals in its own command lists
+        // (`ds-cli-map::layer::native`), which is what a reader of one
+        // command's help needs. The Server's HTTP half calls it too.
+        ("ds-layer-ops", &[]),
     ];
 
     // A domain crate missing from the list above is silently unchecked, which
@@ -707,13 +718,19 @@ fn every_constructible_refusal_code_is_documented() {
     let mut undocumented: Vec<String> = Vec::new();
     let mut unreadable: Vec<String> = Vec::new();
     let mut scanned = 0usize;
-    for (crate_name, domain) in domain_crates {
+    for &(crate_name, domains) in domain_crates {
         let dir = root.join(crate_name).join("src");
         assert!(dir.is_dir(), "crate source missing: {}", dir.display());
 
-        let declared = match domain {
-            Some(domain) => by_domain.get(domain).cloned().unwrap_or_default(),
-            None => all_declared.clone(),
+        let declared: BTreeSet<String> = if domains.is_empty() {
+            all_declared.clone()
+        } else {
+            domains
+                .iter()
+                .filter_map(|domain| by_domain.get(*domain))
+                .flatten()
+                .cloned()
+                .collect()
         };
 
         let (constructed, unresolved) = constructed_codes(&dir);
@@ -753,14 +770,18 @@ fn every_constructible_refusal_code_is_documented() {
             if declared.contains(&code) || exempt.contains(code.as_str()) {
                 continue;
             }
-            match domain {
-                Some(domain) => undocumented.push(format!(
-                    "  {crate_name}: `{code}` (no `ds {domain}` command declares it)"
-                )),
-                None => undocumented.push(format!(
-                    "  {crate_name}: `{code}` (no command anywhere declares it)"
-                )),
-            }
+            undocumented.push(if domains.is_empty() {
+                format!("  {crate_name}: `{code}` (no command anywhere declares it)")
+            } else {
+                format!(
+                    "  {crate_name}: `{code}` (no {} command declares it)",
+                    domains
+                        .iter()
+                        .map(|domain| format!("`ds {domain}`"))
+                        .collect::<Vec<_>>()
+                        .join(" or ")
+                )
+            });
         }
     }
 
