@@ -3392,7 +3392,7 @@ pub fn run_project_use(inputs: &Inputs, _context: &Context) -> Result<Value, Fai
         let project = directory.exact(requested).ok_or_else(|| {
             Failure::invalid(
                 "project_not_visible",
-                "that exact project id is not present in the freshly fetched project directory",
+                "that exact project id is not present in the project directory the gateway returned",
             )
             .remedy("run ds auth project list and pass one exact ds_project value")
         })?;
@@ -3411,7 +3411,7 @@ pub fn run_project_use(inputs: &Inputs, _context: &Context) -> Result<Value, Fai
     let project = directory.exact(requested).ok_or_else(|| {
         Failure::invalid(
             "project_not_visible",
-            "that exact project id is not present in the freshly fetched project directory",
+            "that exact project id is not present in the project directory the gateway returned",
         )
         .remedy("run ds auth project list and pass one exact ds_project value")
     })?;
