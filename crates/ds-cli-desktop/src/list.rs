@@ -43,7 +43,11 @@ work, so a command refused with `desktop_ambiguous`, `desktop_target_not_live` \
 or `desktop_project_not_open` can be re-run with `--target desktop:<id>`. Each \
 instance is proved alive by an authenticated handshake, so a stale descriptor \
 is never a choice. Nothing running is an answer, not a failure.",
-    chapter: Chapter::Project,
+    // Which runtimes are alive on this machine is machine administration, not
+    // project work: it is asked when a command could not tell which window to
+    // talk to, and answered the same way whichever project is selected. Its
+    // siblings here are `ds desktop sync status` and `ds shell status`.
+    chapter: Chapter::Operations,
     effect: Effect::Discovery,
     authority: Authority::None,
     execution: Execution::Sync,

@@ -183,6 +183,14 @@ impl Profile {
             // operator workflow as the local tile references beside it — one
             // host's own layers — so it is not a second profile.
             Self::Layers => 18,
+            // Fifteen leaves plus both bootstrap tools. The one that raised
+            // this from sixteen is `ds desktop list`: with several DS
+            // GridDesign instances live on a machine, every instance-targeted
+            // refusal tells the caller to name one, and this is the only tool
+            // that says which exist. A profile that could refuse an operation
+            // for ambiguity and not publish the answer to it would not be a
+            // smaller surface, only a stuck one.
+            Self::Operations => 17,
             _ => 16,
         }
     }

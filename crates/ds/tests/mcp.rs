@@ -1326,6 +1326,11 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
             // which is the same "one host's own layers" workflow as the local
             // tile references beside it.
             "layers" => 18,
+            // Fifteen operations leaves plus bootstrap. The one that raised
+            // this from sixteen is `ds desktop list`: every instance-targeted
+            // refusal an agent can meet tells it to name an instance, and this
+            // is the only tool that says which instances exist.
+            "operations" => 17,
             _ => 16,
         };
         assert!(
@@ -1563,4 +1568,171 @@ fn auth_context_profile_hands_off_only_non_secret_native_identity_commands() {
     assert!(broad_names.contains(&"server_status"));
     assert_eq!(response(&broad, 2)["error"]["code"], -32602);
     assert_eq!(response(&broad, 3)["error"]["code"], -32602);
+}
+
+/// The enumeration answers through MCP, and the gate never stands in front of
+/// it.
+///
+/// Every instance-targeted refusal an agent can meet — `desktop_ambiguous`,
+/// `desktop_target_not_live`, `desktop_project_not_open` — tells it to name an
+/// instance, and this is the only tool that says which instances exist. So it
+/// declares no desktop authority and is reachable on a machine with nothing
+/// running, exactly like `ds desktop status`: a gate in front of it would make
+/// the one call that explains the situation the one call that refuses to.
+///
+/// The app-data root is redirected to an empty directory, so what this proves
+/// is the projection and the gate — never a probe of the operator's own
+/// running DS GridDesign.
+#[test]
+fn the_instance_enumeration_is_projected_and_never_gated_on_what_it_reports() {
+    let machine = TestDir::new("no-instances");
+    let (responses, _) = mcp_with_env(
+        &["--exposure", "chapters"],
+        &[
+            json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": { "name": "ds_operations", "arguments": { "operation": "describe", "command": "desktop.list" } } }),
+            json!({ "jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": { "name": "ds_operations", "arguments": { "operation": "invoke", "command": "desktop.list", "arguments": {} } } }),
+            json!({ "jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": { "name": "ds_project", "arguments": { "operation": "describe", "command": "desktop.status" } } }),
+        ],
+        &[("XDG_DATA_HOME", &machine.0)],
+    );
+
+    let described = &response(&responses, 1)["result"]["structuredContent"];
+    assert_eq!(described["data"]["command"]["id"], "desktop.list");
+    assert_eq!(
+        described["data"]["command"]["authority"], "none",
+        "the enumeration must not require the authority it exists to report on"
+    );
+
+    // Nothing is running, and that is an answer rather than a refusal — so an
+    // agent can tell "no instance" from "several" without a desktop at all.
+    let listed = &response(&responses, 2)["result"]["structuredContent"];
+    assert_eq!(listed["status"], "ok", "{listed}");
+    assert_eq!(listed["data"]["live"], 0);
+    assert_eq!(listed["data"]["instances"], json!([]));
+    assert_eq!(listed["data"]["compatible"], Value::Null);
+
+    // And the instance a tool call is for is a declared input, so an agent
+    // that met an ambiguity can answer it in the same vocabulary the terminal
+    // uses: `--target desktop:<instance_id>`.
+    let status = &response(&responses, 3)["result"]["structuredContent"];
+    let target = status["data"]["command"]["inputs"]
+        .as_array()
+        .expect("inputs")
+        .iter()
+        .find(|input| input["name"] == "target")
+        .expect("`ds desktop status` publishes the host it runs against");
+    assert_eq!(target["value"], "<desktop|desktop:instance|server>");
+    assert!(
+        target["summary"]
+            .as_str()
+            .is_some_and(|summary| summary.contains("DS_TARGET")),
+        "the input must name its session default: {target}"
+    );
+}
+
+/// One host flag, and no second spelling of the same question.
+///
+/// `--target` means "which host runs this" wherever it carries the host
+/// placeholder, and the commands that use the word for something else are a
+/// closed, named set. A new command that spelled a *host* choice differently —
+/// `--host`, `--instance`, `--desktop-instance` — would split one contract in
+/// two, and an agent that learned one would be wrong about the other.
+#[test]
+fn the_host_is_one_flag_and_the_other_targets_are_a_closed_set() {
+    /// `--target` in these commands names something in the domain, not a host:
+    /// a panel to open, an export format, an editor to configure. They predate
+    /// the host flag and are listed rather than renamed, because a published
+    /// command contract is not renamed for tidiness.
+    const NOT_A_HOST: &[&str] = &[
+        "map.ui.open",
+        "design.config.rule-set.duplicate",
+        "dsgrid-exchange.plan",
+        "dsgrid-exchange.convert",
+        "workstation.plan",
+        "workstation.configure",
+    ];
+    const HOST_PLACEHOLDER: &str = "<desktop|desktop:instance|server>";
+    /// `ds style` chose its execution host as `--host native|desktop` before
+    /// the host became one flag, and `ds mcp install --host` names an MCP host
+    /// program, which is a different thing entirely. Both are published
+    /// contracts and are listed rather than renamed; what this closes is the
+    /// *next* one.
+    const OLDER_HOST_SPELLING: &[&str] = &[
+        "style.list",
+        "style.read",
+        "style.seed.plan",
+        "style.seed.create",
+        "style.print.plan",
+        "style.print.create",
+        "style.appearance.plan",
+        "style.appearance.set",
+        "style.label.plan",
+        "style.label.set",
+        "style.dimension.plan",
+        "style.dimension.set",
+        "style.dimension.clear",
+        "style.cartography.plan",
+        "style.cartography.set",
+        "mcp.install",
+    ];
+
+    let index = cli(&["capabilities", "--output", "json"]);
+    let mut hosts = Vec::new();
+    for domain in index["data"]["domains"].as_array().expect("domains") {
+        let id = domain["id"].as_str().expect("domain id");
+        for command in cli(&["capabilities", id, "--output", "json"])["data"]["commands"]
+            .as_array()
+            .expect("commands")
+        {
+            let command = cli(&[
+                "capabilities",
+                command["id"].as_str().expect("command id"),
+                "--output",
+                "json",
+            ]);
+            let command = &command["data"]["command"];
+            let id = command["id"].as_str().expect("command id").to_owned();
+            for input in command["inputs"].as_array().expect("inputs") {
+                if input["name"] != "target" {
+                    // No second flag may ask this question under another name.
+                    // One older spelling exists and is named below; a third
+                    // would mean an agent that learned one is wrong about the
+                    // next.
+                    assert!(
+                        input["value"] != HOST_PLACEHOLDER,
+                        "`{id}` declares `--{}` with the host grammar. The host \
+                         is `--target`.",
+                        input["name"]
+                    );
+                    assert!(
+                        input["name"] != "host" || OLDER_HOST_SPELLING.contains(&id.as_str()),
+                        "`{id}` chooses an execution host as `--host`. The host \
+                         is `--target <desktop|desktop:instance|server>`; only \
+                         the commands that shipped the older spelling keep it."
+                    );
+                    continue;
+                }
+                if NOT_A_HOST.contains(&id.as_str()) {
+                    assert_ne!(
+                        input["value"], HOST_PLACEHOLDER,
+                        "`{id}` is listed as using `--target` for something \
+                         other than a host, and it now names hosts. Remove it \
+                         from the list."
+                    );
+                    continue;
+                }
+                assert_eq!(
+                    input["value"], HOST_PLACEHOLDER,
+                    "`{id}` declares `--target` with another grammar. One flag, \
+                     one meaning: either it names a host, or it belongs in the \
+                     closed list of commands that use the word for something else."
+                );
+                hosts.push(id.clone());
+            }
+        }
+    }
+    assert!(
+        hosts.iter().any(|id| id == "desktop.status"),
+        "the host flag is published by the commands that route on it: {hosts:?}"
+    );
 }
