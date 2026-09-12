@@ -416,9 +416,14 @@ fn a_reused_port_never_answers_to_the_descriptor_of_the_instance_it_replaced() {
 
 /// A second instance starting cannot remove or overwrite the first's
 /// descriptor. The shell writes one file per instance and claims the legacy
-/// per-profile file only when no live instance owns it; from the CLI's side,
-/// what has to be true is that the first instance's bytes are untouched, that
-/// it is still enumerated, and that it is still routable by name.
+/// per-profile file only when no live instance owns it — proven where the
+/// writing happens, in `ds-web/src-tauri/src/cli_bridge.rs`
+/// (`a_second_instance_writes_its_own_descriptor_and_never_the_first`,
+/// `the_legacy_descriptor_is_claimed_only_when_it_is_ours_absent_or_dead`,
+/// `exit_removes_only_the_descriptors_this_instance_published`). From the
+/// CLI's side, what has to be true is that the first instance's bytes are
+/// untouched, that it is still enumerated exactly once despite publishing two
+/// files, and that it is still routable by name.
 #[test]
 fn a_second_instance_leaves_the_first_descriptor_intact_and_still_routable() {
     let machine = Machine::new();
@@ -590,6 +595,13 @@ fn a_context_generation_refusal_reaches_the_caller_with_its_own_code_and_remedy(
 /// one live instance is `Paired`, more than one is `Ambiguous`. Neither reaches
 /// the launch, so an MCP call can never add a third window to a machine that
 /// already cannot say which of two it meant.
+///
+/// This is the half a decision table cannot prove: that a real machine with
+/// real instances on it produces those two states. The other half — that
+/// neither state reaches `launch()` — is
+/// `ds-cli-mcp::tools::two_live_instances_refuse_a_tool_call_instead_of_launching_a_third`
+/// and `an_already_running_desktop_is_never_duplicated`, which drive the gate
+/// itself with its steps injected.
 #[test]
 fn the_mcp_gate_reads_a_live_instance_from_this_enumeration_and_never_reaches_its_launch() {
     let machine = Machine::new();
