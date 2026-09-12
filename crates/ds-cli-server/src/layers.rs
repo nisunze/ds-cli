@@ -12,12 +12,14 @@
 //! own defaults and never the previous account's toggles.
 //!
 //! **The project is named by the caller** (`?project=<exact-id>`), recorded
-//! by the kernel as the operation's context, and then held against the
-//! document the Server actually reads: a document that comes back under
-//! another project is `project_context_changed`, never applied. That is the
-//! whole of the project fence here — see `docs-routes.md` for the one thing
-//! it does not yet do, which is serve a project other than the one the
-//! Server's native document source is on.
+//! by the kernel as the operation's context, and then READ: the document
+//! source is opened for that exact project, so the owner's second project is
+//! served on its own terms and this machine's saved selection is never
+//! consulted. The named project is then held against the document that
+//! actually comes back — a document under another project is
+//! `project_context_changed`, never applied. That is the whole of the project
+//! fence here: name it, read it, and refuse anything that answers about
+//! something else.
 //!
 //! Answers are the owner's projections, verbatim. There is no renderer here:
 //! `writes` name the layout word a renderer would apply, and nothing reports a
@@ -47,10 +49,11 @@ const LAYER_WRITE: &str = ds_command_kernel::execution_context::LAYER_WRITE;
 
 /// One layer document source, held to the project the caller named.
 ///
-/// The Server's native source answers under the account's own project; this
-/// wrapper is what makes naming a project meaningful rather than decorative.
-/// A document, a scope recheck or an order receipt that comes back under
-/// another project stops the request instead of being applied to it.
+/// The source is already opened for that project, so this is the check that
+/// the answer AGREES: a document, a scope recheck or an order receipt that
+/// comes back under another project stops the request instead of being applied
+/// to it. It costs nothing and it is the only thing standing between a source
+/// bug and a preference written into the wrong project.
 struct Fenced {
     inner: Box<dyn LayerDocuments + Send>,
     project: String,
@@ -96,10 +99,14 @@ impl LayerDocuments for Fenced {
 }
 
 /// What the Server binds the owner to: a document source under the bound
-/// identity and this host's preference root. Production is native; tests are
-/// fixtures.
+/// identity, for the project the CALLER named, and this host's preference
+/// root. Production is native; tests are fixtures.
+///
+/// The project is a parameter and not a property of the host, which is the
+/// whole of the difference between a Server that serves its owner's projects
+/// and one that serves whichever project happened to be selected.
 pub trait LayerHost: Send + Sync + 'static {
-    fn documents(&self) -> Result<Box<dyn LayerDocuments + Send>, Failure>;
+    fn documents(&self, project: &str) -> Result<Box<dyn LayerDocuments + Send>, Failure>;
     fn preferences(&self) -> Result<Preferences, Failure>;
 }
 
@@ -129,13 +136,14 @@ impl NativeLayerHost {
     }
 }
 impl LayerHost for NativeLayerHost {
-    fn documents(&self) -> Result<Box<dyn LayerDocuments + Send>, Failure> {
+    fn documents(&self, project: &str) -> Result<Box<dyn LayerDocuments + Send>, Failure> {
         if let Some((owner, auth)) = &self.binding {
             let owner = owner.clone();
             let auth = auth.clone();
             let lane = self.lane.clone();
-            return Ok(Box::new(ds_layer_ops::Native::guarded(
+            return Ok(Box::new(ds_layer_ops::Native::guarded_for_project(
                 &self.lane,
+                project,
                 Box::new(move |fence| {
                     let actual = ds_compute_runtime::digest(
                         &serde_json::to_vec(&(fence.uid(), &lane, fence.audience()))
@@ -145,7 +153,9 @@ impl LayerHost for NativeLayerHost {
                 }),
             )));
         }
-        Ok(Box::new(ds_layer_ops::Native::new(&self.lane)))
+        Ok(Box::new(ds_layer_ops::Native::for_project(
+            &self.lane, project,
+        )))
     }
     fn preferences(&self) -> Result<Preferences, Failure> {
         Preferences::native()
@@ -223,8 +233,11 @@ async fn run<T: Send + 'static>(
             &about,
             ds_compute_runtime::now_ms(),
         )?;
+        // The recorded project is the one the document source is opened for:
+        // the Server reads what the caller named, not what this machine last
+        // selected. `Fenced` then holds that name against what comes back.
         let mut documents = Fenced {
-            inner: app.layers.documents()?,
+            inner: app.layers.documents(&context.project)?,
             project: context.project,
         };
         let preferences = app.layers.preferences()?;
@@ -369,6 +382,7 @@ mod tests {
     use ds_compute_runtime::Authorizer;
     use ds_layer_ops::{DocumentRead, Order, OrderReceipt, Scope};
     use serde_json::Value;
+    use std::collections::BTreeMap;
     use std::sync::Mutex;
     use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -383,38 +397,54 @@ mod tests {
         }
     }
 
-    /// The fixture upstream: one project's document under one account, with
-    /// the reorders it received and a switch that flips the project mid-flight.
+    /// The fixture upstream: the account's projects, each with the document
+    /// that account reads for it, the reorders it received, and a switch that
+    /// makes it answer about somebody else's project mid-flight.
+    ///
+    /// It has SEVERAL projects because the account has several: the Server
+    /// opens its source for the project a request named, exactly as
+    /// `ds_layer_ops::Native::for_project` does against the gateway. A project
+    /// this account cannot read is the source's own refusal, which is what
+    /// comes back from the gateway — not something the Server decides from a
+    /// directory it does not hold.
     struct Upstream {
         uid: String,
-        project: String,
-        document: Value,
-        reorders: Mutex<Vec<Vec<Order>>>,
+        documents: BTreeMap<String, Value>,
+        reorders: Mutex<Vec<(String, Vec<Order>)>>,
         switch_project_on_read: AtomicBool,
     }
-    struct FixtureDocuments(Arc<Upstream>);
+    struct FixtureDocuments {
+        upstream: Arc<Upstream>,
+        project: String,
+    }
+    impl FixtureDocuments {
+        fn scope(&self) -> Scope {
+            Scope {
+                lane: "canary".into(),
+                uid: self.upstream.uid.clone(),
+                project: self.project.clone(),
+            }
+        }
+    }
     impl LayerDocuments for FixtureDocuments {
         fn read(&mut self, _refresh: bool) -> Result<DocumentRead, Failure> {
-            let mut document = self.0.document.clone();
-            if self.0.switch_project_on_read.load(Ordering::SeqCst) {
+            let Some(document) = self.upstream.documents.get(&self.project) else {
+                return Err(Failure::unauthorized(
+                    "auth_rejected",
+                    "this account reads no layer configuration for that project",
+                )
+                .remedy("run ds auth project list and name a project this account can read"));
+            };
+            let mut document = document.clone();
+            let mut scope = self.scope();
+            if self.upstream.switch_project_on_read.load(Ordering::SeqCst) {
                 document["project_id"] = json!("someone-elses-project");
+                scope.project = "someone-elses-project".into();
             }
-            Ok(DocumentRead {
-                scope: Scope {
-                    lane: "canary".into(),
-                    uid: self.0.uid.clone(),
-                    project: self.0.project.clone(),
-                },
-                document,
-            })
+            Ok(DocumentRead { scope, document })
         }
         fn check_scope(&mut self, expected: &Scope) -> Result<(), Failure> {
-            let actual = Scope {
-                lane: "canary".into(),
-                uid: self.0.uid.clone(),
-                project: self.0.project.clone(),
-            };
-            if &actual == expected {
+            if &self.scope() == expected {
                 Ok(())
             } else {
                 Err(
@@ -424,9 +454,13 @@ mod tests {
             }
         }
         fn reorder(&mut self, orders: &[Order]) -> Result<OrderReceipt, Failure> {
-            self.0.reorders.lock().unwrap().push(orders.to_vec());
+            self.upstream
+                .reorders
+                .lock()
+                .unwrap()
+                .push((self.project.clone(), orders.to_vec()));
             Ok(OrderReceipt {
-                project: self.0.project.clone(),
+                project: self.project.clone(),
                 reordered: orders.len(),
             })
         }
@@ -436,31 +470,47 @@ mod tests {
         root: std::path::PathBuf,
     }
     impl LayerHost for FixtureHost {
-        fn documents(&self) -> Result<Box<dyn LayerDocuments + Send>, Failure> {
-            Ok(Box::new(FixtureDocuments(self.upstream.clone())))
+        fn documents(&self, project: &str) -> Result<Box<dyn LayerDocuments + Send>, Failure> {
+            Ok(Box::new(FixtureDocuments {
+                upstream: self.upstream.clone(),
+                project: project.to_owned(),
+            }))
         }
         fn preferences(&self) -> Result<Preferences, Failure> {
             Ok(Preferences::at(self.root.clone()))
         }
     }
 
-    fn document() -> Value {
+    fn document(project: &str, lines: &str) -> Value {
         json!({
-            "project_id": "proj-kigali",
+            "project_id": project,
             "sources": {"survey_geo": {"type": "geojson"}, "design_vt": {"type": "vector"}},
             "styles": {}, "style_editors": [],
             "layers": [
                 {"id": "ds-poles", "type": "circle", "source": "survey_geo", "style_ref": "poles", "metadata": {"config_layer_id": "survey/poles", "label": "Poles", "layer_class": "survey", "geometry_type": "Point", "order": 10}},
                 {"id": "ds-poles__label", "type": "symbol", "source": "survey_geo", "style_ref": "poles__label", "metadata": {"config_layer_id": "survey/poles", "parent_layer": "ds-poles"}},
-                {"id": "ds-lines", "type": "line", "source": "design_vt", "source-layer": "lv", "style_ref": "lines", "minzoom": 12, "metadata": {"config_layer_id": "design/lines", "label": "LV Lines", "layer_class": "design_tile", "geometry_type": "LineString", "order": 20}}
+                {"id": "ds-lines", "type": "line", "source": "design_vt", "source-layer": "lv", "style_ref": "lines", "minzoom": 12, "metadata": {"config_layer_id": lines, "label": "LV Lines", "layer_class": "design_tile", "geometry_type": "LineString", "order": 20}}
             ]
         })
     }
+    /// The two projects this account can read. `proj-lome`'s catalogue is
+    /// deliberately not `proj-kigali`'s, so a test cannot pass by serving the
+    /// wrong one.
     fn fixture_upstream(uid: &str) -> Arc<Upstream> {
         Arc::new(Upstream {
             uid: uid.into(),
-            project: "proj-kigali".into(),
-            document: document(),
+            documents: [
+                (
+                    "proj-kigali".to_owned(),
+                    document("proj-kigali", "design/lines"),
+                ),
+                (
+                    "proj-lome".to_owned(),
+                    document("proj-lome", "design/mv_lines"),
+                ),
+            ]
+            .into_iter()
+            .collect(),
             reorders: Mutex::new(vec![]),
             switch_project_on_read: AtomicBool::new(false),
         })
@@ -600,28 +650,22 @@ mod tests {
         assert_eq!(status, 400, "{padded}");
         assert_eq!(padded["code"], "context_corrupt");
 
-        // A project that is not the one this Server's document source is on
-        // — whether it exists anywhere or not, the Server holds no directory
-        // to tell — is refused, never served under the wrong project, and the
-        // remedy names both.
+        // A project this account cannot read is the SOURCE's refusal, raised
+        // where the account is actually established — never an answer the
+        // Server invents from a directory it does not hold, and never another
+        // project's catalogue served under the requested name.
         let (status, elsewhere) = wire(
             server.address,
             "GET",
-            "/v1/layers?project=proj-lome",
+            "/v1/layers?project=proj-nowhere",
             None,
             TOKEN,
         )
         .await;
-        assert_eq!(status, 409, "{elsewhere}");
-        assert_eq!(elsewhere["code"], "project_context_changed");
-        assert!(
-            elsewhere["remedy"]
-                .as_str()
-                .unwrap()
-                .contains("proj-kigali")
-        );
+        assert_eq!(status, 401, "{elsewhere}");
+        assert_eq!(elsewhere["code"], "auth_rejected");
 
-        // A write is fenced the same way, and writes nothing.
+        // A write is refused the same way, and writes nothing.
         let before = ds_layer_store::visibility::read_at(
             &dir.path().join("layers"),
             "canary",
@@ -631,17 +675,17 @@ mod tests {
         .unwrap();
         for (path, body) in [
             (
-                "/v1/layers/visibility?project=proj-lome",
+                "/v1/layers/visibility?project=proj-nowhere",
                 json!({"layers": ["survey/poles"], "visible": false}),
             ),
             (
-                "/v1/layers/order?project=proj-lome",
+                "/v1/layers/order?project=proj-nowhere",
                 json!({"orders": [{"layer_id": "survey/poles", "order": 100}]}),
             ),
         ] {
             let (status, refused) = call(server.address, "POST", path, Some(body), TOKEN);
-            assert_eq!(status, 409, "{refused}");
-            assert_eq!(refused["code"], "project_context_changed");
+            assert_eq!(status, 401, "{refused}");
+            assert_eq!(refused["code"], "auth_rejected");
         }
         assert_eq!(
             ds_layer_store::visibility::read_at(
@@ -667,6 +711,134 @@ mod tests {
         .await;
         assert_eq!(status, 200, "{listing}");
         assert_eq!(listing["project"], "proj-kigali");
+
+        // And the fence still bites where it is the only thing that can: a
+        // source that answers about ANOTHER project than the one it was
+        // opened for. Nothing is applied to the named project's preferences.
+        upstream
+            .switch_project_on_read
+            .store(true, Ordering::SeqCst);
+        let (status, switched) = wire(
+            server.address,
+            "GET",
+            "/v1/layers?project=proj-kigali",
+            None,
+            TOKEN,
+        )
+        .await;
+        assert_eq!(status, 409, "{switched}");
+        assert_eq!(switched["code"], "project_context_changed");
+        assert!(
+            switched["remedy"]
+                .as_str()
+                .unwrap()
+                .contains("someone-elses-project"),
+            "the remedy names what came back: {switched}"
+        );
+        upstream
+            .switch_project_on_read
+            .store(false, Ordering::SeqCst);
+        server.handle.abort();
+    }
+
+    /// F3: the Server serves ANY project its owner names, not only whichever
+    /// one this machine has selected. Two of the account's projects are read
+    /// through one running host, each answers its own catalogue, and each
+    /// remembers its own toggles — a hide in one is invisible in the other.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_second_project_the_owner_names_is_served_on_its_own_terms() {
+        let dir = tempfile::tempdir().unwrap();
+        let upstream = fixture_upstream("uid-a");
+        let allowed = Arc::new(AtomicBool::new(true));
+        let server = start(dir.path(), upstream.clone(), allowed).await;
+
+        // Two catalogues, from one host, without anything being selected.
+        let (status, kigali) = wire(
+            server.address,
+            "GET",
+            "/v1/layers?project=proj-kigali",
+            None,
+            TOKEN,
+        )
+        .await;
+        assert_eq!(status, 200, "{kigali}");
+        assert_eq!(kigali["project"], "proj-kigali");
+        let (status, lome) = wire(
+            server.address,
+            "GET",
+            "/v1/layers?project=proj-lome",
+            None,
+            TOKEN,
+        )
+        .await;
+        assert_eq!(status, 200, "{lome}");
+        assert_eq!(lome["project"], "proj-lome");
+        assert_eq!(
+            row(&lome, "design/mv_lines")["label"],
+            "LV Lines",
+            "the second project answered its OWN document, not the first's: {lome}"
+        );
+        assert!(
+            lome["layers"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|layer| layer["id"] != "design/lines"),
+            "the first project's catalogue leaked into the second: {lome}"
+        );
+
+        // A write lands in the project it named, and only there.
+        let (status, hidden) = wire(
+            server.address,
+            "POST",
+            "/v1/layers/visibility?project=proj-lome",
+            Some(json!({"layers": ["survey/poles"], "visible": false})),
+            TOKEN,
+        )
+        .await;
+        assert_eq!(status, 200, "{hidden}");
+        assert_eq!(hidden["project"], "proj-lome");
+        let (_, lome) = wire(
+            server.address,
+            "GET",
+            "/v1/layers?project=proj-lome",
+            None,
+            TOKEN,
+        )
+        .await;
+        assert_eq!(
+            row(&lome, "survey/poles")["visibility"]["any_visible"],
+            false
+        );
+        let (_, kigali) = wire(
+            server.address,
+            "GET",
+            "/v1/layers?project=proj-kigali",
+            None,
+            TOKEN,
+        )
+        .await;
+        assert_eq!(
+            row(&kigali, "survey/poles")["visibility"]["any_visible"],
+            true,
+            "hiding a family in one project hid it in the other"
+        );
+
+        // The governed order write reaches the source under the same name.
+        let (status, ordered) = wire(
+            server.address,
+            "POST",
+            "/v1/layers/order?project=proj-lome",
+            Some(json!({"orders": [{"layer_id": "survey/poles", "order": 100}]})),
+            TOKEN,
+        )
+        .await;
+        assert_eq!(status, 200, "{ordered}");
+        assert_eq!(ordered["project"], "proj-lome");
+        assert_eq!(
+            upstream.reorders.lock().unwrap().first().unwrap().0,
+            "proj-lome"
+        );
         server.handle.abort();
     }
 

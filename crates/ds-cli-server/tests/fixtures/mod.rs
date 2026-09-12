@@ -118,7 +118,11 @@ impl LayerDocuments for FixtureDocuments {
     }
 }
 impl LayerHost for LayerFixture {
-    fn documents(&self) -> Result<Box<dyn LayerDocuments + Send>, Failure> {
+    // This fixture answers about the one project it holds whatever is asked
+    // for, because what it exists to prove is the Server's own fence. A source
+    // that serves several of the owner's projects is proven where the routes
+    // are, in `layers.rs`.
+    fn documents(&self, _project: &str) -> Result<Box<dyn LayerDocuments + Send>, Failure> {
         let mut document = layer_document();
         document["project_id"] = json!(self.project);
         Ok(Box::new(FixtureDocuments {

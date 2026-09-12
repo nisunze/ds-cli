@@ -117,10 +117,15 @@ shapes changes). Three answers, all proven through the real listener:
 |---|---|
 | nothing | `project_required` (400) |
 | a name outside the kernel's bound | `context_corrupt` (400) |
-| a project that is not the one the Server's document source is on | `project_context_changed` (409), remedy naming both |
-| the project the document is for | the catalogue, unchanged |
+| any project this owner's account can read | that project's catalogue, its own remembered visibility, its own order |
+| a project the account cannot read | the gateway's own refusal, raised where the account is established (`auth_rejected`) |
+| a source that answers about another project than the one it was opened for | `project_context_changed` (409), remedy naming both |
 
-A refused layer request writes nothing, under any project.
+The document source is opened FOR the named project
+(`ds_layer_ops::Native::for_project` → `ds_cli_auth::layer_config_for_project`),
+so this machine's saved selection is never read and two of the owner's projects
+are served side by side through one running host. A refused layer request
+writes nothing, under any project.
 
 ### Anything this host does not serve
 A request under `/v1/map/…` or `/v1/invoke` answers the standing ruling's
@@ -213,14 +218,15 @@ delete the day the kernel drops the input.
 
 ## 7. What this slice does not do yet — say it, do not discover it
 
-1. **A layer request can name only the project the Server's account has
-   selected.** The project is required and fenced against the document that
-   comes back, so nothing is ever served under the wrong project — but
-   `ds_cli_auth::layer_config_fenced` and `capture_layer_scope_fence` still
-   read the saved selection to decide which project's document to fetch, so
-   naming a second project answers `project_context_changed` instead of that
-   project's catalogue. Closing it is a ds-cli-auth slice (an explicit-project
-   layer fence), not a Server one.
+1. **CLOSED (2026-09-12).** A layer request named only the project the
+   Server's account had selected. `ds-cli-auth` now has the explicit-project
+   layer fence (`capture_layer_scope_fence_for_project`,
+   `layer_config_for_project`, `layer_reorder_for_project`), `ds-layer-ops`
+   opens its native source with `Native::for_project`, and the routes open
+   theirs for the project the kernel recorded. Any project the owner's account
+   can read is served; the saved selection is not read on this path at all.
+   `capture_layer_scope_fence` / `layer_config_fenced` stay for the one caller
+   whose subject IS the selection: `ds map layer …` with no `--project`.
 2. **Multi-principal is refused, not supported** (`multi_principal_unsupported`).
    One authenticated owner per Server; many users are many machines, never
    one process. A second account needs a second `ds server serve`.

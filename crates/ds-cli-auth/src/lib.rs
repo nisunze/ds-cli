@@ -82,6 +82,32 @@ pub const TRANSFORMER_CONTEXT_ROUTE_REMEDY: &str = "this lane's credential was v
 pub fn probe_headless_identity(
     lane_token: &str,
 ) -> Result<Option<(ProviderIdentity, Option<String>)>, Failure> {
+    probe_headless_providers(lane_token, Selection::Compared)
+}
+
+/// The same observation for an operation whose project the CALLER named: the
+/// saved selection is not read at all, so nothing about it — not its absence,
+/// not two providers disagreeing about it — can decide a call that never
+/// wanted it.
+pub fn probe_headless_identity_for_named_project(
+    lane_token: &str,
+) -> Result<Option<ProviderIdentity>, Failure> {
+    Ok(probe_headless_providers(lane_token, Selection::Unread)?.map(|(identity, _)| identity))
+}
+
+/// Whether this observation is about the saved selection at all.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Selection {
+    /// Read it from both providers and require them to agree.
+    Compared,
+    /// Do not read it. The project is the caller's.
+    Unread,
+}
+
+fn probe_headless_providers(
+    lane_token: &str,
+    selection: Selection,
+) -> Result<Option<(ProviderIdentity, Option<String>)>, Failure> {
     let lane = Lane::parse(lane_token)?;
     let profile = profile::load(lane)?;
     let refresh = NativeRefreshStore::probe(&profile)?
@@ -91,11 +117,21 @@ pub fn probe_headless_identity(
                 context.credential_audience_sha256(),
                 context.uid(),
             )?;
-            let project = ProjectContextLease::probe_selected(&profile, context.uid())?;
+            let project = match selection {
+                Selection::Compared => {
+                    ProjectContextLease::probe_selected(&profile, context.uid())?
+                }
+                Selection::Unread => None,
+            };
             Ok::<_, Failure>((identity, project))
         })
         .transpose()?;
-    let device = device::probe_identity(lane)?;
+    let device = match selection {
+        Selection::Compared => device::probe_identity(lane)?,
+        Selection::Unread => {
+            device::probe_identity_without_selection(lane)?.map(|identity| (identity, None))
+        }
+    };
     match (refresh, device) {
         (None, None) => Ok(None),
         (Some(provider), None) | (None, Some(provider)) => Ok(Some(provider)),
@@ -1306,6 +1342,14 @@ pub fn native_availability() -> ds_cli_contract::spec::Availability {
     }
 }
 
+/// The device session alone, for a call whose project is its argument. The
+/// saved selection is neither read nor required, so a Server or a `--project`
+/// call works on a machine that has never selected anything.
+fn restored_device_session(lane: Lane) -> Result<Option<device::DeviceSession>, Failure> {
+    let _ = probe_headless_identity_for_named_project(lane.token())?;
+    device::restore_session(lane)
+}
+
 fn restored_device_project(
     lane: Lane,
 ) -> Result<Option<(device::DeviceSession, state::ProjectContext)>, Failure> {
@@ -1583,9 +1627,15 @@ pub fn layer_config(lane_value: &str, refresh: bool) -> Result<HeadlessLayerSnap
     })
 }
 
-/// Opaque identity, audience, selected-project and credential binding captured
-/// for one layer operation. It can fence fixed layer calls, never construct a
-/// client or reveal a credential.
+/// Opaque identity, audience, project and credential binding captured for one
+/// layer operation. It can fence fixed layer calls, never construct a client or
+/// reveal a credential.
+///
+/// The project is either this machine's saved selection
+/// ([`capture_layer_scope_fence`], the desktop-paired CLI path) or the one the
+/// caller named ([`capture_layer_scope_fence_for_project`], every host that
+/// serves more than one project at a time). Which one it is, is decided once
+/// here and never re-decided further down.
 #[derive(Clone, Debug)]
 pub struct LayerScopeFence {
     uid: String,
@@ -1619,6 +1669,56 @@ fn verify_restored_layer_identity(
         .remedy("repeat the layer request under the current native account and project"));
     }
     Ok(())
+}
+
+/// The kernel's bound on a project id
+/// (`ds_command_kernel::execution_context::MAX_PROJECT_CHARS`), restated where
+/// a named project first enters this crate so an unusable name never becomes a
+/// request.
+const MAX_NAMED_PROJECT_CHARS: usize = 500;
+
+fn bounded_named_project(value: &str) -> Result<String, Failure> {
+    let usable = !value.is_empty()
+        && value.trim() == value
+        && value.chars().count() <= MAX_NAMED_PROJECT_CHARS
+        && !value.chars().any(char::is_control);
+    if !usable {
+        return Err(Failure::invalid(
+            "context_corrupt",
+            format!(
+                "a project id is 1..{MAX_NAMED_PROJECT_CHARS} characters, unpadded and free of control characters"
+            ),
+        )
+        .remedy("copy one exact ds_project value from ds auth project list"));
+    }
+    Ok(value.to_owned())
+}
+
+/// The identity fence for a layer operation whose project the CALLER named.
+///
+/// This machine's saved selection is not read: the project is the argument.
+/// What the fence still holds steady for the length of the operation is the
+/// account, its credential audience and the exact credential binding, so a
+/// document read under one account can never have its preferences or its order
+/// written under another.
+pub fn capture_layer_scope_fence_for_project(
+    lane_value: &str,
+    project: &str,
+) -> Result<LayerScopeFence, Failure> {
+    let project = bounded_named_project(project)?;
+    let identity = probe_headless_identity_for_named_project(lane_value)?.ok_or_else(|| {
+        Failure::unauthorized(
+            "headless_signed_out",
+            "no native user is signed in for this lane and profile",
+        )
+        .remedy("run ds auth login --email <address>")
+    })?;
+    Ok(LayerScopeFence {
+        uid: identity.uid().to_owned(),
+        audience: identity.credential_audience_sha256().to_owned(),
+        project,
+        credential: runtime_credential_binding(lane_value)?,
+    })
 }
 
 pub fn capture_layer_scope_fence(lane_value: &str) -> Result<LayerScopeFence, Failure> {
@@ -1667,6 +1767,146 @@ pub fn verify_layer_scope_fence(
             .remedy("repeat the layer request under the current native account and project"));
     }
     Ok(())
+}
+
+/// The counterpart of [`verify_layer_scope_fence`] for a fence that holds a
+/// named project: the account, its audience and its credential must be the
+/// same ones the document was read under, and the project is not re-resolved
+/// because it was never resolved — it was given.
+pub fn verify_layer_scope_fence_for_project(
+    lane_value: &str,
+    fence: &LayerScopeFence,
+    expected_uid: &str,
+    expected_project: &str,
+) -> Result<(), Failure> {
+    if fence.uid != expected_uid || fence.project != expected_project {
+        return Err(Failure::conflict(
+            "project_context_changed",
+            "the layer operation no longer has its read scope",
+        )
+        .remedy("repeat the layer request"));
+    }
+    let current = capture_layer_scope_fence_for_project(lane_value, &fence.project)?;
+    if current.uid != fence.uid
+        || current.audience != fence.audience
+        || current.credential != fence.credential
+    {
+        return Err(Failure::conflict(
+            "project_context_changed",
+            "the native account or credential changed during the layer operation",
+        )
+        .remedy("repeat the layer request under the current native account"));
+    }
+    Ok(())
+}
+
+/// One named project's assembled layer document, with the saved selection
+/// never consulted.
+///
+/// This is the read every host that serves more than one project at a time
+/// makes: the Server's `/v1/layers*`, and `ds map layer …` with an explicit
+/// `--project`. [`layer_config_fenced`] stays the desktop-paired CLI's read,
+/// where the saved selection IS the subject.
+///
+/// `project_name` and `project_status` are empty on purpose: they come from a
+/// selection snapshot, and this path reads none. A caller that named an id gets
+/// that id back and nothing invented around it.
+pub fn layer_config_for_project(
+    lane_value: &str,
+    project: &str,
+    refresh: bool,
+    fence: &LayerScopeFence,
+) -> Result<HeadlessLayerSnapshot, Failure> {
+    let lane = Lane::parse(lane_value)?;
+    let project = bounded_named_project(project)?;
+    if let Some(mut device) = restored_device_session(lane)? {
+        verify_restored_layer_identity(
+            fence,
+            device.context().uid(),
+            device.profile().credential_audience_sha256(),
+            &project,
+        )?;
+        verify_layer_scope_fence_for_project(lane_value, fence, fence.uid(), &project)?;
+        let result = device.layer_config(&project, refresh).map_err(map_client)?;
+        return Ok(HeadlessLayerSnapshot {
+            lane: lane.token(),
+            project_id: project,
+            project_name: String::new(),
+            project_status: String::new(),
+            result,
+        });
+    }
+    let profile = profile::load(lane)?;
+    let store = NativeRefreshStore::open()?;
+    let mut client = Client::new(profile, NativeTransport, store);
+    let user = require_restore_before_context(&mut client)?;
+    verify_restored_layer_identity(
+        fence,
+        user.uid(),
+        client.profile().credential_audience_sha256(),
+        &project,
+    )?;
+    verify_layer_scope_fence_for_project(lane_value, fence, fence.uid(), &project)?;
+    let result = client
+        .layer_config(&project, refresh, now())
+        .map_err(map_client)?;
+    Ok(HeadlessLayerSnapshot {
+        lane: lane.token(),
+        project_id: project,
+        project_name: String::new(),
+        project_status: String::new(),
+        result,
+    })
+}
+
+/// The governed order write for a named project. The same statement as
+/// [`layer_config_for_project`], for the effect rather than the read.
+pub fn layer_reorder_for_project(
+    lane_value: &str,
+    project: &str,
+    orders: &[crate::LayerOrder],
+    fence: &LayerScopeFence,
+) -> Result<HeadlessLayerOrderReceipt, Failure> {
+    let lane = Lane::parse(lane_value)?;
+    let project = bounded_named_project(project)?;
+    if let Some(mut device) = restored_device_session(lane)? {
+        verify_restored_layer_identity(
+            fence,
+            device.context().uid(),
+            device.profile().credential_audience_sha256(),
+            &project,
+        )?;
+        verify_layer_scope_fence_for_project(lane_value, fence, fence.uid(), &project)?;
+        let result = device.layer_reorder(&project, orders).map_err(map_client)?;
+        return Ok(HeadlessLayerOrderReceipt {
+            lane: lane.token(),
+            project_id: project,
+            project_name: String::new(),
+            project_status: String::new(),
+            result,
+        });
+    }
+    let profile = profile::load(lane)?;
+    let store = NativeRefreshStore::open()?;
+    let mut client = Client::new(profile, NativeTransport, store);
+    let user = require_restore_before_context(&mut client)?;
+    verify_restored_layer_identity(
+        fence,
+        user.uid(),
+        client.profile().credential_audience_sha256(),
+        &project,
+    )?;
+    verify_layer_scope_fence_for_project(lane_value, fence, fence.uid(), &project)?;
+    let result = client
+        .layer_reorder(&project, orders, now())
+        .map_err(map_client)?;
+    Ok(HeadlessLayerOrderReceipt {
+        lane: lane.token(),
+        project_id: project,
+        project_name: String::new(),
+        project_status: String::new(),
+        result,
+    })
 }
 
 pub fn layer_config_fenced(
