@@ -28,9 +28,11 @@ to queue for Server sync). Reads never reach a provider; an unheld layer is
 omitted and named, never fetched mid-render.
 
 Pair a desktop only for what has no headless owner yet (survey/local-layer
-context, MV models on a sheet, district/custom-area maps, per-transformer
-overrides, the villages asset install, `feedback.submit`); record it. Never
-borrow a desktop's credentials or lane.
+context, the project's exact MV heads, per-transformer overrides, the villages
+asset install, `feedback.submit`); record it. A district/project sheet renders
+headlessly from a `.dsgrid` file on the machine and the staged designs — see
+`ds-map-composition`'s district sheet. Never borrow a desktop's credentials or
+lane.
 
 ## Establish the assignment
 

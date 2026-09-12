@@ -12,6 +12,10 @@ skill owns the cartographic reasoning. Do not require repository access.
 Read [composition guidance](references/composition.md) when choosing hierarchy,
 relief, landmarks, labels or page furniture. It provides references and review
 criteria, not a fixed layer whitelist or a particular project's defaults.
+For one project on one page — a district sheet at 1:30 000–1:110 000 — read
+[the district sheet](references/district-sheet.md): what it shows and hides,
+corner-snapped furniture, scale-only overrides over governed pens, and the
+headless assembly of designs, the DS Grid model and the holdings' context.
 
 ## Work from evidence
 
