@@ -1,10 +1,17 @@
 //! Thin command/HTTP host for the shared native compute runtime.
 mod auth;
-mod host;
-mod layers;
+// The HTTP host and the layer binding are reachable from an integration test
+// so the isolation proof can stand up a real loopback listener over a fixture
+// identity and a fixture document source. Nothing here is a supported API:
+// `ds` itself reaches this crate only through its command handlers.
+#[doc(hidden)]
+pub mod host;
+#[doc(hidden)]
+pub mod layers;
 mod server_reports;
 pub mod server_sync;
-mod solar_sync;
+#[doc(hidden)]
+pub mod solar_sync;
 use ds_cli_contract::{
     Context, Failure, Inputs,
     outcome::ExitClass,
