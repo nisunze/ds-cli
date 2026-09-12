@@ -817,8 +817,13 @@ fn dataset_lines(dataset: &Value) -> String {
         ));
     }
     if let Some(policy) = dataset["buffer_policy"].as_object() {
+        let sheets = policy
+            .get("sheets")
+            .and_then(Value::as_array)
+            .map(Vec::len)
+            .unwrap_or(0);
         line.push_str(&format!(
-            "\n    buffers {} m design / {} m isolated · rule {}{}",
+            "\n    buffers {} m design / {} m isolated · rule {}{} · {}",
             policy["design_buffer_m"].as_f64().unwrap_or(0.0),
             policy["isolated_buffer_m"].as_f64().unwrap_or(0.0),
             policy["isolated_rule"].as_str().unwrap_or("?"),
@@ -826,6 +831,10 @@ fn dataset_lines(dataset: &Value) -> String {
                 " (provisional)"
             } else {
                 ""
+            },
+            match sheets {
+                0 => "metre buffer only".to_owned(),
+                n => format!("capture fills {n} sheet shape(s)"),
             },
         ));
     }
