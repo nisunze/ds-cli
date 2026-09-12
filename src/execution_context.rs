@@ -680,7 +680,7 @@ pub fn retain(context: &ExecutionContext, _event: RetainEvent) -> Result<Executi
 /// queue and running set. Nothing here is caller-supplied, so a malformed
 /// input is a host bug (`Fault::Hard`), never a client refusal — including
 /// limits that do not make a share: each is 1..=4096 and each `per_project_*`
-/// must [`divides`] its `global_*`, so a host cannot configure away the
+/// must be smaller than its `global_*`, so a host cannot configure away the
 /// fairness this op exists to apply. A single-slot pool is the exception it
 /// has to be.
 ///
@@ -1791,9 +1791,16 @@ mod tests {
                 let Fault::Hard(message) = &fault else {
                     panic!("a misconfigured share is the host's bug, not a client answer: {fault}");
                 };
-                // Both numbers, so the operator reads the fix off the message.
+                // Both numbers, so the operator reads the fix off the message
+                // instead of going to look the configuration up.
+                let (share, pool) = if share_name == "per_project_running" {
+                    (broken.per_project_running, broken.global_running)
+                } else {
+                    (broken.per_project_queued, broken.global_queued)
+                };
                 assert!(
-                    message.contains(share_name) && message.contains(pool_name),
+                    message.contains(&format!("{share_name} is {share}"))
+                        && message.contains(&format!("{pool_name} is {pool}")),
                     "{message}"
                 );
                 assert!(fault.code().is_none(), "{message}");
