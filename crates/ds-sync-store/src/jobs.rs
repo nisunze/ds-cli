@@ -4,13 +4,20 @@
 //! one verified record that says what the job is about. This module performs
 //! the I/O on that record and decides nothing — `execution_context::visible`
 //! answers who may see a row, `execution_context::recover` answers what a row
-//! written before the context existed is about, and the caller's capacity gate
-//! answers which project may take the next worker. An invisible row is
-//! reported exactly as an absent one, so an id in a log discloses nothing.
+//! written before the context existed is about, and `execution_context::
+//! capacity` answers whether a submission may join the queue and which project
+//! may take the next worker. Both capacity questions are asked **inside the
+//! transaction that writes**, from a census read in that transaction: a
+//! census read a moment earlier describes a pool that other workers have
+//! already changed, and under a burst it hands one project every slot. An
+//! invisible row is reported exactly as an absent one, so an id in a log
+//! discloses nothing.
 use crate::{Error, Result, Store};
 use ds_command_kernel::compute_jobs::{self, Event, Job, Phase};
-use ds_command_kernel::execution_context::{self, ExecutionContext, Principal, Provenance, Slot};
-use rusqlite::{params, OptionalExtension, TransactionBehavior};
+use ds_command_kernel::execution_context::{
+    self, ExecutionContext, Fault, Intent, Limits, Principal, Provenance, Slot,
+};
+use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
 
 const SCHEMA: &str = "CREATE TABLE IF NOT EXISTS compute_jobs(
  id TEXT PRIMARY KEY, owner TEXT NOT NULL, lane TEXT NOT NULL,
@@ -84,16 +91,19 @@ impl<'a> JobCaller<'a> {
 }
 
 /// The store's census of work in flight, as the kernel's capacity op wants it.
+///
+/// `running` is work a worker currently holds a live lease on; `queued` is
+/// work waiting for one, including a running row whose lease has expired —
+/// it is waiting to be claimed again, and counting it as running would let
+/// a dead worker's row fill the pool for ever. A row that predates execution
+/// contexts and could not be recovered is in neither: it is never claimed,
+/// so it is not in flight, and letting it stand as "waiting work of another
+/// project" would refuse every project its share for as long as it exists.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Census {
     pub running: Vec<Slot>,
     pub queued: Vec<Slot>,
 }
-
-/// The project a row that predates execution contexts, and could not be
-/// recovered, is counted under. It is not a project id: no directory returns
-/// it, so nothing is admitted into it and fairness cannot be gamed with it.
-pub const UNRECOVERED_PROJECT: &str = "ds:unrecovered-context";
 
 /// What reopening a queue found.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -105,7 +115,8 @@ pub struct Recovery {
     /// Rows rebuilt from the caller's saved selection (transformer work).
     pub from_saved_selection: usize,
     /// Rows with no honest source for a project. They are left exactly as
-    /// they are: readable, never claimed, never executed.
+    /// they are: readable, never claimed, never executed — until the caller
+    /// resubmits the same key and bytes naming a project, which adopts it.
     pub unrecoverable: Vec<String>,
 }
 
@@ -116,10 +127,24 @@ impl Store {
         self.connection.execute_batch(SCHEMA)?;
         Ok(())
     }
-    /// Persist one admitted job. The execution context is not optional here:
-    /// a row this build writes is always about a verified project, and the
-    /// row's own identity must agree with it.
-    pub fn submit_job(&mut self, job: &Job, input: &[u8]) -> Result<Job> {
+    /// Persist one admitted job, bounded by `limits`. The execution context
+    /// is not optional here: a row this build writes is always about a
+    /// verified project, and the row's own identity must agree with it.
+    ///
+    /// The queue bound (`execution_context::capacity`, `Intent::Admit`) is
+    /// asked inside the write transaction from a census read there, so two
+    /// submissions racing for the last place cannot both take it. A refusal
+    /// is [`Error::Refused`] with the kernel's own code, sentence and retry
+    /// guidance, and writes nothing.
+    ///
+    /// A row already present under this id is returned unchanged when it
+    /// carries a context (an idempotent resubmit; no capacity is consumed).
+    /// A row present under this id that predates execution contexts, with
+    /// the same bytes, **adopts** the submitted context: the caller has just
+    /// named the project for exactly this key and these bytes, which is the
+    /// one honest source a transformer row written by a released Server can
+    /// have — it is not a guess, and it is how such a row starts running.
+    pub fn submit_job(&mut self, job: &Job, input: &[u8], limits: Limits) -> Result<Job> {
         if !compute_jobs::digest(&job.id)
             || !compute_jobs::digest(&job.input_sha256)
             || !valid_input_tag(&job.engine, &job.input_tag)
@@ -156,10 +181,12 @@ impl Store {
             )
             .optional()?;
         if let Some((row, old_input)) = old {
-            let existing: Job = serde_json::from_str(&row)?;
+            let mut existing: Job = serde_json::from_str(&row)?;
             if existing.owner != job.owner
                 || existing.lane != job.lane
                 || existing.input_sha256 != job.input_sha256
+                || existing.engine != job.engine
+                || existing.input_tag != job.input_tag
                 || old_input != input
             {
                 return Err(Error::Kernel("compute_job_identity_conflict".into()));
@@ -174,45 +201,82 @@ impl Store {
             // the only thing that keeps two principals' keys apart is that the
             // owner digest is derived from the uid. That is true today and
             // this row must not depend on its staying true.
-            if existing.context.as_ref().is_some_and(|stored| {
-                stored.project != context.project
-                    || stored.operation != context.operation
-                    || stored.principal_uid != context.principal_uid
-            }) {
-                return Err(Error::Kernel("compute_job_scope_conflict".into()));
+            match existing.context.as_ref() {
+                Some(stored)
+                    if stored.project != context.project
+                        || stored.operation != context.operation
+                        || stored.principal_uid != context.principal_uid =>
+                {
+                    return Err(Error::Kernel("compute_job_scope_conflict".into()));
+                }
+                Some(_) => return Ok(existing),
+                None => {
+                    existing.context = Some(context.clone());
+                    transaction.execute(
+                        "UPDATE compute_jobs SET row=?2 WHERE id=?1",
+                        params![existing.id, serde_json::to_string(&existing)?],
+                    )?;
+                    transaction.commit()?;
+                    return Ok(existing);
+                }
             }
-            return Ok(existing);
         }
+        let census = census_in(&transaction, &job.owner, &job.lane, job.created_at_ms)?;
+        decided(execution_context::capacity(
+            limits,
+            Intent::Admit,
+            &census.running,
+            &census.queued,
+            &context.project,
+        ))?;
         transaction.execute("INSERT INTO compute_jobs(id,owner,lane,phase,lease_until,created,row,input) VALUES (?1,?2,?3,'queued',0,?4,?5,?6)", params![job.id,job.owner,job.lane,job.created_at_ms,serde_json::to_string(job)?,input])?;
         transaction.commit()?;
         Ok(job.clone())
     }
     /// This caller's newest durable jobs. Rows it may not see are absent, not
-    /// refused; the limit bounds the rows read, so a page can come back
-    /// shorter than the limit when another project's work is interleaved.
+    /// refused. A caller narrowed to one project is narrowed in the query
+    /// itself, so a page holds that project's newest rows up to the limit
+    /// however much of the connection's other work is interleaved.
     pub fn jobs(&self, caller: &JobCaller<'_>, limit: usize) -> Result<Vec<Job>> {
-        let mut statement = self.connection.prepare("SELECT row FROM compute_jobs WHERE owner=?1 AND lane=?2 ORDER BY created DESC,id LIMIT ?3")?;
+        let mut statement = self.connection.prepare(
+            "SELECT row FROM compute_jobs WHERE owner=?1 AND lane=?2 AND (?3 IS NULL OR json_extract(row,'$.context.project')=?3) ORDER BY created DESC,id DESC LIMIT ?4",
+        )?;
         let rows = statement.query_map(
-            params![caller.owner, caller.lane, limit.clamp(1, 1000)],
+            params![
+                caller.owner,
+                caller.lane,
+                caller.project,
+                limit.clamp(1, 1000)
+            ],
             |r| r.get::<_, String>(0),
         )?;
         visible(caller, rows)
     }
     /// Stable newest-first keyset page over this caller's durable jobs.  The
     /// cursor is the last `(created_at_ms,id)` returned; callers can walk past
-    /// unrelated engines without making old recoverable work disappear.
+    /// unrelated engines without making old recoverable work disappear. A
+    /// narrowed caller pages over its project's rows alone.
     pub fn jobs_page(
         &self,
         caller: &JobCaller<'_>,
         before: Option<(u64, &str)>,
         limit: usize,
     ) -> Result<Vec<Job>> {
-        let (created, id) = before.unwrap_or((u64::MAX, "~"));
+        // The first page starts above every row. SQLite integers are i64, so
+        // the sentinel must be one it can hold: `u64::MAX` fails to bind.
+        let (created, id) = before.unwrap_or((i64::MAX as u64, "~"));
         let mut statement = self.connection.prepare(
-            "SELECT row FROM compute_jobs WHERE owner=?1 AND lane=?2 AND (created<?3 OR (created=?3 AND id<?4)) ORDER BY created DESC,id DESC LIMIT ?5",
+            "SELECT row FROM compute_jobs WHERE owner=?1 AND lane=?2 AND (created<?3 OR (created=?3 AND id<?4)) AND (?5 IS NULL OR json_extract(row,'$.context.project')=?5) ORDER BY created DESC,id DESC LIMIT ?6",
         )?;
         let rows = statement.query_map(
-            params![caller.owner, caller.lane, created, id, limit.clamp(1, 1000)],
+            params![
+                caller.owner,
+                caller.lane,
+                created,
+                id,
+                caller.project,
+                limit.clamp(1, 1000)
+            ],
             |row| row.get::<_, String>(0),
         )?;
         visible(caller, rows)
@@ -220,22 +284,29 @@ impl Store {
     pub fn job(&self, caller: &JobCaller<'_>, id: &str) -> Result<Option<Job>> {
         Ok(self.visible_row(caller, id)?.map(|(job, _)| job))
     }
-    /// Take the oldest claimable job whose project the caller's own capacity
-    /// gate admits. `admit` is asked once per candidate row, in queue order,
-    /// and its answer is the kernel's `capacity` decision: a project over its
-    /// fair share is skipped, not refused, so another project's work starts
-    /// instead of the machine idling.
+    /// Take the oldest claimable job whose project the kernel's capacity
+    /// decision admits under `limits`, or `None` — and change nothing — when
+    /// no project may take a worker right now.
+    ///
+    /// The census is read inside the claiming transaction and
+    /// `execution_context::capacity` (`Intent::Claim`) is asked once per
+    /// candidate row, in queue order: a project over its fair share is skipped,
+    /// not refused, so another project's work starts instead of the machine
+    /// idling; a full pool ends the search. Because the census and the claim
+    /// are one transaction, two workers claiming at once cannot both read a
+    /// pool with room and both take it.
     pub fn claim_job(
         &mut self,
         caller: &JobCaller<'_>,
         worker: &str,
         now: u64,
         lease_ms: u64,
-        admit: &mut dyn FnMut(&str) -> bool,
+        limits: Limits,
     ) -> Result<Option<(Job, Vec<u8>)>> {
         let transaction = self
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let census = census_in(&transaction, caller.owner, caller.lane, now)?;
         let claimed = {
             let mut statement = transaction.prepare("SELECT row,input FROM compute_jobs WHERE owner=?1 AND lane=?2 AND (phase='queued' OR (phase='running' AND lease_until<=?3)) ORDER BY created,id")?;
             let mut rows = statement.query(params![caller.owner, caller.lane, now])?;
@@ -248,8 +319,20 @@ impl Store {
                 let Some(context) = current.context.as_ref() else {
                     continue;
                 };
-                if !caller.sees(&current) || !admit(&context.project) {
+                if !caller.sees(&current) {
                     continue;
+                }
+                match execution_context::capacity(
+                    limits,
+                    Intent::Claim,
+                    &census.running,
+                    &census.queued,
+                    &context.project,
+                ) {
+                    Ok(()) => {}
+                    Err(Fault::Refused(refusal)) if refusal.scope == Some("global") => break,
+                    Err(Fault::Refused(_)) => continue,
+                    Err(Fault::Hard(message)) => return Err(Error::Kernel(message)),
                 }
                 found = Some((current, row.get::<_, Vec<u8>>(1)?));
                 break;
@@ -332,30 +415,13 @@ impl Store {
         Ok(self.visible_row(caller, id)?.map(|(_, input)| input))
     }
 
-    /// What is running and what is waiting, named only by project — the
-    /// census `execution_context::capacity` takes. Unnarrowed by design: a
-    /// fairness decision is about the whole host, not about one project.
-    pub fn census(&self, owner: &str, lane: &str) -> Result<Census> {
-        let mut statement = self.connection.prepare(
-            "SELECT row FROM compute_jobs WHERE owner=?1 AND lane=?2 AND phase IN ('queued','running')",
-        )?;
-        let rows = statement.query_map(params![owner, lane], |row| row.get::<_, String>(0))?;
-        let mut census = Census::default();
-        for row in rows {
-            let job: Job = serde_json::from_str(&row?)?;
-            let slot = Slot {
-                project: job.context.as_ref().map_or_else(
-                    || UNRECOVERED_PROJECT.to_owned(),
-                    |context| context.project.clone(),
-                ),
-            };
-            match job.phase {
-                Phase::Running => census.running.push(slot),
-                Phase::Queued => census.queued.push(slot),
-                _ => {}
-            }
-        }
-        Ok(census)
+    /// What is running and what is waiting at `now`, named only by project —
+    /// the census `execution_context::capacity` takes (see [`Census`] for
+    /// what counts). Unnarrowed by design: a fairness decision is about the
+    /// whole host, not about one project. This is the operator's view; the
+    /// decisions themselves read the census inside their own transaction.
+    pub fn census(&self, owner: &str, lane: &str, now: u64) -> Result<Census> {
+        census_in(&self.connection, owner, lane, now)
     }
 
     /// Give every row this connection owns the execution context it is about,
@@ -465,6 +531,42 @@ impl Store {
         };
         let job: Job = serde_json::from_str(&row)?;
         Ok(caller.sees(&job).then_some((job, input)))
+    }
+}
+
+/// The census as seen through one connection or transaction — the same
+/// query for the operator's view and for the decisions, so they cannot
+/// disagree about what counts.
+fn census_in(connection: &Connection, owner: &str, lane: &str, now: u64) -> Result<Census> {
+    let mut statement = connection.prepare(
+        "SELECT row FROM compute_jobs WHERE owner=?1 AND lane=?2 AND phase IN ('queued','running')",
+    )?;
+    let rows = statement.query_map(params![owner, lane], |row| row.get::<_, String>(0))?;
+    let mut census = Census::default();
+    for row in rows {
+        let job: Job = serde_json::from_str(&row?)?;
+        let Some(context) = job.context.as_ref() else {
+            continue;
+        };
+        let slot = Slot {
+            project: context.project.clone(),
+        };
+        match job.phase {
+            Phase::Running if job.lease_until_ms > now => census.running.push(slot),
+            Phase::Running | Phase::Queued => census.queued.push(slot),
+            _ => {}
+        }
+    }
+    Ok(census)
+}
+
+/// A kernel decision as the store's answer: a refusal is relayed with its
+/// code, sentence and guidance intact; a hard fault is the host's own bug.
+fn decided(decision: std::result::Result<(), Fault>) -> Result<()> {
+    match decision {
+        Ok(()) => Ok(()),
+        Err(Fault::Refused(refusal)) => Err(Error::Refused(refusal)),
+        Err(Fault::Hard(message)) => Err(Error::Kernel(message)),
     }
 }
 
