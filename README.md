@@ -100,6 +100,15 @@ Neither export nor scope planning requests cloud admission, saves dirty rooms,
 refreshes project inputs, or replaces a failed WASM decision with TypeScript.
 Publication failure cannot invalidate a successfully committed local artifact.
 
+`reportCommand` also exposes `artifact_output` and `artifact_inventory` for
+report bridge receipts and local artifact links. They reuse `report_formats`
+for output IDs, wire formats, MIME types and ordering, and `printing` for
+paper/layout identity. GeoJSON's output ID is `geojson`; its wire format is
+`geojsonzip`. Native export, recovered publication and local inventory reads
+must preserve that distinction. Inventory reads admit stored archives without
+requiring publication order; duplicate identities and invalid declarations
+still refuse. The host retains receipt scope checks and opaque-locator IO.
+
 Report format policy lives in `report_formats`: `reportCommand` exposes
 `formats` (exact outputs for pinned sheets and report shape) and `format_options`
 (available presets and formats). PDF preset selection is additive and multiple

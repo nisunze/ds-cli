@@ -2,6 +2,8 @@
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 
+pub mod artifacts;
+
 pub const DEVELOPMENT_ENGINE: &str = "ds-network-reporter@0.1.0+development";
 pub const LOCAL_ONLY_SCHEMA: u32 = 4;
 
@@ -173,6 +175,15 @@ enum Command {
     ArtifactName {
         #[serde(default)]
         locator: String,
+    },
+    ArtifactOutput { output_id: String },
+    ArtifactInventory {
+        artifacts: Vec<artifacts::Artifact>,
+        combined: bool,
+        #[serde(default)]
+        inventory: bool,
+        #[serde(default)]
+        require_combined_base: bool,
     },
     /// What are one version's artifacts, and in what order are they read?
     ArtifactGroups {
@@ -541,6 +552,10 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
             serde_json::json!({"groups":output})
         }
         Command::ArchiveLayout { layout } => layout.describe(),
+        Command::ArtifactOutput { output_id } => serde_json::json!({"output": artifacts::output(&output_id)}),
+        Command::ArtifactInventory { artifacts: items, combined, inventory, require_combined_base } => {
+            serde_json::json!({"artifacts": artifacts::validate(items, combined, inventory, require_combined_base)?})
+        }
         Command::ArtifactName { locator } => {
             let filename = crate::report_formats::artifact_filename(&locator);
             let opens_as_pdf = crate::report_formats::artifact_opens_as_pdf(&filename);
