@@ -396,6 +396,19 @@ impl GeographicView {
 fn yes() -> bool {
     true
 }
+fn is_left(align: &TextAlign) -> bool {
+    *align == TextAlign::Left
+}
+
+/// Where a text element's lines sit inside its frame.
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, JsonSchema, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum TextAlign {
+    #[default]
+    Left,
+    Center,
+    Right,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
 #[serde(deny_unknown_fields)]
@@ -405,6 +418,10 @@ pub struct Element {
     pub rect: [f64; 4],
     #[serde(default)]
     pub text: String,
+    /// Horizontal alignment of a text element inside its frame; other kinds
+    /// ignore it.
+    #[serde(default, skip_serializing_if = "is_left")]
+    pub align: TextAlign,
     #[serde(default)]
     pub asset: String,
     #[serde(default = "font")]
@@ -927,6 +944,7 @@ pub fn default_layout() -> Layout {
         kind,
         rect,
         text: text.into(),
+        align: TextAlign::Left,
         asset: String::new(),
         font_pt,
         color: ink(),

@@ -21,6 +21,11 @@ pub struct ElementOverride {
     pub font_pt: Option<f64>,
     pub table: Option<TableOverride>,
     pub legend: Option<super::LegendBinding>,
+    /// Replacement text for a text element — a transformer's own drafter,
+    /// revision line or drawing number where the project layout carries the
+    /// default. Bindings such as `{date}` still apply.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub text: Option<String>,
 }
 #[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema, PartialEq)]
 #[serde(deny_unknown_fields)]
@@ -49,6 +54,17 @@ pub fn apply(layout: &Layout, patch: &PrintOverride) -> Result<Layout, String> {
         }
         if let Some(font) = change.font_pt {
             element.font_pt = font;
+        }
+        if let Some(text) = &change.text {
+            if element.kind != ElementKind::Text {
+                return Err(format!("Print element {id} is not a text element."));
+            }
+            if text.len() > 4000 {
+                return Err(format!(
+                    "Print element {id} override text exceeds 4000 bytes."
+                ));
+            }
+            element.text = text.clone();
         }
         if let Some(legend) = &change.legend {
             if element.kind != ElementKind::Legend {
@@ -146,6 +162,41 @@ mod tests {
             serde_json::from_value(json!({"elements":{"schedule":{"rect":[10,10,1000,120]}}}))
                 .unwrap();
         assert!(apply(&base, &bad).is_err());
+    }
+
+    #[test]
+    fn a_transformer_may_replace_a_text_elements_words_but_nothing_else_with_text() {
+        // The project layout carries the default drafter line; one transformer
+        // names its own. Bindings inside the replacement stay bindings.
+        let base = super::super::default_layout();
+        let text_id = base
+            .elements
+            .iter()
+            .find(|e| e.kind == ElementKind::Text)
+            .map(|e| e.id.clone())
+            .expect("the default layout has a text element");
+        let patch: PrintOverride = serde_json::from_value(
+            json!({"elements":{text_id.clone():{"text":"Drawn by J. Doe · {date}"}}}),
+        )
+        .unwrap();
+        let changed = apply(&base, &patch).unwrap();
+        let element = changed.elements.iter().find(|e| e.id == text_id).unwrap();
+        assert_eq!(element.text, "Drawn by J. Doe · {date}");
+        let map_id = base
+            .elements
+            .iter()
+            .find(|e| e.kind == ElementKind::Map)
+            .map(|e| e.id.clone())
+            .unwrap();
+        let bad: PrintOverride =
+            serde_json::from_value(json!({"elements":{map_id:{"text":"nope"}}})).unwrap();
+        assert!(apply(&base, &bad)
+            .unwrap_err()
+            .contains("not a text element"));
+        let long: PrintOverride =
+            serde_json::from_value(json!({"elements":{text_id:{"text":"x".repeat(4001)}}}))
+                .unwrap();
+        assert!(apply(&base, &long).unwrap_err().contains("4000"));
     }
 }
 

@@ -32,6 +32,7 @@ pub fn new_element(kind: ElementKind, id: String, asset: &str) -> Element {
     Element {
         id,
         kind,
+        align: super::TextAlign::Left,
         rect: if is_logo {
             NEW_LOGO_RECT
         } else {
