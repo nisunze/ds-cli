@@ -890,21 +890,56 @@ pub fn acquisition_selection(dataset_id: &str, provider: &str) -> Result<AreaSel
     }
 }
 
+/// How far outside the requested area a provider's intersects predicate may
+/// still say yes, in degrees (about one metre at project latitudes).
+///
+/// The providers decide intersection on the sphere with their own error
+/// margin — Earth Engine's `region` is geodesic and tolerant to roughly a
+/// metre — while the kernel decides it exactly in the plane. A footprint whose
+/// edge lies within centimetres of the area's boundary is therefore an
+/// upstream yes and a local no, and the seed that met one refused a whole
+/// acquisition over a row the provider selected correctly. The margin is the
+/// provider's rule written down, not a relaxation of it: a row farther out
+/// than any provider margin is still the overfetch or boundary defect the
+/// refusal exists to catch.
+pub const PROVIDER_BOUNDARY_MARGIN_DEG: f64 = 1e-5;
+
 /// Does this dataset's acquisition select `feature` for `area`?
 ///
 /// Admitting an acquired row and deleting the row it replaces are the same
-/// question, so they are the same call. Nothing may re-answer it locally.
+/// question, so they are the same call. Nothing may re-answer it locally. An
+/// intersects rule carries the provider's boundary margin, so a row the
+/// provider selected at its edge is selected here at the same edge — on
+/// admission and on the deletion that replaces it.
 pub fn acquisition_selects(
     dataset_id: &str,
     provider: &str,
     feature: &Value,
     area: &Value,
 ) -> Result<bool, String> {
-    crate::reference_cache::selects_area(
-        feature,
-        area,
-        acquisition_selection(dataset_id, provider)?,
-    )
+    let selection = acquisition_selection(dataset_id, provider)?;
+    if crate::reference_cache::selects_area(feature, area, selection)? {
+        return Ok(true);
+    }
+    if selection != AreaSelection::Intersects {
+        return Ok(false);
+    }
+    // Within the margin: the feature's bounds, grown by the margin, meet the
+    // area. Bounds are a superset of the geometry, so this admits nothing the
+    // exact test would refuse by more than the margin plus the feature's own
+    // extent — a nearby building, never a distant one.
+    let Some([w, s, e, n]) = crate::reference_cache::feature_bounds(feature) else {
+        return Ok(false);
+    };
+    let m = PROVIDER_BOUNDARY_MARGIN_DEG;
+    let grown = serde_json::json!({
+        "type": "Feature",
+        "properties": {},
+        "geometry": {"type": "Polygon", "coordinates": [[
+            [w - m, s - m], [e + m, s - m], [e + m, n + m], [w - m, n + m], [w - m, s - m]
+        ]]}
+    });
+    crate::reference_cache::selects_area(&grown, area, AreaSelection::Intersects)
 }
 
 /// Reject an oversized or malformed source receipt outright.
@@ -2390,6 +2425,48 @@ mod tests {
         assert!(
             acquisition_selects("some_new_dataset", "some-provider", &crossing, &area).is_err()
         );
+    }
+
+    #[test]
+    fn a_footprint_at_the_providers_boundary_margin_is_selected_and_a_distant_one_is_not() {
+        // Seen on the Gisagara buildings room: a 23 m remainder strip, and a
+        // footprint the provider returned whose top edge sat a few centimetres
+        // below the strip's bottom edge — an upstream (spherical, tolerant)
+        // yes and a local (planar, exact) no that refused the acquisition.
+        let strip = json!({"type":"Polygon","coordinates":[[
+            [29.758594, -2.600046], [29.791722, -2.600046], [29.791722, -2.599841],
+            [29.758594, -2.599841], [29.758594, -2.600046]]]});
+        let touching = json!({"type":"Feature","properties":{},
+            "geometry":{"type":"Polygon","coordinates":[[
+                [29.780818, -2.600158], [29.780931, -2.600158], [29.780931, -2.6000463],
+                [29.780818, -2.6000463], [29.780818, -2.600158]]]}});
+        assert!(
+            !crate::reference_cache::selects_area(&touching, &strip, AreaSelection::Intersects)
+                .unwrap(),
+            "the exact test must still say no, or the margin is untested"
+        );
+        assert!(acquisition_selects(BUILDINGS_DATASET_ID, "", &touching, &strip).unwrap());
+        assert!(admit_footprint(9, &touching, &strip).is_ok());
+        // Two metres out is beyond any provider margin: still refused, with the
+        // same evidence sentence as before.
+        let distant = json!({"type":"Feature","properties":{},
+            "geometry":{"type":"Polygon","coordinates":[[
+                [29.780818, -2.600158], [29.780931, -2.600158], [29.780931, -2.600066],
+                [29.780818, -2.600066], [29.780818, -2.600158]]]}});
+        assert!(!acquisition_selects(BUILDINGS_DATASET_ID, "", &distant, &strip).unwrap());
+        let refused = admit_footprint(9, &distant, &strip).unwrap_err();
+        assert!(
+            refused.contains("lies outside the requested area"),
+            "{refused}"
+        );
+        // The margin is a property of the intersects rule, not of buildings:
+        // a centre rule ignores it.
+        assert!(!crate::reference_cache::selects_area(
+            &touching,
+            &strip,
+            AreaSelection::CentroidInside
+        )
+        .unwrap());
     }
 
     #[test]
