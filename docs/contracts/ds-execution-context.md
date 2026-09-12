@@ -10,7 +10,11 @@ shares (§5), and the corpus no longer records a cross-project
 day: that segment is also one no filesystem reads as a drive, a device or a
 stream (§2), and every refusal but
 `not_visible` says what to do about it (§3), `context_unrecoverable` included
-(§6). Parent:
+(§6). Third-pass review, second reading: a segment is also one that draws
+something (§2), the share invariant is asked before a host starts its workers
+and not once per claim (§5, `Limits::validate`), and the durable row's own key
+collisions answer the kernel's sentence rather than a shorter twin (§8).
+Parent:
 [project and instance isolation](../../../ds-web/docs/project-and-instance-isolation-contract.md);
 refines [Headless application runtime](ds-headless-application-runtime.md) §6.
 
@@ -194,6 +198,11 @@ guidance. Until this pass the invariant lived only in `ds-cli-server`'s flag
 parser, so any other host — a test, a route building its own `Limits`, a
 future embedder — could configure the fairness away and this owner would
 apply it as written.
+The invariant is `Limits::validate`, which `capacity` asks before every
+decision and which a host asks before it starts its workers: a configuration
+nothing can honour is answered once, at the moment the operator can change it,
+rather than as the same host fault logged several times a second by a pool of
+threads that admits nothing.
 `Intent::Admit` bounds the queue (`global_queued`, then `per_project_queued`); a
 full *running* pool never refuses a submission, the job queues. `Intent::Claim`
 bounds the running pool (`global_running`) and the fairness share: a project may
@@ -298,13 +307,22 @@ cannot each take the same room; its census counts a running row whose lease has
 expired as waiting and a row nothing can claim as neither; and it reopens a
 queue by counting the rows that carry a context and reading only the ones that
 do not, so a long-lived Server does not pay its whole queue in memory to
-restart. `ds-compute-runtime` admits through the kernel, asks `recover` when it
-starts its workers, and makes no network call: a claimed job runs what was
-admitted, and the one thing it calls that a host *could* implement over the
-network — the `Authorizer` that says whether this Server's owner is still the
-authenticated one — gates only starting work. Neither the lease refresh nor the
-terminal commit asks it again, so an unreachable moment delays new work and can
-never destroy work already done. `ds-cli-server` opens per-(principal, project)
+restart. `ds-compute-runtime` admits through the kernel and makes no network call
+(asserted over its own `Cargo.lock`, not over its prose): a claimed job runs
+what was admitted, and the one thing it calls that a host *could* implement
+over the network — the `Authorizer` that says whether this Server's owner is
+still the authenticated one — gates only starting work. Neither the lease
+refresh nor the terminal commit asks it again, so an unreachable moment delays
+new work and can never destroy work already done. Before it starts a worker it
+asks the kernel three questions once rather than once per claim: are these
+limits a configuration at all (`Limits::validate`), is the thread pool no
+larger than the `global_running` it claims from — two numbers for one pool —
+and what context does each stored row have (`recover`). A queue holding rows
+that predate contexts is reported with their ids, because the remedy for such
+a row begins with one and no project-narrowed read will show it. It also says
+the row's own key-collision refusals in the kernel's words, since the store
+refuses a racing key without consulting the kernel and one collision may not
+have two sentences. `ds-cli-server` opens per-(principal, project)
 sessions from an admitted context instead of a process-wide selection, and it
 is where one owner per Server is actually enforced — the owner-only bearer of
 its `host.rs`, which is also where that fence is proven; `ds` re-raises refusals
