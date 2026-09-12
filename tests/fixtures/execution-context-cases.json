@@ -1,0 +1,2765 @@
+{
+  "schema": "ds.execution-context-cases/v1",
+  "purpose": "The Server's execution context, replayed. Each case carries the op (without the schema wrapper) and the answer the kernel must give: the parsed answer, or {\"error\": \"<the exact Err string>\"} when the request itself is malformed. ds-web replays the same file through the vendored WASM, so no rule about who may see, admit, keep, queue or recover a project's work can be true on one host and not another.",
+  "source": "ds-web/docs/project-and-instance-isolation-contract.md (One verified context per operation; Server jobs and multiple clients; Concurrency and capacity; acceptance items 2, 5, 6, 7, 8), 2026-09-12.",
+  "note": "Re-record expected with DS_EXECUTION_CONTEXT_CASES_WRITE=1 cargo test --test execution_context_cases after a deliberate rule change, and say why in the commit.",
+  "cases": [
+    {
+      "id": "admit-requested-project",
+      "why": "An explicitly named project that the fresh membership snapshot contains is the whole happy path: the record is stamped from the connection, not from anything the caller asserted about itself.",
+      "request": {
+        "kind": "admit",
+        "now_ms": 2000,
+        "principal": {
+          "uid": "uid-a",
+          "lane": "canary",
+          "deployment": "https://gateway.example",
+          "install_id": "install-1"
+        },
+        "client": "cli:4711",
+        "operation": "solar_processing",
+        "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
+        "idempotency_key": "key-a",
+        "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "membership": {
+          "projects": [
+            "project-a",
+            "project-b"
+          ],
+          "fetched_at_ms": 1000,
+          "ttl_ms": 600000
+        },
+        "requested_project": "project-a"
+      },
+      "expected": {
+        "outcome": "admitted",
+        "context": {
+          "principal_uid": "uid-a",
+          "lane": "canary",
+          "deployment": "https://gateway.example",
+          "install_id": "install-1",
+          "project": "project-a",
+          "client": "cli:4711",
+          "operation": "solar_processing",
+          "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
+          "idempotency_key": "key-a",
+          "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "admitted_at_ms": 2000
+        }
+      }
+    },
+    {
+      "id": "admit-saved-selection-is-a-default",
+      "why": "A saved CLI selection is a caller default the Server still verifies; it is never Server execution state, and it admits exactly like a request would.",
+      "request": {
+        "kind": "admit",
+        "now_ms": 2000,
+        "principal": {
+          "uid": "uid-a",
+          "lane": "canary",
+          "deployment": "https://gateway.example",
+          "install_id": "install-1"
+        },
+        "client": "cli:4711",
+        "operation": "solar_processing",
+        "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
+        "idempotency_key": "key-a",
+        "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "membership": {
+          "projects": [
+            "project-a",
+            "project-b"
+          ],
+          "fetched_at_ms": 1000,
+          "ttl_ms": 600000
+        },
+        "saved_project": "project-a"
+      },
+      "expected": {
+        "outcome": "admitted",
+        "context": {
+          "principal_uid": "uid-a",
+          "lane": "canary",
+          "deployment": "https://gateway.example",
+          "install_id": "install-1",
+          "project": "project-a",
+          "client": "cli:4711",
+          "operation": "solar_processing",
+          "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
+          "idempotency_key": "key-a",
+          "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "admitted_at_ms": 2000
+        }
+      }
+    },
+    {
+      "id": "admit-requested-outranks-saved",
+      "why": "When the caller names a project explicitly, the saved selection is not consulted at all — a stale selection can never redirect an explicit request.",
+      "request": {
+        "kind": "admit",
+        "now_ms": 2000,
+        "principal": {
+          "uid": "uid-a",
+          "lane": "canary",
+          "deployment": "https://gateway.example",
+          "install_id": "install-1"
+        },
+        "client": "cli:4711",
+        "operation": "solar_processing",
+        "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
+        "idempotency_key": "key-a",
+        "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "membership": {
+          "projects": [
+            "project-a",
+            "project-b"
+          ],
+          "fetched_at_ms": 1000,
+          "ttl_ms": 600000
+        },
+        "requested_project": "project-b",
+        "saved_project": "project-a"
+      },
+      "expected": {
+        "outcome": "admitted",
+        "context": {
+          "principal_uid": "uid-a",
+          "lane": "canary",
+          "deployment": "https://gateway.example",
+          "install_id": "install-1",
+          "project": "project-b",
+          "client": "cli:4711",
+          "operation": "solar_processing",
+          "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
+          "idempotency_key": "key-a",
+          "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "admitted_at_ms": 2000
+        }
+      }
+    },
+    {
+      "id": "admit-sealed-input-outranks-saved",
+      "why": "A Solar submission's sealed input already names its project, so it needs no selection and a disagreeing selection is simply not used rather than refused.",
+      "request": {
+        "kind": "admit",
+        "now_ms": 2000,
+        "principal": {
+          "uid": "uid-a",
+          "lane": "canary",
+          "deployment": "https://gateway.example",
+          "install_id": "install-1"
+        },
+        "client": "cli:4711",
+        "operation": "solar_processing",
+        "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
+        "idempotency_key": "key-a",
+        "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "membership": {
+          "projects": [
+            "project-a",
+            "project-b"
+          ],
+          "fetched_at_ms": 1000,
+          "ttl_ms": 600000
+        },
+        "sealed_project": "project-b",
+        "saved_project": "project-a"
+      },
+      "expected": {
+        "outcome": "admitted",
+        "context": {
+          "principal_uid": "uid-a",
+          "lane": "canary",
+          "deployment": "https://gateway.example",
+          "install_id": "install-1",
+          "project": "project-b",
+          "client": "cli:4711",
+          "operation": "solar_processing",
+          "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
+          "idempotency_key": "key-a",
+          "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "admitted_at_ms": 2000
+        }
+      }
+    },
+    {
+      "id": "admit-sealed-input-agrees-with-the-request",
+      "why": "Naming the same project the sealed bytes name is not a conflict; it is the ordinary explicit Solar submission and it admits.",
+      "request": {
+        "kind": "admit",
+        "now_ms": 2000,
+        "principal": {
+          "uid": "uid-a",
+          "lane": "canary",
+          "deployment": "https://gateway.example",
+          "install_id": "install-1"
+        },
+        "client": "cli:4711",
+        "operation": "solar_processing",
+        "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
+        "idempotency_key": "key-a",
+        "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "membership": {
+          "projects": [
+            "project-a",
+            "project-b"
+          ],
+          "fetched_at_ms": 1000,
+          "ttl_ms": 600000
+        },
+        "sealed_project": "project-a",
+        "requested_project": "project-a"
+      },
+      "expected": {
+        "outcome": "admitted",
+        "context": {
+          "principal_uid": "uid-a",
+          "lane": "canary",
+          "deployment": "https://gateway.example",
+          "install_id": "install-1",
+          "project": "project-a",
+          "client": "cli:4711",
+          "operation": "solar_processing",
+          "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
+          "idempotency_key": "key-a",
+          "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "admitted_at_ms": 2000
+        }
+      }
+    },
+    {
+      "id": "admit-sealed-input-contradicts-the-request",
+      "why": "A Solar submit whose sealed input was prepared for one project while the caller names another is refused scope_mismatch, and the refusal names only the project the caller already knows.",
+      "request": {
+        "kind": "admit",
+        "now_ms": 2000,
+        "principal": {
+          "uid": "uid-a",
+          "lane": "canary",
+          "deployment": "https://gateway.example",
+          "install_id": "install-1"
+        },
+        "client": "cli:4711",
+        "operation": "solar_processing",
+        "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
+        "idempotency_key": "key-a",
+        "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "membership": {
+          "projects": [
+            "project-a",
+            "project-b"
+          ],
+          "fetched_at_ms": 1000,
+          "ttl_ms": 600000
+        },
+        "sealed_project": "project-a",
+        "requested_project": "project-b"
+      },
+      "expected": {
+        "outcome": "refused",
+        "refusal": {
+          "code": "scope_mismatch",
+          "message": "this request is for project-b, but its sealed input was prepared for another project"
+        }
+      }
+    },
+    {
+      "id": "admit-project-required",
+      "why": "No requested project, no saved selection and no sealed input means there is nothing to verify; the kernel refuses rather than inventing a default from process state.",
+      "request": {
+        "kind": "admit",
+        "now_ms": 2000,
+        "principal": {
+          "uid": "uid-a",
+          "lane": "canary",
+          "deployment": "https://gateway.example",
+          "install_id": "install-1"
+        },
+        "client": "cli:4711",
+        "operation": "solar_processing",
+        "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
+        "idempotency_key": "key-a",
+        "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "membership": {
+          "projects": [
+            "project-a",
+            "project-b"
+          ],
+          "fetched_at_ms": 1000,
+          "ttl_ms": 600000
+        }
+      },
+      "expected": {
+        "outcome": "refused",
+        "refusal": {
+          "code": "project_required",
+          "message": "name a project, or select one first"
+        }
+      }
+    },
+    {
+      "id": "admit-requested-project-not-visible",
+      "why": "A project outside the caller's verified membership is refused even though the caller named it explicitly: a caller-supplied id never grants access.",
+      "request": {
+        "kind": "admit",
+        "now_ms": 2000,
+        "principal": {
+          "uid": "uid-a",
+          "lane": "canary",
+          "deployment": "https://gateway.example",
+          "install_id": "install-1"
+        },
+        "client": "cli:4711",
+        "operation": "solar_processing",
+        "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
+        "idempotency_key": "key-a",
+        "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "membership": {
+          "projects": [
+            "project-a",
+            "project-b"
+          ],
+          "fetched_at_ms": 1000,
+          "ttl_ms": 600000
+        },
+        "requested_project": "project-c"
+      },
+      "expected": {
+        "outcome": "refused",
+        "refusal": {
+          "code": "project_not_visible",
+          "message": "that project is not visible to this connection"
+        }
+      }
+    },
+    {
+      "id": "admit-saved-project-not-visible",
+      "why": "A saved selection is verified exactly like a requested one, so a selection saved before a membership change cannot smuggle work into a project the caller has lost.",
+      "request": {
+        "kind": "admit",
+        "now_ms": 2000,
+        "principal": {
+          "uid": "uid-a",
+          "lane": "canary",
+          "deployment": "https://gateway.example",
+          "install_id": "install-1"
+        },
+        "client": "cli:4711",
+        "operation": "solar_processing",
+        "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
+        "idempotency_key": "key-a",
+        "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "membership": {
+          "projects": [
+            "project-a",
+            "project-b"
+          ],
+          "fetched_at_ms": 1000,
+          "ttl_ms": 600000
+        },
+        "saved_project": "project-c"
+      },
+      "expected": {
+        "outcome": "refused",
+        "refusal": {
+          "code": "project_not_visible",
+          "message": "that project is not visible to this connection"
+        }
+      }
+    },
+    {
+      "id": "admit-sealed-project-not-visible",
+      "why": "Sealed bytes name a project; they do not authorize it. A prepared input for a project the caller is not a member of is refused like any other.",
+      "request": {
+        "kind": "admit",
+        "now_ms": 2000,
+        "principal": {
+          "uid": "uid-a",
+          "lane": "canary",
+          "deployment": "https://gateway.example",
+          "install_id": "install-1"
+        },
+        "client": "cli:4711",
+        "operation": "solar_processing",
+        "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
+        "idempotency_key": "key-a",
+        "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "membership": {
+          "projects": [
+            "project-a",
+            "project-b"
+          ],
+          "fetched_at_ms": 1000,
+          "ttl_ms": 600000
+        },
+        "sealed_project": "project-c"
+      },
+      "expected": {
+        "outcome": "refused",
+        "refusal": {
+          "code": "project_not_visible",
+          "message": "that project is not visible to this connection"
+        }
+      }
+    },
+    {
+      "id": "admit-membership-snapshot-stale",
+      "why": "A membership snapshot older than its own ttl is not evidence of anything; it refuses with exactly the words an unauthorized project gets, so staleness is invisible to the caller.",
+      "request": {
+        "kind": "admit",
+        "now_ms": 2000,
+        "principal": {
+          "uid": "uid-a",
+          "lane": "canary",
+          "deployment": "https://gateway.example",
+          "install_id": "install-1"
+        },
+        "client": "cli:4711",
+        "operation": "solar_processing",
+        "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
+        "idempotency_key": "key-a",
+        "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "membership": {
+          "projects": [
+            "project-a",
+            "project-b"
+          ],
+          "fetched_at_ms": 1000,
+          "ttl_ms": 500
+        },
+        "requested_project": "project-a"
+      },
+      "expected": {
+        "outcome": "refused",
+        "refusal": {
+          "code": "project_not_visible",
+          "message": "that project is not visible to this connection"
+        }
+      }
+    },
+    {
+      "id": "admit-membership-snapshot-from-the-future",
+      "why": "A snapshot stamped after the host's clock is treated as unusable rather than eternally fresh, so a clock slip cannot extend a revoked membership.",
+      "request": {
+        "kind": "admit",
+        "now_ms": 2000,
+        "principal": {
+          "uid": "uid-a",
+          "lane": "canary",
+          "deployment": "https://gateway.example",
+          "install_id": "install-1"
+        },
+        "client": "cli:4711",
+        "operation": "solar_processing",
+        "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
+        "idempotency_key": "key-a",
+        "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "membership": {
+          "projects": [
+            "project-a",
+            "project-b"
+          ],
+          "fetched_at_ms": 9000,
+          "ttl_ms": 600000
+        },
+        "requested_project": "project-a"
+      },
+      "expected": {
+        "outcome": "refused",
+        "refusal": {
+          "code": "project_not_visible",
+          "message": "that project is not visible to this connection"
+        }
+      }
+    },
+    {
+      "id": "admit-membership-snapshot-empty",
+      "why": "An account with no authorized projects admits nothing; an empty snapshot is a real answer, never an unconstrained one.",
+      "request": {
+        "kind": "admit",
+        "now_ms": 2000,
+        "principal": {
+          "uid": "uid-a",
+          "lane": "canary",
+          "deployment": "https://gateway.example",
+          "install_id": "install-1"
+        },
+        "client": "cli:4711",
+        "operation": "solar_processing",
+        "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
+        "idempotency_key": "key-a",
+        "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "membership": {
+          "projects": [],
+          "fetched_at_ms": 1000,
+          "ttl_ms": 600000
+        },
+        "requested_project": "project-a"
+      },
+      "expected": {
+        "outcome": "refused",
+        "refusal": {
+          "code": "project_not_visible",
+          "message": "that project is not visible to this connection"
+        }
+      }
+    },
+    {
+      "id": "admit-key-reused-identically",
+      "why": "The same key, project, operation and input bytes is an idempotent resubmit: the context already admitted comes back unchanged, so a retry never creates a second scope or re-stamps the admission time.",
+      "request": {
+        "kind": "admit",
+        "now_ms": 9000,
+        "principal": {
+          "uid": "uid-a",
+          "lane": "canary",
+          "deployment": "https://gateway.example",
+          "install_id": "install-1"
+        },
+        "client": "cli:4711",
+        "operation": "solar_processing",
+        "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
+        "idempotency_key": "key-a",
+        "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "membership": {
+          "projects": [
+            "project-a",
+            "project-b"
+          ],
+          "fetched_at_ms": 1000,
+          "ttl_ms": 600000
+        },
+        "requested_project": "project-a",
+        "existing": {
+          "principal_uid": "uid-a",
+          "lane": "canary",
+          "deployment": "https://gateway.example",
+          "install_id": "install-1",
+          "project": "project-a",
+          "client": "cli:4711",
+          "operation": "solar_processing",
+          "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
+          "idempotency_key": "key-a",
+          "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "admitted_at_ms": 2000
+        }
+      },
+      "expected": {
+        "outcome": "existing",
+        "context": {
+          "principal_uid": "uid-a",
+          "lane": "canary",
+          "deployment": "https://gateway.example",
+          "install_id": "install-1",
+          "project": "project-a",
+          "client": "cli:4711",
+          "operation": "solar_processing",
+          "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
+          "idempotency_key": "key-a",
+          "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "admitted_at_ms": 2000
+        }
+      }
+    },
+    {
+      "id": "admit-key-reused-for-another-project",
+      "why": "A key that already names one project cannot be reused to reach another; this is the retry rule that stops a reused key from borrowing another project's result.",
+      "request": {
+        "kind": "admit",
+        "now_ms": 2000,
+        "principal": {
+          "uid": "uid-a",
+          "lane": "canary",
+          "deployment": "https://gateway.example",
+          "install_id": "install-1"
+        },
+        "client": "cli:4711",
+        "operation": "solar_processing",
+        "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
+        "idempotency_key": "key-a",
+        "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "membership": {
+          "projects": [
+            "project-a",
+            "project-b"
+          ],
+          "fetched_at_ms": 1000,
+          "ttl_ms": 600000
+        },
+        "requested_project": "project-b",
+        "existing": {
+          "principal_uid": "uid-a",
+          "lane": "canary",
+          "deployment": "https://gateway.example",
+          "install_id": "install-1",
+          "project": "project-a",
+          "client": "cli:4711",
+          "operation": "solar_processing",
+          "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
+          "idempotency_key": "key-a",
+          "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "admitted_at_ms": 2000
+        }
+      },
+      "expected": {
+        "outcome": "refused",
+        "refusal": {
+          "code": "scope_mismatch_for_key",
+          "message": "that idempotency key already names another project or operation"
+        }
+      }
+    },
+    {
+      "id": "admit-key-reused-for-another-operation",
+      "why": "The durable job id is a digest of owner, lane and key, so the same key used for a different operation would collide with it; the scope of a key covers its operation as well as its project.",
+      "request": {
+        "kind": "admit",
+        "now_ms": 2000,
+        "principal": {
+          "uid": "uid-a",
+          "lane": "canary",
+          "deployment": "https://gateway.example",
+          "install_id": "install-1"
+        },
+        "client": "cli:4711",
+        "operation": "report_export",
+        "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
+        "idempotency_key": "key-a",
+        "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "membership": {
+          "projects": [
+            "project-a",
+            "project-b"
+          ],
+          "fetched_at_ms": 1000,
+          "ttl_ms": 600000
+        },
+        "requested_project": "project-a",
+        "existing": {
+          "principal_uid": "uid-a",
+          "lane": "canary",
+          "deployment": "https://gateway.example",
+          "install_id": "install-1",
+          "project": "project-a",
+          "client": "cli:4711",
+          "operation": "solar_processing",
+          "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
+          "idempotency_key": "key-a",
+          "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "admitted_at_ms": 2000
+        }
+      },
+      "expected": {
+        "outcome": "refused",
+        "refusal": {
+          "code": "scope_mismatch_for_key",
+          "message": "that idempotency key already names another project or operation"
+        }
+      }
+    },
+    {
+      "id": "admit-key-reused-with-changed-payload",
+      "why": "Same key, same project, different bytes: the caller is trying to overwrite an existing result, which is refused rather than silently accepted or silently reused.",
+      "request": {
+        "kind": "admit",
+        "now_ms": 2000,
+        "principal": {
+          "uid": "uid-a",
+          "lane": "canary",
+          "deployment": "https://gateway.example",
+          "install_id": "install-1"
+        },
+        "client": "cli:4711",
+        "operation": "solar_processing",
+        "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
+        "idempotency_key": "key-a",
+        "input_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "membership": {
+          "projects": [
+            "project-a",
+            "project-b"
+          ],
+          "fetched_at_ms": 1000,
+          "ttl_ms": 600000
+        },
+        "requested_project": "project-a",
+        "existing": {
+          "principal_uid": "uid-a",
+          "lane": "canary",
+          "deployment": "https://gateway.example",
+          "install_id": "install-1",
+          "project": "project-a",
+          "client": "cli:4711",
+          "operation": "solar_processing",
+          "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
+          "idempotency_key": "key-a",
+          "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "admitted_at_ms": 2000
+        }
+      },
+      "expected": {
+        "outcome": "refused",
+        "refusal": {
+          "code": "payload_changed_for_key",
+          "message": "that idempotency key was admitted with different input bytes"
+        }
+      }
+    },
+    {
+      "id": "admit-key-held-by-another-principal",
+      "why": "A stored record for this key that belongs to another account is a fence, not a reuse: the Server never lets one principal continue another's admitted work.",
+      "request": {
+        "kind": "admit",
+        "now_ms": 2000,
+        "principal": {
+          "uid": "uid-a",
+          "lane": "canary",
+          "deployment": "https://gateway.example",
+          "install_id": "install-1"
+        },
+        "client": "cli:4711",
+        "operation": "solar_processing",
+        "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
+        "idempotency_key": "key-a",
+        "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "membership": {
+          "projects": [
+            "project-a",
+            "project-b"
+          ],
+          "fetched_at_ms": 1000,
+          "ttl_ms": 600000
+        },
+        "requested_project": "project-a",
+        "existing": {
+          "principal_uid": "uid-b",
+          "lane": "canary",
+          "deployment": "https://gateway.example",
+          "install_id": "install-1",
+          "project": "project-a",
+          "client": "cli:4711",
+          "operation": "solar_processing",
+          "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
+          "idempotency_key": "key-a",
+          "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "admitted_at_ms": 2000
+        }
+      },
+      "expected": {
+        "outcome": "refused",
+        "refusal": {
+          "code": "principal_mismatch",
+          "message": "that key was admitted under another authenticated identity"
+        }
+      }
+    },
+    {
+      "id": "admit-key-held-on-another-lane",
+      "why": "Canary and stable keep separate state; a key admitted on one lane is not the same key on the other even for the same account.",
+      "request": {
+        "kind": "admit",
+        "now_ms": 2000,
+        "principal": {
+          "uid": "uid-a",
+          "lane": "canary",
+          "deployment": "https://gateway.example",
+          "install_id": "install-1"
+        },
+        "client": "cli:4711",
+        "operation": "solar_processing",
+        "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
+        "idempotency_key": "key-a",
+        "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "membership": {
+          "projects": [
+            "project-a",
+            "project-b"
+          ],
+          "fetched_at_ms": 1000,
+          "ttl_ms": 600000
+        },
+        "requested_project": "project-a",
+        "existing": {
+          "principal_uid": "uid-a",
+          "lane": "stable",
+          "deployment": "https://gateway.example",
+          "install_id": "install-1",
+          "project": "project-a",
+          "client": "cli:4711",
+          "operation": "solar_processing",
+          "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
+          "idempotency_key": "key-a",
+          "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "admitted_at_ms": 2000
+        }
+      },
+      "expected": {
+        "outcome": "refused",
+        "refusal": {
+          "code": "principal_mismatch",
+          "message": "that key was admitted under another authenticated identity"
+        }
+      }
+    },
+    {
+      "id": "admit-key-held-on-another-deployment",
+      "why": "A credential bound to another gateway audience is another authority; the deployment is part of the principal fence and is checked before any reuse.",
+      "request": {
+        "kind": "admit",
+        "now_ms": 2000,
+        "principal": {
+          "uid": "uid-a",
+          "lane": "canary",
+          "deployment": "https://gateway.example",
+          "install_id": "install-1"
+        },
+        "client": "cli:4711",
+        "operation": "solar_processing",
+        "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
+        "idempotency_key": "key-a",
+        "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "membership": {
+          "projects": [
+            "project-a",
+            "project-b"
+          ],
+          "fetched_at_ms": 1000,
+          "ttl_ms": 600000
+        },
+        "requested_project": "project-a",
+        "existing": {
+          "principal_uid": "uid-a",
+          "lane": "canary",
+          "deployment": "https://other.example",
+          "install_id": "install-1",
+          "project": "project-a",
+          "client": "cli:4711",
+          "operation": "solar_processing",
+          "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
+          "idempotency_key": "key-a",
+          "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "admitted_at_ms": 2000
+        }
+      },
+      "expected": {
+        "outcome": "refused",
+        "refusal": {
+          "code": "principal_mismatch",
+          "message": "that key was admitted under another authenticated identity"
+        }
+      }
+    },
+    {
+      "id": "admit-membership-is-verified-before-the-key",
+      "why": "Probing a key while naming a project the caller cannot see must answer the project refusal, never the key refusal: otherwise reusing keys would disclose which projects hold work.",
+      "request": {
+        "kind": "admit",
+        "now_ms": 2000,
+        "principal": {
+          "uid": "uid-a",
+          "lane": "canary",
+          "deployment": "https://gateway.example",
+          "install_id": "install-1"
+        },
+        "client": "cli:4711",
+        "operation": "solar_processing",
+        "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
+        "idempotency_key": "key-a",
+        "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "membership": {
+          "projects": [
+            "project-a",
+            "project-b"
+          ],
+          "fetched_at_ms": 1000,
+          "ttl_ms": 600000
+        },
+        "requested_project": "project-c",
+        "existing": {
+          "principal_uid": "uid-a",
+          "lane": "canary",
+          "deployment": "https://gateway.example",
+          "install_id": "install-1",
+          "project": "project-a",
+          "client": "cli:4711",
+          "operation": "solar_processing",
+          "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
+          "idempotency_key": "key-a",
+          "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "admitted_at_ms": 2000
+        }
+      },
+      "expected": {
+        "outcome": "refused",
+        "refusal": {
+          "code": "project_not_visible",
+          "message": "that project is not visible to this connection"
+        }
+      }
+    },
+    {
+      "id": "admit-stored-record-bound-to-another-job",
+      "why": "A record handed in for this key but stamped with another job id is corrupt host state, not a reusable admission; the kernel refuses rather than binding the caller to the wrong job.",
+      "request": {
+        "kind": "admit",
+        "now_ms": 2000,
+        "principal": {
+          "uid": "uid-a",
+          "lane": "canary",
+          "deployment": "https://gateway.example",
+          "install_id": "install-1"
+        },
+        "client": "cli:4711",
+        "operation": "solar_processing",
+        "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
+        "idempotency_key": "key-a",
+        "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "membership": {
+          "projects": [
+            "project-a",
+            "project-b"
+          ],
+          "fetched_at_ms": 1000,
+          "ttl_ms": 600000
+        },
+        "requested_project": "project-a",
+        "existing": {
+          "principal_uid": "uid-a",
+          "lane": "canary",
+          "deployment": "https://gateway.example",
+          "install_id": "install-1",
+          "project": "project-a",
+          "client": "cli:4711",
+          "operation": "solar_processing",
+          "job_id": "2222222222222222222222222222222222222222222222222222222222222222",
+          "idempotency_key": "key-a",
+          "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "admitted_at_ms": 2000
+        }
+      },
+      "expected": {
+        "outcome": "refused",
+        "refusal": {
+          "code": "context_corrupt",
+          "message": "the stored context is bound to another job id"
+        }
+      }
+    },
+    {
+      "id": "admit-stored-record-corrupt",
+      "why": "A stored context that no longer validates never becomes a fresh admission by accident; it is named corrupt so the host repairs it deliberately.",
+      "request": {
+        "kind": "admit",
+        "now_ms": 2000,
+        "principal": {
+          "uid": "uid-a",
+          "lane": "canary",
+          "deployment": "https://gateway.example",
+          "install_id": "install-1"
+        },
+        "client": "cli:4711",
+        "operation": "solar_processing",
+        "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
+        "idempotency_key": "key-a",
+        "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "membership": {
+          "projects": [
+            "project-a",
+            "project-b"
+          ],
+          "fetched_at_ms": 1000,
+          "ttl_ms": 600000
+        },
+        "requested_project": "project-a",
+        "existing": {
+          "principal_uid": "uid-a",
+          "lane": "canary",
+          "deployment": "https://gateway.example",
+          "install_id": "install-1",
+          "project": "project-a",
+          "client": "cli:4711",
+          "operation": "solar_processing",
+          "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
+          "idempotency_key": "key-a",
+          "input_sha256": "short",
+          "admitted_at_ms": 2000
+        }
+      },
+      "expected": {
+        "outcome": "refused",
+        "refusal": {
+          "code": "context_corrupt",
+          "message": "execution context field input_sha256 is not a bounded value"
+        }
+      }
+    },
+    {
+      "id": "admit-client-label-unbounded",
+      "why": "The client label is caller-influenced text that ends up in a durable row, so it is bounded at admission and refused by name rather than truncated.",
+      "request": {
+        "kind": "admit",
+        "now_ms": 2000,
+        "principal": {
+          "uid": "uid-a",
+          "lane": "canary",
+          "deployment": "https://gateway.example",
+          "install_id": "install-1"
+        },
+        "client": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "operation": "solar_processing",
+        "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
+        "idempotency_key": "key-a",
+        "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "membership": {
+          "projects": [
+            "project-a",
+            "project-b"
+          ],
+          "fetched_at_ms": 1000,
+          "ttl_ms": 600000
+        },
+        "requested_project": "project-a"
+      },
+      "expected": {
+        "outcome": "refused",
+        "refusal": {
+          "code": "context_corrupt",
+          "message": "execution context field client is not a bounded value"
+        }
+      }
+    },
+    {
+      "id": "admit-operation-outside-the-vocabulary",
+      "why": "The operation vocabulary is closed: a Server cannot be talked into admitting an operation the contract does not name.",
+      "request": {
+        "kind": "admit",
+        "now_ms": 2000,
+        "principal": {
+          "uid": "uid-a",
+          "lane": "canary",
+          "deployment": "https://gateway.example",
+          "install_id": "install-1"
+        },
+        "client": "cli:4711",
+        "operation": "delete_everything",
+        "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
+        "idempotency_key": "key-a",
+        "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "membership": {
+          "projects": [
+            "project-a",
+            "project-b"
+          ],
+          "fetched_at_ms": 1000,
+          "ttl_ms": 600000
+        },
+        "requested_project": "project-a"
+      },
+      "expected": {
+        "outcome": "refused",
+        "refusal": {
+          "code": "context_corrupt",
+          "message": "execution context field operation is not a bounded value"
+        }
+      }
+    },
+    {
+      "id": "admit-input-digest-invalid",
+      "why": "Every context binds the exact input bytes by sha256; anything that is not a 64-character lowercase digest cannot bind anything and is refused.",
+      "request": {
+        "kind": "admit",
+        "now_ms": 2000,
+        "principal": {
+          "uid": "uid-a",
+          "lane": "canary",
+          "deployment": "https://gateway.example",
+          "install_id": "install-1"
+        },
+        "client": "cli:4711",
+        "operation": "solar_processing",
+        "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
+        "idempotency_key": "key-a",
+        "input_sha256": "not-a-digest",
+        "membership": {
+          "projects": [
+            "project-a",
+            "project-b"
+          ],
+          "fetched_at_ms": 1000,
+          "ttl_ms": 600000
+        },
+        "requested_project": "project-a"
+      },
+      "expected": {
+        "outcome": "refused",
+        "refusal": {
+          "code": "context_corrupt",
+          "message": "execution context field input_sha256 is not a bounded value"
+        }
+      }
+    },
+    {
+      "id": "admit-idempotency-key-with-a-control-character",
+      "why": "A key with a control character would corrupt logs and durable rows; keys are trimmed, bounded and control-free before they can name a scope.",
+      "request": {
+        "kind": "admit",
+        "now_ms": 2000,
+        "principal": {
+          "uid": "uid-a",
+          "lane": "canary",
+          "deployment": "https://gateway.example",
+          "install_id": "install-1"
+        },
+        "client": "cli:4711",
+        "operation": "solar_processing",
+        "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
+        "idempotency_key": "key\na",
+        "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "membership": {
+          "projects": [
+            "project-a",
+            "project-b"
+          ],
+          "fetched_at_ms": 1000,
+          "ttl_ms": 600000
+        },
+        "requested_project": "project-a"
+      },
+      "expected": {
+        "outcome": "refused",
+        "refusal": {
+          "code": "context_corrupt",
+          "message": "execution context field idempotency_key is not a bounded value"
+        }
+      }
+    },
+    {
+      "id": "admit-lane-outside-the-vocabulary",
+      "why": "There are exactly two lanes. A principal claiming a third has no verifiable deployment state and is refused before any project is resolved.",
+      "request": {
+        "kind": "admit",
+        "now_ms": 2000,
+        "principal": {
+          "uid": "uid-a",
+          "lane": "development",
+          "deployment": "https://gateway.example",
+          "install_id": "install-1"
+        },
+        "client": "cli:4711",
+        "operation": "solar_processing",
+        "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
+        "idempotency_key": "key-a",
+        "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "membership": {
+          "projects": [
+            "project-a",
+            "project-b"
+          ],
+          "fetched_at_ms": 1000,
+          "ttl_ms": 600000
+        },
+        "requested_project": "project-a"
+      },
+      "expected": {
+        "outcome": "refused",
+        "refusal": {
+          "code": "context_corrupt",
+          "message": "execution context field principal.lane is not a bounded value"
+        }
+      }
+    },
+    {
+      "id": "admit-without-a-clock",
+      "why": "now_ms is an input so the decision is pure; a host that forgets it has a bug, and a bug is a hard error rather than something to relay to a client.",
+      "request": {
+        "kind": "admit",
+        "now_ms": 0,
+        "principal": {
+          "uid": "uid-a",
+          "lane": "canary",
+          "deployment": "https://gateway.example",
+          "install_id": "install-1"
+        },
+        "client": "cli:4711",
+        "operation": "solar_processing",
+        "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
+        "idempotency_key": "key-a",
+        "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "membership": {
+          "projects": [
+            "project-a",
+            "project-b"
+          ],
+          "fetched_at_ms": 1000,
+          "ttl_ms": 600000
+        },
+        "requested_project": "project-a"
+      },
+      "expected": {
+        "error": "admission needs the host's clock in now_ms"
+      }
+    },
+    {
+      "id": "admit-report-export-operation",
+      "why": "Report generation for a second project is the overlapping work the contract demands, so it carries a context of its own exactly like Solar does.",
+      "request": {
+        "kind": "admit",
+        "now_ms": 2000,
+        "principal": {
+          "uid": "uid-a",
+          "lane": "canary",
+          "deployment": "https://gateway.example",
+          "install_id": "install-1"
+        },
+        "client": "cli:4711",
+        "operation": "report_export",
+        "job_id": "2222222222222222222222222222222222222222222222222222222222222222",
+        "idempotency_key": "report-inventory",
+        "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "membership": {
+          "projects": [
+            "project-a",
+            "project-b"
+          ],
+          "fetched_at_ms": 1000,
+          "ttl_ms": 600000
+        },
+        "requested_project": "project-b"
+      },
+      "expected": {
+        "outcome": "admitted",
+        "context": {
+          "principal_uid": "uid-a",
+          "lane": "canary",
+          "deployment": "https://gateway.example",
+          "install_id": "install-1",
+          "project": "project-b",
+          "client": "cli:4711",
+          "operation": "report_export",
+          "job_id": "2222222222222222222222222222222222222222222222222222222222222222",
+          "idempotency_key": "report-inventory",
+          "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "admitted_at_ms": 2000
+        }
+      }
+    },
+    {
+      "id": "admit-layer-read-operation",
+      "why": "A layer read is an operation too: its request id is its job id and its digest binds the exact request, so status and visibility work the same way for reads.",
+      "request": {
+        "kind": "admit",
+        "now_ms": 2000,
+        "principal": {
+          "uid": "uid-a",
+          "lane": "canary",
+          "deployment": "https://gateway.example",
+          "install_id": "install-1"
+        },
+        "client": "cli:4711",
+        "operation": "layer_read",
+        "job_id": "req-8f2c",
+        "idempotency_key": "req-8f2c",
+        "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "membership": {
+          "projects": [
+            "project-a",
+            "project-b"
+          ],
+          "fetched_at_ms": 1000,
+          "ttl_ms": 600000
+        },
+        "requested_project": "project-b"
+      },
+      "expected": {
+        "outcome": "admitted",
+        "context": {
+          "principal_uid": "uid-a",
+          "lane": "canary",
+          "deployment": "https://gateway.example",
+          "install_id": "install-1",
+          "project": "project-b",
+          "client": "cli:4711",
+          "operation": "layer_read",
+          "job_id": "req-8f2c",
+          "idempotency_key": "req-8f2c",
+          "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "admitted_at_ms": 2000
+        }
+      }
+    },
+    {
+      "id": "admit-layer-write-operation",
+      "why": "A layer write against an explicitly named project proves /v1/layers is admitted through the same owner as compute, not through a process-wide selection.",
+      "request": {
+        "kind": "admit",
+        "now_ms": 2000,
+        "principal": {
+          "uid": "uid-a",
+          "lane": "canary",
+          "deployment": "https://gateway.example",
+          "install_id": "install-1"
+        },
+        "client": "cli:4711",
+        "operation": "layer_write",
+        "job_id": "req-9a10",
+        "idempotency_key": "req-9a10",
+        "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "membership": {
+          "projects": [
+            "project-a",
+            "project-b"
+          ],
+          "fetched_at_ms": 1000,
+          "ttl_ms": 600000
+        },
+        "requested_project": "project-a"
+      },
+      "expected": {
+        "outcome": "admitted",
+        "context": {
+          "principal_uid": "uid-a",
+          "lane": "canary",
+          "deployment": "https://gateway.example",
+          "install_id": "install-1",
+          "project": "project-a",
+          "client": "cli:4711",
+          "operation": "layer_write",
+          "job_id": "req-9a10",
+          "idempotency_key": "req-9a10",
+          "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "admitted_at_ms": 2000
+        }
+      }
+    },
+    {
+      "id": "admit-transformer-operation",
+      "why": "Transformer processing carries no project inside its request by design, which is exactly why an admitted context must supply one from a verified selection.",
+      "request": {
+        "kind": "admit",
+        "now_ms": 2000,
+        "principal": {
+          "uid": "uid-a",
+          "lane": "canary",
+          "deployment": "https://gateway.example",
+          "install_id": "install-1"
+        },
+        "client": "cli:4711",
+        "operation": "transformer_processing",
+        "job_id": "2222222222222222222222222222222222222222222222222222222222222222",
+        "idempotency_key": "lv-batch-1",
+        "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "membership": {
+          "projects": [
+            "project-a",
+            "project-b"
+          ],
+          "fetched_at_ms": 1000,
+          "ttl_ms": 600000
+        },
+        "saved_project": "project-a"
+      },
+      "expected": {
+        "outcome": "admitted",
+        "context": {
+          "principal_uid": "uid-a",
+          "lane": "canary",
+          "deployment": "https://gateway.example",
+          "install_id": "install-1",
+          "project": "project-a",
+          "client": "cli:4711",
+          "operation": "transformer_processing",
+          "job_id": "2222222222222222222222222222222222222222222222222222222222222222",
+          "idempotency_key": "lv-batch-1",
+          "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "admitted_at_ms": 2000
+        }
+      }
+    },
+    {
+      "id": "visible-to-its-own-principal",
+      "why": "The account that admitted the work sees it without narrowing to a project: reconnection recovers a caller's jobs by stable id, not by whatever is selected now.",
+      "request": {
+        "kind": "visible",
+        "caller": {
+          "uid": "uid-a",
+          "lane": "canary",
+          "deployment": "https://gateway.example"
+        },
+        "context": {
+          "principal_uid": "uid-a",
+          "lane": "canary",
+          "deployment": "https://gateway.example",
+          "install_id": "install-1",
+          "project": "project-a",
+          "client": "cli:4711",
+          "operation": "solar_processing",
+          "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
+          "idempotency_key": "key-a",
+          "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "admitted_at_ms": 2000
+        }
+      },
+      "expected": {
+        "visible": true
+      }
+    },
+    {
+      "id": "visible-narrowed-to-its-own-project",
+      "why": "Narrowing a listing to the job's own project is the ordinary per-project query and stays visible.",
+      "request": {
+        "kind": "visible",
+        "caller": {
+          "uid": "uid-a",
+          "lane": "canary",
+          "deployment": "https://gateway.example"
+        },
+        "requested_project": "project-a",
+        "context": {
+          "principal_uid": "uid-a",
+          "lane": "canary",
+          "deployment": "https://gateway.example",
+          "install_id": "install-1",
+          "project": "project-a",
+          "client": "cli:4711",
+          "operation": "solar_processing",
+          "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
+          "idempotency_key": "key-a",
+          "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "admitted_at_ms": 2000
+        }
+      },
+      "expected": {
+        "visible": true
+      }
+    },
+    {
+      "id": "visible-from-a-second-install",
+      "why": "install_id is recorded for provenance but is never a visibility fence, so the same account reconnecting from another machine still recovers its own durable work.",
+      "request": {
+        "kind": "visible",
+        "caller": {
+          "uid": "uid-a",
+          "lane": "canary",
+          "deployment": "https://gateway.example"
+        },
+        "context": {
+          "principal_uid": "uid-a",
+          "lane": "canary",
+          "deployment": "https://gateway.example",
+          "install_id": "install-2",
+          "project": "project-a",
+          "client": "cli:4711",
+          "operation": "solar_processing",
+          "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
+          "idempotency_key": "key-a",
+          "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "admitted_at_ms": 2000
+        }
+      },
+      "expected": {
+        "visible": true
+      }
+    },
+    {
+      "id": "visible-refused-foreign-principal",
+      "why": "Another account asking about a known id gets the same three words an unknown id gets, so an id leaked out of a log discloses nothing about who owns it.",
+      "request": {
+        "kind": "visible",
+        "caller": {
+          "uid": "uid-b",
+          "lane": "canary",
+          "deployment": "https://gateway.example"
+        },
+        "context": {
+          "principal_uid": "uid-a",
+          "lane": "canary",
+          "deployment": "https://gateway.example",
+          "install_id": "install-1",
+          "project": "project-a",
+          "client": "cli:4711",
+          "operation": "solar_processing",
+          "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
+          "idempotency_key": "key-a",
+          "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "admitted_at_ms": 2000
+        }
+      },
+      "expected": {
+        "visible": false,
+        "refusal": {
+          "code": "not_visible",
+          "message": "job not found"
+        }
+      }
+    },
+    {
+      "id": "visible-refused-foreign-lane",
+      "why": "The same account on the other lane is a different authority; the answer is identical so lane membership cannot be probed either.",
+      "request": {
+        "kind": "visible",
+        "caller": {
+          "uid": "uid-a",
+          "lane": "stable",
+          "deployment": "https://gateway.example"
+        },
+        "context": {
+          "principal_uid": "uid-a",
+          "lane": "canary",
+          "deployment": "https://gateway.example",
+          "install_id": "install-1",
+          "project": "project-a",
+          "client": "cli:4711",
+          "operation": "solar_processing",
+          "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
+          "idempotency_key": "key-a",
+          "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "admitted_at_ms": 2000
+        }
+      },
+      "expected": {
+        "visible": false,
+        "refusal": {
+          "code": "not_visible",
+          "message": "job not found"
+        }
+      }
+    },
+    {
+      "id": "visible-refused-foreign-deployment",
+      "why": "A credential bound to another gateway audience gets the same answer, so a dev credential cannot enumerate production work.",
+      "request": {
+        "kind": "visible",
+        "caller": {
+          "uid": "uid-a",
+          "lane": "canary",
+          "deployment": "https://other.example"
+        },
+        "context": {
+          "principal_uid": "uid-a",
+          "lane": "canary",
+          "deployment": "https://gateway.example",
+          "install_id": "install-1",
+          "project": "project-a",
+          "client": "cli:4711",
+          "operation": "solar_processing",
+          "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
+          "idempotency_key": "key-a",
+          "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "admitted_at_ms": 2000
+        }
+      },
+      "expected": {
+        "visible": false,
+        "refusal": {
+          "code": "not_visible",
+          "message": "job not found"
+        }
+      }
+    },
+    {
+      "id": "visible-refused-wrong-project",
+      "why": "Asking about A's job while claiming to be working in B is refused with the unknown-id words: cross-project status, cancel and result all disclose nothing.",
+      "request": {
+        "kind": "visible",
+        "caller": {
+          "uid": "uid-a",
+          "lane": "canary",
+          "deployment": "https://gateway.example"
+        },
+        "requested_project": "project-b",
+        "context": {
+          "principal_uid": "uid-a",
+          "lane": "canary",
+          "deployment": "https://gateway.example",
+          "install_id": "install-1",
+          "project": "project-a",
+          "client": "cli:4711",
+          "operation": "solar_processing",
+          "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
+          "idempotency_key": "key-a",
+          "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "admitted_at_ms": 2000
+        }
+      },
+      "expected": {
+        "visible": false,
+        "refusal": {
+          "code": "not_visible",
+          "message": "job not found"
+        }
+      }
+    },
+    {
+      "id": "visible-refused-unreadable-context",
+      "why": "A context the host cannot even read fails closed with the same words rather than opening the job to whoever asked.",
+      "request": {
+        "kind": "visible",
+        "caller": {
+          "uid": "uid-a",
+          "lane": "canary",
+          "deployment": "https://gateway.example"
+        },
+        "context": {
+          "principal_uid": "uid-a",
+          "lane": "canary",
+          "deployment": "https://gateway.example",
+          "install_id": "install-1",
+          "project": " ",
+          "client": "cli:4711",
+          "operation": "solar_processing",
+          "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
+          "idempotency_key": "key-a",
+          "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "admitted_at_ms": 2000
+        }
+      },
+      "expected": {
+        "visible": false,
+        "refusal": {
+          "code": "not_visible",
+          "message": "job not found"
+        }
+      }
+    },
+    {
+      "id": "visible-refused-malformed-caller",
+      "why": "A caller the host could not describe is not a caller; visibility fails closed instead of matching an empty identity against an empty field.",
+      "request": {
+        "kind": "visible",
+        "caller": {
+          "uid": "",
+          "lane": "canary",
+          "deployment": "https://gateway.example"
+        },
+        "context": {
+          "principal_uid": "uid-a",
+          "lane": "canary",
+          "deployment": "https://gateway.example",
+          "install_id": "install-1",
+          "project": "project-a",
+          "client": "cli:4711",
+          "operation": "solar_processing",
+          "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
+          "idempotency_key": "key-a",
+          "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "admitted_at_ms": 2000
+        }
+      },
+      "expected": {
+        "visible": false,
+        "refusal": {
+          "code": "not_visible",
+          "message": "job not found"
+        }
+      }
+    },
+    {
+      "id": "retain-retry",
+      "why": "A retry re-runs the same admitted work; it may not silently re-scope it to whatever project is selected at retry time. The absurd now_ms proves the answer does not depend on the clock.",
+      "request": {
+        "kind": "retain",
+        "context": {
+          "principal_uid": "uid-a",
+          "lane": "canary",
+          "deployment": "https://gateway.example",
+          "install_id": "install-1",
+          "project": "project-a",
+          "client": "cli:4711",
+          "operation": "solar_processing",
+          "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
+          "idempotency_key": "key-a",
+          "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "admitted_at_ms": 2000
+        },
+        "event": "retry",
+        "now_ms": 9999999999
+      },
+      "expected": {
+        "outcome": "retained",
+        "event": "retry",
+        "context": {
+          "principal_uid": "uid-a",
+          "lane": "canary",
+          "deployment": "https://gateway.example",
+          "install_id": "install-1",
+          "project": "project-a",
+          "client": "cli:4711",
+          "operation": "solar_processing",
+          "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
+          "idempotency_key": "key-a",
+          "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "admitted_at_ms": 2000
+        }
+      }
+    },
+    {
+      "id": "retain-restart",
+      "why": "After a Server restart the queue is reopened from durable rows, and reopening is not re-admission: the context is exactly the one stored. The absurd now_ms proves the answer does not depend on the clock.",
+      "request": {
+        "kind": "retain",
+        "context": {
+          "principal_uid": "uid-a",
+          "lane": "canary",
+          "deployment": "https://gateway.example",
+          "install_id": "install-1",
+          "project": "project-a",
+          "client": "cli:4711",
+          "operation": "solar_processing",
+          "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
+          "idempotency_key": "key-a",
+          "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "admitted_at_ms": 2000
+        },
+        "event": "restart",
+        "now_ms": 9999999999
+      },
+      "expected": {
+        "outcome": "retained",
+        "event": "restart",
+        "context": {
+          "principal_uid": "uid-a",
+          "lane": "canary",
+          "deployment": "https://gateway.example",
+          "install_id": "install-1",
+          "project": "project-a",
+          "client": "cli:4711",
+          "operation": "solar_processing",
+          "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
+          "idempotency_key": "key-a",
+          "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "admitted_at_ms": 2000
+        }
+      }
+    },
+    {
+      "id": "retain-claim",
+      "why": "A worker claiming a job inherits the job's context; the worker's own environment contributes nothing to it. The absurd now_ms proves the answer does not depend on the clock.",
+      "request": {
+        "kind": "retain",
+        "context": {
+          "principal_uid": "uid-a",
+          "lane": "canary",
+          "deployment": "https://gateway.example",
+          "install_id": "install-1",
+          "project": "project-a",
+          "client": "cli:4711",
+          "operation": "solar_processing",
+          "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
+          "idempotency_key": "key-a",
+          "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "admitted_at_ms": 2000
+        },
+        "event": "claim",
+        "now_ms": 9999999999
+      },
+      "expected": {
+        "outcome": "retained",
+        "event": "claim",
+        "context": {
+          "principal_uid": "uid-a",
+          "lane": "canary",
+          "deployment": "https://gateway.example",
+          "install_id": "install-1",
+          "project": "project-a",
+          "client": "cli:4711",
+          "operation": "solar_processing",
+          "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
+          "idempotency_key": "key-a",
+          "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "admitted_at_ms": 2000
+        }
+      }
+    },
+    {
+      "id": "retain-publish",
+      "why": "Publication is where a wrong project would actually write into someone else's store, so the context it publishes under is the admitted one. The absurd now_ms proves the answer does not depend on the clock.",
+      "request": {
+        "kind": "retain",
+        "context": {
+          "principal_uid": "uid-a",
+          "lane": "canary",
+          "deployment": "https://gateway.example",
+          "install_id": "install-1",
+          "project": "project-a",
+          "client": "cli:4711",
+          "operation": "solar_processing",
+          "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
+          "idempotency_key": "key-a",
+          "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "admitted_at_ms": 2000
+        },
+        "event": "publish",
+        "now_ms": 9999999999
+      },
+      "expected": {
+        "outcome": "retained",
+        "event": "publish",
+        "context": {
+          "principal_uid": "uid-a",
+          "lane": "canary",
+          "deployment": "https://gateway.example",
+          "install_id": "install-1",
+          "project": "project-a",
+          "client": "cli:4711",
+          "operation": "solar_processing",
+          "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
+          "idempotency_key": "key-a",
+          "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "admitted_at_ms": 2000
+        }
+      }
+    },
+    {
+      "id": "retain-cancel",
+      "why": "Cancellation is an authorized action on a job, not a context change; the record it acts on is unchanged. The absurd now_ms proves the answer does not depend on the clock.",
+      "request": {
+        "kind": "retain",
+        "context": {
+          "principal_uid": "uid-a",
+          "lane": "canary",
+          "deployment": "https://gateway.example",
+          "install_id": "install-1",
+          "project": "project-a",
+          "client": "cli:4711",
+          "operation": "solar_processing",
+          "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
+          "idempotency_key": "key-a",
+          "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "admitted_at_ms": 2000
+        },
+        "event": "cancel",
+        "now_ms": 9999999999
+      },
+      "expected": {
+        "outcome": "retained",
+        "event": "cancel",
+        "context": {
+          "principal_uid": "uid-a",
+          "lane": "canary",
+          "deployment": "https://gateway.example",
+          "install_id": "install-1",
+          "project": "project-a",
+          "client": "cli:4711",
+          "operation": "solar_processing",
+          "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
+          "idempotency_key": "key-a",
+          "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "admitted_at_ms": 2000
+        }
+      }
+    },
+    {
+      "id": "retain-refuses-a-corrupt-context",
+      "why": "The identity function still refuses what is not a context: a row damaged on disk is named rather than carried forward into an effect.",
+      "request": {
+        "kind": "retain",
+        "context": {
+          "principal_uid": "uid-a",
+          "lane": "canary",
+          "deployment": "https://gateway.example",
+          "install_id": "install-1",
+          "project": "",
+          "client": "cli:4711",
+          "operation": "solar_processing",
+          "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
+          "idempotency_key": "key-a",
+          "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "admitted_at_ms": 2000
+        },
+        "event": "restart"
+      },
+      "expected": {
+        "outcome": "refused",
+        "refusal": {
+          "code": "context_corrupt",
+          "message": "execution context field project is not a bounded value"
+        }
+      }
+    },
+    {
+      "id": "capacity-idle-host-admits",
+      "why": "An idle host admits work; capacity is a bound on saturation, not a gate every request must argue with.",
+      "request": {
+        "kind": "capacity",
+        "limits": {
+          "global_running": 4,
+          "per_project_running": 2,
+          "per_project_queued": 3,
+          "global_queued": 8
+        },
+        "running": [],
+        "queued": [],
+        "project": "project-a"
+      },
+      "expected": {
+        "outcome": "admitted"
+      }
+    },
+    {
+      "id": "capacity-busy-running-pool-still-queues",
+      "why": "A full running pool never refuses a submission: the job queues. Confusing 'no free worker' with 'no room' would drop admitted work.",
+      "request": {
+        "kind": "capacity",
+        "limits": {
+          "global_running": 4,
+          "per_project_running": 2,
+          "per_project_queued": 3,
+          "global_queued": 8
+        },
+        "running": [
+          {
+            "project": "project-a"
+          },
+          {
+            "project": "project-a"
+          },
+          {
+            "project": "project-a"
+          },
+          {
+            "project": "project-a"
+          }
+        ],
+        "queued": [],
+        "project": "project-a"
+      },
+      "expected": {
+        "outcome": "admitted"
+      }
+    },
+    {
+      "id": "capacity-project-queue-full",
+      "why": "One project saturating its own queue is refused with typed guidance instead of unbounded allocation, and the guidance grows with the work already waiting.",
+      "request": {
+        "kind": "capacity",
+        "limits": {
+          "global_running": 4,
+          "per_project_running": 2,
+          "per_project_queued": 3,
+          "global_queued": 8
+        },
+        "running": [],
+        "queued": [
+          {
+            "project": "project-a"
+          },
+          {
+            "project": "project-a"
+          },
+          {
+            "project": "project-a"
+          }
+        ],
+        "project": "project-a"
+      },
+      "expected": {
+        "outcome": "refused",
+        "refusal": {
+          "code": "capacity_exhausted",
+          "message": "this project already has 3 of 3 operations waiting",
+          "retry_after_ms": 4000,
+          "scope": "project"
+        }
+      }
+    },
+    {
+      "id": "capacity-other-project-still-admitted",
+      "why": "The point of a per-project bound: while A is saturated, B is admitted normally. A long Solar run must leave room for printing.",
+      "request": {
+        "kind": "capacity",
+        "limits": {
+          "global_running": 4,
+          "per_project_running": 2,
+          "per_project_queued": 3,
+          "global_queued": 8
+        },
+        "running": [],
+        "queued": [
+          {
+            "project": "project-a"
+          },
+          {
+            "project": "project-a"
+          },
+          {
+            "project": "project-a"
+          }
+        ],
+        "project": "project-b"
+      },
+      "expected": {
+        "outcome": "admitted"
+      }
+    },
+    {
+      "id": "capacity-global-queue-full",
+      "why": "Global saturation refuses everyone, including a project with nothing queued, and names only counts and limits — never another project.",
+      "request": {
+        "kind": "capacity",
+        "limits": {
+          "global_running": 4,
+          "per_project_running": 2,
+          "per_project_queued": 3,
+          "global_queued": 8
+        },
+        "running": [],
+        "queued": [
+          {
+            "project": "project-a"
+          },
+          {
+            "project": "project-b"
+          },
+          {
+            "project": "project-a"
+          },
+          {
+            "project": "project-b"
+          },
+          {
+            "project": "project-a"
+          },
+          {
+            "project": "project-b"
+          },
+          {
+            "project": "project-a"
+          },
+          {
+            "project": "project-b"
+          }
+        ],
+        "project": "project-c"
+      },
+      "expected": {
+        "outcome": "refused",
+        "refusal": {
+          "code": "capacity_exhausted",
+          "message": "the server queue is full (8 of 8 waiting)",
+          "retry_after_ms": 9000,
+          "scope": "global"
+        }
+      }
+    },
+    {
+      "id": "capacity-claim-over-share-with-nothing-waiting",
+      "why": "A project may exceed its running share while nothing else is waiting: the machine is used, not idled to defend a share nobody wants.",
+      "request": {
+        "kind": "capacity",
+        "limits": {
+          "global_running": 4,
+          "per_project_running": 2,
+          "per_project_queued": 3,
+          "global_queued": 8
+        },
+        "intent": "claim",
+        "running": [
+          {
+            "project": "project-a"
+          },
+          {
+            "project": "project-a"
+          },
+          {
+            "project": "project-a"
+          }
+        ],
+        "queued": [
+          {
+            "project": "project-a"
+          }
+        ],
+        "project": "project-a"
+      },
+      "expected": {
+        "outcome": "admitted"
+      }
+    },
+    {
+      "id": "capacity-claim-over-share-while-another-waits",
+      "why": "The fairness rule itself: the moment another project has queued work, a project already at its share stops taking new slots.",
+      "request": {
+        "kind": "capacity",
+        "limits": {
+          "global_running": 4,
+          "per_project_running": 2,
+          "per_project_queued": 3,
+          "global_queued": 8
+        },
+        "intent": "claim",
+        "running": [
+          {
+            "project": "project-a"
+          },
+          {
+            "project": "project-a"
+          }
+        ],
+        "queued": [
+          {
+            "project": "project-b"
+          },
+          {
+            "project": "project-a"
+          }
+        ],
+        "project": "project-a"
+      },
+      "expected": {
+        "outcome": "refused",
+        "refusal": {
+          "code": "capacity_exhausted",
+          "message": "this project holds 2 of 2 running slots while other projects are waiting",
+          "retry_after_ms": 2000,
+          "scope": "project"
+        }
+      }
+    },
+    {
+      "id": "capacity-claim-by-the-waiting-project",
+      "why": "The project that was waiting claims freely, so fairness actually moves work rather than merely blocking the other one.",
+      "request": {
+        "kind": "capacity",
+        "limits": {
+          "global_running": 4,
+          "per_project_running": 2,
+          "per_project_queued": 3,
+          "global_queued": 8
+        },
+        "intent": "claim",
+        "running": [
+          {
+            "project": "project-a"
+          },
+          {
+            "project": "project-a"
+          }
+        ],
+        "queued": [
+          {
+            "project": "project-b"
+          }
+        ],
+        "project": "project-b"
+      },
+      "expected": {
+        "outcome": "admitted"
+      }
+    },
+    {
+      "id": "capacity-claim-global-running-full",
+      "why": "Every worker busy refuses the claim globally, whichever project asks, with retry guidance derived from the queue rather than from a clock.",
+      "request": {
+        "kind": "capacity",
+        "limits": {
+          "global_running": 4,
+          "per_project_running": 2,
+          "per_project_queued": 3,
+          "global_queued": 8
+        },
+        "intent": "claim",
+        "running": [
+          {
+            "project": "project-a"
+          },
+          {
+            "project": "project-b"
+          },
+          {
+            "project": "project-c"
+          },
+          {
+            "project": "project-a"
+          }
+        ],
+        "queued": [],
+        "project": "project-b"
+      },
+      "expected": {
+        "outcome": "refused",
+        "refusal": {
+          "code": "capacity_exhausted",
+          "message": "every worker is busy (4 of 4 running)",
+          "retry_after_ms": 1000,
+          "scope": "global"
+        }
+      }
+    },
+    {
+      "id": "capacity-nonsense-limit",
+      "why": "Limits are the host's own configuration, so a zero limit is a host bug and a hard error, never a typed refusal relayed to a client.",
+      "request": {
+        "kind": "capacity",
+        "limits": {
+          "global_running": 0,
+          "per_project_running": 2,
+          "per_project_queued": 3,
+          "global_queued": 8
+        },
+        "running": [],
+        "queued": [],
+        "project": "project-a"
+      },
+      "expected": {
+        "error": "capacity limit global_running must be 1..=4096"
+      }
+    },
+    {
+      "id": "recover-a-row-that-carries-its-context",
+      "why": "The ordinary restart: a row admitted under this slice already carries its context and is reopened exactly as it was stored.",
+      "request": {
+        "kind": "recover",
+        "row": {
+          "id": "1111111111111111111111111111111111111111111111111111111111111111",
+          "owner": "owner-digest",
+          "lane": "canary",
+          "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "engine": "solar_prepared",
+          "input_tag": "ds.solar.calculate.prepared/v1",
+          "phase": "queued",
+          "attempts": 0,
+          "created_at_ms": 1700000000000,
+          "updated_at_ms": 1700000000000,
+          "worker": null,
+          "lease_until_ms": 0,
+          "result_sha256": null,
+          "error": null,
+          "context": {
+            "principal_uid": "uid-a",
+            "lane": "canary",
+            "deployment": "https://gateway.example",
+            "install_id": "install-1",
+            "project": "project-a",
+            "client": "cli:4711",
+            "operation": "solar_processing",
+            "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
+            "idempotency_key": "key-a",
+            "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "admitted_at_ms": 2000
+          }
+        },
+        "principal": {
+          "uid": "uid-a",
+          "lane": "canary",
+          "deployment": "https://gateway.example",
+          "install_id": "install-1"
+        },
+        "saved_project": "project-b",
+        "sealed_project": "project-a",
+        "now_ms": 5000
+      },
+      "expected": {
+        "outcome": "recovered",
+        "provenance": "stored",
+        "context": {
+          "principal_uid": "uid-a",
+          "lane": "canary",
+          "deployment": "https://gateway.example",
+          "install_id": "install-1",
+          "project": "project-a",
+          "client": "cli:4711",
+          "operation": "solar_processing",
+          "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
+          "idempotency_key": "key-a",
+          "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "admitted_at_ms": 2000
+        }
+      }
+    },
+    {
+      "id": "recover-a-stored-context-ignores-the-saved-selection",
+      "why": "Whatever is selected at restart time is irrelevant to a row that already recorded its project; this is the rule that stops a restart from re-homing work.",
+      "request": {
+        "kind": "recover",
+        "row": {
+          "id": "1111111111111111111111111111111111111111111111111111111111111111",
+          "owner": "owner-digest",
+          "lane": "canary",
+          "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "engine": "solar_prepared",
+          "input_tag": "ds.solar.calculate.prepared/v1",
+          "phase": "queued",
+          "attempts": 0,
+          "created_at_ms": 1700000000000,
+          "updated_at_ms": 1700000000000,
+          "worker": null,
+          "lease_until_ms": 0,
+          "result_sha256": null,
+          "error": null,
+          "context": {
+            "principal_uid": "uid-a",
+            "lane": "canary",
+            "deployment": "https://gateway.example",
+            "install_id": "install-1",
+            "project": "project-a",
+            "client": "cli:4711",
+            "operation": "solar_processing",
+            "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
+            "idempotency_key": "key-a",
+            "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "admitted_at_ms": 2000
+          }
+        },
+        "principal": {
+          "uid": "uid-a",
+          "lane": "canary",
+          "deployment": "https://gateway.example",
+          "install_id": "install-1"
+        },
+        "saved_project": "project-b",
+        "now_ms": 5000
+      },
+      "expected": {
+        "outcome": "recovered",
+        "provenance": "stored",
+        "context": {
+          "principal_uid": "uid-a",
+          "lane": "canary",
+          "deployment": "https://gateway.example",
+          "install_id": "install-1",
+          "project": "project-a",
+          "client": "cli:4711",
+          "operation": "solar_processing",
+          "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
+          "idempotency_key": "key-a",
+          "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "admitted_at_ms": 2000
+        }
+      }
+    },
+    {
+      "id": "recover-legacy-solar-row-from-the-sealed-input",
+      "why": "A Solar row written by a released Server has no context, but its sealed input names its project authoritatively, so recovery is exact rather than a guess.",
+      "request": {
+        "kind": "recover",
+        "row": {
+          "id": "1111111111111111111111111111111111111111111111111111111111111111",
+          "owner": "owner-digest",
+          "lane": "canary",
+          "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "engine": "solar_prepared",
+          "input_tag": "ds.solar.calculate.prepared/v1",
+          "phase": "queued",
+          "attempts": 0,
+          "created_at_ms": 1700000000000,
+          "updated_at_ms": 1700000000000,
+          "worker": null,
+          "lease_until_ms": 0,
+          "result_sha256": null,
+          "error": null
+        },
+        "principal": {
+          "uid": "uid-a",
+          "lane": "canary",
+          "deployment": "https://gateway.example",
+          "install_id": "install-1"
+        },
+        "saved_project": "project-b",
+        "sealed_project": "project-a",
+        "now_ms": 5000
+      },
+      "expected": {
+        "outcome": "recovered",
+        "provenance": "sealed_input",
+        "context": {
+          "principal_uid": "uid-a",
+          "lane": "canary",
+          "deployment": "https://gateway.example",
+          "install_id": "install-1",
+          "project": "project-a",
+          "client": "recovery:legacy-row",
+          "operation": "solar_processing",
+          "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
+          "idempotency_key": "recovered",
+          "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "admitted_at_ms": 1700000000000
+        }
+      }
+    },
+    {
+      "id": "recover-legacy-transformer-row-from-the-saved-selection",
+      "why": "A transformer row carries no project by design, so the caller's saved selection is the only honest source; the record says so in its provenance.",
+      "request": {
+        "kind": "recover",
+        "row": {
+          "id": "1111111111111111111111111111111111111111111111111111111111111111",
+          "owner": "owner-digest",
+          "lane": "canary",
+          "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "engine": "fast_lv",
+          "input_tag": "ds.fast-lv.request/v1",
+          "phase": "queued",
+          "attempts": 0,
+          "created_at_ms": 1700000000000,
+          "updated_at_ms": 1700000000000,
+          "worker": null,
+          "lease_until_ms": 0,
+          "result_sha256": null,
+          "error": null
+        },
+        "principal": {
+          "uid": "uid-a",
+          "lane": "canary",
+          "deployment": "https://gateway.example",
+          "install_id": "install-1"
+        },
+        "saved_project": "project-b",
+        "now_ms": 5000
+      },
+      "expected": {
+        "outcome": "recovered",
+        "provenance": "saved_selection",
+        "context": {
+          "principal_uid": "uid-a",
+          "lane": "canary",
+          "deployment": "https://gateway.example",
+          "install_id": "install-1",
+          "project": "project-b",
+          "client": "recovery:legacy-row",
+          "operation": "transformer_processing",
+          "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
+          "idempotency_key": "recovered",
+          "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "admitted_at_ms": 1700000000000
+        }
+      }
+    },
+    {
+      "id": "recover-legacy-transformer-row-without-a-selection",
+      "why": "With nothing to recover a project from, the kernel refuses instead of guessing. Extending admission must not strand a released Server's queue in the wrong project.",
+      "request": {
+        "kind": "recover",
+        "row": {
+          "id": "1111111111111111111111111111111111111111111111111111111111111111",
+          "owner": "owner-digest",
+          "lane": "canary",
+          "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "engine": "fast_lv",
+          "input_tag": "ds.fast-lv.request/v1",
+          "phase": "queued",
+          "attempts": 0,
+          "created_at_ms": 1700000000000,
+          "updated_at_ms": 1700000000000,
+          "worker": null,
+          "lease_until_ms": 0,
+          "result_sha256": null,
+          "error": null
+        },
+        "principal": {
+          "uid": "uid-a",
+          "lane": "canary",
+          "deployment": "https://gateway.example",
+          "install_id": "install-1"
+        },
+        "now_ms": 5000
+      },
+      "expected": {
+        "outcome": "refused",
+        "refusal": {
+          "code": "context_unrecoverable",
+          "message": "that row predates execution contexts and no project was selected to recover it into"
+        }
+      }
+    },
+    {
+      "id": "recover-legacy-solar-row-without-its-sealed-project",
+      "why": "A Solar row's project comes from its bytes, never from a selection: if the host could not read the sealed input, the row stays unrecovered.",
+      "request": {
+        "kind": "recover",
+        "row": {
+          "id": "1111111111111111111111111111111111111111111111111111111111111111",
+          "owner": "owner-digest",
+          "lane": "canary",
+          "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "engine": "solar_prepared",
+          "input_tag": "ds.solar.calculate.prepared/v1",
+          "phase": "queued",
+          "attempts": 0,
+          "created_at_ms": 1700000000000,
+          "updated_at_ms": 1700000000000,
+          "worker": null,
+          "lease_until_ms": 0,
+          "result_sha256": null,
+          "error": null
+        },
+        "principal": {
+          "uid": "uid-a",
+          "lane": "canary",
+          "deployment": "https://gateway.example",
+          "install_id": "install-1"
+        },
+        "saved_project": "project-b",
+        "now_ms": 5000
+      },
+      "expected": {
+        "outcome": "refused",
+        "refusal": {
+          "code": "context_unrecoverable",
+          "message": "that row predates execution contexts and its sealed input names no project"
+        }
+      }
+    },
+    {
+      "id": "recover-stored-context-contradicted-by-the-sealed-input",
+      "why": "If a stored context and the sealed bytes disagree about the project, something rewrote one of them; recovery refuses rather than picking a winner.",
+      "request": {
+        "kind": "recover",
+        "row": {
+          "id": "1111111111111111111111111111111111111111111111111111111111111111",
+          "owner": "owner-digest",
+          "lane": "canary",
+          "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "engine": "solar_prepared",
+          "input_tag": "ds.solar.calculate.prepared/v1",
+          "phase": "queued",
+          "attempts": 0,
+          "created_at_ms": 1700000000000,
+          "updated_at_ms": 1700000000000,
+          "worker": null,
+          "lease_until_ms": 0,
+          "result_sha256": null,
+          "error": null,
+          "context": {
+            "principal_uid": "uid-a",
+            "lane": "canary",
+            "deployment": "https://gateway.example",
+            "install_id": "install-1",
+            "project": "project-a",
+            "client": "cli:4711",
+            "operation": "solar_processing",
+            "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
+            "idempotency_key": "key-a",
+            "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "admitted_at_ms": 2000
+          }
+        },
+        "principal": {
+          "uid": "uid-a",
+          "lane": "canary",
+          "deployment": "https://gateway.example",
+          "install_id": "install-1"
+        },
+        "sealed_project": "project-b",
+        "now_ms": 5000
+      },
+      "expected": {
+        "outcome": "refused",
+        "refusal": {
+          "code": "scope_mismatch",
+          "message": "that row's sealed input was prepared for another project"
+        }
+      }
+    },
+    {
+      "id": "recover-a-row-from-another-lane",
+      "why": "Canary and stable keep separate state; a row from the other lane is never reopened under this principal even from the same state directory.",
+      "request": {
+        "kind": "recover",
+        "row": {
+          "id": "1111111111111111111111111111111111111111111111111111111111111111",
+          "owner": "owner-digest",
+          "lane": "stable",
+          "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "engine": "fast_lv",
+          "input_tag": "ds.fast-lv.request/v1",
+          "phase": "queued",
+          "attempts": 0,
+          "created_at_ms": 1700000000000,
+          "updated_at_ms": 1700000000000,
+          "worker": null,
+          "lease_until_ms": 0,
+          "result_sha256": null,
+          "error": null
+        },
+        "principal": {
+          "uid": "uid-a",
+          "lane": "canary",
+          "deployment": "https://gateway.example",
+          "install_id": "install-1"
+        },
+        "saved_project": "project-b",
+        "now_ms": 5000
+      },
+      "expected": {
+        "outcome": "refused",
+        "refusal": {
+          "code": "principal_mismatch",
+          "message": "that row belongs to another deployment lane"
+        }
+      }
+    },
+    {
+      "id": "recover-a-row-admitted-by-another-account",
+      "why": "An identity switch on the host does not inherit the previous account's queue; the stored principal is the fence and it is checked before the project.",
+      "request": {
+        "kind": "recover",
+        "row": {
+          "id": "1111111111111111111111111111111111111111111111111111111111111111",
+          "owner": "owner-digest",
+          "lane": "canary",
+          "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "engine": "solar_prepared",
+          "input_tag": "ds.solar.calculate.prepared/v1",
+          "phase": "queued",
+          "attempts": 0,
+          "created_at_ms": 1700000000000,
+          "updated_at_ms": 1700000000000,
+          "worker": null,
+          "lease_until_ms": 0,
+          "result_sha256": null,
+          "error": null,
+          "context": {
+            "principal_uid": "uid-b",
+            "lane": "canary",
+            "deployment": "https://gateway.example",
+            "install_id": "install-1",
+            "project": "project-a",
+            "client": "cli:4711",
+            "operation": "solar_processing",
+            "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
+            "idempotency_key": "key-a",
+            "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "admitted_at_ms": 2000
+          }
+        },
+        "principal": {
+          "uid": "uid-a",
+          "lane": "canary",
+          "deployment": "https://gateway.example",
+          "install_id": "install-1"
+        },
+        "now_ms": 5000
+      },
+      "expected": {
+        "outcome": "refused",
+        "refusal": {
+          "code": "principal_mismatch",
+          "message": "that row was admitted under another authenticated identity"
+        }
+      }
+    },
+    {
+      "id": "recover-a-row-that-is-not-a-job",
+      "why": "Whatever else is on disk, only a durable compute job row recovers; anything else is named unrecoverable rather than parsed hopefully.",
+      "request": {
+        "kind": "recover",
+        "row": {
+          "id": "1111111111111111111111111111111111111111111111111111111111111111",
+          "project": "project-a"
+        },
+        "principal": {
+          "uid": "uid-a",
+          "lane": "canary",
+          "deployment": "https://gateway.example",
+          "install_id": "install-1"
+        },
+        "saved_project": "project-b",
+        "now_ms": 5000
+      },
+      "expected": {
+        "outcome": "refused",
+        "refusal": {
+          "code": "context_unrecoverable",
+          "message": "that row is not a durable compute job"
+        }
+      }
+    },
+    {
+      "id": "wire-unknown-op",
+      "why": "The op vocabulary is closed at the wire: a request for a decision this owner does not make is refused before anything is evaluated.",
+      "request": {
+        "kind": "reassign",
+        "context": {
+          "principal_uid": "uid-a",
+          "lane": "canary",
+          "deployment": "https://gateway.example",
+          "install_id": "install-1",
+          "project": "project-a",
+          "client": "cli:4711",
+          "operation": "solar_processing",
+          "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
+          "idempotency_key": "key-a",
+          "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "admitted_at_ms": 2000
+        }
+      },
+      "expected": {
+        "error": "invalid execution context request: unknown variant `reassign`, expected one of `admit`, `visible`, `retain`, `capacity`, `recover` at line 1 column 59"
+      }
+    },
+    {
+      "id": "wire-unknown-member",
+      "why": "Every op body denies unknown fields, so a host cannot smuggle an extra input past a decision by adding a member the kernel ignores.",
+      "request": {
+        "kind": "retain",
+        "context": {
+          "principal_uid": "uid-a",
+          "lane": "canary",
+          "deployment": "https://gateway.example",
+          "install_id": "install-1",
+          "project": "project-a",
+          "client": "cli:4711",
+          "operation": "solar_processing",
+          "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
+          "idempotency_key": "key-a",
+          "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "admitted_at_ms": 2000
+        },
+        "event": "retry",
+        "override_project": "project-b"
+      },
+      "expected": {
+        "error": "invalid execution context request: unknown field `override_project`, expected one of `context`, `event`, `now_ms` at line 1 column 501"
+      }
+    },
+    {
+      "id": "wire-unknown-retain-event",
+      "why": "The lifecycle events that must not change a context are enumerated; an event outside the list is not silently treated as harmless.",
+      "request": {
+        "kind": "retain",
+        "context": {
+          "principal_uid": "uid-a",
+          "lane": "canary",
+          "deployment": "https://gateway.example",
+          "install_id": "install-1",
+          "project": "project-a",
+          "client": "cli:4711",
+          "operation": "solar_processing",
+          "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
+          "idempotency_key": "key-a",
+          "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "admitted_at_ms": 2000
+        },
+        "event": "reassign_project"
+      },
+      "expected": {
+        "error": "invalid execution context request: unknown variant `reassign_project`, expected one of `retry`, `restart`, `claim`, `publish`, `cancel` at line 1 column 481"
+      }
+    },
+    {
+      "schema": "ds.execution-context/v0",
+      "id": "wire-wrong-schema",
+      "why": "The schema is the contract's version; a request stamped with anything else is refused rather than interpreted under this version's rules.",
+      "request": {
+        "kind": "retain",
+        "context": {
+          "principal_uid": "uid-a",
+          "lane": "canary",
+          "deployment": "https://gateway.example",
+          "install_id": "install-1",
+          "project": "project-a",
+          "client": "cli:4711",
+          "operation": "solar_processing",
+          "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
+          "idempotency_key": "key-a",
+          "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "admitted_at_ms": 2000
+        },
+        "event": "retry"
+      },
+      "expected": {
+        "error": "unsupported execution context schema; expected ds.execution-context/v1"
+      }
+    }
+  ]
+}
