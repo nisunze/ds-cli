@@ -30,5 +30,6 @@ ds-report-host = { path = "../../../ds-web/crates/ds-report-host" }
 # ds.print-context/v1 document are ds-project-data's; the governed provider
 # door and the bundle fetch are the ones `ds data project-cache seed` lends it.
 ds-project-data = { path = "../../../ds-web/crates/ds-project-data" }
+ds-layer-store = { path = "../../../ds-web/crates/ds-layer-store" }
 ds-cli-data = { workspace = true }
 tempfile = "3"

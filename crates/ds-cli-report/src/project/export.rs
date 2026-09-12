@@ -736,7 +736,9 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             Err(reason) => {
                 context_warnings.push(json!({
                     "code": CONTEXT_CATALOG.code,
-                    "message": format!("catalogue context layers were omitted: {reason}"),
+                    "message": format!(
+                        "the reference catalogue could not be read ({reason}); catalogue layers print from the rooms this machine already holds, and nothing is acquired for them"
+                    ),
                 }));
                 Vec::new()
             }
@@ -752,6 +754,17 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let holdings_scope = ds_command_kernel::project_dataset_cache::Scope {
         principal: inventory.identity().uid().to_string(),
         project: project_id.clone(),
+    };
+    // Without a catalogue, a `catalog` context source can still be located: a
+    // held room records the resource it subsets. Reading it needs no version
+    // check — nothing is downloaded or acquired against a row nobody verified.
+    let catalog = if catalog.is_empty() && !contexts.is_empty() {
+        match holdings_root.as_deref() {
+            Some(root) => held_catalog_rooms(root, &holdings_scope),
+            None => Vec::new(),
+        }
+    } else {
+        catalog
     };
     let mut provider = ds_cli_data::project_cache::CliProvider { lane };
     let mut bundle_fetch = ds_cli_data::project_cache::bundle_fetch(lane);
@@ -952,6 +965,47 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         "notes": transformer_context_notes,
     });
     Ok(output)
+}
+
+/// The catalogue rows this machine's held rooms stand in for, when the
+/// catalogue itself cannot be read: identity and layer only, from the room's
+/// own dataset parameters. Never downloadable, never verified — a read-only
+/// stand-in that lets held subsets print.
+fn held_catalog_rooms(
+    root: &Path,
+    scope: &ds_command_kernel::project_dataset_cache::Scope,
+) -> Vec<ds_project_data::ReferenceResource> {
+    let Ok(inventory) = ds_layer_store::project_dataset_cache::project_inventory(
+        root,
+        &scope.principal,
+        &scope.project,
+    ) else {
+        return Vec::new();
+    };
+    let mut rows = Vec::new();
+    for room in inventory["rooms"].as_array().into_iter().flatten() {
+        if room["provider"] != ds_command_kernel::project_dataset_cache::REFERENCE_CACHE_PROVIDER {
+            continue;
+        }
+        let (Some(id), Some(layer), Some(country)) = (
+            room["dataset_id"].as_str(),
+            room["parameters"]["layer"].as_str(),
+            room["parameters"]["country"].as_str(),
+        ) else {
+            continue;
+        };
+        rows.push(ds_project_data::ReferenceResource {
+            id: id.to_string(),
+            version: room["source_version"].as_str().unwrap_or("").to_string(),
+            label: layer.to_string(),
+            layer: layer.to_string(),
+            country: country.to_string(),
+            kind: "bigquery".to_string(),
+            active: true,
+            ..Default::default()
+        });
+    }
+    rows
 }
 
 /// The context layers the selected printing setups need, decided once by the
