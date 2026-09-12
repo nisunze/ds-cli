@@ -483,9 +483,15 @@ fn admitted<T>(
             now_ms,
         })
     };
-    match attempt(&sessions.membership(now_ms)?) {
+    let membership = sessions.membership(now_ms)?;
+    // A snapshot this call fetched itself is already the answer; only one the
+    // cache handed over is worth asking the directory about again, so a
+    // caller naming a project it will never be a member of costs one fetch,
+    // not one per attempt.
+    let cached = membership.fetched_at_ms != now_ms;
+    match attempt(&membership) {
         Ok(value) => Ok(value),
-        Err(error) if error.code() == Some("project_not_visible") => {
+        Err(error) if cached && error.code() == Some("project_not_visible") => {
             attempt(&sessions.membership_now(now_ms)?).map_err(|error| {
                 sessions.forget_membership();
                 sessions::submit_failure(&error)
