@@ -203,14 +203,16 @@ Server's document is on another project than the one named),
 above. Nothing here pretends a renderer mounted anything: `writes` name the
 layout word a renderer would apply to each runtime layer.
 
-**One limitation to know before you rely on it.** The project is required
-and checked against the document that comes back, so a layer answer is never
-served under the wrong project. But the Server's document source still reads
-its account's saved selection to decide *which* project's document to fetch,
-so naming a second project answers `project_context_changed` — naming both
-projects — rather than that project's catalogue. Layers are therefore single-project per Server today, safely rather
-than silently. Closing it is a `ds-cli-auth` change (an explicit-project layer
-fence), not a Server one.
+**Any project this account can read, on one running host.** The project is
+required, and the document source is opened *for that project*
+(`ds-cli-auth`'s explicit-project layer fence): the saved selection is not read
+on this path at all, so two of the owner's projects are listed, hidden and
+reordered side by side through one Server with no switching and no restart.
+The named project is then held against the document that comes back — one that
+answers about another project is `project_context_changed`, naming both, and
+nothing is written. A project the account cannot read is refused where the
+account is established (`auth_rejected`), not filtered out of a directory this
+host does not hold.
 
 Browser-to-Server layer control is **not** provided: the connection bearer is
 an owner-only local control credential and must not reach a web visitor. The
