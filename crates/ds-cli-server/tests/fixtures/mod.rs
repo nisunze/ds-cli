@@ -1,15 +1,15 @@
 //! The isolation proof's harness: a REAL Server, on a REAL loopback listener,
-//! over a fixture identity, a fixture project directory and a fixture layer
-//! document source — and no gateway at all.
+//! over a fixture identity and a fixture layer document source — and no
+//! gateway, no directory and no upstream at all.
 //!
 //! Nothing here decides anything. The kernel admits, the durable store on disk
 //! answers, and the Server's own routes are the boundary every assertion is
-//! made at. What the fixtures replace is exactly the three things a machine
+//! made at. What the fixtures replace is exactly the two things a machine
 //! with no Canary login cannot have: the authenticated native identity
-//! (`HostIdentity`), the project directory a membership snapshot is fetched
-//! from (`ProjectDirectory`), and the Sync Center gateway session
-//! (`SessionOpener`, which here refuses, so a route that must not need one is
-//! proven by never reaching it).
+//! (`HostIdentity`) and the Sync Center gateway session (`SessionOpener`,
+//! which here refuses, so a route that must not need one is proven by never
+//! reaching it). There is deliberately no project directory of any kind: the
+//! Server holds none, so the proof constructs none.
 //!
 //! `tests/fixtures/legacy-queue.sqlite` is a durable queue exactly as a Server
 //! released BEFORE this slice wrote it: two `compute_jobs` rows whose stored
@@ -26,7 +26,7 @@ use std::{
     io::Read,
     net::SocketAddr,
     path::{Path, PathBuf},
-    sync::{Arc, Mutex, OnceLock},
+    sync::{Arc, OnceLock},
     time::{Duration, Instant},
 };
 
@@ -37,17 +37,17 @@ use ds_cli_server::host::{App, Connection};
 use ds_cli_server::layers::LayerHost;
 use ds_cli_server::server_sync::{
     ServerSyncSession,
-    sessions::{ProjectDirectory, ServerSessions, SessionOpener},
+    sessions::{ServerSessions, SessionOpener},
 };
-use ds_command_kernel::execution_context::{Limits, Membership, Principal};
-use ds_compute_runtime::{self as runtime, Authorizer, HostIdentity, MembershipSource};
+use ds_command_kernel::execution_context::{Limits, Principal};
+use ds_compute_runtime::{self as runtime, Authorizer, HostIdentity};
 use ds_layer_ops::{DocumentRead, LayerDocuments, Order, OrderReceipt, Preferences, Scope};
 use serde_json::{Value, json};
 
 pub const A: &str = "project-a";
 pub const B: &str = "project-b";
 pub const C: &str = "project-c";
-/// A project no directory in this harness ever returns.
+/// A project no request in this harness ever hands work in for.
 pub const OUTSIDE: &str = "project-z";
 pub const UID: &str = "uid-a";
 pub const OWNER: &str = "test-owner";
@@ -56,39 +56,7 @@ pub const LANE: &str = "stable";
 /// The city the checked-in sealed Solar envelope was prepared for.
 pub const SOLAR_CITY: &str = "aderm_bere";
 
-// ── the three fixture boundaries ────────────────────────────────────────
-
-/// The projects this account may act in, changeable while the Server runs.
-/// It is both what `ServerSessions` fetches a membership snapshot from and
-/// what a worker re-checks a running job's project against.
-pub struct Directory(pub Mutex<Vec<String>>);
-impl Directory {
-    pub fn new(projects: &[&str]) -> Arc<Self> {
-        Arc::new(Self(Mutex::new(
-            projects.iter().map(|p| (*p).to_owned()).collect(),
-        )))
-    }
-    pub fn revoke(&self, project: &str) {
-        self.0.lock().unwrap().retain(|held| held != project);
-    }
-    pub fn grant(&self, project: &str) {
-        self.0.lock().unwrap().push(project.to_owned());
-    }
-}
-impl ProjectDirectory for Directory {
-    fn projects(&self) -> Result<Vec<String>, Failure> {
-        Ok(self.0.lock().unwrap().clone())
-    }
-}
-impl MembershipSource for Directory {
-    fn snapshot(&self, now_ms: u64) -> Result<Membership, String> {
-        Ok(Membership {
-            projects: self.0.lock().unwrap().clone(),
-            fetched_at_ms: now_ms,
-            ttl_ms: 600_000,
-        })
-    }
-}
+// ── the two fixture boundaries ──────────────────────────────────────────
 
 /// No gateway anywhere in this proof. A route that needs one says so; every
 /// route that must not need one is proven by never reaching this.
@@ -213,7 +181,6 @@ pub struct Host {
     pub prefs: tempfile::TempDir,
     pub address: SocketAddr,
     pub token: String,
-    pub directory: Arc<Directory>,
     pub identity: HostIdentity,
     pub limits: Limits,
     pub app: App,
@@ -254,29 +221,20 @@ pub const fn limits() -> Limits {
 }
 
 impl Host {
-    /// A Server for the given member projects, with a layer document under
-    /// `layer_project`, listening on a free loopback port.
-    pub fn start(projects: &[&str], limits: Limits, layer_project: &str) -> Self {
-        Self::start_with(projects, limits, layer_project, None)
+    /// A Server with a layer document under `layer_project`, listening on a
+    /// free loopback port. No project is declared to it beforehand: there is
+    /// no directory, so callers name theirs and that is the whole of it.
+    pub fn start(limits: Limits, layer_project: &str) -> Self {
+        Self::start_with(limits, layer_project, None)
     }
 
     /// The same, over a store.sqlite that is already on disk (the legacy
     /// queue fixture).
-    pub fn start_over(
-        projects: &[&str],
-        limits: Limits,
-        layer_project: &str,
-        queue: &Path,
-    ) -> Self {
-        Self::start_with(projects, limits, layer_project, Some(queue))
+    pub fn start_over(limits: Limits, layer_project: &str, queue: &Path) -> Self {
+        Self::start_with(limits, layer_project, Some(queue))
     }
 
-    fn start_with(
-        projects: &[&str],
-        limits: Limits,
-        layer_project: &str,
-        queue: Option<&Path>,
-    ) -> Self {
+    fn start_with(limits: Limits, layer_project: &str, queue: Option<&Path>) -> Self {
         let state = tempfile::tempdir().expect("state directory");
         let prefs = tempfile::tempdir().expect("preference root");
         if let Some(queue) = queue {
@@ -284,7 +242,6 @@ impl Host {
         }
         let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("loopback port");
         let address = listener.local_addr().expect("bound address");
-        let directory = Directory::new(projects);
         let identity = identity(UID, LANE);
         let app = build_app(
             state.path(),
@@ -293,7 +250,6 @@ impl Host {
             LANE,
             identity.clone(),
             limits,
-            directory.clone(),
             Arc::new(LayerFixture {
                 project: layer_project.to_owned(),
                 root: prefs.path().to_owned(),
@@ -306,7 +262,6 @@ impl Host {
             prefs,
             address,
             token,
-            directory,
             identity,
             limits,
             app,
@@ -349,7 +304,6 @@ impl Host {
             LANE,
             self.identity.clone(),
             self.limits,
-            self.directory.clone(),
             Arc::new(LayerFixture {
                 project: layer_project.to_owned(),
                 root: self.prefs.path().to_owned(),
@@ -378,7 +332,6 @@ impl Host {
             lane,
             identity_of(owner, uid, lane),
             self.limits,
-            self.directory.clone(),
             Arc::new(LayerFixture {
                 project: A.to_owned(),
                 root: prefs.path().to_owned(),
@@ -399,7 +352,9 @@ impl Host {
     }
 
     /// A worker pool over this Server's queue, exactly as `serve` starts one:
-    /// it recovers every row's context before any worker can claim.
+    /// it recovers every row's context before any worker can claim, and the
+    /// projects it may run are the Server's own answer — the owner's durable
+    /// work — never a directory.
     pub fn workers(
         &self,
         auth: Arc<dyn Authorizer>,
@@ -412,7 +367,7 @@ impl Host {
                 identity: self.identity.clone(),
                 limits: self.limits,
                 auth,
-                membership: self.directory.clone(),
+                membership: self.app.sessions.clone(),
                 observer: None,
                 saved_project: saved_project.map(str::to_owned),
             }),
@@ -479,52 +434,40 @@ impl Drop for Loopback {
     }
 }
 
-#[allow(clippy::too_many_arguments)]
 fn build_app(
-    directory_path: &Path,
+    state_path: &Path,
     database: PathBuf,
     address: SocketAddr,
     lane: &str,
     identity: HostIdentity,
     limits: Limits,
-    projects: Arc<Directory>,
     layers: Arc<LayerFixture>,
 ) -> App {
     build_app_as(
-        directory_path,
-        database,
-        address,
-        OWNER,
-        lane,
-        identity,
-        limits,
-        projects,
-        layers,
+        state_path, database, address, OWNER, lane, identity, limits, layers,
     )
 }
 
 #[allow(clippy::too_many_arguments)]
 fn build_app_as(
-    directory_path: &Path,
+    state_path: &Path,
     database: PathBuf,
     address: SocketAddr,
     owner: &str,
     lane: &str,
     identity: HostIdentity,
     limits: Limits,
-    projects: Arc<Directory>,
     layers: Arc<LayerFixture>,
 ) -> App {
-    owner_only(directory_path);
+    owner_only(state_path);
     let connection =
-        ds_cli_server::host::connection(directory_path, address, owner.to_owned(), lane.to_owned())
+        ds_cli_server::host::connection(state_path, address, owner.to_owned(), lane.to_owned())
             .expect("protected connection");
     let sessions = ServerSessions::with(
         connection.clone(),
         database.clone(),
         limits,
         identity,
-        projects,
         Arc::new(NoGateway),
     );
     App {

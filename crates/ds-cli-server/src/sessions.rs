@@ -1,19 +1,27 @@
-//! One Server, one authenticated principal, many authorized projects.
+//! One Server, one authenticated owner, many of that owner's projects.
 //!
 //! Before this slice the Server captured `ds auth project use`'s saved
 //! selection once, at `serve`, and every operation inherited it: one project
 //! per process, and a second project meant a restart. That is the thing this
 //! module removes. What the Server holds now is a connection — an account, a
-//! lane, a deployment and an install — and per-operation it asks the kernel
-//! which project the operation is about, from a freshly fetched membership
-//! snapshot. A Sync Center session is opened lazily for each admitted project
-//! and cached under (principal, project), so Solar for one project, a report
-//! for a second and a layer read for a third are three contexts on one host.
+//! lane, a deployment and an install — and per operation it asks the kernel
+//! to record which project the operation is about. A Sync Center session is
+//! opened lazily for each admitted project and cached under (principal,
+//! project), so Solar for one project, a report for a second and a layer read
+//! for a third are three contexts on one host.
+//!
+//! The Server is the desktop's core and stands on the desktop's side of the
+//! one boundary with ds-brain: it holds **no project directory**, fetches
+//! none, caches none and refreshes none to admit work. The owner hands it work
+//! that names a project (a sealed Solar input's project outranks the name),
+//! the kernel records the immutable context, and entitlement is enforced by
+//! the gateway where an effect crosses to the cloud — publication and sync —
+//! exactly as the desktop behaves. Admission, queueing, execution and recovery
+//! therefore need no upstream at all.
 //!
 //! Nothing here decides. `execution_context::admit` decides; this module
-//! fetches the membership it decides from, caches it for a bounded time,
-//! refetches it once when a decision made from a cached snapshot was refused,
-//! and relays the refusal by its own name.
+//! hands it the connection identity and the named project, and relays the
+//! refusal by its own name.
 
 use std::{
     collections::BTreeMap,
@@ -27,29 +35,18 @@ use std::{
 use ds_cli_contract::{Failure, outcome::ExitClass};
 use ds_command_kernel::execution_context::{
     self, AdmitRequest, CAPACITY_EXHAUSTED, CONTEXT_CORRUPT, CONTEXT_UNRECOVERABLE,
-    ExecutionContext, Limits, Membership, NOT_FOUND, NOT_VISIBLE, PAYLOAD_CHANGED_FOR_KEY,
-    PRINCIPAL_MISMATCH, PROJECT_NOT_VISIBLE, PROJECT_REQUIRED, Refusal, SCOPE_MISMATCH,
-    SCOPE_MISMATCH_FOR_KEY,
+    ExecutionContext, Limits, MAX_MEMBERSHIP_TTL_MS, Membership, NOT_FOUND, NOT_VISIBLE,
+    PAYLOAD_CHANGED_FOR_KEY, PRINCIPAL_MISMATCH, PROJECT_NOT_VISIBLE, PROJECT_REQUIRED, Refusal,
+    SCOPE_MISMATCH, SCOPE_MISMATCH_FOR_KEY,
 };
-use ds_compute_runtime::{HostIdentity, MembershipSource, SubmitError, digest};
+use ds_compute_runtime::{self as runtime, HostIdentity, MembershipSource, SubmitError, digest};
 
 use crate::{host::Connection, server_sync::ServerSyncSession};
 
-/// How long a membership snapshot may be reused before it is fetched again.
-/// The kernel enforces it too — the snapshot carries the same `ttl_ms` — so a
-/// host that stopped refreshing cannot admit from a stale one either.
-pub const MEMBERSHIP_TTL_MS: u64 = 10 * 60 * 1_000;
-
-/// One Server serves one authenticated principal. A request that names
-/// another one is told so, explicitly, instead of being quietly served under
-/// the Server's account.
+/// One Server serves one authenticated owner. A request that names another
+/// one is told so, explicitly, instead of being quietly served under the
+/// Server's account. Many users are many machines, never one process.
 pub const MULTI_PRINCIPAL_UNSUPPORTED: &str = "multi_principal_unsupported";
-
-/// The projects this native account may act in, freshly fetched — the same
-/// directory `ds auth project use` verifies a selection against.
-pub trait ProjectDirectory: Send + Sync + 'static {
-    fn projects(&self) -> Result<Vec<String>, Failure>;
-}
 
 /// How a per-project Sync Center session is opened. Production opens the
 /// native gateway session; a test opens nothing and says so.
@@ -60,15 +57,6 @@ pub trait SessionOpener: Send + Sync + 'static {
         connection: &Connection,
         project: &str,
     ) -> Result<Arc<ServerSyncSession>, String>;
-}
-
-struct NativeDirectory {
-    lane: String,
-}
-impl ProjectDirectory for NativeDirectory {
-    fn projects(&self) -> Result<Vec<String>, Failure> {
-        ds_cli_auth::headless_projects(&self.lane)
-    }
 }
 
 struct NativeOpener;
@@ -104,18 +92,17 @@ pub struct ServerSessions {
     database: PathBuf,
     limits: Limits,
     identity: HostIdentity,
-    directory: Arc<dyn ProjectDirectory>,
     opener: Arc<dyn SessionOpener>,
-    membership: Mutex<Option<Membership>>,
     sessions: Mutex<BTreeMap<(String, String), Arc<ServerSyncSession>>>,
     reads: AtomicU64,
 }
 
 impl ServerSessions {
     /// The production binding: the connection's own account, lane, deployment
-    /// and registered install, with no project anywhere in it. This performs
-    /// no network call and requires no saved selection, so `ds server serve`
-    /// starts for an account that has never run `ds auth project use`.
+    /// and registered install, with no project anywhere in it. It reads the
+    /// protected native state and nothing else — no network, no directory,
+    /// no saved selection — so `ds server serve` starts for an account that
+    /// has never run `ds auth project use`, and starts with no upstream.
     pub fn native(
         connection: Connection,
         database: PathBuf,
@@ -132,15 +119,11 @@ impl ServerSessions {
                 install_id: principal.install_id().to_owned(),
             },
         };
-        let directory = Arc::new(NativeDirectory {
-            lane: connection.lane.clone(),
-        });
         Ok(Self::with(
             connection,
             database,
             limits,
             identity,
-            directory,
             Arc::new(NativeOpener),
         ))
     }
@@ -150,7 +133,6 @@ impl ServerSessions {
         database: PathBuf,
         limits: Limits,
         identity: HostIdentity,
-        directory: Arc<dyn ProjectDirectory>,
         opener: Arc<dyn SessionOpener>,
     ) -> Arc<Self> {
         Arc::new(Self {
@@ -158,9 +140,7 @@ impl ServerSessions {
             database,
             limits,
             identity,
-            directory,
             opener,
-            membership: Mutex::new(None),
             sessions: Mutex::new(BTreeMap::new()),
             reads: AtomicU64::new(0),
         })
@@ -176,75 +156,34 @@ impl ServerSessions {
         &self.identity.principal.uid
     }
 
-    /// A membership snapshot, fetched at most every [`MEMBERSHIP_TTL_MS`].
-    pub fn membership(&self, now_ms: u64) -> Result<Membership, Failure> {
-        let cached = {
-            let held = self.membership.lock().map_err(|_| unavailable())?;
-            held.clone()
-        };
-        if let Some(snapshot) = cached
-            && now_ms >= snapshot.fetched_at_ms
-            && now_ms - snapshot.fetched_at_ms < MEMBERSHIP_TTL_MS
-        {
-            return Ok(snapshot);
-        }
-        self.fetch_membership(now_ms)
-    }
-
-    fn fetch_membership(&self, now_ms: u64) -> Result<Membership, Failure> {
-        let snapshot = Membership {
-            projects: self.directory.projects()?,
-            fetched_at_ms: now_ms,
-            ttl_ms: MEMBERSHIP_TTL_MS,
-        };
-        *self.membership.lock().map_err(|_| unavailable())? = Some(snapshot.clone());
-        Ok(snapshot)
-    }
-
-    /// A snapshot fetched now, whatever the cache said. Used on the second
-    /// try after a refusal, so a project granted a moment ago is admitted on
-    /// the call that names it rather than on the one after.
-    pub fn membership_now(&self, now_ms: u64) -> Result<Membership, Failure> {
-        self.fetch_membership(now_ms)
-    }
-
-    /// Forget the cached snapshot; the next question fetches a fresh one.
-    pub fn forget_membership(&self) {
-        if let Ok(mut held) = self.membership.lock() {
-            *held = None;
-        }
-    }
-
-    /// Admit one operation under one verified project, or refuse it by name.
-    ///
-    /// A refusal decided from a *cached* snapshot is retried once against a
-    /// freshly fetched one — a project added a minute ago must not have to
-    /// wait out the cache — and a refusal that survives that is the answer.
-    pub fn admit(&self, request: &Request<'_>) -> Result<ExecutionContext, Failure> {
-        let cached = self
-            .membership
-            .lock()
-            .ok()
-            .and_then(|held| held.clone())
-            .is_some();
-        let membership = self.membership(request.now_ms)?;
-        match self.decide(request, &membership) {
-            Ok(context) => Ok(context),
-            Err(failure) if cached && failure.code() == PROJECT_NOT_VISIBLE => {
-                let fresh = self.fetch_membership(request.now_ms)?;
-                self.decide(request, &fresh)
-            }
-            Err(failure) => Err(failure),
-        }
-    }
-
-    fn decide(
+    /// The kernel's membership input for one admission, satisfied by exactly
+    /// the projects the request names. The Server holds no directory: the
+    /// owner of this connection is entitled to hand it work for any project,
+    /// and the gateway — not this host — decides at publication and sync
+    /// whether that project's effects may leave the machine. Stamped now and
+    /// given the kernel's own maximum life, so no freshness rule can refuse
+    /// a name the owner just typed.
+    pub fn named<'a>(
         &self,
-        request: &Request<'_>,
-        membership: &Membership,
-    ) -> Result<ExecutionContext, Failure> {
-        let job_id =
-            ds_compute_runtime::job_id(&self.identity.owner, self.identity.lane(), request.key);
+        now_ms: u64,
+        projects: impl IntoIterator<Item = Option<&'a str>>,
+    ) -> Membership {
+        let mut named: Vec<String> = Vec::new();
+        for project in projects.into_iter().flatten() {
+            if !named.iter().any(|known| known == project) {
+                named.push(project.to_owned());
+            }
+        }
+        Membership {
+            projects: named,
+            fetched_at_ms: now_ms,
+            ttl_ms: MAX_MEMBERSHIP_TTL_MS,
+        }
+    }
+
+    /// Admit one operation under the project it names, or refuse it by name.
+    pub fn admit(&self, request: &Request<'_>) -> Result<ExecutionContext, Failure> {
+        let job_id = runtime::job_id(&self.identity.owner, self.identity.lane(), request.key);
         execution_context::admit(&AdmitRequest {
             now_ms: request.now_ms,
             principal: self.identity.principal.clone(),
@@ -256,7 +195,10 @@ impl ServerSessions {
             requested_project: request.requested_project.map(str::to_owned),
             saved_project: None,
             sealed_project: request.sealed_project.map(str::to_owned),
-            membership: membership.clone(),
+            membership: self.named(
+                request.now_ms,
+                [request.requested_project, request.sealed_project],
+            ),
             existing: None,
         })
         .map(|admitted| admitted.context().clone())
@@ -334,24 +276,53 @@ impl ServerSessions {
             .map(|held| held.keys().map(|(_, project)| project.clone()).collect())
             .unwrap_or_default()
     }
+
+    /// Every project this owner has handed this Server durable work for, read
+    /// from the rows themselves. Local, unnarrowed, and the only "directory"
+    /// this host has: what its owner already asked it to do.
+    pub fn durable_projects(&self) -> Result<Vec<String>, String> {
+        let store = runtime::open(&self.database)?;
+        let caller = self.identity.caller(None);
+        let mut cursor: Option<(u64, String)> = None;
+        let mut projects: Vec<String> = Vec::new();
+        loop {
+            let page = store
+                .jobs_page(
+                    &caller,
+                    cursor.as_ref().map(|(created, id)| (*created, id.as_str())),
+                    1000,
+                )
+                .map_err(|error| error.to_string())?;
+            let Some(last) = page.last() else { break };
+            cursor = Some((last.created_at_ms, last.id.clone()));
+            for project in page
+                .into_iter()
+                .filter_map(|job| job.context.map(|c| c.project))
+            {
+                if !projects.contains(&project) {
+                    projects.push(project);
+                }
+            }
+        }
+        Ok(projects)
+    }
 }
 
+/// The runtime asks, before it executes a claimed job and before it projects
+/// a completion, whether the job's project is still one this host may act
+/// in. On the Server the answer is the owner's own durable work: a project
+/// the owner handed work for is one the owner may run — a revocation is a
+/// gateway answer on a publication, never a decision made here. No network
+/// is touched, so an outage cannot fail a job and a job cannot be failed by
+/// anything but its own execution.
 impl MembershipSource for ServerSessions {
     fn snapshot(&self, now_ms: u64) -> Result<Membership, String> {
-        self.membership(now_ms)
-            .map_err(|failure| failure.message().to_owned())
+        Ok(Membership {
+            projects: self.durable_projects()?,
+            fetched_at_ms: now_ms,
+            ttl_ms: MAX_MEMBERSHIP_TTL_MS,
+        })
     }
-    fn invalidate(&self) {
-        self.forget_membership();
-    }
-}
-
-fn unavailable() -> Failure {
-    Failure::internal(
-        "server_refused",
-        "the server's membership state is unavailable",
-    )
-    .remedy("restart ds server serve")
 }
 
 /// One kernel refusal as the CLI's own typed failure, so `ds` re-raises the
@@ -447,12 +418,6 @@ pub fn multi_principal() -> Failure {
 mod tests {
     use super::*;
 
-    struct Fixture(Mutex<Vec<String>>);
-    impl ProjectDirectory for Fixture {
-        fn projects(&self) -> Result<Vec<String>, Failure> {
-            Ok(self.0.lock().unwrap().clone())
-        }
-    }
     struct NoSessions;
     impl SessionOpener for NoSessions {
         fn open(
@@ -465,10 +430,7 @@ mod tests {
         }
     }
 
-    fn sessions(projects: &[&str]) -> (Arc<ServerSessions>, Arc<Fixture>) {
-        let directory = Arc::new(Fixture(Mutex::new(
-            projects.iter().map(|p| (*p).to_owned()).collect(),
-        )));
+    fn sessions(database: PathBuf) -> Arc<ServerSessions> {
         let identity = HostIdentity {
             owner: "owner-digest".into(),
             principal: execution_context::Principal {
@@ -478,50 +440,58 @@ mod tests {
                 install_id: "install-1".into(),
             },
         };
-        (
-            ServerSessions::with(
-                Connection {
-                    address: "127.0.0.1:19766".parse().unwrap(),
-                    owner: "owner-digest".into(),
-                    lane: "canary".into(),
-                    token: "a".repeat(64),
-                },
-                PathBuf::from("/tmp/does-not-exist/store.sqlite"),
-                Limits {
-                    global_running: 2,
-                    per_project_running: 1,
-                    per_project_queued: 4,
-                    global_queued: 8,
-                },
-                identity,
-                directory.clone(),
-                Arc::new(NoSessions),
-            ),
-            directory,
+        ServerSessions::with(
+            Connection {
+                address: "127.0.0.1:19766".parse().unwrap(),
+                owner: "owner-digest".into(),
+                lane: "canary".into(),
+                token: "a".repeat(64),
+            },
+            database,
+            Limits {
+                global_running: 2,
+                per_project_running: 1,
+                per_project_queued: 4,
+                global_queued: 8,
+            },
+            identity,
+            Arc::new(NoSessions),
         )
     }
 
     #[test]
-    fn a_project_added_after_the_snapshot_is_admitted_without_waiting_out_the_cache() {
-        let (sessions, directory) = sessions(&["project-a"]);
+    fn a_project_named_for_the_first_time_is_admitted_with_no_directory_anywhere() {
+        // Nothing lists project-a or project-b beforehand: there is no
+        // directory, no snapshot and no upstream. The owner names them, and
+        // that is the whole of what the Server needs.
+        let sessions = sessions(PathBuf::from("/tmp/does-not-exist/store.sqlite"));
         let now = 1_700_000_000_000;
-        sessions
-            .admit_read("layer_read", Some("project-a"), b"list", now)
-            .expect("a member project");
-        let refused = sessions
-            .admit_read("layer_read", Some("project-b"), b"list", now)
-            .expect_err("not a member yet");
-        assert_eq!(refused.code(), "project_not_visible");
-        directory.0.lock().unwrap().push("project-b".into());
-        // Same millisecond, cached snapshot: the refusal refetches once.
-        sessions
-            .admit_read("layer_read", Some("project-b"), b"list", now)
-            .expect("membership was refetched on the refusal");
+        for project in ["project-a", "project-b", "a-project-never-seen"] {
+            let context = sessions
+                .admit_read("layer_read", Some(project), b"list", now)
+                .expect("the owner's word is enough");
+            assert_eq!(context.project, project);
+            assert_eq!(context.principal_uid, "uid-a");
+        }
+        assert!(
+            sessions.open_projects().is_empty(),
+            "admission opens no session"
+        );
+    }
+
+    #[test]
+    fn the_kernels_membership_input_is_exactly_what_the_request_names() {
+        let sessions = sessions(PathBuf::from("/tmp/does-not-exist/store.sqlite"));
+        let named = sessions.named(5, [Some("project-a"), None, Some("project-a"), Some("b")]);
+        assert_eq!(named.projects, vec!["project-a".to_owned(), "b".to_owned()]);
+        assert_eq!(named.fetched_at_ms, 5);
+        assert_eq!(named.ttl_ms, MAX_MEMBERSHIP_TTL_MS);
+        assert!(sessions.named(5, [None, None]).projects.is_empty());
     }
 
     #[test]
     fn a_read_carries_a_context_of_its_own_and_never_collides_with_a_caller_key() {
-        let (sessions, _) = sessions(&["project-a"]);
+        let sessions = sessions(PathBuf::from("/tmp/does-not-exist/store.sqlite"));
         let context = sessions
             .admit_read(
                 "layer_write",
@@ -553,8 +523,8 @@ mod tests {
     }
 
     #[test]
-    fn an_unnamed_project_is_required_and_a_stale_snapshot_says_what_a_stranger_hears() {
-        let (sessions, _) = sessions(&["project-a"]);
+    fn an_unnamed_project_is_required_and_an_unbounded_one_is_named_not_guessed() {
+        let sessions = sessions(PathBuf::from("/tmp/does-not-exist/store.sqlite"));
         let now = 1_700_000_000_000;
         assert_eq!(
             sessions
@@ -563,46 +533,65 @@ mod tests {
                 .code(),
             "project_required"
         );
-        let stranger = sessions
-            .admit_read("layer_read", Some("project-z"), b"list", now)
-            .expect_err("not a member");
-        // Push the cached snapshot beyond its life and ask about a project
-        // that IS a member: the sentence is the stranger's, exactly.
-        let expired = sessions
-            .admit_read(
-                "layer_read",
-                Some("project-a"),
-                b"list",
-                now + MEMBERSHIP_TTL_MS * 3,
-            )
-            .map(|context| context.project);
-        assert!(expired.is_ok(), "a refetch makes it visible again");
-        let mut held = sessions.membership.lock().unwrap();
-        *held = Some(Membership {
-            projects: vec!["project-a".into()],
-            fetched_at_ms: 1,
-            ttl_ms: 1,
-        });
-        drop(held);
-        let stale = sessions
-            .decide(
-                &Request {
-                    operation: "layer_read",
-                    key: "read:stale",
-                    input_sha256: digest(b"list"),
-                    requested_project: Some("project-a"),
-                    sealed_project: None,
-                    client: "test",
+        let padded = sessions
+            .admit_read("layer_read", Some(" padded"), b"list", now)
+            .expect_err("not a bounded project id");
+        assert_eq!(padded.code(), "context_corrupt");
+        assert_eq!(padded.class(), ExitClass::InvalidInput);
+    }
+
+    #[test]
+    fn the_workers_source_is_the_owners_own_durable_work_and_touches_no_network() {
+        // A queue with nothing in it names no project; once the owner has
+        // handed the Server work for two projects — through the runtime's own
+        // admission, with the Server's own membership input — those two are
+        // the answer, read from the rows on disk with no upstream anywhere.
+        let dir = tempfile::tempdir().unwrap();
+        let database = dir.path().join("store.sqlite");
+        let sessions = sessions(database.clone());
+        assert_eq!(sessions.snapshot(1).unwrap().projects, Vec::<String>::new());
+        let batch = |name: &str| -> Vec<u8> {
+            serde_json::to_vec(&serde_json::json!({"schema":"ds.fast-lv.request/v1","jobs":[{"transformer_name":name,"gdfs":{"tr":{"type":"FeatureCollection","features":[{"type":"Feature","id":"tr-1","geometry":{"type":"Point","coordinates":[30.0,-2.0]},"properties":{"name":name,"names":name}}]},"lv_lines":{"type":"FeatureCollection","features":[{"type":"Feature","id":"line-1","geometry":{"type":"LineString","coordinates":[[30.0,-2.0],[30.0004,-2.0]]},"properties":{}}]},"customers":{"type":"FeatureCollection","features":[]}},"settings":{}}]})).unwrap()
+        };
+        let now = 1_700_000_000_000;
+        for (key, project) in [
+            ("k-a", "project-a"),
+            ("k-b", "project-b"),
+            ("k-a2", "project-a"),
+        ] {
+            let membership = sessions.named(now, [Some(project)]);
+            let client = sessions.client_label();
+            let job = runtime::submit(
+                &database,
+                &runtime::Admission {
+                    identity: sessions.identity(),
+                    client: &client,
+                    key,
+                    requested_project: Some(project),
+                    saved_project: None,
+                    membership: &membership,
+                    limits: sessions.limits(),
                     now_ms: now,
                 },
-                &Membership {
-                    projects: vec!["project-a".into()],
-                    fetched_at_ms: 1,
-                    ttl_ms: 1,
-                },
+                &batch(key),
             )
-            .expect_err("the snapshot expired");
-        assert_eq!(stale.code(), stranger.code());
-        assert_eq!(stale.message(), stranger.message());
+            .expect("admitted on the owner's word");
+            assert_eq!(job.context.unwrap().project, project);
+        }
+        let snapshot = sessions.snapshot(now + 1).unwrap();
+        let mut projects = snapshot.projects.clone();
+        projects.sort();
+        assert_eq!(
+            projects,
+            vec!["project-a".to_owned(), "project-b".to_owned()]
+        );
+        // And every job the runtime would re-check still holds, because the
+        // job's own row is what the answer is made of.
+        for project in ["project-a", "project-b"] {
+            let context = sessions
+                .admit_read("layer_read", Some(project), b"x", now + 1)
+                .unwrap();
+            assert!(runtime::still_admitted(&context, &snapshot, now + 2).is_ok());
+        }
     }
 }

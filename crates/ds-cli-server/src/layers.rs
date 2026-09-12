@@ -11,8 +11,8 @@
 //! read under, so another account reaching this host after a restart sees its
 //! own defaults and never the previous account's toggles.
 //!
-//! **The project is named by the caller** (`?project=<exact-id>`), admitted
-//! through the kernel against fresh membership, and then held against the
+//! **The project is named by the caller** (`?project=<exact-id>`), recorded
+//! by the kernel as the operation's context, and then held against the
 //! document the Server actually reads: a document that comes back under
 //! another project is `project_context_changed`, never applied. That is the
 //! whole of the project fence here — see `docs-routes.md` for the one thing
@@ -214,9 +214,9 @@ async fn run<T: Send + 'static>(
                 Failure::unauthorized("server_owner_changed", message)
                     .remedy("restart the Server under the current native account")
             })?;
-        // The project is the caller's and is verified here, before anything is
-        // read: an unnamed project is `project_required` and one outside this
-        // account's membership is `project_not_visible`.
+        // The project is the caller's and is recorded here, before anything
+        // is read: an unnamed project is `project_required`, an unbounded
+        // name is `context_corrupt`, and nothing is fetched to decide either.
         let context = app.sessions.admit_read(
             operation_id,
             project.as_deref(),
@@ -505,10 +505,6 @@ mod tests {
                         install_id: "install-1".into(),
                     },
                 },
-                Arc::new(crate::host::tests::Directory(std::sync::Mutex::new(vec![
-                    "proj-kigali".into(),
-                    "proj-lome".into(),
-                ]))),
                 Arc::new(crate::host::tests::NoGateway),
             ),
             connection,
@@ -525,7 +521,7 @@ mod tests {
         });
         Running { address, handle }
     }
-    /// The client half, over the wire like `ds server layers …` does.
+    /// The client half, over the wire like `ds map layer … --target server` does.
     fn call(
         address: std::net::SocketAddr,
         method: &str,
@@ -575,9 +571,9 @@ mod tests {
             .unwrap()
     }
 
-    /// The project is the caller's word, and the Server checks it three ways:
-    /// it must be there, it must be one this account may act in, and it must
-    /// be the one the document that comes back is actually for.
+    /// The project is the caller's word, and the Server checks it two ways:
+    /// it must be there, and it must be the one the document that comes back
+    /// is actually for. Nothing is fetched to decide either.
     #[tokio::test(flavor = "multi_thread")]
     async fn the_project_is_named_by_the_caller_and_never_assumed() {
         let dir = tempfile::tempdir().unwrap();
@@ -591,21 +587,23 @@ mod tests {
         assert_eq!(refused["code"], "project_required");
         assert_eq!(refused["class"], "invalid_input");
 
-        // A project this account is not a member of.
-        let (status, stranger) = wire(
+        // A name outside the kernel's bound: refused under the kernel's own
+        // word for it, before anything is read.
+        let (status, padded) = wire(
             server.address,
             "GET",
-            "/v1/layers?project=project-z",
+            "/v1/layers?project=%20padded",
             None,
             TOKEN,
         )
         .await;
-        assert_eq!(status, 400, "{stranger}");
-        assert_eq!(stranger["code"], "project_not_visible");
+        assert_eq!(status, 400, "{padded}");
+        assert_eq!(padded["code"], "context_corrupt");
 
-        // A project this account IS a member of, but not the one this
-        // Server's document source is on: refused, never served under the
-        // wrong project, and the remedy names both.
+        // A project that is not the one this Server's document source is on
+        // — whether it exists anywhere or not, the Server holds no directory
+        // to tell — is refused, never served under the wrong project, and the
+        // remedy names both.
         let (status, elsewhere) = wire(
             server.address,
             "GET",

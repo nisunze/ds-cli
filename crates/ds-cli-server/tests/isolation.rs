@@ -9,9 +9,13 @@
 //! Every assertion here is made at the authoritative boundary: a real loopback
 //! listener the tests speak HTTP to, and the durable SQLite queue on disk. No
 //! route is stubbed, no decision is mocked, and nothing is checked by reading
-//! a source string. There is no gateway anywhere — admission, queueing,
-//! execution, restart recovery, capacity and the jobs table are all proven
-//! with no upstream present at all, which is the offline-first claim.
+//! a source string. There is no gateway anywhere and no project directory of
+//! any kind — the harness constructs none because the Server holds none —
+//! so admission, queueing, execution, restart recovery, capacity and the
+//! jobs table are all proven with no upstream present at all, which is the
+//! offline-first claim. Entitlement is the gateway's answer at publication
+//! and sync, and the two places that answer would be observed are named as
+//! unproven below.
 //!
 //! Two callers are used deliberately:
 //!   * `host.raw(…)` is the exact wire, byte for byte. Non-disclosure is a
@@ -53,7 +57,7 @@ fn guessed() -> String {
 /// wire and in the durable row, and nothing of A is reachable under B.
 #[test]
 fn item1_two_projects_overlap_on_one_server_with_distinct_contexts_and_no_leakage() {
-    let host = Host::start(&[A, B, C], limits(), B);
+    let host = Host::start(limits(), B);
 
     // Solar for A. The project is not named at all: the sealed envelope names
     // its own, and that name is authoritative.
@@ -131,9 +135,9 @@ fn item1_two_projects_overlap_on_one_server_with_distinct_contexts_and_no_leakag
     let both = host.raw("GET", "/v1/jobs", None);
     assert_eq!(both.json()["jobs"].as_array().unwrap().len(), 2);
 
-    // A project this account is a member of but has no work in holds nothing,
-    // and a project it is not a member of answers exactly the same way: an
-    // empty list is never a disclosure.
+    // A project that holds no work answers an empty list, whether the owner
+    // has ever named it or not: the Server has no directory that could make
+    // the two differ, so an empty list is never a disclosure.
     for project in [C, OUTSIDE] {
         let empty = host.raw("GET", &format!("/v1/jobs?project={project}"), None);
         assert_eq!(empty.status, 200);
@@ -163,7 +167,7 @@ fn item1_two_projects_overlap_on_one_server_with_distinct_contexts_and_no_leakag
 /// and a sealed Solar input's own project outranks a named one.
 #[test]
 fn item2_naming_a_project_for_one_call_never_rescopes_anything_else() {
-    let host = Host::start(&[A, B, C], limits(), A);
+    let host = Host::start(limits(), A);
     let mut queued = Vec::new();
     for (key, project, name) in [("a1", A, "T-A"), ("b1", B, "T-B")] {
         let input = host.input(&format!("{key}.json"), &transformer(name));
@@ -205,14 +209,23 @@ fn item2_naming_a_project_for_one_call_never_rescopes_anything_else() {
     );
     assert_eq!(unnamed.status, 400, "{:?}", unnamed.json());
     assert_eq!(unnamed.code(), "project_required");
-    // Nor does it accept a project this account is not a member of.
-    let outside = host.raw(
+    // Nor does it repair a name outside the kernel's bound into one.
+    let padded = host.raw(
         "POST",
-        &format!("/v1/transformer-processing/outside?project={OUTSIDE}"),
+        "/v1/transformer-processing/padded?project=%20padded",
         Some(&transformer("T-X")),
     );
-    assert_eq!(outside.status, 400, "{:?}", outside.json());
-    assert_eq!(outside.code(), "project_not_visible");
+    assert_eq!(padded.status, 400, "{:?}", padded.json());
+    assert_eq!(padded.code(), "context_corrupt");
+    // A project named for the very first time is admitted on the owner's
+    // word: nothing was fetched to allow C above, and nothing is fetched now.
+    let first = host.raw(
+        "POST",
+        &format!("/v1/transformer-processing/first?project={OUTSIDE}"),
+        Some(&transformer("T-X")),
+    );
+    assert_eq!(first.status, 202, "{:?}", first.json());
+    assert_eq!(first.json()["job"]["context"]["project"], OUTSIDE);
 
     // A sealed Solar input prepared for A, submitted with --project C: the
     // bytes outrank the query, and the caller is told which is wrong.
@@ -239,9 +252,10 @@ fn item2_naming_a_project_for_one_call_never_rescopes_anything_else() {
     .expect("the sealed project, named");
     assert_eq!(admitted["job"]["context"]["project"], A);
 
-    // Three admitted jobs, three projects, and the refusals queued nothing.
-    assert_eq!(host.stored(None).len(), 4);
+    // Five admitted jobs, four projects, and the refusals queued nothing.
+    assert_eq!(host.stored(None).len(), 5);
     assert_eq!(host.stored(Some(C)).len(), 1);
+    assert_eq!(host.stored(Some(OUTSIDE)).len(), 1);
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -253,7 +267,7 @@ fn item2_naming_a_project_for_one_call_never_rescopes_anything_else() {
 /// status, cancel and result alike. Anything else is a disclosure.
 #[test]
 fn item3_a_foreign_principal_lane_project_and_a_guessed_id_are_one_byte_identical_answer() {
-    let mut host = Host::start(&[A, B, C], limits(), A);
+    let mut host = Host::start(limits(), A);
     let input = host.input("a1.json", &transformer("T-A"));
     let admitted = ds_cli_server::submit(
         &host.args(&SUBMIT, &["--key", "a1", "--input", &input, "--project", A]),
@@ -279,12 +293,12 @@ fn item3_a_foreign_principal_lane_project_and_a_guessed_id_are_one_byte_identica
     let unfenced = host.shadow("uid-somebody-else", LANE, OWNER);
 
     for (route, method) in [
-        (format!("/v1/jobs/{{}}"), "GET"),
-        (format!("/v1/jobs/{{}}/cancel"), "POST"),
-        (format!("/v1/jobs/{{}}/result"), "GET"),
+        ("/v1/jobs/{}", "GET"),
+        ("/v1/jobs/{}/cancel", "POST"),
+        ("/v1/jobs/{}/result", "GET"),
     ] {
         let own = |target: &str, project: &str| route.replace("{}", target) + "?project=" + project;
-        let answers = vec![
+        let answers = [
             ("wrong project", host.raw(method, &own(&id, B), None)),
             ("guessed id", host.raw(method, &own(&unknown, B), None)),
             (
@@ -374,16 +388,24 @@ fn item3_a_foreign_principal_lane_project_and_a_guessed_id_are_one_byte_identica
     // connection's row. It is still not handed over: the row itself refuses a
     // context whose principal is not the one that admitted it, so a store that
     // ever stopped deriving its owner from the uid could still not reuse or
-    // overwrite another account's result.
+    // overwrite another account's result. The answer is the row's own typed
+    // statement — a key that already names other work — relayed by name and
+    // never a host fault, and it says nothing about whose work that is.
     let borrowed = unfenced.raw(
         "POST",
         &format!("/v1/transformer-processing/a1?project={A}"),
         Some(&transformer("T-A")),
     );
-    assert!(borrowed.status >= 400, "{:?}", borrowed.json());
-    assert!(
-        String::from_utf8_lossy(&borrowed.body).contains("compute_job_scope_conflict"),
+    assert_eq!(borrowed.status, 409, "{:?}", borrowed.json());
+    assert_eq!(
+        borrowed.code(),
+        "scope_mismatch_for_key",
         "{:?}",
+        borrowed.json()
+    );
+    assert!(
+        !String::from_utf8_lossy(&borrowed.body).contains(UID),
+        "the refusal must not name the principal that holds the key: {:?}",
         borrowed.json()
     );
 
@@ -406,7 +428,7 @@ fn item3_a_foreign_principal_lane_project_and_a_guessed_id_are_one_byte_identica
 /// quietly served under this one.
 #[test]
 fn multi_principal_access_is_refused_by_name_rather_than_served_quietly() {
-    let host = Host::start(&[A], limits(), A);
+    let host = Host::start(limits(), A);
     let named = ureq::Agent::config_builder()
         .http_status_as_error(false)
         .build()
@@ -428,7 +450,7 @@ fn multi_principal_access_is_refused_by_name_rather_than_served_quietly() {
 /// and never a silent overwrite.
 #[test]
 fn item4_a_reused_key_may_not_change_its_project_or_its_payload() {
-    let host = Host::start(&[A, B], limits(), A);
+    let host = Host::start(limits(), A);
     let same = host.input("same.json", &transformer("T1"));
     let other = host.input("other.json", &transformer("T2"));
     let submit = |key: &str, input: &str, project: &str| {
@@ -474,7 +496,7 @@ fn item4_a_reused_key_may_not_change_its_project_or_its_payload() {
 /// operator's selection — and never runs the same key twice.
 #[test]
 fn item5_a_restart_recovers_every_context_including_rows_a_released_server_wrote() {
-    let mut host = Host::start_over(&[A, B, C], limits(), A, &legacy_queue_fixture());
+    let mut host = Host::start_over(limits(), A, &legacy_queue_fixture());
     // Two rows the released Server left behind, readable but nameless.
     let legacy = host.stored(None);
     assert_eq!(legacy.len(), 2, "the fixture queue's two pre-slice rows");
@@ -571,7 +593,7 @@ fn item5_a_restart_recovers_every_context_including_rows_a_released_server_wrote
 /// into, is named rather than guessed: it stays readable and is never claimed.
 #[test]
 fn item5_a_pre_slice_row_with_no_honest_project_is_named_not_guessed() {
-    let host = Host::start_over(&[A, B], limits(), A, &legacy_queue_fixture());
+    let host = Host::start_over(limits(), A, &legacy_queue_fixture());
     let recovery =
         runtime::recover_contexts(&host.database(), &host.identity, None).expect("recovery runs");
     assert_eq!(recovery.from_sealed_input, 1, "Solar names its own project");
@@ -594,15 +616,18 @@ fn item5_a_pre_slice_row_with_no_honest_project_is_named_not_guessed() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-// §3.6  Revocation while queued
+// §3.6  Execution needs no upstream; revocation is the gateway's answer
 // ─────────────────────────────────────────────────────────────────────────
 
-/// Losing membership of A while A's work is queued fails exactly that work,
-/// with a named error, and B's job runs to completion beside it. Revocation is
-/// not a UI switch, and it does not drain another project's queue.
+/// Two projects' work runs to completion on a host that has no directory, no
+/// gateway and no network: the workers' only source for "may this project
+/// run" is the Server's own durable work. Nothing about A's job is consulted
+/// to run B's, and each keeps the context it was admitted under. What a
+/// revocation stops — a publication — is the gateway's answer on that effect
+/// and is named as unproven below, because there is no gateway here to give it.
 #[test]
-fn item6_a_membership_revoked_while_queued_fails_only_that_projects_job() {
-    let host = Host::start(&[A, B], limits(), A);
+fn item6_execution_needs_no_directory_and_no_upstream_and_one_project_never_touches_another() {
+    let host = Host::start(limits(), A);
     let mut ids = Vec::new();
     for (key, project, name) in [("a1", A, "T-A"), ("b1", B, "T-B")] {
         let input = host.input(&format!("{key}.json"), &transformer(name));
@@ -616,8 +641,9 @@ fn item6_a_membership_revoked_while_queued_fails_only_that_projects_job() {
         .expect("admitted");
         ids.push(value["job"]["id"].as_str().unwrap().to_owned());
     }
-    host.directory.revoke(A);
 
+    // The pool's membership source is the Server's sessions, which read the
+    // queue on disk and nothing else. Both jobs execute for real.
     let workers = host.workers(Arc::new(Allow), 2, None);
     let terminal = |id: &str, project: &str| -> Option<Value> {
         let answer = host.raw("GET", &format!("/v1/jobs/{id}?project={project}"), None);
@@ -636,28 +662,15 @@ fn item6_a_membership_revoked_while_queued_fails_only_that_projects_job() {
     workers.stop();
     drop(workers);
 
-    let doomed = terminal(&ids[0], A).expect("A's job is terminal");
-    assert_eq!(doomed["phase"], "failed");
-    assert!(
-        doomed["error"]
-            .as_str()
-            .unwrap()
-            .starts_with(runtime::MEMBERSHIP_REVOKED),
-        "{doomed}"
-    );
-    assert_eq!(doomed["context"]["project"], A, "nothing re-scoped it");
-    let refused = host.raw(
-        "GET",
-        &format!("/v1/jobs/{}/result?project={A}", ids[0]),
-        None,
-    );
-    assert_eq!(
-        refused.status, 409,
-        "a revoked project's job produced nothing"
-    );
-
-    let survivor = terminal(&ids[1], B).expect("B's job is terminal");
-    assert_eq!(survivor["phase"], "completed", "{survivor}");
+    for (id, project) in [(&ids[0], A), (&ids[1], B)] {
+        let done = terminal(id, project).expect("terminal");
+        assert_eq!(done["phase"], "completed", "{done}");
+        assert_eq!(done["context"]["project"], project, "nothing re-scoped it");
+        assert!(
+            done["error"].is_null(),
+            "no membership fault of any kind exists on this host: {done}"
+        );
+    }
     let out = host.state.path().join("b-result.json");
     let saved = ds_cli_server::result(
         &host.args(
@@ -673,12 +686,19 @@ fn item6_a_membership_revoked_while_queued_fails_only_that_projects_job() {
         ),
         &context(),
     )
-    .expect("B's authorized job finished and its bytes are readable");
+    .expect("B's job finished and its bytes are readable");
     assert!(saved["byte_count"].as_u64().unwrap() > 0);
     assert!(out.exists());
+    // And A's result is not B's: each is readable only under its own project.
+    let crossed = host.raw(
+        "GET",
+        &format!("/v1/jobs/{}/result?project={B}", ids[0]),
+        None,
+    );
+    assert_eq!(crossed.status, 409);
+    assert_eq!(crossed.json()["error"], "job not found");
 
     // On disk: two rows, each still about the project it was admitted into.
-    // A revocation failed one job; it drained, cleared and re-scoped nothing.
     let rows = host.stored(None);
     assert_eq!(rows.len(), 2);
     for row in rows {
@@ -699,7 +719,6 @@ fn item6_a_membership_revoked_while_queued_fails_only_that_projects_job() {
 #[test]
 fn item7_capacity_is_typed_bounded_fair_and_released_by_cancellation() {
     let host = Host::start(
-        &[A, B],
         ds_command_kernel::execution_context::Limits {
             global_running: 2,
             per_project_running: 1,
@@ -795,7 +814,7 @@ fn item7_capacity_is_typed_bounded_fair_and_released_by_cancellation() {
 /// jobs, two ids, two results, each reachable only under its own project.
 #[test]
 fn item8_identical_work_in_two_projects_never_collides() {
-    let host = Host::start(&[A, B], limits(), A);
+    let host = Host::start(limits(), A);
     let input = host.input("daily.json", &transformer("T-SAME"));
     let mut ids = Vec::new();
     for (key, project) in [("daily-a", A), ("daily-b", B)] {
@@ -879,26 +898,34 @@ fn item8_identical_work_in_two_projects_never_collides() {
 // The routes' own rules
 // ─────────────────────────────────────────────────────────────────────────
 
-/// `ds map layer …` executed on a Server names its project explicitly, is
-/// verified against membership, and is then held against the document that
-/// actually comes back. A refused layer request writes nothing.
+/// `ds map layer …` executed on a Server names its project explicitly and is
+/// held against the document that actually comes back. A refused layer
+/// request writes nothing.
 #[test]
 fn a_layer_request_names_its_project_and_is_fenced_to_the_document() {
-    let host = Host::start(&[A, B], limits(), A);
+    let host = Host::start(limits(), A);
     let body = br#"{"layers":["survey/poles"],"visible":false}"#;
 
     let unnamed = host.raw("POST", "/v1/layers/visibility", Some(body));
     assert_eq!(unnamed.status, 400, "{:?}", unnamed.json());
     assert_eq!(unnamed.code(), "project_required");
+    let padded = host.raw(
+        "POST",
+        "/v1/layers/visibility?project=%20padded",
+        Some(body),
+    );
+    assert_eq!(padded.status, 400, "{:?}", padded.json());
+    assert_eq!(padded.code(), "context_corrupt");
+    // A project that is not the one the Server's document source is on —
+    // named here for the first time or not, there is no directory that could
+    // tell — is refused with both names in the remedy, and nothing is written.
     let outside = host.raw(
         "POST",
         &format!("/v1/layers/visibility?project={OUTSIDE}"),
         Some(body),
     );
-    assert_eq!(outside.status, 400);
-    assert_eq!(outside.code(), "project_not_visible");
-    // A project this account IS a member of, but which is not the one the
-    // Server's document source is on: refused, with both names in the remedy.
+    assert_eq!(outside.status, 409, "{:?}", outside.json());
+    assert_eq!(outside.code(), "project_context_changed");
     let elsewhere = host.raw(
         "POST",
         &format!("/v1/layers/visibility?project={B}"),
@@ -951,7 +978,7 @@ fn a_layer_request_names_its_project_and_is_fenced_to_the_document() {
 /// here — it says which host can, by name, and never answers an empty 404.
 #[test]
 fn an_operation_that_needs_a_rendered_map_is_refused_by_name_over_the_wire() {
-    let host = Host::start(&[A], limits(), A);
+    let host = Host::start(limits(), A);
     let refused = host.raw("POST", "/v1/map/screenshot", Some(b"{}"));
     assert_eq!(refused.status, 503, "{:?}", refused.json());
     assert_eq!(refused.code(), "needs_paired_map");
@@ -977,7 +1004,7 @@ fn an_operation_that_needs_a_rendered_map_is_refused_by_name_over_the_wire() {
 /// nothing at all for a project that holds nothing it may see.
 #[test]
 fn activity_scope_is_one_entry_per_project_that_holds_work() {
-    let host = Host::start(&[A, B, C], limits(), A);
+    let host = Host::start(limits(), A);
     for (key, project, name) in [("a1", A, "T-A"), ("b1", B, "T-B")] {
         let input = host.input(&format!("{key}.json"), &transformer(name));
         ds_cli_server::submit(
@@ -1019,7 +1046,7 @@ fn activity_scope_is_one_entry_per_project_that_holds_work() {
 /// create a queue file.
 #[test]
 fn an_unauthenticated_call_never_reads_or_creates_anything() {
-    let host = Host::start(&[A], limits(), A);
+    let host = Host::start(limits(), A);
     let denied = ureq::Agent::config_builder()
         .http_status_as_error(false)
         .build()
@@ -1056,10 +1083,13 @@ fn unproven_without_a_live_canary_identity_publication_receipts_carry_their_proj
 #[test]
 #[ignore = "needs a live Canary identity: there is none on this box"]
 fn unproven_without_a_live_canary_identity_a_revoked_projects_publication_refuses_at_the_gateway() {
-    // §3.6's tail: revocation stopping a publication is a gateway answer on an
-    // effect, not a Server decision, so it cannot be observed without one.
-    // The queued-side half — the job fails `membership_revoked` and no other
-    // job is touched — is proven in `item6_…` above.
+    // §3.6: revocation is a gateway answer on an effect — a publication or a
+    // sync for project A is refused there, and nothing of B's is touched
+    // because B publishes through its own session. The Server makes no
+    // revocation decision of its own (it holds no directory to make one
+    // from), so there is nothing to observe without a gateway. What IS
+    // proven above, in `item6_…`, is the other half: execution needs no
+    // upstream at all, and one project's work never touches another's.
     unimplemented!("run against a signed-in Canary Server");
 }
 

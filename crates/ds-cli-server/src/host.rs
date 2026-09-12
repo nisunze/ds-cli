@@ -5,7 +5,7 @@
 //! decides which project the operation is about. Every route that reads
 //! answers through the job's own execution context, so a job in a project the
 //! caller did not name is absent in exactly the way an invented id is absent.
-//! The loopback/SSH boundary is unchanged: one owner-only bearer, one
+//! The loopback boundary is unchanged: one owner-only bearer, one
 //! re-authorized native account, one fixed loopback port.
 
 use axum::extract::{Query, Request};
@@ -62,8 +62,8 @@ pub struct App {
     pub activity: Option<Arc<crate::solar_sync::SolarActivity>>,
     /// The layer drawer's document source and preference root for this host.
     pub layers: Arc<dyn crate::layers::LayerHost>,
-    /// One authenticated principal, many authorized projects: the admission
-    /// door, the membership snapshot and the per-project sessions.
+    /// One authenticated owner, many of its projects: the admission door and
+    /// the per-project sessions. No directory lives here.
     pub sessions: Arc<ServerSessions>,
 }
 
@@ -292,7 +292,7 @@ async fn submit(
 ) -> Result<(StatusCode, Json<Value>), ApiError> {
     let project = project_query(query)?;
     admitting(move || {
-        let job = admitted(&app.sessions, &key, project.as_deref(), |admission| {
+        let job = admitted(&app.sessions, &key, project.as_deref(), None, |admission| {
             runtime::submit(&app.database, admission, &body)
         })?;
         Ok((StatusCode::ACCEPTED, Json(json!({"job":job}))))
@@ -317,14 +317,24 @@ async fn submit_solar(
                 Failure::invalid("server_refused", error)
                     .remedy("send the documented ds.solar.server-submission/v1 envelope")
             })?;
-        let job = admitted(&sessions, &key, project.as_deref(), |admission| {
-            runtime::submit_solar_with_provenance(
-                &app.database,
-                admission,
-                &sealed,
-                provenance.clone(),
-            )
-        })?;
+        // The claim's project is the sealed input's own — the decoder refused
+        // anything else — so it is what the kernel's sealed-outranks-named
+        // rule is given, and what the request is admitted about.
+        let sealed_project = provenance.project_id.clone();
+        let job = admitted(
+            &sessions,
+            &key,
+            project.as_deref(),
+            Some(sealed_project.as_str()),
+            |admission| {
+                runtime::submit_solar_with_provenance(
+                    &app.database,
+                    admission,
+                    &sealed,
+                    provenance.clone(),
+                )
+            },
+        )?;
         Ok((StatusCode::ACCEPTED, Json(json!({"job":job}))))
     })
     .await
@@ -463,45 +473,31 @@ pub fn project_scopes(app: &App, project: Option<&str>) -> Result<Vec<String>, S
     Ok(scopes.into_iter().collect())
 }
 
-/// Run one submission under this connection's membership, and — if the only
-/// thing wrong was a snapshot older than the grant — under a freshly fetched
-/// one, once. Everything else is relayed exactly as the kernel decided it.
+/// Run one submission under this connection's identity and the project it
+/// names. There is nothing to fetch and nothing to retry: the owner named the
+/// project (or the sealed input did), the kernel records it, and everything
+/// it decides is relayed exactly as decided.
 fn admitted<T>(
     sessions: &ServerSessions,
     key: &str,
     project: Option<&str>,
-    submit: impl Fn(&Admission<'_>) -> Result<T, runtime::SubmitError>,
+    sealed_project: Option<&str>,
+    submit: impl FnOnce(&Admission<'_>) -> Result<T, runtime::SubmitError>,
 ) -> Result<T, Failure> {
     let now_ms = runtime::now_ms();
     let client = sessions.client_label();
-    let attempt = |membership: &_| {
-        submit(&Admission {
-            identity: sessions.identity(),
-            client: &client,
-            key,
-            requested_project: project,
-            saved_project: None,
-            membership,
-            limits: sessions.limits(),
-            now_ms,
-        })
-    };
-    let membership = sessions.membership(now_ms)?;
-    // A snapshot this call fetched itself is already the answer; only one the
-    // cache handed over is worth asking the directory about again, so a
-    // caller naming a project it will never be a member of costs one fetch,
-    // not one per attempt.
-    let cached = membership.fetched_at_ms != now_ms;
-    match attempt(&membership) {
-        Ok(value) => Ok(value),
-        Err(error) if cached && error.code() == Some("project_not_visible") => {
-            attempt(&sessions.membership_now(now_ms)?).map_err(|error| {
-                sessions.forget_membership();
-                sessions::submit_failure(&error)
-            })
-        }
-        Err(error) => Err(sessions::submit_failure(&error)),
-    }
+    let membership = sessions.named(now_ms, [project, sealed_project]);
+    submit(&Admission {
+        identity: sessions.identity(),
+        client: &client,
+        key,
+        requested_project: project,
+        saved_project: None,
+        membership: &membership,
+        limits: sessions.limits(),
+        now_ms,
+    })
+    .map_err(|error| sessions::submit_failure(&error))
 }
 
 fn host_failure(message: impl ToString) -> Failure {
@@ -586,10 +582,7 @@ pub fn connection(
 ) -> Result<Connection, String> {
     prepare_directory(directory)?;
     if !address.ip().is_loopback() || address.port() == 0 {
-        return Err(
-            "server must listen on a fixed loopback port; use SSH forwarding for remote access"
-                .into(),
-        );
+        return Err("server must listen on a fixed loopback port".into());
     }
     let path = directory.join("connection.json");
     if path.exists() {
@@ -648,13 +641,16 @@ pub async fn serve(mut app: App, workers: usize) -> Result<(), String> {
             auth: app.auth.clone(),
             membership: app.sessions.clone(),
             observer: Some(activity),
-            // Read once, for one purpose the contract names: a transformer
-            // row written by a released Server carries no project, and the
-            // caller's saved selection is the only honest source for it. It
-            // is never consulted for anything admitted by this build.
-            saved_project: ds_cli_auth::headless_sync_context(&app.connection.lane)
+            // Read once, locally, for one purpose the contract names: a
+            // transformer row written by a released Server carries no
+            // project, and the owner's saved selection is the only honest
+            // source for it. It is never consulted for anything admitted by
+            // this build, and it is never fetched: the probe reads the
+            // protected native state on this machine and nothing else.
+            saved_project: ds_cli_auth::probe_headless_identity(&app.connection.lane)
                 .ok()
-                .map(|context| context.project_id().to_owned()),
+                .flatten()
+                .and_then(|(_, selected)| selected),
         }),
         workers,
     )?;
@@ -692,8 +688,7 @@ pub(crate) mod tests {
     use axum::{body::Body, http::Request};
     use ds_command_kernel::execution_context::{Limits, Principal};
     use ds_compute_runtime::HostIdentity;
-    use sessions::{ProjectDirectory, ServerSessions, SessionOpener};
-    use std::sync::Mutex;
+    use sessions::{ServerSessions, SessionOpener};
     use tower::ServiceExt;
 
     const A: &str = "project-a";
@@ -709,13 +704,6 @@ pub(crate) mod tests {
             } else {
                 Err("device revoked".into())
             }
-        }
-    }
-    /// A membership snapshot a test can change while the Server is running.
-    pub(crate) struct Directory(pub Mutex<Vec<String>>);
-    impl ProjectDirectory for Directory {
-        fn projects(&self) -> Result<Vec<String>, Failure> {
-            Ok(self.0.lock().unwrap().clone())
         }
     }
     /// No gateway in a test: a route that needs one says so, and every route
@@ -760,39 +748,29 @@ pub(crate) mod tests {
         }
     }
     fn app(path: &Path, authorized: bool) -> App {
-        app_with(path, authorized, &[A, B], limits()).0
+        app_with(path, authorized, limits())
     }
-    fn app_with(
-        path: &Path,
-        authorized: bool,
-        projects: &[&str],
-        limits: Limits,
-    ) -> (App, Arc<Directory>) {
+    /// A Server over `path` with no directory, no snapshot and no upstream:
+    /// exactly what production has.
+    fn app_with(path: &Path, authorized: bool, limits: Limits) -> App {
         let connection = test_connection("127.0.0.1:19766".parse().unwrap());
-        let directory = Arc::new(Directory(Mutex::new(
-            projects.iter().map(|p| (*p).to_owned()).collect(),
-        )));
         let database = path.join("store.sqlite");
         let sessions = ServerSessions::with(
             connection.clone(),
             database.clone(),
             limits,
             identity(&connection),
-            directory.clone(),
             Arc::new(NoGateway),
         );
-        (
-            App {
-                database,
-                connection,
-                auth: Arc::new(Auth(authorized)),
-                requests: Arc::new(tokio::sync::Semaphore::new(4)),
-                activity: None,
-                layers: crate::layers::NativeLayerHost::fixture_native("stable"),
-                sessions,
-            },
-            directory,
-        )
+        App {
+            database,
+            connection,
+            auth: Arc::new(Auth(authorized)),
+            requests: Arc::new(tokio::sync::Semaphore::new(4)),
+            activity: None,
+            layers: crate::layers::NativeLayerHost::fixture_native("stable"),
+            sessions,
+        }
     }
     fn transformer(name: &str) -> Vec<u8> {
         serde_json::to_vec(&json!({"schema":"ds.fast-lv.request/v1","jobs":[{"transformer_name":name,"gdfs":{"tr":{"type":"FeatureCollection","features":[{"type":"Feature","id":"tr-1","geometry":{"type":"Point","coordinates":[30.0,-2.0]},"properties":{"name":name,"names":name}}]},"lv_lines":{"type":"FeatureCollection","features":[{"type":"Feature","id":"line-1","geometry":{"type":"LineString","coordinates":[[30.0,-2.0],[30.0004,-2.0]]},"properties":{}}]},"customers":{"type":"FeatureCollection","features":[]}},"settings":{}}]})).unwrap()
@@ -954,7 +932,7 @@ pub(crate) mod tests {
         let (_, only_a) = call(app.clone(), "GET", &format!("/v1/jobs?project={A}"), None).await;
         assert_eq!(only_a["jobs"].as_array().unwrap().len(), 1);
         assert_eq!(only_a["jobs"][0]["id"], a_id);
-        // A project this account is not a member of simply holds nothing.
+        // A project no work was ever handed in for simply holds nothing.
         let (status, stranger) = call(app.clone(), "GET", "/v1/jobs?project=project-z", None).await;
         assert_eq!(status, StatusCode::OK);
         assert_eq!(stranger["jobs"], json!([]));
@@ -1073,7 +1051,7 @@ pub(crate) mod tests {
     }
 
     #[tokio::test]
-    async fn a_submit_names_a_project_or_is_told_which_one_it_may_name() {
+    async fn a_submit_names_a_project_or_is_refused_before_anything_is_written() {
         let dir = tempfile::tempdir().unwrap();
         let app = app(dir.path(), true);
         let (status, unnamed) = call(
@@ -1085,26 +1063,42 @@ pub(crate) mod tests {
         .await;
         assert_eq!(status, StatusCode::BAD_REQUEST);
         assert_eq!(unnamed["code"], "project_required");
-        let (status, outside) = call(
+        // A name outside the kernel's bound is refused under the kernel's own
+        // word for it; the Server substitutes nothing and guesses nothing.
+        let (status, padded) = call(
             app.clone(),
             "POST",
-            "/v1/transformer-processing/outside?project=project-z",
+            "/v1/transformer-processing/padded?project=%20padded",
             Some(transformer("T1")),
         )
         .await;
-        assert_eq!(status, StatusCode::BAD_REQUEST);
-        assert_eq!(outside["code"], "project_not_visible");
-        let (_, all) = call(app, "GET", "/v1/jobs", None).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{padded}");
+        assert_eq!(padded["code"], "context_corrupt");
+        let (_, all) = call(app.clone(), "GET", "/v1/jobs", None).await;
         assert_eq!(all["jobs"], json!([]), "neither refusal queued anything");
+        // And a project the Server has never heard of is admitted on the
+        // owner's word alone: there is no directory to consult, and whether
+        // its effects may leave the machine is the gateway's answer later.
+        let (status, first_time) = call(
+            app,
+            "POST",
+            "/v1/transformer-processing/first?project=project-never-seen",
+            Some(transformer("T1")),
+        )
+        .await;
+        assert_eq!(status, StatusCode::ACCEPTED, "{first_time}");
+        assert_eq!(
+            first_time["job"]["context"]["project"],
+            "project-never-seen"
+        );
     }
 
     #[tokio::test]
     async fn capacity_is_a_typed_answer_and_a_cancellation_gives_the_room_back() {
         let dir = tempfile::tempdir().unwrap();
-        let (app, _) = app_with(
+        let app = app_with(
             dir.path(),
             true,
-            &[A, B],
             Limits {
                 global_running: 2,
                 per_project_running: 1,
@@ -1179,42 +1173,13 @@ pub(crate) mod tests {
         assert_eq!(status, StatusCode::ACCEPTED);
     }
 
+    /// A project named for the first time mid-flight is admitted on the spot
+    /// and moves nothing already admitted: a job keeps the project it was
+    /// admitted into, and no restart, refresh or directory is involved.
     #[tokio::test]
-    async fn membership_gained_after_the_snapshot_is_admitted_without_a_restart() {
+    async fn a_project_named_mid_flight_is_admitted_and_re_scopes_nothing_queued() {
         let dir = tempfile::tempdir().unwrap();
-        let (app, directory) = app_with(dir.path(), true, &[A], limits());
-        let (status, refused) = call(
-            app.clone(),
-            "POST",
-            &format!("/v1/transformer-processing/later?project={B}"),
-            Some(transformer("T1")),
-        )
-        .await;
-        assert_eq!(status, StatusCode::BAD_REQUEST);
-        assert_eq!(refused["code"], "project_not_visible");
-        // The refusal left a snapshot cached for ten minutes. The grant lands
-        // now, and the very next call is admitted — because a refusal is
-        // decided again against a freshly fetched directory before it is
-        // relayed, not because the cache expired.
-        directory.0.lock().unwrap().push(B.into());
-        let (status, admitted) = call(
-            app,
-            "POST",
-            &format!("/v1/transformer-processing/later?project={B}"),
-            Some(transformer("T1")),
-        )
-        .await;
-        assert_eq!(status, StatusCode::ACCEPTED, "{admitted}");
-        assert_eq!(admitted["job"]["context"]["project"], B);
-    }
-
-    /// Membership changing under a running Server moves nothing that was
-    /// already admitted: a job keeps the project it was admitted into, and
-    /// what changes is only what may be admitted next.
-    #[tokio::test]
-    async fn a_membership_change_mid_flight_never_re_scopes_queued_work() {
-        let dir = tempfile::tempdir().unwrap();
-        let (app, directory) = app_with(dir.path(), true, &[A, B], limits());
+        let app = app_with(dir.path(), true, limits());
         let mut ids = Vec::new();
         for (key, project, name) in [("a1", A, "T1"), ("b1", B, "T2")] {
             let (status, body) = call(
@@ -1227,12 +1192,8 @@ pub(crate) mod tests {
             assert_eq!(status, StatusCode::ACCEPTED, "{body}");
             ids.push(body["job"]["id"].as_str().unwrap().to_owned());
         }
-        // The account loses A and gains C while both jobs are queued.
-        *directory.0.lock().unwrap() = vec![B.to_owned(), "project-c".to_owned()];
-        app.sessions.forget_membership();
-
-        // Reading is by the job's own context, not by today's membership: the
-        // operator can still see and cancel work admitted yesterday.
+        // Reading is by the job's own context: the operator sees the work
+        // exactly as it was admitted.
         let (status, still) = call(
             app.clone(),
             "GET",
@@ -1242,17 +1203,8 @@ pub(crate) mod tests {
         .await;
         assert_eq!(status, StatusCode::OK, "{still}");
         assert_eq!(still["job"]["context"]["project"], A);
-        // Admitting new work into A is not.
-        let (status, refused) = call(
-            app.clone(),
-            "POST",
-            &format!("/v1/transformer-processing/a2?project={A}"),
-            Some(transformer("T3")),
-        )
-        .await;
-        assert_eq!(status, StatusCode::BAD_REQUEST);
-        assert_eq!(refused["code"], "project_not_visible");
-        // And the project just granted is admitted without a restart.
+        // A third project, never named before, is admitted without a restart
+        // and without anything being fetched.
         let (status, granted) = call(
             app.clone(),
             "POST",
@@ -1413,9 +1365,9 @@ pub(crate) mod tests {
         };
         let caller = identity.caller(None);
         let mut store = runtime::open(&database).unwrap();
-        store.submit_job(&queued, input).unwrap();
+        store.submit_job(&queued, input, limits()).unwrap();
         let (running, _) = store
-            .claim_job(&caller, "worker", 2, 1_000, &mut |_| true)
+            .claim_job(&caller, "worker", 2, 1_000, limits())
             .unwrap()
             .unwrap();
         let result = b"completed solar result";
