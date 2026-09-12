@@ -92,11 +92,7 @@ credential.",
             when: "the session's reply does not match this build's contract",
             remedy: "update DS GridDesign and `ds` to matching releases",
         },
-        Refusal {
-            code: "descriptor_unusable",
-            when: "a descriptor exists but is unreadable, stale or not loopback",
-            remedy: "restart DS GridDesign to republish its descriptor",
-        },
+        ops::DESCRIPTOR_UNUSABLE,
     ],
     reference: Some("docs/reference/desktop.status.md"),
     availability: available,
@@ -174,10 +170,10 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     if let Some((profile, path)) = discover::named(explicit) {
         let descriptor = discover::read(&path, None).map_err(|failure| {
             Failure::unavailable(
-                "descriptor_unusable",
+                ops::DESCRIPTOR_UNUSABLE.code,
                 "the bridge descriptor cannot be used",
             )
-            .remedy("restart DS GridDesign to republish its descriptor")
+            .remedy(ops::DESCRIPTOR_UNUSABLE.remedy)
             .detail(json!({
                 "descriptor": path.display().to_string(),
                 "reason": failure

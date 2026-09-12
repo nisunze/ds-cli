@@ -345,26 +345,34 @@ pub const NOT_PAIRED: Refusal = Refusal {
 };
 pub const AMBIGUOUS: Refusal = Refusal {
     code: "desktop_ambiguous",
-    when: "more than one live DS GridDesign instance could serve this operation",
-    remedy: "name one with --target desktop:<instance_id>, from `ds desktop list`",
+    when: "two or more live DS GridDesign instances can serve this",
+    remedy: "name one with --target desktop:<instance_id>",
+};
+/// A descriptor file exists and cannot be used. The kernel decides which
+/// files those are; this is the name and the remedy every command that reads
+/// one reports it under.
+pub const DESCRIPTOR_UNUSABLE: Refusal = Refusal {
+    code: "descriptor_unusable",
+    when: "a descriptor exists but is unreadable, stale or not loopback",
+    remedy: "restart DS GridDesign to republish its descriptor",
 };
 pub const TARGET_NOT_LIVE: Refusal = Refusal {
     code: "desktop_target_not_live",
-    when: "--target named an instance that is not among the live ones",
-    remedy: "list the live instances with `ds desktop list` and name one of them",
+    when: "--target named an instance that is not live",
+    remedy: "name one from `ds desktop list`",
 };
 pub const TARGET_MISMATCH: Refusal = Refusal {
     code: "desktop_target_mismatch",
-    when: "--target named a live instance on another lane, account or credential audience",
-    remedy: "name an instance that can serve this operation, from `ds desktop list`",
+    when: "--target named a live instance on another lane or account",
+    remedy: "name one that can serve this, from `ds desktop list`",
 };
 /// The saved CLI project is not open in any instance that could serve the
 /// work. It is a refusal and not a switch: a CLI selection never moves a live
 /// map, so the remedy is the explicit, instance-qualified switch.
 pub const PROJECT_NOT_OPEN: Refusal = Refusal {
     code: "desktop_project_not_open",
-    when: "no live instance eligible for this operation has the selected project open",
-    remedy: "open it in the app, or switch one explicitly with `ds desktop project switch --target desktop:<instance_id> --project <project>`",
+    when: "no eligible instance has the selected project open",
+    remedy: "open it in the app, or run `ds desktop project switch --target desktop:<id> --project <id>`",
 };
 pub const CONTRACT_MISMATCH: Refusal = Refusal {
     code: "desktop_contract_mismatch",

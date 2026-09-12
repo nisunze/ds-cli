@@ -80,6 +80,7 @@ rows the read considered, and `truncated` when a scan bound stopped it early.",
     }],
     refusals: &[
         crate::NOT_PAIRED,
+        crate::PROJECT_NOT_OPEN,
         crate::AMBIGUOUS,
         crate::UNREACHABLE,
         crate::PAIRING_REJECTED,

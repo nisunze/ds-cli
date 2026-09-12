@@ -60,6 +60,7 @@ How many features matched and were removed, the removal count per layer, and \
     ],
     refusals: &[
         crate::NOT_PAIRED,
+        crate::PROJECT_NOT_OPEN,
         crate::AMBIGUOUS,
         crate::UNREACHABLE,
         crate::PAIRING_REJECTED,

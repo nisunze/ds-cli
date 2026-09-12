@@ -38,25 +38,21 @@ pub static COMMAND: Command = Command {
     contract: 1,
     summary: "List the live DS GridDesign instances this machine is running.",
     purpose: "\
-Answers which DS GridDesign instances are alive on this machine and which of \
-them can serve your work, so a command that has to name one — anything \
-refused with `desktop_ambiguous`, `desktop_target_not_live` or \
-`desktop_project_not_open` — can be re-run with `--target desktop:<instance_id>`. \
-Each instance is proved alive by an authenticated handshake, so a stale \
-descriptor left behind by a crash is never listed as a choice. Nothing is \
-running is an answer, not a failure.",
+Answers which DS GridDesign instances are alive here and which can serve your \
+work, so a command refused with `desktop_ambiguous`, `desktop_target_not_live` \
+or `desktop_project_not_open` can be re-run with `--target desktop:<id>`. Each \
+instance is proved alive by an authenticated handshake, so a stale descriptor \
+is never a choice. Nothing running is an answer, not a failure.",
     chapter: Chapter::Project,
     effect: Effect::Discovery,
     authority: Authority::None,
     execution: Execution::Sync,
     args: &[],
     output: "\
-`live` and `instances`: each instance's id, how it was identified, install \
-profile, lane, open project, build, start time and window count, plus whether \
-it is ready to serve work. `compatible` names the ids this account may use \
-when `ds` knows which account is running it. `unusable` names any descriptor \
-file that exists and cannot be used, with the reason. Never a token, a bridge \
-address, an account or an email.",
+`live` and `instances`: each id, how it was identified, profile, lane, open \
+project, build, start time, window count and whether it can serve work. \
+`compatible` names the ids this account may use. `unusable` names a descriptor \
+file that cannot be used, and why. Never a token, an address or an account.",
     examples: &[
         Example {
             command: "ds desktop list",

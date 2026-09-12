@@ -173,6 +173,7 @@ pub static FORK_COMMAND: Command = Command {
             when: "--payload is missing or is not valid JSON",
             remedy: "pass one object containing project_id and the exact fork request",
         },
+        ds_cli_desktop::ops::PROJECT_NOT_OPEN,
     ],
     reference: Some("docs/reference/library.md"),
     availability: || Availability::Available,

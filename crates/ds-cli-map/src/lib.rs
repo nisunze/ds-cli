@@ -37,9 +37,9 @@ use serde_json::{Map, Value, json};
 // every command in it — keeps naming them as `crate::…`.
 pub use ds_cli_desktop::ops::{
     AMBIGUOUS, BridgeOp, DESCRIPTOR_ARG, INVALID_NUMBER, NOT_PAIRED, OFFLINE, PAIRING_REJECTED,
-    REFUSED, SIGNED_OUT, SIGNED_OUT_MARKERS, UNREACHABLE, UNREADABLE, UNSUPPORTED,
-    classify_signed_out as classify_design_failure, integer, invoke, paired, paired_availability,
-    plural,
+    PROJECT_NOT_OPEN, REFUSED, SIGNED_OUT, SIGNED_OUT_MARKERS, UNREACHABLE, UNREADABLE,
+    UNSUPPORTED, classify_signed_out as classify_design_failure, integer, invoke, paired,
+    paired_availability, plural,
 };
 
 pub static DOMAIN: Domain = Domain {

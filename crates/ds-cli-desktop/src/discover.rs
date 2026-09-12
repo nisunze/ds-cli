@@ -261,7 +261,7 @@ pub fn read(path: &Path, profile: Option<&str>) -> Result<Descriptor, Failure> {
 /// `descriptor_unusable` has, and callers classify it the way they always have.
 fn unreadable(reason: &str) -> Failure {
     Failure::unavailable(
-        kernel::DESCRIPTOR_UNUSABLE,
+        crate::ops::DESCRIPTOR_UNUSABLE.code,
         format!("the published descriptor {reason}"),
     )
     .remedy("restart DS GridDesign, or name a descriptor with --desktop-descriptor <path>")
@@ -509,6 +509,31 @@ pub fn choose(
     requirement: Option<&Requirement>,
 ) -> Result<Found, Failure> {
     let candidates = enumeration.candidates();
+    if is_sole_development_runtime(&enumeration) {
+        let named_elsewhere =
+            target.is_some_and(|target| target.instance_id != candidates[0].instance_id);
+        if named_elsewhere {
+            // Explicit is still explicit. The stand-in identity below decides
+            // nothing: with the named instance absent from the set, the only
+            // answers left are "that is not an instance id" and "that instance
+            // is not live", and neither depends on who is asking.
+            return Err(relay(
+                kernel::select(&candidates, target, &placeholder_requirement())
+                    .err()
+                    .unwrap_or_else(|| {
+                        kernel::Fault::Hard(
+                            "a target that names no live instance routed to one".into(),
+                        )
+                    }),
+            ));
+        }
+        return Ok(enumeration
+            .live
+            .into_iter()
+            .next()
+            .expect("one live runtime")
+            .found);
+    }
     let owned;
     let requirement = match requirement {
         Some(requirement) => requirement,
@@ -551,6 +576,29 @@ pub fn choose(
     Ok(found)
 }
 
+/// One development build, and nothing else running.
+///
+/// A development runtime publishes its own lane (`local`), which is outside
+/// the kernel's compatibility vocabulary on purpose: `Requirement.lane` is
+/// `stable | canary`, so a provisioned caller can never *match* one. It was
+/// never selected by identity even before instances existed — it was selected
+/// because it was the only thing running, and every operation that carries an
+/// identity fence then refuses it by name (`desktop_operation_unsupported`,
+/// "use a provisioned Canary or Stable build"). That is the development loop,
+/// and it is kept exactly as it was: one runtime, nothing to choose between,
+/// and the fence still answering for the work that needs a provisioned lane.
+///
+/// The moment a second runtime is live, this stops applying and the caller
+/// names one like anywhere else — and an explicit target that names something
+/// other than this runtime still never falls through to it.
+fn is_sole_development_runtime(enumeration: &Enumeration) -> bool {
+    let [only] = &enumeration.live[..] else {
+        return false;
+    };
+    only.candidate()
+        .is_some_and(|candidate| !matches!(candidate.lane.as_str(), "stable" | "canary"))
+}
+
 /// The identity to route by when the caller has none of its own.
 ///
 /// With nothing live there is nothing to adopt, and nothing to route to
@@ -570,13 +618,7 @@ fn adopted_requirement(candidates: &[kernel::Candidate]) -> Result<Requirement, 
         .collect();
     let mut identities = identities.into_iter();
     let Some((lane, uid, audience)) = identities.next() else {
-        return Ok(Requirement {
-            lane: "stable".to_owned(),
-            uid: "-".to_owned(),
-            audience_sha256: "0".repeat(kernel::AUDIENCE_CHARS),
-            project: None,
-            project_independent: true,
-        });
+        return Ok(placeholder_requirement());
     };
     if identities.next().is_some() {
         // Two signed-in sessions under different accounts, and no way to know
@@ -584,10 +626,10 @@ fn adopted_requirement(candidates: &[kernel::Candidate]) -> Result<Requirement, 
         // this is the ambiguity only the host can see, and it refuses the same
         // way rather than adopting whichever identity sorted first.
         return Err(Failure::invalid(
-            kernel::DESKTOP_AMBIGUOUS,
+            crate::ops::AMBIGUOUS.code,
             "more than one DS GridDesign account is signed in on this machine",
         )
-        .remedy("name one with --target desktop:<instance_id>")
+        .remedy(crate::ops::AMBIGUOUS.remedy)
         .detail(json!({
             "candidates": kernel::list(candidates, None).map(|(listed, _)| listed).unwrap_or_default()
         })));
@@ -602,6 +644,21 @@ fn adopted_requirement(candidates: &[kernel::Candidate]) -> Result<Requirement, 
         project: None,
         project_independent: true,
     })
+}
+
+/// An identity that matches nothing, for the decisions that do not depend on
+/// one: whether a named target is an instance id at all, and whether it names
+/// something live. The kernel asks for a requirement in every case; supplying
+/// this one where it cannot change the answer is how a caller with no identity
+/// of its own still gets the kernel's answer rather than a host's guess.
+fn placeholder_requirement() -> Requirement {
+    Requirement {
+        lane: "stable".to_owned(),
+        uid: "-".to_owned(),
+        audience_sha256: "0".repeat(kernel::AUDIENCE_CHARS),
+        project: None,
+        project_independent: true,
+    }
 }
 
 fn unprovisioned_lane() -> Failure {
@@ -1052,8 +1109,12 @@ mod tests {
         fs::remove_dir_all(root).expect("cleanup");
     }
 
+    /// A development build is not a lane the kernel can match, and it never
+    /// was. One of them running alone is still the development loop: it pairs,
+    /// and the operations that need a provisioned lane are refused by their
+    /// own identity fence rather than by selection.
     #[test]
-    fn a_development_lane_session_keeps_its_own_named_refusal() {
+    fn one_development_runtime_alone_still_pairs_and_a_named_other_does_not() {
         let root = scratch();
         write_descriptor(
             &root.join(format!("a-{ONE}.json")),
@@ -1061,14 +1122,76 @@ mod tests {
         );
         let mut local = session(ONE, Some("project-a"));
         local["lane"] = json!("local");
-        let enumeration = enumerated(&root, &[("http://127.0.0.1:41234", local)]);
+        let sessions = [("http://127.0.0.1:41234", local)];
+        assert_eq!(
+            choose(
+                enumerated(&root, &sessions),
+                None,
+                Some(&requirement(Some("project-a")))
+            )
+            .expect("the only runtime on this machine")
+            .descriptor
+            .instance_id,
+            ONE
+        );
+        // Explicit is still explicit: naming another instance does not fall
+        // through to the one that happens to be running.
         assert_eq!(
             refusal(
-                choose(enumeration, None, Some(&requirement(Some("project-a")))),
-                "a development build has no provisioned lane",
+                choose(
+                    enumerated(&root, &sessions),
+                    Some(&target(TWO)),
+                    Some(&requirement(Some("project-a"))),
+                ),
+                "the named instance is not this development runtime",
             )
             .code(),
-            "desktop_operation_unsupported"
+            kernel::DESKTOP_TARGET_NOT_LIVE
+        );
+    }
+
+    /// Beside a provisioned one, a development runtime is simply not a
+    /// candidate — and naming it says so by name.
+    #[test]
+    fn a_development_runtime_beside_a_provisioned_one_is_never_the_answer() {
+        let root = scratch();
+        write_descriptor(
+            &root.join(format!("a-{ONE}.json")),
+            descriptor_body(41234, 11, Some(ONE)),
+        );
+        write_descriptor(
+            &root.join(format!("b-{TWO}.json")),
+            descriptor_body(41235, 12, Some(TWO)),
+        );
+        let mut local = session(TWO, Some("project-a"));
+        local["lane"] = json!("local");
+        let sessions = [
+            ("http://127.0.0.1:41234", session(ONE, Some("project-a"))),
+            ("http://127.0.0.1:41235", local),
+        ];
+        assert_eq!(
+            choose(
+                enumerated(&root, &sessions),
+                None,
+                Some(&requirement(Some("project-a")))
+            )
+            .expect("the provisioned instance is the only candidate")
+            .descriptor
+            .instance_id,
+            ONE
+        );
+        let refused = refusal(
+            choose(
+                enumerated(&root, &sessions),
+                Some(&target(TWO)),
+                Some(&requirement(Some("project-a"))),
+            ),
+            "a development runtime cannot serve provisioned work",
+        );
+        assert_eq!(refused.code(), kernel::DESKTOP_TARGET_MISMATCH);
+        assert_eq!(
+            refused.detail_value().expect("a reason")["reason"],
+            json!("lane")
         );
         fs::remove_dir_all(root).expect("cleanup");
     }

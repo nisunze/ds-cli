@@ -72,6 +72,7 @@ With --sample, matched features and their properties; with --ids, their ids. \
     ],
     refusals: &[
         crate::NOT_PAIRED,
+        crate::PROJECT_NOT_OPEN,
         crate::AMBIGUOUS,
         crate::UNREACHABLE,
         crate::PAIRING_REJECTED,

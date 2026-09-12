@@ -53,6 +53,7 @@ The `path` written, its `bytes` and `digest` (sha256), and the `asset_id` and \
     }],
     refusals: &[
         crate::NOT_PAIRED,
+        crate::PROJECT_NOT_OPEN,
         crate::AMBIGUOUS,
         crate::UNREACHABLE,
         crate::PAIRING_REJECTED,
