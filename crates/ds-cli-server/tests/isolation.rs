@@ -921,7 +921,9 @@ fn a_legacy_transformer_row_is_readable_but_never_recovered_into_the_saved_selec
     assert_eq!(failure.class(), ExitClass::Conflict);
     assert_eq!(
         failure.remedy_text(),
-        Some("read that job's result and resubmit under an explicit --project"),
+        Some(
+            "read the job's stored input with ds server input, then resubmit it under an explicit --project"
+        ),
         "one sentence, identical wherever this code is raised"
     );
 
@@ -1715,10 +1717,14 @@ fn activity_scope_is_one_entry_per_project_that_holds_work() {
 /// the oldest job on the host, one full page behind, under its own project.
 #[test]
 fn activity_scope_covers_a_project_older_than_one_page_of_the_queue() {
+    // A deep queue, and a share that is genuinely a share: the kernel refuses
+    // limits whose per-project bound equals the pool it divides (a share that
+    // could hold everything is no share), so the deep pool is 4096 and one
+    // project's half of it is still far more than the thousand rows below.
     let host = Host::start(ds_command_kernel::execution_context::Limits {
         global_running: 4,
         per_project_running: 2,
-        per_project_queued: 4096,
+        per_project_queued: 2048,
         global_queued: 4096,
     });
     let mut store = host.store();
