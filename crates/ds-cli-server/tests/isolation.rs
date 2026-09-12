@@ -59,7 +59,7 @@ use serde_json::{Value, json};
 use std::sync::Arc;
 use std::time::Duration;
 
-use ds_cli_server::{CANCEL, RESULT, SERVE, SOLAR_SUBMIT, STATUS, SUBMIT};
+use ds_cli_server::{ACTIVITY, CANCEL, RESULT, SERVE, SOLAR_SUBMIT, STATUS, SUBMIT};
 
 /// A 64-character digest that is a perfectly well-formed job id and has never
 /// named a job.
@@ -1717,6 +1717,30 @@ fn activity_scope_is_one_entry_per_project_that_holds_work() {
         answer.stringify().contains("before server startup"),
         "the pre-startup refusal, named: {}",
         answer.stringify()
+    );
+    // And it is a REFUSAL, not a status line. This route's failures used to
+    // leave as a bare `{"error": …}` with no code, no class and no remedy, so
+    // a client had nothing to re-raise and its caller nothing to do.
+    assert_eq!(answer.code(), "server_refused");
+    assert_eq!(answer.json()["class"], "conflict");
+    assert!(
+        answer.json()["remedy"].is_string(),
+        "a refusal a caller cannot act on: {}",
+        answer.stringify()
+    );
+    // The same answer through the client half, which is where it is read.
+    let refused = ds_cli_server::activity(&host.args(&ACTIVITY, &["--project", A]), &context())
+        .expect_err("no Sync Center in this proof");
+    assert_eq!(refused.code(), "server_refused");
+    assert_eq!(
+        refused.class(),
+        ExitClass::Conflict,
+        "the class the host stated, not one inferred from a status code"
+    );
+    assert!(
+        refused.remedy_text().is_some(),
+        "{}",
+        refused.message().to_owned()
     );
     assert_eq!(
         host.gateway.asked(),

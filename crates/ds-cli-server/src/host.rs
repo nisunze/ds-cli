@@ -253,12 +253,7 @@ async fn access(
     let permit = app.requests.enter().map_err(|full| typed(&full))?;
     tokio::task::spawn_blocking(move || authorize(&app, &headers))
         .await
-        .map_err(|_| {
-            error(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "authorization worker unavailable",
-            )
-        })??;
+        .map_err(|_| typed(&worker_lost("authorization")))??;
     let response = next.run(request).await;
     drop(permit);
     Ok(response)
@@ -293,13 +288,33 @@ async fn unserved(request: Request) -> ApiError {
     )
 }
 
+/// A blocking worker that never came back. The host's fault, not the
+/// caller's — and still typed, because an answer with no code, no class and no
+/// remedy leaves whoever receives it nothing to plan for and nothing to do.
+fn worker_lost(what: &str) -> Failure {
+    Failure::internal(
+        "server_refused",
+        format!("this host's {what} worker did not return"),
+    )
+    .remedy("repeat the request; if it repeats, restart ds server serve and report it")
+}
+
+/// Work whose failure is a plain sentence rather than a typed refusal.
+///
+/// The sentence is the host's own — an unreadable durable store, a Sync Center
+/// projection that could not be built — and it used to leave here as a bare
+/// `409 {"error": …}`: no code, no class, no remedy. A client cannot re-raise
+/// what it was not told, so `ds` reported those as class `failed` with the
+/// generic `server_refused` fallback while the host had said `conflict`, and
+/// the caller got no remedy at all. It is the same failure `admitting` states
+/// through [`host_failure`], so it is stated that way here too.
 async fn blocking<T: Send + 'static>(
     f: impl FnOnce() -> Result<T, String> + Send + 'static,
 ) -> Result<T, ApiError> {
     tokio::task::spawn_blocking(f)
         .await
-        .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "native task failed"))?
-        .map_err(|e| error(StatusCode::CONFLICT, e))
+        .map_err(|_| typed(&worker_lost("native")))?
+        .map_err(|reason| typed(&host_failure(reason)))
 }
 /// The same queue, for work that answers with the kernel's own refusals.
 async fn admitting<T: Send + 'static>(
@@ -307,7 +322,7 @@ async fn admitting<T: Send + 'static>(
 ) -> Result<T, ApiError> {
     tokio::task::spawn_blocking(f)
         .await
-        .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "native task failed"))?
+        .map_err(|_| typed(&worker_lost("native")))?
         .map_err(|failure| typed(&failure))
 }
 
