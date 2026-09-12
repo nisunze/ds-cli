@@ -37,6 +37,12 @@ pub mod execution_context;
 pub fn execution_context_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
     execution_context::evaluate(input).map_err(|error| wasm_bindgen::JsValue::from_str(&error))
 }
+pub mod desktop_instance;
+#[cfg(feature = "wasm")]
+#[wasm_bindgen::prelude::wasm_bindgen(js_name = desktopInstance)]
+pub fn desktop_instance_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
+    desktop_instance::evaluate(input).map_err(|error| wasm_bindgen::JsValue::from_str(&error))
+}
 pub mod connectivity;
 pub mod design;
 pub mod design_dashboard;
