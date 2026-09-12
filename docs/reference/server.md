@@ -10,8 +10,11 @@ provenance and cannot be admitted as release engines.
 `ds server serve` hosts the shared Rust compute runtime under the identity
 established by `ds auth login` or device linking. Run both under the same Linux
 user and lane. No browser, paired Desktop, ADC or service-account impersonation
-is involved. The current API is for that owner's control over loopback; remote
-operators use SSH. Public multi-user web delegation is not yet implemented.
+is involved. The Server is the desktop's own core without the desktop: it
+stands on the desktop's side of the one boundary with ds-brain, and the API is
+that owner's control over loopback. One authenticated owner per Server, always
+— a Server on a rented machine is one the owner signs in on, works on and
+shuts down; many users are many machines, never many accounts in one process.
 
 ```bash
 ds server serve --lane stable
@@ -33,17 +36,23 @@ that selection from its own protected context and sends it as if you had typed
 it. Either way exactly one project name reaches the Server on every request.
 
 A saved selection is therefore a **client default**, never Server state. The
-Server verifies whichever name arrives against freshly fetched membership for
-the authenticated account and refuses on its own authority; it does not read
-this machine's selection, its state directory, a browser cache or any other
-client path. Two consequences worth stating plainly:
+Server executes what its authenticated owner hands it for the project named;
+the gateway enforces entitlement at publication and sync. The Server holds no
+project directory — it fetches none, caches none and refreshes none to admit
+work — and it carries no online/offline conditional: admission, queueing,
+execution, restart recovery and capacity are local and work with no upstream
+present at all. Three consequences worth stating plainly:
 
 - **`ds server serve` needs no selected project.** An account that has never
   run `ds auth project use` can host. Callers name their project per request.
 - **One Server serves many projects at once.** Nothing switches, and nothing
   needs a restart to move between them.
+- **A project named for the first time is admitted on the owner's word.**
+  Whether its effects may leave the machine — a publication, a sync — is the
+  gateway's answer on that effect, and a refusal there stops that project's
+  effect and nothing of another project's.
 
-With neither `--project` nor a saved selection there is nothing to verify and
+With neither `--project` nor a saved selection there is nothing to record and
 nothing worth guessing, so the call refuses `project_required` locally rather
 than admitting a job with no scope. The one exception is `ds server solar
 submit`: the sealed `ds.solar.server-submission/v1` envelope names its own
@@ -95,10 +104,9 @@ operation fails identically whichever host executed it.
 |---|---|
 | `project_required` | no `--project` and no saved selection to default to |
 | `context_corrupt` | a project id outside its bound (empty, padded, over 500 characters, control characters) |
-| `project_not_visible` | the account's freshly verified membership does not contain that project |
+| `project_not_visible` | reserved by the kernel's execution context; this Server holds no directory and never raises it |
 | `not_visible` | `job not found` — one answer for an unknown id, a foreign principal, a foreign lane and the wrong project |
 | `principal_mismatch` | the stored job belongs to another account, lane or deployment |
-| `membership_revoked` | membership was lost while the job was queued or running; only that project's work stops |
 | `scope_mismatch` | the sealed Solar input names one project and `--project` names another |
 | `scope_mismatch_for_key` | that idempotency key already admitted a job in a different project |
 | `payload_changed_for_key` | that key already admitted a job with different input bytes |
@@ -117,13 +125,14 @@ distinguishable where that is safe and identical where it is not.
 ### Multi-principal is explicitly not supported
 
 One `ds server serve` serves **one authenticated native account** and as many
-of that account's projects as it may reach. A request whose credential maps to
-a different principal is refused `multi_principal_unsupported`; nothing falls
+of that account's projects as it names. A request whose credential maps to a
+different principal is refused `multi_principal_unsupported`; nothing falls
 back, and no request is served under a second identity. A second account needs
-its own `ds server serve` with its own `--state-dir` and `--listen`. This is a
-stated limitation of this slice, not an oversight: per-connection principals
-would need an authenticated host transport for callers other than the owner,
-which is a separate authority change (see the browser note below).
+its own `ds server serve` with its own `--state-dir` and `--listen`. This is
+the model, not a gap to close: one user per machine, many users are many
+machines. Nothing in the Server is built for many users in one process — no
+per-principal limits, no multi-user auth, no fairness beyond the owner's own
+projects sharing one machine.
 
 ## Jobs
 
@@ -152,8 +161,9 @@ stale claim is never published: missing or malformed claims refuse at
 admission, and an expired or stale claim is recorded by the publication
 authority. A server never stamps a newly fetched snapshot onto an older
 prepared input. The envelope is owner-private because the claim carries the
-actor-bound receipt. It is a sealed request body, not a server-readable client
-path or a browser cache reference.
+actor-bound receipt. The client reads the envelope from the workspace file
+and sends its bytes; the Server accesses the filesystem exactly as the
+desktop does, and taking the path itself on this route is recorded as open.
 
 ## Layers on the running Server
 
@@ -171,9 +181,9 @@ CLI embed no rule of their own. What `ds-cli-server` keeps is the transport
 that genuinely is the Server's: the protected owner-only loopback connection
 (`connection.json` bearer, native authority renewed and revocation observed as
 for jobs), with `--target server` sending an explicit `project` on every layer
-request. Remote operators use SSH. Preferences never become another account's
-visibility because both reached one host: a restart under another account reads
-that account's own scope and leaves the previous one untouched.
+request. Preferences never become another account's visibility because both
+reached one host: a restart under another account reads that account's own
+scope and leaves the previous one untouched.
 
 Routes: `GET /v1/layers?project=&refresh=&limit=&zoom=`,
 `POST /v1/layers/visibility?project=` `{"layers": [canonical ids], "visible": bool}`,
@@ -189,20 +199,20 @@ Server's document is on another project than the one named),
 above. Nothing here pretends a renderer mounted anything: `writes` name the
 layout word a renderer would apply to each runtime layer.
 
-**One limitation to know before you rely on it.** The project is required,
-verified against membership and checked against the document that comes back,
-so a layer answer is never served under the wrong project. But the Server's
-document source still reads its account's saved selection to decide *which*
-project's document to fetch, so naming a second authorized project answers
-`project_context_changed` — naming both projects — rather than that project's
-catalogue. Layers are therefore single-project per Server today, safely rather
+**One limitation to know before you rely on it.** The project is required
+and checked against the document that comes back, so a layer answer is never
+served under the wrong project. But the Server's document source still reads
+its account's saved selection to decide *which* project's document to fetch,
+so naming a second project answers `project_context_changed` — naming both
+projects — rather than that project's catalogue. Layers are therefore single-project per Server today, safely rather
 than silently. Closing it is a `ds-cli-auth` change (an explicit-project layer
 fence), not a Server one.
 
 Browser-to-Server layer control is **not** provided: the connection bearer is
-an owner-only local control credential and must not reach a web visitor.
-Remote presentation waits on an authenticated host transport for browsers,
-which is a separate authority change.
+an owner-only local control credential and must not reach a web visitor. The
+long-term direction is a browser UI talking to this Server in place of the
+kernel in WASM; nothing here assumes a short-lived process or that a webview
+is the only client, and nothing more is built for it yet.
 
 ## Protected state and authority
 
@@ -215,8 +225,12 @@ audience and project. Native authority is renewed at most every 15 seconds
 across workers; sign-out/account changes fence work immediately when observed.
 Upstream device revocation is observed on renewal. Loss of authority pauses
 execution and fences result commits. Restoring the same identity permits pending
-work to recover. Losing membership of ONE project fails that project's work with
-`membership_revoked` and leaves every other project running.
+work to recover. Entitlement to ONE project is the gateway's decision where
+that project's effect crosses to the cloud: a publication or sync it refuses
+for project A stops A's effect and leaves every other project running; the
+Server makes no revocation decision of its own. The Server state directory and
+the desktop data directory are still two roots on disk; converging them is
+slice-2 work.
 Each running host also retains its starting provider/device binding. It cannot
 silently fall back from a revoked or removed device to a stored password login
 for the same UID. Changing that binding requires restarting the host; retained

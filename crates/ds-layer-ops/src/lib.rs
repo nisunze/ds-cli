@@ -1,5 +1,5 @@
 //! The layer drawer's application operations for native hosts — list, show,
-//! hide and reorder — as ONE owner that `ds map layer …`, `ds server layers …`
+//! hide and reorder — as ONE owner that `ds map layer …` (natively or against a Server)
 //! and the Server's HTTP host all call. None of them embeds a rule of its own.
 //!
 //! The decisions are the kernel's (`ds_command_kernel::layer_state`); this

@@ -8,11 +8,17 @@ side) is yours.
 
 ## 0. The one rule
 
-A Server operation is about **one project, named by the caller and verified
-against fresh membership at admission**. The Server no longer reads
-`ds auth project use`'s saved selection as execution state — `serve` starts
-without a selection, and the saved selection is the *client's* default, which
-the client sends explicitly on every call. So:
+A Server operation is about **one project, named by the caller and recorded
+by the kernel at admission**. The Server executes what its authenticated owner
+hands it for the project named; the gateway enforces entitlement at
+publication and sync. The Server is the desktop's core and stands on the
+desktop's side of the one boundary with ds-brain: it holds no project
+directory, fetches none, caches none and refreshes none to admit work, and it
+carries no online/offline conditional — admission, queueing, execution,
+restart recovery and capacity are local and are proven with no upstream
+present at all. It no longer reads `ds auth project use`'s saved selection as
+execution state — `serve` starts without a selection, and the saved selection
+is the *client's* default, which the client sends explicitly on every call. So:
 
 > `ds server …` MUST send `--project`'s value (defaulting to the client's saved
 > selection) on every submit, layer and, where it narrows, every read.
@@ -39,7 +45,7 @@ rosters (class → HTTP):
 | code | class | HTTP | when |
 |---|---|---|---|
 | `project_required` | invalid_input | 400 | no project named and none in the sealed input |
-| `project_not_visible` | invalid_input | 400 | not a member, or the membership snapshot expired |
+| `project_not_visible` | invalid_input | 400 | reserved by the kernel; this Server holds no directory and never raises it |
 | `scope_mismatch` | conflict | 409 | the sealed Solar input names another project than `--project` |
 | `scope_mismatch_for_key` | conflict | 409 | that key already names another project or operation |
 | `payload_changed_for_key` | conflict | 409 | that key was admitted with other bytes |
@@ -48,7 +54,6 @@ rosters (class → HTTP):
 | `capacity_exhausted` | unavailable | 429 | queue or worker admission is full; `retry_after_ms` |
 | `context_corrupt` | invalid_input | 400 | a caller field is out of bounds (e.g. an over-long project) |
 | `context_unrecoverable` | conflict | 409 | a pre-slice row has no project to recover into |
-| `membership_revoked` | conflict | 409 | membership was lost while the job was queued/running (job `error`) |
 | `multi_principal_unsupported` | unauthorized | 401 | the request names a principal other than the Server's |
 
 `not_visible` says **`job not found`** and nothing else, for a foreign
@@ -61,9 +66,10 @@ Do not add prose to it, and do not print the requested project back.
 `project` — REQUIRED in practice (transformer inputs carry no project by
 design). Body: `ds.fast-lv.request/v1`, ≤ 64 MiB. 202 →
 `{"job": <Job>}` where `<Job>` now carries `"context": {…}` (see §3).
-Refusals: `project_required`, `project_not_visible`, `scope_mismatch_for_key`,
+Refusals: `project_required`, `scope_mismatch_for_key`,
 `payload_changed_for_key`, `principal_mismatch`, `capacity_exhausted`,
-`context_corrupt`.
+`context_corrupt`. A project named for the first time is admitted on the
+owner's word: nothing is fetched to allow it.
 
 ### `POST /v1/solar-processing/:key?project=<id>`
 `project` — OPTIONAL: the sealed `ds.solar.server-submission/v1` envelope names
@@ -74,8 +80,9 @@ sealed input is `scope_mismatch`. 202 → `{"job": <Job>}`.
 ### `GET /v1/jobs?project=<id>`
 `project` — OPTIONAL narrowing. Without it: every job visible to this
 connection, whatever its project. With it: only that project's, and a project
-outside membership answers an empty list (never a disclosure). Answer shape is
-unchanged: `{"jobs":[<Job>…],"more":<bool>}`.
+that holds no work answers an empty list whether the owner ever named it or
+not (never a disclosure). Answer shape is unchanged:
+`{"jobs":[<Job>…],"more":<bool>}`.
 
 ### `GET /v1/jobs/:id?project=<id>`, `POST /v1/jobs/:id/cancel?project=<id>`, `GET /v1/jobs/:id/result?project=<id>`
 `project` — OPTIONAL narrowing. An id belonging to another project answers
@@ -109,8 +116,8 @@ shapes changes). Three answers, all proven through the real listener:
 | named | answer |
 |---|---|
 | nothing | `project_required` (400) |
-| a project outside membership | `project_not_visible` (400) |
-| a member project that is not the one the Server's document source is on | `project_context_changed` (409), remedy naming both |
+| a name outside the kernel's bound | `context_corrupt` (400) |
+| a project that is not the one the Server's document source is on | `project_context_changed` (409), remedy naming both |
 | the project the document is for | the catalogue, unchanged |
 
 A refused layer request writes nothing, under any project.
@@ -171,42 +178,59 @@ let sessions = crate::server_sync::sessions::ServerSessions::native(
     connection.clone(), directory.join("store.sqlite"), limits)?;
 ```
 
-`ServerSessions::native` performs **no** network call and requires **no**
+`ServerSessions::native` performs **no** network call — it reads the
+protected native state on this machine and nothing else — and requires **no**
 saved project, so `ds server serve` now starts for an account that has never
-run `ds auth project use`. Add `--per-project <count>` to `SERVE` (optional,
-1..=workers, default `max(1, workers / 2)`) and drop
-`headless_project_not_selected` from the server refusal rosters where it only
-described the old startup requirement.
+run `ds auth project use`, and starts with no upstream. Add `--per-project
+<count>` to `SERVE` (optional, 1..=workers, default `max(1, workers / 2)`)
+and drop `headless_project_not_selected` from the server refusal rosters
+where it only described the old startup requirement.
 
-## 5. Two additive `ds-cli-auth` exports this slice adds
+## 5. One additive `ds-cli-auth` export this slice adds
 
 ```rust
 pub struct HeadlessPrincipal { account_uid, deployment, install_id }   // accessors
 pub fn headless_principal(lane_value: &str) -> Result<HeadlessPrincipal, Failure>
-pub fn headless_projects(lane_value: &str) -> Result<Vec<String>, Failure>
 ```
 
 The Server's connection identity **without** a saved selection —
 `headless_sync_context` minus the project, which is what a host that admits a
-project per operation actually needs — and the exact project directory a
-membership snapshot is made of (the same one `ds auth project use` verifies a
-selection against, both credential paths). `headless_sync_context` is
-unchanged; the Server calls it in exactly one place, `serve`, to learn the
-saved selection a *pre-slice* transformer row can be recovered into, which is
-the one use the execution-context contract §6 gives it.
+project per operation actually needs — read from the local probe, never
+refreshed over the network to obtain. There is no project-directory export:
+the Server has no use for one. The saved selection a *pre-slice* transformer
+row is recovered into (execution-context contract §6, the one use it has) is
+read in `serve` through the same local probe.
 
-## 6. What this slice does not do yet — say it, do not discover it
+## 6. The kernel seam this host still satisfies
+
+The kernel's `AdmitRequest` still carries a `membership` input and the
+runtime a `MembershipSource`. The Server satisfies both from what it holds
+and nothing it fetches: an admission's membership is exactly the project(s)
+the request names (`ServerSessions::named`), and the worker's source is the
+projects of the owner's own durable rows (`ServerSessions::snapshot`). Both
+are local, both are the identity function on the owner's word, and both
+delete the day the kernel drops the input.
+
+## 7. What this slice does not do yet — say it, do not discover it
 
 1. **A layer request can name only the project the Server's account has
-   selected.** The project is required, verified against membership and
-   fenced against the document that comes back, so nothing is ever served
-   under the wrong project — but `ds_cli_auth::layer_config_fenced` and
-   `capture_layer_scope_fence` still read the saved selection to decide which
-   project's document to fetch, so naming a second authorized project answers
-   `project_context_changed` instead of that project's catalogue. Closing it
-   is a ds-cli-auth slice (an explicit-project layer fence), not a Server one.
-2. **Multi-principal is refused, not supported** (`multi_principal_unsupported`),
-   as the contract asks. A second account needs a second `ds server serve`.
+   selected.** The project is required and fenced against the document that
+   comes back, so nothing is ever served under the wrong project — but
+   `ds_cli_auth::layer_config_fenced` and `capture_layer_scope_fence` still
+   read the saved selection to decide which project's document to fetch, so
+   naming a second project answers `project_context_changed` instead of that
+   project's catalogue. Closing it is a ds-cli-auth slice (an explicit-project
+   layer fence), not a Server one.
+2. **Multi-principal is refused, not supported** (`multi_principal_unsupported`).
+   One authenticated owner per Server; many users are many machines, never
+   one process. A second account needs a second `ds server serve`.
 3. **`/v1/activity` needs a gateway session per project**, so its per-project
    envelope is proven for its scope selection (`project_scopes`) and its
    pre-startup refusal, not for a live Sync Center projection.
+4. **The Solar route still takes the sealed envelope as bytes**, sent by the
+   client from the workspace file. The owner's filesystem ruling (the Server
+   reads local paths as the desktop's own commands do) has not yet changed
+   the route to take the path; the bytes it takes are the same bytes.
+5. **Two on-disk roots.** The Server state directory and the desktop data
+   directory are still two homes; converging them into one is slice-2 work,
+   alongside the instance registry.
