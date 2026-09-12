@@ -559,7 +559,7 @@ mod tests {
             ),
             connection,
             auth: Arc::new(Auth(allowed)),
-            requests: Arc::new(tokio::sync::Semaphore::new(4)),
+            requests: Arc::new(crate::host::Door::new(4)),
             activity: None,
             layers: Arc::new(FixtureHost {
                 upstream,

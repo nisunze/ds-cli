@@ -55,7 +55,9 @@ pub struct App {
     pub database: PathBuf,
     pub connection: Connection,
     pub auth: Arc<dyn Authorizer>,
-    pub requests: Arc<tokio::sync::Semaphore>,
+    /// How many requests this host answers at once, and what it says when it
+    /// is full.
+    pub requests: Arc<Door>,
     pub activity: Option<Arc<crate::solar_sync::SolarActivity>>,
     /// The layer drawer's document source and preference root for this host.
     pub layers: Arc<dyn crate::layers::LayerHost>,
@@ -68,6 +70,85 @@ type ApiError = (StatusCode, Json<Value>);
 
 fn error(status: StatusCode, message: impl ToString) -> ApiError {
     (status, Json(json!({"error":message.to_string()})))
+}
+
+/// A quarter second per request already inside the door.
+///
+/// The same shape as the kernel's own capacity guidance — a base per unit of
+/// work that must go first — with the base a door request deserves: what a
+/// request holds here is a store read, a digest or one project's document
+/// fetch, not a worker running an engine.
+const DOOR_RETRY_BASE_MS: u64 = 250;
+/// The longest a caller is ever told to wait for the door, matching the
+/// kernel's own ceiling on retry guidance.
+const DOOR_RETRY_MAX_MS: u64 = 60_000;
+
+/// The request door: how many requests this host answers at once.
+///
+/// It is bounded separately from the workers (see `request_permits`) because
+/// it bounds different work. Being full is a typed refusal in the kernel's
+/// own vocabulary — `capacity_exhausted`, scope `door`, retryable, with the
+/// wait and the remedy — and not a bare 429 a caller has to guess about.
+pub struct Door {
+    permits: Arc<tokio::sync::Semaphore>,
+    width: usize,
+}
+
+impl Door {
+    pub fn new(width: usize) -> Self {
+        Self {
+            permits: Arc::new(tokio::sync::Semaphore::new(width)),
+            width,
+        }
+    }
+
+    /// How wide this door is, which is also how many requests a caller that
+    /// finds it full is waiting behind.
+    pub const fn width(&self) -> usize {
+        self.width
+    }
+
+    /// Deterministic guidance: no clock, no randomness, no project named.
+    pub const fn retry_after_ms(waiting: usize) -> u64 {
+        let wait = DOOR_RETRY_BASE_MS.saturating_mul(waiting as u64);
+        if wait < DOOR_RETRY_BASE_MS {
+            DOOR_RETRY_BASE_MS
+        } else if wait > DOOR_RETRY_MAX_MS {
+            DOOR_RETRY_MAX_MS
+        } else {
+            wait
+        }
+    }
+
+    /// Take one place in the door, or say why there is none. The permit is
+    /// owned, so it lives exactly as long as the request it belongs to.
+    fn enter(&self) -> Result<tokio::sync::OwnedSemaphorePermit, Failure> {
+        self.permits
+            .clone()
+            .try_acquire_owned()
+            .map_err(|_| self.saturated())
+    }
+
+    /// The answer a full door gives, in the shape every other refusal on this
+    /// host has.
+    fn saturated(&self) -> Failure {
+        let waiting = self.width.saturating_sub(self.permits.available_permits());
+        let retry_after_ms = Self::retry_after_ms(waiting);
+        Failure::unavailable(
+            // Written out, not named through the kernel's constant: the
+            // refusal-coverage scan reads a literal, and a code it cannot
+            // read is a code nothing checks is documented.
+            "capacity_exhausted",
+            format!(
+                "this host answers {} requests at once and all of them are in flight",
+                self.width
+            ),
+        )
+        .remedy(format!(
+            "retry after {retry_after_ms} ms; the door clears as requests finish, and a host with more --workers opens a wider one"
+        ))
+        .detail(json!({"retry_after_ms": retry_after_ms, "scope": "door"}))
+    }
 }
 
 /// One typed refusal on the wire, in the shape `ds` already re-raises: the
@@ -124,9 +205,23 @@ fn authorize(app: &App, headers: &HeaderMap) -> Result<(), ApiError> {
     if mismatch != 0 {
         return Err(error(StatusCode::UNAUTHORIZED, "server access denied"));
     }
-    app.auth
-        .authorize(&app.connection.owner)
-        .map_err(|e| error(StatusCode::UNAUTHORIZED, e))
+    // The authorizer answers from the credential this machine holds, and it
+    // refuses for exactly one reason: a local answer that the owner changed.
+    // "The gateway is unreachable" is not one of its answers, so there is no
+    // reason left here to translate into a generic 401 — the refusal is the
+    // named one a caller can plan for.
+    app.auth.authorize(&app.connection.owner).map_err(|reason| {
+        typed(
+            &Failure::unauthorized(
+                // A literal, like `needs_paired_map` below: the
+                // refusal-coverage scan reads literals, and a code it cannot
+                // read is a code nothing checks is documented.
+                "server_owner_changed",
+                reason,
+            )
+            .remedy(crate::OWNER_CHANGED.remedy),
+        )
+    })
 }
 
 pub fn router(app: App) -> Router {
@@ -135,6 +230,7 @@ pub fn router(app: App) -> Router {
         .route("/v1/jobs/:id", get(status))
         .route("/v1/jobs/:id/cancel", post(cancel))
         .route("/v1/jobs/:id/result", get(result))
+        .route("/v1/jobs/:id/input", get(input))
         .route("/v1/activity", get(activity))
         .route("/v1/layers", get(crate::layers::list))
         .route("/v1/layers/visibility", post(crate::layers::visibility))
@@ -152,12 +248,7 @@ async fn access(
     next: Next,
 ) -> Result<Response, ApiError> {
     let headers = request.headers().clone();
-    let permit = app.requests.clone().try_acquire_owned().map_err(|_| {
-        error(
-            StatusCode::TOO_MANY_REQUESTS,
-            "server request capacity reached; retry later",
-        )
-    })?;
+    let permit = app.requests.enter().map_err(|full| typed(&full))?;
     tokio::task::spawn_blocking(move || authorize(&app, &headers))
         .await
         .map_err(|_| {
@@ -464,6 +555,51 @@ async fn result(
     })
     .await
 }
+/// `GET /v1/jobs/:id/input[?project=<id>]` — the exact request bytes this job
+/// was admitted with, back to the owner who handed them over.
+///
+/// Retained input is not new: the store has always kept it so a publication
+/// can be reconstructed after a restart. What was missing was a way for the
+/// OWNER to read it, which made one remedy unactionable — a row stored by a
+/// released Server names no project, will never run, and has no result to
+/// read, so "read the result and resubmit" asked for something that does not
+/// exist. Its input does exist, and this is how it comes back.
+///
+/// Visible-fenced exactly like `result`: a job in another project is `job not
+/// found`, identical to an id that never existed. The one difference is that
+/// no phase is required — a queued job's input is as readable as a completed
+/// one's, which is the whole point.
+///
+/// `project` is optional narrowing here and the client sends only what the
+/// caller named, because a row with no context of its own is visible only to
+/// an unnarrowed read. Narrowing a request for exactly that row would hide
+/// the thing the remedy sends the owner to fetch.
+async fn input(
+    State(app): State<App>,
+    _headers: HeaderMap,
+    Param(id): Param<String>,
+    query: Option<Query<ProjectQuery>>,
+) -> Result<Response, ApiError> {
+    let project = project_query(query)?;
+    admitting(move || {
+        let identity = app.sessions.identity();
+        let caller = identity.caller(project.as_deref());
+        let bytes = runtime::open(&app.database)
+            .map_err(host_failure)?
+            .job_input(&caller, &id)
+            .map_err(|error| host_failure(error.to_string()))?
+            .ok_or_else(sessions::not_found)?;
+        Ok((
+            [
+                ("content-type", "application/json"),
+                ("cache-control", "no-store"),
+            ],
+            bytes,
+        )
+            .into_response())
+    })
+    .await
+}
 /// `GET /v1/activity[?project=<id>]` — one envelope, one entry per project
 /// this connection has durable work in. Without a project it reports every
 /// one of them; with a project it reports that one, or nothing at all when
@@ -487,10 +623,16 @@ async fn activity(
             .ok_or("Solar Sync Center activity is unavailable before server startup")?;
         let mut projects = Vec::new();
         for scope in project_scopes(&app, project.as_deref())? {
-            projects.push(match activity.store_read(&scope) {
+            // Whether this project holds more durable Solar work than one
+            // projection covers is a LOCAL fact about the rows on disk, so it
+            // is reported whether or not the projection itself could be read.
+            let more = activity.projection_truncated(&scope)?;
+            let mut entry = match activity.store_read(&scope) {
                 Ok(read) => json!({"project": scope, "activity": read}),
                 Err(reason) => json!({"project": scope, "unavailable": reason}),
-            });
+            };
+            entry["more"] = json!(more);
+            projects.push(entry);
         }
         Ok(Json(
             json!({"schema": ACTIVITY_SCHEMA, "projects": projects}),
@@ -813,6 +955,17 @@ pub(crate) mod tests {
     fn app(path: &Path, authorized: bool) -> App {
         app_with(path, authorized, limits())
     }
+    /// The same host, authorizing through the REAL `NativeAuthorizer` over a
+    /// machine that holds a credential and an upstream that never answers.
+    /// This is the production authorization path with no gateway behind it.
+    fn offline_app(path: &Path, source: Arc<crate::auth::tests::FixtureCredential>) -> App {
+        let mut app = app_with(path, true, limits());
+        app.auth = Arc::new(
+            crate::auth::NativeAuthorizer::from_source(source, std::time::Duration::ZERO)
+                .expect("a machine that holds a credential"),
+        );
+        app
+    }
     /// A Server over `path` with no directory, no snapshot and no upstream:
     /// exactly what production has.
     fn app_with(path: &Path, authorized: bool, limits: Limits) -> App {
@@ -829,7 +982,7 @@ pub(crate) mod tests {
             database,
             connection,
             auth: Arc::new(Auth(authorized)),
-            requests: Arc::new(tokio::sync::Semaphore::new(4)),
+            requests: Arc::new(Door::new(4)),
             activity: None,
             layers: crate::layers::NativeLayerHost::fixture_native("stable"),
             sessions,
@@ -861,6 +1014,27 @@ pub(crate) mod tests {
             status,
             serde_json::from_slice(&bytes).unwrap_or(Value::Null),
         )
+    }
+
+    /// The same call, keeping the answer's exact bytes: a route that returns
+    /// stored bytes is judged on the bytes, not on a re-encoding of them.
+    async fn raw(app: App, method: &str, uri: &str) -> (StatusCode, Vec<u8>) {
+        let response = router(app)
+            .oneshot(
+                Request::builder()
+                    .method(method)
+                    .uri(uri)
+                    .header("authorization", format!("Bearer {}", "a".repeat(64)))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let status = response.status();
+        let bytes = axum::body::to_bytes(response.into_body(), 64 * 1024 * 1024)
+            .await
+            .unwrap();
+        (status, bytes.to_vec())
     }
 
     #[tokio::test]
@@ -1574,6 +1748,331 @@ pub(crate) mod tests {
             result
         );
     }
+    /// EVERY route answers with the real authorizer and no gateway anywhere.
+    ///
+    /// This is the claim the second pass refuted: authorization used to
+    /// refresh a credential through the gateway, so a host that lost its
+    /// upstream answered 401 to everything within fifteen seconds. The
+    /// authorizer here is the production `NativeAuthorizer`; what stands in
+    /// for the machine is a credential source that holds a credential and
+    /// whose every refresh fails. Nothing may reach for that refresh.
+    #[tokio::test]
+    async fn every_route_answers_from_the_held_credential_with_no_gateway() {
+        let dir = tempfile::tempdir().unwrap();
+        let source = crate::auth::tests::FixtureCredential::held("test-owner", "device:first");
+        let mut app = offline_app(dir.path(), source.clone());
+        app.activity = Some(
+            crate::solar_sync::SolarActivity::open(app.database.clone(), app.sessions.clone())
+                .expect("the activity host needs no gateway to exist"),
+        );
+
+        let (status, submitted) = call(
+            app.clone(),
+            "POST",
+            &format!("/v1/transformer-processing/offline?project={A}"),
+            Some(transformer("T1")),
+        )
+        .await;
+        assert_eq!(status, StatusCode::ACCEPTED, "{submitted}");
+        let id = submitted["job"]["id"].as_str().unwrap().to_owned();
+
+        // Every job route, the activity envelope and the layer drawer: each
+        // one answers, and not one of them answers the authorizer's refusal.
+        for (method, uri, expected) in [
+            ("GET", "/v1/jobs".to_owned(), StatusCode::OK),
+            ("GET", format!("/v1/jobs/{id}?project={A}"), StatusCode::OK),
+            (
+                "GET",
+                format!("/v1/jobs/{id}/input?project={A}"),
+                StatusCode::OK,
+            ),
+            (
+                "GET",
+                format!("/v1/jobs/{id}/result?project={A}"),
+                // Queued, so no result yet — an answer about the job, which
+                // is exactly what "the host is working" looks like.
+                StatusCode::CONFLICT,
+            ),
+            ("GET", "/v1/activity".to_owned(), StatusCode::OK),
+            (
+                "POST",
+                format!("/v1/jobs/{id}/cancel?project={A}"),
+                StatusCode::OK,
+            ),
+        ] {
+            let (status, body) = call(app.clone(), method, &uri, None).await;
+            assert_eq!(status, expected, "{method} {uri}: {body}");
+            assert_ne!(
+                body["code"], "server_owner_changed",
+                "{method} {uri} was stopped by authorization: {body}"
+            );
+        }
+        // The layer drawer reaches its own document source, whose answer on a
+        // machine with no login is its own business (`layers::tests` proves
+        // that half against a fixture source). What matters here is that
+        // authorization let it through.
+        let (_, layers) = call(app.clone(), "GET", &format!("/v1/layers?project={A}"), None).await;
+        assert_ne!(layers["code"], "server_owner_changed", "{layers}");
+
+        assert_eq!(
+            source.refreshes(),
+            0,
+            "not one request may reach for the gateway"
+        );
+    }
+
+    /// Losing the gateway mid-run changes no answer, because no answer ever
+    /// depended on it: the same requests, before and after, byte for byte.
+    #[tokio::test]
+    async fn losing_the_gateway_mid_run_changes_no_answer() {
+        let dir = tempfile::tempdir().unwrap();
+        let source = crate::auth::tests::FixtureCredential::held("test-owner", "device:first");
+        let app = offline_app(dir.path(), source.clone());
+        let (status, submitted) = call(
+            app.clone(),
+            "POST",
+            &format!("/v1/transformer-processing/steady?project={A}"),
+            Some(transformer("T1")),
+        )
+        .await;
+        assert_eq!(status, StatusCode::ACCEPTED, "{submitted}");
+        let before = call(app.clone(), "GET", &format!("/v1/jobs?project={A}"), None).await;
+        // The upstream goes away. Nothing local changes: the credential is
+        // still the one on disk, and that is the only thing asked about.
+        for _ in 0..3 {
+            assert!(
+                crate::auth::OwnerCredential::refresh(source.as_ref()).is_err(),
+                "the gateway is gone"
+            );
+        }
+        let after = call(app.clone(), "GET", &format!("/v1/jobs?project={A}"), None).await;
+        assert_eq!(before.0, after.0);
+        assert_eq!(before.1, after.1, "the same answer, with no upstream");
+    }
+
+    /// The one thing that stops a host, over the wire and by its own name.
+    #[tokio::test]
+    async fn a_changed_credential_on_disk_stops_the_host_by_name() {
+        let dir = tempfile::tempdir().unwrap();
+        let source = crate::auth::tests::FixtureCredential::held("test-owner", "device:first");
+        let app = offline_app(dir.path(), source.clone());
+        let (status, _) = call(app.clone(), "GET", "/v1/jobs", None).await;
+        assert_eq!(status, StatusCode::OK);
+
+        source.set(Ok(crate::auth::OwnerAnswer::Held {
+            owner: "test-owner".into(),
+            credential: "device:second".into(),
+        }));
+        let (status, stopped) = call(app.clone(), "GET", "/v1/jobs", None).await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED, "{stopped}");
+        assert_eq!(stopped["code"], "server_owner_changed");
+        assert_eq!(stopped["class"], "unauthorized");
+        assert!(
+            stopped["error"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("credential changed"),
+            "{stopped}"
+        );
+        assert!(
+            stopped["remedy"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("restart"),
+            "{stopped}"
+        );
+
+        // A machine that cannot answer is NOT that: the host carries on.
+        source.set(Err("protected state is locked".into()));
+        let (status, _) = call(app, "GET", "/v1/jobs", None).await;
+        assert_eq!(
+            status,
+            StatusCode::OK,
+            "could not tell must never become could not serve"
+        );
+    }
+
+    /// A full door is a typed refusal with a scope of its own, not a bare 429
+    /// a caller has to guess about.
+    #[tokio::test]
+    async fn a_full_door_answers_a_typed_refusal_with_its_own_scope() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = app(dir.path(), true);
+        app.requests = Arc::new(Door::new(1));
+        let held = app.requests.enter().expect("the only place in the door");
+        let (status, refused) = call(app.clone(), "GET", "/v1/jobs", None).await;
+        assert_eq!(status, StatusCode::TOO_MANY_REQUESTS, "{refused}");
+        assert_eq!(refused["code"], "capacity_exhausted");
+        assert_eq!(refused["class"], "unavailable");
+        assert_eq!(refused["retryable"], true);
+        // The door is its own scope: nothing a caller cancels empties it, and
+        // it is not the queue the kernel bounds.
+        assert_eq!(refused["scope"], "door");
+        assert_eq!(refused["retry_after_ms"], 250);
+        let remedy = refused["remedy"].as_str().unwrap_or_default();
+        assert!(remedy.contains("250 ms"), "{remedy}");
+        assert!(
+            !refused["error"].as_str().unwrap_or_default().contains(A),
+            "a capacity refusal names counts, never a project"
+        );
+        // And the door clears as requests finish.
+        drop(held);
+        let (status, _) = call(app, "GET", "/v1/jobs", None).await;
+        assert_eq!(status, StatusCode::OK);
+    }
+
+    #[test]
+    fn the_doors_retry_guidance_is_deterministic_and_bounded() {
+        // A quarter second per request already inside it, never zero and
+        // never a wait nobody would sit through.
+        assert_eq!(Door::retry_after_ms(0), 250);
+        assert_eq!(Door::retry_after_ms(1), 250);
+        assert_eq!(Door::retry_after_ms(8), 2_000);
+        assert_eq!(Door::retry_after_ms(usize::MAX), 60_000);
+        assert_eq!(Door::new(8).width(), 8);
+    }
+
+    /// A job's own stored input comes back to its owner — including the row
+    /// that has no result to read — and to nobody else.
+    #[tokio::test]
+    async fn a_jobs_stored_input_is_readable_by_its_owner_and_by_nobody_else() {
+        let dir = tempfile::tempdir().unwrap();
+        let app = app(dir.path(), true);
+        let bytes = transformer("T1");
+        let (status, submitted) = call(
+            app.clone(),
+            "POST",
+            &format!("/v1/transformer-processing/readable?project={A}"),
+            Some(bytes.clone()),
+        )
+        .await;
+        assert_eq!(status, StatusCode::ACCEPTED, "{submitted}");
+        let id = submitted["job"]["id"].as_str().unwrap().to_owned();
+
+        // Exactly the bytes that were admitted, while the job is still queued.
+        let (status, returned) = raw(
+            app.clone(),
+            "GET",
+            &format!("/v1/jobs/{id}/input?project={A}"),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(returned, bytes, "the owner's own request bytes, unchanged");
+
+        // Non-disclosing exactly like the result route: another project's job
+        // and an id that never existed are one answer.
+        let guessed = "0".repeat(64);
+        for uri in [
+            format!("/v1/jobs/{id}/input?project={B}"),
+            format!("/v1/jobs/{guessed}/input"),
+            format!("/v1/jobs/{guessed}/input?project={A}"),
+        ] {
+            let (status, hidden) = call(app.clone(), "GET", &uri, None).await;
+            assert_eq!(status, StatusCode::CONFLICT, "{uri}: {hidden}");
+            assert_eq!(hidden["code"], "not_visible");
+            assert_eq!(hidden["error"], "job not found");
+        }
+    }
+
+    /// A project with more durable Solar work than one projection covers is
+    /// told so — and every other project's answer is unaffected. The bound
+    /// that used to be a hard failure at 4096 rows is now a page and a flag.
+    #[tokio::test]
+    async fn a_project_with_more_solar_rows_than_a_projection_says_so() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = app(dir.path(), true);
+        seed_solar_rows(&app, A, 5_000);
+        seed_solar_rows(&app, B, 3);
+        app.activity = Some(
+            crate::solar_sync::SolarActivity::open(app.database.clone(), app.sessions.clone())
+                .expect("the activity host needs no gateway to exist"),
+        );
+        let activity = app.activity.clone().expect("activity");
+        assert!(
+            activity.projection_truncated(A).expect("a bounded read"),
+            "5000 rows is more than one projection covers"
+        );
+        assert!(!activity.projection_truncated(B).expect("a bounded read"));
+
+        // And the envelope says it, per project, whether or not that
+        // project's Sync Center could be read (there is no gateway here).
+        let (status, body) = call(app.clone(), "GET", "/v1/activity", None).await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        let entries = body["projects"].as_array().expect("one entry per project");
+        assert_eq!(entries.len(), 2, "{body}");
+        for entry in entries {
+            let more = entry["project"] == A;
+            assert_eq!(entry["more"], json!(more), "{entry}");
+            assert!(entry["unavailable"].is_string(), "{entry}");
+        }
+    }
+
+    /// Write `count` durable Solar rows for one project the way a Server that
+    /// has been running for months would have accumulated them.
+    ///
+    /// Directly, in one transaction, because the point is the SIZE: submitting
+    /// five thousand rows through the queue would spend the test's whole life
+    /// on capacity censuses and fsyncs, and prove nothing this does not.
+    fn seed_solar_rows(app: &App, project: &str, count: usize) {
+        use ds_command_kernel::compute_jobs::{EngineKind, Job, Phase};
+        use ds_command_kernel::execution_context::ExecutionContext;
+        // Create the schema through the store itself, so the rows land in the
+        // table the store reads and not in one this test invented.
+        runtime::open(&app.database).expect("durable store");
+        let mut connection =
+            rusqlite::Connection::open(&app.database).expect("the same protected database");
+        let transaction = connection.transaction().expect("one write");
+        for index in 0..count {
+            let id = runtime::digest(format!("{project}-{index}").as_bytes());
+            let input = format!("{{\"city\":\"{project}-{index}\"}}");
+            let digest = runtime::digest(input.as_bytes());
+            let created = 1_000 + index as u64;
+            let job = Job {
+                id: id.clone(),
+                owner: app.connection.owner.clone(),
+                lane: app.connection.lane.clone(),
+                input_sha256: digest.clone(),
+                engine: EngineKind::SolarPrepared,
+                input_tag: "ds.solar.calculate.prepared/v1".into(),
+                phase: Phase::Completed,
+                attempts: 1,
+                created_at_ms: created,
+                updated_at_ms: created,
+                worker: None,
+                lease_until_ms: 0,
+                result_sha256: Some(digest.clone()),
+                error: None,
+                context: Some(ExecutionContext {
+                    principal_uid: UID.into(),
+                    lane: app.connection.lane.clone(),
+                    deployment: DEPLOYMENT.into(),
+                    install_id: "install-1".into(),
+                    project: project.to_owned(),
+                    client: "test:1".into(),
+                    operation: "solar_processing".into(),
+                    job_id: id.clone(),
+                    idempotency_key: format!("seed-{index}"),
+                    input_sha256: digest,
+                    admitted_at_ms: created,
+                }),
+            };
+            transaction
+                .execute(
+                    "INSERT INTO compute_jobs(id,owner,lane,phase,lease_until,created,row,input) VALUES (?1,?2,?3,'completed',0,?4,?5,?6)",
+                    rusqlite::params![
+                        job.id,
+                        job.owner,
+                        job.lane,
+                        job.created_at_ms,
+                        serde_json::to_string(&job).expect("row"),
+                        input.as_bytes(),
+                    ],
+                )
+                .expect("seeded row");
+        }
+        transaction.commit().expect("seeded queue");
+    }
+
     #[cfg(unix)]
     #[test]
     fn owner_only_connection_survives_restart_and_refuses_identity_switch() {

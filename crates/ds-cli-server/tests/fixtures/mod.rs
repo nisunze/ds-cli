@@ -29,8 +29,24 @@
 //! input, and a real `ds.fast-lv.request/v1` batch as the transformer row's.
 //! Reading the Solar bytes back out of it is also how this harness gets a
 //! genuine sealed envelope to submit live, so the one fixture serves both.
+//!
+//! Three things here are NOT fixtures, and exist because the second
+//! adversarial pass showed that a stub in their place proved nothing:
+//!
+//!   * [`device_home`] writes the protected native state a real `ds auth link`
+//!     leaves, so the production `NativeAuthorizer` can be exercised over a
+//!     real machine instead of a stub `Authorizer`.
+//!   * [`LiveServer`] starts the REAL `ds server serve` as its own process, on
+//!     a real port, over that machine — the shipped wiring, end to end,
+//!     including the startup path the pass refuted.
+//!   * [`cut_network`] compiles an `LD_PRELOAD` shim that fails every
+//!     non-loopback connect and every non-loopback name lookup, so "there is
+//!     no gateway" stops being an arrangement of this test and becomes a
+//!     property of the machine it runs on.
 
 #![allow(dead_code)]
+
+pub mod device_home;
 
 use std::{
     collections::BTreeMap,
@@ -97,8 +113,12 @@ impl SessionOpener for NoGateway {
     }
 }
 
-/// The native device authorizer. `Paused` is how a proof starts a worker pool
-/// for its recovery pass without letting it claim and execute anything.
+/// The authorizer a proof uses when authorization is not what it is about —
+/// the store, the document source, the door. It is NOT where the offline
+/// claim rests: that is made against the production `NativeAuthorizer`,
+/// reading a real protected credential, in the real `ds server serve`
+/// process ([`LiveServer`]). `Paused` is how a proof starts a worker pool for
+/// its recovery pass without letting it claim and execute anything.
 pub struct Allow;
 impl Authorizer for Allow {
     fn authorize(&self, _: &str) -> Result<(), String> {
@@ -129,6 +149,13 @@ struct Shared {
     reads: AtomicUsize,
     reorders: Mutex<Vec<(String, Vec<Order>)>>,
     switch_project_on_read: AtomicBool,
+    /// A door held open: while this is set, every read parks inside the
+    /// request that made it, so a proof can fill the host's request door with
+    /// real requests rather than reason about a semaphore.
+    held: Mutex<bool>,
+    resumed: std::sync::Condvar,
+    /// How many reads are parked in there right now.
+    inside: AtomicUsize,
 }
 
 pub struct LayerFixture {
@@ -152,6 +179,9 @@ impl LayerFixture {
                 reads: AtomicUsize::new(0),
                 reorders: Mutex::new(Vec::new()),
                 switch_project_on_read: AtomicBool::new(false),
+                held: Mutex::new(false),
+                resumed: std::sync::Condvar::new(),
+                inside: AtomicUsize::new(0),
             }),
         }
     }
@@ -165,6 +195,22 @@ impl LayerFixture {
     }
     pub fn reorders(&self) -> Vec<(String, Vec<Order>)> {
         self.shared.reorders.lock().expect("reorders").clone()
+    }
+    /// Park every subsequent read inside the request that made it, until
+    /// [`release`](LayerFixture::release). This is how the proof saturates the
+    /// host's request door with genuine in-flight requests.
+    pub fn hold(&self) {
+        *self.shared.held.lock().expect("hold") = true;
+    }
+    /// Let every parked read finish, and take no new ones.
+    pub fn release(&self) {
+        *self.shared.held.lock().expect("hold") = false;
+        self.shared.resumed.notify_all();
+    }
+    /// How many reads are parked right now — which is how many requests are
+    /// holding a place in the door.
+    pub fn inside(&self) -> usize {
+        self.shared.inside.load(Ordering::SeqCst)
     }
     /// Make the source answer about a project it was not opened for — the one
     /// way a well-behaved caller can reach `project_context_changed`.
@@ -211,6 +257,16 @@ impl FixtureDocuments {
 impl LayerDocuments for FixtureDocuments {
     fn read(&mut self, _refresh: bool) -> Result<DocumentRead, Failure> {
         self.shared.reads.fetch_add(1, Ordering::SeqCst);
+        {
+            let mut held = self.shared.held.lock().expect("hold");
+            if *held {
+                self.shared.inside.fetch_add(1, Ordering::SeqCst);
+                while *held {
+                    held = self.shared.resumed.wait(held).expect("resume");
+                }
+                self.shared.inside.fetch_sub(1, Ordering::SeqCst);
+            }
+        }
         let Some(document) = self.shared.documents.get(&self.project) else {
             // Where the account is established, not here: this is the answer
             // the gateway gives for a project this account cannot read, and
@@ -364,13 +420,18 @@ pub fn identity_of(owner: &str, uid: &str, lane: &str) -> HostIdentity {
     }
 }
 
-/// The durable owner fence exactly as `ds-cli-server::auth::identity` derives
-/// it: the digest of (uid, lane, credential audience). Two principals
+/// The durable owner fence exactly as `ds-cli-server::auth::owner_fence`
+/// derives it from the credential this machine holds: the digest of
+/// (uid, lane, credential audience). Two principals
 /// therefore never share one in production, which is the thing a proof that
 /// deliberately shares it is testing the absence of.
 pub fn owner_digest(uid: &str, lane: &str) -> String {
     runtime::digest(&serde_json::to_vec(&(uid, lane, DEPLOYMENT)).expect("identity tuple"))
 }
+
+/// The request door every proof but the door's own runs behind: wide enough
+/// that nothing else in this file ever meets it.
+pub const DOOR: usize = 8;
 
 pub const fn limits() -> Limits {
     Limits {
@@ -386,16 +447,23 @@ impl Host {
     /// free loopback port. No project is declared to it beforehand: there is
     /// no directory, so callers name theirs and that is the whole of it.
     pub fn start(limits: Limits) -> Self {
-        Self::start_with(limits, None)
+        Self::start_with(limits, None, DOOR)
     }
 
     /// The same, over a store.sqlite that is already on disk (the legacy
     /// queue fixture).
     pub fn start_over(limits: Limits, queue: &Path) -> Self {
-        Self::start_with(limits, Some(queue))
+        Self::start_with(limits, Some(queue), DOOR)
     }
 
-    fn start_with(limits: Limits, queue: Option<&Path>) -> Self {
+    /// The same, with a request door of a stated width. A door only answers
+    /// when it is full, and filling the default one would mean holding eight
+    /// requests open to prove one sentence.
+    pub fn start_with_door(limits: Limits, door: usize) -> Self {
+        Self::start_with(limits, None, door)
+    }
+
+    fn start_with(limits: Limits, queue: Option<&Path>, door: usize) -> Self {
         let state = tempfile::tempdir().expect("state directory");
         let prefs = tempfile::tempdir().expect("preference root");
         if let Some(queue) = queue {
@@ -406,7 +474,7 @@ impl Host {
         let identity = identity(UID, LANE);
         let layers = Arc::new(LayerFixture::new(UID, prefs.path().to_owned(), READABLE));
         let gateway = Arc::new(NoGateway::default());
-        let app = build_app(
+        let mut app = build_app(
             state.path(),
             state.path().join("store.sqlite"),
             address,
@@ -416,6 +484,7 @@ impl Host {
             layers.clone(),
             gateway.clone(),
         );
+        app.requests = Arc::new(ds_cli_server::host::Door::new(door));
         let token = app.connection.token.clone();
         let running = serve(app.clone(), listener);
         Self {
@@ -665,7 +734,7 @@ fn build_app_as(
         database,
         connection,
         auth: Arc::new(Allow),
-        requests: Arc::new(tokio::sync::Semaphore::new(8)),
+        requests: Arc::new(ds_cli_server::host::Door::new(8)),
         activity: None,
         layers,
         sessions,
@@ -701,6 +770,18 @@ fn serve(app: App, listener: std::net::TcpListener) -> Running {
             .await;
     });
     Running { runtime, shutdown }
+}
+
+/// One request at any listener, with any bearer, returning the exact bytes.
+/// The same call [`Host::raw`] makes, for a Server this harness did not build.
+pub fn wire(
+    address: SocketAddr,
+    token: &str,
+    method: &str,
+    path: &str,
+    body: Option<&[u8]>,
+) -> Answer {
+    raw_at(address, token, method, path, body, &[])
 }
 
 fn raw_at(
@@ -805,17 +886,13 @@ pub fn ds_binary() -> PathBuf {
 /// `--target server` path reads neither: it reads `connection.json`.
 pub fn run_ds(args: &[&str]) -> DsRun {
     let config = tempfile::tempdir().expect("private config home");
-    let bundle = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../ds-cli-auth/tests/fixtures/development-catalog.json");
-    let output = std::process::Command::new(ds_binary())
-        .args(args)
-        .env("NO_COLOR", "1")
-        .env("DS_NATIVE_CLIENT_PROFILE_BUNDLE", &bundle)
-        .env("DS_CONFIG_HOME", config.path())
-        .env(
-            "DS_DESKTOP_DESCRIPTOR",
-            config.path().join("no-desktop.json"),
-        )
+    run_ds_in(config.path(), args)
+}
+
+/// The same, against a NAMED config home — a machine that already holds a
+/// device credential, for instance.
+pub fn run_ds_in(config: &Path, args: &[&str]) -> DsRun {
+    let output = ds_command(config, args)
         .output()
         .expect("the ds binary runs");
     let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
@@ -825,6 +902,254 @@ pub fn run_ds(args: &[&str]) -> DsRun {
         stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
         code: output.status.code().unwrap_or(-1),
     }
+}
+
+/// One `ds` invocation, configured but not yet run: a valid development client
+/// catalogue, one private config home, no desktop descriptor, and — whenever
+/// this machine can build it — the network cut out from under it.
+fn ds_command(config: &Path, args: &[&str]) -> std::process::Command {
+    let mut command = std::process::Command::new(ds_binary());
+    command
+        .args(args)
+        .env("NO_COLOR", "1")
+        .env("DS_NATIVE_CLIENT_PROFILE_BUNDLE", device_home::catalogue())
+        .env("DS_CONFIG_HOME", config)
+        .env("DS_DESKTOP_DESCRIPTOR", config.join("no-desktop.json"));
+    if let Some(shim) = cut_network() {
+        command.env("LD_PRELOAD", shim);
+    }
+    command
+}
+
+// ── the network, cut ────────────────────────────────────────────────────
+
+/// Set on a run that is already under the shim, naming it. Its presence is
+/// also how the cut-network re-run recognises itself and does not recurse.
+pub const CUT_NETWORK_SHIM: &str = "DS_ISOLATION_NO_NETWORK";
+
+/// The compiled `LD_PRELOAD` shim, or `None` when this machine has no C
+/// compiler. Built once per test process, into a directory that outlives it.
+///
+/// See `tests/fixtures/no_network.c`: every non-loopback `connect` answers
+/// `ENETUNREACH` and every non-loopback name lookup answers `EAI_FAIL`, for
+/// whatever process loads it and everything that process spawns.
+pub fn cut_network() -> Option<PathBuf> {
+    static SHIM: OnceLock<Option<PathBuf>> = OnceLock::new();
+    SHIM.get_or_init(|| {
+        if !cfg!(target_os = "linux") {
+            return None;
+        }
+        // A run that is ALREADY under the cut network inherits the shim
+        // rather than rebuilding it: rewriting a shared object while other
+        // processes have it mapped is a way to break a machine, not a way to
+        // prove something about one.
+        if let Some(inherited) = std::env::var_os(CUT_NETWORK_SHIM) {
+            return Some(PathBuf::from(inherited));
+        }
+        let compiler = std::env::var("CC").unwrap_or_else(|_| "cc".to_owned());
+        let source = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/no_network.c");
+        // Beside the test binary, not in a temp directory: the shim has to
+        // outlive every child process that loads it, including one this
+        // process is still waiting on when it panics.
+        let target = std::env::current_exe()
+            .ok()?
+            .parent()?
+            .join("ds-isolation-no-network.so");
+        let built = std::process::Command::new(&compiler)
+            .args(["-shared", "-fPIC", "-O1", "-o"])
+            .arg(&target)
+            .arg(&source)
+            .arg("-ldl")
+            .output()
+            .ok()?;
+        if !built.status.success() {
+            eprintln!(
+                "the network-cut shim did not compile with {compiler}: {}",
+                String::from_utf8_lossy(&built.stderr)
+            );
+            return None;
+        }
+        Some(target)
+    })
+    .clone()
+}
+
+// ── the real `ds server serve`, as its own process ──────────────────────
+
+/// The SHIPPED Server: `ds server serve`, started as an operator starts it,
+/// over a machine that holds a device credential, with no gateway anywhere.
+///
+/// Everything the in-process [`Host`] replaces is real here — the startup
+/// path, the production `NativeAuthorizer` reading the protected state on
+/// disk, the credential refresher, the worker pool, the port. Nothing is
+/// injected: the only things this harness supplies are the two environment
+/// values any install has (a client catalogue and a config home) and the
+/// state directory and port an operator passes on the command line.
+pub struct LiveServer {
+    child: std::process::Child,
+    pub address: SocketAddr,
+    pub token: String,
+    pub state: tempfile::TempDir,
+    pub config: PathBuf,
+    said: Arc<Mutex<String>>,
+    /// One machine, one owner, one Server — the standing ruling, and here
+    /// also a practical fence: two real hosts starting at once on one box
+    /// contend for the CPU hard enough to lose the race their own startup
+    /// runs between the Solar pump and the worker pool's recovery pass.
+    _machine: std::sync::MutexGuard<'static, ()>,
+}
+
+/// The machine a live Server runs on. There is one.
+static MACHINE: Mutex<()> = Mutex::new(());
+
+impl LiveServer {
+    /// Start it and wait until it says it is ready, or panic with what it
+    /// said instead.
+    pub fn start(home: &device_home::DeviceHome, workers: usize) -> Self {
+        // Taken before anything is spawned and held for this Server's whole
+        // life. A poisoned lock is a panicking test, not a broken machine.
+        let machine = MACHINE.lock().unwrap_or_else(|held| held.into_inner());
+        let state = tempfile::tempdir().expect("protected server state");
+        owner_only(state.path());
+        // A COLD start converts a brand-new store.sqlite to WAL, which needs
+        // a moment with no second connection on it — and the Server opens
+        // that same file from three places within milliseconds (the Solar
+        // activity host, its pump, and the worker pool's recovery pass). On a
+        // loaded machine the conversion loses that race and the host exits
+        // `the sync store could not be read or written: database is locked`
+        // before it ever binds. That is a real cold-start defect of the
+        // shipped host, reported with this pass rather than papered over; it
+        // is not what these proofs are about, so the store is created here
+        // first — by the Server's own `open` — and every start below is warm.
+        runtime::open(&state.path().join("store.sqlite")).expect("the durable store");
+        let address = free_loopback_port();
+        let mut child = ds_command(
+            home.config_home(),
+            &[
+                "server",
+                "serve",
+                "--lane",
+                LANE,
+                "--state-dir",
+                &state.path().display().to_string(),
+                "--listen",
+                &address.to_string(),
+                "--workers",
+                &workers.to_string(),
+            ],
+        )
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .expect("the ds binary starts");
+        let said = Arc::new(Mutex::new(String::new()));
+        for stream in [
+            child.stderr.take().map(Reading::Err),
+            child.stdout.take().map(Reading::Out),
+        ]
+        .into_iter()
+        .flatten()
+        {
+            let said = said.clone();
+            std::thread::spawn(move || stream.drain(&said));
+        }
+        let mut server = Self {
+            child,
+            address,
+            token: String::new(),
+            state,
+            config: home.config_home().to_owned(),
+            said,
+            _machine: machine,
+        };
+        assert!(
+            until(30, || server.said().contains("DS server ready at")),
+            "the Server never became ready with no gateway present. It said: {}",
+            server.said()
+        );
+        let connection: Value = serde_json::from_slice(
+            &std::fs::read(server.state.path().join("connection.json"))
+                .expect("the Server wrote its protected connection"),
+        )
+        .expect("connection.json parses");
+        server.token = connection["token"]
+            .as_str()
+            .expect("an owner bearer")
+            .to_owned();
+        server
+    }
+
+    /// Everything the Server has said on either stream so far.
+    pub fn said(&self) -> String {
+        self.said.lock().expect("output").clone()
+    }
+
+    /// One request at the running Server, with the owner bearer.
+    pub fn raw(&self, method: &str, path: &str, body: Option<&[u8]>) -> Answer {
+        wire(self.address, &self.token, method, path, body)
+    }
+
+    /// `ds …` against this running Server, from the same machine.
+    pub fn ds(&self, tokens: &[&str]) -> DsRun {
+        let state = self.state.path().display().to_string();
+        let mut args = tokens.to_vec();
+        args.extend_from_slice(&["--state-dir", state.as_str(), "--lane", LANE]);
+        run_ds_in(&self.config, &args)
+    }
+
+    /// Ask it to stop the way a service manager does, and wait for it.
+    pub fn stop(&mut self) -> Option<i32> {
+        #[cfg(unix)]
+        unsafe {
+            libc::kill(self.child.id() as i32, libc::SIGTERM);
+        }
+        for _ in 0..100 {
+            match self.child.try_wait() {
+                Ok(Some(status)) => return status.code(),
+                Ok(None) => std::thread::sleep(Duration::from_millis(50)),
+                Err(_) => break,
+            }
+        }
+        let _ = self.child.kill();
+        self.child.wait().ok().and_then(|status| status.code())
+    }
+}
+
+impl Drop for LiveServer {
+    fn drop(&mut self) {
+        self.stop();
+    }
+}
+
+/// One of this machine's own streams, drained into the shared transcript.
+enum Reading {
+    Out(std::process::ChildStdout),
+    Err(std::process::ChildStderr),
+}
+impl Reading {
+    fn drain(self, said: &Mutex<String>) {
+        use std::io::BufRead;
+        let reader: Box<dyn BufRead> = match self {
+            Self::Out(stream) => Box::new(std::io::BufReader::new(stream)),
+            Self::Err(stream) => Box::new(std::io::BufReader::new(stream)),
+        };
+        for line in reader.lines().map_while(Result::ok) {
+            if let Ok(mut said) = said.lock() {
+                said.push_str(&line);
+                said.push('\n');
+            }
+        }
+    }
+}
+
+/// A loopback port nothing is listening on, released again immediately. The
+/// Server takes a FIXED port by design, so the proof picks one the way an
+/// operator would and hands it over.
+fn free_loopback_port() -> SocketAddr {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("loopback port");
+    let address = listener.local_addr().expect("bound address");
+    drop(listener);
+    address
 }
 
 // ── inputs ──────────────────────────────────────────────────────────────

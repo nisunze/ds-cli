@@ -25,6 +25,7 @@ ds server status --project <exact-id>
 ds server activity --lane stable --project <exact-id> --output json
 ds server status --job <id> --project <exact-id>
 ds server result --job <id> --out result.json --project <exact-id>
+ds server input --job <id> --out request.json
 ```
 
 ## One project per call, named by the caller
@@ -85,10 +86,15 @@ the job was admitted under. `ds auth project use` moves the default for the
 `job not found`, identically to an id that never existed.
 
 `ds server activity` answers one envelope,
-`{"schema":"ds.server-activity/v1","projects":[{"project","activity"}]}`, with
-one entry per project the request covers. A project whose Sync Center state
+`{"schema":"ds.server-activity/v1","projects":[{"project","activity","more"}]}`,
+with one entry per project the request covers. A project whose Sync Center state
 cannot be read right now says so in its own entry (`unavailable`, with the
-reason, and no activity); the other projects still report theirs.
+reason, and no activity); the other projects still report theirs. `more` says
+whether that project holds more durable Solar work than one projection covers
+— the newest 512 rows per project — and is read from this machine's own rows,
+so it is there on an `unavailable` entry too. Nothing is lost when it is true:
+every row stays readable by id with `ds server status`, `ds server result` and
+`ds server input`, and a long queue is never a failed answer.
 
 ### Capacity between projects
 
@@ -103,8 +109,12 @@ Cancelling a job releases its capacity immediately.
 The request door is bounded separately from the workers, and never below eight:
 a status read, a cancellation or one project's layer document fetch does not
 occupy a worker, so a small host does not answer one request at a time and one
-project's slow read cannot return "request capacity reached" to another
-project's call.
+project's slow read cannot crowd out another project's call. A full door is a
+typed answer of its own — `capacity_exhausted` with `"scope": "door"`, its own
+`retry_after_ms` (a quarter second per request already inside it, capped at a
+minute) and a remedy that says so. It is deliberately not the queue's answer:
+cancelling work empties the queue and never the door, and the door clears by
+itself as requests finish.
 
 ### Refusals, by their own names
 
@@ -114,14 +124,14 @@ operation fails identically whichever host executed it.
 | code | when |
 |---|---|
 | `project_required` | no `--project` and no saved selection to default to |
-| `context_corrupt` | a project id outside its bound (empty, padded, over 500 characters, control characters) |
+| `context_corrupt` | a project id that is not one path segment (empty, over-long, or holding a separator, a traversal, whitespace or a control character) |
 | `not_visible` | `job not found` — one answer for an unknown id, a foreign principal, a foreign lane and the wrong project |
 | `principal_mismatch` | the stored job belongs to another account, lane or deployment |
 | `scope_mismatch` | the sealed Solar input names one project and `--project` names another |
 | `scope_mismatch_for_key` | that key, in this project, already admitted a job for another operation |
 | `payload_changed_for_key` | that key already admitted a job with different input bytes |
-| `capacity_exhausted` | the global or per-project queue is full; carries `retry_after_ms` and `scope` |
-| `context_unrecoverable` | a job stored by an older Server names no project; read its result and resubmit under an explicit `--project` |
+| `capacity_exhausted` | the global queue, one project's queue or the request door is full; carries `retry_after_ms` and `scope` (`global`, `project` or `door`) |
+| `context_unrecoverable` | a job stored by an older Server names no project; read its stored input with `ds server input` and resubmit it under an explicit `--project` |
 
 `not_visible` says `job not found` and nothing more. It never names the
 project, the owner or whether the id exists — the class, the code and the
@@ -158,6 +168,17 @@ admission; the engine uses its shared native Rayon pool inside each request.
 engineering outcomes, including failures; `completed` means the complete result
 document was produced. Each job receipt carries the context it was admitted
 under, including its project.
+
+`ds server input --job <id> --out <absent-path>` writes back the exact request
+bytes a job was admitted with. It is the same fence as `ds server result` —
+your own jobs, and another project's job answers `job not found` exactly as an
+invented id does — with two differences: the job need not have finished, and
+`--project` here NARROWS the read instead of defaulting to the saved selection.
+That last one is deliberate: the row this exists for is a row stored by a
+Server released before per-job context, which names no project at all and is
+therefore visible only to a read that names none either. Such a row never ran,
+so there is no result to read; its input is what there is, and resubmitting it
+under an explicit `--project` is new work with its own id.
 
 `server solar submit` accepts one private `ds.solar.server-submission/v1`
 envelope. It contains the existing prepared calculation fields (`prepared`,
@@ -237,11 +258,28 @@ The default state root is `$XDG_STATE_HOME/ds/server/<lane>` or
 be owner-only. `connection.json` is a local control credential and must never
 be printed, copied into logs or exposed to a web visitor. It is distinct from
 the protected upstream DS login. Jobs are fenced by UID, lane, credential
-audience and project. Native authority is renewed at most every 15 seconds
-across workers; sign-out/account changes fence work immediately when observed.
-Upstream device revocation is observed on renewal. Loss of authority pauses
-execution and fences result commits. Restoring the same identity permits pending
-work to recover. Entitlement to ONE project is the gateway's decision where
+audience and project.
+
+**Authorization is local.** The host reads the credential this machine holds —
+the protected native state, no network and no saved selection — takes its owner
+fence (UID, lane, credential audience) from that, and binds its port. Every
+route and every worker then asks the same local question, at most once every 15
+seconds: is this still the credential that started me? A different credential, a
+different account, or a sign-out on this machine stops the host with
+`server_owner_changed` and the remedy; a machine that cannot be read right now
+is logged and refuses nothing, because "could not tell" is not "not the owner
+any more". Nothing on a request path contacts the gateway, so a Server keeps
+serving with no upstream at all — starting, admitting, queueing, executing,
+recovering and answering — and loses nothing when the network comes back.
+
+**The gateway refresh runs beside the host, never in front of it.** A separate
+thread renews the held credential once at start and then at a bounded interval,
+so publication and sync have a fresh credential when they need one. A refresh
+that cannot reach the gateway is logged and changes no answer this host gives;
+it is not a refusal and not a fence. Upstream device revocation is observed
+when it reaches this machine's protected state. Loss of the owner's credential
+pauses execution and fences result commits. Restoring the same identity permits
+pending work to recover. Entitlement to ONE project is the gateway's decision where
 that project's effect crosses to the cloud: a publication or sync it refuses
 for project A stops A's effect and leaves every other project running; the
 Server makes no revocation decision of its own. The Server state directory and
@@ -259,8 +297,9 @@ row written by a Server released before per-job context recovers its project
 from its own sealed input (Solar) and from nothing else: a transformer row
 carries no project by design, so it is `context_unrecoverable` — readable,
 never claimed, never published, whatever project happens to be selected when
-the host restarts. Read that job's result and resubmit under an explicit
-`--project`; the resubmission is new work beside it, with its own id. Cancellation retains input, fences late results and releases the
+the host restarts. Read its stored input with `ds server input --job <id> --out
+<path>` and resubmit that file under an explicit `--project`; the resubmission
+is new work beside it, with its own id. Cancellation retains input, fences late results and releases the
 job's capacity. The native engine finishes its current computation before
 releasing CPU; cancellation does not promise mid-algorithm interruption.
 Complete interactive Desktop workflow delegation, device management UI and
@@ -274,8 +313,8 @@ an installed, digest-bound native profile catalog, or the explicit debug-only
 uses the exact development executable; `--cli auth login --email <email>` or
 `--cli auth link begin` establish its native identity when needed.
 
-MCP exposes submit, status, cancel and result through the existing command
-catalog, including `--project`. Starting the foreground host is a
+MCP exposes submit, status, cancel, result and input through the existing
+command catalog, including `--project`. Starting the foreground host is a
 terminal/service operation and is excluded from MCP so it cannot block a tool
 response indefinitely.
 

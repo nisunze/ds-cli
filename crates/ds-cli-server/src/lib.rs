@@ -19,6 +19,10 @@ use ds_cli_contract::{
         Arg, Authority, Availability, Chapter, Command, Domain, Effect, Example, Execution, Refusal,
     },
 };
+// The kernel's own rule on a project id, named rather than copied: a value it
+// would refuse must be refused here too, before it becomes a query on a wire,
+// and two hand-written copies of one grammar drift the first time it changes.
+use ds_command_kernel::execution_context::{MAX_PROJECT_CHARS, valid_project};
 use serde_json::{Value, json};
 use std::{
     io::Read,
@@ -55,10 +59,17 @@ const SEALED_PROJECT: Arg = Arg::value(
     "Exact ds_project id the sealed envelope must name; nothing is sent when it is omitted.",
 );
 
-/// The bound the kernel's execution context puts on a project id
-/// (`ds_command_kernel::execution_context::MAX_PROJECT_CHARS`). Checked here so
-/// an unusable value is refused before it becomes a query string.
-const MAX_PROJECT_CHARS: usize = 500;
+/// The one read whose project is narrowing and nothing else. It is not a
+/// default: the row this command exists for — a job stored by a Server
+/// released before execution contexts — names no project at all, and it is
+/// visible only to a read that names none either. Sending this machine's
+/// saved selection here would hide exactly the row the remedy sends its owner
+/// to fetch.
+const NARROWING_PROJECT: Arg = Arg::value(
+    "project",
+    "<exact-id>",
+    "Narrow the read to one exact ds_project id; nothing is sent when it is omitted.",
+);
 
 // -- The refusal vocabulary a Server call can raise ----------------------
 //
@@ -90,7 +101,7 @@ const PROJECT_REQUIRED: Refusal = Refusal {
 };
 const CONTEXT_CORRUPT: Refusal = Refusal {
     code: "context_corrupt",
-    when: "a project id is empty, padded, over 500 characters or holds a control character",
+    when: "a project id is not one path segment: empty, over-long, or holding a separator, a traversal, whitespace or a control character",
     remedy: "copy one exact ds_project value from ds auth project list",
 };
 const NOT_VISIBLE: Refusal = Refusal {
@@ -120,13 +131,13 @@ const PAYLOAD_CHANGED_FOR_KEY: Refusal = Refusal {
 };
 const CAPACITY_EXHAUSTED: Refusal = Refusal {
     code: "capacity_exhausted",
-    when: "the global or per-project queue is full; the answer names the scope and retry_after_ms",
-    remedy: "retry after retry_after_ms, cancel work you no longer need, or raise --workers/--per-project",
+    when: "a queue or the request door is full; the answer names scope and retry_after_ms",
+    remedy: "retry after retry_after_ms, cancel work you no longer need, or raise --workers",
 };
 const CONTEXT_UNRECOVERABLE: Refusal = Refusal {
     code: "context_unrecoverable",
     when: "a job stored by an older Server names no project and none can be recovered",
-    remedy: "read that job's result and resubmit under an explicit --project",
+    remedy: "read the job's stored input with ds server input, then resubmit it under an explicit --project",
 };
 const OUTPUT_EXISTS: Refusal = Refusal {
     code: "server_output_exists",
@@ -180,6 +191,10 @@ const SERVE_REFUSALS: &[Refusal] = &[
     NEEDS_MAP,
     UNSUPPORTED,
     INSTALL_UNAVAILABLE,
+    // The host's own door, which is this command's: a request that arrives
+    // while every place in it is taken is refused here, under the same code
+    // and shape the kernel uses for the queue, with `scope: "door"`.
+    CAPACITY_EXHAUSTED,
 ];
 /// Queueing work under an idempotency key.
 const SUBMIT_REFUSALS: &[Refusal] = &[
@@ -204,6 +219,7 @@ const JOB_REFUSALS: &[Refusal] = &[
     NOT_VISIBLE,
     PRINCIPAL_MISMATCH,
     CONTEXT_UNRECOVERABLE,
+    CAPACITY_EXHAUSTED,
 ];
 /// Naming a job and a destination file.
 const RESULT_REFUSALS: &[Refusal] = &[
@@ -216,6 +232,22 @@ const RESULT_REFUSALS: &[Refusal] = &[
     PRINCIPAL_MISMATCH,
     CONTEXT_UNRECOVERABLE,
     OUTPUT_EXISTS,
+    CAPACITY_EXHAUSTED,
+];
+
+/// Reading a job's own stored request bytes. It cannot refuse
+/// `project_required` (naming a project is optional here and never a default)
+/// and it cannot refuse `context_unrecoverable` (a row with no context is
+/// exactly what this command reads).
+const INPUT_REFUSALS: &[Refusal] = &[
+    PLATFORM,
+    REFUSED,
+    OWNER_CHANGED,
+    CONTEXT_CORRUPT,
+    NOT_VISIBLE,
+    PRINCIPAL_MISMATCH,
+    OUTPUT_EXISTS,
+    CAPACITY_EXHAUSTED,
 ];
 
 // Eight, because a command descriptor has eight parts and naming them at each
@@ -237,13 +269,13 @@ const fn command(
         path,
         contract: 1,
         summary,
-        purpose: "Drive native transformer and prepared Solar computation on the shared Rust runtime. Jobs survive UI closure and server restart; request and result bytes are retained under the initiating identity. Every call is about one project: --project names it, else the saved selection (ds auth project use) is sent as this client's DEFAULT, recorded by the Server and never held as its state -- one Server serves several of its owner's projects at once. The Server runs what its owner hands it for the project named; the gateway enforces entitlement at publication and sync. A Solar request carries its sealed input, whose project is authoritative.",
+        purpose: "Drive native transformer and prepared Solar computation on the shared Rust runtime. Jobs survive UI closure and server restart; request and result bytes are retained under the initiating identity. Every call is about one project: --project names it, else the saved selection (ds auth project use) is sent as this client's DEFAULT and recorded by the Server, which keeps no selection of its own -- one host serves several of its owner's projects at once. The gateway enforces entitlement at publication and sync; a Solar request's sealed input names the project that wins.",
         chapter: Chapter::Design,
         effect,
         authority: Authority::HeadlessUser,
         execution,
         args,
-        output: "A bounded job receipt or list, each naming its project; full bytes only via server result. No credential is printed.",
+        output: "A bounded receipt or list, each naming its project; full bytes only to a named file. No credential is printed.",
         examples,
         refusals,
         reference: Some("docs/reference/server.md"),
@@ -473,6 +505,27 @@ pub static RESULT: Command = command(
     }],
 );
 
+pub static INPUT: Command = command(
+    "server.input",
+    &["server", "input"],
+    "Save a job's own stored request bytes to a new local file.",
+    Effect::LocalFileWrite,
+    Execution::Sync,
+    &[
+        STATE,
+        LANE,
+        NARROWING_PROJECT,
+        JOB,
+        Arg::value("out", "<path>", "Absent destination file.").required(),
+    ],
+    INPUT_REFUSALS,
+    &[Example {
+        command: "ds server input --job <job-id> --out request.json",
+        note: "Recover the exact bytes a job was admitted with, including a job stored before execution contexts.",
+        runnable: false,
+    }],
+);
+
 // -- the layer drawer on a Server: a transport, no longer a command set --
 //
 // `ds server layers list|show|hide|reorder` are RETIRED. The standing ruling
@@ -594,11 +647,19 @@ fn default_remedy(code: Option<&str>, body: &Value) -> Option<String> {
     let code = code?;
     if code == CAPACITY_EXHAUSTED.code {
         let scope = body["scope"].as_str().unwrap_or("global");
-        return Some(match body["retry_after_ms"].as_u64() {
-            Some(retry) => format!(
+        let Some(retry) = body["retry_after_ms"].as_u64() else {
+            return Some(CAPACITY_EXHAUSTED.remedy.to_owned());
+        };
+        // The door and the queue are different things to be full of, so they
+        // are different sentences: nothing a caller cancels empties the door.
+        return Some(if scope == "door" {
+            format!(
+                "the request door is full; retry after {retry} ms, or restart the host with a larger --workers"
+            )
+        } else {
+            format!(
                 "the {scope} queue is full; retry after {retry} ms, cancel work you no longer need, or restart the host with a larger --workers/--per-project"
-            ),
-            None => CAPACITY_EXHAUSTED.remedy.to_owned(),
+            )
         });
     }
     [
@@ -698,6 +759,7 @@ pub static DOMAIN: Domain = Domain {
         &ACTIVITY,
         &CANCEL,
         &RESULT,
+        &INPUT,
     ],
 };
 fn failure(e: impl ToString) -> Failure {
@@ -765,18 +827,15 @@ fn known_project(inputs: &Inputs) -> Result<Option<String>, Failure> {
     }
 }
 
-/// The kernel's bound on a project id, checked before it becomes a query
-/// value. The same rule, stated here so an unusable name never reaches a wire.
+/// The kernel's rule on a project id, ASKED rather than restated, before the
+/// value becomes a query on a wire. The sentence states the grammar, so an
+/// operator reads the rule instead of guessing which character was refused.
 fn bounded_project(value: &str) -> Result<String, Failure> {
-    let usable = !value.is_empty()
-        && value.trim() == value
-        && value.chars().count() <= MAX_PROJECT_CHARS
-        && !value.chars().any(char::is_control);
-    if !usable {
+    if !valid_project(value) {
         return Err(Failure::invalid(
             "context_corrupt",
             format!(
-                "a project id is 1..{MAX_PROJECT_CHARS} characters, unpadded and free of control characters"
+                "a project id is one path segment of 1..={MAX_PROJECT_CHARS} characters: no separator, no traversal, no whitespace"
             ),
         )
         .remedy(CONTEXT_CORRUPT.remedy)
@@ -892,12 +951,18 @@ pub fn serve(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
         per_project_queued: PER_PROJECT_QUEUED,
         global_queued: GLOBAL_QUEUED,
     };
-    // Hosting needs an authenticated account and nothing else. No project is
-    // selected, resolved or captured here: a caller names the project on the
-    // request and the Server verifies it per call. `ServerSessions::native`
-    // makes no network call and reads no saved selection, which is what lets
-    // an account that never ran `ds auth project use` start a host at all.
-    let owner = auth::identity(&lane).map_err(failure)?;
+    // Hosting needs the credential this machine HOLDS and nothing else. It is
+    // read from the protected native state — no gateway, no refresh, no
+    // project, no saved selection — so a host starts with no upstream present
+    // at all, and on an account that never ran `ds auth project use`. The
+    // owner fence is that credential's own (uid, lane, audience), which is
+    // what `connection.json` records and what every durable row is owned by.
+    let credential: Arc<dyn auth::OwnerCredential> =
+        Arc::new(auth::NativeCredential::new(lane.clone()));
+    let authorizer =
+        auth::NativeAuthorizer::from_source(credential.clone(), auth::OBSERVE_INTERVAL)
+            .map_err(failure)?;
+    let owner = authorizer.owner().to_owned();
     let directory = state(inputs)?;
     // Typed as the host decided it: a protected state directory that already
     // belongs to another account is `multi_principal_unsupported`, by name.
@@ -906,8 +971,7 @@ pub fn serve(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
     let sessions =
         server_sync::sessions::ServerSessions::native(connection.clone(), database.clone(), limits)
             .map_err(failure)?;
-    let layer_auth: Arc<dyn ds_compute_runtime::Authorizer> =
-        Arc::new(auth::NativeAuthorizer::new(lane.clone()).map_err(failure)?);
+    let layer_auth: Arc<dyn ds_compute_runtime::Authorizer> = Arc::new(authorizer);
     let layer_host =
         layers::NativeLayerHost::bound(&lane, connection.owner.clone(), layer_auth.clone());
     let app = host::App {
@@ -915,16 +979,23 @@ pub fn serve(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
         connection,
         layers: layer_host,
         auth: layer_auth,
-        requests: Arc::new(tokio::sync::Semaphore::new(request_permits(workers))),
+        requests: Arc::new(host::Door::new(request_permits(workers))),
         activity: None,
         sessions,
     };
-    tokio::runtime::Builder::new_multi_thread()
+    // The gateway refresh starts here and runs BESIDE the host: its own
+    // thread, one attempt immediately (so a reachable upstream is used at
+    // once) and then one per interval. Binding is the next statement and
+    // never waits for it; a refresh that fails is logged and changes no
+    // answer this host gives.
+    let refresh = auth::CredentialRefresh::start(credential, auth::REFRESH_INTERVAL);
+    let hosted = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()
         .map_err(failure)?
-        .block_on(host::serve(app, workers))
-        .map_err(failure)?;
+        .block_on(host::serve(app, workers));
+    drop(refresh);
+    hosted.map_err(failure)?;
     Ok(json!({"stopped":true,"workers":workers,"per_project":per_project}))
 }
 fn request(
@@ -1109,6 +1180,40 @@ pub fn result(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
     ds_design_workspace::write_new(&output, &bytes).map_err(failure)?;
     Ok(json!({"out":output,"byte_count":bytes.len(),"sha256":ds_compute_runtime::digest(&bytes)}))
 }
+/// The bytes a job was admitted with, back to the owner who handed them over.
+///
+/// It exists because one remedy could not be carried out: a row a released
+/// Server stored names no project, will never run and has no result, so
+/// "read that job's result and resubmit" asked for something that does not
+/// exist. Its input does exist, and this returns it.
+///
+/// The project is sent only when the caller NAMED one, because that row is
+/// visible only to an unnarrowed read. Everything else about the answer is
+/// `ds server result`: the owner's own bytes, a job in another project
+/// indistinguishable from an id that never existed, and a destination file
+/// that must be absent.
+pub fn input(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
+    let output = PathBuf::from(inputs.require("out")?);
+    if output.exists() {
+        return Err(Failure::conflict(
+            "server_output_exists",
+            "output already exists",
+        ));
+    }
+    let project = named_project(inputs)?;
+    let bytes = request(
+        inputs,
+        "GET",
+        &with_known_project(
+            &format!("/v1/jobs/{}/input", id(inputs)?),
+            project.as_deref(),
+        ),
+        None,
+        64 * 1024 * 1024,
+    )?;
+    ds_design_workspace::write_new(&output, &bytes).map_err(failure)?;
+    Ok(json!({"out":output,"byte_count":bytes.len(),"sha256":ds_compute_runtime::digest(&bytes)}))
+}
 pub fn render(value: &Value) -> String {
     serde_json::to_string_pretty(value).unwrap_or_default()
 }
@@ -1141,12 +1246,23 @@ mod tests {
 
     #[test]
     fn an_unusable_project_never_reaches_the_wire() {
-        // The same bound the kernel enforces, under the kernel's own code:
-        // where a situation has a name, both sides of the wire use it.
-        for value in ["", " padded", "padded ", "with\u{1}control"] {
+        // The kernel's own rule, asked here rather than restated: a project
+        // id is ONE path segment, because hosts partition durable state by it.
+        for value in [
+            "",
+            " padded",
+            "padded ",
+            "with\u{1}control",
+            "..",
+            "a/../b",
+            "a b",
+            "a\\b",
+        ] {
             let error = bounded_project(value).expect_err(value);
             assert_eq!(error.code(), "context_corrupt");
             assert_eq!(error.class(), ExitClass::InvalidInput);
+            let message = error.message().to_owned();
+            assert!(message.contains("one path segment"), "{message}");
             assert!(error.remedy_text().is_some(), "{value} needs a remedy");
         }
         assert!(bounded_project(&"p".repeat(MAX_PROJECT_CHARS)).is_ok());
@@ -1241,6 +1357,91 @@ mod tests {
                 "`{code}` has no remedy when the Server sends none"
             );
         }
+    }
+
+    #[test]
+    fn the_doors_refusal_is_re_raised_with_its_own_scope_and_its_own_remedy() {
+        // The host answers a full door in the kernel's own vocabulary, and
+        // the client re-raises it unchanged — with the numbers as numbers, so
+        // a caller can back off without parsing a sentence.
+        let error = refused(json!({
+            "code": "capacity_exhausted",
+            "error": "this host answers 8 requests at once and all of them are in flight",
+            "retry_after_ms": 2_000,
+            "scope": "door",
+        }));
+        assert_eq!(error.code(), "capacity_exhausted");
+        assert_eq!(error.class(), ExitClass::Unavailable);
+        let detail = error.detail_value().expect("machine-readable retry");
+        assert_eq!(detail["retry_after_ms"], 2_000);
+        assert_eq!(detail["scope"], "door");
+        let remedy = error.remedy_text().expect("retry guidance").to_owned();
+        assert!(remedy.contains("2000 ms"), "{remedy}");
+        // A full door is not a full queue: cancelling work empties one and
+        // not the other, so the two never share a sentence.
+        assert!(remedy.contains("request door"), "{remedy}");
+        assert!(!remedy.contains("cancel"), "{remedy}");
+    }
+
+    #[test]
+    fn reading_a_stored_input_narrows_only_when_the_caller_names_a_project() {
+        // The row this command exists for names no project, and is visible
+        // only to a read that names none either. So this is the one `ds
+        // server` command that must NOT default to the saved selection.
+        let unnamed = inputs(&INPUT, &["--job", &"a".repeat(64), "--out", "/tmp/x"]);
+        assert_eq!(named_project(&unnamed).unwrap(), None);
+        assert_eq!(
+            with_known_project("/v1/jobs/abc/input", None),
+            "/v1/jobs/abc/input",
+            "an unnarrowed read is what reaches a row with no context"
+        );
+        let named = inputs(
+            &INPUT,
+            &[
+                "--job",
+                &"a".repeat(64),
+                "--out",
+                "/tmp/x",
+                "--project",
+                "p-1",
+            ],
+        );
+        assert_eq!(named_project(&named).unwrap().as_deref(), Some("p-1"));
+        assert_eq!(
+            with_known_project("/v1/jobs/abc/input", Some("p-1")),
+            "/v1/jobs/abc/input?project=p-1"
+        );
+        // It cannot refuse for want of a project, so it does not claim to.
+        let declared: Vec<&str> = INPUT.refusals.iter().map(|r| r.code).collect();
+        assert!(!declared.contains(&"project_required"), "{declared:?}");
+        assert!(declared.contains(&"not_visible"));
+        assert!(declared.contains(&"server_output_exists"));
+    }
+
+    #[test]
+    fn the_remedy_for_a_row_that_names_no_project_is_one_a_caller_can_carry_out() {
+        // The row has no result — it never ran — so the remedy names the one
+        // thing it does have, and the command that returns it.
+        let remedy =
+            default_remedy(Some("context_unrecoverable"), &Value::Null).expect("a declared remedy");
+        assert!(remedy.contains("ds server input"), "{remedy}");
+        assert!(!remedy.contains("result"), "{remedy}");
+        assert_eq!(
+            remedy,
+            ds_command_kernel::execution_context::REFUSALS
+                .iter()
+                .find(|code| **code == "context_unrecoverable")
+                .map(|_| CONTEXT_UNRECOVERABLE.remedy)
+                .expect("the kernel raises it and this command declares it"),
+        );
+        // And the command that answers it is registered under `ds server`.
+        assert!(
+            DOMAIN
+                .commands
+                .iter()
+                .any(|command| command.id == "server.input"),
+            "the remedy names a command this domain does not offer"
+        );
     }
 
     #[test]

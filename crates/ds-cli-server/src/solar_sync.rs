@@ -30,6 +30,24 @@ use ds_sync_runtime::{
 use crate::server_sync::sessions::ServerSessions;
 use serde_json::Value;
 
+/// One page of the durable queue, the store's own maximum.
+const PAGE: usize = 1000;
+
+/// How many of a project's newest durable Solar rows one projection covers.
+///
+/// A Sync Center projection is a working view, not an archive: it exists so
+/// the owner can see and publish what this host has been doing. Bounding it
+/// per project is what keeps a long-lived host — the owner may leave one
+/// running for months — answering in constant time, and keeps one busy
+/// project from deciding what another project's answer costs. A project with
+/// more rows than this says so (`more` in the activity envelope); nothing is
+/// lost, because the rows themselves stay durable and readable job by job.
+///
+/// The retention question this bound makes visible — when, if ever, a durable
+/// Solar row is removed — is an OWNER decision and is recorded as one in
+/// `docs-routes.md` §7. Nothing here deletes anything.
+const PROJECTION_PER_PROJECT: usize = 512;
+
 pub struct SolarActivity {
     database: PathBuf,
     /// One session per authorized project, opened on first use. A Solar
@@ -168,11 +186,32 @@ impl SolarActivity {
 
     /// The projects this host holds durable Solar or report work in. Read from
     /// the work itself, never from a selection.
+    ///
+    /// It pages the whole queue and keeps only the distinct names, so a host
+    /// left running for months answers this in bounded memory however much
+    /// work it has done. A long queue is not an error; it is a long queue.
     fn projects(&self) -> Result<Vec<String>, String> {
+        let store = runtime::open(&self.database)?;
+        let caller = self.caller();
         let mut projects = BTreeSet::new();
-        for job in self.solar_jobs()? {
-            if let Some(context) = job.context {
-                projects.insert(context.project);
+        let mut cursor: Option<(u64, String)> = None;
+        loop {
+            let page = store
+                .jobs_page(
+                    &caller,
+                    cursor.as_ref().map(|(created, id)| (*created, id.as_str())),
+                    PAGE,
+                )
+                .map_err(|error| error.to_string())?;
+            let Some(last) = page.last() else { break };
+            cursor = Some((last.created_at_ms, last.id.clone()));
+            for job in page
+                .into_iter()
+                .filter(|job| job.engine == EngineKind::SolarPrepared)
+            {
+                if let Some(context) = job.context {
+                    projects.insert(context.project);
+                }
             }
         }
         projects.extend(crate::server_reports::projects_with_publications(
@@ -181,32 +220,49 @@ impl SolarActivity {
         Ok(projects.into_iter().collect())
     }
 
-    /// Every completed Solar job under this connection, newest first. Pulled
-    /// up from the producer so the activity host can ask what projects exist
-    /// before it opens a session for any of them.
-    fn solar_jobs(&self) -> Result<Vec<Job>, String> {
+    /// One project's newest durable Solar rows, and whether it holds more
+    /// than the projection covers.
+    ///
+    /// A projection is a bounded read of ONE project, narrowed in the query
+    /// itself: a project with a hundred thousand rows costs the same as a
+    /// project with ten, and no project's queue length can fail another
+    /// project's answer. It never refuses for being long — the previous
+    /// bound turned a busy host into a host with no Sync Center at all — it
+    /// reports the truncation and the caller is told in the envelope.
+    fn solar_jobs_in(&self, project: &str) -> Result<(Vec<Job>, bool), String> {
         let store = runtime::open(&self.database)?;
+        let caller = self.sessions.identity().caller(Some(project));
         let mut cursor: Option<(u64, String)> = None;
         let mut jobs = Vec::new();
         loop {
             let page = store
                 .jobs_page(
-                    &self.caller(),
+                    &caller,
                     cursor.as_ref().map(|(created, id)| (*created, id.as_str())),
-                    1000,
+                    PAGE,
                 )
                 .map_err(|error| error.to_string())?;
-            let Some(last) = page.last() else { break };
+            let Some(last) = page.last() else {
+                return Ok((jobs, false));
+            };
             cursor = Some((last.created_at_ms, last.id.clone()));
-            jobs.extend(
-                page.into_iter()
-                    .filter(|job| job.engine == EngineKind::SolarPrepared),
-            );
-            if jobs.len() > 4096 {
-                return Err("Solar Sync Center inventory exceeds 4096 durable jobs".into());
+            for job in page
+                .into_iter()
+                .filter(|job| job.engine == EngineKind::SolarPrepared)
+            {
+                if jobs.len() == PROJECTION_PER_PROJECT {
+                    return Ok((jobs, true));
+                }
+                jobs.push(job);
             }
         }
-        Ok(jobs)
+    }
+
+    /// Whether one project holds more durable Solar work than a projection
+    /// covers. A LOCAL fact about the rows on disk, so `/v1/activity` can
+    /// report it whether or not that project's Sync Center could be read.
+    pub fn projection_truncated(&self, project: &str) -> Result<bool, String> {
+        Ok(self.solar_jobs_in(project)?.1)
     }
 
     fn publication(&self, job: &Job) -> Result<SolarPublication, String> {
@@ -431,17 +487,18 @@ impl SolarActivity {
         first_error.map_or(Ok(()), Err)
     }
 
-    fn note_publication_failure(&self, error: &str) {
-        // Compute/store errors can include implementation detail. Keep the
-        // activity projection bounded and operator-actionable without copying
-        // a path, response, or credential-derived value into it.
-        let detail = if error.contains("exceeds 4096 durable jobs") {
-            "Solar Sync Center inventory exceeds its 4096 completed-job bound".into()
-        } else {
-            "Sync Center could not read or publish durable server work; it will retry".into()
-        };
+    /// One bounded sentence for the operator, whatever went wrong.
+    ///
+    /// The error itself is deliberately not carried: compute and store errors
+    /// can include a path, a response or a credential-derived value, and this
+    /// sentence is projected. There is no longer a second sentence for an
+    /// over-long inventory, because a long inventory is no longer a failure —
+    /// a projection is bounded per project and says so.
+    fn note_publication_failure(&self, _error: &str) {
         if let Ok(mut failure) = self.publication_failure.lock() {
-            *failure = Some(detail);
+            *failure = Some(
+                "Sync Center could not read or publish durable server work; it will retry".into(),
+            );
         }
     }
 
@@ -475,8 +532,11 @@ struct SolarProducer<'a> {
 }
 
 impl SolarProducer<'_> {
-    fn solar_jobs(&self) -> Result<Vec<Job>, String> {
-        self.activity.solar_jobs()
+    /// This producer's own project, bounded. A producer is opened for one
+    /// project and reads that project's rows; another project's queue is
+    /// neither read nor able to fail this pass.
+    fn solar_jobs(&self, project: &str) -> Result<Vec<Job>, String> {
+        Ok(self.activity.solar_jobs_in(project)?.0)
     }
     fn rows(&self, project: &str) -> Result<Vec<LocalRow>, String> {
         if project != self.project {
@@ -484,7 +544,7 @@ impl SolarProducer<'_> {
         }
         let mut rows = Vec::new();
         let mut identities = BTreeSet::new();
-        for job in self.solar_jobs()?.into_iter().filter(|job| {
+        for job in self.solar_jobs(project)?.into_iter().filter(|job| {
             job.phase == ds_command_kernel::compute_jobs::Phase::Completed
                 && job.engine == EngineKind::SolarPrepared
         }) {
@@ -603,7 +663,7 @@ impl Producer for SolarProducer<'_> {
         let store = runtime::open(&self.activity.database)?;
         let caller = self.activity.caller();
         let mut rows = self
-            .solar_jobs()?
+            .solar_jobs(project)?
             .into_iter()
             .filter_map(|job| {
                 let input = store.job_input(&caller, &job.id).ok()??;

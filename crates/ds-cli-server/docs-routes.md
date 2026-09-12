@@ -37,7 +37,14 @@ emits, so `typed_refusal` in `lib.rs` re-raises it unchanged:
 ```
 
 `capacity_exhausted` additionally carries `"retry_after_ms": <u64>` and
-`"scope": "global"|"project"`, and is answered under HTTP 429.
+`"scope": "global"|"project"|"door"`, and is answered under HTTP 429.
+
+`door` is the request door rather than the queue: the host answers
+`request_permits(workers)` requests at once (never fewer than eight), and a
+request that arrives when every place is taken is refused with the same code,
+class and shape the kernel's queue uses. Its `retry_after_ms` is deterministic
+— 250 ms per request already inside the door, capped at a minute — and its
+remedy says so, because nothing a caller cancels empties a door.
 
 New codes to add to the `typed_refusal` match and to the command `Refusal`
 rosters (class → HTTP):
@@ -107,12 +114,28 @@ has not finished answers `server_refused` / "job has no completed result", so
 "not yours" and "not yet" stay distinguishable *inside* a project and
 indistinguishable across projects.
 
+### `GET /v1/jobs/:id/input?project=<id>`
+`project` — OPTIONAL narrowing, and the client sends only what the caller
+NAMED (`ds server input`, unlike every other `ds server` command, does not
+default to the saved selection). Answers the exact request bytes the job was
+admitted with — `application/json`, `cache-control: no-store` — under the same
+visibility fence as `result`: another project's job and an id that never
+existed are one `job not found`. Two deliberate differences from `result`:
+
+* no phase is required, so a queued job's input is as readable as a completed
+  job's;
+* a row that carries no execution context at all — one a Server released
+  before this slice wrote — is visible to an UNNARROWED read by its owner,
+  which is the whole reason this route exists. Such a row never ran, so it has
+  no result; its input is the only thing there is to read, and
+  `context_unrecoverable`'s remedy now names this route.
+
 ### `GET /v1/activity?project=<id>`
 **Shape changed.** One envelope, always:
 
 ```json
 {"schema":"ds.server-activity/v1",
- "projects":[{"project":"<id>","activity":{…the previous /v1/activity body…}}]}
+ "projects":[{"project":"<id>","activity":{…the previous /v1/activity body…},"more":false}]}
 ```
 
 Without `project`: one entry per project this connection has durable work in
@@ -123,6 +146,14 @@ not be read carries `"unavailable": "<reason>"` and no `activity` INSTEAD of
 failing the envelope — one project's gateway is never allowed to hide what the
 others are doing, and the reason is what keeps it from reading as "no work".
 Render accordingly.
+
+Every entry also carries `"more": <bool>`: whether that project holds more
+durable Solar rows than one projection covers (the newest 512 per project).
+It is read from the rows on this machine, so it is present on an
+`unavailable` entry too — how much work a project has is a local fact and does
+not wait for a gateway. A projection no longer fails for being long: the
+previous build refused EVERY project's projection once 4096 durable Solar rows
+existed anywhere on the host.
 
 ### `GET /v1/layers?project=<id>&refresh=&limit=&zoom=`
 ### `POST /v1/layers/visibility?project=<id>`  body unchanged: `{"layers":[…],"visible":<bool>}`
@@ -195,7 +226,9 @@ can render `job.context.project`; nothing else in the job shape changed.
 pub sessions: Arc<crate::server_sync::sessions::ServerSessions>,
 ```
 
-built in `serve` with
+and its `requests` field is now `Arc<host::Door>` (the same width,
+`request_permits(workers)`, with the typed saturation answer of §1) rather
+than a bare semaphore. Built in `serve` with
 
 ```rust
 let limits = ds_command_kernel::execution_context::Limits {
@@ -211,7 +244,40 @@ let sessions = crate::server_sync::sessions::ServerSessions::native(
 `ServerSessions::native` performs **no** network call — it reads the
 protected native state on this machine and nothing else — and requires **no**
 saved project, so `ds server serve` now starts for an account that has never
-run `ds auth project use`, and starts with no upstream. `--per-project <count>`
+run `ds auth project use`, and starts with no upstream.
+
+**Authorization is local, and hosting binds before anything reaches out.**
+`serve` builds one `auth::NativeCredential` for the lane, reads what this
+machine HOLDS from it (`probe_headless_identity_for_named_project` +
+`runtime_credential_binding` — protected state, no network, no saved
+selection), takes the owner fence from that, and binds. The pre-bind gateway
+refresh is deleted; `auth::identity` no longer exists.
+
+```rust
+let credential: Arc<dyn auth::OwnerCredential> = Arc::new(auth::NativeCredential::new(lane.clone()));
+let authorizer = auth::NativeAuthorizer::from_source(credential.clone(), auth::OBSERVE_INTERVAL)?;
+let owner = authorizer.owner().to_owned();          // the connection's owner, read from disk
+…
+let refresh = auth::CredentialRefresh::start(credential, auth::REFRESH_INTERVAL);
+```
+
+Every route and every worker then asks the same local question, at most once
+per `OBSERVE_INTERVAL` (15 s): is this still the credential that started me?
+Three answers and only three:
+
+| the machine says | the host |
+|---|---|
+| the same owner and the same credential | serves |
+| another owner, another credential, or signed out | stops: `server_owner_changed` (401), typed, with the remedy |
+| nothing readable right now | serves, and logs one line a minute |
+
+The last row is the whole of finding 1: "could not tell" is not "not the
+owner any more". Nothing on a request path can fail for want of an upstream,
+because nothing on a request path asks one. `CredentialRefresh` is the only
+thing that talks to the gateway on the host's behalf — its own thread, one
+attempt at start and one per `REFRESH_INTERVAL` (5 min) — and all it records
+is whether the gateway answered (`auth::gateway_reachable`), which only the
+Sync Center session reads, since a sync pass genuinely does need an upstream. `--per-project <count>`
 is optional and **1..workers-1** on a host with more than one worker (a share
 equal to the worker count would let one project hold every worker while
 another waits, which is not a share); the default is `max(1, workers / 2)`.
@@ -260,7 +326,11 @@ assert some of the deleted behaviour and are yours to repair, not mine:
 deleted mechanism; and the Solar submissions must post
 `{"input_path": …}` rather than the envelope bytes. The one remedy sentence for
 `context_unrecoverable` is now identical in `sessions.rs` and in `ds server`'s
-rosters: *read that job's result and resubmit under an explicit --project*.
+rosters, and it is one an owner can carry out: *read the job's stored input
+with ds server input, then resubmit it under an explicit --project*. (The same
+sentence in `ds-compute-runtime`'s startup line — `Workers::start`, which
+prints how many rows predate execution contexts — still says "read each one's
+result"; that file belongs to the kernel repo and is listed for its owner.)
 
 **`ds-compute-runtime/Cargo.lock` gained `rusqlite` as a dev-dependency** (one
 line, commit `8d07f80`). It is legitimate and stays: writing a row exactly as a
@@ -294,3 +364,28 @@ already in that lock through `ds-sync-store`, so nothing new is compiled.
 5. **Two on-disk roots.** The Server state directory and the desktop data
    directory are still two homes; converging them into one is slice-2 work,
    alongside the instance registry.
+6. **Durable retention is an OWNER DECISION, and nothing here decides it.**
+   A Solar projection is now bounded (the newest 512 rows per project, with
+   `more` in the activity envelope), which makes the real question visible
+   instead of answering it by failing: *a Server the owner leaves running for
+   months accumulates durable job rows — inputs and results included — and
+   nothing ever removes one.* The bound keeps the host answering; it does not
+   reclaim a byte. What is owed is a ruling on three things, and each is a
+   different promise to the operator:
+
+   - **when a row may be removed** — never (the durable record is the
+     archive), after an age, or after a count per project;
+   - **what "removed" means** — the whole row, or its retained input and
+     result bytes with the receipt kept (a job row is a few hundred bytes; its
+     input is up to 64 MiB and its result up to 256 MiB, so this is where the
+     disk actually goes);
+   - **who does it** — the host on its own (a sweep at start, or one per
+     recovery pass), or only an explicit operator command, which is the
+     honest default while nothing is decided: `ds server` deletes nothing
+     today and this build keeps it that way.
+
+   Assumption recorded by this pass, to be vetoed rather than discovered: the
+   projection bound is a working-view bound and NOT a retention policy. Every
+   row stays readable by id (`ds server status`, `ds server result`, `ds
+   server input`) however far past the bound it falls, and a project's older
+   Solar work is out of its Sync Center projection, not out of its record.
