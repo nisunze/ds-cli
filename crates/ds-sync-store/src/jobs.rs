@@ -83,7 +83,18 @@ impl<'a> JobCaller<'a> {
     /// the operator must be able to see the work the host refuses to guess
     /// about — and is invisible to any caller narrowing to a project, because
     /// it is not known to be in one.
+    ///
+    /// The row's own `owner` and `lane` are compared here as well as in the
+    /// SQL that selected it. That is deliberate redundancy, for the reason
+    /// `submit_job` states: a row written before contexts existed has no
+    /// principal to compare, so the only thing keeping two identities apart
+    /// for it is that the owner digest is derived from the uid — and this
+    /// answer must not depend on a caller having built its `owner` and `uid`
+    /// from the same identity.
     fn sees(&self, job: &Job) -> bool {
+        if job.owner != self.owner || job.lane != self.lane {
+            return false;
+        }
         match &job.context {
             Some(context) => execution_context::visible(context, &self.kernel(), self.project),
             None => self.project.is_none(),
@@ -96,10 +107,13 @@ impl<'a> JobCaller<'a> {
 /// `running` is work a worker currently holds a live lease on; `queued` is
 /// work waiting for one, including a running row whose lease has expired —
 /// it is waiting to be claimed again, and counting it as running would let
-/// a dead worker's row fill the pool for ever. A row that predates execution
-/// contexts and could not be recovered is in neither: it is never claimed,
-/// so it is not in flight, and letting it stand as "waiting work of another
-/// project" would refuse every project its share for as long as it exists.
+/// a dead worker's row fill the pool for ever. A row no worker can ever claim
+/// is in neither — one that predates execution contexts, and equally one whose
+/// stored context does not survive `validate`, which `claim_job` skips for the
+/// same reason. Such a row is not in flight, so counting it would spend a
+/// project's queue bound on work that will never run and, worse, let it stand
+/// for ever as "waiting work of another project" and refuse every project its
+/// share.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Census {
     pub running: Vec<Slot>,
@@ -565,7 +579,14 @@ fn census_in(connection: &Connection, owner: &str, lane: &str, now: u64) -> Resu
     let mut census = Census::default();
     for row in rows {
         let job: Job = serde_json::from_str(&row?)?;
-        let Some(context) = job.context.as_ref() else {
+        // Exactly what `claim_job` will accept: a context that is there and
+        // that reads. Anything else is work no worker can take, and the
+        // capacity decision must not be made about it.
+        let Some(context) = job
+            .context
+            .as_ref()
+            .filter(|context| context.validate().is_ok())
+        else {
             continue;
         };
         let slot = Slot {

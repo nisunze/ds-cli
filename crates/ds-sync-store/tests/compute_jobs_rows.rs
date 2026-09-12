@@ -138,6 +138,25 @@ fn insert_legacy(directory: &std::path::Path, id: &str, engine: &str, tag: &str,
         )
         .expect("insert a released row");
 }
+/// A row this build would never write, put there the only way it can be: as
+/// bytes, through a plain connection.
+fn insert_row(directory: &std::path::Path, job: &Job, input: &[u8]) {
+    let connection = rusqlite::Connection::open(directory.join("store.sqlite")).expect("open");
+    connection
+        .execute(
+            "INSERT INTO compute_jobs(id,owner,lane,phase,lease_until,created,row,input) VALUES (?1,?2,?3,'queued',0,?4,?5,?6)",
+            rusqlite::params![
+                job.id,
+                job.owner,
+                job.lane,
+                job.created_at_ms,
+                serde_json::to_string(job).expect("row encodes"),
+                input
+            ],
+        )
+        .expect("insert a row this build would refuse");
+}
+
 #[test]
 fn a_context_survives_submission_restart_claim_and_completion() {
     let directory = tempfile::tempdir().expect("temp");
@@ -855,6 +874,63 @@ fn the_census_names_running_and_queued_work_by_project_only() {
             .census("owner-digest", "stable", now)
             .expect("other lane"),
         Census::default()
+    );
+}
+
+/// A row whose stored context does not read is work no worker can ever take:
+/// `claim_job` skips it and no caller can see it. So it must be in no census
+/// either. Counted, it would spend a project's queue bound for ever, and it
+/// would stand for ever as another project's waiting work — refusing every
+/// project the second slot its share allows, on behalf of work that will
+/// never run.
+#[test]
+fn a_row_whose_context_does_not_read_is_in_no_census_and_in_no_ones_way() {
+    let directory = tempfile::tempdir().expect("temp");
+    let mut store = store(directory.path());
+    let mut wedged = job_b();
+    wedged.context.as_mut().expect("context").project = String::new();
+    assert!(
+        store.submit_job(&wedged, b"wedged", roomy()).is_err(),
+        "this build never writes such a row itself"
+    );
+    insert_row(directory.path(), &wedged, b"wedged");
+    let now = 1_700_000_001_000;
+    assert_eq!(
+        store.census("owner-digest", "canary", now).expect("census"),
+        Census::default(),
+        "work that can never be claimed is not work in flight"
+    );
+    assert!(store.job(&caller(), ID_B).expect("read").is_none());
+    assert_eq!(claim(&mut store, "worker-0", now, roomy()), None);
+    // The queue bound is spent on work that can run, and on nothing else.
+    let tight = Limits {
+        global_running: 4,
+        per_project_running: 1,
+        per_project_queued: 1,
+        global_queued: 1,
+    };
+    store
+        .submit_job(&job(Some(context())), b"input", tight)
+        .expect("the wedged row holds no one's place in the queue");
+    // …and it yields no share: project-a takes a second slot because nothing
+    // that can actually run is waiting for one.
+    let share = Limits {
+        global_running: 4,
+        per_project_running: 1,
+        per_project_queued: 8,
+        global_queued: 8,
+    };
+    store
+        .submit_job(&nth("project-a", 2), b"input-a2", share)
+        .expect("a second batch for the same project");
+    assert_eq!(
+        claim(&mut store, "worker-1", now, share).as_deref(),
+        Some("project-a")
+    );
+    assert_eq!(
+        claim(&mut store, "worker-2", now, share).as_deref(),
+        Some("project-a"),
+        "a row nothing can claim may not hold a share against a project that can"
     );
 }
 
