@@ -322,6 +322,35 @@ fn bounded_summary(stderr: &str, stdout: &str) -> String {
         .to_string()
 }
 
+/// The pauses between attempts when the network blinks: the desktop's own
+/// tolerance for a weak link, so a batch of eighty sheets does not lose
+/// seventy rows to one dropped second.
+const WEAK_NETWORK_DELAYS: &[std::time::Duration] = &[
+    std::time::Duration::from_secs(2),
+    std::time::Duration::from_secs(6),
+    std::time::Duration::from_secs(15),
+];
+
+/// Retry `op` after each delay while its refusal is retryable (`unavailable`
+/// or `conflict` — the world, not the request, has to change); any other
+/// refusal, and the last retryable one, is returned as it came.
+fn with_weak_network<T>(
+    delays: &[std::time::Duration],
+    mut op: impl FnMut() -> Result<T, Failure>,
+) -> Result<T, Failure> {
+    let mut attempt = 0;
+    loop {
+        match op() {
+            Ok(value) => return Ok(value),
+            Err(failure) if failure.class().retryable() && attempt < delays.len() => {
+                std::thread::sleep(delays[attempt]);
+                attempt += 1;
+            }
+            Err(failure) => return Err(failure),
+        }
+    }
+}
+
 fn failure_to_host(failure: Failure) -> HostFailure {
     HostFailure {
         code: failure.code().to_string(),
@@ -797,7 +826,12 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
                 ));
             }
         }
-        let context = ds_cli_auth::transformer_context(lane, name).map_err(failure_to_host)?;
+        // A weak link blinks; a room fetch that was refused by an outage is
+        // asked again before the row is written off.
+        let context = with_weak_network(WEAK_NETWORK_DELAYS, || {
+            ds_cli_auth::transformer_context(lane, name)
+        })
+        .map_err(failure_to_host)?;
         require_same_context(
             inventory.identity(),
             &project_id,
@@ -1131,6 +1165,46 @@ pub fn render(data: &Value) -> String {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_blink_is_retried_but_a_wrong_request_is_not() {
+        use std::cell::Cell;
+        let calls = Cell::new(0);
+        let value = super::with_weak_network(&[std::time::Duration::ZERO; 3], || {
+            calls.set(calls.get() + 1);
+            if calls.get() < 3 {
+                Err(ds_cli_contract::Failure::unavailable(
+                    "auth_transient",
+                    "blink",
+                ))
+            } else {
+                Ok("room")
+            }
+        })
+        .unwrap();
+        assert_eq!((value, calls.get()), ("room", 3));
+        let calls = Cell::new(0);
+        let refused = super::with_weak_network(&[std::time::Duration::ZERO; 3], || {
+            calls.set(calls.get() + 1);
+            Err::<(), _>(ds_cli_contract::Failure::invalid(
+                "report_inputs_invalid",
+                "wrong",
+            ))
+        })
+        .unwrap_err();
+        assert_eq!((refused.code(), calls.get()), ("report_inputs_invalid", 1));
+        // Four blinks in a row is an outage: the last refusal comes back.
+        let calls = Cell::new(0);
+        let outage = super::with_weak_network(&[std::time::Duration::ZERO; 3], || {
+            calls.set(calls.get() + 1);
+            Err::<(), _>(ds_cli_contract::Failure::unavailable(
+                "auth_transient",
+                "blink",
+            ))
+        })
+        .unwrap_err();
+        assert_eq!((outage.code(), calls.get()), ("auth_transient", 4));
+    }
+
     use super::*;
 
     #[test]
