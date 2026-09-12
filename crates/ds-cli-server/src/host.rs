@@ -468,6 +468,12 @@ async fn result(
 /// this connection has durable work in. Without a project it reports every
 /// one of them; with a project it reports that one, or nothing at all when
 /// the project holds nothing this caller may see.
+///
+/// One project's projection failing is THAT project's entry, never the
+/// envelope's: a Sync Center session one project cannot open — a gateway that
+/// refused it, a project whose entitlement is gone — must not hide what every
+/// other project is doing. Such an entry carries `unavailable` with the reason
+/// and no activity, which is why it cannot be misread as "no work".
 async fn activity(
     State(app): State<App>,
     _headers: HeaderMap,
@@ -481,7 +487,10 @@ async fn activity(
             .ok_or("Solar Sync Center activity is unavailable before server startup")?;
         let mut projects = Vec::new();
         for scope in project_scopes(&app, project.as_deref())? {
-            projects.push(json!({"project": scope, "activity": activity.store_read(&scope)?}));
+            projects.push(match activity.store_read(&scope) {
+                Ok(read) => json!({"project": scope, "activity": read}),
+                Err(reason) => json!({"project": scope, "unavailable": reason}),
+            });
         }
         Ok(Json(
             json!({"schema": ACTIVITY_SCHEMA, "projects": projects}),
@@ -1425,6 +1434,61 @@ pub(crate) mod tests {
         assert_eq!(unauthorized.status(), StatusCode::UNAUTHORIZED);
         let (status, _) = call(app(dir.path(), true), "GET", "/v1/activity", None).await;
         assert_eq!(status, StatusCode::CONFLICT);
+    }
+
+    /// One project's Sync Center being unreachable is that project's entry,
+    /// not the envelope's. There is no gateway in this test, so EVERY session
+    /// refuses to open -- and the answer still names both projects and says of
+    /// each why it has no activity, rather than hiding one project's work
+    /// behind another project's failure.
+    #[tokio::test]
+    async fn a_project_whose_projection_fails_does_not_hide_another_projects_work() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = app(dir.path(), true);
+        for (key, project) in [("a1", A), ("b1", B)] {
+            runtime::submit(
+                &app.database,
+                &Admission {
+                    identity: app.sessions.identity(),
+                    client: "cli:1",
+                    key,
+                    requested_project: Some(project),
+                    saved_project: None,
+                    limits: app.sessions.limits(),
+                    now_ms: runtime::now_ms(),
+                },
+                &transformer(key),
+            )
+            .expect("admitted");
+        }
+        app.activity = Some(
+            crate::solar_sync::SolarActivity::open(app.database.clone(), app.sessions.clone())
+                .expect("the activity host needs no gateway to exist"),
+        );
+
+        let (status, body) = call(app.clone(), "GET", "/v1/activity", None).await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(body["schema"], ACTIVITY_SCHEMA);
+        let entries = body["projects"].as_array().expect("one entry per project");
+        assert_eq!(entries.len(), 2, "{body}");
+        for (entry, project) in entries.iter().zip([A, B]) {
+            assert_eq!(entry["project"], project);
+            assert!(
+                entry["activity"].is_null(),
+                "no gateway, so no projection: {entry}"
+            );
+            assert!(
+                entry["unavailable"]
+                    .as_str()
+                    .is_some_and(|reason| !reason.is_empty()),
+                "a project with no projection says why, so it cannot be read as `no work`: {entry}"
+            );
+        }
+        // Narrowed, the same answer is about exactly the project named.
+        let (status, narrowed) = call(app, "GET", &format!("/v1/activity?project={B}"), None).await;
+        assert_eq!(status, StatusCode::OK, "{narrowed}");
+        assert_eq!(narrowed["projects"].as_array().expect("entries").len(), 1);
+        assert_eq!(narrowed["projects"][0]["project"], B);
     }
 
     #[tokio::test]

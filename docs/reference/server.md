@@ -84,7 +84,9 @@ the job was admitted under. `ds auth project use` moves the default for the
 
 `ds server activity` answers one envelope,
 `{"schema":"ds.server-activity/v1","projects":[{"project","activity"}]}`, with
-one entry per project the request covers.
+one entry per project the request covers. A project whose Sync Center state
+cannot be read right now says so in its own entry (`unavailable`, with the
+reason, and no activity); the other projects still report theirs.
 
 ### Capacity between projects
 

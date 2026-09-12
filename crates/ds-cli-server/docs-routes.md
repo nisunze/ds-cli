@@ -116,8 +116,13 @@ indistinguishable across projects.
 ```
 
 Without `project`: one entry per project this connection has durable work in
-(ordered by project id). With `project`: exactly that entry, or an empty
-`projects` array when the project is not visible. Render accordingly.
+(ordered by project id), read by paging the whole durable queue rather than its
+newest page. With `project`: exactly that entry, or an empty `projects` array
+when the project is not visible. An entry whose Sync Center projection could
+not be read carries `"unavailable": "<reason>"` and no `activity` INSTEAD of
+failing the envelope — one project's gateway is never allowed to hide what the
+others are doing, and the reason is what keeps it from reading as "no work".
+Render accordingly.
 
 ### `GET /v1/layers?project=<id>&refresh=&limit=&zoom=`
 ### `POST /v1/layers/visibility?project=<id>`  body unchanged: `{"layers":[…],"visible":<bool>}`
