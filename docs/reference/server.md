@@ -57,8 +57,10 @@ nothing worth guessing, so the call refuses `project_required` locally rather
 than admitting a job with no scope. The one exception is `ds server solar
 submit`: the sealed `ds.solar.server-submission/v1` envelope names its own
 project and that name is authoritative, so it can be submitted with nothing
-named. Passing `--project` there is still worth doing — it is how you learn
-you prepared the wrong city, as a differing name refuses `scope_mismatch`.
+named: the saved selection is not sent there, because a default that
+contradicted the sealed bytes would refuse a submission you never disputed.
+Passing `--project` there is still worth doing — it is how you learn you
+prepared the wrong city, as a differing name refuses `scope_mismatch`.
 
 ### Working two projects side by side
 

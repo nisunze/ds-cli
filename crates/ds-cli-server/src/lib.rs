@@ -37,11 +37,22 @@ const LANE: Arg = Arg::value("lane", "<stable|canary>", "Native authentication l
 const JOB: Arg = Arg::value("job", "<id>", "Exact job id returned by submit.").required();
 /// The project a call is about. Optional here and never optional on the wire:
 /// absent, the saved selection is read locally and sent anyway, so the Server
-/// verifies exactly one named project on every request.
+/// records exactly one named project on every call whose subject IS a project.
 const PROJECT: Arg = Arg::value(
     "project",
     "<exact-id>",
     "Exact ds_project id this call is about; defaults to the saved selection and is always sent.",
+);
+
+/// The same flag on the one submission whose project is already sealed into
+/// its bytes. Here it is a CHECK and not a default: name it to be told you
+/// prepared the wrong city, or name nothing and let the envelope's own project
+/// stand — this machine's selection is not sent, because it would turn a
+/// default into a contradiction the operator never stated.
+const SEALED_PROJECT: Arg = Arg::value(
+    "project",
+    "<exact-id>",
+    "Exact ds_project id the sealed envelope must name; nothing is sent when it is omitted.",
 );
 
 /// The bound the kernel's execution context puts on a project id
@@ -369,7 +380,7 @@ pub static SOLAR_SUBMIT: Command = command(
     &[
         STATE,
         LANE,
-        PROJECT,
+        SEALED_PROJECT,
         Arg::value(
             "input",
             "<path>",
@@ -725,10 +736,23 @@ fn project(inputs: &Inputs) -> Result<String, Failure> {
     })
 }
 
+/// The project the caller NAMED, and nothing else: no saved selection, no
+/// default, nothing inferred.
+///
+/// A default and an assertion are different things on the wire. The kernel
+/// lets a sealed input's project outrank a default and REFUSES a named project
+/// that contradicts it, so a client that promoted this machine's selection to
+/// a named project would turn "I did not say" into "I said something else":
+/// an operator whose selection is C could not submit an envelope prepared for
+/// A at all. Only what was typed travels.
+fn named_project(inputs: &Inputs) -> Result<Option<String>, Failure> {
+    inputs.value("project").map(bounded_project).transpose()
+}
+
 /// The project if one can be named at all, without deciding whether the
-/// operation needs one. A sealed Solar envelope names its own project and that
-/// name is authoritative, so that one submission can proceed with nothing to
-/// send while every other call refuses through [`project`].
+/// operation needs one: what the caller named, else this machine's saved
+/// selection. Every call whose subject IS a project resolves through
+/// [`project`], which refuses when neither exists.
 fn known_project(inputs: &Inputs) -> Result<Option<String>, Failure> {
     if let Some(named) = inputs.value("project") {
         return bounded_project(named).map(Some);
@@ -1008,10 +1032,12 @@ pub fn submit(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
     )
 }
 
-/// A sealed Solar envelope names its own project, and that name wins. The
-/// client still sends what it knows — it is how a caller learns it prepared the
-/// wrong city (`scope_mismatch`) — but an account with no selection can submit
-/// a sealed envelope without naming anything.
+/// A sealed Solar envelope names its own project, and that name wins. What the
+/// client sends is what the caller NAMED and nothing else: naming one is how a
+/// caller learns it prepared the wrong city (`scope_mismatch`), and naming none
+/// admits the envelope under its own project whatever this machine happens to
+/// have selected. A default that contradicted the bytes would be the client
+/// inventing a conflict its operator never stated.
 ///
 /// The envelope is a workspace file, and the Server reads the filesystem
 /// exactly as the desktop does — same machine, same user — so what travels is
@@ -1020,7 +1046,7 @@ pub fn submit(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
 /// are.
 pub fn solar_submit(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
     let key = submit_key(inputs)?.to_owned();
-    let project = known_project(inputs)?;
+    let project = named_project(inputs)?;
     let path = std::fs::canonicalize(inputs.require("input")?).map_err(failure)?;
     if !path.is_file() {
         return Err(failure("input must be a regular file"));
@@ -1252,7 +1278,20 @@ mod tests {
             &SOLAR_SUBMIT,
             &["--input", "/dev/null", "--key", "k", "--project", "p-1"],
         );
-        assert_eq!(known_project(&named).unwrap().as_deref(), Some("p-1"));
+        assert_eq!(named_project(&named).unwrap().as_deref(), Some("p-1"));
+        // And with nothing named it sends nothing — without reading this
+        // machine's selection at all, because a default that contradicted the
+        // sealed bytes would refuse a submission its operator never disputed.
+        assert_eq!(named_project(&none).unwrap(), None);
+        assert_eq!(
+            named_project(&inputs(
+                &SOLAR_SUBMIT,
+                &["--input", "/dev/null", "--key", "k", "--project", " padded"],
+            ))
+            .expect_err("an unusable name never reaches the wire")
+            .code(),
+            "context_corrupt"
+        );
     }
 
     #[test]
