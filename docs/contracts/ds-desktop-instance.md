@@ -202,7 +202,13 @@ and `route` decides only what happens inside it.
 Safe metadata is exactly `InstanceSummary { instance_id, profile, lane, project,
 build, started_at_ms, windows }`. Not a token, not a url, not a uid, not an
 email — those fields do not exist on the type, so no host can decide to include
-them. The one place an address is answered is `admit_descriptor`'s normalised
+them. And `list` applies the same account boundary `select` does: a caller that
+names itself is shown **its own** instances — same account, same credential
+audience — and no others, so another person's session on this machine is not
+listed and neither is the project it holds. Which of its own may serve the
+operation is the narrower `compatible` answer, so an operator's own instance on
+the other lane is still listed and still explained. With no requirement the
+host has named no caller and nothing is filtered. The one place an address is answered is `admit_descriptor`'s normalised
 `origin`, to the host that already holds the file and is about to send the token
 there; no refusal carries one, and the corpus asserts that too.
 
@@ -269,10 +275,11 @@ result.
    successor answer to its predecessor's name, which is the impersonation the
    contract forbids. Chosen: stability loses to non-impersonation.
 3. **`desktop_not_paired` names nothing.** An instance signed in as another
-   account is not listed, not counted and not hinted at, so `select` cannot be
-   used to learn who else uses this machine. The cost is a thinner error when an
-   operator is simply signed into the wrong account; `ds desktop list` shows
-   their own instances and answers that question directly.
+   account is not listed, not counted and not hinted at, so neither `select`
+   nor `list` can be used to learn who else uses this machine. The cost is a
+   thinner error when an operator is simply signed into the wrong account;
+   `ds desktop list` shows their own instances — including one on another lane,
+   marked incompatible — and answers that question directly.
 4. **The kernel routes to an instance, not to a window, unless one is named.**
    Two windows of one instance on the same project are not an ambiguity here —
    the contract explicitly wants same-project windows to work — so the shell's

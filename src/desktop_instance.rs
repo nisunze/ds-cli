@@ -616,6 +616,15 @@ impl Requirement {
         self.project.as_deref()
     }
 
+    /// Whether this instance is one of the caller's *own*: the same account,
+    /// bound to the same credential audience. It is what a client may be shown
+    /// at all. Lane is deliberately not part of it — an operator may see their
+    /// own instance on another lane and be told why it cannot serve the work —
+    /// but another person's session on this machine is never listed.
+    fn authorized(&self, candidate: &Candidate) -> bool {
+        candidate.uid == self.uid && candidate.audience_sha256 == self.audience_sha256
+    }
+
     /// Why this instance cannot serve the operation, or `None`.
     fn mismatch(&self, candidate: &Candidate) -> Option<&'static str> {
         if candidate.lane != self.lane {
@@ -843,29 +852,40 @@ fn target_mismatch(target: &str, reason: &'static str, message: &'static str) ->
     )
 }
 
-/// What a client may show for every live instance it found, and which of them
+/// What a client may show of the live instances it found, and which of them
 /// can serve this caller's work. The projection is here so that no host has to
 /// decide which fields of a handshake are safe to print.
+///
+/// A caller that names itself is shown **its own** instances and no others:
+/// a session signed in as another account is not listed, not counted and not
+/// hinted at, exactly as `select` refuses to name it. Which of its own an
+/// operation may go to is the narrower `compatible` answer, so an operator
+/// whose app is on the other lane still gets told why.
+///
+/// With no requirement the host has named no caller — it is enumerating its
+/// own machine's registry before it has an identity — and nothing is filtered.
 pub fn list(
     candidates: &[Candidate],
     requirement: Option<&Requirement>,
 ) -> Result<(Vec<InstanceSummary>, Option<Vec<String>>), Fault> {
     let candidates = validated(candidates)?;
-    let compatible = match requirement {
-        Some(requirement) => {
-            requirement.validate()?;
-            let mut ids: Vec<String> = candidates
-                .iter()
-                .copied()
-                .filter(|candidate| requirement.mismatch(candidate).is_none())
-                .map(|candidate| candidate.instance_id.clone())
-                .collect();
-            ids.sort();
-            Some(ids)
-        }
-        None => None,
+    let Some(requirement) = requirement else {
+        return Ok((summaries(&candidates), None));
     };
-    Ok((summaries(&candidates), compatible))
+    requirement.validate()?;
+    let own: Vec<&Candidate> = candidates
+        .iter()
+        .copied()
+        .filter(|candidate| requirement.authorized(candidate))
+        .collect();
+    let mut compatible: Vec<String> = own
+        .iter()
+        .copied()
+        .filter(|candidate| requirement.mismatch(candidate).is_none())
+        .map(|candidate| candidate.instance_id.clone())
+        .collect();
+    compatible.sort();
+    Ok((summaries(&own), Some(compatible)))
 }
 
 // ── The context generation ──────────────────────────────────────────────
@@ -1592,6 +1612,48 @@ mod tests {
             assert!(!rendered.contains(secret), "{rendered} named {secret}");
         }
         assert_eq!(compatible, Some(vec![ONE.to_owned(), TWO.to_owned()]));
+    }
+
+    #[test]
+    fn listing_shows_a_caller_its_own_instances_and_no_one_elses() {
+        let theirs = Candidate {
+            uid: "uid-b".into(),
+            ..candidate(TWO, Some("their-project"))
+        };
+        let other_audience = Candidate {
+            audience_sha256: OTHER_AUDIENCE.into(),
+            ..candidate(THREE, Some("another-deployment"))
+        };
+        let other_lane = Candidate {
+            lane: "stable".into(),
+            ..candidate("44444444444444444444444444444444", Some("project-d"))
+        };
+        let live = [
+            candidate(ONE, Some("project-a")),
+            theirs,
+            other_audience,
+            other_lane,
+        ];
+        let (listed, compatible) = list(&live, Some(&requirement(None))).expect("listed");
+        // Another account's session, and another deployment's, are not listed,
+        // not counted and not hinted at — nor are the projects they hold.
+        assert_eq!(
+            listed
+                .iter()
+                .map(|instance| instance.instance_id.as_str())
+                .collect::<Vec<_>>(),
+            vec![ONE, "44444444444444444444444444444444"]
+        );
+        let rendered = serde_json::to_string(&listed).expect("encodes");
+        for theirs in ["their-project", "another-deployment", TWO, THREE] {
+            assert!(!rendered.contains(theirs), "{rendered} named {theirs}");
+        }
+        // The operator's own instance on another lane is listed and honestly
+        // marked, so `ds desktop list` can say why it cannot serve the work.
+        assert_eq!(compatible, Some(vec![ONE.to_owned()]));
+        // With no caller named, nothing is filtered: the host is enumerating
+        // its own registry before it has an identity.
+        assert_eq!(list(&live, None).expect("listed").0.len(), 4);
     }
 
     #[test]

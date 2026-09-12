@@ -2141,7 +2141,7 @@
     },
     {
       "id": "list-marks-which-instances-this-caller-can-use",
-      "why": "Listing is also how a caller finds out why an instance is not an option, so the compatible ones are named when a requirement is given.",
+      "why": "A caller sees its own instances and no one else's: the session signed in as another account is not listed, not counted and not hinted at, while its own instance on another lane is listed and marked incompatible so listing can still say why that one is not an option.",
       "request": {
         "kind": "list",
         "candidates": [
@@ -2193,15 +2193,6 @@
             "profile": "canary",
             "lane": "canary",
             "project": "project-a",
-            "build": "2026.9.12+1",
-            "started_at_ms": 1757000000000,
-            "windows": 0
-          },
-          {
-            "instance_id": "22222222222222222222222222222222",
-            "profile": "canary",
-            "lane": "canary",
-            "project": "project-b",
             "build": "2026.9.12+1",
             "started_at_ms": 1757000000000,
             "windows": 0
