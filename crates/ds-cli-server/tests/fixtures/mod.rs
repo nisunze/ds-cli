@@ -6,10 +6,20 @@
 //! answers, and the Server's own routes are the boundary every assertion is
 //! made at. What the fixtures replace is exactly the two things a machine
 //! with no Canary login cannot have: the authenticated native identity
-//! (`HostIdentity`) and the Sync Center gateway session (`SessionOpener`,
-//! which here refuses, so a route that must not need one is proven by never
-//! reaching it). There is deliberately no project directory of any kind: the
-//! Server holds none, so the proof constructs none.
+//! (`HostIdentity`) and the Sync Center gateway session (`SessionOpener`).
+//! Both count what they are asked for, so a proof can assert that a whole
+//! path was walked with **nothing upstream constructed at all** rather than
+//! merely assert that it worked. There is deliberately no project directory
+//! of any kind: the Server holds none, so the proof builds none.
+//!
+//! The layer source is the owner's account, not one project: it holds the
+//! several projects that account can read, each with its own catalogue, and
+//! it is opened per request for the project the caller named. A project the
+//! account cannot read is the source's own `auth_rejected` — the answer that
+//! comes back from where the account is established — and never something the
+//! Server decided from a list it kept. `answer_about_another_project` makes
+//! the source misbehave on purpose, which is the only way to reach
+//! `project_context_changed`.
 //!
 //! `tests/fixtures/legacy-queue.sqlite` is a durable queue exactly as a Server
 //! released BEFORE this slice wrote it: two `compute_jobs` rows whose stored
@@ -23,10 +33,14 @@
 #![allow(dead_code)]
 
 use std::{
+    collections::BTreeMap,
     io::Read,
     net::SocketAddr,
     path::{Path, PathBuf},
-    sync::{Arc, OnceLock},
+    sync::{
+        Arc, Mutex, OnceLock,
+        atomic::{AtomicBool, AtomicUsize, Ordering},
+    },
     time::{Duration, Instant},
 };
 
@@ -47,7 +61,10 @@ use serde_json::{Value, json};
 pub const A: &str = "project-a";
 pub const B: &str = "project-b";
 pub const C: &str = "project-c";
-/// A project no request in this harness ever hands work in for.
+/// A project this owner's account cannot read a layer document for. It is
+/// still a project the owner may hand this Server compute work in — admission
+/// is the owner's word and there is no directory to contradict it — which is
+/// exactly the difference between admitting work and crossing to the gateway.
 pub const OUTSIDE: &str = "project-z";
 pub const UID: &str = "uid-a";
 pub const OWNER: &str = "test-owner";
@@ -55,14 +72,27 @@ pub const DEPLOYMENT: &str = "https://gateway.example";
 pub const LANE: &str = "stable";
 /// The city the checked-in sealed Solar envelope was prepared for.
 pub const SOLAR_CITY: &str = "aderm_bere";
+/// The projects the fixture account can read a layer document for.
+pub const READABLE: &[&str] = &[A, B, C];
 
 // ── the two fixture boundaries ──────────────────────────────────────────
 
-/// No gateway anywhere in this proof. A route that needs one says so; every
-/// route that must not need one is proven by never reaching this.
-pub struct NoGateway;
+/// No gateway anywhere in this proof — and a count of how many times one was
+/// asked for, so "this path needs no upstream" is an assertion and not a
+/// hope. A route that genuinely needs a session says so; every route that
+/// must not need one is proven by this counter staying at zero.
+#[derive(Default)]
+pub struct NoGateway {
+    asked: AtomicUsize,
+}
+impl NoGateway {
+    pub fn asked(&self) -> usize {
+        self.asked.load(Ordering::SeqCst)
+    }
+}
 impl SessionOpener for NoGateway {
     fn open(&self, _: &Path, _: &Connection, _: &str) -> Result<Arc<ServerSyncSession>, String> {
+        self.asked.fetch_add(1, Ordering::SeqCst);
         Err("no gateway session in this test".into())
     }
 }
@@ -82,26 +112,125 @@ impl Authorizer for Paused {
     }
 }
 
-/// One in-memory layer document, under one project, plus this host's
-/// preference root. The Server's own `Fenced` wrapper is what holds a named
-/// project against it, which is the thing being proven.
-pub struct LayerFixture {
-    pub project: String,
-    pub root: PathBuf,
+/// The owner's layer document source: the projects THIS ACCOUNT can read,
+/// each with its own catalogue, plus this host's preference root.
+///
+/// The project is a parameter of `documents`, never a property of the host,
+/// so two of the owner's projects are served side by side through one running
+/// Server. Every open and every read is counted, and every project a source
+/// was opened for is recorded in order, so a proof can state which project
+/// was actually read rather than infer it from the answer.
+struct Shared {
+    uid: String,
+    lane: String,
+    root: PathBuf,
+    documents: BTreeMap<String, Value>,
+    opened: Mutex<Vec<String>>,
+    reads: AtomicUsize,
+    reorders: Mutex<Vec<(String, Vec<Order>)>>,
+    switch_project_on_read: AtomicBool,
 }
-struct FixtureDocuments {
-    scope: Scope,
-    document: Value,
+
+pub struct LayerFixture {
+    shared: Arc<Shared>,
+}
+
+impl LayerFixture {
+    /// One account, the projects it can read, and where this host remembers
+    /// its toggles.
+    pub fn new(uid: &str, root: PathBuf, readable: &[&str]) -> Self {
+        Self {
+            shared: Arc::new(Shared {
+                uid: uid.to_owned(),
+                lane: LANE.to_owned(),
+                root,
+                documents: readable
+                    .iter()
+                    .map(|project| ((*project).to_owned(), layer_document(project)))
+                    .collect(),
+                opened: Mutex::new(Vec::new()),
+                reads: AtomicUsize::new(0),
+                reorders: Mutex::new(Vec::new()),
+                switch_project_on_read: AtomicBool::new(false),
+            }),
+        }
+    }
+    /// Every project a document source was opened for, in order.
+    pub fn opened(&self) -> Vec<String> {
+        self.shared.opened.lock().expect("opened").clone()
+    }
+    /// How many times a document was actually read out of this source.
+    pub fn reads(&self) -> usize {
+        self.shared.reads.load(Ordering::SeqCst)
+    }
+    pub fn reorders(&self) -> Vec<(String, Vec<Order>)> {
+        self.shared.reorders.lock().expect("reorders").clone()
+    }
+    /// Make the source answer about a project it was not opened for — the one
+    /// way a well-behaved caller can reach `project_context_changed`.
+    pub fn answer_about_another_project(&self, misbehave: bool) {
+        self.shared
+            .switch_project_on_read
+            .store(misbehave, Ordering::SeqCst);
+    }
+    /// The desktop's own half of a layer operation: the same source, opened
+    /// for the same project, with no Server between it and `ds_layer_ops`.
+    /// This is what `ds map layer … --target desktop --project <id>` reaches
+    /// through `Native::for_project`, and it is deliberately the CONCRETE
+    /// type, so a proof hands it to the shared owner exactly as either host
+    /// hands it its own.
+    pub fn desktop_documents(&self, project: &str) -> FixtureDocuments {
+        self.shared
+            .opened
+            .lock()
+            .expect("opened")
+            .push(project.to_owned());
+        FixtureDocuments {
+            shared: self.shared.clone(),
+            project: project.to_owned(),
+        }
+    }
+    pub fn preference_root(&self) -> PathBuf {
+        self.shared.root.clone()
+    }
+}
+
+pub struct FixtureDocuments {
+    shared: Arc<Shared>,
+    project: String,
+}
+impl FixtureDocuments {
+    fn scope(&self) -> Scope {
+        Scope {
+            lane: self.shared.lane.clone(),
+            uid: self.shared.uid.clone(),
+            project: self.project.clone(),
+        }
+    }
 }
 impl LayerDocuments for FixtureDocuments {
     fn read(&mut self, _refresh: bool) -> Result<DocumentRead, Failure> {
-        Ok(DocumentRead {
-            scope: self.scope.clone(),
-            document: self.document.clone(),
-        })
+        self.shared.reads.fetch_add(1, Ordering::SeqCst);
+        let Some(document) = self.shared.documents.get(&self.project) else {
+            // Where the account is established, not here: this is the answer
+            // the gateway gives for a project this account cannot read, and
+            // the Server relays it rather than deciding it.
+            return Err(Failure::unauthorized(
+                "auth_rejected",
+                "this account reads no layer configuration for that project",
+            )
+            .remedy("run ds auth project list and name a project this account can read"));
+        };
+        let mut document = document.clone();
+        let mut scope = self.scope();
+        if self.shared.switch_project_on_read.load(Ordering::SeqCst) {
+            document["project_id"] = json!("someone-elses-project");
+            scope.project = "someone-elses-project".into();
+        }
+        Ok(DocumentRead { scope, document })
     }
     fn check_scope(&mut self, expected: &Scope) -> Result<(), Failure> {
-        if expected == &self.scope {
+        if expected == &self.scope() {
             Ok(())
         } else {
             Err(
@@ -111,37 +240,46 @@ impl LayerDocuments for FixtureDocuments {
         }
     }
     fn reorder(&mut self, orders: &[Order]) -> Result<OrderReceipt, Failure> {
+        self.shared
+            .reorders
+            .lock()
+            .expect("reorders")
+            .push((self.project.clone(), orders.to_vec()));
         Ok(OrderReceipt {
-            project: self.scope.project.clone(),
+            project: self.project.clone(),
             reordered: orders.len(),
         })
     }
 }
+
 impl LayerHost for LayerFixture {
-    // This fixture answers about the one project it holds whatever is asked
-    // for, because what it exists to prove is the Server's own fence. A source
-    // that serves several of the owner's projects is proven where the routes
-    // are, in `layers.rs`.
-    fn documents(&self, _project: &str) -> Result<Box<dyn LayerDocuments + Send>, Failure> {
-        let mut document = layer_document();
-        document["project_id"] = json!(self.project);
+    fn documents(&self, project: &str) -> Result<Box<dyn LayerDocuments + Send>, Failure> {
+        self.shared
+            .opened
+            .lock()
+            .expect("opened")
+            .push(project.to_owned());
         Ok(Box::new(FixtureDocuments {
-            scope: Scope {
-                lane: LANE.into(),
-                uid: UID.into(),
-                project: self.project.clone(),
-            },
-            document,
+            shared: self.shared.clone(),
+            project: project.to_owned(),
         }))
     }
     fn preferences(&self) -> Result<Preferences, Failure> {
-        Ok(Preferences::at(self.root.clone()))
+        Ok(Preferences::at(self.shared.root.clone()))
     }
 }
 
-fn layer_document() -> Value {
+/// One project's catalogue. Each project's differs — `A` designs LV lines,
+/// `B` MV lines, `C` HV lines — so a test cannot pass by being served the
+/// wrong project's document.
+fn layer_document(project: &str) -> Value {
+    let lines = match project {
+        B => "design/mv_lines",
+        C => "design/hv_lines",
+        _ => "design/lines",
+    };
     json!({
-        "project_id": A,
+        "project_id": project,
         "sources": {"survey_geo": {"type": "geojson"}, "design_vt": {"type": "vector"}},
         "styles": {}, "style_editors": [],
         "layers": [
@@ -149,10 +287,19 @@ fn layer_document() -> Value {
              "metadata": {"config_layer_id": "survey/poles", "label": "Poles",
                           "layer_class": "survey", "geometry_type": "Point", "order": 10}},
             {"id": "ds-lines", "type": "line", "source": "design_vt", "style_ref": "ds-lines",
-             "metadata": {"config_layer_id": "design/lines", "label": "LV Lines",
+             "metadata": {"config_layer_id": lines, "label": "Lines",
                           "layer_class": "design_tile", "geometry_type": "LineString", "order": 20}}
         ]
     })
+}
+
+/// The canonical layer id only this project's catalogue carries.
+pub fn only_in(project: &str) -> &'static str {
+    match project {
+        B => "design/mv_lines",
+        C => "design/hv_lines",
+        _ => "design/lines",
+    }
 }
 
 // ── the running host ────────────────────────────────────────────────────
@@ -171,6 +318,11 @@ impl Answer {
     pub fn code(&self) -> String {
         self.json()["code"].as_str().unwrap_or_default().to_owned()
     }
+    /// The exact bytes as text, for an assertion about what an answer must
+    /// NOT contain.
+    pub fn stringify(&self) -> String {
+        String::from_utf8_lossy(&self.body).into_owned()
+    }
 }
 
 struct Running {
@@ -188,6 +340,11 @@ pub struct Host {
     pub identity: HostIdentity,
     pub limits: Limits,
     pub app: App,
+    /// The owner's layer source: which projects it can read, what it was
+    /// opened for, and the switch that makes it misbehave.
+    pub layers: Arc<LayerFixture>,
+    /// The gateway that is not here, and its count of how often it was asked.
+    pub gateway: Arc<NoGateway>,
     running: Option<Running>,
     shadows: Vec<tempfile::TempDir>,
 }
@@ -225,20 +382,20 @@ pub const fn limits() -> Limits {
 }
 
 impl Host {
-    /// A Server with a layer document under `layer_project`, listening on a
+    /// A Server whose owner's account can read [`READABLE`], listening on a
     /// free loopback port. No project is declared to it beforehand: there is
     /// no directory, so callers name theirs and that is the whole of it.
-    pub fn start(limits: Limits, layer_project: &str) -> Self {
-        Self::start_with(limits, layer_project, None)
+    pub fn start(limits: Limits) -> Self {
+        Self::start_with(limits, None)
     }
 
     /// The same, over a store.sqlite that is already on disk (the legacy
     /// queue fixture).
-    pub fn start_over(limits: Limits, layer_project: &str, queue: &Path) -> Self {
-        Self::start_with(limits, layer_project, Some(queue))
+    pub fn start_over(limits: Limits, queue: &Path) -> Self {
+        Self::start_with(limits, Some(queue))
     }
 
-    fn start_with(limits: Limits, layer_project: &str, queue: Option<&Path>) -> Self {
+    fn start_with(limits: Limits, queue: Option<&Path>) -> Self {
         let state = tempfile::tempdir().expect("state directory");
         let prefs = tempfile::tempdir().expect("preference root");
         if let Some(queue) = queue {
@@ -247,6 +404,12 @@ impl Host {
         let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("loopback port");
         let address = listener.local_addr().expect("bound address");
         let identity = identity(UID, LANE);
+        let layers = Arc::new(LayerFixture::new(
+            UID,
+            prefs.path().to_owned(),
+            READABLE,
+        ));
+        let gateway = Arc::new(NoGateway::default());
         let app = build_app(
             state.path(),
             state.path().join("store.sqlite"),
@@ -254,10 +417,8 @@ impl Host {
             LANE,
             identity.clone(),
             limits,
-            Arc::new(LayerFixture {
-                project: layer_project.to_owned(),
-                root: prefs.path().to_owned(),
-            }),
+            layers.clone(),
+            gateway.clone(),
         );
         let token = app.connection.token.clone();
         let running = serve(app.clone(), listener);
@@ -269,6 +430,8 @@ impl Host {
             identity,
             limits,
             app,
+            layers,
+            gateway,
             running: Some(running),
             shadows: Vec::new(),
         }
@@ -296,9 +459,10 @@ impl Host {
         }
     }
 
-    /// Restart on the same protected state and the same fixed loopback port,
-    /// exactly as `ds server serve` would after a machine reboot.
-    pub fn restart(&mut self, layer_project: &str) {
+    /// Restart on the same protected state, the same layer source and the
+    /// same fixed loopback port, exactly as `ds server serve` would after a
+    /// machine reboot.
+    pub fn restart(&mut self) {
         self.stop();
         let listener = std::net::TcpListener::bind(self.address).expect("rebind the same port");
         self.app = build_app(
@@ -308,10 +472,8 @@ impl Host {
             LANE,
             self.identity.clone(),
             self.limits,
-            Arc::new(LayerFixture {
-                project: layer_project.to_owned(),
-                root: self.prefs.path().to_owned(),
-            }),
+            self.layers.clone(),
+            self.gateway.clone(),
         );
         self.running = Some(serve(self.app.clone(), listener));
     }
@@ -336,10 +498,8 @@ impl Host {
             lane,
             identity_of(owner, uid, lane),
             self.limits,
-            Arc::new(LayerFixture {
-                project: A.to_owned(),
-                root: prefs.path().to_owned(),
-            }),
+            Arc::new(LayerFixture::new(uid, prefs.path().to_owned(), READABLE)),
+            Arc::new(NoGateway::default()),
         );
         let token = app.connection.token.clone();
         let state_path = state.path().to_owned();
@@ -356,24 +516,17 @@ impl Host {
     }
 
     /// A worker pool over this Server's queue, exactly as `serve` starts one:
-    /// it recovers every row's context before any worker can claim, and the
-    /// projects it may run are the Server's own answer — the owner's durable
-    /// work — never a directory.
-    pub fn workers(
-        &self,
-        auth: Arc<dyn Authorizer>,
-        count: usize,
-        saved_project: Option<&str>,
-    ) -> runtime::Workers {
+    /// it recovers every row's context before any worker can claim, and what
+    /// a worker may run is what was admitted — there is no directory, no
+    /// membership and no saved selection anywhere in a `WorkerContext`.
+    pub fn workers(&self, auth: Arc<dyn Authorizer>, count: usize) -> runtime::Workers {
         runtime::Workers::start(
             Arc::new(runtime::WorkerContext {
                 path: self.database(),
                 identity: self.identity.clone(),
                 limits: self.limits,
                 auth,
-                membership: self.app.sessions.clone(),
                 observer: None,
-                saved_project: saved_project.map(str::to_owned),
             }),
             count,
         )
@@ -398,7 +551,24 @@ impl Host {
     /// One request straight at the listener, with the owner bearer, returning
     /// the exact bytes.
     pub fn raw(&self, method: &str, path: &str, body: Option<&[u8]>) -> Answer {
-        raw_at(self.address, &self.token, method, path, body)
+        raw_at(self.address, &self.token, method, path, body, &[])
+    }
+
+    /// One request with a bearer that is not this Server's owner's.
+    pub fn as_bearer(&self, token: &str, method: &str, path: &str, body: Option<&[u8]>) -> Answer {
+        raw_at(self.address, token, method, path, body, &[])
+    }
+
+    /// The owner's own request, carrying extra headers — for proving that a
+    /// header this host does not read changes nothing at all.
+    pub fn raw_with(
+        &self,
+        method: &str,
+        path: &str,
+        body: Option<&[u8]>,
+        headers: &[(&str, &str)],
+    ) -> Answer {
+        raw_at(self.address, &self.token, method, path, body, headers)
     }
 
     /// Write one input file and return its absolute path, as a caller would
@@ -407,6 +577,24 @@ impl Host {
         let path = self.state.path().join(name);
         std::fs::write(&path, bytes).expect("write input");
         path.display().to_string()
+    }
+
+    /// The body `POST /v1/solar-processing/:key` takes: the PATH of a sealed
+    /// envelope on this machine, which the Server opens and digests itself.
+    pub fn sealed_at(&self, name: &str, bytes: &[u8]) -> Vec<u8> {
+        let path = self.input(name, bytes);
+        serde_json::to_vec(&json!({ "input_path": path })).expect("closed request")
+    }
+
+    /// `ds …`, as an operator types it, against THIS Server. The command
+    /// path comes first, exactly as it is typed; this Server's protected
+    /// state directory and lane are appended as the transport arguments the
+    /// declaration carries.
+    pub fn ds(&self, tokens: &[&str]) -> DsRun {
+        let state = self.state.path().display().to_string();
+        let mut args = tokens.to_vec();
+        args.extend_from_slice(&["--state-dir", state.as_str(), "--lane", LANE]);
+        run_ds(&args)
     }
 }
 
@@ -426,7 +614,7 @@ pub struct Loopback {
 }
 impl Loopback {
     pub fn raw(&self, method: &str, path: &str, body: Option<&[u8]>) -> Answer {
-        raw_at(self.address, &self.token, method, path, body)
+        raw_at(self.address, &self.token, method, path, body, &[])
     }
 }
 impl Drop for Loopback {
@@ -438,6 +626,7 @@ impl Drop for Loopback {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn build_app(
     state_path: &Path,
     database: PathBuf,
@@ -446,9 +635,10 @@ fn build_app(
     identity: HostIdentity,
     limits: Limits,
     layers: Arc<LayerFixture>,
+    gateway: Arc<NoGateway>,
 ) -> App {
     build_app_as(
-        state_path, database, address, OWNER, lane, identity, limits, layers,
+        state_path, database, address, OWNER, lane, identity, limits, layers, gateway,
     )
 }
 
@@ -462,6 +652,7 @@ fn build_app_as(
     identity: HostIdentity,
     limits: Limits,
     layers: Arc<LayerFixture>,
+    gateway: Arc<NoGateway>,
 ) -> App {
     owner_only(state_path);
     let connection =
@@ -472,7 +663,7 @@ fn build_app_as(
         database.clone(),
         limits,
         identity,
-        Arc::new(NoGateway),
+        gateway,
     );
     App {
         database,
@@ -522,6 +713,7 @@ fn raw_at(
     method: &str,
     path: &str,
     body: Option<&[u8]>,
+    headers: &[(&str, &str)],
 ) -> Answer {
     let url = format!("http://{address}{path}");
     let authorization = format!("Bearer {token}");
@@ -531,16 +723,20 @@ fn raw_at(
         .build()
         .new_agent();
     let mut response = if method == "GET" {
-        agent
-            .get(&url)
-            .header("authorization", &authorization)
-            .call()
+        let mut request = agent.get(&url).header("authorization", &authorization);
+        for (name, value) in headers {
+            request = request.header(*name, *value);
+        }
+        request.call()
     } else {
-        agent
+        let mut request = agent
             .post(&url)
             .header("authorization", &authorization)
-            .header("content-type", "application/json")
-            .send(body.unwrap_or_default())
+            .header("content-type", "application/json");
+        for (name, value) in headers {
+            request = request.header(*name, *value);
+        }
+        request.send(body.unwrap_or_default())
     }
     .expect("the loopback listener answered");
     let status = response.status().as_u16();
@@ -554,6 +750,81 @@ fn raw_at(
     Answer {
         status,
         body: bytes,
+    }
+}
+
+// ── the `ds` executable ─────────────────────────────────────────────────
+
+/// One run of the real `ds` binary: what an operator sees.
+pub struct DsRun {
+    pub envelope: Value,
+    pub stdout: String,
+    pub stderr: String,
+    pub code: i32,
+}
+
+/// The `ds` executable this workspace builds, beside the test binary. It
+/// belongs to another package, so `cargo test -p ds-cli-server` does not
+/// build it; it is built on demand, once, into the same target directory.
+pub fn ds_binary() -> PathBuf {
+    static BINARY: OnceLock<PathBuf> = OnceLock::new();
+    BINARY
+        .get_or_init(|| {
+            let exe = std::env::current_exe().expect("this test binary's own path");
+            let profile = exe
+                .parent()
+                .and_then(|deps| deps.parent())
+                .expect("<target>/<profile>/deps/<test>")
+                .to_path_buf();
+            let binary = profile.join(if cfg!(windows) { "ds.exe" } else { "ds" });
+            if binary.exists() {
+                return binary;
+            }
+            let workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("../..")
+                .canonicalize()
+                .expect("the ds-cli workspace root");
+            let target = profile.parent().expect("<target>");
+            let built = std::process::Command::new(
+                std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_owned()),
+            )
+            .args(["build", "-p", "ds", "--bin", "ds"])
+            .current_dir(&workspace)
+            .env("CARGO_TARGET_DIR", target)
+            .status();
+            assert!(
+                matches!(built, Ok(status) if status.success()) && binary.exists(),
+                "the proof drives the real `ds`; build it with \
+                 `cargo build -p ds --bin ds` into {}",
+                target.display()
+            );
+            binary
+        })
+        .clone()
+}
+
+/// `ds …` with a valid native client catalogue and a private config home, so
+/// the command is available to parse and dispatch, and with no desktop
+/// descriptor, so nothing here can reach the operator's running app. The
+/// `--target server` path reads neither: it reads `connection.json`.
+pub fn run_ds(args: &[&str]) -> DsRun {
+    let config = tempfile::tempdir().expect("private config home");
+    let bundle = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../ds-cli-auth/tests/fixtures/development-catalog.json");
+    let output = std::process::Command::new(ds_binary())
+        .args(args)
+        .env("NO_COLOR", "1")
+        .env("DS_NATIVE_CLIENT_PROFILE_BUNDLE", &bundle)
+        .env("DS_CONFIG_HOME", config.path())
+        .env("DS_DESKTOP_DESCRIPTOR", config.path().join("no-desktop.json"))
+        .output()
+        .expect("the ds binary runs");
+    let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
+    DsRun {
+        envelope: serde_json::from_str(&stdout).unwrap_or(Value::Null),
+        stdout,
+        stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
+        code: output.status.code().unwrap_or(-1),
     }
 }
 

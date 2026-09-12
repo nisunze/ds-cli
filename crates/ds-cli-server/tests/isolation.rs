@@ -4,47 +4,90 @@
 //! (§"One verified context per operation", §"Server jobs and multiple
 //! clients", §"Concurrency and capacity", acceptance items 2, 5, 6, 7, 8) and
 //! the slice contract's §3, whose eight numbered proofs each have a test named
-//! `item<N>_…` below.
+//! `item<N>_…` below, plus the standing rulings of 2026-09-11 (one command id
+//! per operation, whichever host runs it) and 2026-09-12 §0c (the Server IS
+//! the desktop's core, offline-first, one owner).
 //!
 //! Every assertion here is made at the authoritative boundary: a real loopback
-//! listener the tests speak HTTP to, and the durable SQLite queue on disk. No
+//! listener the tests speak HTTP to, the real `ds` executable where the claim
+//! is about what an operator types, and the durable SQLite queue on disk. No
 //! route is stubbed, no decision is mocked, and nothing is checked by reading
 //! a source string. There is no gateway anywhere and no project directory of
-//! any kind — the harness constructs none because the Server holds none —
-//! so admission, queueing, execution, restart recovery, capacity and the
-//! jobs table are all proven with no upstream present at all, which is the
-//! offline-first claim. Entitlement is the gateway's answer at publication
-//! and sync, and the two places that answer would be observed are named as
-//! unproven below.
+//! any kind — the harness constructs none because the Server holds none — and
+//! the harness COUNTS how often either was asked for, so
+//! `admission_and_execution_need_no_upstream_at_all` states the offline-first
+//! claim as a measurement rather than an inference. Entitlement is the
+//! gateway's answer at publication and sync, and the places that answer would
+//! be observed are named as unproven below.
 //!
-//! Two callers are used deliberately:
+//! Three callers are used deliberately:
 //!   * `host.raw(…)` is the exact wire, byte for byte. Non-disclosure is a
 //!     property of those bytes, so the equality proofs use only these.
-//!   * `ds_cli_server::{submit, status, cancel, result, …}` is the real `ds`
-//!     client, reading the protected `connection.json`, sending the project on
-//!     every call and re-raising the Server's typed refusal. Where a proof
-//!     also has to hold for an operator typing `ds`, it goes through these.
+//!   * `ds_cli_server::{submit, status, cancel, result, …}` is the `ds`
+//!     client's own transport, reading the protected `connection.json`,
+//!     sending the project on every call and re-raising the Server's typed
+//!     refusal.
+//!   * `host.ds([…])` is the REAL `ds` executable, dispatched through its own
+//!     declarations. The standing ruling's claim — one command id, the same
+//!     answer, whichever host executes it — is about what an operator types,
+//!     so it is proven by typing it.
 //!
 //! What is NOT proven here, and why, is stated in the `unproven_…` tests at
-//! the bottom: each is `#[ignore]`d with its reason in its own name.
+//! the bottom: each is `#[ignore]`d with its reason in its own name. Solar
+//! EXECUTION on the Server and report export on the Server are among them.
 
 mod fixtures;
 
-use ds_cli_contract::{
-    outcome::ExitClass,
-    spec::{Arg, Authority, Availability, Chapter, Command, Effect, Execution},
-};
+use ds_cli_contract::outcome::ExitClass;
+use ds_command_kernel::compute_jobs::{Job, Phase};
+use ds_command_kernel::execution_context::ExecutionContext;
 use ds_compute_runtime as runtime;
+use ds_layer_ops::{ListRequest, Preferences};
 use fixtures::*;
 use serde_json::{Value, json};
 use std::sync::Arc;
 
-use ds_cli_server::{CANCEL, RESULT, SOLAR_SUBMIT, STATUS, SUBMIT};
+use ds_cli_server::{CANCEL, RESULT, SERVE, SOLAR_SUBMIT, STATUS, SUBMIT};
 
 /// A 64-character digest that is a perfectly well-formed job id and has never
 /// named a job.
 fn guessed() -> String {
     "0".repeat(64)
+}
+
+/// The layer drawer's one request body, in the shape `ds map layer hide`
+/// sends whichever host runs it.
+const HIDE_POLES: &[u8] = br#"{"layers":["survey/poles"],"visible":false}"#;
+
+/// Is this canonical family remembered visible in the catalogue answered here?
+fn any_visible(catalogue: &Value, family: &str) -> bool {
+    catalogue["layers"]
+        .as_array()
+        .expect("a catalogue")
+        .iter()
+        .find(|layer| layer["id"] == family)
+        .unwrap_or_else(|| panic!("the catalogue holds {family}: {catalogue}"))["visibility"]
+        ["any_visible"]
+        .as_bool()
+        .expect("a folded visibility")
+}
+
+/// One job's phase, straight off the wire.
+fn phase(host: &Host, id: &str, project: &str) -> String {
+    host.raw("GET", &format!("/v1/jobs/{id}?project={project}"), None).json()["job"]["phase"]
+        .as_str()
+        .unwrap_or_default()
+        .to_owned()
+}
+
+/// Every canonical family in one catalogue answer.
+fn families(catalogue: &Value) -> Vec<String> {
+    catalogue["layers"]
+        .as_array()
+        .expect("a catalogue")
+        .iter()
+        .map(|layer| layer["id"].as_str().unwrap_or_default().to_owned())
+        .collect()
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -57,14 +100,16 @@ fn guessed() -> String {
 /// wire and in the durable row, and nothing of A is reachable under B.
 #[test]
 fn item1_two_projects_overlap_on_one_server_with_distinct_contexts_and_no_leakage() {
-    let host = Host::start(limits(), B);
+    let host = Host::start(limits());
 
     // Solar for A. The project is not named at all: the sealed envelope names
-    // its own, and that name is authoritative.
+    // its own, and that name is authoritative. The envelope is a workspace
+    // file and the route takes its PATH — the Server reads this machine's
+    // filesystem exactly as the desktop does.
     let solar = host.raw(
         "POST",
         "/v1/solar-processing/solar-a",
-        Some(&solar_submission()),
+        Some(&host.sealed_at("solar-a.json", &solar_submission())),
     );
     assert_eq!(solar.status, 202, "{:?}", solar.json());
     let solar_context = solar.json()["job"]["context"].clone();
@@ -94,11 +139,12 @@ fn item1_two_projects_overlap_on_one_server_with_distinct_contexts_and_no_leakag
     assert_ne!(solar_id, batch_id);
 
     // A layer write for B — the third operation, in the third shape, on the
-    // same host, admitted under its own context.
+    // same host, admitted under its own context and served out of B's own
+    // document.
     let hidden = host.raw(
         "POST",
         &format!("/v1/layers/visibility?project={B}"),
-        Some(br#"{"layers":["survey/poles"],"visible":false}"#),
+        Some(HIDE_POLES),
     );
     assert_eq!(hidden.status, 200, "{:?}", hidden.json());
     assert_eq!(hidden.json()["project"], B);
@@ -144,17 +190,20 @@ fn item1_two_projects_overlap_on_one_server_with_distinct_contexts_and_no_leakag
         assert_eq!(empty.json(), json!({"jobs": [], "more": false}));
     }
 
-    // The layer write landed under B's preference scope and under no other.
+    // The layer write landed under B's preference scope, in B's own
+    // catalogue, and under no other.
     let listed = host.raw("GET", &format!("/v1/layers?project={B}&limit=100"), None);
     assert_eq!(listed.status, 200, "{:?}", listed.json());
-    let poles = listed.json()["layers"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|layer| layer["id"] == "survey/poles")
-        .cloned()
-        .expect("the catalogue still holds the family");
-    assert_eq!(poles["visibility"]["any_visible"], false);
+    assert_eq!(listed.json()["project"], B);
+    assert!(
+        families(&listed.json()).contains(&only_in(B).to_owned()),
+        "B's own catalogue, not another project's: {:?}",
+        families(&listed.json())
+    );
+    assert!(!any_visible(&listed.json(), "survey/poles"));
+    // The source was opened for B and for nothing else: a Server that read a
+    // selection of its own would have opened something here.
+    assert_eq!(host.layers.opened(), vec![B.to_owned(), B.to_owned()]);
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -167,7 +216,7 @@ fn item1_two_projects_overlap_on_one_server_with_distinct_contexts_and_no_leakag
 /// and a sealed Solar input's own project outranks a named one.
 #[test]
 fn item2_naming_a_project_for_one_call_never_rescopes_anything_else() {
-    let host = Host::start(limits(), A);
+    let host = Host::start(limits());
     let mut queued = Vec::new();
     for (key, project, name) in [("a1", A, "T-A"), ("b1", B, "T-B")] {
         let input = host.input(&format!("{key}.json"), &transformer(name));
@@ -219,6 +268,9 @@ fn item2_naming_a_project_for_one_call_never_rescopes_anything_else() {
     assert_eq!(padded.code(), "context_corrupt");
     // A project named for the very first time is admitted on the owner's
     // word: nothing was fetched to allow C above, and nothing is fetched now.
+    // `OUTSIDE` is a project this account cannot even read a layer document
+    // for, and the compute door still admits it — admission is the owner's
+    // word, and entitlement is the gateway's answer where an effect leaves.
     let first = host.raw(
         "POST",
         &format!("/v1/transformer-processing/first?project={OUTSIDE}"),
@@ -256,6 +308,10 @@ fn item2_naming_a_project_for_one_call_never_rescopes_anything_else() {
     assert_eq!(host.stored(None).len(), 5);
     assert_eq!(host.stored(Some(C)).len(), 1);
     assert_eq!(host.stored(Some(OUTSIDE)).len(), 1);
+    // Not one of those calls opened a document source or asked for a gateway
+    // session: naming a project is not a lookup.
+    assert!(host.layers.opened().is_empty());
+    assert_eq!(host.gateway.asked(), 0);
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -267,7 +323,7 @@ fn item2_naming_a_project_for_one_call_never_rescopes_anything_else() {
 /// status, cancel and result alike. Anything else is a disclosure.
 #[test]
 fn item3_a_foreign_principal_lane_project_and_a_guessed_id_are_one_byte_identical_answer() {
-    let mut host = Host::start(limits(), A);
+    let mut host = Host::start(limits());
     let input = host.input("a1.json", &transformer("T-A"));
     let admitted = ds_cli_server::submit(
         &host.args(&SUBMIT, &["--key", "a1", "--input", &input, "--project", A]),
@@ -279,7 +335,10 @@ fn item3_a_foreign_principal_lane_project_and_a_guessed_id_are_one_byte_identica
 
     // Two more listeners over the SAME durable queue: one signed in as another
     // account, one on the other lane. Each presents the durable owner fence
-    // its identity really derives, as production does.
+    // its identity really derives, as production does. (Two accounts never
+    // share one Server process — the model is one owner per Server — so this
+    // is two Servers on one machine over one queue, which is the only way the
+    // question can be asked at all.)
     let stranger = host.shadow(
         "uid-somebody-else",
         LANE,
@@ -416,41 +475,78 @@ fn item3_a_foreign_principal_lane_project_and_a_guessed_id_are_one_byte_identica
         .into_iter()
         .find(|job| job.id == id)
         .expect("the row is still there");
-    assert_eq!(mine.phase, ds_command_kernel::compute_jobs::Phase::Queued);
+    assert_eq!(mine.phase, Phase::Queued);
     let stored = mine.context.expect("its context");
     assert_eq!(stored.project, A);
     assert_eq!(stored.principal_uid, UID);
     assert_eq!(stored.idempotency_key, "a1");
 }
 
-/// One Server serves one authenticated account and many of its projects. A
-/// request that claims another account is told so by name instead of being
-/// quietly served under this one.
+/// One Server is signed in as exactly one owner, and its owner-only loopback
+/// bearer is that owner's. There is no header that names an account and no
+/// second identity this process can have, so the whole rule is the bearer: a
+/// different one is 401, and the refusal names nobody. Many users are many
+/// machines, which is the deployment model and not a gap.
 #[test]
-fn multi_principal_access_is_refused_by_name_rather_than_served_quietly() {
-    let host = Host::start(limits(), A);
-    let named = ureq::Agent::config_builder()
-        .http_status_as_error(false)
-        .build()
-        .new_agent()
-        .get(format!("http://{}/v1/jobs", host.address))
-        .header("authorization", format!("Bearer {}", host.token))
-        .header("x-ds-principal", "uid-somebody-else")
-        .call()
-        .expect("answered");
-    assert_eq!(named.status().as_u16(), 401);
+fn a_different_bearer_is_denied_without_naming_a_principal() {
+    let host = Host::start(limits());
+    let stranger_token = "f".repeat(64);
+
+    // A well-formed bearer that is not this Server's owner's, on a read and on
+    // a write alike.
+    for (method, path, body) in [
+        ("GET", "/v1/jobs".to_owned(), None),
+        (
+            "POST",
+            format!("/v1/transformer-processing/x?project={A}"),
+            Some(transformer("T1")),
+        ),
+        (
+            "POST",
+            format!("/v1/layers/visibility?project={A}"),
+            Some(HIDE_POLES.to_vec()),
+        ),
+    ] {
+        let denied = host.as_bearer(&stranger_token, method, &path, body.as_deref());
+        assert_eq!(denied.status, 401, "{method} {path}: {:?}", denied.json());
+        // The whole body. It names no account, no uid, no principal and no
+        // project — there is nothing here for a caller to learn.
+        assert_eq!(denied.json(), json!({"error": "server access denied"}));
+        for secret in [UID, OWNER, DEPLOYMENT, A] {
+            assert!(
+                !String::from_utf8_lossy(&denied.body).contains(secret),
+                "a denial discloses nothing: {}",
+                denied.stringify()
+            );
+        }
+    }
+
+    // And the header a client used to send to name an account is not read at
+    // all: with the owner's own bearer the answer is byte-identical with and
+    // without it, so there is no second identity to claim.
+    let plain = host.raw("GET", "/v1/jobs", None);
+    let with_header = host.raw_with(
+        "GET",
+        "/v1/jobs",
+        None,
+        &[("x-ds-principal", "uid-somebody-else")],
+    );
+    assert_eq!(plain.status, 200, "{:?}", plain.json());
+    assert_eq!(with_header, plain);
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-// §3.4  A key is one handle on one piece of work
+// §3.4  A key is one handle on one piece of work, inside its project
 // ─────────────────────────────────────────────────────────────────────────
 
-/// The same key with the same bytes in the same project is the same job; with
-/// another project or other bytes it is a named refusal, never a reused result
-/// and never a silent overwrite.
+/// Inside one project a key is the caller's single handle: the same bytes are
+/// the same job, other bytes are a named refusal, and the same key used for a
+/// second operation is a named refusal too — never a reused result and never a
+/// silent overwrite. Across projects it is not a collision at all, which
+/// `equal_keys_in_two_projects_are_two_jobs` proves next.
 #[test]
-fn item4_a_reused_key_may_not_change_its_project_or_its_payload() {
-    let host = Host::start(limits(), A);
+fn item4_a_reused_key_is_one_handle_on_one_piece_of_work_inside_its_project() {
+    let host = Host::start(limits());
     let same = host.input("same.json", &transformer("T1"));
     let other = host.input("other.json", &transformer("T2"));
     let submit = |key: &str, input: &str, project: &str| {
@@ -470,20 +566,116 @@ fn item4_a_reused_key_may_not_change_its_project_or_its_payload() {
     assert_eq!(again["job"]["id"], id);
     assert_eq!(again["job"]["created_at_ms"], first["job"]["created_at_ms"]);
 
-    let moved = submit("shared", &same, B).expect_err("a key may not move project");
-    assert_eq!(moved.code(), "scope_mismatch_for_key");
-    assert_eq!(moved.class(), ExitClass::Conflict);
+    // Other bytes under the same key in the same project.
     let changed = submit("shared", &other, A).expect_err("a key may not change bytes");
     assert_eq!(changed.code(), "payload_changed_for_key");
     assert_eq!(changed.class(), ExitClass::Conflict);
 
-    // One row, its original bytes, its original context.
+    // A second OPERATION under the same key in the same project: the sealed
+    // Solar envelope names A, so it derives the very id the transformer batch
+    // holds, and the kernel refuses rather than adopting the row.
+    let moved = host.raw(
+        "POST",
+        &format!("/v1/solar-processing/shared?project={A}"),
+        Some(&host.sealed_at("sealed.json", &solar_submission())),
+    );
+    assert_eq!(moved.status, 409, "{:?}", moved.json());
+    assert_eq!(moved.code(), "scope_mismatch_for_key");
+    assert!(
+        moved.json()["remedy"]
+            .as_str()
+            .expect("a remedy")
+            .contains("--key"),
+        "{:?}",
+        moved.json()
+    );
+
+    // One row, its original bytes, its original context, its original
+    // operation.
     let rows = host.stored(None);
     assert_eq!(rows.len(), 1);
     assert_eq!(rows[0].id, id);
     assert_eq!(rows[0].input_sha256, runtime::digest(&transformer("T1")));
-    assert_eq!(rows[0].context.as_ref().unwrap().project, A);
-    assert_eq!(rows[0].context.as_ref().unwrap().idempotency_key, "shared");
+    let stored = rows[0].context.as_ref().expect("its context");
+    assert_eq!(stored.project, A);
+    assert_eq!(stored.idempotency_key, "shared");
+    assert_eq!(stored.operation, "transformer_processing");
+}
+
+/// The owner's daily key, in two of their projects, is TWO pieces of work.
+///
+/// The durable id digests (owner, lane, project, key), so equal keys in A and
+/// B never meet: neither refuses the other, neither adopts the other's row,
+/// neither is reachable under the other's project, and inside each project the
+/// key is still that project's one idempotent handle.
+#[test]
+fn equal_keys_in_two_projects_are_two_jobs() {
+    let host = Host::start(limits());
+    let input = host.input("daily.json", &transformer("T-DAILY"));
+    let submit = |project: &str| {
+        ds_cli_server::submit(
+            &host.args(
+                &SUBMIT,
+                &["--key", "daily", "--input", &input, "--project", project],
+            ),
+            &context(),
+        )
+        .unwrap_or_else(|error| panic!("`daily` is admitted in {project}: {error:?}"))
+    };
+
+    let mut ids = Vec::new();
+    for project in [A, B, C] {
+        let value = submit(project);
+        let id = value["job"]["id"].as_str().unwrap().to_owned();
+        assert_eq!(value["job"]["context"]["project"], project);
+        assert_eq!(value["job"]["context"]["idempotency_key"], "daily");
+        // The id is the kernel's own derivation, project included: this is the
+        // rule, not an accident of ordering.
+        assert_eq!(id, runtime::job_id(OWNER, LANE, project, "daily"));
+        assert!(!ids.contains(&id), "one key, three projects, three ids");
+        ids.push(id);
+    }
+    assert_eq!(host.stored(None).len(), 3);
+    let rows = host.stored(None);
+    assert!(
+        rows.iter()
+            .all(|row| row.input_sha256 == rows[0].input_sha256),
+        "the very same bytes, three times"
+    );
+
+    // Inside a project the key is still one handle: the same key and bytes in
+    // A answer A's row, unchanged, and never B's.
+    let repeat = submit(A);
+    assert_eq!(repeat["job"]["id"], ids[0]);
+    assert_eq!(host.stored(None).len(), 3, "no fourth row");
+
+    // Each is reachable only under its own project, and a cancellation in one
+    // is not a cancellation in another.
+    for (index, project) in [A, B, C].iter().enumerate() {
+        for other in [A, B, C, OUTSIDE].iter().filter(|name| *name != project) {
+            let hidden = host.raw(
+                "GET",
+                &format!("/v1/jobs/{}?project={other}", ids[index]),
+                None,
+            );
+            assert_eq!(hidden.status, 409);
+            assert_eq!(hidden.json()["error"], "job not found");
+        }
+    }
+    let cancelled = ds_cli_server::cancel(
+        &host.args(&CANCEL, &["--job", &ids[0], "--project", A]),
+        &context(),
+    )
+    .expect("A's own job");
+    assert_eq!(cancelled["job"]["phase"], "cancelled");
+    for (index, project) in [(1, B), (2, C)] {
+        let untouched = host.raw(
+            "GET",
+            &format!("/v1/jobs/{}?project={project}", ids[index]),
+            None,
+        );
+        assert_eq!(untouched.json()["job"]["phase"], "queued");
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -491,12 +683,12 @@ fn item4_a_reused_key_may_not_change_its_project_or_its_payload() {
 // ─────────────────────────────────────────────────────────────────────────
 
 /// A Server restarted over a durable queue keeps every job in the project it
-/// was admitted into, gives a context to the rows written before contexts
-/// existed — Solar's from its own sealed bytes, a transformer's from the
-/// operator's selection — and never runs the same key twice.
+/// was admitted into, gives a context to the row written before contexts
+/// existed that names its own project — Solar's, from its own sealed bytes —
+/// leaves the one that names none alone, and never runs the same key twice.
 #[test]
 fn item5_a_restart_recovers_every_context_including_rows_a_released_server_wrote() {
-    let mut host = Host::start_over(limits(), A, &legacy_queue_fixture());
+    let mut host = Host::start_over(limits(), &legacy_queue_fixture());
     // Two rows the released Server left behind, readable but nameless.
     let legacy = host.stored(None);
     assert_eq!(legacy.len(), 2, "the fixture queue's two pre-slice rows");
@@ -515,22 +707,23 @@ fn item5_a_restart_recovers_every_context_including_rows_a_released_server_wrote
     let live = admitted["job"]["id"].as_str().unwrap().to_owned();
 
     // Restart on the same protected state and the same fixed loopback port.
-    host.restart(A);
+    host.restart();
     // `serve` starts its workers, and starting them is when a released
-    // Server's rows get the context they never had — before any worker can
-    // claim one. The pool is started with the device paused so the recovery
-    // is observed on its own, with nothing executed.
-    let workers = host.workers(Arc::new(Paused), 1, Some(C));
+    // Server's rows get whatever context they can honestly be given — before
+    // any worker can claim one. The pool is started with the device paused so
+    // the recovery is observed on its own, with nothing executed.
+    let workers = host.workers(Arc::new(Paused), 1);
     workers.stop();
     drop(workers);
 
-    // Every row now names its project, and a second recovery pass rebuilds
-    // nothing: they are stored now, which is what proves the first pass ran.
-    let again = runtime::recover_contexts(&host.database(), &host.identity, Some(C))
-        .expect("a second pass");
-    assert_eq!(again.stored, 3);
-    assert_eq!(again.from_sealed_input + again.from_saved_selection, 0);
-    assert!(again.unrecoverable.is_empty());
+    // A second recovery pass rebuilds nothing: the Solar row is stored now,
+    // which is what proves the first pass ran, and the transformer row is
+    // named again rather than quietly adopted.
+    let again =
+        runtime::recover_contexts(&host.database(), &host.identity).expect("a second pass");
+    assert_eq!(again.stored, 2, "the recovered Solar row and the live one");
+    assert_eq!(again.from_sealed_input, 0);
+    assert_eq!(again.unrecoverable, vec![legacy_transformer_id()]);
 
     // The Solar row took its project from its own sealed input …
     let solar = host.raw(
@@ -544,30 +737,28 @@ fn item5_a_restart_recovers_every_context_including_rows_a_released_server_wrote
         solar.json()["job"]["context"]["operation"],
         "solar_processing"
     );
-    // … the transformer row, which carries no project by design, from the
-    // operator's saved selection …
-    let transformer_row = host.raw(
-        "GET",
-        &format!("/v1/jobs/{}?project={C}", legacy_transformer_id()),
-        None,
-    );
-    assert_eq!(transformer_row.status, 200, "{:?}", transformer_row.json());
-    assert_eq!(transformer_row.json()["job"]["context"]["project"], C);
-    assert_eq!(
-        transformer_row.json()["job"]["context"]["operation"],
-        "transformer_processing"
-    );
+    // … the transformer row, which carries no project by design, took none:
+    // it is readable to its own connection and belongs to no project at all,
+    // including the one an operator happens to have selected.
+    for project in [A, B, C, OUTSIDE] {
+        let hidden = host.raw(
+            "GET",
+            &format!("/v1/jobs/{}?project={project}", legacy_transformer_id()),
+            None,
+        );
+        assert_eq!(hidden.status, 409, "{:?}", hidden.json());
+        assert_eq!(hidden.json()["error"], "job not found");
+    }
+    let nameless = host.raw("GET", &format!("/v1/jobs/{}", legacy_transformer_id()), None);
+    assert_eq!(nameless.status, 200, "{:?}", nameless.json());
+    assert!(nameless.json()["job"]["context"].is_null());
     // … and the row this build admitted kept the project it was admitted into.
     let survivor = host.raw("GET", &format!("/v1/jobs/{live}?project={B}"), None);
     assert_eq!(survivor.status, 200, "{:?}", survivor.json());
     assert_eq!(survivor.json()["job"]["context"]["project"], B);
 
-    // Each is reachable only under its own project, recovered or not.
-    for (id, wrong) in [
-        (legacy_solar_id(), B),
-        (legacy_transformer_id(), A),
-        (live.clone(), A),
-    ] {
+    // Each recovered or admitted row is reachable only under its own project.
+    for (id, wrong) in [(legacy_solar_id(), B), (live.clone(), A)] {
         let hidden = host.raw("GET", &format!("/v1/jobs/{id}?project={wrong}"), None);
         assert_eq!(hidden.status, 409);
         assert_eq!(hidden.json()["error"], "job not found");
@@ -589,30 +780,141 @@ fn item5_a_restart_recovers_every_context_including_rows_a_released_server_wrote
     );
 }
 
-/// A transformer row a released Server wrote, and no selection to recover it
-/// into, is named rather than guessed: it stays readable and is never claimed.
+/// A transformer row a released Server wrote names no project, and nothing
+/// outside its own bytes may name one for it — not this machine's saved
+/// selection, not the operator's last call, not the project the recovery
+/// happens to run under. There is no argument for one: `recover_contexts`
+/// takes the queue and the connection identity and nothing else.
+///
+/// So the row stays exactly as it is: readable to its own connection, absent
+/// from every project, never claimed, never executed, never published. What
+/// the owner gets instead is one sentence and one remedy, and the remedy works.
 #[test]
-fn item5_a_pre_slice_row_with_no_honest_project_is_named_not_guessed() {
-    let host = Host::start_over(limits(), A, &legacy_queue_fixture());
+fn a_legacy_transformer_row_is_readable_but_never_recovered_into_the_saved_selection() {
+    let host = Host::start_over(limits(), &legacy_queue_fixture());
     let recovery =
-        runtime::recover_contexts(&host.database(), &host.identity, None).expect("recovery runs");
+        runtime::recover_contexts(&host.database(), &host.identity).expect("recovery runs");
     assert_eq!(recovery.from_sealed_input, 1, "Solar names its own project");
-    assert_eq!(recovery.from_saved_selection, 0);
+    assert_eq!(recovery.stored, 0, "neither row carried a context");
     assert_eq!(
         recovery.unrecoverable,
         vec![legacy_transformer_id()],
-        "no selection, so no project is invented for the transformer row"
+        "no project is invented for a row whose bytes name none"
     );
+
     // It is still the operator's own work: visible unnarrowed, absent from
     // every project, and it holds no project's capacity.
     assert_eq!(host.stored(None).len(), 2);
-    assert!(
-        host.stored(Some(A))
-            .iter()
-            .all(|job| job.id != legacy_transformer_id())
+    for project in [A, B, C, OUTSIDE] {
+        assert!(
+            host.stored(Some(project))
+                .iter()
+                .all(|job| job.id != legacy_transformer_id()),
+            "the nameless row is not in {project}"
+        );
+    }
+    let readable = host.raw("GET", &format!("/v1/jobs/{}", legacy_transformer_id()), None);
+    assert_eq!(readable.status, 200, "{:?}", readable.json());
+    assert_eq!(readable.json()["job"]["phase"], "queued");
+    assert!(readable.json()["job"]["context"].is_null());
+
+    // And it is never claimed. Asked directly of the durable queue — the same
+    // call a worker makes — the recovered Solar row is claimable and the
+    // nameless one is passed over, whatever the caller does.
+    let mut store = host.store();
+    let mut claimed = Vec::new();
+    for attempt in 0..3 {
+        let taken = store
+            .claim_job(
+                &host.identity.caller(None),
+                &format!("worker-{attempt}"),
+                runtime::now_ms(),
+                60_000,
+                limits(),
+            )
+            .expect("the queue answers");
+        match taken {
+            Some((job, _)) => claimed.push(job.id),
+            None => break,
+        }
+    }
+    assert_eq!(
+        claimed,
+        vec![legacy_solar_id()],
+        "only the row that names its own project is ever claimed"
     );
-    let nameless = host.raw("GET", "/v1/jobs", None);
-    assert_eq!(nameless.json()["jobs"].as_array().unwrap().len(), 2);
+
+    // Deliberately resubmitting its exact bytes under its released id is the
+    // one door left to that row, and it is a named refusal with the one
+    // remedy sentence — not an adoption into whatever project asked.
+    let caller = host.identity.caller(None);
+    let row = store
+        .job(&caller, &legacy_transformer_id())
+        .expect("read")
+        .expect("the nameless row");
+    let bytes = store
+        .job_input(&caller, &legacy_transformer_id())
+        .expect("read")
+        .expect("its bytes");
+    let adopted = Job {
+        phase: Phase::Queued,
+        attempts: 0,
+        worker: None,
+        lease_until_ms: 0,
+        result_sha256: None,
+        error: None,
+        context: Some(ExecutionContext {
+            principal_uid: UID.to_owned(),
+            lane: LANE.to_owned(),
+            deployment: DEPLOYMENT.to_owned(),
+            install_id: "install-1".to_owned(),
+            project: C.to_owned(),
+            client: "cli:1".to_owned(),
+            operation: "transformer_processing".to_owned(),
+            job_id: legacy_transformer_id(),
+            idempotency_key: "legacy".to_owned(),
+            input_sha256: row.input_sha256.clone(),
+            admitted_at_ms: runtime::now_ms(),
+        }),
+        ..row
+    };
+    let refused = store
+        .submit_job(&adopted, &bytes, limits())
+        .expect_err("a released row is never adopted into a project");
+    let ds_sync_store::Error::Refused(refusal) = refused else {
+        panic!("the row's own typed answer, not a host fault: {refused}");
+    };
+    assert_eq!(refusal.code, "context_unrecoverable");
+    let failure = ds_cli_server::server_sync::sessions::refusal_failure(&refusal);
+    assert_eq!(failure.class(), ExitClass::Conflict);
+    assert_eq!(
+        failure.remedy_text(),
+        Some("read that job's result and resubmit under an explicit --project"),
+        "one sentence, identical wherever this code is raised"
+    );
+
+    // The remedy is not advice, it works: the same bytes under an explicit
+    // project are new work with their own id, and the nameless row is
+    // untouched beside it.
+    let resubmitted = ds_cli_server::submit(
+        &host.args(
+            &SUBMIT,
+            &[
+                "--key",
+                "legacy-again",
+                "--input",
+                &host.input("legacy-again.json", &bytes),
+                "--project",
+                C,
+            ],
+        ),
+        &context(),
+    )
+    .expect("the remedy the refusal names");
+    assert_eq!(resubmitted["job"]["context"]["project"], C);
+    assert_ne!(resubmitted["job"]["id"], json!(legacy_transformer_id()));
+    assert_eq!(host.stored(None).len(), 3);
+    assert_eq!(host.stored(Some(C)).len(), 1);
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -620,14 +922,13 @@ fn item5_a_pre_slice_row_with_no_honest_project_is_named_not_guessed() {
 // ─────────────────────────────────────────────────────────────────────────
 
 /// Two projects' work runs to completion on a host that has no directory, no
-/// gateway and no network: the workers' only source for "may this project
-/// run" is the Server's own durable work. Nothing about A's job is consulted
-/// to run B's, and each keeps the context it was admitted under. What a
-/// revocation stops — a publication — is the gateway's answer on that effect
-/// and is named as unproven below, because there is no gateway here to give it.
+/// gateway and no network. Nothing about A's job is consulted to run B's, and
+/// each keeps the context it was admitted under. What a revocation stops — a
+/// publication — is the gateway's answer on that effect and is named as
+/// unproven below, because there is no gateway here to give it.
 #[test]
 fn item6_execution_needs_no_directory_and_no_upstream_and_one_project_never_touches_another() {
-    let host = Host::start(limits(), A);
+    let host = Host::start(limits());
     let mut ids = Vec::new();
     for (key, project, name) in [("a1", A, "T-A"), ("b1", B, "T-B")] {
         let input = host.input(&format!("{key}.json"), &transformer(name));
@@ -642,9 +943,9 @@ fn item6_execution_needs_no_directory_and_no_upstream_and_one_project_never_touc
         ids.push(value["job"]["id"].as_str().unwrap().to_owned());
     }
 
-    // The pool's membership source is the Server's sessions, which read the
-    // queue on disk and nothing else. Both jobs execute for real.
-    let workers = host.workers(Arc::new(Allow), 2, None);
+    // A claimed job runs exactly what was admitted: there is nothing to
+    // re-check, so an outage cannot fail one. Both jobs execute for real.
+    let workers = host.workers(Arc::new(Allow), 2);
     let terminal = |id: &str, project: &str| -> Option<Value> {
         let answer = host.raw("GET", &format!("/v1/jobs/{id}?project={project}"), None);
         let job = answer.json()["job"].clone();
@@ -655,8 +956,7 @@ fn item6_execution_needs_no_directory_and_no_upstream_and_one_project_never_touc
         .then_some(job)
     };
     assert!(
-        until(60, || terminal(&ids[0], A).is_some()
-            && terminal(&ids[1], B).is_some()),
+        until(60, || terminal(&ids[0], A).is_some() && terminal(&ids[1], B).is_some()),
         "both jobs reach a terminal phase"
     );
     workers.stop();
@@ -709,6 +1009,87 @@ fn item6_execution_needs_no_directory_and_no_upstream_and_one_project_never_touc
     assert_eq!(host.stored(Some(B)).len(), 1);
 }
 
+/// Offline-first, stated as a measurement rather than an inference.
+///
+/// The whole local path — admit, queue, claim, execute, read the result,
+/// cancel, restart, recover, list — is walked for two projects, and the two
+/// upstream-shaped boundaries this harness could construct are counted the
+/// whole way: NO gateway session is ever opened, and no document source is
+/// ever touched. There is no online branch to take and no directory to be
+/// stale, so there is nothing here that could behave differently offline.
+#[test]
+fn admission_and_execution_need_no_upstream_at_all() {
+    let mut host = Host::start(limits());
+    let mut ids = Vec::new();
+    for (key, project, name) in [("a1", A, "T-A"), ("b1", B, "T-B"), ("b2", B, "T-B2")] {
+        let input = host.input(&format!("{key}.json"), &transformer(name));
+        let value = ds_cli_server::submit(
+            &host.args(
+                &SUBMIT,
+                &["--key", key, "--input", &input, "--project", project],
+            ),
+            &context(),
+        )
+        .expect("admitted with nothing upstream");
+        ids.push(value["job"]["id"].as_str().unwrap().to_owned());
+    }
+    // One is cancelled before it can run, so the cancel path is on this route
+    // too.
+    ds_cli_server::cancel(
+        &host.args(&CANCEL, &["--job", &ids[2], "--project", B]),
+        &context(),
+    )
+    .expect("cancelled");
+
+    let workers = host.workers(Arc::new(Allow), 2);
+    assert!(
+        until(60, || phase(&host, &ids[0], A) == "completed"
+            && phase(&host, &ids[1], B) == "completed"),
+        "both ran to completion with no upstream present"
+    );
+    workers.stop();
+    drop(workers);
+
+    let out = host.state.path().join("a-result.json");
+    ds_cli_server::result(
+        &host.args(
+            &RESULT,
+            &[
+                "--job",
+                &ids[0],
+                "--project",
+                A,
+                "--out",
+                &out.display().to_string(),
+            ],
+        ),
+        &context(),
+    )
+    .expect("the result is on this machine");
+
+    // Restart and recover, still with nothing upstream.
+    host.restart();
+    let recovery =
+        runtime::recover_contexts(&host.database(), &host.identity).expect("recovery runs");
+    assert_eq!(recovery.stored, 3);
+    assert!(recovery.unrecoverable.is_empty());
+    assert_eq!(host.raw("GET", "/v1/jobs", None).status, 200);
+    assert_eq!(phase(&host, &ids[0], A), "completed");
+
+    // The measurement.
+    assert_eq!(
+        host.gateway.asked(),
+        0,
+        "no Sync Center session was constructed anywhere on this path"
+    );
+    assert!(
+        host.layers.opened().is_empty(),
+        "no layer document source was opened either: {:?}",
+        host.layers.opened()
+    );
+    assert_eq!(host.layers.reads(), 0);
+}
+
 // ─────────────────────────────────────────────────────────────────────────
 // §3.7  Capacity
 // ─────────────────────────────────────────────────────────────────────────
@@ -718,15 +1099,12 @@ fn item6_execution_needs_no_directory_and_no_upstream_and_one_project_never_touc
 /// a cancellation gives the room straight back.
 #[test]
 fn item7_capacity_is_typed_bounded_fair_and_released_by_cancellation() {
-    let host = Host::start(
-        ds_command_kernel::execution_context::Limits {
-            global_running: 2,
-            per_project_running: 1,
-            per_project_queued: 2,
-            global_queued: 3,
-        },
-        A,
-    );
+    let host = Host::start(ds_command_kernel::execution_context::Limits {
+        global_running: 2,
+        per_project_running: 1,
+        per_project_queued: 2,
+        global_queued: 3,
+    });
     let mut ids = Vec::new();
     for (key, name) in [("a1", "T1"), ("a2", "T2")] {
         let input = host.input(&format!("{key}.json"), &transformer(name));
@@ -806,6 +1184,48 @@ fn item7_capacity_is_typed_bounded_fair_and_released_by_cancellation() {
     assert_eq!(host.stored(None).len(), 4);
 }
 
+/// A per-project share equal to the worker count is not a share: one project
+/// could hold every worker while another waits. `ds server serve` refuses it
+/// by name, before it authenticates anything, and the refusal states the
+/// usable range.
+#[test]
+fn a_per_project_share_equal_to_the_worker_count_is_refused_as_no_share() {
+    let host = Host::start(limits());
+    let serve = |workers: &str, share: &str| {
+        ds_cli_server::serve(
+            &host.args(&SERVE, &["--workers", workers, "--per-project", share]),
+            &context(),
+        )
+    };
+
+    let equal = serve("4", "4").expect_err("a share equal to the pool is no share");
+    assert!(
+        equal.message().contains("1..3"),
+        "the refusal states the usable range: {}",
+        equal.message()
+    );
+    let over = serve("4", "9").expect_err("a share larger than the pool is no share either");
+    assert_eq!(over.message(), equal.message());
+    let none = serve("4", "0").expect_err("a share of nothing runs nothing");
+    assert_eq!(none.message(), equal.message());
+
+    // A share inside the bound gets past it and stops on the next thing this
+    // box has not got — the authenticated native account — never on the share.
+    let inside = serve("4", "3").expect_err("no Canary identity on this box");
+    assert!(
+        !inside.message().contains("--per-project"),
+        "the share was accepted; the refusal is about something else: {}",
+        inside.message()
+    );
+    // Nothing bound a port: the numbers are parsed before anything is opened.
+    assert!(!host.database().exists());
+
+    // And the default the declaration promises: half, never fewer than one.
+    assert_eq!(ds_cli_server::default_per_project(4), 2);
+    assert_eq!(ds_cli_server::default_per_project(2), 1);
+    assert_eq!(ds_cli_server::default_per_project(1), 1);
+}
+
 // ─────────────────────────────────────────────────────────────────────────
 // §3.8  Equal names in different projects
 // ─────────────────────────────────────────────────────────────────────────
@@ -814,7 +1234,7 @@ fn item7_capacity_is_typed_bounded_fair_and_released_by_cancellation() {
 /// jobs, two ids, two results, each reachable only under its own project.
 #[test]
 fn item8_identical_work_in_two_projects_never_collides() {
-    let host = Host::start(limits(), A);
+    let host = Host::start(limits());
     let input = host.input("daily.json", &transformer("T-SAME"));
     let mut ids = Vec::new();
     for (key, project) in [("daily-a", A), ("daily-b", B)] {
@@ -835,7 +1255,7 @@ fn item8_identical_work_in_two_projects_never_collides() {
     assert_eq!(rows[0].input_sha256, rows[1].input_sha256, "the same bytes");
 
     // Run them for real. Two results, computed independently.
-    let workers = host.workers(Arc::new(Allow), 2, None);
+    let workers = host.workers(Arc::new(Allow), 2);
     let done = |id: &str, project: &str| {
         host.raw("GET", &format!("/v1/jobs/{id}?project={project}"), None)
             .json()["job"]["phase"]
@@ -898,79 +1318,248 @@ fn item8_identical_work_in_two_projects_never_collides() {
 // The routes' own rules
 // ─────────────────────────────────────────────────────────────────────────
 
-/// `ds map layer …` executed on a Server names its project explicitly and is
-/// held against the document that actually comes back. A refused layer
-/// request writes nothing.
+/// The five answers `docs-routes.md` §2 promises a layer request, each proven
+/// over the real listener: no project named, a name outside the kernel's
+/// bound, a project this account cannot read, a source that answers about
+/// another project, and the project the caller named. A refused layer request
+/// writes nothing.
 #[test]
 fn a_layer_request_names_its_project_and_is_fenced_to_the_document() {
-    let host = Host::start(limits(), A);
-    let body = br#"{"layers":["survey/poles"],"visible":false}"#;
+    let host = Host::start(limits());
 
-    let unnamed = host.raw("POST", "/v1/layers/visibility", Some(body));
+    let unnamed = host.raw("POST", "/v1/layers/visibility", Some(HIDE_POLES));
     assert_eq!(unnamed.status, 400, "{:?}", unnamed.json());
     assert_eq!(unnamed.code(), "project_required");
+
     let padded = host.raw(
         "POST",
         "/v1/layers/visibility?project=%20padded",
-        Some(body),
+        Some(HIDE_POLES),
     );
     assert_eq!(padded.status, 400, "{:?}", padded.json());
     assert_eq!(padded.code(), "context_corrupt");
-    // A project that is not the one the Server's document source is on —
-    // named here for the first time or not, there is no directory that could
-    // tell — is refused with both names in the remedy, and nothing is written.
+
+    // A project the owner's account cannot read is the answer from where the
+    // account is established — the gateway's own refusal, relayed — and never
+    // something the Server decided from a directory it does not hold.
     let outside = host.raw(
         "POST",
         &format!("/v1/layers/visibility?project={OUTSIDE}"),
-        Some(body),
+        Some(HIDE_POLES),
     );
-    assert_eq!(outside.status, 409, "{:?}", outside.json());
-    assert_eq!(outside.code(), "project_context_changed");
-    let elsewhere = host.raw(
+    assert_eq!(outside.status, 401, "{:?}", outside.json());
+    assert_eq!(outside.code(), "auth_rejected");
+
+    // A source that answers about another project than the one it was opened
+    // for stops the request, with both names in the remedy.
+    host.layers.answer_about_another_project(true);
+    let changed = host.raw(
         "POST",
         &format!("/v1/layers/visibility?project={B}"),
-        Some(body),
+        Some(HIDE_POLES),
     );
-    assert_eq!(elsewhere.status, 409);
-    assert_eq!(elsewhere.code(), "project_context_changed");
-    let remedy = elsewhere.json()["remedy"].as_str().unwrap().to_owned();
-    assert!(remedy.contains(A) && remedy.contains(B), "{remedy}");
-    // The project the document is for: the catalogue, applied.
+    assert_eq!(changed.status, 409, "{:?}", changed.json());
+    assert_eq!(changed.code(), "project_context_changed");
+    let remedy = changed.json()["remedy"].as_str().unwrap().to_owned();
+    assert!(
+        remedy.contains(B) && remedy.contains("someone-elses-project"),
+        "{remedy}"
+    );
+    host.layers.answer_about_another_project(false);
+
+    // The project the caller named, and the account can read: applied.
     let applied = host.raw(
         "POST",
         &format!("/v1/layers/visibility?project={A}"),
-        Some(body),
+        Some(HIDE_POLES),
     );
     assert_eq!(applied.status, 200, "{:?}", applied.json());
     assert_eq!(applied.json()["project"], A);
 
-    // Nothing any refusal touched was written: only A's scope has a revision.
-    let listed = host.raw("GET", &format!("/v1/layers?project={A}&limit=100"), None);
-    assert_eq!(listed.status, 200);
-    let poles = listed.json()["layers"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|layer| layer["id"] == "survey/poles")
-        .cloned()
-        .unwrap();
-    assert_eq!(poles["visibility"]["any_visible"], false);
+    // Nothing any refusal touched was written: A has the hide, B does not.
+    let a = host.raw("GET", &format!("/v1/layers?project={A}&limit=100"), None);
+    assert_eq!(a.status, 200, "{:?}", a.json());
+    assert!(!any_visible(&a.json(), "survey/poles"));
+    let b = host.raw("GET", &format!("/v1/layers?project={B}&limit=100"), None);
+    assert_eq!(b.status, 200, "{:?}", b.json());
+    assert!(
+        any_visible(&b.json(), "survey/poles"),
+        "the refused write under B left B alone"
+    );
 
-    // And through the `ds` transport, with the Server's refusal re-raised
-    // literally rather than translated.
-    let refused = ds_cli_server::layers_hide(
-        &host.args(&LAYER_HIDE, &["--layer", "survey/poles", "--project", B]),
-        &context(),
+    // And through the real `ds`, with the Server's refusal re-raised literally
+    // rather than translated: one command id, the same codes, whichever host
+    // ran it.
+    host.layers.answer_about_another_project(true);
+    let refused = host.ds(&[
+        "map",
+        "layer",
+        "hide",
+        "--target",
+        "server",
+        "--project",
+        B,
+        "--layer",
+        "survey/poles",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(refused.envelope["status"], "error", "{}", refused.stdout);
+    assert_eq!(refused.envelope["command"], "map.layer.hide");
+    assert_eq!(
+        refused.envelope["error"]["code"], "project_context_changed",
+        "{}",
+        refused.stdout
+    );
+    assert_eq!(refused.envelope["error"]["class"], "conflict");
+    host.layers.answer_about_another_project(false);
+    let ok = host.ds(&[
+        "map",
+        "layer",
+        "hide",
+        "--target",
+        "server",
+        "--project",
+        A,
+        "--layer",
+        "survey/poles",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(ok.envelope["status"], "ok", "{}{}", ok.stdout, ok.stderr);
+    assert_eq!(ok.envelope["data"]["project"], A);
+}
+
+/// One running Server, one authenticated owner, two of that owner's projects
+/// read side by side: the source is opened for the project the caller named,
+/// each project answers with its own catalogue and its own remembered
+/// visibility, and neither read moves the other. No restart, no selection, no
+/// directory.
+#[test]
+fn a_layer_read_for_a_second_authorized_project_is_served() {
+    let host = Host::start(limits());
+
+    // Hide a family in A only.
+    let hidden = host.raw(
+        "POST",
+        &format!("/v1/layers/visibility?project={A}"),
+        Some(HIDE_POLES),
+    );
+    assert_eq!(hidden.status, 200, "{:?}", hidden.json());
+
+    // A's catalogue: A's own layers, A's own hide.
+    let a = host.raw("GET", &format!("/v1/layers?project={A}&limit=100"), None);
+    assert_eq!(a.status, 200, "{:?}", a.json());
+    assert_eq!(a.json()["project"], A);
+    assert_eq!(a.json()["lane"], LANE);
+    assert_eq!(a.json()["visibility_source"], "native_local");
+    assert!(families(&a.json()).contains(&only_in(A).to_owned()));
+    assert!(!any_visible(&a.json(), "survey/poles"));
+
+    // B's catalogue, from the SAME running host, with no restart between:
+    // B's own layers, and B's own visibility, which A's hide never touched.
+    let b = host.raw("GET", &format!("/v1/layers?project={B}&limit=100"), None);
+    assert_eq!(b.status, 200, "{:?}", b.json());
+    assert_eq!(b.json()["project"], B);
+    assert!(families(&b.json()).contains(&only_in(B).to_owned()));
+    assert!(
+        !families(&b.json()).contains(&only_in(A).to_owned()),
+        "B was not served A's document: {:?}",
+        families(&b.json())
+    );
+    assert!(any_visible(&b.json(), "survey/poles"));
+
+    // A third, likewise, and then A again: still its own, still hidden.
+    let c = host.raw("GET", &format!("/v1/layers?project={C}&limit=100"), None);
+    assert_eq!(c.json()["project"], C);
+    assert!(families(&c.json()).contains(&only_in(C).to_owned()));
+    let a_again = host.raw("GET", &format!("/v1/layers?project={A}&limit=100"), None);
+    assert!(!any_visible(&a_again.json(), "survey/poles"));
+
+    // Every source this host opened was opened for the project the caller
+    // named, in order, and for nothing else.
+    assert_eq!(
+        host.layers.opened(),
+        vec![
+            A.to_owned(),
+            A.to_owned(),
+            B.to_owned(),
+            C.to_owned(),
+            A.to_owned()
+        ]
+    );
+    // And a project the account cannot read is refused where the account is
+    // established, not filtered out of a list this host kept.
+    let refused = host.raw("GET", &format!("/v1/layers?project={OUTSIDE}"), None);
+    assert_eq!(refused.status, 401, "{:?}", refused.json());
+    assert_eq!(refused.code(), "auth_rejected");
+}
+
+/// The standing ruling of 2026-09-11, typed by an operator: `ds map layer
+/// list` is ONE command id, and `--target server` answers what the desktop's
+/// own branch of the same command answers — same shape, same values, byte for
+/// byte, with no host provenance field to except.
+#[test]
+fn ds_map_layer_list_target_server_answers_the_same_shape_as_the_desktop() {
+    let host = Host::start(limits());
+    // A remembered hide, so the answer is not the trivial default and a
+    // difference in how each host folds visibility would show.
+    assert_eq!(
+        host.raw(
+            "POST",
+            &format!("/v1/layers/visibility?project={A}"),
+            Some(HIDE_POLES)
+        )
+        .status,
+        200
+    );
+
+    // The Server's answer, through the real `ds`, as an operator types it.
+    let run = host.ds(&[
+        "map",
+        "layer",
+        "list",
+        "--target",
+        "server",
+        "--project",
+        A,
+        "--limit",
+        "100",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(run.code, 0, "{}{}", run.stdout, run.stderr);
+    assert_eq!(run.envelope["status"], "ok", "{}", run.stdout);
+    assert_eq!(run.envelope["command"], "map.layer.list");
+    let served = run.envelope["data"].clone();
+
+    // The desktop's own answer to the same request: the shared owner
+    // (`ds_layer_ops::list`), the same document source opened for the same
+    // project, the same preference root — which is exactly what `--target
+    // desktop --project <id>` reaches through `Native::for_project`.
+    let mut documents = host.layers.desktop_documents(A);
+    let desktop = ds_layer_ops::list(
+        &mut documents,
+        &Preferences::at(host.layers.preference_root()),
+        &ListRequest {
+            refresh: false,
+            limit: Some(100),
+            zoom: None,
+        },
     )
-    .expect_err("the document is on another project");
-    assert_eq!(refused.code(), "project_context_changed");
-    assert_eq!(refused.class(), ExitClass::Conflict);
-    let ok = ds_cli_server::layers_hide(
-        &host.args(&LAYER_HIDE, &["--layer", "survey/poles", "--project", A]),
-        &context(),
-    )
-    .expect("the document's own project");
-    assert_eq!(ok["project"], A);
+    .expect("the desktop's own branch of this command");
+
+    assert_eq!(
+        served, desktop,
+        "one command id, one answer: the Server's answer and the desktop's differ nowhere"
+    );
+    // Named explicitly, so a future field that IS host provenance has to be
+    // added here on purpose rather than quietly excepted.
+    assert_eq!(served["project"], A);
+    assert_eq!(served["lane"], LANE);
+    assert_eq!(served["visibility_source"], "native_local");
+    assert!(!any_visible(&served, "survey/poles"));
+    assert!(served["layer_count"].as_u64().is_some_and(|count| count > 0));
 }
 
 /// The standing ruling's other half: the Server runs the same operation ids
@@ -978,7 +1567,7 @@ fn a_layer_request_names_its_project_and_is_fenced_to_the_document() {
 /// here — it says which host can, by name, and never answers an empty 404.
 #[test]
 fn an_operation_that_needs_a_rendered_map_is_refused_by_name_over_the_wire() {
-    let host = Host::start(limits(), A);
+    let host = Host::start(limits());
     let refused = host.raw("POST", "/v1/map/screenshot", Some(b"{}"));
     assert_eq!(refused.status, 503, "{:?}", refused.json());
     assert_eq!(refused.code(), "needs_paired_map");
@@ -1004,7 +1593,7 @@ fn an_operation_that_needs_a_rendered_map_is_refused_by_name_over_the_wire() {
 /// nothing at all for a project that holds nothing it may see.
 #[test]
 fn activity_scope_is_one_entry_per_project_that_holds_work() {
-    let host = Host::start(limits(), A);
+    let host = Host::start(limits());
     for (key, project, name) in [("a1", A, "T-A"), ("b1", B, "T-B")] {
         let input = host.input(&format!("{key}.json"), &transformer(name));
         ds_cli_server::submit(
@@ -1034,11 +1623,22 @@ fn activity_scope_is_one_entry_per_project_that_holds_work() {
             .unwrap()
             .is_empty()
     );
-    // The projection itself needs a Sync Center session per project, which
-    // this offline proof deliberately has none of, so the route says so rather
-    // than answering an empty envelope that could be mistaken for "no work".
+    // The projection itself needs the Solar Sync Center the running host
+    // starts, which this offline proof deliberately has none of, so the route
+    // says so rather than answering an empty envelope that could be mistaken
+    // for "no work" — and it says so before it asks anything of anyone.
     let answer = host.raw("GET", "/v1/activity", None);
     assert_eq!(answer.status, 409, "{:?}", answer.json());
+    assert!(
+        answer.stringify().contains("before server startup"),
+        "the pre-startup refusal, named: {}",
+        answer.stringify()
+    );
+    assert_eq!(
+        host.gateway.asked(),
+        0,
+        "not even this route constructed a gateway session"
+    );
 }
 
 /// Nothing reaches the store without the owner bearer, and a revoked device
@@ -1046,7 +1646,7 @@ fn activity_scope_is_one_entry_per_project_that_holds_work() {
 /// create a queue file.
 #[test]
 fn an_unauthenticated_call_never_reads_or_creates_anything() {
-    let host = Host::start(limits(), A);
+    let host = Host::start(limits());
     let denied = ureq::Agent::config_builder()
         .http_status_as_error(false)
         .build()
@@ -1075,8 +1675,31 @@ fn unproven_without_a_live_canary_identity_publication_receipts_carry_their_proj
     // §3.1's tail and acceptance item 2's "publication receipts": a receipt is
     // minted by the gateway when a completed Solar result is transferred, and
     // this box has no signed-in Canary account to mint one under. Everything
-    // up to the transfer — admission, the sealed project, execution, the
-    // durable result and its per-project visibility — is proven above.
+    // up to the transfer — admission, the sealed project, the durable result
+    // and its per-project visibility — is proven above.
+    unimplemented!("run against a signed-in Canary Server");
+}
+
+#[test]
+#[ignore = "needs a live Canary identity: there is none on this box"]
+fn unproven_without_a_live_canary_identity_a_solar_job_runs_to_a_published_result_on_the_server() {
+    // Solar EXECUTION on the Server is NOT proven anywhere in this file. A
+    // Solar job is admitted here (its sealed project, its context, its id, its
+    // per-project visibility and its refusals all are), and the transformer
+    // engine really runs, but a Solar run ends at a publication the gateway
+    // has to accept, and there is no gateway on this box to accept it. Nothing
+    // above should be read as a claim that Solar completes on a Server.
+    unimplemented!("run against a signed-in Canary Server");
+}
+
+#[test]
+#[ignore = "needs a live Canary identity: there is none on this box"]
+fn unproven_without_a_live_canary_identity_report_export_on_the_server_writes_its_artifact() {
+    // `server_reports` takes the job's context project and then needs a Sync
+    // Center session for it to read the report inputs and write the artifact.
+    // The scope decision is proven (`activity_scope_…`, and the routes' own
+    // admission), the export itself is not. Report export on the Server
+    // remains unproven here.
     unimplemented!("run against a signed-in Canary Server");
 }
 
@@ -1088,8 +1711,8 @@ fn unproven_without_a_live_canary_identity_a_revoked_projects_publication_refuse
     // because B publishes through its own session. The Server makes no
     // revocation decision of its own (it holds no directory to make one
     // from), so there is nothing to observe without a gateway. What IS
-    // proven above, in `item6_…`, is the other half: execution needs no
-    // upstream at all, and one project's work never touches another's.
+    // proven above, in `item6_…` and `admission_and_execution_…`, is the other
+    // half: the whole local path needs no upstream at all.
     unimplemented!("run against a signed-in Canary Server");
 }
 
@@ -1113,47 +1736,3 @@ fn unproven_without_a_live_canary_identity_activity_projects_live_sync_center_st
     // `activity_scope_is_one_entry_per_project_that_holds_work`.
     unimplemented!("run against a signed-in Canary Server");
 }
-
-// ── the one command declaration this crate does not own yet ─────────────
-//
-// `ds map layer hide --target server` is the operation; `ds-cli-map` has not
-// been given `SERVER_TARGET_ARGS` yet, so the declaration a caller will type
-// does not exist to parse against. This is that declaration, stated here so
-// the transport is proven against the arguments it is meant to receive, and
-// reported as the wiring this slice still owes.
-static LAYER_HIDE: Command = Command {
-    id: "map.layer.hide",
-    path: &["map", "layer", "hide"],
-    contract: 1,
-    summary: "Hide one canonical layer family.",
-    purpose: "The layer drawer's hide, executed against the targeted host.",
-    chapter: Chapter::MapPresentation,
-    effect: Effect::LocalFileWrite,
-    authority: Authority::HeadlessUser,
-    execution: Execution::Sync,
-    args: &[
-        Arg::value(
-            "state-dir",
-            "<absolute-path>",
-            "Protected server state directory.",
-        ),
-        Arg::value("lane", "<stable|canary>", "Native authentication lane.")
-            .default("stable")
-            .choices(&["stable", "canary"]),
-        Arg::value(
-            "project",
-            "<exact-id>",
-            "Exact ds_project id this call is about.",
-        ),
-        Arg::repeated(
-            "layer",
-            "<canonical-id>",
-            "Canonical layer id from the catalogue.",
-        ),
-    ],
-    output: "The changed families and this host's remembered visibility.",
-    examples: &[],
-    refusals: &[],
-    reference: None,
-    availability: || Availability::Available,
-};
