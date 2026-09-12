@@ -1808,6 +1808,11 @@ static DESKTOP_ENTRIES: &[Entry] = &[
         render: ds_cli_desktop::status::render,
     },
     Entry {
+        command: &ds_cli_desktop::list::COMMAND,
+        handler: ds_cli_desktop::list::run,
+        render: ds_cli_desktop::list::render,
+    },
+    Entry {
         command: &ds_cli_desktop::connectivity::STATUS,
         handler: ds_cli_desktop::connectivity::status,
         render: ds_cli_desktop::connectivity::render,
@@ -2284,17 +2289,26 @@ fn scope_headless_identity(
     // probing or requiring Desktop. If (and only if) a handler reaches the
     // shared typed bridge seam, `ops::invoke` snapshots the map, arbitrates,
     // and sends an atomic invocation fence.
-    if !matches!(
+    // `ds desktop list` is the enumeration every instance-targeted refusal
+    // points at, and "which of these can serve my work" is a question only
+    // this observation can answer. It declares no authority — it must answer
+    // on a machine with nothing running, and gating it would make the one call
+    // that explains the situation the one call that refuses to — so it is
+    // named here rather than by its authority, and a probe that cannot answer
+    // leaves it reporting the instances without marking any of them.
+    let enumeration = command.id == ds_cli_desktop::list::COMMAND.id;
+    if (!matches!(
         command.authority,
         ds_cli_contract::Authority::DesktopUser | ds_cli_contract::Authority::Project
-    ) || command.id == "auth.link.approve"
+    ) && !enumeration)
+        || command.id == "auth.link.approve"
     {
         return Ok(ds_cli_desktop::ops::scope_headless_identity(None));
     }
     let observed =
         match ds_cli_auth::probe_headless_identity(inputs.value("lane").unwrap_or("stable")) {
             Ok(observed) => observed,
-            Err(error) if headless_probe_means_absent(&error) => None,
+            Err(error) if headless_probe_means_absent(&error) || enumeration => None,
             Err(error) => return Err(error),
         };
     let observed = observed.map(
@@ -2304,6 +2318,11 @@ fn scope_headless_identity(
             credential_audience_sha256: identity.credential_audience_sha256().to_owned(),
             project,
             command_authority: command.authority,
+            // The host this invocation named. Dispatch is the one place that
+            // holds both the command's declared inputs and the seam that will
+            // route on them, so the target rides with the identity rather than
+            // being re-read from a flag the shared seam cannot see.
+            target: inputs.value("target").map(str::to_owned),
         },
     );
     Ok(ds_cli_desktop::ops::scope_headless_identity(observed))

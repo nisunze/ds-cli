@@ -9,7 +9,10 @@ use ds_cli_contract::spec::{
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
 
-use crate::ops::{self, BridgeOp, DESCRIPTOR_ARG};
+use ds_command_kernel::project_context;
+
+use crate::bridge;
+use crate::ops::{self, BridgeOp, DESCRIPTOR_ARG, TARGET_ARG};
 
 const TIMEOUT: Duration = Duration::from_secs(30);
 const DEFAULT_LIMIT: &str = "50";
@@ -32,6 +35,15 @@ const PROJECT_NOT_VISIBLE: Refusal = Refusal {
     remedy: "run `ds desktop project list --query <text>` and use an exact returned id",
 };
 
+/// The switch was sent and the instance did not come back holding the project
+/// — or came back as somebody else. Reported rather than assumed: a switch a
+/// caller believes happened is how the next command lands in the wrong window.
+const SWITCH_NOT_COMPLETED: Refusal = Refusal {
+    code: "auth_context_mismatch",
+    when: "the targeted instance did not come back holding that project under the same account",
+    remedy: "run `ds desktop status --target desktop:<instance_id>` and switch again",
+};
+
 const INVALID_TEXT: Refusal = Refusal {
     code: "invalid_text",
     when: "a project id or query is empty, untrimmed, or longer than its bound",
@@ -41,6 +53,10 @@ const INVALID_TEXT: Refusal = Refusal {
 const COMMON_REFUSALS: &[Refusal] = &[
     ops::NOT_PAIRED,
     ops::AMBIGUOUS,
+    ops::TARGET_NOT_LIVE,
+    ops::TARGET_MISMATCH,
+    ops::UNKNOWN_TARGET,
+    ops::HOST_UNSUPPORTED,
     ops::UNREACHABLE,
     ops::PAIRING_REJECTED,
     ops::REFUSED,
@@ -79,6 +95,7 @@ the CLI never invents an id from a display name.",
         ),
         Arg::value("limit", "<n>", "Return at most this many matches; 1..500.")
             .default(DEFAULT_LIMIT),
+        TARGET_ARG,
         DESCRIPTOR_ARG,
     ],
     output: "\
@@ -103,7 +120,11 @@ pub static SWITCH_COMMAND: Command = Command {
     purpose: "\
 Requests one exact active-project context change through the paired application. \
 The app verifies that the signed-in user can see the project, performs its normal \
-project switch, and keeps project-scoped local rooms under their own project keys.",
+project switch, and keeps project-scoped local rooms under their own project keys. \
+This is the only way a `ds` command moves a live window's project: an ordinary \
+paired command whose selected project is not open anywhere refuses with \
+`desktop_project_not_open` and names this. Name the window with \
+`--target desktop:<instance_id>` whenever more than one instance is running.",
     chapter: Chapter::Project,
     effect: Effect::LocalUi,
     authority: Authority::DesktopUser,
@@ -115,6 +136,7 @@ project switch, and keeps project-scoped local rooms under their own project key
             "Exact project id returned by `desktop project list`.",
         )
         .required(),
+        TARGET_ARG,
         DESCRIPTOR_ARG,
     ],
     output: "\
@@ -128,12 +150,18 @@ project's bounded summary. No project data is written.",
     refusals: &[
         ops::NOT_PAIRED,
         ops::AMBIGUOUS,
+        ops::TARGET_NOT_LIVE,
+        ops::TARGET_MISMATCH,
+        ops::UNKNOWN_TARGET,
+        ops::HOST_UNSUPPORTED,
         ops::UNREACHABLE,
         ops::PAIRING_REJECTED,
         ops::REFUSED,
         ops::UNSUPPORTED,
         ops::UNREADABLE,
         ops::SIGNED_OUT,
+        ops::CONTEXT_GENERATION_STALE,
+        SWITCH_NOT_COMPLETED,
         PROJECT_NOT_VISIBLE,
         INVALID_TEXT,
     ],
@@ -162,13 +190,32 @@ pub fn list(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
 pub fn switch(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let project = bounded_text(inputs.require("project")?, "project", 160)?;
     let descriptor = ops::paired(inputs.value("desktop-descriptor"))?;
-    ops::invoke(
+    let before = bridge::IdentityFence::from_session(&bridge::session(&descriptor)?)?;
+    let switched = ops::invoke(
         &descriptor,
         &SWITCH_OP,
         json!({ "project": project }),
         TIMEOUT,
     )
-    .map_err(classify_project_switch)
+    .map_err(classify_project_switch)?;
+    // The one operation allowed to move a window's project is also the one
+    // that has to prove it did: the same instance, the same principal, and
+    // that project open when it answered.
+    let after = bridge::IdentityFence::from_session(&bridge::session(&descriptor)?)?;
+    let instance = Some(descriptor.instance_id.as_str());
+    if !project_context::switch_completed(
+        ops::fence_context(&before, instance),
+        ops::fence_context(&after, instance),
+        project,
+    ) {
+        return Err(Failure::conflict(
+            SWITCH_NOT_COMPLETED.code,
+            "the targeted DS GridDesign instance did not come back holding that project",
+        )
+        .remedy(SWITCH_NOT_COMPLETED.remedy)
+        .detail(json!({ "project": project, "instance": descriptor.instance_id })));
+    }
+    Ok(switched)
 }
 
 fn bounded_text<'a>(value: &'a str, flag: &str, max: usize) -> Result<&'a str, Failure> {

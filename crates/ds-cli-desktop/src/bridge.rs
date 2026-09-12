@@ -22,7 +22,7 @@ use ds_cli_contract::outcome::{ExitClass, Failure};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
-use crate::discover::{self, Discovery};
+use crate::discover;
 
 /// The pairing handshake is loopback and immediate; anything slower is a dead
 /// descriptor rather than a busy application.
@@ -31,36 +31,92 @@ pub const SESSION_TIMEOUT: Duration = Duration::from_secs(5);
 /// Bound on any bridge response body.
 pub const MAX_RESPONSE_BYTES: u64 = 8 * 1024 * 1024;
 
-/// Resolve the paired application, or refuse with the remedy.
+/// Resolve the instance this operation is for, or refuse with the remedy.
+///
+/// The host it runs on is whatever `--target` named for this dispatch, or
+/// `DS_TARGET` for the session. Selection itself is the kernel's: this reads
+/// the descriptors, probes each endpoint, and performs the answer.
 pub fn paired(explicit: Option<&str>) -> Result<discover::Found, Failure> {
-    match discover::discover(explicit) {
-        Discovery::Paired(found) => Ok(*found),
-        Discovery::None => Err(Failure::unavailable(
-            "desktop_not_paired",
-            "no DS GridDesign session is running on this machine",
+    paired_on(explicit, crate::ops::scoped_target().as_deref())
+}
+
+/// The same resolution for a command that holds its own `--target`, rather
+/// than the one dispatch scoped for a paired invocation.
+pub fn paired_on(explicit: Option<&str>, target: Option<&str>) -> Result<discover::Found, Failure> {
+    let target = crate::ops::desktop_target(target)?;
+
+    // A named descriptor file is the legacy explicit path: used verbatim,
+    // never second-guessed, and never falling through to another instance.
+    if let Some((profile, path)) = discover::named(explicit) {
+        let descriptor =
+            discover::read(&path, None).map_err(|failure| unusable(&path, &failure))?;
+        let descriptor = match target {
+            // Two explicit answers to one question. They must be the same
+            // instance, and proving that means asking the process itself —
+            // the file may predate the identity it now publishes.
+            Some(target) => confirmed(descriptor, &target)?,
+            None => descriptor,
+        };
+        return Ok(discover::Found {
+            profile,
+            path,
+            descriptor,
+        });
+    }
+
+    discover::choose(
+        discover::enumerate(),
+        target.as_ref(),
+        crate::ops::scoped_requirement().as_ref(),
+    )
+    .map_err(|failure| {
+        if failure.code() == "desktop_not_paired" {
+            return failure.next("ds desktop list");
+        }
+        failure
+    })
+}
+
+/// A descriptor file that cannot be read or admitted. The caller named this
+/// path, so it is told which file and why — and it stays the transport-shaped
+/// code it has always been, because for a caller with a stale pinned terminal
+/// the situation and the remedy are unchanged.
+fn unusable(path: &std::path::Path, failure: &Failure) -> Failure {
+    let reason = failure
+        .detail_value()
+        .and_then(|detail| detail["reason"].as_str().map(str::to_owned))
+        .unwrap_or_else(|| failure.message().to_owned());
+    Failure::unavailable(
+        "desktop_unreachable",
+        "the bridge descriptor cannot be used",
+    )
+    .remedy("restart DS GridDesign and retry")
+    .detail(json!({ "descriptor": path.display().to_string(), "reason": reason }))
+}
+
+/// The named descriptor reaches the named instance, or neither is used.
+fn confirmed(
+    descriptor: discover::Descriptor,
+    target: &discover::Target,
+) -> Result<discover::Descriptor, Failure> {
+    match discover::identify(&descriptor) {
+        Some(live) if live == target.instance_id => Ok(descriptor),
+        Some(live) => Err(Failure::invalid(
+            crate::ops::TARGET_MISMATCH.code,
+            "the named descriptor belongs to another instance than --target named",
         )
-        .remedy("start DS GridDesign and sign in, then retry")
-        .next("ds desktop status")),
-        Discovery::Ambiguous(choices) => Err(Failure::invalid(
-            "desktop_ambiguous",
-            "more than one DS GridDesign session is running",
-        )
-        .remedy("name one with --desktop-descriptor <path>")
+        .remedy(crate::ops::TARGET_MISMATCH.remedy)
         .detail(json!({
-            "descriptors": choices
-                .iter()
-                .map(|(profile, path)| json!({
-                    "profile": profile,
-                    "descriptor": path.display().to_string()
-                }))
-                .collect::<Vec<_>>()
+            "target": target.instance_id,
+            "reason": "descriptor",
+            "descriptor_instance": live,
         }))),
-        Discovery::Unusable { path, reason } => Err(Failure::unavailable(
-            "desktop_unreachable",
-            "the bridge descriptor cannot be used",
+        None => Err(Failure::invalid(
+            crate::ops::TARGET_NOT_LIVE.code,
+            "the named descriptor's instance did not answer, so it cannot be the one named",
         )
-        .remedy("restart DS GridDesign and retry")
-        .detail(json!({ "descriptor": path.display().to_string(), "reason": reason }))),
+        .remedy(crate::ops::TARGET_NOT_LIVE.remedy)
+        .detail(json!({ "target": target.instance_id }))),
     }
 }
 
