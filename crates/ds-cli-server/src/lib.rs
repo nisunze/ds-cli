@@ -799,6 +799,28 @@ pub const fn default_per_project(workers: usize) -> usize {
     if half == 0 { 1 } else { half }
 }
 
+/// How many requests may be in this host's door at once.
+///
+/// The door is not the engine. Compute is bounded by `--workers` and by the
+/// kernel's own capacity admission; what a request holds here is a store read
+/// or write, a digest, or one project's document fetch. Binding the door to
+/// the worker count made a one-worker host answer ONE request at a time, so a
+/// slow layer read for project A returned "capacity reached" to a status call
+/// for project B -- one project serialized behind another for work that never
+/// touched a worker. So the door has a floor of its own and grows with the
+/// machine: never fewer than [`MIN_REQUEST_PERMITS`], and the worker count
+/// where that is larger, since that count is what the host's CPU and memory
+/// were measured for.
+const MIN_REQUEST_PERMITS: usize = 8;
+
+pub const fn request_permits(workers: usize) -> usize {
+    if workers > MIN_REQUEST_PERMITS {
+        workers
+    } else {
+        MIN_REQUEST_PERMITS
+    }
+}
+
 /// How deep a queue one project, and the whole host, may hold. Waiting is not
 /// free -- a queue nobody bounds is a refusal deferred until memory runs out --
 /// so both are finite and the global bound is the kernel's own maximum.
@@ -869,7 +891,7 @@ pub fn serve(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
         connection,
         layers: layer_host,
         auth: layer_auth,
-        requests: Arc::new(tokio::sync::Semaphore::new(workers.min(8))),
+        requests: Arc::new(tokio::sync::Semaphore::new(request_permits(workers))),
         activity: None,
         sessions,
     };
@@ -1242,6 +1264,23 @@ mod tests {
                 command.id
             );
         }
+    }
+
+    #[test]
+    fn the_door_is_never_narrower_than_the_projects_that_knock_on_it() {
+        // A one-worker host is the smallest one the deployment model rents,
+        // and it still serves several projects: a read for one of them must
+        // not be the whole host's turn.
+        assert_eq!(request_permits(1), MIN_REQUEST_PERMITS);
+        assert_eq!(request_permits(4), MIN_REQUEST_PERMITS);
+        assert_eq!(request_permits(MIN_REQUEST_PERMITS), MIN_REQUEST_PERMITS);
+        // And a bigger machine opens the door wider, because the worker count
+        // is what its CPU and memory were measured for.
+        assert_eq!(request_permits(32), 32);
+        assert!(
+            request_permits(1) >= default_per_project(1) + 1,
+            "a project at its share must still leave a door for another's read"
+        );
     }
 
     #[test]

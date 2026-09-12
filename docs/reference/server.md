@@ -96,6 +96,12 @@ every worker while another waits has no share at all. Exhaustion is a typed answ
 carries `retry_after_ms` and whether the `global` or the `project` scope filled.
 Cancelling a job releases its capacity immediately.
 
+The request door is bounded separately from the workers, and never below eight:
+a status read, a cancellation or one project's layer document fetch does not
+occupy a worker, so a small host does not answer one request at a time and one
+project's slow read cannot return "request capacity reached" to another
+project's call.
+
 ### Refusals, by their own names
 
 The Server's typed refusals are re-raised by the CLI under the same code, so an
