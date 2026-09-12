@@ -2,25 +2,31 @@
 //! Domain lifecycle/admission belongs to the kernel; domain engines run only
 //! after their complete, durable input has been admitted.
 //!
-//! Admission means one thing here: `execution_context::admit` decided, from a
-//! verified membership snapshot, which project this operation is about, and
-//! that decision was written with the job row. Nothing downstream re-derives
-//! it. A read answers through `execution_context::visible`; the queue bound
-//! and the fairness share are `execution_context::capacity`, asked by the
-//! store inside the transaction that inserts or claims, from a census read
-//! there — never from a census this crate read a moment earlier; a run
-//! re-checks membership for the job's own project before it executes and
-//! before its completion is projected; and a queue reopened from disk
-//! recovers its rows through `execution_context::recover`. This crate
-//! performs the I/O; the kernel decides.
+//! Admission means one thing here: `execution_context::admit` decided, from
+//! the connection identity and the project the work named, what this operation
+//! is about, and that decision was written with the job row. Nothing
+//! downstream re-derives it. A read answers through
+//! `execution_context::visible`; the queue bound and the fairness share are
+//! `execution_context::capacity`, asked by the store inside the transaction
+//! that inserts or claims, from a census read there — never from a census this
+//! crate read a moment earlier; and a queue reopened from disk recovers its
+//! rows through `execution_context::recover`. This crate performs the I/O; the
+//! kernel decides.
+//!
+//! **Nothing here touches the network.** A claimed job runs exactly what was
+//! admitted: there is no directory to re-check, no membership to have been
+//! revoked and no upstream to be unavailable, so an outage cannot fail a job
+//! and a job can fail only on its own execution. Entitlement is enforced by
+//! the gateway where an effect leaves the machine — publication and sync —
+//! exactly as the desktop behaves.
 mod claim;
 pub use claim::decode_solar_server_submission;
 
 use base64::Engine;
 use ds_command_kernel::compute_jobs::{self, EngineKind, Event, Job, Phase};
 use ds_command_kernel::execution_context::{
-    self, AdmitRequest, Admitted, ExecutionContext, Fault, Membership, Principal, Refusal,
-    RetainEvent, SOLAR_PROCESSING, TRANSFORMER_PROCESSING,
+    self, AdmitRequest, Admitted, Fault, Principal, Refusal, RetainEvent, SOLAR_PROCESSING,
+    TRANSFORMER_PROCESSING,
 };
 use ds_network::network::native_fast_lv::{
     decode_native_fast_lv_request, encode_native_fast_lv_result, process_native_fast_lv,
@@ -42,10 +48,6 @@ use std::{
 };
 
 pub use ds_command_kernel::execution_context::Limits;
-
-/// The failure a job carries when its project stopped being visible to the
-/// Server's account between admission and execution. Only that job fails.
-pub const MEMBERSHIP_REVOKED: &str = "membership_revoked";
 
 /// The Solar engine linked into this native host. Its dependency closure can
 /// differ from a bundled standalone engine, so release admission must inspect
@@ -134,8 +136,8 @@ impl HostIdentity {
 /// `requested_project` is what the caller named; `saved_project` is the
 /// caller's own default (the Server passes `None` — a saved selection is the
 /// *client's* default and reaches the Server as a named project, never as
-/// host state). Both are verified against `membership` by the kernel, which
-/// also decides that a sealed input's own project outranks them.
+/// host state). The kernel decides between them, and that a sealed input's own
+/// project outranks both. Nothing is fetched to allow any of them.
 pub struct Admission<'a> {
     pub identity: &'a HostIdentity,
     /// Who asked, e.g. `server-connection:9f2c`. Bounded at 120 characters.
@@ -143,7 +145,6 @@ pub struct Admission<'a> {
     pub key: &'a str,
     pub requested_project: Option<&'a str>,
     pub saved_project: Option<&'a str>,
-    pub membership: &'a Membership,
     pub limits: Limits,
     pub now_ms: u64,
 }
@@ -192,51 +193,6 @@ impl From<Fault> for SubmitError {
             Fault::Hard(message) => Self::Host(message),
         }
     }
-}
-
-/// The projects this Server's account may act in right now.
-///
-/// A host caches the answer for a bounded time and refetches it when a
-/// decision made from it was refused; the kernel decides whether a snapshot
-/// is still fresh enough to admit from, so an implementation must report the
-/// moment it was fetched honestly rather than restamping it.
-pub trait MembershipSource: Send + Sync + 'static {
-    fn snapshot(&self, now_ms: u64) -> Result<Membership, String>;
-    /// Drop the cached snapshot so the next call refetches it.
-    fn invalidate(&self) {}
-}
-
-/// Is this job's project still visible to the account that admitted it?
-///
-/// Asked through the kernel's own admission, re-presenting the stored context
-/// as the existing one: a membership that still holds returns that same
-/// context unchanged, and one that no longer holds returns
-/// `project_not_visible`. Nothing here re-derives what the job is about.
-pub fn still_admitted(
-    context: &ExecutionContext,
-    membership: &Membership,
-    now_ms: u64,
-) -> Result<ExecutionContext, Fault> {
-    let request = AdmitRequest {
-        now_ms,
-        principal: Principal {
-            uid: context.principal_uid.clone(),
-            lane: context.lane.clone(),
-            deployment: context.deployment.clone(),
-            install_id: context.install_id.clone(),
-        },
-        client: context.client.clone(),
-        operation: context.operation.clone(),
-        job_id: context.job_id.clone(),
-        idempotency_key: context.idempotency_key.clone(),
-        input_sha256: context.input_sha256.clone(),
-        requested_project: Some(context.project.clone()),
-        saved_project: None,
-        sealed_project: None,
-        membership: membership.clone(),
-        existing: Some(context.clone()),
-    };
-    execution_context::admit(&request).map(|admitted| admitted.context().clone())
 }
 
 pub fn submit(path: &Path, admission: &Admission<'_>, input: &[u8]) -> Result<Job, SubmitError> {
@@ -325,12 +281,16 @@ pub fn submit_solar_with_provenance(
     )
 }
 
-/// The durable id of one caller key under one connection. Unchanged by this
-/// slice on purpose: the same key in another project is a refusal
-/// (`scope_mismatch_for_key`), not a second job, so a key stays the caller's
-/// one handle on their work.
-pub fn job_id(owner: &str, lane: &str, key: &str) -> String {
-    digest(&serde_json::to_vec(&(owner, lane, key)).expect("identity tuple encodes"))
+/// The durable id of one caller key, in one project, under one connection.
+///
+/// The project is part of the digest: two projects of one owner run the same
+/// daily key as two pieces of work with two ids, and neither can reach the
+/// other's. Within a project the key is still the caller's one handle on their
+/// work — reusing it there for another operation or other bytes is
+/// `scope_mismatch_for_key` / `payload_changed_for_key`, not a second job.
+/// Rows written before this scheme keep the ids they have.
+pub fn job_id(owner: &str, lane: &str, project: &str, key: &str) -> String {
+    digest(&serde_json::to_vec(&(owner, lane, project, key)).expect("identity tuple encodes"))
 }
 
 fn submit_validated(
@@ -348,7 +308,6 @@ fn submit_validated(
         key,
         requested_project,
         saved_project,
-        membership,
         limits,
         now_ms,
     } = *admission;
@@ -362,12 +321,15 @@ fn submit_validated(
             "job_key_invalid: use 1..128 letters, digits, _ or -".into(),
         ));
     }
-    let id = job_id(&identity.owner, identity.lane(), key);
+    // The project decides the id, so it is resolved first — by the kernel, from
+    // the same three inputs `admit` will read again and answer identically.
+    let project = execution_context::project_for(requested_project, saved_project, sealed_project)?;
+    let id = job_id(&identity.owner, identity.lane(), &project, key);
     let mut store = open(path).map_err(SubmitError::Host)?;
     // Read the key's existing row through the whole connection, never through
     // a narrowed caller: the kernel must be able to answer
-    // `scope_mismatch_for_key` for a key that already names another project,
-    // and it verifies membership before it looks at this row at all.
+    // `scope_mismatch_for_key` for a key already used in this project for
+    // another operation.
     let existing = store
         .job(&identity.caller(None), &id)
         .map_err(|error| SubmitError::Host(error.to_string()))?;
@@ -382,7 +344,6 @@ fn submit_validated(
         requested_project: requested_project.map(str::to_owned),
         saved_project: saved_project.map(str::to_owned),
         sealed_project: sealed_project.map(str::to_owned),
-        membership: membership.clone(),
         existing: existing.as_ref().and_then(|job| job.context.clone()),
     })?;
     if let Admitted::Existing(_) = &admitted {
@@ -412,8 +373,8 @@ fn submit_validated(
     // The queue bound is the store's to apply, inside the transaction that
     // inserts: a census read here would describe a queue other submissions
     // are changing. A refusal comes back typed and is relayed as the kernel
-    // said it. A row written by a released Server under this key and these
-    // bytes adopts the admitted context instead (see `Store::submit_job`).
+    // said it — including `context_unrecoverable` for a row written before
+    // execution contexts, which is never adopted and never run.
     store
         .submit_job(&job, input, limits)
         .map_err(|error| match error {
@@ -723,42 +684,25 @@ pub trait CompletionObserver: Send + Sync + 'static {
 
 /// Everything a pool of workers needs to take work from one connection's
 /// durable queue: which queue, whose it is, how much of the machine it may
-/// use, how to re-authorize, where the projects it may act in come from, and
-/// what to tell when a job completes.
+/// use, how to re-authorize, and what to tell when a job completes.
 pub struct WorkerContext {
     pub path: PathBuf,
     pub identity: HostIdentity,
     pub limits: Limits,
     pub auth: Arc<dyn Authorizer>,
-    pub membership: Arc<dyn MembershipSource>,
     pub observer: Option<Arc<dyn CompletionObserver>>,
-    /// The caller default a legacy transformer row is recovered into, and
-    /// nothing else. `None` leaves such rows named `context_unrecoverable`
-    /// rather than guessing a project for them.
-    pub saved_project: Option<String>,
-}
-
-impl WorkerContext {
-    fn membership_now(&self) -> Result<Membership, String> {
-        self.membership.snapshot(now_ms())
-    }
 }
 
 /// Give every row in this connection's queue the execution context it is
 /// about, reconstructing the ones written before contexts existed. Solar rows
-/// take their project from their own sealed input; transformer rows, which
-/// carry none by design, take the caller's saved selection; anything else is
-/// left alone and named.
-pub fn recover_contexts(
-    path: &Path,
-    identity: &HostIdentity,
-    saved_project: Option<&str>,
-) -> Result<Recovery, String> {
+/// take their project from their own sealed input; a transformer row, which
+/// carries none by design, is left alone and named — there is nothing outside
+/// its own bytes that may name a project for it.
+pub fn recover_contexts(path: &Path, identity: &HostIdentity) -> Result<Recovery, String> {
     open(path)?
         .recover_contexts(
             &identity.principal,
             &identity.owner,
-            saved_project,
             &|job, input| {
                 solar_job_scope(job, input)
                     .ok()
@@ -782,14 +726,10 @@ impl Workers {
         // Reopening a queue is the moment a row written by a released Server
         // gets the context it never had. It happens once, before any worker
         // can claim, and it never guesses.
-        let recovery = recover_contexts(
-            &context.path,
-            &context.identity,
-            context.saved_project.as_deref(),
-        )?;
+        let recovery = recover_contexts(&context.path, &context.identity)?;
         if !recovery.unrecoverable.is_empty() {
             eprintln!(
-                "compute queue: {} durable job(s) predate execution contexts and name no project; they are readable but will not run until one is selected",
+                "compute queue: {} durable job(s) predate execution contexts and name no project; read each one's result and resubmit it under an explicit --project",
                 recovery.unrecoverable.len()
             );
         }
@@ -885,15 +825,11 @@ pub fn run_one(context: &WorkerContext, worker: &str) -> Result<bool, String> {
         .clone()
         .ok_or("a claimed job has no execution context")?;
     // A claim is a lifecycle event, and the kernel's answer to a lifecycle
-    // event is the context it was given. Stating it here is the point.
+    // event is the context it was given. Stating it here is the point: what
+    // runs now is exactly what was admitted, and there is nothing to ask
+    // anyone about before it does.
     let job_context = execution_context::retain(&job_context, RetainEvent::Claim)
         .map_err(|fault| fault.to_string())?;
-    // Membership is re-checked for THIS job's project before the engine runs.
-    // A revocation fails this job and nothing else: another project's work in
-    // the same pool keeps running.
-    if let Err(fault) = membership_holds(context, &job_context) {
-        return fail_job(context, &job, worker, &fault).map(|()| true);
-    }
     let done = Arc::new(AtomicBool::new(false));
     let renewed = Arc::new(AtomicBool::new(true));
     let cancelled = CancelToken::new();
@@ -995,18 +931,13 @@ pub fn run_one(context: &WorkerContext, worker: &str) -> Result<bool, String> {
                     Some(&bytes),
                 )
                 .map_err(|e| e.to_string())?;
-            // The result is this account's own and stays durable. What a lost
-            // membership stops is the effect that leaves the machine: the
-            // completion is not projected into the project's activity or
-            // publication queue until the project is visible again.
-            match membership_holds(context, &job_context) {
-                Err(fault) => eprintln!("compute activity projection: {fault}"),
-                Ok(()) => {
-                    if let Some(observer) = context.observer.as_deref() {
-                        if let Err(error) = observer.completed(&completed) {
-                            eprintln!("compute activity projection: {error}");
-                        }
-                    }
+            // The result is this account's own and stays durable. Projecting
+            // it into the project's activity and publication queue asks
+            // nobody's permission: whether the publication itself may leave
+            // the machine is the gateway's answer on that effect.
+            if let Some(observer) = context.observer.as_deref() {
+                if let Err(error) = observer.completed(&completed) {
+                    eprintln!("compute activity projection: {error}");
                 }
             }
         }
@@ -1026,44 +957,6 @@ pub fn run_one(context: &WorkerContext, worker: &str) -> Result<bool, String> {
         }
     }
     Ok(true)
-}
-
-/// Is this job's project still visible? A snapshot the host could not fetch
-/// is not a revocation — the job is left to be retried rather than failed on
-/// a network outage.
-fn membership_holds(context: &WorkerContext, job_context: &ExecutionContext) -> Result<(), String> {
-    let membership = match context.membership_now() {
-        Ok(membership) => membership,
-        Err(error) => return Err(format!("membership unavailable: {error}")),
-    };
-    match still_admitted(job_context, &membership, now_ms()) {
-        Ok(_) => Ok(()),
-        Err(Fault::Hard(message)) => Err(format!("membership unavailable: {message}")),
-        Err(Fault::Refused(refusal)) => {
-            context.membership.invalidate();
-            Err(format!("{MEMBERSHIP_REVOKED}: {}", refusal.message))
-        }
-    }
-}
-
-/// Fail exactly this job, leaving its input durable and every other project's
-/// work in the pool untouched.
-fn fail_job(context: &WorkerContext, job: &Job, worker: &str, error: &str) -> Result<(), String> {
-    if !error.starts_with(MEMBERSHIP_REVOKED) {
-        // A host that could not reach its directory has not learned anything
-        // about membership; leave the lease to expire and retry.
-        return Err(error.to_owned());
-    }
-    open(&context.path)?
-        .update_job(
-            &context.identity.caller(None),
-            &job.id,
-            Event::Fail { worker, error },
-            now_ms(),
-            None,
-        )
-        .map(|_| ())
-        .map_err(|failure| failure.to_string())
 }
 
 fn execute(input: &[u8], job: &Job, cancel: Option<&CancelToken>) -> Result<Vec<u8>, String> {

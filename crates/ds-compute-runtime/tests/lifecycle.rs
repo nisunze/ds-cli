@@ -2,21 +2,20 @@
 //! verified execution context per job.
 //!
 //! Two projects share one queue here and never see each other; a reused key
-//! keeps its scope; capacity bounds admission and keeps a project's share
-//! honest; a membership revoked mid-flight fails exactly one job; and a row
-//! written by a released Server recovers before any worker can claim it.
+//! keeps its scope inside its project and is other work outside it; capacity
+//! bounds admission and keeps a project's share honest; a claimed job runs
+//! exactly what was admitted with no upstream anywhere; and a row written by a
+//! released Server recovers from its own sealed bytes or is named unrunnable.
 
 use ds_command_kernel::compute_jobs::{Event, Phase};
-use ds_command_kernel::execution_context::{Limits, Membership, Principal};
-use ds_compute_runtime::{
-    self as runtime, Admission, Authorizer, HostIdentity, MembershipSource, WorkerContext,
-};
+use ds_command_kernel::execution_context::{Limits, Principal};
+use ds_compute_runtime::{self as runtime, Admission, Authorizer, HostIdentity, WorkerContext};
 use ds_solar_contracts::{
     BundleBytes, CityIdentity, PreparedSolarCityInput, RunOptions, SnapshotRevision,
     SolarCityInput, WeatherDataset, WeatherKey, WeatherPin,
 };
 use serde_json::json;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 const DEPLOYMENT: &str = "https://gateway.example";
 const A: &str = "project-a";
@@ -33,31 +32,6 @@ struct Revoked;
 impl Authorizer for Revoked {
     fn authorize(&self, _: &str) -> Result<(), String> {
         Err("revoked".into())
-    }
-}
-
-/// A membership snapshot a test can change while work is in flight.
-struct Directory(Mutex<Vec<String>>);
-impl Directory {
-    fn new(projects: &[&str]) -> Arc<Self> {
-        Arc::new(Self(Mutex::new(
-            projects.iter().map(|p| (*p).to_owned()).collect(),
-        )))
-    }
-    fn revoke(&self, project: &str) {
-        self.0.lock().unwrap().retain(|known| known != project);
-    }
-    fn snapshot_now(&self) -> Membership {
-        self.snapshot(runtime::now_ms()).unwrap()
-    }
-}
-impl MembershipSource for Directory {
-    fn snapshot(&self, now_ms: u64) -> Result<Membership, String> {
-        Ok(Membership {
-            projects: self.0.lock().unwrap().clone(),
-            fetched_at_ms: now_ms,
-            ttl_ms: 600_000,
-        })
     }
 }
 
@@ -84,7 +58,6 @@ fn admission<'a>(
     identity: &'a HostIdentity,
     key: &'a str,
     project: Option<&'a str>,
-    membership: &'a Membership,
 ) -> Admission<'a> {
     Admission {
         identity,
@@ -92,7 +65,6 @@ fn admission<'a>(
         key,
         requested_project: project,
         saved_project: None,
-        membership,
         limits: limits(),
         now_ms: runtime::now_ms(),
     }
@@ -100,7 +72,6 @@ fn admission<'a>(
 fn worker(
     path: &std::path::Path,
     identity: &HostIdentity,
-    directory: &Arc<Directory>,
     auth: Arc<dyn Authorizer>,
 ) -> WorkerContext {
     WorkerContext {
@@ -108,10 +79,16 @@ fn worker(
         identity: identity.clone(),
         limits: limits(),
         auth,
-        membership: directory.clone(),
         observer: None,
-        saved_project: None,
     }
+}
+
+/// The id a Server released before this scheme wrote for one key: the digest
+/// of (owner, lane, key), with no project in it. Such ids can no longer be
+/// derived from a key, which is why a legacy row is only ever reached
+/// deliberately.
+fn legacy_job_id(owner: &str, lane: &str, key: &str) -> String {
+    runtime::digest(&serde_json::to_vec(&(owner, lane, key)).unwrap())
 }
 
 fn request() -> Vec<u8> {
@@ -189,14 +166,7 @@ fn real_compute_survives_reopen_and_never_recomputes_completed_work() {
     let path = dir.path().join("store.sqlite");
     let bytes = request();
     let identity = host("owner", "stable");
-    let directory = Directory::new(&[A]);
-    let membership = directory.snapshot_now();
-    let job = runtime::submit(
-        &path,
-        &admission(&identity, "request1", Some(A), &membership),
-        &bytes,
-    )
-    .unwrap();
+    let job = runtime::submit(&path, &admission(&identity, "request1", Some(A)), &bytes).unwrap();
     assert_eq!(job.context.as_ref().unwrap().project, A);
     assert_eq!(
         runtime::open(&path)
@@ -207,7 +177,7 @@ fn real_compute_survives_reopen_and_never_recomputes_completed_work() {
             .phase,
         Phase::Queued
     );
-    let context = worker(&path, &identity, &directory, Arc::new(Allowed));
+    let context = worker(&path, &identity, Arc::new(Allowed));
     assert!(runtime::run_one(&context, "worker").unwrap());
     let store = runtime::open(&path).unwrap();
     let result = store
@@ -219,13 +189,9 @@ fn real_compute_survives_reopen_and_never_recomputes_completed_work() {
     assert_eq!(decoded["jobs"][0]["transformer_name"], "T1");
     assert_eq!(decoded["jobs"][0]["ok"], true);
     assert_eq!(
-        runtime::submit(
-            &path,
-            &admission(&identity, "request1", Some(A), &membership),
-            &bytes
-        )
-        .unwrap()
-        .attempts,
+        runtime::submit(&path, &admission(&identity, "request1", Some(A)), &bytes)
+            .unwrap()
+            .attempts,
         1
     );
     assert!(!runtime::run_one(&context, "worker2").unwrap());
@@ -241,19 +207,13 @@ fn two_projects_share_one_queue_and_neither_context_ever_crosses() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("store.sqlite");
     let identity = host("owner", "canary");
-    let directory = Directory::new(&[A, B]);
-    let membership = directory.snapshot_now();
-    let first = runtime::submit(
-        &path,
-        &admission(&identity, "for-a", Some(A), &membership),
-        &request(),
-    )
-    .unwrap();
+    let first =
+        runtime::submit(&path, &admission(&identity, "for-a", Some(A)), &request()).unwrap();
     let mut other: serde_json::Value = serde_json::from_slice(&request()).unwrap();
     other["jobs"][0]["transformer_name"] = json!("T2");
     let second = runtime::submit(
         &path,
-        &admission(&identity, "for-b", Some(B), &membership),
+        &admission(&identity, "for-b", Some(B)),
         &serde_json::to_vec(&other).unwrap(),
     )
     .unwrap();
@@ -275,7 +235,7 @@ fn two_projects_share_one_queue_and_neither_context_ever_crosses() {
     assert!(store.job_result(&as_b, &first.id).unwrap().is_none());
     drop(store);
     // Both run, in their own projects, from the same pool.
-    let context = worker(&path, &identity, &directory, Arc::new(Allowed));
+    let context = worker(&path, &identity, Arc::new(Allowed));
     assert!(runtime::run_one(&context, "worker-1").unwrap());
     assert!(runtime::run_one(&context, "worker-2").unwrap());
     let store = runtime::open(&path).unwrap();
@@ -290,86 +250,60 @@ fn two_projects_share_one_queue_and_neither_context_ever_crosses() {
 }
 
 #[test]
-fn a_key_keeps_its_scope_and_a_project_outside_membership_is_never_admitted() {
+fn a_key_keeps_its_scope_inside_its_project_and_is_other_work_outside_it() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("store.sqlite");
     let identity = host("owner", "canary");
-    let directory = Directory::new(&[A, B]);
-    let membership = directory.snapshot_now();
     let bytes = request();
-    let job = runtime::submit(
-        &path,
-        &admission(&identity, "shared", Some(A), &membership),
-        &bytes,
-    )
-    .unwrap();
+    let job = runtime::submit(&path, &admission(&identity, "shared", Some(A)), &bytes).unwrap();
     // Same key, same bytes, same project: the same job, not a second one.
-    let again = runtime::submit(
-        &path,
-        &admission(&identity, "shared", Some(A), &membership),
-        &bytes,
-    )
-    .unwrap();
+    let again = runtime::submit(&path, &admission(&identity, "shared", Some(A)), &bytes).unwrap();
     assert_eq!(again.id, job.id);
     assert_eq!(again.context, job.context);
-    // Same key, another project.
-    let moved = runtime::submit(
-        &path,
-        &admission(&identity, "shared", Some(B), &membership),
-        &bytes,
-    )
-    .unwrap_err();
-    assert_eq!(moved.code(), Some("scope_mismatch_for_key"));
+    // The same key in another project is another piece of work, with its own
+    // id and its own context: two of this owner's projects running the same
+    // daily key never collide, and neither can reach the other's row.
+    let elsewhere =
+        runtime::submit(&path, &admission(&identity, "shared", Some(B)), &bytes).unwrap();
+    assert_ne!(elsewhere.id, job.id);
+    assert_eq!(elsewhere.context.as_ref().unwrap().project, B);
+    assert!(runtime::open(&path)
+        .unwrap()
+        .job(&identity.caller(Some(A)), &elsewhere.id)
+        .unwrap()
+        .is_none());
     // Same key, other bytes.
     let mut other: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
     other["jobs"][0]["transformer_name"] = json!("T2");
     let changed = runtime::submit(
         &path,
-        &admission(&identity, "shared", Some(A), &membership),
+        &admission(&identity, "shared", Some(A)),
         &serde_json::to_vec(&other).unwrap(),
     )
     .unwrap_err();
     assert_eq!(changed.code(), Some("payload_changed_for_key"));
-    // A project the directory does not list, and no project at all.
-    let outside = runtime::submit(
+    // A project this host has never heard of is admitted on the owner's word:
+    // there is no directory to consult, and whether that project's effects may
+    // leave the machine is the gateway's answer at publication and sync.
+    let unheard_of = runtime::submit(
         &path,
-        &admission(&identity, "elsewhere", Some("project-z"), &membership),
+        &admission(&identity, "elsewhere", Some("project-z")),
         &bytes,
     )
-    .unwrap_err();
-    assert_eq!(outside.code(), Some("project_not_visible"));
-    let unnamed = runtime::submit(
-        &path,
-        &admission(&identity, "unnamed", None, &membership),
-        &bytes,
-    )
-    .unwrap_err();
+    .unwrap();
+    assert_eq!(unheard_of.context.as_ref().unwrap().project, "project-z");
+    // Naming nothing at all is the one thing there is no answer to.
+    let unnamed =
+        runtime::submit(&path, &admission(&identity, "unnamed", None), &bytes).unwrap_err();
     assert_eq!(unnamed.code(), Some("project_required"));
-    // A stale snapshot says the same sentence a non-member gets.
-    let stale = Membership {
-        fetched_at_ms: 1,
-        ttl_ms: 1_000,
-        ..membership.clone()
-    };
-    let expired = runtime::submit(
-        &path,
-        &admission(&identity, "expired", Some(A), &stale),
-        &bytes,
-    )
-    .unwrap_err();
-    assert_eq!(expired.code(), Some("project_not_visible"));
-    assert_eq!(
-        expired.refusal().unwrap().message,
-        outside.refusal().unwrap().message
-    );
     assert_eq!(
         runtime::open(&path)
             .unwrap()
             .jobs(&identity.caller(None), 10)
             .unwrap()
             .len(),
-        1,
-        "every refusal left the queue exactly as it was"
+        3,
+        "one job per (project, key); the refusals wrote nothing"
     );
 }
 
@@ -378,8 +312,6 @@ fn capacity_bounds_the_queue_per_project_and_globally_with_retry_guidance() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("store.sqlite");
     let identity = host("owner", "canary");
-    let directory = Directory::new(&[A, B]);
-    let membership = directory.snapshot_now();
     let bytes = request();
     let tight = Limits {
         global_running: 2,
@@ -392,7 +324,7 @@ fn capacity_bounds_the_queue_per_project_and_globally_with_retry_guidance() {
             &path,
             &Admission {
                 limits,
-                ..admission(&identity, key, Some(project), &membership)
+                ..admission(&identity, key, Some(project))
             },
             &bytes,
         )
@@ -437,8 +369,6 @@ fn a_claim_keeps_one_projects_share_while_another_project_is_waiting() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("store.sqlite");
     let identity = host("owner", "canary");
-    let directory = Directory::new(&[A, B]);
-    let membership = directory.snapshot_now();
     // Two batches each, so that after one slot apiece both projects still
     // have work waiting — the only situation in which a share is a fence.
     for (key, project, name) in [
@@ -451,7 +381,7 @@ fn a_claim_keeps_one_projects_share_while_another_project_is_waiting() {
         bytes["jobs"][0]["transformer_name"] = json!(name);
         runtime::submit(
             &path,
-            &admission(&identity, key, Some(project), &membership),
+            &admission(&identity, key, Some(project)),
             &serde_json::to_vec(&bytes).unwrap(),
         )
         .unwrap();
@@ -504,70 +434,53 @@ fn a_claim_keeps_one_projects_share_while_another_project_is_waiting() {
     );
 }
 
+/// What replaced the revocation this file used to prove. Revocation is not a
+/// decision this host makes any more: the gateway answers it where a
+/// publication or a sync leaves the machine. Here, both projects' work runs to
+/// completion with no upstream in the process at all, and each keeps the
+/// context it was admitted under.
 #[test]
-fn a_membership_revoked_while_queued_fails_only_that_projects_job() {
+fn a_claimed_job_runs_exactly_what_was_admitted_and_asks_no_one_first() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("store.sqlite");
     let identity = host("owner", "canary");
-    let directory = Directory::new(&[A, B]);
-    let membership = directory.snapshot_now();
-    let doomed = runtime::submit(
-        &path,
-        &admission(&identity, "for-a", Some(A), &membership),
-        &request(),
-    )
-    .unwrap();
+    let first =
+        runtime::submit(&path, &admission(&identity, "for-a", Some(A)), &request()).unwrap();
     let mut other: serde_json::Value = serde_json::from_slice(&request()).unwrap();
     other["jobs"][0]["transformer_name"] = json!("T2");
-    let survivor = runtime::submit(
+    let second = runtime::submit(
         &path,
-        &admission(&identity, "for-b", Some(B), &membership),
+        &admission(&identity, "for-b", Some(B)),
         &serde_json::to_vec(&other).unwrap(),
     )
     .unwrap();
-    directory.revoke(A);
-    let context = worker(&path, &identity, &directory, Arc::new(Allowed));
+    let context = worker(&path, &identity, Arc::new(Allowed));
     assert!(runtime::run_one(&context, "worker-1").unwrap());
     assert!(runtime::run_one(&context, "worker-2").unwrap());
     let store = runtime::open(&path).unwrap();
-    let failed = store
-        .job(&identity.caller(None), &doomed.id)
-        .unwrap()
-        .unwrap();
-    assert_eq!(failed.phase, Phase::Failed);
-    assert!(failed
-        .error
-        .as_deref()
-        .unwrap()
-        .starts_with(runtime::MEMBERSHIP_REVOKED));
-    assert!(
-        store
-            .job_result(&identity.caller(None), &doomed.id)
+    for (job, project) in [(&first, A), (&second, B)] {
+        let done = store
+            .job(&identity.caller(Some(project)), &job.id)
             .unwrap()
-            .is_none(),
-        "a revoked project's job produced no result"
-    );
-    assert_eq!(
-        store
-            .job(&identity.caller(Some(B)), &survivor.id)
+            .unwrap();
+        assert_eq!(done.phase, Phase::Completed, "{project}");
+        assert!(store
+            .job_result(&identity.caller(None), &job.id)
             .unwrap()
-            .unwrap()
-            .phase,
-        Phase::Completed,
-        "the other project's work is untouched"
-    );
-    // The job keeps the context it was admitted under; nothing re-scoped it.
-    assert_eq!(failed.context.unwrap().project, A);
+            .is_some());
+        // Nothing re-scoped it between admission and execution.
+        assert_eq!(done.context.unwrap().project, project);
+    }
 }
 
 #[test]
-fn a_row_written_by_a_released_server_recovers_before_any_worker_claims_it() {
+fn a_transformer_row_written_by_a_released_server_is_named_and_never_claimed() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("store.sqlite");
     let identity = host("owner", "canary");
     let bytes = request();
     // Exactly what the released binary's INSERT wrote: no `context` member.
-    let id = runtime::job_id("owner", "canary", "released");
+    let id = legacy_job_id("owner", "canary", "released");
     let digest = runtime::digest(&bytes);
     let row = json!({
         "id": id, "owner": "owner", "lane": "canary", "input_sha256": digest,
@@ -584,38 +497,46 @@ fn a_row_written_by_a_released_server_recovers_before_any_worker_claims_it() {
             rusqlite::params![id, row.to_string(), bytes.as_slice()],
         )
         .unwrap();
-    // Without a selection to recover into, the row is named, not guessed at,
-    // and no worker will run it.
-    let unrecovered = runtime::recover_contexts(&path, &identity, None).unwrap();
+    // A transformer row names no project and nothing outside its own bytes may
+    // name one for it. It is named unrecoverable, and no worker runs it.
+    let unrecovered = runtime::recover_contexts(&path, &identity).unwrap();
     assert_eq!(unrecovered.unrecoverable, vec![id.clone()]);
-    let directory = Directory::new(&[A]);
-    let idle = worker(&path, &identity, &directory, Arc::new(Allowed));
+    let idle = worker(&path, &identity, Arc::new(Allowed));
     assert!(!runtime::run_one(&idle, "worker-0").unwrap());
-    // Started with a selection, the pool recovers it first and then runs it in
-    // the recovered project.
-    let context = Arc::new(WorkerContext {
-        saved_project: Some(A.into()),
-        ..worker(&path, &identity, &directory, Arc::new(Allowed))
-    });
-    let workers = runtime::Workers::start(context, 1).unwrap();
+    // Starting the pool changes nothing about it: recovery runs first, says
+    // the same thing, and the row is still there, readable and unrun. Work
+    // submitted afterwards runs past it.
+    let workers =
+        runtime::Workers::start(Arc::new(worker(&path, &identity, Arc::new(Allowed))), 1).unwrap();
+    let mut other: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    other["jobs"][0]["transformer_name"] = json!("T2");
+    let running = runtime::submit(
+        &path,
+        &admission(&identity, "after", Some(A)),
+        &serde_json::to_vec(&other).unwrap(),
+    )
+    .unwrap();
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
     loop {
         let job = runtime::open(&path)
             .unwrap()
-            .job(&identity.caller(Some(A)), &id)
+            .job(&identity.caller(Some(A)), &running.id)
             .unwrap()
-            .expect("recovered into project A");
+            .expect("the new job is in project A");
         if job.phase == Phase::Completed {
-            let context = job.context.unwrap();
-            assert_eq!(context.project, A);
-            assert_eq!(context.client, "recovery:legacy-row");
-            assert_eq!(context.admitted_at_ms, 1_700_000_000_000);
             break;
         }
         assert!(std::time::Instant::now() < deadline, "{job:?}");
         std::thread::sleep(std::time::Duration::from_millis(20));
     }
     drop(workers);
+    let legacy = runtime::open(&path)
+        .unwrap()
+        .job(&identity.caller(None), &id)
+        .unwrap()
+        .expect("the released row is still readable by its own connection");
+    assert_eq!(legacy.phase, Phase::Queued, "it was never claimed");
+    assert!(legacy.context.is_none(), "and never given a project");
 }
 
 #[test]
@@ -623,36 +544,28 @@ fn prepared_solar_survives_reopen_without_a_client_path_or_live_request() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("store.sqlite");
     let identity = host("owner", "stable");
-    let directory = Directory::new(&[SOLAR_PROJECT]);
-    let membership = directory.snapshot_now();
     let mut request: serde_json::Value = serde_json::from_slice(&prepared_solar_request()).unwrap();
     request["provenance"] = valid_provenance();
     let bytes = serde_json::to_vec(&request).unwrap();
     assert!(runtime::submit(
         &path,
-        &admission(&identity, "solar-request", Some(SOLAR_PROJECT), &membership),
+        &admission(&identity, "solar-request", Some(SOLAR_PROJECT)),
         &bytes
     )
     .is_err());
     let job = runtime::submit_solar(
         &path,
         // The caller names nothing: the sealed input names its own project.
-        &admission(&identity, "solar-request", None, &membership),
+        &admission(&identity, "solar-request", None),
         &bytes,
     )
     .unwrap();
     assert_eq!(job.input_tag, "ds.solar.calculate.prepared/v1");
     assert_eq!(job.context.as_ref().unwrap().project, SOLAR_PROJECT);
     // A caller who names a contradicting project is refused outright.
-    let contradicting = Directory::new(&[SOLAR_PROJECT, A]);
     let mismatch = runtime::submit_solar(
         &path,
-        &admission(
-            &identity,
-            "solar-elsewhere",
-            Some(A),
-            &contradicting.snapshot_now(),
-        ),
+        &admission(&identity, "solar-elsewhere", Some(A)),
         &bytes,
     )
     .unwrap_err();
@@ -660,7 +573,7 @@ fn prepared_solar_survives_reopen_without_a_client_path_or_live_request() {
     // `run_one` reopens the durable store after submission. Its only input is
     // the retained request bytes, so this proves no client workspace/cache path
     // or original HTTP request remains in the execution boundary.
-    let context = worker(&path, &identity, &directory, Arc::new(Allowed));
+    let context = worker(&path, &identity, Arc::new(Allowed));
     assert!(runtime::run_one(&context, "recovered").unwrap());
     let result = runtime::open(&path)
         .unwrap()
@@ -723,11 +636,9 @@ fn server_submission_binds_existing_preparation_claim_to_exact_sealed_input() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("store.sqlite");
     let identity = host("owner", "canary");
-    let directory = Directory::new(&[SOLAR_PROJECT]);
-    let membership = directory.snapshot_now();
     let job = runtime::submit_solar_with_provenance(
         &path,
-        &admission(&identity, "claim", None, &membership),
+        &admission(&identity, "claim", None),
         &input,
         provenance,
     )
@@ -774,8 +685,6 @@ fn direct_submission_and_durable_replay_reject_invalid_snapshot_provenance() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("store.sqlite");
     let identity = host("owner", "stable");
-    let directory = Directory::new(&[SOLAR_PROJECT, "another-project"]);
-    let membership = directory.snapshot_now();
     let mut request: serde_json::Value = serde_json::from_slice(&prepared_solar_request()).unwrap();
     for (field, value) in [
         ("project_id", "another-project"),
@@ -796,14 +705,10 @@ fn direct_submission_and_durable_replay_reject_invalid_snapshot_provenance() {
         request["provenance"][field] = json!(value);
         let invalid = serde_json::to_vec(&request).unwrap();
         assert!(
-            runtime::submit_solar(
-                &path,
-                &admission(&identity, "invalid", None, &membership),
-                &invalid
-            )
-            .unwrap_err()
-            .to_string()
-            .contains("provenance"),
+            runtime::submit_solar(&path, &admission(&identity, "invalid", None), &invalid)
+                .unwrap_err()
+                .to_string()
+                .contains("provenance"),
             "{field}"
         );
     }
@@ -811,12 +716,8 @@ fn direct_submission_and_durable_replay_reject_invalid_snapshot_provenance() {
     // The worker must refuse it after reopening instead of calculating it.
     request["provenance"] = valid_provenance();
     let valid = serde_json::to_vec(&request).unwrap();
-    let mut job = runtime::submit_solar(
-        &path,
-        &admission(&identity, "valid", None, &membership),
-        &valid,
-    )
-    .unwrap();
+    let mut job =
+        runtime::submit_solar(&path, &admission(&identity, "valid", None), &valid).unwrap();
     let replay_path = dir.path().join("replay.sqlite");
     request["provenance"]["root"] = json!("another-root");
     let invalid = serde_json::to_vec(&request).unwrap();
@@ -827,7 +728,7 @@ fn direct_submission_and_durable_replay_reject_invalid_snapshot_provenance() {
         .unwrap()
         .submit_job(&job, &invalid, limits())
         .unwrap();
-    let worker = worker(&replay_path, &identity, &directory, Arc::new(Allowed));
+    let worker = worker(&replay_path, &identity, Arc::new(Allowed));
     assert!(runtime::run_one(&worker, "recovered").unwrap());
     let stored = runtime::open(&replay_path).unwrap();
     let refused = stored
@@ -848,17 +749,10 @@ fn parallel_claims_are_unique_and_revocation_and_cancellation_stop_work() {
     let path = dir.path().join("store.sqlite");
     let bytes = request();
     let identity = host("owner", "stable");
-    let directory = Directory::new(&[A]);
-    let membership = directory.snapshot_now();
     for key in ["a", "b"] {
-        runtime::submit(
-            &path,
-            &admission(&identity, key, Some(A), &membership),
-            &bytes,
-        )
-        .unwrap();
+        runtime::submit(&path, &admission(&identity, key, Some(A)), &bytes).unwrap();
     }
-    let revoked = worker(&path, &identity, &directory, Arc::new(Revoked));
+    let revoked = worker(&path, &identity, Arc::new(Revoked));
     assert!(runtime::run_one(&revoked, "revoked").is_err());
     let barrier = Arc::new(std::sync::Barrier::new(2));
     let handles = (0..2)
@@ -921,7 +815,7 @@ fn parallel_claims_are_unique_and_revocation_and_cancellation_stop_work() {
     different["jobs"][0]["transformer_name"] = json!("T2");
     assert!(runtime::submit(
         &path,
-        &admission(&identity, "a", Some(A), &membership),
+        &admission(&identity, "a", Some(A)),
         &serde_json::to_vec(&different).unwrap()
     )
     .is_err());
@@ -944,26 +838,19 @@ fn workers_complete_real_batches_inside_the_shared_resource_bound() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("store.sqlite");
     let identity = host("owner", "stable");
-    let directory = Directory::new(&[A, B]);
-    let membership = directory.snapshot_now();
     // One batch per project, so the pool proves it serves both at once.
     for (key, project) in [("first", A), ("second", B)] {
         let mut bytes: serde_json::Value = serde_json::from_slice(&request()).unwrap();
         bytes["jobs"][0]["transformer_name"] = json!(key);
         runtime::submit(
             &path,
-            &admission(&identity, key, Some(project), &membership),
+            &admission(&identity, key, Some(project)),
             &serde_json::to_vec(&bytes).unwrap(),
         )
         .unwrap();
     }
     let observed = Arc::new(AtomicBool::new(false));
-    let context = Arc::new(worker(
-        &path,
-        &identity,
-        &directory,
-        Arc::new(Bound(observed.clone())),
-    ));
+    let context = Arc::new(worker(&path, &identity, Arc::new(Bound(observed.clone()))));
     let workers = runtime::Workers::start(context, 2).unwrap();
     let deadline = Instant::now() + Duration::from_secs(20);
     loop {
@@ -993,14 +880,14 @@ fn workers_complete_real_batches_inside_the_shared_resource_bound() {
 }
 
 #[test]
-fn resubmitting_a_released_rows_key_and_bytes_with_a_project_adopts_it_and_runs_it() {
+fn resubmitting_a_released_rows_key_under_a_project_is_new_work_beside_it() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("store.sqlite");
     let identity = host("owner", "canary");
     let bytes = request();
-    // A transformer row a released Server wrote: no context, and no saved
-    // selection to recover it into.
-    let id = runtime::job_id("owner", "canary", "released");
+    // A transformer row a released Server wrote: no context, and nothing that
+    // may name a project for it.
+    let id = legacy_job_id("owner", "canary", "released");
     let row = json!({
         "id": id, "owner": "owner", "lane": "canary", "input_sha256": runtime::digest(&bytes),
         "engine": "fast_lv", "input_tag": "ds.fast-lv.request/v1", "phase": "queued",
@@ -1017,35 +904,21 @@ fn resubmitting_a_released_rows_key_and_bytes_with_a_project_adopts_it_and_runs_
         )
         .unwrap();
     assert_eq!(
-        runtime::recover_contexts(&path, &identity, None)
+        runtime::recover_contexts(&path, &identity)
             .unwrap()
             .unrecoverable,
         vec![id.clone()]
     );
-    let directory = Directory::new(&[A]);
-    let membership = directory.snapshot_now();
-    // The same key with other bytes is the caller's answer, typed, and the
-    // row is untouched.
-    let mut other: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
-    other["jobs"][0]["transformer_name"] = json!("T9");
-    let changed = runtime::submit(
-        &path,
-        &admission(&identity, "released", Some(A), &membership),
-        &serde_json::to_vec(&other).unwrap(),
-    )
-    .unwrap_err();
-    assert_eq!(changed.code(), Some("payload_changed_for_key"));
-    // The same key and bytes, naming a project: the row is adopted, not
-    // duplicated, and it runs in that project.
-    let adopted = runtime::submit(
-        &path,
-        &admission(&identity, "released", Some(A), &membership),
-        &bytes,
-    )
-    .unwrap();
-    assert_eq!(adopted.id, id);
-    assert_eq!(adopted.created_at_ms, 1_700_000_000_000);
-    let context = adopted.context.clone().unwrap();
+    // The remedy the contract states, carried out: the same key, now under an
+    // explicit project. Its id digests the project, so this is a NEW job that
+    // runs -- the released row is not adopted, not re-scoped and not touched.
+    let resubmitted =
+        runtime::submit(&path, &admission(&identity, "released", Some(A)), &bytes).unwrap();
+    assert_ne!(
+        resubmitted.id, id,
+        "a released row's id is never re-derived"
+    );
+    let context = resubmitted.context.clone().unwrap();
     assert_eq!(context.project, A);
     assert_eq!(context.idempotency_key, "released");
     assert_eq!(
@@ -1054,15 +927,25 @@ fn resubmitting_a_released_rows_key_and_bytes_with_a_project_adopts_it_and_runs_
             .jobs(&identity.caller(None), 10)
             .unwrap()
             .len(),
-        1
+        2,
+        "the released row stands beside the new job, not under it"
     );
-    let worker = worker(&path, &identity, &directory, Arc::new(Allowed));
+    let worker = worker(&path, &identity, Arc::new(Allowed));
     assert!(runtime::run_one(&worker, "worker-1").unwrap());
     let done = runtime::open(&path)
         .unwrap()
-        .job(&identity.caller(Some(A)), &id)
+        .job(&identity.caller(Some(A)), &resubmitted.id)
         .unwrap()
         .unwrap();
     assert_eq!(done.phase, Phase::Completed);
     assert_eq!(done.context.unwrap().project, A);
+    // And the released row is still exactly what it was.
+    let legacy = runtime::open(&path)
+        .unwrap()
+        .job(&identity.caller(None), &id)
+        .unwrap()
+        .unwrap();
+    assert_eq!(legacy.phase, Phase::Queued);
+    assert!(legacy.context.is_none());
+    assert!(!runtime::run_one(&worker, "worker-2").unwrap());
 }

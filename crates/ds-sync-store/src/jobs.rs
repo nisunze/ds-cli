@@ -182,7 +182,7 @@ impl Store {
             )
             .optional()?;
         if let Some((row, old_input)) = old {
-            let mut existing: Job = serde_json::from_str(&row)?;
+            let existing: Job = serde_json::from_str(&row)?;
             if existing.owner != job.owner
                 || existing.lane != job.lane
                 || existing.input_sha256 != job.input_sha256
