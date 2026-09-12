@@ -1034,6 +1034,7 @@ dependencies = [
  "axum",
  "ds-cli-auth",
  "ds-cli-contract",
+ "ds-client-core",
  "ds-command-kernel",
  "ds-compute-runtime",
  "ds-design-workspace",

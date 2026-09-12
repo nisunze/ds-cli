@@ -30,3 +30,10 @@ tower = { version = "0.5", features = ["util"] }
 # projection is bounded rather than hard-failing. It needs the same SQLite the
 # store itself uses, and is already in this lock through ds-sync-store.
 rusqlite = { version = "0.32", features = ["bundled"] }
+# The proof builds the protected device credential a real `ds auth link`
+# leaves, so the production authorizer can be exercised over a real machine.
+# Two values in that record are the closed core's own — the credential
+# audience schema and the native client id — and they are ASKED for here
+# rather than copied, so the fixture cannot drift into agreeing with a rule
+# the product no longer has. Already in this lock through ds-cli-auth.
+ds-client-core = { workspace = true }

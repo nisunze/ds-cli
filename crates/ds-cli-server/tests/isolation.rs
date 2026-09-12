@@ -46,6 +46,7 @@ use ds_layer_ops::{ListRequest, Preferences};
 use fixtures::*;
 use serde_json::{Value, json};
 use std::sync::Arc;
+use std::time::Duration;
 
 use ds_cli_server::{CANCEL, RESULT, SERVE, SOLAR_SUBMIT, STATUS, SUBMIT};
 
@@ -1812,6 +1813,659 @@ fn an_unauthenticated_call_never_reads_or_creates_anything() {
         !host.database().exists(),
         "an unauthenticated call created no queue"
     );
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// The SHIPPED Server, offline: the real process, the real authorizer, the
+// real protected credential, and no network at all
+//
+// The second adversarial pass refuted offline-first for the wiring that
+// actually ships. `serve` refreshed a credential through the gateway before
+// it bound its port, and every route re-authorized through the same refresh,
+// so a Server could not START without an upstream and answered 401 to
+// everything within fifteen seconds of losing one. Only the stub `Authorizer`
+// had ever been exercised offline.
+//
+// These proofs run the real `ds server serve` as its own process over a
+// machine that holds a real protected device credential, with the network cut
+// out from under it by an `LD_PRELOAD` shim. Nothing about authorization is
+// injected; the only thing this file supplies is the credential a real
+// `ds auth link` would have left.
+// ─────────────────────────────────────────────────────────────────────────
+
+/// The device this machine is signed in as, and the one that replaces it.
+const FIRST_DEVICE: &str = "device-first";
+const SECOND_DEVICE: &str = "device-second";
+
+/// `ds-cli-server::auth::OBSERVE_INTERVAL` plus a margin. The refuted build
+/// turned every route into a 401 within this window of losing its upstream,
+/// so a proof that the answer does NOT move has to outlive it.
+const PAST_THE_OBSERVATION_WINDOW: Duration = Duration::from_secs(18);
+
+/// The whole shipped path, with nothing upstream in existence: the Server
+/// starts, admits, queues, executes, answers and stops.
+///
+/// Every layer of authorization here is the production one — `serve` reads the
+/// credential this machine holds, `NativeAuthorizer` re-reads it for each
+/// request and each claim — and the network is cut, so none of it can reach a
+/// gateway even by accident. A single named refusal, `server_owner_changed`,
+/// is the only thing that may stop a route, and it appears nowhere.
+#[test]
+fn the_server_starts_and_serves_with_no_gateway_and_the_real_authorizer() {
+    let machine = device_home::DeviceHome::linked(LANE, FIRST_DEVICE);
+    let server = LiveServer::start(&machine, 2);
+
+    // Starting at all is the first half of the refuted claim: the process got
+    // past authorization and bound its port with no upstream in existence.
+    assert!(
+        server.said().contains("DS server ready at"),
+        "{}",
+        server.said()
+    );
+
+    let submitted = server.raw(
+        "POST",
+        &format!("/v1/transformer-processing/live-a?project={A}"),
+        Some(&transformer("T-LIVE")),
+    );
+    assert_eq!(submitted.status, 202, "{}", submitted.stringify());
+    let id = submitted.json()["job"]["id"]
+        .as_str()
+        .expect("an admitted job")
+        .to_owned();
+    assert_eq!(submitted.json()["job"]["context"]["project"], A);
+
+    // Its own workers claim and run it — a claim re-authorizes through the
+    // same production authorizer, so execution offline is the same claim as
+    // admission offline.
+    assert!(
+        until(60, || server
+            .raw("GET", &format!("/v1/jobs/{id}?project={A}"), None)
+            .json()["job"]["phase"]
+            == "completed"),
+        "the Server never finished its own work offline: {}",
+        server.said()
+    );
+
+    // Every route this host has, answered by a process with no upstream.
+    for (method, path, expected) in [
+        ("GET", format!("/v1/jobs?project={A}"), 200),
+        ("GET", format!("/v1/jobs/{id}?project={A}"), 200),
+        ("GET", format!("/v1/jobs/{id}/input?project={A}"), 200),
+        ("GET", format!("/v1/jobs/{id}/result?project={A}"), 200),
+        ("GET", "/v1/activity".to_owned(), 200),
+        // The layer drawer is the one route that genuinely wants an upstream:
+        // a project's layer document is fetched where the account is
+        // established. Offline it says exactly that, retryably.
+        ("GET", format!("/v1/layers?project={A}"), 503),
+    ] {
+        let answer = server.raw(method, &path, None);
+        assert_eq!(
+            answer.status,
+            expected,
+            "{method} {path}: {}",
+            answer.stringify()
+        );
+        assert_ne!(
+            answer.code(),
+            "server_owner_changed",
+            "{method} {path} was stopped by authorization with no gateway present"
+        );
+    }
+    // And the difference matters: the drawer's 503 is the DOCUMENT source
+    // saying it could not reach the gateway, retryable and about one project,
+    // never this host deciding it no longer belongs to its owner.
+    let layers = server.raw("GET", &format!("/v1/layers?project={A}"), None);
+    assert_eq!(
+        layers.code(),
+        "device_auth_transient",
+        "{}",
+        layers.stringify()
+    );
+    assert_eq!(layers.json()["retryable"], true);
+
+    // And the operator's own command, through the real binary, against the
+    // real process.
+    let listed = server.ds(&["server", "activity", "--project", A, "--output", "json"]);
+    assert_eq!(listed.code, 0, "{} {}", listed.stdout, listed.stderr);
+    assert_eq!(listed.envelope["status"], "ok", "{}", listed.stdout);
+
+    // Cancelling work that already finished answers about the JOB, offline,
+    // by name — the shape of an answer that got past the door and reached the
+    // durable queue.
+    let cancelled = server.raw("POST", &format!("/v1/jobs/{id}/cancel?project={A}"), None);
+    assert_eq!(cancelled.status, 409, "{}", cancelled.stringify());
+    assert!(
+        cancelled.stringify().contains("job_already_terminal"),
+        "{}",
+        cancelled.stringify()
+    );
+
+    // Nothing in the whole run asked for a gateway and got one, and the
+    // refresher said so rather than swallowing it.
+    assert!(
+        server
+            .said()
+            .contains("credential refresh did not reach the gateway"),
+        "the refresher must attempt, fail and SAY so: {}",
+        server.said()
+    );
+    assert!(
+        server.said().contains("the host is unaffected"),
+        "{}",
+        server.said()
+    );
+}
+
+/// Losing the gateway changes no answer — proven past the window in which the
+/// refuted build turned every route into a 401.
+#[test]
+fn losing_the_gateway_changes_no_answer() {
+    let machine = device_home::DeviceHome::linked(LANE, FIRST_DEVICE);
+    let server = LiveServer::start(&machine, 1);
+    let submitted = server.raw(
+        "POST",
+        &format!("/v1/transformer-processing/steady?project={B}"),
+        Some(&transformer("T-STEADY")),
+    );
+    assert_eq!(submitted.status, 202, "{}", submitted.stringify());
+    // Let the work finish first, so the durable row this proof compares is
+    // settled: what must not move is the ANSWER, and a job still running
+    // would move it by doing its job.
+    let id = submitted.json()["job"]["id"]
+        .as_str()
+        .expect("an admitted job")
+        .to_owned();
+    assert!(
+        until(60, || server
+            .raw("GET", &format!("/v1/jobs/{id}?project={B}"), None)
+            .json()["job"]["phase"]
+            == "completed"),
+        "{}",
+        server.said()
+    );
+
+    let before = server.raw("GET", &format!("/v1/jobs?project={B}"), None);
+    assert_eq!(before.status, 200, "{}", before.stringify());
+
+    // The upstream is gone and stays gone: the refresher has already tried and
+    // failed, and the shim guarantees every further attempt fails too.
+    assert!(
+        until(30, || server
+            .said()
+            .contains("credential refresh did not reach the gateway")),
+        "the refresher never even tried: {}",
+        server.said()
+    );
+    std::thread::sleep(PAST_THE_OBSERVATION_WINDOW);
+
+    let after = server.raw("GET", &format!("/v1/jobs?project={B}"), None);
+    assert_eq!(
+        (before.status, before.body),
+        (after.status, after.body),
+        "the same question, the same answer, with no upstream on either side"
+    );
+    // And a call it has never seen before is still admitted, so what survived
+    // is the host and not one cached answer.
+    let again = server.raw(
+        "POST",
+        &format!("/v1/transformer-processing/steady-two?project={B}"),
+        Some(&transformer("T-STEADY-2")),
+    );
+    assert_eq!(again.status, 202, "{}", again.stringify());
+    assert_ne!(again.code(), "server_owner_changed");
+}
+
+/// The one thing that stops this host, over the wire, by its own name: this
+/// machine now holds somebody else's credential.
+#[test]
+fn a_changed_on_disk_credential_stops_the_host_with_server_owner_changed() {
+    let machine = device_home::DeviceHome::linked(LANE, FIRST_DEVICE);
+    let server = LiveServer::start(&machine, 1);
+    assert_eq!(server.raw("GET", "/v1/jobs", None).status, 200);
+    assert_ne!(
+        machine.binding(FIRST_DEVICE),
+        machine.binding(SECOND_DEVICE),
+        "the two devices must be two credentials for this proof to mean anything"
+    );
+
+    // A different device, in the same protected place. Nothing is told to the
+    // running host; it observes its own machine.
+    machine.link(SECOND_DEVICE);
+    assert!(
+        until(40, || server.raw("GET", "/v1/jobs", None).status == 401),
+        "a changed credential on disk must stop this host: {}",
+        server.said()
+    );
+
+    let stopped = server.raw("GET", "/v1/jobs", None);
+    assert_eq!(stopped.code(), "server_owner_changed");
+    assert_eq!(stopped.json()["class"], "unauthorized");
+    assert!(
+        stopped.json()["error"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("credential changed"),
+        "{}",
+        stopped.stringify()
+    );
+    assert!(
+        stopped.json()["remedy"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("restart"),
+        "{}",
+        stopped.stringify()
+    );
+    // It says what happened and nothing about who: no uid, no device, no
+    // account, no project.
+    let said = stopped.stringify();
+    for secret in [
+        device_home::UID,
+        device_home::EMAIL,
+        SECOND_DEVICE,
+        FIRST_DEVICE,
+        A,
+    ] {
+        assert!(!said.contains(secret), "{said} names {secret}");
+    }
+
+    // Signing the machine out entirely is the same answer, not a worse one.
+    machine.unlink();
+    assert!(
+        until(40, || server.raw("GET", "/v1/jobs", None).code() == "server_owner_changed"),
+        "a machine with no credential holds no host: {}",
+        server.said()
+    );
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// The request door
+// ─────────────────────────────────────────────────────────────────────────
+
+/// A full door is a typed refusal in the kernel's own vocabulary, with a scope
+/// of its own — not the bare 429 with a sentence and nothing else that the
+/// second pass found.
+#[test]
+fn the_request_door_answers_a_typed_capacity_refusal() {
+    // Two places, both filled by real requests parked inside the host.
+    let host = Arc::new(Host::start_with_door(limits(), 2));
+    host.layers.hold();
+    let holders: Vec<_> = (0..2)
+        .map(|_| {
+            let host = host.clone();
+            std::thread::spawn(move || host.raw("GET", &format!("/v1/layers?project={A}"), None))
+        })
+        .collect();
+    assert!(
+        until(20, || host.layers.inside() == 2),
+        "both requests must actually be in flight, not merely started"
+    );
+
+    let refused = host.raw("GET", "/v1/jobs", None);
+    assert_eq!(refused.status, 429, "{}", refused.stringify());
+    assert_eq!(refused.code(), "capacity_exhausted");
+    assert_eq!(refused.json()["class"], "unavailable");
+    assert_eq!(refused.json()["retryable"], true);
+    // The door is its own scope: it is not the queue, and nothing a caller
+    // cancels empties it, so its remedy is its own too.
+    assert_eq!(refused.json()["scope"], "door");
+    assert_eq!(refused.json()["retry_after_ms"], 500);
+    assert!(
+        refused.json()["remedy"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("500 ms"),
+        "{}",
+        refused.stringify()
+    );
+    // A capacity answer names counts, never a project or an identity.
+    let said = refused.stringify();
+    for secret in [A, B, UID, OWNER, host.token.as_str()] {
+        assert!(!said.contains(secret), "{said} names {secret}");
+    }
+
+    // The door clears as requests finish — and the requests that were holding
+    // it were answered, not dropped.
+    host.layers.release();
+    for holder in holders {
+        let held = holder.join().expect("a held request finishes");
+        assert_eq!(held.status, 200, "{}", held.stringify());
+    }
+    assert_eq!(host.raw("GET", "/v1/jobs", None).status, 200);
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// The row a released Server left behind
+// ─────────────────────────────────────────────────────────────────────────
+
+/// The remedy on `context_unrecoverable` is now something an owner can carry
+/// out: the row has no result, but it has its own request bytes, and
+/// `ds server input` returns them.
+#[test]
+fn a_legacy_queued_row_is_readable_by_input_and_resubmittable() {
+    let host = Host::start_over(limits(), &legacy_queue_fixture());
+    let stranded = legacy_transformer_id();
+
+    // The row that will never run: queued, with no project of its own, and
+    // nothing at `result` to read — which is what made the old remedy
+    // impossible to follow.
+    let status = host.raw("GET", &format!("/v1/jobs/{stranded}"), None);
+    assert_eq!(status.json()["job"]["phase"], "queued");
+    let no_result = host.raw("GET", &format!("/v1/jobs/{stranded}/result"), None);
+    assert_eq!(no_result.status, 409, "{}", no_result.stringify());
+
+    // Its input, byte for byte, off the wire.
+    let returned = host.raw("GET", &format!("/v1/jobs/{stranded}/input"), None);
+    assert_eq!(returned.status, 200, "{}", returned.stringify());
+    let stored = host
+        .store()
+        .job_input(&host.identity.caller(None), &stranded)
+        .expect("read")
+        .expect("the row's own bytes");
+    assert_eq!(returned.body, stored, "the exact bytes it was admitted with");
+
+    // And through the command the remedy names, typed by an operator.
+    let out = host.state.path().join("stranded-input.json");
+    let saved = host.ds(&[
+        "server",
+        "input",
+        "--job",
+        &stranded,
+        "--out",
+        &out.display().to_string(),
+        "--output",
+        "json",
+    ]);
+    assert_eq!(saved.code, 0, "{} {}", saved.stdout, saved.stderr);
+    assert_eq!(
+        std::fs::read(&out).expect("the saved input"),
+        stored,
+        "ds server input saves the same bytes the wire returned"
+    );
+    assert_eq!(saved.envelope["data"]["byte_count"], stored.len());
+
+    // The remedy carried out: the same bytes, under an explicit project, are
+    // new work with their own id — and the stranded row is untouched.
+    let resubmitted = ds_cli_server::submit(
+        &host.args(
+            &SUBMIT,
+            &[
+                "--key",
+                "rescued",
+                "--input",
+                &out.display().to_string(),
+                "--project",
+                C,
+            ],
+        ),
+        &context(),
+    )
+    .expect("the remedy the refusal names");
+    assert_eq!(resubmitted["job"]["context"]["project"], C);
+    assert_ne!(resubmitted["job"]["id"], json!(stranded));
+    assert_eq!(host.stored(Some(C)).len(), 1);
+    assert_eq!(
+        host.raw("GET", &format!("/v1/jobs/{stranded}"), None).json()["job"]["phase"],
+        "queued",
+        "reading a row's input changes nothing about it"
+    );
+
+    // The new door is fenced exactly like the old ones: another project's job
+    // and an id that never existed are one answer.
+    for path in [
+        format!("/v1/jobs/{stranded}/input?project={A}"),
+        format!("/v1/jobs/{}/input", guessed()),
+        format!("/v1/jobs/{}/input?project={A}", guessed()),
+    ] {
+        let hidden = host.raw("GET", &path, None);
+        assert_eq!(hidden.status, 409, "{path}: {}", hidden.stringify());
+        assert_eq!(hidden.code(), "not_visible");
+        assert_eq!(hidden.json()["error"], "job not found");
+    }
+    // And a bearer that is not this owner's reads nobody's input.
+    let foreign = host.as_bearer(
+        &"f".repeat(64),
+        "GET",
+        &format!("/v1/jobs/{stranded}/input"),
+        None,
+    );
+    assert_eq!(foreign.status, 401, "{}", foreign.stringify());
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// A project id is one path segment
+// ─────────────────────────────────────────────────────────────────────────
+
+/// Percent-encode a value so a query string carries it exactly as typed,
+/// separators and all.
+fn as_query_value(value: &str) -> String {
+    value
+        .bytes()
+        .map(|byte| {
+            if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b'~') {
+                (byte as char).to_string()
+            } else {
+                format!("%{byte:02X}")
+            }
+        })
+        .collect()
+}
+
+/// A name that could mean a different place on disk is refused at every door
+/// it reaches, and nothing is written on the way.
+#[test]
+fn a_path_like_project_id_is_refused_before_anything_is_written() {
+    let host = Host::start(limits());
+    let path_like = [
+        "..",
+        ".",
+        "A/../B",
+        "project-a/project-b",
+        "/project-a",
+        "A\\B",
+        "A B",
+        " project-a",
+        "project-a ",
+    ];
+
+    for value in path_like {
+        // At the wire, where a caller can type anything.
+        let refused = host.raw(
+            "POST",
+            &format!(
+                "/v1/transformer-processing/path-like?project={}",
+                as_query_value(value)
+            ),
+            Some(&transformer("T-PATH")),
+        );
+        assert_eq!(refused.status, 400, "{value:?}: {}", refused.stringify());
+        assert_eq!(refused.code(), "context_corrupt", "{value:?}");
+        assert!(
+            refused.json()["error"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("one path segment"),
+            "{value:?} must be told the grammar, not merely refused: {}",
+            refused.stringify()
+        );
+
+        // And in the client, before the value ever becomes a query at all.
+        let client = ds_cli_server::submit(
+            &host.args(
+                &SUBMIT,
+                &[
+                    "--key",
+                    "path-like",
+                    "--input",
+                    &host.input("path-like.json", &transformer("T-PATH")),
+                    "--project",
+                    value,
+                ],
+            ),
+            &context(),
+        )
+        .expect_err("a path expression is not a project id");
+        assert_eq!(client.code(), "context_corrupt", "{value:?}");
+    }
+
+    // Nothing was admitted, under any name, by any door.
+    assert!(host.stored(None).is_empty());
+    for project in [A, B, C, "..", "A/../B"] {
+        assert!(host.stored(Some(project)).is_empty(), "{project}");
+    }
+
+    // The real binary answers the same way, and its refusal carries the one
+    // remedy an operator can act on.
+    let typed = host.ds(&[
+        "server",
+        "status",
+        "--job",
+        &guessed(),
+        "--project",
+        "A/../B",
+        "--output",
+        "json",
+    ]);
+    assert_ne!(typed.code, 0);
+    assert_eq!(typed.envelope["error"]["code"], "context_corrupt");
+    assert_eq!(
+        typed.envelope["error"]["remedy"],
+        "copy one exact ds_project value from ds auth project list"
+    );
+
+    // The names the product actually uses are untouched by the rule.
+    for ordinary in [A, B, C, OUTSIDE, "aderm", "p"] {
+        let admitted = host.raw(
+            "POST",
+            &format!("/v1/transformer-processing/ordinary-{ordinary}?project={ordinary}"),
+            Some(&transformer("T-OK")),
+        );
+        assert_eq!(admitted.status, 202, "{ordinary}: {}", admitted.stringify());
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// A share is smaller than the pool it divides
+// ─────────────────────────────────────────────────────────────────────────
+
+/// The invariant used to live only in the Server's flag parser, so anything
+/// else that built `Limits` could hand the kernel a share that was no share.
+/// It lives in the kernel now, and a host configured that way admits nothing.
+#[test]
+fn a_share_equal_to_the_pool_is_a_configuration_fault() {
+    use ds_command_kernel::execution_context::{Fault, Intent, Limits, capacity};
+    let ask = |limits: Limits| capacity(limits, Intent::Claim, &[], &[], A);
+
+    // A share equal to its pool, and a share larger than it: one project may
+    // hold the whole host while another waits, which is the thing the share
+    // exists to prevent.
+    for (limits, named) in [
+        (
+            Limits {
+                global_running: 4,
+                per_project_running: 4,
+                per_project_queued: 8,
+                global_queued: 16,
+            },
+            "per_project_running",
+        ),
+        (
+            Limits {
+                global_running: 4,
+                per_project_running: 8,
+                per_project_queued: 8,
+                global_queued: 16,
+            },
+            "per_project_running",
+        ),
+        (
+            Limits {
+                global_running: 4,
+                per_project_running: 2,
+                per_project_queued: 16,
+                global_queued: 16,
+            },
+            "per_project_queued",
+        ),
+    ] {
+        let Err(Fault::Hard(message)) = ask(limits) else {
+            panic!("{named}: a share that is not a share is a host fault, not a refusal");
+        };
+        assert!(message.contains(named), "{message}");
+        assert!(
+            message.contains("a share must be smaller than the pool it divides"),
+            "{message}"
+        );
+    }
+
+    // The one exception the smallest rented VM needs: a pool of one cannot be
+    // divided, so its share is exactly one — and two of one worker is still
+    // a fault.
+    assert!(
+        ask(Limits {
+            global_running: 1,
+            per_project_running: 1,
+            per_project_queued: 1,
+            global_queued: 2,
+        })
+        .is_ok(),
+        "a single-worker host has no share to give and says so by being 1"
+    );
+    assert!(matches!(
+        ask(Limits {
+            global_running: 1,
+            per_project_running: 2,
+            per_project_queued: 1,
+            global_queued: 2,
+        }),
+        Err(Fault::Hard(_))
+    ));
+
+    // And the Server's own default is a share at every size it can run at.
+    for workers in [1_usize, 2, 3, 4, 8, 64] {
+        let share = ds_cli_server::default_per_project(workers);
+        assert!(
+            ask(Limits {
+                global_running: workers,
+                per_project_running: share,
+                per_project_queued: share * 4,
+                global_queued: workers * 8,
+            })
+            .is_ok(),
+            "the host's own default must satisfy the kernel's rule at {workers} workers"
+        );
+    }
+
+    // A host that was configured that way anyway admits nothing at all: the
+    // durable queue asks the kernel inside its own write transaction, so the
+    // fault reaches the caller as the host's, by name, over the wire.
+    let host = Host::start(Limits {
+        global_running: 4,
+        per_project_running: 4,
+        per_project_queued: 16,
+        global_queued: 16,
+    });
+    let refused = host.raw(
+        "POST",
+        &format!("/v1/transformer-processing/no-share?project={A}"),
+        Some(&transformer("T-NO-SHARE")),
+    );
+    // A host fault, not a caller's refusal: the caller is told the host is
+    // broken (502, class `failed`, not retryable) rather than that its request
+    // was wrong.
+    assert_eq!(refused.status, 502, "{}", refused.stringify());
+    assert_eq!(refused.code(), "server_refused");
+    assert_eq!(refused.json()["class"], "failed");
+    assert_eq!(refused.json()["retryable"], false);
+    assert!(
+        refused
+            .stringify()
+            .contains("a share must be smaller than the pool it divides"),
+        "{}",
+        refused.stringify()
+    );
+    assert!(host.stored(None).is_empty(), "nothing was written");
 }
 
 // ─────────────────────────────────────────────────────────────────────────
