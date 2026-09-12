@@ -48,7 +48,10 @@ impl ServerSyncSession {
             .map_err(|error| error.message().to_owned())?;
         let credential_binding = ds_cli_auth::runtime_credential_binding(&connection.lane)
             .map_err(|error| error.message().to_owned())?;
-        let owner = auth::identity(&connection.lane)?;
+        // The owner fence this machine HOLDS, read locally. The refresh above
+        // is the gateway session's own, which is what a Sync Center pass is;
+        // the fence itself never depends on an upstream answering.
+        let owner = auth::owner_fence(&connection.lane)?;
         let principal_owner = digest(
             &serde_json::to_vec(&(
                 principal.uid(),
@@ -135,7 +138,11 @@ impl ServerSyncSession {
         f: impl FnOnce(&StoreHost<'_>) -> Result<T, String>,
     ) -> Result<T, String> {
         require_session_project(project, &self.project)?;
-        let online = || self.authorizer.authorize(&self.owner).is_ok();
+        // Two separate facts, and the sync pass needs both: this host still
+        // holds its owner's credential (local), and the last gateway refresh
+        // reached the gateway (recorded by the background refresher, never
+        // asked here — a store pass must not turn into a login attempt).
+        let online = || self.authorizer.authorize(&self.owner).is_ok() && auth::gateway_reachable();
         let host = StoreHost::new(
             self.store.clone(),
             self.fence.clone(),

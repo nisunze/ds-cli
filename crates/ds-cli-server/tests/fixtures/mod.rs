@@ -665,7 +665,7 @@ fn build_app_as(
         database,
         connection,
         auth: Arc::new(Allow),
-        requests: Arc::new(tokio::sync::Semaphore::new(8)),
+        requests: Arc::new(ds_cli_server::host::Door::new(8)),
         activity: None,
         layers,
         sessions,

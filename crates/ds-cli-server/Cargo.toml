@@ -25,3 +25,8 @@ tokio = { version = "1", features = ["rt-multi-thread", "net", "signal", "macros
 [dev-dependencies]
 tempfile = "3"
 tower = { version = "0.5", features = ["util"] }
+# Seeding a queue with thousands of durable rows — what a host left running
+# for months actually holds — is the only honest way to prove the Solar
+# projection is bounded rather than hard-failing. It needs the same SQLite the
+# store itself uses, and is already in this lock through ds-sync-store.
+rusqlite = { version = "0.32", features = ["bundled"] }

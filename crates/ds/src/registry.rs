@@ -2072,6 +2072,11 @@ static SERVER_ENTRIES: &[Entry] = &[
         handler: ds_cli_server::result,
         render: ds_cli_server::render,
     },
+    Entry {
+        command: &ds_cli_server::INPUT,
+        handler: ds_cli_server::input,
+        render: ds_cli_server::render,
+    },
     // `server.layers.*` are retired here deliberately. One operation has one
     // command id whichever host executes it, so the drawer is
     // `ds map layer list|show|hide|reorder` with an explicit

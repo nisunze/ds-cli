@@ -23,6 +23,9 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("server.activity", "read_only", "headless_user"),
     ("server.cancel", "local_file_write", "headless_user"),
     ("server.result", "local_file_write", "headless_user"),
+    // Reading a job's own stored request bytes writes one local file, exactly
+    // as `server.result` does, and needs the same headless identity.
+    ("server.input", "local_file_write", "headless_user"),
     // `server.layers.list|show|hide|reorder` were retired on 2026-09-12. One
     // operation has one command id whichever host executes it, so the layer
     // drawer is `ds map layer list|show|hide|reorder` with an explicit
