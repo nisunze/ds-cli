@@ -18,3 +18,11 @@ ureq = { workspace = true }
 
 [dev-dependencies]
 tempfile = "3"
+# `tests/instances.rs` drives this crate's own command handlers over real
+# loopback instances. An integration test reaches nothing but the crate's
+# public API and its own dev-dependencies, so the three crates the handlers
+# already depend on are named again here. No new dependency: every one of
+# these is already a dependency of this crate above.
+ds-cli-contract = { workspace = true }
+ds-command-kernel = { workspace = true }
+serde_json = { workspace = true }
