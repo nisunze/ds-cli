@@ -1018,6 +1018,7 @@ dependencies = [
  "ds-cli-exec",
  "ds-command-kernel",
  "ds-compute-runtime",
+ "ds-layer-store",
  "ds-project-data",
  "ds-report-artifacts",
  "ds-report-host",
