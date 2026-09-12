@@ -223,6 +223,10 @@ pub struct Bridge {
     /// switch, or a reply that overstates what it did — and what a caller
     /// receives is the whole claim.
     owed: Arc<Mutex<Vec<(u16, Value)>>>,
+    /// An identity this endpoint takes on once it has answered the next
+    /// operation: the process behind this port is replaced between what a
+    /// command sends and what it observes afterwards.
+    successor: Arc<Mutex<Option<String>>>,
     stop: Arc<AtomicBool>,
     worker: Option<JoinHandle<()>>,
 }
@@ -269,16 +273,27 @@ impl Bridge {
         let session = Arc::new(Mutex::new(session_of(instance_id, project)));
         let log: Arc<Mutex<Vec<Received>>> = Arc::new(Mutex::new(Vec::new()));
         let owed: Arc<Mutex<Vec<(u16, Value)>>> = Arc::new(Mutex::new(Vec::new()));
+        let successor: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
         let stop = Arc::new(AtomicBool::new(false));
         let worker = {
             let session = Arc::clone(&session);
             let log = Arc::clone(&log);
             let owed = Arc::clone(&owed);
+            let successor = Arc::clone(&successor);
             let stop = Arc::clone(&stop);
             let token = token.to_owned();
             let display_name = display_name.to_owned();
             std::thread::spawn(move || {
-                serve(listener, session, log, owed, stop, token, display_name)
+                serve(
+                    listener,
+                    session,
+                    log,
+                    owed,
+                    successor,
+                    stop,
+                    token,
+                    display_name,
+                )
             })
         };
         Self {
@@ -290,6 +305,7 @@ impl Bridge {
             session,
             log,
             owed,
+            successor,
             stop,
             worker: Some(worker),
         }
@@ -374,6 +390,14 @@ impl Bridge {
         self.owed.lock().expect("owed").push((status, body));
     }
 
+    /// Once this instance has answered the next operation, another instance
+    /// answers for this port: same address, same secret, a different runtime
+    /// naming itself. What a command observes afterwards is then not the
+    /// instance it addressed, and no answer may claim otherwise.
+    pub fn is_replaced_after_next_invoke(&self, instance_id: &str) {
+        *self.successor.lock().expect("successor") = Some(instance_id.to_owned());
+    }
+
     pub fn forget(&self) {
         self.log.lock().expect("log").clear();
     }
@@ -445,6 +469,7 @@ fn serve(
     session: Arc<Mutex<Value>>,
     log: Arc<Mutex<Vec<Received>>>,
     owed: Arc<Mutex<Vec<(u16, Value)>>>,
+    successor: Arc<Mutex<Option<String>>>,
     stop: Arc<AtomicBool>,
     token: String,
     display_name: String,
@@ -457,7 +482,15 @@ fn serve(
                     break;
                 }
                 stream.set_nonblocking(false).expect("a blocking stream");
-                answer(stream, &session, &log, &owed, &token, &display_name);
+                answer(
+                    stream,
+                    &session,
+                    &log,
+                    &owed,
+                    &successor,
+                    &token,
+                    &display_name,
+                );
             }
             Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
                 std::thread::sleep(Duration::from_millis(2));
@@ -467,11 +500,13 @@ fn serve(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn answer(
     mut stream: TcpStream,
     session: &Arc<Mutex<Value>>,
     log: &Arc<Mutex<Vec<Received>>>,
     owed: &Arc<Mutex<Vec<(u16, Value)>>>,
+    successor: &Arc<Mutex<Option<String>>>,
     token: &str,
     display_name: &str,
 ) {
@@ -525,10 +560,18 @@ fn answer(
     } else {
         match (method.as_str(), path.as_str()) {
             ("GET", "/v1/session") => (200, session.lock().expect("session").clone()),
-            ("POST", "/v1/invoke") => match owed.lock().expect("owed").pop() {
-                Some(refusal) => refusal,
-                None => perform(&body, session, display_name),
-            },
+            ("POST", "/v1/invoke") => {
+                let answered = match owed.lock().expect("owed").pop() {
+                    Some(refusal) => refusal,
+                    None => perform(&body, session, display_name),
+                };
+                // The handover, if this instance was armed for one: everything
+                // observed from here on is another runtime's.
+                if let Some(instance_id) = successor.lock().expect("successor").take() {
+                    session.lock().expect("session")["instance_id"] = json!(instance_id);
+                }
+                answered
+            }
             _ => (404, json!({ "error": "unknown_operation" })),
         }
     };
