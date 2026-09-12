@@ -138,7 +138,6 @@ fn insert_legacy(directory: &std::path::Path, id: &str, engine: &str, tag: &str,
         )
         .expect("insert a released row");
 }
-
 #[test]
 fn a_context_survives_submission_restart_claim_and_completion() {
     let directory = tempfile::tempdir().expect("temp");
@@ -292,6 +291,64 @@ fn a_legacy_solar_row_recovers_from_its_sealed_input_and_a_transformer_row_never
     assert_eq!(again.stored, 1);
     assert_eq!(again.from_sealed_input, 0);
     assert_eq!(again.unrecoverable, vec![ID_B.to_owned()]);
+}
+
+/// Reopening a queue must cost the rows that need something, not the queue.
+/// A Server the owner leaves running for weeks restarts over a table of
+/// finished work whose sealed Solar inputs are tens of megabytes each; reading
+/// every one of them to discover it already has a context is the unbounded
+/// allocation the contract forbids, paid every time for nothing.
+#[test]
+fn reopening_a_queue_reads_only_the_rows_that_still_need_a_context() {
+    let directory = tempfile::tempdir().expect("temp");
+    let mut store = store(directory.path());
+    store
+        .submit_job(&job(Some(context())), b"sealed for project-a", roomy())
+        .expect("submit");
+    let connection =
+        || rusqlite::Connection::open(directory.path().join("store.sqlite")).expect("open");
+    let stored_row = || -> String {
+        connection()
+            .query_row("SELECT row FROM compute_jobs WHERE id=?1", [ID], |row| {
+                row.get(0)
+            })
+            .expect("stored row")
+    };
+    let before = stored_row();
+    // The proof that the row is not merely left alone but never read: its
+    // input column is made into something no `Vec<u8>` can be got out of, so
+    // any recovery that selected it would fail outright.
+    connection()
+        .execute("UPDATE compute_jobs SET input=1 WHERE id=?1", [ID])
+        .expect("unreadable bytes");
+    insert_legacy(
+        directory.path(),
+        ID_B,
+        "solar_prepared",
+        "ds.solar.calculate.prepared/v1",
+        b"sealed for project-b",
+    );
+    let read = std::cell::RefCell::new(Vec::new());
+    let sealed = |job: &Job, input: &[u8]| {
+        read.borrow_mut().push(job.id.clone());
+        (input == b"sealed for project-b").then(|| "project-b".to_owned())
+    };
+    let recovery = store
+        .recover_contexts(&principal(), "owner-digest", &sealed, 1_700_000_500_000)
+        .expect("recover");
+    assert_eq!(recovery.stored, 1);
+    assert_eq!(recovery.from_sealed_input, 1);
+    assert!(recovery.unrecoverable.is_empty());
+    assert_eq!(
+        read.into_inner(),
+        vec![ID_B.to_owned()],
+        "only the row without a context had its sealed bytes read"
+    );
+    assert_eq!(
+        before,
+        stored_row(),
+        "a row that had a context was not rewritten"
+    );
 }
 
 #[test]

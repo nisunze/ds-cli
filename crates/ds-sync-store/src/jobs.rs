@@ -434,7 +434,9 @@ impl Store {
     /// callback and not a decision here. `recover` in the kernel decides what
     /// a row is about; this loop only persists the answer and counts what it
     /// could not honestly reconstruct. A row that already carries a context is
-    /// never rewritten, so reopening a live queue writes nothing. Nothing
+    /// never rewritten and never read — reopening a live queue counts it and
+    /// touches nothing, so a Server the owner leaves running for weeks does
+    /// not pay its whole queue in memory each time it restarts. Nothing
     /// outside a row's own bytes is offered: no selection of the moment can
     /// name a project for work admitted before this build.
     pub fn recover_contexts(
@@ -444,26 +446,48 @@ impl Store {
         sealed_project: &dyn Fn(&Job, &[u8]) -> Option<String>,
         now_ms: u64,
     ) -> Result<Recovery> {
-        let pending: Vec<(Job, Vec<u8>)> = {
-            let mut statement = self
-                .connection
-                .prepare("SELECT row,input FROM compute_jobs WHERE owner=?1 AND lane=?2")?;
-            let rows = statement.query_map(params![owner, principal.lane], |row| {
-                Ok((row.get::<_, String>(0)?, row.get::<_, Vec<u8>>(1)?))
-            })?;
-            rows.map(|row| {
-                let (row, input) = row?;
-                Ok((serde_json::from_str::<Job>(&row)?, input))
-            })
-            .collect::<Result<Vec<_>>>()?
+        // Only the rows that need a context are read, and their sealed bytes
+        // one row at a time. A long-lived queue holds hundreds of megabytes of
+        // sealed Solar inputs; reading every one of them in order to skip it
+        // would make reopening the queue cost the whole queue in memory at
+        // once — the unbounded allocation the contract forbids, paid on every
+        // restart of a Server that has nothing to recover.
+        let mut recovery = Recovery {
+            stored: self.connection.query_row(
+                "SELECT COUNT(*) FROM compute_jobs WHERE owner=?1 AND lane=?2 AND json_extract(row,'$.context') IS NOT NULL",
+                params![owner, principal.lane],
+                |row| row.get::<_, i64>(0),
+            )? as usize,
+            ..Recovery::default()
         };
-        let mut recovery = Recovery::default();
-        for (job, input) in pending {
+        let contextless: Vec<String> = {
+            let mut statement = self.connection.prepare(
+                "SELECT id FROM compute_jobs WHERE owner=?1 AND lane=?2 AND json_extract(row,'$.context') IS NULL ORDER BY created,id",
+            )?;
+            let rows = statement.query_map(params![owner, principal.lane], |row| {
+                row.get::<_, String>(0)
+            })?;
+            rows.collect::<rusqlite::Result<Vec<_>>>()?
+        };
+        for id in contextless {
+            let Some((row, input)) = self
+                .connection
+                .query_row(
+                    "SELECT row,input FROM compute_jobs WHERE id=?1 AND owner=?2 AND lane=?3",
+                    params![id, owner, principal.lane],
+                    |row| Ok((row.get::<_, String>(0)?, row.get::<_, Vec<u8>>(1)?)),
+                )
+                .optional()?
+            else {
+                continue;
+            };
+            let job: Job = serde_json::from_str(&row)?;
             if job.context.is_some() {
                 recovery.stored += 1;
                 continue;
             }
             let sealed = sealed_project(&job, &input);
+            drop(input);
             let row = serde_json::to_value(&job)?;
             match execution_context::recover(row, principal, sealed.as_deref(), now_ms) {
                 Ok((context, provenance)) => {
