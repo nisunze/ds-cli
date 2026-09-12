@@ -1003,3 +1003,59 @@ fn resubmitting_a_released_rows_key_under_a_project_is_new_work_beside_it() {
     assert!(legacy.context.is_none());
     assert!(!runtime::run_one(&worker, "worker-2").unwrap());
 }
+
+#[test]
+fn a_worker_pool_is_never_larger_than_the_running_pool_it_claims_from() {
+    // Two numbers name one pool: the threads this crate starts, and the
+    // kernel's `global_running` those threads claim under. A pool larger than
+    // the bound is threads that can never claim and will not idle quietly —
+    // each reopens the store and takes an immediate transaction five times a
+    // second for a slot the kernel is bound to refuse.
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("store.sqlite");
+    let identity = host("owner", "stable");
+    let context = || Arc::new(worker(&path, &identity, Arc::new(Allowed)));
+    assert_eq!(limits().global_running, 4);
+    let Err(refused) = runtime::Workers::start(context(), 5) else {
+        panic!("a pool larger than the bound started");
+    };
+    assert!(
+        refused.contains("worker count is 5") && refused.contains("global_running is 4"),
+        "{refused}"
+    );
+    // Both numbers, so an operator reads the fix off the message.
+    drop(runtime::Workers::start(context(), 4).expect("a pool the bound allows"));
+    drop(runtime::Workers::start(context(), 1).expect("one worker under a pool of four"));
+    assert!(runtime::Workers::start(context(), 0).is_err());
+}
+
+/// The crate's headline claim — "this crate makes no network call" — asserted
+/// over its own dependency record rather than over its prose. A transport
+/// arriving through a feature flag, a default that flips, or a new dependency
+/// is caught here on the day it lands, not by a reader.
+#[test]
+fn nothing_in_this_crate_s_dependency_closure_can_open_a_socket() {
+    const LOCK: &str = include_str!("../Cargo.lock");
+    for transport in [
+        "reqwest",
+        "hyper",
+        "ureq",
+        "curl",
+        "isahc",
+        "surf",
+        "tokio",
+        "async-std",
+        "h2",
+        "native-tls",
+        "rustls",
+        "openssl",
+        "socket2",
+        "mio",
+    ] {
+        assert!(
+            !LOCK.contains(&format!("\nname = \"{transport}\"\n")),
+            "{transport} is in this crate's closure; the Solar runtime's http-provider feature \
+             is off for exactly this reason, and admission, execution and recovery are local"
+        );
+    }
+}

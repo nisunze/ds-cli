@@ -731,6 +731,20 @@ impl Workers {
         if count == 0 || count > 256 {
             return Err("worker count must be 1..256".into());
         }
+        // `global_running` is the same pool these threads take from, decided
+        // by the kernel; a pool of threads larger than it is threads that can
+        // never claim. They would not idle quietly either: each one reopens
+        // the store and takes an immediate transaction to read the census
+        // five times a second, for a slot the kernel is bound to refuse. Two
+        // numbers for one pool, so they are said once — the same statement
+        // `execution_context::capacity` makes about a share that does not
+        // divide its pool, and the same shape of message.
+        if count > context.limits.global_running {
+            return Err(format!(
+                "worker count is {count} and global_running is {}: a worker beyond the running pool can never claim a slot, so the two are one number",
+                context.limits.global_running
+            ));
+        }
         open(&context.path)?;
         // Reopening a queue is the moment a row written by a released Server
         // gets the context it never had. It happens once, before any worker
