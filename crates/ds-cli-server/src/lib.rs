@@ -548,11 +548,16 @@ fn default_remedy(code: Option<&str>, body: &Value) -> Option<String> {
             None => CAPACITY_EXHAUSTED.remedy.to_owned(),
         });
     }
-    [SUBMIT_REFUSALS, RESULT_REFUSALS, JOB_REFUSALS, SERVE_REFUSALS]
-        .iter()
-        .flat_map(|list| list.iter())
-        .find(|refusal| refusal.code == code)
-        .map(|refusal| refusal.remedy.to_owned())
+    [
+        SUBMIT_REFUSALS,
+        RESULT_REFUSALS,
+        JOB_REFUSALS,
+        SERVE_REFUSALS,
+    ]
+    .iter()
+    .flat_map(|list| list.iter())
+    .find(|refusal| refusal.code == code)
+    .map(|refusal| refusal.remedy.to_owned())
 }
 
 fn layers_answer(bytes: Vec<u8>) -> Result<Value, Failure> {

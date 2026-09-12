@@ -762,14 +762,19 @@ fn one_operation_has_one_command_id_whichever_host_executes_it() {
             .expect("inputs")
             .iter()
             .find(|input| input["name"] == "project")
-            .unwrap_or_else(|| panic!("`{id}` reads a job or a project and must declare --project"));
+            .unwrap_or_else(|| {
+                panic!("`{id}` reads a job or a project and must declare --project")
+            });
         assert_eq!(
             project["required"], false,
             "`{id}`'s --project is optional: the saved selection is its default"
         );
         checked += 1;
     }
-    assert!(checked >= 6, "the server surface lost its project-bearing commands");
+    assert!(
+        checked >= 6,
+        "the server surface lost its project-bearing commands"
+    );
     assert!(
         json(&["capabilities", "server.serve", "--output", "json"])["data"]["command"]["inputs"]
             .as_array()
