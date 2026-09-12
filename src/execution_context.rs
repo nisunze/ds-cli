@@ -413,7 +413,7 @@ fn not_a_segment(field: &str) -> Fault {
     refused(
         CONTEXT_CORRUPT,
         format!(
-            "execution context field {field} is not a project id: one path segment of 1..={MAX_PROJECT_CHARS} characters, no separator, no traversal, no whitespace"
+            "execution context field {field} is not a project id: one path segment of 1..={MAX_PROJECT_CHARS} characters, with no separator, drive, traversal, trailing dot, whitespace, wildcard or device name"
         ),
     )
 }
@@ -439,26 +439,60 @@ fn valid_lane(lane: &str) -> bool {
     matches!(lane, "stable" | "canary")
 }
 
+/// Characters no filesystem reads as part of a name: the two separators, and
+/// the drive-and-stream colon plus the wildcard and redirection set Win32
+/// refuses outright. The colon is the dangerous one — Rust's own
+/// `Path::join("C:")` **replaces** the whole path on Windows, because `C:` is a
+/// prefix, so a project id of `C:` would take a host's `state_dir.join(project)`
+/// clean out of the state directory.
+const NOT_IN_A_NAME: [char; 9] = ['/', '\\', ':', '*', '?', '"', '<', '>', '|'];
+
+/// The names Windows resolves to a device at any depth: `<store>/NUL` swallows
+/// what is written to it and `<store>/CON` reads the console, whatever
+/// directory they are under and whatever extension follows. Win32 matches them
+/// on the stem before the first `.`, case-insensitively, and so does this.
+const DEVICE_NAMES: [&str; 22] = [
+    "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8",
+    "COM9", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
+];
+
 /// A project id is **one path segment**, and nothing that could mean a
-/// different place on disk.
+/// different place on disk — on any machine the product runs on, which
+/// includes the Windows desktop.
 ///
 /// The record is durable and every host partitions by the project in it — a
-/// store row, a dataset cache, a staging directory, a report name. So an id
-/// that traverses (`.`, `..`, `A/../B`), that carries a separator (`A/B`,
-/// `A\B`) or that is padded, split or replaced by whitespace (`A B`, ` A`) is
-/// not a project id but a path expression, and it is `context_corrupt`
-/// wherever it appears: named by a caller, sealed in the bytes, defaulted from
-/// a saved selection, counted in a census or stored in a record. One rule, one
-/// answer, at every door — a host may then use the id in a path without
-/// asking again what it might be.
+/// store row, a dataset cache, a staging directory, a report name. So an id is
+/// refused when it traverses (`.`, `..`, `A/../B`), carries a separator (`A/B`,
+/// `A\B`), is padded, split or replaced by whitespace (`A B`, ` A`), names a
+/// drive or a stream (`C:`, `A:b`), holds a wildcard (`A*`), ends in a dot
+/// (`A.`, which Windows strips, so `A.` and `A` would be two ids and one
+/// directory) or is a device (`NUL`, `con.json`). Each of those is a path
+/// expression rather than a name, and each is `context_corrupt` wherever it
+/// appears: named by a caller, sealed in the bytes, defaulted from a saved
+/// selection, counted in a census or stored in a record. One rule, one answer,
+/// at every door — a host may then use the id in a path without asking again
+/// what it might be.
 pub fn valid_project(project: &str) -> bool {
     !project.is_empty()
         && project.chars().count() <= MAX_PROJECT_CHARS
-        && project != "."
-        && project != ".."
+        // `.` and `..` end in a dot, so the trailing-dot rule is also the
+        // traversal rule; nothing else needs to name them.
+        && !project.ends_with('.')
         && !project.chars().any(|character| {
-            matches!(character, '/' | '\\') || character.is_whitespace() || character.is_control()
+            NOT_IN_A_NAME.contains(&character)
+                || character.is_whitespace()
+                || character.is_control()
         })
+        && !names_a_device(project)
+}
+
+/// Whether this id is one of the Windows device names, extension and case
+/// ignored exactly as Win32 ignores them.
+fn names_a_device(project: &str) -> bool {
+    let stem = project.split('.').next().unwrap_or(project);
+    DEVICE_NAMES
+        .iter()
+        .any(|device| stem.eq_ignore_ascii_case(device))
 }
 
 // ── admit ───────────────────────────────────────────────────────────────
@@ -1297,13 +1331,42 @@ mod tests {
             "project-a",
             "p",
             "A_b.2",
+            // Not over-reaching: a dot inside a name, a name that merely
+            // starts like a device, and a name that merely starts with dots.
+            "v1.2",
+            "console",
+            "nullify",
+            "..a",
             &"p".repeat(MAX_PROJECT_CHARS),
         ] {
             assert!(valid_project(ordinary), "{ordinary}");
         }
         // …and what would name a different place on disk, or no place at all.
+        // The last six are Windows and only Windows: `Path::join("C:")`
+        // replaces the whole path, `a.` and `a` are one directory there, and
+        // a device name is a device however deep it is buried.
         let rejected = [
-            ".", "..", "a/b", "/a", "a/../b", "a\\b", "a b", " a", "a\u{a0}b", "a\tb", "a\nb", "",
+            ".",
+            "..",
+            "a/b",
+            "/a",
+            "a/../b",
+            "a\\b",
+            "a b",
+            " a",
+            "a\u{a0}b",
+            "a\tb",
+            "a\nb",
+            "",
+            "C:",
+            "a:b",
+            "a*",
+            "a?",
+            "a.",
+            "nul",
+            "CON",
+            "com1",
+            "LPT9.json",
         ];
         for shape in rejected {
             assert!(!valid_project(shape), "{shape:?} is not one segment");

@@ -6,7 +6,10 @@ compute runtime are implemented and proven on `fable/server-isolation`,
 slice. Third pass, same day, from the second adversarial verdict: a project id
 is one path segment (§2), a per-project limit must divide the host limit it
 shares (§5), and the corpus no longer records a cross-project
-`scope_mismatch_for_key` no host can produce (§6). Parent:
+`scope_mismatch_for_key` no host can produce (§6). Third-pass review, same
+day: that segment is also one no filesystem reads as a drive, a device or a
+stream (§2), and `context_unrecoverable` carries the remedy its owner can
+follow (§6). Parent:
 [project and instance isolation](../../../ds-web/docs/project-and-instance-isolation-contract.md);
 refines [Headless application runtime](ds-headless-application-runtime.md) §6.
 
@@ -49,13 +52,21 @@ non-empty, trimmed, control-free and bounded (`client` ≤ 120, `idempotency_key
 ≤ 200). One that is not is `context_corrupt`, named.
 
 **A project id is one path segment** (`valid_project`): 1..=200 characters, no
-`/`, no `\`, never `.` or `..`, no whitespace anywhere, no control character.
+`/` and no `\`, no whitespace anywhere, no control character, no trailing dot
+(which also refuses `.` and `..`), none of `: * ? " < > |`, and not a Windows
+device name (`NUL`, `con.json`; the stem before the first dot, case ignored).
 200 is the kernel's own project bound, as `survey_query` and
 `survey_entries_changes` already read it — deliberately not `layer_document`'s
 500-character free-form bound, because this id is durable and hosts partition
-by it: store rows, dataset caches, staging directories, report names. An id
-that could mean a different place on disk (`..`, `A/../B`) or that a shell, a
-log line and a path each read differently (`A B`) is refused
+by it: store rows, dataset caches, staging directories, report names. The last
+three rules are Windows and only Windows, and the product ships a Windows
+desktop: `Path::join("C:")` **replaces** the whole path rather than appending
+to it, so `state_dir.join(project)` for a project called `C:` leaves the state
+directory altogether; a trailing dot is stripped, so `A.` and `A` would be two
+projects in one directory; and a device name is a device at any depth, so a
+project called `NUL` silently discards everything written for it. An id that
+could mean a different place on disk (`..`, `A/../B`, `C:`, `A.`, `NUL`) or
+that a shell, a log line and a path each read differently (`A B`) is refused
 `context_corrupt` at every door it can arrive through — named by the caller,
 defaulted from a saved selection, sealed in the bytes, offered to a legacy row
 on recovery, stored in a record, or counted in a census (there it is the
@@ -278,6 +289,6 @@ its `host.rs`, which is also where that fence is proven; `ds` re-raises refusals
 literally. The
 kernel holds no credential material, so the owner digest stays the store's
 fence; `recover` checks the lane it can see. Proof:
-`tests/fixtures/execution-context-cases.json`, 83 recorded cases, byte-identical
+`tests/fixtures/execution-context-cases.json`, 86 recorded cases, byte-identical
 to ds-web's `src/tests/fixtures/execution-context/cases.json` and replayed there
 through the vendored WASM, plus the unit tests above.
