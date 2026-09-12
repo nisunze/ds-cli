@@ -211,7 +211,7 @@
         "outcome": "refused",
         "refusal": {
           "code": "scope_mismatch",
-          "message": "this request is for project-b, but its sealed input was prepared for another project"
+          "message": "this request is for project-b, but its sealed input was prepared for another project; submit it without naming a project, or prepare an input for project-b"
         }
       }
     },
@@ -237,7 +237,7 @@
         "outcome": "refused",
         "refusal": {
           "code": "project_required",
-          "message": "name a project, or select one first"
+          "message": "no project was named for this request; name one, or select one first"
         }
       }
     },
@@ -326,7 +326,7 @@
         "outcome": "refused",
         "refusal": {
           "code": "scope_mismatch_for_key",
-          "message": "that idempotency key already names another project or operation"
+          "message": "that idempotency key already names another project or operation; submit this under a key of its own"
         }
       }
     },
@@ -366,7 +366,7 @@
         "outcome": "refused",
         "refusal": {
           "code": "payload_changed_for_key",
-          "message": "that idempotency key was admitted with different input bytes"
+          "message": "that idempotency key was admitted with different input bytes; resubmit the bytes it was admitted with, or use a new key for these"
         }
       }
     },
@@ -406,7 +406,7 @@
         "outcome": "refused",
         "refusal": {
           "code": "principal_mismatch",
-          "message": "that key was admitted under another authenticated identity"
+          "message": "that key was admitted under another authenticated identity; sign in as that account, on the lane and deployment it used, or submit under a key of your own"
         }
       }
     },
@@ -446,7 +446,7 @@
         "outcome": "refused",
         "refusal": {
           "code": "principal_mismatch",
-          "message": "that key was admitted under another authenticated identity"
+          "message": "that key was admitted under another authenticated identity; sign in as that account, on the lane and deployment it used, or submit under a key of your own"
         }
       }
     },
@@ -486,7 +486,7 @@
         "outcome": "refused",
         "refusal": {
           "code": "principal_mismatch",
-          "message": "that key was admitted under another authenticated identity"
+          "message": "that key was admitted under another authenticated identity; sign in as that account, on the lane and deployment it used, or submit under a key of your own"
         }
       }
     },
@@ -525,7 +525,7 @@
         "outcome": "refused",
         "refusal": {
           "code": "project_required",
-          "message": "name a project, or select one first"
+          "message": "no project was named for this request; name one, or select one first"
         }
       }
     },
@@ -565,7 +565,7 @@
         "outcome": "refused",
         "refusal": {
           "code": "context_corrupt",
-          "message": "the stored context is bound to another job id"
+          "message": "the stored context is bound to another job id; the host looked this key up outside the project it is submitting for"
         }
       }
     },
@@ -605,7 +605,7 @@
         "outcome": "refused",
         "refusal": {
           "code": "context_corrupt",
-          "message": "execution context field input_sha256 is not a bounded value"
+          "message": "execution context field input_sha256 is not valid: a 64-character lowercase sha-256 digest"
         }
       }
     },
@@ -632,7 +632,7 @@
         "outcome": "refused",
         "refusal": {
           "code": "context_corrupt",
-          "message": "execution context field client is not a bounded value"
+          "message": "execution context field client is not valid: 1..=120 characters, trimmed, with no control character"
         }
       }
     },
@@ -659,7 +659,7 @@
         "outcome": "refused",
         "refusal": {
           "code": "context_corrupt",
-          "message": "execution context field operation is not a bounded value"
+          "message": "execution context field operation is not valid: one of transformer_processing, solar_processing, report_export, layer_read, layer_write"
         }
       }
     },
@@ -686,7 +686,7 @@
         "outcome": "refused",
         "refusal": {
           "code": "context_corrupt",
-          "message": "execution context field input_sha256 is not a bounded value"
+          "message": "execution context field input_sha256 is not valid: a 64-character lowercase sha-256 digest"
         }
       }
     },
@@ -713,7 +713,7 @@
         "outcome": "refused",
         "refusal": {
           "code": "context_corrupt",
-          "message": "execution context field idempotency_key is not a bounded value"
+          "message": "execution context field idempotency_key is not valid: 1..=200 characters, trimmed, with no control character"
         }
       }
     },
@@ -740,7 +740,7 @@
         "outcome": "refused",
         "refusal": {
           "code": "context_corrupt",
-          "message": "execution context field principal.lane is not a bounded value"
+          "message": "execution context field principal.lane is not valid: one of stable, canary"
         }
       }
     },
@@ -2611,7 +2611,7 @@
         "outcome": "refused",
         "refusal": {
           "code": "scope_mismatch",
-          "message": "that row's sealed input was prepared for another project"
+          "message": "that row's sealed input was prepared for another project; reopen it with the project its own bytes name, or with none"
         }
       }
     },
@@ -2648,7 +2648,7 @@
         "outcome": "refused",
         "refusal": {
           "code": "principal_mismatch",
-          "message": "that row belongs to another deployment lane"
+          "message": "that row belongs to another deployment lane; reopen the queue on the lane it was admitted on"
         }
       }
     },
@@ -2698,7 +2698,7 @@
         "outcome": "refused",
         "refusal": {
           "code": "principal_mismatch",
-          "message": "that row was admitted under another authenticated identity"
+          "message": "that row was admitted under another authenticated identity; reopen the queue as that account"
         }
       }
     },
@@ -2723,7 +2723,7 @@
         "outcome": "refused",
         "refusal": {
           "code": "context_unrecoverable",
-          "message": "that row is not a durable compute job"
+          "message": "that row is not a durable compute job; nothing can be reopened from it"
         }
       }
     },

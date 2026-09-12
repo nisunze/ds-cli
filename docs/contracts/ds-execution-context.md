@@ -8,8 +8,9 @@ is one path segment (§2), a per-project limit must divide the host limit it
 shares (§5), and the corpus no longer records a cross-project
 `scope_mismatch_for_key` no host can produce (§6). Third-pass review, same
 day: that segment is also one no filesystem reads as a drive, a device or a
-stream (§2), and `context_unrecoverable` carries the remedy its owner can
-follow (§6). Parent:
+stream (§2), and every refusal but
+`not_visible` says what to do about it (§3), `context_unrecoverable` included
+(§6). Parent:
 [project and instance isolation](../../../ds-web/docs/project-and-instance-isolation-contract.md);
 refines [Headless application runtime](ds-headless-application-runtime.md) §6.
 
@@ -49,7 +50,10 @@ ExecutionContext { principal_uid, lane, deployment, install_id, // the connectio
 `report_export`, `layer_read`, `layer_write`; `lane` is `stable` or `canary`;
 `input_sha256` is a 64-character lowercase digest. Every text field is
 non-empty, trimmed, control-free and bounded (`client` ≤ 120, `idempotency_key`
-≤ 200). One that is not is `context_corrupt`, named.
+≤ 200). One that is not is `context_corrupt`, **named and told the rule it
+broke** — `execution context field client is not valid: 1..=120 characters,
+trimmed, with no control character` — with the closed vocabularies spelled out
+rather than named, because a caller cannot look up a constant it does not have.
 
 **A project id is one path segment** (`valid_project`): 1..=200 characters, no
 `/` and no `\`, no whitespace anywhere, no control character, no trailing dot
@@ -140,6 +144,14 @@ is a decision to challenge, not an omission.
   `scope_mismatch`, `scope_mismatch_for_key`, `payload_changed_for_key`,
   `principal_mismatch`, `not_visible`, `capacity_exhausted`, `context_corrupt`,
   `context_unrecoverable`.
+- **A refusal says what to do about it, or it is a dead end.** Every one but
+  `not_visible` carries a second clause after the `;` or the `:` — the rule
+  the value broke, or the thing the caller does instead; `capacity_exhausted`
+  carries `retry_after_ms` in the answer rather than in the sentence. The
+  exception is deliberate and is §4 itself: `job not found` says nothing else
+  because anything else would disclose that there is something to find. Held
+  over the recorded corpus, code by code
+  (`every_refusal_but_the_invisible_one_says_what_to_do_about_it`).
 
 ## 4. Non-disclosure
 

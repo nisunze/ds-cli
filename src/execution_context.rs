@@ -200,39 +200,41 @@ impl ExecutionContext {
     /// Every field, on the way in and on the way out. A stored record that
     /// fails this is corrupt, not merely unexpected.
     pub fn validate(&self) -> Result<(), Fault> {
-        let bad = |field: &str| Err(corrupt(field));
         if !bounded(&self.principal_uid, MAX_UID_CHARS) {
-            return bad("principal_uid");
+            return Err(corrupt("principal_uid", text_rule(MAX_UID_CHARS)));
         }
         if !valid_lane(&self.lane) {
-            return bad("lane");
+            return Err(corrupt("lane", lane_rule()));
         }
         if !bounded(&self.deployment, MAX_DEPLOYMENT_CHARS) {
-            return bad("deployment");
+            return Err(corrupt("deployment", text_rule(MAX_DEPLOYMENT_CHARS)));
         }
         if !bounded(&self.install_id, MAX_INSTALL_CHARS) {
-            return bad("install_id");
+            return Err(corrupt("install_id", text_rule(MAX_INSTALL_CHARS)));
         }
         if !valid_project(&self.project) {
             return Err(not_a_segment("project"));
         }
         if !bounded(&self.client, MAX_CLIENT_CHARS) {
-            return bad("client");
+            return Err(corrupt("client", text_rule(MAX_CLIENT_CHARS)));
         }
         if !OPERATIONS.contains(&self.operation.as_str()) {
-            return bad("operation");
+            return Err(corrupt("operation", operation_rule()));
         }
         if !bounded(&self.job_id, MAX_JOB_ID_CHARS) {
-            return bad("job_id");
+            return Err(corrupt("job_id", text_rule(MAX_JOB_ID_CHARS)));
         }
         if !bounded(&self.idempotency_key, MAX_KEY_CHARS) {
-            return bad("idempotency_key");
+            return Err(corrupt("idempotency_key", text_rule(MAX_KEY_CHARS)));
         }
         if !compute_jobs::digest(&self.input_sha256) {
-            return bad("input_sha256");
+            return Err(corrupt("input_sha256", digest_rule()));
         }
         if self.admitted_at_ms == 0 {
-            return bad("admitted_at_ms");
+            return Err(corrupt(
+                "admitted_at_ms",
+                "the host's clock in milliseconds, never zero",
+            ));
         }
         Ok(())
     }
@@ -251,16 +253,22 @@ pub struct Principal {
 impl Principal {
     pub fn validate(&self) -> Result<(), Fault> {
         if !bounded(&self.uid, MAX_UID_CHARS) {
-            return Err(corrupt("principal.uid"));
+            return Err(corrupt("principal.uid", text_rule(MAX_UID_CHARS)));
         }
         if !valid_lane(&self.lane) {
-            return Err(corrupt("principal.lane"));
+            return Err(corrupt("principal.lane", lane_rule()));
         }
         if !bounded(&self.deployment, MAX_DEPLOYMENT_CHARS) {
-            return Err(corrupt("principal.deployment"));
+            return Err(corrupt(
+                "principal.deployment",
+                text_rule(MAX_DEPLOYMENT_CHARS),
+            ));
         }
         if !bounded(&self.install_id, MAX_INSTALL_CHARS) {
-            return Err(corrupt("principal.install_id"));
+            return Err(corrupt(
+                "principal.install_id",
+                text_rule(MAX_INSTALL_CHARS),
+            ));
         }
         Ok(())
     }
@@ -401,11 +409,30 @@ fn refused(code: &'static str, message: impl Into<String>) -> Fault {
         scope: None,
     })
 }
-fn corrupt(field: &str) -> Fault {
+/// A field that is not what the record says it is — named, **and told the
+/// rule it broke**. A caller handed a refusal with no rule in it can read the
+/// code and still not know what to send instead, which is a dead end rather
+/// than an answer.
+fn corrupt(field: &str, rule: impl std::fmt::Display) -> Fault {
     refused(
         CONTEXT_CORRUPT,
-        format!("execution context field {field} is not a bounded value"),
+        format!("execution context field {field} is not valid: {rule}"),
     )
+}
+/// The rule every bounded text field of the record keeps.
+fn text_rule(max: usize) -> String {
+    format!("1..={max} characters, trimmed, with no control character")
+}
+/// The two closed vocabularies and the digest, said in full rather than
+/// named, because a caller cannot look up a constant.
+fn lane_rule() -> String {
+    "one of stable, canary".to_owned()
+}
+fn operation_rule() -> String {
+    format!("one of {}", OPERATIONS.join(", "))
+}
+fn digest_rule() -> String {
+    "a 64-character lowercase sha-256 digest".to_owned()
 }
 /// The project fields answer with the grammar itself, so an operator reads the
 /// rule off the refusal instead of guessing which character was the problem.
@@ -559,19 +586,19 @@ pub fn admit(request: &AdmitRequest) -> Result<Admitted, Fault> {
     }
     request.principal.validate()?;
     if !bounded(&request.client, MAX_CLIENT_CHARS) {
-        return Err(corrupt("client"));
+        return Err(corrupt("client", text_rule(MAX_CLIENT_CHARS)));
     }
     if !OPERATIONS.contains(&request.operation.as_str()) {
-        return Err(corrupt("operation"));
+        return Err(corrupt("operation", operation_rule()));
     }
     if !bounded(&request.job_id, MAX_JOB_ID_CHARS) {
-        return Err(corrupt("job_id"));
+        return Err(corrupt("job_id", text_rule(MAX_JOB_ID_CHARS)));
     }
     if !bounded(&request.idempotency_key, MAX_KEY_CHARS) {
-        return Err(corrupt("idempotency_key"));
+        return Err(corrupt("idempotency_key", text_rule(MAX_KEY_CHARS)));
     }
     if !compute_jobs::digest(&request.input_sha256) {
-        return Err(corrupt("input_sha256"));
+        return Err(corrupt("input_sha256", digest_rule()));
     }
     let project = resolve_project(request)?;
     if let Some(existing) = &request.existing {
@@ -582,13 +609,13 @@ pub fn admit(request: &AdmitRequest) -> Result<Admitted, Fault> {
         {
             return Err(refused(
                 PRINCIPAL_MISMATCH,
-                "that key was admitted under another authenticated identity",
+                "that key was admitted under another authenticated identity; sign in as that account, on the lane and deployment it used, or submit under a key of your own",
             ));
         }
         if existing.job_id != request.job_id {
             return Err(refused(
                 CONTEXT_CORRUPT,
-                "the stored context is bound to another job id",
+                "the stored context is bound to another job id; the host looked this key up outside the project it is submitting for",
             ));
         }
         // The reachable half of this is the operation: within one project a
@@ -606,13 +633,13 @@ pub fn admit(request: &AdmitRequest) -> Result<Admitted, Fault> {
         if existing.project != project || existing.operation != request.operation {
             return Err(refused(
                 SCOPE_MISMATCH_FOR_KEY,
-                "that idempotency key already names another project or operation",
+                "that idempotency key already names another project or operation; submit this under a key of its own",
             ));
         }
         if existing.input_sha256 != request.input_sha256 {
             return Err(refused(
                 PAYLOAD_CHANGED_FOR_KEY,
-                "that idempotency key was admitted with different input bytes",
+                "that idempotency key was admitted with different input bytes; resubmit the bytes it was admitted with, or use a new key for these",
             ));
         }
         return Ok(Admitted::Existing(existing.clone()));
@@ -665,17 +692,19 @@ pub fn project_for(
                 return Err(refused(
                     SCOPE_MISMATCH,
                     format!(
-                        "this request is for {requested}, but its sealed input was prepared for another project"
+                        "this request is for {requested}, but its sealed input was prepared for another project; submit it without naming a project, or prepare an input for {requested}"
                     ),
                 ));
             }
         }
         return Ok(sealed.to_owned());
     }
-    requested
-        .or(saved)
-        .map(str::to_owned)
-        .ok_or_else(|| refused(PROJECT_REQUIRED, "name a project, or select one first"))
+    requested.or(saved).map(str::to_owned).ok_or_else(|| {
+        refused(
+            PROJECT_REQUIRED,
+            "no project was named for this request; name one, or select one first",
+        )
+    })
 }
 
 fn optional_project<'a>(value: Option<&'a str>, field: &str) -> Result<Option<&'a str>, Fault> {
@@ -927,7 +956,7 @@ pub fn recover(
     let Ok(job) = serde_json::from_value::<Job>(row) else {
         return Err(refused(
             CONTEXT_UNRECOVERABLE,
-            "that row is not a durable compute job",
+            "that row is not a durable compute job; nothing can be reopened from it",
         ));
     };
     // The store already reads rows by (owner, lane); the owner is a digest the
@@ -936,7 +965,7 @@ pub fn recover(
     if job.lane != principal.lane {
         return Err(refused(
             PRINCIPAL_MISMATCH,
-            "that row belongs to another deployment lane",
+            "that row belongs to another deployment lane; reopen the queue on the lane it was admitted on",
         ));
     }
     if let Some(context) = job.context {
@@ -947,19 +976,19 @@ pub fn recover(
         {
             return Err(refused(
                 PRINCIPAL_MISMATCH,
-                "that row was admitted under another authenticated identity",
+                "that row was admitted under another authenticated identity; reopen the queue as that account",
             ));
         }
         if context.job_id != job.id || context.input_sha256 != job.input_sha256 {
             return Err(refused(
                 CONTEXT_CORRUPT,
-                "the stored context is bound to another job id or input digest",
+                "the stored context is bound to another job id or input digest; that row was rewritten outside this owner and cannot be reopened",
             ));
         }
         if sealed.is_some_and(|sealed| sealed != context.project) {
             return Err(refused(
                 SCOPE_MISMATCH,
-                "that row's sealed input was prepared for another project",
+                "that row's sealed input was prepared for another project; reopen it with the project its own bytes name, or with none",
             ));
         }
         return Ok((context, Provenance::Stored));
@@ -1246,6 +1275,27 @@ mod tests {
             let refused = refusal(broken.validate().unwrap_err());
             assert_eq!(refused.code, CONTEXT_CORRUPT, "{field}");
             assert!(refused.message.contains(field), "{field}");
+            // Naming the field is half an answer. The rule it broke is the
+            // other half, and without it the caller knows only that
+            // something was wrong.
+            let (_, rule) = refused
+                .message
+                .split_once(": ")
+                .unwrap_or_else(|| panic!("{field}: {} states no rule", refused.message));
+            assert!(rule.len() > 15, "{field}: {rule}");
+        }
+        // The closed vocabularies are spelled out, not named: a caller cannot
+        // look up a constant it does not have.
+        let mut wrong_lane = context("project-a");
+        wrong_lane.lane = "development".into();
+        assert!(refusal(wrong_lane.validate().unwrap_err())
+            .message
+            .contains("one of stable, canary"));
+        let mut wrong_operation = context("project-a");
+        wrong_operation.operation = "everything".into();
+        let listed = refusal(wrong_operation.validate().unwrap_err()).message;
+        for operation in OPERATIONS {
+            assert!(listed.contains(operation), "{listed}");
         }
         let mut unstamped = context("project-a");
         unstamped.admitted_at_ms = 0;
@@ -2151,7 +2201,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             refused,
-            json!({"outcome": "refused", "refusal": {"code": PROJECT_REQUIRED, "message": "name a project, or select one first"}})
+            json!({"outcome": "refused", "refusal": {"code": PROJECT_REQUIRED, "message": "no project was named for this request; name one, or select one first"}})
         );
         assert_eq!(
             wire(json!({"kind": "visible", "caller": caller(), "context": context("project-a")}))
@@ -2208,10 +2258,13 @@ mod tests {
     fn a_fault_says_whether_a_host_may_relay_it() {
         let refused = admit(&request()).unwrap_err();
         assert_eq!(refused.code(), Some(PROJECT_REQUIRED));
-        assert_eq!(refused.message(), "name a project, or select one first");
+        assert_eq!(
+            refused.message(),
+            "no project was named for this request; name one, or select one first"
+        );
         assert_eq!(
             refused.to_string(),
-            "project_required: name a project, or select one first"
+            "project_required: no project was named for this request; name one, or select one first"
         );
         let mut clockless = request();
         clockless.saved_project = Some("project-a".into());
