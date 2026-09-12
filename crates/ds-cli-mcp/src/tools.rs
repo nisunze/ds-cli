@@ -10,7 +10,7 @@ use std::thread;
 use std::time::Duration;
 
 use ds_cli_contract::outcome::Failure;
-use ds_cli_contract::spec::{Authority, Chapter};
+use ds_cli_contract::spec::{Authority, Chapter, Refusal};
 use serde_json::{Map, Value, json};
 
 /// One `ds` command as an MCP tool, plus what is needed to call it back.
@@ -255,37 +255,60 @@ impl Tool {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// What the enumeration says about this machine, reduced to what the gate
+/// decides on.
+#[derive(Debug, Clone, PartialEq, Eq)]
 enum DesktopState {
+    /// No live instance at all — the one state in which a launch is allowed.
     Absent,
+    /// Live instances exist and more than one could serve this call. Never a
+    /// launch, and never a guess: the caller names one.
+    Ambiguous(Vec<String>),
     Paired {
         signed_in: bool,
         project_selected: bool,
     },
 }
 
-/// Ensure exactly the authority the descriptor names, before dispatching an
-/// MCP invocation. Discovery, `describe`, and every `Authority::None` tool
-/// bypass this entirely.
+/// More than one live instance, and nothing but the caller may choose. The
+/// code and the remedy are the CLI's own: an agent that meets this through a
+/// tool call and an operator who meets it in a terminal are told the same
+/// thing, and re-run with the same argument.
+const AMBIGUOUS: Refusal = Refusal {
+    code: "desktop_ambiguous",
+    when: "more than one live DS GridDesign instance could serve this tool call",
+    remedy: "call desktop_list, then pass target=desktop:<instance_id>",
+};
+
+/// Ensure exactly the authority the tool names, before dispatching an MCP
+/// invocation. Discovery, `describe`, and every `Authority::None` tool bypass
+/// this entirely.
 pub fn ensure_desktop(tool: &Tool, arguments: &Value, executable: &PathBuf) -> Result<(), Failure> {
     if !tool.authority.requires_desktop() {
         return Ok(());
     }
-    let named_descriptor = arguments
-        .get("desktop-descriptor")
-        .and_then(Value::as_str)
-        .is_some()
-        || std::env::var_os("DS_DESKTOP_DESCRIPTOR").is_some_and(|value| !value.is_empty());
     let descriptor = arguments
         .get("desktop-descriptor")
         .and_then(Value::as_str)
         .map(str::to_owned);
-    let mut status = || desktop_status(executable, descriptor.as_deref());
+    let target = arguments
+        .get("target")
+        .and_then(Value::as_str)
+        .map(str::to_owned);
+    // A caller that named a runtime has named it. `--target desktop` names the
+    // host and not an instance, so it is not a naming for this purpose; an
+    // instance, a descriptor path, or either of their session defaults is.
+    let named_runtime = descriptor.is_some()
+        || std::env::var_os("DS_DESKTOP_DESCRIPTOR").is_some_and(|value| !value.is_empty())
+        || target.as_deref().is_some_and(|value| value != "desktop")
+        || std::env::var("DS_TARGET")
+            .is_ok_and(|value| !value.trim().is_empty() && value.trim() != "desktop");
+    let mut status = || desktop_status(executable, descriptor.as_deref(), target.as_deref());
     let mut launch = || launch_installed_desktop(executable);
     let mut wait = || thread::sleep(PAIR_POLL_INTERVAL);
     ensure_desktop_with(
         tool.authority,
-        named_descriptor,
+        named_runtime,
         &mut status,
         &mut launch,
         &mut wait,
@@ -297,7 +320,7 @@ pub fn ensure_desktop(tool: &Tool, arguments: &Value, executable: &PathBuf) -> R
 /// guarantees are testable without an installed desktop.
 fn ensure_desktop_with<S, L, W>(
     authority: Authority,
-    named_descriptor: bool,
+    named_runtime: bool,
     status: &mut S,
     launch: &mut L,
     wait: &mut W,
@@ -312,8 +335,12 @@ where
     }
     match status()? {
         state @ DesktopState::Paired { .. } => return authority_ready(authority, state),
-        DesktopState::Absent if named_descriptor => {
-            return Err(not_paired("named descriptor did not publish a session"));
+        // Live instances exist. Starting another would add a third runtime to
+        // a machine that already cannot say which of two a call is for, so the
+        // gate refuses with the argument that settles it.
+        DesktopState::Ambiguous(instances) => return Err(ambiguous(&instances)),
+        DesktopState::Absent if named_runtime => {
+            return Err(not_paired("the named runtime did not publish a session"));
         }
         DesktopState::Absent => {}
     }
@@ -325,12 +352,23 @@ where
         wait();
         match status()? {
             state @ DesktopState::Paired { .. } => return authority_ready(authority, state),
+            DesktopState::Ambiguous(instances) => return Err(ambiguous(&instances)),
             DesktopState::Absent => {}
         }
     }
     Err(not_paired(
         "desktop launch did not publish a paired session before the 10 second bound",
     ))
+}
+
+fn ambiguous(instances: &[String]) -> Failure {
+    Failure::invalid(
+        AMBIGUOUS.code,
+        "more than one DS GridDesign instance is running on this machine",
+    )
+    .remedy(AMBIGUOUS.remedy)
+    .detail(json!({ "instances": instances }))
+    .next("ds desktop list")
 }
 
 fn authority_ready(authority: Authority, state: DesktopState) -> Result<(), Failure> {
@@ -367,13 +405,29 @@ fn not_paired(detail: &str) -> Failure {
         .detail(json!({ "mcp_desktop_gate": detail, "wait_bound_ms": PAIR_POLL_ATTEMPTS as u64 * PAIR_POLL_INTERVAL.as_millis() as u64 }))
 }
 
-fn desktop_status(executable: &PathBuf, descriptor: Option<&str>) -> Result<DesktopState, Failure> {
+/// What `ds desktop status` says, read as the gate's three states.
+///
+/// It is the enumeration's own answer: since instances replaced install
+/// profiles as the unit of pairing, that command finds every live instance,
+/// proves each one alive with an authenticated handshake, and either describes
+/// the one this call is for or refuses to choose between several. So the gate
+/// asks the CLI rather than repeating its discovery, which is the only way an
+/// MCP tool and the same command in a terminal can answer identically.
+fn desktop_status(
+    executable: &PathBuf,
+    descriptor: Option<&str>,
+    target: Option<&str>,
+) -> Result<DesktopState, Failure> {
     let mut argv = vec![
         "desktop".to_string(),
         "status".to_string(),
         "--output".to_string(),
         "json".to_string(),
     ];
+    if let Some(target) = target {
+        argv.insert(2, target.to_string());
+        argv.insert(2, "--target".to_string());
+    }
     if let Some(descriptor) = descriptor {
         argv.insert(2, descriptor.to_string());
         argv.insert(2, "--desktop-descriptor".to_string());
@@ -392,6 +446,16 @@ fn desktop_status(executable: &PathBuf, descriptor: Option<&str>) -> Result<Desk
         .detail(json!({ "mcp_desktop_gate": bounded(&stderr) }))
     })?;
     if code != 0 || envelope.get("status").and_then(Value::as_str) != Some("ok") {
+        if envelope["error"]["code"].as_str() == Some(AMBIGUOUS.code) {
+            return Ok(DesktopState::Ambiguous(
+                envelope["error"]["detail"]["instances"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .filter_map(|instance| instance["instance_id"].as_str().map(str::to_owned))
+                    .collect(),
+            ));
+        }
         return Err(not_paired(
             "desktop status refused before pairing completed",
         ));
@@ -1183,6 +1247,101 @@ mod tests {
         .expect_err("named descriptor remains authoritative");
         assert_eq!(failure.code(), "desktop_not_paired");
         assert_eq!(launched, 0);
+    }
+
+    /// Two windows are open and an agent calls a paired tool. Launching a
+    /// third is the one thing that must not happen: the machine already cannot
+    /// say which instance the call is for, and a new one would not answer that
+    /// question either.
+    #[test]
+    fn two_live_instances_refuse_a_tool_call_instead_of_launching_a_third() {
+        let instances = vec![
+            "11111111111111111111111111111111".to_owned(),
+            "22222222222222222222222222222222".to_owned(),
+        ];
+        let mut launched = 0usize;
+        let failure = ensure_desktop_with(
+            Authority::Project,
+            false,
+            &mut || Ok(DesktopState::Ambiguous(instances.clone())),
+            &mut || {
+                launched += 1;
+                Ok(())
+            },
+            &mut || panic!("a live machine must not enter launch polling"),
+        )
+        .expect_err("nothing but the caller may choose between two instances");
+        assert_eq!(failure.code(), "desktop_ambiguous");
+        assert_eq!(launched, 0);
+        assert_eq!(
+            failure.detail_value().expect("the choices")["instances"],
+            json!(instances)
+        );
+        assert!(
+            failure
+                .remedy_text()
+                .is_some_and(|remedy| remedy.contains("target=desktop:<instance_id>")),
+            "the remedy must be the argument that settles it: {:?}",
+            failure.remedy_text()
+        );
+    }
+
+    /// The same refusal after a launch this call did make: an instance that
+    /// starts beside one the gate could not see is still an ambiguity, and the
+    /// poll stops rather than waiting out its bound.
+    #[test]
+    fn an_ambiguity_that_appears_after_a_launch_stops_the_poll() {
+        let mut observations = 0usize;
+        let mut launched = 0usize;
+        let failure = ensure_desktop_with(
+            Authority::DesktopPairing,
+            false,
+            &mut || {
+                observations += 1;
+                Ok(if observations > 1 {
+                    DesktopState::Ambiguous(vec!["11111111111111111111111111111111".to_owned()])
+                } else {
+                    DesktopState::Absent
+                })
+            },
+            &mut || {
+                launched += 1;
+                Ok(())
+            },
+            &mut || {},
+        )
+        .expect_err("an ambiguity is answered, not waited out");
+        assert_eq!(failure.code(), "desktop_ambiguous");
+        assert_eq!((launched, observations), (1, 2));
+    }
+
+    /// A tool call that named a runtime — an instance through `target`, or a
+    /// descriptor path — is answered about that runtime. It is never quietly
+    /// replaced by a launch of some other one.
+    #[test]
+    fn a_named_instance_is_never_replaced_by_an_automatic_launch() {
+        let mut launched = 0usize;
+        let failure = ensure_desktop_with(
+            Authority::DesktopUser,
+            true,
+            &mut || Ok(DesktopState::Absent),
+            &mut || {
+                launched += 1;
+                Ok(())
+            },
+            &mut || panic!("a named runtime must not enter launch polling"),
+        )
+        .expect_err("the named runtime is not live");
+        assert_eq!(failure.code(), "desktop_not_paired");
+        assert_eq!(launched, 0);
+        assert!(
+            failure
+                .detail_value()
+                .and_then(|detail| detail["mcp_desktop_gate"].as_str())
+                .is_some_and(|detail| detail.contains("named runtime")),
+            "the refusal says which side of the gate answered: {:?}",
+            failure.detail_value()
+        );
     }
 
     #[test]

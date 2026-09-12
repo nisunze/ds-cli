@@ -46,6 +46,7 @@ under it, so a concurrent publish is refused rather than overwritten.",
     }],
     refusals: &[
         crate::NOT_PAIRED,
+        crate::PROJECT_NOT_OPEN,
         crate::AMBIGUOUS,
         crate::UNREACHABLE,
         crate::PAIRING_REJECTED,

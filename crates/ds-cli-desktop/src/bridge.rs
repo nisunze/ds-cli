@@ -22,7 +22,7 @@ use ds_cli_contract::outcome::{ExitClass, Failure};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
-use crate::discover::{self, Discovery};
+use crate::discover;
 
 /// The pairing handshake is loopback and immediate; anything slower is a dead
 /// descriptor rather than a busy application.
@@ -31,36 +31,92 @@ pub const SESSION_TIMEOUT: Duration = Duration::from_secs(5);
 /// Bound on any bridge response body.
 pub const MAX_RESPONSE_BYTES: u64 = 8 * 1024 * 1024;
 
-/// Resolve the paired application, or refuse with the remedy.
+/// Resolve the instance this operation is for, or refuse with the remedy.
+///
+/// The host it runs on is whatever `--target` named for this dispatch, or
+/// `DS_TARGET` for the session. Selection itself is the kernel's: this reads
+/// the descriptors, probes each endpoint, and performs the answer.
 pub fn paired(explicit: Option<&str>) -> Result<discover::Found, Failure> {
-    match discover::discover(explicit) {
-        Discovery::Paired(found) => Ok(*found),
-        Discovery::None => Err(Failure::unavailable(
-            "desktop_not_paired",
-            "no DS GridDesign session is running on this machine",
+    paired_on(explicit, crate::ops::scoped_target().as_deref())
+}
+
+/// The same resolution for a command that holds its own `--target`, rather
+/// than the one dispatch scoped for a paired invocation.
+pub fn paired_on(explicit: Option<&str>, target: Option<&str>) -> Result<discover::Found, Failure> {
+    let target = crate::ops::desktop_target(target)?;
+
+    // A named descriptor file is the legacy explicit path: used verbatim,
+    // never second-guessed, and never falling through to another instance.
+    if let Some((profile, path)) = discover::named(explicit) {
+        let descriptor =
+            discover::read(&path, None).map_err(|failure| unusable(&path, &failure))?;
+        let descriptor = match target {
+            // Two explicit answers to one question. They must be the same
+            // instance, and proving that means asking the process itself —
+            // the file may predate the identity it now publishes.
+            Some(target) => confirmed(descriptor, &target)?,
+            None => descriptor,
+        };
+        return Ok(discover::Found {
+            profile,
+            path,
+            descriptor,
+        });
+    }
+
+    discover::choose(
+        discover::enumerate(),
+        target.as_ref(),
+        crate::ops::scoped_requirement().as_ref(),
+    )
+    .map_err(|failure| {
+        if failure.code() == "desktop_not_paired" {
+            return failure.next("ds desktop list");
+        }
+        failure
+    })
+}
+
+/// A descriptor file that cannot be read or admitted. The caller named this
+/// path, so it is told which file and why — and it stays the transport-shaped
+/// code it has always been, because for a caller with a stale pinned terminal
+/// the situation and the remedy are unchanged.
+fn unusable(path: &std::path::Path, failure: &Failure) -> Failure {
+    let reason = failure
+        .detail_value()
+        .and_then(|detail| detail["reason"].as_str().map(str::to_owned))
+        .unwrap_or_else(|| failure.message().to_owned());
+    Failure::unavailable(
+        "desktop_unreachable",
+        "the bridge descriptor cannot be used",
+    )
+    .remedy("restart DS GridDesign and retry")
+    .detail(json!({ "descriptor": path.display().to_string(), "reason": reason }))
+}
+
+/// The named descriptor reaches the named instance, or neither is used.
+fn confirmed(
+    descriptor: discover::Descriptor,
+    target: &discover::Target,
+) -> Result<discover::Descriptor, Failure> {
+    match discover::identify(&descriptor) {
+        Some(live) if live == target.instance_id => Ok(descriptor),
+        Some(live) => Err(Failure::invalid(
+            crate::ops::TARGET_MISMATCH.code,
+            "the named descriptor belongs to another instance than --target named",
         )
-        .remedy("start DS GridDesign and sign in, then retry")
-        .next("ds desktop status")),
-        Discovery::Ambiguous(choices) => Err(Failure::invalid(
-            "desktop_ambiguous",
-            "more than one DS GridDesign session is running",
-        )
-        .remedy("name one with --desktop-descriptor <path>")
+        .remedy(crate::ops::TARGET_MISMATCH.remedy)
         .detail(json!({
-            "descriptors": choices
-                .iter()
-                .map(|(profile, path)| json!({
-                    "profile": profile,
-                    "descriptor": path.display().to_string()
-                }))
-                .collect::<Vec<_>>()
+            "target": target.instance_id,
+            "reason": "descriptor",
+            "descriptor_instance": live,
         }))),
-        Discovery::Unusable { path, reason } => Err(Failure::unavailable(
-            "desktop_unreachable",
-            "the bridge descriptor cannot be used",
+        None => Err(Failure::invalid(
+            crate::ops::TARGET_NOT_LIVE.code,
+            "the named descriptor's instance did not answer, so it cannot be the one named",
         )
-        .remedy("restart DS GridDesign and retry")
-        .detail(json!({ "descriptor": path.display().to_string(), "reason": reason }))),
+        .remedy(crate::ops::TARGET_NOT_LIVE.remedy)
+        .detail(json!({ "target": target.instance_id }))),
     }
 }
 
@@ -120,7 +176,10 @@ pub fn invoke(
         })?;
     let parsed: Value = serde_json::from_str(&body).unwrap_or(Value::Null);
 
-    if status == 422
+    // 422 is an operation's own refusal; 409 is the context fence's — the
+    // window's project or account moved while this was in flight. Both carry
+    // the same structured shape, and both keep the code the owner decided.
+    if matches!(status, 409 | 422)
         && let Some(failure) = structured_desktop_refusal(operation, &parsed, status)
     {
         return Err(failure);
@@ -236,6 +295,20 @@ pub struct IdentityFence {
     pub credential_audience_sha256: String,
     pub project: Option<String>,
     pub session_revision: u64,
+    /// The owner window's context generation when this session was read.
+    ///
+    /// The session revision fences *the CLI's snapshot of the identity*; this
+    /// fences *the view*. They are different numbers on purpose: a map
+    /// animation moves neither, and a project switch moves this one, so a slow
+    /// operation dispatched against project A cannot be applied to the window
+    /// that now shows B.
+    ///
+    /// Absent when the instance publishes no window roster — an older desktop —
+    /// and then the operation is fenced on the revision alone, exactly as
+    /// before. Absent is also how it is sent: the shell's fence denies unknown
+    /// fields and skips this one when it is `None`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub context_generation: Option<u64>,
 }
 
 impl IdentityFence {
@@ -252,6 +325,7 @@ impl IdentityFence {
                 .get("session_revision")
                 .cloned()
                 .unwrap_or(Value::Null),
+            "context_generation": owner_generation(value),
         }))
         .map_err(|_| {
             Failure::conflict(
@@ -286,6 +360,22 @@ impl IdentityFence {
         }
         Ok(fence)
     }
+}
+
+/// The generation of the window that owns this session, when the instance
+/// publishes a roster. Read from the roster rather than from a field of its
+/// own: which window owns the session is the shell's rule, and the roster is
+/// where it states it.
+fn owner_generation(session: &Value) -> Option<u64> {
+    session
+        .get("windows")?
+        .as_array()?
+        .iter()
+        .find(|window| {
+            window.get("label").and_then(Value::as_str) == Some(discover::OWNER_WINDOW_LABEL)
+        })?
+        .get("generation")?
+        .as_u64()
 }
 
 /// Print failures carry a bounded per-format receipt after the headline.
@@ -488,6 +578,69 @@ mod tests {
                     .expect("typed refusal");
             assert_eq!(failure.remedy_text(), None);
         }
+    }
+
+    /// The view a result would be written into is the view it was captured
+    /// in, or it is refused. `ds` carries the owner window's generation so the
+    /// application can answer that; an instance that publishes no roster is
+    /// fenced on the revision alone, as it always was.
+    #[test]
+    fn the_fence_carries_the_owner_windows_generation_when_there_is_one() {
+        let session = json!({
+            "uid": "uid-1",
+            "lane": "stable",
+            "credential_audience_sha256": "a".repeat(64),
+            "project": "project-1",
+            "session_revision": 7,
+            "windows": [
+                {"label": "workspace-2", "project": "project-2", "generation": 9},
+                {"label": crate::discover::OWNER_WINDOW_LABEL, "project": "project-1", "generation": 3},
+            ],
+        });
+        let fence = IdentityFence::from_session(&session).expect("a complete fence");
+        assert_eq!(
+            fence.context_generation,
+            Some(3),
+            "the owner window's generation is the one an operation is fenced on"
+        );
+        let sent = serde_json::to_value(&fence).expect("encodes");
+        assert_eq!(sent["context_generation"], json!(3));
+
+        let mut older = session.clone();
+        older.as_object_mut().expect("an object").remove("windows");
+        let fence = IdentityFence::from_session(&older).expect("a complete fence");
+        assert_eq!(fence.context_generation, None);
+        // The shell's fence denies unknown fields, so a null here would refuse
+        // every call to a desktop that predates the roster.
+        assert!(
+            serde_json::to_value(&fence)
+                .expect("encodes")
+                .get("context_generation")
+                .is_none()
+        );
+    }
+
+    /// The context fence answers 409 with the same structured refusal an
+    /// operation's own answers 422 with, and its code survives the trip.
+    #[test]
+    fn a_stale_context_generation_keeps_the_code_the_owner_decided() {
+        let failure = structured_desktop_refusal(
+            "map.zoom_to",
+            &json!({"error": {
+                "class": "conflict",
+                "code": "context_generation_stale",
+                "message": "this view's project or account changed while that was in flight",
+                "remedy": "retry the operation against the view as it is now"
+            }}),
+            409,
+        )
+        .expect("the context fence's refusal is structured");
+        assert_eq!(failure.code(), "context_generation_stale");
+        assert_eq!(failure.class().token(), "conflict");
+        assert_eq!(
+            failure.remedy_text(),
+            Some("retry the operation against the view as it is now")
+        );
     }
 
     #[test]

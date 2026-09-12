@@ -15,13 +15,14 @@ use std::time::Duration;
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
-    Arg, Authority, Availability, Chapter, Command, Effect, Example, Execution, Refusal,
+    Authority, Availability, Chapter, Command, Effect, Example, Execution, Refusal,
 };
 use ds_cli_contract::{Context, Inputs};
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use crate::discover::{self, Discovery, PROFILES};
+use crate::discover::{self, PROFILES};
+use crate::ops;
 
 const SESSION_TIMEOUT: Duration = Duration::from_secs(5);
 const MAX_SESSION_BYTES: u64 = 256 * 1024;
@@ -41,17 +42,14 @@ says what is missing.",
     effect: Effect::Discovery,
     authority: Authority::None,
     execution: Execution::Sync,
-    args: &[Arg::value(
-        "desktop-descriptor",
-        "<path>",
-        "Use this bridge descriptor instead of discovering one; DS_DESKTOP_DESCRIPTOR sets the same default.",
-    )],
+    args: &[ops::TARGET_ARG, ops::DESCRIPTOR_ARG],
     output: "\
 `paired`, `signed_in`, `project` and `design_context` always present. When \
-paired, the install profile and the application's process id. `design_context` \
-is null unless a project transformer is open for editing; a current desktop \
-also reports its project, context type, editor/map readiness, dirty, staged and \
-persisted state. Never a token, JWT or credential.",
+paired, the instance id and how it was identified, the install profile and the \
+application's process id. `design_context` is null unless a project transformer \
+is open for editing; a current desktop also reports its project, context type, \
+editor/map readiness, dirty, staged and persisted state. Never a token, JWT or \
+credential.",
     examples: &[
         Example {
             command: "ds desktop status",
@@ -65,11 +63,10 @@ persisted state. Never a token, JWT or credential.",
         },
     ],
     refusals: &[
-        Refusal {
-            code: "desktop_ambiguous",
-            when: "two or more Stable, Canary or dev bridge endpoints are responsive",
-            remedy: "pass --desktop-descriptor <path> to name which one",
-        },
+        ops::AMBIGUOUS,
+        ops::TARGET_NOT_LIVE,
+        ops::UNKNOWN_TARGET,
+        ops::HOST_UNSUPPORTED,
         Refusal {
             code: "desktop_unreachable",
             when: "the descriptor names a port nothing answers on",
@@ -95,11 +92,7 @@ persisted state. Never a token, JWT or credential.",
             when: "the session's reply does not match this build's contract",
             remedy: "update DS GridDesign and `ds` to matching releases",
         },
-        Refusal {
-            code: "descriptor_unusable",
-            when: "a descriptor exists but is unreadable, stale or not loopback",
-            remedy: "restart DS GridDesign to republish its descriptor",
-        },
+        ops::DESCRIPTOR_UNUSABLE,
     ],
     reference: Some("docs/reference/desktop.status.md"),
     availability: available,
@@ -169,62 +162,94 @@ enum DesignContextMode {
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let explicit = inputs.value("desktop-descriptor");
+    let target = ops::declared_target(inputs)?;
 
-    let found = match discover::discover(explicit) {
-        Discovery::Paired(found) => found,
-        Discovery::None => {
-            return Ok(json!({
-                "paired": false,
-                "signed_in": false,
-                "project": Value::Null,
-                "design_context": Value::Null,
-                "reason": "no_session",
-                "remedy": "start DS GridDesign, then run `ds desktop status`",
-                "searched": PROFILES.iter().map(|(profile, _)| *profile).collect::<Vec<_>>(),
-            }));
-        }
-        Discovery::Ambiguous(candidates) => {
-            return Err(Failure::unavailable(
-                "desktop_ambiguous",
-                "more than one DS GridDesign profile is running",
-            )
-            .remedy("pass --desktop-descriptor <path> to name which one")
-            .detail(json!({
-                "candidates": candidates
-                    .iter()
-                    .map(|(profile, path)| json!({
-                        "profile": profile,
-                        "descriptor": path.display().to_string(),
-                    }))
-                    .collect::<Vec<_>>(),
-            })));
-        }
-        Discovery::Unusable { path, reason } => {
-            return Err(Failure::unavailable(
-                "descriptor_unusable",
+    // A named descriptor is used verbatim, exactly as it always has been: the
+    // one thing a caller with a stale pinned terminal must be able to rely on
+    // is that this command reports what that file reaches.
+    if let Some((profile, path)) = discover::named(explicit) {
+        let descriptor = discover::read(&path, None).map_err(|failure| {
+            Failure::unavailable(
+                ops::DESCRIPTOR_UNUSABLE.code,
                 "the bridge descriptor cannot be used",
             )
-            .remedy("restart DS GridDesign to republish its descriptor")
-            .detail(json!({ "descriptor": path.display().to_string(), "reason": reason })));
+            .remedy(ops::DESCRIPTOR_UNUSABLE.remedy)
+            .detail(json!({
+                "descriptor": path.display().to_string(),
+                "reason": failure
+                    .detail_value()
+                    .and_then(|detail| detail["reason"].as_str().map(str::to_owned))
+                    .unwrap_or_else(|| failure.message().to_owned()),
+            }))
+        })?;
+        let session = fetch_session(&descriptor)?;
+        return Ok(paired_data(profile, &descriptor, session));
+    }
+
+    let enumeration = discover::enumerate();
+    if enumeration.is_empty() {
+        return Ok(json!({
+            "paired": false,
+            "signed_in": false,
+            "project": Value::Null,
+            "design_context": Value::Null,
+            "reason": "no_session",
+            "remedy": "start DS GridDesign, then run `ds desktop status`",
+            "searched": PROFILES.iter().map(|(profile, _)| *profile).collect::<Vec<_>>(),
+            "unusable": crate::list::unusable(&enumeration),
+        }));
+    }
+
+    // Which instance this describes is the caller's to settle when there is
+    // more than one — the same rule every other paired command follows, and
+    // for the same reason: a status that picked one silently would be a status
+    // about a window the caller did not mean.
+    let found = match &target {
+        Some(target) => enumeration
+            .live
+            .into_iter()
+            .find(|live| live.instance_id() == target.instance_id)
+            .map(|live| live.found)
+            .ok_or_else(|| {
+                Failure::invalid(
+                    ops::TARGET_NOT_LIVE.code,
+                    "no live DS GridDesign instance answers to that target",
+                )
+                .remedy(ops::TARGET_NOT_LIVE.remedy)
+                .detail(json!({ "target": target.instance_id }))
+                .next("ds desktop list")
+            })?,
+        None if enumeration.live.len() == 1 => {
+            enumeration
+                .live
+                .into_iter()
+                .next()
+                .expect("length checked")
+                .found
+        }
+        None => {
+            return Err(Failure::invalid(
+                ops::AMBIGUOUS.code,
+                "more than one DS GridDesign instance is running on this machine",
+            )
+            .remedy(ops::AMBIGUOUS.remedy)
+            .detail(json!({ "instances": crate::list::instances(&enumeration) }))
+            .next("ds desktop list"));
         }
     };
 
     let session = fetch_session(&found.descriptor)?;
-
-    Ok(paired_data(
-        found.profile,
-        found.descriptor.pid,
-        found.path.display().to_string(),
-        session,
-    ))
+    Ok(paired_data(found.profile, &found.descriptor, session))
 }
 
-fn paired_data(profile: &str, pid: u32, descriptor: String, session: SessionView) -> Value {
+fn paired_data(profile: &str, descriptor: &discover::Descriptor, session: SessionView) -> Value {
     json!({
         "paired": true,
+        "instance": descriptor.instance_id,
+        "identity": descriptor.identity.wire(),
         "profile": profile,
-        "pid": pid,
-        "descriptor": descriptor,
+        "pid": descriptor.pid,
+        "descriptor": descriptor.path.display().to_string(),
         "signed_in": session.signed_in,
         "uid": session.uid,
         "email": session.email,
@@ -333,9 +358,10 @@ pub fn render(data: &Value) -> String {
         );
     }
     let mut out = format!(
-        "paired  {} (pid {})\n",
+        "paired  {} (pid {})\ninstance  {}\n",
         data["profile"].as_str().unwrap_or("?"),
         data["pid"],
+        data["instance"].as_str().unwrap_or("?"),
     );
     if data["signed_in"].as_bool().unwrap_or(false) {
         out.push_str(&format!(
@@ -375,6 +401,22 @@ pub fn render(data: &Value) -> String {
 mod tests {
     use super::*;
 
+    const INSTANCE: &str = "11111111111111111111111111111111";
+
+    /// One resolved instance, as `discover` hands it over.
+    fn descriptor(pid: u32) -> discover::Descriptor {
+        discover::Descriptor {
+            url: "http://127.0.0.1:41234".to_owned(),
+            token: "0123456789abcdef0123456789abcdef".to_owned(),
+            pid,
+            instance_id: INSTANCE.to_owned(),
+            identity: ds_command_kernel::desktop_instance::Identity::Minted,
+            profile: Some("canary".to_owned()),
+            path: std::path::PathBuf::from("descriptor.json"),
+            window: None,
+        }
+    }
+
     #[test]
     fn paired_status_projects_the_active_design_edit_context() {
         let session: SessionView = serde_json::from_value(json!({
@@ -395,7 +437,7 @@ mod tests {
             }
         }))
         .expect("session view parses");
-        let data = paired_data("dev", 42, "descriptor.json".into(), session);
+        let data = paired_data("dev", &descriptor(42), session);
 
         assert_eq!(data["design_context"]["mode"], "edit");
         assert_eq!(data["design_context"]["transformer"], "agasharu");
@@ -417,7 +459,7 @@ mod tests {
             "design_context": { "mode": "edit", "transformer": "agasharu" }
         }))
         .expect("legacy context parses");
-        let data = paired_data("stable", 42, "descriptor.json".into(), session);
+        let data = paired_data("stable", &descriptor(42), session);
         assert_eq!(
             data["design_context"],
             json!({ "mode": "edit", "transformer": "agasharu" })
@@ -431,7 +473,7 @@ mod tests {
             "project": "arjgpydw_survey_test"
         }))
         .expect("backward-compatible session view parses");
-        let data = paired_data("canary", 42, "descriptor.json".into(), session);
+        let data = paired_data("canary", &descriptor(42), session);
 
         assert!(data["design_context"].is_null());
         assert!(!render(&data).contains("design  "));

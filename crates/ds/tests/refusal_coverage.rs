@@ -54,6 +54,13 @@ const NOT_A_REFUSAL: &[(&str, &str)] = &[
         "raised only if the OS cannot report on a child ds itself spawned",
     ),
     (
+        "desktop_enumeration_defect",
+        "raised only if `ds` hands the desktop-instance owner a candidate set \
+         it built wrong — one instance presented twice, or a route to an \
+         instance the enumeration does not hold. Both are defects in ds \
+         caught at the boundary, not situations a caller can create",
+    ),
+    (
         "undeclared_bridge_argument",
         "raised only if a ds map handler builds an argument key its own \
          BridgeOp does not declare — a defect in ds caught at the boundary, \
@@ -100,6 +107,16 @@ const CODE_NOT_A_LITERAL: &[(&str, &str)] = &[
         "the code is the paired application's own, preserved across the bridge; \
          `every_application_refusal_code_is_documented` is the check for that \
          side",
+    ),
+    (
+        "ds-cli-desktop/src/discover.rs",
+        "the code is `desktop_instance`'s own: the kernel decides which live \
+         instance an operation is for, and its refusal is relayed with the \
+         code, sentence, remedy and detail it decided rather than renamed \
+         here. That vocabulary is closed (`desktop_instance::REFUSALS`) and \
+         `every_desktop_instance_refusal_is_declared_by_a_command` below \
+         iterates it against the published refusal rosters, so a code the \
+         kernel gains still cannot ship undeclared",
     ),
     (
         "ds-cli-exec/src/lib.rs",
@@ -684,7 +701,15 @@ fn every_constructible_refusal_code_is_documented() {
         ("ds-cli-feedback", &["feedback"]),
         ("ds-cli-shell", &["shell"]),
         ("ds-cli-workstation", &["workstation"]),
-        ("ds-cli-mcp", &["mcp"]),
+        // Two surfaces, and it is the same crate on purpose. `ds mcp serve`
+        // and `ds mcp install` are its own commands, and the gate every
+        // paired tool call passes through re-raises the paired-desktop
+        // vocabulary — `desktop_not_paired`, `desktop_signed_out`,
+        // `desktop_ambiguous` — so an agent meeting one through a tool call
+        // and an operator meeting it in a terminal read the same code and the
+        // same remedy. Those codes are declared by the `ds desktop` commands
+        // that own them.
+        ("ds-cli-mcp", &["mcp", "desktop"]),
         // Receipt verification returns bounded diagnostic strings to doctor
         // and MCP resources; it constructs no CLI Failure/refusal codes.
         ("ds-cli-skills", &[]),
@@ -1297,6 +1322,69 @@ export const settings = { code: 'metric', label: 'Settings' };
     assert!(unreadable.is_empty(), "unreadable: {unreadable:?}");
 }
 
+/// The application-side counterpart of [`CODE_NOT_A_LITERAL`]: a mint whose
+/// code this scan cannot read, because the code is not the file's to choose.
+///
+/// One entry, and it is the same shape as the Rust relays: the browser asks
+/// the kernel and re-raises the answer. Keep it that way — a file listed here
+/// is a file whose *new* codes would be invisible, so nothing belongs here
+/// that mints a code of its own.
+const APPLICATION_CODE_NOT_A_LITERAL: &[(&str, &str)] = &[(
+    "src/lib/desktop/context-generation.ts",
+    "the code is `desktop_instance::admit_result`'s own, re-raised so `ds` \
+     receives the kernel's decision rather than a renamed copy of it. That \
+     vocabulary is closed and \
+     `every_desktop_instance_refusal_is_declared_by_a_command` iterates it \
+     against the published rosters",
+)];
+
+/// Every way the desktop-instance owner can refuse is a code some command
+/// publishes.
+///
+/// Two hosts relay this vocabulary rather than restating it — `ds-cli-desktop`
+/// when it asks which instance an operation is for, and the browser when it
+/// asks whether a captured result may still be applied — so neither of their
+/// call sites states a literal the scans above can read. This is what stands
+/// in for that: the kernel's own list, checked against what `ds capabilities`
+/// publishes, so a code the kernel adds cannot reach a caller undeclared.
+#[test]
+fn every_desktop_instance_refusal_is_declared_by_a_command() {
+    /// The one code in that vocabulary a CLI caller cannot meet. A bridge
+    /// request id is minted and read inside the application, to bind a
+    /// completion to the window that was dispatched; `ds` neither sends one
+    /// nor parses one, so no command can refuse with it.
+    const NOT_A_CLI_REFUSAL: &[&str] = &[ds_command_kernel::desktop_instance::REQUEST_ID_MALFORMED];
+
+    let (_, all_declared) = declared_codes();
+    let undeclared: Vec<&str> = ds_command_kernel::desktop_instance::REFUSALS
+        .iter()
+        .copied()
+        .filter(|code| !NOT_A_CLI_REFUSAL.contains(code))
+        .filter(|code| !all_declared.contains(*code))
+        .collect();
+    assert!(
+        undeclared.is_empty(),
+        "the desktop-instance owner can refuse with these codes, and no `ds` \
+         command declares them:\n{}\n\n\
+         Both hosts relay this vocabulary verbatim, so an undeclared code \
+         reaches a caller that cannot look it up. Add each to the REFUSALS of \
+         the commands whose operations can meet it.",
+        undeclared
+            .iter()
+            .map(|code| format!("  `{code}`"))
+            .collect::<Vec<_>>()
+            .join("\n")
+    );
+    // And the exclusion stays honest: a code named there must still be one the
+    // kernel actually has.
+    for code in NOT_A_CLI_REFUSAL {
+        assert!(
+            ds_command_kernel::desktop_instance::REFUSALS.contains(code),
+            "`{code}` is not in the kernel's vocabulary any more; drop it here"
+        );
+    }
+}
+
 #[test]
 fn every_application_refusal_code_is_documented() {
     let Some(root) = ds_web() else {
@@ -1322,6 +1410,22 @@ fn every_application_refusal_code_is_documented() {
     );
 
     let (codes, unreadable) = application_refusal_codes(&root);
+    let accounted: Vec<&str> = APPLICATION_CODE_NOT_A_LITERAL
+        .iter()
+        .map(|(file, _)| *file)
+        .collect();
+    for file in &accounted {
+        assert!(
+            unreadable.iter().any(|site| site.contains(file)),
+            "`{file}` is listed as relaying a code this scan cannot read, and \
+             it no longer holds such a site. Remove the entry: an accounting \
+             list that outlives its reason hides the next one."
+        );
+    }
+    let unreadable: Vec<String> = unreadable
+        .into_iter()
+        .filter(|site| !accounted.iter().any(|file| site.contains(file)))
+        .collect();
     assert!(
         unreadable.is_empty(),
         "these refusal mint sites do not state a code this check can read:\n{}\n\n\

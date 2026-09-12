@@ -138,6 +138,7 @@ refuses, never returning an empty set for a value the project never authored.",
     ],
     refusals: &[
         crate::NOT_PAIRED,
+        crate::PROJECT_NOT_OPEN,
         crate::AMBIGUOUS,
         crate::UNREACHABLE,
         crate::PAIRING_REJECTED,

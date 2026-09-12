@@ -76,6 +76,7 @@ it holds unsaved edits, the per-layer feature counts and the total. With \
     ],
     refusals: &[
         crate::NOT_PAIRED,
+        crate::PROJECT_NOT_OPEN,
         crate::AMBIGUOUS,
         crate::UNREACHABLE,
         crate::PAIRING_REJECTED,

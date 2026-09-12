@@ -46,9 +46,9 @@ use ds_cli_contract::spec::{Arg, ArgKind, Domain, Refusal};
 use serde_json::{Value, json};
 
 pub use ds_cli_desktop::ops::{
-    AMBIGUOUS, BridgeOp, DESCRIPTOR_ARG, NOT_PAIRED, PAIRING_REJECTED, REFUSED, SIGNED_OUT,
-    UNREACHABLE, UNREADABLE, UNSUPPORTED, classify_signed_out, invoke, paired, paired_availability,
-    plural,
+    AMBIGUOUS, BridgeOp, DESCRIPTOR_ARG, NOT_PAIRED, PAIRING_REJECTED, PROJECT_NOT_OPEN, REFUSED,
+    SIGNED_OUT, UNREACHABLE, UNREADABLE, UNSUPPORTED, classify_signed_out, invoke, paired,
+    paired_availability, plural,
 };
 
 pub static DOMAIN: Domain = Domain {

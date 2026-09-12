@@ -24,7 +24,8 @@
 use std::collections::BTreeSet;
 use std::path::PathBuf;
 use std::process::Command;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
 
 use ds_grid_engine::{CommandEnvelope, GridCommand, GridSession};
 use ds_grid_exchange::{parse_standards_library_manifest, unpack, unpack_library};
@@ -2625,7 +2626,490 @@ const PAIRING_CODES: &[&str] = &[
     "desktop_operation_unsupported",
     "desktop_signed_out",
     "pairing_rejected",
+    // Since instances replaced install profiles as the unit of pairing: the
+    // machine may hold several live instances, and a saved project selection
+    // that none of them has open is refused rather than switched into one.
+    "desktop_project_not_open",
+    "desktop_target_not_live",
+    "desktop_target_mismatch",
 ];
+
+// ---------------------------------------------------------------------------
+// Desktop instances: two live runtimes, on one machine that is not this one
+// ---------------------------------------------------------------------------
+
+/// A machine with its own app-data root and its own live instances.
+///
+/// Every descriptor `ds` can find here is one this test wrote, and every
+/// endpoint it can reach is one of these listeners: `XDG_DATA_HOME` is
+/// redirected, so the operator's own DS GridDesign is invisible to it and is
+/// never probed, contacted or counted. That is the standing rule for this
+/// suite, and instance routing is exactly the surface that would break it.
+struct Machine {
+    root: PathBuf,
+    instances: Vec<Instance>,
+}
+
+struct Instance {
+    id: String,
+    port: u16,
+    /// Every `/v1/invoke` this instance received: the operation, and the fence
+    /// it arrived with. What a routing test proves is which instance received
+    /// what — and, just as much, which one received nothing.
+    received: Arc<Mutex<Vec<Value>>>,
+    stop: Arc<AtomicBool>,
+    worker: Option<std::thread::JoinHandle<()>>,
+}
+
+impl Machine {
+    fn new(label: &str) -> Self {
+        let root = temp_root(label);
+        std::fs::create_dir_all(&root).expect("app data root");
+        Self {
+            root,
+            instances: Vec::new(),
+        }
+    }
+
+    /// One live instance: a descriptor in the registry directory, and a
+    /// listener that answers the authenticated handshake as the shell does.
+    fn live(&mut self, id: &str, project: &str) -> &Instance {
+        self.instance(id, project, true, true)
+    }
+
+    /// A descriptor whose endpoint answers 401: the port was taken by
+    /// something that is not this bridge, or the app died and something else
+    /// reused it. Live to a connection, dead to a handshake.
+    fn stale(&mut self, id: &str) -> &Instance {
+        self.instance(id, "project-gone", false, true)
+    }
+
+    fn instance(&mut self, id: &str, project: &str, paired: bool, publish: bool) -> &Instance {
+        let session = json!({
+            "session_revision": 4,
+            "map_revision": 1,
+            "connected": true,
+            "signed_in": true,
+            "uid": "uid-a",
+            "lane": "canary",
+            "credential_audience_sha256": "c".repeat(64),
+            "project": project,
+            "instance_id": id,
+            "build": "2026.9.12+1",
+            "started_at_ms": 1_757_000_000_000u64,
+            "map": { "open": true, "layers": [] },
+            "windows": [{ "label": "main", "project": project, "generation": 2 }],
+        });
+        let token = format!("{id}-token-{id}");
+        let instance = Instance::start(id, &token, session, paired);
+        if publish {
+            let directory = self
+                .root
+                .join("rw.datasolutions.desktop.canary")
+                .join("cli-bridge.d");
+            std::fs::create_dir_all(&directory).expect("registry directory");
+            std::fs::write(
+                directory.join(format!("{id}.json")),
+                serde_json::to_vec(&json!({
+                    "version": 1,
+                    "url": format!("http://127.0.0.1:{}", instance.port),
+                    "token": token,
+                    "pid": 4711,
+                    "instance_id": id,
+                    "lane": "canary",
+                    "build": "2026.9.12+1",
+                    "started_at_ms": 1_757_000_000_000u64,
+                }))
+                .expect("descriptor encodes"),
+            )
+            .expect("descriptor");
+        }
+        self.instances.push(instance);
+        self.instances.last().expect("just pushed")
+    }
+
+    fn instance_by(&self, id: &str) -> &Instance {
+        self.instances
+            .iter()
+            .find(|instance| instance.id == id)
+            .expect("an instance this machine started")
+    }
+
+    /// `ds`, run against this machine and no other. `DS_DESKTOP_DESCRIPTOR` is
+    /// removed rather than left unset: the suite's default points every other
+    /// test at a descriptor that does not exist, and these tests are about
+    /// what automatic enumeration finds.
+    fn ds(&self, args: &[&str]) -> Run {
+        self.ds_with(&[], args)
+    }
+
+    /// The same, for a session that set a default in its environment.
+    fn ds_with(&self, environment: &[(&str, &str)], args: &[&str]) -> Run {
+        let mut command = Command::new(env!("CARGO_BIN_EXE_ds"));
+        command
+            .args(args)
+            .env("NO_COLOR", "1")
+            .env("XDG_DATA_HOME", &self.root)
+            .env_remove("DS_DESKTOP_DESCRIPTOR")
+            .env_remove("DS_TARGET");
+        for (name, value) in environment {
+            command.env(name, value);
+        }
+        let output = command.output().expect("ds binary runs");
+        let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
+        Run {
+            envelope: serde_json::from_str(&stdout).unwrap_or(Value::Null),
+            stdout,
+            stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
+            code: output.status.code().unwrap_or(-1),
+        }
+    }
+}
+
+impl Drop for Machine {
+    fn drop(&mut self) {
+        for instance in &mut self.instances {
+            instance.stop.store(true, Ordering::Relaxed);
+            if let Some(worker) = instance.worker.take() {
+                let _ = worker.join();
+            }
+        }
+        let _ = std::fs::remove_dir_all(&self.root);
+    }
+}
+
+impl Instance {
+    fn start(id: &str, token: &str, session: Value, paired: bool) -> Self {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+        let port = listener.local_addr().expect("address").port();
+        listener.set_nonblocking(true).expect("nonblocking");
+        let received = Arc::new(Mutex::new(Vec::new()));
+        let stop = Arc::new(AtomicBool::new(false));
+        let worker = {
+            let received = Arc::clone(&received);
+            let stop = Arc::clone(&stop);
+            let token = token.to_owned();
+            std::thread::spawn(move || {
+                while !stop.load(Ordering::Relaxed) {
+                    match listener.accept() {
+                        Ok((stream, _)) => serve(stream, &token, &session, paired, &received),
+                        Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                            std::thread::sleep(std::time::Duration::from_millis(5));
+                        }
+                        Err(_) => break,
+                    }
+                }
+            })
+        };
+        Self {
+            id: id.to_owned(),
+            port,
+            received,
+            stop,
+            worker: Some(worker),
+        }
+    }
+
+    fn operations(&self) -> Vec<String> {
+        self.received
+            .lock()
+            .expect("received")
+            .iter()
+            .filter_map(|body| body["operation"].as_str().map(str::to_owned))
+            .collect()
+    }
+}
+
+/// One request, answered the way the shell answers it: the authenticated
+/// session, or the operation's own result. Anything without the pairing secret
+/// is 401, which is what makes a stale descriptor stale.
+fn serve(
+    mut stream: std::net::TcpStream,
+    token: &str,
+    session: &Value,
+    paired: bool,
+    received: &Arc<Mutex<Vec<Value>>>,
+) {
+    use std::io::{BufRead, BufReader, Read, Write};
+
+    // The listener polls for connections without blocking; on Linux the
+    // accepted socket inherits that, and a read that returns `WouldBlock`
+    // before the request has arrived looks to a client exactly like a bridge
+    // that hung up. This connection is served synchronously.
+    stream.set_nonblocking(false).expect("blocking connection");
+    let mut reader = BufReader::new(stream.try_clone().expect("clone"));
+    let mut request = String::new();
+    if reader.read_line(&mut request).is_err() {
+        return;
+    }
+    let mut length = 0usize;
+    let mut authorized = false;
+    loop {
+        let mut line = String::new();
+        // The end of the headers is an empty line, and a client that hung up
+        // reads as one too: either way there is nothing more to read here.
+        if reader.read_line(&mut line).is_err() || line.trim().is_empty() {
+            break;
+        }
+        let lower = line.to_ascii_lowercase();
+        if let Some(value) = lower.strip_prefix("content-length:") {
+            length = value.trim().parse().unwrap_or(0);
+        }
+        if lower.starts_with("authorization:") {
+            authorized = line.trim().ends_with(token);
+        }
+    }
+    let mut body = vec![0_u8; length];
+    if length > 0 && reader.read_exact(&mut body).is_err() {
+        return;
+    }
+    let (status, payload) = if !authorized || !paired {
+        (401, json!({ "error": "pairing_required" }))
+    } else if request.starts_with("POST /v1/invoke") {
+        let invocation: Value = serde_json::from_slice(&body).unwrap_or(Value::Null);
+        received.lock().expect("received").push(invocation);
+        (200, json!({ "ok": true }))
+    } else {
+        (200, session.clone())
+    };
+    let payload = serde_json::to_string(&payload).expect("encodes");
+    let _ = write!(
+        stream,
+        "HTTP/1.1 {status} {}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{payload}",
+        if status == 200 { "OK" } else { "Unauthorized" },
+        payload.len()
+    );
+}
+
+const INSTANCE_ONE: &str = "11111111111111111111111111111111";
+const INSTANCE_TWO: &str = "22222222222222222222222222222222";
+const INSTANCE_THREE: &str = "33333333333333333333333333333333";
+
+#[test]
+fn two_live_instances_refuse_without_an_explicit_target() {
+    let mut machine = Machine::new("desktop-two-instances");
+    machine.live(INSTANCE_ONE, "project-a");
+    machine.live(INSTANCE_TWO, "project-b");
+
+    // Both are enumerated, ordered by identity and never by which file was
+    // read first, and neither is described with anything secret.
+    let listed = machine.ds(&["desktop", "list", "--output", "json"]);
+    assert_eq!(listed.code, 0, "{}", listed.stderr);
+    let data = &listed.envelope["data"];
+    assert_eq!(data["live"], 2, "{}", listed.stdout);
+    assert_eq!(data["instances"][0]["instance_id"], INSTANCE_ONE);
+    assert_eq!(data["instances"][1]["instance_id"], INSTANCE_TWO);
+    assert_eq!(data["instances"][0]["project"], "project-a");
+    assert_eq!(data["instances"][1]["state"], "ready");
+    for secret in ["token", "127.0.0.1", "uid-a", "credential_audience"] {
+        assert!(
+            !listed.stdout.contains(secret),
+            "`ds desktop list` named `{secret}`: {}",
+            listed.stdout
+        );
+    }
+
+    // And an operation that could go to either goes to neither.
+    let refused = machine.ds(&["desktop", "status", "--output", "json"]);
+    assert_eq!(
+        refused.envelope["error"]["code"], "desktop_ambiguous",
+        "{}",
+        refused.stdout
+    );
+    let named: Vec<&str> = refused.envelope["error"]["detail"]["instances"]
+        .as_array()
+        .expect("the choices")
+        .iter()
+        .filter_map(|instance| instance["instance_id"].as_str())
+        .collect();
+    assert_eq!(named, vec![INSTANCE_ONE, INSTANCE_TWO]);
+
+    // Naming one settles it, and the answer is about that instance.
+    let one = machine.ds(&[
+        "desktop",
+        "status",
+        "--target",
+        &format!("desktop:{INSTANCE_TWO}"),
+        "--output",
+        "json",
+    ]);
+    assert_eq!(one.code, 0, "{}", one.stderr);
+    assert_eq!(one.envelope["data"]["instance"], INSTANCE_TWO);
+    assert_eq!(one.envelope["data"]["project"], "project-b");
+
+    // A session can name it once instead of on every command — and the flag
+    // still wins, because a default that overrode what a caller typed would
+    // not be a default.
+    let session = machine.ds_with(
+        &[("DS_TARGET", &format!("desktop:{INSTANCE_ONE}"))],
+        &["desktop", "status", "--output", "json"],
+    );
+    assert_eq!(session.code, 0, "{}", session.stderr);
+    assert_eq!(session.envelope["data"]["instance"], INSTANCE_ONE);
+    let overridden = machine.ds_with(
+        &[("DS_TARGET", &format!("desktop:{INSTANCE_ONE}"))],
+        &[
+            "desktop",
+            "status",
+            "--target",
+            &format!("desktop:{INSTANCE_TWO}"),
+            "--output",
+            "json",
+        ],
+    );
+    assert_eq!(overridden.envelope["data"]["instance"], INSTANCE_TWO);
+
+    // And a host that does not perform this operation is answered by name
+    // rather than by routing it somewhere that would.
+    let elsewhere = machine.ds_with(
+        &[("DS_TARGET", "server")],
+        &["desktop", "status", "--output", "json"],
+    );
+    assert_eq!(
+        elsewhere.envelope["error"]["code"], "target_host_unsupported",
+        "{}",
+        elsewhere.stdout
+    );
+}
+
+#[test]
+fn an_explicit_dead_instance_never_falls_through() {
+    let mut machine = Machine::new("desktop-dead-target");
+    machine.live(INSTANCE_ONE, "project-a");
+
+    // Exactly one instance is live and would have been the automatic answer.
+    // Naming another is still refused, by name, and reaches nothing.
+    let refused = machine.ds(&[
+        "desktop",
+        "status",
+        "--target",
+        &format!("desktop:{INSTANCE_THREE}"),
+        "--output",
+        "json",
+    ]);
+    assert_eq!(
+        refused.envelope["error"]["code"], "desktop_target_not_live",
+        "{}",
+        refused.stdout
+    );
+    assert_eq!(
+        refused.envelope["error"]["detail"]["target"], INSTANCE_THREE,
+        "the refusal names the target the caller asked for"
+    );
+    assert!(
+        machine.instance_by(INSTANCE_ONE).operations().is_empty(),
+        "the live instance must not have been sent the work of another"
+    );
+
+    // A target that is not an instance id at all is refused before anything is
+    // read, and under the same vocabulary.
+    let malformed = machine.ds(&[
+        "desktop",
+        "status",
+        "--target",
+        "desktop:the-second-one",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(
+        malformed.envelope["error"]["code"], "desktop_target_mismatch",
+        "{}",
+        malformed.stdout
+    );
+    // And a host that is not a host at all says so rather than guessing.
+    let unknown = machine.ds(&["desktop", "status", "--target", "cloud", "--output", "json"]);
+    assert_eq!(unknown.envelope["error"]["code"], "unknown_target");
+}
+
+#[test]
+fn a_stale_descriptor_is_skipped_only_after_a_verified_handshake() {
+    let mut machine = Machine::new("desktop-stale-descriptor");
+    // Both descriptors point at a listener that accepts a connection. Only one
+    // of them answers the authenticated session request, and a TCP handshake
+    // is deliberately not enough to be a candidate: a port an unrelated local
+    // process reused must never out-rank the live desktop.
+    machine.stale(INSTANCE_TWO);
+    machine.live(INSTANCE_ONE, "project-a");
+
+    let listed = machine.ds(&["desktop", "list", "--output", "json"]);
+    assert_eq!(listed.code, 0, "{}", listed.stderr);
+    assert_eq!(listed.envelope["data"]["live"], 1, "{}", listed.stdout);
+    assert_eq!(
+        listed.envelope["data"]["instances"][0]["instance_id"],
+        INSTANCE_ONE
+    );
+
+    // So the sole live instance is not made ambiguous by the leftover, and the
+    // leftover is not silently the answer either.
+    let status = machine.ds(&["desktop", "status", "--output", "json"]);
+    assert_eq!(status.code, 0, "{}", status.stderr);
+    assert_eq!(status.envelope["data"]["instance"], INSTANCE_ONE);
+    assert_eq!(status.envelope["data"]["project"], "project-a");
+}
+
+#[test]
+fn the_saved_selection_never_switches_a_live_map() {
+    let mut machine = Machine::new("desktop-no-switch");
+    machine.live(INSTANCE_ONE, "project-a");
+
+    let zoom = machine.ds(&[
+        "map",
+        "zoom",
+        "--bbox",
+        "29.9,-2.1,30.2,-1.85",
+        "--output",
+        "json",
+    ]);
+    assert!(
+        zoom.code == 0
+            || PAIRING_CODES.contains(&zoom.envelope["error"]["code"].as_str().unwrap_or_default()),
+        "a well-formed map call ended in `{}`: {}",
+        zoom.envelope["error"]["code"],
+        zoom.stdout
+    );
+    // Whatever else happened, the CLI did not move this window's project. The
+    // automatic `project.switch` that used to precede map work is retired: a
+    // saved CLI selection narrows which instance may serve an operation and is
+    // never an instruction to the window a person is looking at.
+    let operations = machine.instance_by(INSTANCE_ONE).operations();
+    assert!(
+        !operations
+            .iter()
+            .any(|operation| operation == "project.switch"),
+        "a map command sent `project.switch` to a live window: {operations:?}"
+    );
+
+    // The explicit switch is the one that may, and it is the operation the
+    // caller asked for rather than a step before another one.
+    let switched = machine.ds(&[
+        "desktop",
+        "project",
+        "switch",
+        "--project",
+        "project-b",
+        "--target",
+        &format!("desktop:{INSTANCE_ONE}"),
+        "--output",
+        "json",
+    ]);
+    let operations = machine.instance_by(INSTANCE_ONE).operations();
+    assert_eq!(
+        operations
+            .iter()
+            .filter(|operation| *operation == "project.switch")
+            .count(),
+        1,
+        "the explicit switch sends exactly one switch: {operations:?}"
+    );
+    // This fixture keeps answering with its original project, so the switch is
+    // reported as not completed rather than as done — which is the other half
+    // of the rule: a switch nobody performed is never reported as performed.
+    assert_eq!(
+        switched.envelope["error"]["code"], "auth_context_mismatch",
+        "{}",
+        switched.stdout
+    );
+}
 
 #[test]
 fn map_validates_its_own_inputs_before_it_opens_the_bridge() {
@@ -4309,6 +4793,10 @@ fn map_design_open_is_the_one_discoverable_visible_context_entry() {
         BTreeSet::from([
             "desktop_not_paired",
             "desktop_ambiguous",
+            // Opening a design context is project work, so it can meet the
+            // window that is on another project — refused by name now, where
+            // it used to be switched underneath the operator.
+            "desktop_project_not_open",
             "desktop_unreachable",
             "pairing_rejected",
             "desktop_signed_out",

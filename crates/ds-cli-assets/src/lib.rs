@@ -59,8 +59,9 @@ use serde_json::{Value, json};
 // `ds work` has learned them here too.
 pub use ds_cli_desktop::ops::{
     AMBIGUOUS, BACKEND_UNREACHABLE, BridgeOp, DESCRIPTOR_ARG, INVALID_NUMBER, NOT_PAIRED, OFFLINE,
-    PAIRING_REJECTED, REFUSED, SIGNED_OUT, SIGNED_OUT_MARKERS, UNREACHABLE, UNREADABLE,
-    UNSUPPORTED, classify_signed_out, integer, invoke, paired, paired_availability, plural,
+    PAIRING_REJECTED, PROJECT_NOT_OPEN, REFUSED, SIGNED_OUT, SIGNED_OUT_MARKERS, UNREACHABLE,
+    UNREADABLE, UNSUPPORTED, classify_signed_out, integer, invoke, paired, paired_availability,
+    plural,
 };
 
 /// The domain, with its commands in the order a session uses them: find the

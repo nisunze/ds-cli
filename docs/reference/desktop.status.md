@@ -28,8 +28,16 @@ and it can never authorize a project write on its own.
 
 ## Descriptor discovery
 
-Each install profile is a distinct Tauri bundle identifier, and each writes its
-own descriptor:
+**The unit of pairing is a live instance, not an install.** Since 2026-09-12
+each running instance publishes its own descriptor under
+`<app data>/cli-bridge.d/<instance_id>.json`, one file per instance, and the
+first one also refreshes the legacy per-profile `cli-bridge.json` below so an
+older `ds` keeps pairing. `ds desktop list` enumerates them and `--target
+desktop:<instance_id>` names one; the whole rule is in
+[`ds desktop`](desktop.md), and what follows is where the files live.
+
+Each install profile is a distinct Tauri bundle identifier, and each holds its
+instances' descriptors:
 
 | Profile | Identifier |
 |---|---|
@@ -37,7 +45,8 @@ own descriptor:
 | canary | `rw.datasolutions.desktop.canary` |
 | dev | `rw.datasolutions.desktop.dev` |
 
-The descriptor is `cli-bridge.json` in that identifier's app-data directory:
+The registry directory `cli-bridge.d/` and the legacy `cli-bridge.json` are in
+that identifier's app-data directory:
 
 | Platform | Location |
 |---|---|
@@ -52,23 +61,22 @@ auto-discovery profile: it is a developer harness and must be named with
 an ordinary `ds` invocation from silently mixing source-run state with an
 installed Stable, Canary, or dev desktop.
 
-Automatic discovery first applies one bounded loopback liveness probe to each
-known descriptor, so dead files left by exited Stable, Canary or dev processes
-do not create false ambiguity. **Real ambiguity is refused, never resolved by
-preference.** Two responsive profiles at once produce `desktop_ambiguous`
-listing both descriptor paths. Silently
-picking whichever sorted first is the class of mistake that stays invisible
-until it has written to the wrong project.
+Automatic discovery applies one bounded, authenticated handshake to every
+descriptor it finds, so dead files left by exited instances do not create false
+ambiguity. **Real ambiguity is refused, never resolved by preference.** Two
+live instances at once produce `desktop_ambiguous` naming both, and order,
+focus and recency never decide:
 
 ```
 $ ds desktop status --output json
-{"…","error":{"code":"desktop_ambiguous","detail":{"candidates":[
-  {"profile":"canary","descriptor":"/home/…/rw.datasolutions.desktop.canary/cli-bridge.json"},
-  {"profile":"dev","descriptor":"/home/…/rw.datasolutions.desktop.dev/cli-bridge.json"}]}}}
+{"…","error":{"code":"desktop_ambiguous","detail":{"instances":[
+  {"instance_id":"1f0c…","profile":"canary","lane":"canary","project":"…"},
+  {"instance_id":"8a41…","profile":"stable","lane":"stable","project":null}]}}}
 ```
 
-Settle it with `--desktop-descriptor <path>`. An explicit path is used verbatim
-and never second-guessed.
+Settle it with `--target desktop:<instance_id>`, from `ds desktop list`. Or
+with `--desktop-descriptor <path>`, which names one descriptor file and is used
+verbatim and never second-guessed.
 
 `DS_DESKTOP_DESCRIPTOR` names the same thing for a whole session. The
 desktop's `cl` command line sets it in every terminal it opens, so that
@@ -99,9 +107,16 @@ So "not paired" is a **success**:
   "design_context": null,
   "reason": "no_session",
   "remedy": "start DS GridDesign, then run `ds desktop status`",
-  "searched": ["stable", "canary", "dev"]
+  "searched": ["stable", "canary", "dev", "dev-canary"],
+  "unusable": []
 }
 ```
+
+When exactly one instance is live, `status` describes it and reports its
+`instance` id and how that id was identified (`minted` by the instance, or
+`derived` by the kernel from a descriptor that predates them). When several
+are, it refuses rather than choosing — the same rule every other paired
+command follows, and for the same reason.
 
 Commands that genuinely need the session declare `Authority::DesktopUser` and
 report unavailable through their own check. Those are what make `doctor`

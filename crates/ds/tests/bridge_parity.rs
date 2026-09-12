@@ -2385,3 +2385,229 @@ fn retired_automation_bridge_is_not_a_map_fallback() {
         );
     }
 }
+
+// ---------------------------------------------------------------------------
+// The instance registry: one shape, and both hosts spell it the same way
+// ---------------------------------------------------------------------------
+
+/// The text of one Rust item in the shell's source, from its opening line to
+/// the matching brace. Reading the whole file for a field name would find it in
+/// any struct; a bound to one item is what makes the pin mean something.
+fn item<'a>(source: &'a str, opening: &str) -> Option<&'a str> {
+    let start = source.find(opening)?;
+    let mut depth = 0usize;
+    for (offset, character) in source[start..].char_indices() {
+        match character {
+            '{' => depth += 1,
+            '}' => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(&source[start..start + offset + 1]);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+/// Every field `ds` reads out of a published descriptor, and every field it
+/// reads out of the authenticated handshake, is a field the shell writes —
+/// spelled identically.
+///
+/// This is the pin the rest of instance routing rests on. A descriptor is read
+/// before anything is probed and a session is read before anything is sent, so
+/// a renamed field is not a compile error on either side: it is a machine that
+/// silently stops pairing, or worse, one that pairs and reports the wrong
+/// project. Neither side can rename one alone.
+#[test]
+fn the_descriptor_and_session_this_client_reads_are_the_shells_own() {
+    let Some(app) = app() else {
+        skip("the ds-web sibling repository is not on disk");
+        return;
+    };
+
+    let descriptor = item(&app.transport, "struct Descriptor<'a> {")
+        .expect("the shell publishes a descriptor struct");
+    for field in [
+        // The four fields version 1 always had. `ds` sends the token to the
+        // url and nothing else, so these three are load-bearing on every call.
+        "version",
+        "url",
+        "token",
+        "pid",
+        // Added since, all optional, so an older `ds` still reads the file and
+        // a newer one derives what an older file does not say.
+        "instance_id",
+        "lane",
+        "build",
+        "started_at_ms",
+    ] {
+        assert!(
+            descriptor.contains(&format!("{field}:")),
+            "the shell's descriptor no longer publishes `{field}`, which \
+             `ds_cli_desktop::discover` reads:\n{descriptor}"
+        );
+    }
+    // A profile is deliberately absent: the reader knows which install
+    // directory it read the file from, and a profile spelled in the file could
+    // only disagree with that. `admit_descriptor` takes the read-under profile.
+    assert!(
+        !descriptor.contains("profile:"),
+        "a descriptor that names its own profile changes what admission means; \
+         the kernel takes the directory the file was read from"
+    );
+
+    // Both spellings of where a descriptor lives. The registry directory is
+    // where every live instance publishes; the legacy file is the one an older
+    // `ds` is the only reader of, and dropping it would unpair those builds.
+    for path in [
+        ds_cli_desktop::discover::DESCRIPTOR_DIR,
+        ds_cli_desktop::discover::DESCRIPTOR_FILE,
+    ] {
+        assert!(
+            app.transport.contains(&format!("\"{path}\"")),
+            "the shell no longer writes `{path}`, which discovery enumerates"
+        );
+    }
+
+    let session = item(&app.transport, "struct SessionView {").expect("a session view");
+    let window = item(&app.transport, "struct WindowView {").expect("a window view");
+    let published = item(&app.transport, "fn published_session(").expect("the published session");
+    for (field, source, what) in [
+        (
+            "session_revision",
+            session,
+            "the liveness proof and the fence",
+        ),
+        ("uid", session, "the account a candidate is compared on"),
+        ("lane", session, "the lane a candidate is compared on"),
+        ("credential_audience_sha256", session, "the audience"),
+        ("project", session, "which instance may serve project work"),
+        (
+            "windows",
+            session,
+            "the projects an instance holds in its views",
+        ),
+        ("label", window, "which view a caller may pin"),
+        ("generation", window, "this view's context generation"),
+        ("instance_id", published, "the instance naming itself"),
+        ("build", published, "safe metadata `ds desktop list` shows"),
+        (
+            "started_at_ms",
+            published,
+            "safe metadata `ds desktop list` shows",
+        ),
+    ] {
+        assert!(
+            source.contains(field),
+            "the shell's session no longer publishes `{field}` ({what}), which \
+             `ds_cli_desktop::discover` reads"
+        );
+    }
+
+    // And the client reads exactly that shape. The names above are a source
+    // scan; this is the same names put through the reader, so a rename on
+    // *this* side fails here too rather than quietly producing an instance
+    // that can serve nobody.
+    let descriptor = ds_cli_desktop::discover::Descriptor {
+        url: "http://127.0.0.1:41234".to_owned(),
+        token: "0123456789abcdef0123456789abcdef".to_owned(),
+        pid: 4711,
+        instance_id: "11111111111111111111111111111111".to_owned(),
+        identity: ds_command_kernel::desktop_instance::Identity::Minted,
+        profile: Some("canary".to_owned()),
+        path: PathBuf::from("cli-bridge.d/one.json"),
+        window: None,
+    };
+    let handshake = ds_cli_desktop::discover::handshake_of(
+        &descriptor,
+        &serde_json::json!({
+            "session_revision": 7,
+            "map_revision": 3,
+            "connected": true,
+            "signed_in": true,
+            "uid": "uid-a",
+            "lane": "canary",
+            "credential_audience_sha256": "c".repeat(64),
+            "project": "project-a",
+            "instance_id": "11111111111111111111111111111111",
+            "build": "2026.9.12+1",
+            "started_at_ms": 1_757_000_000_000u64,
+            "windows": [
+                {"label": "main", "project": "project-a", "generation": 2},
+                {"label": "workspace-2", "project": "project-b", "generation": 1},
+            ],
+        }),
+    );
+    let ds_cli_desktop::discover::Handshake::Session(candidate) = handshake else {
+        panic!("the shell's own session shape must read as a routable candidate");
+    };
+    assert_eq!(candidate.uid, "uid-a");
+    assert_eq!(candidate.lane, "canary");
+    assert_eq!(candidate.project.as_deref(), Some("project-a"));
+    assert_eq!(candidate.session_revision, 7);
+    assert_eq!(candidate.build.as_deref(), Some("2026.9.12+1"));
+    // A project open only in a second window still makes this instance the one
+    // that can serve that work, which is why the roster is read at all.
+    assert!(candidate.opens("project-b"));
+}
+
+/// The identity fence stays the five fields the shell verifies.
+///
+/// It is tempting to add the instance id to it now that one exists. The
+/// instance is already fenced by transport — the operation is posted to that
+/// instance's own loopback origin with that instance's own pairing token — and
+/// the shell's fence struct denies unknown fields, so a sixth field would make
+/// every call to an older desktop fail at the door.
+#[test]
+fn the_invocation_fence_is_still_the_five_fields_the_shell_verifies() {
+    let Some(app) = app() else {
+        skip("the ds-web sibling repository is not on disk");
+        return;
+    };
+    let fence = item(&app.transport, "struct IdentityFence {").expect("the shell's fence");
+    let declared: Vec<&str> = fence
+        .lines()
+        .filter_map(|line| line.trim().strip_suffix(','))
+        .filter_map(|line| line.split(':').next())
+        .filter(|name| !name.is_empty() && !name.starts_with('#') && !name.starts_with("//"))
+        .collect();
+    assert_eq!(
+        declared,
+        vec![
+            "uid",
+            "lane",
+            "credential_audience_sha256",
+            "project",
+            "session_revision",
+            "context_generation"
+        ],
+        "the shell's identity fence changed shape; `ds_cli_desktop::bridge::IdentityFence` \
+         sends exactly these fields and the shell denies unknown ones"
+    );
+    // The one added field is optional on both sides, which is the only way it
+    // could be added at all: the shell denies unknown fields, so a required
+    // field would refuse every call from a `ds` that predates it, and a `ds`
+    // that always sent one would refuse against a desktop that predates it.
+    assert!(
+        fence.contains("skip_serializing_if") && fence.contains("default"),
+        "`context_generation` must stay optional in both directions:\n{fence}"
+    );
+    assert!(
+        !fence.contains("instance_id"),
+        "the instance is fenced by transport — its own loopback origin and its \
+         own pairing token — not by a sixth fence field"
+    );
+    // Which window owns the session is the shell's rule, and `ds` reads the
+    // generation of that window and no other.
+    assert!(
+        app.transport.contains(&format!(
+            "OWNER_WINDOW_LABEL: &str = \"{}\"",
+            ds_cli_desktop::discover::OWNER_WINDOW_LABEL
+        )),
+        "the shell's owner window is no longer `{}`, so the generation `ds` \
+         sends would be another view's",
+        ds_cli_desktop::discover::OWNER_WINDOW_LABEL
+    );
+}
