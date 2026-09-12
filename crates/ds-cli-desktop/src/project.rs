@@ -12,6 +12,7 @@ use serde_json::{Map, Value, json};
 use ds_command_kernel::project_context;
 
 use crate::bridge;
+use crate::discover;
 use crate::ops::{self, BridgeOp, DESCRIPTOR_ARG, TARGET_ARG};
 
 const TIMEOUT: Duration = Duration::from_secs(30);
@@ -190,7 +191,15 @@ pub fn list(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
 pub fn switch(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let project = bounded_text(inputs.require("project")?, "project", 160)?;
     let descriptor = ops::paired(inputs.value("desktop-descriptor"))?;
-    let before = bridge::IdentityFence::from_session(&bridge::session(&descriptor)?)?;
+    let observed = bridge::session(&descriptor)?;
+    let before = bridge::IdentityFence::from_session(&observed)?;
+    // Who is being addressed is what the instance answered with, not the id
+    // the descriptor was admitted under: a pinned file's identity can be
+    // derived, and a derived id would make the comparison below a comparison
+    // of one constant with itself.
+    let addressed = discover::published_instance(&observed)
+        .unwrap_or(&descriptor.instance_id)
+        .to_owned();
     let switched = ops::invoke(
         &descriptor,
         &SWITCH_OP,
@@ -201,11 +210,12 @@ pub fn switch(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     // The one operation allowed to move a window's project is also the one
     // that has to prove it did: the same instance, the same principal, and
     // that project open when it answered.
-    let after = bridge::IdentityFence::from_session(&bridge::session(&descriptor)?)?;
-    let instance = Some(descriptor.instance_id.as_str());
+    let reobserved = bridge::session(&descriptor)?;
+    let after = bridge::IdentityFence::from_session(&reobserved)?;
+    let answered = discover::published_instance(&reobserved).unwrap_or(&addressed);
     if !project_context::switch_completed(
-        ops::fence_context(&before, instance),
-        ops::fence_context(&after, instance),
+        ops::fence_context(&before, Some(addressed.as_str())),
+        ops::fence_context(&after, Some(answered)),
         project,
     ) {
         return Err(Failure::conflict(
@@ -213,7 +223,7 @@ pub fn switch(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             "the targeted DS GridDesign instance did not come back holding that project",
         )
         .remedy(SWITCH_NOT_COMPLETED.remedy)
-        .detail(json!({ "project": project, "instance": descriptor.instance_id })));
+        .detail(json!({ "project": project, "instance": addressed })));
     }
     Ok(switched)
 }

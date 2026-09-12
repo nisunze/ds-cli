@@ -363,11 +363,7 @@ where
         // A running instance names itself. Its own answer outranks an identity
         // derived from a file it may have outgrown, and a second file naming
         // the same running instance is the same instance.
-        if let Some(published) = session
-            .get("instance_id")
-            .and_then(Value::as_str)
-            .filter(|id| kernel::instance_id_valid(id))
-        {
+        if let Some(published) = published_instance(&session) {
             found.descriptor.instance_id = published.to_owned();
             found.descriptor.identity = kernel::Identity::Minted;
         }
@@ -484,16 +480,26 @@ fn probe(descriptor: &Descriptor) -> Option<Value> {
     Some(session)
 }
 
+/// The instance a live session names itself, when it names one at all.
+///
+/// A descriptor's admitted identity may be *derived* — from a file an older
+/// desktop wrote, or from one this process has outgrown — so where a host has
+/// a session in hand, this is who actually answered. Older desktops publish
+/// none, and then there is nothing here to read.
+pub fn published_instance(session: &Value) -> Option<&str> {
+    session
+        .get("instance_id")
+        .and_then(Value::as_str)
+        .filter(|id| kernel::instance_id_valid(id))
+}
+
 /// Ask one endpoint who it is. Used where a caller named both a descriptor
 /// file and an instance: the file's admitted identity may be derived, and only
 /// the running process can say what it actually calls itself.
 pub fn identify(descriptor: &Descriptor) -> Option<String> {
     let session = probe(descriptor)?;
     Some(
-        session
-            .get("instance_id")
-            .and_then(Value::as_str)
-            .filter(|id| kernel::instance_id_valid(id))
+        published_instance(&session)
             .unwrap_or(&descriptor.instance_id)
             .to_owned(),
     )
