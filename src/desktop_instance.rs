@@ -770,12 +770,13 @@ fn select_target(
         }
     }
     if let Some(project) = requirement.narrowing_project() {
-        let elsewhere: Vec<&Candidate> = compatible
+        // Every instance that does hold it, the named one included: a caller
+        // who pinned the wrong window of the right instance is told so, and a
+        // caller who pinned the wrong instance is told which one to name.
+        let holding: Vec<&Candidate> = compatible
             .iter()
             .copied()
-            .filter(|candidate| {
-                candidate.instance_id != named.instance_id && candidate.opens(project)
-            })
+            .filter(|candidate| candidate.opens(project))
             .collect();
         let open_here = match target.window.as_deref() {
             Some(window) => named
@@ -785,7 +786,7 @@ fn select_target(
             None => named.opens(project),
         };
         if !open_here {
-            return Err(project_not_open(project, &elsewhere));
+            return Err(project_not_open(project, &holding));
         }
     }
     Ok(Route {
@@ -1459,7 +1460,7 @@ mod tests {
         assert_eq!(fault.code, DESKTOP_PROJECT_NOT_OPEN);
         assert!(fault.remedy.contains("ds desktop project switch --target"));
         assert_eq!(fault.detail.expect("a detail")["instances"], json!([]));
-        // A named instance without it is told which of its siblings has it.
+        // A named instance without it is told which instance does have it.
         let fault = refusal(
             select(&live, Some(&target(ONE)), &requirement(Some("project-b"))).unwrap_err(),
         );
