@@ -289,25 +289,9 @@ async fn submit(
 ) -> Result<(StatusCode, Json<Value>), ApiError> {
     let project = project_query(query)?;
     admitting(move || {
-        let sessions = app.sessions.clone();
-        let now_ms = runtime::now_ms();
-        let membership = sessions.membership(now_ms)?;
-        let client = sessions.client_label();
-        let job = runtime::submit(
-            &app.database,
-            &Admission {
-                identity: sessions.identity(),
-                client: &client,
-                key: &key,
-                requested_project: project.as_deref(),
-                saved_project: None,
-                membership: &membership,
-                limits: sessions.limits(),
-                now_ms,
-            },
-            &body,
-        )
-        .map_err(|error| refresh_on_refusal(&sessions, &error))?;
+        let job = admitted(&app.sessions, &key, project.as_deref(), |admission| {
+            runtime::submit(&app.database, admission, &body)
+        })?;
         Ok((StatusCode::ACCEPTED, Json(json!({"job":job}))))
     })
     .await
@@ -330,25 +314,14 @@ async fn submit_solar(
                 Failure::invalid("server_refused", error)
                     .remedy("send the documented ds.solar.server-submission/v1 envelope")
             })?;
-        let now_ms = runtime::now_ms();
-        let membership = sessions.membership(now_ms)?;
-        let client = sessions.client_label();
-        let job = runtime::submit_solar_with_provenance(
-            &app.database,
-            &Admission {
-                identity: sessions.identity(),
-                client: &client,
-                key: &key,
-                requested_project: project.as_deref(),
-                saved_project: None,
-                membership: &membership,
-                limits: sessions.limits(),
-                now_ms,
-            },
-            &sealed,
-            provenance,
-        )
-        .map_err(|error| refresh_on_refusal(&sessions, &error))?;
+        let job = admitted(&sessions, &key, project.as_deref(), |admission| {
+            runtime::submit_solar_with_provenance(
+                &app.database,
+                admission,
+                &sealed,
+                provenance.clone(),
+            )
+        })?;
         Ok((StatusCode::ACCEPTED, Json(json!({"job":job}))))
     })
     .await
@@ -487,19 +460,44 @@ pub fn project_scopes(app: &App, project: Option<&str>) -> Result<Vec<String>, S
     Ok(scopes.into_iter().collect())
 }
 
+/// Run one submission under this connection's membership, and — if the only
+/// thing wrong was a snapshot older than the grant — under a freshly fetched
+/// one, once. Everything else is relayed exactly as the kernel decided it.
+fn admitted<T>(
+    sessions: &ServerSessions,
+    key: &str,
+    project: Option<&str>,
+    submit: impl Fn(&Admission<'_>) -> Result<T, runtime::SubmitError>,
+) -> Result<T, Failure> {
+    let now_ms = runtime::now_ms();
+    let client = sessions.client_label();
+    let attempt = |membership: &_| {
+        submit(&Admission {
+            identity: sessions.identity(),
+            client: &client,
+            key,
+            requested_project: project,
+            saved_project: None,
+            membership,
+            limits: sessions.limits(),
+            now_ms,
+        })
+    };
+    match attempt(&sessions.membership(now_ms)?) {
+        Ok(value) => Ok(value),
+        Err(error) if error.code() == Some("project_not_visible") => {
+            attempt(&sessions.membership_now(now_ms)?).map_err(|error| {
+                sessions.forget_membership();
+                sessions::submit_failure(&error)
+            })
+        }
+        Err(error) => Err(sessions::submit_failure(&error)),
+    }
+}
+
 fn host_failure(message: impl ToString) -> Failure {
     Failure::conflict("server_refused", message.to_string())
         .remedy("read the stated reason; verify ds auth status and that ds server serve is running")
-}
-
-/// A refusal decided from a cached membership snapshot may simply be out of
-/// date. Forget it so the next call fetches a fresh one, then relay the
-/// refusal exactly as the kernel wrote it.
-fn refresh_on_refusal(sessions: &ServerSessions, error: &runtime::SubmitError) -> Failure {
-    if error.code() == Some("project_not_visible") {
-        sessions.forget_membership();
-    }
-    sessions::submit_failure(error)
 }
 
 pub fn prepare_directory(path: &Path) -> Result<(), String> {
@@ -1185,6 +1183,10 @@ pub(crate) mod tests {
         .await;
         assert_eq!(status, StatusCode::BAD_REQUEST);
         assert_eq!(refused["code"], "project_not_visible");
+        // The refusal left a snapshot cached for ten minutes. The grant lands
+        // now, and the very next call is admitted — because a refusal is
+        // decided again against a freshly fetched directory before it is
+        // relayed, not because the cache expired.
         directory.0.lock().unwrap().push(B.into());
         let (status, admitted) = call(
             app,

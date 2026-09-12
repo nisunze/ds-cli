@@ -201,6 +201,13 @@ impl ServerSessions {
         Ok(snapshot)
     }
 
+    /// A snapshot fetched now, whatever the cache said. Used on the second
+    /// try after a refusal, so a project granted a moment ago is admitted on
+    /// the call that names it rather than on the one after.
+    pub fn membership_now(&self, now_ms: u64) -> Result<Membership, Failure> {
+        self.fetch_membership(now_ms)
+    }
+
     /// Forget the cached snapshot; the next question fetches a fresh one.
     pub fn forget_membership(&self) {
         if let Ok(mut held) = self.membership.lock() {
