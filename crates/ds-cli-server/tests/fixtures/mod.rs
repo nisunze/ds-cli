@@ -113,8 +113,12 @@ impl SessionOpener for NoGateway {
     }
 }
 
-/// The native device authorizer. `Paused` is how a proof starts a worker pool
-/// for its recovery pass without letting it claim and execute anything.
+/// The authorizer a proof uses when authorization is not what it is about —
+/// the store, the document source, the door. It is NOT where the offline
+/// claim rests: that is made against the production `NativeAuthorizer`,
+/// reading a real protected credential, in the real `ds server serve`
+/// process ([`LiveServer`]). `Paused` is how a proof starts a worker pool for
+/// its recovery pass without letting it claim and execute anything.
 pub struct Allow;
 impl Authorizer for Allow {
     fn authorize(&self, _: &str) -> Result<(), String> {

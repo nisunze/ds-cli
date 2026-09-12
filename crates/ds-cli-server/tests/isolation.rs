@@ -32,6 +32,17 @@
 //!     answer, whichever host executes it — is about what an operator types,
 //!     so it is proven by typing it.
 //!
+//! Authorization is not one of the fixtures. The proofs that make the
+//! offline-first claim about WHO OWNS THIS HOST run the real
+//! `ds server serve` as its own process, over a machine holding a real
+//! protected device credential, with the network cut by an `LD_PRELOAD` shim
+//! — see the section "The SHIPPED Server, offline". The harness's `Allow`
+//! authorizer survives only in the proofs that are about something else (the
+//! store, the document source, the door), never in one that claims a Server
+//! works without an upstream. `the_whole_proof_holds_again_with_the_network_cut`
+//! then re-runs every test in this file on a machine that cannot reach the
+//! network at all.
+//!
 //! What is NOT proven here, and why, is stated in the `unproven_…` tests at
 //! the bottom: each is `#[ignore]`d with its reason in its own name. Solar
 //! EXECUTION on the Server and report export on the Server are among them.
@@ -40,7 +51,7 @@ mod fixtures;
 
 use ds_cli_contract::outcome::ExitClass;
 use ds_command_kernel::compute_jobs::{Job, Phase};
-use ds_command_kernel::execution_context::ExecutionContext;
+use ds_command_kernel::execution_context::{ExecutionContext, MAX_PROJECT_CHARS};
 use ds_compute_runtime as runtime;
 use ds_layer_ops::{ListRequest, Preferences};
 use fixtures::*;
@@ -1053,6 +1064,14 @@ fn item6_execution_needs_no_directory_and_no_upstream_and_one_project_never_touc
 /// whole way: NO gateway session is ever opened, and no document source is
 /// ever touched. There is no online branch to take and no directory to be
 /// stale, so there is nothing here that could behave differently offline.
+///
+/// What it deliberately does NOT prove is authorization: this host runs
+/// behind the harness's `Allow`, because what is being counted here is the
+/// store and the document source. The offline claim about AUTHORIZATION is
+/// made where it belongs — against the production `NativeAuthorizer` in the
+/// real `ds server serve` process, in
+/// `the_server_starts_and_serves_with_no_gateway_and_the_real_authorizer` and
+/// `losing_the_gateway_changes_no_answer` below.
 #[test]
 fn admission_and_execution_need_no_upstream_at_all() {
     let mut host = Host::start(limits());
@@ -2262,7 +2281,7 @@ fn as_query_value(value: &str) -> String {
 #[test]
 fn a_path_like_project_id_is_refused_before_anything_is_written() {
     let host = Host::start(limits());
-    let path_like = [
+    let mut path_like: Vec<String> = [
         "..",
         ".",
         "A/../B",
@@ -2272,9 +2291,15 @@ fn a_path_like_project_id_is_refused_before_anything_is_written() {
         "A B",
         " project-a",
         "project-a ",
-    ];
+    ]
+    .iter()
+    .map(|value| (*value).to_string())
+    .collect();
+    // The bound is part of the same grammar and is the kernel's own number,
+    // asked for rather than written down.
+    path_like.push("p".repeat(MAX_PROJECT_CHARS + 1));
 
-    for value in path_like {
+    for value in path_like.iter().map(String::as_str) {
         // At the wire, where a caller can type anything.
         let refused = host.raw(
             "POST",
@@ -2339,14 +2364,21 @@ fn a_path_like_project_id_is_refused_before_anything_is_written() {
         "copy one exact ds_project value from ds auth project list"
     );
 
-    // The names the product actually uses are untouched by the rule.
-    for ordinary in [A, B, C, OUTSIDE, "aderm", "p"] {
+    // The names the product actually uses are untouched by the rule, and so
+    // is the longest one it allows: the bound refuses what is over it, not
+    // what is at it.
+    let longest = "p".repeat(MAX_PROJECT_CHARS);
+    for (index, ordinary) in [A, B, C, OUTSIDE, "aderm", "p", longest.as_str()]
+        .iter()
+        .enumerate()
+    {
         let admitted = host.raw(
             "POST",
-            &format!("/v1/transformer-processing/ordinary-{ordinary}?project={ordinary}"),
+            &format!("/v1/transformer-processing/ordinary-{index}?project={ordinary}"),
             Some(&transformer("T-OK")),
         );
         assert_eq!(admitted.status, 202, "{ordinary}: {}", admitted.stringify());
+        assert_eq!(admitted.json()["job"]["context"]["project"], *ordinary);
     }
 }
 
