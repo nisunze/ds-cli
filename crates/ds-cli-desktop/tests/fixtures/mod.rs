@@ -218,9 +218,10 @@ pub struct Bridge {
     pub display_name: String,
     session: Arc<Mutex<Value>>,
     log: Arc<Mutex<Vec<Received>>>,
-    /// A refusal this instance owes the next operation it is asked to perform.
-    /// The application raises these itself — a context fence, an offline
-    /// switch — and what a caller receives is the whole claim.
+    /// An answer this instance owes the next operation it is asked to perform.
+    /// The application decides these itself — a context fence, an offline
+    /// switch, or a reply that overstates what it did — and what a caller
+    /// receives is the whole claim.
     owed: Arc<Mutex<Vec<(u16, Value)>>>,
     stop: Arc<AtomicBool>,
     worker: Option<JoinHandle<()>>,
@@ -366,9 +367,10 @@ impl Bridge {
             .any(|request| request.path == "/v1/session")
     }
 
-    /// The application will refuse the next operation with this exact typed
-    /// body — the shape its own structured refusals have.
-    pub fn refuse_next_invoke(&self, status: u16, body: Value) {
+    /// The application will answer the next operation with exactly this status
+    /// and body: a typed refusal it raises itself, or — the harder case — a
+    /// success that claims something the session does not show.
+    pub fn answer_next_invoke(&self, status: u16, body: Value) {
         self.owed.lock().expect("owed").push((status, body));
     }
 

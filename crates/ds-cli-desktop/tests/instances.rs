@@ -527,21 +527,50 @@ fn only_the_explicit_switch_moves_a_project_and_only_in_the_instance_it_named() 
 }
 
 /// A switch the targeted instance did not complete is reported, never assumed.
-/// `ds` re-observes the instance it addressed, and a session that came back
-/// holding something else is a conflict — the next command must not land in a
+///
+/// `ds` re-observes the instance it addressed, and an answer that claims more
+/// than the session shows is a conflict: the next command must not land in a
 /// window the operator believes moved.
 #[test]
 fn a_switch_the_named_instance_did_not_complete_is_reported_not_assumed() {
     let machine = Machine::new();
-    // This instance answers the switch and does not move: `perform` only moves
-    // a session for `project.switch`, so asking for the project it already has
-    // is the honest "changed nothing" case; asking a refusing instance is the
-    // dishonest one. Use an operation the fixture reports as done while the
-    // session stays where it was.
     let alpha = Bridge::start(ALPHA, Some("project-a"), SHARED_NAME);
+    // The application answers the switch as done and does not move.
+    alpha.answer_next_invoke(
+        200,
+        json!({
+            "changed": true,
+            "previousProject": "project-a",
+            "activeProject": "project-z",
+            "instance": ALPHA,
+            "window": "main",
+        }),
+    );
     machine.publish(&alpha);
 
-    // A switch to the project it already holds completes, and says so.
+    let refusal = refused(
+        Invocation::signed_in().run(
+            &ds_cli_desktop::project::SWITCH_COMMAND,
+            ds_cli_desktop::project::switch,
+            &["--project", "project-z", "--target", &target(ALPHA)],
+        ),
+        "the instance came back holding another project",
+    );
+    assert_eq!(refusal.code(), "auth_context_mismatch");
+    let detail = refusal.detail_value().expect("a detail");
+    assert_eq!(detail["project"], json!("project-z"));
+    assert_eq!(
+        detail["instance"],
+        json!(ALPHA),
+        "the instance it addressed"
+    );
+    assert_eq!(
+        alpha.project().as_deref(),
+        Some("project-a"),
+        "it really did not move"
+    );
+
+    // And a switch to the project it already holds completes, and says so.
     let unchanged = Invocation::signed_in()
         .run(
             &ds_cli_desktop::project::SWITCH_COMMAND,
@@ -560,7 +589,7 @@ fn a_switch_the_named_instance_did_not_complete_is_reported_not_assumed() {
 fn a_context_generation_refusal_reaches_the_caller_with_its_own_code_and_remedy() {
     let machine = Machine::new();
     let alpha = Bridge::start(ALPHA, Some("project-a"), SHARED_NAME);
-    alpha.refuse_next_invoke(
+    alpha.answer_next_invoke(
         409,
         json!({
             "error": {
