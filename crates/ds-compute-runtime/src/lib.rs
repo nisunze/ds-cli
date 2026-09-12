@@ -200,6 +200,11 @@ fn submit_validated(
         lease_until_ms: 0,
         result_sha256: None,
         error: None,
+        // Build bridge, not behaviour: the run tip added `context` to the
+        // kernel's Job without teaching this host to admit one. No job carries
+        // a context until fable/server-isolation lands its admission; that
+        // landing replaces this line.
+        context: None,
     };
     open(path)?
         .submit_job(&job, input)
