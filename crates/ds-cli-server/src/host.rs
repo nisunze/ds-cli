@@ -493,13 +493,17 @@ async fn activity(
 /// Which projects an answer about "this Server's work" covers: the distinct
 /// projects of the durable jobs this caller can see, plus the ones holding
 /// report publications, narrowed to one when the caller named one.
+///
+/// Read by PAGING the queue, never by taking its newest page: a project whose
+/// work is older than the last thousand rows of a long-running host is still a
+/// project this Server has work in, and an activity answer that quietly left
+/// it out would report "nothing" for a project that has something.
 pub fn project_scopes(app: &App, project: Option<&str>) -> Result<Vec<String>, String> {
-    let identity = app.sessions.identity();
-    let mut scopes: BTreeSet<String> = runtime::open(&app.database)?
-        .jobs(&identity.caller(project), 1000)
-        .map_err(|error| error.to_string())?
+    let mut scopes: BTreeSet<String> = app
+        .sessions
+        .durable_projects()?
         .into_iter()
-        .filter_map(|job| job.context.map(|context| context.project))
+        .filter(|held| project.is_none_or(|named| named == held))
         .collect();
     scopes.extend(
         crate::server_reports::projects_with_publications(&app.database)?

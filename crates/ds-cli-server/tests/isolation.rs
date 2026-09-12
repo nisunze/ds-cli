@@ -1703,6 +1703,87 @@ fn activity_scope_is_one_entry_per_project_that_holds_work() {
     );
 }
 
+/// A project whose work is older than the newest page of the queue is still a
+/// project this Server has work in.
+///
+/// `/v1/activity` answers per project, and which projects it covers is read
+/// from the durable rows. Reading only the newest page of them would make a
+/// long-lived host — the deployment model here: a process the owner may leave
+/// up indefinitely — quietly stop reporting the project it started with, and
+/// "no activity" for a project that has some is the one answer this route
+/// must never give. So the scope is PAGED, and this is the row that proves it:
+/// the oldest job on the host, one full page behind, under its own project.
+#[test]
+fn activity_scope_covers_a_project_older_than_one_page_of_the_queue() {
+    let host = Host::start(ds_command_kernel::execution_context::Limits {
+        global_running: 4,
+        per_project_running: 2,
+        per_project_queued: 4096,
+        global_queued: 4096,
+    });
+    let mut store = host.store();
+    // A page is a thousand rows, so B's single job sits behind one full page
+    // of A's. Written straight to the durable store: what is under test is
+    // how a long queue is READ, and a thousand admissions through the wire
+    // would be a thousand engine validations to prove nothing extra.
+    let mut queue = |project: &str, created_at_ms: u64, key: &str| {
+        let context = ExecutionContext {
+            principal_uid: UID.to_owned(),
+            lane: LANE.to_owned(),
+            deployment: DEPLOYMENT.to_owned(),
+            install_id: "install-1".to_owned(),
+            project: project.to_owned(),
+            client: "cli:1".to_owned(),
+            operation: "transformer_processing".to_owned(),
+            job_id: runtime::job_id(OWNER, LANE, project, key),
+            idempotency_key: key.to_owned(),
+            input_sha256: runtime::digest(key.as_bytes()),
+            admitted_at_ms: created_at_ms,
+        };
+        let job = Job {
+            id: context.job_id.clone(),
+            owner: OWNER.to_owned(),
+            lane: LANE.to_owned(),
+            input_sha256: context.input_sha256.clone(),
+            engine: ds_command_kernel::compute_jobs::EngineKind::FastLv,
+            input_tag: "ds.fast-lv.request/v1".to_owned(),
+            phase: Phase::Queued,
+            attempts: 0,
+            created_at_ms,
+            updated_at_ms: created_at_ms,
+            worker: None,
+            lease_until_ms: 0,
+            result_sha256: None,
+            error: None,
+            context: Some(context),
+        };
+        store
+            .submit_job(&job, key.as_bytes(), host.limits)
+            .expect("the durable queue takes the row");
+    };
+    queue(B, 1_700_000_000_000, "the-oldest-row");
+    for row in 0..1_000 {
+        queue(A, 1_700_000_001_000 + row, &format!("a-{row}"));
+    }
+
+    let scopes = ds_cli_server::host::project_scopes(&host.app, None).expect("the scopes");
+    assert!(
+        scopes.contains(&B.to_owned()),
+        "B's only job is one page behind A's and its project vanished: {scopes:?}"
+    );
+    assert_eq!(scopes, vec![A.to_owned(), B.to_owned()]);
+    // And narrowing still answers about exactly the project named.
+    assert_eq!(
+        ds_cli_server::host::project_scopes(&host.app, Some(B)).expect("narrowed"),
+        vec![B.to_owned()]
+    );
+    assert!(
+        ds_cli_server::host::project_scopes(&host.app, Some(C))
+            .expect("narrowed")
+            .is_empty()
+    );
+}
+
 /// Nothing reaches the store without the owner bearer, and a revoked device
 /// stops every route at the door — including the ones that would otherwise
 /// create a queue file.
