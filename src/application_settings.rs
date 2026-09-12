@@ -1366,7 +1366,8 @@ mod tests {
 
     // ── JavaScript coercion ─────────────────────────────────────────────
 
-    #[test]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
+    #[cfg_attr(not(target_arch = "wasm32"), test)]
     fn number_reads_strings_the_way_the_browser_did() {
         let read = |text: &str| js_string_to_number(text);
         assert_eq!(read("4.4"), Some(4.4));
@@ -1396,7 +1397,8 @@ mod tests {
         assert_eq!(read("\u{85}3"), None);
     }
 
-    #[test]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
+    #[cfg_attr(not(target_arch = "wasm32"), test)]
     fn number_reads_every_json_shape() {
         assert_eq!(js_number(None), None);
         assert_eq!(js_number(Some(&json!(null))), Some(0.0));
@@ -1414,7 +1416,8 @@ mod tests {
         assert_eq!(js_number(Some(&json!([{}]))), None);
     }
 
-    #[test]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
+    #[cfg_attr(not(target_arch = "wasm32"), test)]
     fn numbers_print_the_way_the_browser_prints_them() {
         assert_eq!(js_number_to_string(1.0), "1");
         assert_eq!(js_number_to_string(-2.5), "-2.5");
@@ -1435,7 +1438,8 @@ mod tests {
         assert_eq!(js_to_string(&json!({"a": 1})), "[object Object]");
     }
 
-    #[test]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
+    #[cfg_attr(not(target_arch = "wasm32"), test)]
     fn round_takes_halves_toward_positive_infinity() {
         assert_eq!(js_round(2.5), 3.0);
         assert_eq!(js_round(-2.5), -2.0);
@@ -1445,7 +1449,8 @@ mod tests {
         assert_eq!(js_round(1e300), 1e300);
     }
 
-    #[test]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
+    #[cfg_attr(not(target_arch = "wasm32"), test)]
     fn trim_is_the_browser_trim() {
         assert_eq!(js_trim("\u{FEFF} a \u{3000}"), "a");
         assert_eq!(js_trim("\u{85}a"), "\u{85}a");
@@ -1454,7 +1459,8 @@ mod tests {
 
     // ── Each bound, transcribed ─────────────────────────────────────────
 
-    #[test]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
+    #[cfg_attr(not(target_arch = "wasm32"), test)]
     fn map_memory_budget_clips_to_the_integer_range() {
         assert_eq!(normalize_map_memory_budget(None), 3.0);
         assert_eq!(normalize_map_memory_budget(Some(&json!("bad"))), 3.0);
@@ -1465,7 +1471,8 @@ mod tests {
         assert_eq!(normalize_map_memory_budget(Some(&json!(null))), 1.0);
     }
 
-    #[test]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
+    #[cfg_attr(not(target_arch = "wasm32"), test)]
     fn gps_interval_defaults_to_one_second_and_clips() {
         assert_eq!(normalize_gps_position_update_interval_seconds(None), 1.0);
         assert_eq!(
@@ -1486,7 +1493,8 @@ mod tests {
         );
     }
 
-    #[test]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
+    #[cfg_attr(not(target_arch = "wasm32"), test)]
     fn working_area_interval_is_never_by_default_and_clips_opt_ins() {
         assert_eq!(normalize_working_area_update_interval(None), None);
         assert_eq!(
@@ -1551,7 +1559,8 @@ mod tests {
         );
     }
 
-    #[test]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
+    #[cfg_attr(not(target_arch = "wasm32"), test)]
     fn coordinate_grid_interval_and_placement() {
         assert_eq!(
             normalize_coordinate_grid_interval(Some(&json!("auto"))),
@@ -1593,7 +1602,8 @@ mod tests {
         );
     }
 
-    #[test]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
+    #[cfg_attr(not(target_arch = "wasm32"), test)]
     fn batch_concurrency_is_whole_and_reads_only_numbers_and_strings() {
         assert_eq!(normalize_browser_batch_concurrency(Some(&json!(7.9))), 7.0);
         assert_eq!(
@@ -1620,7 +1630,8 @@ mod tests {
         );
     }
 
-    #[test]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
+    #[cfg_attr(not(target_arch = "wasm32"), test)]
     fn profile_styles_clip_to_their_steps() {
         assert_eq!(normalize_profile_exaggeration(Some(&json!(0))), 10.0);
         assert_eq!(normalize_profile_exaggeration(Some(&json!(0.1))), 0.5);
@@ -1660,7 +1671,8 @@ mod tests {
         assert_eq!(normalize_profile_ordinate_opacity(None), 0.25);
     }
 
-    #[test]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
+    #[cfg_attr(not(target_arch = "wasm32"), test)]
     fn colours_are_lower_cased_hex_or_the_default_and_the_blues_migrate() {
         assert_eq!(
             normalize_profile_color(Some(&json!(" #ABCDEF ")), "#000000"),
@@ -1697,7 +1709,8 @@ mod tests {
         assert_eq!(normalize_profile_terrain_color(None), "#d1d5db");
     }
 
-    #[test]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
+    #[cfg_attr(not(target_arch = "wasm32"), test)]
     fn hidden_ids_are_strings_trimmed_deduplicated_and_bounded() {
         assert_eq!(
             normalize_hidden_profile_alignment_ids(Some(&json!([
@@ -1725,7 +1738,8 @@ mod tests {
 
     // ── The record ──────────────────────────────────────────────────────
 
-    #[test]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
+    #[cfg_attr(not(target_arch = "wasm32"), test)]
     fn the_defaults_are_the_shipped_record_in_order() {
         let defaults = default_settings();
         let expected: Vec<&str> = SETTING_KEYS
@@ -1741,7 +1755,8 @@ mod tests {
         assert_eq!(normalize_settings(&defaults), defaults);
     }
 
-    #[test]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
+    #[cfg_attr(not(target_arch = "wasm32"), test)]
     fn unknown_keys_are_dropped_never_refused() {
         let Value::Object(blob) = json!({
             "retiredSetting": "ignored",
@@ -1759,7 +1774,8 @@ mod tests {
             .all(|key| SETTING_KEYS.contains(&key.as_str())));
     }
 
-    #[test]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
+    #[cfg_attr(not(target_arch = "wasm32"), test)]
     fn standard_needs_its_confirmation_and_markers_follow_the_lane() {
         let Value::Object(unconfirmed) = json!({"processingLane": "standard"}) else {
             unreachable!()
@@ -1792,7 +1808,8 @@ mod tests {
         assert_eq!(normalize_settings(&blank)["processingLane"], json!("fast"));
     }
 
-    #[test]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
+    #[cfg_attr(not(target_arch = "wasm32"), test)]
     fn the_legacy_radius_key_is_read_when_the_width_is_absent() {
         let Value::Object(old) = json!({"profileTerrainPointRadiusPx": 3}) else {
             unreachable!()
@@ -1815,7 +1832,8 @@ mod tests {
 
     // ── The ops ─────────────────────────────────────────────────────────
 
-    #[test]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
+    #[cfg_attr(not(target_arch = "wasm32"), test)]
     fn a_first_launch_follows_the_device_and_is_not_written_back() {
         let answer = ask(json!({
             "kind": "normalize",
@@ -1839,7 +1857,8 @@ mod tests {
         );
     }
 
-    #[test]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
+    #[cfg_attr(not(target_arch = "wasm32"), test)]
     fn a_saved_choice_is_never_overridden_by_the_device() {
         let answer = ask(json!({
             "kind": "normalize",
@@ -1856,7 +1875,8 @@ mod tests {
         assert!(answer.get("lane").is_none());
     }
 
-    #[test]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
+    #[cfg_attr(not(target_arch = "wasm32"), test)]
     fn a_legacy_lane_migrates_only_into_a_blob_without_one_and_is_then_written() {
         let device = json!({"phone": false, "my_location_default": false});
         let string_form = ask(json!({
@@ -1907,7 +1927,8 @@ mod tests {
         }
     }
 
-    #[test]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
+    #[cfg_attr(not(target_arch = "wasm32"), test)]
     fn a_blob_that_is_not_an_object_spreads_nothing() {
         let answer = ask(json!({
             "kind": "normalize",
@@ -1922,7 +1943,8 @@ mod tests {
         );
     }
 
-    #[test]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
+    #[cfg_attr(not(target_arch = "wasm32"), test)]
     fn patch_merges_over_current_and_null_clears() {
         let answer = ask(json!({
             "kind": "patch",
@@ -1941,7 +1963,8 @@ mod tests {
         assert!(settings_of(&answer).get("retired").is_none());
     }
 
-    #[test]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
+    #[cfg_attr(not(target_arch = "wasm32"), test)]
     fn reset_lands_where_a_fresh_install_would() {
         let answer = ask(json!({
             "kind": "reset",
@@ -1985,7 +2008,8 @@ mod tests {
         );
     }
 
-    #[test]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
+    #[cfg_attr(not(target_arch = "wasm32"), test)]
     fn the_lane_is_decided_by_two_facts_and_never_rewrites_the_preference() {
         let confirmed = json!({
             "processingLane": "standard",
@@ -2037,7 +2061,8 @@ mod tests {
         );
     }
 
-    #[test]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
+    #[cfg_attr(not(target_arch = "wasm32"), test)]
     fn set_lane_writes_standard_only_where_it_is_reachable() {
         let on_web = ask(json!({
             "kind": "set_lane",
@@ -2090,7 +2115,8 @@ mod tests {
         assert_eq!(blank, "set_lane needs the confirmation time");
     }
 
-    #[test]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
+    #[cfg_attr(not(target_arch = "wasm32"), test)]
     fn the_performance_profile_scales_with_the_browser_estimate() {
         let profile = |budget: Value, hint: Value| {
             ask(json!({"kind": "performance_profile", "budget": budget, "resource_hint": hint}))
@@ -2136,7 +2162,8 @@ mod tests {
         assert_eq!(absent["maxTileCacheSize"], json!(256));
     }
 
-    #[test]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
+    #[cfg_attr(not(target_arch = "wasm32"), test)]
     fn the_request_itself_is_refused_when_the_host_built_it_wrong() {
         assert!(evaluate(b"{").is_err());
         assert!(evaluate(&vec![b' '; MAX_INPUT_BYTES + 1]).is_err());
