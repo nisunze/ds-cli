@@ -32,6 +32,24 @@ fn root(database: &Path) -> Result<std::path::PathBuf, String> {
         .join("report-artifacts"))
 }
 
+/// Which projects hold committed report publications on this host, read from
+/// the receipts themselves. A Server that serves several projects must be
+/// able to find their pending work without being told which project it is
+/// "on", and a selection is no longer such a thing.
+pub fn projects_with_publications(
+    database: &Path,
+) -> Result<std::collections::BTreeSet<String>, String> {
+    let Some(held) =
+        ds_report_artifacts::confined_fs::HeldDirectory::open_absolute(&root(database)?)?
+    else {
+        return Ok(std::collections::BTreeSet::new());
+    };
+    Ok(ds_report_artifacts::publication::list_committed(&held)?
+        .into_iter()
+        .map(|receipt| receipt.project_id)
+        .collect())
+}
+
 fn rows(
     database: &Path,
     session: &ServerSyncSession,

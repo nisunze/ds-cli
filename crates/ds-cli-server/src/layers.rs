@@ -5,11 +5,19 @@
 //! natively. This module only binds it to the protected loopback transport:
 //! the request must carry the owner-only connection bearer and pass the
 //! native authorizer (`access` in `host.rs`), the lane is the connection's,
-//! and the principal and project come from the native identity the Server is
-//! bound to, observed at request time. A client never names a lane, account
-//! or preference scope; preferences are keyed by the DS account the document
-//! was read under, so another account reaching this host after a restart sees
-//! its own defaults and never the previous account's toggles.
+//! and the principal comes from the native identity the Server is bound to,
+//! observed at request time. A client never names a lane, account or
+//! preference scope; preferences are keyed by the DS account the document was
+//! read under, so another account reaching this host after a restart sees its
+//! own defaults and never the previous account's toggles.
+//!
+//! **The project is named by the caller** (`?project=<exact-id>`), admitted
+//! through the kernel against fresh membership, and then held against the
+//! document the Server actually reads: a document that comes back under
+//! another project is `project_context_changed`, never applied. That is the
+//! whole of the project fence here — see `docs-routes.md` for the one thing
+//! it does not yet do, which is serve a project other than the one the
+//! Server's native document source is on.
 //!
 //! Answers are the owner's projections, verbatim. There is no renderer here:
 //! `writes` name the layout word a renderer would apply, and nothing reports a
@@ -22,12 +30,70 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use ds_cli_contract::outcome::{ExitClass, Failure};
-use ds_layer_ops::{LayerDocuments, ListRequest, OrderRequest, Preferences, VisibilityRequest};
+use ds_layer_ops::{
+    DocumentRead, LayerDocuments, ListRequest, Order, OrderReceipt, OrderRequest, Preferences,
+    Scope, VisibilityRequest,
+};
 use serde::Deserialize;
 use serde_json::json;
 use std::sync::Arc;
 
 use crate::host::App;
+
+/// The operation ids a layer request is admitted under, from the kernel's
+/// closed vocabulary.
+const LAYER_READ: &str = ds_command_kernel::execution_context::LAYER_READ;
+const LAYER_WRITE: &str = ds_command_kernel::execution_context::LAYER_WRITE;
+
+/// One layer document source, held to the project the caller named.
+///
+/// The Server's native source answers under the account's own project; this
+/// wrapper is what makes naming a project meaningful rather than decorative.
+/// A document, a scope recheck or an order receipt that comes back under
+/// another project stops the request instead of being applied to it.
+struct Fenced {
+    inner: Box<dyn LayerDocuments + Send>,
+    project: String,
+}
+
+impl Fenced {
+    fn refuse(&self, actual: &str) -> Failure {
+        Failure::conflict(
+            "project_context_changed",
+            format!(
+                "this server's layer document is for another project than the one this request named ({})",
+                self.project
+            ),
+        )
+        .remedy(format!(
+            "repeat the request with --project {actual}, or select {} on the server's account",
+            self.project
+        ))
+    }
+}
+
+impl LayerDocuments for Fenced {
+    fn read(&mut self, refresh: bool) -> Result<DocumentRead, Failure> {
+        let read = self.inner.read(refresh)?;
+        if read.scope.project != self.project {
+            return Err(self.refuse(&read.scope.project));
+        }
+        Ok(read)
+    }
+    fn check_scope(&mut self, expected: &Scope) -> Result<(), Failure> {
+        if expected.project != self.project {
+            return Err(self.refuse(&expected.project));
+        }
+        self.inner.check_scope(expected)
+    }
+    fn reorder(&mut self, orders: &[Order]) -> Result<OrderReceipt, Failure> {
+        let receipt = self.inner.reorder(orders)?;
+        if receipt.project != self.project {
+            return Err(self.refuse(&receipt.project));
+        }
+        Ok(receipt)
+    }
+}
 
 /// What the Server binds the owner to: a document source under the bound
 /// identity and this host's preference root. Production is native; tests are
@@ -134,6 +200,9 @@ fn invalid(message: impl Into<String>) -> Response {
 
 async fn run<T: Send + 'static>(
     app: App,
+    operation_id: &'static str,
+    project: Option<String>,
+    about: Vec<u8>,
     operation: impl FnOnce(&mut dyn LayerDocuments, &Preferences) -> Result<T, Failure> + Send + 'static,
 ) -> Result<T, Response> {
     tokio::task::spawn_blocking(move || {
@@ -145,9 +214,21 @@ async fn run<T: Send + 'static>(
                 Failure::unauthorized("server_owner_changed", message)
                     .remedy("restart the Server under the current native account")
             })?;
-        let mut documents = app.layers.documents()?;
+        // The project is the caller's and is verified here, before anything is
+        // read: an unnamed project is `project_required` and one outside this
+        // account's membership is `project_not_visible`.
+        let context = app.sessions.admit_read(
+            operation_id,
+            project.as_deref(),
+            &about,
+            ds_compute_runtime::now_ms(),
+        )?;
+        let mut documents = Fenced {
+            inner: app.layers.documents()?,
+            project: context.project,
+        };
         let preferences = app.layers.preferences()?;
-        operation(documents.as_mut(), &preferences)
+        operation(&mut documents, &preferences)
     })
     .await
     .map_err(|_| refusal(&Failure::internal("server_refused", "native task failed")))?
@@ -157,24 +238,43 @@ async fn run<T: Send + 'static>(
 #[derive(Deserialize, Default)]
 #[serde(default, deny_unknown_fields)]
 pub struct ListQuery {
+    project: Option<String>,
     refresh: Option<bool>,
     limit: Option<i64>,
     zoom: Option<i64>,
 }
 
-/// `GET /v1/layers?refresh=&limit=&zoom=` — the canonical catalogue.
+/// `?project=<exact-id>` on the two write routes, whose bodies stay exactly
+/// the `ds_layer_ops` request types `ds map layer …` sends.
+#[derive(Deserialize, Default)]
+#[serde(default, deny_unknown_fields)]
+pub struct ScopeQuery {
+    project: Option<String>,
+}
+
+/// `GET /v1/layers?project=&refresh=&limit=&zoom=` — the canonical catalogue.
 pub async fn list(State(app): State<App>, query: Option<Query<ListQuery>>) -> Response {
     let Some(Query(query)) = query else {
-        return invalid("layers query accepts refresh, limit and zoom only");
+        return invalid("layers query accepts project, refresh, limit and zoom only");
     };
     let request = ListRequest {
         refresh: query.refresh.unwrap_or(false),
         limit: query.limit,
         zoom: query.zoom,
     };
-    match run(app, move |documents, preferences| {
-        ds_layer_ops::list(documents, preferences, &request)
-    })
+    let about = format!(
+        "list:{}:{}:{}",
+        request.refresh,
+        request.limit.unwrap_or_default(),
+        request.zoom.unwrap_or_default()
+    );
+    match run(
+        app,
+        LAYER_READ,
+        query.project,
+        about.into_bytes(),
+        move |documents, preferences| ds_layer_ops::list(documents, preferences, &request),
+    )
     .await
     {
         Ok(value) => Json(value).into_response(),
@@ -182,15 +282,28 @@ pub async fn list(State(app): State<App>, query: Option<Query<ListQuery>>) -> Re
     }
 }
 
-/// `POST /v1/layers/visibility {"layers": [canonical ids], "visible": bool}`.
-pub async fn visibility(State(app): State<App>, body: axum::body::Bytes) -> Response {
+/// `POST /v1/layers/visibility?project= {"layers": [canonical ids], "visible": bool}`.
+pub async fn visibility(
+    State(app): State<App>,
+    query: Option<Query<ScopeQuery>>,
+    body: axum::body::Bytes,
+) -> Response {
+    let Some(Query(query)) = query else {
+        return invalid("this route accepts a project query parameter only");
+    };
     let request: VisibilityRequest = match serde_json::from_slice(&body) {
         Ok(request) => request,
         Err(error) => return invalid(format!("invalid visibility request: {error}")),
     };
-    match run(app, move |documents, preferences| {
-        ds_layer_ops::set_visibility(documents, preferences, &request)
-    })
+    match run(
+        app,
+        LAYER_WRITE,
+        query.project,
+        body.to_vec(),
+        move |documents, preferences| {
+            ds_layer_ops::set_visibility(documents, preferences, &request)
+        },
+    )
     .await
     {
         Ok(value) => Json(value).into_response(),
@@ -198,15 +311,26 @@ pub async fn visibility(State(app): State<App>, body: axum::body::Bytes) -> Resp
     }
 }
 
-/// `POST /v1/layers/order {"orders": [{"layer_id", "order"}]}`.
-pub async fn order(State(app): State<App>, body: axum::body::Bytes) -> Response {
+/// `POST /v1/layers/order?project= {"orders": [{"layer_id", "order"}]}`.
+pub async fn order(
+    State(app): State<App>,
+    query: Option<Query<ScopeQuery>>,
+    body: axum::body::Bytes,
+) -> Response {
+    let Some(Query(query)) = query else {
+        return invalid("this route accepts a project query parameter only");
+    };
     let request: OrderRequest = match serde_json::from_slice(&body) {
         Ok(request) => request,
         Err(error) => return invalid(format!("invalid order request: {error}")),
     };
-    match run(app, move |documents, _| {
-        ds_layer_ops::reorder(documents, &request)
-    })
+    match run(
+        app,
+        LAYER_WRITE,
+        query.project,
+        body.to_vec(),
+        move |documents, _| ds_layer_ops::reorder(documents, &request),
+    )
     .await
     {
         Ok(value) => Json(value).into_response(),
@@ -355,14 +479,39 @@ mod tests {
     ) -> Running {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let address = listener.local_addr().unwrap();
+        let connection = Connection {
+            address,
+            owner: "owner-digest".into(),
+            lane: "canary".into(),
+            token: TOKEN.into(),
+        };
         let app = App {
             database: dir.join("store.sqlite"),
-            connection: Connection {
-                address,
-                owner: "owner-digest".into(),
-                lane: "canary".into(),
-                token: TOKEN.into(),
-            },
+            sessions: crate::server_sync::sessions::ServerSessions::with(
+                connection.clone(),
+                dir.join("store.sqlite"),
+                ds_command_kernel::execution_context::Limits {
+                    global_running: 2,
+                    per_project_running: 1,
+                    per_project_queued: 4,
+                    global_queued: 8,
+                },
+                ds_compute_runtime::HostIdentity {
+                    owner: connection.owner.clone(),
+                    principal: ds_command_kernel::execution_context::Principal {
+                        uid: upstream.uid.clone(),
+                        lane: "canary".into(),
+                        deployment: "https://gateway.example".into(),
+                        install_id: "install-1".into(),
+                    },
+                },
+                Arc::new(crate::host::tests::Directory(std::sync::Mutex::new(vec![
+                    "proj-kigali".into(),
+                    "proj-lome".into(),
+                ]))),
+                Arc::new(crate::host::tests::NoGateway),
+            ),
+            connection,
             auth: Arc::new(Auth(allowed)),
             requests: Arc::new(tokio::sync::Semaphore::new(4)),
             activity: None,
@@ -434,7 +583,14 @@ mod tests {
         let server = start(dir.path(), upstream.clone(), allowed.clone()).await;
 
         // list: every family reads as the document authored it, zoom reported
-        let (status, listing) = wire(server.address, "GET", "/v1/layers?zoom=8", None, TOKEN).await;
+        let (status, listing) = wire(
+            server.address,
+            "GET",
+            "/v1/layers?project=proj-kigali&zoom=8",
+            None,
+            TOKEN,
+        )
+        .await;
         assert_eq!(status, 200, "{listing}");
         assert_eq!(listing["layer_count"], 2);
         assert_eq!(listing["lane"], "canary");
@@ -450,7 +606,7 @@ mod tests {
         let (status, hidden) = wire(
             server.address,
             "POST",
-            "/v1/layers/visibility",
+            "/v1/layers/visibility?project=proj-kigali",
             Some(json!({"layers": ["survey/poles"], "visible": false})),
             TOKEN,
         )
@@ -473,7 +629,14 @@ mod tests {
         // restart: a new process over the same state; the toggle is retained
         server.handle.abort();
         let server = start(dir.path(), upstream.clone(), allowed.clone()).await;
-        let (status, listing) = wire(server.address, "GET", "/v1/layers", None, TOKEN).await;
+        let (status, listing) = wire(
+            server.address,
+            "GET",
+            "/v1/layers?project=proj-kigali",
+            None,
+            TOKEN,
+        )
+        .await;
         assert_eq!(status, 200);
         assert_eq!(
             row(&listing, "survey/poles")["visibility"]["any_visible"],
@@ -489,7 +652,7 @@ mod tests {
         let (status, shown) = wire(
             server.address,
             "POST",
-            "/v1/layers/visibility",
+            "/v1/layers/visibility?project=proj-kigali",
             Some(json!({"layers": ["survey/poles"], "visible": true})),
             TOKEN,
         )
@@ -499,7 +662,7 @@ mod tests {
         let (_, again) = wire(
             server.address,
             "POST",
-            "/v1/layers/visibility",
+            "/v1/layers/visibility?project=proj-kigali",
             Some(json!({"layers": ["survey/poles"], "visible": true})),
             TOKEN,
         )
@@ -510,7 +673,7 @@ mod tests {
         let (status, ordered) = wire(
             server.address,
             "POST",
-            "/v1/layers/order",
+            "/v1/layers/order?project=proj-kigali",
             Some(json!({"orders": [{"layer_id": "survey/poles", "order": 100}]})),
             TOKEN,
         )
@@ -525,7 +688,7 @@ mod tests {
         let (status, refused) = wire(
             server.address,
             "POST",
-            "/v1/layers/order",
+            "/v1/layers/order?project=proj-kigali",
             Some(json!({"orders": [{"layer_id": "ds-poles", "order": 1}]})),
             TOKEN,
         )
@@ -537,7 +700,7 @@ mod tests {
         let (status, refused) = wire(
             server.address,
             "POST",
-            "/v1/layers/visibility",
+            "/v1/layers/visibility?project=proj-kigali",
             Some(json!({"layers": ["ds-poles"], "visible": false})),
             TOKEN,
         )
@@ -547,18 +710,31 @@ mod tests {
         let (status, refused) = wire(
             server.address,
             "POST",
-            "/v1/layers/visibility",
+            "/v1/layers/visibility?project=proj-kigali",
             Some(json!({"layer": "x"})),
             TOKEN,
         )
         .await;
         assert_eq!(status, 400);
         assert_eq!(refused["code"], "invalid_input");
-        let (status, refused) =
-            wire(server.address, "GET", "/v1/layers?limit=0", None, TOKEN).await;
+        let (status, refused) = wire(
+            server.address,
+            "GET",
+            "/v1/layers?project=proj-kigali&limit=0",
+            None,
+            TOKEN,
+        )
+        .await;
         assert_eq!(status, 400);
         assert_eq!(refused["code"], "invalid_number");
-        let (status, _) = wire(server.address, "GET", "/v1/layers?foo=1", None, TOKEN).await;
+        let (status, _) = wire(
+            server.address,
+            "GET",
+            "/v1/layers?project=proj-kigali&foo=1",
+            None,
+            TOKEN,
+        )
+        .await;
         assert_eq!(status, 400);
         let before = ds_layer_store::visibility::read_at(
             &dir.path().join("layers"),
@@ -572,14 +748,21 @@ mod tests {
         let (status, _) = wire(
             server.address,
             "POST",
-            "/v1/layers/visibility",
+            "/v1/layers/visibility?project=proj-kigali",
             Some(json!({"layers": ["survey/poles"], "visible": false})),
             "not-the-token",
         )
         .await;
         assert_eq!(status, 401);
         allowed.store(false, Ordering::SeqCst);
-        let (status, _) = wire(server.address, "GET", "/v1/layers", None, TOKEN).await;
+        let (status, _) = wire(
+            server.address,
+            "GET",
+            "/v1/layers?project=proj-kigali",
+            None,
+            TOKEN,
+        )
+        .await;
         assert_eq!(status, 401);
         allowed.store(true, Ordering::SeqCst);
         assert_eq!(
@@ -598,7 +781,14 @@ mod tests {
         upstream
             .switch_project_on_read
             .store(true, Ordering::SeqCst);
-        let (status, refused) = wire(server.address, "GET", "/v1/layers", None, TOKEN).await;
+        let (status, refused) = wire(
+            server.address,
+            "GET",
+            "/v1/layers?project=proj-kigali",
+            None,
+            TOKEN,
+        )
+        .await;
         assert_eq!(status, 409, "{refused}");
         assert_eq!(refused["code"], "project_context_changed");
         upstream
@@ -612,14 +802,21 @@ mod tests {
         let (status, hidden_b) = wire(
             server.address,
             "POST",
-            "/v1/layers/visibility",
+            "/v1/layers/visibility?project=proj-kigali",
             Some(json!({"layers": ["design/lines"], "visible": false})),
             TOKEN,
         )
         .await;
         assert_eq!(status, 200);
         assert_eq!(hidden_b["changed"], json!(["ds-lines"]));
-        let (_, listing_b) = wire(server.address, "GET", "/v1/layers", None, TOKEN).await;
+        let (_, listing_b) = wire(
+            server.address,
+            "GET",
+            "/v1/layers?project=proj-kigali",
+            None,
+            TOKEN,
+        )
+        .await;
         assert_eq!(
             row(&listing_b, "survey/poles")["visibility"]["any_visible"],
             true,

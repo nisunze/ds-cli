@@ -1,4 +1,14 @@
-use axum::extract::Request;
+//! The Server's HTTP surface: the protected loopback door onto one
+//! authenticated account's durable compute, publication and layer state.
+//!
+//! Every route that acts asks `ServerSessions` to admit it, and the kernel
+//! decides which project the operation is about. Every route that reads
+//! answers through the job's own execution context, so a job in a project the
+//! caller did not name is absent in exactly the way an invented id is absent.
+//! The loopback/SSH boundary is unchanged: one owner-only bearer, one
+//! re-authorized native account, one fixed loopback port.
+
+use axum::extract::{Query, Request};
 use axum::middleware::{self, Next};
 use axum::{
     Json, Router,
@@ -8,17 +18,29 @@ use axum::{
     response::{IntoResponse, Response},
     routing::{get, post},
 };
+use ds_cli_contract::{Failure, outcome::ExitClass};
 use ds_command_kernel::compute_jobs::Event;
-use ds_compute_runtime::{self as runtime, Authorizer};
+use ds_command_kernel::execution_context::CAPACITY_EXHAUSTED;
+use ds_compute_runtime::{self as runtime, Admission, Authorizer};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{
+    collections::BTreeSet,
     fs::{self, OpenOptions},
     io::{Read, Write},
     net::SocketAddr,
     path::{Path, PathBuf},
     sync::Arc,
 };
+
+use crate::server_sync::sessions::{self, ServerSessions};
+
+/// The activity envelope every `/v1/activity` answer carries, one entry per
+/// project. One shape whether the caller narrowed or not.
+pub const ACTIVITY_SCHEMA: &str = "ds.server-activity/v1";
+/// The header a caller may use to say which account it believes it is talking
+/// to. Honoured only when it is this Server's own.
+pub const PRINCIPAL_HEADER: &str = "x-ds-principal";
 
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -37,6 +59,9 @@ pub struct App {
     pub activity: Option<Arc<crate::solar_sync::SolarActivity>>,
     /// The layer drawer's document source and preference root for this host.
     pub layers: Arc<dyn crate::layers::LayerHost>,
+    /// One authenticated principal, many authorized projects: the admission
+    /// door, the membership snapshot and the per-project sessions.
+    pub sessions: Arc<ServerSessions>,
 }
 
 type ApiError = (StatusCode, Json<Value>);
@@ -44,6 +69,41 @@ type ApiError = (StatusCode, Json<Value>);
 fn error(status: StatusCode, message: impl ToString) -> ApiError {
     (status, Json(json!({"error":message.to_string()})))
 }
+
+/// One typed refusal on the wire, in the shape `ds` already re-raises: the
+/// class, the code, the sentence, the remedy, and — for capacity — the retry
+/// guidance the kernel computed.
+pub fn typed(failure: &Failure) -> ApiError {
+    let status = if failure.code() == CAPACITY_EXHAUSTED {
+        StatusCode::TOO_MANY_REQUESTS
+    } else {
+        match failure.class() {
+            ExitClass::Success => StatusCode::OK,
+            ExitClass::InvalidInput => StatusCode::BAD_REQUEST,
+            ExitClass::Unauthorized => StatusCode::UNAUTHORIZED,
+            ExitClass::Unavailable => StatusCode::SERVICE_UNAVAILABLE,
+            ExitClass::Conflict => StatusCode::CONFLICT,
+            ExitClass::Failed => StatusCode::BAD_GATEWAY,
+            ExitClass::Internal => StatusCode::INTERNAL_SERVER_ERROR,
+        }
+    };
+    let mut body = json!({
+        "error": failure.message(),
+        "class": failure.class().token(),
+        "code": failure.code(),
+        "retryable": failure.class().retryable(),
+    });
+    if let Some(remedy) = failure.remedy_text() {
+        body["remedy"] = json!(remedy);
+    }
+    if let Some(Value::Object(detail)) = failure.detail_value() {
+        for (key, value) in detail {
+            body[key.as_str()] = value.clone();
+        }
+    }
+    (status, Json(body))
+}
+
 fn authorize(app: &App, headers: &HeaderMap) -> Result<(), ApiError> {
     let supplied = headers
         .get("authorization")
@@ -60,6 +120,13 @@ fn authorize(app: &App, headers: &HeaderMap) -> Result<(), ApiError> {
         });
     if mismatch != 0 {
         return Err(error(StatusCode::UNAUTHORIZED, "server access denied"));
+    }
+    // One Server, one account. A request that names another principal is told
+    // so by name instead of being served quietly under this one.
+    if let Some(named) = headers.get(PRINCIPAL_HEADER).and_then(|v| v.to_str().ok())
+        && named != app.sessions.principal_uid()
+    {
+        return Err(typed(&sessions::multi_principal()));
     }
     app.auth
         .authorize(&app.connection.owner)
@@ -114,10 +181,48 @@ async fn blocking<T: Send + 'static>(
         .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "native task failed"))?
         .map_err(|e| error(StatusCode::CONFLICT, e))
 }
-async fn list(State(app): State<App>, _headers: HeaderMap) -> Result<Json<Value>, ApiError> {
+/// The same queue, for work that answers with the kernel's own refusals.
+async fn admitting<T: Send + 'static>(
+    f: impl FnOnce() -> Result<T, Failure> + Send + 'static,
+) -> Result<T, ApiError> {
+    tokio::task::spawn_blocking(f)
+        .await
+        .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "native task failed"))?
+        .map_err(|failure| typed(&failure))
+}
+
+/// `?project=<id>` — the caller naming which project this call is about.
+/// Optional on the job routes, where it narrows; required where an operation
+/// must be about exactly one project.
+#[derive(Deserialize, Default)]
+#[serde(default, deny_unknown_fields)]
+pub struct ProjectQuery {
+    pub project: Option<String>,
+}
+
+fn project_query(query: Option<Query<ProjectQuery>>) -> Result<Option<String>, ApiError> {
+    let Some(Query(query)) = query else {
+        return Err(typed(
+            &Failure::invalid(
+                "invalid_input",
+                "this route accepts an optional project query parameter only",
+            )
+            .remedy("send ?project=<exact-id>"),
+        ));
+    };
+    Ok(query.project)
+}
+
+async fn list(
+    State(app): State<App>,
+    _headers: HeaderMap,
+    query: Option<Query<ProjectQuery>>,
+) -> Result<Json<Value>, ApiError> {
+    let project = project_query(query)?;
     blocking(move || {
+        let identity = app.sessions.identity();
         let rows = runtime::open(&app.database)?
-            .jobs(&app.connection.owner, &app.connection.lane, 101)
+            .jobs(&identity.caller(project.as_deref()), 101)
             .map_err(|e| e.to_string())?;
         let more = rows.len() > 100;
         Ok(Json(
@@ -130,12 +235,16 @@ async fn status(
     State(app): State<App>,
     _headers: HeaderMap,
     Param(id): Param<String>,
+    query: Option<Query<ProjectQuery>>,
 ) -> Result<Json<Value>, ApiError> {
-    blocking(move || {
-        let job = runtime::open(&app.database)?
-            .job(&app.connection.owner, &app.connection.lane, &id)
-            .map_err(|e| e.to_string())?
-            .ok_or("job not found")?;
+    let project = project_query(query)?;
+    admitting(move || {
+        let identity = app.sessions.identity();
+        let job = runtime::open(&app.database)
+            .map_err(host_failure)?
+            .job(&identity.caller(project.as_deref()), &id)
+            .map_err(|error| host_failure(error.to_string()))?
+            .ok_or_else(sessions::not_found)?;
         Ok(Json(json!({"job":job})))
     })
     .await
@@ -144,16 +253,30 @@ async fn submit(
     State(app): State<App>,
     _headers: HeaderMap,
     Param(key): Param<String>,
+    query: Option<Query<ProjectQuery>>,
     body: Bytes,
 ) -> Result<(StatusCode, Json<Value>), ApiError> {
-    blocking(move || {
+    let project = project_query(query)?;
+    admitting(move || {
+        let sessions = app.sessions.clone();
+        let now_ms = runtime::now_ms();
+        let membership = sessions.membership(now_ms)?;
+        let client = sessions.client_label();
         let job = runtime::submit(
             &app.database,
-            &app.connection.owner,
-            &app.connection.lane,
-            &key,
+            &Admission {
+                identity: sessions.identity(),
+                client: &client,
+                key: &key,
+                requested_project: project.as_deref(),
+                saved_project: None,
+                membership: &membership,
+                limits: sessions.limits(),
+                now_ms,
+            },
             &body,
-        )?;
+        )
+        .map_err(|error| refresh_on_refusal(&sessions, &error))?;
         Ok((StatusCode::ACCEPTED, Json(json!({"job":job}))))
     })
     .await
@@ -165,18 +288,36 @@ async fn submit_solar(
     State(app): State<App>,
     _headers: HeaderMap,
     Param(key): Param<String>,
+    query: Option<Query<ProjectQuery>>,
     body: Bytes,
 ) -> Result<(StatusCode, Json<Value>), ApiError> {
-    blocking(move || {
-        let (sealed, provenance) = runtime::decode_solar_server_submission(&body)?;
+    let project = project_query(query)?;
+    admitting(move || {
+        let sessions = app.sessions.clone();
+        let (sealed, provenance) =
+            runtime::decode_solar_server_submission(&body).map_err(|error| {
+                Failure::invalid("server_refused", error)
+                    .remedy("send the documented ds.solar.server-submission/v1 envelope")
+            })?;
+        let now_ms = runtime::now_ms();
+        let membership = sessions.membership(now_ms)?;
+        let client = sessions.client_label();
         let job = runtime::submit_solar_with_provenance(
             &app.database,
-            &app.connection.owner,
-            &app.connection.lane,
-            &key,
+            &Admission {
+                identity: sessions.identity(),
+                client: &client,
+                key: &key,
+                requested_project: project.as_deref(),
+                saved_project: None,
+                membership: &membership,
+                limits: sessions.limits(),
+                now_ms,
+            },
             &sealed,
             provenance,
-        )?;
+        )
+        .map_err(|error| refresh_on_refusal(&sessions, &error))?;
         Ok((StatusCode::ACCEPTED, Json(json!({"job":job}))))
     })
     .await
@@ -185,48 +326,51 @@ async fn cancel(
     State(app): State<App>,
     _headers: HeaderMap,
     Param(id): Param<String>,
+    query: Option<Query<ProjectQuery>>,
 ) -> Result<Json<Value>, ApiError> {
-    blocking(move || {
+    let project = project_query(query)?;
+    admitting(move || {
+        let identity = app.sessions.identity();
+        let caller = identity.caller(project.as_deref());
         let completed_solar = |job: &ds_command_kernel::compute_jobs::Job| {
             job.engine == ds_command_kernel::compute_jobs::EngineKind::SolarPrepared
                 && job.phase == ds_command_kernel::compute_jobs::Phase::Completed
         };
         let publication_cancel = |job: ds_command_kernel::compute_jobs::Job| {
-            let activity = app
-                .activity
-                .as_ref()
-                .ok_or("Solar Sync Center activity is unavailable before server startup")?;
-            let publication = activity.cancel_publication(&job)?;
+            let activity = app.activity.as_ref().ok_or_else(|| {
+                host_failure("Solar Sync Center activity is unavailable before server startup")
+            })?;
+            let publication = activity.cancel_publication(&job).map_err(host_failure)?;
             Ok(Json(json!({"job":job,"publication":publication})))
         };
-        let current = runtime::open(&app.database)?
-            .job(&app.connection.owner, &app.connection.lane, &id)
-            .map_err(|error| error.to_string())?
-            .ok_or("compute job not found")?;
+        let current = runtime::open(&app.database)
+            .map_err(host_failure)?
+            .job(&caller, &id)
+            .map_err(|error| host_failure(error.to_string()))?
+            // An id belonging to another project is not disclosed by being
+            // refused differently from one that never existed.
+            .ok_or_else(sessions::not_found)?;
         if completed_solar(&current) {
             return publication_cancel(current);
         }
-        match runtime::open(&app.database)?.update_job(
-            &app.connection.owner,
-            &app.connection.lane,
-            &id,
-            Event::Cancel,
-            runtime::now_ms(),
-            None,
-        ) {
+        match runtime::open(&app.database)
+            .map_err(host_failure)?
+            .update_job(&caller, &id, Event::Cancel, runtime::now_ms(), None)
+        {
             Ok(job) => Ok(Json(json!({"job":job}))),
             Err(error) if error.to_string().contains("job_already_terminal") => {
-                let completed = runtime::open(&app.database)?
-                    .job(&app.connection.owner, &app.connection.lane, &id)
-                    .map_err(|error| error.to_string())?
-                    .ok_or("compute job not found after cancellation race")?;
+                let completed = runtime::open(&app.database)
+                    .map_err(host_failure)?
+                    .job(&caller, &id)
+                    .map_err(|error| host_failure(error.to_string()))?
+                    .ok_or_else(sessions::not_found)?;
                 if completed_solar(&completed) {
                     publication_cancel(completed)
                 } else {
-                    Err(error.to_string())
+                    Err(host_failure(error.to_string()))
                 }
             }
-            Err(error) => Err(error.to_string()),
+            Err(error) => Err(host_failure(error.to_string())),
         }
     })
     .await
@@ -235,12 +379,27 @@ async fn result(
     State(app): State<App>,
     _headers: HeaderMap,
     Param(id): Param<String>,
+    query: Option<Query<ProjectQuery>>,
 ) -> Result<Response, ApiError> {
-    blocking(move || {
-        let bytes = runtime::open(&app.database)?
-            .job_result(&app.connection.owner, &app.connection.lane, &id)
-            .map_err(|e| e.to_string())?
-            .ok_or("job has no completed result")?;
+    let project = project_query(query)?;
+    admitting(move || {
+        let identity = app.sessions.identity();
+        let caller = identity.caller(project.as_deref());
+        let store = runtime::open(&app.database).map_err(host_failure)?;
+        // Visibility first, and separately: a job in another project is not
+        // found, exactly as an invented id is, while a job this caller CAN
+        // see and that simply has not finished is told so.
+        store
+            .job(&caller, &id)
+            .map_err(|error| host_failure(error.to_string()))?
+            .ok_or_else(sessions::not_found)?;
+        let bytes = store
+            .job_result(&caller, &id)
+            .map_err(|error| host_failure(error.to_string()))?
+            .ok_or_else(|| {
+                Failure::conflict("server_refused", "job has no completed result")
+                    .remedy("wait for the job to complete, then repeat")
+            })?;
         Ok((
             [
                 ("content-type", "application/json"),
@@ -252,14 +411,64 @@ async fn result(
     })
     .await
 }
-async fn activity(State(app): State<App>, _headers: HeaderMap) -> Result<Json<Value>, ApiError> {
+/// `GET /v1/activity[?project=<id>]` — one envelope, one entry per project
+/// this connection has durable work in. Without a project it reports every
+/// one of them; with a project it reports that one, or nothing at all when
+/// the project holds nothing this caller may see.
+async fn activity(
+    State(app): State<App>,
+    _headers: HeaderMap,
+    query: Option<Query<ProjectQuery>>,
+) -> Result<Json<Value>, ApiError> {
+    let project = project_query(query)?;
     blocking(move || {
         let activity = app
             .activity
+            .clone()
             .ok_or("Solar Sync Center activity is unavailable before server startup")?;
-        activity.store_read().map(Json)
+        let mut projects = Vec::new();
+        for scope in project_scopes(&app, project.as_deref())? {
+            projects.push(json!({"project": scope, "activity": activity.store_read(&scope)?}));
+        }
+        Ok(Json(
+            json!({"schema": ACTIVITY_SCHEMA, "projects": projects}),
+        ))
     })
     .await
+}
+
+/// Which projects an answer about "this Server's work" covers: the distinct
+/// projects of the durable jobs this caller can see, plus the ones holding
+/// report publications, narrowed to one when the caller named one.
+pub fn project_scopes(app: &App, project: Option<&str>) -> Result<Vec<String>, String> {
+    let identity = app.sessions.identity();
+    let mut scopes: BTreeSet<String> = runtime::open(&app.database)?
+        .jobs(&identity.caller(project), 1000)
+        .map_err(|error| error.to_string())?
+        .into_iter()
+        .filter_map(|job| job.context.map(|context| context.project))
+        .collect();
+    scopes.extend(
+        crate::server_reports::projects_with_publications(&app.database)?
+            .into_iter()
+            .filter(|held| project.is_none_or(|named| named == held)),
+    );
+    Ok(scopes.into_iter().collect())
+}
+
+fn host_failure(message: impl ToString) -> Failure {
+    Failure::conflict("server_refused", message.to_string())
+        .remedy("read the stated reason; verify ds auth status and that ds server serve is running")
+}
+
+/// A refusal decided from a cached membership snapshot may simply be out of
+/// date. Forget it so the next call fetches a fresh one, then relay the
+/// refusal exactly as the kernel wrote it.
+fn refresh_on_refusal(sessions: &ServerSessions, error: &runtime::SubmitError) -> Failure {
+    if error.code() == Some("project_not_visible") {
+        sessions.forget_membership();
+    }
+    sessions::submit_failure(error)
 }
 
 pub fn prepare_directory(path: &Path) -> Result<(), String> {
@@ -388,18 +597,28 @@ pub async fn serve(mut app: App, workers: usize) -> Result<(), String> {
             }
         })?;
     let activity =
-        crate::solar_sync::SolarActivity::open(app.database.clone(), app.connection.clone())?;
+        crate::solar_sync::SolarActivity::open(app.database.clone(), app.sessions.clone())?;
     app.activity = Some(activity.clone());
     // The pump merely drains durable StoreHost rows after a completion wake;
     // it does not run in a compute worker or block recovery/server readiness.
     let solar_pump = activity.start_pump();
     let workers = runtime::Workers::start(
-        app.database.clone(),
-        app.connection.owner.clone(),
-        app.connection.lane.clone(),
+        Arc::new(runtime::WorkerContext {
+            path: app.database.clone(),
+            identity: app.sessions.identity().clone(),
+            limits: app.sessions.limits(),
+            auth: app.auth.clone(),
+            membership: app.sessions.clone(),
+            observer: Some(activity),
+            // Read once, for one purpose the contract names: a transformer
+            // row written by a released Server carries no project, and the
+            // caller's saved selection is the only honest source for it. It
+            // is never consulted for anything admitted by this build.
+            saved_project: ds_cli_auth::headless_sync_context(&app.connection.lane)
+                .ok()
+                .map(|context| context.project_id().to_owned()),
+        }),
         workers,
-        app.auth.clone(),
-        Some(activity),
     )?;
     eprintln!(
         "DS server ready at {} (protected owner access)",
@@ -430,10 +649,20 @@ pub async fn serve(mut app: App, workers: usize) -> Result<(), String> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use axum::{body::Body, http::Request};
+    use ds_command_kernel::execution_context::{Limits, Principal};
+    use ds_compute_runtime::HostIdentity;
+    use sessions::{ProjectDirectory, ServerSessions, SessionOpener};
+    use std::sync::Mutex;
     use tower::ServiceExt;
+
+    const A: &str = "project-a";
+    const B: &str = "project-b";
+    const UID: &str = "uid-a";
+    const DEPLOYMENT: &str = "https://gateway.example";
+
     struct Auth(bool);
     impl Authorizer for Auth {
         fn authorize(&self, _: &str) -> Result<(), String> {
@@ -444,21 +673,117 @@ mod tests {
             }
         }
     }
-    fn app(path: &Path, authorized: bool) -> App {
-        App {
-            database: path.join("store.sqlite"),
-            connection: Connection {
-                address: "127.0.0.1:19766".parse().unwrap(),
-                owner: "test-owner".into(),
-                lane: "stable".into(),
-                token: "a".repeat(64),
-            },
-            auth: Arc::new(Auth(authorized)),
-            requests: Arc::new(tokio::sync::Semaphore::new(2)),
-            activity: None,
-            layers: crate::layers::NativeLayerHost::fixture_native("stable"),
+    /// A membership snapshot a test can change while the Server is running.
+    pub(crate) struct Directory(pub Mutex<Vec<String>>);
+    impl ProjectDirectory for Directory {
+        fn projects(&self) -> Result<Vec<String>, Failure> {
+            Ok(self.0.lock().unwrap().clone())
         }
     }
+    /// No gateway in a test: a route that needs one says so, and every route
+    /// that must not need one is proven by never reaching this.
+    pub(crate) struct NoGateway;
+    impl SessionOpener for NoGateway {
+        fn open(
+            &self,
+            _: &Path,
+            _: &Connection,
+            _: &str,
+        ) -> Result<Arc<crate::server_sync::ServerSyncSession>, String> {
+            Err("no gateway session in this test".into())
+        }
+    }
+
+    pub(crate) fn test_connection(address: SocketAddr) -> Connection {
+        Connection {
+            address,
+            owner: "test-owner".into(),
+            lane: "stable".into(),
+            token: "a".repeat(64),
+        }
+    }
+    pub(crate) fn identity(connection: &Connection) -> HostIdentity {
+        HostIdentity {
+            owner: connection.owner.clone(),
+            principal: Principal {
+                uid: UID.into(),
+                lane: connection.lane.clone(),
+                deployment: DEPLOYMENT.into(),
+                install_id: "install-1".into(),
+            },
+        }
+    }
+    pub(crate) fn limits() -> Limits {
+        Limits {
+            global_running: 4,
+            per_project_running: 2,
+            per_project_queued: 8,
+            global_queued: 16,
+        }
+    }
+    fn app(path: &Path, authorized: bool) -> App {
+        app_with(path, authorized, &[A, B], limits()).0
+    }
+    fn app_with(
+        path: &Path,
+        authorized: bool,
+        projects: &[&str],
+        limits: Limits,
+    ) -> (App, Arc<Directory>) {
+        let connection = test_connection("127.0.0.1:19766".parse().unwrap());
+        let directory = Arc::new(Directory(Mutex::new(
+            projects.iter().map(|p| (*p).to_owned()).collect(),
+        )));
+        let database = path.join("store.sqlite");
+        let sessions = ServerSessions::with(
+            connection.clone(),
+            database.clone(),
+            limits,
+            identity(&connection),
+            directory.clone(),
+            Arc::new(NoGateway),
+        );
+        (
+            App {
+                database,
+                connection,
+                auth: Arc::new(Auth(authorized)),
+                requests: Arc::new(tokio::sync::Semaphore::new(4)),
+                activity: None,
+                layers: crate::layers::NativeLayerHost::fixture_native("stable"),
+                sessions,
+            },
+            directory,
+        )
+    }
+    fn transformer(name: &str) -> Vec<u8> {
+        serde_json::to_vec(&json!({"schema":"ds.fast-lv.request/v1","jobs":[{"transformer_name":name,"gdfs":{"tr":{"type":"FeatureCollection","features":[{"type":"Feature","id":"tr-1","geometry":{"type":"Point","coordinates":[30.0,-2.0]},"properties":{"name":name,"names":name}}]},"lv_lines":{"type":"FeatureCollection","features":[{"type":"Feature","id":"line-1","geometry":{"type":"LineString","coordinates":[[30.0,-2.0],[30.0004,-2.0]]},"properties":{}}]},"customers":{"type":"FeatureCollection","features":[]}},"settings":{}}]})).unwrap()
+    }
+    /// One request straight at the router, with the owner bearer.
+    async fn call(app: App, method: &str, uri: &str, body: Option<Vec<u8>>) -> (StatusCode, Value) {
+        let request = Request::builder()
+            .method(method)
+            .uri(uri)
+            .header("authorization", format!("Bearer {}", "a".repeat(64)))
+            .header("content-type", "application/json");
+        let response = router(app)
+            .oneshot(
+                request
+                    .body(body.map_or_else(Body::empty, Body::from))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let status = response.status();
+        let bytes = axum::body::to_bytes(response.into_body(), 64 * 1024 * 1024)
+            .await
+            .unwrap();
+        (
+            status,
+            serde_json::from_slice(&bytes).unwrap_or(Value::Null),
+        )
+    }
+
     #[tokio::test]
     async fn unauthenticated_or_revoked_calls_never_read_or_create_jobs() {
         let dir = tempfile::tempdir().unwrap();
@@ -480,42 +805,374 @@ mod tests {
     #[tokio::test]
     async fn authenticated_status_is_served_without_a_ui() {
         let dir = tempfile::tempdir().unwrap();
+        let (status, value) = call(app(dir.path(), true), "GET", "/v1/jobs", None).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(value, json!({"jobs":[],"more":false}));
+    }
+
+    #[tokio::test]
+    async fn a_request_that_names_another_account_is_refused_by_name() {
+        let dir = tempfile::tempdir().unwrap();
         let response = router(app(dir.path(), true))
             .oneshot(
                 Request::builder()
                     .uri("/v1/jobs")
                     .header("authorization", format!("Bearer {}", "a".repeat(64)))
+                    .header(PRINCIPAL_HEADER, "uid-somebody-else")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        let bytes = axum::body::to_bytes(response.into_body(), 4096)
+            .await
+            .unwrap();
+        let value: Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(value["code"], sessions::MULTI_PRINCIPAL_UNSUPPORTED);
+        assert!(
+            value["remedy"]
+                .as_str()
+                .unwrap()
+                .contains("second ds server serve")
+        );
+        // The Server's own account still passes the same door.
+        let response = router(app(dir.path(), true))
+            .oneshot(
+                Request::builder()
+                    .uri("/v1/jobs")
+                    .header("authorization", format!("Bearer {}", "a".repeat(64)))
+                    .header(PRINCIPAL_HEADER, UID)
                     .body(Body::empty())
                     .unwrap(),
             )
             .await
             .unwrap();
         assert_eq!(response.status(), StatusCode::OK);
-        let bytes = axum::body::to_bytes(response.into_body(), 4096)
-            .await
-            .unwrap();
-        let value: Value = serde_json::from_slice(&bytes).unwrap();
-        assert_eq!(value, json!({"jobs":[],"more":false}));
+    }
+
+    #[tokio::test]
+    async fn two_projects_run_on_one_server_and_neither_is_disclosed_to_the_other() {
+        let dir = tempfile::tempdir().unwrap();
+        let app = app(dir.path(), true);
+        let (status, first) = call(
+            app.clone(),
+            "POST",
+            &format!("/v1/transformer-processing/for-a?project={A}"),
+            Some(transformer("T1")),
+        )
+        .await;
+        assert_eq!(status, StatusCode::ACCEPTED, "{first}");
+        assert_eq!(first["job"]["context"]["project"], A);
+        assert_eq!(
+            first["job"]["context"]["operation"],
+            "transformer_processing"
+        );
+        let (status, second) = call(
+            app.clone(),
+            "POST",
+            &format!("/v1/transformer-processing/for-b?project={B}"),
+            Some(transformer("T2")),
+        )
+        .await;
+        assert_eq!(status, StatusCode::ACCEPTED, "{second}");
+        assert_eq!(second["job"]["context"]["project"], B);
+        let (a_id, b_id) = (
+            first["job"]["id"].as_str().unwrap().to_owned(),
+            second["job"]["id"].as_str().unwrap().to_owned(),
+        );
+
+        // Unnarrowed: both. Narrowed: one each.
+        let (_, all) = call(app.clone(), "GET", "/v1/jobs", None).await;
+        assert_eq!(all["jobs"].as_array().unwrap().len(), 2);
+        let (_, only_a) = call(app.clone(), "GET", &format!("/v1/jobs?project={A}"), None).await;
+        assert_eq!(only_a["jobs"].as_array().unwrap().len(), 1);
+        assert_eq!(only_a["jobs"][0]["id"], a_id);
+        // A project this account is not a member of simply holds nothing.
+        let (status, stranger) = call(app.clone(), "GET", "/v1/jobs?project=project-z", None).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(stranger["jobs"], json!([]));
+
+        // Status, cancel and result of A's job asked for as B, and the same
+        // three for an id that never existed: one sentence, one code, always.
+        let guessed = "0".repeat(64);
+        let mut answers = Vec::new();
+        for (method, uri) in [
+            ("GET", format!("/v1/jobs/{a_id}?project={B}")),
+            ("GET", format!("/v1/jobs/{guessed}?project={B}")),
+            ("GET", format!("/v1/jobs/{guessed}")),
+            ("POST", format!("/v1/jobs/{a_id}/cancel?project={B}")),
+            ("POST", format!("/v1/jobs/{guessed}/cancel?project={B}")),
+            ("GET", format!("/v1/jobs/{a_id}/result?project={B}")),
+        ] {
+            let (status, body) = call(app.clone(), method, &uri, None).await;
+            answers.push((status, body["code"].clone(), body["error"].clone()));
+        }
+        let status_answers = &answers[..5];
+        for answer in status_answers {
+            assert_eq!(answer.1, "not_visible", "{answer:?}");
+            assert_eq!(answer.2, "job not found", "{answer:?}");
+            assert_eq!(answer.0, StatusCode::CONFLICT);
+        }
+        // A completed result of another project's job is the same absence.
+        assert_eq!(answers[5].1, "not_visible");
+
+        // Nothing was cancelled by any of that.
+        let (_, a_status) = call(
+            app.clone(),
+            "GET",
+            &format!("/v1/jobs/{a_id}?project={A}"),
+            None,
+        )
+        .await;
+        assert_eq!(a_status["job"]["phase"], "queued");
+        let (_, b_status) = call(
+            app.clone(),
+            "GET",
+            &format!("/v1/jobs/{b_id}?project={B}"),
+            None,
+        )
+        .await;
+        assert_eq!(b_status["job"]["phase"], "queued");
+
+        // Restart: a new App over the same protected state keeps every job in
+        // the project it was admitted into.
+        let restarted = self::app(dir.path(), true);
+        let (_, after) = call(
+            restarted.clone(),
+            "GET",
+            &format!("/v1/jobs?project={B}"),
+            None,
+        )
+        .await;
+        assert_eq!(after["jobs"].as_array().unwrap().len(), 1);
+        assert_eq!(after["jobs"][0]["id"], b_id);
+        assert_eq!(after["jobs"][0]["context"]["project"], B);
+        // And each project's own cancel still works, in its own project.
+        let (status, cancelled) = call(
+            restarted,
+            "POST",
+            &format!("/v1/jobs/{a_id}/cancel?project={A}"),
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{cancelled}");
+        assert_eq!(cancelled["job"]["phase"], "cancelled");
+    }
+
+    #[tokio::test]
+    async fn a_key_may_not_change_its_project_or_its_bytes() {
+        let dir = tempfile::tempdir().unwrap();
+        let app = app(dir.path(), true);
+        let (status, first) = call(
+            app.clone(),
+            "POST",
+            &format!("/v1/transformer-processing/shared?project={A}"),
+            Some(transformer("T1")),
+        )
+        .await;
+        assert_eq!(status, StatusCode::ACCEPTED);
+        // Same key, same bytes, same project: the same job.
+        let (status, again) = call(
+            app.clone(),
+            "POST",
+            &format!("/v1/transformer-processing/shared?project={A}"),
+            Some(transformer("T1")),
+        )
+        .await;
+        assert_eq!(status, StatusCode::ACCEPTED);
+        assert_eq!(again["job"]["id"], first["job"]["id"]);
+        // Same key, another project.
+        let (status, moved) = call(
+            app.clone(),
+            "POST",
+            &format!("/v1/transformer-processing/shared?project={B}"),
+            Some(transformer("T1")),
+        )
+        .await;
+        assert_eq!(status, StatusCode::CONFLICT);
+        assert_eq!(moved["code"], "scope_mismatch_for_key");
+        // Same key, other bytes.
+        let (status, changed) = call(
+            app.clone(),
+            "POST",
+            &format!("/v1/transformer-processing/shared?project={A}"),
+            Some(transformer("T2")),
+        )
+        .await;
+        assert_eq!(status, StatusCode::CONFLICT);
+        assert_eq!(changed["code"], "payload_changed_for_key");
+        let (_, all) = call(app, "GET", "/v1/jobs", None).await;
+        assert_eq!(all["jobs"].as_array().unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn a_submit_names_a_project_or_is_told_which_one_it_may_name() {
+        let dir = tempfile::tempdir().unwrap();
+        let app = app(dir.path(), true);
+        let (status, unnamed) = call(
+            app.clone(),
+            "POST",
+            "/v1/transformer-processing/unnamed",
+            Some(transformer("T1")),
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(unnamed["code"], "project_required");
+        let (status, outside) = call(
+            app.clone(),
+            "POST",
+            "/v1/transformer-processing/outside?project=project-z",
+            Some(transformer("T1")),
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(outside["code"], "project_not_visible");
+        let (_, all) = call(app, "GET", "/v1/jobs", None).await;
+        assert_eq!(all["jobs"], json!([]), "neither refusal queued anything");
+    }
+
+    #[tokio::test]
+    async fn capacity_is_a_typed_answer_and_a_cancellation_gives_the_room_back() {
+        let dir = tempfile::tempdir().unwrap();
+        let (app, _) = app_with(
+            dir.path(),
+            true,
+            &[A, B],
+            Limits {
+                global_running: 2,
+                per_project_running: 1,
+                per_project_queued: 2,
+                global_queued: 3,
+            },
+        );
+        let mut ids = Vec::new();
+        for (key, project, name) in [("a1", A, "T1"), ("a2", A, "T2")] {
+            let (status, body) = call(
+                app.clone(),
+                "POST",
+                &format!("/v1/transformer-processing/{key}?project={project}"),
+                Some(transformer(name)),
+            )
+            .await;
+            assert_eq!(status, StatusCode::ACCEPTED, "{body}");
+            ids.push(body["job"]["id"].as_str().unwrap().to_owned());
+        }
+        // A is at its share; the answer names the scope and how long to wait.
+        let (status, refused) = call(
+            app.clone(),
+            "POST",
+            &format!("/v1/transformer-processing/a3?project={A}"),
+            Some(transformer("T3")),
+        )
+        .await;
+        assert_eq!(status, StatusCode::TOO_MANY_REQUESTS);
+        assert_eq!(refused["code"], "capacity_exhausted");
+        assert_eq!(refused["scope"], "project");
+        assert!(refused["retry_after_ms"].as_u64().is_some_and(|ms| ms > 0));
+        assert_eq!(refused["retryable"], true);
+        assert!(
+            !refused["error"].as_str().unwrap().contains(A),
+            "a capacity refusal names counts and limits, never a project"
+        );
+        // B is unaffected by A's saturation.
+        let (status, _) = call(
+            app.clone(),
+            "POST",
+            &format!("/v1/transformer-processing/b1?project={B}"),
+            Some(transformer("T4")),
+        )
+        .await;
+        assert_eq!(status, StatusCode::ACCEPTED);
+        // Now the whole host's queue is full, for everyone.
+        let (status, global) = call(
+            app.clone(),
+            "POST",
+            &format!("/v1/transformer-processing/b2?project={B}"),
+            Some(transformer("T5")),
+        )
+        .await;
+        assert_eq!(status, StatusCode::TOO_MANY_REQUESTS);
+        assert_eq!(global["scope"], "global");
+        // Cancelling one of A's returns the room it held.
+        let (status, _) = call(
+            app.clone(),
+            "POST",
+            &format!("/v1/jobs/{}/cancel?project={A}", ids[0]),
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        let (status, _) = call(
+            app,
+            "POST",
+            &format!("/v1/transformer-processing/b2?project={B}"),
+            Some(transformer("T5")),
+        )
+        .await;
+        assert_eq!(status, StatusCode::ACCEPTED);
+    }
+
+    #[tokio::test]
+    async fn membership_gained_after_the_snapshot_is_admitted_without_a_restart() {
+        let dir = tempfile::tempdir().unwrap();
+        let (app, directory) = app_with(dir.path(), true, &[A], limits());
+        let (status, refused) = call(
+            app.clone(),
+            "POST",
+            &format!("/v1/transformer-processing/later?project={B}"),
+            Some(transformer("T1")),
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(refused["code"], "project_not_visible");
+        directory.0.lock().unwrap().push(B.into());
+        let (status, admitted) = call(
+            app,
+            "POST",
+            &format!("/v1/transformer-processing/later?project={B}"),
+            Some(transformer("T1")),
+        )
+        .await;
+        assert_eq!(status, StatusCode::ACCEPTED, "{admitted}");
+        assert_eq!(admitted["job"]["context"]["project"], B);
+    }
+
+    #[tokio::test]
+    async fn the_activity_scope_is_one_entry_per_project_that_holds_work() {
+        let dir = tempfile::tempdir().unwrap();
+        let app = app(dir.path(), true);
+        for (key, project, name) in [("a1", A, "T1"), ("b1", B, "T2")] {
+            let (status, body) = call(
+                app.clone(),
+                "POST",
+                &format!("/v1/transformer-processing/{key}?project={project}"),
+                Some(transformer(name)),
+            )
+            .await;
+            assert_eq!(status, StatusCode::ACCEPTED, "{body}");
+        }
+        assert_eq!(
+            project_scopes(&app, None).unwrap(),
+            vec![A.to_owned(), B.to_owned()]
+        );
+        assert_eq!(project_scopes(&app, Some(B)).unwrap(), vec![B.to_owned()]);
+        assert!(project_scopes(&app, Some("project-z")).unwrap().is_empty());
     }
 
     #[tokio::test]
     async fn solar_submit_requires_the_kernel_claim_envelope_after_local_auth() {
         let dir = tempfile::tempdir().unwrap();
-        let response = router(app(dir.path(), true))
-            .oneshot(
-                Request::builder()
-                    .method("POST")
-                    .uri("/v1/solar-processing/job-1")
-                    .header("authorization", format!("Bearer {}", "a".repeat(64)))
-                    .header("content-type", "application/json")
-                    .body(Body::from(
-                        r#"{"schema_version":"ds.solar.server-submission/v1"}"#,
-                    ))
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-        assert_eq!(response.status(), StatusCode::CONFLICT);
+        let (status, body) = call(
+            app(dir.path(), true),
+            "POST",
+            &format!("/v1/solar-processing/job-1?project={A}"),
+            Some(br#"{"schema_version":"ds.solar.server-submission/v1"}"#.to_vec()),
+        )
+        .await;
+        // The envelope is decoded before anything is admitted, so a missing
+        // claim is the caller's malformed input (400), not a conflict.
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
         assert!(
             !dir.path().join("store.sqlite").exists(),
             "a missing claim cannot create a compute-only Solar job"
@@ -535,18 +1192,8 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(unauthorized.status(), StatusCode::UNAUTHORIZED);
-
-        let response = router(app(dir.path(), true))
-            .oneshot(
-                Request::builder()
-                    .uri("/v1/activity")
-                    .header("authorization", format!("Bearer {}", "a".repeat(64)))
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-        assert_eq!(response.status(), StatusCode::CONFLICT);
+        let (status, _) = call(app(dir.path(), true), "GET", "/v1/activity", None).await;
+        assert_eq!(status, StatusCode::CONFLICT);
     }
 
     #[tokio::test]
@@ -554,9 +1201,12 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let database = dir.path().join("store.sqlite");
         let input = b"sealed Solar input";
+        let app = app(dir.path(), true);
+        let identity = app.sessions.identity().clone();
+        let id = ds_compute_runtime::digest(b"completed-solar-cancel");
         let queued = ds_command_kernel::compute_jobs::Job {
-            id: ds_compute_runtime::digest(b"completed-solar-cancel"),
-            owner: "test-owner".into(),
+            id: id.clone(),
+            owner: identity.owner.clone(),
             lane: "stable".into(),
             input_sha256: ds_compute_runtime::digest(input),
             engine: ds_command_kernel::compute_jobs::EngineKind::SolarPrepared,
@@ -569,18 +1219,31 @@ mod tests {
             lease_until_ms: 0,
             result_sha256: None,
             error: None,
+            context: Some(ds_command_kernel::execution_context::ExecutionContext {
+                principal_uid: UID.into(),
+                lane: "stable".into(),
+                deployment: DEPLOYMENT.into(),
+                install_id: "install-1".into(),
+                project: A.into(),
+                client: "test:1".into(),
+                operation: "solar_processing".into(),
+                job_id: id.clone(),
+                idempotency_key: "completed-solar-cancel".into(),
+                input_sha256: ds_compute_runtime::digest(input),
+                admitted_at_ms: 1,
+            }),
         };
+        let caller = identity.caller(None);
         let mut store = runtime::open(&database).unwrap();
         store.submit_job(&queued, input).unwrap();
         let (running, _) = store
-            .claim_job("test-owner", "stable", "worker", 2, 1_000)
+            .claim_job(&caller, "worker", 2, 1_000, &mut |_| true)
             .unwrap()
             .unwrap();
         let result = b"completed solar result";
         let completed = store
             .update_job(
-                "test-owner",
-                "stable",
+                &caller,
                 &running.id,
                 Event::Complete {
                     worker: "worker",
@@ -592,36 +1255,27 @@ mod tests {
             .unwrap();
         drop(store);
 
-        let response = router(app(dir.path(), true))
-            .oneshot(
-                Request::builder()
-                    .method("POST")
-                    .uri(format!("/v1/jobs/{}/cancel", completed.id))
-                    .header("authorization", format!("Bearer {}", "a".repeat(64)))
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-        assert_eq!(response.status(), StatusCode::CONFLICT);
-        let body = axum::body::to_bytes(response.into_body(), 4096)
-            .await
-            .unwrap();
-        assert!(String::from_utf8_lossy(&body).contains("Solar Sync Center activity"));
+        let (status, body) = call(
+            app,
+            "POST",
+            &format!("/v1/jobs/{}/cancel?project={A}", completed.id),
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::CONFLICT);
+        assert!(
+            body["error"]
+                .as_str()
+                .unwrap()
+                .contains("Solar Sync Center activity")
+        );
         let store = runtime::open(&database).unwrap();
         assert_eq!(
-            store
-                .job("test-owner", "stable", &completed.id)
-                .unwrap()
-                .unwrap()
-                .phase,
+            store.job(&caller, &completed.id).unwrap().unwrap().phase,
             ds_command_kernel::compute_jobs::Phase::Completed
         );
         assert_eq!(
-            store
-                .job_result("test-owner", "stable", &completed.id)
-                .unwrap()
-                .unwrap(),
+            store.job_result(&caller, &completed.id).unwrap().unwrap(),
             result
         );
     }
@@ -631,7 +1285,7 @@ mod tests {
         use std::os::unix::fs::PermissionsExt;
         let dir = tempfile::tempdir().unwrap();
         fs::set_permissions(dir.path(), fs::Permissions::from_mode(0o700)).unwrap();
-        let first = connection(
+        let first = super::connection(
             dir.path(),
             "127.0.0.1:19766".parse().unwrap(),
             "owner".into(),
@@ -639,7 +1293,9 @@ mod tests {
         )
         .unwrap();
         assert_eq!(load_connection(dir.path()).unwrap().token, first.token);
-        assert!(connection(dir.path(), first.address, "other".into(), "stable".into()).is_err());
+        assert!(
+            super::connection(dir.path(), first.address, "other".into(), "stable".into()).is_err()
+        );
         fs::set_permissions(
             dir.path().join("connection.json"),
             fs::Permissions::from_mode(0o644),

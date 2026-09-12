@@ -27,13 +27,15 @@ use ds_sync_runtime::{
     TransferReceipt, VerifiedReads, inventory_digest,
 };
 
-use crate::{host::Connection, server_sync::ServerSyncSession};
+use crate::server_sync::sessions::ServerSessions;
 use serde_json::Value;
 
 pub struct SolarActivity {
     database: PathBuf,
-    connection: Connection,
-    session: Arc<ServerSyncSession>,
+    /// One session per authorized project, opened on first use. A Solar
+    /// publication for one project and a report drain for another are two
+    /// sessions on one host, not one session that switches.
+    sessions: Arc<ServerSessions>,
     /// Native engine registration and its following gateway pass are one
     /// release-attributed action, even when compute workers finish together.
     sync_gate: Mutex<()>,
@@ -67,7 +69,9 @@ struct ReportWake {
 }
 
 impl ReportWake {
-    fn new() -> Self {
+    /// A project's scheduler before its first observation: one startup pass
+    /// is owed, and nothing else is known yet.
+    fn at_startup() -> Self {
         Self {
             startup: true,
             ..Self::default()
@@ -142,29 +146,77 @@ impl Drop for SolarSyncPump {
 }
 
 impl SolarActivity {
-    pub fn open(database: PathBuf, connection: Connection) -> Result<Arc<Self>, String> {
+    /// The connection is not a parameter: the sessions carry it, and with it
+    /// the one account whose work this host projects.
+    pub fn open(database: PathBuf, sessions: Arc<ServerSessions>) -> Result<Arc<Self>, String> {
         let state_directory = database
             .parent()
             .ok_or("server database path has no protected state directory")?;
         Ok(Arc::new(Self {
-            session: Arc::new(ServerSyncSession::open(&database, &connection)?),
+            sessions,
             reads: VerifiedReads::new(state_directory.join("sync-downloads")),
             database,
-            connection,
             sync_gate: Mutex::new(()),
             wake: AtomicBool::new(false),
             publication_failure: Mutex::new(None),
         }))
     }
 
+    fn caller(&self) -> ds_sync_store::JobCaller<'_> {
+        self.sessions.identity().caller(None)
+    }
+
+    /// The projects this host holds durable Solar or report work in. Read from
+    /// the work itself, never from a selection.
+    fn projects(&self) -> Result<Vec<String>, String> {
+        let mut projects = BTreeSet::new();
+        for job in self.solar_jobs()? {
+            if let Some(context) = job.context {
+                projects.insert(context.project);
+            }
+        }
+        projects.extend(crate::server_reports::projects_with_publications(
+            &self.database,
+        )?);
+        Ok(projects.into_iter().collect())
+    }
+
+    /// Every completed Solar job under this connection, newest first. Pulled
+    /// up from the producer so the activity host can ask what projects exist
+    /// before it opens a session for any of them.
+    fn solar_jobs(&self) -> Result<Vec<Job>, String> {
+        let store = runtime::open(&self.database)?;
+        let mut cursor: Option<(u64, String)> = None;
+        let mut jobs = Vec::new();
+        loop {
+            let page = store
+                .jobs_page(
+                    &self.caller(),
+                    cursor.as_ref().map(|(created, id)| (*created, id.as_str())),
+                    1000,
+                )
+                .map_err(|error| error.to_string())?;
+            let Some(last) = page.last() else { break };
+            cursor = Some((last.created_at_ms, last.id.clone()));
+            jobs.extend(
+                page.into_iter()
+                    .filter(|job| job.engine == EngineKind::SolarPrepared),
+            );
+            if jobs.len() > 4096 {
+                return Err("Solar Sync Center inventory exceeds 4096 durable jobs".into());
+            }
+        }
+        Ok(jobs)
+    }
+
     fn publication(&self, job: &Job) -> Result<SolarPublication, String> {
         let store = runtime::open(&self.database)?;
         let input = store
-            .job_input(&self.connection.owner, &self.connection.lane, &job.id)
+            .job_input(&self.caller(), &job.id)
             .map_err(|error| error.to_string())?
             .ok_or("completed Solar job lost its durable prepared input")?;
         let result = store
-            .job_result(&self.connection.owner, &self.connection.lane, &job.id)
+            .job_result(&self.caller(), &job.id)
             .map_err(|error| error.to_string())?
             .ok_or("completed Solar job lost its durable result")?;
         runtime::solar_publication(job, &input, &result)
@@ -173,22 +225,29 @@ impl SolarActivity {
     fn publication_metadata(&self, job: &Job) -> Result<SolarPublicationMetadata, String> {
         let store = runtime::open(&self.database)?;
         let input = store
-            .job_input(&self.connection.owner, &self.connection.lane, &job.id)
+            .job_input(&self.caller(), &job.id)
             .map_err(|error| error.to_string())?
             .ok_or("completed Solar job lost its durable prepared input")?;
         let result = store
-            .job_result(&self.connection.owner, &self.connection.lane, &job.id)
+            .job_result(&self.caller(), &job.id)
             .map_err(|error| error.to_string())?
             .ok_or("completed Solar job lost its durable result")?;
         runtime::solar_publication_metadata(job, &input, &result)
     }
 
-    pub fn store_read(&self) -> Result<Value, String> {
-        let producer = SolarProducer { activity: self };
-        self.session
-            .with_host_for_project(self.session.project(), &producer, &self.reads, |host| {
-                host.store_read()
-            })
+    /// One project's Sync Center projection. The caller names the project;
+    /// this host never answers for "the" project.
+    pub fn store_read(&self, project: &str) -> Result<Value, String> {
+        let producer = SolarProducer {
+            activity: self,
+            project: project.to_owned(),
+        };
+        self.sessions.session(project)?.with_host_for_project(
+            project,
+            &producer,
+            &self.reads,
+            |host| host.store_read(),
+        )
     }
 
     /// Cancel only the shared publication owned by this completed Solar job.
@@ -202,12 +261,26 @@ impl SolarActivity {
         }
         let store = runtime::open(&self.database)?;
         let input = store
-            .job_input(&self.connection.owner, &self.connection.lane, &job.id)
+            .job_input(&self.caller(), &job.id)
             .map_err(|error| error.to_string())?
             .ok_or("completed Solar job lost its durable prepared input")?;
         let scope = runtime::solar_job_scope(job, &input)?;
-        let producer = SolarProducer { activity: self };
-        self.session
+        // The job's own context is the authority on what it is about; the
+        // sealed input must agree with it, and a row that disagrees is not
+        // cancelled under either name.
+        if job
+            .context
+            .as_ref()
+            .is_some_and(|context| context.project != scope.project_id)
+        {
+            return Err("this job's sealed input names another project than its context".into());
+        }
+        let producer = SolarProducer {
+            activity: self,
+            project: scope.project_id.clone(),
+        };
+        self.sessions
+            .session(&scope.project_id)?
             .with_host_for_project(&scope.project_id, &producer, &self.reads, |host| {
                 // A completion can be cancelled before the background pump's
                 // first pass. Record the existing local row first, without
@@ -242,7 +315,11 @@ impl SolarActivity {
         let worker = thread::spawn(move || {
             let mut last_recovery = Instant::now() - Duration::from_secs(30);
             let mut last_report_recovery = Instant::now() - Duration::from_secs(30);
-            let mut reports = ReportWake::new();
+            // One report scheduler per project. A project that is offline or
+            // holding a retry keeps its own deadline; it never sets another
+            // project's, and it never drains another project's queue.
+            let mut reports: std::collections::BTreeMap<String, ReportWake> =
+                std::collections::BTreeMap::new();
             while !worker_stop.load(Ordering::Acquire) {
                 let woken = activity.wake.swap(false, Ordering::AcqRel);
                 let recovery_due = last_recovery.elapsed() >= Duration::from_secs(30);
@@ -262,31 +339,47 @@ impl SolarActivity {
                 // Reports are a separate shared-runtime producer. A completed
                 // Solar job never turns into a report `Manual` sync or a remote
                 // head poll; only report inventory and runtime wake facts can.
-                if reports.needs_observation(now, report_recovery_due) {
-                    match crate::server_reports::inventory(&activity.database, &activity.session) {
-                        Ok(inventory) => {
-                            if let Some(trigger) =
-                                reports.trigger(&inventory, now, report_recovery_due)
-                            {
-                                match crate::server_reports::drain(
-                                    &activity.database,
-                                    &activity.session,
-                                    &activity.reads,
-                                    trigger,
-                                ) {
-                                    Ok(pass) => reports.applied(pass),
-                                    Err(error) => {
-                                        reports.failed();
-                                        activity.note_publication_failure(&error);
-                                    }
-                                }
-                            }
-                        }
+                let scopes = match activity.projects() {
+                    Ok(scopes) => scopes,
+                    Err(error) => {
+                        activity.note_publication_failure(&error);
+                        Vec::new()
+                    }
+                };
+                let mut observed = false;
+                for project in scopes {
+                    let wake = reports
+                        .entry(project.clone())
+                        .or_insert_with(ReportWake::at_startup);
+                    if !wake.needs_observation(now, report_recovery_due) {
+                        continue;
+                    }
+                    observed = true;
+                    let pass = activity.sessions.session(&project).and_then(|session| {
+                        let inventory =
+                            crate::server_reports::inventory(&activity.database, &session)?;
+                        let Some(trigger) = wake.trigger(&inventory, now, report_recovery_due)
+                        else {
+                            return Ok(None);
+                        };
+                        crate::server_reports::drain(
+                            &activity.database,
+                            &session,
+                            &activity.reads,
+                            trigger,
+                        )
+                        .map(Some)
+                    });
+                    match pass {
+                        Ok(Some(pass)) => wake.applied(pass),
+                        Ok(None) => {}
                         Err(error) => {
-                            reports.failed();
+                            wake.failed();
                             activity.note_publication_failure(&error);
                         }
                     }
+                }
+                if observed {
                     // Every actual observation consumes this recovery slot. A
                     // failed startup or expired deadline retries at the next
                     // bounded local recovery, never in the next 100ms loop.
@@ -307,18 +400,35 @@ impl SolarActivity {
         }
     }
 
+    /// Drain every project's pending Solar publications, each through its own
+    /// session and its own store lease. One project's failure is recorded and
+    /// the next project is still drained: a held publication in one project
+    /// never stops another's.
     fn publish_pending(&self) -> Result<(), String> {
         let _gate = self
             .sync_gate
             .lock()
             .map_err(|_| "Solar Sync Center activity gate is unavailable")?;
-        let producer = SolarProducer { activity: self };
-        let publisher = SolarComputeArtifactsPublisher { activity: self };
-        let project = self.session.project().to_owned();
-        self.session
-            .with_host_for_project(&project, &producer, &self.reads, |host| {
-                host.run_solar_publications(&publisher).map(|_| ())
-            })
+        let mut first_error = None;
+        for project in self.projects()? {
+            let producer = SolarProducer {
+                activity: self,
+                project: project.clone(),
+            };
+            let publisher = SolarComputeArtifactsPublisher {
+                activity: self,
+                project: project.clone(),
+            };
+            let pass = self.sessions.session(&project).and_then(|session| {
+                session.with_host_for_project(&project, &producer, &self.reads, |host| {
+                    host.run_solar_publications(&publisher).map(|_| ())
+                })
+            });
+            if let Err(error) = pass {
+                first_error.get_or_insert(error);
+            }
+        }
+        first_error.map_or(Ok(()), Err)
     }
 
     fn note_publication_failure(&self, error: &str) {
@@ -357,37 +467,21 @@ impl CompletionObserver for SolarActivity {
     }
 }
 
+/// One project's producer. It is constructed per pass, for exactly the
+/// project whose session and store lease the pass holds.
 struct SolarProducer<'a> {
     activity: &'a SolarActivity,
+    project: String,
 }
 
 impl SolarProducer<'_> {
     fn solar_jobs(&self) -> Result<Vec<Job>, String> {
-        let store = runtime::open(&self.activity.database)?;
-        let mut cursor: Option<(u64, String)> = None;
-        let mut jobs = Vec::new();
-        loop {
-            let page = store
-                .jobs_page(
-                    &self.activity.connection.owner,
-                    &self.activity.connection.lane,
-                    cursor.as_ref().map(|(created, id)| (*created, id.as_str())),
-                    1000,
-                )
-                .map_err(|error| error.to_string())?;
-            let Some(last) = page.last() else { break };
-            cursor = Some((last.created_at_ms, last.id.clone()));
-            jobs.extend(
-                page.into_iter()
-                    .filter(|job| job.engine == EngineKind::SolarPrepared),
-            );
-            if jobs.len() > 4096 {
-                return Err("Solar Sync Center inventory exceeds 4096 durable jobs".into());
-            }
-        }
-        Ok(jobs)
+        self.activity.solar_jobs()
     }
     fn rows(&self, project: &str) -> Result<Vec<LocalRow>, String> {
+        if project != self.project {
+            return Err("the Solar producer was opened for another project".into());
+        }
         let mut rows = Vec::new();
         let mut identities = BTreeSet::new();
         for job in self.solar_jobs()?.into_iter().filter(|job| {
@@ -475,16 +569,12 @@ impl Producer for SolarProducer<'_> {
     ) -> Result<TransferReceipt, String> {
         let store = runtime::open(&self.activity.database)?;
         let job = store
-            .job(
-                &self.activity.connection.owner,
-                &self.activity.connection.lane,
-                &row.client_publish_id,
-            )
+            .job(&self.activity.caller(), &row.client_publish_id)
             .map_err(|error| error.to_string())?
             .ok_or("Solar publication is no longer durable")?;
         let publication = self.activity.publication(&job)?;
-        if publication.project_id != self.activity.session.project() {
-            return Err("Solar publication crosses the authenticated project fence".into());
+        if publication.project_id != self.project {
+            return Err("Solar publication crosses the project fence of this pass".into());
         }
         if output_id != "report-input" {
             return Err("requested Solar output is not part of the closed publication".into());
@@ -511,17 +601,12 @@ impl Producer for SolarProducer<'_> {
 
     fn activity(&self, project: &str) -> Result<Vec<ActivityRow>, String> {
         let store = runtime::open(&self.activity.database)?;
+        let caller = self.activity.caller();
         let mut rows = self
             .solar_jobs()?
             .into_iter()
             .filter_map(|job| {
-                let input = store
-                    .job_input(
-                        &self.activity.connection.owner,
-                        &self.activity.connection.lane,
-                        &job.id,
-                    )
-                    .ok()??;
+                let input = store.job_input(&caller, &job.id).ok()??;
                 let scope = runtime::solar_job_scope(&job, &input).ok()?;
                 (scope.project_id == project).then(|| ActivityRow {
                     id: job.id,
@@ -570,6 +655,7 @@ fn now_ms() -> u64 {
 /// this object only declares the fixed Solar shape and streams its one output.
 struct SolarComputeArtifactsPublisher<'a> {
     activity: &'a SolarActivity,
+    project: String,
 }
 
 impl SolarPublisher for SolarComputeArtifactsPublisher<'_> {
@@ -581,11 +667,7 @@ impl SolarPublisher for SolarComputeArtifactsPublisher<'_> {
     ) -> Result<SolarPublishOutcome, String> {
         let store = runtime::open(&self.activity.database)?;
         let job = store
-            .job(
-                &self.activity.connection.owner,
-                &self.activity.connection.lane,
-                &row.client_publish_id,
-            )
+            .job(&self.activity.caller(), &row.client_publish_id)
             .map_err(|error| error.to_string())?
             .ok_or("Solar publication is no longer durable")?;
         let publication = self.activity.publication(&job)?;
@@ -594,7 +676,7 @@ impl SolarPublisher for SolarComputeArtifactsPublisher<'_> {
                 detail: "Solar publication has no sealed snapshot provenance".into(),
             });
         };
-        if publication.project_id != self.activity.session.project()
+        if publication.project_id != self.project
             || provenance.project_id != publication.project_id
             || provenance.template_id != publication.city_id
             || row.identity.operation != format!("calculate-{}", publication.city_id)
@@ -611,11 +693,12 @@ impl SolarPublisher for SolarComputeArtifactsPublisher<'_> {
             .engine_release
             .rsplit_once('@')
             .ok_or("Solar publication has no engine release version")?;
-        match self
+        let session = self
             .activity
-            .session
-            .register_solar_engine(version, &publication.engine_release)
-        {
+            .sessions
+            .session(&self.project)
+            .map_err(|error| format!("this project has no Sync Center session: {error}"))?;
+        match session.register_solar_engine(version, &publication.engine_release) {
             Ok(()) => {}
             Err(ds_cli_auth::sync::SolarPublicationError::Blocked(detail)) => {
                 return Ok(SolarPublishOutcome::Blocked { detail });
@@ -630,7 +713,7 @@ impl SolarPublisher for SolarComputeArtifactsPublisher<'_> {
                 return Err(detail);
             }
         }
-        let receipt = self.activity.session.publish_solar_calculation(
+        let receipt = session.publish_solar_calculation(
             ds_cli_auth::SolarCalculationArtifactOpen {
                 project_id: &publication.project_id,
                 client_run_id: &row.client_publish_id,
@@ -702,7 +785,7 @@ mod report_wake_tests {
 
     #[test]
     fn startup_is_once_then_idle_report_inventory_never_creates_a_gateway_trigger() {
-        let mut wake = ReportWake::new();
+        let mut wake = ReportWake::at_startup();
         assert_eq!(
             wake.trigger(&inventory("first"), 10, true),
             Some(ds_sync_runtime::Trigger::Startup)

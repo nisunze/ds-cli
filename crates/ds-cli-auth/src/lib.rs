@@ -216,6 +216,78 @@ pub fn headless_sync_context(lane_value: &str) -> Result<HeadlessSyncContext, Fa
     })
 }
 
+/// The connection identity a durable local host has **without** a selected
+/// project: the account, the deployment it is bound to, and the registered
+/// install. A host that admits a project per operation needs exactly this and
+/// must not be made to pick one at startup to obtain it.
+pub struct HeadlessPrincipal {
+    account_uid: String,
+    deployment: String,
+    install_id: String,
+}
+
+impl HeadlessPrincipal {
+    pub fn account_uid(&self) -> &str {
+        &self.account_uid
+    }
+    pub fn deployment(&self) -> &str {
+        &self.deployment
+    }
+    pub fn install_id(&self) -> &str {
+        &self.install_id
+    }
+}
+
+pub fn headless_principal(lane_value: &str) -> Result<HeadlessPrincipal, Failure> {
+    let lane = Lane::parse(lane_value)?;
+    let identity = refresh_runtime_identity(lane.token())?;
+    probe_headless_identity(lane.token())?.ok_or_else(|| {
+        Failure::conflict("headless_signed_out", "the server has no native identity")
+            .remedy("sign in under the server's Linux account")
+    })?;
+    let profile = profile::load(lane)?;
+    let install_id = ds_edge_authority::load_or_create_install_id(
+        &state::edge_authority_dir(lane.token())?.join("install-id"),
+    )
+    .map_err(|error| {
+        Failure::failed("headless_install_unavailable", error)
+            .remedy("check the server user's protected DS state root")
+    })?;
+    Ok(HeadlessPrincipal {
+        account_uid: identity.uid().to_owned(),
+        deployment: profile.gateway_origin().to_owned(),
+        install_id,
+    })
+}
+
+/// The exact project ids this native account may act in, freshly fetched —
+/// the same directory `ds auth project use` verifies a selection against, and
+/// the membership snapshot a host admits an operation from. It is a snapshot,
+/// not a subscription: the caller stamps and bounds it.
+pub fn headless_projects(lane_value: &str) -> Result<Vec<String>, Failure> {
+    let lane = Lane::parse(lane_value)?;
+    let _ = probe_headless_identity(lane.token())?;
+    let exact = |directory: &ds_client_core::ProjectDirectory| {
+        directory
+            .projects()
+            .iter()
+            .map(|project| project.ds_project().to_owned())
+            .collect::<Vec<_>>()
+    };
+    if let Some(mut device) = device::restore_session(lane)? {
+        return Ok(exact(&device.list_projects().map_err(map_client)?));
+    }
+    let profile = profile::load(lane)?;
+    let store = NativeRefreshStore::open()?;
+    let mut client = Client::new(profile, NativeTransport, store);
+    let context = ProjectContextLease::acquire(client.profile())?;
+    require_restore(&mut client, &context)?;
+    Ok(exact(&with_disposition(
+        client.list_projects(now()),
+        &context,
+    )?))
+}
+
 pub static DOMAIN: Domain = Domain {
     id: "auth",
     summary: "Sign in headlessly and select a visible project.",
