@@ -582,6 +582,39 @@ fn a_switch_the_named_instance_did_not_complete_is_reported_not_assumed() {
     assert_eq!(alpha.project().as_deref(), Some("project-a"));
 }
 
+/// A switch is completed by the instance it was sent to, or it is not
+/// completed at all.
+///
+/// The kernel's rule is three clauses — the same principal, the same instance,
+/// and that project open when it answered — and the middle one only means
+/// something if the host reads *who answered* rather than repeating the id it
+/// addressed. Here the port is taken over by another runtime between the
+/// switch and the re-observation: same address, same secret, a session that
+/// names a different instance. Every other clause is satisfied, and the switch
+/// is still not this instance's to claim.
+#[test]
+fn a_switch_another_instance_answered_for_is_not_completed() {
+    let machine = Machine::new();
+    let alpha = Bridge::start(ALPHA, Some("project-a"), SHARED_NAME);
+    alpha.is_replaced_after_next_invoke(BETA);
+    machine.publish(&alpha);
+
+    let refusal = refused(
+        Invocation::signed_in().run(
+            &ds_cli_desktop::project::SWITCH_COMMAND,
+            ds_cli_desktop::project::switch,
+            &["--project", "project-z", "--target", &target(ALPHA)],
+        ),
+        "another instance answered for the port",
+    );
+    assert_eq!(refusal.code(), "auth_context_mismatch");
+    assert_eq!(
+        refusal.detail_value().expect("a detail")["instance"],
+        json!(ALPHA),
+        "the refusal names the instance the switch was addressed to",
+    );
+}
+
 /// The window's context changed while the operation was in flight. The
 /// application refuses with the kernel's own code; `ds` must relay it as a
 /// conflict with its remedy, not degrade it to an untyped `desktop_refused`.
