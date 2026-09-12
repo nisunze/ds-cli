@@ -8,6 +8,7 @@ use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
 
 use super::native::LANE_ARG;
+use super::target::{self, Target};
 
 const ORDER_ARG: Arg = Arg {
     name: "order",
@@ -22,21 +23,27 @@ const ORDER_ARG: Arg = Arg {
 pub static COMMAND: Command = Command {
     id: "map.layer.reorder",
     path: &["map", "layer", "reorder"],
-    contract: 3,
+    contract: 4,
     summary: "Save canonical project-layer order overrides (needs --yes).",
     purpose: "Reads the selected project's assembled layer document and asks the shared layer kernel to admit the request: unknown ids (runtime MapLibre ids included), repeated ids and out-of-bound orders are typed refusals before anything is sent; a partial order is accepted and names the canonical layers it leaves unlisted. Admitted overrides are saved through ds-brain. Geometry and platform stack safety still govern final draw grouping.",
     chapter: Chapter::Survey,
     effect: Effect::GlobalWrite,
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[ORDER_ARG, LANE_ARG],
+    args: &[
+        ORDER_ARG,
+        LANE_ARG,
+        target::TARGET_ARG,
+        target::PROJECT_ARG,
+        target::STATE_DIR_ARG,
+    ],
     output: "Project, the exact reviewed id/order pairs, applied/persisted flags, canonical_count, whether the order is complete and the canonical ids it leaves unlisted.",
     examples: &[Example {
         command: "ds map layer reorder --order gt/roads=120 --order gt/schools=220 --yes --output json",
         note: "Take ids from `ds map layer list`; never construct them.",
         runnable: false,
     }],
-    refusals: super::native::NATIVE_WRITE_REFUSALS,
+    refusals: super::native::LAYER_ORDER_REFUSALS,
     reference: Some("docs/reference/map.md"),
     availability: ds_cli_auth::native_availability,
 };
@@ -79,15 +86,21 @@ fn parse_orders(values: &[String]) -> Result<Vec<Value>, Failure> {
         .collect()
 }
 
-pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
-    let orders = parse_orders(inputs.repeated("order"))?
+pub fn run(inputs: &Inputs, context: &Context) -> Result<Value, Failure> {
+    // The ids and orders are admitted here whichever host runs it, so a
+    // malformed `--order` is one refusal with one code, never a round trip.
+    let orders = parse_orders(inputs.repeated("order"))?;
+    if target::resolve(inputs)? == Target::Server {
+        return ds_cli_server::layers_reorder(inputs, context);
+    }
+    let orders = orders
         .iter()
         .map(|row| ds_layer_ops::Order {
             layer_id: row["layerId"].as_str().expect("parsed id").to_owned(),
             order: row["order"].as_i64().expect("parsed order"),
         })
         .collect();
-    let mut documents = ds_layer_ops::Native::new(inputs.require("lane")?);
+    let mut documents = target::desktop_documents(inputs)?;
     ds_layer_ops::reorder(&mut documents, &ds_layer_ops::OrderRequest { orders })
 }
 

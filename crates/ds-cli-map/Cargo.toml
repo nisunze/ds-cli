@@ -15,6 +15,10 @@ ds-cli-contract = { workspace = true }
 # second route to a map here, and no engine to link.
 ds-cli-desktop = { workspace = true }
 ds-cli-auth = { workspace = true }
+# `--target server` is the SAME four operations against the running Server, so
+# the client half of that transport is `ds-cli-server`'s own, not a second copy
+# of it here. There is no cycle: nothing in `ds-cli-server` knows `ds map`.
+ds-cli-server = { workspace = true }
 ds-command-kernel = { workspace = true }
 serde_json = { workspace = true }
 ds-layer-store = { path = "../../../ds-web/crates/ds-layer-store" }

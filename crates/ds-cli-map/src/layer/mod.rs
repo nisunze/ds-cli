@@ -7,6 +7,7 @@ pub mod project_visibility;
 pub mod remote_list;
 pub mod remove;
 pub mod reorder;
+pub mod target;
 pub mod visibility;
 
 use ds_cli_contract::outcome::Failure;

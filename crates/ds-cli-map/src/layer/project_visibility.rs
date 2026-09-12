@@ -14,6 +14,7 @@ use ds_cli_contract::{Context, Inputs};
 use serde_json::Value;
 
 use super::native::LANE_ARG;
+use super::target::{self, Target};
 
 const LAYER_ARG: Arg = Arg {
     name: "layer",
@@ -36,17 +37,23 @@ const fn command(
     Command {
         id,
         path,
-        contract: 1,
+        contract: 2,
         summary,
         purpose,
         chapter: Chapter::Survey,
         effect: Effect::LocalFileWrite,
         authority: Authority::HeadlessProject,
         execution: Execution::Sync,
-        args: &[LAYER_ARG, LANE_ARG],
+        args: &[
+            LAYER_ARG,
+            LANE_ARG,
+            target::TARGET_ARG,
+            target::PROJECT_ARG,
+            target::STATE_DIR_ARG,
+        ],
         output,
         examples,
-        refusals: super::native::NATIVE_VISIBILITY_REFUSALS,
+        refusals: super::native::LAYER_VISIBILITY_REFUSALS,
         reference: Some("docs/reference/map.md"),
         availability: ds_cli_auth::native_availability,
     }
@@ -78,10 +85,16 @@ pub static HIDE: Command = command(
     }],
 );
 
-pub fn run_show(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
+pub fn run_show(inputs: &Inputs, context: &Context) -> Result<Value, Failure> {
+    if target::resolve(inputs)? == Target::Server {
+        return ds_cli_server::layers_show(inputs, context);
+    }
     set(inputs, true)
 }
-pub fn run_hide(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
+pub fn run_hide(inputs: &Inputs, context: &Context) -> Result<Value, Failure> {
+    if target::resolve(inputs)? == Target::Server {
+        return ds_cli_server::layers_hide(inputs, context);
+    }
     set(inputs, false)
 }
 
@@ -90,7 +103,7 @@ fn set(inputs: &Inputs, visible: bool) -> Result<Value, Failure> {
         layers: inputs.repeated("layer").to_vec(),
         visible,
     };
-    let mut documents = ds_layer_ops::Native::new(inputs.require("lane")?);
+    let mut documents = target::desktop_documents(inputs)?;
     ds_layer_ops::set_visibility(
         &mut documents,
         &ds_layer_ops::Preferences::native()?,
