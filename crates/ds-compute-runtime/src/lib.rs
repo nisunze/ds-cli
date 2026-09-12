@@ -1140,7 +1140,9 @@ mod tests {
     /// it stops.
     #[test]
     fn the_stranded_rows_report_names_the_ids_its_remedy_needs() {
-        let ids: Vec<String> = (0..NAMED_IN_A_LINE + 3).map(|n| format!("job-{n}")).collect();
+        let ids: Vec<String> = (0..NAMED_IN_A_LINE + 3)
+            .map(|n| format!("job-{n}"))
+            .collect();
         let one = named(&ids[..1]);
         assert_eq!(one, "job-0");
         let all = named(&ids);
