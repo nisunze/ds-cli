@@ -79,8 +79,12 @@ unchanged: `{"jobs":[<Job>…],"more":<bool>}`.
 
 ### `GET /v1/jobs/:id?project=<id>`, `POST /v1/jobs/:id/cancel?project=<id>`, `GET /v1/jobs/:id/result?project=<id>`
 `project` — OPTIONAL narrowing. An id belonging to another project answers
-exactly `job not found` (`not_visible`), identical to a guessed id. Shapes
-unchanged (`{"job":…}`, `{"job":…,"publication":…}`, raw result bytes).
+exactly `job not found` (`not_visible`, 409), identical to a guessed id, on
+all three. Shapes unchanged (`{"job":…}`, `{"job":…,"publication":…}`, raw
+result bytes). One deliberate difference: a job the caller CAN see that simply
+has not finished answers `server_refused` / "job has no completed result", so
+"not yours" and "not yet" stay distinguishable *inside* a project and
+indistinguishable across projects.
 
 ### `GET /v1/activity?project=<id>`
 **Shape changed.** One envelope, always:
@@ -100,10 +104,16 @@ Without `project`: one entry per project this connection has durable work in
 
 `project` — **REQUIRED**, as a query parameter on all three (the bodies stay
 exactly the `ds_layer_ops` request types, so nothing about `ds map layer …`'s
-shapes changes). Missing → `project_required`. Outside membership →
-`project_not_visible`. Named but not the project the Server's native document
-source is on → `project_context_changed` (the existing code), with the remedy
-naming the project the document was read under.
+shapes changes). Three answers, all proven through the real listener:
+
+| named | answer |
+|---|---|
+| nothing | `project_required` (400) |
+| a project outside membership | `project_not_visible` (400) |
+| a member project that is not the one the Server's document source is on | `project_context_changed` (409), remedy naming both |
+| the project the document is for | the catalogue, unchanged |
+
+A refused layer request writes nothing, under any project.
 
 ### Principal header (all routes)
 An optional `x-ds-principal: <uid>` is honoured only when it equals the
@@ -153,14 +163,35 @@ run `ds auth project use`. Add `--per-project <count>` to `SERVE` (optional,
 `headless_project_not_selected` from the server refusal rosters where it only
 described the old startup requirement.
 
-## 5. One more additive `ds-cli-auth` export this slice adds
+## 5. Two additive `ds-cli-auth` exports this slice adds
 
 ```rust
 pub struct HeadlessPrincipal { account_uid, deployment, install_id }   // accessors
 pub fn headless_principal(lane_value: &str) -> Result<HeadlessPrincipal, Failure>
+pub fn headless_projects(lane_value: &str) -> Result<Vec<String>, Failure>
 ```
 
 The Server's connection identity **without** a saved selection —
 `headless_sync_context` minus the project, which is what a host that admits a
-project per operation actually needs. `headless_sync_context` is unchanged and
-still used by nothing in the Server.
+project per operation actually needs — and the exact project directory a
+membership snapshot is made of (the same one `ds auth project use` verifies a
+selection against, both credential paths). `headless_sync_context` is
+unchanged; the Server calls it in exactly one place, `serve`, to learn the
+saved selection a *pre-slice* transformer row can be recovered into, which is
+the one use the execution-context contract §6 gives it.
+
+## 6. What this slice does not do yet — say it, do not discover it
+
+1. **A layer request can name only the project the Server's account has
+   selected.** The project is required, verified against membership and
+   fenced against the document that comes back, so nothing is ever served
+   under the wrong project — but `ds_cli_auth::layer_config_fenced` and
+   `capture_layer_scope_fence` still read the saved selection to decide which
+   project's document to fetch, so naming a second authorized project answers
+   `project_context_changed` instead of that project's catalogue. Closing it
+   is a ds-cli-auth slice (an explicit-project layer fence), not a Server one.
+2. **Multi-principal is refused, not supported** (`multi_principal_unsupported`),
+   as the contract asks. A second account needs a second `ds server serve`.
+3. **`/v1/activity` needs a gateway session per project**, so its per-project
+   envelope is proven for its scope selection (`project_scopes`) and its
+   pre-startup refusal, not for a live Sync Center projection.
