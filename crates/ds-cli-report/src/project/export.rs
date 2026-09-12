@@ -63,6 +63,10 @@ const ADMIN_BOUNDS_ARG: Arg = Arg::value(
     "<path>",
     "Rwanda villages asset (.dsab). Default: the installed machine-shared asset.",
 );
+const SEED_ARG: Arg = Arg::switch(
+    "seed",
+    "Acquire missing selected map context for each printed transformer before rendering; spends provider cost and downloads bundles. Without it, unheld context is omitted and named.",
+);
 const PUBLISH_ARG: Arg = Arg::switch(
     "publish",
     "Seal verified outputs for the matching native Server sync pump; without it, writes local reports only.",
@@ -167,6 +171,36 @@ const PUBLISH_ROOT: Refusal = Refusal {
     when: "the Server state root is unavailable, relative, or cannot hold a sealed publication",
     remedy: "start Server with its default state root or pass the same absolute --server-state-dir used by ds server serve",
 };
+const CONTEXT_UNSUPPORTED: Refusal = Refusal {
+    code: "print_context_unsupported",
+    when: "a selected printing setup names a survey or local-layer context source, which no headless host can supply (a batch row carries it)",
+    remedy: "print that setup from the desktop, or remove the source from the setup's context layers",
+};
+const CONTEXT_INVALID: Refusal = Refusal {
+    code: "print_context_invalid",
+    when: "the assembled print context exceeds the engine's bounds or this machine's holdings could not be read (a batch row carries it)",
+    remedy: "narrow the setup's context buffers, or repair the geographic data storage root",
+};
+const CONTEXT_CATALOG: Refusal = Refusal {
+    code: "catalog_unavailable",
+    when: "the reference catalogue could not be read, so catalogue context layers were omitted from every print",
+    remedy: "retry when connected; held rooms still print",
+};
+const CONTEXT_BUNDLE: Refusal = Refusal {
+    code: "reference_bundle_unavailable",
+    when: "--seed needed a national bundle the catalogue does not publish, or it could not be installed (a batch row carries it)",
+    remedy: "publish the dataset's bundle, then print again with --seed",
+};
+const CONTEXT_PROVIDER: Refusal = Refusal {
+    code: "dataset_provider_unavailable",
+    when: "--seed could not reach the governed context provider (a batch row carries it)",
+    remedy: "restore the connection and print again; held context is kept",
+};
+const CONTEXT_ACQUISITION: Refusal = Refusal {
+    code: "project_dataset_acquisition_failed",
+    when: "--seed acquired context the room refused (a batch row carries it)",
+    remedy: "read the row's message; `ds data project-cache status` shows the dataset's last error",
+};
 
 const REFUSALS: &[Refusal] = &[
     super::NATIVE_PROFILE,
@@ -209,6 +243,14 @@ const REFUSALS: &[Refusal] = &[
     PUBLISH_LOCAL_ONLY,
     PUBLISH_SCOPE_CHANGED,
     PUBLISH_ROOT,
+    CONTEXT_UNSUPPORTED,
+    CONTEXT_INVALID,
+    CONTEXT_CATALOG,
+    CONTEXT_BUNDLE,
+    CONTEXT_PROVIDER,
+    CONTEXT_ACQUISITION,
+    ds_cli_auth::DATA_DISTRIBUTION_UNAVAILABLE_REFUSAL,
+    ds_cli_auth::REFERENCE_BUNDLE_DOWNLOAD_FAILED_REFUSAL,
 ];
 
 pub static COMMAND: Command = Command {
@@ -216,7 +258,7 @@ pub static COMMAND: Command = Command {
     path: &["report", "project", "export"],
     contract: 1,
     summary: "Produce transformer reports, prints included, headlessly.",
-    purpose: "Export the selected project's saved transformers and named print outputs with the native reporter. Defaults to all active transformers; engines run concurrently and outputs are verified. Files stay local unless --publish seals them for Server sync, which is not cloud completion. External print context is omitted; photos require a media grant and currently refuse. Inspect batch rows and warnings. Details: docs/reference/report.md.",
+    purpose: "Export the selected project's saved transformers and named print outputs with the native reporter. Defaults to all active transformers; engines run concurrently and outputs are verified. Files stay local unless --publish seals them for Server sync, which is not cloud completion. Each print carries the map context its setups select from this machine's project rooms; --seed acquires what is not held first, so the first print request seeds. Photos require a media grant and currently refuse. Inspect batch rows and warnings. Details: docs/reference/report.md.",
     chapter: Chapter::Reports,
     effect: Effect::LocalFileWrite,
     authority: Authority::HeadlessProject,
@@ -226,6 +268,7 @@ pub static COMMAND: Command = Command {
         OUT_DIR_ARG,
         CONCURRENCY_ARG,
         ADMIN_BOUNDS_ARG,
+        SEED_ARG,
         PUBLISH_ARG,
         SERVER_STATE_DIR_ARG,
         LANE_ARG,
@@ -359,6 +402,26 @@ fn host_failure(failure: HostFailure) -> Failure {
         "callee_timed_out" => Failure::failed("callee_timed_out", message).remedy(TIMED_OUT.remedy),
         "reporter_engine_missing" => {
             Failure::unavailable("reporter_engine_missing", message).remedy(DS_REPORT.remedy)
+        }
+        "print_context_unsupported" => Failure::invalid("print_context_unsupported", message)
+            .remedy(CONTEXT_UNSUPPORTED.remedy),
+        "print_context_invalid" => {
+            Failure::failed("print_context_invalid", message).remedy(CONTEXT_INVALID.remedy)
+        }
+        "reference_bundle_unavailable" => {
+            Failure::unavailable("reference_bundle_unavailable", message)
+                .remedy(CONTEXT_BUNDLE.remedy)
+        }
+        "dataset_provider_unavailable" => {
+            Failure::unavailable("dataset_provider_unavailable", message)
+                .remedy(CONTEXT_PROVIDER.remedy)
+        }
+        "project_dataset_acquisition_failed" => {
+            Failure::failed("project_dataset_acquisition_failed", message)
+                .remedy(CONTEXT_ACQUISITION.remedy)
+        }
+        "catalog_unavailable" => {
+            Failure::unavailable("catalog_unavailable", message).remedy(CONTEXT_CATALOG.remedy)
         }
         _ => Failure::internal("report_result_invalid", message),
     };
@@ -550,6 +613,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let out_dir = PathBuf::from(inputs.require("out-dir")?);
     let resident_limit = concurrency_limit(inputs)?;
     let explicit_asset = inputs.value("admin-bounds").map(PathBuf::from);
+    let seed = inputs.switch("seed");
     let publish = inputs.switch("publish");
     let publish_scope = publish
         .then(|| ds_cli_auth::capture_layer_scope_fence(lane))
@@ -652,6 +716,47 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         None
     };
 
+    // What every print in this batch needs from outside the room: the kernel's
+    // one decision over the sealed sheets, with `--seed` as the only way an
+    // acquisition may happen. Nothing selected means nothing is read.
+    let contexts = selected_contexts(&receipt, seed)?;
+    let mut context_warnings: Vec<Value> = Vec::new();
+    let catalog: Vec<ds_project_data::ReferenceResource> = if contexts.is_empty() {
+        Vec::new()
+    } else {
+        match ds_cli_auth::data_distribution(
+            lane,
+            &ds_cli_auth::DataDistributionRequest::ListDatasets {},
+        )
+        .map_err(|error| format!("{}: {}", error.code(), error.message()))
+        .and_then(|rows| {
+            ds_project_data::validate_resources(&rows).map_err(|error| error.to_string())
+        }) {
+            Ok(rows) => rows,
+            Err(reason) => {
+                context_warnings.push(json!({
+                    "code": CONTEXT_CATALOG.code,
+                    "message": format!("catalogue context layers were omitted: {reason}"),
+                }));
+                Vec::new()
+            }
+        }
+    };
+    let holdings_root = if contexts.is_empty() {
+        None
+    } else {
+        Some(shared_root().map_err(|error| {
+            Failure::failed(CONTEXT_INVALID.code, error).remedy(CONTEXT_INVALID.remedy)
+        })?)
+    };
+    let holdings_scope = ds_command_kernel::project_dataset_cache::Scope {
+        principal: inventory.identity().uid().to_string(),
+        project: project_id.clone(),
+    };
+    let mut provider = ds_cli_data::project_cache::CliProvider { lane };
+    let mut bundle_fetch = ds_cli_data::project_cache::bundle_fetch(lane);
+    let mut transformer_context_notes: Vec<Value> = Vec::new();
+
     let processors = std::thread::available_parallelism()
         .map(|count| count.get())
         .unwrap_or(1);
@@ -714,12 +819,50 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
                     ),
                 )
             })?;
+        let print_context = match holdings_root.as_deref() {
+            None => None,
+            Some(root) => {
+                let layers_value = serde_json::to_value(snapshot.layers())
+                    .map_err(|error| HostFailure::new(INPUTS_INVALID.code, error.to_string()))?;
+                let mut hosts = ds_project_data::Hosts {
+                    provider: &mut provider,
+                    fetch: &mut bundle_fetch,
+                };
+                let mode = if seed {
+                    ds_project_data::Mode::Acquire(&mut hosts)
+                } else {
+                    ds_project_data::Mode::Read
+                };
+                let context = ds_project_data::read_print_context(
+                    root,
+                    &holdings_scope,
+                    name,
+                    &layers_value,
+                    &contexts,
+                    &catalog,
+                    mode,
+                )
+                .map_err(context_failure)?;
+                for warning in &context.warnings {
+                    transformer_context_notes.push(json!({"transformer": name, "note": warning}));
+                }
+                context
+                    .document
+                    .map(|bytes| ds_report_host::PrintContextBytes {
+                        bytes,
+                        sha256: context.sha256.unwrap_or_default(),
+                        layers: context.layers,
+                        omitted: context.omitted.iter().map(|o| o.layer.clone()).collect(),
+                    })
+            }
+        };
         Ok(TransformerReportInputs {
             transformer: name.to_string(),
             server_version,
             layers: snapshot.layers().clone(),
             content_digest: snapshot.metadata().content_digest().map(str::to_string),
             selection: None,
+            print_context,
         })
     };
     let outcome = run_batch(&CliEngine, &settings, &plan.names, fetch).map_err(host_failure)?;
@@ -784,7 +927,81 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         "receipt": outcome.receipt_path.display().to_string(),
     });
     output["results"] = outcome.receipt["results"].clone();
+    // What each completed print carried from outside its room, from the run
+    // receipts the host wrote: the digest the engine verified, the layers, and
+    // the selected layers this machine could not supply.
+    if let Some(rows) = output["results"].as_array_mut() {
+        for row in rows.iter_mut() {
+            let Some(name) = row["transformer"].as_str().map(str::to_string) else {
+                continue;
+            };
+            if let Some(run) = outcome.runs.iter().find(|run| run.transformer == name) {
+                row["print_context"] = json!({
+                    "sha256": run.receipt["print_context_sha256"],
+                    "layers": run.receipt["print_context_layers"],
+                    "omitted": run.receipt["print_context_omitted"],
+                });
+            }
+        }
+    }
+    output["context"] = json!({
+        "selected_layers": contexts.iter().map(|layer| layer.id.clone()).collect::<Vec<_>>(),
+        "seeded": seed,
+        "catalog_resources": catalog.len(),
+        "warnings": context_warnings,
+        "notes": transformer_context_notes,
+    });
     Ok(output)
+}
+
+/// The context layers the selected printing setups need, decided once by the
+/// kernel over the sealed sheets. `online` is exactly `--seed`: acquisition
+/// happens before a renderer, never inside one.
+fn selected_contexts(
+    receipt: &InputReceipt,
+    online: bool,
+) -> Result<Vec<ds_command_kernel::printing::PrintContextLayer>, Failure> {
+    let sheets: Value = serde_json::from_str(&receipt.sheets_json).map_err(|error| {
+        Failure::invalid("report_inputs_invalid", format!("sealed sheets: {error}"))
+            .remedy(INPUTS_INVALID.remedy)
+    })?;
+    let request = json!({"command": "context_preparation", "sheets": sheets, "online": online});
+    let bytes = serde_json::to_vec(&request).map_err(|error| {
+        Failure::invalid("report_inputs_invalid", error.to_string()).remedy(INPUTS_INVALID.remedy)
+    })?;
+    let answer: Value = serde_json::from_str(
+        &ds_command_kernel::report::evaluate(&bytes).map_err(|error| {
+            Failure::invalid("report_inputs_invalid", error).remedy(INPUTS_INVALID.remedy)
+        })?,
+    )
+    .map_err(|error| {
+        Failure::invalid("report_inputs_invalid", error.to_string()).remedy(INPUTS_INVALID.remedy)
+    })?;
+    serde_json::from_value(answer["contexts"].clone()).map_err(|error| {
+        Failure::invalid(
+            "report_inputs_invalid",
+            format!("selected context layers: {error}"),
+        )
+        .remedy(INPUTS_INVALID.remedy)
+    })
+}
+
+/// A holdings failure for one transformer, as the batch row records it. The
+/// crate's own code is kept where this command declares it; the two the
+/// document itself can raise are folded under `print_context_invalid`.
+fn context_failure(error: ds_project_data::Failure) -> HostFailure {
+    use ds_project_data::Failure as Cause;
+    let message = error.message().to_string();
+    match error {
+        Cause::Unsupported(_) => HostFailure::new(CONTEXT_UNSUPPORTED.code, message),
+        Cause::BundleUnavailable(_) => HostFailure::new(CONTEXT_BUNDLE.code, message),
+        Cause::ProviderUnavailable(_) => HostFailure::new(CONTEXT_PROVIDER.code, message),
+        Cause::AcquisitionFailed(_) => HostFailure::new(CONTEXT_ACQUISITION.code, message),
+        Cause::CatalogInvalid(_) => HostFailure::new(CONTEXT_CATALOG.code, message),
+        Cause::NotHeld(_) | Cause::TooLarge(_) | Cause::Store(_) => {
+            HostFailure::new(CONTEXT_INVALID.code, message)
+        }
+    }
 }
 
 pub fn render(data: &Value) -> String {
@@ -882,6 +1099,38 @@ mod tests {
         );
     }
 
+    /// Every failure the holdings crate can answer with for one transformer
+    /// becomes a batch row under a code this command documents.
+    #[test]
+    fn every_context_failure_is_a_documented_row_code() {
+        use ds_project_data::Failure as Cause;
+        for cause in [
+            Cause::NotHeld("x".into()),
+            Cause::AcquisitionFailed("x".into()),
+            Cause::ProviderUnavailable("x".into()),
+            Cause::BundleUnavailable("x".into()),
+            Cause::Unsupported("x".into()),
+            Cause::TooLarge("x".into()),
+            Cause::CatalogInvalid("x".into()),
+            Cause::Store("x".into()),
+        ] {
+            let failure = context_failure(cause);
+            assert!(
+                REFUSALS.iter().any(|refusal| refusal.code == failure.code),
+                "{} is not documented",
+                failure.code
+            );
+            let mapped = host_failure(failure.clone());
+            assert_eq!(
+                mapped.code(),
+                failure.code,
+                "{} must survive the mapping",
+                failure.code
+            );
+            assert!(mapped.remedy_text().is_some());
+        }
+    }
+
     #[test]
     fn the_engine_summary_is_bounded_and_prefers_stderr() {
         assert_eq!(bounded_summary("bad\u{7} thing\n", "ignored"), "bad thing");
@@ -896,6 +1145,12 @@ mod tests {
         assert!(COMMAND.summary.len() <= 70);
         assert!(COMMAND.args.iter().all(|arg| arg.name != "project"));
         assert!(COMMAND.args.iter().any(|arg| arg.name == "publish"));
+        assert!(COMMAND.args.iter().any(|arg| arg.name == "seed"));
+        assert!(
+            !COMMAND
+                .purpose
+                .contains("External print context is omitted")
+        );
         assert!(
             COMMAND
                 .args

@@ -69,6 +69,7 @@ fn the_descriptor_is_a_headless_project_fenced_local_file_write() {
             "out-dir",
             "concurrency",
             "admin-bounds",
+            "seed",
             "publish",
             "server-state-dir",
             "lane"
@@ -100,6 +101,10 @@ fn the_descriptor_is_a_headless_project_fenced_local_file_write() {
         "report_publish_local_only",
         "report_publish_scope_changed",
         "report_publish_root_invalid",
+        "print_context_unsupported",
+        "print_context_invalid",
+        "catalog_unavailable",
+        "reference_bundle_unavailable",
     ] {
         assert!(refusals.contains(&expected), "{expected} is not documented");
     }

@@ -547,8 +547,25 @@ pub fn run_status(inputs: &Inputs, _context: &Context) -> Result<Value, Failure>
 }
 
 /// The host's door to ds-brain's `query_print_context`, decoded by the kernel.
-struct CliProvider<'a> {
-    lane: &'a str,
+/// Shared with `ds report project export --seed`, which seeds the printed
+/// transformer through the same door.
+pub struct CliProvider<'a> {
+    pub lane: &'a str,
+}
+
+/// The bundle byte transfer a seeding host lends `ds-project-data`: the
+/// pinned, credential-free fetch of ds-cli-auth, fenced to a signed-in lane.
+pub fn bundle_fetch(lane: &str) -> impl FnMut(&BundleReceipt, &Path) -> Result<(), String> + '_ {
+    move |receipt: &BundleReceipt, dest: &Path| -> Result<(), String> {
+        ds_cli_auth::download_reference_bundle(
+            lane,
+            &receipt.url,
+            &receipt.bundle_sha256,
+            receipt.compressed_bytes,
+            dest,
+        )
+        .map_err(|error| format!("{}: {}", error.code(), error.message()))
+    }
 }
 
 fn contour_parameters(dataset: &Dataset) -> Option<ContourParameters> {
@@ -677,16 +694,7 @@ pub fn run_seed(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         Failure::unavailable(STORE_FAILED.code, error).remedy(STORE_FAILED.remedy)
     })?;
     let mut provider = CliProvider { lane };
-    let mut fetch = |receipt: &BundleReceipt, dest: &Path| -> Result<(), String> {
-        ds_cli_auth::download_reference_bundle(
-            lane,
-            &receipt.url,
-            &receipt.bundle_sha256,
-            receipt.compressed_bytes,
-            dest,
-        )
-        .map_err(|error| format!("{}: {}", error.code(), error.message()))
-    };
+    let mut fetch = bundle_fetch(lane);
     let mut rows = Vec::new();
     let mut failed = 0_usize;
     for target in targets {

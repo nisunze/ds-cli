@@ -26,4 +26,9 @@ ds-report-artifacts = { path = "../../../ds-command-kernel/crates/ds-report-arti
 # process: `ds report project export` hands it the audited `ds-report` engine
 # adapter built on ds-cli-exec.
 ds-report-host = { path = "../../../ds-web/crates/ds-report-host" }
+# The printed transformer's external context: rooms, bundles and the
+# ds.print-context/v1 document are ds-project-data's; the governed provider
+# door and the bundle fetch are the ones `ds data project-cache seed` lends it.
+ds-project-data = { path = "../../../ds-web/crates/ds-project-data" }
+ds-cli-data = { workspace = true }
 tempfile = "3"

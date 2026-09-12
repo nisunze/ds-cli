@@ -469,8 +469,19 @@ saved content digest mismatch refuses before computation. A completed report
 is promoted as one directory after every artifact and its receipt are flushed;
 interrupted private delivery scratch never becomes a partial final report.
 
-What is not headless yet: print context layers (survey, local, catalog,
-buildings, contours, project MV) are prepared by the desktop from its caches,
-so a server run renders named prints without them and the engine's print
-warnings say so; a media scope grant is not minted here, so a room carrying
-photos is refused by the engine with a typed blocker.
+Print context is headless. For every transformer the batch reads the context
+layers its selected printing setups declare — the kernel's one decision over
+the sealed sheets — from this machine's project rooms (`ds data project-cache
+status`): catalogue subsets, building footprints and contours. `--seed`
+acquires what is not held first, for the printed transformer's own cluster,
+through the same doors `ds data project-cache seed` uses; so a job that always
+passes `--seed` acquires on its first run and nothing afterwards. Without
+`--seed` a print never reaches a provider: an unheld layer is omitted, named
+in the row's `print_context.omitted` and the run receipt, and `context.notes`
+says why. A survey or local-layer source has no headless holding and fails
+that transformer's row (`print_context_unsupported`); the project's MV models
+are omitted as desktop-only. Each `report-run.json` records
+`print_context_sha256`, `print_context_layers` and `print_context_omitted`,
+and a desktop given the same rooms stages byte-identical context. A media
+scope grant is not minted here, so a room carrying photos is refused by the
+engine with a typed blocker.

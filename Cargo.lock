@@ -1014,9 +1014,11 @@ version = "0.1.0"
 dependencies = [
  "ds-cli-auth",
  "ds-cli-contract",
+ "ds-cli-data",
  "ds-cli-exec",
  "ds-command-kernel",
  "ds-compute-runtime",
+ "ds-project-data",
  "ds-report-artifacts",
  "ds-report-host",
  "serde_json",
