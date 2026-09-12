@@ -342,6 +342,32 @@ pub enum Fault {
     Refused(Refusal),
 }
 
+impl Fault {
+    /// The typed code a host relays to its caller, or `None` when the fault is
+    /// the host's own bug and there is nothing to relay.
+    pub fn code(&self) -> Option<&'static str> {
+        match self {
+            Self::Hard(_) => None,
+            Self::Refused(refusal) => Some(refusal.code),
+        }
+    }
+    pub fn message(&self) -> &str {
+        match self {
+            Self::Hard(message) => message,
+            Self::Refused(refusal) => &refusal.message,
+        }
+    }
+}
+
+impl std::fmt::Display for Fault {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self.code() {
+            Some(code) => write!(formatter, "{code}: {}", self.message()),
+            None => formatter.write_str(self.message()),
+        }
+    }
+}
+
 fn refused(code: &'static str, message: impl Into<String>) -> Fault {
     Fault::Refused(Refusal {
         code,
@@ -1788,6 +1814,23 @@ mod tests {
         .is_err());
         assert!(wire(json!({"kind": "visible", "caller": caller()})).is_err());
         assert!(evaluate(&vec![b' '; MAX_INPUT_BYTES + 1]).is_err());
+    }
+
+    #[test]
+    fn a_fault_says_whether_a_host_may_relay_it() {
+        let refused = admit(&request()).unwrap_err();
+        assert_eq!(refused.code(), Some(PROJECT_REQUIRED));
+        assert_eq!(refused.message(), "name a project, or select one first");
+        assert_eq!(
+            refused.to_string(),
+            "project_required: name a project, or select one first"
+        );
+        let mut clockless = request();
+        clockless.saved_project = Some("project-a".into());
+        clockless.now_ms = 0;
+        let bug = admit(&clockless).unwrap_err();
+        assert_eq!(bug.code(), None, "a host bug has nothing to relay");
+        assert_eq!(bug.to_string(), bug.message());
     }
 
     #[test]
