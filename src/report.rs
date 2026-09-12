@@ -129,7 +129,9 @@ enum Command {
     },
     /// The outcome of a batch of exports, in a stable order with its failure
     /// count — the shaping every batch host repeated.
-    BatchOutcome { results: Vec<serde_json::Value> },
+    BatchOutcome {
+        results: Vec<serde_json::Value>,
+    },
     FormatOptions {
         #[serde(default)]
         setups: Vec<serde_json::Value>,
@@ -176,7 +178,9 @@ enum Command {
         #[serde(default)]
         locator: String,
     },
-    ArtifactOutput { output_id: String },
+    ArtifactOutput {
+        output_id: String,
+    },
     ArtifactInventory {
         artifacts: Vec<artifacts::Artifact>,
         combined: bool,
@@ -552,8 +556,15 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
             serde_json::json!({"groups":output})
         }
         Command::ArchiveLayout { layout } => layout.describe(),
-        Command::ArtifactOutput { output_id } => serde_json::json!({"output": artifacts::output(&output_id)}),
-        Command::ArtifactInventory { artifacts: items, combined, inventory, require_combined_base } => {
+        Command::ArtifactOutput { output_id } => {
+            serde_json::json!({"output": artifacts::output(&output_id)})
+        }
+        Command::ArtifactInventory {
+            artifacts: items,
+            combined,
+            inventory,
+            require_combined_base,
+        } => {
             serde_json::json!({"artifacts": artifacts::validate(items, combined, inventory, require_combined_base)?})
         }
         Command::ArtifactName { locator } => {
