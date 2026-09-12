@@ -19,6 +19,10 @@ use ds_cli_contract::{
         Arg, Authority, Availability, Chapter, Command, Domain, Effect, Example, Execution, Refusal,
     },
 };
+// The kernel's own rule on a project id, named rather than copied: a value it
+// would refuse must be refused here too, before it becomes a query on a wire,
+// and two hand-written copies of one grammar drift the first time it changes.
+use ds_command_kernel::execution_context::{MAX_PROJECT_CHARS, valid_project};
 use serde_json::{Value, json};
 use std::{
     io::Read,
@@ -67,11 +71,6 @@ const NARROWING_PROJECT: Arg = Arg::value(
     "Narrow the read to one exact ds_project id; nothing is sent when it is omitted.",
 );
 
-/// The bound the kernel's execution context puts on a project id
-/// (`ds_command_kernel::execution_context::MAX_PROJECT_CHARS`). Checked here so
-/// an unusable value is refused before it becomes a query string.
-const MAX_PROJECT_CHARS: usize = 500;
-
 // -- The refusal vocabulary a Server call can raise ----------------------
 //
 // Split by what a command can actually do: reading a job cannot refuse a
@@ -102,7 +101,7 @@ const PROJECT_REQUIRED: Refusal = Refusal {
 };
 const CONTEXT_CORRUPT: Refusal = Refusal {
     code: "context_corrupt",
-    when: "a project id is empty, padded, over 500 characters or holds a control character",
+    when: "a project id is not one path segment: empty, over-long, or holding a separator, a traversal, whitespace or a control character",
     remedy: "copy one exact ds_project value from ds auth project list",
 };
 const NOT_VISIBLE: Refusal = Refusal {
@@ -132,8 +131,8 @@ const PAYLOAD_CHANGED_FOR_KEY: Refusal = Refusal {
 };
 const CAPACITY_EXHAUSTED: Refusal = Refusal {
     code: "capacity_exhausted",
-    when: "the global or per-project queue is full; the answer names the scope and retry_after_ms",
-    remedy: "retry after retry_after_ms, cancel work you no longer need, or raise --workers/--per-project",
+    when: "a queue or the request door is full; the answer names scope and retry_after_ms",
+    remedy: "retry after retry_after_ms, cancel work you no longer need, or raise --workers",
 };
 const CONTEXT_UNRECOVERABLE: Refusal = Refusal {
     code: "context_unrecoverable",
@@ -270,13 +269,13 @@ const fn command(
         path,
         contract: 1,
         summary,
-        purpose: "Drive native transformer and prepared Solar computation on the shared Rust runtime. Jobs survive UI closure and server restart; request and result bytes are retained under the initiating identity. Every call is about one project: --project names it, else the saved selection (ds auth project use) is sent as this client's DEFAULT, recorded by the Server and never held as its state -- one Server serves several of its owner's projects at once. The Server runs what its owner hands it for the project named; the gateway enforces entitlement at publication and sync. A Solar request carries its sealed input, whose project is authoritative.",
+        purpose: "Drive native transformer and prepared Solar computation on the shared Rust runtime. Jobs survive UI closure and server restart; request and result bytes are retained under the initiating identity. Every call is about one project: --project names it, else the saved selection (ds auth project use) is sent as this client's DEFAULT and recorded by the Server, which keeps no selection of its own -- one host serves several of its owner's projects at once. The gateway enforces entitlement at publication and sync; a Solar request's sealed input names the project that wins.",
         chapter: Chapter::Design,
         effect,
         authority: Authority::HeadlessUser,
         execution,
         args,
-        output: "A bounded job receipt or list, each naming its project; full bytes only via server result. No credential is printed.",
+        output: "A bounded receipt or list, each naming its project; full bytes only to a named file. No credential is printed.",
         examples,
         refusals,
         reference: Some("docs/reference/server.md"),
@@ -828,18 +827,15 @@ fn known_project(inputs: &Inputs) -> Result<Option<String>, Failure> {
     }
 }
 
-/// The kernel's bound on a project id, checked before it becomes a query
-/// value. The same rule, stated here so an unusable name never reaches a wire.
+/// The kernel's rule on a project id, ASKED rather than restated, before the
+/// value becomes a query on a wire. The sentence states the grammar, so an
+/// operator reads the rule instead of guessing which character was refused.
 fn bounded_project(value: &str) -> Result<String, Failure> {
-    let usable = !value.is_empty()
-        && value.trim() == value
-        && value.chars().count() <= MAX_PROJECT_CHARS
-        && !value.chars().any(char::is_control);
-    if !usable {
+    if !valid_project(value) {
         return Err(Failure::invalid(
             "context_corrupt",
             format!(
-                "a project id is 1..{MAX_PROJECT_CHARS} characters, unpadded and free of control characters"
+                "a project id is one path segment of 1..={MAX_PROJECT_CHARS} characters: no separator, no traversal, no whitespace"
             ),
         )
         .remedy(CONTEXT_CORRUPT.remedy)
@@ -1250,12 +1246,23 @@ mod tests {
 
     #[test]
     fn an_unusable_project_never_reaches_the_wire() {
-        // The same bound the kernel enforces, under the kernel's own code:
-        // where a situation has a name, both sides of the wire use it.
-        for value in ["", " padded", "padded ", "with\u{1}control"] {
+        // The kernel's own rule, asked here rather than restated: a project
+        // id is ONE path segment, because hosts partition durable state by it.
+        for value in [
+            "",
+            " padded",
+            "padded ",
+            "with\u{1}control",
+            "..",
+            "a/../b",
+            "a b",
+            "a\\b",
+        ] {
             let error = bounded_project(value).expect_err(value);
             assert_eq!(error.code(), "context_corrupt");
             assert_eq!(error.class(), ExitClass::InvalidInput);
+            let message = error.message().to_owned();
+            assert!(message.contains("one path segment"), "{message}");
             assert!(error.remedy_text().is_some(), "{value} needs a remedy");
         }
         assert!(bounded_project(&"p".repeat(MAX_PROJECT_CHARS)).is_ok());
