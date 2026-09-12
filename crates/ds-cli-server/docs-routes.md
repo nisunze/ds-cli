@@ -392,3 +392,12 @@ already in that lock through `ds-sync-store`, so nothing new is compiled.
    row stays readable by id (`ds server status`, `ds server result`, `ds
    server input`) however far past the bound it falls, and a project's older
    Solar work is out of its Sync Center projection, not out of its record.
+
+   One consequence of that assumption is owed a ruling with it, because the
+   producer draws from the same projection: a project whose backlog of
+   COMPLETED but UNPUBLISHED Solar work ever passes 512 rows keeps only its
+   newest 512 in reach of a Sync Center pass, and the older ones are readable
+   forever but never published. A pass that keeps up never meets the bound, so
+   this is the pathological case, not the ordinary one — but the honest fix if
+   the owner wants none of it is ordering, not a bigger number: publish the
+   oldest unpublished first, or bound how much unpublished work may wait.

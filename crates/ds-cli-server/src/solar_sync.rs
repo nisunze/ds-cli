@@ -45,7 +45,16 @@ const PAGE: usize = 1000;
 ///
 /// The retention question this bound makes visible — when, if ever, a durable
 /// Solar row is removed — is an OWNER decision and is recorded as one in
-/// `docs-routes.md` §7. Nothing here deletes anything.
+/// `docs-routes.md` §6. Nothing here deletes anything.
+///
+/// It bounds one more thing, and that is stated rather than discovered: the
+/// producer publishes out of the same projection, so a project whose backlog
+/// of COMPLETED, still-unpublished Solar work ever exceeds this number keeps
+/// only its newest rows in reach of a Sync Center pass. Every row stays
+/// readable by id, and a pass that keeps up never meets the bound; a pass that
+/// cannot keep up is a retention and ordering question — publish the oldest
+/// unpublished first, or bound how much work may wait — and that is the
+/// owner's, recorded with the rest in `docs-routes.md` §6.
 const PROJECTION_PER_PROJECT: usize = 512;
 
 pub struct SolarActivity {

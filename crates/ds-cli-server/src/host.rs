@@ -2030,6 +2030,44 @@ pub(crate) mod tests {
             assert_eq!(entry["more"], json!(more), "{entry}");
             assert!(entry["unavailable"].is_string(), "{entry}");
         }
+
+        // And `more` is a bound on the PROJECTION, not on the record: the
+        // oldest row on the host — four and a half thousand rows past where
+        // the projection stops — is still its owner's to read by id, status
+        // and stored input alike. That is the sentence the reference makes,
+        // so it is the sentence this asserts.
+        let oldest = runtime::digest(format!("{A}-0").as_bytes());
+        let (status, job) = call(
+            app.clone(),
+            "GET",
+            &format!("/v1/jobs/{oldest}?project={A}"),
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{job}");
+        assert_eq!(job["job"]["context"]["project"], A);
+        let (status, input) = raw(
+            app.clone(),
+            "GET",
+            &format!("/v1/jobs/{oldest}/input?project={A}"),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(
+            input,
+            format!("{{\"city\":\"{A}-0\"}}").into_bytes(),
+            "a row past the projection is read by id, byte for byte"
+        );
+        // …and it is still nobody else's.
+        let (status, hidden) = call(
+            app,
+            "GET",
+            &format!("/v1/jobs/{oldest}/input?project={B}"),
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::CONFLICT, "{hidden}");
+        assert_eq!(hidden["error"], "job not found");
     }
 
     /// Write `count` durable Solar rows for one project the way a Server that
