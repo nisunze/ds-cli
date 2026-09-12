@@ -961,7 +961,14 @@ pub fn read_request_id(text: &str) -> Result<(String, u64), Fault> {
     if !instance_id_valid(instance_id) {
         return Err(malformed());
     }
-    if sequence.is_empty() || (sequence.len() > 1 && sequence.starts_with('0')) {
+    // Decimal digits and nothing else. `"+1".parse::<u64>()` is `Ok(1)`, so a
+    // signed sequence would be a *second* text for one request, and a host
+    // that keys a pending completion by the id it dispatched would admit one
+    // completion twice under two spellings. One request, one spelling.
+    if sequence.is_empty()
+        || !sequence.bytes().all(|byte| byte.is_ascii_digit())
+        || (sequence.len() > 1 && sequence.starts_with('0'))
+    {
         return Err(malformed());
     }
     let Ok(sequence) = sequence.parse::<u64>() else {
@@ -1693,6 +1700,10 @@ mod tests {
             format!("cli-{ONE}-0").as_str(),
             format!("cli-{ONE}-07").as_str(),
             format!("cli-{ONE}-x").as_str(),
+            // `+1` parses as 1, so without the digit rule this is a second
+            // text for request 1 and a completion could be replayed under it.
+            format!("cli-{ONE}-+1").as_str(),
+            format!("cli-{ONE}- 1").as_str(),
             format!("desktop-{ONE}-1").as_str(),
             "cli-4711-1",
             "cli-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA-1",

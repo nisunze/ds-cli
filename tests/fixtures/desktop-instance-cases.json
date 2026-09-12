@@ -2478,6 +2478,25 @@
       }
     },
     {
+      "id": "request-id-read-refuses-a-signed-sequence",
+      "why": "A leading plus parses as the same number, so admitting it would give one request two texts and let a host that keys pending work by the id it dispatched admit one completion twice.",
+      "request": {
+        "kind": "read_request_id",
+        "request_id": "cli-11111111111111111111111111111111-+1"
+      },
+      "expected": {
+        "outcome": "refused",
+        "refusal": {
+          "code": "request_id_malformed",
+          "message": "that is not a bridge request id",
+          "remedy": "a request id is cli-<instance_id>-<n>, minted by the instance that dispatched it",
+          "detail": {
+            "request_id": "cli-11111111111111111111111111111111-+1"
+          }
+        }
+      }
+    },
+    {
       "id": "request-id-read-refuses-the-old-process-grammar",
       "why": "`cli-<pid>-<n>` is what the shell minted before instance identity; it is refused rather than read as an instance, which it never was.",
       "request": {

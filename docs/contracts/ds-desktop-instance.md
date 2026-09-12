@@ -162,9 +162,10 @@ JavaScript reads.
 
 `cli-<instance_id>-<n>` — 32 hex, then a decimal sequence from 1 with no
 padding. The old grammar was `cli-<pid>-<n>`, which named a process and not an
-instance; `cli-4711-1` is now `request_id_malformed`, as is a case-shifted id
-and a padded sequence (one request, one spelling, so a completion cannot be
-replayed under a second text). This is what lets the shell bind a completion to
+instance; `cli-4711-1` is now `request_id_malformed`, as is a case-shifted id,
+a padded sequence and a signed one — `"+1"` parses as 1, so `cli-…-+1` would
+be a second text for one request (one request, one spelling, so a completion
+cannot be replayed under a second text). This is what lets the shell bind a completion to
 the window that was dispatched rather than to any window that calls back.
 
 ## 7. What `project_context` decides now
