@@ -196,7 +196,7 @@ const fn command(
         path,
         contract: 1,
         summary,
-        purpose: "Drive persistent native transformer and prepared Solar computation through the shared Rust runtime. Jobs survive UI closure and server restart; complete request and result bytes are retained under the initiating native identity. Every call names the one project it is about: --project names it, and without it this client reads its saved selection (ds auth project use) as a DEFAULT. Either way the project is sent explicitly and the Server verifies membership before admitting anything, so a saved selection is a client default the Server checks, never Server execution state, and one Server serves several authorized projects at once without restarting or switching. A remote Server never reads a client path, a browser cache or this machine's selection: a Solar request carries the sealed prepared input itself. Server control uses an owner-only local connection credential on loopback. Remote administration uses SSH. Publication is represented through Sync Center's shared durable activity owner; these controls never create a browser queue.",
+        purpose: "Drive persistent native transformer and prepared Solar computation through the shared Rust runtime. Jobs survive UI closure and server restart; complete request and result bytes are retained under the initiating native identity. Every call is about one project: --project names it, and without it the saved selection (ds auth project use) is sent as this client's DEFAULT, verified by the Server exactly like any named one and never held as Server state. So one Server serves several authorized projects at once, and a remote Server reads no client path, browser cache or selection of this machine's: a Solar request carries the sealed prepared input itself. Control is an owner-only loopback credential; remote administration uses SSH.",
         chapter: Chapter::Design,
         effect,
         authority: Authority::HeadlessUser,
@@ -251,13 +251,20 @@ pub fn engine(_: &Inputs, _: &Context) -> Result<Value, Failure> {
     })
 }
 
-pub static SERVE: Command = command(
-    "server.serve",
-    &["server", "serve"],
-    "Host durable parallel compute for every project this account may reach.",
-    Effect::LocalFileWrite,
-    Execution::Sync,
-    &[
+/// Hosting has its own purpose because it has its own subject. The other
+/// commands are about a project; this one is about the host, and the whole
+/// point of the slice is that starting a host settles no project at all.
+pub static SERVE: Command = Command {
+    id: "server.serve",
+    path: &["server", "serve"],
+    contract: 1,
+    summary: "Host durable parallel compute for every project this account may reach.",
+    purpose: "Host the shared Rust compute runtime under this Linux user's native account. No project is selected here and none is captured: callers name the project on each request and the Server verifies its membership per call, so one host serves several projects at once and needs no ds auth project use to start. --workers bounds the whole host; --per-project bounds what one project may hold while another has work queued, so a busy project cannot starve a second one. Control is an owner-only loopback credential; remote administration uses SSH. This process runs in the foreground until it stops.",
+    chapter: Chapter::Design,
+    effect: Effect::LocalFileWrite,
+    authority: Authority::HeadlessUser,
+    execution: Execution::Sync,
+    args: &[
         STATE,
         LANE,
         Arg::value("listen", "<loopback:port>", "Fixed loopback bind address.")
@@ -270,16 +277,29 @@ pub static SERVE: Command = command(
         Arg::value(
             "per-project",
             "<count>",
-            "Jobs one project may run at once while another has work queued; defaults to half the workers, at least 1.",
+            "Jobs one project may run at once while another queues; 1..workers, default half.",
         ),
     ],
-    SERVE_REFUSALS,
-    &[Example {
+    output: "The worker and per-project limits the host ran under, once it stops. No credential is printed.",
+    examples: &[Example {
         command: "ds server serve --lane stable",
         note: "Run after native login under the same Linux user. No project need be selected: callers name theirs.",
         runnable: false,
     }],
-);
+    refusals: SERVE_REFUSALS,
+    reference: Some("docs/reference/server.md"),
+    availability: || {
+        if cfg!(target_os = "linux") {
+            Availability::Available
+        } else {
+            Availability::unavailable(
+                "server_platform_unsupported",
+                "the native server currently requires Linux",
+                "run these commands on the Linux server, locally or over SSH",
+            )
+        }
+    },
+};
 pub static SUBMIT: Command = command(
     "server.submit",
     &["server", "submit"],
