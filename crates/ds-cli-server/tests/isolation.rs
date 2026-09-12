@@ -2208,6 +2208,30 @@ fn a_legacy_queued_row_is_readable_by_input_and_resubmittable() {
     );
     assert_eq!(saved.envelope["data"]["byte_count"], stored.len());
 
+    // Writing over a file is never how bytes come back: a second save to the
+    // same path is refused by name, with the remedy it declares, and the file
+    // that is already there is untouched.
+    let overwrite = ds_cli_server::input(
+        &host.args(
+            &ds_cli_server::INPUT,
+            &["--job", &stranded, "--out", &out.display().to_string()],
+        ),
+        &context(),
+    )
+    .expect_err("an existing file is never overwritten");
+    assert_eq!(overwrite.code(), "server_output_exists");
+    assert_eq!(overwrite.class(), ExitClass::Conflict);
+    assert_eq!(
+        overwrite.remedy_text(),
+        Some("choose an absent output file; existing files are never overwritten"),
+        "a refusal declared with a remedy is raised with it"
+    );
+    assert_eq!(
+        std::fs::read(&out).expect("the saved input"),
+        stored,
+        "the file that was already there is untouched"
+    );
+
     // The remedy carried out: the same bytes, under an explicit project, are
     // new work with their own id — and the stranded row is untouched.
     let resubmitted = ds_cli_server::submit(

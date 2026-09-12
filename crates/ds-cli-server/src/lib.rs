@@ -1165,10 +1165,13 @@ pub fn cancel(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
 pub fn result(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
     let output = PathBuf::from(inputs.require("out")?);
     if output.exists() {
-        return Err(Failure::conflict(
-            "server_output_exists",
-            "output already exists",
-        ));
+        return Err(
+            Failure::conflict("server_output_exists", "output already exists")
+                // Declared with a remedy in the roster, so it is raised with
+                // one: `--help` and the runtime answer must not disagree
+                // about what a caller is supposed to do next.
+                .remedy(OUTPUT_EXISTS.remedy),
+        );
     }
     let bytes = request(
         inputs,
@@ -1198,10 +1201,13 @@ pub fn result(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
 pub fn input(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
     let output = PathBuf::from(inputs.require("out")?);
     if output.exists() {
-        return Err(Failure::conflict(
-            "server_output_exists",
-            "output already exists",
-        ));
+        return Err(
+            Failure::conflict("server_output_exists", "output already exists")
+                // Declared with a remedy in the roster, so it is raised with
+                // one: `--help` and the runtime answer must not disagree
+                // about what a caller is supposed to do next.
+                .remedy(OUTPUT_EXISTS.remedy),
+        );
     }
     let project = named_project(inputs)?;
     let bytes = request(
