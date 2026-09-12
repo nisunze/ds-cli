@@ -97,7 +97,14 @@ cleanupDelayMs, refreshExpiredTiles, resourceLabel, resourceScale}`.
   keys lands on the device's value for the same reason.
 - **Standard needs its confirmation.** `processingLane: "standard"` without a
   non-blank `standardLaneConfirmedAt` is fast; the marker rides only with its
-  lane. A `null` in a `patch` clears a key (the store's `undefined`).
+  lane.
+- **A `null` in a `patch` is the store's `undefined`, on every key.** JSON
+  cannot carry `undefined`, so the host sends `null`; the key is removed
+  before the record is read and takes its default — never merged, because a
+  merged `null` would read as `Number(null)`, 0, on the keys the store did
+  not guard with `??` (a stroke width would clip to 0.5 where the store's
+  `undefined` gave the shipped 1.5). Only a `null` in a *saved blob* is read
+  as `null` (`patch-null-is-the-stores-undefined-on-every-key`).
 - **The lane is decided by two facts, at one seam, and never rewrites the
   preference.** Standard is unreachable in the installed desktop shell
   (fast-only by ruling, 2026-08-13) and in a project that does not declare
@@ -111,7 +118,7 @@ cleanupDelayMs, refreshExpiredTiles, resourceLabel, resourceScale}`.
 
 ## 4. The proof
 
-`tests/fixtures/application-settings-cases.json` (95 named cases: every
+`tests/fixtures/application-settings-cases.json` (96 named cases: every
 case of ds-web's `application-settings.test.ts` and every store case of
 `processing-lane.test.ts`, plus every bound, reading and lane combination)
 is replayed by `tests/application_settings_cases.rs` and, byte for byte, by

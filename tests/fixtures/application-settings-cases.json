@@ -5036,6 +5036,91 @@
       }
     },
     {
+      "id": "patch-null-is-the-stores-undefined-on-every-key",
+      "why": "The host sends null for the store's undefined on ANY key, not only a marker; `{...current, key: undefined}` gave every reader its default, so the null removes the key before reading — a merged null would be Number(null), 0, on the keys the store did not guard with ??, and a stroke width would clip to 0.5 instead of the shipped 1.5.",
+      "request": {
+        "kind": "patch",
+        "current": {
+          "profileGroundWidthPx": 3,
+          "profileClearanceWidthPx": 4,
+          "profileAlignmentGapM": 250,
+          "profileGroundClearanceOffsetM": 9.5,
+          "profileTerrainOrdinateOpacity": 0.5,
+          "hiddenProfileAlignmentIds": [
+            "a"
+          ],
+          "coordinateGridIntervalM": 50,
+          "boxZoomHideMinZoom": 12,
+          "processingLane": "standard",
+          "standardLaneConfirmedAt": "2026-05-31T10:00:00.000Z"
+        },
+        "patch": {
+          "profileGroundWidthPx": null,
+          "profileClearanceWidthPx": null,
+          "profileAlignmentGapM": null,
+          "profileGroundClearanceOffsetM": null,
+          "profileTerrainOrdinateOpacity": null,
+          "hiddenProfileAlignmentIds": null,
+          "coordinateGridIntervalM": null,
+          "boxZoomHideMinZoom": null
+        },
+        "lane_facts": {
+          "desktop_surface": false,
+          "project_standard_lane": true
+        }
+      },
+      "expected": {
+        "settings": {
+          "hideBoxZoomAtHighZoom": true,
+          "boxZoomHideMinZoom": 15,
+          "featureHoverPopupsEnabled": true,
+          "featureHoverPopupMinZoom": 14,
+          "featureHoverPopupPlacement": "bottom-left",
+          "popupMode": "normal",
+          "profileVerticalExaggeration": 10,
+          "profileAlignmentGapM": 100,
+          "profileTerrainCorridorHalfWidthM": 15,
+          "profileTerrainGapToleranceM": 100,
+          "profileGroundClearanceOffsetM": 6,
+          "profileLowestWireDropM": 0,
+          "profileGroundFillMode": "none",
+          "showProfileGround": true,
+          "showProfileSideProfiles": false,
+          "showProfileClearanceLine": true,
+          "showProfileTerrainPoints": true,
+          "showProfileTerrainOrdinates": false,
+          "showProfileGrid": true,
+          "profileGroundColor": "#38bdf8",
+          "profileClearanceColor": "#fb7185",
+          "profileTerrainPointColor": "#d1d5db",
+          "profileTerrainOrdinateOpacity": 0.25,
+          "profileGroundWidthPx": 1.5,
+          "profileClearanceWidthPx": 1.25,
+          "profileTerrainPointWidthPx": 2.5,
+          "hiddenProfileAlignmentIds": [],
+          "showProfileStructures": true,
+          "showProfileWire": true,
+          "showProfileSectionLabels": false,
+          "showProfileSpanDistances": true,
+          "showProfileStructureLabels": true,
+          "showMapNavigationControls": false,
+          "showMyLocationControl": false,
+          "showCoordinateGrid": true,
+          "coordinateGridIntervalM": null,
+          "coordinateGridLabelPlacement": "top-left",
+          "snapToCoordinateGrid": true,
+          "showZoomLevelReadout": false,
+          "gpsPositionUpdateIntervalSeconds": 1,
+          "mapMemoryBudget": 3,
+          "processingLane": "standard",
+          "standardLaneConfirmedAt": "2026-05-31T10:00:00.000Z",
+          "maxParallelBatchProcessing": 10,
+          "workingAreaUpdateIntervalMinutes": null
+        },
+        "lane": "standard"
+      }
+    },
+    {
       "id": "patch-profile-styles-clip-and-hidden-ids-deduplicate",
       "why": "application-settings.test 'normalizes profile styles and de-duplicates hidden side profiles': 250 → 100 m, invalid colour → default, 30 px → 8, 0 px → 1, opacity 2 → 1, ids deduplicated.",
       "request": {

@@ -1132,7 +1132,9 @@ enum Op {
         lane_facts: Option<LaneFacts>,
     },
     /// `updateApplicationSettings`: the record after a change. A `null` in the
-    /// patch clears a key (the store's `undefined`).
+    /// patch is the store's `undefined`: the key is absent from the merged
+    /// record and reads as its default, whatever the key (a `null` in a saved
+    /// blob, by contrast, is read as `null`).
     Patch {
         current: Map<String, Value>,
         patch: Map<String, Value>,
@@ -1189,11 +1191,20 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
     serde_json::to_string(&value).map_err(|error| error.to_string())
 }
 
-/// `{...current, ...patch}`.
+/// `{...current, ...patch}` as the store spread it, where the patch's `null`
+/// is the store's `undefined`: JSON cannot carry `undefined`, so the host
+/// sends `null`, and the key is removed rather than merged — a merged `null`
+/// would be read as `Number(null)`, 0, on the keys the store did not guard
+/// with `??` (a stroke width would clip to 0.5 where the store's `undefined`
+/// gave the shipped 1.5).
 fn merged(current: &Map<String, Value>, patch: Map<String, Value>) -> Map<String, Value> {
     let mut next = current.clone();
     for (key, value) in patch {
-        next.insert(key, value);
+        if value.is_null() {
+            next.remove(&key);
+        } else {
+            next.insert(key, value);
+        }
     }
     next
 }
@@ -1961,6 +1972,60 @@ mod tests {
         assert_eq!(answer["settings"]["mapMemoryBudget"], json!(5));
         assert_eq!(answer["lane"], json!("fast"));
         assert!(settings_of(&answer).get("retired").is_none());
+    }
+
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
+    #[cfg_attr(not(target_arch = "wasm32"), test)]
+    fn a_null_in_a_patch_is_the_stores_undefined_on_every_key() {
+        // The store spread `{...current, key: undefined}` and every reader
+        // then took its default. The keys it did not guard with `??` read a
+        // merged `null` as 0 — so the patch's `null` must remove the key.
+        let mut current = default_settings();
+        current.insert("profileGroundWidthPx".into(), json!(3));
+        current.insert("profileClearanceWidthPx".into(), json!(4));
+        current.insert("profileAlignmentGapM".into(), json!(250));
+        current.insert("profileGroundClearanceOffsetM".into(), json!(9.5));
+        current.insert("profileTerrainOrdinateOpacity".into(), json!(0.5));
+        current.insert("hiddenProfileAlignmentIds".into(), json!(["a"]));
+        current.insert("coordinateGridIntervalM".into(), json!(50));
+        current.insert("boxZoomHideMinZoom".into(), json!(12));
+        let answer = ask(json!({
+            "kind": "patch",
+            "current": current,
+            "patch": {
+                "profileGroundWidthPx": null,
+                "profileClearanceWidthPx": null,
+                "profileAlignmentGapM": null,
+                "profileGroundClearanceOffsetM": null,
+                "profileTerrainOrdinateOpacity": null,
+                "hiddenProfileAlignmentIds": null,
+                "coordinateGridIntervalM": null,
+                "boxZoomHideMinZoom": null,
+            },
+        }))
+        .unwrap();
+        let settings = settings_of(&answer);
+        for key in [
+            "profileGroundWidthPx",
+            "profileClearanceWidthPx",
+            "profileAlignmentGapM",
+            "profileGroundClearanceOffsetM",
+            "profileTerrainOrdinateOpacity",
+            "hiddenProfileAlignmentIds",
+            "coordinateGridIntervalM",
+            "boxZoomHideMinZoom",
+        ] {
+            assert_eq!(settings[key], default_settings()[key], "{key}");
+        }
+        // A saved blob is read as written: its `null` is `Number(null)`.
+        let saved = ask(json!({
+            "kind": "normalize",
+            "saved": {"profileGroundWidthPx": null, "profileAlignmentGapM": null},
+            "device": {"phone": false, "my_location_default": false},
+        }))
+        .unwrap();
+        assert_eq!(saved["settings"]["profileGroundWidthPx"], json!(0.5));
+        assert_eq!(saved["settings"]["profileAlignmentGapM"], json!(0));
     }
 
     #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
