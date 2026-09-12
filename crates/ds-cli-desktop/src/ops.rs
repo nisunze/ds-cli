@@ -552,10 +552,27 @@ pub fn host(named: Option<&str>) -> Result<Host, Failure> {
     match named.as_str() {
         "desktop" => Ok(Host::Desktop(None)),
         "server" => Ok(Host::Server),
-        instance if instance.starts_with("desktop:") => Ok(Host::Desktop(Some(kernel::Target {
-            instance_id: instance.trim_start_matches("desktop:").to_owned(),
-            window: None,
-        }))),
+        instance if instance.starts_with("desktop:") => {
+            let instance_id = instance.trim_start_matches("desktop:");
+            // The kernel publishes this predicate so a client can read a
+            // target before it has any candidate — which is what lets a typo
+            // be answered without enumerating, probing or sending anything.
+            if !kernel::instance_id_valid(instance_id) {
+                return Err(Failure::invalid(
+                    TARGET_MISMATCH.code,
+                    "that target is not an instance id",
+                )
+                .remedy(TARGET_MISMATCH.remedy)
+                .detail(json!({
+                    "target": crate::bridge::bounded(instance_id),
+                    "reason": "malformed",
+                })));
+            }
+            Ok(Host::Desktop(Some(kernel::Target {
+                instance_id: instance_id.to_owned(),
+                window: None,
+            })))
+        }
         other => Err(Failure::invalid(
             UNKNOWN_TARGET.code,
             format!("`{}` is not a host", crate::bridge::bounded(other)),
