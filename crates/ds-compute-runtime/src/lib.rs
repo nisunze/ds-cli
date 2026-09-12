@@ -13,12 +13,21 @@
 //! rows through `execution_context::recover`. This crate performs the I/O; the
 //! kernel decides.
 //!
-//! **Nothing here touches the network.** A claimed job runs exactly what was
-//! admitted: there is no directory to re-check, no membership to have been
-//! revoked and no upstream to be unavailable, so an outage cannot fail a job
-//! and a job can fail only on its own execution. Entitlement is enforced by
-//! the gateway where an effect leaves the machine — publication and sync —
-//! exactly as the desktop behaves.
+//! **This crate makes no network call.** A claimed job runs exactly what was
+//! admitted: there is no directory to re-check and no membership to have been
+//! revoked, so a job fails on its own execution and on nothing else, and a
+//! result it finished is written down whatever the world outside is doing.
+//! Entitlement is enforced by the gateway where an effect leaves the machine —
+//! publication and sync — exactly as the desktop behaves.
+//!
+//! The one thing it calls that a host could implement over the network is
+//! [`Authorizer`], which says whether this Server's own owner is still the
+//! authenticated one. It gates *starting* work — a worker will not claim, and
+//! `run_one` will not begin, while it refuses — and deliberately gates nothing
+//! else: a finished result is committed without asking it again, because
+//! discarding hours of durable work over one unreachable moment is loss with
+//! no gain. A host that reaches upstream in `authorize` therefore delays new
+//! work while it cannot answer; it can never destroy work already done.
 mod claim;
 pub use claim::decode_solar_server_submission;
 
@@ -914,7 +923,14 @@ pub fn run_one(context: &WorkerContext, worker: &str) -> Result<bool, String> {
             return Ok(true);
         }
     }
-    context.auth.authorize(owner)?;
+    // The finished bytes are written down without asking anyone again. They
+    // are this owner's own, they stay on this machine, and the row is fenced
+    // by the owner it was claimed under and by the lease this worker still
+    // holds. A live credential check here would let one unreachable moment
+    // throw away hours of finished work and recompute it after the lease
+    // expires — silent work loss, for nothing: whether the result may LEAVE
+    // the machine is the gateway's answer at publication, asked there.
+    // Starting work still requires authorization; finishing it does not.
     let caller = identity.caller(Some(&job_context.project));
     match output {
         Ok(bytes) => {
