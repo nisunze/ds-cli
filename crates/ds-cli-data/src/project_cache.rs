@@ -32,7 +32,7 @@ use ds_cli_contract::spec::{
 use ds_cli_contract::{Context, Inputs};
 use ds_command_kernel::project_dataset_cache::{
     self as policy, BUILDINGS_DATASET_ID, CONTOURS_DATASET_ID, CatalogEntry, Dataset, OverviewRow,
-    Scope, SeedCandidate, buffer_policy,
+    Scope, SeedCandidate, both_orientations, buffer_policy,
 };
 use ds_project_data::{Acquisition, BundleReceipt, Hosts, Mode, Provider};
 use serde_json::{Value, json};
@@ -690,9 +690,12 @@ pub fn run_seed(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         )
         .remedy(NO_DESIGN_EXTENT.remedy));
     }
-    let policy = buffer_policy(&[]).map_err(|error| {
+    // What is seeded here is printed: the capture holds what a landscape
+    // or portrait sheet shows around the design, not a metre count.
+    let mut policy = buffer_policy(&[]).map_err(|error| {
         Failure::unavailable(STORE_FAILED.code, error).remedy(STORE_FAILED.remedy)
     })?;
+    policy.sheets = both_orientations();
     let mut provider = CliProvider { lane };
     let mut fetch = bundle_fetch(lane);
     let mut rows = Vec::new();
