@@ -363,7 +363,7 @@ fn bridge_with_status(replies: Vec<(&'static str, u16, Value)>) -> Bridge {
     let body = json!({
         "version": 1,
         "url": format!("http://{address}"),
-        "token": "test-pairing-secret",
+        "token": "test-pairing-secret-0123456789abcdef",
         "pid": 1,
     });
     std::fs::write(
@@ -424,7 +424,7 @@ fn mcp_bridge(expected_operation: &'static str, reply: Value) -> Bridge {
     let body = json!({
         "version": 1,
         "url": format!("http://{address}"),
-        "token": "test-pairing-secret",
+        "token": "test-pairing-secret-0123456789abcdef",
         "pid": 1,
     });
     std::fs::write(

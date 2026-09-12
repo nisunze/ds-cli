@@ -1560,7 +1560,7 @@ mod tests {
         // is what its CPU and memory were measured for.
         assert_eq!(request_permits(32), 32);
         assert!(
-            request_permits(1) >= default_per_project(1) + 1,
+            request_permits(1) > default_per_project(1),
             "a project at its share must still leave a door for another's read"
         );
     }
