@@ -23,6 +23,7 @@ pub static COMMAND: Command = Command {
     examples: &[],
     refusals: &[
         crate::NOT_PAIRED,
+        crate::PROJECT_NOT_OPEN,
         crate::REFUSED,
         crate::INVALID_VALUE_LIST,
         crate::TOO_MANY,

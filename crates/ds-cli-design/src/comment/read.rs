@@ -46,6 +46,7 @@ whether there is `more` than one page of comments, and rows of `comment`, \
     }],
     refusals: &[
         crate::NOT_PAIRED,
+        crate::PROJECT_NOT_OPEN,
         crate::AMBIGUOUS,
         crate::UNREACHABLE,
         crate::PAIRING_REJECTED,

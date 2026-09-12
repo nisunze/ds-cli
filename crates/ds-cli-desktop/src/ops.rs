@@ -15,9 +15,13 @@
 use std::cell::RefCell;
 use std::time::Duration;
 
+use ds_cli_contract::Inputs;
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{Arg, ArgKind, Authority, Availability, Refusal};
-use ds_command_kernel::project_context::{self, Context as ProjectContext, Requirement, Route};
+use ds_command_kernel::desktop_instance as kernel;
+use ds_command_kernel::project_context::{
+    self, Context as ProjectContext, Requirement, Route, Switch,
+};
 use serde_json::{Value, json};
 
 use crate::bridge;
@@ -35,9 +39,14 @@ pub struct HeadlessIdentity {
     pub credential_audience_sha256: String,
     pub project: Option<String>,
     /// The command contract whose invocation this observation fences.
-    /// DesktopUser proves user identity only; Project additionally requires
-    /// switching the UI to the CLI target before executing map work.
+    /// DesktopUser proves user identity only; Project additionally narrows
+    /// which live instance may serve the work — it never moves a live map.
     pub command_authority: Authority,
+    /// The host this invocation named: `desktop`, `desktop:<instance_id>` or
+    /// `server`, exactly as `--target` (or `DS_TARGET`) spelled it. Carried
+    /// beside the identity because dispatch is the one place that has both the
+    /// command's declared inputs and the seam that will use them.
+    pub target: Option<String>,
 }
 
 pub struct HeadlessIdentityGuard(Option<HeadlessIdentity>);
@@ -63,10 +72,53 @@ pub struct BridgeOp {
     pub arguments: &'static [&'static str],
 }
 
-/// Resolve the paired application from an explicit descriptor path, or
-/// discover it.
+/// Resolve the instance this operation is for: the descriptor a caller named,
+/// or the one live instance the kernel selects for the host `--target` (or
+/// `DS_TARGET`) named.
 pub fn paired(explicit: Option<&str>) -> Result<Descriptor, Failure> {
     Ok(bridge::paired(explicit)?.descriptor)
+}
+
+/// The host this dispatch named, as text. Resolved once, by dispatch, from the
+/// command's own declared flag — so a command that does not declare a host
+/// never acquires one, and a `--target` that means something else in its own
+/// domain is never read as a host.
+pub fn scoped_target() -> Option<String> {
+    HEADLESS_IDENTITY.with(|headless| headless.borrow().as_ref().and_then(|h| h.target.clone()))
+}
+
+/// The session default for [`TARGET_ARG`], where that flag is declared. A
+/// default for the flag, never an override of it: a command that named a host
+/// has named it.
+pub fn env_target() -> Option<String> {
+    std::env::var(TARGET_ENV)
+        .ok()
+        .map(|value| value.trim().to_owned())
+        .filter(|value| !value.is_empty())
+}
+
+/// What this operation needs of the instance that serves it: the caller's own
+/// identity, and the project the work is about when it is about one.
+///
+/// `None` when nothing has told `ds` who is running it — no native profile is
+/// configured on this machine — and the live instances' own identity is then
+/// what selection adopts.
+pub fn scoped_requirement() -> Option<kernel::Requirement> {
+    HEADLESS_IDENTITY.with(|headless| {
+        headless
+            .borrow()
+            .as_ref()
+            .map(|identity| kernel::Requirement {
+                lane: identity.lane.clone(),
+                uid: identity.uid.clone(),
+                audience_sha256: identity.credential_audience_sha256.clone(),
+                project: identity.project.clone(),
+                // A project narrows which instance may serve project work. Every
+                // other paired operation runs wherever this account is signed in;
+                // the project that instance happens to show is not a condition.
+                project_independent: identity.command_authority != Authority::Project,
+            })
+    })
 }
 
 /// Send one declared operation.
@@ -97,6 +149,7 @@ pub fn invoke(
             arguments,
             timeout,
             headless.borrow().as_ref(),
+            Some(&descriptor.instance_id),
             || bridge::session(descriptor),
             |operation, arguments, fence, timeout| {
                 bridge::invoke(descriptor, operation, arguments, fence, timeout)
@@ -109,6 +162,7 @@ fn invocation_route<'a>(
     operation: &str,
     headless: Option<&'a HeadlessIdentity>,
     fence: &'a bridge::IdentityFence,
+    instance: Option<&'a str>,
 ) -> Result<Route<'a>, Failure> {
     if operation == "auth.link.approve" {
         return Ok(Route::CurrentDesktop);
@@ -120,24 +174,71 @@ fn invocation_route<'a>(
     };
     project_context::route(
         requirement,
+        switch_for(operation),
         headless.map(|h| ProjectContext {
             uid: &h.uid,
             lane: &h.lane,
             audience: &h.credential_audience_sha256,
             project: h.project.as_deref(),
+            // A caller's saved context names an identity and a default, never
+            // a runtime.
+            instance: None,
         }),
-        fence_context(fence),
+        fence_context(fence, instance),
     )
-    .map_err(|_| context_mismatch())
+    .map_err(refused_route)
 }
 
-fn fence_context(fence: &bridge::IdentityFence) -> ProjectContext<'_> {
+/// Whether this operation may move the instance's project at all.
+///
+/// One operation may: the explicit, instance-qualified switch the operator
+/// asked for. Every other paired operation passes `Never`, which is the
+/// 2026-09-12 ruling in one line — a saved CLI selection never flips a live
+/// map, and a project difference is refused with the switch as its remedy.
+fn switch_for(operation: &str) -> Switch {
+    if operation == crate::project::SWITCH_OP.operation {
+        Switch::Explicit
+    } else {
+        Switch::Never
+    }
+}
+
+pub(crate) fn fence_context<'a>(
+    fence: &'a bridge::IdentityFence,
+    instance: Option<&'a str>,
+) -> ProjectContext<'a> {
     ProjectContext {
         uid: &fence.uid,
         lane: &fence.lane,
         audience: &fence.credential_audience_sha256,
         project: fence.project.as_deref(),
+        instance,
     }
+}
+
+/// Relay the kernel's own name for why an operation may not run inside the
+/// instance that was chosen for it.
+fn refused_route(refusal: project_context::Refusal<'_>) -> Failure {
+    match refusal {
+        project_context::Refusal::IdentityMismatch => context_mismatch(),
+        project_context::Refusal::ProjectNotOpen { project } => project_not_open(project),
+    }
+}
+
+/// The project the caller selected is not the project this instance has open,
+/// and nothing here may move a live map to it.
+///
+/// This names no other instance, and it is the one place that cannot: an
+/// enumeration refuses first and names every compatible instance that *does*
+/// hold the project, so reaching here means the caller pinned one descriptor
+/// file and there was no enumeration to name anything from.
+pub fn project_not_open(project: &str) -> Failure {
+    Failure::conflict(
+        PROJECT_NOT_OPEN.code,
+        "no targeted DS GridDesign instance has that project open",
+    )
+    .remedy(PROJECT_NOT_OPEN.remedy)
+    .detail(json!({ "project": project }))
 }
 
 fn context_mismatch() -> Failure {
@@ -149,13 +250,23 @@ fn context_mismatch() -> Failure {
 }
 
 /// Host effects for the kernel's routing decision. Never recurse through
-/// dispatch or change the CLI's durable project selection. Each operation is
-/// fenced, including the switch; an interrupted switch cannot run the command.
+/// dispatch, never change the CLI's durable project selection, and — since
+/// 2026-09-12 — never change a live window's project either.
+///
+/// What used to be here was an automatic `project.switch`: any map command
+/// whose CLI project differed from the window's moved the window first. Under
+/// the owner's ruling that a saved CLI selection must never flip a live map,
+/// the kernel now refuses that difference by name, and the operator switches
+/// explicitly with `ds desktop project switch --target desktop:<id>`. The one
+/// operation that is allowed to move a project is that switch, and its own
+/// operation *is* the switch — so there is nothing left for a host to perform
+/// between the decision and the send.
 fn invoke_routed(
     op: &BridgeOp,
     arguments: Value,
     timeout: Duration,
     headless: Option<&HeadlessIdentity>,
+    instance: Option<&str>,
     mut observe: impl FnMut() -> Result<Value, Failure>,
     mut send: impl FnMut(
         &'static str,
@@ -164,21 +275,12 @@ fn invoke_routed(
         Duration,
     ) -> Result<Value, Failure>,
 ) -> Result<Value, Failure> {
-    let mut fence = bridge::IdentityFence::from_session(&observe()?)?;
-    if let Route::SwitchDesktop { project } = invocation_route(op.operation, headless, &fence)? {
-        let target = project.to_owned();
-        send(
-            crate::project::SWITCH_OP.operation,
-            json!({ "project": target }),
-            &fence,
-            Duration::from_secs(30),
-        )?;
-        let after = bridge::IdentityFence::from_session(&observe()?)?;
-        if !project_context::switch_completed(fence_context(&fence), fence_context(&after), &target)
-        {
-            return Err(context_mismatch());
-        }
-        fence = after;
+    let fence = bridge::IdentityFence::from_session(&observe()?)?;
+    match invocation_route(op.operation, headless, &fence, instance)? {
+        Route::CurrentDesktop => {}
+        // Only the explicit switch reaches this, and sending it is the next
+        // line: the decision and the effect are the same operation.
+        Route::SwitchDesktop { .. } => {}
     }
     send(op.operation, arguments, &fence, timeout)
 }
@@ -254,8 +356,57 @@ pub const NOT_PAIRED: Refusal = Refusal {
 };
 pub const AMBIGUOUS: Refusal = Refusal {
     code: "desktop_ambiguous",
-    when: "two or more Stable, Canary or dev bridge endpoints are responsive",
-    remedy: "pass --desktop-descriptor <path> to name which one",
+    when: "two or more live DS GridDesign instances can serve this",
+    remedy: "name one with --target desktop:<instance_id>",
+};
+/// A descriptor file exists and cannot be used. The kernel decides which
+/// files those are; this is the name and the remedy every command that reads
+/// one reports it under.
+pub const DESCRIPTOR_UNUSABLE: Refusal = Refusal {
+    code: "descriptor_unusable",
+    when: "a descriptor exists but is unreadable, stale or not loopback",
+    remedy: "restart DS GridDesign to republish its descriptor",
+};
+pub const TARGET_NOT_LIVE: Refusal = Refusal {
+    code: "desktop_target_not_live",
+    when: "--target named an instance that is not live",
+    remedy: "name one from `ds desktop list`",
+};
+pub const TARGET_MISMATCH: Refusal = Refusal {
+    code: "desktop_target_mismatch",
+    when: "--target named a live instance on another lane or account",
+    remedy: "name one that can serve this, from `ds desktop list`",
+};
+/// The saved CLI project is not open in any instance that could serve the
+/// work. It is a refusal and not a switch: a CLI selection never moves a live
+/// map, so the remedy is the explicit, instance-qualified switch.
+pub const PROJECT_NOT_OPEN: Refusal = Refusal {
+    code: "desktop_project_not_open",
+    when: "no eligible instance has the selected project open",
+    remedy: "open it in the app, or run `ds desktop project switch --target desktop:<id> --project <id>`",
+};
+pub const CONTRACT_MISMATCH: Refusal = Refusal {
+    code: "desktop_contract_mismatch",
+    when: "a live instance published a session that is not this build's contract",
+    remedy: "update DS GridDesign and `ds` to matching releases",
+};
+/// Raised by the application: the window's project or account changed while
+/// this operation was in flight, so its result belongs to a view that no
+/// longer exists.
+pub const CONTEXT_GENERATION_STALE: Refusal = Refusal {
+    code: "context_generation_stale",
+    when: "the targeted window switched project or account while the operation was running",
+    remedy: "retry the operation against the view as it is now",
+};
+pub const UNKNOWN_TARGET: Refusal = Refusal {
+    code: "unknown_target",
+    when: "--target is not desktop, desktop:<instance_id> or server",
+    remedy: "pass --target desktop, --target desktop:<instance_id> or --target server",
+};
+pub const HOST_UNSUPPORTED: Refusal = Refusal {
+    code: "target_host_unsupported",
+    when: "--target server named a host that does not perform this operation",
+    remedy: "run it with --target desktop; `ds server --help` lists what the Server performs",
 };
 pub const UNREACHABLE: Refusal = Refusal {
     code: "desktop_unreachable",
@@ -360,8 +511,122 @@ pub fn classify_signed_out(failure: Failure) -> Failure {
 // Flag shapes shared by every paired domain
 // ---------------------------------------------------------------------------
 
+/// The host this invocation runs against, declared once for both of them.
+///
+/// One flag, both hosts, and no second spelling of the same question: the
+/// standing ruling (2026-09-11) is that CLI/MCP → Desktop or Server is no
+/// difference at all — one command id, the same arguments, the same answer,
+/// whichever host runs it — so the host is an argument to the operation rather
+/// than a different operation.
+///
+/// * `desktop` — this machine's own native client. The default, and the whole
+///   default when exactly one live instance can serve the work.
+/// * `desktop:<instance_id>` — one named live instance, from `ds desktop
+///   list`. Honoured or refused by name; it never routes anywhere else.
+/// * `server` — the running `ds server serve` on this machine, for the
+///   operations the Server performs.
+///
+/// Declared without `choices` on purpose: `desktop:<instance_id>` must reach
+/// the handler to be answered by the kernel's own vocabulary instead of the
+/// parser's generic `invalid_choice`. And declared without a default, so an
+/// absent flag is absent — which is what lets `DS_TARGET` be a session default
+/// that an explicit flag still wins over.
+pub const TARGET_ARG: Arg = Arg::value(
+    "target",
+    "<desktop|desktop:instance|server>",
+    "Which host executes this operation; the desktop is the default, and DS_TARGET sets it for a session.",
+);
+
+/// The session default for [`TARGET_ARG`]. A default for the flag, never an
+/// override of it.
+pub const TARGET_ENV: &str = "DS_TARGET";
+
+/// The host a caller named, resolved once, before anything is read or sent.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Host {
+    /// The desktop, and one named instance of it when the caller named one.
+    Desktop(Option<kernel::Target>),
+    Server,
+}
+
+/// Read `--target` (or `DS_TARGET`) as a host.
+///
+/// The instance id itself is *not* validated here. A caller who mistypes one
+/// is answered by the kernel — `desktop_target_mismatch`, reason `malformed` —
+/// so one owner names every way a target can be wrong, and this layer decides
+/// only which host the text is about.
+pub fn host(named: Option<&str>) -> Result<Host, Failure> {
+    let named = match named.map(str::trim).filter(|value| !value.is_empty()) {
+        Some(named) => named.to_owned(),
+        None => return Ok(Host::Desktop(None)),
+    };
+    match named.as_str() {
+        "desktop" => Ok(Host::Desktop(None)),
+        "server" => Ok(Host::Server),
+        instance if instance.starts_with("desktop:") => {
+            let instance_id = instance.trim_start_matches("desktop:");
+            // The kernel publishes this predicate so a client can read a
+            // target before it has any candidate — which is what lets a typo
+            // be answered without enumerating, probing or sending anything.
+            if !kernel::instance_id_valid(instance_id) {
+                return Err(Failure::invalid(
+                    TARGET_MISMATCH.code,
+                    "that target is not an instance id",
+                )
+                .remedy(TARGET_MISMATCH.remedy)
+                .detail(json!({
+                    "target": crate::bridge::bounded(instance_id),
+                    "reason": "malformed",
+                })));
+            }
+            Ok(Host::Desktop(Some(kernel::Target {
+                instance_id: instance_id.to_owned(),
+                window: None,
+            })))
+        }
+        other => Err(Failure::invalid(
+            UNKNOWN_TARGET.code,
+            format!("`{}` is not a host", crate::bridge::bounded(other)),
+        )
+        .remedy(UNKNOWN_TARGET.remedy)),
+    }
+}
+
+/// The instance a command that holds its own `--target` is for, with
+/// `DS_TARGET` as that flag's session default.
+///
+/// Dispatch resolves the same thing for a paired invocation ([`scoped_target`]);
+/// this is for the commands that read their own inputs — the enumeration, the
+/// status check and the explicit switch.
+pub fn declared_target(inputs: &Inputs) -> Result<Option<kernel::Target>, Failure> {
+    let named = inputs
+        .value(TARGET_ARG.name)
+        .map(str::to_owned)
+        .or_else(env_target);
+    desktop_target(named.as_deref())
+}
+
+/// The instance a paired operation is for, or the named refusal for a host
+/// that does not perform it.
+pub fn desktop_target(named: Option<&str>) -> Result<Option<kernel::Target>, Failure> {
+    match host(named)? {
+        Host::Desktop(target) => Ok(target),
+        Host::Server => Err(Failure::invalid(
+            HOST_UNSUPPORTED.code,
+            "the Server does not perform this operation; the paired desktop does",
+        )
+        .remedy(HOST_UNSUPPORTED.remedy)),
+    }
+}
+
 /// The `--desktop-descriptor` flag, declared identically by every paired
 /// command so a caller who learned it once has learned it everywhere.
+///
+/// It stays beside [`TARGET_ARG`] rather than being replaced by it: they name
+/// different things. A target names one live *instance* the kernel selects
+/// among; a descriptor names one *file*, is used verbatim, and is what the
+/// desktop's own `cl` terminal pins so a shell it opened keeps talking to the
+/// window that opened it.
 pub const DESCRIPTOR_ARG: Arg = Arg {
     name: "desktop-descriptor",
     kind: ArgKind::Value,
@@ -409,6 +674,9 @@ pub fn plural(count: u64, noun: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A minted instance id, in the kernel's grammar: 32 lowercase hex.
+    const INSTANCE: &str = "11111111111111111111111111111111";
 
     const ZOOM_TO: BridgeOp = BridgeOp {
         operation: "map.zoom_to",
@@ -553,6 +821,7 @@ mod tests {
             credential_audience_sha256: "a".repeat(64),
             project: Some("project-1".to_owned()),
             command_authority: Authority::Project,
+            target: None,
         };
         {
             let _guard = scope_headless_identity(Some(identity.clone()));
@@ -570,6 +839,7 @@ mod tests {
             credential_audience_sha256: "a".repeat(64),
             project: None,
             command_authority: Authority::Project,
+            target: None,
         };
         let mut fence = bridge::IdentityFence::from_session(&json!({
             "uid": "uid-1", "lane": "stable",
@@ -577,11 +847,11 @@ mod tests {
             "project": "map-project", "session_revision": 4,
         }))
         .unwrap();
-        invocation_route("map.zoom_to", Some(&headless), &fence)
+        invocation_route("map.zoom_to", Some(&headless), &fence, Some(INSTANCE))
             .expect("map project supplies authority when headless project is absent");
         fence.uid = "uid-2".to_owned();
         assert_eq!(
-            invocation_route("map.zoom_to", Some(&headless), &fence)
+            invocation_route("map.zoom_to", Some(&headless), &fence, Some(INSTANCE))
                 .unwrap_err()
                 .code(),
             "auth_context_mismatch"
@@ -589,7 +859,7 @@ mod tests {
         fence.uid = "uid-1".to_owned();
         fence.lane = "canary".to_owned();
         assert_eq!(
-            invocation_route("map.zoom_to", Some(&headless), &fence)
+            invocation_route("map.zoom_to", Some(&headless), &fence, Some(INSTANCE))
                 .unwrap_err()
                 .code(),
             "auth_context_mismatch"
@@ -610,9 +880,10 @@ mod tests {
             credential_audience_sha256: "a".repeat(64),
             project: Some("unrelated-cli-project".to_owned()),
             command_authority: Authority::DesktopUser,
+            target: None,
         };
         for operation in ["data.admin_bounds.list", "data.admin_bounds.read"] {
-            invocation_route(operation, Some(&user_reference), &fence)
+            invocation_route(operation, Some(&user_reference), &fence, Some(INSTANCE))
                 .expect("national-reference DesktopUser reads ignore project selection");
         }
 
@@ -620,12 +891,20 @@ mod tests {
             command_authority: Authority::Project,
             ..user_reference.clone()
         };
-        assert_eq!(
-            invocation_route("data.admin_bounds.attach", Some(&project_bound), &fence).unwrap(),
-            Route::SwitchDesktop {
-                project: "unrelated-cli-project"
-            },
-            "project work switches to the CLI target before attaching"
+        let refused = invocation_route(
+            "data.admin_bounds.attach",
+            Some(&project_bound),
+            &fence,
+            Some(INSTANCE),
+        )
+        .expect_err("project work never moves the window it found");
+        assert_eq!(refused.code(), "desktop_project_not_open");
+        assert!(
+            refused
+                .remedy_text()
+                .is_some_and(|remedy| remedy.contains("ds desktop project switch --target")),
+            "the remedy is the explicit switch: {:?}",
+            refused.remedy_text()
         );
 
         let wrong_user = HeadlessIdentity {
@@ -633,101 +912,102 @@ mod tests {
             ..user_reference
         };
         assert_eq!(
-            invocation_route("data.admin_bounds.read", Some(&wrong_user), &fence)
-                .unwrap_err()
-                .code(),
+            invocation_route(
+                "data.admin_bounds.read",
+                Some(&wrong_user),
+                &fence,
+                Some(INSTANCE)
+            )
+            .unwrap_err()
+            .code(),
             "auth_context_mismatch",
             "DesktopUser never means a different user may borrow the session"
         );
     }
 
+    /// The retired automatic switch, stated as the rule that replaced it.
+    ///
+    /// Before 2026-09-12 this seam sent `project.switch` to the window
+    /// whenever the CLI's saved project differed from it, and only then ran
+    /// the operation. A saved CLI selection must never flip a live map, so the
+    /// difference is now refused by name, nothing at all is sent, and the
+    /// operator switches the window explicitly if that is what they meant.
     #[test]
-    fn map_project_switch_is_verified_before_sending_the_operation() {
+    fn a_saved_selection_never_switches_a_live_map() {
         let headless = HeadlessIdentity {
             uid: "uid-1".into(),
             lane: "stable".into(),
             credential_audience_sha256: "a".repeat(64),
             project: Some("cli-project".into()),
             command_authority: Authority::Project,
+            target: None,
         };
-        let before = json!({ "uid": "uid-1", "lane": "stable",
+        let showing = json!({ "uid": "uid-1", "lane": "stable",
             "credential_audience_sha256": "a".repeat(64),
             "project": "ui-project", "session_revision": 4 });
-        let mut switched = before.clone();
-        switched["project"] = json!("cli-project");
-        switched["session_revision"] = json!(5);
-        let mut wrong_user = switched.clone();
-        wrong_user["uid"] = json!("uid-2");
         let op = BridgeOp {
             operation: "survey.working_area.download",
             arguments: &["entireProject"],
         };
-        for (after, succeeds) in [
-            (switched, true),
-            (before.clone(), false),
-            (wrong_user, false),
-        ] {
-            let mut observations = vec![before.clone(), after].into_iter();
-            let mut sent = Vec::new();
-            let result = invoke_routed(
-                &op,
-                json!({"entireProject": true}),
-                Duration::from_secs(60),
-                Some(&headless),
-                || Ok(observations.next().expect("bounded session observations")),
-                |name, args, fence, _| {
-                    sent.push((name, args, fence.clone()));
-                    Ok(json!({"ok": true}))
-                },
-            );
-            assert_eq!(sent[0].0, "project.switch");
-            assert_eq!(sent[0].1, json!({"project": "cli-project"}));
-            assert_eq!(sent[0].2.project.as_deref(), Some("ui-project"));
-            if succeeds {
-                assert!(result.is_ok());
-                assert_eq!(sent.len(), 2);
-                assert_eq!(sent[1].0, op.operation);
-                assert_eq!(sent[1].2.project.as_deref(), Some("cli-project"));
-                assert_eq!(sent[1].2.session_revision, 5);
-            } else {
-                assert_eq!(result.unwrap_err().code(), "auth_context_mismatch");
-                assert_eq!(
-                    sent.len(),
-                    1,
-                    "failed handoff must not run the survey operation"
-                );
-            }
-        }
+        let mut sent: Vec<&'static str> = Vec::new();
+        let refused = invoke_routed(
+            &op,
+            json!({"entireProject": true}),
+            Duration::from_secs(60),
+            Some(&headless),
+            Some(INSTANCE),
+            || Ok(showing.clone()),
+            |name, _, _, _| {
+                sent.push(name);
+                Ok(json!({"ok": true}))
+            },
+        )
+        .expect_err("the window is on another project");
+        assert_eq!(refused.code(), "desktop_project_not_open");
+        assert_eq!(
+            refused.detail_value().expect("a detail")["project"],
+            "cli-project"
+        );
+        assert!(
+            sent.is_empty(),
+            "nothing may be sent to a window this operation is not for: {sent:?}"
+        );
     }
 
+    /// The one operation that may move a project is the switch itself, and it
+    /// is sent as the operation the caller asked for — not as a step before
+    /// some other operation.
     #[test]
-    fn refused_project_switch_never_runs_the_map_operation() {
+    fn the_explicit_switch_is_sent_as_itself_and_nothing_precedes_it() {
         let headless = HeadlessIdentity {
             uid: "uid-1".into(),
             lane: "stable".into(),
             credential_audience_sha256: "a".repeat(64),
             project: Some("cli-project".into()),
-            command_authority: Authority::Project,
+            command_authority: Authority::DesktopUser,
+            target: Some(format!("desktop:{INSTANCE}")),
         };
-        let mut calls = 0;
-        let result = invoke_routed(
-            &crate::project::LIST_OP,
-            json!({}),
+        let showing = json!({ "uid": "uid-1", "lane": "stable",
+            "credential_audience_sha256": "a".repeat(64),
+            "project": "ui-project", "session_revision": 4 });
+        let mut sent = Vec::new();
+        invoke_routed(
+            &crate::project::SWITCH_OP,
+            json!({ "project": "cli-project" }),
             Duration::from_secs(30),
             Some(&headless),
-            || {
-                Ok(json!({ "uid": "uid-1", "lane": "stable",
-                "credential_audience_sha256": "a".repeat(64),
-                "project": "ui-project", "session_revision": 4 }))
+            Some(INSTANCE),
+            || Ok(showing.clone()),
+            |name, arguments, fence, _| {
+                sent.push((name, arguments, fence.clone()));
+                Ok(json!({"changed": true}))
             },
-            |name, _, _, _| {
-                calls += 1;
-                assert_eq!(name, "project.switch");
-                Err(Failure::failed("desktop_refused", "switch refused"))
-            },
-        );
-        assert_eq!(result.unwrap_err().code(), "desktop_refused");
-        assert_eq!(calls, 1);
+        )
+        .expect("an explicit switch is the operation, and it runs");
+        assert_eq!(sent.len(), 1, "one operation, and it is the switch");
+        assert_eq!(sent[0].0, "project.switch");
+        assert_eq!(sent[0].1, json!({ "project": "cli-project" }));
+        assert_eq!(sent[0].2.project.as_deref(), Some("ui-project"));
     }
 
     #[test]

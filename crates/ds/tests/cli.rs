@@ -631,7 +631,10 @@ fn an_explicit_stale_descriptor_never_leaks_its_secret() {
     let descriptor = temp_file("test-stale-bridge");
     std::fs::write(
         &descriptor,
-        br#"{"version":1,"url":"http://127.0.0.1:1","token":"s3cr3t-pairing-value","pid":1}"#,
+        // A real pairing secret is 64 hex characters, and a descriptor
+        // carrying less is now refused for its shape before its endpoint is
+        // tried. This one is stale, not malformed: the port is dead.
+        br#"{"version":1,"url":"http://127.0.0.1:1","token":"s3cr3t-pairing-value-s3cr3t-pairing-value","pid":1}"#,
     )
     .expect("write descriptor");
 
@@ -837,7 +840,7 @@ fn an_environment_descriptor_is_used_and_the_flag_still_wins() {
     let stale = temp_file("test-env-bridge");
     std::fs::write(
         &stale,
-        br#"{"version":1,"url":"http://127.0.0.1:1","token":"env-s3cr3t-value","pid":1}"#,
+        br#"{"version":1,"url":"http://127.0.0.1:1","token":"env-s3cr3t-value-env-s3cr3t-value","pid":1}"#,
     )
     .expect("write descriptor");
     let missing = temp_file("test-env-missing");

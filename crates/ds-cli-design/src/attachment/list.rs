@@ -53,6 +53,7 @@ The project, the anchored object, the total, and rows of `attachment`, `label`, 
     }],
     refusals: &[
         crate::NOT_PAIRED,
+        crate::PROJECT_NOT_OPEN,
         crate::AMBIGUOUS,
         crate::UNREACHABLE,
         crate::PAIRING_REJECTED,

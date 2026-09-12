@@ -166,6 +166,7 @@ pub mod download {
         }],
         refusals: &[
             crate::NOT_PAIRED,
+            crate::PROJECT_NOT_OPEN,
             crate::AMBIGUOUS,
             crate::UNREACHABLE,
             crate::PAIRING_REJECTED,
@@ -237,6 +238,7 @@ pub mod plan {
         }],
         refusals: &[
             crate::NOT_PAIRED,
+            crate::PROJECT_NOT_OPEN,
             crate::AMBIGUOUS,
             crate::UNREACHABLE,
             crate::PAIRING_REJECTED,
@@ -282,6 +284,7 @@ pub mod apply {
         }],
         refusals: &[
             crate::NOT_PAIRED,
+            crate::PROJECT_NOT_OPEN,
             crate::AMBIGUOUS,
             crate::UNREACHABLE,
             crate::PAIRING_REJECTED,

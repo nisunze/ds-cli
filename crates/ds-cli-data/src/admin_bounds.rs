@@ -8,8 +8,8 @@ use ds_cli_contract::spec::{
 };
 use ds_cli_contract::{Context, Inputs};
 use ds_cli_desktop::ops::{
-    AMBIGUOUS, BridgeOp, DESCRIPTOR_ARG, NOT_PAIRED, PAIRING_REJECTED, REFUSED, SIGNED_OUT,
-    UNREACHABLE, UNREADABLE as DESKTOP_UNREADABLE, UNSUPPORTED as DESKTOP_UNSUPPORTED,
+    AMBIGUOUS, BridgeOp, DESCRIPTOR_ARG, NOT_PAIRED, PAIRING_REJECTED, PROJECT_NOT_OPEN, REFUSED,
+    SIGNED_OUT, UNREACHABLE, UNREADABLE as DESKTOP_UNREADABLE, UNSUPPORTED as DESKTOP_UNSUPPORTED,
     classify_signed_out, invoke, paired, paired_availability,
 };
 use serde_json::{Map, Value, json};
@@ -161,6 +161,7 @@ pub static COMMAND: Command = Command {
         ADMIN_UNSUPPORTED,
         NO_OVERWRITE,
         NOT_PAIRED,
+        PROJECT_NOT_OPEN,
         AMBIGUOUS,
         UNREACHABLE,
         PAIRING_REJECTED,

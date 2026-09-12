@@ -1808,6 +1808,11 @@ static DESKTOP_ENTRIES: &[Entry] = &[
         render: ds_cli_desktop::status::render,
     },
     Entry {
+        command: &ds_cli_desktop::list::COMMAND,
+        handler: ds_cli_desktop::list::run,
+        render: ds_cli_desktop::list::render,
+    },
+    Entry {
         command: &ds_cli_desktop::connectivity::STATUS,
         handler: ds_cli_desktop::connectivity::status,
         render: ds_cli_desktop::connectivity::render,
@@ -2289,17 +2294,26 @@ fn scope_headless_identity(
     // probing or requiring Desktop. If (and only if) a handler reaches the
     // shared typed bridge seam, `ops::invoke` snapshots the map, arbitrates,
     // and sends an atomic invocation fence.
-    if !matches!(
+    // `ds desktop list` is the enumeration every instance-targeted refusal
+    // points at, and "which of these can serve my work" is a question only
+    // this observation can answer. It declares no authority — it must answer
+    // on a machine with nothing running, and gating it would make the one call
+    // that explains the situation the one call that refuses to — so it is
+    // named here rather than by its authority, and a probe that cannot answer
+    // leaves it reporting the instances without marking any of them.
+    let enumeration = command.id == ds_cli_desktop::list::COMMAND.id;
+    if (!matches!(
         command.authority,
         ds_cli_contract::Authority::DesktopUser | ds_cli_contract::Authority::Project
-    ) || command.id == "auth.link.approve"
+    ) && !enumeration)
+        || command.id == "auth.link.approve"
     {
         return Ok(ds_cli_desktop::ops::scope_headless_identity(None));
     }
     let observed =
         match ds_cli_auth::probe_headless_identity(inputs.value("lane").unwrap_or("stable")) {
             Ok(observed) => observed,
-            Err(error) if headless_probe_means_absent(&error) => None,
+            Err(error) if headless_probe_means_absent(&error) || enumeration => None,
             Err(error) => return Err(error),
         };
     let observed = observed.map(
@@ -2309,9 +2323,32 @@ fn scope_headless_identity(
             credential_audience_sha256: identity.credential_audience_sha256().to_owned(),
             project,
             command_authority: command.authority,
+            // The host this invocation named. Dispatch is the one place that
+            // holds both the command's declared inputs and the seam that will
+            // route on them, so the target rides with the identity rather than
+            // being re-read from a flag the shared seam cannot see.
+            target: host_target(command, inputs),
         },
     );
     Ok(ds_cli_desktop::ops::scope_headless_identity(observed))
+}
+
+/// The host this invocation named, for a command that declares the host flag.
+///
+/// `--target` is one flag with one grammar, and a handful of commands used the
+/// word first for something in their own domain — a panel to open, an export
+/// format. So the flag is recognised by its declaration rather than by its
+/// name: only a `--target` declared with the host's own placeholder routes,
+/// and `DS_TARGET` is that flag's session default, applying exactly where the
+/// flag itself does.
+fn host_target(command: &Command, inputs: &Inputs) -> Option<String> {
+    let declared = command
+        .arg(ds_cli_desktop::ops::TARGET_ARG.name)
+        .filter(|arg| arg.value == ds_cli_desktop::ops::TARGET_ARG.value)?;
+    inputs
+        .value(declared.name)
+        .map(str::to_owned)
+        .or_else(ds_cli_desktop::ops::env_target)
 }
 
 fn headless_probe_means_absent(error: &Failure) -> bool {

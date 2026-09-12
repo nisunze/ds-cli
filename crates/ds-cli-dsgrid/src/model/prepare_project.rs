@@ -7,7 +7,7 @@ use serde_json::{Map, Value, json};
 
 use crate::model::{
     AMBIGUOUS, AUTH_CONTEXT_MISMATCH, DESCRIPTOR_ARG, LOCAL_TIMEOUT, NOT_PAIRED, PAIRING_REJECTED,
-    REFUSED, SIGNED_OUT, UNREACHABLE, UNREADABLE, UNSUPPORTED,
+    PROJECT_NOT_OPEN, REFUSED, SIGNED_OUT, UNREACHABLE, UNREADABLE, UNSUPPORTED,
 };
 
 const DOWNLOAD_MISSING_ARG: Arg = Arg {
@@ -35,6 +35,7 @@ pub static COMMAND: Command = Command {
     examples: &[],
     refusals: &[
         NOT_PAIRED,
+        PROJECT_NOT_OPEN,
         AMBIGUOUS,
         UNREACHABLE,
         PAIRING_REJECTED,
