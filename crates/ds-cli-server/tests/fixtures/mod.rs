@@ -364,8 +364,9 @@ pub fn identity_of(owner: &str, uid: &str, lane: &str) -> HostIdentity {
     }
 }
 
-/// The durable owner fence exactly as `ds-cli-server::auth::identity` derives
-/// it: the digest of (uid, lane, credential audience). Two principals
+/// The durable owner fence exactly as `ds-cli-server::auth::owner_fence`
+/// derives it from the credential this machine holds: the digest of
+/// (uid, lane, credential audience). Two principals
 /// therefore never share one in production, which is the thing a proof that
 /// deliberately shares it is testing the absence of.
 pub fn owner_digest(uid: &str, lane: &str) -> String {
