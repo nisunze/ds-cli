@@ -55,6 +55,84 @@ fn server_engine_reports_the_actual_linked_owner_without_auth_or_server() {
     );
 }
 
+#[test]
+fn a_server_call_names_its_project_before_it_needs_a_credential_or_a_host() {
+    // A project id outside its bound is the caller's mistake, and it is
+    // answered under the kernel's own name for that situation -- not a generic
+    // server failure, and not after a round trip. Nothing here signs in,
+    // reaches a socket or reads a state directory.
+    let padded = native_ds(&[
+        "server",
+        "status",
+        "--project",
+        " padded",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(padded.envelope["error"]["code"], "context_corrupt");
+    assert_eq!(padded.code, 2, "an unusable flag is invalid input");
+    assert!(
+        padded.envelope["error"]["remedy"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("ds auth project list"),
+        "a refused project must say where an exact one comes from: {}",
+        padded.stdout
+    );
+
+    // And with no project named and no saved selection to default to, the call
+    // refuses here rather than letting a Server pick one. `native_ds` runs
+    // against an empty DS_CONFIG_HOME, so this is the no-selection case.
+    let unscoped = native_refusal(&["server", "activity", "--output", "json"]);
+    assert!(
+        unscoped == "project_required" || NATIVE_AUTH_CODES.contains(&unscoped.as_str()),
+        "an unscoped Server call must refuse by name, not proceed; got `{unscoped}`"
+    );
+}
+
+#[test]
+fn hosting_answers_an_impossible_share_without_signing_in() {
+    // `--per-project` bounds one project's share of the host. It is measured
+    // and parsed locally, so an impossible value is refused on any machine --
+    // including one that has never run `ds auth login`, which is exactly the
+    // machine that can now start a host.
+    for (value, expected) in [("0", "1.."), ("100000", "1.."), ("half", "whole number")] {
+        let run = native_ds(&[
+            "server",
+            "serve",
+            "--per-project",
+            value,
+            "--output",
+            "json",
+        ]);
+        assert_ne!(run.code, 0, "`--per-project {value}` must refuse");
+        let message = run.envelope["error"]["message"]
+            .as_str()
+            .unwrap_or_default()
+            .to_owned();
+        assert!(
+            message.contains(expected),
+            "`--per-project {value}` refused with `{message}`, which does not state its bound"
+        );
+    }
+}
+
+#[test]
+fn the_layer_drawer_has_one_command_id_and_it_is_not_the_servers() {
+    // Retired, and retired means unreachable: `ds server layers …` must not
+    // resolve at all, so a caller is sent to the one id that names the
+    // operation instead of finding a second one that happens to still work.
+    let retired = ds(&["server", "layers", "list", "--output", "json"]);
+    assert_ne!(retired.code, 0, "`ds server layers list` still resolves");
+    assert_eq!(retired.envelope["status"], "error");
+    assert!(
+        !ds(&["server", "--help"]).stdout.contains("layers"),
+        "`ds server --help` still offers the retired layer commands"
+    );
+    // The surviving id is the one that takes a host, not a second name for it.
+    assert_eq!(ds(&["map", "layer", "list", "--help"]).code, 0);
+}
+
 struct Run {
     envelope: Value,
     stdout: String,

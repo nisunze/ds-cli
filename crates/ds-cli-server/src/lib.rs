@@ -16,10 +16,7 @@ use serde_json::{Value, json};
 use std::{
     io::Read,
     path::{Path, PathBuf},
-    sync::{
-        Arc,
-        atomic::{AtomicUsize, Ordering},
-    },
+    sync::Arc,
 };
 
 const STATE: Arg = Arg::value(
@@ -764,20 +761,6 @@ fn with_known_project(path: &str, project: Option<&str>) -> String {
     }
 }
 
-/// The per-project running limit this host was started with.
-///
-/// One host process runs under one set of limits, decided once by `serve`'s
-/// arguments before the listener binds, so this is a startup constant rather
-/// than a parameter threaded through every route. Zero means the host was not
-/// started by `serve` -- a test, or a route exercised directly -- and the
-/// admission path reads that as "no per-project bound was configured".
-static PER_PROJECT_RUNNING: AtomicUsize = AtomicUsize::new(0);
-
-/// What one project may run at once while another project has work queued.
-pub fn per_project_running_limit() -> usize {
-    PER_PROJECT_RUNNING.load(Ordering::Relaxed)
-}
-
 /// The default share of a host's workers one project may hold: half, never
 /// fewer than one, so a single-worker host still admits work and a busy
 /// project cannot starve a second one on a host with room for two.
@@ -785,6 +768,12 @@ pub const fn default_per_project(workers: usize) -> usize {
     let half = workers / 2;
     if half == 0 { 1 } else { half }
 }
+
+/// How deep a queue one project, and the whole host, may hold. Waiting is not
+/// free -- a queue nobody bounds is a refusal deferred until memory runs out --
+/// so both are finite and the global bound is the kernel's own maximum.
+const PER_PROJECT_QUEUED: usize = 512;
+const GLOBAL_QUEUED: usize = 4_096;
 
 fn per_project(inputs: &Inputs, workers: usize) -> Result<usize, Failure> {
     let Some(requested) = inputs.value("per-project") else {
@@ -803,8 +792,9 @@ fn per_project(inputs: &Inputs, workers: usize) -> Result<usize, Failure> {
 
 pub fn serve(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
     let lane = inputs.require("lane")?.to_owned();
-    let owner = auth::identity(&lane).map_err(failure)?;
-    let directory = state(inputs)?;
+    // The host's own numbers first. They are measured and parsed locally, so a
+    // typo'd bound is answered without refreshing a credential to find out --
+    // and the answer is the same on a machine that has never signed in.
     let address = inputs.require("listen")?.parse().map_err(failure)?;
     let capacity = ds_compute_runtime::capacity();
     let workers = inputs
@@ -818,23 +808,37 @@ pub fn serve(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
             "workers must be 1..{capacity} for this host's CPU and memory"
         )));
     }
+    let per_project = per_project(inputs, workers)?;
+    let limits = ds_command_kernel::execution_context::Limits {
+        global_running: workers,
+        per_project_running: per_project,
+        per_project_queued: PER_PROJECT_QUEUED,
+        global_queued: GLOBAL_QUEUED,
+    };
     // Hosting needs an authenticated account and nothing else. No project is
     // selected, resolved or captured here: a caller names the project on the
-    // request and the Server verifies it per call.
-    let per_project = per_project(inputs, workers)?;
-    PER_PROJECT_RUNNING.store(per_project, Ordering::Relaxed);
+    // request and the Server verifies it per call. `ServerSessions::native`
+    // makes no network call and reads no saved selection, which is what lets
+    // an account that never ran `ds auth project use` start a host at all.
+    let owner = auth::identity(&lane).map_err(failure)?;
+    let directory = state(inputs)?;
     let connection = host::connection(&directory, address, owner, lane.clone()).map_err(failure)?;
+    let database = directory.join("store.sqlite");
+    let sessions =
+        server_sync::sessions::ServerSessions::native(connection.clone(), database.clone(), limits)
+            .map_err(failure)?;
     let layer_auth: Arc<dyn ds_compute_runtime::Authorizer> =
         Arc::new(auth::NativeAuthorizer::new(lane.clone()).map_err(failure)?);
     let layer_host =
         layers::NativeLayerHost::bound(&lane, connection.owner.clone(), layer_auth.clone());
     let app = host::App {
-        database: directory.join("store.sqlite"),
+        database,
         connection,
         layers: layer_host,
         auth: layer_auth,
         requests: Arc::new(tokio::sync::Semaphore::new(workers.min(8))),
         activity: None,
+        sessions,
     };
     tokio::runtime::Builder::new_multi_thread()
         .enable_all()
