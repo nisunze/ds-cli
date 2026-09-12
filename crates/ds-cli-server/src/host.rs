@@ -145,7 +145,9 @@ impl Door {
             ),
         )
         .remedy(format!(
-            "retry after {retry_after_ms} ms; the door clears as requests finish, and a host with more --workers opens a wider one"
+            "retry after {retry_after_ms} ms; the door clears as requests finish, and it is the larger of --workers and {}, so only a host restarted with --workers above {} opens a wider one",
+            crate::MIN_REQUEST_PERMITS,
+            crate::MIN_REQUEST_PERMITS
         ))
         .detail(json!({"retry_after_ms": retry_after_ms, "scope": "door"}))
     }
@@ -1927,6 +1929,13 @@ pub(crate) mod tests {
         assert_eq!(refused["retry_after_ms"], 250);
         let remedy = refused["remedy"].as_str().unwrap_or_default();
         assert!(remedy.contains("250 ms"), "{remedy}");
+        // The knob it names has to be the knob that works: the door is the
+        // larger of `--workers` and the floor, so on any host at or under the
+        // floor "use more workers" is advice a caller cannot act on.
+        assert!(
+            remedy.contains(&format!("above {}", crate::MIN_REQUEST_PERMITS)),
+            "{remedy}"
+        );
         assert!(
             !refused["error"].as_str().unwrap_or_default().contains(A),
             "a capacity refusal names counts, never a project"

@@ -44,7 +44,10 @@ emits, so `typed_refusal` in `lib.rs` re-raises it unchanged:
 request that arrives when every place is taken is refused with the same code,
 class and shape the kernel's queue uses. Its `retry_after_ms` is deterministic
 — 250 ms per request already inside the door, capped at a minute — and its
-remedy says so, because nothing a caller cancels empties a door.
+remedy says so, because nothing a caller cancels empties a door. The remedy
+names the knob that actually moves the width: `--workers` ABOVE
+`MIN_REQUEST_PERMITS` (eight), since below the floor a larger worker count
+leaves the door exactly as wide as it was.
 
 New codes to add to the `typed_refusal` match and to the command `Refusal`
 rosters (class → HTTP):

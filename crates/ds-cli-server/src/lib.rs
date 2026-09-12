@@ -653,8 +653,11 @@ fn default_remedy(code: Option<&str>, body: &Value) -> Option<String> {
         // The door and the queue are different things to be full of, so they
         // are different sentences: nothing a caller cancels empties the door.
         return Some(if scope == "door" {
+            // The door is `max(MIN_REQUEST_PERMITS, workers)`, so naming
+            // `--workers` alone would send an operator to a knob that does
+            // nothing on every host below that floor. Say the arithmetic.
             format!(
-                "the request door is full; retry after {retry} ms, or restart the host with a larger --workers"
+                "the request door is full; retry after {retry} ms — it clears as requests finish, and only restarting the host with --workers above {MIN_REQUEST_PERMITS} widens it"
             )
         } else {
             format!(
@@ -894,7 +897,7 @@ pub const fn default_per_project(workers: usize) -> usize {
 /// machine: never fewer than [`MIN_REQUEST_PERMITS`], and the worker count
 /// where that is larger, since that count is what the host's CPU and memory
 /// were measured for.
-const MIN_REQUEST_PERMITS: usize = 8;
+pub(crate) const MIN_REQUEST_PERMITS: usize = 8;
 
 pub const fn request_permits(workers: usize) -> usize {
     if workers > MIN_REQUEST_PERMITS {
@@ -1381,6 +1384,12 @@ mod tests {
         // not the other, so the two never share a sentence.
         assert!(remedy.contains("request door"), "{remedy}");
         assert!(!remedy.contains("cancel"), "{remedy}");
+        // And it names the knob that actually widens a door whose floor is
+        // MIN_REQUEST_PERMITS, not `--workers` on its own.
+        assert!(
+            remedy.contains(&format!("above {MIN_REQUEST_PERMITS}")),
+            "{remedy}"
+        );
     }
 
     #[test]
