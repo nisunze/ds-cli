@@ -827,7 +827,9 @@ struct Request {
 #[derive(Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 enum Op {
-    Admit(AdmitRequest),
+    /// Boxed: an admission carries every input of every other op together, so
+    /// unboxed it would set the size of the whole enum.
+    Admit(Box<AdmitRequest>),
     Visible(VisibleRequest),
     Retain(RetainRequest),
     Capacity(CapacityRequest),
