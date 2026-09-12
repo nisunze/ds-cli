@@ -301,7 +301,7 @@ impl Store {
         visible(caller, rows)
     }
     pub fn job(&self, caller: &JobCaller<'_>, id: &str) -> Result<Option<Job>> {
-        Ok(self.visible_row(caller, id)?.map(|(job, _)| job))
+        self.visible_job(caller, id)
     }
     /// Take the oldest claimable job whose project the kernel's capacity
     /// decision admits under `limits`, or `None` — and change nothing — when
@@ -411,7 +411,7 @@ impl Store {
         Ok(job)
     }
     pub fn job_result(&self, caller: &JobCaller<'_>, id: &str) -> Result<Option<Vec<u8>>> {
-        let Some((job, _)) = self.visible_row(caller, id)? else {
+        let Some(job) = self.visible_job(caller, id)? else {
             return Ok(None);
         };
         if job.phase != Phase::Completed {
@@ -552,6 +552,29 @@ impl Store {
                     && job.worker.as_deref() == Some(worker)
                     && job.lease_until_ms > now
             }))
+    }
+
+    /// One row this caller may see, without its sealed input.
+    ///
+    /// `job` and `job_result` answer from this. Reading the input to decide
+    /// whether a status poll may see a row would charge every poll the whole
+    /// sealed request — a prepared Solar input is tens of megabytes, and a
+    /// client polls a long run for minutes. Only `job_input`, which is asked
+    /// for those exact bytes, reads them.
+    fn visible_job(&self, caller: &JobCaller<'_>, id: &str) -> Result<Option<Job>> {
+        let row: Option<String> = self
+            .connection
+            .query_row(
+                "SELECT row FROM compute_jobs WHERE id=?1 AND owner=?2 AND lane=?3",
+                params![id, caller.owner, caller.lane],
+                |row| row.get(0),
+            )
+            .optional()?;
+        let Some(row) = row else {
+            return Ok(None);
+        };
+        let job: Job = serde_json::from_str(&row)?;
+        Ok(caller.sees(&job).then_some(job))
     }
 
     fn visible_row(&self, caller: &JobCaller<'_>, id: &str) -> Result<Option<(Job, Vec<u8>)>> {
