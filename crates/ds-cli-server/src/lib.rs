@@ -37,11 +37,22 @@ const LANE: Arg = Arg::value("lane", "<stable|canary>", "Native authentication l
 const JOB: Arg = Arg::value("job", "<id>", "Exact job id returned by submit.").required();
 /// The project a call is about. Optional here and never optional on the wire:
 /// absent, the saved selection is read locally and sent anyway, so the Server
-/// verifies exactly one named project on every request.
+/// records exactly one named project on every call whose subject IS a project.
 const PROJECT: Arg = Arg::value(
     "project",
     "<exact-id>",
     "Exact ds_project id this call is about; defaults to the saved selection and is always sent.",
+);
+
+/// The same flag on the one submission whose project is already sealed into
+/// its bytes. Here it is a CHECK and not a default: name it to be told you
+/// prepared the wrong city, or name nothing and let the envelope's own project
+/// stand — this machine's selection is not sent, because it would turn a
+/// default into a contradiction the operator never stated.
+const SEALED_PROJECT: Arg = Arg::value(
+    "project",
+    "<exact-id>",
+    "Exact ds_project id the sealed envelope must name; nothing is sent when it is omitted.",
 );
 
 /// The bound the kernel's execution context puts on a project id
@@ -123,6 +134,17 @@ const OUTPUT_EXISTS: Refusal = Refusal {
     remedy: "choose an absent output file; existing files are never overwritten",
 };
 
+/// The one refusal a second account meets on one Server, declared on the
+/// command that answers it. `ds server serve` refuses to adopt a protected
+/// state directory that already belongs to another owner; there is no second
+/// identity a running host can have, so this is the whole of "many users":
+/// many machines, or at least many hosts, never many accounts in one process.
+const MULTI_PRINCIPAL: Refusal = Refusal {
+    code: host::MULTI_PRINCIPAL_UNSUPPORTED,
+    when: "the protected state directory already belongs to another account",
+    remedy: "run that account its own ds server serve, with its own --state-dir and --listen",
+};
+
 const INSTALL_UNAVAILABLE: Refusal = Refusal {
     code: "headless_install_unavailable",
     when: "the registered install this host runs under cannot be read or created in the protected DS state root",
@@ -154,6 +176,7 @@ const SERVE_REFUSALS: &[Refusal] = &[
     PLATFORM,
     REFUSED,
     OWNER_CHANGED,
+    MULTI_PRINCIPAL,
     NEEDS_MAP,
     UNSUPPORTED,
     INSTALL_UNAVAILABLE,
@@ -357,7 +380,7 @@ pub static SOLAR_SUBMIT: Command = command(
     &[
         STATE,
         LANE,
-        PROJECT,
+        SEALED_PROJECT,
         Arg::value(
             "input",
             "<path>",
@@ -713,10 +736,23 @@ fn project(inputs: &Inputs) -> Result<String, Failure> {
     })
 }
 
+/// The project the caller NAMED, and nothing else: no saved selection, no
+/// default, nothing inferred.
+///
+/// A default and an assertion are different things on the wire. The kernel
+/// lets a sealed input's project outrank a default and REFUSES a named project
+/// that contradicts it, so a client that promoted this machine's selection to
+/// a named project would turn "I did not say" into "I said something else":
+/// an operator whose selection is C could not submit an envelope prepared for
+/// A at all. Only what was typed travels.
+fn named_project(inputs: &Inputs) -> Result<Option<String>, Failure> {
+    inputs.value("project").map(bounded_project).transpose()
+}
+
 /// The project if one can be named at all, without deciding whether the
-/// operation needs one. A sealed Solar envelope names its own project and that
-/// name is authoritative, so that one submission can proceed with nothing to
-/// send while every other call refuses through [`project`].
+/// operation needs one: what the caller named, else this machine's saved
+/// selection. Every call whose subject IS a project resolves through
+/// [`project`], which refuses when neither exists.
 fn known_project(inputs: &Inputs) -> Result<Option<String>, Failure> {
     if let Some(named) = inputs.value("project") {
         return bounded_project(named).map(Some);
@@ -787,6 +823,28 @@ pub const fn default_per_project(workers: usize) -> usize {
     if half == 0 { 1 } else { half }
 }
 
+/// How many requests may be in this host's door at once.
+///
+/// The door is not the engine. Compute is bounded by `--workers` and by the
+/// kernel's own capacity admission; what a request holds here is a store read
+/// or write, a digest, or one project's document fetch. Binding the door to
+/// the worker count made a one-worker host answer ONE request at a time, so a
+/// slow layer read for project A returned "capacity reached" to a status call
+/// for project B -- one project serialized behind another for work that never
+/// touched a worker. So the door has a floor of its own and grows with the
+/// machine: never fewer than [`MIN_REQUEST_PERMITS`], and the worker count
+/// where that is larger, since that count is what the host's CPU and memory
+/// were measured for.
+const MIN_REQUEST_PERMITS: usize = 8;
+
+pub const fn request_permits(workers: usize) -> usize {
+    if workers > MIN_REQUEST_PERMITS {
+        workers
+    } else {
+        MIN_REQUEST_PERMITS
+    }
+}
+
 /// How deep a queue one project, and the whole host, may hold. Waiting is not
 /// free -- a queue nobody bounds is a refusal deferred until memory runs out --
 /// so both are finite and the global bound is the kernel's own maximum.
@@ -841,7 +899,9 @@ pub fn serve(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
     // an account that never ran `ds auth project use` start a host at all.
     let owner = auth::identity(&lane).map_err(failure)?;
     let directory = state(inputs)?;
-    let connection = host::connection(&directory, address, owner, lane.clone()).map_err(failure)?;
+    // Typed as the host decided it: a protected state directory that already
+    // belongs to another account is `multi_principal_unsupported`, by name.
+    let connection = host::connection(&directory, address, owner, lane.clone())?;
     let database = directory.join("store.sqlite");
     let sessions =
         server_sync::sessions::ServerSessions::native(connection.clone(), database.clone(), limits)
@@ -855,7 +915,7 @@ pub fn serve(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
         connection,
         layers: layer_host,
         auth: layer_auth,
-        requests: Arc::new(tokio::sync::Semaphore::new(workers.min(8))),
+        requests: Arc::new(tokio::sync::Semaphore::new(request_permits(workers))),
         activity: None,
         sessions,
     };
@@ -972,10 +1032,12 @@ pub fn submit(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
     )
 }
 
-/// A sealed Solar envelope names its own project, and that name wins. The
-/// client still sends what it knows — it is how a caller learns it prepared the
-/// wrong city (`scope_mismatch`) — but an account with no selection can submit
-/// a sealed envelope without naming anything.
+/// A sealed Solar envelope names its own project, and that name wins. What the
+/// client sends is what the caller NAMED and nothing else: naming one is how a
+/// caller learns it prepared the wrong city (`scope_mismatch`), and naming none
+/// admits the envelope under its own project whatever this machine happens to
+/// have selected. A default that contradicted the bytes would be the client
+/// inventing a conflict its operator never stated.
 ///
 /// The envelope is a workspace file, and the Server reads the filesystem
 /// exactly as the desktop does — same machine, same user — so what travels is
@@ -984,7 +1046,7 @@ pub fn submit(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
 /// are.
 pub fn solar_submit(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
     let key = submit_key(inputs)?.to_owned();
-    let project = known_project(inputs)?;
+    let project = named_project(inputs)?;
     let path = std::fs::canonicalize(inputs.require("input")?).map_err(failure)?;
     if !path.is_file() {
         return Err(failure("input must be a regular file"));
@@ -1216,7 +1278,20 @@ mod tests {
             &SOLAR_SUBMIT,
             &["--input", "/dev/null", "--key", "k", "--project", "p-1"],
         );
-        assert_eq!(known_project(&named).unwrap().as_deref(), Some("p-1"));
+        assert_eq!(named_project(&named).unwrap().as_deref(), Some("p-1"));
+        // And with nothing named it sends nothing — without reading this
+        // machine's selection at all, because a default that contradicted the
+        // sealed bytes would refuse a submission its operator never disputed.
+        assert_eq!(named_project(&none).unwrap(), None);
+        assert_eq!(
+            named_project(&inputs(
+                &SOLAR_SUBMIT,
+                &["--input", "/dev/null", "--key", "k", "--project", " padded"],
+            ))
+            .expect_err("an unusable name never reaches the wire")
+            .code(),
+            "context_corrupt"
+        );
     }
 
     #[test]
@@ -1228,6 +1303,23 @@ mod tests {
                 command.id
             );
         }
+    }
+
+    #[test]
+    fn the_door_is_never_narrower_than_the_projects_that_knock_on_it() {
+        // A one-worker host is the smallest one the deployment model rents,
+        // and it still serves several projects: a read for one of them must
+        // not be the whole host's turn.
+        assert_eq!(request_permits(1), MIN_REQUEST_PERMITS);
+        assert_eq!(request_permits(4), MIN_REQUEST_PERMITS);
+        assert_eq!(request_permits(MIN_REQUEST_PERMITS), MIN_REQUEST_PERMITS);
+        // And a bigger machine opens the door wider, because the worker count
+        // is what its CPU and memory were measured for.
+        assert_eq!(request_permits(32), 32);
+        assert!(
+            request_permits(1) >= default_per_project(1) + 1,
+            "a project at its share must still leave a door for another's read"
+        );
     }
 
     #[test]

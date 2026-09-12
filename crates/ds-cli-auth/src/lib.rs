@@ -260,8 +260,9 @@ pub fn headless_sync_context(lane_value: &str) -> Result<HeadlessSyncContext, Fa
 /// project: the account, the deployment it is bound to, and the registered
 /// install. A host that admits a project per operation needs exactly this and
 /// must not be made to pick one at startup to obtain it. Read from the
-/// protected native state on this machine — no refresh, no network — so a
-/// host can stand up with no upstream present.
+/// protected native state on this machine — no refresh, no network, and no
+/// saved selection, not even to compare one — so a host can stand up with no
+/// upstream present and on an account that has never selected a project.
 pub struct HeadlessPrincipal {
     account_uid: String,
     deployment: String,
@@ -282,7 +283,14 @@ impl HeadlessPrincipal {
 
 pub fn headless_principal(lane_value: &str) -> Result<HeadlessPrincipal, Failure> {
     let lane = Lane::parse(lane_value)?;
-    let (identity, _) = probe_headless_identity(lane.token())?.ok_or_else(|| {
+    // Deliberately the observation that does NOT read the saved selection.
+    // `probe_headless_identity` acquires the project-context lease and makes
+    // the two providers agree on a selected project, so a host that admits a
+    // project per operation would have been refused (`auth_context_mismatch`,
+    // `native_state_conflict`) over a value it never uses — which is the
+    // saved selection deciding whether a Server may start. It decides nothing
+    // here, so it is not read here.
+    let identity = probe_headless_identity_for_named_project(lane.token())?.ok_or_else(|| {
         Failure::conflict("headless_signed_out", "the server has no native identity")
             .remedy("sign in under the server's Linux account")
     })?;

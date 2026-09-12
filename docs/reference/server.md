@@ -57,8 +57,10 @@ nothing worth guessing, so the call refuses `project_required` locally rather
 than admitting a job with no scope. The one exception is `ds server solar
 submit`: the sealed `ds.solar.server-submission/v1` envelope names its own
 project and that name is authoritative, so it can be submitted with nothing
-named. Passing `--project` there is still worth doing — it is how you learn
-you prepared the wrong city, as a differing name refuses `scope_mismatch`.
+named: the saved selection is not sent there, because a default that
+contradicted the sealed bytes would refuse a submission you never disputed.
+Passing `--project` there is still worth doing — it is how you learn you
+prepared the wrong city, as a differing name refuses `scope_mismatch`.
 
 ### Working two projects side by side
 
@@ -84,7 +86,9 @@ the job was admitted under. `ds auth project use` moves the default for the
 
 `ds server activity` answers one envelope,
 `{"schema":"ds.server-activity/v1","projects":[{"project","activity"}]}`, with
-one entry per project the request covers.
+one entry per project the request covers. A project whose Sync Center state
+cannot be read right now says so in its own entry (`unavailable`, with the
+reason, and no activity); the other projects still report theirs.
 
 ### Capacity between projects
 
@@ -95,6 +99,12 @@ is refused on any host with more than one worker, because a project allowed
 every worker while another waits has no share at all. Exhaustion is a typed answer, not a hang: `capacity_exhausted`
 carries `retry_after_ms` and whether the `global` or the `project` scope filled.
 Cancelling a job releases its capacity immediately.
+
+The request door is bounded separately from the workers, and never below eight:
+a status read, a cancellation or one project's layer document fetch does not
+occupy a worker, so a small host does not answer one request at a time and one
+project's slow read cannot return "request capacity reached" to another
+project's call.
 
 ### Refusals, by their own names
 
@@ -203,14 +213,16 @@ Server's document is on another project than the one named),
 above. Nothing here pretends a renderer mounted anything: `writes` name the
 layout word a renderer would apply to each runtime layer.
 
-**One limitation to know before you rely on it.** The project is required
-and checked against the document that comes back, so a layer answer is never
-served under the wrong project. But the Server's document source still reads
-its account's saved selection to decide *which* project's document to fetch,
-so naming a second project answers `project_context_changed` — naming both
-projects — rather than that project's catalogue. Layers are therefore single-project per Server today, safely rather
-than silently. Closing it is a `ds-cli-auth` change (an explicit-project layer
-fence), not a Server one.
+**Any project this account can read, on one running host.** The project is
+required, and the document source is opened *for that project*
+(`ds-cli-auth`'s explicit-project layer fence): the saved selection is not read
+on this path at all, so two of the owner's projects are listed, hidden and
+reordered side by side through one Server with no switching and no restart.
+The named project is then held against the document that comes back — one that
+answers about another project is `project_context_changed`, naming both, and
+nothing is written. A project the account cannot read is refused where the
+account is established (`auth_rejected`), not filtered out of a directory this
+host does not hold.
 
 Browser-to-Server layer control is **not** provided: the connection bearer is
 an owner-only local control credential and must not reach a web visitor. The

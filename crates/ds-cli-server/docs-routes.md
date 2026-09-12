@@ -116,8 +116,13 @@ indistinguishable across projects.
 ```
 
 Without `project`: one entry per project this connection has durable work in
-(ordered by project id). With `project`: exactly that entry, or an empty
-`projects` array when the project is not visible. Render accordingly.
+(ordered by project id), read by paging the whole durable queue rather than its
+newest page. With `project`: exactly that entry, or an empty `projects` array
+when the project is not visible. An entry whose Sync Center projection could
+not be read carries `"unavailable": "<reason>"` and no `activity` INSTEAD of
+failing the envelope — one project's gateway is never allowed to hide what the
+others are doing, and the reason is what keeps it from reading as "no work".
+Render accordingly.
 
 ### `GET /v1/layers?project=<id>&refresh=&limit=&zoom=`
 ### `POST /v1/layers/visibility?project=<id>`  body unchanged: `{"layers":[…],"visible":<bool>}`
@@ -163,8 +168,12 @@ bearer is that owner's. A request with any other bearer is
 no header that names an account: a second identity is not something this
 process can have. Many users are many machines (`ds server serve` per machine,
 its own `--state-dir` and `--listen`), which is the deployment model, not a
-gap. The `x-ds-principal` header and the `multi_principal_unsupported` code
-are **deleted**; a client that still sends the header is simply not read.
+gap. The `x-ds-principal` header is **deleted**; a client that still sends it
+is simply not read, and no route answers `multi_principal_unsupported` —
+there is no request a second account can make here. That code survives in the
+one place a second account really does meet one Server: `ds server serve`
+refuses to adopt a protected state directory that already belongs to another
+owner, by that name, with the remedy of a host of its own.
 
 ## 3. `Job` gains `context`
 

@@ -468,6 +468,12 @@ async fn result(
 /// this connection has durable work in. Without a project it reports every
 /// one of them; with a project it reports that one, or nothing at all when
 /// the project holds nothing this caller may see.
+///
+/// One project's projection failing is THAT project's entry, never the
+/// envelope's: a Sync Center session one project cannot open — a gateway that
+/// refused it, a project whose entitlement is gone — must not hide what every
+/// other project is doing. Such an entry carries `unavailable` with the reason
+/// and no activity, which is why it cannot be misread as "no work".
 async fn activity(
     State(app): State<App>,
     _headers: HeaderMap,
@@ -481,7 +487,10 @@ async fn activity(
             .ok_or("Solar Sync Center activity is unavailable before server startup")?;
         let mut projects = Vec::new();
         for scope in project_scopes(&app, project.as_deref())? {
-            projects.push(json!({"project": scope, "activity": activity.store_read(&scope)?}));
+            projects.push(match activity.store_read(&scope) {
+                Ok(read) => json!({"project": scope, "activity": read}),
+                Err(reason) => json!({"project": scope, "unavailable": reason}),
+            });
         }
         Ok(Json(
             json!({"schema": ACTIVITY_SCHEMA, "projects": projects}),
@@ -493,13 +502,17 @@ async fn activity(
 /// Which projects an answer about "this Server's work" covers: the distinct
 /// projects of the durable jobs this caller can see, plus the ones holding
 /// report publications, narrowed to one when the caller named one.
+///
+/// Read by PAGING the queue, never by taking its newest page: a project whose
+/// work is older than the last thousand rows of a long-running host is still a
+/// project this Server has work in, and an activity answer that quietly left
+/// it out would report "nothing" for a project that has something.
 pub fn project_scopes(app: &App, project: Option<&str>) -> Result<Vec<String>, String> {
-    let identity = app.sessions.identity();
-    let mut scopes: BTreeSet<String> = runtime::open(&app.database)?
-        .jobs(&identity.caller(project), 1000)
-        .map_err(|error| error.to_string())?
+    let mut scopes: BTreeSet<String> = app
+        .sessions
+        .durable_projects()?
         .into_iter()
-        .filter_map(|job| job.context.map(|context| context.project))
+        .filter(|held| project.is_none_or(|named| named == held))
         .collect();
     scopes.extend(
         crate::server_reports::projects_with_publications(&app.database)?
@@ -607,26 +620,54 @@ pub fn load_connection(directory: &Path) -> Result<Connection, String> {
     }
     Ok(connection)
 }
+/// One Server serves one owner, and this is the sentence a second account
+/// meets when it asks one Server to serve it too: the protected state it
+/// pointed at is already another account's. Many users are many machines, so
+/// the remedy is a host of one's own, never a second identity in this process.
+pub const MULTI_PRINCIPAL_UNSUPPORTED: &str = "multi_principal_unsupported";
+
 pub fn connection(
     directory: &Path,
     address: SocketAddr,
     owner: String,
     lane: String,
-) -> Result<Connection, String> {
-    prepare_directory(directory)?;
+) -> Result<Connection, Failure> {
+    prepare_directory(directory).map_err(host_failure)?;
     if !address.ip().is_loopback() || address.port() == 0 {
-        return Err("server must listen on a fixed loopback port".into());
+        return Err(Failure::invalid(
+            "server_refused",
+            "server must listen on a fixed loopback port",
+        )
+        .remedy("pass --listen 127.0.0.1:<port>"));
     }
     let path = directory.join("connection.json");
     if path.exists() {
-        let existing = load_connection(directory)?;
-        if existing.owner != owner || existing.lane != lane || existing.address != address {
-            return Err("existing server connection belongs to another identity, lane or address; use a separate state directory".into());
+        let existing = load_connection(directory).map_err(host_failure)?;
+        // A second ACCOUNT is the one thing this Server can never become, so
+        // it is answered by its own name rather than as a generic refusal —
+        // and separately from a lane or address that simply does not match,
+        // which is one owner's own misconfiguration.
+        if existing.owner != owner {
+            return Err(Failure::conflict(
+                // Written out, like `needs_paired_map` above: the
+                // refusal-coverage scan reads a literal, and a code it cannot
+                // read is a code nothing checks is documented.
+                "multi_principal_unsupported",
+                "this protected server state belongs to another account; one Server serves exactly one owner",
+            )
+            .remedy(
+                "run that account its own ds server serve, with its own --state-dir and --listen",
+            ));
+        }
+        if existing.lane != lane || existing.address != address {
+            return Err(host_failure(
+                "the existing server connection is on another lane or address; use a separate state directory",
+            ));
         }
         return Ok(existing);
     }
     let mut secret = [0u8; 32];
-    getrandom::getrandom(&mut secret).map_err(|e| e.to_string())?;
+    getrandom::getrandom(&mut secret).map_err(host_failure)?;
     let connection = Connection {
         address,
         owner,
@@ -640,14 +681,14 @@ pub fn connection(
         use std::os::unix::fs::OpenOptionsExt;
         options.mode(0o600);
     }
-    let mut file = options.open(&path).map_err(|e| e.to_string())?;
-    file.write_all(&serde_json::to_vec(&connection).map_err(|e| e.to_string())?)
-        .map_err(|e| e.to_string())?;
-    file.sync_all().map_err(|e| e.to_string())?;
+    let mut file = options.open(&path).map_err(host_failure)?;
+    file.write_all(&serde_json::to_vec(&connection).map_err(host_failure)?)
+        .map_err(host_failure)?;
+    file.sync_all().map_err(host_failure)?;
     #[cfg(unix)]
     fs::File::open(directory)
         .and_then(|d| d.sync_all())
-        .map_err(|e| e.to_string())?;
+        .map_err(host_failure)?;
     Ok(connection)
 }
 pub async fn serve(mut app: App, workers: usize) -> Result<(), String> {
@@ -1395,6 +1436,61 @@ pub(crate) mod tests {
         assert_eq!(status, StatusCode::CONFLICT);
     }
 
+    /// One project's Sync Center being unreachable is that project's entry,
+    /// not the envelope's. There is no gateway in this test, so EVERY session
+    /// refuses to open -- and the answer still names both projects and says of
+    /// each why it has no activity, rather than hiding one project's work
+    /// behind another project's failure.
+    #[tokio::test]
+    async fn a_project_whose_projection_fails_does_not_hide_another_projects_work() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = app(dir.path(), true);
+        for (key, project) in [("a1", A), ("b1", B)] {
+            runtime::submit(
+                &app.database,
+                &Admission {
+                    identity: app.sessions.identity(),
+                    client: "cli:1",
+                    key,
+                    requested_project: Some(project),
+                    saved_project: None,
+                    limits: app.sessions.limits(),
+                    now_ms: runtime::now_ms(),
+                },
+                &transformer(key),
+            )
+            .expect("admitted");
+        }
+        app.activity = Some(
+            crate::solar_sync::SolarActivity::open(app.database.clone(), app.sessions.clone())
+                .expect("the activity host needs no gateway to exist"),
+        );
+
+        let (status, body) = call(app.clone(), "GET", "/v1/activity", None).await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(body["schema"], ACTIVITY_SCHEMA);
+        let entries = body["projects"].as_array().expect("one entry per project");
+        assert_eq!(entries.len(), 2, "{body}");
+        for (entry, project) in entries.iter().zip([A, B]) {
+            assert_eq!(entry["project"], project);
+            assert!(
+                entry["activity"].is_null(),
+                "no gateway, so no projection: {entry}"
+            );
+            assert!(
+                entry["unavailable"]
+                    .as_str()
+                    .is_some_and(|reason| !reason.is_empty()),
+                "a project with no projection says why, so it cannot be read as `no work`: {entry}"
+            );
+        }
+        // Narrowed, the same answer is about exactly the project named.
+        let (status, narrowed) = call(app, "GET", &format!("/v1/activity?project={B}"), None).await;
+        assert_eq!(status, StatusCode::OK, "{narrowed}");
+        assert_eq!(narrowed["projects"].as_array().expect("entries").len(), 1);
+        assert_eq!(narrowed["projects"][0]["project"], B);
+    }
+
     #[tokio::test]
     async fn completed_solar_cancel_keeps_compute_result_and_requires_publication_owner() {
         let dir = tempfile::tempdir().unwrap();
@@ -1492,9 +1588,39 @@ pub(crate) mod tests {
         )
         .unwrap();
         assert_eq!(load_connection(dir.path()).unwrap().token, first.token);
-        assert!(
-            super::connection(dir.path(), first.address, "other".into(), "stable".into()).is_err()
+        // The same owner, restarted: the same protected connection, so a
+        // running host's bearer survives a restart rather than rotating.
+        assert_eq!(
+            super::connection(dir.path(), first.address, "owner".into(), "stable".into())
+                .unwrap()
+                .token,
+            first.token
         );
+        // A SECOND ACCOUNT pointed at one Server's protected state is the one
+        // place many users meet one host, and it is answered by its own name
+        // with the remedy that is the whole model: a host of one's own.
+        // `.err()` rather than `expect_err`: `Connection` has no `Debug` on
+        // purpose, because a panic message must never carry the bearer.
+        let second_account =
+            super::connection(dir.path(), first.address, "other".into(), "stable".into())
+                .err()
+                .expect("one Server serves one owner");
+        assert_eq!(second_account.code(), MULTI_PRINCIPAL_UNSUPPORTED);
+        assert_eq!(second_account.class(), ExitClass::Conflict);
+        assert!(
+            second_account
+                .remedy_text()
+                .is_some_and(|remedy| remedy.contains("--state-dir")),
+            "the remedy is a host of its own: {second_account:?}"
+        );
+        // The same owner on another lane or address is that owner's own
+        // misconfiguration, and says so instead of accusing them of being
+        // somebody else.
+        let other_lane =
+            super::connection(dir.path(), first.address, "owner".into(), "canary".into())
+                .err()
+                .expect("one state directory, one lane");
+        assert_eq!(other_lane.code(), "server_refused");
         fs::set_permissions(
             dir.path().join("connection.json"),
             fs::Permissions::from_mode(0o644),

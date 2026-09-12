@@ -328,7 +328,6 @@ pub const LAYER_LIST_REFUSALS: &[Refusal] = &[
     super::target::UNKNOWN_TARGET,
     super::target::SERVER_REFUSED,
     super::target::SERVER_OWNER_CHANGED,
-    super::target::MULTI_PRINCIPAL,
     super::target::PROJECT_REQUIRED,
     super::target::CONTEXT_CORRUPT,
 ];
@@ -361,7 +360,6 @@ pub const LAYER_VISIBILITY_REFUSALS: &[Refusal] = &[
     super::target::UNKNOWN_TARGET,
     super::target::SERVER_REFUSED,
     super::target::SERVER_OWNER_CHANGED,
-    super::target::MULTI_PRINCIPAL,
     super::target::PROJECT_REQUIRED,
     super::target::CONTEXT_CORRUPT,
 ];
@@ -396,7 +394,6 @@ pub const LAYER_ORDER_REFUSALS: &[Refusal] = &[
     super::target::UNKNOWN_TARGET,
     super::target::SERVER_REFUSED,
     super::target::SERVER_OWNER_CHANGED,
-    super::target::MULTI_PRINCIPAL,
     super::target::PROJECT_REQUIRED,
     super::target::CONTEXT_CORRUPT,
 ];
