@@ -719,7 +719,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     // What every print in this batch needs from outside the room: the kernel's
     // one decision over the sealed sheets, with `--seed` as the only way an
     // acquisition may happen. Nothing selected means nothing is read.
-    let contexts = selected_contexts(&receipt, seed)?;
+    let contexts = selected_contexts(lane, &receipt, seed)?;
     let mut context_warnings: Vec<Value> = Vec::new();
     let catalog: Vec<ds_project_data::ReferenceResource> = if contexts.is_empty() {
         Vec::new()
@@ -1011,33 +1011,64 @@ fn held_catalog_rooms(
 /// The context layers the selected printing setups need, decided once by the
 /// kernel over the sealed sheets. `online` is exactly `--seed`: acquisition
 /// happens before a renderer, never inside one.
+///
+/// The sealed sheets carry the export row but not the project's printing
+/// setups (only the reporter's own input receipt does); the setups the
+/// selection names are read exactly through the printing contract, the way
+/// `ds report project settings` completes its sheets, so the kernel decides
+/// over the same documents the engine will print with.
 fn selected_contexts(
+    lane: &str,
     receipt: &InputReceipt,
     online: bool,
 ) -> Result<Vec<ds_command_kernel::printing::PrintContextLayer>, Failure> {
-    let sheets: Value = serde_json::from_str(&receipt.sheets_json).map_err(|error| {
-        Failure::invalid("report_inputs_invalid", format!("sealed sheets: {error}"))
-            .remedy(INPUTS_INVALID.remedy)
-    })?;
+    let invalid = |message: String| {
+        Failure::invalid("report_inputs_invalid", message).remedy(INPUTS_INVALID.remedy)
+    };
+    let mut sheets: Value = serde_json::from_str(&receipt.sheets_json)
+        .map_err(|error| invalid(format!("sealed sheets: {error}")))?;
+    if sheets.get("printing_setups").is_none() {
+        let named = ds_cli_report_named_setups(&sheets).map_err(invalid)?;
+        let mut setups = Vec::with_capacity(named.len());
+        for id in named {
+            let setup = ds_cli_auth::printing(
+                lane,
+                false,
+                &ds_cli_auth::PrintingRequest::Get { id: id.clone() },
+            )?;
+            setups.push(json!({"id": setup["id"], "revision": setup["revision"], "layout": setup["layout"]}));
+        }
+        sheets["printing_setups"] = Value::Array(setups);
+    }
     let request = json!({"command": "context_preparation", "sheets": sheets, "online": online});
-    let bytes = serde_json::to_vec(&request).map_err(|error| {
-        Failure::invalid("report_inputs_invalid", error.to_string()).remedy(INPUTS_INVALID.remedy)
-    })?;
-    let answer: Value = serde_json::from_str(
-        &ds_command_kernel::report::evaluate(&bytes).map_err(|error| {
-            Failure::invalid("report_inputs_invalid", error).remedy(INPUTS_INVALID.remedy)
-        })?,
-    )
-    .map_err(|error| {
-        Failure::invalid("report_inputs_invalid", error.to_string()).remedy(INPUTS_INVALID.remedy)
-    })?;
-    serde_json::from_value(answer["contexts"].clone()).map_err(|error| {
-        Failure::invalid(
-            "report_inputs_invalid",
-            format!("selected context layers: {error}"),
-        )
-        .remedy(INPUTS_INVALID.remedy)
-    })
+    let bytes = serde_json::to_vec(&request).map_err(|error| invalid(error.to_string()))?;
+    let answer: Value =
+        serde_json::from_str(&ds_command_kernel::report::evaluate(&bytes).map_err(invalid)?)
+            .map_err(|error| invalid(error.to_string()))?;
+    serde_json::from_value(answer["result"]["contexts"].clone())
+        .map_err(|error| invalid(format!("selected context layers: {error}")))
+}
+
+/// The printing setup ids the stored output selection names, read with the
+/// kernel's own readers under every stored shape.
+fn ds_cli_report_named_setups(sheets: &Value) -> Result<Vec<String>, String> {
+    use ds_command_kernel::report_formats::{
+        named_setup_id, normalize, output_setting_index, stored_output_selection, string_list,
+    };
+    let Some(rows) = sheets["project_settings"].as_array() else {
+        return Ok(Vec::new());
+    };
+    let Some(index) = output_setting_index(rows) else {
+        return Ok(Vec::new());
+    };
+    let value = &rows[index]["value"];
+    let tokens = stored_output_selection(value)
+        .and_then(|selection| selection.tokens())
+        .unwrap_or_else(|_| string_list(value));
+    Ok(normalize(&tokens)
+        .iter()
+        .filter_map(|token| named_setup_id(token).map(str::to_owned))
+        .collect())
 }
 
 /// A holdings failure for one transformer, as the batch row records it. The
