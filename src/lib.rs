@@ -31,6 +31,12 @@ pub fn assets_preview_wasm(bytes: &[u8], request: &[u8]) -> Result<String, wasm_
 }
 pub mod compute_artifact_sync;
 pub mod compute_jobs;
+pub mod execution_context;
+#[cfg(feature = "wasm")]
+#[wasm_bindgen::prelude::wasm_bindgen(js_name = executionContext)]
+pub fn execution_context_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
+    execution_context::evaluate(input).map_err(|error| wasm_bindgen::JsValue::from_str(&error))
+}
 pub mod connectivity;
 pub mod design;
 pub mod design_dashboard;
