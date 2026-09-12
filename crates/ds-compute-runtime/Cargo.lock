@@ -469,6 +469,7 @@ dependencies = [
  "ds-solar-runtime",
  "ds-sync-store",
  "rayon",
+ "rusqlite",
  "serde",
  "serde_json",
  "sha2",
