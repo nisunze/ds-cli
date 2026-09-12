@@ -842,7 +842,17 @@ pub struct DsRun {
 
 /// The `ds` executable this workspace builds, beside the test binary. It
 /// belongs to another package, so `cargo test -p ds-cli-server` does not
-/// build it; it is built on demand, once, into the same target directory.
+/// build it; it is built here, once per test process, into the same target
+/// directory.
+///
+/// It is built EVERY time, not only when the file is absent. A proof whose
+/// whole claim is about the SHIPPED Server — the real process, the real
+/// authorization path — proves nothing if it runs whatever `ds` happens to be
+/// lying in the target directory: a binary from before the change under test
+/// passes or fails on behalf of code nobody edited. `cargo build` is the
+/// cheapest way to be sure, because when nothing changed it is a freshness
+/// check and returns in under a second; when something did, that is exactly
+/// the run that must not be skipped.
 pub fn ds_binary() -> PathBuf {
     static BINARY: OnceLock<PathBuf> = OnceLock::new();
     BINARY
@@ -854,9 +864,6 @@ pub fn ds_binary() -> PathBuf {
                 .expect("<target>/<profile>/deps/<test>")
                 .to_path_buf();
             let binary = profile.join(if cfg!(windows) { "ds.exe" } else { "ds" });
-            if binary.exists() {
-                return binary;
-            }
             let workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
                 .join("../..")
                 .canonicalize()
