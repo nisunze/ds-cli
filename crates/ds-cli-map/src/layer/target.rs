@@ -50,12 +50,12 @@ pub const UNKNOWN_TARGET: Refusal = Refusal {
     when: "--target is not desktop, desktop:<instance> or server",
     remedy: "pass --target desktop or --target server",
 };
-pub const NEEDS_PAIRED_MAP: Refusal = Refusal {
-    code: "needs_paired_map",
-    when: "--target server names a host with no rendered map, for an operation that needs one",
-    remedy: "run the same command with --target desktop, against a window open on this project",
-};
-
+/// None of these four operations needs a rendered map — the catalogue, the
+/// remembered visibility and the governed order are all decided without one —
+/// so none of them declares `needs_paired_map`. That refusal belongs to the
+/// map-bound commands the day they take a host; on this host it is declared by
+/// `ds server serve`, which is what answers it.
+///
 /// The rest of what taking `--target` adds to a layer command's declared
 /// refusals. Every one of these is the Server's own answer re-raised literally
 /// by `ds_cli_server::typed_refusal`, so a caller plans for the same codes and

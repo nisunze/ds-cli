@@ -324,7 +324,8 @@ fn a_map_layer_op_runs_the_same_against_the_server() {
         ("map.layer.list", "target_instance_unsupported"),
         ("map.layer.hide", "project_required"),
         ("map.layer.hide", "server_refused"),
-        ("map.layer.reorder", "needs_paired_map"),
+        ("map.layer.reorder", "server_owner_changed"),
+        ("map.layer.reorder", "multi_principal_unsupported"),
     ] {
         let command = ok(&["capabilities", id, "--output", "json"])["command"].clone();
         let documented: Vec<&str> = command["refusals"]
@@ -337,7 +338,23 @@ fn a_map_layer_op_runs_the_same_against_the_server() {
             documented.contains(&expected),
             "`{id}` can answer `{expected}` and does not document it: {documented:?}"
         );
+        // And the converse, because a documented refusal a command cannot
+        // reach is prose: no layer operation needs a rendered map, so none of
+        // them claims the refusal for one. That claim belongs to the host that
+        // answers it.
+        assert!(
+            !documented.contains(&"needs_paired_map"),
+            "`{id}` documents needs_paired_map; the layer drawer needs no map"
+        );
     }
+    assert!(
+        ok(&["capabilities", "server.serve", "--output", "json"])["command"]["refusals"]
+            .as_array()
+            .expect("refusals")
+            .iter()
+            .any(|refusal| refusal["code"] == "needs_paired_map"),
+        "the host that answers needs_paired_map stopped declaring it"
+    );
 }
 
 struct Run {
