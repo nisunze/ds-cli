@@ -567,8 +567,8 @@
       }
     },
     {
-      "id": "descriptor-refuses-a-member-it-does-not-know",
-      "why": "The descriptor is a closed shape: an unknown member means a host wrote a field this build cannot honour, and honouring the rest silently would hide that.",
+      "id": "descriptor-ignores-a-member-it-does-not-know",
+      "why": "The descriptor is the one record a differently versioned build wrote, so a member this build does not know decides nothing and is ignored: closing the shape would turn the next additive field into the coordinated upgrade that keeping the version at 1 exists to avoid.",
       "request": {
         "kind": "admit_descriptor",
         "descriptor": {
@@ -576,11 +576,21 @@
           "url": "http://127.0.0.1:41234",
           "token": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
           "pid": 4711,
-          "window": "main"
+          "a_field_a_later_build_added": "whatever it means"
         }
       },
       "expected": {
-        "error": "invalid desktop instance request: unknown field `window`, expected one of `version`, `url`, `token`, `pid`, `instance_id`, `lane`, `build`, `started_at_ms`, `profile` at line 1 column 228"
+        "outcome": "admitted",
+        "instance": {
+          "instance_id": "e25c3ac7a44c481d6893fed817700f36",
+          "identity": "derived",
+          "origin": "http://127.0.0.1:41234",
+          "profile": null,
+          "lane": null,
+          "build": null,
+          "started_at_ms": null,
+          "pid": 4711
+        }
       }
     },
     {

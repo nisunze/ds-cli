@@ -53,10 +53,17 @@ Descriptor { version: 1, url, token, pid,          // the four fields v1 always 
 
 `version` stays **1** and every field added is optional, in both directions:
 
-- an **older `ds` reading a newer file** sees the four fields it knows and
-  ignores the rest (its reader has no `deny_unknown_fields`);
+- an **older `ds` reading a newer file** sees the fields it knows and ignores
+  the rest — including this reader, which is the one type in the module that is
+  deliberately *not* `deny_unknown_fields`, because closing it would make the
+  next additive field refuse `descriptor_unusable` on every already-shipped
+  build and so re-create the coordinated upgrade this section exists to avoid;
 - a **newer `ds` reading an older file** derives an identity rather than
   refusing (§3), so no operator whose app and CLI upgrade apart loses pairing.
+
+Every field that decides anything is still validated below, and everything a
+host builds in-process — the requests, the handshake, the target — stays a
+closed shape.
 
 A version bump would have made every older `ds` report `descriptor speaks
 version 2` on every command until both sides were upgraded together. There is no

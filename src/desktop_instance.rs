@@ -259,8 +259,15 @@ fn echo(value: &str) -> String {
 /// `token` is the pairing secret. It is validated for shape and then dropped —
 /// there is no `Serialize` here and the `Debug` below redacts it, so no answer
 /// this module can produce is able to carry it.
+///
+/// This is the one type here that is **not** `deny_unknown_fields`, and the
+/// only one read from a file another build wrote. Closing it would undo the
+/// version-1 promise: the next additive field would make every already-shipped
+/// reader refuse `descriptor_unusable` on every command until the app and the
+/// CLI were upgraded together, which is exactly the coordinated upgrade the
+/// version was kept at 1 to avoid. Every field that decides anything is
+/// validated below; a member this build does not know decides nothing.
 #[derive(Clone, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct Descriptor {
     pub version: u8,
     pub url: String,
@@ -1221,6 +1228,16 @@ mod tests {
         assert!(instance_id_valid(&legacy.instance_id));
         assert_eq!(legacy.profile.as_deref(), Some("canary"));
         assert_eq!(legacy.origin, "http://127.0.0.1:41234");
+
+        // A file a later build wrote, read by this one: the member it does not
+        // know decides nothing, and the pairing still works. Closing this
+        // shape would make the next additive field a coordinated upgrade.
+        let newer = admit_descriptor(
+            &descriptor(json!({"instance_id": ONE, "windows": 2})),
+            Some("canary"),
+        )
+        .expect("admitted");
+        assert_eq!(newer.instance_id, ONE);
 
         let minted = admit_descriptor(
             &descriptor(json!({
