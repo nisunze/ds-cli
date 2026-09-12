@@ -861,6 +861,17 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
                     })
             }
         };
+        // The sheet's place in the drawing set: the batch order is the set order.
+        let sheet = plan
+            .names
+            .iter()
+            .position(|listed| listed == name)
+            .and_then(|index| {
+                Some((
+                    u32::try_from(index + 1).ok()?,
+                    u32::try_from(plan.names.len()).ok()?,
+                ))
+            });
         Ok(TransformerReportInputs {
             transformer: name.to_string(),
             server_version,
@@ -868,6 +879,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             content_digest: snapshot.metadata().content_digest().map(str::to_string),
             selection: None,
             print_context,
+            sheet,
         })
     };
     let outcome = run_batch(&CliEngine, &settings, &plan.names, fetch).map_err(host_failure)?;
