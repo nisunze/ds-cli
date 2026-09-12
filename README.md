@@ -192,10 +192,18 @@ of named semantic operations. Possession of the descriptor proves a transport,
 never a person — it can never authorize a project write on its own.
 
 ```bash
+ds desktop list            # which instances are live, and which are yours?
 ds desktop status          # paired? signed in? which project?
 ```
 
+Several instances can run at once — Stable beside Canary, two windows of one
+build — so each is addressed by its own identity:
+`--target desktop:<instance_id>`. Automatic routing happens only when exactly
+one live, compatible instance matches; anything else refuses before an effect
+and names the choices.
+
 "Not paired" is an answer, not a failure. See
+[`docs/reference/desktop.md`](docs/reference/desktop.md) and
 [`docs/reference/desktop.status.md`](docs/reference/desktop.status.md).
 
 That same borrowed session is what `ds map` acts through. The map is a
