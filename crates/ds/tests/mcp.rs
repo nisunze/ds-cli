@@ -1317,9 +1317,10 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
             "grid" => 19,
             "survey-projects" => 18,
             "design-edit" => 23,
-            // Seventeen printing leaves plus bootstrap: native inventory
-            // and pure report plans share the kernel with browser-room IO.
-            "printing" => 19,
+            // Twenty-two printing leaves plus bootstrap: the headless loop
+            // (project-cache status/seed, settings, outputs set, export with
+            // context) beside the paired leaves that need the desktop.
+            "printing" => 24,
             // Sixteen layer leaves plus bootstrap: the layer drawer's profile
             // also carries this machine's prepared local layer catalogue,
             // which is the same "one host's own layers" workflow as the local
@@ -1348,6 +1349,19 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
     assert!(published["printing"].contains("report_layout_edit"));
     assert!(published["printing"].contains("report_transformers"));
     assert!(published["printing"].contains("report_plan"));
+    // The headless production loop is reachable through the printing profile.
+    for headless in [
+        "data_project-cache_status",
+        "data_project-cache_seed",
+        "report_project_settings",
+        "report_project_outputs_set",
+        "report_project_export",
+    ] {
+        assert!(
+            published["printing"].contains(headless),
+            "the printing profile must project the headless loop: {headless}"
+        );
+    }
     assert!(!published["grid"].contains("report_transformers"));
     assert!(!published["grid"].contains("report_plan"));
     assert!(

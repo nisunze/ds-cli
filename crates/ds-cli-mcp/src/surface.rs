@@ -172,10 +172,11 @@ impl Profile {
             // same bounded desktop-owned workflow without transporting
             // features through MCP.
             Self::DesignEdit => 23,
-            // Seventeen printing leaves plus both bootstrap tools. Native
-            // inventory and pure report planning join the browser-room IO
-            // adapter; neither adds a second policy implementation.
-            Self::Printing => 19,
+            // Twenty-two printing leaves plus both bootstrap tools: the
+            // headless loop (context held and seeded on this machine, output
+            // selection, export with context) beside the paired leaves that
+            // still need the desktop's own holdings.
+            Self::Printing => 24,
             // The layer drawer's profile also carries this machine's prepared
             // local layer catalogue: sixteen leaves plus both bootstrap tools.
             // Preparing, renaming and removing a local layer is the same
@@ -1235,27 +1236,37 @@ pub const fn chapter_description(chapter: Chapter) -> &'static str {
     }
 }
 
-// One bounded end-to-end printing workflow. Named setups are read and
-// published natively (`report.layout.*`, no paired application); the
-// paired leaves are the ones that need the desktop's held rooms and cache.
+// One bounded end-to-end printing workflow, on either host. The headless
+// loop is the production route: setups are read and published natively
+// (`report.layout.*`), the project's context is held and seeded on this
+// machine (`data.project-cache.*`), the output selection is saved
+// (`report.project.outputs.set`) and every sheet renders with that context
+// (`report.project.export`, `--seed` on the first print). The paired leaves
+// remain for what has no headless owner yet: survey and local-layer context,
+// per-transformer overrides, district and custom-area maps.
 const PRINTING_COMMANDS: &[&str] = &[
     "map.print.schema",
     "report.layout.context",
-    "desktop.printing.settings",
     "report.layout.list",
     "report.layout.get",
-    "desktop.printing.prepare",
-    "desktop.printing.transformers",
+    "report.layout.edit",
+    "report.layout.save",
     "report.transformers",
     "report.plan",
+    "data.project-cache.status",
+    "data.project-cache.seed",
+    "report.project.settings",
+    "report.project.outputs.set",
+    "report.project.export",
+    "desktop.printing.settings",
+    "desktop.printing.prepare",
+    "desktop.printing.transformers",
     "desktop.printing.export",
     "desktop.printing.artifact.read",
     "desktop.printing.seed-context",
-    "report.layout.save",
     "desktop.printing.map.export",
     "desktop.printing.map.list",
     "desktop.printing.map.attach",
-    "report.layout.edit",
 ];
 
 #[cfg(test)]
