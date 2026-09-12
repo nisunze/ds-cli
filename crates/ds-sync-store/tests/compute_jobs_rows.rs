@@ -765,6 +765,9 @@ fn a_submission_is_bounded_inside_the_write_transaction() {
     drop(store);
     // Six submissions racing for a queue of three: exactly three are written,
     // because the bound is read and applied in the transaction that inserts.
+    // The three are one project's, so the bound under test is its own — and a
+    // project's bound is smaller than the host's, which is why the global
+    // queue here is four.
     let barrier = std::sync::Arc::new(std::sync::Barrier::new(6));
     let path = directory.path().join("race.sqlite");
     Store::open(&path)
@@ -772,8 +775,8 @@ fn a_submission_is_bounded_inside_the_write_transaction() {
         .initialize_jobs()
         .expect("table");
     let race = Limits {
-        global_queued: 3,
-        per_project_queued: 8,
+        per_project_queued: 3,
+        global_queued: 4,
         ..roomy()
     };
     let outcomes = (1..=6u64)
@@ -856,9 +859,11 @@ fn the_census_names_running_and_queued_work_by_project_only() {
         .expect("census");
     assert!(later.running.is_empty());
     assert_eq!(later.queued.len(), 2);
-    // …and the pool with room for exactly one lets that row be reclaimed.
+    // …and the pool with room for exactly one lets that row be reclaimed. A
+    // single-slot pool has no share to divide, so its per-project limit is one.
     let one = Limits {
         global_running: 1,
+        per_project_running: 1,
         ..roomy()
     };
     let (reclaimed, _) = store
@@ -918,7 +923,7 @@ fn a_row_whose_context_does_not_read_is_in_no_census_and_in_no_ones_way() {
         global_running: 4,
         per_project_running: 1,
         per_project_queued: 8,
-        global_queued: 8,
+        global_queued: 16,
     };
     store
         .submit_job(&nth("project-a", 2), b"input-a2", share)

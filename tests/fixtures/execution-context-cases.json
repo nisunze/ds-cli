@@ -1,7 +1,7 @@
 {
   "schema": "ds.execution-context-cases/v1",
   "purpose": "The Server's execution context, replayed. Each case carries the op (without the schema wrapper) and the answer the kernel must give: the parsed answer, or {\"error\": \"<the exact Err string>\"} when the request itself is malformed. ds-web replays the same file through the vendored WASM, so no rule about who may see, admit, keep, queue or recover a project's work can be true on one host and not another.",
-  "source": "ds-web/docs/project-and-instance-isolation-contract.md (One verified context per operation; Server jobs and multiple clients; Concurrency and capacity; acceptance items 2, 5, 6, 7, 8), 2026-09-12, under the owner's boundary ruling of the same day: the Server is the desktop's core and holds no project directory, so admission is the connection, the named project and the key.",
+  "source": "ds-web/docs/project-and-instance-isolation-contract.md (One verified context per operation; Server jobs and multiple clients; Concurrency and capacity; acceptance items 2, 5, 6, 7, 8), 2026-09-12, under the owner's boundary ruling of the same day: the Server is the desktop's core and holds no project directory, so admission is the connection, the named project and the key. Third pass, same day: a project id is one path segment, a per-project limit must divide the host limit it shares, and the cross-project half of scope_mismatch_for_key is gone because a durable id digests the project.",
   "note": "Re-record expected with DS_EXECUTION_CONTEXT_CASES_WRITE=1 cargo test --test execution_context_cases after a deliberate rule change, and say why in the commit.",
   "cases": [
     {
@@ -291,48 +291,8 @@
       }
     },
     {
-      "id": "admit-key-reused-for-another-project",
-      "why": "A key that already names one project cannot be reused to reach another; this is the retry rule that stops a reused key from borrowing another project's result.",
-      "request": {
-        "kind": "admit",
-        "now_ms": 2000,
-        "principal": {
-          "uid": "uid-a",
-          "lane": "canary",
-          "deployment": "https://gateway.example",
-          "install_id": "install-1"
-        },
-        "client": "cli:4711",
-        "operation": "solar_processing",
-        "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
-        "idempotency_key": "key-a",
-        "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-        "requested_project": "project-b",
-        "existing": {
-          "principal_uid": "uid-a",
-          "lane": "canary",
-          "deployment": "https://gateway.example",
-          "install_id": "install-1",
-          "project": "project-a",
-          "client": "cli:4711",
-          "operation": "solar_processing",
-          "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
-          "idempotency_key": "key-a",
-          "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-          "admitted_at_ms": 2000
-        }
-      },
-      "expected": {
-        "outcome": "refused",
-        "refusal": {
-          "code": "scope_mismatch_for_key",
-          "message": "that idempotency key already names another project or operation"
-        }
-      }
-    },
-    {
       "id": "admit-key-reused-for-another-operation",
-      "why": "The durable job id is a digest of owner, lane and key, so the same key used for a different operation would collide with it; the scope of a key covers its operation as well as its project.",
+      "why": "The durable job id digests the project as well as the owner, lane and key, so the same key in two projects is two jobs and never reaches this refusal; what a key still cannot do is name a second operation inside its own project, where the id would collide.",
       "request": {
         "kind": "admit",
         "now_ms": 2000,
@@ -781,6 +741,249 @@
         "refusal": {
           "code": "context_corrupt",
           "message": "execution context field principal.lane is not a bounded value"
+        }
+      }
+    },
+    {
+      "id": "admit-project-id-with-a-path-separator",
+      "why": "A project id names one segment, and hosts partition durable state by it; an id carrying a separator is a path expression that would place one project's rows inside another's.",
+      "request": {
+        "kind": "admit",
+        "now_ms": 2000,
+        "principal": {
+          "uid": "uid-a",
+          "lane": "canary",
+          "deployment": "https://gateway.example",
+          "install_id": "install-1"
+        },
+        "client": "cli:4711",
+        "operation": "solar_processing",
+        "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
+        "idempotency_key": "key-a",
+        "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "requested_project": "project-a/child"
+      },
+      "expected": {
+        "outcome": "refused",
+        "refusal": {
+          "code": "context_corrupt",
+          "message": "execution context field requested_project is not a project id: one path segment of 1..=200 characters, no separator, no traversal, no whitespace"
+        }
+      }
+    },
+    {
+      "id": "admit-project-id-with-a-windows-separator",
+      "why": "The same statement for the other separator: a backslash is a path expression on the platforms this Server also runs on, so it is not a project id here either.",
+      "request": {
+        "kind": "admit",
+        "now_ms": 2000,
+        "principal": {
+          "uid": "uid-a",
+          "lane": "canary",
+          "deployment": "https://gateway.example",
+          "install_id": "install-1"
+        },
+        "client": "cli:4711",
+        "operation": "solar_processing",
+        "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
+        "idempotency_key": "key-a",
+        "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "requested_project": "project-a\\child"
+      },
+      "expected": {
+        "outcome": "refused",
+        "refusal": {
+          "code": "context_corrupt",
+          "message": "execution context field requested_project is not a project id: one path segment of 1..=200 characters, no separator, no traversal, no whitespace"
+        }
+      }
+    },
+    {
+      "id": "admit-project-id-that-traverses",
+      "why": "The parent directory is never a project. Admitting it would let a name reach whatever the host's project root sits inside, and the record is what hosts build paths from.",
+      "request": {
+        "kind": "admit",
+        "now_ms": 2000,
+        "principal": {
+          "uid": "uid-a",
+          "lane": "canary",
+          "deployment": "https://gateway.example",
+          "install_id": "install-1"
+        },
+        "client": "cli:4711",
+        "operation": "solar_processing",
+        "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
+        "idempotency_key": "key-a",
+        "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "requested_project": ".."
+      },
+      "expected": {
+        "outcome": "refused",
+        "refusal": {
+          "code": "context_corrupt",
+          "message": "execution context field requested_project is not a project id: one path segment of 1..=200 characters, no separator, no traversal, no whitespace"
+        }
+      }
+    },
+    {
+      "id": "admit-project-id-that-is-the-current-directory",
+      "why": "A single dot names the project root itself rather than a project in it, so it is not an id; it is refused by the same one-segment grammar that refuses its parent.",
+      "request": {
+        "kind": "admit",
+        "now_ms": 2000,
+        "principal": {
+          "uid": "uid-a",
+          "lane": "canary",
+          "deployment": "https://gateway.example",
+          "install_id": "install-1"
+        },
+        "client": "cli:4711",
+        "operation": "solar_processing",
+        "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
+        "idempotency_key": "key-a",
+        "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "requested_project": "."
+      },
+      "expected": {
+        "outcome": "refused",
+        "refusal": {
+          "code": "context_corrupt",
+          "message": "execution context field requested_project is not a project id: one path segment of 1..=200 characters, no separator, no traversal, no whitespace"
+        }
+      }
+    },
+    {
+      "id": "admit-project-id-that-traverses-through-a-segment",
+      "why": "A traversal spelled inside a longer name is the same traversal: the grammar refuses the shape, so no host has to normalise a name before it can trust it.",
+      "request": {
+        "kind": "admit",
+        "now_ms": 2000,
+        "principal": {
+          "uid": "uid-a",
+          "lane": "canary",
+          "deployment": "https://gateway.example",
+          "install_id": "install-1"
+        },
+        "client": "cli:4711",
+        "operation": "solar_processing",
+        "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
+        "idempotency_key": "key-a",
+        "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "requested_project": "project-a/../project-b"
+      },
+      "expected": {
+        "outcome": "refused",
+        "refusal": {
+          "code": "context_corrupt",
+          "message": "execution context field requested_project is not a project id: one path segment of 1..=200 characters, no separator, no traversal, no whitespace"
+        }
+      }
+    },
+    {
+      "id": "admit-project-id-with-whitespace",
+      "why": "An id split by whitespace is a name a shell, a log line and a path all read differently; the record must survive being quoted and unquoted, so whitespace is not part of an id.",
+      "request": {
+        "kind": "admit",
+        "now_ms": 2000,
+        "principal": {
+          "uid": "uid-a",
+          "lane": "canary",
+          "deployment": "https://gateway.example",
+          "install_id": "install-1"
+        },
+        "client": "cli:4711",
+        "operation": "solar_processing",
+        "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
+        "idempotency_key": "key-a",
+        "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "requested_project": "project a"
+      },
+      "expected": {
+        "outcome": "refused",
+        "refusal": {
+          "code": "context_corrupt",
+          "message": "execution context field requested_project is not a project id: one path segment of 1..=200 characters, no separator, no traversal, no whitespace"
+        }
+      }
+    },
+    {
+      "id": "admit-project-id-over-the-bound",
+      "why": "The kernel's own project bound is 200 characters, as the survey owners already read it; a longer name is a payload, not an id, and is refused before it reaches a durable row.",
+      "request": {
+        "kind": "admit",
+        "now_ms": 2000,
+        "principal": {
+          "uid": "uid-a",
+          "lane": "canary",
+          "deployment": "https://gateway.example",
+          "install_id": "install-1"
+        },
+        "client": "cli:4711",
+        "operation": "solar_processing",
+        "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
+        "idempotency_key": "key-a",
+        "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "requested_project": "ppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppp"
+      },
+      "expected": {
+        "outcome": "refused",
+        "refusal": {
+          "code": "context_corrupt",
+          "message": "execution context field requested_project is not a project id: one path segment of 1..=200 characters, no separator, no traversal, no whitespace"
+        }
+      }
+    },
+    {
+      "id": "admit-saved-selection-that-is-not-one-segment",
+      "why": "A saved default is verified exactly like a name the caller typed: the client's own selection cannot smuggle a path into the record either.",
+      "request": {
+        "kind": "admit",
+        "now_ms": 2000,
+        "principal": {
+          "uid": "uid-a",
+          "lane": "canary",
+          "deployment": "https://gateway.example",
+          "install_id": "install-1"
+        },
+        "client": "cli:4711",
+        "operation": "solar_processing",
+        "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
+        "idempotency_key": "key-a",
+        "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "saved_project": "../project-a"
+      },
+      "expected": {
+        "outcome": "refused",
+        "refusal": {
+          "code": "context_corrupt",
+          "message": "execution context field saved_project is not a project id: one path segment of 1..=200 characters, no separator, no traversal, no whitespace"
+        }
+      }
+    },
+    {
+      "id": "admit-sealed-project-that-is-not-one-segment",
+      "why": "Sealed bytes outrank a request, so they are held to the same grammar; a prepared input naming a path is refused rather than trusted because it arrived as bytes.",
+      "request": {
+        "kind": "admit",
+        "now_ms": 2000,
+        "principal": {
+          "uid": "uid-a",
+          "lane": "canary",
+          "deployment": "https://gateway.example",
+          "install_id": "install-1"
+        },
+        "client": "cli:4711",
+        "operation": "solar_processing",
+        "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
+        "idempotency_key": "key-a",
+        "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "sealed_project": "project-a/child"
+      },
+      "expected": {
+        "outcome": "refused",
+        "refusal": {
+          "code": "context_corrupt",
+          "message": "execution context field sealed_project is not a project id: one path segment of 1..=200 characters, no separator, no traversal, no whitespace"
         }
       }
     },
@@ -1448,7 +1651,7 @@
         "outcome": "refused",
         "refusal": {
           "code": "context_corrupt",
-          "message": "execution context field project is not a bounded value"
+          "message": "execution context field project is not a project id: one path segment of 1..=200 characters, no separator, no traversal, no whitespace"
         }
       }
     },
@@ -1851,6 +2054,135 @@
       }
     },
     {
+      "id": "capacity-running-share-equal-to-the-pool-is-a-host-fault",
+      "why": "A share equal to the worker pool is no share at all: the first project to arrive may hold every worker while a second waits, which is the one thing the share exists to prevent, so the configuration is refused as the host's own bug.",
+      "request": {
+        "kind": "capacity",
+        "intent": "claim",
+        "limits": {
+          "global_running": 4,
+          "per_project_running": 4,
+          "per_project_queued": 3,
+          "global_queued": 8
+        },
+        "running": [],
+        "queued": [],
+        "project": "project-a"
+      },
+      "expected": {
+        "error": "capacity limit per_project_running is 4 and global_running is 4: a share must be smaller than the pool it divides, or one project holds the whole host while another waits; only a single-slot host (global_running 1) has no share, and there per_project_running must be 1"
+      }
+    },
+    {
+      "id": "capacity-running-share-larger-than-the-pool-is-a-host-fault",
+      "why": "A share larger than the pool says even less than one equal to it; both are refused by the same rule, and the message names both numbers so an operator can read the fix off it.",
+      "request": {
+        "kind": "capacity",
+        "intent": "claim",
+        "limits": {
+          "global_running": 4,
+          "per_project_running": 5,
+          "per_project_queued": 3,
+          "global_queued": 8
+        },
+        "running": [],
+        "queued": [],
+        "project": "project-a"
+      },
+      "expected": {
+        "error": "capacity limit per_project_running is 5 and global_running is 4: a share must be smaller than the pool it divides, or one project holds the whole host while another waits; only a single-slot host (global_running 1) has no share, and there per_project_running must be 1"
+      }
+    },
+    {
+      "id": "capacity-queue-share-equal-to-the-global-queue-is-a-host-fault",
+      "why": "The queue has the same invariant as the pool: a per-project queue bound equal to the global one lets one project fill the whole queue and leaves a second project nowhere to wait.",
+      "request": {
+        "kind": "capacity",
+        "limits": {
+          "global_running": 4,
+          "per_project_running": 2,
+          "per_project_queued": 8,
+          "global_queued": 8
+        },
+        "running": [],
+        "queued": [],
+        "project": "project-a"
+      },
+      "expected": {
+        "error": "capacity limit per_project_queued is 8 and global_queued is 8: a share must be smaller than the pool it divides, or one project holds the whole host while another waits; only a single-slot host (global_queued 1) has no share, and there per_project_queued must be 1"
+      }
+    },
+    {
+      "id": "capacity-single-worker-host-has-no-share",
+      "why": "The smallest rented VM: one worker, one slot, and nothing to divide. Its share must be exactly one because whatever runs holds the machine, so this configuration is admitted rather than refused as an unfair one.",
+      "request": {
+        "kind": "capacity",
+        "intent": "claim",
+        "limits": {
+          "global_running": 1,
+          "per_project_running": 1,
+          "per_project_queued": 1,
+          "global_queued": 1
+        },
+        "running": [],
+        "queued": [],
+        "project": "project-a"
+      },
+      "expected": {
+        "outcome": "admitted"
+      }
+    },
+    {
+      "id": "capacity-single-worker-host-is-still-bounded",
+      "why": "Having no share is not having no bound: the one slot of a single-worker host is full while it runs, and the second project is told so with the global scope and retry guidance.",
+      "request": {
+        "kind": "capacity",
+        "intent": "claim",
+        "limits": {
+          "global_running": 1,
+          "per_project_running": 1,
+          "per_project_queued": 1,
+          "global_queued": 1
+        },
+        "running": [
+          {
+            "project": "project-a"
+          }
+        ],
+        "queued": [],
+        "project": "project-b"
+      },
+      "expected": {
+        "outcome": "refused",
+        "refusal": {
+          "code": "capacity_exhausted",
+          "message": "every worker is busy (1 of 1 running)",
+          "retry_after_ms": 1000,
+          "scope": "global"
+        }
+      }
+    },
+    {
+      "id": "capacity-single-slot-pool-that-hands-out-more-than-it-has",
+      "why": "A pool of one with a share of two is a configuration that promises a slot the host does not have; the single-slot exception admits one share of one, never more.",
+      "request": {
+        "kind": "capacity",
+        "intent": "claim",
+        "limits": {
+          "global_running": 1,
+          "per_project_running": 2,
+          "per_project_queued": 1,
+          "global_queued": 1
+        },
+        "running": [],
+        "queued": [],
+        "project": "project-a"
+      },
+      "expected": {
+        "error": "capacity limit per_project_running is 2 and global_running is 1: a share must be smaller than the pool it divides, or one project holds the whole host while another waits; only a single-slot host (global_running 1) has no share, and there per_project_running must be 1"
+      }
+    },
+    {
       "id": "capacity-nonsense-limit",
       "why": "Limits are the host's own configuration, so a zero limit is a host bug and a hard error, never a typed refusal relayed to a client.",
       "request": {
@@ -1867,6 +2199,29 @@
       },
       "expected": {
         "error": "capacity limit global_running must be 1..=4096"
+      }
+    },
+    {
+      "id": "capacity-census-names-a-path-not-a-project",
+      "why": "The census is the store's own reading of its rows, so a project id in it that is not one segment means the host wrote one it should never have admitted: a hard fault, never a client refusal.",
+      "request": {
+        "kind": "capacity",
+        "limits": {
+          "global_running": 4,
+          "per_project_running": 2,
+          "per_project_queued": 3,
+          "global_queued": 8
+        },
+        "running": [],
+        "queued": [
+          {
+            "project": "project-a/child"
+          }
+        ],
+        "project": "project-a"
+      },
+      "expected": {
+        "error": "capacity was asked about a project id that is not one path segment"
       }
     },
     {
@@ -2011,7 +2366,7 @@
         "outcome": "refused",
         "refusal": {
           "code": "context_unrecoverable",
-          "message": "that row predates execution contexts and a transformer request names no project"
+          "message": "that row predates execution contexts and a transformer request names no project; read its stored input and submit it again naming the project"
         }
       }
     },
@@ -2049,7 +2404,7 @@
         "outcome": "refused",
         "refusal": {
           "code": "context_unrecoverable",
-          "message": "that row predates execution contexts and a transformer request names no project"
+          "message": "that row predates execution contexts and a transformer request names no project; read its stored input and submit it again naming the project"
         }
       }
     },
@@ -2086,7 +2441,45 @@
         "outcome": "refused",
         "refusal": {
           "code": "context_unrecoverable",
-          "message": "that row predates execution contexts and its sealed input names no project"
+          "message": "that row predates execution contexts and its sealed input names no project; read its stored input and submit it again naming the project"
+        }
+      }
+    },
+    {
+      "id": "recover-sealed-project-that-is-not-one-segment",
+      "why": "Recovery reads a project out of bytes a released Server wrote, so it applies the same one-segment grammar admission does; a reconstructed record is a durable record.",
+      "request": {
+        "kind": "recover",
+        "row": {
+          "id": "1111111111111111111111111111111111111111111111111111111111111111",
+          "owner": "owner-digest",
+          "lane": "canary",
+          "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "engine": "solar_prepared",
+          "input_tag": "ds.solar.calculate.prepared/v1",
+          "phase": "queued",
+          "attempts": 0,
+          "created_at_ms": 1700000000000,
+          "updated_at_ms": 1700000000000,
+          "worker": null,
+          "lease_until_ms": 0,
+          "result_sha256": null,
+          "error": null
+        },
+        "principal": {
+          "uid": "uid-a",
+          "lane": "canary",
+          "deployment": "https://gateway.example",
+          "install_id": "install-1"
+        },
+        "sealed_project": "project-a/child",
+        "now_ms": 5000
+      },
+      "expected": {
+        "outcome": "refused",
+        "refusal": {
+          "code": "context_corrupt",
+          "message": "execution context field sealed_project is not a project id: one path segment of 1..=200 characters, no separator, no traversal, no whitespace"
         }
       }
     },

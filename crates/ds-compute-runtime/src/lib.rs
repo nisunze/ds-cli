@@ -738,8 +738,9 @@ impl Workers {
         let recovery = recover_contexts(&context.path, &context.identity)?;
         if !recovery.unrecoverable.is_empty() {
             eprintln!(
-                "compute queue: {} durable job(s) predate execution contexts and name no project; read each one's result and resubmit it under an explicit --project",
-                recovery.unrecoverable.len()
+                "compute queue: {} durable job(s) predate execution contexts and name no project; {} (`ds server input --job <id>`, then submit it with --project)",
+                recovery.unrecoverable.len(),
+                execution_context::UNRECOVERABLE_REMEDY
             );
         }
         if let Some(observer) = context.observer.as_ref() {

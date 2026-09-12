@@ -3,7 +3,10 @@
 **Status:** the kernel owner, the durable jobs table (`ds-sync-store`) and the
 compute runtime are implemented and proven on `fable/server-isolation`,
 2026-09-12; the Server host and the CLI that consume them are the rest of the
-slice. Parent:
+slice. Third pass, same day, from the second adversarial verdict: a project id
+is one path segment (§2), a per-project limit must divide the host limit it
+shares (§5), and the corpus no longer records a cross-project
+`scope_mismatch_for_key` no host can produce (§6). Parent:
 [project and instance isolation](../../../ds-web/docs/project-and-instance-isolation-contract.md);
 refines [Headless application runtime](ds-headless-application-runtime.md) §6.
 
@@ -43,8 +46,23 @@ ExecutionContext { principal_uid, lane, deployment, install_id, // the connectio
 `report_export`, `layer_read`, `layer_write`; `lane` is `stable` or `canary`;
 `input_sha256` is a 64-character lowercase digest. Every text field is
 non-empty, trimmed, control-free and bounded (`client` ≤ 120, `idempotency_key`
-≤ 200, `project` ≤ 500, `layer_document`'s bound). One that is not is
-`context_corrupt`, named.
+≤ 200). One that is not is `context_corrupt`, named.
+
+**A project id is one path segment** (`valid_project`): 1..=200 characters, no
+`/`, no `\`, never `.` or `..`, no whitespace anywhere, no control character.
+200 is the kernel's own project bound, as `survey_query` and
+`survey_entries_changes` already read it — deliberately not `layer_document`'s
+500-character free-form bound, because this id is durable and hosts partition
+by it: store rows, dataset caches, staging directories, report names. An id
+that could mean a different place on disk (`..`, `A/../B`) or that a shell, a
+log line and a path each read differently (`A B`) is refused
+`context_corrupt` at every door it can arrive through — named by the caller,
+defaulted from a saved selection, sealed in the bytes, offered to a legacy row
+on recovery, stored in a record, or counted in a census (there it is the
+host's own bug, a hard fault). The refusal states the grammar, so an operator
+reads the rule rather than guessing which character was the problem. The
+Server's and `ds-cli-auth`'s own restatements of the bound (500) are theirs to
+narrow; the kernel refuses what they let through.
 
 `compute_jobs::Job` gains `#[serde(default, skip_serializing_if)] context:
 Option<ExecutionContext>`. Rows are one JSON blob, so there is **no SQL schema
@@ -97,11 +115,14 @@ is a decision to challenge, not an omission.
   machine, never this owner's.
 - **The project is resolved before any stored key is consulted**, so what a key
   already holds never decides what a request is about.
+- **A project id is one path segment** (§2), wherever it is named.
 - **A retry keeps its scope and identity.** Same key, project, operation and
   digest returns the stored context unchanged (`existing`), not re-stamped;
-  another project or operation is `scope_mismatch_for_key`, other bytes are
+  another operation is `scope_mismatch_for_key`, other bytes are
   `payload_changed_for_key`, another principal/lane/deployment holding it is
-  `principal_mismatch`.
+  `principal_mismatch`. Another *project* never reaches that refusal at all:
+  the durable id digests the project, so the same key in two projects is two
+  ids and two jobs (§6).
 - **Nothing rewrites scope.** `retain` is the identity function and it takes
   `now_ms` and ignores it; every event returns the record it was given.
 - **The refusal vocabulary is closed**, all nine proven: `project_required`,
@@ -123,6 +144,23 @@ over the recorded answers.
 
 `capacity` takes only host-owned inputs — configured limits and the store's
 census — so a malformed input is a hard fault, never a client refusal.
+
+**A share must divide the pool it shares.** Each limit is 1..=4096, and
+`per_project_running` must be smaller than `global_running` and
+`per_project_queued` smaller than `global_queued`; limits that are not are
+refused as the host configuration fault they are, in a sentence naming both
+numbers. A share equal to the pool is not a share — the first project to
+arrive holds every worker, or fills the whole queue, while a second waits,
+which is precisely what the share exists to prevent — and it is not a client's
+refusal to receive, so it is a hard fault. **The one exception is a pool of
+one:** the smallest rented VM (`--workers 1`) has nothing to divide, whatever
+runs holds the machine, and its `per_project_*` must therefore be exactly 1.
+Such a host has no share and is still bounded: its one slot is full while it
+runs, and the second project is told so with `scope: "global"` and retry
+guidance. Until this pass the invariant lived only in `ds-cli-server`'s flag
+parser, so any other host — a test, a route building its own `Limits`, a
+future embedder — could configure the fairness away and this owner would
+apply it as written.
 `Intent::Admit` bounds the queue (`global_queued`, then `per_project_queued`); a
 full *running* pool never refuses a submission, the job queues. `Intent::Claim`
 bounds the running pool (`global_running`) and the fairness share: a project may
@@ -164,17 +202,28 @@ transformer row carries no project by design, so it is `context_unrecoverable`:
 readable by its own connection, never claimed, never executed, never published.
 It is not recovered into whichever project happens to be selected when the host
 reopens the queue — that would run one owner's retained work, and publish it,
-somewhere it was never admitted for. The one remedy, everywhere it is said:
-**read that job's result and resubmit under an explicit `--project`**, which is
-a new job with its own id. A reconstructed record keeps the row's own
-`created_at_ms` and records `recovery:legacy-row` / `recovered` for the client
-and key.
+somewhere it was never admitted for. The one remedy, and it travels **inside
+the refusal** (`UNRECOVERABLE_REMEDY`, appended to every
+`context_unrecoverable` sentence the kernel and the store produce, and printed
+by the runtime when a reopened queue finds such rows): **read its stored input
+and submit it again naming the project**. Not its result — such a row was never
+claimed and never ran, so it has none; what it has is the bytes it was admitted
+with, which a host returns (`GET /v1/jobs/:id/input`, `ds server input`), and
+submitting them under a named project is a new job with its own id. A
+reconstructed record keeps the row's own `created_at_ms` and records
+`recovery:legacy-row` / `recovered` for the client and key.
 
 The durable job id is `digest(owner, lane, project, key)` for every admission
 this build makes (`ds_compute_runtime::job_id`), so the same key in projects A
 and B is two pieces of work with two ids rather than a collision, and
 `scope_mismatch_for_key` is what a key reused **within one project** for another
-operation or other bytes still gets. Rows written before this build keep the ids
+operation or other bytes still gets. That is the stronger statement, and it
+replaces the weaker one the corpus used to record: a host looking a key up in
+project B finds nothing and admits fresh, so no request can reach the
+cross-project half of that refusal, and a host that somehow handed over another
+project's record would already have been stopped by the job-id check before it.
+The kernel keeps the check — it assumes no host's id scheme — but the corpus
+records no case for it, because in this build none can be produced. Rows written before this build keep the ids
 they have (`digest(owner, lane, key)`); those ids can no longer be re-derived
 from a key, so a later submission never adopts such a row — it is refused
 `context_unrecoverable` and left exactly as it is.
@@ -195,7 +244,9 @@ from a key, so a later submission never adopts such a row — it is refused
    Server, is the conditional the owner deleted.
 3. **`scope_mismatch_for_key` covers a changed operation** — within one project
    the durable id digests `(owner, lane, project, key)` and would otherwise
-   collide.
+   collide. Its cross-project half is a fence with no reachable door in this
+   build (§6): kept in the code, deleted from the corpus, because a proof of
+   something no host can ask for overstates what is proven.
 4. **Three deliberate shape changes.** `admit` gained `sealed_project`
    (acceptance item 2 refuses a Solar submit whose bytes name A while the caller
    names C); `capacity` gained `intent`, or one op serving both moments would
@@ -227,6 +278,6 @@ its `host.rs`, which is also where that fence is proven; `ds` re-raises refusals
 literally. The
 kernel holds no credential material, so the owner digest stays the store's
 fence; `recover` checks the lane it can see. Proof:
-`tests/fixtures/execution-context-cases.json`, 67 recorded cases, byte-identical
+`tests/fixtures/execution-context-cases.json`, 83 recorded cases, byte-identical
 to ds-web's `src/tests/fixtures/execution-context/cases.json` and replayed there
 through the vendored WASM, plus the unit tests above.
