@@ -600,9 +600,16 @@ fn typed_refusal(status: u16, body: &[u8]) -> Failure {
         }
         _ => Failure::new(class, "server_refused", message),
     };
+    // A remedy the Server sent wins. Failing that, the sentence this command
+    // declares for the code the Server named -- and failing THAT, the one it
+    // declares for the code this client gave the answer, because a Server may
+    // legitimately answer without naming a code at all (a foreign bearer is
+    // `401 {"error": …}` and nothing else, by design), and an answer with a
+    // code and a class but no remedy leaves its caller nothing to do.
+    let declared = default_remedy(code.or_else(|| Some(refusal.code())), &value);
     let refusal = match value["remedy"].as_str() {
         Some(remedy) => refusal.remedy(remedy),
-        None => match default_remedy(code, &value) {
+        None => match declared {
             Some(remedy) => refusal.remedy(remedy),
             None => refusal,
         },
@@ -1366,6 +1373,26 @@ mod tests {
                 "`{code}` has no remedy when the Server sends none"
             );
         }
+    }
+
+    #[test]
+    fn an_answer_that_names_no_code_is_still_one_a_caller_can_act_on() {
+        // A foreign bearer is `401 {"error": …}` and deliberately nothing
+        // else: naming a code there would say something about who owns this
+        // host. The client still has to leave its caller a class, a code and
+        // something to do, so it falls back to what `server_refused` declares.
+        let error = typed_refusal(401, br#"{"error":"server access denied"}"#);
+        assert_eq!(error.code(), "server_refused");
+        assert_eq!(error.class(), ExitClass::Unauthorized);
+        assert_eq!(
+            error.remedy_text(),
+            Some(REFUSED.remedy),
+            "a code with no remedy is a refusal a caller cannot act on"
+        );
+        // And nothing about the fallback invents a project, an owner or a
+        // retry it was not told about.
+        assert!(error.detail_value().is_none());
+        assert_eq!(error.message(), "server access denied");
     }
 
     #[test]
