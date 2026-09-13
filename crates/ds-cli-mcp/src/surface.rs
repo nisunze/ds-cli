@@ -1277,6 +1277,8 @@ const PRINTING_COMMANDS: &[&str] = &[
     "report.project.settings",
     "report.project.outputs.set",
     "report.project.export",
+    "report.project.map-inputs",
+    "map.design.attach-print",
     "desktop.printing.settings",
     "desktop.printing.prepare",
     "desktop.printing.transformers",
@@ -1284,8 +1286,6 @@ const PRINTING_COMMANDS: &[&str] = &[
     "desktop.printing.artifact.read",
     "desktop.printing.seed-context",
     "desktop.printing.map.export",
-    "desktop.printing.map.list",
-    "desktop.printing.map.attach",
 ];
 
 #[cfg(test)]

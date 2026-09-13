@@ -213,6 +213,7 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("design.comment.promote", "global_write", "project"),
     ("design.comment.read", "read_only", "project"),
     ("design.comment.resolve", "global_write", "project"),
+    ("report.project.map-inputs", "local_file_write", "headless_project"),
     ("design.lv.process", "local_file_write", "none"),
     ("design.autoprocess.plan", "read_only", "none"),
     ("design.data.lane", "read_only", "headless_project"),

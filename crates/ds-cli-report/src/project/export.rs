@@ -197,7 +197,7 @@ const CONTEXT_ACQUISITION: Refusal = Refusal {
     remedy: "`ds data project-cache status` shows the last error",
 };
 
-const REFUSALS: &[Refusal] = &[
+pub(super) const REFUSALS: &[Refusal] = &[
     super::NATIVE_PROFILE,
     super::NATIVE_PROFILE_DIGEST,
     super::NATIVE_PROFILE_UNSAFE,
@@ -330,7 +330,7 @@ fn bounded_summary(stderr: &str, stdout: &str) -> String {
 /// The pauses between attempts when the network blinks: the desktop's own
 /// tolerance for a weak link, so a batch of eighty sheets does not lose
 /// seventy rows to one dropped second.
-const WEAK_NETWORK_DELAYS: &[std::time::Duration] = &[
+pub(super) const WEAK_NETWORK_DELAYS: &[std::time::Duration] = &[
     std::time::Duration::from_secs(2),
     std::time::Duration::from_secs(6),
     std::time::Duration::from_secs(15),
@@ -339,7 +339,7 @@ const WEAK_NETWORK_DELAYS: &[std::time::Duration] = &[
 /// Retry `op` after each delay while its refusal is retryable (`unavailable`
 /// or `conflict` — the world, not the request, has to change); any other
 /// refusal, and the last retryable one, is returned as it came.
-fn with_weak_network<T>(
+pub(super) fn with_weak_network<T>(
     delays: &[std::time::Duration],
     mut op: impl FnMut() -> Result<T, Failure>,
 ) -> Result<T, Failure> {

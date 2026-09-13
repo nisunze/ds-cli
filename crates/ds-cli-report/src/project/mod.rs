@@ -21,6 +21,7 @@
 pub mod archives;
 pub mod compounded;
 pub mod export;
+pub mod map_inputs;
 pub mod scope;
 pub mod settings;
 

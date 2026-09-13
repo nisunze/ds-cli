@@ -6,10 +6,11 @@ use ds_cli_contract::spec::{
 };
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
+use std::{io::Read, path::Path};
 
 use crate::DESCRIPTOR_ARG;
 
-const SCOPES: &[&str] = &["transformer", "combined"];
+const SCOPES: &[&str] = &["transformer", "combined", "mv"];
 const MAP_FAMILIES: &[&str] = &["lv-atlas", "mv-map", "custom-map"];
 const ORIENTATIONS: &[&str] = &["portrait", "landscape"];
 const PAGE_ROLES: &[&str] = &["sheet", "atlas", "joined"];
@@ -19,7 +20,7 @@ pub static COMMAND: Command = Command {
     path: &["map", "design", "attach-print"],
     contract: 1,
     summary: "Attach one completed cartographic PDF or image to report delivery.",
-    purpose: "\
+    purpose: "--scope mv uses the native selected project to publish a reviewed MV PDF or PNG under mv_data; --lane chooses its account. Other scopes use the paired Desktop. \
 Uploads one operator-reviewed cartographic output and attaches its immutable \
 digest, LV-atlas/MV-map/custom-map family, layout, paper size, orientation and page role to an individual \
 transformer or the combined report. Repeat the command for multiple paper \
@@ -40,14 +41,14 @@ transformer's files and combined atlas/joined pages at archive root.",
         Arg::value(
             "scope",
             "<scope>",
-            "Attach to one transformer or to combined delivery.",
+            "transformer/combined use the paired Desktop; mv publishes natively to mv_data.",
         )
         .default("transformer")
         .choices(SCOPES),
         Arg::value(
             "transformer",
             "<name>",
-            "Individual transformer; omit when --scope combined.",
+            "Individual transformer; omit when --scope combined or mv.",
         ),
         Arg::value(
             "map-family",
@@ -78,6 +79,7 @@ transformer's files and combined atlas/joined pages at archive root.",
             "<sha256>",
             "Optional digest of the exact DS export receipt used for rendering.",
         ),
+        crate::layer::native::LANE_ARG,
         DESCRIPTOR_ARG,
     ],
     output: "Project, target, filename, SHA-256, durable artifact reference, map family, layout, paper size, orientation, and page role.",
@@ -93,33 +95,16 @@ transformer's files and combined atlas/joined pages at archive root.",
             runnable: false,
         },
     ],
-    refusals: &[
-        crate::NOT_PAIRED,
-        crate::PROJECT_NOT_OPEN,
-        crate::AMBIGUOUS,
-        crate::UNREACHABLE,
-        crate::PAIRING_REJECTED,
-        super::DESIGN_REFUSED,
-        crate::UNSUPPORTED,
-        crate::UNREADABLE,
-        crate::SIGNED_OUT,
-        Refusal {
-            code: "confirmation_required",
-            when: "--yes was not given for a project artifact upload",
-            remedy: "review the rendered output and re-run with --yes to attach it",
-        },
-        Refusal {
-            code: "transformer_required",
-            when: "--scope transformer was used without --transformer",
-            remedy: "pass --transformer <name>, or use --scope combined",
-        },
-    ],
+    refusals: ALL_REFUSALS,
     reference: Some("docs/reference/map.md"),
-    availability: crate::paired_availability,
+    availability: ds_cli_auth::native_availability,
 };
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let scope = inputs.value("scope").unwrap_or("transformer");
+    if scope == "mv" {
+        return attach_native_mv(inputs);
+    }
     let transformer = inputs.value("transformer");
     if scope == "transformer" && transformer.is_none() {
         return Err(Failure::invalid(
@@ -182,5 +167,84 @@ pub fn render(data: &Value) -> String {
         data["orientation"].as_str().unwrap_or(""),
         data["page_role"].as_str().unwrap_or("sheet"),
         data["sha256"].as_str().unwrap_or("?"),
+    )
+}
+
+const BASE_REFUSALS: &[Refusal] = &[
+    crate::NOT_PAIRED,
+    crate::PROJECT_NOT_OPEN,
+    crate::AMBIGUOUS,
+    crate::UNREACHABLE,
+    crate::PAIRING_REJECTED,
+    super::DESIGN_REFUSED,
+    crate::UNSUPPORTED,
+    crate::UNREADABLE,
+    crate::SIGNED_OUT,
+    Refusal {
+        code: "confirmation_required",
+        when: "--yes was not given for a project artifact upload",
+        remedy: "review the rendered output and re-run with --yes to attach it",
+    },
+    Refusal {
+        code: "transformer_required",
+        when: "--scope transformer was used without --transformer",
+        remedy: "pass --transformer <name>, or use --scope combined",
+    },
+];
+const ALL_REFUSALS: &[Refusal] = &{
+    let native = crate::layer::native::NATIVE_REFUSALS;
+    let mut out =
+        [BASE_REFUSALS[0]; BASE_REFUSALS.len() + crate::layer::native::NATIVE_REFUSALS.len() + 1];
+    let mut n = 0;
+    while n < BASE_REFUSALS.len() {
+        out[n] = BASE_REFUSALS[n];
+        n += 1;
+    }
+    let mut i = 0;
+    while i < native.len() {
+        out[n + i] = native[i];
+        i += 1;
+    }
+    out[n + i] = Refusal {
+        code: "report_inputs_invalid",
+        when: "MV print bytes or metadata are invalid",
+        remedy: "Select the reviewed PDF/PNG and its exact paper metadata",
+    };
+    out
+};
+
+fn invalid(e: impl std::fmt::Display) -> Failure {
+    Failure::invalid("report_inputs_invalid", e.to_string())
+        .remedy("Select a reviewed PDF or PNG and its exact paper metadata")
+}
+fn attach_native_mv(i: &Inputs) -> Result<Value, Failure> {
+    if i.require("map-family")? != "mv-map" || i.value("page-role").unwrap_or("sheet") != "sheet" {
+        return Err(invalid(
+            "Native MV attachment requires mv-map and a single sheet",
+        ));
+    }
+    let path = Path::new(i.require("path")?);
+    let mut bytes = Vec::new();
+    std::fs::File::open(path)
+        .map_err(invalid)?
+        .take(128 * 1024 * 1024 + 1)
+        .read_to_end(&mut bytes)
+        .map_err(invalid)?;
+    let command = ds_cli_auth::ReportArtifactCommand {
+        file_name: path
+            .file_name()
+            .and_then(|s| s.to_str())
+            .ok_or_else(|| invalid("file name is not UTF-8"))?
+            .into(),
+        bytes,
+        layout: i.require("layout")?.into(),
+        paper: i.require("paper-size")?.into(),
+        orientation: i.require("orientation")?.into(),
+        source_receipt: i.value("source-receipt-sha256").unwrap_or("").into(),
+    };
+    let result = ds_cli_auth::report_artifact(i.require("lane")?, &command)?;
+    let result = result.into_result();
+    Ok(
+        json!({"project":result["project_id"],"scope":"mv","transformer":"mv_data","file_name":result["file_name"],"sha256":result["sha256"],"artifact":result["gcs_path"],"map_family":result["map_family"],"layout":i.require("layout")?,"paper_size":i.require("paper-size")?,"orientation":i.require("orientation")?,"page_role":"sheet"}),
     )
 }

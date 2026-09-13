@@ -452,6 +452,11 @@ static REPORT_ENTRIES: &[Entry] = &[
         render: ds_cli_report::project::settings::render_set,
     },
     Entry {
+        command: &ds_cli_report::project::map_inputs::COMMAND,
+        handler: ds_cli_report::project::map_inputs::run,
+        render: ds_cli_report::layout::render_text,
+    },
+    Entry {
         command: &ds_cli_report::project::export::COMMAND,
         handler: ds_cli_report::project::export::run,
         render: ds_cli_report::project::export::render,

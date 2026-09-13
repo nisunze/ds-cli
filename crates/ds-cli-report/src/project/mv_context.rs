@@ -9,6 +9,30 @@ pub(super) struct Model {
     identity: map::Model,
     projection: Value,
 }
+pub(super) fn overview(models: &[Model]) -> Result<Value, Failure> {
+    let mut sources = ds_command_kernel::printing::project_sources::Sources::default();
+    for model in models {
+        let identity = map::Model {
+            id: model.identity.id.clone(),
+            label: model.identity.label.clone(),
+            revision_id: model.identity.revision_id.clone(),
+            digest: model.identity.digest.clone(),
+        };
+        // Complete projected model, including routes outside the LV transformers' envelope.
+        let bounds = ds_command_kernel::project_design_extent::design_extent(
+            "mv_data",
+            &json!({"mv":model.projection}),
+            0.00001,
+        )
+        .map_err(fail)?
+        .bounds
+        .ok_or_else(|| fail("MV model contains no geographic geometry"))?;
+        sources
+            .mv(&map::mv_layers(model.projection.clone(), identity, bounds).map_err(fail)?)
+            .map_err(fail)?;
+    }
+    Ok(sources.layers())
+}
 pub(super) fn provenance(models: &[Model]) -> Vec<Value> {
     models.iter().map(|model| json!({"model_id":model.identity.id,"revision_id":model.identity.revision_id,"sha256":model.identity.digest,"label":model.identity.label})).collect()
 }

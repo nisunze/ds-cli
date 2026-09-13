@@ -527,3 +527,16 @@ Composition maximizes the full network's vertical fit. `min_font_scale` is 1 by
 default; 0.7 permits up to 30% smaller schedule type. Panel profiles and allowed
 font tiers are tested without dropping rows or fields; equal fits prefer larger
 type. Fixed titles, scales and furniture belong in the map’s `fit_around` list.
+
+### Native project MV overview
+
+`report.project.map-inputs` captures the selected project's active LV overview
+and complete promoted MV geometry through native fenced reads. An authored
+layout selects geographic context; `--seed` explicitly acquires missing coverage.
+Read its omissions before passing the emitted request to `report.layout.render`.
+The request is a portable, editable print capture, not a model version.
+After visual review, `map.design.attach-print --scope mv` uploads a PDF or PNG
+through the existing report-artifact service to `mv_data`, without Desktop or
+report computation. Repeat for each format and inspect `design.status` afterward.
+Scale-dependent line pens are authored through `scale_weight` in the live layout
+schema; legend samples use the identical resolved pens.

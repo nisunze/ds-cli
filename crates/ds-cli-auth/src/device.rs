@@ -640,6 +640,13 @@ impl DeviceSession {
     ) -> Result<ds_client_core::ProjectDataReceipt, ClientError> {
         fixed_device_call!(self, project_data, project, command)
     }
+    pub fn report_artifact(
+        &mut self,
+        project: &str,
+        command: &ds_client_core::report_artifact::Command,
+    ) -> Result<serde_json::Value, ClientError> {
+        fixed_device_call!(self, report_artifact, project, command)
+    }
     pub fn grid_models(
         &mut self,
         project: &str,

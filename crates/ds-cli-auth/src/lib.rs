@@ -4258,6 +4258,16 @@ pub fn printing(
     with_released_context_disposition(client.profile(), &selected, result)
 }
 
+pub fn report_artifact(
+    lane: &str,
+    command: &ds_client_core::report_artifact::Command,
+) -> Result<HeadlessProjectReport<serde_json::Value>, Failure> {
+    headless_project_report(
+        lane,
+        |device, project| device.report_artifact(project, command),
+        |client, project| client.report_artifact(project, command, now()),
+    )
+}
 pub fn grid_models(
     lane: &str,
     command: &ds_client_core::grid_models::Command,
@@ -4270,6 +4280,7 @@ pub fn grid_models(
 }
 
 pub use ds_client_core::grid_models::Command as GridModelsCommand;
+pub use ds_client_core::report_artifact::Command as ReportArtifactCommand;
 
 #[cfg(test)]
 mod tests {
