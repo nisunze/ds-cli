@@ -27,6 +27,7 @@ plan again.
 | `remote_read_at_ms` | When the held `remote` heads were last read from the record; absent when never. |
 | `grant` | The work grant in hand (`work/open`), parsed not verified: `grant_id`, `install_id`, `project`, `engines[{name, release}]`, `expires_at_ms`. |
 | `local[]` | What this machine holds: identity (`engine`, `operation`, `variant`), `sha256`, `size_bytes`, `produced_at_ms`, `base_revision` (the remote head revision the result was computed against, if any), `readable`, `engine_release`. |
+| `source_grants[]` | Resource-scoped grants with `snapshot_base`, used for derived reports whose `input_base_fingerprint` pins source inputs separately from output heads. |
 | `remote[]` | What the shared record holds: identity, `revision`, `sha256`, `published_at_ms`. |
 
 | Action | When |
@@ -38,6 +39,15 @@ plan again.
 | `conflict{identity, base_revision, current_revision, reason}` | Both exist, digests differ, and the local result was computed on an older base — or on no base at all (`base_moved`). Surfaced, never overwritten. |
 | `nothing{identity, reason}` | Digests equal (`in_sync`). |
 | `refused{identity?, reason}` | A row that takes no part: `identity_malformed`, `duplicate_identity`, `local_unreadable` with no remote copy. One bad row never poisons the queue. |
+
+Derived reports compare their `input_base_fingerprint` with the operation's
+source revision in a valid work grant, not with the input fingerprint of an
+older published output. Missing grants, or held grants that disagree with newly
+computed inputs, require fresh admission. After `grant_opened`, a mismatch is
+`source_base_moved` and moves no bytes. The host re-plans after admission and
+before uploading. The publish service still checks that the source remains
+current transactionally. Ordinary artifacts retain the output-head
+`base_revision` conflict rule.
 
 **No polling.** Owner, 2026-09-11: "we cannot afford passive aggressive polling
 when not needed — this should be triggered by dependencies and navigations, not

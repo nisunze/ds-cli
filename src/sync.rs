@@ -97,6 +97,9 @@ pub struct Grant {
     #[serde(default)]
     pub engines: Vec<EngineRelease>,
     pub expires_at_ms: u64,
+    /// Source revisions pinned by this grant, keyed by operation.
+    #[serde(default)]
+    pub snapshot_base: BTreeMap<String, String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -112,6 +115,10 @@ pub struct LocalArtifact {
     /// remote head in view.
     #[serde(default)]
     pub base_revision: Option<String>,
+    /// A derived report pins source inputs, independently of an older output
+    /// head. It can upload only under a grant for this exact source revision.
+    #[serde(default)]
+    pub input_base_fingerprint: Option<String>,
     /// The host could open the bytes and they match `sha256`/`size_bytes`.
     #[serde(default = "default_true")]
     pub readable: bool,
@@ -155,6 +162,9 @@ pub struct Input {
     pub remote_read_at_ms: Option<u64>,
     #[serde(default)]
     pub grant: Option<Grant>,
+    /// Resource-scoped grants for derived artifacts with source fingerprints.
+    #[serde(default)]
+    pub source_grants: Vec<Grant>,
     #[serde(default)]
     pub local: Vec<LocalArtifact>,
     #[serde(default)]
@@ -306,6 +316,14 @@ fn grant_problem(input: &Input, needed: &BTreeSet<&str>) -> Option<&'static str>
     let Some(grant) = &input.grant else {
         return Some("no_grant");
     };
+    grant_problem_for(input, grant, needed)
+}
+
+fn grant_problem_for(
+    input: &Input,
+    grant: &Grant,
+    needed: &BTreeSet<&str>,
+) -> Option<&'static str> {
     if grant.project != input.project {
         return Some("grant_project_mismatch");
     }
@@ -416,7 +434,53 @@ pub fn plan(input: &Input) -> Result<Plan, String> {
     let identities: BTreeSet<Identity> = local.keys().chain(remote.keys()).cloned().collect();
     let mut actions: Vec<Action> = Vec::new();
     let mut needed_releases: BTreeSet<&str> = BTreeSet::new();
+    let mut needs_source_grant = false;
     for identity in identities {
+        if let Some(artifact) = local.get(&identity) {
+            if let Some(computed) = &artifact.input_base_fingerprint {
+                let differs = remote
+                    .get(&identity)
+                    .is_none_or(|head| head.sha256 != artifact.sha256);
+                if artifact.readable && differs {
+                    let needed = BTreeSet::from([artifact.engine_release.as_str()]);
+                    let granted = input.source_grants.iter().rev().find(|grant| {
+                        grant.snapshot_base.contains_key(&identity.operation)
+                            && grant_problem_for(input, grant, &needed).is_none()
+                    });
+                    if let Some(grant) = granted {
+                        let current = &grant.snapshot_base[&identity.operation];
+                        if current != computed && input.trigger == Trigger::GrantOpened {
+                            actions.push(Action::Conflict {
+                                identity: identity.clone(),
+                                base_revision: Some(computed.clone()),
+                                current_revision: current.clone(),
+                                reason: "source_base_moved",
+                            });
+                            continue;
+                        }
+                        if current != computed {
+                            needs_source_grant = true;
+                        }
+                    } else {
+                        needs_source_grant = true;
+                    }
+                    needed_releases.insert(artifact.engine_release.as_str());
+                    actions.push(Action::Upload {
+                        identity: identity.clone(),
+                        sha256: artifact.sha256.clone(),
+                        size_bytes: artifact.size_bytes,
+                        reason: if granted.is_some_and(|grant| {
+                            grant.snapshot_base[&identity.operation] == *computed
+                        }) {
+                            "source_current"
+                        } else {
+                            "source_admission_required"
+                        },
+                    });
+                    continue;
+                }
+            }
+        }
         match (local.get(&identity), remote.get(&identity)) {
             (Some(artifact), None) => {
                 if !artifact.readable {
@@ -481,7 +545,11 @@ pub fn plan(input: &Input) -> Result<Plan, String> {
     let uploads_pending = actions
         .iter()
         .any(|action| matches!(action, Action::Upload { .. }));
-    let problem = grant_problem(input, &needed_releases);
+    let problem = if needs_source_grant {
+        Some("source_grant_required")
+    } else {
+        grant_problem(input, &needed_releases)
+    };
     plan.grant_valid = problem.is_none();
     if uploads_pending {
         if let Some(reason) = problem {
@@ -550,6 +618,7 @@ mod tests {
             size_bytes: 10,
             produced_at_ms: 1_000,
             base_revision: base.map(Into::into),
+            input_base_fingerprint: None,
             readable: true,
             engine_release: REL.into(),
         }
@@ -573,6 +642,7 @@ mod tests {
                 manifest_sha256: None,
             }],
             expires_at_ms,
+            snapshot_base: BTreeMap::new(),
         }
     }
     fn input(local: Vec<LocalArtifact>, remote: Vec<RemoteHead>, grant: Option<Grant>) -> Input {
@@ -586,6 +656,7 @@ mod tests {
             trigger: Trigger::Navigation,
             remote_read_at_ms: Some(9_000),
             grant,
+            source_grants: vec![],
             local,
             remote,
         }
@@ -733,6 +804,56 @@ mod tests {
         assert_eq!(kinds(&p), vec!["conflict:a:base_moved"]);
         assert_eq!(p.summary.conflicts, 1);
         assert_eq!(p.summary.uploads, 0);
+    }
+
+    #[test]
+    fn derived_reports_compare_current_source_not_the_previous_output() {
+        let mut artifact = local("a", SHA_B, None);
+        artifact.input_base_fingerprint = Some("source-new".into());
+        let mut current = grant(10_000_000);
+        current
+            .snapshot_base
+            .insert("a".into(), "source-new".into());
+        let mut request = input(
+            vec![artifact],
+            vec![remote("a", SHA_A, "source-old")],
+            Some(current.clone()),
+        );
+        let first = plan(&request).unwrap();
+        assert_eq!(
+            kinds(&first),
+            vec![
+                "open_grant:source_grant_required",
+                "upload:a:source_admission_required"
+            ]
+        );
+        request.source_grants.push(current);
+        assert_eq!(
+            kinds(&plan(&request).unwrap()),
+            vec!["upload:a:source_current"]
+        );
+        request.source_grants[0]
+            .snapshot_base
+            .insert("a".into(), "source-later".into());
+        assert_eq!(
+            kinds(&plan(&request).unwrap())[0],
+            "open_grant:source_grant_required"
+        );
+        request.trigger = Trigger::GrantOpened;
+        assert_eq!(
+            kinds(&plan(&request).unwrap()),
+            vec!["conflict:a:source_base_moved"]
+        );
+        request.remote.clear();
+        assert_eq!(
+            kinds(&plan(&request).unwrap()),
+            vec!["conflict:a:source_base_moved"]
+        );
+        request.source_grants[0].install_id = "another-install".into();
+        assert_eq!(
+            kinds(&plan(&request).unwrap())[0],
+            "open_grant:source_grant_required"
+        );
     }
 
     #[test]
