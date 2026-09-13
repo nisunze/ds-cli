@@ -5325,7 +5325,7 @@ fn design_lv_project_export_refuses_an_existing_artifact_before_auth_or_desktop(
                 "method": "POST",
                 "path": "/report",
                 "action": "get_transformers_data",
-                "fields": "context"
+                "fields": "full"
             },
             "project_forms": {
                 "method": "POST",
@@ -5386,7 +5386,7 @@ fn design_lv_project_export_refuses_an_existing_artifact_before_auth_or_desktop(
     std::fs::write(
         &profile_path,
         serde_json::to_vec(&json!({
-            "schema_version": "ds.native-client-profiles/v21",
+            "schema_version": "ds.native-client-profiles/v22",
             "development": true,
             "profiles": {
                 "stable": profile(

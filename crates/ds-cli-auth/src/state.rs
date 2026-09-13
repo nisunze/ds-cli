@@ -1105,7 +1105,7 @@ mod tests {
             transformer_context_method: "POST".to_owned(),
             transformer_context_path: "/report".to_owned(),
             transformer_context_action: "get_transformers_data".to_owned(),
-            transformer_context_fields: "context".to_owned(),
+            transformer_context_fields: "full".to_owned(),
             project_forms_method: "POST".to_owned(),
             project_forms_path: "/api/v1/project-forms".to_owned(),
             project_forms_action: "activate".to_owned(),

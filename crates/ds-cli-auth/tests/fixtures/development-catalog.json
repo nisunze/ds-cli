@@ -1,5 +1,5 @@
 {
-  "schema_version": "ds.native-client-profiles/v21",
+  "schema_version": "ds.native-client-profiles/v22",
   "development": true,
   "profiles": {
     "stable": {
@@ -47,7 +47,7 @@
         "method": "POST",
         "path": "/report",
         "action": "get_transformers_data",
-        "fields": "context"
+        "fields": "full"
       },
       "project_forms": {
         "method": "POST",
@@ -207,7 +207,7 @@
         "method": "POST",
         "path": "/report",
         "action": "get_transformers_data",
-        "fields": "context"
+        "fields": "full"
       },
       "project_forms": {
         "method": "POST",
