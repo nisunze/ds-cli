@@ -48,6 +48,12 @@ submission file retains its immutable attachment revision. Grouping artifacts
 must reference their existing storage, not copy them into another catalogue.
 Printing or packaging does not create or advance a design model version.
 
+LV also carries tags and attachments. Treat an attachment as a typed tag/link
+to an existing blob reference, retaining its immutable digest, access rules,
+and any exact design-version binding. MV and LV use the same reference
+semantics; grouping or attaching a file must not duplicate its stored bytes.
+An attachment reference remains distinguishable from a plain categorical tag.
+
 Prove the existing headless CLI/MCP behavior before changing this workflow.
 Where the proof exposes a missing operation, extend its owning contract in a
 bounded slice and verify the result through CLI/MCP before adding UI behavior.
