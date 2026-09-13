@@ -17,6 +17,7 @@
 //! admits against.
 
 pub mod jcs;
+pub mod proof;
 
 use std::collections::{BTreeMap, HashSet};
 use std::path::Path;
@@ -216,6 +217,8 @@ pub fn input_base_fingerprint(
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct InputReceipt {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub local_print_recipe: Option<proof::Provenance>,
     pub schema: u32,
     pub country: String,
     pub sheets_json: String,
@@ -498,6 +501,8 @@ pub fn print_context_document(
 /// Everything one run is bound to before the engine starts.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct ExportPlan {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub local_print_recipe: Option<proof::Provenance>,
     pub project_id: String,
     pub transformer: String,
     pub server_version: i64,
@@ -563,6 +568,7 @@ pub fn plan_transformer_export(
         &receipt.reference_semantic_sha256,
     )?;
     Ok(ExportPlan {
+        local_print_recipe: receipt.local_print_recipe.clone(),
         project_id: project_id.to_string(),
         transformer: transformer.to_string(),
         server_version,
@@ -1099,7 +1105,11 @@ pub struct RunReceiptFacts<'a> {
 /// members the desktop shell's batch receipt carries, minus the local
 /// artifact locators a pending-upload store mints.
 pub fn publication_facts(plan: &ExportPlan, engine: &EngineIdentity) -> Result<Value, String> {
-    let state = engine.publication_state()?;
+    let state = if plan.local_print_recipe.is_some() {
+        PublicationState::LocalOnly
+    } else {
+        engine.publication_state()?
+    };
     Ok(json!({
         "state": state,
         "schema": if state == PublicationState::LocalOnly { LOCAL_ONLY_SCHEMA } else { PUBLICATION_SCHEMA },
@@ -1197,6 +1207,7 @@ pub fn run_receipt(facts: &RunReceiptFacts<'_>) -> Result<Value, String> {
         "content_digest": facts.plan.content_digest,
         "content_digest_verified": content_digest_verified,
         "sheets_sha256": facts.plan.sheets_sha256,
+        "local_print_recipe": facts.plan.local_print_recipe,
         "reference_semantic_sha256": facts.plan.reference_semantic_sha256,
         "room": facts.plan.room,
         "print_context_sha256": facts.print_context_sha256,
@@ -1405,6 +1416,7 @@ mod tests {
 
     fn print_receipt(country: &str) -> InputReceipt {
         InputReceipt {
+            local_print_recipe: None,
             schema: 1,
             country: country.to_string(),
             sheets_json: SHEETS.to_string(),
@@ -1418,6 +1430,7 @@ mod tests {
         let sheets =
             r#"{"project_settings":[{"parameter":"design_export_format","value":["shp","xlsx"]}]}"#;
         InputReceipt {
+            local_print_recipe: None,
             schema: 1,
             country: country.to_string(),
             sheets_json: sheets.to_string(),
@@ -1529,6 +1542,7 @@ mod tests {
     fn the_configuration_bytes_splice_the_servers_own_sheets_unchanged() {
         let sheets = r#"{"adversarial":{"big":9007199254740993,"float":100000000000000000000,"negative_zero":-0,"separators":"line paragraph end"}}"#;
         let receipt = InputReceipt {
+            local_print_recipe: None,
             schema: 1,
             country: "Rwanda".into(),
             sheets_json: sheets.into(),

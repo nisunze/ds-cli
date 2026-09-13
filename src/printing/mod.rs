@@ -8,6 +8,7 @@ pub mod lifecycle;
 pub mod map;
 pub mod overrides;
 pub mod session;
+pub mod sheet_margin;
 pub mod style_overrides;
 pub mod table_headings;
 pub mod table_rows;
@@ -142,9 +143,12 @@ pub struct PrintFocus {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct Composition {
-    /// Up to four independent table/legend elements to arrange around fixed furniture.
+    /// Up to four table/legend roots; adjacent flow followers move with each root.
     pub movable: Vec<String>,
     pub gap_mm: f64,
+    /// Smallest permitted schedule type relative to authored font. 1 preserves type; 0.7 permits a 30% reduction.
+    #[serde(default = "opaque")]
+    pub min_font_scale: f64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
@@ -219,13 +223,20 @@ pub enum ElementKind {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct TableBinding {
+    /// Bind the exported workbook's columns, headings and rows, not a hand-picked subset.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workbook: Option<WorkbookTableBinding>,
+    #[serde(default)]
     pub layer: String,
     /// Optional companion layers, concatenated before sorting; absent companions add no rows.
     #[serde(default)]
     pub additional_layers: Vec<String>,
     /// Ordered property keys; headings and widths follow the same order.
+    #[serde(default)]
     pub columns: Vec<String>,
+    #[serde(default)]
     pub headings: Vec<String>,
+    #[serde(default)]
     pub widths: Vec<f64>,
     /// Ordered maximum column widths in mm; auto-fit and truncate outliers.
     #[serde(default)]
@@ -250,6 +261,9 @@ pub struct TableBinding {
     /// Maximum side-by-side panels, with repeated headings and no omitted rows.
     #[serde(default = "one_panel")]
     pub panels: usize,
+    /// Optional exact row counts per adjacent panel. Heights may differ; every row must be assigned.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub panel_rows: Vec<usize>,
     #[serde(default = "panel_gap")]
     pub gap_mm: f64,
     /// Ordered row sort keys; does not affect the authored column order.
@@ -266,6 +280,7 @@ pub struct TableBinding {
 impl Default for TableBinding {
     fn default() -> Self {
         Self {
+            workbook: None,
             layer: String::new(),
             additional_layers: vec![],
             columns: vec![],
@@ -277,9 +292,10 @@ impl Default for TableBinding {
             heading_mode: table_headings::HeadingMode::AutoIndex,
             overflow: TableOverflow::TruncateWarn,
             panels: 1,
+            panel_rows: Vec::new(),
             gap_mm: 3.,
             sort_by: vec![],
-            presentation: TablePresentation::Plain,
+            presentation: TablePresentation::Auto,
             row_mm: None,
             align: TableAlignment::Right,
         }
@@ -312,8 +328,27 @@ fn panel_gap() -> f64 {
 #[serde(rename_all = "snake_case")]
 pub enum TablePresentation {
     #[default]
+    Auto,
     Plain,
+    Excel,
     WorkbookInfo,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct WorkbookTableBinding {
+    pub sheet: WorkbookSheet,
+    /// Design schedules omit installed-connection-only fields. As-built prints retain them.
+    #[serde(default)]
+    pub as_built: bool,
+}
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, JsonSchema, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum WorkbookSheet {
+    Customers,
+    Poles,
+    LvLines,
+    ServiceCables,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
@@ -524,6 +559,9 @@ pub struct Element {
     /// sharing its right edge. Authored rect dimensions remain upper bounds.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub flow: Option<ContentFlow>,
+    /// Measured furniture anchoring; auto hugs the sheet at 5 mm. Flow takes precedence.
+    #[serde(default, skip_serializing_if = "sheet_margin::is_auto")]
+    pub sheet_anchor: sheet_margin::SheetAnchor,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
@@ -826,20 +864,26 @@ pub fn validate(layout: &Layout) -> Result<(), String> {
         }
         if element.kind == ElementKind::Table {
             let table = element.table.as_ref().ok_or("table needs a data binding")?;
-            if !identifier(&table.layer)
+            if (!identifier(&table.layer) && table.workbook.is_none())
                 || table.additional_layers.len() > 16
                 || table.additional_layers.iter().enumerate().any(|(i, id)| {
                     !identifier(id)
                         || id == &table.layer
                         || table.additional_layers[..i].contains(id)
                 })
-                || table.columns.is_empty()
+                || (table.columns.is_empty() && table.workbook.is_none())
+                || (table.workbook.is_some()
+                    && (!table.columns.is_empty()
+                        || !table.additional_layers.is_empty()
+                        || !table.sort_by.is_empty()))
                 || !(1..=8).contains(&table.panels)
+                || table.panel_rows.len() > table.panels
+                || table.panel_rows.iter().any(|n| *n == 0 || *n > 1_000_000)
                 || !bounded(table.gap_mm, 0., 30.)
                 || table.row_mm.is_some_and(|v| !bounded(v, 2., 30.))
                 || table.sort_by.len() > 12
                 || table.sort_by.iter().any(|v| v.is_empty() || v.len() > 160)
-                || table.columns.len() > 12
+                || table.columns.len() > table_headings::MAX_COLUMNS
                 || table.columns.len() != table.headings.len()
                 || table.columns.len() != table.widths.len()
                 || table.columns.iter().any(|v| v.is_empty() || v.len() > 160)
@@ -888,6 +932,7 @@ pub fn validate(layout: &Layout) -> Result<(), String> {
         if composition.movable.is_empty()
             || composition.movable.len() > 4
             || !bounded(composition.gap_mm, 0., 30.)
+            || !bounded(composition.min_font_scale, 0.7, 1.)
             || composition.movable.iter().any(|id| {
                 !seen.insert(id)
                     || !layout.elements.iter().any(|e| {
@@ -895,17 +940,13 @@ pub fn validate(layout: &Layout) -> Result<(), String> {
                             && matches!(e.kind, ElementKind::Table | ElementKind::Legend)
                             && e.flow.is_none()
                     })
-                    || layout
-                        .elements
-                        .iter()
-                        .any(|e| e.flow.as_ref().is_some_and(|flow| &flow.after == id))
                     || !map
                         .and_then(|e| e.viewport.as_ref())
                         .is_some_and(|v| v.fit_around.contains(id))
             })
         {
             return Err(
-                "composition needs unique independent content elements in the map fit-around list"
+                "composition needs unique content roots in the map fit-around list; flowed followers move with their root"
                     .into(),
             );
         }
@@ -1123,6 +1164,7 @@ pub fn default_layout() -> Layout {
         table: None,
         viewport: None,
         flow: None,
+        sheet_anchor: Default::default(),
         legend: None,
         id: id.into(),
         kind,
@@ -2194,6 +2236,7 @@ mod tests {
         layout.composition = Some(Composition {
             movable: vec!["schedule".into()],
             gap_mm: 5.,
+            min_font_scale: 1.,
         });
         layout.project_overview = true;
         validate(&layout).unwrap();
@@ -2209,6 +2252,10 @@ mod tests {
             .push("schedule".into());
         assert!(validate(&layout).is_err());
         layout.composition.as_mut().unwrap().movable.pop();
+        layout.composition.as_mut().unwrap().min_font_scale = 0.69;
+        assert!(validate(&layout).is_err());
+        layout.composition.as_mut().unwrap().min_font_scale = 0.7;
+        validate(&layout).unwrap();
         layout
             .elements
             .last_mut()

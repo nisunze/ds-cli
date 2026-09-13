@@ -34,7 +34,10 @@ pub struct HeadingPlan {
     pub headings: Vec<String>,
     pub key: Vec<(String, String)>,
 }
-/// All columns receive stable A..L aliases if indexing is needed. Mixing literal
+/// A full pole workbook can carry fourteen fields. Bound at one alphabet,
+/// rather than dropping workbook columns to satisfy the old twelve-field cap.
+pub const MAX_COLUMNS: usize = 26;
+/// All columns receive stable A..Z aliases if indexing is needed. Mixing literal
 /// headings named "A" with indexed "A" would make the explanatory key ambiguous.
 pub fn plan(
     mode: HeadingMode,
@@ -44,7 +47,7 @@ pub fn plan(
 ) -> Result<HeadingPlan, String> {
     let count = headings.len();
     if count == 0
-        || count > 12
+        || count > MAX_COLUMNS
         || heading_widths.len() != count
         || data_widths.len() != count
         || heading_widths

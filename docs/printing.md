@@ -67,6 +67,15 @@ This is the default. It is not a per-sheet decision to be made again on every
 layout, and a sheet that floats its schedules away from the border is wrong
 even when nothing overlaps.
 
+`element.sheet_anchor` exposes `auto` (default), `top_left`, `top_right`,
+`bottom_left`, `bottom_right`, and `authored` through the layout schema and
+per-transformer overrides. Auto uses the table/legend's horizontal alignment
+and whether its authored origin is in the upper or lower half of the page. The measured content
+hugs those edges at 5 mm; changing row counts never changes the chosen edge.
+`flow` takes precedence and attaches to its measured predecessor. Explicit
+`authored` retains free placement for a deliberate composition; it is not the
+schedule default. Automatic composition also packs inside the same page inset.
+
 ## Schedule fields follow the workbook
 
 A printed schedule carries the fields its workbook carries. The exported table
@@ -128,6 +137,28 @@ The host fetches through existing reference authority; it cannot replace missing
 boundaries with a rectangle. Custom print output remains local until the project
 asset lifecycle is implemented.
 
+## Workbook-styled schedules
+
+Bind `table.workbook: {"sheet":"customers","as_built":false}` (or `poles`,
+`lv_lines`, `service_cables`) instead of `layer`, `columns`, `headings`, widths
+and sort controls. The workbook owner supplies its actual ordered, relevant
+fields, full headings, display values and pole line sections. Empty or uniform
+fields follow the export's existing selection rules; design additionally omits
+only the as-built fields listed above. Never remove a retained field for width.
+
+`table.presentation` accepts `auto` (default: Excel for workbook bindings,
+plain for generic bindings), `excel`, `plain`, and `workbook_info`. Excel uses
+workbook header/title colours, alternating body bands, text left and numbers
+right, with workbook numeric coercion and rounding before measurement.
+Generic table bindings remain available. The limit is 26 columns (A–Z), raised
+from 12 because the existing pole workbook can have 14; no workbook field is
+lost to that old limit. Use panels, available paper area and type size to fit.
+
+The historical Zihare PDF illustrates table presentation only. It does not
+replace the project's composition or justify removing existing/proposed MV
+context. Layout geometry, flow, anchors, style overrides and legend controls
+remain public CLI/MCP inputs; composition requires no source-code inspection.
+
 ## Indexed table headings
 
 `table.heading_mode` is `auto_index` (default), `literal`, or `indexed`.
@@ -137,9 +168,13 @@ long name like "Service Area Length M" over short numbers no longer sets the
 column width and pushes real content off the sheet. A table whose headings
 already fit is unchanged, and `literal` remains available for a layout that
 deliberately wants full headings in the row. Indexed tables use stable column-order
-letters A–L for every column and an untruncated explanatory key above each
+letters A–Z for every column and an untruncated explanatory key above each
 panel. Full headings remain in the document; columns and values never change.
-The key wraps at the authored type size and consumes actual table height;
+The full key repeats above each measured data panel, wrapping at the authored
+type size within that panel width. It never extends into unused authored frame
+width or creates a gap before an adjacent schedule. This corrects the former
+full-frame key behavior, which visibly separated the Zihare schedule bodies.
+The key consumes actual table height;
 row omission warnings must use that same remaining height. `measure_headings`
 continues to govern literal headings; indexed headings measure the letters.
 Per-transformer `table.heading_mode` overrides the project layout through the
@@ -189,3 +224,40 @@ A run receipt (`report_export::run_receipt`) records `print_context_sha256`
 (null when the run printed without external context), `print_context_layers`
 and `print_context_omitted`, so a receipt never reads as complete when its map
 context was not.
+
+## Surface optimization
+
+Furniture is a constrained packing problem. For a network footprint `(gw, gh)`
+and an unobstructed rectangle `(w, h)`, maximize its occupied vertical span
+`s × gh`, where `s = min(w/gw, h/gh)`. At fixed bearing and aspect ratio this
+also maximizes the drawable network area `s² × gw × gh`. Prefer a full-height
+network fit; unused paper alone is not the objective.
+
+Complete rows/fields, the 5 mm inset and non-overlap are hard constraints.
+`composition.min_font_scale` defaults to 1 (authored type). An explicit value
+between 0.7 and 1 permits schedule type and row spacing to decrease by at most
+30%. Equal-fit solutions prefer larger type before compactness and displacement.
+The renderer tests up to four font tiers, eight measured panel/group shapes per
+tier and a deterministic beam of twelve placements. This bounded heuristic does
+not claim a global optimum.
+
+Split panels need not have equal heights. `table.panel_rows` can specify exact
+positive row counts for adjacent panels; the sum must cover every row, with no
+duplication or omission, and each panel must fit its readable frame. With no
+explicit counts, automatic composition considers balanced and stepped profiles.
+Keys repeat above each panel. Only actual occupied panel rectangles obstruct
+map fitting: the space below a short panel remains available.
+
+A root’s `flow.after` followers move with it as one adjacent group. Panel heights
+remain independent; grouping never pads shorter panels into a full rectangle.
+List roots only in `composition.movable`, and all group members plus protected
+titles/scales in the map’s `fit_around`. SVG furniture carries measured
+`data-content-bounds` for proof inspection.
+
+A local `report project export --print-layout <file>` proof replaces only an
+existing selected layout on the same paper. The kernel verifies the original
+server receipt first, changes only printing setups, and records the source
+sheets digest plus exact local layout digests in each run. Engineering rooms,
+model versions, project settings and saved project recipes remain governed.
+These proofs are local-only, including with a release engine; `--publish`
+refuses. This permits review before saving a recipe or deploying its renderer.

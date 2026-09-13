@@ -17,6 +17,8 @@ pub struct TableOverride {
 #[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct ElementOverride {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sheet_anchor: Option<super::sheet_margin::SheetAnchor>,
     pub rect: Option<[f64; 4]>,
     pub font_pt: Option<f64>,
     pub table: Option<TableOverride>,
@@ -49,6 +51,9 @@ pub fn apply(layout: &Layout, patch: &PrintOverride) -> Result<Layout, String> {
             .iter_mut()
             .find(|e| &e.id == id)
             .ok_or_else(|| format!("Transformer print override names absent element {id}."))?;
+        if let Some(anchor) = change.sheet_anchor {
+            element.sheet_anchor = anchor;
+        }
         if let Some(rect) = change.rect {
             element.rect = rect;
         }

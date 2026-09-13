@@ -49,6 +49,7 @@ pub fn new_element(kind: ElementKind, id: String, asset: &str) -> Element {
         fill: super::white(),
         opacity: super::opaque(),
         table: (kind == ElementKind::Table).then(|| TableBinding {
+            workbook: None,
             layer: NEW_TABLE_LAYER.into(),
             additional_layers: Vec::new(),
             columns: NEW_TABLE_COLUMNS.iter().map(|c| c.to_string()).collect(),
@@ -60,6 +61,7 @@ pub fn new_element(kind: ElementKind, id: String, asset: &str) -> Element {
             heading_mode: Default::default(),
             overflow: TableOverflow::TruncateWarn,
             panels: super::one_panel(),
+            panel_rows: Vec::new(),
             gap_mm: super::panel_gap(),
             sort_by: Vec::new(),
             row_mm: None,
@@ -86,6 +88,7 @@ pub fn new_element(kind: ElementKind, id: String, asset: &str) -> Element {
             graticule: None,
         }),
         flow: None,
+        sheet_anchor: Default::default(),
     }
 }
 
