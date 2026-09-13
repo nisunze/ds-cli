@@ -99,6 +99,29 @@ pub fn workspace_path(raw: &str) -> Result<PathBuf, Failure> {
 }
 
 /// Resolve an absent output to an absolute path while preserving its new leaf.
+/// Resolve a directory argument to an existing directory, as an absolute path.
+///
+/// `source_path` is the file form; a library is a workspace tree, so it needs
+/// its own check. Refusing here names the flag, where refusing inside the task
+/// would only say a path was not readable.
+pub fn source_directory(raw: &str, flag: &str) -> Result<PathBuf, Failure> {
+    let path = PathBuf::from(raw);
+    if !path.is_dir() {
+        return Err(
+            Failure::invalid("source_not_found", format!("`{raw}` is not a directory"))
+                .remedy(format!("check the path passed to --{flag}")),
+        );
+    }
+    path.canonicalize().map_err(|error| {
+        Failure::invalid(
+            "source_not_found",
+            format!("`{raw}` could not be resolved to an absolute path"),
+        )
+        .remedy(format!("check the path passed to --{flag}"))
+        .detail(json!({ "detail": error.kind().to_string() }))
+    })
+}
+
 pub fn output_path(raw: &str) -> Result<PathBuf, Failure> {
     let path = PathBuf::from(raw);
     if path.exists() {
