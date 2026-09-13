@@ -261,3 +261,14 @@ sheets digest plus exact local layout digests in each run. Engineering rooms,
 model versions, project settings and saved project recipes remain governed.
 These proofs are local-only, including with a release engine; `--publish`
 refuses. This permits review before saving a recipe or deploying its renderer.
+
+### Scale-aware line weights
+
+A line's `style_overrides[layer].scale_weight` may declare a
+`reference_denominator`, `min_factor` (0.25..1), and `max_factor` (1..4).
+It requires an explicit base `size` and a governed line style. At the actual
+fitted or authored camera scale, multiply that size and categorical sizes by
+`sqrt(reference_denominator / denominator)`, clamped to those bounds. This
+optical rule preserves category ratios and legibility; it does not scale text,
+points, paper furniture or engineering geometry. The map and its legend consume
+the same resolved pens. Omission preserves existing fixed physical pens.

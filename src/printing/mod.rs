@@ -7,6 +7,7 @@ pub mod inventory;
 pub mod lifecycle;
 pub mod map;
 pub mod overrides;
+pub mod project_sources;
 pub mod session;
 pub mod sheet_margin;
 pub mod style_overrides;
@@ -107,8 +108,32 @@ pub struct PrintStyleOverride {
     pub field: Option<String>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub size_by_value: BTreeMap<String, f64>,
+    /// Bounded optical line-weight adjustment when the geographic scale changes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scale_weight: Option<PrintPenScale>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub label: Option<PrintLabelOverride>,
+}
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct PrintPenScale {
+    pub reference_denominator: f64,
+    pub min_factor: f64,
+    pub max_factor: f64,
+}
+impl PrintPenScale {
+    pub fn factor(&self, denominator: f64) -> Result<f64, String> {
+        if !bounded(self.reference_denominator, 10., 100_000_000.)
+            || !bounded(denominator, 10., 100_000_000.)
+            || !bounded(self.min_factor, 0.25, 1.)
+            || !bounded(self.max_factor, 1., 4.)
+        {
+            return Err("line-weight scale needs a valid reference denominator and factors within 0.25..1 and 1..4".into());
+        }
+        Ok((self.reference_denominator / denominator)
+            .sqrt()
+            .clamp(self.min_factor, self.max_factor))
+    }
 }
 /// Template-local label choices; physical sizes stay constant across paper policies.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Default)]
@@ -1041,6 +1066,9 @@ pub fn validate(layout: &Layout) -> Result<(), String> {
                 || !layout.style_refs.contains_key(id)
                 || o.color.as_ref().is_some_and(|c| !color(c))
                 || o.size.is_some_and(|v| !bounded(v, 0., 100.))
+                || o.scale_weight
+                    .as_ref()
+                    .is_some_and(|p| o.size.is_none() || p.factor(p.reference_denominator).is_err())
                 || o.opacity.is_some_and(|v| !bounded(v, 0., 1.))
                 || o.label.as_ref().is_some_and(|l| {
                     l.size_pt.is_some_and(|v| !bounded(v, 1., 60.))

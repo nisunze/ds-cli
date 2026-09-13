@@ -3,6 +3,12 @@ use super::{Layout, PrintStyleOverride};
 use serde_json::{json, Value};
 
 pub fn apply(document: &Value, change: &PrintStyleOverride, paper: &str) -> Result<Value, String> {
+    if let Some(policy) = &change.scale_weight {
+        policy.factor(policy.reference_denominator)?;
+        if document["type"] != "line" || change.size.is_none() {
+            return Err("scale_weight requires a line style and an explicit base size".into());
+        }
+    }
     let mut style = document.clone();
     if let Some(visible) = change.visible {
         style["layout"]["visibility"] = json!(if visible { "visible" } else { "none" });
@@ -129,6 +135,22 @@ pub fn apply(document: &Value, change: &PrintStyleOverride, paper: &str) -> Resu
     Ok(style)
 }
 
+/// Resolve once at the fitted/explicit map scale, shared by map strokes and legend samples.
+pub fn at_scale(
+    change: &PrintStyleOverride,
+    denominator: f64,
+) -> Result<PrintStyleOverride, String> {
+    let mut resolved = change.clone();
+    if let Some(policy) = resolved.scale_weight.take() {
+        let factor = policy.factor(denominator)?;
+        resolved.size = resolved.size.map(|size| size * factor);
+        for size in resolved.size_by_value.values_mut() {
+            *size *= factor;
+        }
+    }
+    Ok(resolved)
+}
+
 /// Validate template choices before the host acquires geographic context.
 /// Rendering calls the same effective-style function, so there is one rule.
 pub fn preflight(layout: &Layout, documents: &Value) -> Result<(), String> {
@@ -150,6 +172,16 @@ pub fn preflight(layout: &Layout, documents: &Value) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn optical_line_weight_scales_by_square_root_and_stops_at_legibility_bounds() {
+        let change:PrintStyleOverride=serde_json::from_value(json!({"size":2.,"field":"class","size_by_value":{"primary":4.},"scale_weight":{"reference_denominator":10000.,"min_factor":0.7,"max_factor":1.5}})).unwrap();
+        let distant = at_scale(&change, 40000.).unwrap();
+        assert_eq!(distant.size, Some(1.4));
+        assert_eq!(distant.size_by_value["primary"], 2.8);
+        assert!(distant.scale_weight.is_none());
+        assert_eq!(at_scale(&change, 2500.).unwrap().size, Some(3.));
+        assert!(apply(&json!({"type":"circle","paint":{}}), &change, "print_a3").is_err());
+    }
     #[test]
     fn hiding_absent_labels_is_a_no_op_but_authoring_needs_a_definition() {
         let base = json!({"type":"symbol", "layout":{"icon-image":"school"}, "paint":{}});
