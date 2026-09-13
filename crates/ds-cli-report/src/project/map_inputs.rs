@@ -112,11 +112,6 @@ pub fn run(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
         revisions.push(json!({"transformer":row.name(),"version":snapshot.metadata().version(),"content_digest":snapshot.metadata().content_digest()}));
     }
     let network = sources.layers();
-    let extent =
-        ds_command_kernel::project_design_extent::design_extent("mv_data", &network, 0.00001)
-            .map_err(invalid)?
-            .bounds
-            .ok_or_else(|| invalid("Project has no geographic design"))?;
     let catalog = ds_project_data::validate_resources(&ds_cli_auth::data_distribution(
         lane,
         &ds_cli_auth::DataDistributionRequest::ListDatasets {},
@@ -143,12 +138,41 @@ pub fn run(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
         provider: &mut provider,
         fetch: &mut fetch,
     };
+    let boundary_contexts = contexts
+        .iter()
+        .filter(|c| c.id == "district_boundaries")
+        .cloned()
+        .collect::<Vec<_>>();
+    let boundary_context = ds_project_data::read_print_context(
+        &ds_report_host::shared_root().map_err(invalid)?,
+        &scope,
+        "mv_data",
+        &network,
+        &boundary_contexts,
+        &catalog,
+        if i.switch("seed") {
+            ds_project_data::Mode::Acquire(&mut hosts)
+        } else {
+            ds_project_data::Mode::Read
+        },
+    )
+    .map_err(invalid)?;
+    if let Some(bytes) = &boundary_context.document {
+        let document: Value = serde_json::from_slice(bytes).map_err(invalid)?;
+        sources.collections(&document["layers"]).map_err(invalid)?;
+    }
+    let network = sources.layers();
+    let extent = sources.overview_extent().map_err(invalid)?;
+    let contexts = contexts
+        .into_iter()
+        .filter(|c| c.id != "district_boundaries")
+        .collect::<Vec<_>>();
     let mode = if i.switch("seed") {
         ds_project_data::Mode::Acquire(&mut hosts)
     } else {
         ds_project_data::Mode::Read
     };
-    let context = ds_project_data::read_print_context(
+    let mut context = ds_project_data::read_print_context(
         &ds_report_host::shared_root().map_err(invalid)?,
         &scope,
         "mv_data",
@@ -162,6 +186,8 @@ pub fn run(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
         let document: Value = serde_json::from_slice(&bytes).map_err(invalid)?;
         sources.collections(&document["layers"]).map_err(invalid)?;
     }
+    context.omitted.extend(boundary_context.omitted);
+    context.warnings.extend(boundary_context.warnings);
     std::fs::create_dir_all(&out).map_err(invalid)?;
     let out = out.canonicalize().map_err(invalid)?;
     let render = json!({"schema":"ds.print-layout-export/v1","render":{"layout":layout,"layers":sources.vectors(),"extent":extent,"focus_extent":extent,"print_styles":sheets["printing_styles"],"symbol_assets":sheets.get("printing_symbol_assets").cloned().unwrap_or_else(||json!({})),"text":{"project":project,"transformer":layout.name}},"formats":["pdf","png"],"dpi":300,"out_dir":out.join("rendered")});
