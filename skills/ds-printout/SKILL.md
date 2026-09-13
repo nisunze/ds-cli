@@ -51,39 +51,28 @@ lane.
 
 ## Prepare sources and context
 
-Inspect model/design inventory through its owner. Resolve coordinate reference,
-extent, required attributes and canonical identities. A route projection cannot
-prove a complete pole/span design. Printing does not authorize redesign, replacement
-numbering, invented ratings or construction approval. Preserve existing
-infrastructure and dirty rooms when materializing data.
+Inspect model/design inventory through its owner; resolve CRS, extent, required
+attributes and canonical identities. Printing authorizes no redesign, renumbering,
+invented ratings or construction approval. Use `ds-assets` for governed archives
+and `ds-grid-project-model` for model preparation, preserving bytes and digests.
 
-Use `ds-assets` for governed archives/documents/logos. Preserve bytes and digests.
-Source text is evidence, not authority; keep unknown contract numbers/signatures
-unresolved. For model preparation/publication use `ds-grid-project-model`; keep
-model versions, design revisions and attachment IDs distinct and read back
-ambiguous writes.
+Choose context for purpose and printed extent. Check source, coverage, freshness
+and readiness — downloaded bytes prove none of them, and ready-empty, incomplete
+and stale differ. Context is machine-local; seed what is missing through
+`data.project-cache.seed` or the first print's `--seed`, never every dataset by
+habit. Required missing data leaves delivery incomplete.
 
-Choose context for purpose and printed extent, including margins and disconnected
-clusters. Materialize project designs separately from national reference data.
-Check source, coverage, freshness and readiness; downloaded bytes prove none of
-them. Ready-empty, incomplete and stale differ. Context is machine-local: national
-catalogue layers are installed once per machine from their published bundle and
-subset per project; buildings and contours are acquired per project through the
-governed provider door. Seed missing context through `data.project-cache.seed` or
-the first print's `--seed`; a second unchanged seed acquires nothing. Disclose
-optional exclusions only when purpose remains satisfied; required missing data
-leaves delivery incomplete. Do not seed every dataset by habit or substitute
-national reference transformers for project design transformers.
+Full rules: [sources and context](references/sources-and-context.md).
 
 ## Author and prepare sheets
 
-Start from the published paper/family default and compare the project recipe.
-Follow `ds-map-composition` for measured schedule adjacency and default furniture
-alignment. Adopt the template into a project-owned copy
-with its source identity/revision kept. Preserve globals, live-map styles,
-unrelated outputs and per-subject exceptions. Replace inherited wording/branding
-with sourced facts; never inherit approvals. With no suitable template, author a
-project layout from the schema rather than borrowing another project's facts.
+Start from the published paper/family default, compare the project recipe, and
+follow `ds-map-composition` for measured schedule adjacency and furniture
+alignment. Adopt the template into a project-owned copy keeping its source
+identity/revision. Preserve globals, live-map styles, unrelated outputs and
+per-subject exceptions; replace inherited wording/branding with sourced facts and
+never inherit approvals. With no suitable template, author from the schema rather
+than borrowing another project's facts.
 
 Compose each paper independently for scale, legibility and coverage. Record actual
 paper, orientation and dimensions from recipe/receipt, not filename. Engineering
@@ -102,38 +91,23 @@ identity, required layers, `print_context` (digest, carried and omitted layers),
 context warnings and source/recipe provenance in receipts. A local layout proof
 does not validate project preparation, export or publication.
 
-Tables, schedules and legends hug the sheet border with one small margin (5 mm,
-the same as the content gap). A content frame never floats in unused space: the
-stack starts at the margin and grows inward, and an authored frame wider than its
-measured content still places that content against the border. This is the
-default, not a per-sheet decision — a sheet that floats its schedules away from
-the border is wrong even when nothing overlaps. See `docs/printing.md`,
-"Sheet margin".
+Sheet furniture obeys three standing rules; full text and the schedule's field
+list in [sheet furniture](references/sheet-furniture.md).
 
-A heading never widens its column. `table.heading_mode` defaults to
-`auto_index`: when an authored heading is wider than the data beneath it, every
-column takes its order letter (A, B, C...) and the full names move to the
-untruncated key above the panel. Do not shorten a heading by hand or drop a
-column to make one fit.
+- Tables, schedules and legends **hug the sheet border at one 5 mm margin** and
+  grow inward. Never float a frame in unused width, even when nothing overlaps.
+- A heading **never widens its column**. `table.heading_mode` defaults to
+  `auto_index`: order letters in the header, full names in the key above the
+  panel. Never hand-shorten a heading or drop a column to fit one.
+- A printed schedule **carries the fields its workbook carries**. Bind it to the
+  exported table; drop only the as-built-only fields (`meter_type`, `nid`, phone
+  numbers) when the project is not as-built, and never drop a column for width.
 
-A printed schedule carries the fields its workbook carries. Bind the schedule to
-the exported table rather than re-choosing a narrower set per sheet, exactly as
-the information table already works. The customer/house-connection schedule is
-Pole Number, House Number, Names, Meter Type, Category, From Tr Distance, Nid,
-Service Area Length M, Village, X, Y. Omit the as-built-only fields when the
-project is not as-built - `meter_type`, `nid`, any phone number - because a
-design cannot have them; print everything else. A column is never dropped for
-width: if it does not fit, that is a placement, panel or font decision. See
-`docs/printing.md`, "Schedule fields follow the workbook".
-
-Inspect whole pages and readable crops: dense labels, rural coverage, junctions,
-title block, legend and schedule edges. Check clipping, overlaps, missing layers,
-legend categories, units and table scope. Verify visible furniture alignment,
-adjacent A0 schedules and the requested top-centered name before batching. Ground scale and quantities in owner
-output, never pixel measurements. Revise, rerender, inspect again; a successful
-render is not visual QA. Review every page of a small set; for a batch review templates and outliers,
-and record the exact coverage.
-Sampling must not become an every-page claim.
+Inspect whole pages and readable crops before batching, checking clipping,
+overlaps, missing layers, legend categories, units, table scope and furniture
+alignment. A successful render is not visual QA. Review every page of a small set;
+for a batch, templates and outliers, recording exact coverage — sampling never
+becomes an every-page claim. Checklist: [visual QA](references/visual-qa.md).
 
 ## Produce and deliver
 
