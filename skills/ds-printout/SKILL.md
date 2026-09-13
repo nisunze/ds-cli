@@ -77,7 +77,9 @@ national reference transformers for project design transformers.
 
 ## Author and prepare sheets
 
-Reuse suitable project recipes; adopt a global template into a project-owned copy
+Start from the published paper/family default and compare the project recipe.
+Follow `ds-map-composition` for measured schedule adjacency and default furniture
+alignment. Adopt the template into a project-owned copy
 with its source identity/revision kept. Preserve globals, live-map styles,
 unrelated outputs and per-subject exceptions. Replace inherited wording/branding
 with sourced facts; never inherit approvals. With no suitable template, author a
@@ -102,10 +104,11 @@ does not validate project preparation, export or publication.
 
 Inspect whole pages and readable crops: dense labels, rural coverage, junctions,
 title block, legend and schedule edges. Check clipping, overlaps, missing layers,
-legend categories, units and table scope. Ground scale and quantities in owner
+legend categories, units and table scope. Verify visible furniture alignment,
+adjacent A0 schedules and the requested top-centered name before batching. Ground scale and quantities in owner
 output, never pixel measurements. Revise, rerender, inspect again; a successful
-render is not visual QA. Review every page of a small set; for a large batch review
-distinct templates, diverse areas and outliers, and record the exact visual coverage.
+render is not visual QA. Review every page of a small set; for a batch review templates and outliers,
+and record the exact coverage.
 Sampling must not become an every-page claim.
 
 ## Produce and deliver
@@ -130,11 +133,9 @@ and live contracts. Protect dirty work; reuse unchanged dependencies. A recipe c
 invalidates its prints, not source archives. Inspect ambiguous writes and outbox
 state before replaying them.
 
-Classify failure as preparation, context/identity, authorization, invalid input,
-transient or deployed-contract incompatibility. Follow remedies and retryability;
-never repeat an unchanged non-retryable call, never strip required content to
-appease an incompatible validator. Continue independent work and name the exact
-remaining dependency. Report gaps once through official feedback, no parallel backlog.
+Classify the failure and follow its remedy and retryability. Never repeat an
+unchanged refusal or strip required content to appease an older validator.
+Continue independent work and report the remaining dependency through feedback.
 
 Follow [procedure](references/procedure.md) for the ordered steps by command
 id; read [delivery record](references/delivery-record.md) when resuming and

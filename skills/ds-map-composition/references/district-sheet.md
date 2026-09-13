@@ -1,9 +1,9 @@
 # The district sheet — one project on one page
 
 The per-transformer sheets are at 1:2 000–1:6 000; a district (project) sheet is at
-1:30 000–1:110 000. Nothing that is right on the first is right on the second, and
-99 % of the difference is template data, not code. This is the template the Gisagara
-project map (2026-09-12) settled on; reuse it, do not re-invent it.
+1:30 000–1:110 000. Use the published default as the starting arrangement, then adapt layer density
+and paper orientation to the district scope. Previous Gisagara drafts are examples,
+not approved defaults; inspect the current user direction and accepted previews.
 
 ## What the sheet shows (owner's rule)
 
@@ -24,13 +24,14 @@ project map (2026-09-12) settled on; reuse it, do not re-invent it.
 ## Composition
 
 - **Portrait** for a tall district; keep an A3 counterpart. The map fills the whole page
-  (`viewport.fit_around: []`); the design — MV and LV as *design* layers, so the camera
+  (a fitted viewport with the required furniture clearances); the design — MV and LV as *design* layers, so the camera
   fits both — takes the full frame with `scale_rounding` 1000 (A0) / 5000 (A3).
-- **Corner snapping.** Furniture sits where the project has no infrastructure: information
-  tables in the north-west corner (the neighbouring district), the legend under them, the
-  title block in the south-east, the scale bar bottom-centre, the north arrow top-right.
-  On A3 the authored right-hand column would eat half the width: the same corners, a
-  narrower table (`widths [6,78,12,18]`, 5.5 pt).
+- **Retain the requested furniture arrangement.** Begin with the default right-hand
+  information/legend/title-block column, with visible right edges aligned to the page extremity. Adapt
+  its dimensions to the district paper and keep it at the page extremity. Do not
+  move the legend or tables into other corners merely because an old example
+  did so. Check every district sheet for network coverage and complete tables;
+  an information table with omitted rows is not an acceptable overview.
 - The district is the subject: its line over a soft band (USGS county: dashed grey 0.35 mm
   over a 1.6 mm 50 % yellow band), neighbouring districts faint (0.25 mm dashed grey), and a
   55 % white wash over everything outside the district, drawn after every context layer.
@@ -74,5 +75,7 @@ project map (2026-09-12) settled on; reuse it, do not re-invent it.
 ## Reusable sheets
 
 `ds-work/gisagara-project-map/layouts/reusable/{a0-portrait,a0-landscape,a3-portrait}-project-map.json`
-with the builder (`build.py`, `geoclip.py`, `mv.py`) that authored them; publish through
-`report layout update` once the validator service knows `graticule` and `title_block`.
+and its builder are historical local examples. Verify their scope, source
+freshness, furniture and complete tables before reuse. Save accepted recipes
+through `report.layout.update` against the current revision; the installed
+client and deployed validator must agree with the live schema.

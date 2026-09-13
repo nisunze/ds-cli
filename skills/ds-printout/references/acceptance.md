@@ -79,7 +79,9 @@ a frame that omits a disconnected network cluster is incomplete.
 | Dense detail | Readable canonical labels, distinguishable symbols, traceable line connections, no critical table clipping |
 | Sparse/rural detail | Context explains access and location without burying the network; extent is not dominated by irrelevant remote data |
 | Junction or transformer | Correct identities and roles; source-to-network relationships remain legible |
-| Legend and schedules | Categories agree with rendered styles; units and planned/existing distinctions are clear; schedules reconcile to source scope |
+| Legend and schedules | Categories agree with rendered styles; units and planned/existing distinctions are clear; schedules reconcile to source scope; check actual panel adjacency and aligned content edges |
+| Default-based placement | Published baseline and project delta are recorded; A0 schedules occupy the left extremity without unused frame gaps; information, legend and title block retain the requested right-hand stack and common right edge |
+| Top title | The correct transformer name is visibly centered at the map top; the title-block name alone is insufficient |
 
 Read report units and provenance before comparing totals. A generated table is
 not a substitute for a source calculation; use report/BOQ skills when reconciliation

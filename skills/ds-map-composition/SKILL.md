@@ -9,6 +9,14 @@ Use the `ds` skill first. Discover the live printing, layout, style and map
 preview contracts. Their declarations own command inputs and schemas; this
 skill owns the cartographic reasoning. Do not require repository access.
 
+Start with the live published default for the requested paper and layout family.
+Read its complete layout and revision, compare the project customization, and
+apply only the requested changes to a project-owned copy. An earlier preview or
+local draft is not a default. Preserve the default furniture arrangement unless
+the user changes it; visual dissatisfaction is a reason to return to that baseline.
+For transformer sheets, read [default-based sheet placement](references/transformer-sheets.md)
+before authoring A0/A3 furniture.
+
 Read [composition guidance](references/composition.md) when choosing hierarchy,
 relief, landmarks, labels or page furniture. It provides references and review
 criteria, not a fixed layer whitelist or a particular project's defaults.

@@ -68,7 +68,12 @@ same door:
   (the villages DSAB the Rwanda engine stamps with; headless export reads it
   from the shared root or `--admin-bounds`).
 
-## 3. Templates: adopt from global, customise for the project
+## 3. Templates: start from the published default, customise for the project
+
+Begin with the default for the target paper/family, compare the project
+customization, and retain the default arrangement unless the user changes it.
+Use the transformer-sheet placement reference in `ds-map-composition`; inspect
+measured furniture in a rendered preview before queuing the whole project.
 
 - What layouts exist · `report.layout.list --scope global` and `--scope
   project` · setup ids, names, revisions.
