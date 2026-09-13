@@ -650,7 +650,7 @@ fn project_lv_facts(
             let props = properties(&tr[0], &input.transformer, "tr")?;
             for key in ["tr_name", "transfo"] {
                 if let Some(marker) = props.get(key).and_then(Value::as_str) {
-                    if marker.trim() != input.transformer {
+                    if !marker.trim().eq_ignore_ascii_case(&input.transformer) {
                         return Err(reject(
                             "solar_network_seed_transformer_identity_mismatch",
                             format!("{} marker {key} identifies {marker:?}", input.transformer),
@@ -1231,6 +1231,10 @@ mod tests {
         stale_tags["lv_tag_projection"]["sha256"] = json!(format!("sha256:{}", "f".repeat(64)));
         let error = plan_solar_network_seed(&serde_json::to_vec(&stale_tags).unwrap()).unwrap_err();
         assert!(error.to_string().contains("lv_tags_digest_mismatch"));
+
+        let mut casing = request();
+        casing["lv_transformers"][0]["room"]["layers"]["tr"]["features"][0]["properties"]["transfo"] = json!("bere_01");
+        assert!(plan_solar_network_seed(&serde_json::to_vec(&casing).unwrap()).is_ok());
 
         let mut mismatched_room = request();
         mismatched_room["lv_transformers"][0]["room"]["layers"]["tr"]["features"][0]
