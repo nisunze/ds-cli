@@ -22,9 +22,22 @@ const MAX_ALIGNMENTS: usize = 20_000;
 
 /// Discoverable closed request schema shared by native and browser hosts.
 pub fn solar_network_seed_request_schema() -> Value {
+    let room_schema = json!({
+        "type": "object", "required": ["layers"],
+        "description": "Wrap captured FastLV output.gdfs as room.layers. Only tr, customers and lv_lines are consumed; extra layers may be omitted.",
+        "properties": {"layers": {
+            "type": "object", "required": ["tr", "customers", "lv_lines"],
+            "properties": {
+                "tr": {"type": "object", "required": ["features"], "description": "One transformer feature; properties.tr_size (or kva) is positive integral kVA. A supplied transfo/tr_name must match the transformer identity ignoring case."},
+                "customers": {"type": "object", "required": ["features"], "description": "Customer features, each with a nonempty properties.category. Every feature is one customer."},
+                "lv_lines": {"type": "object", "required": ["features"], "description": "LV line features with positive properties.length or length_m in metres, or LineString/MultiLineString geometry in lv_geometry_crs."}
+            }
+        }}
+    });
     json!({
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "title": "SolarNetworkSeedRequest",
+        "description": "At most 32 MiB per request. For large projects, plan one city at a time with its exact tagged LV members and MV alignments; retain the original tag document and digest.",
         "type": "object",
         "additionalProperties": false,
         "required": ["schema", "project_id", "mv_city_definition_id", "mv_phase_definition_id", "lv_city_definition_id", "lv_phase_definition_id", "lv_geometry_crs", "mv", "lv_tag_projection", "lv_transformers", "cities"],
@@ -66,7 +79,10 @@ pub fn solar_network_seed_request_schema() -> Value {
             "lv_transformers": {"type": "array", "minItems": 1, "maxItems": MAX_TRANSFORMERS, "items": {
                 "type": "object", "additionalProperties": false,
                 "required": ["transformer", "room"],
-                "properties": {"transformer": {"type": "string", "minLength": 1}, "room": {"type": "object"}}
+                "properties": {
+                    "transformer": {"type": "string", "minLength": 1},
+                    "room": room_schema
+                }
             }},
             "cities": {"type": "array", "minItems": 1, "maxItems": MAX_CITIES, "items": {
                 "type": "object", "additionalProperties": false,
@@ -639,7 +655,12 @@ fn project_lv_facts(
                 .room
                 .get("layers")
                 .and_then(Value::as_object)
-                .ok_or_else(|| reject("solar_network_seed_lv_room_invalid", &input.transformer))?;
+                .ok_or_else(|| {
+                    reject(
+                        "solar_network_seed_lv_room_invalid",
+                        format!("{}: expected room.layers object; wrap captured FastLV output.gdfs as room.layers", input.transformer),
+                    )
+                })?;
             let tr = features(layers, "tr", &input.transformer)?;
             if tr.len() != 1 {
                 return Err(reject(
@@ -1226,6 +1247,14 @@ mod tests {
         unknown["mv"]["structure_count"] = json!(785);
         let error = plan_solar_network_seed(&serde_json::to_vec(&unknown).unwrap()).unwrap_err();
         assert!(error.to_string().contains("request_invalid"));
+
+        let mut unwrapped = request();
+        unwrapped["lv_transformers"][0]["room"] =
+            unwrapped["lv_transformers"][0]["room"]["layers"].clone();
+        let error = plan_solar_network_seed(&serde_json::to_vec(&unwrapped).unwrap()).unwrap_err();
+        assert!(error
+            .to_string()
+            .contains("wrap captured FastLV output.gdfs as room.layers"));
 
         let mut stale_tags = request();
         stale_tags["lv_tag_projection"]["sha256"] = json!(format!("sha256:{}", "f".repeat(64)));
