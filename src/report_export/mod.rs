@@ -1367,10 +1367,39 @@ pub fn batch_plan(
     Ok(BatchPlan { names, concurrency })
 }
 
+/// Stable one-based sheet positions across a complete active project inventory.
+/// A selected export looks up its members here; it never renumbers its subset.
+pub fn drawing_set_positions(active: &[String]) -> Result<BTreeMap<String, (u32, u32)>, String> {
+    let mut names = batch_plan(active, 1, 1)?.names;
+    names.sort();
+    let count = u32::try_from(names.len()).map_err(|_| "drawing set is too large")?;
+    Ok(names
+        .into_iter()
+        .enumerate()
+        .map(|(index, name)| (name, (index as u32 + 1, count)))
+        .collect())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::path::PathBuf;
+
+    #[test]
+    fn selected_sheets_retain_positions_in_the_complete_drawing_set() {
+        let active = ["zihare", "agahehe", "kibungo"].map(str::to_string);
+        let positions = drawing_set_positions(&active).unwrap();
+        assert_eq!(positions["agahehe"], (1, 3));
+        assert_eq!(positions["kibungo"], (2, 3));
+        assert_eq!(positions["zihare"], (3, 3));
+        assert!(!positions.contains_key("retired"));
+        assert_eq!(
+            drawing_set_positions(&active.iter().rev().cloned().collect::<Vec<_>>()).unwrap(),
+            positions
+        );
+        assert!(drawing_set_positions(&[]).is_err());
+        assert!(drawing_set_positions(&["combined_transformer".into()]).is_err());
+    }
 
     const SHEETS: &str = r#"{"project_settings":[{"parameter":"design_export_format","value":["shp","xlsx","pdf__detail"]}],"printing_setups":[]}"#;
 
