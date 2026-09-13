@@ -226,6 +226,18 @@ pub struct ArchiveLayout {
     pub combine_per_district: Option<bool>,
     #[serde(default)]
     pub combine_per_group: Option<bool>,
+    /// How many of the applied plan's ordered levels the tree descends before
+    /// files are placed. `None` means every level the plan has; `Some(0)` is the
+    /// archive root. This and `transformer_folders` are the GENERIC knobs
+    /// ds-brain writes onto every registry entry it records, so they arrive here
+    /// on any archive written by a current brain — decoding them is what keeps
+    /// `deny_unknown_fields` from rejecting the whole entry.
+    #[serde(default)]
+    pub group_depth: Option<u32>,
+    /// Whether each transformer's files sit in their own folder under the
+    /// deepest group level reached.
+    #[serde(default)]
+    pub transformer_folders: Option<bool>,
 }
 
 /// Every level a compounded archive may nest to, in nesting order. `flat` and
@@ -246,9 +258,19 @@ pub fn archive_level_key(level: &str) -> &'static str {
 }
 
 impl ArchiveLayout {
-    /// The level this layout names: the current spelling, then the legacy twin,
-    /// then the default. One expression, one answer.
+    /// The level this layout names: the generic knobs when they were authored,
+    /// then the current spelling, then the legacy twin, then the default. One
+    /// expression, one answer.
+    ///
+    /// The generic pair wins first because that is the order ds-brain's own
+    /// `shape()` resolves in: once a depth or a folder flag is authored it
+    /// clears the legacy spellings, so an entry carrying both is describing its
+    /// tree with the generic pair and merely keeping the legacy words for older
+    /// readers.
     pub fn level(&self) -> &str {
+        if let Some(level) = self.generic_level() {
+            return level;
+        }
         self.file_level
             .as_deref()
             .filter(|value| !value.is_empty())
@@ -257,6 +279,28 @@ impl ArchiveLayout {
                 .as_deref()
                 .filter(|value| !value.is_empty()))
             .unwrap_or("transformer")
+    }
+
+    /// The level the generic depth/folder pair names, or `None` when neither
+    /// knob was authored. This is `compoundedLegacyShape` read backwards: depth
+    /// 0 is the root, depth 1 is the first grouping level, anything deeper is
+    /// the sector end of the scale, and "every level" is a per-transformer tree
+    /// exactly when files sit in transformer folders.
+    fn generic_level(&self) -> Option<&'static str> {
+        if self.group_depth.is_none() && self.transformer_folders.is_none() {
+            return None;
+        }
+        let folders = self.transformer_folders.unwrap_or(true);
+        Some(match (self.group_depth, folders) {
+            // Depth 0 with transformer folders is the legacy `flat` tree: one
+            // folder per transformer at the archive root.
+            (Some(0), true) => "flat",
+            (Some(0), false) => "root",
+            (Some(1), _) => "district",
+            (Some(_), _) => "sector",
+            (None, true) => "transformer",
+            (None, false) => "sector",
+        })
     }
 
     pub fn describe(&self) -> serde_json::Value {
@@ -654,6 +698,38 @@ mod tests {
                 "transformer",
                 "pctl_layout_transformer",
             ),
+            // The generic depth/folder pair ds-brain authors, read back as the
+            // same levels their legacy spellings named.
+            (
+                serde_json::json!({"group_depth":0,"transformer_folders":false}),
+                "root",
+                "pctl_layout_root",
+            ),
+            (
+                serde_json::json!({"group_depth":0,"transformer_folders":true}),
+                "flat",
+                "pctl_layout_transformer",
+            ),
+            (
+                serde_json::json!({"group_depth":1,"transformer_folders":false}),
+                "district",
+                "pctl_layout_district",
+            ),
+            (
+                serde_json::json!({"group_depth":2,"transformer_folders":false}),
+                "sector",
+                "pctl_layout_sector",
+            ),
+            (
+                serde_json::json!({"transformer_folders":false}),
+                "sector",
+                "pctl_layout_sector",
+            ),
+            (
+                serde_json::json!({"transformer_folders":true}),
+                "transformer",
+                "pctl_layout_transformer",
+            ),
         ] {
             let answer = describe(layout);
             assert_eq!(answer["level"], level);
@@ -661,6 +737,31 @@ mod tests {
             assert_eq!(answer["label_key"], key);
             assert_eq!(answer["label_level_key"], serde_json::Value::Null);
         }
+        // A registry entry exactly as ds-brain's AsRegistryField writes it:
+        // BOTH spellings on one document. This is the shape that made the app
+        // fail closed with "unknown field `group_depth`" — every field must
+        // decode, and the generic pair must win over the legacy words it
+        // deliberately keeps alongside for older readers.
+        let from_brain = describe(serde_json::json!({
+            "group_depth": 1,
+            "transformer_folders": false,
+            "combine_per_group": false,
+            "combine_per_district": false,
+            "file_level": "transformer",
+            "transformer_grouping": "district_sector",
+        }));
+        assert_eq!(from_brain["level"], "district");
+        assert_eq!(from_brain["level_key"], "pctl_layout_district");
+        // And the same entry with no depth: "every level the plan has", which is
+        // the per-transformer tree when files sit in transformer folders.
+        let every_level = describe(serde_json::json!({
+            "transformer_folders": true,
+            "combine_per_group": true,
+            "combine_per_district": true,
+            "transformer_grouping": "district_sector",
+        }));
+        assert_eq!(every_level["level"], "transformer");
+        assert_eq!(every_level["combine_per_group"], true);
         // The current spelling wins over the legacy twin when both are present.
         let both = describe(
             serde_json::json!({"file_level":"root","transformer_grouping":"district_sector"}),
