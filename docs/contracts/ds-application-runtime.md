@@ -6,6 +6,9 @@ directive, 2026-09-11, recorded verbatim in §1. It sits above
 (one transport), `ds-sync-engine.md` (one decision) and ds-brain's
 `edge-admission-and-publish.md` (authority is handed, once). Where they differ
 from §1, §1 wins, subject to the later owner scope amendment in §0.
+[`ds-surface-order.md`](ds-surface-order.md) (2026-09-13) sits beside it and
+orders the work: kernel first, driven through CLI and MCP; the UI reads the
+kernel's projection; the UI write path later.
 
 ## 0. Current scope — later owner amendment, 2026-09-11
 

@@ -5,6 +5,16 @@ use serde_json::Value;
 #[derive(Deserialize)]
 #[serde(tag = "operation", rename_all = "snake_case", deny_unknown_fields)]
 enum Request {
+    Open {
+        project_id: String,
+        stored: Value,
+    },
+    Snapshot {
+        project_id: String,
+        document: Value,
+        #[serde(default)]
+        information: Option<ds_solar_contracts::network_form::ResolvedInformation>,
+    },
     CreateCity {
         identity: ds_solar_contracts::CityIdentity,
         #[serde(default)]
@@ -40,6 +50,15 @@ pub fn evaluate(bytes: &[u8]) -> Result<String, String> {
     }
     let request: Request = serde_json::from_slice(bytes).map_err(|e| e.to_string())?;
     let result = match request {
+        Request::Open { project_id, stored } => {
+            network_form::open(&project_id, &stored).map_err(|e| e.to_string())?
+        }
+        Request::Snapshot {
+            project_id,
+            document,
+            information,
+        } => network_form::snapshot(&project_id, &document, information.as_ref())
+            .map_err(|e| e.to_string())?,
         Request::CreateCity { identity, snapshot } => serde_json::to_value(
             ds_solar_contracts::city_draft::create(identity, snapshot)
                 .map_err(|e| e.to_string())?,

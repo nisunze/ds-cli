@@ -14,6 +14,13 @@ It governs background execution, durable ownership, platform adapters and the
 removal of frontend backend-client bypasses. Host effects do not imply permanent
 TypeScript ownership of networking or persistence orchestration.
 
+**Surface order, 2026-09-13:** [The product surface order](ds-surface-order.md)
+orders the work: the kernel is built first and driven through CLI and MCP — a
+capability is a kernel decision, and it exists when `ds` exposes it. The UI
+reads the kernel's projection; its write path comes later and binds to a
+kernel command that already exists. UI-driven development stops. §5's peers
+are peers of the kernel, not of the work.
+
 ## 1. The ruling
 
 > **Rust owns the product. WASM, CLI, server and Tauri are deployment forms.

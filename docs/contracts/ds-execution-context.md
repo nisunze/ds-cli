@@ -23,8 +23,12 @@ refines [Headless application runtime](ds-headless-application-runtime.md) §6.
 One Server admits Solar for one project, printing for a second and a layer write
 for a third, concurrently, for one authenticated account. None of it may come
 from a process-wide "current project", a selection captured at `serve` start, or
-an id a caller holds. So: **what is an admitted operation about, who decided
-that, and what may change it?** Answered once in `src/execution_context.rs`
+an id a caller holds. Owner, 2026-09-13: this is the rule for **every** host,
+the desktop included — project context is always carried, like a Cloud Run
+request, unless the operation is global; the desktop and the Server are
+stateless and never hold it
+([`ds-surface-order.md`](ds-surface-order.md) §4c). So: **what is an admitted
+operation about, who decided that, and what may change it?** Answered once in `src/execution_context.rs`
 (`ds.execution-context/v1`, WASM `executionContext`):
 
 | Question | Op |
