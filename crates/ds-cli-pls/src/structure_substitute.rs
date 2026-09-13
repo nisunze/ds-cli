@@ -11,7 +11,7 @@ use ds_cli_contract::{Context, Failure, Inputs};
 use ds_grid_tasks::{SubstitutePlsStructureModelsRequest, substitute_pls_structure_models};
 use serde_json::{Value, json};
 
-use crate::{encode, file_digest, output_path, source_path, task_failure};
+use crate::{encode, file_digest, output_path, source_directory, source_path, task_failure};
 
 pub static COMMAND: Command = Command {
     id: "pls.structure-substitute",
@@ -95,7 +95,7 @@ pub static COMMAND: Command = Command {
 
 pub fn run(inputs: &Inputs, context: &Context) -> Result<Value, Failure> {
     let source = source_path(inputs.require("backup")?, "backup")?;
-    let library = source_path(inputs.require("library")?, "library")?;
+    let library = source_directory(inputs.require("library")?, "library")?;
     let output = output_path(inputs.require("out")?)?;
 
     let Some(expected_source_sha256) = inputs.value("source-sha256") else {

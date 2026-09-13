@@ -57,6 +57,8 @@ reference transformers for the actual project network. Check carried/omitted
 layers, coverage, freshness and source digests. Optional exclusions are acceptable
 only where the map’s purpose remains satisfied.
 
+Full source rules: [sources and context](references/sources-and-context.md).
+
 ## Author sheets from the contract
 
 Start from the published paper/family default, then compare the project recipe.
