@@ -46,6 +46,27 @@ categories change. Omitted alignment preserves the historical `right` anchor.
 Use `left` for a lower-left legend, remove its `flow`, and keep it out of
 `composition.movable` to retain the authored position.
 
+## Sheet margin
+
+Tables, schedules and legends sit against the sheet border with ONE small
+margin. The margin is 5 mm — the same constant as the measured content gap, so
+the space between content and the page reads as the space between two content
+frames.
+
+A content frame must not float in unused space. The stack begins at the margin
+and grows inward: a table anchored left starts one margin from the left border,
+a table anchored right ends one margin from the right border, and the first
+frame in a vertical stack starts one margin below the top border. Whichever
+borders a frame is anchored to, it hugs them.
+
+Unused frame width is not a position. An authored frame may be wider than its
+measured content, and the content is placed against the border regardless —
+the same rule `flow` already applies between frames, applied to the page edge.
+
+This is the default. It is not a per-sheet decision to be made again on every
+layout, and a sheet that floats its schedules away from the border is wrong
+even when nothing overlaps.
+
 ## Measured content flow
 
 `flow.after` names an earlier table or legend. `placement` defaults to
