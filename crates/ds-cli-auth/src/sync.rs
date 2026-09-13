@@ -655,7 +655,22 @@ fn now() -> u64 {
         .map_or(0, |value| value.as_secs())
 }
 fn client_error(error: ds_client_core::ClientError) -> String {
-    error.to_string()
+    match error.service_refusal() {
+        Some(refusal) => format!(
+            "{} (HTTP {}{}{})",
+            error,
+            refusal.status(),
+            refusal
+                .code()
+                .map(|code| format!(", {code}"))
+                .unwrap_or_default(),
+            refusal
+                .message()
+                .map(|message| format!(": {message}"))
+                .unwrap_or_default(),
+        ),
+        None => error.to_string(),
+    }
 }
 
 fn classify_device_refresh_error(error: ds_cli_contract::Failure) -> SolarPublicationError {
