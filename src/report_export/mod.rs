@@ -895,12 +895,13 @@ pub fn valid_artifact_filename(filename: &str, format: &str) -> bool {
         "shp" => filename.ends_with(".shp.zip"),
         "kmz" => filename.ends_with(".kmz"),
         "xlsx" => filename.ends_with(".xlsx"),
+        "network_information" => filename.ends_with(".network-information.json"),
         "geojsonseq" => filename.ends_with("_geojsonl.zip"),
         "gpkg" => filename.ends_with(".gpkg"),
         "pdf_a0" => filename.ends_with(".a0.pdf"),
         "pdf_a3" => filename.ends_with(".a3.pdf"),
         format => match report_formats::output(format) {
-            Ok(output) if report_formats::named_setup_id(format).is_some() => {
+            Ok(output) if report_formats::named_print_output(format).is_some() => {
                 filename.ends_with(&output.suffix)
             }
             _ => false,
@@ -1048,7 +1049,7 @@ pub fn verify_result(
             warning.code != "table_truncated"
                 || warning.transformer != plan.transformer
                 || !plan.formats.contains(&warning.output_id)
-                || report_formats::named_setup_id(&warning.output_id)
+                || report_formats::named_print_output(&warning.output_id).map(|(_, id)| id)
                     != Some(warning.layout_id.as_str())
                 || !crate::printing::identifier(&warning.element_id)
                 || warning.omitted_rows == 0
@@ -2030,15 +2031,84 @@ mod tests {
     #[test]
     fn artifact_filenames_follow_their_format() {
         assert!(valid_artifact_filename("tx_a.shp.zip", "shp"));
+        assert!(valid_artifact_filename(
+            "tx_a.network-information.json",
+            "network_information"
+        ));
+        assert!(!valid_artifact_filename("tx_a.json", "network_information"));
         assert!(valid_artifact_filename("tx_a.detail.pdf", "pdf__detail"));
-        // The transformer export task writes named prints as PDF only (the
-        // reporter's `expected_artifact_filename` and the desktop shell agree);
-        // PNG and JPEG named outputs belong to `render-print-layout`.
-        assert!(!valid_artifact_filename("tx_a.detail.png", "png__detail"));
+        assert!(valid_artifact_filename("tx_a.detail.png", "png__detail"));
+        assert!(valid_artifact_filename("tx_a.detail.jpg", "jpeg__detail"));
+        assert!(!valid_artifact_filename("tx_a.detail.pdf", "png__detail"));
+        assert!(!valid_artifact_filename("tx_a.other.png", "png__detail"));
+        assert!(!valid_artifact_filename(
+            "../tx_a.detail.png",
+            "png__detail"
+        ));
         assert!(!valid_artifact_filename("tx_a.pdf", "pdf__detail"));
         assert!(!valid_artifact_filename("../tx_a.xlsx", "xlsx"));
         assert!(!valid_artifact_filename("tx_a.xlsx", "shp"));
         assert!(!valid_artifact_filename("", "xlsx"));
+    }
+
+    #[test]
+    fn named_raster_results_keep_the_full_artifact_admission_contract() {
+        let mut plan = plan_transformer_export(
+            "proj-1",
+            &simple_receipt("Chad"),
+            "tx_a",
+            7,
+            &layers(),
+            None,
+        )
+        .unwrap();
+        let out_dir = PathBuf::from("/tmp/run/out");
+        let layout = crate::printing::named_layout(
+            Some("detail".into()),
+            None,
+            crate::printing::Paper::A3,
+            crate::printing::Orientation::Landscape,
+        )
+        .unwrap();
+        for format in ["png__detail", "jpeg__detail", "pdf__detail"] {
+            let output = report_formats::output(format).unwrap();
+            plan.formats = vec![format.into()];
+            plan.outputs = vec![output.clone()];
+            let filename = format!("tx_a{}", output.suffix);
+            let mut document = result_document(&plan, &out_dir);
+            document["artifacts"] = json!([{
+                "format":format, "filename":filename, "path":out_dir.join(&filename),
+                "bytes":123, "sha256":"a".repeat(64), "paper_size":"A3",
+                "presentation":crate::printing::ArtifactPresentation::from_layout(&layout).unwrap()
+            }]);
+            document["warnings"] = json!([{
+                "code":"table_truncated", "transformer":"tx_a", "output_id":format,
+                "layout_id":"detail", "element_id":"poles", "total_rows":10,
+                "omitted_rows":1, "message":"One pole row omitted."
+            }]);
+            let verify =
+                |value: &Value| verify_result(&serde_json::to_vec(value).unwrap(), &plan, &out_dir);
+            let result = verify(&document).unwrap();
+            assert_eq!(result.artifacts[0].content_type, output.content_type);
+            assert_eq!(result.artifacts[0].sha256, "a".repeat(64));
+            assert_eq!(result.warnings.len(), 1);
+            for (key, invalid) in [
+                ("filename", json!("tx_a.other.png")),
+                ("path", json!("/tmp/elsewhere.png")),
+                ("sha256", json!("not-a-digest")),
+                ("bytes", json!(0)),
+                ("paper_size", json!("A0")),
+            ] {
+                let mut changed = document.clone();
+                changed["artifacts"][0][key] = invalid;
+                assert!(
+                    verify(&changed).is_err(),
+                    "{format}: accepted invalid {key}"
+                );
+            }
+            document["warnings"][0]["layout_id"] = json!("another-layout");
+            assert!(verify(&document).is_err());
+        }
     }
 
     #[test]

@@ -38,6 +38,7 @@ pub mod classify;
 pub mod container;
 pub mod format;
 pub mod preview;
+pub mod tag_maps;
 pub mod tree;
 
 pub use classify::{capability_for, may_loosen, ClassifyOutcome};
@@ -385,6 +386,11 @@ pub struct Source {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Link {
+    /// A project vocabulary value, never a guessed city/display name.
+    Tag {
+        definition_id: String,
+        value: String,
+    },
     PmTask {
         id: String,
     },
@@ -408,6 +414,9 @@ pub struct Origin {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Asset {
+    /// Metadata pointer to an existing verified report output; never new bytes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reference: Option<ReportReference>,
     #[serde(default = "asset_schema")]
     pub schema: String,
     pub asset_id: String,
@@ -438,6 +447,14 @@ pub struct Asset {
     pub links: Vec<Link>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub origin: Option<Origin>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ReportReference {
+    pub work_id: String,
+    pub output_id: String,
+    pub role: String,
 }
 
 fn asset_schema() -> String {
@@ -904,6 +921,11 @@ pub struct TreeResponse {
 #[derive(Debug, Clone, Deserialize)]
 #[serde(tag = "action", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Request {
+    TagMaps {
+        schema: String,
+        project: String,
+        page: Value,
+    },
     Recognise(RecogniseRequest),
     Classify(Box<ClassifyRequest>),
     Tree(Box<TreeRequest>),
@@ -954,6 +976,14 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
         )?;
     }
     let value = match request {
+        Request::TagMaps {
+            schema,
+            project,
+            page,
+        } => {
+            require_schema(&schema)?;
+            tag_maps::index(&project, &page)?
+        }
         Request::Recognise(request) => {
             require_schema(&request.schema)?;
             let head = decode_base64("head_b64", &request.head_b64)?;

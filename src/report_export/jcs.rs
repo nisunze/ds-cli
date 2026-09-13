@@ -295,7 +295,9 @@ mod tests {
             "string": "\u{20ac}$\u{000F}\u{000a}A'\u{0042}\u{0022}\u{005c}\\\"\u{002f}",
             "literals": [null, true, false]
         });
-        let expected = String::from("{\"literals\":[null,true,false],\"numbers\":[333333333.3333333,1e+30,4.5,0.002,1e-27],\"string\":\"\u{20ac}$\\u000f\\nA'B\\\"\\\\\\\\\\\"/\"}");
+        let expected = String::from(
+            "{\"literals\":[null,true,false],\"numbers\":[333333333.3333333,1e+30,4.5,0.002,1e-27],\"string\":\"\u{20ac}$\\u000f\\nA'B\\\"\\\\\\\\\\\"/\"}",
+        );
         assert_eq!(canonical(value), expected);
         // UTF-16 order: the surrogate pairs (D800…, D834…) sort BEFORE U+FF61,
         // the opposite of scalar-value order. This is the observable

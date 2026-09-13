@@ -1233,7 +1233,8 @@ mod tests {
         assert!(error.to_string().contains("lv_tags_digest_mismatch"));
 
         let mut casing = request();
-        casing["lv_transformers"][0]["room"]["layers"]["tr"]["features"][0]["properties"]["transfo"] = json!("bere_01");
+        casing["lv_transformers"][0]["room"]["layers"]["tr"]["features"][0]["properties"]
+            ["transfo"] = json!("bere_01");
         assert!(plan_solar_network_seed(&serde_json::to_vec(&casing).unwrap()).is_ok());
 
         let mut mismatched_room = request();

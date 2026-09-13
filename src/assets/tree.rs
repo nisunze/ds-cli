@@ -495,6 +495,7 @@ impl Row {
 
     fn asset(self, project_id: &str) -> (String, Asset) {
         let asset = Asset {
+            reference: None,
             schema: ASSET_SCHEMA.to_string(),
             asset_id: self.asset_id,
             project_id: project_id.to_string(),
@@ -2325,12 +2326,24 @@ fn merge_declared(request: &TreeRequest, roots: &mut BTreeMap<String, Node>) {
     for asset in &request.assets {
         match root_segment(&asset.folder) {
             Some(_) => place(roots, &asset.folder, asset.clone(), FolderKind::User),
-            None => place(
-                roots,
-                "Unclassified/assets",
-                asset.clone(),
-                FolderKind::System,
-            ),
+            None => {
+                let is_tag_map = asset
+                    .reference
+                    .as_ref()
+                    .is_some_and(|r| super::tag_maps::is_group_map(&r.role));
+                let tags = super::tag_maps::tags(&asset.links);
+                let folder = if is_tag_map && !tags.is_empty() {
+                    // One placement, even when several tag groups reuse this asset.
+                    format!(
+                        "Prints/tag groups/{}/{}",
+                        segment(&tags[0].definition_id),
+                        segment(&tags[0].value)
+                    )
+                } else {
+                    "Unclassified/assets".to_string()
+                };
+                place(roots, &folder, asset.clone(), FolderKind::System)
+            }
         }
     }
 }

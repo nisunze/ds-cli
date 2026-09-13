@@ -5,9 +5,18 @@ use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 
 pub const DEFAULT_INDIVIDUAL: &[&str] = &["shp", "kmz", "xlsx"];
-pub const INDIVIDUAL: &[&str] = &["shp", "kmz", "xlsx", "gpkg", "pdf_a0", "pdf_a3", "geojson"];
+pub const INDIVIDUAL: &[&str] = &[
+    "shp",
+    "kmz",
+    "xlsx",
+    "gpkg",
+    "pdf_a0",
+    "pdf_a3",
+    "geojson",
+    "network_information",
+];
 pub const COMBINED: &[&str] = &["shp", "xlsx", "geojsonseq"];
-pub const OPTIONAL_COMBINED: &[&str] = &["gpkg", "pdf_a0", "pdf_a3"];
+pub const OPTIONAL_COMBINED: &[&str] = &["gpkg", "pdf_a0", "pdf_a3", "network_information"];
 
 /// Available vector-print presets. Selection is a set, never a single size.
 /// The renderer uses this same type; adding a preset here requires exhaustive
@@ -121,7 +130,7 @@ pub const EXECUTION_CLASSES: &[&str] = &["print", "geospatial", "tabular"];
 /// The execution class of one output id, exactly as ds-brain computes it while
 /// filtering the individual output list.
 pub fn output_class(output_id: &str) -> &'static str {
-    if output_id == "xlsx" {
+    if matches!(output_id, "xlsx" | "network_information") {
         "tabular"
     } else if output_id.starts_with("pdf_") || named_print_output(output_id).is_some() {
         "print"
@@ -300,7 +309,7 @@ pub fn normalize_output_selection(
             prints.entry(id.into()).or_default().insert(format);
         } else if token.contains("__") {
             return Err(format!("invalid named print output: {raw}"));
-        } else if token == "xlsx" {
+        } else if matches!(token.as_str(), "xlsx" | "network_information") {
             if !tabular.contains(&token) {
                 tabular.push(token);
             }
@@ -466,6 +475,7 @@ pub fn output(format: &str) -> Result<Output, String> {
         });
     }
     let (content_type, suffix) = match format {
+        "network_information" => ("application/json", ".network-information.json"),
         "shp" => ("application/zip", ".shp.zip"),
         "kmz" => ("application/vnd.google-earth.kmz", ".kmz"),
         "xlsx" => (

@@ -186,6 +186,7 @@ pub mod reference_cache;
 pub mod report;
 pub mod report_export;
 pub mod solar_batch;
+pub mod solar_network_form;
 mod solar_network_seed;
 mod solar_portfolio;
 
@@ -862,6 +863,11 @@ mod wasm {
     #[wasm_bindgen(js_name = planSolarNetworkSeed)]
     pub fn solar_network_seed(input_json: &[u8]) -> Result<String, JsValue> {
         plan_solar_network_seed(input_json).map_err(|error| JsValue::from_str(&error.to_string()))
+    }
+
+    #[wasm_bindgen(js_name = solarNetworkForm)]
+    pub fn solar_network_form(input_json: &[u8]) -> Result<String, JsValue> {
+        crate::solar_network_form::evaluate(input_json).map_err(|error| JsValue::from_str(&error))
     }
 }
 
