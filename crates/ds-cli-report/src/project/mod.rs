@@ -380,6 +380,11 @@ pub fn archive_layout_vocabulary(
         transformer_grouping: transformer_grouping.map(str::to_string),
         combine_per_district: Some(combine_per_district),
         combine_per_group: None,
+        // This helper is handed the two LEGACY spellings only, so it authors
+        // neither generic knob. Leaving them unset is what makes the fold read
+        // the legacy words, exactly as it did before the generic pair existed.
+        group_depth: None,
+        transformer_folders: None,
     }
     .describe()
 }

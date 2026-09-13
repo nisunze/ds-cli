@@ -279,7 +279,18 @@ mod tests {
         // it, which says a number changed but not which component left — the
         // question an operator actually has when a probe stops finding a tool.
         let ids: Vec<&str> = catalog.iter().map(|c| c.id.as_str()).collect();
-        assert_eq!(ids, ["libreoffice", "git-bash", "rwanda-reference"]);
+        assert_eq!(
+            ids,
+            [
+                "libreoffice",
+                "git-bash",
+                "rwanda-reference",
+                // Local tiling and local document conversion: a Linux desktop
+                // or server owns these rather than calling a cloud service.
+                "tippecanoe",
+                "pandoc",
+            ]
+        );
         for (index, component) in catalog.iter().enumerate() {
             assert!(!component.purpose.is_empty());
             assert!(!component.provenance.is_empty());

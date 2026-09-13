@@ -91,6 +91,26 @@ enum Decision {
     AlreadySatisfied,
     InstallLibreOffice,
     AcquireRwandaReference,
+    /// A component the platform's own package catalog provides. Local tiling
+    /// and local document conversion are capabilities a Linux desktop or
+    /// server must own rather than call a cloud service for, so their
+    /// prerequisites install from the distribution's signed metadata.
+    InstallSystemPackage,
+}
+
+/// The package each system-provided component is known by. tippecanoe carries
+/// no governed Windows distribution, so it is absent there by design and
+/// Windows keeps using the deployed tiler.
+fn system_package_name(component: &str, platform: Platform) -> Option<&'static str> {
+    match (component, platform) {
+        ("tippecanoe", Platform::Linux | Platform::Macos) => Some("tippecanoe"),
+        ("pandoc", _) => Some(if platform == Platform::Windows {
+            "JohnMacFarlane.Pandoc"
+        } else {
+            "pandoc"
+        }),
+        _ => None,
+    }
 }
 
 fn decision(
@@ -104,6 +124,9 @@ fn decision(
     }
     if component == "rwanda-reference" {
         return Ok(Decision::AcquireRwandaReference);
+    }
+    if system_package_name(component, platform).is_some() {
+        return Ok(Decision::InstallSystemPackage);
     }
     if platform != Platform::Windows || component != "libreoffice" {
         return Err("unsupported");
@@ -195,6 +218,9 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         Ok(Decision::InstallLibreOffice) => {}
         Ok(Decision::AcquireRwandaReference) => {
             return acquire_rwanda(platform, &before);
+        }
+        Ok(Decision::InstallSystemPackage) => {
+            return install_system_package(component_id, &component, platform, &before);
         }
     }
 
@@ -483,6 +509,204 @@ fn find_on_path(names: &[&str]) -> Option<PathBuf> {
     detect::find_in_directories(&names, &detect::path_directories(std::env::var_os("PATH")))
 }
 
+/// The distribution package manager and the argument vector that installs
+/// non-interactively under it. Detection is by executable presence, in a fixed
+/// order, so the answer is the same on every run of the same machine.
+fn linux_package_manager(package: &str) -> Option<(PathBuf, Vec<String>)> {
+    let candidates: [(&str, &[&str]); 4] = [
+        ("apt-get", &["install", "-y", "--no-install-recommends"]),
+        ("dnf", &["install", "-y"]),
+        ("zypper", &["--non-interactive", "install"]),
+        ("pacman", &["-S", "--noconfirm"]),
+    ];
+    for (executable, flags) in candidates {
+        if let Some(path) = find_on_path(&[executable]) {
+            let mut args: Vec<String> = flags.iter().map(|flag| (*flag).to_string()).collect();
+            args.push(package.to_string());
+            return Some((path, args));
+        }
+    }
+    None
+}
+
+/// Install a component the platform's own catalog provides.
+///
+/// An unattended install must never block on a credential prompt, so when this
+/// process is not already root the elevation is probed with `sudo -n` first and
+/// refused with a remedy rather than left waiting on a password nobody will
+/// type.
+fn install_system_package(
+    component_id: &str,
+    component: &detect::Component,
+    platform: Platform,
+    before: &Value,
+) -> Result<Value, Failure> {
+    let package = system_package_name(component_id, platform).ok_or_else(|| {
+        Failure::invalid(
+            "workstation_mutation_unsupported",
+            format!(
+                "`{component_id}` has no governed package on {}",
+                platform.token()
+            ),
+        )
+        .remedy(crate::MUTATION_UNSUPPORTED.remedy)
+    })?;
+    let receipt_path =
+        policy::ensure_install_receipt_slot(platform, component_id).map_err(|reason| {
+            Failure::conflict("workstation_receipt_conflict", reason)
+                .remedy(crate::RECEIPT_CONFLICT.remedy)
+        })?;
+
+    let (executable, args, source) = match platform {
+        Platform::Windows => {
+            let winget = find_on_path(&["winget.exe", "winget"]).ok_or_else(|| {
+                cleanup_empty_receipt_parent(&receipt_path);
+                Failure::unavailable(
+                    "workstation_package_manager_missing",
+                    "winget was not found on PATH",
+                )
+                .remedy(PACKAGE_MANAGER_MISSING.remedy)
+            })?;
+            let args: Vec<String> = [
+                "install",
+                "--id",
+                package,
+                "--exact",
+                "--silent",
+                "--accept-package-agreements",
+                "--accept-source-agreements",
+                "--disable-interactivity",
+            ]
+            .iter()
+            .map(|value| (*value).to_string())
+            .collect();
+            (winget, args, "windows-package-manager")
+        }
+        Platform::Macos => {
+            let brew = find_on_path(&["brew"]).ok_or_else(|| {
+                cleanup_empty_receipt_parent(&receipt_path);
+                Failure::unavailable(
+                    "workstation_package_manager_missing",
+                    "brew was not found on PATH",
+                )
+                .remedy(PACKAGE_MANAGER_MISSING.remedy)
+            })?;
+            (
+                brew,
+                vec!["install".to_string(), package.to_string()],
+                "macos-package-manager",
+            )
+        }
+        Platform::Linux => {
+            let (manager, mut args) = linux_package_manager(package).ok_or_else(|| {
+                cleanup_empty_receipt_parent(&receipt_path);
+                Failure::unavailable(
+                    "workstation_package_manager_missing",
+                    "no supported Linux package manager was found on PATH",
+                )
+                .remedy(PACKAGE_MANAGER_MISSING.remedy)
+            })?;
+            // Root already holds the rights; anyone else needs elevation that
+            // cannot prompt, or this refuses instead of hanging forever.
+            let is_root = std::env::var("USER")
+                .map(|user| user == "root")
+                .unwrap_or(false)
+                || std::env::var("HOME")
+                    .map(|home| home == "/root")
+                    .unwrap_or(false);
+            if is_root {
+                (manager, args, "linux-package-manager")
+            } else {
+                let sudo = find_on_path(&["sudo"]).ok_or_else(|| {
+                    cleanup_empty_receipt_parent(&receipt_path);
+                    Failure::unavailable(
+                        "workstation_package_manager_missing",
+                        "installation needs root and sudo was not found on PATH",
+                    )
+                    .remedy("run as root, or install sudo")
+                })?;
+                if run_quiet(&sudo, &["-n", "true"], Duration::from_secs(15)) != Ok(0) {
+                    cleanup_empty_receipt_parent(&receipt_path);
+                    return Err(Failure::failed(
+                        "workstation_package_manager_failed",
+                        "sudo requires a password, and an unattended install must not wait for one",
+                    )
+                    .remedy("grant passwordless sudo for the package manager, or run this as root")
+                    .detail(json!({"package_id": package, "component": component_id})));
+                }
+                let mut elevated = vec![manager.to_string_lossy().to_string()];
+                elevated.append(&mut args);
+                (sudo, elevated, "linux-package-manager")
+            }
+        }
+    };
+
+    let borrowed: Vec<&str> = args.iter().map(String::as_str).collect();
+    let status =
+        run_quiet(&executable, &borrowed, Duration::from_secs(30 * 60)).map_err(|reason| {
+            cleanup_empty_receipt_parent(&receipt_path);
+            Failure::failed("workstation_package_manager_failed", reason)
+                .remedy(PACKAGE_MANAGER_FAILED.remedy)
+                .detail(json!({"package_id": package}))
+        })?;
+    if status != 0 {
+        cleanup_empty_receipt_parent(&receipt_path);
+        return Err(Failure::failed(
+            "workstation_package_manager_failed",
+            format!("the package manager exited with status {status}"),
+        )
+        .remedy(PACKAGE_MANAGER_FAILED.remedy)
+        .detail(json!({"package_id": package, "exit_code": status})));
+    }
+
+    // The installed executable's own version report is the proof. A package
+    // manager reporting success while the executable stays undiscoverable is a
+    // failed install, not a successful one.
+    let after = detect::snapshot(component, platform, true);
+    let executable_path = after["path"].as_str().map(str::to_string);
+    let version = after["version"].as_str().map(str::to_string);
+    let verified = after["state"] == "installed" && version.is_some();
+    let receipt = InstallReceipt {
+        schema: INSTALL_RECEIPT_SCHEMA.to_string(),
+        run_id: format!("{}-{}", unix_seconds(), std::process::id()),
+        component: component_id.to_string(),
+        package_id: package.to_string(),
+        source: source.to_string(),
+        installed_at_unix_s: unix_seconds(),
+        task_owned: true,
+        preexisting: false,
+        executable: executable_path,
+        version,
+        verified,
+        smoke: if verified { "passed" } else { "failed" }.to_string(),
+    };
+    policy::write_install_receipt(&receipt_path, &receipt).map_err(|reason| {
+        Failure::failed("workstation_receipt_conflict", reason)
+            .remedy(crate::RECEIPT_CONFLICT.remedy)
+            .detail(json!({"installed": true, "package_id": package}))
+    })?;
+    if !verified {
+        return Err(Failure::failed(
+            "workstation_verification_failed",
+            format!("{component_id} installed but its executable and version proof failed"),
+        )
+        .remedy(crate::VERIFICATION_FAILED.remedy)
+        .detail(json!({"receipt": receipt_path.to_string_lossy(), "after": after})));
+    }
+    Ok(json!({
+        "component": component_id,
+        "platform": platform.token(),
+        "action": "installed",
+        "changed": true,
+        "source": source,
+        "package_id": package,
+        "before": before,
+        "after": after,
+        "ownership": policy::install_ownership(platform, component_id),
+        "temporary_cleanup": [],
+    }))
+}
+
 fn run_quiet(executable: &Path, args: &[&str], timeout: Duration) -> Result<i32, String> {
     let mut child = ProcessCommand::new(executable)
         .args(args)
@@ -567,6 +791,33 @@ mod tests {
     fn already_installed_is_idempotent_before_platform_or_approval_checks() {
         assert_eq!(
             decision(Platform::Linux, "libreoffice", "installed", None),
+            Ok(Decision::AlreadySatisfied)
+        );
+        // Local tiling is a Linux capability: a desktop or server installs
+        // tippecanoe itself instead of calling the deployed tiler. No approval
+        // flag is required — the distribution's own signed catalog is the
+        // source, and nothing prompts.
+        assert_eq!(
+            decision(Platform::Linux, "tippecanoe", "absent", None),
+            Ok(Decision::InstallSystemPackage)
+        );
+        assert_eq!(
+            decision(Platform::Linux, "pandoc", "absent", None),
+            Ok(Decision::InstallSystemPackage)
+        );
+        // tippecanoe has no governed Windows distribution, so it is skipped
+        // there by design; pandoc does, so Windows may install it.
+        assert_eq!(
+            decision(Platform::Windows, "tippecanoe", "absent", None),
+            Err("unsupported")
+        );
+        assert_eq!(
+            decision(Platform::Windows, "pandoc", "absent", None),
+            Ok(Decision::InstallSystemPackage)
+        );
+        // An existing installation is still left untouched.
+        assert_eq!(
+            decision(Platform::Linux, "tippecanoe", "installed", None),
             Ok(Decision::AlreadySatisfied)
         );
         assert_eq!(
