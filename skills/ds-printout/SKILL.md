@@ -110,6 +110,22 @@ default, not a per-sheet decision — a sheet that floats its schedules away fro
 the border is wrong even when nothing overlaps. See `docs/printing.md`,
 "Sheet margin".
 
+A heading never widens its column. `table.heading_mode` defaults to
+`auto_index`: when an authored heading is wider than the data beneath it, every
+column takes its order letter (A, B, C...) and the full names move to the
+untruncated key above the panel. Do not shorten a heading by hand or drop a
+column to make one fit.
+
+A printed schedule carries the fields its workbook carries. Bind the schedule to
+the exported table rather than re-choosing a narrower set per sheet, exactly as
+the information table already works. The customer/house-connection schedule is
+Pole Number, House Number, Names, Meter Type, Category, From Tr Distance, Nid,
+Service Area Length M, Village, X, Y. Omit the as-built-only fields when the
+project is not as-built - `meter_type`, `nid`, any phone number - because a
+design cannot have them; print everything else. A column is never dropped for
+width: if it does not fit, that is a placement, panel or font decision. See
+`docs/printing.md`, "Schedule fields follow the workbook".
+
 Inspect whole pages and readable crops: dense labels, rural coverage, junctions,
 title block, legend and schedule edges. Check clipping, overlaps, missing layers,
 legend categories, units and table scope. Verify visible furniture alignment,
