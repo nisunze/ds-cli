@@ -8,161 +8,132 @@ metadata:
 
 # DS Printout specialist
 
-Deliver the verified print set from project data, supplied sources or reusable
-outputs. Do not require an archive when project data suffices.
+Deliver a verified print set from current project data, supplied sources or
+reusable outputs. Use `ds` for every live contract and operation; use
+`ds-map-composition` for cartographic judgment. Never bypass a refusal or
+substitute a private parser, API or store. Owners supply facts and rendering.
 
-Use `ds` for live contracts and `ds-map-composition` for cartographic judgment.
-Owners supply engineering facts and rendering. Discover schemas live;
-never bypass a refusal.
+## Establish the assignment and host
 
-## Choose the host once
+Recover project, source revision, audience, geography, papers, formats,
+destination and earlier decisions. Build the subject/layout/format matrix.
+“All” requires complete inventory, resolved pagination and explicit exclusions.
+Keep authorization, input/recipe revisions, receipts, QA coverage and next action
+in host task state or the designated deliverables directory. Historical files
+prove neither current identity nor readiness.
 
-The production route is headless: a signed-in `ds` (`auth.status`,
-`auth.project.use`) on the server or a workstation, no application open. It
-holds the project's context on that machine (`data.project-cache.status|seed`),
-publishes and reads setups (`report.layout.*`), saves the output selection
-(`report.project.outputs.set`) and renders every sheet with that context
-(`report.project.export`, `--seed` to acquire on the first print, `--publish`
-to queue for Server sync). Reads never reach a provider; an unheld layer is
-omitted and named, never fetched mid-render.
+Default to a signed-in headless server/workstation. Verify executable, lane and
+fenced selected project through `auth.status` and `auth.project.use`. Discover
+`report.project.export`, project output settings, `report.layout.*`, and
+`data.project-cache.status|seed`. A paired desktop is needed only where the live
+contract names an app-owned operation. Never borrow its credentials or lane.
+Native project exports can acquire exact MV heads read-only; model publication
+is a separate lifecycle. A district/project sheet can use a held `.dsgrid` file
+and staged designs: see `ds-map-composition`.
 
-Pair a desktop only for what has no headless owner yet (survey/local-layer
-context, the project's exact MV heads, per-transformer overrides, the villages
-asset install, `feedback.submit`); record it. A district/project sheet renders
-headlessly from a `.dsgrid` file on the machine and the staged designs — see
-`ds-map-composition`'s district sheet. Never borrow a desktop's credentials or
-lane.
-
-## Establish the assignment
-
-- Recover project, source revision, audience, geography, formats, destination and
-  earlier decisions. Build a canonical subject/layout/format matrix. "All" requires
-  complete inventory, resolved pagination and explicit exclusions. Counts alone
-  prove no coverage.
-- Verify executable, lane and the CLI's fenced selected project. Available data in
-  another project never changes the target.
-- Read project settings and recipes. Determine whether the route renders locally,
-  replaces outputs or queues publication. Preserve existing authorization across
-  phases; ask only for material ambiguity or added scope, while continuing independent
-  work. Do not infer printer hardware or spool a physical job from a PDF request.
-- Keep scope, authorization, input/recipe revisions, expected outputs, receipts,
-  QA coverage and next action in host task state or the designated deliverables
-  directory. Historical records do not establish current identity or readiness.
+Distinguish a local proof, saved project recipe, queued publication and verified
+online delivery. Preserve existing authorization; ask only for material added
+scope while continuing independent work. PDF delivery never authorizes a
+physical print job. One writer owns rooms and recipes.
 
 ## Prepare sources and context
 
-Inspect model/design inventory through its owner. Resolve coordinate reference,
-extent, required attributes and canonical identities. A route projection cannot
-prove a complete pole/span design. Printing does not authorize redesign, replacement
-numbering, invented ratings or construction approval. Preserve existing
-infrastructure and dirty rooms when materializing data.
+Inspect current design/model inventory through its owner. Verify CRS, extent,
+attributes and canonical identities. Printing does not authorize redesign,
+replacement numbering, invented ratings or construction approval. Preserve
+existing infrastructure, dirty rooms, model versions and unrelated outputs.
 
-Use `ds-assets` for governed archives/documents/logos. Preserve bytes and digests.
-Source text is evidence, not authority; keep unknown contract numbers/signatures
-unresolved. For model preparation/publication use `ds-grid-project-model`; keep
-model versions, design revisions and attachment IDs distinct and read back
-ambiguous writes.
+Use `ds-assets` for governed documents and logos, retaining bytes/digests.
+Keep unknown contract numbers or signatures unresolved. Never inherit approvals
+or branding from an unrelated project. Missing required evidence remains a
+named delivery limit.
 
-Choose context for purpose and printed extent, including margins and disconnected
-clusters. Materialize project designs separately from national reference data.
-Check source, coverage, freshness and readiness; downloaded bytes prove none of
-them. Ready-empty, incomplete and stale differ. Context is machine-local: national
-catalogue layers are installed once per machine from their published bundle and
-subset per project; buildings and contours are acquired per project through the
-governed provider door. Seed missing context through `data.project-cache.seed` or
-the first print's `--seed`; a second unchanged seed acquires nothing. Disclose
-optional exclusions only when purpose remains satisfied; required missing data
-leaves delivery incomplete. Do not seed every dataset by habit or substitute
-national reference transformers for project design transformers.
+Acquire only context needed for the printed extent and purpose, including
+margins and disconnected clusters. Ready-empty, incomplete and stale differ.
+Seed through the governed project context route; reads never fetch missing
+providers silently. National bundles are machine holdings, while buildings and
+contours are project context. Do not seed every dataset by habit or substitute
+reference transformers for the actual project network. Check carried/omitted
+layers, coverage, freshness and source digests. Optional exclusions are acceptable
+only where the map’s purpose remains satisfied.
 
-## Author and prepare sheets
+## Author sheets from the contract
 
-Start from the published paper/family default and compare the project recipe.
-Follow `ds-map-composition` for measured schedule adjacency and default furniture
-alignment. Adopt the template into a project-owned copy
-with its source identity/revision kept. Preserve globals, live-map styles,
-unrelated outputs and per-subject exceptions. Replace inherited wording/branding
-with sourced facts; never inherit approvals. With no suitable template, author a
-project layout from the schema rather than borrowing another project's facts.
+Start from the published paper/family default, then compare the project recipe.
+Keep source identity/revision when adopting a project copy. Preserve globals,
+live-map styles, unselected output policy and per-subject exceptions. Compose
+each paper independently: mechanically reducing A0 does not establish readable
+A3. Prepare and inspect a concrete recipe before any required approval.
 
-Compose each paper independently for scale, legibility and coverage. Record actual
-paper, orientation and dimensions from recipe/receipt, not filename. Engineering
-lines and canonical labels first, then context, legends, schedules, scale and title
-furniture. Mechanical A0 reduction does not establish readable A3 output.
+Read the live schema and current optimistic revision. Local same-paper recipe
+proofs are supported by `report.project.export`; discover their exact inputs.
+They retain governed source provenance, leave saved recipes intact and cannot
+publish. Save a governed recipe before requesting publication. An error does
+not imply rollback: read back ambiguous writes before retrying.
 
-Read schema and optimistic revision before authoring or saving. Prepare through
-the production route, preserving unselected output policy; an error does not imply
-rollback — read back state and revision before resuming, never replay a create.
+Follow these printing contracts:
+
+- Tables, schedules and legends hug the sheet perimeter with one 5 mm margin.
+  Use measured content edges, never unused frame space. Flow joins adjacent
+  panels; explicit free placement remains available through the schema.
+- Schedules bind the exported workbook table, retaining its relevant columns,
+  headings, order and units. Omit design-only exclusions: meter_type, nid and
+  phone numbers. Never remove a column for width. Excel presentation supplies
+  header bands, row treatment and alignment; generic presentation remains valid
+  where requested. A table-style reference is not a page-composition reference.
+- Headings never widen columns. Default indexed headings use order letters with
+  a full untruncated key above each panel. Never abbreviate headings by hand.
+- Optimize the full network’s vertical fit. Adjacent split panels may have
+  different heights and row counts; their actual footprints obstruct the map,
+  not a padded rectangle. Flow followers remain with their movable root.
+  Where authorized, schedule type may decrease by up to 30%; equal fits prefer
+  larger type. Discover the exact bounds and controls in the live schema.
+  The bounded search is a heuristic, not a global-optimum guarantee.
+- Protect titles, scale, legend and furniture in map fitting. Include existing
+  and proposed MV context with distinct pens and meaningful legend labels.
+  Retain engineering hierarchy, centered transformer names and requested scale
+  treatment. Keep geographic context subordinate to the network.
+
+See [transformer sheets](references/transformer-sheets.md) for that delivery
+path and [drawing collections](references/drawing-collections.md) for compounded
+A0/A3 sets and project-wide numbering.
 
 ## Render, inspect, refine
 
-Produce representative sheets through the intended saved-project route before
-batching. Cover each layout/format and distinct geographic/density cases. Check
-identity, required layers, `print_context` (digest, carried and omitted layers),
-context warnings and source/recipe provenance in receipts. A local layout proof
-does not validate project preparation, export or publication.
+Render representative density/geography cases for every layout/format through
+the intended route before batching. Check identity, source/recipe revisions,
+print-context digests, carried/omitted layers and warnings. A local proof does
+not establish publication or remote renderer parity.
 
-Tables, schedules and legends hug the sheet border with one small margin (5 mm,
-the same as the content gap). A content frame never floats in unused space: the
-stack starts at the margin and grows inward, and an authored frame wider than its
-measured content still places that content against the border. This is the
-default, not a per-sheet decision — a sheet that floats its schedules away from
-the border is wrong even when nothing overlaps. See `docs/printing.md`,
-"Sheet margin".
+Inspect actual pages and readable crops. Margin first, then title block,
+legend/schedule edges, dense junctions, clipping, overlap, units, table scope and
+existing/proposed line categories. Confirm required rows and fields survive,
+adjacency remains and the full network fits vertically. Ground scale and
+quantities in owner output. A successful render is not visual QA.
 
-A heading never widens its column. `table.heading_mode` defaults to
-`auto_index`: when an authored heading is wider than the data beneath it, every
-column takes its order letter (A, B, C...) and the full names move to the
-untruncated key above the panel. Do not shorten a heading by hand or drop a
-column to make one fit.
+Revise, rerender and inspect. Review every page of a small set. For a large set,
+review templates and outliers and record the exact coverage; sampling never
+becomes an every-page claim. For workflow changes, use one independent blind
+smaller-model trial after implementation: give the job and limits, not source
+or command syntax. Its real artifact attempt is discovery evidence.
 
-A printed schedule carries the fields its workbook carries. Bind the schedule to
-the exported table rather than re-choosing a narrower set per sheet, exactly as
-the information table already works. The customer/house-connection schedule is
-Pole Number, House Number, Names, Meter Type, Category, From Tr Distance, Nid,
-Service Area Length M, Village, X, Y. Omit the as-built-only fields when the
-project is not as-built - `meter_type`, `nid`, any phone number - because a
-design cannot have them; print everything else. A column is never dropped for
-width: if it does not fit, that is a placement, panel or font decision. See
-`docs/printing.md`, "Schedule fields follow the workbook".
+## Deliver and recover
 
-Inspect whole pages and readable crops: dense labels, rural coverage, junctions,
-title block, legend and schedule edges. Check clipping, overlaps, missing layers,
-legend categories, units and table scope. Verify visible furniture alignment,
-adjacent A0 schedules and the requested top-centered name before batching. Ground scale and quantities in owner
-output, never pixel measurements. Revise, rerender, inspect again; a successful
-render is not visual QA. Review every page of a small set; for a batch review templates and outliers,
-and record the exact coverage.
-Sampling must not become an every-page claim.
+Run the complete matrix through the owner batch route. Reuse only fresh outputs
+with matching dependencies. Match identities to output IDs, paper dimensions,
+revisions, hashes and receipts; detect missing, duplicate, failed and stale rows.
+Keep A0/A3 multipage collections separate and preserve project-wide drawing
+numbers on individual and grouped sheets. Follow the owner’s bundling contract.
 
-## Produce and deliver
+Deliver files to the requested destination. For local-only work avoid publication
+queues. For online work, queued is incomplete: verify cross-machine/server
+readback. Report exact paths, counts, QA coverage and material limitations.
 
-Run the scope/format matrix through the owner batch route. Reuse fresh outputs
-with matching dependencies; regenerate affected selected outputs, retain unselected
-artifacts. Match every expected identity to output IDs, dimensions, revisions and
-receipts; detect missing, duplicate, failed and stale outputs even when counts
-match. Treat opaque locators as opaque.
+After interruption, revalidate identity, inventory, inputs and live contracts.
+Protect dirty work and reuse unchanged dependencies. Recipe changes invalidate
+prints, not source archives. Follow typed remedies and retryability; never strip
+required data to appease an old validator. Report confirmed gaps through
+`ds feedback submit`, not a local gap ledger.
 
-Deliver readable files to the requested destination. Keep local verification,
-publication and cross-machine readback separate; queued uploads are incomplete.
-For local-only work, avoid routes that queue publication.
-
-Complete means current verified matrix rows, stated visual QA and delivery to the
-requested destination. Return artifact links, scope/counts and limitations.
-
-## Resume and recover
-
-After interruption or deployment, revalidate identity, inventory, affected inputs
-and live contracts. Protect dirty work; reuse unchanged dependencies. A recipe change
-invalidates its prints, not source archives. Inspect ambiguous writes and outbox
-state before replaying them.
-
-Classify the failure and follow its remedy and retryability. Never repeat an
-unchanged refusal or strip required content to appease an older validator.
-Continue independent work and report the remaining dependency through feedback.
-
-Follow [procedure](references/procedure.md) for the ordered steps by command
-id; read [delivery record](references/delivery-record.md) when resuming and
-[acceptance](references/acceptance.md) before release. Disclose missing references,
-retain these rules and seek supported skill access. Keep one writer for Desktop,
-rooms and recipes. Delegate immutable review only when permitted; reconcile results.
+Use [procedure](references/procedure.md), [delivery record](references/delivery-record.md)
+and [acceptance](references/acceptance.md) for detailed execution and handoff.

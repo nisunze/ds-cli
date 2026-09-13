@@ -1443,6 +1443,8 @@ dependencies = [
 name = "ds-project-data"
 version = "0.1.0"
 dependencies = [
+ "ds-geo",
+ "ds-grid-exchange",
  "ds-command-kernel",
  "ds-layer-store",
  "flate2",

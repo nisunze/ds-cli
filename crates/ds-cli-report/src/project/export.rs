@@ -250,8 +250,8 @@ pub static COMMAND: Command = Command {
     id: "report.project.export",
     path: &["report", "project", "export"],
     contract: 1,
-    summary: "Produce transformer reports, prints included, headlessly.",
-    purpose: "Export the selected project's saved transformers and named print outputs with the native reporter. Defaults to all active transformers; engines run concurrently and outputs are verified. Files stay local unless --publish seals them for Server sync, which is not cloud completion. Each print carries the map context its setups select from this machine's project rooms; --seed acquires what is not held first. Photos need a media grant and refuse. Details: docs/reference/report.md.",
+    summary: "Export all transformer reports and maps headlessly in parallel.",
+    purpose: "Export saved transformers and named print outputs in parallel with --concurrency. Defaults to all active transformers; subsets keep project-wide sheet numbers. Repeat --print-layout for local same-paper proofs with source/recipe digests; proofs cannot publish. Verified files stay local unless --publish seals them for Server sync, which is not cloud completion. Setups select held project context; --seed acquires missing context. Photos need a media grant and refuse. Details: docs/reference/report.md.",
     chapter: Chapter::Reports,
     effect: Effect::LocalFileWrite,
     authority: Authority::HeadlessProject,
@@ -261,6 +261,11 @@ pub static COMMAND: Command = Command {
         OUT_DIR_ARG,
         CONCURRENCY_ARG,
         ADMIN_BOUNDS_ARG,
+        Arg::repeated(
+            "print-layout",
+            "<json-file>",
+            "Local proof replacement for an existing project layout; preserves engineering inputs and paper identity, records source/recipe digests, and cannot publish.",
+        ),
         SEED_ARG,
         PUBLISH_ARG,
         SERVER_STATE_DIR_ARG,
@@ -635,7 +640,14 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let resident_limit = concurrency_limit(inputs)?;
     let explicit_asset = inputs.value("admin-bounds").map(PathBuf::from);
     let seed = inputs.switch("seed");
+    let proof_paths = inputs.repeated("print-layout");
     let publish = inputs.switch("publish");
+    if publish && !proof_paths.is_empty() {
+        return Err(Failure::invalid(
+            "report_inputs_invalid",
+            "Local print-layout proofs cannot publish; save a governed project recipe before publication",
+        ));
+    }
     let publish_scope = publish
         .then(|| ds_cli_auth::capture_layer_scope_fence(lane))
         .transpose()?;
@@ -708,6 +720,32 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let receipt = InputReceipt::from_config(&configuration.result().document).map_err(|error| {
         Failure::invalid("report_inputs_invalid", error).remedy(INPUTS_INVALID.remedy)
     })?;
+    let receipt = if proof_paths.is_empty() {
+        receipt
+    } else {
+        let mut layouts = Vec::new();
+        for path in proof_paths {
+            let meta = std::fs::metadata(path)
+                .map_err(|e| Failure::invalid(INPUTS_INVALID.code, e.to_string()))?;
+            if !meta.is_file() || meta.len() > ds_command_kernel::printing::MAX_LAYOUT_BYTES as u64
+            {
+                return Err(Failure::invalid(
+                    INPUTS_INVALID.code,
+                    "Print proof layout exceeds its regular-file bound",
+                ));
+            }
+            let bytes = std::fs::read(path)
+                .map_err(|e| Failure::invalid(INPUTS_INVALID.code, e.to_string()))?;
+            layouts.push(
+                serde_json::from_slice(&bytes)
+                    .map_err(|e| Failure::invalid(INPUTS_INVALID.code, e.to_string()))?,
+            );
+        }
+        ds_command_kernel::report_export::proof::with_layouts(&receipt, &layouts)
+            .map_err(|e| Failure::invalid(INPUTS_INVALID.code, e))?
+    };
+    output["local_print_recipe"] = serde_json::to_value(&receipt.local_print_recipe)
+        .map_err(|e| Failure::invalid(INPUTS_INVALID.code, e.to_string()))?;
     let admin_bounds = if receipt.requires_admin_bounds() {
         let path = match explicit_asset {
             Some(path) => path,
@@ -741,6 +779,22 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     // one decision over the sealed sheets, with `--seed` as the only way an
     // acquisition may happen. Nothing selected means nothing is read.
     let contexts = selected_contexts(lane, &receipt, seed)?;
+    let mv_buffer = contexts
+        .iter()
+        .filter_map(|c| match &c.source {
+            ds_command_kernel::printing::PrintContextSource::ProjectDsgridMv {
+                buffer_m, ..
+            } => Some(*buffer_m),
+            _ => None,
+        })
+        .reduce(f64::max);
+    let mv_models = if mv_buffer.is_some() {
+        super::mv_context::load(lane, inventory.identity(), &project_id)?
+    } else {
+        Vec::new()
+    };
+    output["mv_context_models"] = json!(mv_models.len());
+    output["mv_context_sources"] = json!(super::mv_context::provenance(&mv_models));
     let mut context_warnings: Vec<Value> = Vec::new();
     let catalog: Vec<ds_project_data::ReferenceResource> = if contexts.is_empty() {
         Vec::new()
@@ -790,6 +844,38 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let mut provider = ds_cli_data::project_cache::CliProvider { lane };
     let mut bundle_fetch = ds_cli_data::project_cache::bundle_fetch(lane);
     let mut transformer_context_notes: Vec<Value> = Vec::new();
+
+    // Number the complete active inventory even for an explicitly selected subset.
+    let complete_inventory = if requested.is_empty() {
+        None
+    } else {
+        let full =
+            ds_cli_auth::transformer_inventory(lane, &ds_cli_auth::TransformerSet::default())?;
+        require_same_context(
+            inventory.identity(),
+            &project_id,
+            full.identity(),
+            full.project_id(),
+        )
+        .map_err(host_failure)?;
+        Some(full)
+    };
+    let drawing_names = complete_inventory
+        .as_ref()
+        .unwrap_or(&inventory)
+        .result()
+        .rows()
+        .iter()
+        .filter(|row| {
+            row.kind() == TransformerKind::Transformer
+                && row.lifecycle() == TransformerLifecycle::Active
+        })
+        .map(|row| row.name().to_string())
+        .collect::<Vec<_>>();
+    let sheet_positions = ds_command_kernel::report_export::drawing_set_positions(&drawing_names)
+        .map_err(|error| {
+        Failure::invalid(INPUTS_INVALID.code, error).remedy(INPUTS_INVALID.remedy)
+    })?;
 
     let processors = std::thread::available_parallelism()
         .map(|count| count.get())
@@ -895,17 +981,20 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
                     })
             }
         };
-        // The sheet's place in the drawing set: the batch order is the set order.
-        let sheet = plan
-            .names
-            .iter()
-            .position(|listed| listed == name)
-            .and_then(|index| {
-                Some((
-                    u32::try_from(index + 1).ok()?,
-                    u32::try_from(plan.names.len()).ok()?,
-                ))
-            });
+        let print_context = if let Some(buffer) = mv_buffer {
+            super::mv_context::attach(
+                print_context,
+                &mv_models,
+                name,
+                &serde_json::to_value(snapshot.layers())
+                    .map_err(|e| HostFailure::new(INPUTS_INVALID.code, e.to_string()))?,
+                buffer,
+            )
+            .map_err(failure_to_host)?
+        } else {
+            print_context
+        };
+        let sheet = sheet_positions.get(name).copied();
         Ok(TransformerReportInputs {
             transformer: name.to_string(),
             server_version,
@@ -930,7 +1019,11 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         );
     }
 
-    let publication_state = outcome.engine.publication_state().ok();
+    let publication_state = if receipt.local_print_recipe.is_some() {
+        Some(ds_command_kernel::report::PublicationState::LocalOnly)
+    } else {
+        outcome.engine.publication_state().ok()
+    };
     let sealed_publications =
         if let (Some(fence), Some(root)) = (publish_scope.as_ref(), publish_root.as_ref()) {
             let mut publications = Vec::with_capacity(outcome.runs.len());

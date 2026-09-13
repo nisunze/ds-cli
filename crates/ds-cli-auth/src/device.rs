@@ -640,6 +640,14 @@ impl DeviceSession {
     ) -> Result<ds_client_core::ProjectDataReceipt, ClientError> {
         fixed_device_call!(self, project_data, project, command)
     }
+    pub fn grid_models(
+        &mut self,
+        project: &str,
+        command: &ds_client_core::grid_models::Command,
+    ) -> Result<ds_client_core::grid_models::Receipt, ClientError> {
+        fixed_device_call!(self, grid_models, project, command)
+    }
+
     pub fn solar_project(
         &mut self,
         project: &str,

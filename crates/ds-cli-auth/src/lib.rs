@@ -4258,6 +4258,19 @@ pub fn printing(
     with_released_context_disposition(client.profile(), &selected, result)
 }
 
+pub fn grid_models(
+    lane: &str,
+    command: &ds_client_core::grid_models::Command,
+) -> Result<HeadlessProjectReport<ds_client_core::grid_models::Receipt>, Failure> {
+    headless_project_report(
+        lane,
+        |device, project| device.grid_models(project, command),
+        |client, project| client.grid_models(project, command, now()),
+    )
+}
+
+pub use ds_client_core::grid_models::Command as GridModelsCommand;
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -442,6 +442,28 @@ from the project's saved printing setups inside the same engine run; a Rwanda
 project is stamped with the installed villages asset
 (`--admin-bounds` names one explicitly).
 
+For local template review, repeat `--print-layout ./layout.json` for existing
+selected layout IDs. Each replacement keeps its paper identity; the kernel
+first verifies the original server receipt, then derives a print-only receipt.
+Every output run records `local_print_recipe` with the original sheets digest
+and exact replacement layout digests. Neither project recipes nor engineering
+rooms are changed. These files are proofs, not publishable project artifacts:
+`--print-layout` and `--publish` are incompatible, even with a release engine.
+This is the route for inspecting a new renderer before deployment.
+
+A selected `project_dsgrid_mv` context now reads the native project's complete
+MV catalog and verifies each exact current head through `dsgrid.project`'s
+existing authority. Model decoding, engineering projection and CRS conversion
+use the native model owners. Preparation holds bounded projected geometry for
+the batch; each sheet selects nearby features through the kernel and records
+model revision/digest provenance. It changes no model, workspace or version.
+Missing or unprojectable model data is named rather than silently dropped.
+
+Named title blocks can use `{paper}`, `{sheet}`, and `{sheets}`. Sheet positions
+are taken from the complete active project inventory in canonical name order,
+including when only one transformer or a selected subset is exported. Keep
+these bindings in the layout instead of literal “1 of 1” text.
+
 The batch runs independent transformers under `min(scope, processors,
 --concurrency|4)` resident engines; rooms are fetched one at a time. Each
 completed transformer leaves `<out-dir>/<transformer>/` with its artifacts and
@@ -485,3 +507,23 @@ are omitted as desktop-only. Each `report-run.json` records
 and a desktop given the same rooms stages byte-identical context. A media
 scope grant is not minted here, so a room carrying photos is refused by the
 engine with a typed blocker.
+
+### Multipage drawing collections
+
+Discover `report.bundle` and the reporter's `export_compounded_report` task. Its
+optional `pdf_collections` names an output PDF member and ordered existing PDF
+members to join. Pages retain their original map, dimensions, title block and
+project-wide sheet number. Keep A0 and A3 in separate collections. Source hashes
+are checked before the archive is published; a missing or invalid source refuses
+the collection rather than silently dropping a drawing.
+
+The governed `report.project.compounded` workflow adds one collection per named
+PDF layout to the overall archive and each requested grouping slice. Selected
+sector exports keep the complete project's original drawing numbers.
+
+The layout schema exposes measured sheet anchors, workbook schedule bindings,
+explicit unequal `table.panel_rows`, and flow-connected composition groups.
+Composition maximizes the full network's vertical fit. `min_font_scale` is 1 by
+default; 0.7 permits up to 30% smaller schedule type. Panel profiles and allowed
+font tiers are tested without dropping rows or fields; equal fits prefer larger
+type. Fixed titles, scales and furniture belong in the map’s `fit_around` list.
