@@ -251,7 +251,7 @@ pub static COMMAND: Command = Command {
     path: &["report", "project", "export"],
     contract: 1,
     summary: "Export all transformer reports and maps headlessly in parallel.",
-    purpose: "Export saved transformers and named print outputs in parallel with --concurrency. Defaults to all active transformers; subsets keep project-wide sheet numbers. Repeat --print-layout for local same-paper proofs with source/recipe digests; proofs cannot publish. Verified files stay local unless --publish seals them for Server sync, which is not cloud completion. Setups select held project context; --seed acquires missing context. Photos need a media grant and refuse. Details: docs/reference/report.md.",
+    purpose: "Export all active transformers with project-wide sheet numbers and --concurrency. Repeat --print-layout for same-paper local proofs with pinned source/recipe digests; proofs cannot publish. --publish queues verified outputs for Server sync, not cloud completion. Setups use held map context; --seed acquires missing context. Photos require a media grant. See docs/reference/report.md.",
     chapter: Chapter::Reports,
     effect: Effect::LocalFileWrite,
     authority: Authority::HeadlessProject,
