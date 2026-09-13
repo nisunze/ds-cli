@@ -46,6 +46,16 @@ categories change. Omitted alignment preserves the historical `right` anchor.
 Use `left` for a lower-left legend, remove its `flow`, and keep it out of
 `composition.movable` to retain the authored position.
 
+## Measured content flow
+
+`flow.after` names an earlier table or legend. `placement` defaults to
+`below_right`, preserving the existing vertical stack with a shared right edge.
+`below_left` stacks at its measured left edge. `right_top` places the next
+schedule beside its actual content width with a common top edge. `gap_mm: 0`
+permits contiguous panels/schedules. These placements follow content bounds as
+row and panel counts change; they never use unoccupied maximum frame width.
+Use left-aligned table/legend bindings with the latter two placements.
+
 ## Local custom area preparation
 
 The report command exposes `custom_area_plan` before host IO and `custom_area`

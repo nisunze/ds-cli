@@ -515,10 +515,37 @@ pub struct Element {
 #[serde(deny_unknown_fields)]
 pub struct ContentFlow {
     pub after: String,
+    /// Attach to the measured predecessor, not its unused frame space.
+    #[serde(default)]
+    pub placement: ContentPlacement,
     #[serde(default = "content_flow_gap")]
     pub gap_mm: f64,
 }
-/// The gap a content-sized frame keeps below the frame it flows after.
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ContentPlacement {
+    /// Historical flow: below the predecessor, sharing the frame's right edge.
+    #[default]
+    BelowRight,
+    /// Stack content below the predecessor with a common left edge.
+    BelowLeft,
+    /// Dock a schedule directly to the predecessor's right, sharing its top edge.
+    RightTop,
+}
+impl ContentFlow {
+    pub fn origin(&self, prior: [f64; 4], width: f64) -> [f64; 2] {
+        match self.placement {
+            ContentPlacement::BelowRight => [
+                prior[0] + prior[2] - width,
+                prior[1] + prior[3] + self.gap_mm,
+            ],
+            ContentPlacement::BelowLeft => [prior[0], prior[1] + prior[3] + self.gap_mm],
+            ContentPlacement::RightTop => [prior[0] + prior[2] + self.gap_mm, prior[1]],
+        }
+    }
+}
+/// Physical gap between measured content frames.
+
 fn content_flow_gap() -> f64 {
     5.
 }
@@ -2030,6 +2057,7 @@ mod tests {
         layout.elements.insert(legend, table);
         layout.elements[legend + 1].flow = Some(ContentFlow {
             after: "quantities".into(),
+            placement: ContentPlacement::default(),
             gap_mm: 5.,
         });
         validate(&layout).unwrap();
