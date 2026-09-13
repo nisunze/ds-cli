@@ -606,12 +606,7 @@ impl NativeSyncSession {
             // never accepts a release from this untrusted declaration, so one
             // report cannot steal another release's installation admission.
             SyncRoute::WorkPublish => {
-                let request = NativeSyncRequest::for_project(
-                    SyncGatewayOperation::WorkPublish,
-                    &self.project,
-                    body,
-                )
-                .map_err(client_error)?;
+                let request = NativeSyncRequest::work_publish(body).map_err(client_error)?;
                 self.execute(request)
             }
         }
