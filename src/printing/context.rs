@@ -72,6 +72,7 @@ fn style(
     label_pt: f64,
 ) -> PrintStyle {
     PrintStyle {
+        hatch: None,
         stroke: stroke.into(),
         width_mm,
         stroke_opacity,

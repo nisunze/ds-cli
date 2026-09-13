@@ -56,6 +56,10 @@ pub struct Layout {
     /// Optional measured-content placement; authored rectangles remain preferred positions.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub composition: Option<Composition>,
+    /// Derive print-only polygonal transformer service bounds from held network points.
+    /// The generated transformer_bounds layer retains the identity feature's properties.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transformer_bounds: Option<TransformerBounds>,
     /// Combined exports: render all held project features on one sheet instead of an atlas.
     #[serde(default)]
     pub project_overview: bool,
@@ -77,6 +81,16 @@ pub struct Layout {
     /// element's text. Keys are identifiers; values at most 2000 bytes.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub title_block: BTreeMap<String, String>,
+}
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct TransformerBounds {
+    /// Held network layer IDs whose coordinates define each convex service envelope.
+    pub source_layers: Vec<String>,
+    /// Transformer identity field shared by those layers, normally transfo.
+    pub identity_field: String,
+    /// Metric outward buffer; engineering geometry remains unchanged.
+    pub buffer_m: f64,
 }
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Default)]
 #[serde(deny_unknown_fields)]
@@ -570,6 +584,9 @@ pub struct Asset {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct PrintStyle {
+    /// Physical polygon hatching, optionally restricted by an exact property vocabulary.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hatch: Option<PrintHatch>,
     pub stroke: String,
     pub width_mm: f64,
     /// Opacity of strokes, casings and point outlines in physical output.
@@ -601,6 +618,44 @@ pub struct PrintStyle {
     #[serde(default)]
     pub widths: BTreeMap<String, f64>,
 }
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct PrintHatch {
+    pub color: String,
+    pub width_mm: f64,
+    pub spacing_mm: f64,
+    pub angle_deg: f64,
+    #[serde(default)]
+    pub match_field: String,
+    #[serde(default)]
+    pub match_values: Vec<String>,
+}
+impl PrintHatch {
+    pub fn validate(&self) -> Result<(), String> {
+        if !color(&self.color)
+            || !bounded(self.width_mm, 0.05, 2.)
+            || !bounded(self.spacing_mm, 0.5, 20.)
+            || self.width_mm >= self.spacing_mm
+            || !bounded(self.angle_deg, -180., 180.)
+            || self.match_field.len() > 120
+            || self.match_values.len() > 2000
+            || self
+                .match_values
+                .iter()
+                .any(|s| s.is_empty() || s.len() > 200)
+            || (self.match_field.is_empty() != self.match_values.is_empty())
+        {
+            return Err("invalid physical print hatch or property selector".into());
+        }
+        Ok(())
+    }
+    pub fn matches(&self, properties: &serde_json::Value) -> bool {
+        self.match_field.is_empty()
+            || properties[&self.match_field]
+                .as_str()
+                .is_some_and(|s| self.match_values.iter().any(|v| v == s))
+    }
+}
 fn radius() -> f64 {
     1.2
 }
@@ -610,6 +665,7 @@ fn is_opaque(value: &f64) -> bool {
 impl Default for PrintStyle {
     fn default() -> Self {
         Self {
+            hatch: None,
             stroke: ink(),
             width_mm: 0.35,
             stroke_opacity: 1.,
@@ -674,6 +730,18 @@ pub fn validate(layout: &Layout) -> Result<(), String> {
         .is_some_and(|step| !bounded(step, 1., 1_000_000.))
     {
         return Err("scale rounding increment must be 1..1000000".into());
+    }
+    if let Some(bounds) = &layout.transformer_bounds {
+        if bounds.source_layers.is_empty()
+            || bounds.source_layers.len() > 16
+            || bounds.source_layers.iter().any(|id| !identifier(id))
+            || bounds.source_layers.iter().collect::<BTreeSet<_>>().len()
+                != bounds.source_layers.len()
+            || !identifier(&bounds.identity_field)
+            || !bounded(bounds.buffer_m, 0., 500.)
+        {
+            return Err("transformer polygon bounds need 1..16 unique layer IDs, an identity field and a 0..500 metre buffer".into());
+        }
     }
     let mut ids = BTreeSet::new();
     let mut maps = 0;
@@ -873,6 +941,9 @@ pub fn validate(layout: &Layout) -> Result<(), String> {
         }
     }
     for (id, style) in &layout.styles {
+        if let Some(hatch) = &style.hatch {
+            hatch.validate()?;
+        }
         if !identifier(id)
             || !color(&style.stroke)
             || !color(&style.fill)
@@ -1065,6 +1136,7 @@ pub fn default_layout() -> Layout {
     };
     complete(Layout {
         composition: None,
+        transformer_bounds: None,
         project_overview: false,
         scale_rounding: None,
         layer_order: Vec::new(),
@@ -2782,6 +2854,35 @@ mod tests {
         validate(&layout).unwrap();
         change.label.as_mut().unwrap().size_pt = Some(0.);
         layout.style_overrides.insert("roads".into(), change);
+        assert!(validate(&layout).is_err());
+    }
+}
+
+#[cfg(test)]
+mod polygon_hatch_tests {
+    use super::*;
+    #[test]
+    fn phase_selector_and_physical_hatch_bounds_are_explicit() {
+        let mut hatch = PrintHatch {
+            color: "#996633".into(),
+            width_mm: 0.2,
+            spacing_mm: 2.,
+            angle_deg: 45.,
+            match_field: "phase".into(),
+            match_values: vec!["ii".into()],
+        };
+        assert!(hatch.validate().is_ok());
+        assert!(hatch.matches(&serde_json::json!({"phase":"ii"})));
+        assert!(!hatch.matches(&serde_json::json!({"phase":"i"})));
+        assert!(!hatch.matches(&serde_json::json!({})));
+        hatch.spacing_mm = 0.1;
+        assert!(hatch.validate().is_err());
+        let mut layout = default_layout();
+        layout.transformer_bounds = Some(TransformerBounds {
+            source_layers: vec!["tr".into(), "tr".into()],
+            identity_field: "transfo".into(),
+            buffer_m: 10.,
+        });
         assert!(validate(&layout).is_err());
     }
 }

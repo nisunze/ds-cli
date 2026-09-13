@@ -168,6 +168,7 @@ pub fn compute_artifact_sanitation_wasm(input: &[u8]) -> Result<String, wasm_bin
 pub fn reconciliation_command_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
     reconciliation::evaluate(input).map_err(|error| wasm_bindgen::JsValue::from_str(&error))
 }
+pub mod city_vectors;
 mod project_control;
 pub mod project_dataset_cache;
 #[cfg(feature = "wasm")]
