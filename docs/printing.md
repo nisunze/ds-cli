@@ -67,6 +67,27 @@ categories change. Omitted alignment preserves the historical `right` anchor.
 Use `left` for a lower-left legend, remove its `flow`, and keep it out of
 `composition.movable` to retain the authored position.
 
+## What a sheet layout optimises
+
+Sheet composition is an optimisation, not a set of placements. The objective is
+to **maximise the usable map area**, subject to hard constraints that are never
+traded against it:
+
+- every table row and field present and readable at the authored type size;
+- the 5 mm sheet margin;
+- aligned edges;
+- no overlap, no clipping.
+
+Panel count and table shape are therefore **decision variables, not authored
+constants**. A schedule may take more panels, or a different shape, when that
+returns map area — and a layout that fixes them by hand has removed the
+optimiser's only freedom. Type size and content are NOT decision variables:
+shrinking text or dropping a column buys area by breaking a constraint, which
+is not a solution.
+
+Read the rest of this document as the constraint set. "It fits" is not the
+standard; "it fits and nothing else would have given the map more room" is.
+
 ## Sheet margin
 
 Tables, schedules and legends sit against the sheet border with ONE small
