@@ -304,6 +304,11 @@ static PLS_ENTRIES: &[Entry] = &[
         render: ds_cli_pls::shading_variants::render,
     },
     Entry {
+        command: &ds_cli_pls::structure_substitute::COMMAND,
+        handler: ds_cli_pls::structure_substitute::run,
+        render: ds_cli_pls::structure_substitute::render,
+    },
+    Entry {
         command: &ds_cli_pls::terrain_reconcile::COMMAND,
         handler: ds_cli_pls::terrain_reconcile::run,
         render: ds_cli_pls::terrain_reconcile::render,
