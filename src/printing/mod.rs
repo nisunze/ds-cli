@@ -304,6 +304,10 @@ pub enum TablePresentation {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct LegendBinding {
+    /// Edge that anchors the measured legend inside its fixed frame.
+    /// Existing layouts retain their historical right anchor.
+    #[serde(default)]
+    pub align: TableAlignment,
     /// Physical indentation of category swatches and labels under their layer.
     #[serde(default = "legend_indent")]
     pub indent_mm: f64,

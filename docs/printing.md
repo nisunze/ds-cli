@@ -38,6 +38,14 @@ returns V2: standard paper is inferred from exact dimensions, other bounded
 dimensions become custom paper, and the legacy map frame becomes the clipped
 `primary_map` viewport. New output is never V1.
 
+## Fixed legend anchors
+
+`legend.align` chooses `left` or `right` within the authored legend frame.
+The renderer measures the legend content and holds that edge as rows and
+categories change. Omitted alignment preserves the historical `right` anchor.
+Use `left` for a lower-left legend, remove its `flow`, and keep it out of
+`composition.movable` to retain the authored position.
+
 ## Local custom area preparation
 
 The report command exposes `custom_area_plan` before host IO and `custom_area`

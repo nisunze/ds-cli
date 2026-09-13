@@ -69,6 +69,7 @@ pub fn new_element(kind: ElementKind, id: String, asset: &str) -> Element {
         // A legend carries its binding from the start, so an inspector reads
         // the values the document holds rather than guessing them.
         legend: (kind == ElementKind::Legend).then(|| LegendBinding {
+            align: Default::default(),
             indent_mm: super::legend_indent(),
             layers: Vec::new(),
             titles: Default::default(),
