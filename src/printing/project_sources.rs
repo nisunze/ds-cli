@@ -76,11 +76,41 @@ impl Sources {
     pub fn vectors(&self) -> Vec<Value> {
         self.layers.iter().map(|(id, features)| json!({"id":id,"label":id,"geojson":{"type":"FeatureCollection","features":features}})).collect()
     }
+    /// A district overview fits its complete authority polygon as well as
+    /// the project network; national routes outside that scope do not widen it.
+    pub fn overview_extent(&self) -> Result<[f64; 4], String> {
+        let layers: Value = self
+            .layers()
+            .as_object()
+            .ok_or("overview layers missing")?
+            .iter()
+            .filter(|(id, _)| {
+                matches!(
+                    id.as_str(),
+                    "tr" | "lv_lines" | "dsgrid_mv_lines" | "district_boundaries"
+                )
+            })
+            .map(|(id, value)| (id.clone(), value.clone()))
+            .collect();
+        crate::project_design_extent::design_extent("mv_data", &layers, 0.00001)?
+            .bounds
+            .ok_or_else(|| "overview has no geographic geometry".into())
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn overview_includes_complete_district_but_not_unrelated_national_line_tails() {
+        let mut sources = Sources::default();
+        sources.collections(&json!({
+            "tr":{"features":[{"type":"Feature","properties":{},"geometry":{"type":"Point","coordinates":[30.,-2.]}}]},
+            "district_boundaries":{"features":[{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[29.,-3.],[31.,-3.],[31.,-1.],[29.,-1.],[29.,-3.]]]}}]},
+            "mv_line":{"features":[{"type":"Feature","properties":{},"geometry":{"type":"LineString","coordinates":[[30.,-2.],[40.,10.]]}}]}
+        })).unwrap();
+        assert_eq!(sources.overview_extent().unwrap(), [29., -3., 31., -1.]);
+    }
     #[test]
     fn overview_preserves_geometry_and_namespaces_room_ids_without_detail_clutter() {
         let feature = json!({"id":1,"type":"Feature","properties":{"name":"T1"},"geometry":{"type":"Point","coordinates":[30.,-2.]}});
