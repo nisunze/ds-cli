@@ -522,6 +522,12 @@ impl DeviceSession {
     pub fn context(&self) -> DeviceAuthContext {
         self.credential.auth_context()
     }
+    pub fn sync_gateway(
+        &mut self,
+        request: &ds_client_core::NativeSyncRequest,
+    ) -> Result<Value, ClientError> {
+        fixed_device_call!(self, sync_gateway, request)
+    }
     pub fn list_projects(&mut self) -> Result<ProjectDirectory, ClientError> {
         fixed_device_call!(self, list_projects)
     }

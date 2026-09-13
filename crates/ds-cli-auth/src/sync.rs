@@ -1,6 +1,6 @@
 //! Native Server's closed Sync Center authority session.
 //!
-//! The session owns the restored Firebase client, persistent installation UUID
+//! The session owns the restored native provider, persistent installation UUID
 //! and signed install lease. Callers receive only `Gateway::post` over the
 //! three Sync Center routes; they never receive a bearer or HTTP handle.
 
@@ -123,8 +123,26 @@ pub enum SolarPublicationError {
     Retryable(String),
 }
 
+enum SyncProvider {
+    Device(Box<crate::device::DeviceSession>),
+    Firebase(Box<Client<NativeTransport, NativeRefreshStore>>),
+}
+
+impl SyncProvider {
+    fn sync_gateway(
+        &mut self,
+        request: &NativeSyncRequest,
+        now: u64,
+    ) -> Result<Value, ClientError> {
+        match self {
+            Self::Device(device) => device.sync_gateway(request),
+            Self::Firebase(client) => client.sync_gateway(request, now),
+        }
+    }
+}
+
 struct SessionState {
-    client: Client<NativeTransport, NativeRefreshStore>,
+    client: SyncProvider,
     addition: Option<NativeEngineAddition>,
 }
 
@@ -160,20 +178,30 @@ impl NativeSyncSession {
         let authority_dir =
             edge_authority_dir(lane.token()).map_err(|error| error.message().to_owned())?;
         let install_id = load_or_create_install_id(&authority_dir.join("install-id"))?;
-        let profile = crate::profile::load(lane).map_err(|error| error.message().to_owned())?;
-        let mut client = Client::new(
-            profile,
-            NativeTransport,
-            NativeRefreshStore::open().map_err(|error| error.message().to_owned())?,
-        );
-        let user = client
-            .restore(now())
-            .map_err(client_error)?
-            .ok_or("native Sync Center session is signed out")?;
-        if user.uid() != principal.uid() {
-            return Err("native Sync Center principal changed".into());
-        }
-        Ok(Self {
+        let client = if let Some(device) =
+            crate::device::restore_session(lane).map_err(|error| error.message().to_owned())?
+        {
+            if device.context().uid() != principal.uid() {
+                return Err("native Sync Center principal changed".into());
+            }
+            SyncProvider::Device(Box::new(device))
+        } else {
+            let profile = crate::profile::load(lane).map_err(|error| error.message().to_owned())?;
+            let mut client = Client::new(
+                profile,
+                NativeTransport,
+                NativeRefreshStore::open().map_err(|error| error.message().to_owned())?,
+            );
+            let user = client
+                .restore(now())
+                .map_err(client_error)?
+                .ok_or("native Sync Center session is signed out")?;
+            if user.uid() != principal.uid() {
+                return Err("native Sync Center principal changed".into());
+            }
+            SyncProvider::Firebase(Box::new(client))
+        };
+        let session = Self {
             lane,
             principal,
             project: selected_project,
@@ -187,7 +215,9 @@ impl NativeSyncSession {
                 client,
                 addition: None,
             }),
-        })
+        };
+        session.assert_runtime_fence()?;
+        Ok(session)
     }
 
     pub fn install_id(&self) -> &str {
@@ -334,7 +364,11 @@ impl NativeSyncSession {
     }
 
     fn heartbeat_locked(&self, state: &mut SessionState) -> Result<(), String> {
-        self.assert_runtime_fence()?;
+        self.refresh_provider(state).map_err(|error| match error {
+            SolarPublicationError::Blocked(message)
+            | SolarPublicationError::StoredStale(message)
+            | SolarPublicationError::Retryable(message) => message,
+        })?;
         let request = self
             .heartbeat_request(state.addition.as_ref())
             .map_err(client_error)?;
@@ -375,8 +409,7 @@ impl NativeSyncSession {
         &self,
         state: &mut SessionState,
     ) -> Result<(), SolarPublicationError> {
-        self.assert_runtime_fence()
-            .map_err(SolarPublicationError::Blocked)?;
+        self.refresh_provider(state)?;
         let addition = state.addition.as_ref().ok_or_else(|| {
             SolarPublicationError::Blocked(
                 "native Sync Center installation has no registered engine release".into(),
@@ -424,6 +457,34 @@ impl NativeSyncSession {
             ));
         }
         Ok(())
+    }
+
+    fn refresh_provider(&self, state: &mut SessionState) -> Result<(), SolarPublicationError> {
+        self.assert_runtime_fence()
+            .map_err(SolarPublicationError::Blocked)?;
+        if let SyncProvider::Device(device) = &mut state.client {
+            let restored = crate::device::restore_session(self.lane)
+                .map_err(classify_device_refresh_error)?
+                .ok_or_else(|| {
+                    SolarPublicationError::Blocked(
+                        "native Sync Center device credential was removed".into(),
+                    )
+                })?;
+            let before = device.context();
+            let after = restored.context();
+            if before.uid() != after.uid()
+                || before.device_id() != after.device_id()
+                || before.fingerprint() != after.fingerprint()
+                || before.credential_audience_sha256() != after.credential_audience_sha256()
+            {
+                return Err(SolarPublicationError::Blocked(
+                    "native Sync Center credential instance changed".into(),
+                ));
+            }
+            **device = restored;
+        }
+        self.assert_runtime_fence()
+            .map_err(SolarPublicationError::Blocked)
     }
 
     fn assert_runtime_fence(&self) -> Result<(), String> {
@@ -477,8 +538,8 @@ impl NativeSyncSession {
             .state
             .lock()
             .map_err(|_| "native Sync Center session is unavailable")?;
-        // Renew/verify before every operation. This refreshes Firebase first
-        // and fails closed for revocation, principal drift, lane drift, or a
+        // Renew/verify the selected native provider before every operation.
+        // Fail closed for revocation, principal drift, lane drift, or a
         // blocked install instead of relying on an old local lease.
         self.heartbeat_locked(&mut state)?;
         state
@@ -595,6 +656,14 @@ fn now() -> u64 {
 }
 fn client_error(error: ds_client_core::ClientError) -> String {
     error.to_string()
+}
+
+fn classify_device_refresh_error(error: ds_cli_contract::Failure) -> SolarPublicationError {
+    if error.code() == "device_auth_transient" {
+        SolarPublicationError::Retryable(error.message().to_owned())
+    } else {
+        SolarPublicationError::Blocked(error.message().to_owned())
+    }
 }
 
 fn classify_solar_error(error: ClientError) -> SolarPublicationError {
@@ -755,6 +824,24 @@ mod tests {
         ] {
             assert!(reporter_addition_for_work_open(&invalid).is_err());
         }
+    }
+
+    #[test]
+    fn device_refresh_outage_retries_but_removed_authority_blocks() {
+        assert!(matches!(
+            classify_device_refresh_error(ds_cli_contract::Failure::unavailable(
+                "device_auth_transient",
+                "offline"
+            )),
+            SolarPublicationError::Retryable(_)
+        ));
+        assert!(matches!(
+            classify_device_refresh_error(ds_cli_contract::Failure::conflict(
+                "auth_context_mismatch",
+                "changed"
+            )),
+            SolarPublicationError::Blocked(_)
+        ));
     }
 
     fn identity(uid: &str) -> ProviderIdentity {
