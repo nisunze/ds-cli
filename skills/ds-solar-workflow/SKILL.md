@@ -9,9 +9,9 @@ metadata:
 
 Use the `ds` skill for installation discovery and live command contracts, and
 use `ds-project-context` when the active project is not already established.
-The paired application owns project identity, city context, prepared inputs,
-native run storage, and publication state. Do not recreate those from browser
-storage, local caches, APIs, source files, or remembered command syntax.
+The selected native or explicitly paired project owns city authority. Use the
+headless seed, capture, preparation and project lifecycle for server work.
+Never reconstruct project inputs from browser storage, caches, APIs or fixtures.
 
 For a governed aggregate with a portfolio id and membership revision, stop and
 use `ds-solar-portfolio`. Repeated city contexts form an explicit city batch;
@@ -26,29 +26,27 @@ preparing a city that does not exist. Seeding copies authored city inputs from
 a governed source into the project; preparation caches inputs for cities the
 project already has. They are different requests.
 
-Seeding is propose-then-confirm and the two halves are not interchangeable.
-Preview first, always: it writes nothing, and its plan is what the operator
-authorizes. Show that plan before asking for a decision, and show it whole —
-the cities that would be created, the ones already present, the ones that
-differ at the destination, the ones missing from the source, and every
-warning. A destination that differs is never overwritten; report it and let
-the operator decide.
+Preview first and inspect every city action, source/destination digest, input
+document and excluded media reference. Echo the returned plan digest to apply.
+By default changed cities remain untouched. When the user explicitly requests
+replacement, use the live overwrite option on both preview and apply: it binds
+replacement and removal of obsolete input documents to the preview. Retain the
+plan as the reviewable record; existing authorization need not be asked again.
+A changed digest requires a fresh preview and inspection, never blind retry.
 
-Confirm by echoing the exact digest that plan returned, together with the same
-selection. Never derive, recompute, reconstruct or guess that digest, and
-never confirm a plan nobody was shown. If the digest is refused as stale, the
-source or destination moved: preview again, show the new plan, and ask again.
-Do not retry with a fresh digest as though the refusal were a transient error.
-
-Report the applied and skipped cities and the documents written exactly as
-returned. An idempotent second apply that writes nothing is a success, not a
-failure. Network assets are reported and never seeded, so a seeded city still
-needs its network maps uploaded through the normal path — say so rather than
-implying the city is complete.
+Report applied/skipped cities and committed document counts exactly. Resolve
+classified sizing tables and city maps through exact project tag assets, and
+transformer maps through transformer assets. Discover the Solar network form
+commands: resolution seeds editable values, even when every geographic source
+is missing. Save manual overrides through that form. Solar owns copies of the classified
+inputs and maps; refresh them explicitly and preserve operator edits. Discover
+the map-copy command for manually composed images. It retains verified local bytes for offline runs; draft packages include these maps with relative image links. Verify copied byte hashes
+and publish changed inputs through normal sync before claiming them online. Maps are optional for calculation. Read the
+live form contract for customer-category columns and engineering inputs.
 
 ## Freeze the city request
 
-Discover the relevant Solar descriptors and retain the exact context ids in
+Discover the existing cities and retain the exact context ids in
 the operator's order. Refuse duplicate, missing, or substituted cities. Read
 current readiness rather than assuming a previous run left usable inputs.
 
@@ -101,8 +99,10 @@ the selected headless project's authority; never substitute a caller-supplied
 project or root. Preparation may use only an already verified local reference
 cache named through the live command. It must not be given a provider URL,
 weather token, API key, browser cache, fixture input, or invented owner flags.
-If the exact reference bundle is absent, report that governed cache acquisition
-is still required; do not bypass the refusal with a direct engine call.
+For a fresh server, seed the captured cities into a local Solar workspace and
+discover reference acquisition. It derives the site/equipment request, uses the
+signed-in native project, and verifies the cache before preparation. Never pass
+provider credentials or substitute fixture bundles.
 
 Keep the captured intake private and pass the resulting prepared directory
 unchanged to the discovered offline artifact runner. Verify engine identity and
@@ -117,8 +117,11 @@ skill-local program.
 ## Offline project work
 
 For headless local authoring and draft delivery, discover `solar.project.init`
-and `solar.project.city.write` (or `solar.project.seed` for complete intakes),
-then `solar.project.run`. These use a private local workspace and existing
+and `solar.project.city.create` for an editable city, or `solar.project.seed`
+for complete intakes. Creation accepts absent geography and incomplete inputs;
+repeating it preserves existing edits. Use the city read/write and network seed
+form commands to compose the inputs, then `solar.project.run`.
+These use a private local workspace and existing
 verified reference cache; no Desktop or cloud access is required. Inspect
 `solar.project.result` and `solar.project.outbox` before discussing publication.
 Discover `solar.project.sync` for native authenticated background publication;

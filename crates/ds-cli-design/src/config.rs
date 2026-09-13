@@ -118,7 +118,7 @@ const fn command(
         authority: Authority::HeadlessProject,
         effect,
         execution: Execution::Sync,
-        purpose: "Use the selected project's fresh Settings through the native user client. The shared kernel decides sheet shape, parameter coercion and rule-set edits. Every write verifies fresh readback. No Desktop or project override.",
+        purpose: "Inspect and correct project configuration seeds, including pole material tables, through the signed-in native client without a paired Desktop. Discover exact sheet keys with design config sheets; read --out retains complete JSON, diff reviews edits, and save validates the edited sheet and verifies fresh readback. Seed changes and transformer reprocessing are separate operations. The shared kernel owns sheet shape and parameter coercion.",
         args,
         output: "Project and bounded kernel projection, or saved state verified by fresh readback. more reports omitted items; read --out retains a complete sheet.",
         examples: &[],
@@ -130,14 +130,14 @@ const fn command(
 pub static SHEETS: Command = command(
     "design.config.sheets",
     &["design", "config", "sheets"],
-    "List the project's Settings sheets and controls.",
+    "Find project configuration and pole material seed sheets.",
     Effect::LocalAuthState,
     &[LANE, LIMIT, OFFSET],
 );
 pub static READ: Command = command(
     "design.config.read",
     &["design", "config", "read"],
-    "Read one Settings sheet, with optional complete JSON output.",
+    "Read project configuration or material seeds as complete JSON.",
     Effect::LocalFileWrite,
     &[LANE, SHEET, RULE_SET, LIMIT, OFFSET, OUT],
 );
@@ -158,7 +158,7 @@ pub static SET: Command = command(
 pub static SAVE: Command = command(
     "design.config.save",
     &["design", "config", "save"],
-    "Save one validated Settings sheet and verify readback.",
+    "Save corrected material seeds or configuration; verify readback.",
     Effect::GlobalWrite,
     &[LANE, SHEET, FILE],
 );

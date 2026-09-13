@@ -17,6 +17,8 @@ publish.workspace = true
 weak-network-harness = []
 
 [dependencies]
+ds-solar-io = { path = "../../../ds-solar/crates/ds-solar-io", features = ["http-provider"] }
+ds-solar-contracts = { path = "../../../ds-solar/crates/ds-solar-contracts", default-features = false }
 base64 = { workspace = true }
 ds-cli-contract = { workspace = true }
 ds-cli-desktop = { workspace = true }

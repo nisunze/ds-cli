@@ -24,12 +24,11 @@ server supplies both `metadata.version` and `metadata.content_digest`, then
 asks ds-network to encode the returned layers as one validated request at an
 absent `--out` path.
 
-The context projection does not contain the project's process-settings model
-or network-config sheets. The request therefore carries ds-network's explicit
-owner defaults and an empty `config_dfs`. Its receipt says
-`process_settings=ds-network-owner-defaults` and
-`project_config=not-included`; this is a truthful baseline handoff, not the
-configured Desktop preset. There is no `--project`, Desktop descriptor,
+Use `--project-config` to hydrate current network-config sheets under the same
+native identity and project as the transformer. Without that flag `config_dfs`
+is empty. Both modes retain explicit owner-default process settings; resolve
+the intended process preset before running. The receipt names configuration
+inclusion and its SHA-256. There is no `--project`, Desktop descriptor,
 arbitrary request field, browser store, or processing-lane argument.
 
 ```bash
@@ -74,6 +73,15 @@ an absent `--out` path; it is never truncated or overwritten. Terminal output
 is only a bounded count/digest receipt. This command neither reads nor updates
 Desktop, map, IndexedDB, project, or saved transformer state. Importing or
 saving the result is a separate governed operation.
+
+`ds design lv project-save` completes that handoff through the normal project
+save authority. It accepts the successful export/process JSON receipts and
+their exact configured input/result files, validates the selected job through
+ds-network, checks fresh source and configuration fences, and saves with server
+version comparison. A fresh read verifies each published digest and version.
+Keep the operation ID and exact files for retries; re-export and reprocess when
+the source or configuration changes. Reports are a subsequent
+`report.project.export` operation, not a side effect of network processing.
 
 ## Headless feature selection
 

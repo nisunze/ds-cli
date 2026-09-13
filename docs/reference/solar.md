@@ -371,11 +371,11 @@ an absent `--source` as its governed catalog and an absent `--city` list as
 every live source city, so an unset optional is omitted rather than sent as an
 empty value.
 
-Network assets are reported and never seeded: a finalized media reference is
-pinned to its own city's storage prefix and receipt, so a copied one would fail
-verification at the seeded city's first calculation. The plan carries
-`network_assets_are_not_seeded`, and the seeded city needs its network maps
-uploaded through the normal upload/finalize path.
+Legacy city-scoped media references are excluded from city cloning because
+those receipts belong to their original city. The plan reports
+`network_assets_are_not_seeded`. Resolve the destination city's shared maps
+through its tag/assets instead of copying media storage. Missing maps are
+optional: the destination remains manually designable.
 
 ds-brain's own refusal codes survive the trip under the same names in
 snake_case, with `detail.server_code` carrying the server's spelling verbatim:
@@ -512,3 +512,34 @@ A reviewed city conflict can be rebased with `project sync rebase --sequence N
 Cloud publication needs the server's `project_commit` route and admitted Solar
 release build. It never gates local drafts. Existing paired commands and
 governed portfolio membership are separate from this explicit local workspace.
+
+### Headless governed replacement seeds
+
+`solar.seed.preview` and `solar.seed.apply` default to the native selected
+project in the requested lane. They expose the same governed seed service as
+the application. `--overwrite` must be supplied to both calls to replace
+changed city inputs. The plan enumerates `replace` rows and removed obsolete
+input documents, and binds the mode to its digest. Each replacement rechecks
+the destination inside its transaction; a concurrent edit refuses. Calculated
+results and finalized reports are outside the seed's input collections.
+
+An explicit Desktop descriptor preserves the existing paired path; replacement
+uses the native path. Seeding does not copy source city's media grants.
+
+Discover existing selected-project city ids with `ds solar cities`; use those exact ids for capture and preparation.
+
+Use `solar.reference.acquire` for a fresh headless server after capturing and seeding the local workspace. The owner derives the full PV request; the selected native project supplies authenticated transport. A successful receipt verifies cache readback before any calculation.
+
+## Shared network forms
+
+Solar consumes the already-classified project table and maps through Assets.
+City sources resolve by exact tag definition/value; transformer maps resolve by
+transformer identity. Discover `solar.network.resolve` and `solar.network.save`
+for the live form contract. Missing sources seed manual entry, never a geographic
+refusal. Only source references and operator overrides are saved and synced.
+
+The owning [shared-network contract](../../../ds-solar/docs/contracts/shared-network-assets.md)
+describes inheritance, source refresh, legacy adoption and calculation storage.
+A completed local draft is distinct from its pending cloud publication.
+
+`solar project sync --run-id <closed-run>` publishes that run and pending inputs while retaining other queued draft runs. This is useful after a development run is replaced by a released engine; it never acknowledges or deletes the earlier run. Do not combine it with `--inputs-only` or `--background`.

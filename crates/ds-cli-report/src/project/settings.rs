@@ -23,8 +23,8 @@ use ds_cli_contract::{Context, Inputs};
 #[cfg(test)]
 use ds_command_kernel::report_formats::Placement;
 use ds_command_kernel::report_formats::{
-    DesignOutputSelection, ReadinessMode, apply_output_selection, named_layouts, named_setup_id,
-    normalize, output_setting_index, stored_output_selection, string_list,
+    DesignOutputSelection, ReadinessMode, apply_output_selection, named_layouts,
+    named_print_output, normalize, output_setting_index, stored_output_selection, string_list,
 };
 use serde_json::{Value, json};
 
@@ -305,7 +305,7 @@ fn sheets_with_printing_catalogue(
 
 /// The printing setups the stored output selection names, read with the
 /// kernel's own readers: the export row under any of its aliases, the
-/// versioned document or the legacy token list, and the `pdf__<id>` tokens.
+/// versioned document or the legacy token list, and named PDF/PNG/JPEG tokens.
 fn stored_setup_ids(sheets: &Value) -> Vec<String> {
     let Some(rows) = sheets["project_settings"].as_array() else {
         return Vec::new();
@@ -319,7 +319,9 @@ fn stored_setup_ids(sheets: &Value) -> Vec<String> {
         .unwrap_or_else(|_| string_list(value));
     normalize(&tokens)
         .iter()
-        .filter_map(|token| named_setup_id(token).map(str::to_owned))
+        .filter_map(|token| named_print_output(token).map(|(_, id)| id.to_owned()))
+        .collect::<std::collections::BTreeSet<_>>()
+        .into_iter()
         .collect()
 }
 
@@ -539,11 +541,11 @@ mod tests {
     /// shape, and a sheet the configuration does serve is never replaced.
     #[test]
     fn served_sheets_are_completed_with_the_named_printing_setups() {
-        let served = json!({"project_settings":[{"parameter":"design_export_format","value":["pdf__project_a3","xlsx"]}]});
+        let served = json!({"project_settings":[{"parameter":"design_export_format","value":["png__project_a3","jpeg__project_a3","pdf__project_a3","xlsx"]}]});
         assert_eq!(stored_setup_ids(&served), vec!["project_a3".to_owned()]);
         let versioned = json!({"project_settings":[{"parameter":"tr_export_formats","value":{
             "schema":"ds.design-output-selection/v1",
-            "prints":[{"layout_id":"project_a0","enabled":true,"formats":["pdf"]},
+            "prints":[{"layout_id":"project_a0","enabled":true,"formats":["png","jpeg"]},
                       {"layout_id":"project_a3","enabled":false,"formats":["pdf"]}],
             "geospatial":["kmz"],"tabular":[]}}]});
         assert_eq!(stored_setup_ids(&versioned), vec!["project_a0".to_owned()]);

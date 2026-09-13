@@ -21,7 +21,7 @@ pub static COMMAND: Command = Command {
     path: &["solar", "project", "sync"],
     contract: 1,
     summary: "Publish queued Solar cities and drafts without Desktop.",
-    purpose: "Restore the native user in the selected lane and bind the workspace to that principal, audience and selected project. Publish the oldest city revision with a cloud revision fence, then verified run artifacts through the existing compute artifact service. Failures preserve local drafts and pending work. --background starts the same fixed worker; --watch keeps retrying transient failures. Only the Solar owner reads the workspace database.",
+    purpose: "Restore the native user in the selected lane and bind the workspace to that principal, audience and selected project. Publish the oldest city revision with a cloud revision fence, then verified run artifacts through the existing compute artifact service. Failures preserve local drafts and pending work. --background starts the same fixed worker; --watch keeps retrying transient failures. Use --inputs-only to publish editable inputs and copied maps while leaving draft publication intents untouched (for example a development run awaiting a release build). Only the Solar owner reads the workspace database.",
     chapter: Chapter::Solar,
     effect: Effect::GlobalWrite,
     authority: Authority::HeadlessProject,
@@ -29,6 +29,15 @@ pub static COMMAND: Command = Command {
     args: &[
         Arg::value("workspace", "<dir>", "Private local Solar workspace.").required(),
         Arg::value("lane", "<lane>", "stable or canary; default stable."),
+        Arg::value(
+            "run-id",
+            "<id>",
+            "Publish one closed run and pending inputs, retaining other runs. Foreground only.",
+        ),
+        Arg::switch(
+            "inputs-only",
+            "Publish city inputs and maps only; retain queued report runs. Foreground only.",
+        ),
         Arg::switch(
             "background",
             "Start a detached worker and return its process id.",
@@ -83,6 +92,14 @@ pub fn run(i: &Inputs, _: &Context) -> Result<Value, Failure> {
         ));
     }
     invoke(json!({"operation":"status","workspace":workspace}))?;
+    if (i.switch("background") && (i.switch("inputs-only") || i.value("run-id").is_some()))
+        || (i.switch("inputs-only") && i.value("run-id").is_some())
+    {
+        return Err(Failure::invalid(
+            "solar_project_worker_input",
+            "Use inputs-only or run-id in the foreground, separately.",
+        ));
+    }
     if i.switch("background") {
         return Ok(
             json!({"worker_pid":ds_cli_exec::start_solar_project_sync(&workspace,lane)?,"workspace":workspace,"publication":"background"}),
@@ -112,14 +129,16 @@ pub fn run(i: &Inputs, _: &Context) -> Result<Value, Failure> {
     let mut published = 0;
     let mut delay = 2;
     loop {
-        let outcome = sync_one(&workspace, lane);
+        let outcome = sync_one(&workspace, lane, i.switch("inputs-only"), i.value("run-id"));
         match outcome {
             Ok(true) => {
                 published += 1;
                 delay = 2;
             }
             Ok(false) if !i.switch("watch") => {
-                return Ok(json!({"published_rows":published,"pending":false}));
+                return Ok(
+                    json!({"published_rows":published,"pending":false,"scope":if i.switch("inputs-only") {"inputs"} else if i.value("run-id").is_some() {"run"} else {"all"},"run_id":i.value("run-id")}),
+                );
             }
             Ok(false) => {
                 delay = 5;
@@ -146,8 +165,15 @@ pub fn run(i: &Inputs, _: &Context) -> Result<Value, Failure> {
         }
     }
 }
-fn sync_one(workspace: &Path, lane: &str) -> Result<bool, Failure> {
-    let next = invoke(json!({"operation":"sync_next","workspace":workspace}))?;
+fn sync_one(
+    workspace: &Path,
+    lane: &str,
+    inputs_only: bool,
+    run_id: Option<&str>,
+) -> Result<bool, Failure> {
+    let next = invoke(
+        json!({"operation":"sync_next","workspace":workspace,"inputs_only":inputs_only,"run_id":run_id}),
+    )?;
     if next["pending"] == false {
         return Ok(false);
     }
@@ -220,13 +246,13 @@ fn sync_one(workspace: &Path, lane: &str) -> Result<bool, Failure> {
             json!({"published":true,"batch_digest":next["digest"],"cities":receipts})
         };
         invoke(
-            json!({"operation":"sync_ack","workspace":workspace,"sequence":next["sequence"],"digest":next["digest"],"receipt":receipt}),
+            json!({"operation":"sync_ack","workspace":workspace,"inputs_only":inputs_only,"run_id":run_id,"sequence":next["sequence"],"digest":next["digest"],"receipt":receipt}),
         )?;
         Ok(true)
     })();
     if let Err(error) = &outcome {
         invoke(
-            json!({"operation":"sync_failed","workspace":workspace,"sequence":next["sequence"],"digest":next["digest"],"code":error.code()}),
+            json!({"operation":"sync_failed","workspace":workspace,"inputs_only":inputs_only,"run_id":run_id,"sequence":next["sequence"],"digest":next["digest"],"code":error.code()}),
         )?;
     }
     outcome

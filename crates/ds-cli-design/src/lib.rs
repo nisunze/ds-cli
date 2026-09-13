@@ -75,6 +75,7 @@ pub mod grouping;
 pub mod known_columns;
 pub mod lv;
 pub mod materials;
+pub mod native_tags;
 pub mod preview;
 pub mod process_settings;
 pub mod project;
@@ -103,6 +104,10 @@ pub static DOMAIN: Domain = Domain {
     id: "design",
     summary: "Headless reads, offline LV compute, and governed collaboration.",
     commands: &[
+        &native_tags::DEFINITIONS,
+        &native_tags::PROJECTION,
+        &native_tags::PREVIEW,
+        &native_tags::APPLY,
         &config::SHEETS,
         &config::READ,
         &config::DIFF,
@@ -164,6 +169,7 @@ pub static DOMAIN: Domain = Domain {
         &comment::resolve::COMMAND,
         &comment::promote::COMMAND,
         &lv::project_export::COMMAND,
+        &lv::project_save::COMMAND,
         &lv::process::COMMAND,
         &process_settings::COMMAND,
         &collisions::COMMAND,

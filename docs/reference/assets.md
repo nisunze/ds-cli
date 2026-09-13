@@ -30,12 +30,16 @@ The bytes are somewhere else again — project storage, behind a fresh
 short-lived signed read minted per access after an authority check. Nothing
 here hands out a durable link to anything above `open`.
 
-That is why every command is one named semantic operation the **paired
-application** performs under the session it already holds, and why there is no
-`--project` flag anywhere in this domain. The active project is the one the
-application has open; a project id passed as an argument would be a claim `ds`
-has no standing to make. `docs/reference/desktop.status.md` has the pairing
-argument in full.
+Commands declare their host through live discovery. Extracted operations use
+the native signed-in user's selected project; remaining operations use the
+paired application's project. Neither accepts a project ID as authority.
+
+City maps are members of the general **tag-group-map** representation class.
+The map index groups existing producer asset identities by exact tag definition
+and value. An asset reused by several groups still has one byte object. The
+index preserves catalogue pagination and never treats queued local printouts as
+published assets. Unfiled shared maps appear under `Prints/tag groups` in the
+system folder projection; explicitly chosen user folders are preserved.
 
 ## The shape of a session
 
@@ -202,3 +206,13 @@ are looking at an existing inventory through a different window.
 transposed day and month is the commonest filter mistake there is, and
 `2026-01-09` for the ninth of September is a perfectly valid date that quietly
 lists the wrong eight months.
+
+## Shared reporter outputs
+
+`assets.reference` registers catalogue metadata for an existing verified
+reporter output without uploading or copying its bytes. `assets.resolve` reads
+that reference through an exact tag or transformer link. City maps and sizing
+tables use city tags. Missing or ambiguous results permit manual Solar entry.
+Read the live command descriptors for authority and inputs, and the owning
+[shared-network contract](../../../ds-solar/docs/contracts/shared-network-assets.md)
+for the producer/consumer boundary.

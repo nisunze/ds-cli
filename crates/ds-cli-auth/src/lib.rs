@@ -2228,12 +2228,19 @@ pub fn settings_configuration(
     lane: &str,
     change: ds_client_core::ProjectConfigurationChange,
 ) -> Result<ds_client_core::FeederConfiguration, Failure> {
+    settings_configuration_receipt(lane, change).map(HeadlessProjectReport::into_result)
+}
+
+/// Retain identity and project fences when configuration joins another snapshot.
+pub fn settings_configuration_receipt(
+    lane: &str,
+    change: ds_client_core::ProjectConfigurationChange,
+) -> Result<HeadlessProjectReport<ds_client_core::FeederConfiguration>, Failure> {
     headless_project_report(
         lane,
         |device, project| device.feeder_configuration(project, Some(&change)),
         |client, project| client.feeder_configuration(project, Some(&change), now()),
     )
-    .map(|receipt| receipt.result)
 }
 
 pub fn ensure_meter_type(
@@ -4258,6 +4265,7 @@ pub fn printing(
     with_released_context_disposition(client.profile(), &selected, result)
 }
 
+/// Resolve models only inside the restored user's selected project.
 pub fn report_artifact(
     lane: &str,
     command: &ds_client_core::report_artifact::Command,
@@ -4278,9 +4286,46 @@ pub fn grid_models(
         |client, project| client.grid_models(project, command, now()),
     )
 }
-
 pub use ds_client_core::grid_models::Command as GridModelsCommand;
 pub use ds_client_core::report_artifact::Command as ReportArtifactCommand;
+
+pub use ds_client_core::{
+    TransformerSaveBatch, TransformerSaveItem, TransformerSaveReceipt, TransformerSaved,
+};
+pub fn save_transformers(
+    lane: &str,
+    batch: &TransformerSaveBatch,
+) -> Result<HeadlessProjectReport<TransformerSaveReceipt>, Failure> {
+    headless_project_report(
+        lane,
+        |device, project| device.save_transformers(project, batch),
+        |client, project| client.save_transformers(project, batch, now()),
+    )
+}
+
+pub fn shared_assets(
+    lane: &str,
+    command: &ds_client_core::shared_assets::Command,
+) -> Result<HeadlessProjectReport<Value>, Failure> {
+    headless_project_report(
+        lane,
+        |device, project| device.shared_assets(project, command),
+        |client, project| client.shared_assets(project, command, now()),
+    )
+}
+pub fn design_tags(
+    lane: &str,
+    command: &ds_client_core::design_tags::Command,
+) -> Result<HeadlessProjectReport<Value>, Failure> {
+    headless_project_report(
+        lane,
+        |device, project| device.design_tags(project, command),
+        |client, project| client.design_tags(project, command, now()),
+    )
+}
+pub use ds_client_core::design_tags::Command as DesignTagsCommand;
+
+pub use ds_client_core::shared_assets::Command as SharedAssetsCommand;
 
 #[cfg(test)]
 mod tests {

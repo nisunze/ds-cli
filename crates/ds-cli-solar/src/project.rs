@@ -131,34 +131,44 @@ pub static SEED: Command = command(
     ],
     Effect::LocalFileWrite,
 );
-pub static RUN: Command = command(
-    "solar.project.run",
-    &["solar", "project", "run"],
-    "Prepare, compute and produce drafts entirely offline.",
-    &[
-        WORKSPACE,
-        Arg::value("cache", "<dir>", "Existing verified reference cache.").required(),
-        Arg::value(
-            "run-id",
-            "<id>",
-            "Stable identity for restart-safe execution.",
-        )
-        .required(),
-        Arg::repeated("city", "<id>", "Explicit city selection, 1..64."),
-        Arg::value(
-            "concurrency",
-            "<count>",
-            "Parallel cities, 1..32; default 2.",
-        ),
-        Arg::repeated(
-            "draft",
-            "<kind>",
-            "apd, network, plant or financial; default apd.",
-        ),
-        Arg::switch("charts", "Produce chart images."),
-    ],
-    Effect::LocalFileWrite,
-);
+pub static RUN: Command = Command {
+    authority: Authority::HeadlessProject,
+    purpose: "Run captured Solar-owned input snapshots and manual edits without refreshing network assets. Seeding or refreshing is a separate explicit operation. Copied maps and sizing data belong to Solar; missing geographic data never blocks manual input. A verified reference cache must already exist.",
+    ..command(
+        "solar.project.run",
+        &["solar", "project", "run"],
+        "Produce Solar drafts from independent seeded or manual inputs.",
+        &[
+            WORKSPACE,
+            Arg::value("cache", "<dir>", "Existing verified reference cache.").required(),
+            Arg::value(
+                "run-id",
+                "<id>",
+                "Stable identity for restart-safe execution.",
+            )
+            .required(),
+            Arg::repeated("city", "<id>", "Explicit city selection, 1..64."),
+            Arg::value(
+                "concurrency",
+                "<count>",
+                "Parallel cities, 1..32; default 2.",
+            ),
+            Arg::repeated(
+                "draft",
+                "<kind>",
+                "apd, network, plant or financial; default apd.",
+            ),
+            Arg::switch("charts", "Produce chart images."),
+            Arg::value(
+                "lane",
+                "<stable|canary>",
+                "Reserved publication lane; local calculation uses owned inputs.",
+            ),
+        ],
+        Effect::LocalFileWrite,
+    )
+};
+
 pub static STATUS: Command = command(
     "solar.project.status",
     &["solar", "project", "status"],
@@ -269,9 +279,11 @@ pub fn run(i: &Inputs, _: &Context) -> Result<Value, Failure> {
     } else {
         i.repeated("draft").to_vec()
     };
-    invoke(
+    let mut result = invoke(
         json!({"operation":"run","workspace":i.require("workspace")?,"cache":i.require("cache")?,"request":{"run_id":i.require("run-id")?,"cities":cities,"concurrency":concurrency,"charts":i.switch("charts"),"drafts":drafts}}),
-    )
+    )?;
+    result["source_notices"] = json!([]);
+    Ok(result)
 }
 pub fn status(i: &Inputs, _: &Context) -> Result<Value, Failure> {
     invoke(json!({"operation":"status","workspace":i.require("workspace")?}))
@@ -356,6 +368,32 @@ fn io_error(error: impl std::fmt::Display) -> Failure {
 }
 pub fn render(value: &Value) -> String {
     serde_json::to_string_pretty(value).unwrap_or_default()
+}
+
+pub static CITY_CREATE: Command = Command {
+    purpose: "Create an editable Solar city from a partial input snapshot or empty manual form. No geographic data, map, classified table or sign-in is required. Solar owns copied inputs and maps; manual values remain editable. Repeating creation preserves the existing city and its edits. Use city read/write to revise it, network resolve/save to copy network or compose manual inputs, and project run after completing calculation inputs.",
+    output: "City identity, content_digest, created, editable, publication and calculation readiness. Missing inputs are an editable draft, not a refusal.",
+    ..command(
+        "solar.project.city.create",
+        &["solar", "project", "city", "create"],
+        "Create an editable Solar city with optional seed inputs.",
+        &[
+            WORKSPACE,
+            Arg::value("city", "<id>", "Stable city identity.").required(),
+            Arg::value("name", "<text>", "Display name for the new city.").required(),
+            Arg::value(
+                "input",
+                "<file>",
+                "Optional partial canonical snapshot JSON: _root, _config, 00_templates and 01_city_inputs. Network inputs are independent Solar snapshots with optional source provenance.",
+            ),
+        ],
+        Effect::LocalFileWrite,
+    )
+};
+pub fn city_create(i: &Inputs, _: &Context) -> Result<Value, Failure> {
+    invoke(
+        json!({"operation":"city_create","workspace":i.require("workspace")?,"city":i.require("city")?,"display_name":i.require("name")?,"input":i.value("input")}),
+    )
 }
 
 pub static CITY_READ: Command = command(

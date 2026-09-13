@@ -380,12 +380,9 @@ pub fn archive_layout_vocabulary(
         file_level: file_level.map(str::to_string),
         transformer_grouping: transformer_grouping.map(str::to_string),
         combine_per_district: Some(combine_per_district),
-        combine_per_group: None,
-        // This helper is handed the two LEGACY spellings only, so it authors
-        // neither generic knob. Leaving them unset is what makes the fold read
-        // the legacy words, exactly as it did before the generic pair existed.
-        group_depth: None,
-        transformer_folders: None,
+        // This helper only supplies legacy vocabulary; the owner defaults any
+        // other choices instead of the CLI copying optional schema fields.
+        ..Default::default()
     }
     .describe()
 }

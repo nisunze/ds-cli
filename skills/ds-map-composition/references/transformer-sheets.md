@@ -57,3 +57,11 @@ clearance above the title block and the centered top name. A successful engine
 receipt does not establish those facts. Keep those accepted previews and their
 recipe revisions; only then regenerate the complete project scope and verify
 publication separately. Do not call the old published PDF the new result.
+
+## Drawing-set numbering
+
+Use the live title-block bindings for paper, current sheet, and total sheets.
+Check the rendered number against the complete project drawing set, including
+when an individual transformer is exported. A literal “1 of 1” in a published
+default is authored text to replace, not an engine limitation. Combined PDF
+assembly must retain these existing page contents and canonical order.

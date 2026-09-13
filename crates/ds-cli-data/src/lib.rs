@@ -14,6 +14,7 @@
 use ds_cli_contract::spec::{Arg, ArgKind, Domain, Refusal};
 
 pub mod admin_bounds;
+pub mod city_vectors;
 pub mod conversion_matrix;
 pub mod convert;
 pub mod elevation;
@@ -34,6 +35,7 @@ pub static DOMAIN: Domain = Domain {
         &admin_bounds::COMMAND,
         &admin_bounds::LIST_COMMAND,
         &admin_bounds::READ_COMMAND,
+        &city_vectors::COMMAND,
         &project_cache::STATUS_COMMAND,
         &project_cache::SEED_COMMAND,
     ],

@@ -9,6 +9,7 @@ authors.workspace = true
 publish.workspace = true
 
 [dependencies]
+ureq = { workspace = true }
 ds-cli-contract = { workspace = true }
 ds-cli-desktop = { workspace = true }
 # Headless project-cache status and seed restore the native user through the
@@ -24,4 +25,5 @@ ds-project-data = { path = "../../../ds-web/crates/ds-project-data" }
 # links; neither reimplements the format decisions it encodes. See
 # ds-network/docs/contracts/columnar-format-contract.md.
 ds-columnar = { path = "../../../ds-network/crates/ds-columnar" }
+ds-io = { path = "../../../ds-network/crates/ds-io" }
 serde_json = { workspace = true }

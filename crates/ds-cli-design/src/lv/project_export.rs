@@ -8,6 +8,7 @@ use ds_cli_contract::spec::{
 use ds_cli_contract::{Context, Failure, Inputs};
 use ds_network::network::native_fast_lv::{
     NativeFastLvError, encode_native_fast_lv_request_from_layers,
+    encode_native_fast_lv_request_with_config,
 };
 use serde_json::{Value, json};
 
@@ -47,14 +48,22 @@ pub static COMMAND: Command = Command {
     id: "design.lv.project-export",
     path: &["design", "lv", "project-export"],
     contract: 1,
-    summary: "Export one governed transformer as a native Fast LV request.",
-    purpose: "Restores the native user, reads one exact transformer from the audience-fenced selected project through the fixed context call, requires server-supplied revision and content-digest fences, and writes one validated ds.fast-lv.request/v1 document to an absent path. ds-network—not the CLI—maps the authoritative layers to its explicit owner-default settings and empty project config. This is a safe mapless handoff into `ds design lv process`, not a claim of Desktop preset or project-config parity. No Desktop descriptor, project override, arbitrary request, browser store, or processing-lane value is accepted.",
+    summary: "Prepare one project transformer for headless LV processing.",
+    purpose: "Prepare a saved transformer for headless reprocessing. Read one exact signed-in project transformer with server version/digest fences. Use --project-config to include current project sheets, including pole material seeds, under the same identity; otherwise config is empty. Process settings remain owner defaults, so select intended settings before processing. design.lv.process accepts bounded parallel batches; design.lv.project-save publishes their verified results.",
     chapter: Chapter::Design,
     effect: Effect::LocalFileWrite,
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[TRANSFORMER, OUT, LANE],
-    output: "The absent output path, request SHA-256 and byte count; selected lane/project/transformer; exact server version and content digest; layer/job counts; and explicit owner-default-settings/no-project-config handoff state. No layer payload is printed.",
+    args: &[
+        TRANSFORMER,
+        OUT,
+        LANE,
+        Arg::switch(
+            "project-config",
+            "Include freshly read project network configuration with its SHA-256.",
+        ),
+    ],
+    output: "Output path, request SHA-256/bytes, lane/project/transformer, server version/digest, layer/job counts, owner-default settings, and configuration inclusion/digest. No layer payload is printed.",
     examples: &[Example {
         command: "ds design lv project-export --transformer T-1042 --out ./T-1042.fast-lv.json --output json",
         note: "Create a fenced one-transformer request for later native processing.",
@@ -219,9 +228,47 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         .remedy("Refresh or migrate the transformer until the context call returns both fences."));
     };
 
-    let request =
+    let mut config_sha256 = None;
+    let request = if inputs.switch("project-config") {
+        let config = ds_cli_auth::settings_configuration_receipt(
+            inputs.require("lane")?,
+            ds_client_core::ProjectConfigurationChange::ReadSettings,
+        )?;
+        if config.identity() != headless.identity()
+            || config.lane() != headless.lane()
+            || config.project_id() != snapshot.ds_project()
+        {
+            return Err(Failure::conflict(
+                "project_context_stale",
+                "The identity or selected project changed while preparing configuration.",
+            )
+            .remedy("Select the intended project and export the transformer again."));
+        }
+        let sheets = config.result().document["sheets"]
+            .as_object()
+            .ok_or_else(|| {
+                Failure::failed(
+                    "auth_response_unreadable",
+                    "Project configuration has no sheets.",
+                )
+                .remedy("Read project configuration and report the invalid response.")
+            })?;
+        let sheets = sheets
+            .iter()
+            .map(|(key, value)| (key.clone(), value.clone()))
+            .collect();
+        config_sha256 = Some(sha256(&serde_json::to_vec(&sheets).map_err(|error| {
+            Failure::internal("fast_lv_input_invalid", error.to_string())
+        })?));
+        encode_native_fast_lv_request_with_config(
+            snapshot.transformer_name(),
+            snapshot.layers(),
+            &sheets,
+        )
+    } else {
         encode_native_fast_lv_request_from_layers(snapshot.transformer_name(), snapshot.layers())
-            .map_err(map_owner_error)?;
+    }
+    .map_err(map_owner_error)?;
     let request_sha256 = sha256(&request);
     write_new(&output_path, &request, &PROJECT_REQUEST)?;
 
@@ -244,7 +291,8 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         "jobs": 1,
         "layers": snapshot.layers().len(),
         "process_settings": "ds-network-owner-defaults",
-        "project_config": "not-included",
+        "project_config": if config_sha256.is_some() { "included" } else { "not-included" },
+        "project_config_sha256": config_sha256,
     }))
 }
 
@@ -263,7 +311,7 @@ fn map_owner_error(error: NativeFastLvError) -> Failure {
 
 pub fn render(value: &Value) -> String {
     format!(
-        "Fast LV request exported for {} ({} layer(s), owner defaults, no project config).\nRequest: {}\nSHA-256: {}",
+        "Fast LV request exported for {} ({} layer(s), owner defaults).\nRequest: {}\nSHA-256: {}",
         value["transformer"].as_str().unwrap_or(""),
         value["layers"].as_u64().unwrap_or(0),
         value["out"].as_str().unwrap_or(""),

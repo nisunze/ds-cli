@@ -13,6 +13,36 @@ use std::process::Command;
 use serde_json::Value;
 
 const EXPECTED: &[(&str, &str, &str)] = &[
+    (
+        "design.group.project-preview",
+        "local_auth_state",
+        "headless_project",
+    ),
+    (
+        "design.group.project-apply",
+        "global_write",
+        "headless_project",
+    ),
+    (
+        "design.tag.project-list",
+        "local_auth_state",
+        "headless_project",
+    ),
+    (
+        "design.group.project-export",
+        "local_auth_state",
+        "headless_project",
+    ),
+    (
+        "dsgrid.project.list",
+        "local_auth_state",
+        "headless_project",
+    ),
+    (
+        "dsgrid.project.download",
+        "local_file_write",
+        "headless_project",
+    ),
     ("server.engine", "read_only", "none"),
     // The native server requires its owner's headless identity. The control
     // credential only connects to that host; it grants no Desktop authority.
@@ -213,7 +243,12 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("design.comment.promote", "global_write", "project"),
     ("design.comment.read", "read_only", "project"),
     ("design.comment.resolve", "global_write", "project"),
-    ("report.project.map-inputs", "local_file_write", "headless_project"),
+    (
+        "report.project.map-inputs",
+        "local_file_write",
+        "headless_project",
+    ),
+    ("design.lv.project-save", "global_write", "headless_project"),
     ("design.lv.process", "local_file_write", "none"),
     ("design.autoprocess.plan", "read_only", "none"),
     ("design.data.lane", "read_only", "headless_project"),
@@ -539,14 +574,22 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("shell.unregister", "local_file_write", "none"),
     ("solar.project.init", "local_file_write", "none"),
     ("solar.project.seed", "local_file_write", "none"),
+    ("solar.project.city.create", "local_file_write", "none"),
     ("solar.project.city.read", "local_file_write", "none"),
     ("solar.project.city.write", "local_file_write", "none"),
-    ("solar.project.run", "local_file_write", "none"),
+    ("solar.project.run", "local_file_write", "headless_project"),
     ("solar.project.sync.rebase", "local_file_write", "none"),
     ("solar.project.result", "read_only", "none"),
     ("solar.project.status", "read_only", "none"),
     ("solar.project.outbox", "read_only", "none"),
     ("solar.project.sync", "global_write", "headless_project"),
+    ("data.city-vectors", "local_file_write", "none"),
+    ("solar.cities", "read_only", "headless_project"),
+    (
+        "solar.reference.acquire",
+        "global_write",
+        "headless_project",
+    ),
     ("solar.engine", "discovery", "none"),
     ("solar.final.import", "artifact_write", "desktop_user"),
     ("solar.final.submit", "artifact_write", "desktop_user"),
@@ -596,9 +639,9 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     // project — the CLI never names one — and preview keeps `read_only`
     // exactly as ds-brain classifies `seed_preview`, so it stays usable on a
     // read-only project.
-    ("solar.seed.apply", "global_write", "project"),
+    ("solar.seed.apply", "global_write", "headless_project"),
     ("solar.seed.network-plan", "local_file_write", "none"),
-    ("solar.seed.preview", "read_only", "project"),
+    ("solar.seed.preview", "read_only", "headless_project"),
     ("solar.sync.status", "read_only", "desktop_user"),
     ("solar.verify-weather", "read_only", "none"),
     ("sre.events", "read_only", "desktop_user"),
@@ -705,6 +748,12 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     // desktop; `promote` changes the desktop's local layers and nothing
     // governed; classify/attach/ingest/folder are ds-brain writes.
     ("assets.attach", "global_write", "project"),
+    ("assets.reference", "global_write", "headless_project"),
+    ("assets.resolve", "read_only", "headless_project"),
+    ("assets.maps", "read_only", "headless_project"),
+    ("solar.network.resolve", "global_write", "headless_project"),
+    ("solar.network.save", "local_file_write", "none"),
+    ("solar.network.map", "global_write", "headless_project"),
     ("assets.classify", "global_write", "project"),
     ("assets.folder", "global_write", "project"),
     ("assets.ingest", "global_write", "project"),

@@ -93,7 +93,7 @@ pub const LIST_OP: BridgeOp = BridgeOp {
 };
 pub static EXPORT_COMMAND: Command = Command {
     id: "desktop.printing.map.export", path: &["desktop","printing","map","export"], contract:1,
-    summary:"Plan, capture and retain a district or sector PDF through paired Desktop.",
+    summary:"Capture and retain district or sector PDFs through paired Desktop.",
     purpose:"Takes an administrative-code planning recipe, not a held map capture. To render an existing ds.print-layout-export/v1 request headlessly, use report.layout.render. Discover planning fields with map.print.schema. The matching signed-in desktop captures every project MV source and selected geographic context. The command kernel owns exact scope, paper and canonical output identity. Native Reporter renders custom-area, district pages or a combined overview PDF. Project Control retains the local artifact and source warnings; only the selected paper is replaced. Completed printouts attach automatically through the existing report-artifact channel; disconnected or failed publication remains pending locally. Cloud rendering never occurs.",
     chapter:Chapter::Reports,effect:Effect::ArtifactWrite,authority:Authority::DesktopUser,execution:Execution::Sync,
     args:&[Arg::value("request","<json-file>","Path to a JSON file containing project, id, family (custom-map or mv-map), codes (sector or district codes), paper (A3 or A0), optional page_mode (per-area by default, or combined for one MV overview), authored layout, and DPI (default 300, range 72–1200).").required(),DESCRIPTOR_ARG],

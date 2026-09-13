@@ -97,7 +97,7 @@ transformer's files and combined atlas/joined pages at archive root.",
     ],
     refusals: ALL_REFUSALS,
     reference: Some("docs/reference/map.md"),
-    availability: ds_cli_auth::native_availability,
+    availability: crate::paired_availability,
 };
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {

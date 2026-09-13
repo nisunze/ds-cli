@@ -251,7 +251,7 @@ pub static COMMAND: Command = Command {
     path: &["report", "project", "export"],
     contract: 1,
     summary: "Export all transformer reports and maps headlessly in parallel.",
-    purpose: "Export active transformers and named print outputs with project-wide numbering. --print-layout gives same-paper local proofs with pinned digests; proofs cannot publish. --publish queues Server sync, not cloud completion. Setups use held context; --seed acquires missing context. Photos need a media grant. See docs/reference/report.md.",
+    purpose: "Export active transformers and named print outputs with project-wide numbering. --print-layout gives same-paper local proofs with pinned digests; proofs cannot publish. --publish queues Server sync, not cloud completion. Setups use held context; --seed acquires missing context. Photos need a media grant. See docs/reference/report.md. --context-vectors accepts verified data.city-vectors output.",
     chapter: Chapter::Reports,
     effect: Effect::LocalFileWrite,
     authority: Authority::HeadlessProject,
@@ -265,6 +265,11 @@ pub static COMMAND: Command = Command {
             "print-layout",
             "<json-file>",
             "Local proof replacement for an existing project layout; preserves engineering inputs and paper identity, records source/recipe digests, and cannot publish.",
+        ),
+        Arg::value(
+            "context-vectors",
+            "<dir>",
+            "Verified data.city-vectors output to use as this batch’s OSM/Microsoft map context.",
         ),
         SEED_ARG,
         PUBLISH_ARG,
@@ -640,6 +645,22 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let resident_limit = concurrency_limit(inputs)?;
     let explicit_asset = inputs.value("admin-bounds").map(PathBuf::from);
     let seed = inputs.switch("seed");
+    let local_context = inputs
+        .value("context-vectors")
+        .map(|dir| {
+            ds_project_data::city_vectors::print_context(Path::new(dir)).map_err(|e| {
+                Failure::invalid("print_context_invalid", e)
+                    .remedy("acquire and verify the city vectors into a fresh directory")
+            })
+        })
+        .transpose()?;
+    if seed && local_context.is_some() {
+        return Err(Failure::invalid(
+            "report_inputs_invalid",
+            "--seed and --context-vectors select different context acquisition modes",
+        )
+        .remedy("choose existing verified city vectors or project context seeding"));
+    }
     let proof_paths = inputs.repeated("print-layout");
     let publish = inputs.switch("publish");
     if publish && !proof_paths.is_empty() {
@@ -778,7 +799,11 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     // What every print in this batch needs from outside the room: the kernel's
     // one decision over the sealed sheets, with `--seed` as the only way an
     // acquisition may happen. Nothing selected means nothing is read.
-    let contexts = selected_contexts(lane, &receipt, seed)?;
+    let contexts = if local_context.is_some() {
+        Vec::new()
+    } else {
+        selected_contexts(lane, &receipt, seed)?
+    };
     let mv_buffer = contexts
         .iter()
         .filter_map(|c| match &c.source {
@@ -944,41 +969,62 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
                     ),
                 )
             })?;
-        let print_context = match holdings_root.as_deref() {
-            None => None,
-            Some(root) => {
-                let layers_value = serde_json::to_value(snapshot.layers())
-                    .map_err(|error| HostFailure::new(INPUTS_INVALID.code, error.to_string()))?;
-                let mut hosts = ds_project_data::Hosts {
-                    provider: &mut provider,
-                    fetch: &mut bundle_fetch,
-                };
-                let mode = if seed {
-                    ds_project_data::Mode::Acquire(&mut hosts)
-                } else {
-                    ds_project_data::Mode::Read
-                };
-                let context = ds_project_data::read_print_context(
-                    root,
-                    &holdings_scope,
-                    name,
-                    &layers_value,
-                    &contexts,
-                    &catalog,
-                    mode,
-                )
-                .map_err(context_failure)?;
-                for warning in &context.warnings {
-                    transformer_context_notes.push(json!({"transformer": name, "note": warning}));
+        let print_context = if let Some(context) = &local_context {
+            ds_project_data::city_vectors::require_design_coverage(
+                context,
+                name,
+                &serde_json::to_value(snapshot.layers())
+                    .map_err(|error| HostFailure::new(INPUTS_INVALID.code, error.to_string()))?,
+            )
+            .map_err(|error| HostFailure::new(CONTEXT_INVALID.code, error))?;
+            Some(ds_report_host::PrintContextBytes {
+                bytes: context.document.clone().ok_or_else(|| {
+                    HostFailure::new("print_context_invalid", "city context has no document")
+                })?,
+                sha256: context.sha256.clone().unwrap_or_default(),
+                layers: context.layers.clone(),
+                omitted: Vec::new(),
+            })
+        } else {
+            match holdings_root.as_deref() {
+                None => None,
+                Some(root) => {
+                    let layers_value =
+                        serde_json::to_value(snapshot.layers()).map_err(|error| {
+                            HostFailure::new(INPUTS_INVALID.code, error.to_string())
+                        })?;
+                    let mut hosts = ds_project_data::Hosts {
+                        provider: &mut provider,
+                        fetch: &mut bundle_fetch,
+                    };
+                    let mode = if seed {
+                        ds_project_data::Mode::Acquire(&mut hosts)
+                    } else {
+                        ds_project_data::Mode::Read
+                    };
+                    let context = ds_project_data::read_print_context(
+                        root,
+                        &holdings_scope,
+                        name,
+                        &layers_value,
+                        &contexts,
+                        &catalog,
+                        mode,
+                    )
+                    .map_err(context_failure)?;
+                    for warning in &context.warnings {
+                        transformer_context_notes
+                            .push(json!({"transformer": name, "note": warning}));
+                    }
+                    context
+                        .document
+                        .map(|bytes| ds_report_host::PrintContextBytes {
+                            bytes,
+                            sha256: context.sha256.unwrap_or_default(),
+                            layers: context.layers,
+                            omitted: context.omitted.iter().map(|o| o.layer.clone()).collect(),
+                        })
                 }
-                context
-                    .document
-                    .map(|bytes| ds_report_host::PrintContextBytes {
-                        bytes,
-                        sha256: context.sha256.unwrap_or_default(),
-                        layers: context.layers,
-                        omitted: context.omitted.iter().map(|o| o.layer.clone()).collect(),
-                    })
             }
         };
         let print_context = if let Some(buffer) = mv_buffer {
@@ -1089,7 +1135,10 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         }
     }
     output["context"] = json!({
-        "selected_layers": contexts.iter().map(|layer| layer.id.clone()).collect::<Vec<_>>(),
+        "selected_layers": local_context.as_ref().map_or_else(
+            || contexts.iter().map(|layer| layer.id.clone()).collect::<Vec<_>>(),
+            |context| context.layers.clone(),
+        ),
         "seeded": seed,
         "catalog_resources": catalog.len(),
         "warnings": context_warnings,
@@ -1184,7 +1233,7 @@ fn selected_contexts(
 /// kernel's own readers under every stored shape.
 fn ds_cli_report_named_setups(sheets: &Value) -> Result<Vec<String>, String> {
     use ds_command_kernel::report_formats::{
-        named_setup_id, normalize, output_setting_index, stored_output_selection, string_list,
+        named_print_output, normalize, output_setting_index, stored_output_selection, string_list,
     };
     let Some(rows) = sheets["project_settings"].as_array() else {
         return Ok(Vec::new());
@@ -1198,7 +1247,9 @@ fn ds_cli_report_named_setups(sheets: &Value) -> Result<Vec<String>, String> {
         .unwrap_or_else(|_| string_list(value));
     Ok(normalize(&tokens)
         .iter()
-        .filter_map(|token| named_setup_id(token).map(str::to_owned))
+        .filter_map(|token| named_print_output(token).map(|(_, id)| id.to_owned()))
+        .collect::<std::collections::BTreeSet<_>>()
+        .into_iter()
         .collect())
 }
 
@@ -1258,6 +1309,22 @@ pub fn render(data: &Value) -> String {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn raster_only_contexts_resolve_the_named_layout_once() {
+        for value in [
+            serde_json::json!(["png__detail", "jpeg__detail", "pdf__detail"]),
+            serde_json::json!({"schema":"ds.design-output-selection/v1","prints":[
+                {"layout_id":"detail","enabled":true,"formats":["png","jpeg"]}
+            ]}),
+        ] {
+            let sheets = serde_json::json!({"project_settings":[{"parameter":"design_export_format","value":value}]});
+            assert_eq!(
+                super::ds_cli_report_named_setups(&sheets).unwrap(),
+                vec!["detail"]
+            );
+        }
+    }
+
     #[test]
     fn a_blink_is_retried_but_a_wrong_request_is_not() {
         use std::cell::Cell;

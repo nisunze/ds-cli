@@ -18,7 +18,7 @@ pub static COMMAND: Command = Command {
     path: &["report", "bundle"],
     contract: 1,
     summary: "Package transformer and combined reports into one verified ZIP.",
-    purpose: "Calls the reporter's closed local bundle task. Every source is digest-pinned, manifest.json is embedded, no network call is made, and an existing output is never overwritten.",
+    purpose: "Calls the reporter's closed local bundle task. Every source is digest-pinned. Optional pdf_collections join existing PDF members in explicit order into multipage A0/A3 drawings, preserving their title blocks and numbering. manifest.json is embedded, no network call is made, and an existing output is never overwritten.",
     chapter: Chapter::Reports,
     effect: Effect::LocalFileWrite,
     authority: Authority::None,

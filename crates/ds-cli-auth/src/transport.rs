@@ -21,99 +21,17 @@ static CORRELATION_SEQUENCE: AtomicU64 = AtomicU64::new(1);
 pub struct NativeTransport;
 
 impl Transport for NativeTransport {
-    fn report_artifact(
+    fn solar_reference(
         &mut self,
-        call: ds_client_core::ReportArtifactCall<'_>,
-    ) -> Result<TransportResponse, TransportError> {
-        debug_assert_eq!(call.timeout_seconds(), 120);
-        let (request_id, action_id) = correlation_headers();
-        let mut bearer = format!("Bearer {}", call.bearer_token());
-        let body = call.body();
-        let url = format!("{}{}", call.gateway_origin(), call.path());
-        let request = if call.method() == "GET" {
-            ureq::get(url).force_send_body()
-        } else {
-            ureq::post(url)
-        };
-        let result = request
-            .header("Accept", call.content_type())
-            .header("Content-Type", call.content_type())
-            .header("X-App-Id", call.client_id())
-            .header("X-Request-Id", &request_id)
-            .header("X-DS-Action-Id", &action_id)
-            .header("X-User-Email", call.canonical_email())
-            .header("x-api-key", call.gateway_api_key())
-            .header("Authorization", &bearer)
-            .header("X-Forwarded-Authorization", &bearer)
-            .config()
-            .max_redirects(0)
-            .http_status_as_error(false)
-            .timeout_connect(Some(CONNECT_TIMEOUT))
-            .timeout_global(Some(Duration::from_secs(call.timeout_seconds())))
-            .build()
-            .send(if call.method() == "GET" {
-                &[]
-            } else {
-                body.as_bytes()
-            });
-        bearer.zeroize();
-        let response = result.map_err(classify)?;
-        bounded(response, call.response_limit())
-    }
-    fn grid_models(
-        &mut self,
-        call: ds_client_core::GridModelsCall<'_>,
-    ) -> Result<TransportResponse, TransportError> {
-        debug_assert_eq!(call.timeout_seconds(), 120);
-        let (request_id, action_id) = correlation_headers();
-        let mut bearer = format!("Bearer {}", call.bearer_token());
-        let body = call.body();
-        let url = format!("{}{}", call.gateway_origin(), call.path());
-        let request = if call.method() == "GET" {
-            ureq::get(url).force_send_body()
-        } else {
-            ureq::post(url)
-        };
-        let result = request
-            .header("Accept", call.content_type())
-            .header("Content-Type", call.content_type())
-            .header("X-App-Id", call.client_id())
-            .header("X-Request-Id", &request_id)
-            .header("X-DS-Action-Id", &action_id)
-            .header("X-User-Email", call.canonical_email())
-            .header("x-api-key", call.gateway_api_key())
-            .header("Authorization", &bearer)
-            .header("X-Forwarded-Authorization", &bearer)
-            .config()
-            .max_redirects(0)
-            .http_status_as_error(false)
-            .timeout_connect(Some(CONNECT_TIMEOUT))
-            .timeout_global(Some(Duration::from_secs(call.timeout_seconds())))
-            .build()
-            .send(if call.method() == "GET" {
-                &[]
-            } else {
-                body.as_bytes()
-            });
-        bearer.zeroize();
-        let response = result.map_err(classify)?;
-        bounded(response, call.response_limit())
-    }
-
-    fn grid_model_bytes(
-        &mut self,
-        call: ds_client_core::grid_models::DownloadCall<'_>,
-    ) -> Result<TransportResponse, TransportError> {
-        let response = ureq::get(call.url())
-            .config()
-            .max_redirects(0)
-            .http_status_as_error(false)
-            .timeout_connect(Some(CONNECT_TIMEOUT))
-            .timeout_global(Some(Duration::from_secs(120)))
-            .build()
-            .call()
-            .map_err(classify)?;
-        bounded(response, call.response_limit())
+        call: ds_client_core::SolarReferenceCall<'_>,
+    ) -> ds_solar_contracts::SolarResult<ds_solar_contracts::BundleBytes> {
+        use ds_solar_io::provider::ReferenceBundleProvider;
+        ds_solar_io::provider::HttpReferenceProvider::new(
+            call.gateway_origin(),
+            Some(call.bearer_token().to_owned()),
+        )?
+        .with_api_key(Some(call.gateway_api_key().to_owned()))
+        .fetch(call.request())
     }
 
     fn sync_gateway(
@@ -573,6 +491,224 @@ impl Transport for NativeTransport {
             .send(body.as_bytes());
         bearer.zeroize();
         let response = result.map_err(classify)?;
+        bounded(response, call.response_limit())
+    }
+
+    fn transformer_save(
+        &mut self,
+        call: ds_client_core::TransformerSaveCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        let (request_id, action_id) = correlation_headers();
+        let mut bearer = format!("Bearer {}", call.bearer_token());
+        let body = call.body();
+        let result = ureq::post(format!("{}{}", call.gateway_origin(), call.path()))
+            .header("Accept", call.content_type())
+            .header("Content-Type", call.content_type())
+            .header("X-App-Id", call.client_id())
+            .header("X-Request-Id", &request_id)
+            .header("X-DS-Action-Id", &action_id)
+            .header("X-User-Email", call.canonical_email())
+            .header("x-api-key", call.gateway_api_key())
+            .header("Authorization", &bearer)
+            .header("X-Forwarded-Authorization", &bearer)
+            .header("X-DS-Processing-Lane", "fast")
+            .config()
+            .max_redirects(0)
+            .http_status_as_error(false)
+            .timeout_connect(Some(CONNECT_TIMEOUT))
+            .timeout_global(Some(Duration::from_secs(call.timeout_seconds())))
+            .build()
+            .send(body.as_bytes());
+        bearer.zeroize();
+        bounded(result.map_err(classify)?, call.response_limit())
+    }
+    fn shared_assets(
+        &mut self,
+        call: ds_client_core::SharedAssetsCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        debug_assert_eq!(call.timeout_seconds(), 120);
+        let (request_id, action_id) = correlation_headers();
+        let mut bearer = format!("Bearer {}", call.bearer_token());
+        let body = call.body();
+        let url = format!("{}{}", call.gateway_origin(), call.path());
+        let request = if call.method() == "GET" {
+            ureq::get(url).force_send_body()
+        } else {
+            ureq::post(url)
+        };
+        let result = request
+            .header("Accept", call.content_type())
+            .header("Content-Type", call.content_type())
+            .header("X-App-Id", call.client_id())
+            .header("X-Request-Id", &request_id)
+            .header("X-DS-Action-Id", &action_id)
+            .header("X-User-Email", call.canonical_email())
+            .header("x-api-key", call.gateway_api_key())
+            .header("Authorization", &bearer)
+            .header("X-Forwarded-Authorization", &bearer)
+            .config()
+            .max_redirects(0)
+            .http_status_as_error(false)
+            .timeout_connect(Some(CONNECT_TIMEOUT))
+            .timeout_global(Some(Duration::from_secs(call.timeout_seconds())))
+            .build()
+            .send(if call.method() == "GET" {
+                &[]
+            } else {
+                body.as_bytes()
+            });
+        bearer.zeroize();
+        let response = result.map_err(classify)?;
+        bounded(response, call.response_limit())
+    }
+    fn design_tags(
+        &mut self,
+        call: ds_client_core::DesignTagsCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        debug_assert_eq!(call.timeout_seconds(), 120);
+        let (request_id, action_id) = correlation_headers();
+        let mut bearer = format!("Bearer {}", call.bearer_token());
+        let body = call.body();
+        let url = format!("{}{}", call.gateway_origin(), call.path());
+        let request = if call.method() == "GET" {
+            ureq::get(url).force_send_body()
+        } else {
+            ureq::post(url)
+        };
+        let result = request
+            .header("Accept", call.content_type())
+            .header("Content-Type", call.content_type())
+            .header("X-App-Id", call.client_id())
+            .header("X-Request-Id", &request_id)
+            .header("X-DS-Action-Id", &action_id)
+            .header("X-User-Email", call.canonical_email())
+            .header("x-api-key", call.gateway_api_key())
+            .header("Authorization", &bearer)
+            .header("X-Forwarded-Authorization", &bearer)
+            .config()
+            .max_redirects(0)
+            .http_status_as_error(false)
+            .timeout_connect(Some(CONNECT_TIMEOUT))
+            .timeout_global(Some(Duration::from_secs(call.timeout_seconds())))
+            .build()
+            .send(if call.method() == "GET" {
+                &[]
+            } else {
+                body.as_bytes()
+            });
+        bearer.zeroize();
+        let response = result.map_err(classify)?;
+        bounded(response, call.response_limit())
+    }
+
+    fn report_artifact(
+        &mut self,
+        call: ds_client_core::ReportArtifactCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        debug_assert_eq!(call.timeout_seconds(), 120);
+        let (request_id, action_id) = correlation_headers();
+        let mut bearer = format!("Bearer {}", call.bearer_token());
+        let body = call.body();
+        let url = format!("{}{}", call.gateway_origin(), call.path());
+        let request = if call.method() == "GET" {
+            ureq::get(url).force_send_body()
+        } else {
+            ureq::post(url)
+        };
+        let result = request
+            .header("Accept", call.content_type())
+            .header("Content-Type", call.content_type())
+            .header("X-App-Id", call.client_id())
+            .header("X-Request-Id", &request_id)
+            .header("X-DS-Action-Id", &action_id)
+            .header("X-User-Email", call.canonical_email())
+            .header("x-api-key", call.gateway_api_key())
+            .header("Authorization", &bearer)
+            .header("X-Forwarded-Authorization", &bearer)
+            .config()
+            .max_redirects(0)
+            .http_status_as_error(false)
+            .timeout_connect(Some(CONNECT_TIMEOUT))
+            .timeout_global(Some(Duration::from_secs(call.timeout_seconds())))
+            .build()
+            .send(if call.method() == "GET" {
+                &[]
+            } else {
+                body.as_bytes()
+            });
+        bearer.zeroize();
+        let response = result.map_err(classify)?;
+        bounded(response, call.response_limit())
+    }
+
+    fn grid_models(
+        &mut self,
+        call: ds_client_core::GridModelsCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        debug_assert_eq!(call.timeout_seconds(), 120);
+        let (request_id, action_id) = correlation_headers();
+        let mut bearer = format!("Bearer {}", call.bearer_token());
+        let body = call.body();
+        let url = format!("{}{}", call.gateway_origin(), call.path());
+        let request = if call.method() == "GET" {
+            ureq::get(url).force_send_body()
+        } else {
+            ureq::post(url)
+        };
+        let result = request
+            .header("Accept", call.content_type())
+            .header("Content-Type", call.content_type())
+            .header("X-App-Id", call.client_id())
+            .header("X-Request-Id", &request_id)
+            .header("X-DS-Action-Id", &action_id)
+            .header("X-User-Email", call.canonical_email())
+            .header("x-api-key", call.gateway_api_key())
+            .header("Authorization", &bearer)
+            .header("X-Forwarded-Authorization", &bearer)
+            .config()
+            .max_redirects(0)
+            .http_status_as_error(false)
+            .timeout_connect(Some(CONNECT_TIMEOUT))
+            .timeout_global(Some(Duration::from_secs(call.timeout_seconds())))
+            .build()
+            .send(if call.method() == "GET" {
+                &[]
+            } else {
+                body.as_bytes()
+            });
+        bearer.zeroize();
+        let response = result.map_err(classify)?;
+        bounded(response, call.response_limit())
+    }
+
+    fn shared_asset_bytes(
+        &mut self,
+        call: ds_client_core::shared_assets::DownloadCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        let response = ureq::get(call.url())
+            .config()
+            .max_redirects(0)
+            .http_status_as_error(false)
+            .timeout_connect(Some(CONNECT_TIMEOUT))
+            .timeout_global(Some(Duration::from_secs(120)))
+            .build()
+            .call()
+            .map_err(classify)?;
+        bounded(response, call.response_limit())
+    }
+    fn grid_model_bytes(
+        &mut self,
+        call: ds_client_core::grid_models::DownloadCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        let response = ureq::get(call.url())
+            .config()
+            .max_redirects(0)
+            .http_status_as_error(false)
+            .timeout_connect(Some(CONNECT_TIMEOUT))
+            .timeout_global(Some(Duration::from_secs(120)))
+            .build()
+            .call()
+            .map_err(classify)?;
         bounded(response, call.response_limit())
     }
 

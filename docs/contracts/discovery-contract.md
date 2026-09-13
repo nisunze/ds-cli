@@ -2,6 +2,13 @@
 
 **Status:** active contract. A change that violates it is a rejectable change.
 
+**Owner ruling, 2026-09-13:** the kernel is built first and driven through
+`ds`; MCP is the same door opened for an agent. A kernel capability exists
+when `ds` exposes it; the UI reads the kernel's projection, and its write path
+comes later. The four tiers below are therefore the kernel's specification,
+not one client's help text. Ruling:
+`ds-command-kernel/docs/contracts/ds-surface-order.md`.
+
 `ds` is one executable holding the whole Data Solutions stack. That is only
 workable — for a person and for a coding agent — if discovery is *tiered*, so
 nobody pays the context cost of a domain they are not using.

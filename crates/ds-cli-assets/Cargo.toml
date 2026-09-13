@@ -9,6 +9,8 @@ authors.workspace = true
 publish.workspace = true
 
 [dependencies]
+ds-cli-auth = { workspace = true }
+ds-command-kernel = { workspace = true }
 ds-cli-contract = { workspace = true }
 # Project Assets live behind the running application: ds-brain is the
 # authority on who may see a row, the kernel inside the webview decodes the

@@ -941,6 +941,9 @@ fn the_assets_chapter_is_routed_and_describes_the_live_command() {
         "assets.attach",
         "assets.ingest",
         "assets.folder",
+        "assets.reference",
+        "assets.resolve",
+        "assets.maps",
     ]
     .into_iter()
     .collect();
@@ -1317,13 +1320,17 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
             // grid-local-model profile so this broad router remains bounded.
             // Native creation completes the file workflow: one new bounded
             // leaf. Focused clients can use grid-native or grid-local-model.
-            "grid" => 20,
+            // Native project list/download complete the same model workflow.
+            "grid" => 22,
+            // Shared/manual form resolve and save belong to city input work.
+            // Editable city creation completes the no-GIS entry point.
+            "solar-input" => 18,
             "survey-projects" => 18,
             "design-edit" => 23,
-            // Twenty-two printing leaves plus bootstrap: the headless loop
-            // (project-cache status/seed, settings, outputs set, export with
-            // context) beside the paired leaves that need the desktop.
-            "printing" => 24,
+            // Twenty-six printing leaves plus bootstrap: city-vector input,
+            // local rendering and tag-asset delivery complete the headless
+            // workflow beside the retained desktop-owned operations.
+            "printing" => 28,
             // Sixteen layer leaves plus bootstrap: the layer drawer's profile
             // also carries this machine's prepared local layer catalogue,
             // which is the same "one host's own layers" workflow as the local

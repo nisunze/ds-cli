@@ -12,11 +12,14 @@
 //! while preserving `ds solar run --prepared ... --out ...` for reproducible
 //! offline artifact work.
 
+pub mod cities;
 pub mod compare;
 pub mod engine;
 pub mod exports;
 pub mod input_capture;
 pub mod input_prepare;
+pub mod network_form;
+pub mod network_map;
 pub mod network_seed;
 pub mod paired;
 pub mod paired_run;
@@ -25,6 +28,7 @@ pub mod portfolio_management;
 pub mod prepare;
 pub mod project;
 pub mod project_sync;
+pub mod reference;
 pub mod run;
 pub mod seed;
 pub mod weather;
@@ -64,6 +68,11 @@ pub static DOMAIN: Domain = Domain {
     id: "solar",
     summary: "Solar preparation, local run lifecycle and artifact execution.",
     commands: &[
+        &network_form::COMMAND,
+        &network_map::COMMAND,
+        &network_form::SAVE,
+        &cities::COMMAND,
+        &reference::COMMAND,
         &project::REBASE,
         &project::CITY_READ,
         &project::CITY_WRITE,

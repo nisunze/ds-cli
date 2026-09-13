@@ -376,7 +376,7 @@ pub static RENDER: Command = Command {
     id: "report.layout.render",
     path: &["report", "layout", "render"],
     contract: 1,
-    summary: "Render prepared district, city or transformer map captures to PDF and PNG.",
+    summary: "Render captured city, district and transformer maps to PDF and PNG.",
     purpose: "Headlessly render a ds.print-layout-export/v1 capture, including render-request.json from report.project.map-inputs. Supports MV/LV maps with held context, PDF/PNG/SVG/JPEG. out_dir must not exist; keep the request outside it. Schema: report tasks --task render_print_layout. Composition: report layout commands.",
     chapter: Chapter::Reports,
     effect: Effect::LocalFileWrite,
@@ -782,6 +782,7 @@ pub fn save(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
     let request: ds_cli_auth::PrintingRequest =
         serde_json::from_slice(&bytes(i.require("request")?, 800_000)?).map_err(invalid)?;
     let (layout, expected_revision) = publication(request)?;
+    ds_command_kernel::printing::validate(&layout).map_err(invalid)?;
     let global = i.require("scope")? == "global";
     // Whether this publish is a create or an update is the kernel's
     // decision — the same one the Printing setup page takes from the
@@ -825,6 +826,14 @@ fn typed_request(i: &Inputs) -> Result<ds_cli_auth::PrintingRequest, Failure> {
     serde_json::from_slice(&bytes(i.require("request")?, 800_000)?).map_err(invalid)
 }
 fn scoped(i: &Inputs, request: &ds_cli_auth::PrintingRequest) -> Result<Value, Failure> {
+    match request {
+        ds_cli_auth::PrintingRequest::Create { layout }
+        | ds_cli_auth::PrintingRequest::Update { layout, .. }
+        | ds_cli_auth::PrintingRequest::Save { layout, .. } => {
+            ds_command_kernel::printing::validate(layout).map_err(invalid)?;
+        }
+        _ => {}
+    }
     ds_cli_auth::printing(i.require("lane")?, i.require("scope")? == "global", request)
 }
 pub fn create(i: &Inputs, _c: &Context) -> Result<Value, Failure> {

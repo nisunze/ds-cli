@@ -317,3 +317,160 @@ fn engine_help(subcommand: &str) -> String {
         String::from_utf8_lossy(&output.stderr)
     )
 }
+
+#[test]
+fn solar_city_creation_seeds_without_gis_and_preserves_a_repeat() {
+    if !available("solar.project.city.create", SOLAR) {
+        skip(
+            SOLAR,
+            "Proves partial and empty city creation against the real Solar owner.",
+        );
+        return;
+    }
+    let temp = tempfile::tempdir().unwrap();
+    let workspace = temp.path().join("workspace");
+    let workspace = workspace.to_str().unwrap();
+    let call = |args: &[&str]| {
+        let (result, code) = ds(args);
+        assert_eq!(code, 0, "{args:?}: {result}");
+        result["data"].clone()
+    };
+    call(&[
+        "solar",
+        "project",
+        "init",
+        "--workspace",
+        workspace,
+        "--project",
+        "manual-parity",
+        "--output",
+        "json",
+    ]);
+    let created = call(&[
+        "solar",
+        "project",
+        "city",
+        "create",
+        "--workspace",
+        workspace,
+        "--city",
+        "no-gis",
+        "--name",
+        "Manual city",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(created["created"], true);
+    assert_eq!(created["editable"], true);
+    assert_eq!(created["publication"], "pending");
+    assert!(created["readiness"].is_object());
+    let before = call(&[
+        "solar",
+        "project",
+        "outbox",
+        "--workspace",
+        workspace,
+        "--output",
+        "json",
+    ]);
+    let repeated = call(&[
+        "solar",
+        "project",
+        "city",
+        "create",
+        "--workspace",
+        workspace,
+        "--city",
+        "no-gis",
+        "--name",
+        "Do not overwrite",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(repeated["created"], false);
+    assert_eq!(repeated["publication"], "unchanged");
+    assert_eq!(repeated["content_digest"], created["content_digest"]);
+    assert_eq!(
+        call(&[
+            "solar",
+            "project",
+            "outbox",
+            "--workspace",
+            workspace,
+            "--output",
+            "json"
+        ]),
+        before
+    );
+    let snapshot = temp.path().join("city.json");
+    call(&[
+        "solar",
+        "project",
+        "city",
+        "read",
+        "--workspace",
+        workspace,
+        "--city",
+        "no-gis",
+        "--out",
+        snapshot.to_str().unwrap(),
+        "--output",
+        "json",
+    ]);
+    let mut snapshot: Value = serde_json::from_slice(&std::fs::read(snapshot).unwrap()).unwrap();
+    assert_eq!(snapshot["_root"]["city"], "Manual city");
+    assert_eq!(
+        snapshot["01_city_inputs"]["network_data"]["customers"],
+        serde_json::json!([])
+    );
+    assert!(snapshot["01_city_inputs"]["city"].get("latitude").is_none());
+    snapshot["01_city_inputs"]["network_data"]["minimum_load_profile"] = serde_json::json!(0.5);
+    let input = temp.path().join("partial.json");
+    // Round-trip an operator's actual editable section as a partial seed,
+    // proving --input maps to the owner's optional PathBuf rather than argv.
+    std::fs::write(
+        &input,
+        serde_json::to_vec(&serde_json::json!({"01_city_inputs": snapshot["01_city_inputs"]}))
+            .unwrap(),
+    )
+    .unwrap();
+    let seeded = call(&[
+        "solar",
+        "project",
+        "city",
+        "create",
+        "--workspace",
+        workspace,
+        "--city",
+        "partial",
+        "--name",
+        "Partial city",
+        "--input",
+        input.to_str().unwrap(),
+        "--output",
+        "json",
+    ]);
+    assert_eq!(seeded["created"], true);
+    assert_eq!(seeded["editable"], true);
+    let seeded_snapshot = temp.path().join("partial-result.json");
+    call(&[
+        "solar",
+        "project",
+        "city",
+        "read",
+        "--workspace",
+        workspace,
+        "--city",
+        "partial",
+        "--out",
+        seeded_snapshot.to_str().unwrap(),
+        "--output",
+        "json",
+    ]);
+    let seeded_snapshot: Value =
+        serde_json::from_slice(&std::fs::read(seeded_snapshot).unwrap()).unwrap();
+    assert_eq!(
+        seeded_snapshot["01_city_inputs"]["network_data"]["minimum_load_profile"],
+        0.5
+    );
+}

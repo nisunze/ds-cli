@@ -39,7 +39,7 @@ use ds_cli_contract::{Context, Inputs};
 use ds_cli_desktop::ops;
 use serde_json::{Map, Value, json};
 
-use crate::paired;
+use ds_cli_contract::spec::Availability;
 
 /// Preview reads two roots and digests them; apply commits one transaction per
 /// city. Both are ds-brain round trips through the paired application, and the
@@ -48,6 +48,20 @@ const SEED_TIMEOUT: Duration = Duration::from_secs(60);
 
 const PREVIEW_OPERATION: &str = "solar.seed.preview";
 const APPLY_OPERATION: &str = "solar.seed.apply";
+const OVERWRITE_ARG: Arg = Arg::switch(
+    "overwrite",
+    "Replace changed city inputs and remove obsolete seeded input documents; bind this choice in both preview and apply.",
+);
+const LANE_ARG: Arg = Arg::value(
+    "lane",
+    "<stable|canary>",
+    "Native authentication lane; defaults to stable.",
+);
+fn native_available() -> Availability {
+    // The explicit Desktop route also works in an unpackaged developer build.
+    // Its selected handler owns the backend-specific availability check.
+    Availability::Available
+}
 
 /// ds-brain refuses more than this many cities in one request
 /// (`solarSeedMaxCities`). The bound was held three times — here, in the
@@ -290,28 +304,93 @@ static APPLY_REFUSALS: &[Refusal] = &[
     },
 ];
 
+const NATIVE_REFUSALS: &[Refusal] = ds_cli_auth::PROJECT_STATUS_COMMAND.refusals;
+const fn with_native<const N: usize>(legacy: &[Refusal]) -> [Refusal; N] {
+    let mut result = [legacy[0]; N];
+    let mut i = 0;
+    while i < legacy.len() {
+        result[i] = legacy[i];
+        i += 1;
+    }
+    let mut j = 0;
+    while j < NATIVE_REFUSALS.len() {
+        result[i + j] = NATIVE_REFUSALS[j];
+        j += 1;
+    }
+    result
+}
+const PREVIEW_ALL_REFUSALS: [Refusal; SEED_REFUSALS.len() + NATIVE_REFUSALS.len()] =
+    with_native(SEED_REFUSALS);
+const APPLY_ALL_REFUSALS: [Refusal; APPLY_REFUSALS.len() + NATIVE_REFUSALS.len()] =
+    with_native(APPLY_REFUSALS);
+
+const REFERENCE_LOCAL: &[Refusal] = &[
+    Refusal {
+        code: "solar_reference_refused",
+        when: "the producer or sealed bundle verification refused",
+        remedy: "read the producer detail and correct site/equipment before retrying",
+    },
+    Refusal {
+        code: "solar_reference_scope_mismatch",
+        when: "the workspace belongs to another project",
+        remedy: "select the workspace project with ds auth project use",
+    },
+    Refusal {
+        code: "solar_reference_contract_mismatch",
+        when: "the Solar request is malformed",
+        remedy: "install matching ds and Solar releases",
+    },
+    Refusal {
+        code: "solar_project_schema_unavailable",
+        when: "the Solar owner lacks the local workspace schema",
+        remedy: "install matching ds and Solar releases",
+    },
+    Refusal {
+        code: "solar_project_io",
+        when: "private owner request or receipt IO failed",
+        remedy: "verify writable private directories and matching releases",
+    },
+    Refusal {
+        code: "solar_engine_missing",
+        when: "the Solar owner is absent",
+        remedy: "install the complete Linux Server package",
+    },
+    Refusal {
+        code: "engine_refused",
+        when: "the Solar owner refused preparation or verification",
+        remedy: "read the bounded engine detail and correct the city inputs",
+    },
+];
+pub(crate) const REFERENCE_REFUSALS: &[Refusal] =
+    &with_native::<{ REFERENCE_LOCAL.len() + NATIVE_REFUSALS.len() }>(REFERENCE_LOCAL);
+
 pub static PREVIEW_COMMAND: Command = Command {
     id: "solar.seed.preview",
     path: &["solar", "seed", "preview"],
     contract: 1,
     summary: "Plan which governed Solar cities would seed into this project.",
     purpose: "\
-Asks ds-brain, through the paired application, which cities, input documents \
+Asks ds-brain headlessly which cities, input documents \
 and network assets WOULD be copied from a governed seed source into the active \
 project's Solar root. It writes nothing: the plan carries the server's own \
 `mutated: false`, and every row's action, digest and warning is returned \
-verbatim rather than summarized. The destination is the paired session's \
-selected project, never an argument. Confirm the returned `seed_digest` with \
+verbatim. The native selected project is the destination. --overwrite plans replacement of changed inputs. Confirm the returned `seed_digest` with \
 `ds solar seed apply` to write it.",
     chapter: Chapter::Solar,
     effect: Effect::ReadOnly,
-    authority: Authority::Project,
+    authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[SOURCE_ARG, CITY_ARG, DESCRIPTOR_ARG],
+    args: &[
+        SOURCE_ARG,
+        CITY_ARG,
+        OVERWRITE_ARG,
+        LANE_ARG,
+        DESCRIPTOR_ARG,
+    ],
     output: "\
 ds-brain's SolarSeedPlan verbatim: both resolved roots, the project, the \
 `seed_digest` that binds this plan to its apply, one row per city with its \
-action (create/skip/changed/missing), source/root/destination digests, listed \
+action (create/replace/skip/changed/missing), source/root/destination digests, listed \
 documents including the city root row, reported assets and warnings, plus the \
 class counts, document count, asset counts and `mutated`.",
     examples: &[
@@ -326,9 +405,9 @@ class counts, document count, asset counts and `mutated`.",
             runnable: false,
         },
     ],
-    refusals: SEED_REFUSALS,
+    refusals: &PREVIEW_ALL_REFUSALS,
     reference: Some("docs/reference/solar.md"),
-    availability: paired::available,
+    availability: native_available,
 };
 
 pub static APPLY_COMMAND: Command = Command {
@@ -340,12 +419,10 @@ pub static APPLY_COMMAND: Command = Command {
 Confirms one plan `ds solar seed preview` returned. --seed-digest is echoed \
 from that plan and is never derived here: it is what proves the set being \
 written is the set someone saw. ds-brain re-plans server-side and refuses with \
-`solar_seed_digest_mismatch` if either end moved. Seeding never overwrites — a \
-`changed` city is reported and left alone — and one city commits in one \
-transaction, so a second apply of the same digest reports `idempotent`.",
+`solar_seed_digest_mismatch` if either end moved. Without --overwrite changed cities are skipped. With it, replacement uses a transaction that rechecks the previewed destination. One city commits atomically.",
     chapter: Chapter::Solar,
     effect: Effect::GlobalWrite,
-    authority: Authority::Project,
+    authority: Authority::HeadlessProject,
     execution: Execution::Sync,
     args: &[
         Arg::value(
@@ -356,6 +433,8 @@ transaction, so a second apply of the same digest reports `idempotent`.",
         .required(),
         SOURCE_ARG,
         CITY_ARG,
+        OVERWRITE_ARG,
+        LANE_ARG,
         DESCRIPTOR_ARG,
     ],
     output: "\
@@ -368,9 +447,9 @@ and `idempotent`.",
         note: "Confirms exactly the previewed plan; a moved source or destination is refused, not re-planned.",
         runnable: false,
     }],
-    refusals: APPLY_REFUSALS,
+    refusals: &APPLY_ALL_REFUSALS,
     reference: Some("docs/reference/solar.md"),
-    availability: paired::available,
+    availability: native_available,
 };
 
 /// The exact argument object a seeding call sends.
@@ -386,6 +465,13 @@ fn arguments(inputs: &Inputs, seed_digest: Option<&str>) -> Result<Map<String, V
     let mut arguments = Map::new();
     if let Some(digest) = seed_digest {
         arguments.insert("seed_digest".into(), json!(digest));
+    }
+    if inputs.switch("overwrite") && inputs.value("desktop-descriptor").is_some() {
+        return Err(Failure::invalid(
+            "invalid_seed_source",
+            "overwrite seeding uses the native headless project; omit --desktop-descriptor",
+        )
+        .remedy("use the native lane and selected project"));
     }
     let source = inputs.value("source");
     let cities = inputs.repeated("city");
@@ -500,12 +586,23 @@ pub fn apply(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
 /// Send one seeding operation and translate ds-brain's own refusal codes back
 /// into named CLI refusals.
 fn invoke(inputs: &Inputs, operation: &'static str, arguments: Value) -> Result<Value, Failure> {
-    let op = match operation {
-        PREVIEW_OPERATION => &PREVIEW_OP,
-        _ => &APPLY_OP,
-    };
-    let descriptor = ops::paired(inputs.value("desktop-descriptor"))?;
-    ops::invoke(&descriptor, op, arguments, SEED_TIMEOUT).map_err(classify_seed_failure)
+    if inputs.value("desktop-descriptor").is_some() {
+        let op = if operation == PREVIEW_OPERATION {
+            &PREVIEW_OP
+        } else {
+            &APPLY_OP
+        };
+        let descriptor = ops::paired(inputs.value("desktop-descriptor"))?;
+        return ops::invoke(&descriptor, op, arguments, SEED_TIMEOUT)
+            .map_err(classify_seed_failure);
+    }
+    let mut session = ds_cli_auth::solar_project_session(inputs.value("lane").unwrap_or("stable"))?;
+    session.execute(&ds_cli_auth::SolarProjectCommand::Seed {
+        source: inputs.value("source").map(str::to_owned),
+        cities: inputs.repeated("city").to_vec(),
+        overwrite: inputs.switch("overwrite"),
+        digest: arguments["seed_digest"].as_str().map(str::to_owned),
+    })
 }
 
 /// Name the six conditions ds-brain gives a stable code, so a caller branching
@@ -607,7 +704,7 @@ fn require_plan<'a>(result: &'a Value, operation: &'static str) -> Result<&'a Va
                 &format!("city `{city_id}` does not list its city root as its first document"),
             ));
         }
-        if city["action"].as_str() == Some("create") {
+        if matches!(city["action"].as_str(), Some("create" | "replace")) {
             creatable_documents += documents.len() as u64;
         }
     }
@@ -623,7 +720,10 @@ fn require_plan<'a>(result: &'a Value, operation: &'static str) -> Result<&'a Va
     // lost a create race legitimately writes fewer, so only the reconciling
     // case is asserted.
     if result["plan"].is_object()
-        && result["applied_count"].as_u64() == plan["create_count"].as_u64()
+        && result["applied_count"].as_u64()
+            == plan["create_count"]
+                .as_u64()
+                .map(|n| n + plan["replace_count"].as_u64().unwrap_or(0))
         && result["documents_written"].as_u64() != Some(creatable_documents)
     {
         return Err(mismatch(
@@ -637,7 +737,7 @@ fn require_plan<'a>(result: &'a Value, operation: &'static str) -> Result<&'a Va
 fn mismatch(operation: &'static str, detail: &str) -> Failure {
     Failure::unavailable(
         "desktop_contract_mismatch",
-        format!("the paired session returned an invalid reply for `{operation}`: {detail}"),
+        format!("the Solar service returned an invalid reply for `{operation}`: {detail}"),
     )
     .remedy("update DS GridDesign and ds to matching releases")
 }
@@ -661,8 +761,9 @@ pub fn render(data: &Value) -> String {
         plan["seed_digest"].as_str().unwrap_or("?"),
     ));
     out.push_str(&format!(
-        "plan      create {}, skip {}, changed {}, missing {} ({} documents)\n",
+        "plan      create {}, replace {}, skip {}, changed {}, missing {} ({} documents)\n",
         count("create_count"),
+        count("replace_count"),
         count("skip_count"),
         count("changed_count"),
         count("missing_count"),

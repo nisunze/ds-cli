@@ -538,19 +538,17 @@ fn verify_intake(bytes: &[u8], expected: &ExpectedIntake) -> Result<VerifiedInta
     })
 }
 
-// ds-brain's Go producer spells UTC with `Z`; ds-solar parses that authority
-// and chrono's canonical writer spells the same instant with `+00:00`.
+// Go trims fractional trailing zeros while chrono uses millisecond,
+// microsecond or nanosecond precision. Compare the exact UTC instants, not
+// their spellings; authority must still match down to the nanosecond.
 fn same_utc_rfc3339_spelling(left: &str, right: &str) -> bool {
-    fn utc_suffix(value: &str) -> &str {
-        value.strip_suffix('Z').unwrap_or(value)
-    }
-    if left.ends_with('Z') && right.ends_with("+00:00") {
-        utc_suffix(left) == right.strip_suffix("+00:00").unwrap_or(right)
-    } else if right.ends_with('Z') && left.ends_with("+00:00") {
-        utc_suffix(right) == left.strip_suffix("+00:00").unwrap_or(left)
-    } else {
-        left == right
-    }
+    let (Ok(left), Ok(right)) = (
+        chrono::DateTime::parse_from_rfc3339(left),
+        chrono::DateTime::parse_from_rfc3339(right),
+    ) else {
+        return false;
+    };
+    left.offset().local_minus_utc() == 0 && right.offset().local_minus_utc() == 0 && left == right
 }
 
 fn unsafe_output() -> Failure {
@@ -700,6 +698,25 @@ mod tests {
                     .code(),
                 "solar_intake_output_unsafe"
             );
+        }
+    }
+
+    #[test]
+    fn governed_intake_accepts_equivalent_fractional_precision_without_rounding() {
+        let mut expected = expected();
+        expected.snapshot_receipt_expires_at = "2026-09-20T13:36:32.10877026Z".into();
+        let mut intake = intake_fixture();
+        intake["authority"]["snapshot_receipt_expires_at"] =
+            json!("2026-09-20T13:36:32.108770260+00:00");
+        assert!(verify_intake(&serde_json::to_vec(&intake).unwrap(), &expected).is_ok());
+        intake["authority"]["snapshot_receipt_expires_at"] =
+            json!("2026-09-20T13:36:32.108770261+00:00");
+        assert!(verify_intake(&serde_json::to_vec(&intake).unwrap(), &expected).is_err());
+        for invalid in ["invalid", "2026-09-20T14:36:32.10877026+01:00"] {
+            assert!(!same_utc_rfc3339_spelling(
+                invalid,
+                &expected.snapshot_receipt_expires_at
+            ));
         }
     }
 

@@ -42,6 +42,36 @@ const NATIVE_AUTH_CODES: &[&str] = &[
 ];
 
 #[test]
+fn native_lv_save_refuses_missing_receipt_before_authentication() {
+    let result = native_ds(&[
+        "design",
+        "lv",
+        "project-save",
+        "--source",
+        "/__ds_absent__/source.json",
+        "--input",
+        "/__ds_absent__/input.json",
+        "--result",
+        "/__ds_absent__/result.json",
+        "--process-receipt",
+        "/__ds_absent__/process.json",
+        "--transformer",
+        "T1",
+        "--operation-id",
+        "smoke-save",
+        "--yes",
+        "--output",
+        "json",
+    ]);
+    assert_ne!(result.code, 0);
+    assert_eq!(
+        result.envelope["error"]["code"], "fast_lv_save_input_invalid",
+        "{}",
+        result.envelope
+    );
+}
+
+#[test]
 fn server_engine_reports_the_actual_linked_owner_without_auth_or_server() {
     let result = native_ds(&["server", "engine", "--output", "json"]);
     assert_eq!(result.code, 0, "{}", result.stderr);
@@ -2595,7 +2625,10 @@ fn every_offline_command_is_available_without_any_engine_binary() {
     let mut checked = 0usize;
     for command in envelope["data"]["commands"].as_array().expect("commands") {
         let id = command["id"].as_str().unwrap_or("");
-        if id.starts_with("dsgrid.") || id.starts_with("dsgrid-exchange.") || id.starts_with("pls.")
+        if (id.starts_with("dsgrid.")
+            || id.starts_with("dsgrid-exchange.")
+            || id.starts_with("pls."))
+            && !id.starts_with("dsgrid.project.")
         {
             checked += 1;
             assert_eq!(
@@ -6280,7 +6313,7 @@ fn every_design_command_is_discoverable_without_the_desktop_installed() {
     let commands = index["commands"].as_array().expect("commands");
     assert_eq!(
         commands.len(),
-        79,
+        84, // Native LV project-save completes the previously read/process-only workflow.
         "the design domain should expose its whole family: {commands:?}"
     );
     for command in commands {
@@ -6290,6 +6323,10 @@ fn every_design_command_is_discoverable_without_the_desktop_installed() {
             if matches!(
                 id,
                 "design.features.select"
+                    | "design.tag.project-list"
+                    | "design.group.project-preview"
+                    | "design.group.project-apply"
+                    | "design.group.project-export"
                     | "design.config.sheets"
                     | "design.config.read"
                     | "design.config.diff"
@@ -6302,6 +6339,7 @@ fn every_design_command_is_discoverable_without_the_desktop_installed() {
                     | "design.meter-types.ensure"
                     | "design.customer-categories.alias"
                     | "design.lv.project-export"
+                    | "design.lv.project-save"
                     | "design.status"
                     | "design.collisions"
                     | "design.dashboard"
@@ -6501,6 +6539,10 @@ fn design_collaboration_is_a_complete_headless_project_surface() {
         "design.sync.cancel",
         "design.sync.resume",
         "design.features.select",
+        "design.tag.project-list",
+        "design.group.project-preview",
+        "design.group.project-apply",
+        "design.group.project-export",
         "design.attachment.list",
         "design.attachment.publish",
         "design.attachment.download",
@@ -6592,9 +6634,23 @@ fn design_collaboration_is_a_complete_headless_project_surface() {
         {
             continue;
         }
-        if id == "design.features.select" {
+        if matches!(
+            id,
+            "design.features.select"
+                | "design.tag.project-list"
+                | "design.group.project-preview"
+                | "design.group.project-apply"
+                | "design.group.project-export"
+        ) {
             assert_eq!(command["availability"], "unavailable");
-            assert_eq!(command["effect"], "local_auth_state");
+            assert_eq!(
+                command["effect"],
+                if id == "design.group.project-apply" {
+                    "global_write"
+                } else {
+                    "local_auth_state"
+                }
+            );
             assert_eq!(command["authority"], "headless_project");
             continue;
         }
@@ -7096,6 +7152,9 @@ fn every_work_command_is_reachable_without_the_desktop_installed() {
         "work command coverage list changed; add a specific smoke assertion for the new command before accepting it"
     );
     for command in commands {
+        if command["authority"] == "headless_project" {
+            continue;
+        }
         assert_eq!(
             command["availability"], "available",
             "`{}` gates on discovery, which puts --desktop-descriptor out of reach",
@@ -7146,6 +7205,9 @@ fn feedback_is_one_confirmed_shared_write() {
         ]
     );
     for command in commands {
+        if command["authority"] == "headless_project" {
+            continue;
+        }
         assert_eq!(
             command["availability"], "available",
             "`{}` gates on discovery, which puts --desktop-descriptor out of reach",
@@ -7617,6 +7679,54 @@ fn every_assets_write_refuses_without_confirmation() {
 }
 
 #[test]
+fn shared_network_commands_expose_tag_identity_and_manual_entry() {
+    let maps = ok(&["capabilities", "assets.maps", "--output", "json"]);
+    assert_eq!(maps["command"]["authority"], "headless_project");
+    assert!(
+        maps["command"]["output"]
+            .as_str()
+            .unwrap()
+            .contains("tag-group-map")
+    );
+    assert_eq!(
+        refusal(&["assets", "maps", "--output", "json"]),
+        "native_profile_not_configured"
+    );
+    let resolved = ok(&["capabilities", "assets.resolve", "--output", "json"]);
+    let command = &resolved["command"];
+    assert_eq!(command["authority"], "headless_project");
+    assert_eq!(command["effect"], "read_only");
+    assert!(
+        command["output"]
+            .as_str()
+            .unwrap()
+            .contains("manual_entry_allowed=true")
+    );
+    let inputs = command["inputs"].as_array().unwrap();
+    assert!(inputs.iter().any(|input| input["name"] == "tag-definition"));
+    assert!(!inputs.iter().any(|input| matches!(
+        input["name"].as_str(),
+        Some("url" | "bucket" | "object-path")
+    )));
+    let seeded = ok(&["capabilities", "solar.network.resolve", "--output", "json"]);
+    assert!(
+        seeded["command"]["purpose"]
+            .as_str()
+            .unwrap()
+            .contains("Missing artifacts seed manual entry")
+    );
+    let saved = ok(&["capabilities", "solar.network.save", "--output", "json"]);
+    assert_eq!(saved["command"]["authority"], "none");
+    assert_eq!(saved["command"]["effect"], "local_file_write");
+    assert!(
+        saved["command"]["purpose"]
+            .as_str()
+            .unwrap()
+            .contains("empty sources object is valid")
+    );
+}
+
+#[test]
 fn every_assets_command_is_reachable_without_the_desktop_installed() {
     // Same reasoning as the map and work domains: dispatch checks availability
     // before parsing, so a discovery gate would put `--desktop-descriptor` and
@@ -7637,6 +7747,9 @@ fn every_assets_command_is_reachable_without_the_desktop_installed() {
         "assets.attach",
         "assets.ingest",
         "assets.folder",
+        "assets.reference",
+        "assets.resolve",
+        "assets.maps",
     ]
     .into_iter()
     .collect();
@@ -7645,6 +7758,9 @@ fn every_assets_command_is_reachable_without_the_desktop_installed() {
         "assets command coverage list changed; add a specific smoke assertion for the new command before accepting it"
     );
     for command in commands {
+        if command["authority"] == "headless_project" {
+            continue;
+        }
         assert_eq!(
             command["availability"], "available",
             "`{}` gates on discovery, which puts --desktop-descriptor out of reach",
@@ -7658,7 +7774,9 @@ fn every_assets_command_is_reachable_without_the_desktop_installed() {
     for command in commands {
         let id = command["id"].as_str().expect("id");
         let expected = match id {
-            "assets.list" | "assets.tree" | "assets.preview" => "read_only",
+            "assets.list" | "assets.tree" | "assets.preview" | "assets.resolve" | "assets.maps" => {
+                "read_only"
+            }
             "assets.read" => "local_file_write",
             "assets.promote" => "local_ui",
             _ => "global_write",
@@ -9802,4 +9920,43 @@ fn settings_writes_require_confirmation_before_file_or_native_io() {
         args.extend(["--output", "json"]);
         assert_eq!(refusal(&args), "confirmation_required");
     }
+}
+
+#[test]
+fn solar_city_creation_is_an_editable_offline_entry_point() {
+    let value = ok(&[
+        "capabilities",
+        "solar.project.city.create",
+        "--output",
+        "json",
+    ]);
+    let command = &value["command"];
+    assert_eq!(command["authority"], "none");
+    assert_eq!(command["effect"], "local_file_write");
+    assert_eq!(command["confirmation_required"], false);
+    let inputs = command["inputs"].as_array().unwrap();
+    for name in ["workspace", "city", "name"] {
+        assert!(
+            inputs
+                .iter()
+                .any(|input| input["name"] == name && input["required"] == true)
+        );
+    }
+    assert!(
+        inputs
+            .iter()
+            .any(|input| input["name"] == "input" && input["required"] != true)
+    );
+    assert!(
+        command["purpose"]
+            .as_str()
+            .unwrap()
+            .contains("preserves the existing city")
+    );
+    assert!(
+        command["output"]
+            .as_str()
+            .unwrap()
+            .contains("Missing inputs are an editable draft")
+    );
 }

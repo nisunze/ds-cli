@@ -640,6 +640,27 @@ impl DeviceSession {
     ) -> Result<ds_client_core::ProjectDataReceipt, ClientError> {
         fixed_device_call!(self, project_data, project, command)
     }
+    pub fn save_transformers(
+        &mut self,
+        project: &str,
+        batch: &ds_client_core::TransformerSaveBatch,
+    ) -> Result<ds_client_core::TransformerSaveReceipt, ClientError> {
+        fixed_device_call!(self, save_transformers, project, batch)
+    }
+    pub fn shared_assets(
+        &mut self,
+        project: &str,
+        command: &ds_client_core::shared_assets::Command,
+    ) -> Result<Value, ClientError> {
+        fixed_device_call!(self, shared_assets, project, command)
+    }
+    pub fn design_tags(
+        &mut self,
+        project: &str,
+        command: &ds_client_core::design_tags::Command,
+    ) -> Result<Value, ClientError> {
+        fixed_device_call!(self, design_tags, project, command)
+    }
     pub fn report_artifact(
         &mut self,
         project: &str,
@@ -654,7 +675,6 @@ impl DeviceSession {
     ) -> Result<ds_client_core::grid_models::Receipt, ClientError> {
         fixed_device_call!(self, grid_models, project, command)
     }
-
     pub fn solar_project(
         &mut self,
         project: &str,

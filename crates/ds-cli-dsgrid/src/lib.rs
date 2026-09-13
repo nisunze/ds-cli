@@ -29,6 +29,7 @@ pub mod describe;
 pub mod inspect;
 pub mod model;
 pub mod package;
+pub mod project;
 pub mod run;
 pub mod validate;
 
@@ -38,6 +39,8 @@ pub static DOMAIN: Domain = Domain {
     id: "dsgrid",
     summary: "Canonical .dsgrid models: inspect, validate, revise, publish.",
     commands: &[
+        &project::LIST,
+        &project::DOWNLOAD,
         &create::COMMAND,
         &inspect::COMMAND,
         &validate::COMMAND,

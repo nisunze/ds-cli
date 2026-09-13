@@ -103,6 +103,16 @@ static AUTH_ENTRIES: &[Entry] = &[
 /// and all three must be looking at the same thing.
 static DSGRID_ENTRIES: &[Entry] = &[
     Entry {
+        command: &ds_cli_dsgrid::project::LIST,
+        handler: ds_cli_dsgrid::project::list,
+        render: ds_cli_dsgrid::project::render,
+    },
+    Entry {
+        command: &ds_cli_dsgrid::project::DOWNLOAD,
+        handler: ds_cli_dsgrid::project::download,
+        render: ds_cli_dsgrid::project::render,
+    },
+    Entry {
         command: &ds_cli_dsgrid::create::COMMAND,
         handler: ds_cli_dsgrid::create::run,
         render: ds_cli_dsgrid::create::render,
@@ -452,21 +462,51 @@ static REPORT_ENTRIES: &[Entry] = &[
         render: ds_cli_report::project::settings::render_set,
     },
     Entry {
-        command: &ds_cli_report::project::map_inputs::COMMAND,
-        handler: ds_cli_report::project::map_inputs::run,
-        render: ds_cli_report::layout::render_text,
-    },
-    Entry {
         command: &ds_cli_report::project::export::COMMAND,
         handler: ds_cli_report::project::export::run,
         render: ds_cli_report::project::export::render,
+    },
+    Entry {
+        command: &ds_cli_report::project::map_inputs::COMMAND,
+        handler: ds_cli_report::project::map_inputs::run,
+        render: ds_cli_report::layout::render_text,
     },
 ];
 
 static SOLAR_ENTRIES: &[Entry] = &[
     Entry {
+        command: &ds_cli_solar::network_map::COMMAND,
+        handler: ds_cli_solar::network_map::run,
+        render: ds_cli_solar::network_form::render,
+    },
+    Entry {
+        command: &ds_cli_solar::network_form::COMMAND,
+        handler: ds_cli_solar::network_form::run,
+        render: ds_cli_solar::network_form::render,
+    },
+    Entry {
+        command: &ds_cli_solar::network_form::SAVE,
+        handler: ds_cli_solar::network_form::save,
+        render: ds_cli_solar::network_form::render,
+    },
+    Entry {
+        command: &ds_cli_solar::reference::COMMAND,
+        handler: ds_cli_solar::reference::run,
+        render: ds_cli_solar::reference::render,
+    },
+    Entry {
+        command: &ds_cli_solar::cities::COMMAND,
+        handler: ds_cli_solar::cities::run,
+        render: ds_cli_solar::cities::render,
+    },
+    Entry {
         command: &ds_cli_solar::project::REBASE,
         handler: ds_cli_solar::project::rebase,
+        render: ds_cli_solar::project::render,
+    },
+    Entry {
+        command: &ds_cli_solar::project::CITY_CREATE,
+        handler: ds_cli_solar::project::city_create,
         render: ds_cli_solar::project::render,
     },
     Entry {
@@ -1178,6 +1218,11 @@ static STYLE_ENTRIES: &[Entry] = &[
 /// first, then convert with what you saw.
 static DATA_ENTRIES: &[Entry] = &[
     Entry {
+        command: &ds_cli_data::city_vectors::COMMAND,
+        handler: ds_cli_data::city_vectors::run,
+        render: ds_cli_data::city_vectors::render,
+    },
+    Entry {
         command: &ds_cli_data::inspect::COMMAND,
         handler: ds_cli_data::inspect::run,
         render: ds_cli_data::inspect::render,
@@ -1352,6 +1397,21 @@ static WORK_ENTRIES: &[Entry] = &[
 /// verbatim, so the index doubles as the procedure.
 static ASSETS_ENTRIES: &[Entry] = &[
     Entry {
+        command: &ds_cli_assets::shared::RESOLVE,
+        handler: ds_cli_assets::shared::resolve,
+        render: ds_cli_assets::shared::render,
+    },
+    Entry {
+        command: &ds_cli_assets::shared::MAPS,
+        handler: ds_cli_assets::shared::maps,
+        render: ds_cli_assets::shared::render,
+    },
+    Entry {
+        command: &ds_cli_assets::shared::REFERENCE,
+        handler: ds_cli_assets::shared::reference,
+        render: ds_cli_assets::shared::render,
+    },
+    Entry {
         command: &ds_cli_assets::list::COMMAND,
         handler: ds_cli_assets::list::run,
         render: ds_cli_assets::list::render,
@@ -1401,6 +1461,26 @@ static ASSETS_ENTRIES: &[Entry] = &[
 /// Design collaboration is durable project metadata, not map-owned local
 /// state. It is available through a paired desktop without an open map.
 static DESIGN_ENTRIES: &[Entry] = &[
+    Entry {
+        command: &ds_cli_design::native_tags::DEFINITIONS,
+        handler: ds_cli_design::native_tags::definitions,
+        render: ds_cli_design::native_tags::render,
+    },
+    Entry {
+        command: &ds_cli_design::native_tags::PREVIEW,
+        handler: ds_cli_design::native_tags::preview,
+        render: ds_cli_design::native_tags::render,
+    },
+    Entry {
+        command: &ds_cli_design::native_tags::APPLY,
+        handler: ds_cli_design::native_tags::apply,
+        render: ds_cli_design::native_tags::render,
+    },
+    Entry {
+        command: &ds_cli_design::native_tags::PROJECTION,
+        handler: ds_cli_design::native_tags::projection,
+        render: ds_cli_design::native_tags::render,
+    },
     Entry {
         command: &ds_cli_design::features::COMMAND,
         handler: ds_cli_design::features::run,
@@ -1630,6 +1710,11 @@ static DESIGN_ENTRIES: &[Entry] = &[
         command: &ds_cli_design::lv::project_export::COMMAND,
         handler: ds_cli_design::lv::project_export::run,
         render: ds_cli_design::lv::project_export::render,
+    },
+    Entry {
+        command: &ds_cli_design::lv::project_save::COMMAND,
+        handler: ds_cli_design::lv::project_save::run,
+        render: ds_cli_design::lv::project_save::render,
     },
     Entry {
         command: &ds_cli_design::project::SOURCES,

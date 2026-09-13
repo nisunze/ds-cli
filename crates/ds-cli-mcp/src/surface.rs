@@ -167,7 +167,14 @@ impl Profile {
             // file editing: eighteen leaves plus bootstrap, one more than the
             // previous budget. Focused callers use `grid-native` (file work)
             // or `grid-local-model` (paired lifecycle).
-            Self::Grid => 20,
+            // Project list/download add two native asset reads to this
+            // model workflow; no arbitrary download route is exposed.
+            Self::Grid => 22,
+            // The two reference-form commands add manual/shared seeding to
+            // this input workflow; the legacy planner remains discoverable.
+            // City creation adds the missing editable draft entry point,
+            // including cities without geographic or classified source data.
+            Self::SolarInput => 18,
             // Query, spatial selection, fenced changes, and governed
             // single-entry create belong to the same selected-project Survey
             // workflow. The count includes both bootstrap tools.
@@ -177,11 +184,15 @@ impl Profile {
             // same bounded desktop-owned workflow without transporting
             // features through MCP.
             Self::DesignEdit => 23,
-            // Twenty-two printing leaves plus both bootstrap tools: the
+            // Twenty-three printing leaves plus both bootstrap tools: city
+            // vector acquisition adds one step to the existing headless
+            // printing workflow, including projects without held context. The
             // headless loop (context held and seeded on this machine, output
             // selection, export with context) beside the paired leaves that
             // still need the desktop's own holdings.
-            Self::Printing => 24,
+            // Tag-group delivery adds local composition, producer referencing,
+            // and the published map index; these share the same workflow.
+            Self::Printing => 28,
             // The layer drawer's profile also carries this machine's prepared
             // local layer catalogue: sixteen leaves plus both bootstrap tools.
             // Preparing, renaming and removing a local layer is the same
@@ -555,12 +566,17 @@ const SOLAR_RUN_COMMANDS: &[&str] = &[
 ];
 
 const SOLAR_INPUT_COMMANDS: &[&str] = &[
+    "solar.network.resolve",
+    "solar.network.save",
+    "solar.network.map",
+    "solar.cities",
+    "solar.reference.acquire",
     "solar.project.run",
     "solar.project.result",
     "solar.project.status",
-    "solar.project.outbox",
     "solar.project.init",
     "solar.project.seed",
+    "solar.project.city.create",
     "solar.project.city.read",
     "solar.project.city.write",
     "solar.input.capture",
@@ -575,6 +591,7 @@ const SOLAR_PORTFOLIO_BATCH_COMMANDS: &[&str] = &[
 ];
 
 const SOLAR_DELIVERY_COMMANDS: &[&str] = &[
+    "solar.project.outbox",
     "solar.project.sync",
     "solar.project.sync.rebase",
     "solar.portfolio.list",
@@ -1264,6 +1281,9 @@ pub const fn chapter_description(chapter: Chapter) -> &'static str {
 // remain for what has no headless owner yet: survey and local-layer context,
 // per-transformer overrides, district and custom-area maps.
 const PRINTING_COMMANDS: &[&str] = &[
+    "report.layout.render",
+    "assets.reference",
+    "assets.maps",
     "map.print.schema",
     "report.layout.context",
     "report.layout.list",
@@ -1274,6 +1294,7 @@ const PRINTING_COMMANDS: &[&str] = &[
     "report.plan",
     "data.project-cache.status",
     "data.project-cache.seed",
+    "data.city-vectors",
     "report.project.settings",
     "report.project.outputs.set",
     "report.project.export",

@@ -45,6 +45,7 @@ pub mod list;
 pub mod preview;
 pub mod promote;
 pub mod read;
+pub mod shared;
 pub mod tree;
 
 use std::time::Duration;
@@ -71,6 +72,9 @@ pub static DOMAIN: Domain = Domain {
     id: "assets",
     summary: "Project Assets: documents in folders, previewed and linked.",
     commands: &[
+        &shared::RESOLVE,
+        &shared::MAPS,
+        &shared::REFERENCE,
         &list::COMMAND,
         &tree::COMMAND,
         &read::COMMAND,
@@ -770,11 +774,18 @@ mod tests {
         assert_eq!(names, unique, "an operation is declared twice");
         assert_eq!(
             names.len(),
-            DOMAIN.commands.len(),
-            "every ds assets command sends exactly one operation, and every \
+            DOMAIN
+                .commands
+                .iter()
+                .filter(|command| command.authority
+                    != ds_cli_contract::spec::Authority::HeadlessProject)
+                .count(),
+            "every paired ds assets command sends exactly one operation, and every \
              declared operation belongs to a command"
         );
-        for command in DOMAIN.commands {
+        for command in DOMAIN.commands.iter().filter(|command| {
+            command.authority != ds_cli_contract::spec::Authority::HeadlessProject
+        }) {
             assert!(
                 BRIDGE_OPS.iter().any(|op| op.operation == command.id),
                 "`{}` has no operation of the same name",

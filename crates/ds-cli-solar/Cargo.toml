@@ -10,6 +10,7 @@ publish.workspace = true
 
 [dependencies]
 base64 = { workspace = true }
+chrono = { version = "0.4", default-features = false, features = ["std"] }
 ds-cli-auth = { workspace = true }
 ds-cli-contract = { workspace = true }
 # The paired desktop owns selected-project state, cache-first city capture and
