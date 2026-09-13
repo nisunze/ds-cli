@@ -102,6 +102,14 @@ identity, required layers, `print_context` (digest, carried and omitted layers),
 context warnings and source/recipe provenance in receipts. A local layout proof
 does not validate project preparation, export or publication.
 
+Tables, schedules and legends hug the sheet border with one small margin (5 mm,
+the same as the content gap). A content frame never floats in unused space: the
+stack starts at the margin and grows inward, and an authored frame wider than its
+measured content still places that content against the border. This is the
+default, not a per-sheet decision — a sheet that floats its schedules away from
+the border is wrong even when nothing overlaps. See `docs/printing.md`,
+"Sheet margin".
+
 Inspect whole pages and readable crops: dense labels, rural coverage, junctions,
 title block, legend and schedule edges. Check clipping, overlaps, missing layers,
 legend categories, units and table scope. Verify visible furniture alignment,
