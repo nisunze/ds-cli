@@ -237,10 +237,11 @@ pub struct TableBinding {
     /// headings still render, truncated within their columns without wrapping.
     #[serde(default = "table_measure_headings_default")]
     pub measure_headings: bool,
-    /// Keep literal headings, or index them with a full key above each panel.
+    /// Index headings with a full key above each panel, or keep them literal.
+    /// Defaults to `auto_index`: a heading never widens its column.
     #[serde(
         default,
-        skip_serializing_if = "table_headings::HeadingMode::is_literal"
+        skip_serializing_if = "table_headings::HeadingMode::is_default"
     )]
     pub heading_mode: table_headings::HeadingMode,
     /// Explicitly allow a visibly warned incomplete table for an outlier.
@@ -273,7 +274,7 @@ impl Default for TableBinding {
             max_widths_mm: vec![],
             min_widths_mm: vec![],
             measure_headings: true,
-            heading_mode: table_headings::HeadingMode::Literal,
+            heading_mode: table_headings::HeadingMode::AutoIndex,
             overflow: TableOverflow::TruncateWarn,
             panels: 1,
             gap_mm: 3.,

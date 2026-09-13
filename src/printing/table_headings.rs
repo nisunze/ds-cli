@@ -6,14 +6,27 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum HeadingMode {
-    #[default]
     Literal,
+    /// The default. A heading never widens its column: when any authored
+    /// heading is wider than the data beneath it, every column takes its
+    /// order letter and the full names move to the key above the panel.
+    ///
+    /// This was `literal`, which let one long heading — "Service Area Length
+    /// M" over a column of short numbers — set the column width and push real
+    /// content off the sheet. Indexing only engages when that would happen, so
+    /// a table whose headings already fit is unchanged.
+    #[default]
     AutoIndex,
     Indexed,
 }
 impl HeadingMode {
     pub fn is_literal(&self) -> bool {
         *self == Self::Literal
+    }
+    /// Serialization skips the default, so a document that never chose a mode
+    /// stays free of the field.
+    pub fn is_default(&self) -> bool {
+        *self == Self::default()
     }
 }
 #[derive(Debug, PartialEq)]
@@ -128,9 +141,15 @@ mod document_tests {
             .unwrap()
             .get("heading_mode")
             .is_none());
-        table.heading_mode = HeadingMode::AutoIndex;
+        // auto_index is the default, so an old document that never chose a
+        // mode still serializes without the field — and now reads back as
+        // "a heading never widens its column".
+        assert_eq!(table.heading_mode, HeadingMode::AutoIndex);
+        // An explicitly chosen NON-default mode is written, so a layout that
+        // deliberately wants literal headings keeps them across a round trip.
+        table.heading_mode = HeadingMode::Literal;
         let saved = serde_json::to_value(&table).unwrap();
-        assert_eq!(saved["heading_mode"], "auto_index");
+        assert_eq!(saved["heading_mode"], "literal");
         assert_eq!(
             serde_json::from_value::<TableBinding>(saved).unwrap(),
             table

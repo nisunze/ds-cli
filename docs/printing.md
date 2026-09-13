@@ -67,6 +67,42 @@ This is the default. It is not a per-sheet decision to be made again on every
 layout, and a sheet that floats its schedules away from the border is wrong
 even when nothing overlaps.
 
+## Schedule fields follow the workbook
+
+A printed schedule carries the fields its workbook carries. The exported table
+is the field list: bind the schedule to it rather than re-choosing a narrower
+set per sheet, the way the information table already works. A sheet that prints
+`House | Pole | Customer | Category | Svc m` when the workbook holds eleven
+columns has dropped real content the reader needs.
+
+The customer/house-connection schedule is:
+
+| Column | Heading |
+|---|---|
+| pole | Pole Number |
+| house | House Number |
+| names | Names |
+| meter_type | Meter Type |
+| category | Category |
+| from_tr | From Tr Distance |
+| nid | Nid |
+| service_area | Service Area Length M |
+| village | Village |
+| x | X |
+| y | Y |
+
+**As-built-only fields are omitted when the project is not as-built.** These
+identify an installed, metered connection and carry no meaning for a design:
+
+- `meter_type`
+- `nid`
+- any phone number
+
+Everything else prints. Omission here is about meaning, not width: a field is
+dropped because a design cannot have it, never because the sheet is crowded.
+If the schedule does not fit, that is a placement, panel or font decision — see
+`flow` and `overflow` — and never a reason to drop a meaningful column.
+
 ## Measured content flow
 
 `flow.after` names an earlier table or legend. `placement` defaults to
@@ -94,9 +130,13 @@ asset lifecycle is implemented.
 
 ## Indexed table headings
 
-`table.heading_mode` is `literal` (default), `auto_index`, or `indexed`.
+`table.heading_mode` is `auto_index` (default), `literal`, or `indexed`.
 `auto_index` chooses indices when any authored heading exceeds its data-sized,
-minimum/maximum-constrained column. Indexed tables use stable column-order
+minimum/maximum-constrained column, so **a heading never widens its column**: one
+long name like "Service Area Length M" over short numbers no longer sets the
+column width and pushes real content off the sheet. A table whose headings
+already fit is unchanged, and `literal` remains available for a layout that
+deliberately wants full headings in the row. Indexed tables use stable column-order
 letters A–L for every column and an untruncated explanatory key above each
 panel. Full headings remain in the document; columns and values never change.
 The key wraps at the authored type size and consumes actual table height;
