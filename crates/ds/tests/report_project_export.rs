@@ -69,6 +69,7 @@ fn the_descriptor_is_a_headless_project_fenced_local_file_write() {
             "out-dir",
             "concurrency",
             "admin-bounds",
+            "print-layout",
             "seed",
             "publish",
             "server-state-dir",
