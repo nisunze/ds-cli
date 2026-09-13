@@ -142,6 +142,43 @@ The web application's IndexedDB is an implementation detail. Do not open,
 scrape, lock, copy or reverse-engineer it. A missing cache read is a named
 semantic bridge operation using the same store function the UI uses.
 
+## Evidence before refactoring
+
+Start a feature delivery or repair by attempting the user's intended outcome
+through the installed headless CLI/MCP. Record the exact request, observable
+result and missing acceptance criterion. A source-code suspicion alone does
+not justify moving a large part of the stack. If existing commands or authored
+configuration meet the intent, use them and verify the artifact.
+
+When the attempt proves a bug or missing capability, make the smallest coherent
+change in its owning Rust contract and expose it through CLI/MCP first. Prove
+the result headlessly before extending the UI. Move domain behavior out of
+TypeScript only in the slice being changed; remove its replaced implementation
+there, leaving the UI as a thin binding. Do not start a broad TypeScript removal
+or move unrelated code to complete one delivery.
+
+Keep project delivery and feature stabilization connected by the same receipts.
+Use bounded builds and tests, and run one smaller-model blind workflow trial
+after the implementation is ready, not a noisy stream of delegated attempts.
+
+## Blind CLI/MCP workflow validation
+
+Validate natural-language workflows with a separate agent that has no repository
+access. Use a smaller model such as Luna when available. Give it the user's job,
+the allowed project and output location, and mutation limits; do not give source
+files, implementation explanations, copied command syntax, or private scripts.
+It may use only the installed executable/MCP surface, live discovery, and shipped
+skills. Require an actual artifact attempt and inspection, with exact receipts
+and refusals, rather than a plausible plan.
+
+Observe the transcript before changing the product. Distinguish a supported
+recipe or style edit from a discovery failure, an acquisition/preparation gap,
+and a missing owner capability. Fix the public contract, skill, or owning Rust
+layer as appropriate; avoid task-specific code when existing parameters suffice.
+Repeat the blind attempt after the deployed fix. The implementing agent's own
+source-assisted success is not evidence that an unfamiliar LLM can find and use
+the workflow. Keep different customer projects and their deliverables separate.
+
 ## Verification
 
 All of these must pass, and CI runs all of them:

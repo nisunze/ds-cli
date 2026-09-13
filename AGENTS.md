@@ -55,3 +55,14 @@ Beyond the list in `CLAUDE.md`:
   `ds feedback submit`, which reaches the same backlog as the app's `fb`
   shortcut, and close what they have fixed with `ds feedback close` — the
   same governed triage call, needing the same platform capability.
+
+## Blind workflow trials
+
+The **Blind CLI/MCP workflow validation** section in [CLAUDE.md](CLAUDE.md) is
+required for map/report workflow changes: an independent smaller-model agent
+uses the installed surface without source access or syntax hints, and its
+artifact attempt and observed refusals determine the discoverability result.
+
+For feature stabilization, the **Evidence before refactoring** section in
+[CLAUDE.md](CLAUDE.md) governs CLI/MCP-first proof and the scope of TypeScript
+removal. A delivery gap must be demonstrated before refactoring.
