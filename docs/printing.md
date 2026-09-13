@@ -38,6 +38,21 @@ returns V2: standard paper is inferred from exact dimensions, other bounded
 dimensions become custom paper, and the legacy map frame becomes the clipped
 `primary_map` viewport. New output is never V1.
 
+## MV delivery ownership
+
+MV is the common delivery scope for DS Grid MV models and their attachments,
+MV maps and printouts, other MV reports, the staking table, and the future
+BOQ. Index and package these together through the MV reporting workflow.
+Generated outputs retain the exact source model version and digest; an attached
+submission file retains its immutable attachment revision. Grouping artifacts
+must reference their existing storage, not copy them into another catalogue.
+Printing or packaging does not create or advance a design model version.
+
+Prove the existing headless CLI/MCP behavior before changing this workflow.
+Where the proof exposes a missing operation, extend its owning contract in a
+bounded slice and verify the result through CLI/MCP before adding UI behavior.
+This scope does not authorize generating a future BOQ or changing quantities.
+
 ## Fixed legend anchors
 
 `legend.align` chooses `left` or `right` within the authored legend frame.
