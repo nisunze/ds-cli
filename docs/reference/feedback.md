@@ -4,9 +4,10 @@
 deduplicated ledger DS GridDesign's `fb` tab reads and writes. It is not an
 issue-file generator and it does not introduce an MCP or another API client.
 
-Every command uses the paired application's signed-in session. `ds` sends one
-typed operation; DS GridDesign calls its existing `/api/v1/feedback` client. No
-credential leaves the application.
+Commands default to the headless signed-in user (`--target server`), using the
+same fixed feedback API. Neither Desktop nor a selected project is required.
+`--target desktop` retains the paired application's compatibility route.
+Credentials remain inside the protected native client or paired application.
 
 ```text
 submit → (a coding session closes the gap) → list → close
@@ -14,8 +15,8 @@ submit → (a coding session closes the gap) → list → close
 
 ## `submit`
 
-Records an agent's observed product gap. DS GridDesign pins `reporter_kind` to
-`agent` and adds the active project only as optional triage context.
+Records an agent's observed product gap. Both adapters pin `reporter_kind` to
+`agent`; project selection is not authority for feedback.
 
 Submit only after live `ds capabilities` discovery establishes that a
 capability is absent or broken. Include bounded non-secret evidence, the
@@ -28,6 +29,9 @@ Reads the backlog the `fb` tab shows: `--view not_addressed` (the default),
 `addressed`, or `all`, narrowed by `--component` or `--query`. Rows carry the
 `id` and `version` a close takes, and `--detail` returns each report's full
 text — including the acceptance condition its author wrote down.
+The headless route accepts `--since` for last-seen or updated timestamps. It
+scans at most 200 recent records and reports `scan_incomplete` separately from
+the requested row limit; an empty filtered result is not proof about older rows.
 
 ## `close`
 

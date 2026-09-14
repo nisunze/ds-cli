@@ -38,16 +38,15 @@ const INVALID_CONTEXT: Refusal = Refusal {
 pub static COMMAND: Command = Command {
     id: "feedback.submit",
     path: &["feedback", "submit"],
-    contract: 1,
+    contract: 2,
     summary: "Report an observed product gap to the shared feedback backlog.",
     purpose: "\
-Submits one agent-authored sighting through the paired application's existing \
-feedback client. It reaches the same deduplicated backlog as the `fb` shortcut; \
+Submits one agent-authored sighting using the native signed-in user without Desktop or a selected project. It reaches the same deduplicated backlog as the `fb` shortcut; \
 it does not create a local gap file or a second issue channel. Use only after \
 live capability discovery confirms the task is unsupported or materially broken.",
     chapter: Chapter::Operations,
     effect: Effect::GlobalWrite,
-    authority: Authority::DesktopUser,
+    authority: Authority::HeadlessUser,
     execution: Execution::Sync,
     args: &[
         Arg::value(
@@ -100,6 +99,8 @@ live capability discovery confirms the task is unsupported or materially broken.
             "<key=value>",
             "Bounded triage context; repeat for up to 24 unique keys.",
         ),
+        crate::TARGET_ARG,
+        crate::LANE_ARG,
         ops::DESCRIPTOR_ARG,
     ],
     output: "\
@@ -110,7 +111,10 @@ report, and the report's current occurrence count.",
         note: "The report is written only after --yes and is deduplicated by the feedback service.",
         runnable: false,
     }],
-    refusals: &[
+    refusals: &crate::native_refusals::<
+        15,
+        { 15 + ds_cli_auth::PROJECT_STATUS_COMMAND.refusals.len() + 2 },
+    >([
         ops::NOT_PAIRED,
         ops::AMBIGUOUS,
         ops::UNREACHABLE,
@@ -122,12 +126,15 @@ report, and the report's current occurrence count.",
         INVALID_TEXT,
         INVALID_EVIDENCE,
         INVALID_CONTEXT,
+        crate::NOT_FOUND,
+        crate::CONFLICT,
+        crate::NOT_PERMITTED,
         Refusal {
             code: "confirmation_required",
             when: "--yes was not given for a report written to the shared backlog",
             remedy: "re-run with --yes once the observed evidence is ready to submit",
         },
-    ],
+    ]),
     reference: Some("docs/reference/feedback.md"),
     availability: ops::paired_availability,
 };
@@ -145,7 +152,6 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let client = optional_text(inputs.value("client"), "client", MAX_AGENT_PART_CHARS)?;
     let evidence = parse_evidence(inputs.repeated("evidence"))?;
     let context = parse_context(inputs.repeated("context"))?;
-    let descriptor = ops::paired(inputs.value("desktop-descriptor"))?;
 
     let mut arguments = Map::from_iter([
         ("title".to_string(), Value::String(title.to_string())),
@@ -173,6 +179,10 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         arguments.insert("client".to_string(), Value::String(client.to_string()));
     }
 
+    if matches!(ops::host(inputs.value("target"))?, ops::Host::Server) {
+        return crate::invoke_native(inputs, "submit", arguments);
+    }
+    let descriptor = ops::paired(inputs.value("desktop-descriptor"))?;
     ops::invoke(
         &descriptor,
         &crate::SUBMIT,

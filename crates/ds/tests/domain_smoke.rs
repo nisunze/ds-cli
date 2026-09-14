@@ -7205,7 +7205,7 @@ fn feedback_is_one_confirmed_shared_write() {
         ]
     );
     for command in commands {
-        if command["authority"] == "headless_project" {
+        if command["authority"] == "headless_user" {
             continue;
         }
         assert_eq!(
@@ -7234,6 +7234,8 @@ fn feedback_is_one_confirmed_shared_write() {
         "ds-cli",
         "--agent",
         "test-agent",
+        "--target",
+        "desktop",
         "--desktop-descriptor",
         &descriptor,
     ];
@@ -8310,7 +8312,7 @@ fn feedback_triage_bounds_are_enforced_before_the_bridge() {
         ],
     ] {
         let mut argv = args.clone();
-        argv.extend(["--desktop-descriptor", &descriptor]);
+        argv.extend(["--target", "desktop", "--desktop-descriptor", &descriptor]);
         let code = refusal(&argv);
         assert!(
             code.is_empty()

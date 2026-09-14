@@ -4327,6 +4327,39 @@ pub use ds_client_core::design_tags::Command as DesignTagsCommand;
 
 pub use ds_client_core::shared_assets::Command as SharedAssetsCommand;
 
+/// Shared product feedback is user scoped, independent of project selection.
+pub fn feedback(
+    lane_value: &str,
+    command: &ds_client_core::feedback::Command,
+) -> Result<serde_json::Value, Failure> {
+    let lane = Lane::parse(lane_value)?;
+    let convert = |error: ds_client_core::ClientError| match error.to_string().as_str() {
+        "feedback_not_permitted" => {
+            Failure::unauthorized("feedback_not_permitted", "This user cannot triage feedback")
+                .remedy("Use a user with platform triage capability")
+        }
+        "feedback_not_found" => {
+            Failure::invalid("feedback_not_found", "No feedback report carries this id")
+                .remedy("List the backlog again")
+        }
+        "feedback_conflict" => {
+            Failure::conflict("feedback_conflict", "Feedback changed since it was read")
+                .remedy("Read the current version before closing it")
+        }
+        _ => map_client(error),
+    };
+    command.validate().map_err(convert)?;
+    if let Some(mut device) = restored_device_session(lane)? {
+        return device.feedback(command).map_err(convert);
+    }
+    let profile = profile::load(lane)?;
+    let store = NativeRefreshStore::open()?;
+    let mut client = Client::new(profile, NativeTransport, store);
+    require_restore_before_context(&mut client)?;
+    client.feedback(command, now()).map_err(convert)
+}
+pub use ds_client_core::feedback::Command as FeedbackCommand;
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -25,7 +25,7 @@ const CONFIRMATION_REQUIRED: Refusal = Refusal {
 pub static COMMAND: Command = Command {
     id: "feedback.close",
     path: &["feedback", "close"],
-    contract: 1,
+    contract: 2,
     summary: "Mark one backlog report addressed, with the resolution.",
     purpose: "\
 Closes the loop a coding session opens: a gap reported through `ds feedback \
@@ -36,7 +36,7 @@ does not keep counting work that is already done. Close only what the session \
 can show is addressed; the resolution is the record, not a formality.",
     chapter: Chapter::Operations,
     effect: Effect::GlobalWrite,
-    authority: Authority::DesktopUser,
+    authority: Authority::HeadlessUser,
     execution: Execution::Sync,
     args: &[
         Arg::value(
@@ -59,6 +59,8 @@ can show is addressed; the resolution is the record, not a formality.",
             "<version>",
             "Refuse if the report is no longer at this version; defaults to the version read now.",
         ),
+        crate::TARGET_ARG,
+        crate::LANE_ARG,
         ops::DESCRIPTOR_ARG,
     ],
     output: "\
@@ -70,7 +72,10 @@ The report stays in the backlog and remains readable with \
         note: "Take --id from `ds feedback list`; the close is refused if the report moved meanwhile.",
         runnable: false,
     }],
-    refusals: &[
+    refusals: &crate::native_refusals::<
+        14,
+        { 14 + ds_cli_auth::PROJECT_STATUS_COMMAND.refusals.len() + 2 },
+    >([
         ops::NOT_PAIRED,
         ops::AMBIGUOUS,
         ops::UNREACHABLE,
@@ -85,7 +90,7 @@ The report stays in the backlog and remains readable with \
         crate::CONFLICT,
         crate::NOT_PERMITTED,
         CONFIRMATION_REQUIRED,
-    ],
+    ]),
     reference: Some("docs/reference/feedback.md"),
     availability: ops::paired_availability,
 };
@@ -108,6 +113,9 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             "expected_version".into(),
             json!(ops::integer(version, "expect-version", 1, i64::MAX)?),
         );
+    }
+    if matches!(ops::host(inputs.value("target"))?, ops::Host::Server) {
+        return crate::invoke_native(inputs, "close", arguments);
     }
     let descriptor = ops::paired(inputs.value("desktop-descriptor"))?;
     ops::invoke(

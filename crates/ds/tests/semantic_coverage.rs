@@ -401,9 +401,9 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     // session's own selected project's catalogue, so it is `global_write` and
     // confirmation-gated. It activates nothing locally.
     ("dsgrid.publish-version", "global_write", "project"),
-    ("feedback.close", "global_write", "desktop_user"),
-    ("feedback.list", "read_only", "desktop_user"),
-    ("feedback.submit", "global_write", "desktop_user"),
+    ("feedback.close", "global_write", "headless_user"),
+    ("feedback.list", "read_only", "headless_user"),
+    ("feedback.submit", "global_write", "headless_user"),
     ("library.catalog", "read_only", "none"),
     ("library.global.read", "read_only", "desktop_user"),
     ("library.global.write", "global_write", "desktop_user"),

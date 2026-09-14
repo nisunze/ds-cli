@@ -16,16 +16,15 @@ const MAX_FILTER_CHARS: usize = 200;
 pub static COMMAND: Command = Command {
     id: "feedback.list",
     path: &["feedback", "list"],
-    contract: 1,
+    contract: 2,
     summary: "The shared feedback backlog: what is still open, and its ids.",
     purpose: "\
-Reads the same deduplicated backlog the `fb` tab shows, through the paired \
-application's signed-in session. This is where a close begins: it returns the \
+Reads the same deduplicated backlog the `fb` tab shows through the native signed-in user, without a selected project or Desktop. Scans the latest 200 records; scan_incomplete reports when older records may exist. This is where a close begins: it returns the \
 report id and the version a close must carry, the acceptance condition the \
 original sighting wrote down, and how many times the gap was seen.",
     chapter: Chapter::Operations,
     effect: Effect::ReadOnly,
-    authority: Authority::DesktopUser,
+    authority: Authority::HeadlessUser,
     execution: Execution::Sync,
     args: &[
         Arg::value("view", "<view>", "Which half of the backlog to return.")
@@ -51,6 +50,13 @@ original sighting wrote down, and how many times the gap was seen.",
             "detail",
             "Return each report's full detail instead of a bounded excerpt.",
         ),
+        Arg::value(
+            "since",
+            "<RFC3339>",
+            "Keep feedback seen or updated at or after this time; native host only.",
+        ),
+        crate::TARGET_ARG,
+        crate::LANE_ARG,
         ops::DESCRIPTOR_ARG,
     ],
     output: "\
@@ -63,7 +69,10 @@ original sighting wrote down, and how many times the gap was seen.",
         note: "Read the acceptance condition in .data.reports[].detail before closing anything.",
         runnable: false,
     }],
-    refusals: &[
+    refusals: &crate::native_refusals::<
+        13,
+        { 13 + ds_cli_auth::PROJECT_STATUS_COMMAND.refusals.len() + 2 },
+    >([
         ops::NOT_PAIRED,
         ops::AMBIGUOUS,
         ops::UNREACHABLE,
@@ -74,7 +83,10 @@ original sighting wrote down, and how many times the gap was seen.",
         ops::INVALID_NUMBER,
         crate::NOT_SIGNED_IN,
         crate::INVALID_TEXT,
-    ],
+        crate::NOT_FOUND,
+        crate::CONFLICT,
+        crate::NOT_PERMITTED,
+    ]),
     reference: Some("docs/reference/feedback.md"),
     availability: ops::paired_availability,
 };
@@ -104,6 +116,18 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     }
     if inputs.switch("detail") {
         arguments.insert("detail".into(), json!(true));
+    }
+    if matches!(ops::host(inputs.value("target"))?, ops::Host::Server) {
+        if let Some(since) = inputs.value("since") {
+            arguments.insert("since".into(), json!(since));
+        }
+        return crate::invoke_native(inputs, "list", arguments);
+    }
+    if inputs.value("since").is_some() {
+        return Err(
+            Failure::invalid("invalid_text", "--since requires --target server")
+                .remedy("Use the native feedback host"),
+        );
     }
     let descriptor = ops::paired(inputs.value("desktop-descriptor"))?;
     ops::invoke(&descriptor, &crate::LIST, Value::Object(arguments), TIMEOUT)

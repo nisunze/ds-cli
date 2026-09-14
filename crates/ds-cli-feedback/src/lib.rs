@@ -1,10 +1,9 @@
 //! `ds feedback` records product gaps in the same authenticated backlog as the
 //! DS GridDesign `fb` shortcut — and closes them when the gap is gone.
 //!
-//! This is deliberately a paired-application domain. `ds` never receives a
-//! Firebase token and never invents another issue store; the running app sends
-//! one typed report through its existing feedback client under the user it has
-//! already authenticated. The adapter pins `reporter_kind` to `agent`.
+//! The native user reaches one fixed authenticated backend contract without
+//! Desktop or a selected project. Desktop is an explicit compatibility host;
+//! neither route returns credentials or creates another issue store.
 //!
 //! ## The family is a loop, not a drop box
 //!
@@ -176,6 +175,54 @@ pub fn truncate(text: &str, width: usize) -> String {
     }
     let kept: String = text.chars().take(width.saturating_sub(1)).collect();
     format!("{kept}…")
+}
+
+pub const TARGET_ARG: ds_cli_contract::spec::Arg = ds_cli_contract::spec::Arg::value(
+    "target",
+    "<desktop|desktop:instance|server>",
+    "Native signed-in user by default; Desktop remains an explicit compatibility route.",
+)
+.default("server");
+pub const LANE_ARG: ds_cli_contract::spec::Arg =
+    ds_cli_contract::spec::Arg::value("lane", "<stable|canary>", "Native credential lane.")
+        .choices(&["stable", "canary"])
+        .default("stable");
+pub const fn native_refusals<const N: usize, const M: usize>(old: [Refusal; N]) -> [Refusal; M] {
+    let mut out = [INVALID_TEXT; M];
+    let mut i = 0;
+    while i < N {
+        out[i] = old[i];
+        i += 1;
+    }
+    let mut j = 0;
+    while j < ds_cli_auth::PROJECT_STATUS_COMMAND.refusals.len() {
+        out[i] = ds_cli_auth::PROJECT_STATUS_COMMAND.refusals[j];
+        i += 1;
+        j += 1;
+    }
+    out[i] = ops::UNKNOWN_TARGET;
+    out[i + 1] = ops::TARGET_MISMATCH;
+    out
+}
+pub fn invoke_native(
+    inputs: &ds_cli_contract::Inputs,
+    operation: &str,
+    mut arguments: serde_json::Map<String, serde_json::Value>,
+) -> Result<serde_json::Value, Failure> {
+    if inputs.value("desktop-descriptor").is_some() {
+        return Err(Failure::invalid(
+            "invalid_text",
+            "A Desktop descriptor requires --target desktop",
+        )
+        .remedy("Select the intended feedback host explicitly"));
+    }
+    arguments.insert("operation".into(), serde_json::json!(operation));
+    let command: ds_cli_auth::FeedbackCommand =
+        serde_json::from_value(serde_json::Value::Object(arguments)).map_err(|_| {
+            Failure::invalid("invalid_text", "Invalid feedback command fields")
+                .remedy(INVALID_TEXT.remedy)
+        })?;
+    ds_cli_auth::feedback(inputs.value("lane").unwrap_or("stable"), &command)
 }
 
 #[cfg(test)]

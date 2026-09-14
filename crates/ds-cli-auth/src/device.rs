@@ -647,6 +647,12 @@ impl DeviceSession {
     ) -> Result<ds_client_core::TransformerSaveReceipt, ClientError> {
         fixed_device_call!(self, save_transformers, project, batch)
     }
+    pub fn feedback(
+        &mut self,
+        command: &ds_client_core::feedback::Command,
+    ) -> Result<Value, ClientError> {
+        fixed_device_call!(self, feedback, command)
+    }
     pub fn shared_assets(
         &mut self,
         project: &str,
