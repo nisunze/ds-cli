@@ -1409,6 +1409,7 @@ pub fn field_domain_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> 
 pub mod report_formats;
 
 pub mod design_versions;
+pub mod design_versions_headless;
 #[cfg(feature = "wasm")]
 #[wasm_bindgen::prelude::wasm_bindgen(js_name = designVersionCommand)]
 pub fn design_version_command_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {

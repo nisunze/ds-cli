@@ -173,6 +173,43 @@ pub struct Snapshot {
     pub sources: Vec<Source>,
 }
 
+/// Compare immutable Design inputs without a renderer. Geometry/attribute
+/// classification is the same owner used by retained transformer versions.
+/// Full totals remain exact when detail rows reach the caller's bound.
+pub fn compare_snapshots(left: &Snapshot, right: &Snapshot, limit: usize) -> Result<Value, String> {
+    if left.transformer != right.transformer || left.crs != right.crs {
+        return Err("comparison requires the same transformer and CRS".into());
+    }
+    if limit > 500 {
+        return Err("comparison details must be bounded to at most 500 features".into());
+    }
+    let comparison = ds_geo_lite::comparison::compare_geojson_layers(
+        ds_geo_lite::comparison::GeoJsonLayerComparisonInput {
+            local_layers: left.layers.clone(),
+            cloud_layers: right.layers.clone(),
+            layer_names: vec![],
+            ignored_property_keys: vec!["v_first".into(), "v_last".into()],
+            max_detail_features: limit,
+            detail_change_classes: vec![],
+        },
+    )?;
+    let left_value = serde_json::to_value(left).map_err(|e| e.to_string())?;
+    let right_value = serde_json::to_value(right).map_err(|e| e.to_string())?;
+    let input_changes: Vec<&str> = [
+        "settings",
+        "network_config",
+        "sources",
+        "include_design_customers",
+    ]
+    .into_iter()
+    .filter(|key| left_value[*key] != right_value[*key])
+    .collect();
+    Ok(
+        json!({"schema":"ds.design.snapshot-comparison/v1", "transformer":left.transformer,
+        "comparison":comparison,"input_changes":input_changes,"mutated":false}),
+    )
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct NetworkConfig {

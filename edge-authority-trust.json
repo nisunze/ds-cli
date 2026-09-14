@@ -1,0 +1,18 @@
+{
+  "schema": 1,
+  "contract": "ds-edge-authority-trust/v1",
+  "lanes": {
+    "canary": {
+      "status": "provisioned",
+      "signer": "edge-capability-signer-canary@engineering-data-solutions.iam.gserviceaccount.com",
+      "issuer": "https://ds-brain-canary-261257746301.us-east1.run.app",
+      "audience": "urn:rw.datasolutions:desktop-edge"
+    },
+    "stable": {
+      "status": "provisioned",
+      "signer": "edge-capability-signer@engineering-data-solutions.iam.gserviceaccount.com",
+      "issuer": "https://ds-brain-261257746301.us-east1.run.app",
+      "audience": "urn:rw.datasolutions:desktop-edge"
+    }
+  }
+}

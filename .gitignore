@@ -8,3 +8,12 @@ crates/ds-design-workspace/target/
 
 # Shared native report artifact host
 crates/ds-report-artifacts/target/
+
+# Server core crates moved here from ds-web (2026-09-14): detached workspaces
+# with their own targets (scripts/test-detached-workspaces.sh)
+crates/ds-client-core/target/
+crates/ds-edge-authority/target/
+crates/ds-layer-store/target/
+crates/ds-project-data/target/
+crates/ds-report-host/target/
+crates/ds-sync-runtime/target/

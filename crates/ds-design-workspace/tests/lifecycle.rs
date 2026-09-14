@@ -210,3 +210,31 @@ fn independent_connections_cannot_commit_the_same_base_twice() {
         1
     );
 }
+
+#[test]
+fn headless_revision_comparison_is_read_only_scoped_and_bounded() {
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path().join("project");
+    Workspace::init(&root, "project-a").unwrap();
+    let mut w = Workspace::open(&root).unwrap();
+    let first = write(&mut w, "T1", "create");
+    let from = first["revision"].as_str().unwrap();
+    let changed = w
+        .edit(&serde_json::to_vec(&edit(from, "edit")).unwrap())
+        .unwrap();
+    let before = w.outbox(0, 100).unwrap();
+    let compared = w.compare("T1", from, "head", 0).unwrap();
+    assert_eq!(compared["project"], "project-a");
+    assert_eq!(compared["to_revision"], changed["revision"]);
+    assert_eq!(compared["comparison"]["totals"]["attributeOnlyChanged"], 1);
+    assert_eq!(compared["comparison"]["detailsTruncated"], true);
+    assert_eq!(w.outbox(0, 100).unwrap(), before);
+    assert!(w.compare("T2", from, "head", 20).is_err());
+    let page = w.revisions("T1", "", 1).unwrap();
+    assert_eq!(page["more"], true);
+    let next = w
+        .revisions("T1", page["next"].as_str().unwrap(), 1)
+        .unwrap();
+    assert_eq!(next["more"], false);
+    assert_ne!(page["revisions"][0], next["revisions"][0]);
+}

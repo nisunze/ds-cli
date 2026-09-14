@@ -1,0 +1,1279 @@
+{
+  "schema_version": "ds-web.routing-descriptor/v1",
+  "title": "Data Solutions routing descriptor",
+  "doc": [
+    "The ONE reviewed source for where a Data Solutions operation goes.",
+    "",
+    "Everything downstream is generated from this file:",
+    "  * the public, build-time routes manifest the browser/desktop bundle loads",
+    "    (scripts/routing/generate-routes.mjs, one file per target);",
+    "  * the contract test that proves each declared gateway path really exists",
+    "    in ds-apis-tf and really points at the backend declared here.",
+    "",
+    "Two hard rules, enforced by the generator and by tests:",
+    "  1. `backend` / `relays_to` name PRIVATE Cloud Run services. They are",
+    "     reviewed here and validated against the IaC; they are NEVER copied",
+    "     into the generated public manifest. The browser learns one origin:",
+    "     the lane's EDS API Gateway (or its own origin in local development).",
+    "  2. A retired service may never appear. ds-solar-calc and ds-solar-reporter",
+    "     are retired; Python is out of the application stack except for",
+    "     ds-solar-weather, which is private and reached only by ds-brain."
+  ],
+  "retired_services": [
+    "ds-solar-calc",
+    "ds-solar-reporter"
+  ],
+  "operation_defaults": {
+    "doc": [
+      "The reviewed default for every field of the operation registry",
+      "(ds-command-kernel/docs/contracts/ds-transport-authority.md section 3).",
+      "",
+      "An operation that omits a field inherits the value declared HERE. That",
+      "keeps the default a reviewed line in the descriptor rather than a constant",
+      "buried in the generator, and it lets an entry that is genuinely ordinary",
+      "stay short. Any entry may override any field.",
+      "",
+      "`principal` says which credential the call carries, and only that:",
+      "  * `user`      — a Firebase user bearer is attached;",
+      "  * `anonymous` — NO DS user bearer is ever attached. The platform API key",
+      "    is still sent (the gateway requires it) and a device credential may be",
+      "    the real principal. Attaching a bearer to an `anonymous` operation",
+      "    silently widens its read scope, so the client refuses to.",
+      "",
+      "`authority` says which origin answers:",
+      "  * `gateway`         — this build's own lane EDS API Gateway;",
+      "  * `release`         — the public release authority, which may cross lanes;",
+      "  * `storage_session` — a DS-minted storage session URI is the WHOLE",
+      "    credential: no Authorization, no api key, no user email. No operation",
+      "    declares it yet; the value exists so the transfer slice can."
+    ],
+    "transport": "json",
+    "authority": "gateway",
+    "principal": "user",
+    "action_key": "action",
+    "lane_header": false,
+    "idempotency": "unsafe",
+    "retry_class": "none",
+    "timeout_s": 30,
+    "response_cap_bytes": 1048576
+  },
+  "private_backends": {
+    "ds_brain_bulk_url": {
+      "service": "ds-brain-bulk",
+      "language": "go",
+      "exposure": "private",
+      "note": "Existing bulk execution lane of ds-brain, including the protected media route."
+    },
+    "ds_brain_url": {
+      "service": "ds-brain",
+      "language": "go",
+      "exposure": "private",
+      "note": "The only backend the public gateway routes browser traffic to."
+    },
+    "ds_solar_weather_url": {
+      "service": "ds-solar-weather",
+      "language": "python",
+      "exposure": "private",
+      "note": "The sole sanctioned Python service. Reached ONLY as a bounded ds-brain relay; it has no gateway surface of its own."
+    },
+    "ds_solar_engine_url": {
+      "service": "ds-solar",
+      "language": "rust",
+      "exposure": "private",
+      "note": "The Cloud Run adapter over the same Rust runtime linked into the installed application. Reached only through ds-brain."
+    },
+    "ds_network_reporter_url": {
+      "service": "ds-network-reporter",
+      "language": "rust",
+      "exposure": "private",
+      "note": "Report worker. ds-brain orchestrates it; the browser never addresses it."
+    }
+  },
+  "targets": {
+    "web-local": {
+      "summary": "web + local — Vite serves the bundle and proxies /api to a localhost ds-brain",
+      "placement": "web",
+      "topology": "local",
+      "gateway": "same-origin",
+      "lane": "canary",
+      "lane_selectable": true,
+      "development": true
+    },
+    "web-canary": {
+      "summary": "web + canary — Firebase Hosting against the canary EDS API Gateway",
+      "placement": "web",
+      "topology": "deployed",
+      "gateway": "canary",
+      "lane": "canary",
+      "development": false
+    },
+    "web-production": {
+      "summary": "web + production — Firebase Hosting against the production EDS API Gateway",
+      "placement": "web",
+      "topology": "deployed",
+      "gateway": "production",
+      "lane": "production",
+      "development": false
+    },
+    "desktop-dev-canary": {
+      "summary": "desktop development + canary services — tauri dev from source against the canary gateway",
+      "placement": "desktop",
+      "topology": "deployed",
+      "gateway": "canary",
+      "lane": "canary",
+      "development": true
+    },
+    "desktop-canary": {
+      "summary": "desktop canary release — packaged installer against the canary gateway",
+      "placement": "desktop",
+      "topology": "deployed",
+      "gateway": "canary",
+      "lane": "canary",
+      "development": false
+    },
+    "desktop-production": {
+      "summary": "desktop production release — packaged installer against the production gateway",
+      "placement": "desktop",
+      "topology": "deployed",
+      "gateway": "production",
+      "lane": "production",
+      "development": false
+    }
+  },
+  "domains": {
+    "printing": {
+      "summary": "Shared global and project print layouts; GeoJSON vector delivery.",
+      "operations": {
+        "list": {
+          "summary": "List printing setups",
+          "transport": "json",
+          "gateway": {
+            "method": "POST",
+            "path": "/api/v1/printing",
+            "backend": "ds_brain_url"
+          },
+          "resolution": {
+            "web": "gateway",
+            "desktop": "gateway"
+          }
+        },
+        "get": {
+          "summary": "Read one printing setup",
+          "transport": "json",
+          "gateway": {
+            "method": "POST",
+            "path": "/api/v1/printing",
+            "backend": "ds_brain_url"
+          },
+          "resolution": {
+            "web": "gateway",
+            "desktop": "gateway"
+          }
+        },
+        "save": {
+          "summary": "Publish with expected revision",
+          "transport": "json",
+          "gateway": {
+            "method": "POST",
+            "path": "/api/v1/printing",
+            "backend": "ds_brain_url"
+          },
+          "resolution": {
+            "web": "gateway",
+            "desktop": "gateway"
+          }
+        },
+        "render": {
+          "summary": "Render a vector PDF",
+          "transport": "json",
+          "gateway": {
+            "method": "POST",
+            "path": "/api/v1/printing",
+            "backend": "ds_brain_url"
+          },
+          "resolution": {
+            "web": "gateway",
+            "desktop": "gateway"
+          }
+        }
+      }
+    },
+    "architecture": {
+      "summary": "Governed platform architecture planning and revision authority.",
+      "operations": {
+        "planning": {
+          "summary": "Read, preview, apply, and inspect governed architecture revisions.",
+          "transport": "json",
+          "gateway": {
+            "method": "POST",
+            "path": "/api/v1/architecture/planning",
+            "backend": "ds_brain_url"
+          },
+          "resolution": { "web": "gateway", "desktop": "gateway" }
+        }
+      }
+    },
+    "solar": {
+      "summary": "Solar control plane. The same Rust runtime executes locally in the installed app and behind Cloud Run for the web.",
+      "operations": {
+        "portfolio.list": {
+          "summary": "List governed Solar portfolios and their exact ordered membership.",
+          "transport": "json",
+          "gateway": {
+            "method": "POST",
+            "path": "/api/v1/solar",
+            "backend": "ds_brain_url"
+          },
+          "resolution": { "web": "gateway", "desktop": "gateway" }
+        },
+        "portfolio.create": {
+          "summary": "Create one governed Solar portfolio.",
+          "transport": "json",
+          "gateway": {
+            "method": "POST",
+            "path": "/api/v1/solar",
+            "backend": "ds_brain_url"
+          },
+          "resolution": { "web": "gateway", "desktop": "gateway" }
+        },
+        "portfolio.update": {
+          "summary": "Update one revision-pinned Solar portfolio.",
+          "transport": "json",
+          "gateway": {
+            "method": "POST",
+            "path": "/api/v1/solar",
+            "backend": "ds_brain_url"
+          },
+          "resolution": { "web": "gateway", "desktop": "gateway" }
+        },
+        "portfolio.delete": {
+          "summary": "Delete one revision-pinned Solar portfolio.",
+          "transport": "json",
+          "gateway": {
+            "method": "POST",
+            "path": "/api/v1/solar",
+            "backend": "ds_brain_url"
+          },
+          "resolution": { "web": "gateway", "desktop": "gateway" }
+        },
+        "data.read_input": {
+          "summary": "Read one city's authored Solar input record.",
+          "transport": "json",
+          "gateway": {
+            "method": "POST",
+            "path": "/api/v1/solar",
+            "backend": "ds_brain_url"
+          },
+          "resolution": { "web": "gateway", "desktop": "gateway" }
+        },
+        "data.save_input": {
+          "summary": "Create or update one city's Solar input record.",
+          "transport": "json",
+          "gateway": {
+            "method": "POST",
+            "path": "/api/v1/solar",
+            "backend": "ds_brain_url"
+          },
+          "resolution": { "web": "gateway", "desktop": "gateway" }
+        },
+        "seed.preview": {
+          "summary": "Plan, without mutating, what seeding a project's Solar root from the governed seed source would do.",
+          "doc": [
+            "Read-only. ds-brain returns the exact cities, input documents and",
+            "network assets that WOULD be seeded, plus the seed_digest that binds",
+            "the plan to its apply.",
+            "Both placements resolve to the gateway on purpose: ds-brain is the",
+            "only Firestore authority and the installed engine holds no GCP",
+            "credential (SOLAR_CONTRACTS section 6). The door is still selected",
+            "explicitly so no feature module infers placement for itself."
+          ],
+          "transport": "json",
+          "gateway": {
+            "method": "POST",
+            "path": "/api/v1/solar",
+            "backend": "ds_brain_url"
+          },
+          "resolution": { "web": "gateway", "desktop": "gateway" }
+        },
+        "seed.apply": {
+          "summary": "Apply exactly the previewed Solar seed plan, confirmed by its digest.",
+          "doc": [
+            "Idempotent and digest-bound. The caller echoes the seed_digest of the",
+            "plan it previewed; ds-brain re-plans and refuses on any drift."
+          ],
+          "transport": "json",
+          "gateway": {
+            "method": "POST",
+            "path": "/api/v1/solar",
+            "backend": "ds_brain_url"
+          },
+          "resolution": { "web": "gateway", "desktop": "gateway" }
+        },
+        "data.locality": {
+          "summary": "Solar data-locality configuration (which Firestore root a project reads).",
+          "transport": "json",
+          "gateway": {
+            "method": "GET",
+            "path": "/api/v1/solar/locality",
+            "backend": "ds_brain_url"
+          },
+          "resolution": { "web": "gateway", "desktop": "gateway" }
+        },
+        "reference_unit": {
+          "summary": "Seal one city's reference PV unit and return its artifact inventory.",
+          "doc": [
+            "gateway -> ds-brain -> ds-solar-weather. ds-brain adds Cloud Run service",
+            "identity and relays a closed request; the response is an inventory of",
+            "signed URLs. This is the ONLY route in the product that ends at Python,",
+            "and it is a reference unit, never a calculation."
+          ],
+          "transport": "json",
+          "gateway": {
+            "method": "POST",
+            "path": "/api/v1/solar/reference-unit",
+            "backend": "ds_brain_url",
+            "relays_to": "ds_solar_weather_url"
+          },
+          "resolution": { "web": "gateway", "desktop": "gateway" }
+        },
+        "compute": {
+          "summary": "Calculate one city.",
+          "doc": [
+            "Web: gateway -> ds-brain -> private Rust ds-solar Cloud Run adapter.",
+            "Desktop: the linked Rust runtime through the native command.",
+            "Both publish the same project result contract; placement is not result identity."
+          ],
+          "transport": "json",
+          "gateway": {
+            "method": "POST",
+            "path": "/api/v1/solar",
+            "backend": "ds_brain_url",
+            "relays_to": "ds_solar_engine_url"
+          },
+          "native": { "command": "solar_native_calculate" },
+          "resolution": { "web": "gateway", "desktop": "native" }
+        },
+        "compute_batch": {
+          "summary": "Calculate a selected set of cities as one closed batch.",
+          "transport": "json",
+          "gateway": {
+            "method": "POST",
+            "path": "/api/v1/solar",
+            "backend": "ds_brain_url",
+            "relays_to": "ds_solar_engine_url"
+          },
+          "native": { "command": "solar_native_calculate_batch" },
+          "resolution": { "web": "gateway", "desktop": "native" }
+        },
+        "desktop_snapshot": {
+          "summary": "The installed native client's bounded Solar project snapshot.",
+          "doc": [
+            "Fetched by ds-client-core inside the installed application, never by",
+            "the application bundle, so both placements close it here while the",
+            "Rust registry still carries the row."
+          ],
+          "transport": "json",
+          "action": "desktop_snapshot",
+          "idempotency": "idempotent",
+          "retry_class": "transport_and_5xx",
+          "timeout_s": 120,
+          "response_cap_bytes": 33554432,
+          "gateway": {
+            "method": "POST",
+            "path": "/api/v1/solar",
+            "backend": "ds_brain_url"
+          },
+          "resolution": { "web": "unavailable", "desktop": "unavailable" },
+          "unavailable_reason": {
+            "web": "The desktop snapshot is a native-client read; the browser reads Solar through the ordinary solar operations.",
+            "desktop": "The desktop snapshot is fetched by the installed native client, not by the application bundle."
+          }
+        },
+        "report.generate": {
+          "summary": "Produce the calculation-backed APD for a city.",
+          "transport": "native",
+          "native": { "command": "solar_native_report" },
+          "resolution": { "web": "unavailable", "desktop": "native" },
+          "unavailable_reason": {
+            "web": "Solar document production is desktop-native. The retired Python ds-solar-reporter service must never be used."
+          }
+        }
+      }
+    },
+    "network": {
+      "summary": "Network / transformer reporting and export.",
+      "operations": {
+        "report": {
+          "summary": "Run a network report or export through the ds-brain pipeline door.",
+          "transport": "json",
+          "gateway": {
+            "method": "POST",
+            "path": "/api/v1/pipeline",
+            "backend": "ds_brain_url",
+            "relays_to": "ds_network_reporter_url"
+          },
+          "resolution": { "web": "gateway", "desktop": "gateway" }
+        }
+      }
+    },
+    "projects": {
+      "summary": "Project directory reads.",
+      "operations": {
+        "read": {
+          "summary": "List the signed-in account's projects.",
+          "transport": "json",
+          "gateway": {
+            "method": "GET",
+            "path": "/api/v1/user/projects",
+            "backend": "ds_brain_url"
+          },
+          "resolution": { "web": "gateway", "desktop": "gateway" }
+        }
+      }
+    },
+    "design_collaboration": {
+      "summary": "Governed selections, attachments, annotations, tags and comment threads for design objects.",
+      "doc": [
+        "`selections.actions` is exactly the closed vocabulary the native client",
+        "may send (ds-client-core DESIGN_SELECTIONS_ACTIONS), declared so a saved",
+        "Transformer Status selection is readable and assignable headlessly; it",
+        "bumped the client profile schema to v20. The browser lane sends three",
+        "further selection actions - describe_query, list_assignments and update -",
+        "which are NOT declared: the first two are browser surfaces and the third",
+        "renames a selection without touching membership. Declaring them is a",
+        "descriptor edit plus a review, not a code change. Attachments and",
+        "annotations stay browser-only operations and declare no vocabulary."
+      ],
+      "operations": {
+        "selections": {
+          "summary": "Read and mutate named transformer selections.",
+          "transport": "json",
+          "action_key": "action",
+          "actions": ["list", "get", "save", "archive", "promote_task"],
+          "gateway": {
+            "method": "POST",
+            "path": "/api/v1/design/selections",
+            "backend": "ds_brain_url"
+          },
+          "resolution": { "web": "gateway", "desktop": "gateway" }
+        },
+        "attachments": {
+          "summary": "Read and mutate immutable design attachment revisions.",
+          "transport": "json",
+          "gateway": {
+            "method": "POST",
+            "path": "/api/v1/design/attachments",
+            "backend": "ds_brain_url"
+          },
+          "resolution": { "web": "gateway", "desktop": "gateway" }
+        },
+        "annotations": {
+          "summary": "Read and mutate typed design tags and comment threads.",
+          "transport": "json",
+          "gateway": {
+            "method": "POST",
+            "path": "/api/v1/design/annotations",
+            "backend": "ds_brain_url"
+          },
+          "resolution": { "web": "gateway", "desktop": "gateway" }
+        },
+        "versions": {
+          "summary": "Read and create metadata-only design object versions without transporting geometry.",
+          "transport": "json",
+          "gateway": {
+            "method": "POST",
+            "path": "/api/v1/design/versions",
+            "backend": "ds_brain_url"
+          },
+          "resolution": { "web": "gateway", "desktop": "gateway" }
+        }
+      }
+    },
+    "assets": {
+      "summary": "Project Assets: the catalogue of documents a project holds, in folders, with previews, classification, links and audited reads.",
+      "operations": {
+        "action": {
+          "summary": "One action-multiplexed call on the project assets catalogue: list, tree, get, download, grant, audit_list, folder_create, folder_update, classify, attach, detach, ingest_start, ingest_finalize.",
+          "doc": [
+            "ds-web/docs/project-assets-contract.md (D21): one POST endpoint, `ds_project` + `action`, DisallowUnknownFields,",
+            "64 KiB body. Reads are membership-only and keep working on archived projects; writes are lifecycle-gated and",
+            "capability-resolved against the body's project. ds-brain is the only authority on redaction (§6.2) and it never",
+            "stores a download_url (§12.11). The gateway declaration is Appendix A of the contract and lands in ds-apis-tf."
+          ],
+          "transport": "json",
+          "gateway": {
+            "method": "POST",
+            "path": "/api/v1/assets",
+            "backend": "ds_brain_url"
+          },
+          "resolution": { "web": "gateway", "desktop": "gateway" }
+        }
+      }
+    },
+    "auth": {
+      "summary": "Authenticated Desktop identity handoff. Device credential creation remains native-client-owned.",
+      "operations": {
+        "device.approve": {
+          "summary": "Approve or deny one pending device authorization as the signed-in Firebase principal.",
+          "doc": [
+            "This is the only device-authorization operation owned by the Desktop UI.",
+            "It accepts no requested principal, project, token, private key or device proof.",
+            "Headless begin, status, complete, refresh and inventory operations are not Desktop bridge operations."
+          ],
+          "transport": "json",
+          "gateway": {
+            "method": "POST",
+            "path": "/api/v1/auth/device/approve",
+            "backend": "ds_brain_url"
+          },
+          "resolution": { "web": "gateway", "desktop": "gateway" }
+        },
+        "device.begin": {
+          "summary": "Start one device authorization from a device proof.",
+          "doc": [
+            "Native-client operation. It is declared so the ONE registry describes",
+            "the whole device-credential lifecycle the Rust client speaks; the",
+            "application bundle never performs it and the manifest closes it on",
+            "both placements."
+          ],
+          "transport": "json",
+          "principal": "anonymous",
+          "idempotency": "unsafe",
+          "retry_class": "none",
+          "timeout_s": 30,
+          "response_cap_bytes": 262144,
+          "gateway": {
+            "method": "POST",
+            "path": "/api/v1/auth/device/begin",
+            "backend": "ds_brain_url"
+          },
+          "resolution": { "web": "unavailable", "desktop": "unavailable" },
+          "unavailable_reason": {
+            "web": "Device credential creation is owned by the native client; the browser bundle performs only domains.auth.device.approve.",
+            "desktop": "Device credential creation is owned by the native client, not by the application bundle; the Desktop UI performs only domains.auth.device.approve."
+          }
+        },
+        "device.status": {
+          "summary": "Poll one pending device authorization.",
+          "transport": "json",
+          "principal": "anonymous",
+          "idempotency": "idempotent",
+          "retry_class": "transport_and_5xx",
+          "timeout_s": 30,
+          "response_cap_bytes": 262144,
+          "gateway": {
+            "method": "POST",
+            "path": "/api/v1/auth/device/status",
+            "backend": "ds_brain_url"
+          },
+          "resolution": { "web": "unavailable", "desktop": "unavailable" },
+          "unavailable_reason": {
+            "web": "Device credential creation is owned by the native client; the browser bundle performs only domains.auth.device.approve.",
+            "desktop": "Device credential creation is owned by the native client, not by the application bundle; the Desktop UI performs only domains.auth.device.approve."
+          }
+        },
+        "device.complete": {
+          "summary": "Exchange an approved authorization for a device credential.",
+          "transport": "json",
+          "principal": "anonymous",
+          "idempotency": "unsafe",
+          "retry_class": "none",
+          "timeout_s": 30,
+          "response_cap_bytes": 262144,
+          "gateway": {
+            "method": "POST",
+            "path": "/api/v1/auth/device/complete",
+            "backend": "ds_brain_url"
+          },
+          "resolution": { "web": "unavailable", "desktop": "unavailable" },
+          "unavailable_reason": {
+            "web": "Device credential creation is owned by the native client; the browser bundle performs only domains.auth.device.approve.",
+            "desktop": "Device credential creation is owned by the native client, not by the application bundle; the Desktop UI performs only domains.auth.device.approve."
+          }
+        },
+        "device.refresh": {
+          "summary": "Refresh a device access session from the device credential.",
+          "doc": [
+            "`principal: anonymous` means only that NO Firebase user bearer is",
+            "attached. The device credential signature is the real principal."
+          ],
+          "transport": "json",
+          "principal": "anonymous",
+          "idempotency": "unsafe",
+          "retry_class": "transport_only",
+          "timeout_s": 30,
+          "response_cap_bytes": 262144,
+          "gateway": {
+            "method": "POST",
+            "path": "/api/v1/auth/device/refresh",
+            "backend": "ds_brain_url"
+          },
+          "resolution": { "web": "unavailable", "desktop": "unavailable" },
+          "unavailable_reason": {
+            "web": "Device credential creation is owned by the native client; the browser bundle performs only domains.auth.device.approve.",
+            "desktop": "Device credential creation is owned by the native client, not by the application bundle; the Desktop UI performs only domains.auth.device.approve."
+          }
+        },
+        "device.list": {
+          "summary": "Inventory the signed-in principal's authorized devices.",
+          "transport": "json",
+          "principal": "user",
+          "idempotency": "idempotent",
+          "retry_class": "transport_and_5xx",
+          "timeout_s": 30,
+          "response_cap_bytes": 262144,
+          "gateway": {
+            "method": "GET",
+            "path": "/api/v1/auth/devices",
+            "backend": "ds_brain_url"
+          },
+          "resolution": { "web": "unavailable", "desktop": "unavailable" },
+          "unavailable_reason": {
+            "web": "The device inventory is a headless native-client operation; the browser bundle performs only domains.auth.device.approve.",
+            "desktop": "The device inventory is a headless native-client operation; the Desktop UI performs only domains.auth.device.approve."
+          }
+        },
+        "device.read": {
+          "summary": "Read one authorized device.",
+          "transport": "json",
+          "principal": "user",
+          "path_params": ["device_id"],
+          "idempotency": "idempotent",
+          "retry_class": "transport_and_5xx",
+          "timeout_s": 30,
+          "response_cap_bytes": 262144,
+          "gateway": {
+            "method": "GET",
+            "path": "/api/v1/auth/devices/{device_id}",
+            "backend": "ds_brain_url"
+          },
+          "resolution": { "web": "unavailable", "desktop": "unavailable" },
+          "unavailable_reason": {
+            "web": "The device inventory is a headless native-client operation; the browser bundle performs only domains.auth.device.approve.",
+            "desktop": "The device inventory is a headless native-client operation; the Desktop UI performs only domains.auth.device.approve."
+          }
+        },
+        "device.revoke": {
+          "summary": "Revoke one authorized device.",
+          "transport": "json",
+          "principal": "user",
+          "path_params": ["device_id"],
+          "idempotency": "idempotent",
+          "retry_class": "none",
+          "timeout_s": 30,
+          "response_cap_bytes": 262144,
+          "gateway": {
+            "method": "DELETE",
+            "path": "/api/v1/auth/devices/{device_id}",
+            "backend": "ds_brain_url"
+          },
+          "resolution": { "web": "unavailable", "desktop": "unavailable" },
+          "unavailable_reason": {
+            "web": "The device inventory is a headless native-client operation; the browser bundle performs only domains.auth.device.approve.",
+            "desktop": "The device inventory is a headless native-client operation; the Desktop UI performs only domains.auth.device.approve."
+          }
+        }
+      }
+    },
+    "messaging": {
+      "summary": "Messaging commands, attachments and the account/conversation streams. All mounted on ds-brain; there is no separate messaging origin in any lane.",
+      "operations": {
+        "command": {
+          "summary": "Messaging command / read envelope.",
+          "transport": "json",
+          "gateway": {
+            "method": "POST",
+            "path": "/api/v1/messaging",
+            "backend": "ds_brain_url"
+          },
+          "resolution": { "web": "gateway", "desktop": "gateway" }
+        },
+        "attachments": {
+          "summary": "Messaging attachment upload/download sessions.",
+          "transport": "json",
+          "gateway": {
+            "method": "POST",
+            "path": "/api/v1/messaging/attachments",
+            "backend": "ds_brain_url"
+          },
+          "resolution": { "web": "gateway", "desktop": "gateway" }
+        },
+        "contract": {
+          "summary": "Negotiated messaging wire contract.",
+          "transport": "json",
+          "gateway": {
+            "method": "GET",
+            "path": "/api/v1/messaging/contract",
+            "backend": "ds_brain_url"
+          },
+          "resolution": { "web": "gateway", "desktop": "gateway" }
+        },
+        "stream": {
+          "summary": "One conversation's server-sent event stream.",
+          "transport": "sse",
+          "gateway": {
+            "method": "GET",
+            "path": "/api/v1/messaging/stream",
+            "backend": "ds_brain_url"
+          },
+          "resolution": { "web": "gateway", "desktop": "gateway" }
+        },
+        "account_stream": {
+          "summary": "The account-wide server-sent event stream.",
+          "transport": "sse",
+          "gateway": {
+            "method": "GET",
+            "path": "/api/v1/messaging/account-stream",
+            "backend": "ds_brain_url"
+          },
+          "resolution": { "web": "gateway", "desktop": "gateway" }
+        }
+      }
+    },
+    "releases": {
+      "summary": "Public desktop release discovery.",
+      "operations": {
+        "desktop_manifest": {
+          "summary": "Latest published desktop release for a channel.",
+          "doc": [
+            "The ONLY operation that may address an origin other than this build's",
+            "own lane gateway: the public download page must be able to offer the",
+            "canary installer from a production build, and the canary app must",
+            "never read stable's release document. Both authorities are EDS API",
+            "Gateways; neither may be a private run.app service."
+          ],
+          "transport": "json",
+          "authority": "release",
+          "cross_lane": true,
+          "gateway": {
+            "method": "GET",
+            "path": "/api/v1/app_releases",
+            "backend": "ds_brain_url"
+          },
+          "resolution": { "web": "gateway", "desktop": "gateway" }
+        }
+      }
+    },
+    "grid": {
+      "summary": "DS Grid global catalogue, project models, and the anonymous public example reads.",
+      "doc": [
+        "All three were direct gateway bypasses until 2026-09-10: they built their",
+        "own Authorization / x-api-key headers, carried no X-Request-Id or",
+        "X-DS-Action-Id, and appeared in no descriptor. They are declared here so",
+        "the ONE client can carry them."
+      ],
+      "operations": {
+        "catalog.action": {
+          "summary": "Governed global library/example inventory and publisher actions.",
+          "transport": "json",
+          "authority": "gateway",
+          "principal": "user",
+          "action_key": "action",
+          "actions": [
+            "list_libraries",
+            "list_examples",
+            "get_library",
+            "list_library_releases",
+            "list_example_revisions",
+            "publish_library_release",
+            "publish_example_revision",
+            "set_library_lifecycle",
+            "set_example_lifecycle",
+            "start_artifact_upload"
+          ],
+          "lane_header": false,
+          "idempotency": "unsafe",
+          "retry_class": "none",
+          "timeout_s": 30,
+          "response_cap_bytes": 1048576,
+          "gateway": {
+            "method": "POST",
+            "path": "/api/v1/grid/catalog",
+            "backend": "ds_brain_url"
+          },
+          "resolution": { "web": "gateway", "desktop": "gateway" }
+        },
+        "models.action": {
+          "summary": "Membership-gated project DS Grid model heads, immutable revisions and exports.",
+          "doc": [
+            "`start_upload` returns a resumable session URI. The session is an",
+            "`authority: storage_session` transfer that the caller never sees; it",
+            "does not re-enter this operation."
+          ],
+          "transport": "json",
+          "authority": "gateway",
+          "principal": "user",
+          "action_key": "action",
+          "actions": [
+            "list_models",
+            "get_model",
+            "list_versions",
+            "get_version",
+            "list_exports",
+            "start_upload",
+            "create_version",
+            "fork_example",
+            "delete_model",
+            "publish_export"
+          ],
+          "lane_header": false,
+          "idempotency": "unsafe",
+          "retry_class": "none",
+          "timeout_s": 30,
+          "response_cap_bytes": 4194304,
+          "gateway": {
+            "method": "POST",
+            "path": "/api/v1/grid/models",
+            "backend": "ds_brain_url"
+          },
+          "resolution": { "web": "gateway", "desktop": "gateway" }
+        },
+        "examples.list": {
+          "summary": "List the anonymously visible public DS Grid example heads.",
+          "doc": [
+            "Deliberately anonymous. Public example reads must keep working",
+            "signed-out; a user bearer would silently widen the visibility scope",
+            "and make \"works signed-out\" untestable."
+          ],
+          "transport": "json",
+          "authority": "gateway",
+          "principal": "anonymous",
+          "lane_header": false,
+          "idempotency": "idempotent",
+          "retry_class": "transport_only",
+          "timeout_s": 15,
+          "response_cap_bytes": 1048576,
+          "gateway": {
+            "method": "GET",
+            "path": "/api/v1/grid/examples",
+            "backend": "ds_brain_url"
+          },
+          "resolution": { "web": "gateway", "desktop": "gateway" }
+        },
+        "examples.get": {
+          "summary": "Resolve one public example revision and its short-lived signed model URL.",
+          "doc": [
+            "Anonymous, like examples.list. The signed URL is transport only:",
+            "trust comes from the revision digest, verified in the browser."
+          ],
+          "transport": "json",
+          "authority": "gateway",
+          "principal": "anonymous",
+          "path_params": ["example_id"],
+          "lane_header": false,
+          "idempotency": "idempotent",
+          "retry_class": "transport_only",
+          "timeout_s": 15,
+          "response_cap_bytes": 1048576,
+          "gateway": {
+            "method": "GET",
+            "path": "/api/v1/grid/examples/{example_id}",
+            "backend": "ds_brain_url"
+          },
+          "resolution": { "web": "gateway", "desktop": "gateway" }
+        }
+      }
+    },
+    "app_installs": {
+      "summary": "Native installation admission heartbeat.",
+      "operations": {
+        "heartbeat": {
+          "summary": "Register the exact native installation and return its signed lease.",
+          "action": "heartbeat",
+          "idempotency": "idempotent",
+          "retry_class": "transport_and_5xx",
+          "timeout_s": 30,
+          "response_cap_bytes": 1048576,
+          "gateway": { "method": "POST", "path": "/api/v1/app_installs", "backend": "ds_brain_url" },
+          "resolution": { "web": "gateway", "desktop": "gateway" }
+        }
+      }
+    },
+    "work": {
+      "summary": "Signed native work admission and publication declaration.",
+      "operations": {
+        "open": {
+          "summary": "Open one installation- and project-fenced native work grant.",
+          "idempotency": "idempotent_with_key",
+          "retry_class": "transport_only",
+          "timeout_s": 120,
+          "response_cap_bytes": 25165824,
+          "gateway": { "method": "POST", "path": "/api/v1/work/open", "backend": "ds_brain_url" },
+          "resolution": { "web": "gateway", "desktop": "gateway" }
+        },
+        "publish": {
+          "summary": "Declare one grant-fenced native publication after its exact transfers.",
+          "idempotency": "idempotent_with_key",
+          "retry_class": "transport_only",
+          "timeout_s": 120,
+          "response_cap_bytes": 1048576,
+          "gateway": { "method": "POST", "path": "/api/v1/work/publish", "backend": "ds_brain_url" },
+          "resolution": { "web": "gateway", "desktop": "gateway" }
+        }
+      }
+    },
+    "compute_artifacts": {
+      "summary": "Durable local-first artifact publication: open, transfer, finalize, discover.",
+      "doc": [
+        "The JSON control plane only. The bytes move over the resumable-transfer",
+        "protocol (contract section 4), whose session URI is an",
+        "`authority: storage_session` credential this endpoint mints and never",
+        "returns to a feature module."
+      ],
+      "operations": {
+        "open": {
+          "summary": "Bind an immutable client run and return upload sessions or existing generations.",
+          "transport": "json",
+          "action": "open",
+          "idempotency": "idempotent_with_key",
+          "retry_class": "transport_only",
+          "timeout_s": 30,
+          "response_cap_bytes": 1048576,
+          "gateway": {
+            "method": "POST",
+            "path": "/api/v1/compute_artifacts",
+            "backend": "ds_brain_url"
+          },
+          "resolution": { "web": "gateway", "desktop": "gateway" }
+        },
+        "status": {
+          "summary": "Recover durable publication work after a restart.",
+          "transport": "json",
+          "action": "status",
+          "idempotency": "idempotent",
+          "retry_class": "transport_and_5xx",
+          "timeout_s": 30,
+          "response_cap_bytes": 1048576,
+          "gateway": {
+            "method": "POST",
+            "path": "/api/v1/compute_artifacts",
+            "backend": "ds_brain_url"
+          },
+          "resolution": { "web": "gateway", "desktop": "gateway" }
+        },
+        "finalize": {
+          "summary": "Verify exact bytes and advance the operation/variant head behind its fences.",
+          "doc": [
+            "A digest or length mismatch is a terminal conflict, never a retry",
+            "loop (contract section 4.2 rule 8), so retry_class stays",
+            "transport_only."
+          ],
+          "transport": "json",
+          "action": "finalize",
+          "idempotency": "idempotent_with_key",
+          "retry_class": "transport_only",
+          "timeout_s": 120,
+          "response_cap_bytes": 1048576,
+          "gateway": {
+            "method": "POST",
+            "path": "/api/v1/compute_artifacts",
+            "backend": "ds_brain_url"
+          },
+          "resolution": { "web": "gateway", "desktop": "gateway" }
+        },
+        "list": {
+          "summary": "List current project artifact heads.",
+          "transport": "json",
+          "action": "list",
+          "idempotency": "idempotent",
+          "retry_class": "transport_and_5xx",
+          "timeout_s": 30,
+          "response_cap_bytes": 4194304,
+          "gateway": {
+            "method": "POST",
+            "path": "/api/v1/compute_artifacts",
+            "backend": "ds_brain_url"
+          },
+          "resolution": { "web": "gateway", "desktop": "gateway" }
+        },
+        "read": {
+          "summary": "Read one current head's safe output metadata.",
+          "transport": "json",
+          "action": "read",
+          "idempotency": "idempotent",
+          "retry_class": "transport_and_5xx",
+          "timeout_s": 30,
+          "response_cap_bytes": 4194304,
+          "gateway": {
+            "method": "POST",
+            "path": "/api/v1/compute_artifacts",
+            "backend": "ds_brain_url"
+          },
+          "resolution": { "web": "gateway", "desktop": "gateway" }
+        },
+        "download": {
+          "summary": "Mint a short-lived read URL from a server-recorded output id and generation.",
+          "doc": [
+            "The caller never supplies a storage path. The minted URL is itself an",
+            "`authority: storage_session` read and carries no DS credential."
+          ],
+          "transport": "json",
+          "action": "download",
+          "idempotency": "idempotent",
+          "retry_class": "transport_and_5xx",
+          "timeout_s": 30,
+          "response_cap_bytes": 1048576,
+          "gateway": {
+            "method": "POST",
+            "path": "/api/v1/compute_artifacts",
+            "backend": "ds_brain_url"
+          },
+          "resolution": { "web": "gateway", "desktop": "gateway" }
+        }
+      }
+    },
+    "sre": {
+      "summary": "Client observability ingest.",
+      "operations": {
+        "client_request_event": {
+          "summary": "Report one browser-observed request outcome.",
+          "doc": [
+            "Observability only: it must never affect UX, so it declares no retry",
+            "and a short deadline. ds-brain mounts it with OPTIONAL authentication",
+            "on purpose — pre-login boot crashes are the most valuable events — so",
+            "the platform key is the access guard and the bearer is a bonus."
+          ],
+          "transport": "json",
+          "principal": "user",
+          "idempotency": "unsafe",
+          "retry_class": "none",
+          "timeout_s": 10,
+          "response_cap_bytes": 65536,
+          "gateway": {
+            "method": "POST",
+            "path": "/api/v1/sre/requests",
+            "backend": "ds_brain_url"
+          },
+          "resolution": { "web": "gateway", "desktop": "gateway" }
+        }
+      }
+    },
+    "survey_entries": {
+      "summary": "Governed Survey entry creation with a verified commit receipt.",
+      "operations": {
+        "create": {
+          "summary": "Create one exact survey entry or replay its stable idempotency key.",
+          "transport": "json",
+          "action_key": "operation",
+          "actions": ["create"],
+          "idempotency": "idempotent",
+          "retry_class": "none",
+          "timeout_s": 30,
+          "response_cap_bytes": 65536,
+          "gateway": { "method": "POST", "path": "/api/v1/entries/mutate", "backend": "ds_brain_url" },
+          "resolution": { "web": "gateway", "desktop": "gateway" }
+        }
+      }
+    },
+    "survey_media": {
+      "summary": "Governed exact-path survey media upload and conditional replacement.",
+      "operations": {
+        "action": {
+          "summary": "Inspect a pinned source, issue an upload session, or verify uploaded bytes.",
+          "transport": "json",
+          "action_key": "action",
+          "actions": ["survey_upload_inspect", "survey_upload_start", "survey_upload_complete"],
+          "idempotency": "idempotent",
+          "retry_class": "none",
+          "timeout_s": 120,
+          "response_cap_bytes": 1048576,
+          "gateway": {
+            "method": "POST",
+            "path": "/api/v1/media",
+            "backend": "ds_brain_bulk_url"
+          },
+          "resolution": { "web": "gateway", "desktop": "gateway" }
+        }
+      }
+    },
+    "project_data": {
+      "summary": "Project data-file inventory and upload lifecycle.",
+      "operations": {
+        "action": {
+          "summary": "List, start an upload, upload, or delete one project data file.",
+          "transport": "json",
+          "action_key": "action",
+          "actions": ["list", "upload_start", "upload", "delete"],
+          "idempotency": "unsafe",
+          "retry_class": "none",
+          "timeout_s": 120,
+          "response_cap_bytes": 4194304,
+          "gateway": {
+            "method": "POST",
+            "path": "/api/v1/project_data",
+            "backend": "ds_brain_url"
+          },
+          "resolution": { "web": "gateway", "desktop": "gateway" }
+        }
+      }
+    },
+    "styles": {
+      "summary": "Governed layer styling.",
+      "operations": {
+        "action": {
+          "summary": "Read one shared class style, seed a starter style without persisting it, or assemble one work-map runtime family.",
+          "transport": "json",
+          "action_key": "action",
+          "actions": ["get_user_data_style", "seed_style", "assemble_work_map_runtime_style"],
+          "idempotency": "idempotent",
+          "retry_class": "none",
+          "timeout_s": 30,
+          "response_cap_bytes": 4194304,
+          "gateway": { "method": "POST", "path": "/api/v1/styles", "backend": "ds_brain_url" },
+          "resolution": { "web": "gateway", "desktop": "gateway" }
+        },
+        "update": {
+          "summary": "Apply one reviewed style instruction to a project layer.",
+          "transport": "json",
+          "action": "update_style",
+          "idempotency": "unsafe",
+          "retry_class": "none",
+          "timeout_s": 30,
+          "response_cap_bytes": 1048576,
+          "gateway": {
+            "method": "POST",
+            "path": "/api/v1/styles",
+            "backend": "ds_brain_url"
+          },
+          "resolution": { "web": "gateway", "desktop": "gateway" }
+        }
+      }
+    },
+    "layers": {
+      "summary": "The assembled layer document, the Style Center catalogue and canonical layer order.",
+      "operations": {
+        "action": {
+          "summary": "Read the project's assembled layer document or style catalogue, or save canonical order overrides.",
+          "transport": "json",
+          "action_key": "action",
+          "actions": ["get_config", "get_style_catalog", "refresh", "reorder"],
+          "idempotency": "unsafe",
+          "retry_class": "none",
+          "timeout_s": 120,
+          "response_cap_bytes": 33554432,
+          "gateway": {
+            "method": "POST",
+            "path": "/api/v1/layers",
+            "backend": "ds_brain_bulk_url"
+          },
+          "resolution": { "web": "gateway", "desktop": "gateway" }
+        }
+      }
+    },
+    "tiles": {
+      "summary": "Project vector-tile status, generation and catalogue.",
+      "operations": {
+        "action": {
+          "summary": "Inspect, preflight, generate or curate a project's tiles.",
+          "transport": "json",
+          "action_key": "action",
+          "actions": ["status", "preflight", "generate", "list", "add", "remove"],
+          "idempotency": "unsafe",
+          "retry_class": "none",
+          "timeout_s": 120,
+          "response_cap_bytes": 33554432,
+          "gateway": {
+            "method": "POST",
+            "path": "/api/v1/tiles",
+            "backend": "ds_brain_url"
+          },
+          "resolution": { "web": "gateway", "desktop": "gateway" }
+        }
+      }
+    },
+    "project_forms": {
+      "summary": "Which survey forms a project has active, and their settings.",
+      "operations": {
+        "action": {
+          "summary": "Activate forms, read/write the settings editor, or bulk-save.",
+          "transport": "json",
+          "action_key": "action",
+          "actions": ["activate", "settings_editor", "bulk_save"],
+          "idempotency": "unsafe",
+          "retry_class": "none",
+          "timeout_s": 120,
+          "response_cap_bytes": 33554432,
+          "gateway": {
+            "method": "POST",
+            "path": "/api/v1/project-forms",
+            "backend": "ds_brain_url"
+          },
+          "resolution": { "web": "gateway", "desktop": "gateway" }
+        }
+      }
+    },
+    "project_report": {
+      "summary": "The compounded project deliverable, the transformer inventory, and the status rows behind it.",
+      "doc": [
+        "`actions` is exactly the closed vocabulary the native client may send",
+        "(ds-client-core PROJECT_REPORT_ACTIONS). list_transformers_status was",
+        "declared for the headless Design read spine and bumped the client",
+        "profile schema to v19. The browser lane sends four further /report",
+        "actions — add_transfo_to_combined, combined_and_export,",
+        "export_reports_only, refresh_mv_reports — which are NOT declared yet.",
+        "Declaring them is a descriptor edit plus a review, not a code change."
+      ],
+      "operations": {
+        "action": {
+          "summary": "Compounded deliverable, archive registry, inventory, retirement, status rows.",
+          "transport": "json",
+          "action_key": "action",
+          "actions": [
+            "download_transfo",
+            "list_compounded_reports",
+            "transformer_inventory",
+            "retire_transformer",
+            "restore_transformer",
+            "list_transformers_status"
+          ],
+          "lane_header": true,
+          "idempotency": "unsafe",
+          "retry_class": "none",
+          "timeout_s": 600,
+          "response_cap_bytes": 8388608,
+          "gateway": {
+            "method": "POST",
+            "path": "/report",
+            "backend": "ds_brain_url"
+          },
+          "resolution": { "web": "gateway", "desktop": "gateway" }
+        }
+      }
+    },
+    "data_distribution": {
+      "summary": "The governed geographic dataset catalogue and the derived print context ds-brain relays to the vector tiler.",
+      "doc": [
+        "`actions` is exactly the closed vocabulary the native client may send",
+        "(ds-client-core DATA_DISTRIBUTION_ACTIONS): the catalogue read a headless",
+        "seeder plans national-bundle installs from, and the bounded buildings /",
+        "contours acquisition behind first-print seeding. Declaring it bumped the",
+        "client profile schema to v21. The browser lane also sends query_dataset",
+        "(billed BigQuery pages) and the publication actions discover_datasets,",
+        "reconcile_datasets, publish_dataset and publication_status, which are NOT",
+        "declared: a headless caller never falls back to a billed page query, and",
+        "publication is an operator surface. Declaring them is a descriptor edit",
+        "plus a review, not a code change. The bundle a catalogue row names is",
+        "fetched from storage.googleapis.com without any DS credential; that is",
+        "not a gateway operation and is pinned in ds-client-core."
+      ],
+      "operations": {
+        "action": {
+          "summary": "List the project's catalogue rows, or acquire one bounded derived print context.",
+          "transport": "json",
+          "action_key": "action",
+          "actions": ["list_datasets", "query_print_context"],
+          "idempotency": "unsafe",
+          "retry_class": "none",
+          "timeout_s": 180,
+          "response_cap_bytes": 33554432,
+          "gateway": {
+            "method": "POST",
+            "path": "/api/v1/data-distribution",
+            "backend": "ds_brain_bulk_url"
+          },
+          "resolution": { "web": "gateway", "desktop": "gateway" }
+        }
+      }
+    }
+  }
+}

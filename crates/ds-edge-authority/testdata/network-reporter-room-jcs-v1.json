@@ -1,0 +1,45 @@
+{
+  "schema": 1,
+  "algorithm": "RFC8785",
+  "room_envelope": "{\"layers\":<server-read-decompressed-sanitized-layer-object>}",
+  "vectors": [
+    {
+      "name": "rfc8785-numeric-sample",
+      "input": "{\"numbers\":[333333333.33333329,1E30,4.50,2e-3,0.000000000000000000000000001]}",
+      "canonical": "{\"numbers\":[333333333.3333333,1e+30,4.5,0.002,1e-27]}",
+      "sha256": "7c892d3452ad85ad65857a43e8dcac93b79475d2334fc3e85bac5c599142c158"
+    },
+    {
+      "name": "ecmascript-notation-boundaries",
+      "input": "[-0,0.000001,0.0000001,100000000000000000000,1e21]",
+      "canonical": "[0,0.000001,1e-7,100000000000000000000,1e+21]",
+      "sha256": "2a256adddb8835c7235ae523640d54cdcdc4c1ad7575b0b24197931bb5bafbf8"
+    },
+    {
+      "name": "minimal-string-escaping",
+      "input": "{\"s\":\"\\u20ac$\\u000f\\nA'B\\\"\\\\\\\"/\\u2028\"}",
+      "canonical": "{\"s\":\"€$\\u000f\\nA'B\\\"\\\\\\\"/ \"}",
+      "sha256": "a8a50763ff93679174db1c640069207fb17ecb439f4257b5851df664ce3d2b58"
+    },
+    {
+      "name": "utf16-object-name-order",
+      "input": "{\"\\ue000\":1,\"😀\":2,\"a\":3,\"\\u0080\":4}",
+      "canonical": "{\"a\":3,\"\":4,\"😀\":2,\"\":1}",
+      "sha256": "5f8a9424e442cbd4d9ebbe13535a4b6a20da7e715f730d597acb1617aa3d606c"
+    },
+    {
+      "name": "nested-geojson-room",
+      "input": "{\"layers\":{\"tr\":{\"features\":[{\"properties\":{\"z\":-0,\"a\":\"é\"},\"geometry\":{\"coordinates\":[30.1000,-2e0],\"type\":\"Point\"},\"type\":\"Feature\"}],\"type\":\"FeatureCollection\"}}}",
+      "canonical": "{\"layers\":{\"tr\":{\"features\":[{\"geometry\":{\"coordinates\":[30.1,-2],\"type\":\"Point\"},\"properties\":{\"a\":\"é\",\"z\":0},\"type\":\"Feature\"}],\"type\":\"FeatureCollection\"}}}",
+      "sha256": "a04a9a27149d0bea55cfbed59764f3229c2cb4a16ba51bbe1625f0f881d683f4"
+    }
+  ],
+  "rejections": [
+    {"name": "duplicate-object-name", "input": "{\"a\":1,\"a\":2}"},
+    {"name": "nested-duplicate-object-name", "input": "{\"a\":{\"b\":1,\"b\":2}}"},
+    {"name": "lone-high-surrogate", "input": "{\"a\":\"\\ud800\"}"},
+    {"name": "lone-low-surrogate", "input": "{\"a\":\"\\udc00\"}"},
+    {"name": "nonfinite-binary64", "input": "{\"a\":1e400}"},
+    {"name": "trailing-json", "input": "{} {}"}
+  ]
+}

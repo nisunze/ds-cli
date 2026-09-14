@@ -2,6 +2,7 @@
 //! Flat page elements in physical millimetres; no tile, HTML or remote-image IO.
 pub mod context;
 pub mod custom;
+pub mod diagnostics;
 pub mod elements;
 pub mod inventory;
 pub mod lifecycle;
@@ -1511,6 +1512,11 @@ pub fn named_layout(
 #[derive(Deserialize, JsonSchema)]
 #[serde(tag = "op", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Command {
+    /// Native and WASM hosts pass measured occupied furniture after layout.
+    AssessFurniture {
+        page_mm: [f64; 2],
+        occupied: Vec<diagnostics::Occupied>,
+    },
     ProjectSettings {
         sheets: serde_json::Value,
         #[serde(default)]
@@ -2030,6 +2036,10 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
             layout.name = name;
             validate(&layout)?;
             json!({"layout":layout})
+        }
+        Command::AssessFurniture { page_mm, occupied } => {
+            serde_json::to_value(diagnostics::assess(page_mm, &occupied)?)
+                .map_err(|e| e.to_string())?
         }
         Command::Validate { layout } => {
             let layout = upgrade(layout)?;

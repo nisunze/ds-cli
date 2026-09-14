@@ -314,3 +314,17 @@ fitted or authored camera scale, multiply that size and categorical sizes by
 optical rule preserves category ratios and legibility; it does not scale text,
 points, paper furniture or engineering geometry. The map and its legend consume
 the same resolved pens. Omission preserves existing fixed physical pens.
+
+### Headless mechanical diagnostics
+
+The Rust `printing::diagnostics` owner accepts measured occupied furniture
+rectangles after composition. Native and WASM consumers share it through
+`printingCommand`'s `assess_furniture` operation. It reports named intersections
+and sheet clipping in millimetres with bounded details and exact totals.
+Adjacent panels may have unequal heights; touching edges are not collisions.
+Map frames and decorative backgrounds are not furniture obstacles.
+
+The native renderer returns these findings with table omissions and suppressed
+label counts in `print_diagnostics`; named report exports retain artifact
+warnings. Cache integrity covers both rendered SVG and diagnostics. These are
+mechanical checks, never a claim of visual or engineering approval.

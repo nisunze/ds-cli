@@ -1,0 +1,7 @@
+{
+  "localId": "uid-1",
+  "email": "user@example.com",
+  "idToken": "e30.eyJzdWIiOiJ1aWQtMSIsImF1ZCI6ImZpcmViYXNlLXByb2plY3QiLCJlbWFpbCI6InVzZXJAZXhhbXBsZS5jb20iLCJpc3MiOiJodHRwczovL3NlY3VyZXRva2VuLmdvb2dsZS5jb20vZmlyZWJhc2UtcHJvamVjdCIsImV4cCI6MjAwMDAwMDAwMH0.signature",
+  "refreshToken": "refresh-one",
+  "expiresIn": "3600"
+}

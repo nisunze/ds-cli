@@ -1,0 +1,2630 @@
+{
+  "project_id": "arjgpydw_fixture",
+  "resolved_at": 0,
+  "styles": {
+    "ds_grid/results": {
+      "type": "line",
+      "paint": {
+        "line-color": "#d97706",
+        "line-dasharray": [
+          1,
+          1.5
+        ],
+        "line-opacity": 0.9,
+        "line-width": 3
+      },
+      "layout": {
+        "line-cap": "round",
+        "line-join": "round"
+      },
+      "label": {
+        "type": "symbol",
+        "minzoom": 0,
+        "maxzoom": 24,
+        "paint": {
+          "text-color": "#0f172a",
+          "text-halo-color": "#ffffff",
+          "text-halo-width": 1.3
+        },
+        "layout": {
+          "symbol-placement": "line",
+          "text-allow-overlap": false,
+          "text-field": [
+            "get",
+            "feature_class"
+          ],
+          "text-font": [
+            "Open Sans Bold"
+          ],
+          "text-size": 10
+        }
+      },
+      "metadata": {
+        "geometry_type": "line"
+      }
+    },
+    "ds_grid/routes": {
+      "type": "line",
+      "paint": {
+        "line-color": "#2563eb",
+        "line-opacity": 0.9,
+        "line-width": 2.5
+      },
+      "layout": {
+        "line-cap": "round",
+        "line-join": "round"
+      },
+      "label": {
+        "type": "symbol",
+        "minzoom": 0,
+        "maxzoom": 24,
+        "paint": {
+          "text-color": "#0f172a",
+          "text-halo-color": "#ffffff",
+          "text-halo-width": 1.3
+        },
+        "layout": {
+          "symbol-placement": "line",
+          "text-allow-overlap": false,
+          "text-field": [
+            "get",
+            "alignment_id"
+          ],
+          "text-font": [
+            "Open Sans Bold"
+          ],
+          "text-size": 10
+        }
+      },
+      "metadata": {
+        "geometry_type": "line"
+      }
+    },
+    "ds_grid/sections": {
+      "type": "line",
+      "paint": {
+        "line-color": "#0d9488",
+        "line-dasharray": [
+          2,
+          1.5
+        ],
+        "line-width": 1.5
+      },
+      "layout": {
+        "line-cap": "round",
+        "line-join": "round"
+      },
+      "label": {
+        "type": "symbol",
+        "minzoom": 0,
+        "maxzoom": 24,
+        "paint": {
+          "text-color": "#0f172a",
+          "text-halo-color": "#ffffff",
+          "text-halo-width": 1.3
+        },
+        "layout": {
+          "symbol-placement": "line",
+          "text-allow-overlap": false,
+          "text-field": [
+            "get",
+            "section_id"
+          ],
+          "text-font": [
+            "Open Sans Bold"
+          ],
+          "text-size": 10
+        }
+      },
+      "metadata": {
+        "geometry_type": "line"
+      }
+    },
+    "ds_grid/structures": {
+      "type": "circle",
+      "paint": {
+        "circle-color": "#dc2626",
+        "circle-radius": 5,
+        "circle-stroke-color": "#ffffff",
+        "circle-stroke-width": 1.5
+      },
+      "layout": {},
+      "label": {
+        "type": "symbol",
+        "minzoom": 12,
+        "maxzoom": 24,
+        "paint": {
+          "text-color": "#0f172a",
+          "text-halo-color": "#ffffff",
+          "text-halo-width": 1.3
+        },
+        "layout": {
+          "text-allow-overlap": false,
+          "text-anchor": "top",
+          "text-field": [
+            "get",
+            "label"
+          ],
+          "text-font": [
+            "Open Sans Bold"
+          ],
+          "text-offset": [
+            0,
+            1.1
+          ],
+          "text-size": 10
+        }
+      },
+      "metadata": {
+        "geometry_type": "point"
+      }
+    },
+    "ds_grid/terrain": {
+      "type": "circle",
+      "paint": {
+        "circle-color": [
+          "match",
+          [
+            "get",
+            "source_class"
+          ],
+          "surveyed",
+          "#16a34a",
+          "dem_survey_corrected",
+          "#06b6d4",
+          "dem_raw",
+          "#f59e0b",
+          "unattributed",
+          "#94a3b8",
+          "#94a3b8"
+        ],
+        "circle-radius": 3,
+        "circle-stroke-color": "#ffffff",
+        "circle-stroke-width": 0.5
+      },
+      "layout": {},
+      "label": {
+        "type": "symbol",
+        "minzoom": 14,
+        "maxzoom": 24,
+        "paint": {
+          "text-color": "#0f172a",
+          "text-halo-color": "#ffffff",
+          "text-halo-width": 1.3
+        },
+        "layout": {
+          "text-allow-overlap": false,
+          "text-anchor": "top",
+          "text-field": [
+            "to-string",
+            [
+              "round",
+              [
+                "get",
+                "elevation_m"
+              ]
+            ]
+          ],
+          "text-font": [
+            "Open Sans Bold"
+          ],
+          "text-offset": [
+            0,
+            1.1
+          ],
+          "text-size": 10
+        }
+      },
+      "boundary": {
+        "paint": {
+          "line-color": "#b45309",
+          "line-width": 1.2
+        },
+        "layout": {
+          "line-cap": "round",
+          "line-join": "round"
+        }
+      },
+      "metadata": {
+        "geometry_type": "point"
+      }
+    },
+    "gt/roads": {
+      "type": "line",
+      "paint": {
+        "line-blur": 0,
+        "line-color": "#7F3C8D",
+        "line-gap-width": 0,
+        "line-opacity": 1,
+        "line-width": 3
+      },
+      "layout": {
+        "line-cap": "round",
+        "line-join": "round",
+        "visibility": "visible"
+      },
+      "label": {
+        "type": "symbol",
+        "minzoom": 15,
+        "maxzoom": 24,
+        "paint": {
+          "text-color": "#333333",
+          "text-halo-blur": 0,
+          "text-halo-color": "#FFFFFF",
+          "text-halo-width": 1,
+          "text-opacity": 1
+        },
+        "layout": {
+          "symbol-placement": "line",
+          "symbol-spacing": 250,
+          "text-allow-overlap": false,
+          "text-anchor": "center",
+          "text-field": [
+            "get",
+            "name"
+          ],
+          "text-font": [
+            "Open Sans Regular"
+          ],
+          "text-ignore-placement": true,
+          "text-keep-upright": true,
+          "text-max-angle": 30,
+          "text-max-width": 10,
+          "text-offset": [
+            0,
+            0
+          ],
+          "text-optional": true,
+          "text-padding": 2,
+          "text-pitch-alignment": "map",
+          "text-rotation-alignment": "map",
+          "text-size": 12,
+          "visibility": "visible"
+        }
+      },
+      "metadata": {
+        "geometry_type": "line"
+      }
+    }
+  },
+  "style_editors": [
+    {
+      "style_ref": "ds_grid/results",
+      "style_target": "ds_grid",
+      "layer_name": "results",
+      "current_mode": "single",
+      "available_fields": [
+        "feature_class",
+        "entity_id"
+      ],
+      "label_model": {
+        "type": "symbol",
+        "minzoom": 0,
+        "maxzoom": 24,
+        "paint": {
+          "text-color": "#0f172a",
+          "text-halo-color": "#ffffff",
+          "text-halo-width": 1.3
+        },
+        "layout": {
+          "symbol-placement": "line",
+          "text-allow-overlap": false,
+          "text-field": [
+            "get",
+            "feature_class"
+          ],
+          "text-font": [
+            "Open Sans Bold"
+          ],
+          "text-size": 10
+        }
+      },
+      "geometry_type": "line",
+      "geometry_type_source": "ds_grid_contract",
+      "geometry_type_confidence": "high",
+      "geometry_override_target": "ds_grid"
+    },
+    {
+      "style_ref": "ds_grid/routes",
+      "style_target": "ds_grid",
+      "layer_name": "routes",
+      "current_mode": "single",
+      "available_fields": [
+        "alignment_id"
+      ],
+      "label_model": {
+        "type": "symbol",
+        "minzoom": 0,
+        "maxzoom": 24,
+        "paint": {
+          "text-color": "#0f172a",
+          "text-halo-color": "#ffffff",
+          "text-halo-width": 1.3
+        },
+        "layout": {
+          "symbol-placement": "line",
+          "text-allow-overlap": false,
+          "text-field": [
+            "get",
+            "alignment_id"
+          ],
+          "text-font": [
+            "Open Sans Bold"
+          ],
+          "text-size": 10
+        }
+      },
+      "geometry_type": "line",
+      "geometry_type_source": "ds_grid_contract",
+      "geometry_type_confidence": "high",
+      "geometry_override_target": "ds_grid"
+    },
+    {
+      "style_ref": "ds_grid/sections",
+      "style_target": "ds_grid",
+      "layer_name": "sections",
+      "current_mode": "single",
+      "available_fields": [
+        "section_id",
+        "cable_id"
+      ],
+      "label_model": {
+        "type": "symbol",
+        "minzoom": 0,
+        "maxzoom": 24,
+        "paint": {
+          "text-color": "#0f172a",
+          "text-halo-color": "#ffffff",
+          "text-halo-width": 1.3
+        },
+        "layout": {
+          "symbol-placement": "line",
+          "text-allow-overlap": false,
+          "text-field": [
+            "get",
+            "section_id"
+          ],
+          "text-font": [
+            "Open Sans Bold"
+          ],
+          "text-size": 10
+        }
+      },
+      "geometry_type": "line",
+      "geometry_type_source": "ds_grid_contract",
+      "geometry_type_confidence": "high",
+      "geometry_override_target": "ds_grid"
+    },
+    {
+      "style_ref": "ds_grid/structures",
+      "style_target": "ds_grid",
+      "layer_name": "structures",
+      "current_mode": "single",
+      "available_fields": [
+        "label",
+        "entity_id",
+        "alignment_id",
+        "station_m",
+        "type_id"
+      ],
+      "label_model": {
+        "type": "symbol",
+        "minzoom": 12,
+        "maxzoom": 24,
+        "paint": {
+          "text-color": "#0f172a",
+          "text-halo-color": "#ffffff",
+          "text-halo-width": 1.3
+        },
+        "layout": {
+          "text-allow-overlap": false,
+          "text-anchor": "top",
+          "text-field": [
+            "get",
+            "label"
+          ],
+          "text-font": [
+            "Open Sans Bold"
+          ],
+          "text-offset": [
+            0,
+            1.1
+          ],
+          "text-size": 10
+        }
+      },
+      "geometry_type": "point",
+      "geometry_type_source": "ds_grid_contract",
+      "geometry_type_confidence": "high",
+      "geometry_override_target": "ds_grid"
+    },
+    {
+      "style_ref": "ds_grid/terrain",
+      "style_target": "ds_grid",
+      "layer_name": "terrain",
+      "current_mode": "categorical",
+      "available_fields": [
+        "source_class",
+        "elevation_m"
+      ],
+      "label_model": {
+        "type": "symbol",
+        "minzoom": 14,
+        "maxzoom": 24,
+        "paint": {
+          "text-color": "#0f172a",
+          "text-halo-color": "#ffffff",
+          "text-halo-width": 1.3
+        },
+        "layout": {
+          "text-allow-overlap": false,
+          "text-anchor": "top",
+          "text-field": [
+            "to-string",
+            [
+              "round",
+              [
+                "get",
+                "elevation_m"
+              ]
+            ]
+          ],
+          "text-font": [
+            "Open Sans Bold"
+          ],
+          "text-offset": [
+            0,
+            1.1
+          ],
+          "text-size": 10
+        }
+      },
+      "geometry_type": "point",
+      "geometry_type_source": "ds_grid_contract",
+      "geometry_type_confidence": "high",
+      "geometry_override_target": "ds_grid",
+      "selected_field": "source_class",
+      "categorical_paint_key": "circle-color",
+      "categorical_dimensions": [
+        {
+          "field": "source_class",
+          "property": "circle-color",
+          "group": "paint"
+        }
+      ]
+    },
+    {
+      "style_ref": "gt/roads",
+      "style_target": "global_tile",
+      "layer_name": "roads",
+      "form_slug": "roads",
+      "current_mode": "single",
+      "available_fields": [
+        "road_no"
+      ],
+      "label_model": {
+        "type": "symbol",
+        "minzoom": 15,
+        "maxzoom": 24,
+        "paint": {
+          "text-color": "#333333",
+          "text-halo-blur": 0,
+          "text-halo-color": "#FFFFFF",
+          "text-halo-width": 1,
+          "text-opacity": 1
+        },
+        "layout": {
+          "symbol-placement": "line",
+          "symbol-spacing": 250,
+          "text-allow-overlap": false,
+          "text-anchor": "center",
+          "text-field": [
+            "get",
+            "road_no"
+          ],
+          "text-font": [
+            "Open Sans Regular"
+          ],
+          "text-ignore-placement": true,
+          "text-keep-upright": true,
+          "text-max-angle": 30,
+          "text-max-width": 10,
+          "text-offset": [
+            0,
+            0
+          ],
+          "text-optional": true,
+          "text-padding": 2,
+          "text-pitch-alignment": "map",
+          "text-rotation-alignment": "map",
+          "text-size": 12,
+          "visibility": "visible"
+        }
+      },
+      "geometry_type": "line",
+      "geometry_override_target": "global_tile",
+      "warnings": [
+        "label.text-field: field \"name\" is not in available_fields — expression will return null at runtime if the data does not provide it"
+      ]
+    }
+  ],
+  "style_properties": {
+    "circle": [
+      {
+        "key": "minzoom",
+        "group": "layer",
+        "section": "visibility",
+        "label": "Min Zoom",
+        "type": "number",
+        "default": 0,
+        "min": 0,
+        "max": 24,
+        "step": 1
+      },
+      {
+        "key": "maxzoom",
+        "group": "layer",
+        "section": "visibility",
+        "label": "Max Zoom",
+        "type": "number",
+        "default": 24,
+        "min": 0,
+        "max": 24,
+        "step": 1
+      },
+      {
+        "key": "circle-color",
+        "group": "paint",
+        "section": "appearance",
+        "label": "Color",
+        "type": "color",
+        "default": "#2196F3",
+        "supports_zoom": true,
+        "supports_data_driven": true
+      },
+      {
+        "key": "circle-stroke-color",
+        "group": "paint",
+        "section": "appearance",
+        "label": "Stroke Color",
+        "type": "color",
+        "default": "#1565C0",
+        "supports_zoom": true,
+        "supports_data_driven": true
+      },
+      {
+        "key": "circle-radius",
+        "group": "paint",
+        "section": "appearance",
+        "label": "Radius",
+        "type": "number",
+        "default": 8,
+        "min": 0,
+        "max": 30,
+        "step": 0.5,
+        "unit": "px",
+        "supports_zoom": true,
+        "supports_data_driven": true
+      },
+      {
+        "key": "circle-opacity",
+        "group": "paint",
+        "section": "appearance",
+        "label": "Opacity",
+        "type": "number",
+        "default": 1,
+        "min": 0,
+        "max": 1,
+        "step": 0.05,
+        "supports_zoom": true,
+        "supports_data_driven": true
+      },
+      {
+        "key": "circle-stroke-width",
+        "group": "paint",
+        "section": "appearance",
+        "label": "Stroke Width",
+        "type": "number",
+        "default": 2,
+        "min": 0,
+        "max": 10,
+        "step": 0.1,
+        "unit": "px",
+        "supports_zoom": true,
+        "supports_data_driven": true
+      },
+      {
+        "key": "circle-stroke-opacity",
+        "group": "paint",
+        "section": "appearance",
+        "label": "Stroke Opacity",
+        "type": "number",
+        "default": 1,
+        "min": 0,
+        "max": 1,
+        "step": 0.05,
+        "advanced": true,
+        "supports_zoom": true,
+        "supports_data_driven": true
+      },
+      {
+        "key": "circle-blur",
+        "group": "paint",
+        "section": "appearance",
+        "label": "Blur",
+        "type": "number",
+        "default": 0,
+        "min": 0,
+        "max": 10,
+        "step": 0.1,
+        "unit": "px",
+        "advanced": true,
+        "supports_zoom": true,
+        "supports_data_driven": true
+      },
+      {
+        "key": "circle-pitch-scale",
+        "group": "paint",
+        "section": "appearance",
+        "label": "Pitch Scale",
+        "type": "select",
+        "default": "map",
+        "options": [
+          "map",
+          "viewport"
+        ],
+        "advanced": true
+      },
+      {
+        "key": "circle-pitch-alignment",
+        "group": "paint",
+        "section": "appearance",
+        "label": "Pitch Alignment",
+        "type": "select",
+        "default": "viewport",
+        "options": [
+          "map",
+          "viewport"
+        ],
+        "advanced": true
+      },
+      {
+        "key": "circle-translate",
+        "group": "paint",
+        "section": "translate",
+        "label": "Translate",
+        "type": "array2",
+        "default": [
+          0,
+          0
+        ],
+        "min": -50,
+        "max": 50,
+        "step": 1,
+        "unit": "px",
+        "advanced": true
+      },
+      {
+        "key": "circle-translate-anchor",
+        "group": "paint",
+        "section": "translate",
+        "label": "Translate Anchor",
+        "type": "select",
+        "default": "map",
+        "options": [
+          "map",
+          "viewport"
+        ],
+        "advanced": true
+      }
+    ],
+    "line": [
+      {
+        "key": "minzoom",
+        "group": "layer",
+        "section": "visibility",
+        "label": "Min Zoom",
+        "type": "number",
+        "default": 0,
+        "min": 0,
+        "max": 24,
+        "step": 1
+      },
+      {
+        "key": "maxzoom",
+        "group": "layer",
+        "section": "visibility",
+        "label": "Max Zoom",
+        "type": "number",
+        "default": 24,
+        "min": 0,
+        "max": 24,
+        "step": 1
+      },
+      {
+        "key": "line-color",
+        "group": "paint",
+        "section": "appearance",
+        "label": "Color",
+        "type": "color",
+        "default": "#2196F3",
+        "supports_zoom": true,
+        "supports_data_driven": true
+      },
+      {
+        "key": "line-width",
+        "group": "paint",
+        "section": "appearance",
+        "label": "Width",
+        "type": "number",
+        "default": 3,
+        "min": 0.1,
+        "max": 20,
+        "step": 0.1,
+        "unit": "px",
+        "supports_zoom": true,
+        "supports_data_driven": true
+      },
+      {
+        "key": "line-opacity",
+        "group": "paint",
+        "section": "appearance",
+        "label": "Opacity",
+        "type": "number",
+        "default": 1,
+        "min": 0,
+        "max": 1,
+        "step": 0.05,
+        "supports_zoom": true,
+        "supports_data_driven": true
+      },
+      {
+        "key": "line-blur",
+        "group": "paint",
+        "section": "appearance",
+        "label": "Blur",
+        "type": "number",
+        "default": 0,
+        "min": 0,
+        "max": 10,
+        "step": 0.1,
+        "unit": "px",
+        "supports_zoom": true,
+        "supports_data_driven": true
+      },
+      {
+        "key": "line-gap-width",
+        "group": "paint",
+        "section": "appearance",
+        "label": "Gap Width",
+        "type": "number",
+        "default": 0,
+        "min": 0,
+        "max": 20,
+        "step": 0.1,
+        "unit": "px",
+        "supports_zoom": true,
+        "supports_data_driven": true
+      },
+      {
+        "key": "line-dasharray",
+        "group": "paint",
+        "section": "appearance",
+        "label": "Line Type",
+        "type": "dash-pattern",
+        "default": [],
+        "options": [
+          "solid",
+          "dashed",
+          "dotted",
+          "dash-dot",
+          "long-dash",
+          "dash-dot-dot",
+          "directional"
+        ]
+      },
+      {
+        "key": "line-cap",
+        "group": "layout",
+        "section": "layout",
+        "label": "Cap",
+        "type": "select",
+        "default": "round",
+        "options": [
+          "butt",
+          "round",
+          "square"
+        ]
+      },
+      {
+        "key": "line-join",
+        "group": "layout",
+        "section": "layout",
+        "label": "Join",
+        "type": "select",
+        "default": "round",
+        "options": [
+          "bevel",
+          "round",
+          "miter"
+        ]
+      },
+      {
+        "key": "line-offset",
+        "group": "paint",
+        "section": "appearance",
+        "label": "Offset",
+        "type": "number",
+        "default": 0,
+        "min": -20,
+        "max": 20,
+        "step": 0.1,
+        "unit": "px",
+        "advanced": true,
+        "supports_zoom": true,
+        "supports_data_driven": true
+      },
+      {
+        "key": "line-miter-limit",
+        "group": "layout",
+        "section": "layout",
+        "label": "Miter Limit",
+        "type": "number",
+        "default": 2,
+        "min": 0,
+        "max": 10,
+        "step": 0.1,
+        "advanced": true,
+        "supports_zoom": true
+      },
+      {
+        "key": "line-translate",
+        "group": "paint",
+        "section": "translate",
+        "label": "Translate",
+        "type": "array2",
+        "default": [
+          0,
+          0
+        ],
+        "min": -50,
+        "max": 50,
+        "step": 1,
+        "unit": "px",
+        "advanced": true
+      },
+      {
+        "key": "line-translate-anchor",
+        "group": "paint",
+        "section": "translate",
+        "label": "Translate Anchor",
+        "type": "select",
+        "default": "map",
+        "options": [
+          "map",
+          "viewport"
+        ],
+        "advanced": true
+      }
+    ],
+    "fill": [
+      {
+        "key": "minzoom",
+        "group": "layer",
+        "section": "visibility",
+        "label": "Min Zoom",
+        "type": "number",
+        "default": 0,
+        "min": 0,
+        "max": 24,
+        "step": 1
+      },
+      {
+        "key": "maxzoom",
+        "group": "layer",
+        "section": "visibility",
+        "label": "Max Zoom",
+        "type": "number",
+        "default": 24,
+        "min": 0,
+        "max": 24,
+        "step": 1
+      },
+      {
+        "key": "fill-color",
+        "group": "paint",
+        "section": "appearance",
+        "label": "Color",
+        "type": "color",
+        "default": "#2196F3",
+        "supports_zoom": true,
+        "supports_data_driven": true
+      },
+      {
+        "key": "fill-opacity",
+        "group": "paint",
+        "section": "appearance",
+        "label": "Opacity",
+        "type": "number",
+        "default": 0.3,
+        "min": 0,
+        "max": 1,
+        "step": 0.05,
+        "supports_zoom": true,
+        "supports_data_driven": true
+      },
+      {
+        "key": "fill_pattern",
+        "group": "metadata",
+        "section": "pattern",
+        "label": "Hatch Pattern",
+        "type": "fill-pattern",
+        "default": "",
+        "options": [
+          "diagonal-forward",
+          "diagonal-back",
+          "crosshatch",
+          "dots"
+        ]
+      },
+      {
+        "key": "fill_pattern_color",
+        "group": "metadata",
+        "section": "pattern",
+        "label": "Hatch Color",
+        "type": "color",
+        "default": "#1F2937",
+        "show_when": {
+          "fill_pattern": [
+            "diagonal-forward",
+            "diagonal-back",
+            "crosshatch",
+            "dots"
+          ]
+        }
+      },
+      {
+        "key": "fill_pattern_background",
+        "group": "metadata",
+        "section": "pattern",
+        "label": "Hatch Background",
+        "type": "color",
+        "default": "",
+        "show_when": {
+          "fill_pattern": [
+            "diagonal-forward",
+            "diagonal-back",
+            "crosshatch",
+            "dots"
+          ]
+        }
+      },
+      {
+        "key": "fill_pattern_spacing_px",
+        "group": "metadata",
+        "section": "pattern",
+        "label": "Hatch Spacing",
+        "type": "number",
+        "default": 8,
+        "number_options": [
+          4,
+          8,
+          16,
+          32
+        ],
+        "unit": "px",
+        "show_when": {
+          "fill_pattern": [
+            "diagonal-forward",
+            "diagonal-back",
+            "crosshatch",
+            "dots"
+          ]
+        }
+      },
+      {
+        "key": "fill_pattern_stroke_px",
+        "group": "metadata",
+        "section": "pattern",
+        "label": "Hatch Stroke",
+        "type": "number",
+        "default": 1,
+        "min": 1,
+        "max": 6,
+        "step": 0.5,
+        "unit": "px",
+        "show_when": {
+          "fill_pattern": [
+            "diagonal-forward",
+            "diagonal-back",
+            "crosshatch",
+            "dots"
+          ]
+        }
+      },
+      {
+        "key": "fill-antialias",
+        "group": "paint",
+        "section": "appearance",
+        "label": "Antialias",
+        "type": "bool",
+        "default": true,
+        "advanced": true
+      },
+      {
+        "key": "fill-translate",
+        "group": "paint",
+        "section": "translate",
+        "label": "Translate",
+        "type": "array2",
+        "default": [
+          0,
+          0
+        ],
+        "min": -50,
+        "max": 50,
+        "step": 1,
+        "unit": "px",
+        "advanced": true
+      },
+      {
+        "key": "fill-translate-anchor",
+        "group": "paint",
+        "section": "translate",
+        "label": "Translate Anchor",
+        "type": "select",
+        "default": "map",
+        "options": [
+          "map",
+          "viewport"
+        ],
+        "advanced": true
+      }
+    ],
+    "symbol": [
+      {
+        "key": "minzoom",
+        "group": "layer",
+        "section": "visibility",
+        "label": "Min Zoom",
+        "type": "number",
+        "default": 0,
+        "min": 0,
+        "max": 24,
+        "step": 1
+      },
+      {
+        "key": "maxzoom",
+        "group": "layer",
+        "section": "visibility",
+        "label": "Max Zoom",
+        "type": "number",
+        "default": 24,
+        "min": 0,
+        "max": 24,
+        "step": 1
+      },
+      {
+        "key": "icon-image",
+        "group": "layout",
+        "section": "appearance",
+        "label": "Icon Shape",
+        "type": "icon-catalog",
+        "default": "ds-circle"
+      },
+      {
+        "key": "icon-color",
+        "group": "paint",
+        "section": "appearance",
+        "label": "Icon Color",
+        "type": "color",
+        "default": "#2563EB",
+        "supports_zoom": true,
+        "supports_data_driven": true
+      },
+      {
+        "key": "icon-opacity",
+        "group": "paint",
+        "section": "appearance",
+        "label": "Icon Opacity",
+        "type": "number",
+        "default": 1,
+        "min": 0,
+        "max": 1,
+        "step": 0.05,
+        "supports_zoom": true,
+        "supports_data_driven": true
+      },
+      {
+        "key": "icon-size",
+        "group": "layout",
+        "section": "appearance",
+        "label": "Icon Size",
+        "type": "number",
+        "default": 0.8,
+        "min": 0.2,
+        "max": 20,
+        "step": 0.05,
+        "supports_zoom": true
+      },
+      {
+        "key": "symbol-placement",
+        "group": "layout",
+        "section": "placement",
+        "label": "Symbol Placement",
+        "type": "select",
+        "default": "point",
+        "options": [
+          "point",
+          "line",
+          "line-center"
+        ]
+      },
+      {
+        "key": "icon-anchor",
+        "group": "layout",
+        "section": "placement",
+        "label": "Icon Anchor",
+        "type": "select",
+        "default": "center",
+        "options": [
+          "center",
+          "left",
+          "right",
+          "top",
+          "bottom",
+          "top-left",
+          "top-right",
+          "bottom-left",
+          "bottom-right"
+        ]
+      },
+      {
+        "key": "symbol-spacing",
+        "group": "layout",
+        "section": "placement",
+        "label": "Symbol Spacing",
+        "type": "number",
+        "default": 250,
+        "min": 50,
+        "max": 1000,
+        "step": 10,
+        "unit": "px",
+        "advanced": true,
+        "supports_zoom": true
+      },
+      {
+        "key": "symbol-sort-key",
+        "group": "layout",
+        "section": "placement",
+        "label": "Sort Key",
+        "type": "number",
+        "default": 0,
+        "min": -1000,
+        "max": 1000,
+        "step": 1,
+        "advanced": true,
+        "supports_zoom": true
+      },
+      {
+        "key": "icon-translate",
+        "group": "paint",
+        "section": "translate",
+        "label": "Translate",
+        "type": "array2",
+        "default": [
+          0,
+          0
+        ],
+        "min": -50,
+        "max": 50,
+        "step": 1,
+        "unit": "px"
+      },
+      {
+        "key": "icon-allow-overlap",
+        "group": "layout",
+        "section": "collision",
+        "label": "Allow Overlap",
+        "type": "bool",
+        "default": true
+      },
+      {
+        "key": "icon-ignore-placement",
+        "group": "layout",
+        "section": "collision",
+        "label": "Ignore Placement",
+        "type": "bool",
+        "default": true
+      },
+      {
+        "key": "symbol-avoid-edges",
+        "group": "layout",
+        "section": "collision",
+        "label": "Avoid Edges",
+        "type": "bool",
+        "default": false,
+        "advanced": true
+      },
+      {
+        "key": "icon-rotate",
+        "group": "layout",
+        "section": "orientation",
+        "label": "Rotation",
+        "type": "number",
+        "default": 0,
+        "min": -180,
+        "max": 180,
+        "step": 1,
+        "unit": "°",
+        "advanced": true,
+        "supports_zoom": true
+      },
+      {
+        "key": "icon-rotation-alignment",
+        "group": "layout",
+        "section": "orientation",
+        "label": "Rotation Alignment",
+        "type": "select",
+        "default": "auto",
+        "options": [
+          "auto",
+          "map",
+          "viewport"
+        ],
+        "advanced": true
+      },
+      {
+        "key": "icon-pitch-alignment",
+        "group": "layout",
+        "section": "orientation",
+        "label": "Pitch Alignment",
+        "type": "select",
+        "default": "auto",
+        "options": [
+          "auto",
+          "map",
+          "viewport"
+        ],
+        "advanced": true
+      },
+      {
+        "key": "symbol-z-order",
+        "group": "layout",
+        "section": "orientation",
+        "label": "Z Order",
+        "type": "select",
+        "default": "auto",
+        "options": [
+          "auto",
+          "viewport-y",
+          "source"
+        ],
+        "advanced": true
+      },
+      {
+        "key": "icon-translate-anchor",
+        "group": "paint",
+        "section": "translate",
+        "label": "Translate Anchor",
+        "type": "select",
+        "default": "map",
+        "options": [
+          "map",
+          "viewport"
+        ],
+        "advanced": true
+      }
+    ],
+    "heatmap": [
+      {
+        "key": "minzoom",
+        "group": "layer",
+        "section": "visibility",
+        "label": "Min Zoom",
+        "type": "number",
+        "default": 0,
+        "min": 0,
+        "max": 24,
+        "step": 1
+      },
+      {
+        "key": "maxzoom",
+        "group": "layer",
+        "section": "visibility",
+        "label": "Max Zoom",
+        "type": "number",
+        "default": 24,
+        "min": 0,
+        "max": 24,
+        "step": 1
+      },
+      {
+        "key": "heatmap-radius",
+        "group": "paint",
+        "section": "appearance",
+        "label": "Radius",
+        "type": "number",
+        "default": 30,
+        "min": 1,
+        "max": 200,
+        "step": 1,
+        "unit": "px",
+        "supports_zoom": true,
+        "supports_data_driven": true
+      },
+      {
+        "key": "heatmap-intensity",
+        "group": "paint",
+        "section": "appearance",
+        "label": "Intensity",
+        "type": "number",
+        "default": 1,
+        "min": 0,
+        "max": 10,
+        "step": 0.1,
+        "supports_zoom": true,
+        "supports_data_driven": true
+      },
+      {
+        "key": "heatmap-opacity",
+        "group": "paint",
+        "section": "appearance",
+        "label": "Opacity",
+        "type": "number",
+        "default": 1,
+        "min": 0,
+        "max": 1,
+        "step": 0.05,
+        "supports_zoom": true,
+        "supports_data_driven": true
+      },
+      {
+        "key": "heatmap-weight",
+        "group": "paint",
+        "section": "appearance",
+        "label": "Weight",
+        "type": "number",
+        "default": 1,
+        "min": 0,
+        "max": 10,
+        "step": 0.1,
+        "advanced": true,
+        "supports_zoom": true,
+        "supports_data_driven": true
+      }
+    ],
+    "fill-extrusion": [
+      {
+        "key": "minzoom",
+        "group": "layer",
+        "section": "visibility",
+        "label": "Min Zoom",
+        "type": "number",
+        "default": 0,
+        "min": 0,
+        "max": 24,
+        "step": 1
+      },
+      {
+        "key": "maxzoom",
+        "group": "layer",
+        "section": "visibility",
+        "label": "Max Zoom",
+        "type": "number",
+        "default": 24,
+        "min": 0,
+        "max": 24,
+        "step": 1
+      },
+      {
+        "key": "fill-extrusion-color",
+        "group": "paint",
+        "section": "appearance",
+        "label": "Color",
+        "type": "color",
+        "default": "#2196F3",
+        "supports_zoom": true,
+        "supports_data_driven": true
+      },
+      {
+        "key": "fill-extrusion-opacity",
+        "group": "paint",
+        "section": "appearance",
+        "label": "Opacity",
+        "type": "number",
+        "default": 0.8,
+        "min": 0,
+        "max": 1,
+        "step": 0.05,
+        "supports_zoom": true,
+        "supports_data_driven": true
+      },
+      {
+        "key": "fill-extrusion-height",
+        "group": "paint",
+        "section": "appearance",
+        "label": "Height",
+        "type": "number",
+        "default": 10,
+        "min": 0,
+        "max": 1000,
+        "step": 1,
+        "unit": "m",
+        "supports_zoom": true,
+        "supports_data_driven": true
+      },
+      {
+        "key": "fill-extrusion-base",
+        "group": "paint",
+        "section": "appearance",
+        "label": "Base",
+        "type": "number",
+        "default": 0,
+        "min": 0,
+        "max": 1000,
+        "step": 1,
+        "unit": "m",
+        "supports_zoom": true,
+        "supports_data_driven": true
+      },
+      {
+        "key": "fill-extrusion-vertical-gradient",
+        "group": "paint",
+        "section": "appearance",
+        "label": "Vertical Gradient",
+        "type": "bool",
+        "default": true,
+        "advanced": true
+      },
+      {
+        "key": "fill-extrusion-translate",
+        "group": "paint",
+        "section": "translate",
+        "label": "Translate",
+        "type": "array2",
+        "default": [
+          0,
+          0
+        ],
+        "min": -50,
+        "max": 50,
+        "step": 1,
+        "unit": "px",
+        "advanced": true
+      },
+      {
+        "key": "fill-extrusion-translate-anchor",
+        "group": "paint",
+        "section": "translate",
+        "label": "Translate Anchor",
+        "type": "select",
+        "default": "map",
+        "options": [
+          "map",
+          "viewport"
+        ],
+        "advanced": true
+      }
+    ]
+  },
+  "style_presets": {
+    "symbol": [
+      {
+        "name": "Balanced",
+        "values": {
+          "text-halo-color": "#FFFFFF",
+          "text-halo-width": 1.5,
+          "text-opacity": 1,
+          "text-padding": 2,
+          "text-size": 12
+        }
+      },
+      {
+        "name": "High contrast",
+        "values": {
+          "text-color": "#111111",
+          "text-halo-blur": 0.2,
+          "text-halo-color": "#FFFFFF",
+          "text-halo-width": 2,
+          "text-size": 13
+        }
+      },
+      {
+        "name": "Compact",
+        "values": {
+          "text-halo-width": 1,
+          "text-max-width": 8,
+          "text-padding": 1,
+          "text-size": 10
+        }
+      },
+      {
+        "name": "Map labels",
+        "values": {
+          "symbol-placement": "line",
+          "symbol-spacing": 250,
+          "text-halo-color": "#FFFFFF",
+          "text-halo-width": 1.5,
+          "text-keep-upright": true,
+          "text-max-angle": 30,
+          "text-pitch-alignment": "map",
+          "text-rotation-alignment": "map"
+        }
+      }
+    ]
+  },
+  "label_editor": {
+    "anchors": [
+      "center",
+      "left",
+      "right",
+      "top",
+      "bottom",
+      "top-left",
+      "top-right",
+      "bottom-left",
+      "bottom-right"
+    ],
+    "placements": [
+      "point",
+      "line",
+      "line-center"
+    ],
+    "justifications": [
+      "auto",
+      "left",
+      "center",
+      "right"
+    ],
+    "transforms": [
+      "none",
+      "uppercase",
+      "lowercase"
+    ],
+    "z_orders": [
+      "auto",
+      "viewport-y",
+      "source"
+    ],
+    "rotation_alignments": [
+      "auto",
+      "map",
+      "viewport"
+    ],
+    "pitch_alignments": [
+      "auto",
+      "map",
+      "viewport"
+    ],
+    "fonts": [
+      "Open Sans Regular",
+      "Open Sans Bold",
+      "Open Sans Italic",
+      "Open Sans Semibold",
+      "Noto Sans Regular"
+    ],
+    "field_part_types": [
+      "literal",
+      "field"
+    ],
+    "text_modes": [
+      "composed",
+      "categorical"
+    ],
+    "field_formats": [
+      "raw",
+      "round",
+      "int"
+    ],
+    "numerics": {
+      "symbol-sort-key": {
+        "min": -1000,
+        "max": 1000,
+        "step": 1,
+        "default": 0
+      },
+      "symbol-spacing": {
+        "min": 1,
+        "max": 2000,
+        "step": 10,
+        "default": 250,
+        "unit": "px"
+      },
+      "text-halo-blur": {
+        "min": 0,
+        "max": 10,
+        "step": 0.1,
+        "default": 0,
+        "unit": "px"
+      },
+      "text-halo-width": {
+        "min": 0,
+        "max": 10,
+        "step": 0.1,
+        "default": 1,
+        "unit": "px"
+      },
+      "text-line-height": {
+        "min": 0.5,
+        "max": 3,
+        "step": 0.05,
+        "default": 1.2,
+        "unit": "em"
+      },
+      "text-max-angle": {
+        "min": 0,
+        "max": 180,
+        "step": 1,
+        "default": 45,
+        "unit": "°"
+      },
+      "text-max-width": {
+        "min": 1,
+        "max": 30,
+        "step": 0.5,
+        "default": 10,
+        "unit": "em"
+      },
+      "text-opacity": {
+        "min": 0,
+        "max": 1,
+        "step": 0.05,
+        "default": 1
+      },
+      "text-padding": {
+        "min": 0,
+        "max": 40,
+        "step": 1,
+        "default": 2,
+        "unit": "px"
+      },
+      "text-radial-offset": {
+        "min": -5,
+        "max": 5,
+        "step": 0.1,
+        "default": 0,
+        "unit": "em"
+      },
+      "text-size": {
+        "min": 8,
+        "max": 48,
+        "step": 1,
+        "default": 12,
+        "unit": "px"
+      }
+    },
+    "supports_aliases": true,
+    "supports_suffix": true
+  },
+  "fill_pattern": {
+    "patterns": [
+      "diagonal-forward",
+      "diagonal-back",
+      "crosshatch",
+      "dots"
+    ],
+    "spacing_options_px": [
+      4,
+      8,
+      16,
+      32
+    ],
+    "numerics": {
+      "fill_pattern_stroke_px": {
+        "min": 1,
+        "max": 6,
+        "step": 0.5,
+        "default": 1,
+        "unit": "px"
+      }
+    },
+    "required_with_pattern": [
+      "fill_pattern_color",
+      "fill_pattern_spacing_px",
+      "fill_pattern_stroke_px"
+    ],
+    "optional_with_pattern": [
+      "fill_pattern_background"
+    ],
+    "default_color": "#1F2937",
+    "default_spacing_px": 8,
+    "kind": "fill_pattern",
+    "runtime_id_prefix": "ds-pattern:",
+    "layer_types": [
+      "fill"
+    ],
+    "tile_size_is_spacing": true
+  },
+  "platform_config": {
+    "report_formats": [
+      {
+        "key": "xlsx",
+        "label": "Excel (.xlsx)",
+        "extension": ".xlsx"
+      },
+      {
+        "key": "shp",
+        "label": "Shapefile (.shp.zip)",
+        "extension": ".shp.zip",
+        "aliases": [
+          "_shp.zip"
+        ]
+      },
+      {
+        "key": "kmz",
+        "label": "KMZ (.kmz)",
+        "extension": ".kmz"
+      },
+      {
+        "key": "gpkg",
+        "label": "GeoPackage (.gpkg)",
+        "extension": ".gpkg"
+      },
+      {
+        "key": "csv",
+        "label": "CSV (.csv)",
+        "extension": ".csv"
+      }
+    ],
+    "domain_labels": [
+      {
+        "key": "print",
+        "label": "Print styles"
+      },
+      {
+        "key": "design",
+        "label": "Design"
+      },
+      {
+        "key": "global",
+        "label": "Global Layers"
+      },
+      {
+        "key": "network_template",
+        "label": "Network Template"
+      },
+      {
+        "key": "solar_template",
+        "label": "Solar Template"
+      },
+      {
+        "key": "survey",
+        "label": "Survey"
+      },
+      {
+        "key": "design_vt",
+        "label": "Design VT"
+      },
+      {
+        "key": "survey_vt",
+        "label": "Survey VT"
+      },
+      {
+        "key": "global_tile",
+        "label": "Global Layers"
+      },
+      {
+        "key": "user_data",
+        "label": "User Data"
+      }
+    ],
+    "dash_presets": [
+      {
+        "key": "solid",
+        "label": "Solid",
+        "pattern": []
+      },
+      {
+        "key": "dashed",
+        "label": "Dashed",
+        "pattern": [
+          2,
+          2
+        ]
+      },
+      {
+        "key": "dotted",
+        "label": "Dotted",
+        "pattern": [
+          0.5,
+          1.5
+        ]
+      },
+      {
+        "key": "dash-dot",
+        "label": "Dash-dot",
+        "pattern": [
+          3,
+          1,
+          0.5,
+          1
+        ]
+      },
+      {
+        "key": "long-dash",
+        "label": "Long dash",
+        "pattern": [
+          5,
+          2
+        ]
+      },
+      {
+        "key": "dash-dot-dot",
+        "label": "Dash-dot-dot",
+        "pattern": [
+          3,
+          1,
+          0.5,
+          1,
+          0.5,
+          1
+        ]
+      }
+    ],
+    "font_options": [
+      "Open Sans Regular",
+      "Open Sans Bold",
+      "Arial Unicode MS Regular"
+    ],
+    "categorical_fallback_color": "#334155"
+  },
+  "symbol_catalog": {
+    "version": "2026-05-30",
+    "maki_version": "v8.0.1",
+    "maki_base_url": "https://cdn.jsdelivr.net/gh/mapbox/maki@v8.0.1",
+    "runtime_id_prefix": "ds-symbol:",
+    "default_tint": "#2563eb",
+    "logical_size": 15,
+    "quick_picks": [
+      "ds-circle",
+      "ds-dot",
+      "ds-transformer",
+      "ds-utility-pole",
+      "ds-solar-plant",
+      "ds-water-tank",
+      "hospital",
+      "marker"
+    ],
+    "built_ins": [
+      "ds-circle",
+      "ds-dot",
+      "ds-utility-pole",
+      "ds-transmission-tower",
+      "ds-transformer",
+      "ds-substation",
+      "ds-switch",
+      "ds-meter",
+      "ds-cabinet",
+      "ds-solar-panel",
+      "ds-solar-plant",
+      "ds-power-plant",
+      "ds-hydro-plant",
+      "ds-wind-turbine",
+      "ds-battery",
+      "ds-generator",
+      "ds-water-tank",
+      "ds-water-tower",
+      "ds-pump",
+      "ds-valve",
+      "ds-pipe",
+      "ds-hydrant"
+    ],
+    "groups": [
+      {
+        "key": "featured",
+        "label": "Featured",
+        "icons": [
+          "ds-circle",
+          "ds-dot",
+          "ds-transformer",
+          "ds-substation",
+          "ds-utility-pole",
+          "ds-water-tank",
+          "ds-meter",
+          "ds-solar-plant",
+          "ds-power-plant",
+          "ds-wind-turbine",
+          "hospital",
+          "charging-station",
+          "communications-tower",
+          "industry",
+          "warehouse",
+          "marker",
+          "marker-stroked",
+          "star",
+          "star-stroked",
+          "square",
+          "square-stroked",
+          "triangle",
+          "triangle-stroked",
+          "home",
+          "building"
+        ]
+      },
+      {
+        "key": "power",
+        "label": "Power \u0026 utilities",
+        "icons": [
+          "ds-transformer",
+          "ds-substation",
+          "ds-utility-pole",
+          "ds-transmission-tower",
+          "ds-switch",
+          "ds-meter",
+          "ds-cabinet",
+          "ds-solar-plant",
+          "ds-solar-panel",
+          "ds-power-plant",
+          "ds-hydro-plant",
+          "ds-wind-turbine",
+          "ds-battery",
+          "ds-generator",
+          "charging-station",
+          "communications-tower",
+          "observation-tower",
+          "industry",
+          "warehouse",
+          "dam",
+          "windmill",
+          "watermill",
+          "fuel",
+          "water"
+        ]
+      },
+      {
+        "key": "generation",
+        "label": "Generation",
+        "icons": [
+          "ds-solar-plant",
+          "ds-solar-panel",
+          "ds-power-plant",
+          "ds-hydro-plant",
+          "ds-wind-turbine",
+          "ds-battery",
+          "ds-generator",
+          "charging-station",
+          "dam",
+          "windmill",
+          "watermill",
+          "fuel"
+        ]
+      },
+      {
+        "key": "water",
+        "label": "Water infrastructure",
+        "icons": [
+          "ds-water-tank",
+          "ds-water-tower",
+          "ds-pump",
+          "ds-valve",
+          "ds-pipe",
+          "ds-hydrant",
+          "water",
+          "drinking-water",
+          "dam",
+          "watermill",
+          "waterfall",
+          "wetland",
+          "harbor"
+        ]
+      },
+      {
+        "key": "shapes",
+        "label": "Abstract shapes",
+        "icons": [
+          "ds-circle",
+          "ds-dot",
+          "square",
+          "square-stroked",
+          "triangle",
+          "triangle-stroked",
+          "star",
+          "star-stroked",
+          "marker",
+          "marker-stroked",
+          "heart",
+          "cross"
+        ]
+      },
+      {
+        "key": "places",
+        "label": "Places \u0026 buildings",
+        "icons": [
+          "home",
+          "building",
+          "town-hall",
+          "school",
+          "hospital",
+          "fire-station",
+          "police",
+          "religious-christian",
+          "monument",
+          "embassy",
+          "castle",
+          "lodging",
+          "shop",
+          "bank"
+        ]
+      },
+      {
+        "key": "community",
+        "label": "Health \u0026 community",
+        "icons": [
+          "hospital",
+          "doctor",
+          "pharmacy",
+          "defibrillator",
+          "blood-bank",
+          "emergency-phone",
+          "school",
+          "college",
+          "police",
+          "fire-station",
+          "wheelchair"
+        ]
+      },
+      {
+        "key": "transport",
+        "label": "Transport",
+        "icons": [
+          "parking",
+          "fuel",
+          "bus",
+          "rail",
+          "car",
+          "bicycle",
+          "airfield",
+          "heliport",
+          "harbor"
+        ]
+      },
+      {
+        "key": "nature",
+        "label": "Nature",
+        "icons": [
+          "park",
+          "garden",
+          "mountain",
+          "volcano",
+          "wetland",
+          "water"
+        ]
+      },
+      {
+        "key": "signs",
+        "label": "Signs \u0026 alerts",
+        "icons": [
+          "danger",
+          "roadblock",
+          "information",
+          "lighthouse",
+          "viewpoint",
+          "cross"
+        ]
+      }
+    ],
+    "custom_icons": [
+      {
+        "name": "ds-utility-pole",
+        "label": "Utility pole",
+        "view_box": "0 0 30 30",
+        "paths": [
+          {
+            "d": "M13 6h4v21h-4zM5 8h20v4H5zM11 3h8v4h-8zM8 13h4l3 5h-4zM18 13h4l-3 5h-4z"
+          }
+        ],
+        "tags": [
+          "electricity",
+          "distribution",
+          "pole"
+        ]
+      },
+      {
+        "name": "ds-transmission-tower",
+        "label": "Transmission tower",
+        "view_box": "0 0 30 30",
+        "paths": [
+          {
+            "d": "M13 3h4l3 5H10zM7 10h16v3H7zM9 17h12v3H9zM11 8h4L10 27H6zM15 8h4l5 19h-4zM12 22h6l2 5H10z"
+          }
+        ],
+        "tags": [
+          "electricity",
+          "transmission",
+          "tower"
+        ]
+      },
+      {
+        "name": "ds-transformer",
+        "label": "Transformer",
+        "view_box": "0 0 30 30",
+        "paths": [
+          {
+            "d": "M7 10h16v16H7zM9 5h3v5H9zM14 4h2v6h-2zM19 5h3v5h-3zM5 13h2v10H5zM23 13h2v10h-2z"
+          }
+        ],
+        "tags": [
+          "electricity",
+          "transformer",
+          "distribution"
+        ]
+      },
+      {
+        "name": "ds-substation",
+        "label": "Substation",
+        "view_box": "0 0 30 30",
+        "paths": [
+          {
+            "d": "M5 22h20v4H5zM7 15h3v7H7zM20 15h3v7h-3zM5 12h20v3H5zM12 17h6v5h-6zM14 4h5l-3 5h4l-7 9 2-7h-4z"
+          }
+        ],
+        "tags": [
+          "electricity",
+          "substation",
+          "switchyard"
+        ]
+      },
+      {
+        "name": "ds-switch",
+        "label": "Switch",
+        "view_box": "0 0 30 30",
+        "paths": [
+          {
+            "d": "M4 18h6v6H4zM20 18h6v6h-6zM20 6h6v6h-6zM8 16l12-9 3 3-13 9zM10 20h10v2H10z"
+          }
+        ],
+        "tags": [
+          "electricity",
+          "switch",
+          "isolation"
+        ]
+      },
+      {
+        "name": "ds-meter",
+        "label": "Meter",
+        "view_box": "0 0 30 30",
+        "paths": [
+          {
+            "d": "M15 3a12 12 0 1 0 0 24a12 12 0 0 0 0-24zM15 7a8 8 0 1 1 0 16a8 8 0 0 1 0-16z",
+            "fill_rule": "evenodd"
+          },
+          {
+            "d": "M14 15l5-5 2 2-5 5zM9 22h12v3H9z"
+          }
+        ],
+        "tags": [
+          "electricity",
+          "meter",
+          "measurement"
+        ]
+      },
+      {
+        "name": "ds-cabinet",
+        "label": "Cabinet",
+        "view_box": "0 0 30 30",
+        "paths": [
+          {
+            "d": "M8 5h14v22H8zM11 8h8v5h-8zM11 16h6v2h-6zM18 16h2v2h-2zM11 21h6v2h-6zM18 21h2v2h-2z"
+          }
+        ],
+        "tags": [
+          "electricity",
+          "cabinet",
+          "panel"
+        ]
+      },
+      {
+        "name": "ds-solar-panel",
+        "label": "Solar panel",
+        "view_box": "0 0 30 30",
+        "paths": [
+          {
+            "d": "M6 8h18l-2 12H4zM9 10H7l-.5 3H9zM11 10v3h4v-3zM17 10v3h4l.5-3zM6 15l-.5 3H9v-3zM11 15v3h4v-3zM17 15v3h3.5l.5-3zM13 20h4v5h5v3H8v-3h5z"
+          }
+        ],
+        "tags": [
+          "electricity",
+          "solar",
+          "generation"
+        ]
+      },
+      {
+        "name": "ds-solar-plant",
+        "label": "Solar plant",
+        "view_box": "0 0 30 30",
+        "paths": [
+          {
+            "d": "M22 3a4 4 0 1 0 0 8a4 4 0 0 0 0-8zM5 12h18l-2 8H3zM8 14H6l-.5 2H8zM10 14v2h4v-2zM16 14v2h4l.5-2zM5 17l-.5 2H8v-2zM10 17v2h4v-2zM16 17v2h3.5l.5-2zM6 22h18v3H6zM9 25h12v3H9z"
+          }
+        ],
+        "tags": [
+          "electricity",
+          "solar",
+          "generation",
+          "plant"
+        ]
+      },
+      {
+        "name": "ds-power-plant",
+        "label": "Power plant",
+        "view_box": "0 0 30 30",
+        "paths": [
+          {
+            "d": "M5 13l6-4v4l6-4v4h7v14H5zM20 5h5v8h-5zM9 18h3v3H9zM14 18h3v3h-3zM19 18h3v3h-3zM13 3h5l-3 5h4l-7 9 2-7h-4z"
+          }
+        ],
+        "tags": [
+          "electricity",
+          "generation",
+          "plant"
+        ]
+      },
+      {
+        "name": "ds-hydro-plant",
+        "label": "Hydro plant",
+        "view_box": "0 0 30 30",
+        "paths": [
+          {
+            "d": "M5 8h14l6 18H5zM8 12h10l1 3H8zM8 17h12l1 3H8zM8 22h14v3H8zM20 3h5l-3 5h4l-7 8 2-6h-4zM3 26h24v2H3z"
+          }
+        ],
+        "tags": [
+          "electricity",
+          "hydro",
+          "water",
+          "generation"
+        ]
+      },
+      {
+        "name": "ds-wind-turbine",
+        "label": "Wind turbine",
+        "view_box": "0 0 30 30",
+        "paths": [
+          {
+            "d": "M14 13h3v15h-3zM15 9l-9-5 2-3 8 7zM17 10l8-6 2 3-9 5zM15 12l3 9h-5zM13 9h5v5h-5z"
+          }
+        ],
+        "tags": [
+          "electricity",
+          "wind",
+          "generation",
+          "turbine"
+        ]
+      },
+      {
+        "name": "ds-battery",
+        "label": "Battery",
+        "view_box": "0 0 30 30",
+        "paths": [
+          {
+            "d": "M6 9h16v12H6zM22 12h3v6h-3zM9 12h3v2h2v3h-2v2H9v-2H7v-3h2zM16 14h4v3h-4z"
+          }
+        ],
+        "tags": [
+          "electricity",
+          "battery",
+          "storage"
+        ]
+      },
+      {
+        "name": "ds-generator",
+        "label": "Generator",
+        "view_box": "0 0 30 30",
+        "paths": [
+          {
+            "d": "M7 10h16v12H7zM10 7h10v3H10zM9 22h4v4H9zM17 22h4v4h-4zM10 13h5v5h-5zM17 13h4v2h-4zM17 17h4v2h-4zM5 13h2v6H5z"
+          }
+        ],
+        "tags": [
+          "electricity",
+          "generator",
+          "backup"
+        ]
+      },
+      {
+        "name": "ds-water-tank",
+        "label": "Water tank",
+        "view_box": "0 0 30 30",
+        "paths": [
+          {
+            "d": "M8 7c0-3 14-3 14 0v10c0 3-14 3-14 0zM8 7c0 3 14 3 14 0v3c0 3-14 3-14 0zM10 20h3v7h-3zM17 20h3v7h-3zM8 25h14v3H8z"
+          }
+        ],
+        "tags": [
+          "water",
+          "tank",
+          "storage"
+        ]
+      },
+      {
+        "name": "ds-water-tower",
+        "label": "Water tower",
+        "view_box": "0 0 30 30",
+        "paths": [
+          {
+            "d": "M9 5c0-3 12-3 12 0v6c0 3-12 3-12 0zM9 5c0 3 12 3 12 0v3c0 3-12 3-12 0zM10 14h3l-3 13H7zM17 14h3l3 13h-3zM11 21h8v3h-8z"
+          }
+        ],
+        "tags": [
+          "water",
+          "tower",
+          "storage"
+        ]
+      },
+      {
+        "name": "ds-pump",
+        "label": "Pump",
+        "view_box": "0 0 30 30",
+        "paths": [
+          {
+            "d": "M7 14h12v10H7zM10 10h6v4h-6zM16 8h6v4h-6zM20 12h5v4h-5zM5 17h2v4H5zM9 24h8v3H9zM22 16h3v5h-3z"
+          }
+        ],
+        "tags": [
+          "water",
+          "pump",
+          "station"
+        ]
+      },
+      {
+        "name": "ds-valve",
+        "label": "Valve",
+        "view_box": "0 0 30 30",
+        "paths": [
+          {
+            "d": "M5 11l8 5-8 5zM25 11l-8 5 8 5zM12 13h6v6h-6zM13 4h4v8h-4zM9 3h12v4H9zM13 20h4v6h-4z"
+          }
+        ],
+        "tags": [
+          "water",
+          "valve",
+          "pipe"
+        ]
+      },
+      {
+        "name": "ds-pipe",
+        "label": "Pipe",
+        "view_box": "0 0 30 30",
+        "paths": [
+          {
+            "d": "M4 11h22v8H4zM2 9h5v12H2zM23 9h5v12h-5zM10 13h10v2H10zM10 16h10v2H10z"
+          }
+        ],
+        "tags": [
+          "water",
+          "pipe",
+          "network"
+        ]
+      },
+      {
+        "name": "ds-hydrant",
+        "label": "Hydrant",
+        "view_box": "0 0 30 30",
+        "paths": [
+          {
+            "d": "M12 6h6v4h2v5h4v5h-4v7H10v-7H6v-5h4v-5h2zM8 16v3h2v-3zM20 16v3h2v-3zM11 3h8v3h-8zM8 27h14v2H8z"
+          }
+        ],
+        "tags": [
+          "water",
+          "hydrant",
+          "fire"
+        ]
+      }
+    ]
+  },
+  "design_layer_catalog": {
+    "lv": [
+      {
+        "key": "tr",
+        "label": "Transformer",
+        "geometry_type": "Point"
+      },
+      {
+        "key": "customers",
+        "label": "Customers",
+        "geometry_type": "Point"
+      },
+      {
+        "key": "unconnected_customers",
+        "label": "Unconnected Customers",
+        "geometry_type": "Point"
+      },
+      {
+        "key": "unconnected_lv_poles",
+        "label": "Unconnected LV Poles",
+        "geometry_type": "Point"
+      },
+      {
+        "key": "dropped_lv_poles",
+        "label": "Dropped LV Poles",
+        "geometry_type": "Point"
+      },
+      {
+        "key": "lv_poles",
+        "label": "LV Poles",
+        "geometry_type": "Point"
+      },
+      {
+        "key": "tapping_poles",
+        "label": "Tapping Poles",
+        "geometry_type": "Point"
+      },
+      {
+        "key": "field_notes",
+        "label": "Field Notes",
+        "geometry_type": "Point",
+        "source_aliases": [
+          "field_notes"
+        ]
+      },
+      {
+        "key": "lv_lines",
+        "label": "LV Lines",
+        "geometry_type": "LineString"
+      },
+      {
+        "key": "service_cables",
+        "label": "Service Cables",
+        "geometry_type": "LineString"
+      },
+      {
+        "key": "unconnected_service_cables",
+        "label": "Unconnected Service Cables",
+        "geometry_type": "LineString"
+      },
+      {
+        "key": "spans",
+        "label": "Spans",
+        "geometry_type": "LineString"
+      },
+      {
+        "key": "bounding_rectangles",
+        "label": "Bounding Rectangles",
+        "geometry_type": "Polygon"
+      }
+    ],
+    "mv": [
+      {
+        "key": "mv_lines",
+        "label": "MV Lines",
+        "geometry_type": "LineString"
+      },
+      {
+        "key": "mv_spans",
+        "label": "MV Spans",
+        "geometry_type": "LineString"
+      },
+      {
+        "key": "mv_route_corridors",
+        "label": "MV Route Corridors",
+        "geometry_type": "Polygon"
+      },
+      {
+        "key": "mv_proposed_transformers",
+        "label": "Proposed Transformers",
+        "geometry_type": "Point"
+      },
+      {
+        "key": "mv_tappings",
+        "label": "MV Tappings",
+        "geometry_type": "Point"
+      },
+      {
+        "key": "power_plants",
+        "label": "Power Plants",
+        "geometry_type": "Point",
+        "default_columns": [
+          "source_type"
+        ]
+      },
+      {
+        "key": "substations",
+        "label": "Substations",
+        "geometry_type": "Point",
+        "default_columns": [
+          "source_type"
+        ]
+      },
+      {
+        "key": "mv_structures",
+        "label": "MV Structures",
+        "geometry_type": "Point"
+      },
+      {
+        "key": "angle_points",
+        "label": "Angle Points",
+        "geometry_type": "Point"
+      },
+      {
+        "key": "detailed_survey",
+        "label": "Detailed Survey",
+        "geometry_type": "Point",
+        "source_aliases": [
+          "dgps",
+          "dgps_points",
+          "site_survey",
+          "site_survey_points",
+          "detailedsurvey"
+        ]
+      },
+      {
+        "key": "city_limits",
+        "label": "City Limits",
+        "geometry_type": "Polygon"
+      },
+      {
+        "key": "transformer_limits",
+        "label": "Transformer Limits",
+        "geometry_type": "Polygon"
+      },
+      {
+        "key": "solar_sites",
+        "label": "Solar Sites",
+        "geometry_type": "Polygon"
+      }
+    ],
+    "diagnostic": [
+      {
+        "key": "drafting_errors",
+        "label": "Drafting Errors",
+        "geometry_type": "Polygon"
+      },
+      {
+        "key": "non_snapping_lv_lines",
+        "label": "Non Snapping LV Lines",
+        "geometry_type": "Polygon"
+      },
+      {
+        "key": "bounding_rectangles_printing_mask",
+        "label": "Bounding Rectangles Printing Mask",
+        "geometry_type": "Polygon"
+      },
+      {
+        "key": "lv_print_info",
+        "label": "LV Print Info",
+        "geometry_type": "Point"
+      }
+    ],
+    "default_scratch_transformer": [
+      "tr",
+      "lv_lines"
+    ],
+    "default_scratch_mv_transformer": [],
+    "default_design_layers_to_include_in_geographic_formats": [
+      "customers",
+      "lv_poles",
+      "field_notes",
+      "lv_lines",
+      "service_cables",
+      "spans",
+      "tr",
+      "tapping_poles",
+      "bounding_rectangles",
+      "bounding_rectangles_printing_mask",
+      "lv_print_info"
+    ],
+    "default_design_layers_to_include_in_staats": [
+      "customers",
+      "lv_poles",
+      "lv_lines",
+      "service_cables",
+      "tr",
+      "tapping_poles"
+    ],
+    "default_design_export_format": {
+      "geojson": false,
+      "gpkg": false,
+      "kmz": true,
+      "pdf_a0": false,
+      "pdf_a3": false,
+      "shp": true,
+      "xlsx": true
+    }
+  },
+  "required_images": [],
+  "warnings": [
+    "project_data upload legacy-ready is ready but has no layers declaration; its styles were not guessed from PMTiles"
+  ]
+}

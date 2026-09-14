@@ -89,7 +89,11 @@ fn only_artifact_discovery_and_unchecked_coverage_diverge_from_deleted_typescrip
         .collect();
     assert_eq!(
         declared,
-        ["whole-project", "explicit-selection", "format-filter-xlsx-shp"],
+        [
+            "whole-project",
+            "explicit-selection",
+            "format-filter-xlsx-shp"
+        ],
         "Any additional divergence needs an explicit contract decision"
     );
 }

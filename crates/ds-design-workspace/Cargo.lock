@@ -290,8 +290,9 @@ dependencies = [
  "ds-solar-contracts",
  "image",
  "imagesize",
- "quick-xml",
+ "quick-xml 0.41.0",
  "regex",
+ "ryu",
  "schemars",
  "serde",
  "serde_json",
@@ -390,6 +391,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "ds-network-information"
+version = "0.1.0"
+dependencies = [
+ "quick-xml 0.39.4",
+ "serde",
+ "serde_json",
+ "zip",
+]
+
+[[package]]
 name = "ds-profile"
 version = "0.1.0"
 dependencies = [
@@ -403,7 +414,9 @@ dependencies = [
 name = "ds-solar-contracts"
 version = "0.1.0"
 dependencies = [
+ "base64",
  "chrono",
+ "ds-network-information",
  "hex",
  "pulldown-cmark",
  "serde",
@@ -1074,6 +1087,16 @@ name = "pxfm"
 version = "0.1.30"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d55d956fa96f5ec02be2e13af0e20391a5aa83d6a074e3ad368959d0fab299ea"
+
+[[package]]
+name = "quick-xml"
+version = "0.39.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cdcc8dd4e2f670d309a5f0e83fe36dfdc05af317008fea29144da1a2ac858e5e"
+dependencies = [
+ "memchr",
+ "serde",
+]
 
 [[package]]
 name = "quick-xml"

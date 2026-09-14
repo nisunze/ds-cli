@@ -1,0 +1,24 @@
+[package]
+name = "ds-project-data"
+description = "The one Rust owner of a project's geographic context holdings: catalogue facts, the datasets a project declares, coverage-driven acquisition into project rooms, national bundle installation, and the print-context document a transformer prints with. Hosted by ds and by the desktop shell; no Tauri, no process, no transport, no credential."
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.90"
+publish = false
+
+[dependencies]
+ds-command-kernel = { path = "../.." }
+ds-layer-store = { path = "../ds-layer-store" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+flate2 = "1"
+tempfile = "3"
+
+ds-grid-exchange = { path = "../../../ds-network/crates/ds-grid-exchange" }
+ds-geo = { path = "../../../ds-network/crates/ds-geo" }
+
+[dev-dependencies]
+
+# Native host crate, separate from the portable WASM workspace.
+[workspace]

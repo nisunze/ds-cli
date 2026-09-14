@@ -146,6 +146,42 @@ impl Workspace {
         }
         Ok((revision, snapshot))
     }
+    /// List retained content revisions, not server-assigned version ordinals.
+    pub fn revisions(&self, transformer: &str, after: &str, limit: usize) -> Result<Value> {
+        if limit == 0 || limit > 200 {
+            return Err(invalid("revision limit must be between 1 and 200"));
+        }
+        let (head, _) = self.read(transformer, None)?;
+        let mut query = self.db.prepare("SELECT revision FROM revisions WHERE transformer=?1 AND revision>?2 ORDER BY revision LIMIT ?3")?;
+        let mut rows = query
+            .query_map(params![transformer, after, limit + 1], |r| {
+                r.get::<_, String>(0)
+            })?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+        let more = rows.len() > limit;
+        rows.truncate(limit);
+        let next = more.then(|| rows.last().cloned()).flatten();
+        Ok(
+            json!({"transformer":transformer,"head":head,"revisions":rows,"more":more,"next":next,
+            "scope":"local_workspace","mutated":false}),
+        )
+    }
+
+    /// Pin head once; immutable reads cannot be redirected by subsequent edits.
+    pub fn compare(&self, transformer: &str, from: &str, to: &str, limit: usize) -> Result<Value> {
+        let (left_revision, left) = self.read(transformer, Some(from))?;
+        let (right_revision, right) = self.read(transformer, (to != "head").then_some(to))?;
+        let mut result = design::compare_snapshots(&left, &right, limit).map_err(invalid)?;
+        let project: String = self
+            .db
+            .query_row("SELECT project FROM meta", [], |r| r.get(0))?;
+        result["project"] = json!(project);
+        result["from_revision"] = json!(left_revision);
+        result["to_revision"] = json!(right_revision);
+        result["scope"] = json!("local_workspace");
+        Ok(result)
+    }
+
     pub fn write(
         &mut self,
         bytes: &[u8],
