@@ -7680,6 +7680,22 @@ fn every_assets_write_refuses_without_confirmation() {
 
 #[test]
 fn shared_network_commands_expose_tag_identity_and_manual_entry() {
+    let published = ok(&["capabilities", "assets.map.publish", "--output", "json"]);
+    assert_eq!(published["command"]["authority"], "headless_project");
+    assert_eq!(published["command"]["effect"], "global_write");
+    assert_eq!(
+        refusal(&[
+            "assets",
+            "map",
+            "publish",
+            "--file",
+            "/missing-map.pdf",
+            "--yes",
+            "--output",
+            "json"
+        ]),
+        "auth_input_invalid"
+    );
     let maps = ok(&["capabilities", "assets.maps", "--output", "json"]);
     assert_eq!(maps["command"]["authority"], "headless_project");
     assert!(

@@ -89,8 +89,8 @@ pub static MAPS: Command = Command {
     id: "assets.maps",
     path: &["assets", "maps"],
     contract: 1,
-    summary: "Index reusable city and other tag-group maps in the project.",
-    purpose: "Reads one authorized asset catalogue page and indexes maps by exact tag definition and value. A city is one tag group. Multiple memberships reference the same producer asset and bytes. No rendering, data acquisition or copying occurs. Follow next_cursor while more is true; a page without maps may still have later matches. Creation and composition remain CLI/MCP workflows.",
+    summary: "List custom maps, project-wide maps and maps grouped by tags.",
+    purpose: "Reads one authorized asset catalogue page and indexes maps by exact tag definition and value. A city is one tag group. Custom map documents exist independently of tags; untagged maps remain visible. Multiple memberships reference the same asset and bytes. No rendering, data acquisition or copying occurs. Follow next_cursor while more is true; a page without maps may still have later matches. Creation and composition remain CLI/MCP workflows.",
     chapter: Chapter::Assets,
     effect: Effect::ReadOnly,
     authority: Authority::HeadlessProject,
@@ -109,12 +109,89 @@ pub static MAPS: Command = Command {
             "Unchanged next_cursor from the preceding index page.",
         ),
     ],
-    output: "Project, tag-group-map family, unique maps with producer references, tag groups containing asset IDs, more, truncated and next_cursor. Only published catalogue assets are included; local or queued printouts are not online evidence.",
+    output: "Project, tag-group-map family, unique map assets, optional producer references, tag groups and ungrouped_asset_ids, more, truncated and next_cursor. Only published catalogue assets are included; local or queued printouts are not online evidence.",
     examples: &[],
     refusals: &refusals(),
     reference: Some("docs/reference/assets.md"),
     availability: ds_cli_auth::native_availability,
 };
+pub static PUBLISH_MAP: Command = Command {
+    id: "assets.map.publish",
+    path: &["assets", "map", "publish"],
+    contract: 1,
+    summary: "Publish a custom map into Project Control and its tag groups.",
+    purpose: "Upload one operator-declared PDF/PNG/JPEG/WebP map through existing Project Assets, classify it as a durable geographic document and attach exact tags. No Desktop is required. Untagged maps appear as project-wide maps. Repeating the same name and bytes reuses the asset; changed bytes create a new asset. Inputs are bounded to 32 MiB and 16 tags. Requires assets ingest, classify and attach permissions. Partial failures retain the uploaded asset; retry the same declaration.",
+    chapter: Chapter::Assets,
+    effect: Effect::GlobalWrite,
+    authority: Authority::HeadlessProject,
+    execution: Execution::Sync,
+    args: &[
+        ARGS[0],
+        Arg::value(
+            "file",
+            "<path>",
+            "Existing local PDF/PNG/JPEG/WebP map, at most 32 MiB.",
+        )
+        .required(),
+        Arg::value(
+            "name",
+            "<filename>",
+            "Meaningful catalogue filename; default is the local filename.",
+        ),
+        Arg::repeated(
+            "tag",
+            "<definition=value>",
+            "Exact project tag membership; repeat up to 16 times, e.g. city=gagal.",
+        ),
+    ],
+    output: "Published asset, verified name/digest/size, map index entry, reused and bytes_uploaded. No upload URL or credentials.",
+    examples: &[],
+    refusals: &refusals(),
+    reference: Some("docs/reference/assets.md"),
+    availability: ds_cli_auth::native_availability,
+};
+pub fn publish_map(i: &Inputs, _: &Context) -> Result<Value, Failure> {
+    use std::io::Read;
+    let failure = || {
+        Failure::invalid(
+            "auth_input_invalid",
+            "Use a readable map file up to 32 MiB, a filename and at most 16 definition=value tags",
+        )
+    };
+    let path = std::path::Path::new(i.require("file")?);
+    let name = i
+        .value("name")
+        .or_else(|| path.file_name().and_then(|n| n.to_str()))
+        .ok_or_else(failure)?;
+    let file = std::fs::File::open(path).map_err(|_| failure())?;
+    if !file.metadata().map_err(|_| failure())?.is_file() {
+        return Err(failure());
+    }
+    let mut bytes = Vec::new();
+    file.take(32 * 1024 * 1024 + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|_| failure())?;
+    let tags = i
+        .repeated("tag")
+        .iter()
+        .map(|raw| {
+            let (definition_id, value) = raw.split_once('=').ok_or_else(failure)?;
+            Ok(Link::Tag {
+                definition_id: definition_id.into(),
+                value: value.into(),
+            })
+        })
+        .collect::<Result<Vec<_>, Failure>>()?;
+    Ok(ds_cli_auth::shared_assets(
+        i.value("lane").unwrap_or("stable"),
+        &ds_cli_auth::SharedAssetsCommand::PublishMap {
+            name: name.into(),
+            bytes,
+            tags,
+        },
+    )?
+    .into_result())
+}
 pub fn maps(i: &Inputs, _: &Context) -> Result<Value, Failure> {
     let limit = i
         .require("limit")?

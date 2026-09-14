@@ -1281,6 +1281,7 @@ pub const fn chapter_description(chapter: Chapter) -> &'static str {
 // remain for what has no headless owner yet: survey and local-layer context,
 // per-transformer overrides, district and custom-area maps.
 const PRINTING_COMMANDS: &[&str] = &[
+    "assets.map.publish",
     "report.layout.render",
     "assets.reference",
     "assets.maps",

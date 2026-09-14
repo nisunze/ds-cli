@@ -41,6 +41,20 @@ index preserves catalogue pagination and never treats queued local printouts as
 published assets. Unfiled shared maps appear under `Prints/tag groups` in the
 system folder projection; explicitly chosen user folders are preserved.
 
+Custom printouts enter the same catalogue through `assets.map.publish` after
+local rendering. The owner uses the existing ingest, verified finalization,
+classification and tag-link transactions. A printed geographic document is
+explicitly classified `geo`; ordinary images and source GeoJSON are not map
+printouts. Tagged maps appear in their groups; maps without tags appear under
+Project-wide maps. Local browser custom printouts remain visible in the same
+Project Control section with their existing attachment status.
+
+Publication reuses an exact name/digest match, including after a partial
+classification/link failure. A changed document is a new asset and never
+silently deletes the earlier submission. Catalogue matching is bounded and
+refuses an incomplete search. The command's live help describes file and tag
+limits; no URL, storage path, credential or arbitrary API body is accepted.
+
 ## The shape of a session
 
 ```bash

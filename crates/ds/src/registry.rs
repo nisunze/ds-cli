@@ -1402,6 +1402,11 @@ static WORK_ENTRIES: &[Entry] = &[
 /// verbatim, so the index doubles as the procedure.
 static ASSETS_ENTRIES: &[Entry] = &[
     Entry {
+        command: &ds_cli_assets::shared::PUBLISH_MAP,
+        handler: ds_cli_assets::shared::publish_map,
+        render: ds_cli_assets::shared::render,
+    },
+    Entry {
         command: &ds_cli_assets::shared::RESOLVE,
         handler: ds_cli_assets::shared::resolve,
         render: ds_cli_assets::shared::render,

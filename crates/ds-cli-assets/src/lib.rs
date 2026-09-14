@@ -74,6 +74,7 @@ pub static DOMAIN: Domain = Domain {
     commands: &[
         &shared::RESOLVE,
         &shared::MAPS,
+        &shared::PUBLISH_MAP,
         &shared::REFERENCE,
         &list::COMMAND,
         &tree::COMMAND,
