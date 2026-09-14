@@ -90,6 +90,33 @@ interfaces, without inventing another discovery system.
 This contract defines responsibilities, not a requirement to put every
 dependency or operating-system integration into the pure kernel crate.
 
+## Delivery cadence and per-request project context
+
+Prove the requested outcome through the installed CLI/MCP before refactoring.
+If a supported command or authored configuration satisfies it, deliver through
+that route. A demonstrated gap is repaired in its existing Rust owner, exposed
+and proven headlessly through CLI/MCP, then bound by the UI. Remove replaced
+TypeScript domain behavior only in the touched slice; no server operation in
+that slice may require TypeScript or an open browser. Keep this migration
+incremental. Run one bounded blind smaller-model workflow trial after the
+implementation is ready, using live discovery without source access.
+
+A native server or desktop background core has no mutable global active
+project. Every operation captures an explicit project together with principal,
+lane and deployment audience at entry, authorizes it, and retains that context
+through execution, retries, publication and cancellation. A project identifier
+alone grants no access. Durable jobs and caches remain stateful; request
+routing must not depend on another client's selection.
+
+The web retains its active-project presentation and injects that context into
+requests. A CLI compatibility default may resolve a saved selection once at
+the client boundary; changing that selection must never redirect accepted
+work. Project-scoped queues, locks, idempotency identities, artifact lookups and
+cancellation isolate concurrent projects. Restart recovery preserves the
+original context. Migrate these boundaries as they are touched, proving that
+interleaved requests, selection changes and interruptions cannot cross projects.
+Do not claim all older commands already meet this contract.
+
 ## 4. Platform execution
 
 | Target | Required execution model | Lifecycle obligation |
