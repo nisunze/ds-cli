@@ -944,6 +944,7 @@ fn the_assets_chapter_is_routed_and_describes_the_live_command() {
         "assets.reference",
         "assets.resolve",
         "assets.maps",
+        "assets.map.publish",
     ]
     .into_iter()
     .collect();
@@ -1328,7 +1329,7 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
             "survey-projects" => 18,
             "design-edit" => 23,
             // Twenty-six printing leaves plus bootstrap: city-vector input,
-            // local rendering and tag-asset delivery complete the headless
+            // local rendering and standalone map delivery complete the headless
             // workflow beside the retained desktop-owned operations.
             "printing" => 28,
             // Sixteen layer leaves plus bootstrap: the layer drawer's profile
@@ -1364,6 +1365,7 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
     assert!(published["printing"].contains("report_layout_edit"));
     assert!(published["printing"].contains("report_transformers"));
     assert!(published["printing"].contains("report_plan"));
+    assert!(published["printing"].contains("assets_map_publish"));
     // The headless production loop is reachable through the printing profile.
     for headless in [
         "data_project-cache_status",

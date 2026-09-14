@@ -190,8 +190,9 @@ impl Profile {
             // headless loop (context held and seeded on this machine, output
             // selection, export with context) beside the paired leaves that
             // still need the desktop's own holdings.
-            // Tag-group delivery adds local composition, producer referencing,
-            // and the published map index; these share the same workflow.
+            // Map delivery adds local composition, standalone publication,
+            // and the published map index. General asset referencing remains
+            // discoverable in the Assets chapter, outside this print workflow.
             Self::Printing => 28,
             // The layer drawer's profile also carries this machine's prepared
             // local layer catalogue: sixteen leaves plus both bootstrap tools.
@@ -1283,7 +1284,6 @@ pub const fn chapter_description(chapter: Chapter) -> &'static str {
 const PRINTING_COMMANDS: &[&str] = &[
     "assets.map.publish",
     "report.layout.render",
-    "assets.reference",
     "assets.maps",
     "map.print.schema",
     "report.layout.context",
