@@ -93,6 +93,10 @@ enum Command {
         rows: Vec<serde_json::Value>,
         item: serde_json::Value,
     },
+    MapCatalogRemove {
+        rows: Vec<serde_json::Value>,
+        item: serde_json::Value,
+    },
     MapLayers {
         area: serde_json::Value,
         sources: std::collections::BTreeMap<String, serde_json::Value>,
@@ -395,6 +399,9 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
             serde_json::json!(crate::printing::map::current(&rows, &item))
         }
         Command::MapCatalog { rows, item } => crate::printing::map::catalog(rows, item)?,
+        Command::MapCatalogRemove { rows, item } => {
+            crate::printing::map::remove_catalog(rows, item)?
+        }
         Command::MapRequest { request } => {
             crate::printing::map::validate_request(&request)?;
             serde_json::to_value(request).map_err(|e| e.to_string())?
@@ -798,7 +805,7 @@ mod tests {
         .unwrap();
         assert_eq!(reply["result"]["filename"], "B.PDF");
         assert_eq!(reply["result"]["opens_as_pdf"], true);
-        assert_eq!(reply["result"]["kind"], "other");
+        assert_eq!(reply["result"]["kind"], "pdf");
     }
 
     #[test]
@@ -816,7 +823,7 @@ mod tests {
             ("a/b.kmz", "kmz"),
             ("a/b.gpkg", "gpkg"),
             ("a/b.zip", "zip"),
-            ("a/b.pdf", "other"),
+            ("a/b.pdf", "pdf"),
             ("a/b", "other"),
         ] {
             let reply = command(serde_json::json!({"command":"artifact_name","locator":locator}));
@@ -825,11 +832,12 @@ mod tests {
         // Groups are positions, in reading order, and a kind nothing matched
         // is not an empty badge.
         let reply = command(serde_json::json!({"command":"artifact_groups","locators":[
-            "p/one.zip", "p/two.xlsx", "p/three.shp.zip", "p/four.xlsx", "p/five.txt",
+            "p/one.zip", "p/two.xlsx", "p/three.shp.zip", "p/four.xlsx", "p/five.txt", "p/combined.A3.PDF",
         ]}));
         assert_eq!(
             reply["result"]["groups"],
             serde_json::json!([
+                {"kind":"pdf","items":[5]},
                 {"kind":"excel","items":[1,3]},
                 {"kind":"shapefile","items":[2]},
                 {"kind":"zip","items":[0]},
