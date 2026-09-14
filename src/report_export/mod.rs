@@ -1046,16 +1046,39 @@ pub fn verify_result(
     }
     if result.warnings.len() > MAX_PRINT_WARNINGS
         || result.warnings.iter().any(|warning| {
-            warning.code != "table_truncated"
-                || warning.transformer != plan.transformer
-                || !plan.formats.contains(&warning.output_id)
-                || report_formats::named_print_output(&warning.output_id).map(|(_, id)| id)
-                    != Some(warning.layout_id.as_str())
-                || !crate::printing::identifier(&warning.element_id)
-                || warning.omitted_rows == 0
-                || warning.omitted_rows >= warning.total_rows
-                || warning.total_rows > 1_000_000
-                || warning.message.len() > 2048
+            let placed = warning.transformer == plan.transformer
+                && plan.formats.contains(&warning.output_id)
+                && report_formats::named_print_output(&warning.output_id).map(|(_, id)| id)
+                    == Some(warning.layout_id.as_str())
+                && warning.message.len() <= 2048;
+            let valid = match warning.code.as_str() {
+                // A table that could not show every row names the panel and
+                // the honest counts.
+                "table_truncated" => {
+                    placed
+                        && crate::printing::identifier(&warning.element_id)
+                        && warning.omitted_rows > 0
+                        && warning.omitted_rows < warning.total_rows
+                        && warning.total_rows <= 1_000_000
+                }
+                // Measured furniture diagnostics (printing::diagnostics) and
+                // their bounded summary: mechanical findings in millimetres,
+                // no table rows behind them. The summary names no element.
+                "print_element_clipped" | "print_furniture_overlap" | "print_layout_warning" => {
+                    placed
+                        && crate::printing::identifier(&warning.element_id)
+                        && warning.omitted_rows == 0
+                        && warning.total_rows == 0
+                }
+                "print_diagnostics_summary" => {
+                    placed
+                        && warning.element_id.is_empty()
+                        && warning.omitted_rows == 0
+                        && warning.total_rows == 0
+                }
+                _ => false,
+            };
+            !valid
         })
     {
         return Err(ResultRefusal::invalid(
@@ -2108,6 +2131,40 @@ mod tests {
             }
             document["warnings"][0]["layout_id"] = json!("another-layout");
             assert!(verify(&document).is_err());
+
+            // Measured furniture diagnostics travel as warning rows too: a
+            // named finding, and the bounded summary that names no element.
+            // Neither has table rows behind it. (2026-09-14: the reporter
+            // began emitting them and every sheet with a finding was refused
+            // as "invalid print warnings".)
+            document["warnings"] = json!([
+                {
+                    "code":"print_furniture_overlap", "transformer":"tx_a", "output_id":format,
+                    "layout_id":"detail", "element_id":"legend", "total_rows":0,
+                    "omitted_rows":0, "message":"legend overlaps house-schedule by 4.2 mm"
+                },
+                {
+                    "code":"print_diagnostics_summary", "transformer":"tx_a", "output_id":format,
+                    "layout_id":"detail", "element_id":"", "total_rows":0,
+                    "omitted_rows":0, "message":"3 furniture findings; details truncated=false; 2 labels omitted"
+                }
+            ]);
+            assert_eq!(verify(&document).unwrap().warnings.len(), 2);
+            for (index, key, invalid) in [
+                (0, "code", json!("print_visual_approval")),
+                (0, "element_id", json!("")),
+                (0, "total_rows", json!(5)),
+                (1, "element_id", json!("legend")),
+                (1, "omitted_rows", json!(1)),
+                (1, "transformer", json!("tx_b")),
+            ] {
+                let mut changed = document.clone();
+                changed["warnings"][index][key] = invalid;
+                assert!(
+                    verify(&changed).is_err(),
+                    "{format}: accepted a diagnostics row with invalid {key}"
+                );
+            }
         }
     }
 
