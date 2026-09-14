@@ -7694,7 +7694,7 @@ fn shared_network_commands_expose_tag_identity_and_manual_entry() {
             "--output",
             "json"
         ]),
-        "auth_input_invalid"
+        "native_profile_not_configured"
     );
     let maps = ok(&["capabilities", "assets.maps", "--output", "json"]);
     assert_eq!(maps["command"]["authority"], "headless_project");
