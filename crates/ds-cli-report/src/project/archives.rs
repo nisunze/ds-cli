@@ -66,6 +66,8 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
                 "individual_artifact_transformer_count": archive.individual_artifact_transformer_count(),
                 "missing_individual_artifact_count": archive.missing_individual_artifact_count(),
                 "errors": archive.errors(),
+                "artifact_index_state": archive.artifact_index_state(),
+                "archive_members": archive.archive_members(),
                 // The layout as the registry recorded it, plus the report
                 // layer's own vocabulary for it — so a legacy archive written
                 // under `transformer_grouping` alone is described here exactly

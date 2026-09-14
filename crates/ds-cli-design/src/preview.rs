@@ -63,10 +63,12 @@ pub const CAPABILITY_ARG: Arg = Arg::repeated(
 
 pub const FORMAT_ARG: Arg = Arg::repeated(
     "format",
-    "<xlsx|shp|kmz|gpkg>",
+    "<xlsx|shp|kmz|gpkg|pdf|png|zip|geojsonl>",
     "Keep only artifacts of this format; repeat to combine.",
 )
-.choices(&["xlsx", "shp", "kmz", "gpkg"]);
+.choices(&[
+    "xlsx", "shp", "kmz", "gpkg", "pdf", "png", "zip", "geojsonl",
+]);
 
 pub const MIRROR_ARG: Arg = Arg::switch(
     "combined-mirror",
@@ -193,15 +195,9 @@ pub fn render_bulk_plan(data: &Value) -> String {
 pub static DOWNLOAD_PLAN: Command = Command {
     id: "design.download.plan",
     path: &["design", "download", "plan"],
-    contract: 1,
+    contract: 2,
     summary: "Preview a download: rows in scope, URLs, and which copy wins.",
-    purpose: "\
-Which artifacts a download would produce. Reads the selected project's status \
-rows headlessly and asks the shared kernel for the scope (naming \
-transformers narrows it; naming none takes the whole project), the ordered \
-URL list, the fresh/stale/missing summary, and the placement of every \
-artifact name a row carries twice — a local copy outranks a cloud pointer \
-whatever order they arrived in. The fetch itself stays with the host.",
+    purpose: "Discover direct files, attached prints, combined reports and published bundles headlessly. Source freshness remains separate from artifact availability: stale transformers can have complete A0/A3 PDFs in a bundle. Members name their containing ZIP and require extraction. An unavailable archive index means unknown coverage, not missing files. This command never regenerates reports.",
     chapter: Chapter::Design,
     effect: Effect::LocalAuthState,
     authority: Authority::HeadlessProject,
@@ -223,13 +219,49 @@ resolved to and why.",
 };
 
 pub fn run_download_plan(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
-    let requested = crate::transformer::transformer_set(inputs, false)?;
+    let mut requested = crate::transformer::transformer_set(inputs, false)?;
+    if !requested.is_empty() && requested.len() < 500 {
+        requested = ds_cli_auth::TransformerSet::new(
+            requested
+                .names()
+                .iter()
+                .cloned()
+                .chain(std::iter::once("combined_transformer".into())),
+        )
+        .map_err(|error| plan_invalid(error.to_string()))?;
+    }
     let headless = ds_cli_auth::transformer_status(inputs.require("lane")?, &requested)?;
+    let (archives, archive_error) = match ds_cli_auth::compounded_report_list(
+        inputs.require("lane")?,
+    ) {
+        Ok(registry) => {
+            if registry.project_id() != headless.project_id()
+                || registry.identity() != headless.identity()
+            {
+                return Err(Failure::unavailable(
+                    "project_context_stale",
+                    "Project or identity changed while reading download coverage",
+                )
+                .remedy("Repeat the plan in the intended project"));
+            }
+            (Some(registry.result().iter().map(|archive| json!({
+                "stem":archive.stem(),"filename":archive.filename(),"gcs_path":archive.gcs_path(),
+                "download_url":archive.download_url(),"created_at":archive.created_at(),"status":archive.status(),
+                "transformers":archive.transformers(),"missing_individual_artifact_count":archive.missing_individual_artifact_count(),
+                "artifact_index_state":archive.artifact_index_state(),"archive_members":archive.archive_members()
+            })).collect::<Vec<_>>()), None)
+        }
+        Err(failure) => (
+            None,
+            Some(json!({"code":failure.code(),"message":failure.message()})),
+        ),
+    };
     let plan = kernel(
         json!({
             "rows": rows_of(headless.result()),
             "selection": inputs.repeated("transformer"),
             "formats": inputs.repeated("format"),
+            "archives": archives,
         }),
         |input| {
             ds_command_kernel::plan_project_control_artifact_download(input)
@@ -238,6 +270,9 @@ pub fn run_download_plan(inputs: &Inputs, _context: &Context) -> Result<Value, F
     )?;
     let mut out = crate::transformer::project_receipt(&headless);
     out["plan"] = plan;
+    if let Some(error) = archive_error {
+        out["archive_discovery_error"] = error;
+    }
     Ok(out)
 }
 

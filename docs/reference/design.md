@@ -896,3 +896,12 @@ kernel-prepared, server-authorized and verified with fresh readback. A failed
 readback never reports success; inspect current state before repeating an
 uncertain write. The server's existing whole-sheet persistence is unchanged:
 this family does not claim a cross-client editing lock.
+
+## Download coverage
+
+`design.download.plan` includes PDF/PNG prints, combined report records and
+current relevant compounded bundles. Source `report_status` is independent
+of `download_state`. `available_in_archive` names verified ZIP members and
+the containing download URL; it never invents standalone member URLs.
+`--format pdf` includes a ZIP when its indexed members contain matching PDFs.
+Unknown archive coverage is explicit and does not justify regeneration.
