@@ -66,3 +66,13 @@ artifact attempt and observed refusals determine the discoverability result.
 For feature stabilization, the **Evidence before refactoring** section in
 [CLAUDE.md](CLAUDE.md) governs CLI/MCP-first proof and the scope of TypeScript
 removal. A delivery gap must be demonstrated before refactoring.
+
+## CLI-first delivery and project isolation
+
+Follow the delivery cadence and per-request project context section of
+[`ds-headless-application-runtime.md`](../ds-command-kernel/docs/contracts/ds-headless-application-runtime.md).
+Prove the installed CLI/MCP outcome, repair the smallest demonstrated owner gap,
+then bind the UI. The web retains project selection; native requests capture and
+authorize explicit project context, preserving it across concurrent jobs and
+interruptions. Migrate touched boundaries gradually; a saved CLI default must
+never redirect accepted work.
