@@ -78,7 +78,7 @@ fn the_local_copy_wins_its_artifact_name_by_placement_in_either_merge_order() {
 }
 
 #[test]
-fn nothing_diverges_from_the_deleted_typescript() {
+fn only_artifact_discovery_and_unchecked_coverage_diverge_from_deleted_typescript() {
     let corpus = corpus();
     let declared: Vec<&str> = corpus["cases"]
         .as_array()
@@ -87,8 +87,9 @@ fn nothing_diverges_from_the_deleted_typescript() {
         .filter(|case| case.get("why").is_some())
         .map(|case| case["id"].as_str().expect("case id"))
         .collect();
-    assert!(
-        declared.is_empty(),
-        "{declared:?} newly declare a divergence"
+    assert_eq!(
+        declared,
+        ["whole-project", "explicit-selection", "format-filter-xlsx-shp"],
+        "Any additional divergence needs an explicit contract decision"
     );
 }
