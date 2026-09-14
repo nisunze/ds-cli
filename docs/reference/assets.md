@@ -55,6 +55,22 @@ silently deletes the earlier submission. Catalogue matching is bounded and
 refuses an incomplete search. The command's live help describes file and tag
 limits; no URL, storage path, credential or arbitrary API body is accepted.
 
+When updating a print, discover its current asset with `assets.maps` and pass
+`--replaces <asset-id>` to `assets.map.publish` (repeat for legacy duplicates).
+One map nature and paper size has one current rendition per format. Do not
+replace another map just because it shares the same city tag. The declaration
+must retain the predecessor's format and exact tag set. The native owner reads
+all named predecessors before mutation, verifies the new durable map, then
+archives each predecessor with its expected version. Archived bytes remain
+available as history; they disappear from the default index. A failed upload
+never archives a predecessor. A partial archive failure can be retried with the
+same declaration. Renaming does not require retaining duplicate current maps.
+
+```bash
+ds assets map publish --file /prints/Kyabe-A3.pdf --tag city=kyabe \
+  --replaces a_123456789abc --yes --output json
+```
+
 ## The shape of a session
 
 ```bash

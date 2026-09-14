@@ -118,9 +118,9 @@ pub static MAPS: Command = Command {
 pub static PUBLISH_MAP: Command = Command {
     id: "assets.map.publish",
     path: &["assets", "map", "publish"],
-    contract: 1,
+    contract: 2,
     summary: "Publish a custom map into Project Control and its tag groups.",
-    purpose: "Upload one operator-declared PDF/PNG/JPEG/WebP map through existing Project Assets, classify it as a durable geographic document and attach exact tags. No Desktop is required. Untagged maps appear as project-wide maps. Repeating the same name and bytes reuses the asset; changed bytes create a new asset. Inputs are bounded to 32 MiB and 16 tags. Requires assets ingest, classify and attach permissions. Partial failures retain the uploaded asset; retry the same declaration.",
+    purpose: "Upload one operator-declared PDF/PNG/JPEG/WebP map through existing Project Assets, classify it as a durable geographic document and attach exact tags. No Desktop is required. Untagged maps appear as project-wide maps. Repeating the same name and bytes reuses the asset; changed bytes create a new asset. Pass --replaces with the current asset ID when publishing a new revision of the same map and paper size. Only after the replacement is verified are the named predecessors archived from the current listing; history bytes remain. Different map natures and paper sizes stay separate. Inputs are bounded to 32 MiB and 16 tags. Requires assets ingest, classify and attach permissions. Partial failures retain the uploaded asset; retry the same declaration.",
     chapter: Chapter::Assets,
     effect: Effect::GlobalWrite,
     authority: Authority::HeadlessProject,
@@ -143,8 +143,13 @@ pub static PUBLISH_MAP: Command = Command {
             "<definition=value>",
             "Exact project tag membership; repeat up to 16 times, e.g. city=gagal.",
         ),
+        Arg::repeated(
+            "replaces",
+            "<asset-id>",
+            "Archive this older map only after publication succeeds; same format and exact tags required. Repeat up to 16 IDs. History bytes remain available.",
+        ),
     ],
-    output: "Published asset, verified name/digest/size, map index entry, reused and bytes_uploaded. No upload URL or credentials.",
+    output: "Published asset, verified name/digest/size, map index entry, reused, bytes_uploaded and superseded_asset_ids. No upload URL or credentials.",
     examples: &[],
     refusals: &refusals(),
     reference: Some("docs/reference/assets.md"),
@@ -188,6 +193,7 @@ pub fn publish_map(i: &Inputs, _: &Context) -> Result<Value, Failure> {
             name: name.into(),
             bytes,
             tags,
+            replaces: i.repeated("replaces").to_vec(),
         },
     )?
     .into_result())
