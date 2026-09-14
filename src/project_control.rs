@@ -952,6 +952,8 @@ struct DownloadScopeRow {
     /// Special rows are answered (a caller may ask about the combined row)
     /// but are never part of the individual-files scope.
     in_scope: bool,
+    archive_members: Vec<serde_json::Value>,
+    download_state: &'static str,
 }
 
 #[derive(Debug, Clone, Copy, Serialize)]
@@ -962,6 +964,7 @@ struct DownloadSummary {
     stale_with_files: usize,
     /// Rows whose artifacts are already listed: fresh plus stale-with-files.
     cached: usize,
+    unknown: usize,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Default)]
@@ -991,6 +994,9 @@ struct ArtifactDownloadPlan {
     source_uploads: SourceUploadSummary,
     /// The precedence the scope was built under.
     scope_precedence: &'static str,
+    archives: Vec<serde_json::Value>,
+    project_artifacts: Vec<String>,
+    archive_discovery: &'static str,
 }
 
 #[derive(Debug, Deserialize)]
@@ -1010,6 +1016,10 @@ struct ArtifactDownloadInput {
     /// A list the host already resolved, to be filtered by the same formats.
     #[serde(default)]
     extra_urls: Vec<String>,
+    /// Project-scoped registry and verified ZIP member metadata supplied by the
+    /// native owner. Absence means the host did not inspect archive coverage.
+    #[serde(default)]
+    archives: Option<Vec<serde_json::Value>>,
 }
 
 /// Which artifacts a download produces, and which copy of each wins.
@@ -1027,6 +1037,27 @@ pub fn plan_project_control_artifact_download(
         .iter()
         .map(|name| crate::design::canonical_row_name(name))
         .collect();
+    let requested: BTreeSet<String> = input
+        .rows
+        .iter()
+        .filter_map(|row| row["name"].as_str())
+        .map(crate::design::canonical_row_name)
+        .filter(|name| {
+            !crate::design::is_special_row(name)
+                && (selection.is_empty() || selection.contains(name))
+        })
+        .collect();
+    let archives = download_archives(input.archives.as_deref().unwrap_or_default(), &requested)?;
+    let archive_discovery = if input.archives.is_none() {
+        "not_requested"
+    } else if archives
+        .iter()
+        .any(|a| a["artifact_index_state"] != "ready")
+    {
+        "partial"
+    } else {
+        "complete"
+    };
 
     // Scope precedence (StatusTable): explicit selection > active filter >
     // whole project. The caller has already applied the filter, so the only
@@ -1041,9 +1072,11 @@ pub fn plan_project_control_artifact_download(
         missing: 0,
         stale_with_files: 0,
         cached: 0,
+        unknown: 0,
     };
     let mut source_uploads = SourceUploadSummary::default();
     let mut placement: Vec<Placement> = Vec::new();
+    let mut project_artifacts = Vec::new();
 
     for row in &input.rows {
         let Some(map) = row.as_object() else { continue };
@@ -1066,8 +1099,31 @@ pub fn plan_project_control_artifact_download(
             report
                 .iter()
                 .cloned()
-                .chain(string_list(map.get("print_files"))),
+                .chain(string_list(map.get("print_files")))
+                .chain(string_list(
+                    map.get("report_metadata").and_then(|m| m.get("print_urls")),
+                )),
         );
+        let archive_members: Vec<serde_json::Value> = archives
+            .iter()
+            .flat_map(|archive| {
+                archive["members"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .filter(|member| member["transformer"].as_str() == Some(canonical.as_str()))
+                    .cloned()
+            })
+            .collect();
+        let download_state = if !delivery.is_empty() {
+            "available"
+        } else if !archive_members.is_empty() {
+            "available_in_archive"
+        } else if archive_discovery != "complete" {
+            "unknown"
+        } else {
+            "not_listed"
+        };
         let status = map
             .get("report_metadata")
             .and_then(serde_json::Value::as_object)
@@ -1075,15 +1131,41 @@ pub fn plan_project_control_artifact_download(
             .and_then(serde_json::Value::as_str)
             .unwrap_or_default()
             .to_string();
-        let has_files = !report.is_empty();
+        let has_files = !delivery.is_empty() || !archive_members.is_empty();
         placement.extend(row_placement);
         if !in_scope {
+            if crate::design::is_special_row(&canonical) {
+                project_artifacts.extend(delivery.iter().cloned());
+                if let Some(reports) = map
+                    .get("combined_reports")
+                    .and_then(serde_json::Value::as_object)
+                {
+                    let mut candidates: Vec<_> = reports
+                        .values()
+                        .filter(|entry| {
+                            let covered: BTreeSet<String> = string_list(entry.get("transformers"))
+                                .iter()
+                                .map(|name| crate::design::canonical_row_name(name))
+                                .collect();
+                            !requested.is_empty() && requested.is_subset(&covered)
+                        })
+                        .collect();
+                    candidates.sort_by_key(|entry| {
+                        std::cmp::Reverse(entry["when"].as_str().unwrap_or_default())
+                    });
+                    if let Some(current) = candidates.first() {
+                        project_artifacts.extend(string_list(current.get("urls")));
+                    }
+                }
+            }
             rows.push(DownloadScopeRow {
                 name,
                 report_files: report,
                 urls: delivery,
                 report_status: status,
                 in_scope,
+                archive_members,
+                download_state,
             });
             continue;
         }
@@ -1094,6 +1176,8 @@ pub fn plan_project_control_artifact_download(
             }
         } else if has_files {
             summary.fresh += 1;
+        } else if archive_discovery != "complete" {
+            summary.unknown += 1;
         } else {
             summary.missing += 1;
         }
@@ -1109,12 +1193,42 @@ pub fn plan_project_control_artifact_download(
             urls: delivery,
             report_status: status,
             in_scope,
+            archive_members,
+            download_state,
         });
         scope.push(name);
     }
     summary.cached = summary.fresh + summary.stale_with_files;
 
-    let filtered_urls = apply_format_filter(&urls, &input.formats);
+    project_artifacts = unique_strings(project_artifacts);
+    urls = unique_strings(urls.into_iter().chain(project_artifacts.iter().cloned()));
+    let mut filtered_urls = apply_format_filter(&urls, &input.formats);
+    for archive in &archives {
+        if let Some(url) = archive["download_url"]
+            .as_str()
+            .filter(|url| !url.is_empty())
+        {
+            if !urls.iter().any(|existing| existing == url) {
+                urls.push(url.into());
+            }
+            let members_match = archive["members"].as_array().is_some_and(|members| {
+                members.iter().any(|member| {
+                    !apply_format_filter(
+                        &[member["path"].as_str().unwrap_or_default().into()],
+                        &input.formats,
+                    )
+                    .is_empty()
+                })
+            });
+            if (input.formats.is_empty()
+                || members_match
+                || input.formats.iter().any(|f| f == "zip"))
+                && !filtered_urls.iter().any(|existing| existing == url)
+            {
+                filtered_urls.push(url.into());
+            }
+        }
+    }
     let filtered_extra_urls = apply_format_filter(&input.extra_urls, &input.formats);
     encode(&ArtifactDownloadPlan {
         schema: PROJECT_CONTROL_ARTIFACT_DOWNLOAD_SCHEMA,
@@ -1131,6 +1245,9 @@ pub fn plan_project_control_artifact_download(
         placement,
         summary,
         source_uploads,
+        archives,
+        project_artifacts,
+        archive_discovery,
     })
 }
 
@@ -1154,6 +1271,133 @@ fn choose_placement(candidates: &[String]) -> String {
 /// Two rules ride with it. A combined report with zero rows has nothing to
 /// deliver, whatever URLs the document still carries; and the combined row
 /// itself never delivers a KMZ.
+/// Resolve registry coverage without changing source freshness. The native
+/// owner orders archives newest first and indexes their pinned ZIP directories.
+fn download_archives(
+    entries: &[serde_json::Value],
+    requested: &BTreeSet<String>,
+) -> Result<Vec<serde_json::Value>, ProjectControlError> {
+    use serde_json::{json, Value};
+    if entries.len() > 500 {
+        return Err(error("download archive registry exceeds 500 entries"));
+    }
+    let covers = |entry: &Value| -> BTreeSet<String> {
+        string_list(entry.get("transformers"))
+            .iter()
+            .map(|name| crate::design::canonical_row_name(name))
+            .collect()
+    };
+    let eligible: Vec<_> = entries
+        .iter()
+        .filter(|entry| {
+            matches!(entry["status"].as_str(), Some("success" | "partial"))
+                && (requested.is_empty() || !covers(entry).is_disjoint(requested))
+        })
+        .collect();
+    let selected: Vec<_> = if let Some(complete) = eligible.iter().find(|entry| {
+        requested.is_subset(&covers(entry))
+            && entry["missing_individual_artifact_count"].as_u64() == Some(0)
+    }) {
+        vec![*complete]
+    } else {
+        let mut remaining = requested.clone();
+        eligible
+            .into_iter()
+            .filter(|entry| {
+                let coverage = covers(entry);
+                if remaining.is_disjoint(&coverage) {
+                    return false;
+                }
+                remaining.retain(|name| !coverage.contains(name));
+                true
+            })
+            .take(16)
+            .collect()
+    };
+    let mut output = Vec::new();
+    for entry in selected {
+        let stem = entry["stem"].as_str().unwrap_or_default();
+        bounded_text(stem, "archive stem", 512)?;
+        let url = entry["download_url"]
+            .as_str()
+            .filter(|s| !s.is_empty())
+            .or_else(|| entry["gcs_path"].as_str())
+            .unwrap_or_default();
+        bounded_text(url, "archive locator", 8192)?;
+        let indexed = entry["artifact_index_state"] == "ready";
+        let raw_members = entry["archive_members"]
+            .as_array()
+            .map(Vec::as_slice)
+            .unwrap_or_default();
+        if raw_members.len() > 10000 {
+            return Err(error("archive index exceeds 10000 members"));
+        }
+        let mut names: Vec<_> = covers(entry).into_iter().collect();
+        names.sort_by_key(|name| std::cmp::Reverse(name.len()));
+        let mut members = Vec::new();
+        let mut format_counts: BTreeMap<String, usize> = BTreeMap::new();
+        let mut paper_counts: BTreeMap<String, usize> = BTreeMap::new();
+        if indexed {
+            for member in raw_members {
+                let path = member["path"]
+                    .as_str()
+                    .ok_or_else(|| error("archive member lacks a path"))?;
+                bounded_text(path, "archive member", 1024)?;
+                let lower = path.to_ascii_lowercase();
+                let base = lower.rsplit('/').next().unwrap_or_default();
+                let format = if lower.ends_with(".shp.zip") || lower.ends_with("_shp.zip") {
+                    "shp"
+                } else if lower.ends_with("_geojsonl.zip") || lower.ends_with(".geojsonl.zip") {
+                    "geojsonl"
+                } else {
+                    lower.rsplit('.').next().unwrap_or_default()
+                };
+                *format_counts.entry(format.into()).or_default() += 1;
+                let paper = ["a0", "a1", "a2", "a3", "a4"].into_iter().find(|paper| {
+                    base.split(|c: char| !c.is_ascii_alphanumeric())
+                        .any(|token| token == *paper)
+                });
+                if format == "pdf" {
+                    if let Some(paper) = paper {
+                        *paper_counts.entry(paper.to_ascii_uppercase()).or_default() += 1;
+                    }
+                }
+                let combined =
+                    lower.contains("combined_report") || lower.contains("combined_transformer");
+                let transformer = if combined {
+                    None
+                } else {
+                    names.iter().find(|name| {
+                        lower.split('/').any(|part| part == name.as_str())
+                            || base.starts_with(&format!("{name}."))
+                            || base.starts_with(&format!("{name}_"))
+                            || base.contains(&format!("_{name}."))
+                            || base.contains(&format!("_{name}_"))
+                    })
+                };
+                if transformer
+                    .is_some_and(|name| !requested.is_empty() && !requested.contains(name))
+                {
+                    continue;
+                }
+                members.push(json!({"archive_stem":stem,"path":path,"size_bytes":member["size_bytes"],
+                    "format":format,"paper_size":paper.map(str::to_ascii_uppercase),"transformer":transformer,
+                    "kind":if combined { "combined_report" } else if transformer.is_some() { "transformer" } else { "archive_member" },
+                    "delivery":"extract_from_archive"}));
+            }
+        }
+        output.push(
+            json!({"stem":stem,"filename":entry["filename"],"download_url":url,
+            "created_at":entry["created_at"],"transformers":entry["transformers"],
+            "artifact_index_state":if indexed { "ready" } else { "unknown" },
+            "member_count":if indexed { Some(raw_members.len()) } else { None },
+            "format_counts":format_counts,"pdf_paper_counts":paper_counts,"members":members,
+            "source_freshness":"not_verified_by_archive"}),
+        );
+    }
+    Ok(output)
+}
+
 fn report_files(
     row: &serde_json::Map<String, serde_json::Value>,
     name: &str,
@@ -1252,6 +1496,8 @@ fn string_list(value: Option<&serde_json::Value>) -> Vec<String> {
             serde_json::Value::String(raw) => Some(raw.clone()),
             serde_json::Value::Object(map) => map
                 .get("url")
+                .or_else(|| map.get("gcs_path"))
+                .or_else(|| map.get("gs_path"))
                 .and_then(serde_json::Value::as_str)
                 .map(str::to_string),
             _ => None,
@@ -1289,6 +1535,14 @@ fn apply_format_filter(urls: &[String], formats: &[String]) -> Vec<String> {
                 "gpkg" => lower.ends_with(".gpkg"),
                 "kmz" => lower.ends_with(".kmz"),
                 "shp" => lower.ends_with(".shp.zip") || lower.contains("_shp.zip"),
+                "pdf" => lower.ends_with(".pdf"),
+                "png" => lower.ends_with(".png"),
+                "zip" => lower.ends_with(".zip"),
+                "geojsonl" => {
+                    lower.ends_with(".geojsonl.zip")
+                        || lower.ends_with("_geojsonl.zip")
+                        || lower.ends_with(".geojsonl")
+                }
                 _ => false,
             })
         })
@@ -1474,6 +1728,80 @@ mod tests {
         );
         assert_eq!(plan["summary"]["fresh"], 1);
         assert_eq!(plan["scope_precedence"], "filtered_rows");
+        assert!(plan["urls"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("gs://b/combined.xlsx")));
+    }
+
+    #[test]
+    fn download_plan_keeps_stale_sources_but_discovers_bundle_prints_and_combined_reports() {
+        let input = json!({"rows":[
+        {"name":"ruhuha","report_metadata":{"status":"stale"}},
+        {"name":"upgrade_mbeho","report_metadata":{"status":"stale"}},
+        {"name":"combined_transformer","combined_reports":{"run":{"when":"2026-09-14T00:00:00Z",
+            "transformers":["ruhuha","upgrade_mbeho"],"urls":["gs://b/overall_combined_report.xlsx"]}}}
+        ],"selection":["ruhuha","upgrade_mbeho"],"formats":["pdf"],"archives":[{
+            "stem":"full","filename":"full.zip","download_url":"https://example.test/full.zip",
+            "status":"success","transformers":["ruhuha","upgrade_mbeho","fill_in_ruhuha"],
+            "missing_individual_artifact_count":0,"artifact_index_state":"ready","archive_members":[
+                {"path":"run_ruhuha.a0.pdf","size_bytes":10},
+                {"path":"run_ruhuha.a3.pdf","size_bytes":10},
+                {"path":"run_upgrade_mbeho.a0.pdf","size_bytes":10},
+                {"path":"run_upgrade_mbeho.a3.pdf","size_bytes":10},
+                {"path":"run_fill_in_ruhuha.a3.pdf","size_bytes":10},
+                {"path":"overall_combined_report.a0.pdf","size_bytes":10},
+                {"path":"overall_combined_report.a3.pdf","size_bytes":10}
+            ]}]});
+        let result: Value = serde_json::from_str(
+            &plan_project_control_artifact_download(&serde_json::to_vec(&input).unwrap()).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(result["summary"]["stale"], 2);
+        assert_eq!(result["summary"]["stale_with_files"], 2);
+        assert_eq!(result["rows"][0]["report_status"], "stale");
+        assert_eq!(result["rows"][0]["download_state"], "available_in_archive");
+        assert_eq!(
+            result["rows"][0]["archive_members"]
+                .as_array()
+                .unwrap()
+                .len(),
+            2
+        );
+        assert_eq!(result["archives"][0]["member_count"], 7);
+        assert_eq!(result["archives"][0]["pdf_paper_counts"]["A0"], 3);
+        assert_eq!(
+            result["archives"][0]["members"].as_array().unwrap().len(),
+            6
+        );
+        assert_eq!(
+            result["filtered_urls"],
+            json!(["https://example.test/full.zip"])
+        );
+        assert_eq!(
+            result["project_artifacts"],
+            json!(["gs://b/overall_combined_report.xlsx"])
+        );
+    }
+
+    #[test]
+    fn download_plan_distinguishes_unindexed_archives_and_recognises_print_metadata() {
+        let input = json!({"rows":[{"name":"a"},{"name":"b","report_metadata":{"print_urls":[{"gcs_path":"gs://b/b.a3.pdf"}]}}],
+            "formats":["pdf"],"archives":[{"stem":"bundle","status":"success","gcs_path":"gs://b/bundle.zip",
+                "transformers":["a","b"],"missing_individual_artifact_count":0,"artifact_index_state":"unavailable"}]});
+        let result: Value = serde_json::from_str(
+            &plan_project_control_artifact_download(&serde_json::to_vec(&input).unwrap()).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(result["rows"][0]["download_state"], "unknown");
+        assert_eq!(result["summary"]["missing"], 0);
+        assert_eq!(result["summary"]["unknown"], 1);
+        assert_eq!(result["rows"][1]["download_state"], "available");
+        assert_eq!(result["filtered_urls"], json!(["gs://b/b.a3.pdf"]));
+        assert!(result["urls"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("gs://b/bundle.zip")));
     }
 
     fn room_plan(overrides: Value) -> Vec<u8> {
