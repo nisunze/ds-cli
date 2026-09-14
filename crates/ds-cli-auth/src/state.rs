@@ -943,10 +943,10 @@ mod tests {
 
     const NOW: u64 = 1_900_000_000;
     const SIGN_IN: &[u8] = include_bytes!(
-        "../../../../ds-web/crates/ds-client-core/tests/fixtures/firebase-sign-in.json"
+        "../../../../ds-command-kernel/crates/ds-client-core/tests/fixtures/firebase-sign-in.json"
     );
     const REFRESH: &[u8] = include_bytes!(
-        "../../../../ds-web/crates/ds-client-core/tests/fixtures/firebase-refresh.json"
+        "../../../../ds-command-kernel/crates/ds-client-core/tests/fixtures/firebase-refresh.json"
     );
 
     #[derive(Default)]
@@ -1164,6 +1164,9 @@ mod tests {
                 "restore_transformer".to_owned(),
                 "list_transformers_status".to_owned(),
             ],
+            design_versions_method: "POST".into(),
+            design_versions_path: "/api/v1/design/versions".into(),
+            design_versions_actions: vec!["list_versions".into(), "get_version".into()],
             design_selections_method: "POST".to_owned(),
             design_selections_path: "/api/v1/design/selections".to_owned(),
             design_selections_actions: vec![

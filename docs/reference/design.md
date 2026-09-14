@@ -905,3 +905,22 @@ of `download_state`. `available_in_archive` names verified ZIP members and
 the containing download URL; it never invents standalone member URLs.
 `--format pdf` includes a ZIP when its indexed members contain matching PDFs.
 Unknown archive coverage is explicit and does not justify regeneration.
+
+### Headless transformer history
+
+`ds design version list --transformer <name>` reads the published version
+catalogue. `ds design version compare --transformer <name> --from v1 --to v2`
+compares immutable snapshots; `--to head` captures the saved server head once.
+Both accept `--lane stable|canary` and `--output json`. Neither opens a map,
+requires a desktop, creates history, or modifies a transformer.
+
+The native client captures one authenticated project/owner/lane for the whole
+comparison. It verifies both returned object identities and delegates geometry,
+attribute and consistency decisions to the same Rust kernel used by WASM.
+Exact counts remain available when details are bounded; geometry is excluded.
+Legacy metadata-only history is explicitly unavailable for playback. Unpublished
+browser snapshots remain local: publish them before asking the server to compare.
+
+For a prepared native Design workspace, `ds design project revisions` lists
+retained content digests and `ds design project compare` compares those exact
+revisions or its head. These are explicitly local, not server vN ordinals.

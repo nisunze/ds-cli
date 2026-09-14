@@ -83,6 +83,7 @@ pub mod selection;
 pub mod sync;
 pub mod tag;
 pub mod transformer;
+pub mod versions;
 
 use std::time::Duration;
 
@@ -123,6 +124,8 @@ pub static DOMAIN: Domain = Domain {
         &project::EDIT,
         &project::READ,
         &project::RESTORE,
+        &project::REVISIONS,
+        &project::COMPARE,
         &project::STATUS,
         &project::PROCESS,
         &project::CANCEL,
@@ -180,6 +183,8 @@ pub static DOMAIN: Domain = Domain {
         &preview::BULK_PLAN,
         &preview::DOWNLOAD_PLAN,
         &preview::VERSION_STATUS,
+        &versions::LIST,
+        &versions::COMPARE,
         &preview::CONFLICT_LIST,
         &preview::CONFLICT_CHECK,
         &preview::PRESENCE_STATUS,

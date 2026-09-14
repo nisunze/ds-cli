@@ -660,6 +660,13 @@ impl DeviceSession {
     ) -> Result<Value, ClientError> {
         fixed_device_call!(self, shared_assets, project, command)
     }
+    pub fn design_versions(
+        &mut self,
+        project: &str,
+        command: &ds_client_core::design_versions::Command,
+    ) -> Result<Value, ClientError> {
+        fixed_device_call!(self, design_versions, project, command)
+    }
     pub fn design_tags(
         &mut self,
         project: &str,

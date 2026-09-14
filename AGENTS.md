@@ -76,3 +76,4 @@ then bind the UI. The web retains project selection; native requests capture and
 authorize explicit project context, preserving it across concurrent jobs and
 interruptions. Migrate touched boundaries gradually; a saved CLI default must
 never redirect accepted work.
+- Server ownership is strict: no source code from `ds-web` may enter server compilation. Kernel-owned native crates are the server core; desktop and web consume that core. Guard the resolved Cargo dependency graph against `ds-web` and Tauri dependencies, including build-script inputs. Do not place shared server behavior in the web repository.

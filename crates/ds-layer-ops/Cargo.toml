@@ -8,7 +8,7 @@ description = "The layer drawer's application operations for native hosts: one o
 ds-cli-contract.workspace = true
 ds-cli-auth.workspace = true
 ds-command-kernel.workspace = true
-ds-layer-store = { path = "../../../ds-web/crates/ds-layer-store" }
+ds-layer-store = { path = "../../../ds-command-kernel/crates/ds-layer-store" }
 serde.workspace = true
 serde_json.workspace = true
 [dev-dependencies]

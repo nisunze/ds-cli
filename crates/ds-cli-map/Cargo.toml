@@ -21,7 +21,7 @@ ds-cli-auth = { workspace = true }
 ds-cli-server = { workspace = true }
 ds-command-kernel = { workspace = true }
 serde_json = { workspace = true }
-ds-layer-store = { path = "../../../ds-web/crates/ds-layer-store" }
+ds-layer-store = { path = "../../../ds-command-kernel/crates/ds-layer-store" }
 ds-layer-ops.workspace = true
 
 sha2 = { workspace = true }

@@ -4313,6 +4313,16 @@ pub fn shared_assets(
         |client, project| client.shared_assets(project, command, now()),
     )
 }
+pub fn design_versions(
+    lane: &str,
+    command: &ds_client_core::design_versions::Command,
+) -> Result<HeadlessProjectReport<Value>, Failure> {
+    headless_project_report(
+        lane,
+        |device, project| device.design_versions(project, command),
+        |client, project| client.design_versions(project, command, now()),
+    )
+}
 pub fn design_tags(
     lane: &str,
     command: &ds_client_core::design_tags::Command,

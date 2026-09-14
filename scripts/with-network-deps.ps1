@@ -17,8 +17,8 @@ $CommonGitDir = (& git -C $RepoRoot rev-parse --path-format=absolute --git-commo
 if ($LASTEXITCODE -ne 0 -or -not $CommonGitDir) {
     throw 'with-network-deps: could not resolve the common Git directory'
 }
-$ExpectedWebCoreSha = (Get-Content -LiteralPath (Join-Path $RepoRoot 'pins\ds-client-core.rev') -Raw).Trim()
-if ($ExpectedWebCoreSha -notmatch '^[0-9a-f]{40}$') {
+$ExpectedNativeCoreSha = (Get-Content -LiteralPath (Join-Path $RepoRoot 'pins\ds-client-core.rev') -Raw).Trim()
+if ($ExpectedNativeCoreSha -notmatch '^[0-9a-f]{40}$') {
     throw 'with-network-deps: pins/ds-client-core.rev is not one exact Git SHA'
 }
 $ExpectedCommandKernelSha = (Get-Content -LiteralPath (Join-Path $RepoRoot 'pins\ds-command-kernel.rev') -Raw).Trim()
@@ -28,16 +28,16 @@ if ($ExpectedCommandKernelSha -notmatch '^[0-9a-f]{40}$') {
 $MainCheckout = Split-Path -Parent $CommonGitDir
 $NetworkCheckout = Join-Path (Split-Path -Parent $MainCheckout) 'ds-network'
 $MainNetworkCheckout = $NetworkCheckout
-$WebCheckout = Join-Path (Split-Path -Parent $MainCheckout) 'ds-web'
+$NativeCoreCheckout = Join-Path (Split-Path -Parent $MainCheckout) 'ds-command-kernel'
 $CommandKernelCheckout = Join-Path (Split-Path -Parent $MainCheckout) 'ds-command-kernel'
 $RequiredNetworkLink = Join-Path (Split-Path -Parent $RepoRoot) 'ds-network'
-$RequiredWebLink = Join-Path (Split-Path -Parent $RepoRoot) 'ds-web'
+$RequiredNativeCoreLink = Join-Path (Split-Path -Parent $RepoRoot) 'ds-command-kernel'
 $RequiredCommandKernelLink = Join-Path (Split-Path -Parent $RepoRoot) 'ds-command-kernel'
 if (Test-Path -LiteralPath $RequiredNetworkLink) {
     $NetworkCheckout = (Resolve-Path -LiteralPath $RequiredNetworkLink).Path
 }
-if (Test-Path -LiteralPath $RequiredWebLink) {
-    $WebCheckout = (Resolve-Path -LiteralPath $RequiredWebLink).Path
+if (Test-Path -LiteralPath $RequiredNativeCoreLink) {
+    $NativeCoreCheckout = (Resolve-Path -LiteralPath $RequiredNativeCoreLink).Path
 }
 if (Test-Path -LiteralPath $RequiredCommandKernelLink) {
     $CommandKernelCheckout = (Resolve-Path -LiteralPath $RequiredCommandKernelLink).Path
@@ -62,21 +62,21 @@ $NetworkStatus = @(& git -C $NetworkCheckout status --porcelain --untracked-file
 if ($LASTEXITCODE -ne 0 -or $NetworkStatus.Count -ne 0) {
     throw 'with-network-deps: ds-network Cargo inputs differ from its pinned commit'
 }
-$WebManifest = Join-Path $WebCheckout 'crates\ds-client-core\Cargo.toml'
-if (-not (Test-Path -LiteralPath $WebManifest -PathType Leaf)) {
-    throw "with-network-deps: expected $WebManifest"
+$NativeCoreManifest = Join-Path $NativeCoreCheckout 'crates\ds-client-core\Cargo.toml'
+if (-not (Test-Path -LiteralPath $NativeCoreManifest -PathType Leaf)) {
+    throw "with-network-deps: expected $NativeCoreManifest"
 }
-$WebOrigin = (& git -C $WebCheckout remote get-url origin).Trim()
-if ($LASTEXITCODE -ne 0 -or $WebOrigin -notlike '*nisunze/ds-web.git') {
-    throw "with-network-deps: $WebCheckout is not the nisunze/ds-web checkout"
+$NativeCoreOrigin = (& git -C $NativeCoreCheckout remote get-url origin).Trim()
+if ($LASTEXITCODE -ne 0 -or $NativeCoreOrigin -notlike '*nisunze/ds-command-kernel.git') {
+    throw "with-network-deps: $NativeCoreCheckout is not the nisunze/ds-command-kernel checkout"
 }
-$WebSha = (& git -C $WebCheckout rev-parse HEAD).Trim()
-if ($LASTEXITCODE -ne 0 -or $WebSha -ne $ExpectedWebCoreSha) {
-    throw "with-network-deps: ds-web must be pinned to $ExpectedWebCoreSha"
+$NativeCoreSha = (& git -C $NativeCoreCheckout rev-parse HEAD).Trim()
+if ($LASTEXITCODE -ne 0 -or $NativeCoreSha -ne $ExpectedNativeCoreSha) {
+    throw "with-network-deps: ds-command-kernel must be pinned to $ExpectedNativeCoreSha"
 }
-$WebCoreStatus = @(& git -C $WebCheckout status --porcelain -- crates/ds-client-core)
-if ($LASTEXITCODE -ne 0 -or $WebCoreStatus.Count -ne 0) {
-    throw 'with-network-deps: ds-web client core differs from its pinned commit'
+$NativeCoreStatus = @(& git -C $NativeCoreCheckout status --porcelain -- crates/ds-client-core)
+if ($LASTEXITCODE -ne 0 -or $NativeCoreStatus.Count -ne 0) {
+    throw 'with-network-deps: ds-command-kernel client core differs from its pinned commit'
 }
 $CommandKernelManifest = Join-Path $CommandKernelCheckout 'Cargo.toml'
 if (-not (Test-Path -LiteralPath $CommandKernelManifest -PathType Leaf)) {
@@ -115,7 +115,7 @@ function Ensure-DependencyLink([string] $RequiredLink, [string] $Checkout, [stri
 }
 try {
     Ensure-DependencyLink $RequiredNetworkLink $NetworkCheckout 'ds-network'
-    Ensure-DependencyLink $RequiredWebLink $WebCheckout 'ds-web'
+    Ensure-DependencyLink $RequiredNativeCoreLink $NativeCoreCheckout 'ds-command-kernel'
     Ensure-DependencyLink $RequiredCommandKernelLink $CommandKernelCheckout 'ds-command-kernel'
     & $Executable @Arguments
     $ExitCode = $LASTEXITCODE

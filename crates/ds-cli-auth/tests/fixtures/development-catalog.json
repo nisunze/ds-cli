@@ -1,5 +1,5 @@
 {
-  "schema_version": "ds.native-client-profiles/v22",
+  "schema_version": "ds.native-client-profiles/v23",
   "development": true,
   "profiles": {
     "stable": {
@@ -92,12 +92,21 @@
       "design_selections": {
         "method": "POST",
         "path": "/api/v1/design/selections",
-        "actions": ["list", "get", "save", "archive", "promote_task"]
+        "actions": [
+          "list",
+          "get",
+          "save",
+          "archive",
+          "promote_task"
+        ]
       },
       "data_distribution": {
         "method": "POST",
         "path": "/api/v1/data-distribution",
-        "actions": ["list_datasets", "query_print_context"]
+        "actions": [
+          "list_datasets",
+          "query_print_context"
+        ]
       },
       "project_report": {
         "method": "POST",
@@ -159,6 +168,14 @@
           "save",
           "delete",
           "copy"
+        ]
+      },
+      "design_versions": {
+        "method": "POST",
+        "path": "/api/v1/design/versions",
+        "actions": [
+          "list_versions",
+          "get_version"
         ]
       }
     },
@@ -252,12 +269,21 @@
       "design_selections": {
         "method": "POST",
         "path": "/api/v1/design/selections",
-        "actions": ["list", "get", "save", "archive", "promote_task"]
+        "actions": [
+          "list",
+          "get",
+          "save",
+          "archive",
+          "promote_task"
+        ]
       },
       "data_distribution": {
         "method": "POST",
         "path": "/api/v1/data-distribution",
-        "actions": ["list_datasets", "query_print_context"]
+        "actions": [
+          "list_datasets",
+          "query_print_context"
+        ]
       },
       "project_report": {
         "method": "POST",
@@ -319,6 +345,14 @@
           "save",
           "delete",
           "copy"
+        ]
+      },
+      "design_versions": {
+        "method": "POST",
+        "path": "/api/v1/design/versions",
+        "actions": [
+          "list_versions",
+          "get_version"
         ]
       }
     }

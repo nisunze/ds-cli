@@ -1757,6 +1757,16 @@ static DESIGN_ENTRIES: &[Entry] = &[
         render: ds_cli_design::project::render,
     },
     Entry {
+        command: &ds_cli_design::project::REVISIONS,
+        handler: ds_cli_design::project::revisions,
+        render: ds_cli_design::project::render,
+    },
+    Entry {
+        command: &ds_cli_design::project::COMPARE,
+        handler: ds_cli_design::project::compare,
+        render: ds_cli_design::project::render,
+    },
+    Entry {
         command: &ds_cli_design::project::STATUS,
         handler: ds_cli_design::project::status,
         render: ds_cli_design::project::render,
@@ -1845,6 +1855,16 @@ static DESIGN_ENTRIES: &[Entry] = &[
         command: &ds_cli_design::preview::DOWNLOAD_PLAN,
         handler: ds_cli_design::preview::run_download_plan,
         render: ds_cli_design::preview::render_download_plan,
+    },
+    Entry {
+        command: &ds_cli_design::versions::LIST,
+        handler: ds_cli_design::versions::list,
+        render: ds_cli_design::versions::render,
+    },
+    Entry {
+        command: &ds_cli_design::versions::COMPARE,
+        handler: ds_cli_design::versions::compare,
+        render: ds_cli_design::versions::render,
     },
     Entry {
         command: &ds_cli_design::preview::VERSION_STATUS,

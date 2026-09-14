@@ -540,3 +540,18 @@ through the existing report-artifact service to `mv_data`, without Desktop or
 report computation. Repeat for each format and inspect `design.status` afterward.
 Scale-dependent line pens are authored through `scale_weight` in the live layout
 schema; legend samples use the identical resolved pens.
+
+### Mechanical print feedback
+
+Layout rendering returns `print_diagnostics`: checked/affected page counts,
+bounded findings with element identities and millimetre rectangles, omitted
+schedule rows and labels suppressed by collision/frame clipping. Measurements
+come from the actual composition, including flowed and unequal-height panels.
+Diagnostics are retained with cached SVGs and verified by the cache digest.
+Named transformer exports carry these findings in artifact warnings.
+
+These checks cover occupied furniture rectangles, not every cartographic or
+engineering judgement. Decorative backgrounds and map frames intentionally
+contain other elements and are excluded from furniture-pair collision checks.
+No findings is not visual approval. Inspect representative sheets when needed,
+not every page as a routine production gate.

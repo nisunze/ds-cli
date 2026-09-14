@@ -13,7 +13,7 @@ ds-sync-store = { path = "../../../ds-command-kernel/crates/ds-sync-store" }
 ds-sync-runtime = { workspace = true }
 ds-compute-runtime = { path = "../../../ds-command-kernel/crates/ds-compute-runtime" }
 ds-layer-ops.workspace = true
-ds-layer-store = { path = "../../../ds-web/crates/ds-layer-store" }
+ds-layer-store = { path = "../../../ds-command-kernel/crates/ds-layer-store" }
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true

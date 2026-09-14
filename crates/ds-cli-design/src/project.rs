@@ -143,6 +143,44 @@ pub static READ: Command = command(
     ],
     Effect::LocalFileWrite,
 );
+pub static REVISIONS: Command = command(
+    "design.project.revisions",
+    &["design", "project", "revisions"],
+    "List retained transformer revisions without opening a map.",
+    &[
+        WORKSPACE,
+        TRANSFORMER,
+        Arg::value(
+            "after",
+            "<sha256>",
+            "Exclusive revision cursor returned by the previous page.",
+        ),
+        Arg::value("limit", "<1..200>", "Maximum revision IDs; defaults to 20."),
+    ],
+    Effect::ReadOnly,
+);
+pub static COMPARE: Command = command(
+    "design.project.compare",
+    &["design", "project", "compare"],
+    "Compare local transformer revisions without opening a map.",
+    &[
+        WORKSPACE,
+        TRANSFORMER,
+        Arg::value("from", "<sha256>", "Exact retained left revision.").required(),
+        Arg::value(
+            "to",
+            "<sha256|head>",
+            "Exact right revision, or head pinned once.",
+        )
+        .required(),
+        Arg::value(
+            "limit",
+            "<0..500>",
+            "Maximum feature details; defaults to 20. Totals remain exact.",
+        ),
+    ],
+    Effect::ReadOnly,
+);
 pub static RESTORE: Command = command(
     "design.project.restore",
     &["design", "project", "restore"],
@@ -294,6 +332,25 @@ pub fn read(i: &Inputs, _: &Context) -> Result<Value, Failure> {
             i.require("transformer")?,
             i.value("revision"),
             Path::new(i.require("out")?),
+        )
+        .map_err(map_error)
+}
+pub fn revisions(i: &Inputs, _: &Context) -> Result<Value, Failure> {
+    open(i)?
+        .revisions(
+            i.require("transformer")?,
+            i.value("after").unwrap_or(""),
+            number(i, "limit", 20)?,
+        )
+        .map_err(map_error)
+}
+pub fn compare(i: &Inputs, _: &Context) -> Result<Value, Failure> {
+    open(i)?
+        .compare(
+            i.require("transformer")?,
+            i.require("from")?,
+            i.require("to")?,
+            number(i, "limit", 20)?,
         )
         .map_err(map_error)
 }

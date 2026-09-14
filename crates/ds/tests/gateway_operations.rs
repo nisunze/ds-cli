@@ -4,7 +4,7 @@
 //! or `ds work` command names exactly one typed operation the paired desktop's
 //! CLI bridge owns. That is the *desktop bridge*. This file is about the
 //! *gateway*: the reviewed operation registry generated from
-//! `ds-web/routing/operations.json` into `ds_client_core::gateway`, which the
+//! `ds-command-kernel/routing/operations.json` into `ds_client_core::gateway`, which the
 //! browser reaches through its generated TS manifest and the CLI reaches
 //! through `ClientProfile`. Contract §3 of
 //! `ds-command-kernel/docs/contracts/ds-transport-authority.md`.
@@ -37,13 +37,14 @@ use ds_client_core::gateway::{
 };
 use ds_client_core::{
     CLIENT_PROFILE_SCHEMA, ClientProfile, ClientProfileInput, DATA_DISTRIBUTION_ACTIONS,
-    DESIGN_SELECTIONS_ACTIONS, DeploymentLane, LAYERS_ACTIONS, PRINTING_ACTIONS,
-    PROCESSING_LANE_HEADER, PROJECT_DATA_ACTIONS, PROJECT_FORM_EDITOR_ACTION, PROJECT_FORMS_ACTION,
-    PROJECT_REPORT_ACTIONS, ProfileError, SOLAR_SNAPSHOT_ACTION, STYLES_ACTION,
-    SURVEY_CONTROL_ROUTES, SURVEY_ENTRIES_CHANGES_METHOD, SURVEY_ENTRIES_CHANGES_PATH,
-    SURVEY_ENTRIES_SELECT_METHOD, SURVEY_ENTRIES_SELECT_PATH, SURVEY_ENTRY_CREATE_OPERATION,
-    SURVEY_QUERY_METHOD, SURVEY_QUERY_PATH, TILES_ACTIONS, TRANSFORMER_CONTEXT_ACTION,
-    TRANSFORMER_CONTEXT_FIELDS, TRANSFORMER_CONTEXT_METHOD, TRANSFORMER_CONTEXT_PATH,
+    DESIGN_SELECTIONS_ACTIONS, DESIGN_VERSIONS_ACTIONS, DeploymentLane, LAYERS_ACTIONS,
+    PRINTING_ACTIONS, PROCESSING_LANE_HEADER, PROJECT_DATA_ACTIONS, PROJECT_FORM_EDITOR_ACTION,
+    PROJECT_FORMS_ACTION, PROJECT_REPORT_ACTIONS, ProfileError, SOLAR_SNAPSHOT_ACTION,
+    STYLES_ACTION, SURVEY_CONTROL_ROUTES, SURVEY_ENTRIES_CHANGES_METHOD,
+    SURVEY_ENTRIES_CHANGES_PATH, SURVEY_ENTRIES_SELECT_METHOD, SURVEY_ENTRIES_SELECT_PATH,
+    SURVEY_ENTRY_CREATE_OPERATION, SURVEY_QUERY_METHOD, SURVEY_QUERY_PATH, TILES_ACTIONS,
+    TRANSFORMER_CONTEXT_ACTION, TRANSFORMER_CONTEXT_FIELDS, TRANSFORMER_CONTEXT_METHOD,
+    TRANSFORMER_CONTEXT_PATH,
 };
 
 /// Every registry operation `ds` can issue, and which of its typed calls does.
@@ -136,6 +137,8 @@ fn profile_from_registry(lane: DeploymentLane, gateway_origin: &str) -> ClientPr
         route("domains.design_collaboration.selections");
     let (data_distribution_method, data_distribution_path) =
         route("domains.data_distribution.action");
+    let (design_versions_method, design_versions_path) =
+        route("domains.design_collaboration.versions");
 
     ClientProfileInput {
         schema_version: CLIENT_PROFILE_SCHEMA.to_owned(),
@@ -216,6 +219,9 @@ fn profile_from_registry(lane: DeploymentLane, gateway_origin: &str) -> ClientPr
         // The registry declares this vocabulary too; it is asserted separately
         // in `the_action_vocabularies_the_cli_may_send_are_declared`.
         data_distribution_actions: DATA_DISTRIBUTION_ACTIONS.map(str::to_owned).to_vec(),
+        design_versions_method,
+        design_versions_path,
+        design_versions_actions: DESIGN_VERSIONS_ACTIONS.map(str::to_owned).to_vec(),
     }
 }
 

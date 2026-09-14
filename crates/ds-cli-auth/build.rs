@@ -6,20 +6,17 @@ fn main() {
     let manifest_dir = std::path::PathBuf::from(
         std::env::var("CARGO_MANIFEST_DIR").expect("Cargo manifest directory"),
     );
-    let desktop_manifest = manifest_dir.join("../../../ds-web/src-tauri/Cargo.toml");
+    let desktop_manifest = manifest_dir.join("../../../ds-command-kernel/native-app-version.txt");
     println!("cargo:rerun-if-changed={}", desktop_manifest.display());
     let source = std::fs::read_to_string(&desktop_manifest)
-        .expect("native Server build requires the paired desktop package manifest");
-    let version = source
-        .lines()
-        .find_map(|line| line.trim().strip_prefix("version = "))
-        .and_then(|raw| raw.trim_matches('"').split_whitespace().next())
-        .filter(|value| {
-            !value.is_empty()
-                && value.bytes().all(|byte| {
-                    byte.is_ascii_digit() || byte == b'.' || byte == b'-' || byte == b'+'
-                })
-        })
-        .expect("paired desktop package version is absent or malformed");
+        .expect("native Server build requires the kernel-owned application version");
+    let version = source.trim();
+    assert!(
+        !version.is_empty()
+            && version
+                .bytes()
+                .all(|b| b.is_ascii_digit() || matches!(b, b'.' | b'-' | b'+')),
+        "kernel application version is malformed"
+    );
     println!("cargo:rustc-env=DS_NATIVE_APP_VERSION={version}");
 }

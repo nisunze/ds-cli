@@ -5413,13 +5413,18 @@ fn design_lv_project_export_refuses_an_existing_artifact_before_auth_or_desktop(
                 "path": "/api/v1/data-distribution",
                 "actions": ["list_datasets", "query_print_context"]
             },
+            "design_versions": {
+                "method": "POST",
+                "path": "/api/v1/design/versions",
+                "actions": ["list_versions", "get_version"]
+            },
             "provenance": { "source_revision": "abc123", "descriptor_sha256": digest }
         })
     };
     std::fs::write(
         &profile_path,
         serde_json::to_vec(&json!({
-            "schema_version": "ds.native-client-profiles/v22",
+            "schema_version": "ds.native-client-profiles/v23",
             "development": true,
             "profiles": {
                 "stable": profile(
@@ -6313,7 +6318,7 @@ fn every_design_command_is_discoverable_without_the_desktop_installed() {
     let commands = index["commands"].as_array().expect("commands");
     assert_eq!(
         commands.len(),
-        84, // Native LV project-save completes the previously read/process-only workflow.
+        88, // + design.project.revisions/compare and design.version.list/compare (headless, 2026-09-14).
         "the design domain should expose its whole family: {commands:?}"
     );
     for command in commands {
@@ -6352,6 +6357,10 @@ fn every_design_command_is_discoverable_without_the_desktop_installed() {
                     | "design.bulk.plan"
                     | "design.download.plan"
                     | "design.version.status"
+                    // Published-version listing and comparison went headless
+                    // on 2026-09-14 (no paired desktop): same native spine.
+                    | "design.version.list"
+                    | "design.version.compare"
                     | "design.conflict.list"
                     | "design.conflict.check"
                     | "design.presence.status"
@@ -7768,6 +7777,7 @@ fn every_assets_command_is_reachable_without_the_desktop_installed() {
         "assets.reference",
         "assets.resolve",
         "assets.maps",
+        "assets.map.publish",
     ]
     .into_iter()
     .collect();
@@ -9661,15 +9671,15 @@ fn map_attachment_retry_requires_confirmation_and_canonical_filename() {
 /// from the gateway, with no browser, no DOM and no map instance in the
 /// process. What it asserts is specifically true of that fixture, not merely
 /// well-formed.
-/// The recorded gateway fixtures live in the sibling ds-web checkout, beside
-/// the client that records them. Same resolution `bridge_parity.rs` uses: the
-/// sibling by default, `DS_WEB_DIR` when the layout differs — a git worktree of
-/// this repository is two levels deeper, and a silently skipped parity check is
-/// worse than none.
+/// The recorded gateway fixtures live beside the client that records them —
+/// `ds-client-core`, kernel-owned since 2026-09-14 — in the sibling
+/// ds-command-kernel checkout. The sibling by default, `DS_COMMAND_KERNEL_DIR`
+/// when the layout differs — a git worktree of this repository is two levels
+/// deeper, and a silently skipped parity check is worse than none.
 fn web_fixture(name: &str) -> PathBuf {
-    let root = match std::env::var_os("DS_WEB_DIR") {
+    let root = match std::env::var_os("DS_COMMAND_KERNEL_DIR") {
         Some(explicit) => PathBuf::from(explicit),
-        None => PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../ds-web"),
+        None => PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../ds-command-kernel"),
     };
     root.join("crates/ds-client-core/tests/fixtures").join(name)
 }
