@@ -1282,6 +1282,7 @@ pub const fn chapter_description(chapter: Chapter) -> &'static str {
 // remain for what has no headless owner yet: survey and local-layer context,
 // per-transformer overrides, district and custom-area maps.
 const PRINTING_COMMANDS: &[&str] = &[
+    "report.artifact.remove",
     "assets.map.publish",
     "report.layout.render",
     "assets.maps",
@@ -1301,7 +1302,6 @@ const PRINTING_COMMANDS: &[&str] = &[
     "report.project.export",
     "report.project.map-inputs",
     "map.design.attach-print",
-    "desktop.printing.settings",
     "desktop.printing.prepare",
     "desktop.printing.transformers",
     "desktop.printing.export",

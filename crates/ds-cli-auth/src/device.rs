@@ -668,6 +668,13 @@ impl DeviceSession {
     ) -> Result<serde_json::Value, ClientError> {
         fixed_device_call!(self, report_artifact, project, command)
     }
+    pub fn remove_report_artifact(
+        &mut self,
+        project: &str,
+        command: &ds_client_core::report_artifact::RemoveCommand,
+    ) -> Result<serde_json::Value, ClientError> {
+        fixed_device_call!(self, remove_report_artifact, project, command)
+    }
     pub fn grid_models(
         &mut self,
         project: &str,

@@ -1366,6 +1366,7 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
     assert!(published["printing"].contains("report_transformers"));
     assert!(published["printing"].contains("report_plan"));
     assert!(published["printing"].contains("assets_map_publish"));
+    assert!(published["printing"].contains("report_artifact_remove"));
     // The headless production loop is reachable through the printing profile.
     for headless in [
         "data_project-cache_status",

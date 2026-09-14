@@ -27,6 +27,7 @@
 //!   [`export`], which reads the document either way and returns typed
 //!   blockers instead of an exit code and a path.
 
+pub mod artifact;
 pub mod bundle;
 pub mod engine;
 pub mod export;
@@ -62,6 +63,7 @@ pub static DOMAIN: Domain = Domain {
     id: "report",
     summary: "Deliverables: transformer and combined report artifacts.",
     commands: &[
+        &artifact::REMOVE,
         &planning::TRANSFORMERS,
         &planning::PLAN,
         &layout::NEW,

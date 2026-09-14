@@ -751,6 +751,7 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("assets.attach", "global_write", "project"),
     ("assets.reference", "global_write", "headless_project"),
     ("assets.map.publish", "global_write", "headless_project"),
+    ("report.artifact.remove", "global_write", "headless_project"),
     ("assets.resolve", "read_only", "headless_project"),
     ("assets.maps", "read_only", "headless_project"),
     ("solar.network.resolve", "global_write", "headless_project"),

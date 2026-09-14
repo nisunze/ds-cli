@@ -540,3 +540,12 @@ through the existing report-artifact service to `mv_data`, without Desktop or
 report computation. Repeat for each format and inspect `design.status` afterward.
 Scale-dependent line pens are authored through `scale_weight` in the live layout
 schema; legend samples use the identical resolved pens.
+
+## Removing printed artifacts
+
+`report.artifact.remove` removes one reviewed print reference through the
+native project authority. Discover its exact inputs with capabilities. It
+requires the filename, locator and byte digest from the current receipt and
+refuses a replaced print. Stored bytes and other outputs remain unchanged.
+Standalone custom maps use the Assets classification lifecycle to archive
+them; this does not delete a network model or a combined report version.
