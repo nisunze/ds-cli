@@ -15,7 +15,16 @@ pub struct Tag {
 
 /// The old Solar role is retained as a consumer alias of the general class.
 pub fn is_group_map(role: &str) -> bool {
-    matches!(role, "city_map" | "tag_group_map")
+    matches!(
+        role,
+        "city_map" | "tag_group_map" | "custom_map" | "district_map" | "mv_map"
+    )
+}
+
+/// Explicitly classified map documents use the ordinary Assets catalogue.
+/// Geographic datasets and ordinary photographs are not printed maps.
+pub fn is_map_document(kind: &str, format: &str) -> bool {
+    kind == "geo" && matches!(format, "pdf" | "png" | "jpg" | "jpeg" | "webp" | "svg")
 }
 
 pub fn tags(links: &[Link]) -> Vec<Tag> {
@@ -60,12 +69,18 @@ pub fn index(project: &str, page: &Value) -> Result<Value, String> {
     }
     let mut maps = BTreeMap::new();
     let mut groups: BTreeMap<Tag, BTreeSet<String>> = BTreeMap::new();
+    let mut ungrouped = BTreeSet::new();
     for asset in rows {
         if asset["project_id"] != project {
             return Err("Asset page contains another project".into());
         }
         let role = asset["reference"]["role"].as_str().unwrap_or("");
-        if !is_group_map(role) {
+        if !is_group_map(role)
+            && !is_map_document(
+                asset["kind"].as_str().unwrap_or(""),
+                asset["format"].as_str().unwrap_or(""),
+            )
+        {
             continue;
         }
         let id = asset["asset_id"]
@@ -83,9 +98,6 @@ pub fn index(project: &str, page: &Value) -> Result<Value, String> {
         let links: Vec<Link> =
             serde_json::from_value(asset["links"].clone()).map_err(|_| "Map has invalid links")?;
         let tags = tags(&links);
-        if tags.is_empty() {
-            return Err("Tag group map has no tag membership".into());
-        }
         let item = json!({"asset_id":id,"name":asset["name"],"family":FAMILY,
             "digest":digest,"format":asset["format"],"bytes":asset["bytes"],
             "status":asset["status"],"reference":asset["reference"],"tags":tags});
@@ -93,6 +105,9 @@ pub fn index(project: &str, page: &Value) -> Result<Value, String> {
             return Err("Conflicting map asset identities".into());
         }
         maps.insert(id.to_string(), item);
+        if tags.is_empty() {
+            ungrouped.insert(id.to_string());
+        }
         for tag in tags {
             groups.entry(tag).or_default().insert(id.to_string());
         }
@@ -101,6 +116,7 @@ pub fn index(project: &str, page: &Value) -> Result<Value, String> {
         json!({"schema":"ds.assets.tag-map-index/v1","project_id":project,"family":FAMILY,
         "maps":maps.into_values().collect::<Vec<_>>(),
         "groups":groups.into_iter().map(|(tag, ids)| json!({"tag":tag,"label":tag.value,"asset_ids":ids})).collect::<Vec<_>>(),
+        "ungrouped_asset_ids":ungrouped.into_iter().collect::<Vec<_>>(),
         "more":more || truncated,"truncated":truncated,"next_cursor":cursor,"storage_copied":false}),
     )
 }
@@ -136,6 +152,29 @@ mod tests {
         assert_eq!(index("p", &p).unwrap()["more"], true);
         assert!(index("other", &p).is_err());
         p["assets"][0]["links"] = json!([]);
-        assert!(index("p", &p).is_err());
+        assert_eq!(
+            index("p", &p).unwrap()["ungrouped_asset_ids"][0],
+            "a_123456789abc"
+        );
+    }
+
+    #[test]
+    fn custom_map_documents_are_visible_without_fabricated_producer_or_tags() {
+        let mut p = page();
+        p["assets"][0]["reference"] = Value::Null;
+        p["assets"][0]["kind"] = json!("geo");
+        p["assets"][0]["links"] = json!([]);
+        let output = index("p", &p).unwrap();
+        assert_eq!(output["maps"].as_array().unwrap().len(), 1);
+        assert_eq!(output["groups"], json!([]));
+        assert_eq!(output["ungrouped_asset_ids"], json!(["a_123456789abc"]));
+        for (kind, format) in [("image", "png"), ("geo", "geojson"), ("doc", "pdf")] {
+            p["assets"][0]["kind"] = json!(kind);
+            p["assets"][0]["format"] = json!(format);
+            assert!(index("p", &p).unwrap()["maps"]
+                .as_array()
+                .unwrap()
+                .is_empty());
+        }
     }
 }
