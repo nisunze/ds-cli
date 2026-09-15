@@ -1231,9 +1231,9 @@ fn stale_report_inputs_are_refused_after_fresh_admission_before_any_upload() {
         world
             .snapshot_base
             .insert("export-tx_1".into(), "source-changed".into());
-        world.record = vec![record_head(b"older output", 1, "old-source")];
     }
-    let result = h.run(vec![local_row(b"stale output")], sync::Trigger::Startup);
+    let stale = local_row(b"stale output");
+    let result = h.run(vec![stale.clone()], sync::Trigger::Startup);
     assert_eq!(
         outcomes(&result),
         vec!["open_grant:granted", "conflict:source_base_moved"]
@@ -1245,6 +1245,18 @@ fn stale_report_inputs_are_refused_after_fresh_admission_before_any_upload() {
     assert!(
         world.declarations.is_empty(),
         "stale inputs must never be relabelled with the new grant"
+    );
+    drop(world);
+
+    let recovery = h.run(vec![stale], sync::Trigger::LocalChange);
+    assert!(
+        recovery.receipts.is_empty(),
+        "the exact terminal conflict stays visible without being executed again"
+    );
+    assert_eq!(
+        fakes::lock(&h.world).grants_minted,
+        1,
+        "background recovery must not reopen authority for stale bytes"
     );
 }
 

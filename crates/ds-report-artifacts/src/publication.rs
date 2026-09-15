@@ -163,8 +163,8 @@ pub fn validate_receipt(receipt: &PublicationBatchReceipt) -> Result<(), String>
                 && receipt.snapshot_base.is_empty()
                 && receipt.engine_build_manifest_sha256.is_empty()
         }
-        // Schema 3 is a local computation receipt. Cloud authority is attached
-        // to the IndexedDB outbox only when its sync drain opens fresh work.
+        // Schema 3 is a local computation receipt. The shared native sync
+        // runtime opens fresh cloud work directly from this committed receipt.
         BATCH_SCHEMA | LOCAL_ONLY_SCHEMA => {
             receipt.grant_id.is_none()
                 && receipt.snapshot_base.is_empty()

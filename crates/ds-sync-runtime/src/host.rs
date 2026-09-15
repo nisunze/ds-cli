@@ -562,7 +562,22 @@ impl SyncHost for StoreHost<'_> {
                 }
             }
         }
+        // A conflict/refusal is terminal for the exact sealed publication.
+        // Its producer receipt remains locally readable and its store row
+        // remains visible to the Sync Center, but it must not re-enter a later
+        // plan and open another grant on every recovery wake. A newly produced
+        // digest or replay key does not match and therefore proceeds normally.
+        rows.retain(|row| {
+            !snapshot.artifacts.iter().any(|held| {
+                held.identity == row.identity
+                    && (held.replay_key == row.client_publish_id || held.sha256 == row.sha256)
+                    && matches!(held.state.as_str(), "conflict" | "refused")
+            })
+        });
         for held in snapshot.artifacts.iter() {
+            if matches!(held.state.as_str(), "conflict" | "refused") {
+                continue;
+            }
             if !rows.iter().any(|row| row.identity == held.identity) {
                 rows.push(local_row_from_store(held));
             }
