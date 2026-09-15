@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 use sha2::{Digest, Sha256};
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     fs::{File, OpenOptions},
     io::{Read, Write},
     path::{Path, PathBuf},
@@ -136,16 +136,23 @@ impl Tools {
             }
             return Self::from_directory(&directory, cancel).await;
         }
-        let find = |name: &str| {
-            std::env::var_os("PATH").and_then(|path| {
-                std::env::split_paths(&path)
-                    .filter(|p| p.is_absolute())
-                    .map(|p| p.join(name))
-                    .find(|p| p.is_file())
-            })
+        let candidates = |name: &str| {
+            std::env::var_os("PATH")
+                .map(|path| {
+                    let mut seen = BTreeSet::new();
+                    std::env::split_paths(&path)
+                        .filter(|directory| directory.is_absolute())
+                        .map(|directory| directory.join(name))
+                        .filter(|candidate| candidate.is_file())
+                        .filter(|candidate| seen.insert(candidate.clone()))
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default()
         };
-        if let (Some(tippecanoe), Some(pmtiles)) = (find("tippecanoe"), find("pmtiles")) {
-            return Self::from_paths(&tippecanoe, &pmtiles, cancel).await;
+        let tippecanoe = candidates("tippecanoe");
+        let pmtiles = candidates("pmtiles");
+        if !tippecanoe.is_empty() && !pmtiles.is_empty() {
+            return Self::from_candidates(&tippecanoe, &pmtiles, cancel).await;
         }
         Self::bundled(resource_root, cancel).await
     }
@@ -160,6 +167,24 @@ impl Tools {
             cancel,
         )
         .await
+    }
+    async fn from_candidates(
+        tippecanoe: &[PathBuf],
+        pmtiles: &[PathBuf],
+        cancel: &Cancel,
+    ) -> Result<Self> {
+        let mut last_error = None;
+        for tip in tippecanoe {
+            for pm in pmtiles {
+                match Self::from_paths(tip, pm, cancel).await {
+                    Ok(tools) => return Ok(tools),
+                    Err(error) => last_error = Some(error),
+                }
+            }
+        }
+        Err(last_error.unwrap_or_else(|| {
+            anyhow::anyhow!("no compatible shared tiling toolchain was found on PATH")
+        }))
     }
     async fn from_paths(tippecanoe: &Path, pmtiles: &Path, cancel: &Cancel) -> Result<Self> {
         let tippecanoe = tippecanoe.canonicalize().context("Tippecanoe is missing; install the supported system toolchain or set DS_TILING_TOOLS_DIR")?;
@@ -598,6 +623,34 @@ mod tests {
         bad.scope.project.clear();
         assert!(validate_request(&bad).is_err());
     }
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn path_search_does_not_let_an_old_tool_hide_a_compatible_shared_installation() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let work = TempDir::new().unwrap();
+        let old = work.path().join("old-tippecanoe");
+        let current = work.path().join("current-tippecanoe");
+        let pmtiles = work.path().join("pmtiles");
+        for (path, output) in [
+            (&old, "tippecanoe v2.80.0"),
+            (&current, "tippecanoe v2.82.0"),
+            (&pmtiles, "pmtiles 1.20.0, fixture"),
+        ] {
+            std::fs::write(path, format!("#!/bin/sh\nprintf '%s\\n' '{output}'\n")).unwrap();
+            std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        let tools = Tools::from_candidates(
+            &[old, current.clone()],
+            std::slice::from_ref(&pmtiles),
+            &Cancel::default(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(tools.tippecanoe, current.canonicalize().unwrap());
+        assert_eq!(tools.pmtiles, pmtiles.canonicalize().unwrap());
+    }
+
     #[cfg(unix)]
     #[tokio::test]
     async fn cancellation_terminates_the_tool_and_never_waits_for_its_deadline() {
