@@ -29,6 +29,7 @@
 //! no gain. A host that reaches upstream in `authorize` therefore delays new
 //! work while it cannot answer; it can never destroy work already done.
 mod claim;
+pub mod tiles;
 pub use claim::decode_solar_server_submission;
 
 use base64::Engine;
@@ -981,7 +982,11 @@ pub fn run_one(context: &WorkerContext, worker: &str) -> Result<bool, String> {
         if digest(&input) != job.input_sha256 {
             return Err("durable input digest mismatch".to_string());
         }
-        execute(&input, &job, Some(&cancelled))
+        if job.engine == EngineKind::TilesPrepared {
+            tiles::execute(path, &input, &job, &cancelled)
+        } else {
+            execute(&input, &job, Some(&cancelled))
+        }
     })
     .unwrap_or_else(|_| Err("native compute panicked; input retained".into()));
     done.store(true, Ordering::Release);

@@ -199,6 +199,9 @@ struct TransportState {
     shared_bytes: VecDeque<TransportResponse>,
     design_tags: VecDeque<TransportResponse>,
     grid_models: VecDeque<TransportResponse>,
+    grid_bodies: Vec<serde_json::Value>,
+    grid_uploaded: Vec<Vec<u8>>,
+    grid_upload_fail: bool,
     grid_bytes: VecDeque<TransportResponse>,
     tag_bodies: Vec<serde_json::Value>,
     configurations: VecDeque<TransportResponse>,
@@ -231,6 +234,7 @@ struct TransportState {
     correlated_project_forms_requests: usize,
     correlated_solar_snapshot_requests: usize,
     correlated_survey_query_requests: usize,
+    survey_query_projects: Vec<String>,
     correlated_survey_entries_select_requests: usize,
     correlated_survey_entries_changes_requests: usize,
     correlated_survey_entry_create_requests: usize,
@@ -455,7 +459,29 @@ impl Transport for FixtureTransport {
         assert_eq!(call.path(), "/api/v1/grid/models");
         assert_eq!(call.method(), "POST");
         assert!(!call.bearer_token().is_empty());
-        Ok(self.0.lock().unwrap().grid_models.pop_front().unwrap())
+        let mut state = self.0.lock().unwrap();
+        state
+            .grid_bodies
+            .push(serde_json::from_slice(call.body().as_bytes()).unwrap());
+        Ok(state
+            .grid_models
+            .pop_front()
+            .expect("no unplanned project request"))
+    }
+    fn grid_model_upload(
+        &mut self,
+        call: ds_client_core::grid_models::publication::UploadCall<'_>,
+    ) -> Result<(), TransportError> {
+        use sha2::{Digest, Sha256};
+        assert!(call.uri().starts_with("https://storage.googleapis.com/"));
+        assert_eq!(format!("{:x}", Sha256::digest(call.bytes())), call.digest());
+        let mut state = self.0.lock().unwrap();
+        state.grid_uploaded.push(call.bytes().to_vec());
+        if state.grid_upload_fail {
+            Err(TransportError::Unreachable)
+        } else {
+            Ok(())
+        }
     }
     fn grid_model_bytes(
         &mut self,
@@ -702,6 +728,12 @@ impl Transport for FixtureTransport {
     ) -> Result<TransportResponse, TransportError> {
         let mut state = self.0.lock().unwrap();
         let body = call.body();
+        let project = serde_json::from_slice::<serde_json::Value>(body.as_bytes()).unwrap()
+            ["ds_project"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        state.survey_query_projects.push(project);
         let exact_body = br#"{"ds_project":"active-project","form":"a_poles","metric":"count_distinct","distinct_field":"created_by","group_by":["created_by"],"filters":[{"field":"created_by","op":"eq","value":"user@example.com"}],"order":"desc","limit":20}"#;
         let correlation_valid = call.correlation_headers() == ["X-Request-Id", "X-DS-Action-Id"];
         if correlation_valid {
@@ -2795,6 +2827,86 @@ fn survey_query_preserves_each_shared_form_authority_code() {
             .unwrap_err();
         assert_eq!(error.survey_form_read_service_code(), Some(expected));
         assert!(!error.to_string().contains("server-secret"));
+    }
+}
+
+#[test]
+fn survey_query_preserves_missing_view_and_other_exact_service_outcomes() {
+    use ds_client_core::SurveyQueryServiceCode;
+    for (status, wire, expected) in [
+        (
+            404,
+            "SURVEY_FORM_UNKNOWN",
+            SurveyQueryServiceCode::FormUnknown,
+        ),
+        (
+            400,
+            "SURVEY_FIELD_UNKNOWN",
+            SurveyQueryServiceCode::FieldUnknown,
+        ),
+        (409, "SURVEY_VIEW_STALE", SurveyQueryServiceCode::ViewStale),
+        (
+            400,
+            "SURVEY_QUERY_TOO_EXPENSIVE",
+            SurveyQueryServiceCode::TooExpensive,
+        ),
+        (
+            503,
+            "SURVEY_QUERY_SYNC_FAILED",
+            SurveyQueryServiceCode::SyncFailed,
+        ),
+        (
+            503,
+            "SURVEY_QUERY_UNAVAILABLE",
+            SurveyQueryServiceCode::Unavailable,
+        ),
+        (
+            404,
+            "SURVEY_SCOPE_NOT_FOUND",
+            SurveyQueryServiceCode::ScopeNotFound,
+        ),
+    ] {
+        let transport = FixtureTransport::with_sign_in(SIGN_IN);
+        transport.push_survey_query(status, &survey_entries_select_error_envelope(wire));
+        let mut client = signed_in(transport, MemoryStore::default());
+        let error = client
+            .survey_query("active-project", &survey_query_request(), NOW + 1)
+            .unwrap_err();
+        assert_eq!(error.survey_query_service_code(), Some(expected));
+        assert_eq!(error.survey_form_read_service_code(), None);
+    }
+}
+
+#[test]
+fn survey_query_concurrent_clients_keep_explicit_project_context_after_refusal() {
+    let workers = ["project-a", "project-b"].map(|project| {
+        std::thread::spawn(move || {
+            let transport = FixtureTransport::with_sign_in(SIGN_IN);
+            transport.push_survey_query(
+                403,
+                &survey_entries_select_error_envelope("SURVEY_PROJECT_ACCESS_DENIED"),
+            );
+            transport
+                .push_survey_query(200, &serde_json::to_vec(&survey_query_envelope()).unwrap());
+            let mut client = signed_in(transport.clone(), MemoryStore::default());
+            let denied = client
+                .survey_query("denied-project", &survey_query_request(), NOW + 1)
+                .unwrap_err();
+            assert_eq!(
+                denied.survey_form_read_service_code(),
+                Some(SurveyFormReadServiceCode::ProjectAccessDenied)
+            );
+            client
+                .survey_query(project, &survey_query_request(), NOW + 2)
+                .unwrap();
+            assert_eq!(
+                transport.0.lock().unwrap().survey_query_projects,
+                ["denied-project", project]
+            );
+        })
+    });
+    for worker in workers {
+        worker.join().unwrap();
     }
 }
 
@@ -7313,4 +7425,128 @@ fn headless_version_comparison_uses_pinned_snapshots_and_has_no_geometry_payload
             NOW + 1
         )
         .is_err());
+}
+
+#[test]
+fn grid_publication_requires_storage_proof_commit_and_exact_readback() {
+    use ds_client_core::grid_models::Command;
+    use ds_command_kernel::grid_publication::Intent;
+    use serde_json::json;
+    for scenario in [
+        "upload",
+        "already_stored",
+        "transfer_failure",
+        "denied",
+        "conflict",
+        "foreign_readback",
+    ] {
+        let transport = FixtureTransport::with_sign_in(SIGN_IN);
+        let mut client = signed_in(transport.clone(), MemoryStore::default());
+        let intent = Intent {
+            project: "p-1".into(),
+            model_id: "model_one".into(),
+            model_kind: "mv_line".into(),
+            expected_head_revision_id: "rev-old".into(),
+            source_revision_id: "rev:new".into(),
+            model_schema_version: "1".into(),
+            engine_version: "ds-grid-engine/0.1.4".into(),
+            display_name: None,
+            reason: Some("reviewed".into()),
+        };
+        let plan = intent.plan("p-1", b"model").unwrap();
+        let grant = json!({"artifact":plan.artifact,"already_exists":false,"session_uri":"https://storage.googleapis.com/upload/storage/v1/b/bucket/o?upload_id=private"});
+        let stored = json!({"artifact":plan.artifact,"already_exists":true});
+        let mut version = plan.version_request()["version"].clone();
+        version["project_id"] = json!("p-1");
+        version["version"] = json!(2);
+        version["parent_revision_id"] = json!("rev-old");
+        {
+            let mut state = transport.0.lock().unwrap();
+            if scenario == "denied" {
+                state
+                    .grid_models
+                    .push_back(TransportResponse::new(403, b"{}"));
+            } else {
+                state.grid_upload_fail = scenario == "transfer_failure";
+                state
+                    .grid_models
+                    .push_back(project_response(if scenario == "already_stored" {
+                        stored.clone()
+                    } else {
+                        grant
+                    }));
+                if scenario != "transfer_failure" {
+                    if scenario != "already_stored" {
+                        state.grid_models.push_back(project_response(stored));
+                    }
+                    if scenario == "conflict" {
+                        state
+                            .grid_models
+                            .push_back(TransportResponse::new(409, b"{}"));
+                    } else {
+                        state
+                            .grid_models
+                            .push_back(project_response(json!({"version":version})));
+                        if scenario == "foreign_readback" {
+                            version["project_id"] = json!("other-project");
+                        }
+                        state
+                            .grid_models
+                            .push_back(project_response(json!({"revision":version})));
+                    }
+                }
+            }
+        }
+        let result = client.grid_models(
+            "p-1",
+            &Command::Publish {
+                intent,
+                bytes: b"model".to_vec(),
+            },
+            NOW + 1,
+        );
+        assert_eq!(
+            result.is_ok(),
+            matches!(scenario, "upload" | "already_stored"),
+            "{scenario}"
+        );
+        if scenario == "conflict" {
+            let refusal = result
+                .as_ref()
+                .err()
+                .expect("publication refused")
+                .service_refusal()
+                .unwrap();
+            assert_eq!(refusal.status(), 409);
+            assert_eq!(refusal.code(), Some("grid_publication_conflict"));
+        }
+        if let Ok(receipt) = result {
+            assert_eq!(receipt.data["verified"], true);
+            assert!(!receipt.data.to_string().contains("upload_id"));
+            assert_eq!(receipt.data["expected_head"], "rev-old");
+        }
+        let state = transport.0.lock().unwrap();
+        assert!(
+            state.grid_models.is_empty(),
+            "unexpected unconsumed response: {scenario}"
+        );
+        assert!(state
+            .grid_bodies
+            .iter()
+            .all(|body| body["project_id"] == "p-1"));
+        let commits = state
+            .grid_bodies
+            .iter()
+            .filter(|body| body["action"] == "create_version")
+            .count();
+        assert_eq!(
+            commits,
+            usize::from(!matches!(scenario, "transfer_failure" | "denied")),
+            "{scenario}"
+        );
+        assert_eq!(
+            state.grid_uploaded.len(),
+            usize::from(!matches!(scenario, "denied" | "already_stored"))
+        );
+    }
 }

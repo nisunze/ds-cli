@@ -1608,9 +1608,12 @@ pub fn application_settings_wasm(input: &[u8]) -> Result<String, wasm_bindgen::J
     application_settings::evaluate(input).map_err(|e| wasm_bindgen::JsValue::from_str(&e))
 }
 
+pub mod grid_publication;
 pub mod solar_seed;
 #[cfg(feature = "wasm")]
 #[wasm_bindgen::prelude::wasm_bindgen(js_name = solarSeed)]
 pub fn solar_seed_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
     solar_seed::evaluate(input).map_err(|e| wasm_bindgen::JsValue::from_str(&e))
 }
+
+pub mod report_consistency;

@@ -20,6 +20,7 @@ pub enum Phase {
 pub enum EngineKind {
     FastLv,
     SolarPrepared,
+    TilesPrepared,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

@@ -1,0 +1,189 @@
+//! Headless publication: plan, authenticated storage grant, native transfer,
+//! immutable commit, exact revision readback. A partial transfer never commits.
+use super::*;
+use ds_command_kernel::grid_publication::{Artifact, Intent, Plan};
+
+/// Constructed only from the authenticated, validated storage grant.
+pub struct UploadCall<'a> {
+    uri: String,
+    bytes: &'a [u8],
+    digest: &'a str,
+}
+impl UploadCall<'_> {
+    pub fn uri(&self) -> &str {
+        &self.uri
+    }
+    pub fn bytes(&self) -> &[u8] {
+        self.bytes
+    }
+    pub fn digest(&self) -> &str {
+        self.digest
+    }
+}
+
+fn request<T: AuthorizedTransport>(
+    profile: &ClientProfile,
+    transport: &mut T,
+    authority: Authority<'_>,
+    payload: Value,
+) -> Result<Value, ClientError> {
+    let response = transport.grid_models(GridModelsCall {
+        profile,
+        authority: authority.call(),
+        payload,
+    })?;
+    if response.status == 409 {
+        return Err(ClientError::with_service_refusal(
+            ErrorKind::InvalidInput,
+            "grid publication conflicts with stored state; the request was not changed or retried",
+            crate::ServiceRefusal::new(409, Some("grid_publication_conflict"), None),
+        ));
+    }
+    if !matches!(response.status, 200 | 201) {
+        return Err(classify_tile_error(response.status));
+    }
+    if response.body.len() > 8 * 1024 * 1024 {
+        return Err(bad());
+    }
+    let value: Value = serde_json::from_slice(&response.body).map_err(|_| bad())?;
+    if value["success"] != true || !value["data"].is_object() {
+        return Err(bad());
+    }
+    Ok(value["data"].clone())
+}
+
+fn upload_call<'a>(
+    data: &Value,
+    plan: &'a Plan,
+    bytes: &'a [u8],
+) -> Result<Option<UploadCall<'a>>, ClientError> {
+    if serde_json::from_value::<Artifact>(data["artifact"].clone())
+        .ok()
+        .as_ref()
+        != Some(&plan.artifact)
+    {
+        return Err(bad());
+    }
+    match data["already_exists"].as_bool() {
+        Some(true) => return Ok(None),
+        Some(false) => {}
+        None => return Err(bad()),
+    }
+    let uri = data["session_uri"]
+        .as_str()
+        .filter(|s| s.len() <= 8192)
+        .ok_or_else(bad)?;
+    let url = url::Url::parse(uri).map_err(|_| bad())?;
+    if url.scheme() != "https"
+        || url.host_str() != Some("storage.googleapis.com")
+        || url.port().is_some()
+        || !url.username().is_empty()
+        || url.password().is_some()
+        || url.fragment().is_some()
+        || !url.path().starts_with("/upload/storage/v1/b/")
+        || !url.path().ends_with("/o")
+        || !url
+            .query_pairs()
+            .any(|(k, v)| k == "upload_id" && !v.is_empty())
+    {
+        return Err(bad());
+    }
+    Ok(Some(UploadCall {
+        uri: uri.into(),
+        bytes,
+        digest: &plan.artifact.digest,
+    }))
+}
+
+pub(super) fn run<T: AuthorizedTransport>(
+    profile: &ClientProfile,
+    transport: &mut T,
+    authority: Authority<'_>,
+    project: &str,
+    intent: &Intent,
+    bytes: &[u8],
+) -> Result<Receipt, ClientError> {
+    let plan = intent
+        .plan(project, bytes)
+        .map_err(|message| ClientError::new(ErrorKind::InvalidInput, message))?;
+    let grant = request(profile, transport, authority, plan.upload_request())?;
+    let skipped = match upload_call(&grant, &plan, bytes)? {
+        None => true,
+        Some(call) => {
+            // The native transfer owner supplies success only after its sealed
+            // bytes reach storage. A 412 alone is not proof of identical bytes.
+            transport.grid_model_upload(call)?;
+            // Ask the storage authority again: it checks actual size + digest.
+            let stored = request(profile, transport, authority, plan.upload_request())?;
+            if upload_call(&stored, &plan, bytes)?.is_some() {
+                return Err(bad());
+            }
+            false
+        }
+    };
+    let committed = request(profile, transport, authority, plan.version_request())?;
+    let version = committed
+        .get("version")
+        .or_else(|| committed.get("revision"))
+        .unwrap_or(&committed);
+    if !plan.matches_version(version) {
+        return Err(bad());
+    }
+    let readback = request(
+        profile,
+        transport,
+        authority,
+        json!({"action":"get_version","project_id":project,"model_id":intent.model_id,"revision_id":plan.revision_id}),
+    )?;
+    let verified = readback
+        .get("revision")
+        .or_else(|| readback.get("version"))
+        .ok_or_else(bad)?;
+    if !plan.matches_version(verified) || verified["version"] != version["version"] {
+        return Err(bad());
+    }
+    // Project bytes are committed even if a presentation host later fails to
+    // record its local working-copy binding. This receipt is independent of it.
+    Ok(Receipt {
+        data: json!({"status":"published","project":project,"project_model":intent.model_id,
+        "revision":plan.revision_id,"version":verified["version"],"kind":intent.model_kind,
+        "expected_head":intent.expected_head_revision_id,"parent_revision":verified["parent_revision_id"],
+        "digest":plan.artifact.digest,"byte_length":plan.artifact.byte_length,"upload_skipped":skipped,
+        "verified":true,"local_revision":intent.source_revision_id}),
+        bytes: None,
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn grants_cannot_replace_the_object_or_redirect_a_native_upload() {
+        let intent = Intent {
+            project: "p".into(),
+            model_id: "m".into(),
+            model_kind: "mv_line".into(),
+            expected_head_revision_id: String::new(),
+            source_revision_id: "rev:one".into(),
+            model_schema_version: "19".into(),
+            engine_version: "1".into(),
+            display_name: None,
+            reason: None,
+        };
+        let plan = intent.plan("p", b"bytes").unwrap();
+        let mut grant = json!({"artifact":plan.artifact,"already_exists":false,"session_uri":"https://storage.googleapis.com/upload/storage/v1/b/bucket/o?upload_id=issued"});
+        assert!(upload_call(&grant, &plan, b"bytes").unwrap().is_some());
+        for uri in [
+            "https://evil.example/upload/storage/v1/b/b/o?upload_id=x",
+            "http://storage.googleapis.com/upload/storage/v1/b/b/o?upload_id=x",
+            "https://user@storage.googleapis.com/upload/storage/v1/b/b/o?upload_id=x",
+        ] {
+            grant["session_uri"] = json!(uri);
+            assert!(upload_call(&grant, &plan, b"bytes").is_err());
+        }
+        grant["already_exists"] = json!(true);
+        assert!(upload_call(&grant, &plan, b"bytes").unwrap().is_none());
+        grant["artifact"]["byte_length"] = json!(1);
+        assert!(upload_call(&grant, &plan, b"bytes").is_err());
+    }
+}

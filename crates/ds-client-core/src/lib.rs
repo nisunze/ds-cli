@@ -51,7 +51,7 @@ pub use device::{
 pub use error::{
     ClientError, ErrorKind, ProjectReportServiceCode, ServiceRefusal, StoreError,
     SurveyEntriesChangesServiceCode, SurveyEntriesSelectServiceCode, SurveyEntryCreateServiceCode,
-    SurveyFormReadServiceCode, TransportError,
+    SurveyFormReadServiceCode, SurveyQueryServiceCode, TransportError,
 };
 pub use layers::{
     LayerOrder, LayerOrderReceipt, LayerSnapshot, StyleSnapshot, LAYERS_RESPONSE_LIMIT,

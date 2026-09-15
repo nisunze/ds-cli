@@ -347,3 +347,44 @@ fn kernel_filter(filter: &SurveyQueryFilter) -> kernel::SurveyQueryFilter {
         SurveyQueryFilterOp::NotNull => kernel::SurveyQueryFilter::not_null(&filter.field),
     }
 }
+
+pub(crate) fn decode_service_error(
+    response: &TransportResponse,
+    response_limit: usize,
+) -> Option<ClientError> {
+    use crate::SurveyQueryServiceCode;
+    let code = kernel::decode_service_code(response.status, &response.body, response_limit)?;
+    let (kind, message) = match code {
+        SurveyQueryServiceCode::FormUnknown => (
+            ErrorKind::ResourceNotFound,
+            "the bound survey form has no queryable survey view",
+        ),
+        SurveyQueryServiceCode::FieldUnknown => (
+            ErrorKind::InvalidInput,
+            "the requested field is not available to this survey aggregate",
+        ),
+        SurveyQueryServiceCode::ViewStale => (
+            ErrorKind::InvalidInput,
+            "the survey view is out of date with its governed schema",
+        ),
+        SurveyQueryServiceCode::TooExpensive => (
+            ErrorKind::InvalidInput,
+            "the aggregate exceeds the server scan limit",
+        ),
+        SurveyQueryServiceCode::SyncFailed => (
+            ErrorKind::Transient,
+            "survey synchronization failed before the query",
+        ),
+        SurveyQueryServiceCode::Unavailable => (
+            ErrorKind::Transient,
+            "survey queries are unavailable on this deployment",
+        ),
+        SurveyQueryServiceCode::ScopeNotFound => (
+            ErrorKind::ResourceNotFound,
+            "the service refused the project or survey form scope",
+        ),
+    };
+    Some(ClientError::with_survey_query_service_code(
+        kind, message, code,
+    ))
+}

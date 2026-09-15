@@ -363,6 +363,11 @@ pub(crate) fn survey_query<T: AuthorizedTransport>(
         {
             return Err(error);
         }
+        if let Some(error) =
+            crate::survey_query::decode_service_error(&response, SURVEY_QUERY_RESPONSE_LIMIT)
+        {
+            return Err(error);
+        }
         return Err(classify_survey_query_error(response.status));
     }
     crate::survey_query::decode(response, SURVEY_QUERY_RESPONSE_LIMIT, query)

@@ -53,6 +53,11 @@ pub struct DimensionValue {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct CartographyChange {
     pub visible: Option<bool>,
+    pub min_zoom: Option<f64>,
+    pub max_zoom: Option<f64>,
+    pub boundary_visible: Option<bool>,
+    pub boundary_min_zoom: Option<f64>,
+    pub boundary_max_zoom: Option<f64>,
     pub opacity: Option<f64>,
     pub boundary_color: Option<String>,
     pub boundary_width: Option<f64>,
@@ -292,7 +297,10 @@ fn cartography(
         || change.pattern_background.is_some()
         || change.pattern_spacing.is_some()
         || change.pattern_stroke.is_some();
-    let wants_boundary = change.boundary_color.is_some()
+    let wants_boundary = change.boundary_visible.is_some()
+        || change.boundary_min_zoom.is_some()
+        || change.boundary_max_zoom.is_some()
+        || change.boundary_color.is_some()
         || change.boundary_width.is_some()
         || change.boundary_opacity.is_some()
         || change.boundary_line_type.is_some()
@@ -303,9 +311,12 @@ fn cartography(
         && !wants_boundary
         && change.visible.is_none()
         && change.opacity.is_none()
+        && change.min_zoom.is_none()
+        && change.max_zoom.is_none()
     {
         return Err("choose a line type, casing or hatch".into());
     }
+    crate::style_label::apply_zoom_range(&mut style, change.min_zoom, change.max_zoom)?;
     if let Some(visible) = change.visible {
         style["layout"]["visibility"] = json!(if visible { "visible" } else { "none" });
     }
@@ -325,6 +336,15 @@ fn cartography(
         }
         if !style["boundary"].is_object() {
             style["boundary"] = json!({"paint":{"line-color":"#64748B","line-width":1,"line-opacity":1},"layout":{"visibility":"visible"}});
+        }
+        crate::style_label::apply_zoom_range(
+            &mut style["boundary"],
+            change.boundary_min_zoom,
+            change.boundary_max_zoom,
+        )?;
+        if let Some(visible) = change.boundary_visible {
+            style["boundary"]["layout"]["visibility"] =
+                json!(if visible { "visible" } else { "none" });
         }
         if let Some(color) = &change.boundary_color {
             style["boundary"]["paint"]["line-color"] = json!(checked_color(color)?);
@@ -1125,6 +1145,60 @@ pub fn list_styles(snapshot: &Value, query: Option<&str>, limit: usize) -> Resul
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn zoom_and_boundary_visibility_preserve_independent_authorship() {
+        let original = json!({"type":"fill","minzoom":3,"maxzoom":22,
+            "layout":{"visibility":"visible"},"paint":{"fill-opacity":0.3},
+            "boundary":{"minzoom":16,"paint":{"line-width":1.5,"line-opacity":0.7},"layout":{"visibility":"visible"}},
+            "label":{"minzoom":15,"layout":{"visibility":"visible"}}});
+        let hidden = cartography(
+            original.clone(),
+            &CartographyChange {
+                min_zoom: Some(15.),
+                boundary_min_zoom: Some(15.),
+                boundary_visible: Some(false),
+                ..Default::default()
+            },
+            &json!({}),
+        )
+        .unwrap();
+        assert_eq!(hidden["maxzoom"], original["maxzoom"]);
+        assert_eq!(hidden["label"], original["label"]);
+        assert_eq!(hidden["paint"], original["paint"]);
+        assert_eq!(hidden["boundary"]["paint"], original["boundary"]["paint"]);
+        assert_eq!(hidden["boundary"]["layout"]["visibility"], "none");
+        assert_eq!(hidden["boundary"]["minzoom"], 15.);
+        let shown = cartography(
+            hidden.clone(),
+            &CartographyChange {
+                boundary_visible: Some(true),
+                ..Default::default()
+            },
+            &json!({}),
+        )
+        .unwrap();
+        assert_eq!(shown["boundary"]["paint"]["line-width"], 1.5);
+        assert_eq!(shown["minzoom"], hidden["minzoom"]);
+        assert!(cartography(
+            original,
+            &CartographyChange {
+                min_zoom: Some(23.),
+                ..Default::default()
+            },
+            &json!({})
+        )
+        .is_err());
+        assert!(cartography(
+            json!({"type":"line"}),
+            &CartographyChange {
+                boundary_visible: Some(false),
+                ..Default::default()
+            },
+            &json!({})
+        )
+        .is_err());
+    }
 
     #[test]
     fn polygon_boundary_is_independent_and_opacity_is_bounded() {

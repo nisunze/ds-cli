@@ -1912,6 +1912,12 @@ pub trait Transport {
     ) -> Result<TransportResponse, TransportError> {
         Err(TransportError::Unreachable)
     }
+    fn grid_model_upload(
+        &mut self,
+        _call: crate::grid_models::publication::UploadCall<'_>,
+    ) -> Result<(), TransportError> {
+        Err(TransportError::Unreachable)
+    }
     fn grid_model_bytes(
         &mut self,
         _call: crate::grid_models::DownloadCall<'_>,
@@ -2084,6 +2090,12 @@ pub trait AuthorizedTransport {
     ) -> Result<TransportResponse, TransportError> {
         Err(TransportError::Unreachable)
     }
+    fn grid_model_upload(
+        &mut self,
+        _call: crate::grid_models::publication::UploadCall<'_>,
+    ) -> Result<(), TransportError> {
+        Err(TransportError::Unreachable)
+    }
     fn grid_model_bytes(
         &mut self,
         _call: crate::grid_models::DownloadCall<'_>,
@@ -2236,6 +2248,12 @@ impl<T: Transport> AuthorizedTransport for T {
         call: crate::shared_assets::DownloadCall<'_>,
     ) -> Result<TransportResponse, TransportError> {
         Transport::shared_asset_bytes(self, call)
+    }
+    fn grid_model_upload(
+        &mut self,
+        call: crate::grid_models::publication::UploadCall<'_>,
+    ) -> Result<(), TransportError> {
+        Transport::grid_model_upload(self, call)
     }
     fn grid_model_bytes(
         &mut self,

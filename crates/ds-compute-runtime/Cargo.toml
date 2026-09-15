@@ -6,6 +6,10 @@ rust-version = "1.90"
 publish = false
 [workspace]
 [dependencies]
+anyhow = "1"
+ds-tile-runtime = { path = "../ds-tile-runtime" }
+tempfile = "3"
+tokio = { version = "1", features = ["rt", "time", "macros"] }
 ds-command-kernel = { path = "../.." }
 ds-sync-store = { path = "../ds-sync-store" }
 ds-network = { path = "../../../ds-network/crates/ds-network" }

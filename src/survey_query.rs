@@ -11,6 +11,52 @@ const MAX_ROWS: usize = 200;
 const MAX_VALUE_CHARS: usize = 2_048;
 const MAX_ENVELOPE_TEXT_CHARS: usize = 512;
 
+/// Exact aggregate-route outcomes. Status alone cannot distinguish a missing
+/// queryable view from a refused project/form scope. Server prose stays private.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SurveyQueryServiceCode {
+    FormUnknown,
+    FieldUnknown,
+    ViewStale,
+    TooExpensive,
+    SyncFailed,
+    Unavailable,
+    ScopeNotFound,
+}
+
+pub fn decode_service_code(
+    status: u16,
+    body: &[u8],
+    response_limit: usize,
+) -> Option<SurveyQueryServiceCode> {
+    #[derive(Deserialize)]
+    struct Envelope {
+        success: bool,
+        error: Error,
+    }
+    #[derive(Deserialize)]
+    struct Error {
+        code: String,
+    }
+    if body.len() > response_limit.min(64 * 1024) {
+        return None;
+    }
+    let envelope: Envelope = serde_json::from_slice(body).ok()?;
+    if envelope.success {
+        return None;
+    }
+    Some(match (status, envelope.error.code.as_str()) {
+        (404, "SURVEY_FORM_UNKNOWN") => SurveyQueryServiceCode::FormUnknown,
+        (400, "SURVEY_FIELD_UNKNOWN") => SurveyQueryServiceCode::FieldUnknown,
+        (409, "SURVEY_VIEW_STALE") => SurveyQueryServiceCode::ViewStale,
+        (400, "SURVEY_QUERY_TOO_EXPENSIVE") => SurveyQueryServiceCode::TooExpensive,
+        (503, "SURVEY_QUERY_SYNC_FAILED") => SurveyQueryServiceCode::SyncFailed,
+        (503, "SURVEY_QUERY_UNAVAILABLE") => SurveyQueryServiceCode::Unavailable,
+        (404, "SURVEY_SCOPE_NOT_FOUND") => SurveyQueryServiceCode::ScopeNotFound,
+        _ => return None,
+    })
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SurveyQueryMetric {
@@ -437,4 +483,32 @@ fn invalid() -> Refusal {
 
 fn unreadable() -> Refusal {
     Refusal::UnreadableResponse
+}
+
+#[cfg(test)]
+mod service_code_tests {
+    use super::*;
+
+    #[test]
+    fn error_classification_requires_exact_status_code_and_bounded_failed_envelope() {
+        let body = br#"{"success":false,"error":{"code":"SURVEY_FORM_UNKNOWN","message":"untrusted prose"}}"#;
+        assert_eq!(
+            decode_service_code(404, body, 1024),
+            Some(SurveyQueryServiceCode::FormUnknown)
+        );
+        for status in [200, 400, 403, 409, 500] {
+            assert_eq!(decode_service_code(status, body, 1024), None);
+        }
+        assert_eq!(decode_service_code(404, body, 10), None);
+        for body in [
+            br#"{"success":true,"error":{"code":"SURVEY_FORM_UNKNOWN"}}"#.as_slice(),
+            br#"{"success":false,"error":{"code":"SURVEY_FORM_UNKNOWN_EXTRA"}}"#.as_slice(),
+            br#"{"success":false,"error":{"code":"SURVEY_FORM_ACCESS_DENIED"}}"#.as_slice(),
+            b"invalid",
+        ] {
+            assert_eq!(decode_service_code(404, body, 1024), None);
+        }
+        let oversized = vec![b' '; 65 * 1024];
+        assert_eq!(decode_service_code(404, &oversized, 1024 * 1024), None);
+    }
 }

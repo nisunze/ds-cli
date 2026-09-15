@@ -1,3 +1,4 @@
+pub use ds_command_kernel::survey_query::SurveyQueryServiceCode;
 use std::fmt;
 
 /// Stable failure classification for a host/CLI adapter.
@@ -208,6 +209,7 @@ pub struct ClientError {
     survey_entry_create_service_code: Option<SurveyEntryCreateServiceCode>,
     project_report_service_code: Option<ProjectReportServiceCode>,
     survey_form_read_service_code: Option<SurveyFormReadServiceCode>,
+    survey_query_service_code: Option<SurveyQueryServiceCode>,
 }
 
 impl ClientError {
@@ -221,6 +223,7 @@ impl ClientError {
             survey_entry_create_service_code: None,
             project_report_service_code: None,
             survey_form_read_service_code: None,
+            survey_query_service_code: None,
         }
     }
 
@@ -238,6 +241,7 @@ impl ClientError {
             survey_entry_create_service_code: None,
             project_report_service_code: Some(code),
             survey_form_read_service_code: None,
+            survey_query_service_code: None,
         }
     }
 
@@ -255,6 +259,7 @@ impl ClientError {
             survey_entry_create_service_code: None,
             project_report_service_code: None,
             survey_form_read_service_code: None,
+            survey_query_service_code: None,
         }
     }
 
@@ -272,6 +277,7 @@ impl ClientError {
             survey_entry_create_service_code: None,
             project_report_service_code: None,
             survey_form_read_service_code: None,
+            survey_query_service_code: None,
         }
     }
 
@@ -289,6 +295,7 @@ impl ClientError {
             survey_entry_create_service_code: Some(code),
             project_report_service_code: None,
             survey_form_read_service_code: None,
+            survey_query_service_code: None,
         }
     }
 
@@ -306,6 +313,7 @@ impl ClientError {
             survey_entry_create_service_code: None,
             project_report_service_code: None,
             survey_form_read_service_code: Some(code),
+            survey_query_service_code: None,
         }
     }
 
@@ -325,7 +333,22 @@ impl ClientError {
             survey_entry_create_service_code: None,
             project_report_service_code: None,
             survey_form_read_service_code: None,
+            survey_query_service_code: None,
         }
+    }
+
+    pub(crate) const fn with_survey_query_service_code(
+        kind: ErrorKind,
+        message: &'static str,
+        code: SurveyQueryServiceCode,
+    ) -> Self {
+        let mut error = Self::new(kind, message);
+        error.survey_query_service_code = Some(code);
+        error
+    }
+
+    pub const fn survey_query_service_code(&self) -> Option<SurveyQueryServiceCode> {
+        self.survey_query_service_code
     }
 
     pub const fn kind(&self) -> ErrorKind {

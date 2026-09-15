@@ -12,6 +12,7 @@ use std::{
     time::Duration,
 };
 
+pub mod grid_publication;
 mod run;
 pub use run::RunReceipt;
 

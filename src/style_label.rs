@@ -6,6 +6,8 @@ use serde_json::{json, Value};
 #[serde(deny_unknown_fields)]
 pub struct LabelOptions {
     pub visible: Option<bool>,
+    pub min_zoom: Option<f64>,
+    pub max_zoom: Option<f64>,
     pub size: Option<f64>,
     pub font: Option<String>,
     pub color: Option<String>,
@@ -25,12 +27,52 @@ pub struct LabelOptions {
     pub automatic_placement: Option<bool>,
 }
 
+/// Layer zoom bounds live beside paint/layout, including on label and boundary
+/// children. Validate the merged range before changing either bound.
+pub(crate) fn apply_zoom_range(
+    layer: &mut Value,
+    min_zoom: Option<f64>,
+    max_zoom: Option<f64>,
+) -> Result<(), String> {
+    if min_zoom.is_none() && max_zoom.is_none() {
+        return Ok(());
+    }
+    let bound = |key: &str, requested: Option<f64>, default: f64| {
+        let value = match requested {
+            Some(value) => value,
+            None => match layer.get(key) {
+                Some(value) => value
+                    .as_f64()
+                    .ok_or_else(|| format!("saved {key} must be numeric"))?,
+                None => default,
+            },
+        };
+        if !value.is_finite() || !(0.0..=24.0).contains(&value) {
+            return Err(format!("{key} must be between 0 and 24"));
+        }
+        Ok(value)
+    };
+    let min = bound("minzoom", min_zoom, 0.0)?;
+    let max = bound("maxzoom", max_zoom, 24.0)?;
+    if min > max {
+        return Err("minzoom must not exceed maxzoom, including a retained bound".into());
+    }
+    if let Some(value) = min_zoom {
+        layer["minzoom"] = json!(value);
+    }
+    if let Some(value) = max_zoom {
+        layer["maxzoom"] = json!(value);
+    }
+    Ok(())
+}
+
 pub fn apply_options(
     label: &mut Value,
     options: &LabelOptions,
     snapshot: &Value,
     editor: &Value,
 ) -> Result<(), String> {
+    apply_zoom_range(label, options.min_zoom, options.max_zoom)?;
     if options.size.is_some() && options.numerics.contains_key("text-size") {
         return Err("use size or numeric text-size, not both".into());
     }
@@ -257,6 +299,37 @@ pub fn apply_options(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn label_zoom_preserves_content_and_validates_retained_bounds() {
+        let original = json!({"minzoom":4,"maxzoom":20,
+            "layout":{"text-field":["get","cell"],"text-size":12},
+            "paint":{"text-opacity":0.8},"filter":["has","cell"]});
+        let mut label = original.clone();
+        apply_options(
+            &mut label,
+            &LabelOptions {
+                min_zoom: Some(15.),
+                ..Default::default()
+            },
+            &json!({}),
+            &json!({}),
+        )
+        .unwrap();
+        assert_eq!(label["minzoom"], 15.);
+        for key in ["maxzoom", "layout", "paint", "filter"] {
+            assert_eq!(label[key], original[key]);
+        }
+        for value in [-1., 25., f64::NAN, f64::INFINITY, 21.] {
+            let mut candidate = original.clone();
+            assert!(apply_zoom_range(&mut candidate, Some(value), None).is_err());
+            assert_eq!(candidate, original);
+        }
+        assert!(apply_zoom_range(&mut label, None, Some(14.)).is_err());
+        apply_zoom_range(&mut label, Some(0.), Some(24.)).unwrap();
+        assert_eq!(label["minzoom"], 0.);
+        assert_eq!(label["maxzoom"], 24.);
+    }
 
     #[test]
     fn composed_labels_use_declared_fields_and_line_alignment() {

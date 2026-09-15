@@ -125,13 +125,15 @@ pub const UNRECOVERABLE_REMEDY: &str =
 
 // ── The operation vocabulary ────────────────────────────────────────────
 pub const TRANSFORMER_PROCESSING: &str = "transformer_processing";
+pub const TILE_PROCESSING: &str = "tile_processing";
 pub const SOLAR_PROCESSING: &str = "solar_processing";
 pub const REPORT_EXPORT: &str = "report_export";
 pub const LAYER_READ: &str = "layer_read";
 pub const LAYER_WRITE: &str = "layer_write";
-pub const OPERATIONS: [&str; 5] = [
+pub const OPERATIONS: [&str; 6] = [
     TRANSFORMER_PROCESSING,
     SOLAR_PROCESSING,
+    TILE_PROCESSING,
     REPORT_EXPORT,
     LAYER_READ,
     LAYER_WRITE,
@@ -1067,6 +1069,11 @@ pub fn recover(
         )
     };
     let (project, provenance, operation) = match job.engine {
+        EngineKind::TilesPrepared => {
+            return Err(unrecoverable(
+                "a tiling job must retain its admitted context",
+            ));
+        }
         EngineKind::SolarPrepared => (
             sealed.ok_or_else(|| unrecoverable("its sealed input names no project"))?,
             Provenance::SealedInput,
@@ -2364,6 +2371,6 @@ mod tests {
         assert_eq!(REFUSALS.len(), 9);
         let unique: std::collections::BTreeSet<&str> = REFUSALS.into_iter().collect();
         assert_eq!(unique.len(), REFUSALS.len(), "a code is listed twice");
-        assert_eq!(OPERATIONS.len(), 5);
+        assert_eq!(OPERATIONS.len(), 6);
     }
 }

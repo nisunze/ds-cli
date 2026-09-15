@@ -6,9 +6,20 @@ use crate::{
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 pub const MAX_BYTES: usize = 256 * 1024 * 1024;
+pub mod publication;
 pub enum Command {
-    List { limit: u16, cursor: Option<String> },
-    Download { model: String, revision: String },
+    List {
+        limit: u16,
+        cursor: Option<String>,
+    },
+    Download {
+        model: String,
+        revision: String,
+    },
+    Publish {
+        intent: ds_command_kernel::grid_publication::Intent,
+        bytes: Vec<u8>,
+    },
 }
 pub struct Receipt {
     pub data: Value,
@@ -59,6 +70,10 @@ impl Command {
                 Ok(())
             }
             Self::Download { model, revision } if id(model) && id(revision) => Ok(()),
+            Self::Publish { intent, bytes } => intent
+                .plan(project, bytes)
+                .map(|_| ())
+                .map_err(|message| ClientError::new(ErrorKind::InvalidInput, message)),
             _ => Err(invalid()),
         }
     }
@@ -97,6 +112,9 @@ pub(crate) fn run<T: AuthorizedTransport>(
     command: &Command,
 ) -> Result<Receipt, ClientError> {
     command.validate(project)?;
+    if let Command::Publish { intent, bytes } = command {
+        return publication::run(profile, transport, authority, project, intent, bytes);
+    }
     let payload = match command {
         Command::List { limit, cursor } => {
             json!({"action":"list_models","project_id":project,"page_size":limit,"cursor":cursor.as_deref().unwrap_or(""),"include_deleted":false})
@@ -104,6 +122,7 @@ pub(crate) fn run<T: AuthorizedTransport>(
         Command::Download { model, revision } => {
             json!({"action":"get_version","project_id":project,"model_id":model,"revision_id":revision})
         }
+        Command::Publish { .. } => unreachable!("publication dispatched before reads"),
     };
     let response = transport.grid_models(GridModelsCall {
         profile,
@@ -122,6 +141,7 @@ pub(crate) fn run<T: AuthorizedTransport>(
     }
     let data = &body["data"];
     match command {
+        Command::Publish { .. } => unreachable!("publication dispatched before reads"),
         Command::List { limit, .. } => {
             let rows = if data["models"].is_null() {
                 vec![]
