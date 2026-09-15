@@ -1,9 +1,8 @@
 //! `ds workstation` — inspect, plan, and safely prepare prerequisites.
 //!
-//! Windows lifecycle evidence supports one deliberately narrow mutation path:
-//! package-manager LibreOffice installation and selecting an existing VS Code
-//! Git Bash profile. Everything else remains discovery/planning until equally
-//! strong evidence exists.
+//! Native lifecycle evidence supports the shared Linux tiling toolchain,
+//! platform-package LibreOffice and Pandoc installation, governed reference
+//! data, and selecting an existing VS Code Git Bash profile.
 
 pub mod components;
 pub mod configure;
@@ -32,10 +31,16 @@ pub static DOMAIN: Domain = Domain {
 pub const COMPONENT_ARG: Arg = Arg {
     name: "component",
     kind: ArgKind::Value,
-    value: "<libreoffice|git-bash|rwanda-reference>",
+    value: "<libreoffice|git-bash|rwanda-reference|tippecanoe|pandoc>",
     required: true,
     default: None,
-    choices: &["libreoffice", "git-bash", "rwanda-reference"],
+    choices: &[
+        "libreoffice",
+        "git-bash",
+        "rwanda-reference",
+        "tippecanoe",
+        "pandoc",
+    ],
     summary: "The governed prerequisite or reference component.",
 };
 

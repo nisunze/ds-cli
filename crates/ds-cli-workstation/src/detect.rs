@@ -94,6 +94,14 @@ pub fn find_in_directories(names: &[String], directories: &[PathBuf]) -> Option<
     })
 }
 
+fn named_candidates(name: &str, directories: &[PathBuf]) -> Vec<PathBuf> {
+    directories
+        .iter()
+        .map(|directory| directory.join(name))
+        .filter(|candidate| candidate.is_file())
+        .collect()
+}
+
 pub fn find(component: &Component, platform: Platform) -> Option<PathBuf> {
     find_in_directories(
         component.executables(platform),
@@ -160,7 +168,8 @@ fn conventional_locations(component: &str, platform: Platform) -> Vec<PathBuf> {
 pub fn version(path: &Path, component: &str) -> Result<String, String> {
     let args: &[&str] = match component {
         "libreoffice" => &["--headless", "--version"],
-        "git-bash" | "git" => &["--version"],
+        "git-bash" | "git" | "pandoc" | "tippecanoe" => &["--version"],
+        "pmtiles" => &["version"],
         _ => return Err("this component has no executable version probe".to_string()),
     };
     let mut child = ProcessCommand::new(path)
@@ -227,6 +236,9 @@ pub fn snapshot(component: &Component, platform: Platform, probe_version: bool) 
     if component.id == "rwanda-reference" {
         return crate::policy::reference_component_snapshot(component, platform);
     }
+    if component.id == "tippecanoe" && platform == Platform::Linux {
+        return tiling_snapshot(component);
+    }
     let found = find(component, platform);
     let (version, probe_error) = match (&found, probe_version) {
         (Some(path), true) => match version(path, &component.id) {
@@ -250,6 +262,43 @@ pub fn snapshot(component: &Component, platform: Platform, probe_version: bool) 
         "probe_error": probe_error,
         "suitable": found.as_ref().map(|_| suitable),
         "ownership": crate::policy::install_ownership(platform, &component.id),
+    })
+}
+
+fn tiling_snapshot(component: &Component) -> Value {
+    const TIP_VERSION: &str = "tippecanoe v2.82.0";
+    const PM_VERSION_PREFIX: &str = "pmtiles 1.20.0,";
+    let directories = path_directories(std::env::var_os("PATH"));
+    let tip_candidates = named_candidates("tippecanoe", &directories);
+    let pm_candidates = named_candidates("pmtiles", &directories);
+    let tip = tip_candidates.iter().find_map(|path| {
+        version(path, "tippecanoe")
+            .ok()
+            .filter(|found| found.trim() == TIP_VERSION)
+            .map(|found| (path, found))
+    });
+    let pm = pm_candidates.iter().find_map(|path| {
+        version(path, "pmtiles")
+            .ok()
+            .filter(|found| found.starts_with(PM_VERSION_PREFIX))
+            .map(|found| (path, found))
+    });
+    let suitable = tip.is_some() && pm.is_some();
+    let any_found = !tip_candidates.is_empty() || !pm_candidates.is_empty();
+    json!({
+        "id": component.id,
+        "required": component.required,
+        "purpose": component.purpose,
+        "state": if suitable { "installed" } else if any_found { "variant_unverified" } else { "absent" },
+        "path": tip.as_ref().map(|(path, _)| path.to_string_lossy().into_owned()),
+        "version": tip.as_ref().map(|(_, version)| version),
+        "probe_error": if suitable { Value::Null } else { json!("the kernel requires Tippecanoe 2.82.0 and PMTiles 1.20.0") },
+        "suitable": suitable,
+        "tools": {
+            "tippecanoe": tip.map(|(path, version)| json!({"path": path.to_string_lossy(), "version": version})),
+            "pmtiles": pm.map(|(path, version)| json!({"path": path.to_string_lossy(), "version": version})),
+        },
+        "ownership": crate::policy::install_ownership(Platform::Linux, &component.id),
     })
 }
 

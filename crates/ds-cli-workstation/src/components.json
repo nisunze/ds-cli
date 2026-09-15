@@ -79,8 +79,8 @@
   {
     "id": "tippecanoe",
     "required": false,
-    "purpose": "Build vector tiles locally on Linux so a desktop or server tiles its own project instead of calling the cloud tiler.",
-    "provenance": "The distribution's signed package catalog, or the official felt/tippecanoe source release",
+    "purpose": "Build vector tiles locally on Linux with the shared kernel-pinned Tippecanoe and PMTiles toolchain.",
+    "provenance": "Pinned official felt/tippecanoe source and protomaps/go-pmtiles release with SHA-256 verification",
     "linux_executables": [
       "tippecanoe",
       "tile-join"
@@ -92,8 +92,8 @@
     "windows_executables": [],
     "linux_plan": [
       "Detect an existing tippecanoe first and leave a working installation untouched.",
-      "Install from the distribution package manager using its signed repository metadata, non-interactively.",
-      "Verify by running the installed executable's own version report before recording the receipt."
+      "Build the pinned official Tippecanoe source and download the pinned official PMTiles release after explicit interactive approval.",
+      "Install them as shared host tools, then verify both exact versions before recording the receipt."
     ],
     "macos_plan": [
       "Detect an existing tippecanoe first and leave a working installation untouched.",

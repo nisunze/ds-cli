@@ -15,7 +15,7 @@ pub static COMMAND: Command = Command {
     contract: 1,
     chapter: Chapter::Workstation,
     summary: "Verify discovered executables and governed component receipts.",
-    purpose: "Runs fixed harmless probes. LibreOffice verification requires executable identity/version and a task-owned headless HTML-to-PDF conversion; native Windows additionally reports package registration. Reference data requires its governed receipt and file hashes.",
+    purpose: "Runs fixed harmless probes. The Linux tiling component requires the exact kernel-pinned Tippecanoe and PMTiles pair. LibreOffice requires executable identity/version and a task-owned headless HTML-to-PDF conversion; native Windows additionally reports package registration. Other tools require executable identity/version, and reference data requires its governed receipt and file hashes.",
     effect: Effect::ReadOnly,
     authority: Authority::None,
     execution: Execution::Sync,
@@ -108,6 +108,17 @@ fn verify_component(component: &detect::Component, platform: Platform) -> Value 
             "discovery": snapshot,
             "registration": registration,
             "functional_smoke": smoke.unwrap_or_else(|reason| json!({"passed": false, "reason": reason})),
+            "mutated": false,
+        });
+    }
+    if component.id == "tippecanoe" && platform == Platform::Linux {
+        let verified = snapshot["state"] == "installed" && snapshot["suitable"] == true;
+        return json!({
+            "id": component.id,
+            "verified": verified,
+            "proof": if verified { "kernel_pinned_tippecanoe_and_pmtiles_versions" } else { "not_proven" },
+            "discovery": snapshot,
+            "functional_smoke": null,
             "mutated": false,
         });
     }

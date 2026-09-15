@@ -29,8 +29,8 @@ json` only on the host that owns the component.
 
 ## Apply only the proven exact actions
 
-The native Windows LibreOffice lifecycle is proven. After explicit user intent,
-review the live install descriptor and use its fixed package identity:
+After explicit user intent, review the live install descriptor. Native Windows
+LibreOffice uses its fixed package identity:
 
 ```text
 ds capabilities workstation.install --output json
@@ -40,6 +40,31 @@ ds workstation install --component libreoffice --approval interactive --yes --ou
 Keep the user present for UAC; never bypass it. The command is idempotent,
 verifies registration/version/headless conversion, and records task ownership
 only when it installed the package. LibreOffice needs no separate MCP.
+
+Linux Server and Linux Desktop share one host tiling toolchain. The browser and
+Windows use their declared online tiling route and must not be sent through the
+Linux installer. On Linux, install the kernel-pinned Tippecanoe and PMTiles pair
+through the governed command while the user can answer sudo:
+
+```text
+ds workstation plan --component tippecanoe --platform linux --output json
+ds capabilities workstation.install --output json
+ds workstation install --component tippecanoe --approval interactive --yes --output json
+ds workstation verify --component tippecanoe --output json
+```
+
+For local report finishing, use the same plan/install/verify sequence with
+`pandoc`. On Linux use `--approval interactive`; on Windows the platform may
+show UAC. Linux LibreOffice is also available through this path when absent:
+
+```text
+ds workstation plan --component pandoc --platform current --output json
+ds workstation install --component pandoc --approval interactive --yes --output json
+ds workstation verify --component pandoc --output json
+```
+
+Do not install these during Server publication. Package deployment completes
+first; host prerequisites are a separate idempotent workstation operation.
 
 When a task needs Rwanda village boundaries, the explicit acquisition command
 uses the fixed official NISR 2022 Open Data layer and writes a

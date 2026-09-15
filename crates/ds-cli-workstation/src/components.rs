@@ -46,8 +46,10 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         .map(|component| {
             let local = detect::snapshot(component, platform, false);
             let acquisition_implemented = (component.id == "libreoffice"
-                && platform == Platform::Windows)
-                || component.id == "rwanda-reference";
+                && matches!(platform, Platform::Windows | Platform::Linux))
+                || component.id == "rwanda-reference"
+                || (component.id == "tippecanoe" && platform == Platform::Linux)
+                || component.id == "pandoc";
             json!({
                 "id": component.id,
                 "required": component.required,
@@ -63,7 +65,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
                     "implemented": acquisition_implemented,
                     "availability": if acquisition_implemented { "available" } else { "unavailable" },
                     "explicit_intent_required": true,
-                    "reason": if component.id == "rwanda-reference" { "fixed official NISR source with governed version/license/hash receipt" } else if acquisition_implemented { "native Windows package-manager lifecycle is proven" } else { "this exact acquisition lifecycle remains unproven and fails closed" },
+                    "reason": if component.id == "rwanda-reference" { "fixed official NISR source with governed version/license/hash receipt" } else if component.id == "tippecanoe" && acquisition_implemented { "kernel-pinned shared Tippecanoe and PMTiles installer" } else if acquisition_implemented { "platform package-manager lifecycle is proven" } else { "this exact acquisition lifecycle remains unproven and fails closed" },
                 },
                 "integrations": {
                     "libreoffice_mcp": false,

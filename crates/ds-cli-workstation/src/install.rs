@@ -22,14 +22,14 @@ const RWANDA_LICENSE: &str =
 const APPROVAL_ARG: Arg = Arg::value(
     "approval",
     "<interactive>",
-    "Assert that the user is present to accept native UAC if Windows requests it.",
+    "Assert that the user is present to accept native UAC or sudo if the operating system requests it.",
 )
 .choices(&["interactive"]);
 
 const PACKAGE_MANAGER_MISSING: Refusal = Refusal {
     code: "workstation_package_manager_missing",
-    when: "the proven Windows package manager executable is absent",
-    remedy: "repair winget, then run the reviewed plan again",
+    when: "the platform's proven package manager or fixed installer prerequisite is absent",
+    remedy: "repair the package manager or named prerequisite, then run the reviewed plan again",
 };
 const PACKAGE_MANAGER_FAILED: Refusal = Refusal {
     code: "workstation_package_manager_failed",
@@ -48,7 +48,7 @@ pub static COMMAND: Command = Command {
     contract: 1,
     chapter: Chapter::Workstation,
     summary: "Install one explicitly requested, proven workstation component.",
-    purpose: "Installs the fixed LibreOffice package on native Windows or acquires the fixed official NISR Rwanda Village Boundary 2022 component. Existing verified components remain unchanged; all other acquisition paths fail closed.",
+    purpose: "Installs the shared pinned Linux tiling toolchain, platform-provided LibreOffice or Pandoc, or the fixed official NISR Rwanda Village Boundary 2022 component. Existing verified components remain unchanged and platform-specific routes fail closed.",
     effect: Effect::MachineWrite,
     authority: Authority::None,
     execution: Execution::Sync,
@@ -57,7 +57,17 @@ pub static COMMAND: Command = Command {
     examples: &[
         Example {
             command: "ds workstation install --component libreoffice --approval interactive --yes --output json",
-            note: "Native Windows only; may show UAC and never bypasses it.",
+            note: "Uses the trusted Linux package manager or fixed native Windows package identity; may request sudo or UAC.",
+            runnable: false,
+        },
+        Example {
+            command: "ds workstation install --component tippecanoe --approval interactive --yes --output json",
+            note: "Linux only; installs the kernel-pinned shared Tippecanoe and PMTiles toolchain and may prompt for sudo.",
+            runnable: false,
+        },
+        Example {
+            command: "ds workstation install --component pandoc --approval interactive --yes --output json",
+            note: "Uses the current platform's trusted package manager and may request operating-system approval.",
             runnable: false,
         },
         Example {
@@ -91,10 +101,10 @@ enum Decision {
     AlreadySatisfied,
     InstallLibreOffice,
     AcquireRwandaReference,
-    /// A component the platform's own package catalog provides. Local tiling
-    /// and local document conversion are capabilities a Linux desktop or
-    /// server must own rather than call a cloud service for, so their
-    /// prerequisites install from the distribution's signed metadata.
+    InstallTilingTools,
+    /// A component the platform's own package catalog provides. Local document
+    /// conversion is a capability the host owns, so its prerequisite installs
+    /// from the platform's signed metadata.
     InstallSystemPackage,
 }
 
@@ -103,7 +113,7 @@ enum Decision {
 /// Windows keeps using the deployed tiler.
 fn system_package_name(component: &str, platform: Platform) -> Option<&'static str> {
     match (component, platform) {
-        ("tippecanoe", Platform::Linux | Platform::Macos) => Some("tippecanoe"),
+        ("libreoffice", Platform::Linux) => Some("libreoffice"),
         ("pandoc", _) => Some(if platform == Platform::Windows {
             "JohnMacFarlane.Pandoc"
         } else {
@@ -125,8 +135,15 @@ fn decision(
     if component == "rwanda-reference" {
         return Ok(Decision::AcquireRwandaReference);
     }
+    if component == "tippecanoe" && platform == Platform::Linux {
+        return (approval == Some("interactive"))
+            .then_some(Decision::InstallTilingTools)
+            .ok_or("approval");
+    }
     if system_package_name(component, platform).is_some() {
-        return Ok(Decision::InstallSystemPackage);
+        return (approval == Some("interactive"))
+            .then_some(Decision::InstallSystemPackage)
+            .ok_or("approval");
     }
     if platform != Platform::Windows || component != "libreoffice" {
         return Err("unsupported");
@@ -201,7 +218,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         Err("approval") => {
             return Err(Failure::unauthorized(
                 "workstation_approval_required",
-                "installation may require Windows UAC while the user is present",
+                "installation may require operating-system approval while the user is present",
             )
             .remedy(crate::APPROVAL_REQUIRED.remedy));
         }
@@ -218,6 +235,9 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         Ok(Decision::InstallLibreOffice) => {}
         Ok(Decision::AcquireRwandaReference) => {
             return acquire_rwanda(platform, &before);
+        }
+        Ok(Decision::InstallTilingTools) => {
+            return install_tiling_tools(platform, &before);
         }
         Ok(Decision::InstallSystemPackage) => {
             return install_system_package(component_id, &component, platform, &before);
@@ -321,6 +341,118 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         "smoke": smoke.expect("verified smoke exists"),
         "ownership": policy::install_ownership(platform, component_id),
         "temporary_cleanup": [],
+    }))
+}
+
+fn install_tiling_tools(platform: Platform, before: &Value) -> Result<Value, Failure> {
+    if platform != Platform::Linux {
+        return Err(Failure::unavailable(
+            "workstation_mutation_unsupported",
+            "the shared native tiling toolchain is installed only on Linux; browser and Windows tiling use their declared online route",
+        )
+        .remedy(crate::MUTATION_UNSUPPORTED.remedy));
+    }
+    let component_id = "tippecanoe";
+    let receipt_path =
+        policy::ensure_install_receipt_slot(platform, component_id).map_err(|reason| {
+            Failure::conflict("workstation_receipt_conflict", reason)
+                .remedy(crate::RECEIPT_CONFLICT.remedy)
+        })?;
+    let bash = find_on_path(&["bash"]).ok_or_else(|| {
+        cleanup_empty_receipt_parent(&receipt_path);
+        Failure::unavailable(
+            "workstation_package_manager_missing",
+            "bash was not found on PATH for the fixed Linux tiling installer",
+        )
+        .remedy(PACKAGE_MANAGER_MISSING.remedy)
+    })?;
+    let staging = std::env::temp_dir().join(format!(
+        "ds-workstation-tiling-{}-{}",
+        std::process::id(),
+        unix_seconds()
+    ));
+    std::fs::create_dir(&staging).map_err(|error| {
+        cleanup_empty_receipt_parent(&receipt_path);
+        Failure::failed(
+            "workstation_package_manager_failed",
+            format!("tiling installer staging failed: {}", error.kind()),
+        )
+        .remedy(PACKAGE_MANAGER_FAILED.remedy)
+    })?;
+    let installer = staging.join("install-tiling-tools.sh");
+    let staged = std::fs::write(
+        &installer,
+        include_bytes!("../resources/install-tiling-tools.sh"),
+    );
+    if let Err(error) = staged {
+        let _ = std::fs::remove_dir_all(&staging);
+        cleanup_empty_receipt_parent(&receipt_path);
+        return Err(Failure::failed(
+            "workstation_package_manager_failed",
+            format!("tiling installer staging failed: {}", error.kind()),
+        )
+        .remedy(PACKAGE_MANAGER_FAILED.remedy));
+    }
+    let installer_arg = installer.to_string_lossy().into_owned();
+    let status = run_interactive(&bash, &[&installer_arg], Duration::from_secs(45 * 60));
+    let temporary_cleanup = std::fs::remove_dir_all(&staging).is_ok();
+    let status = status.map_err(|reason| {
+        cleanup_empty_receipt_parent(&receipt_path);
+        Failure::failed("workstation_package_manager_failed", reason)
+            .remedy(PACKAGE_MANAGER_FAILED.remedy)
+            .detail(json!({"temporary_cleanup_completed": temporary_cleanup}))
+    })?;
+    if status != 0 {
+        cleanup_empty_receipt_parent(&receipt_path);
+        return Err(Failure::failed(
+            "workstation_package_manager_failed",
+            format!("the shared tiling installer exited with status {status}"),
+        )
+        .remedy("run the command in an interactive terminal, accept sudo if requested, and inspect the installer diagnostics")
+        .detail(json!({"temporary_cleanup_completed": temporary_cleanup, "exit_code": status})));
+    }
+    let component = detect::component(component_id).expect("catalogue component exists");
+    let after = detect::snapshot(&component, platform, true);
+    let verified = after["state"] == "installed" && after["suitable"] == true;
+    let version = after["version"].as_str().map(str::to_string);
+    let receipt = InstallReceipt {
+        schema: INSTALL_RECEIPT_SCHEMA.to_string(),
+        run_id: format!("{}-{}", unix_seconds(), std::process::id()),
+        component: component_id.to_string(),
+        package_id: "tippecanoe-2.82.0+pmtiles-1.20.0".to_string(),
+        source: "kernel-pinned-shared-installer".to_string(),
+        installed_at_unix_s: unix_seconds(),
+        task_owned: true,
+        preexisting: false,
+        executable: after["path"].as_str().map(str::to_string),
+        version,
+        verified,
+        smoke: if verified { "passed" } else { "failed" }.to_string(),
+    };
+    policy::write_install_receipt(&receipt_path, &receipt).map_err(|reason| {
+        Failure::failed("workstation_receipt_conflict", reason)
+            .remedy(crate::RECEIPT_CONFLICT.remedy)
+            .detail(json!({"installed": true, "temporary_cleanup_completed": temporary_cleanup}))
+    })?;
+    if !verified {
+        return Err(Failure::failed(
+            "workstation_verification_failed",
+            "the shared tiling tools installed but the kernel-pinned Tippecanoe and PMTiles pair was not found",
+        )
+        .remedy(crate::VERIFICATION_FAILED.remedy)
+        .detail(json!({"after": after, "receipt": receipt_path.to_string_lossy(), "temporary_cleanup_completed": temporary_cleanup})));
+    }
+    Ok(json!({
+        "component": component_id,
+        "platform": platform.token(),
+        "action": "installed",
+        "changed": true,
+        "source": "kernel-pinned-shared-installer",
+        "package_id": "tippecanoe-2.82.0+pmtiles-1.20.0",
+        "before": before,
+        "after": after,
+        "ownership": policy::install_ownership(platform, component_id),
+        "temporary_cleanup": {"completed": temporary_cleanup},
     }))
 }
 
@@ -531,10 +663,9 @@ fn linux_package_manager(package: &str) -> Option<(PathBuf, Vec<String>)> {
 
 /// Install a component the platform's own catalog provides.
 ///
-/// An unattended install must never block on a credential prompt, so when this
-/// process is not already root the elevation is probed with `sudo -n` first and
-/// refused with a remedy rather than left waiting on a password nobody will
-/// type.
+/// The caller must declare an interactive user before reaching this function.
+/// Linux keeps stderr and stdin attached so sudo can ask that user for the
+/// credential, while structured command output remains isolated on stdout.
 fn install_system_package(
     component_id: &str,
     component: &detect::Component,
@@ -557,7 +688,7 @@ fn install_system_package(
                 .remedy(crate::RECEIPT_CONFLICT.remedy)
         })?;
 
-    let (executable, args, source) = match platform {
+    let (executable, args, source, interactive) = match platform {
         Platform::Windows => {
             let winget = find_on_path(&["winget.exe", "winget"]).ok_or_else(|| {
                 cleanup_empty_receipt_parent(&receipt_path);
@@ -580,7 +711,7 @@ fn install_system_package(
             .iter()
             .map(|value| (*value).to_string())
             .collect();
-            (winget, args, "windows-package-manager")
+            (winget, args, "windows-package-manager", false)
         }
         Platform::Macos => {
             let brew = find_on_path(&["brew"]).ok_or_else(|| {
@@ -595,6 +726,7 @@ fn install_system_package(
                 brew,
                 vec!["install".to_string(), package.to_string()],
                 "macos-package-manager",
+                false,
             )
         }
         Platform::Linux => {
@@ -606,8 +738,7 @@ fn install_system_package(
                 )
                 .remedy(PACKAGE_MANAGER_MISSING.remedy)
             })?;
-            // Root already holds the rights; anyone else needs elevation that
-            // cannot prompt, or this refuses instead of hanging forever.
+            // Root already holds the rights; anyone else uses interactive sudo.
             let is_root = std::env::var("USER")
                 .map(|user| user == "root")
                 .unwrap_or(false)
@@ -615,7 +746,7 @@ fn install_system_package(
                     .map(|home| home == "/root")
                     .unwrap_or(false);
             if is_root {
-                (manager, args, "linux-package-manager")
+                (manager, args, "linux-package-manager", false)
             } else {
                 let sudo = find_on_path(&["sudo"]).ok_or_else(|| {
                     cleanup_empty_receipt_parent(&receipt_path);
@@ -625,25 +756,21 @@ fn install_system_package(
                     )
                     .remedy("run as root, or install sudo")
                 })?;
-                if run_quiet(&sudo, &["-n", "true"], Duration::from_secs(15)) != Ok(0) {
-                    cleanup_empty_receipt_parent(&receipt_path);
-                    return Err(Failure::failed(
-                        "workstation_package_manager_failed",
-                        "sudo requires a password, and an unattended install must not wait for one",
-                    )
-                    .remedy("grant passwordless sudo for the package manager, or run this as root")
-                    .detail(json!({"package_id": package, "component": component_id})));
-                }
                 let mut elevated = vec![manager.to_string_lossy().to_string()];
                 elevated.append(&mut args);
-                (sudo, elevated, "linux-package-manager")
+                (sudo, elevated, "linux-package-manager", true)
             }
         }
     };
 
     let borrowed: Vec<&str> = args.iter().map(String::as_str).collect();
+    let execute = if interactive {
+        run_interactive
+    } else {
+        run_quiet
+    };
     let status =
-        run_quiet(&executable, &borrowed, Duration::from_secs(30 * 60)).map_err(|reason| {
+        execute(&executable, &borrowed, Duration::from_secs(30 * 60)).map_err(|reason| {
             cleanup_empty_receipt_parent(&receipt_path);
             Failure::failed("workstation_package_manager_failed", reason)
                 .remedy(PACKAGE_MANAGER_FAILED.remedy)
@@ -738,6 +865,34 @@ fn run_quiet(executable: &Path, args: &[&str], timeout: Duration) -> Result<i32,
     }
 }
 
+fn run_interactive(executable: &Path, args: &[&str], timeout: Duration) -> Result<i32, String> {
+    let mut child = ProcessCommand::new(executable)
+        .args(args)
+        .stdin(Stdio::inherit())
+        .stdout(Stdio::null())
+        .stderr(Stdio::inherit())
+        .spawn()
+        .map_err(|error| format!("installer could not start: {}", error.kind()))?;
+    let deadline = Instant::now() + timeout;
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => return Ok(status.code().unwrap_or(-1)),
+            Ok(None) if Instant::now() < deadline => {
+                std::thread::sleep(Duration::from_millis(100));
+            }
+            Ok(None) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(format!("installer timed out after {}s", timeout.as_secs()));
+            }
+            Err(error) => {
+                let _ = child.kill();
+                return Err(format!("installer wait failed: {}", error.kind()));
+            }
+        }
+    }
+}
+
 pub(crate) fn package_registered(winget: &Path) -> bool {
     run_quiet(
         winget,
@@ -793,17 +948,23 @@ mod tests {
             decision(Platform::Linux, "libreoffice", "installed", None),
             Ok(Decision::AlreadySatisfied)
         );
-        // Local tiling is a Linux capability: a desktop or server installs
-        // tippecanoe itself instead of calling the deployed tiler. No approval
-        // flag is required — the distribution's own signed catalog is the
-        // source, and nothing prompts.
+        // Local tiling is a Linux capability shared by Desktop and Server. The
+        // approval flag records that a user is present if Linux requests sudo.
+        assert_eq!(
+            decision(Platform::Linux, "tippecanoe", "absent", Some("interactive")),
+            Ok(Decision::InstallTilingTools)
+        );
         assert_eq!(
             decision(Platform::Linux, "tippecanoe", "absent", None),
+            Err("approval")
+        );
+        assert_eq!(
+            decision(Platform::Linux, "pandoc", "absent", Some("interactive")),
             Ok(Decision::InstallSystemPackage)
         );
         assert_eq!(
             decision(Platform::Linux, "pandoc", "absent", None),
-            Ok(Decision::InstallSystemPackage)
+            Err("approval")
         );
         // tippecanoe has no governed Windows distribution, so it is skipped
         // there by design; pandoc does, so Windows may install it.
@@ -812,8 +973,12 @@ mod tests {
             Err("unsupported")
         );
         assert_eq!(
-            decision(Platform::Windows, "pandoc", "absent", None),
+            decision(Platform::Windows, "pandoc", "absent", Some("interactive")),
             Ok(Decision::InstallSystemPackage)
+        );
+        assert_eq!(
+            decision(Platform::Windows, "pandoc", "absent", None),
+            Err("approval")
         );
         // An existing installation is still left untouched.
         assert_eq!(
@@ -835,7 +1000,7 @@ mod tests {
                 "absent",
                 Some("interactive")
             ),
-            Err("unsupported")
+            Ok(Decision::InstallSystemPackage)
         );
         assert_eq!(
             decision(Platform::Windows, "libreoffice", "absent", None),

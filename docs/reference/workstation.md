@@ -13,7 +13,7 @@ paths. All other acquisition and settings paths fail closed.
 | `status` | discovery | PATH executables, bounded version probes, receipt state, and separate shell facts |
 | `components` | discovery | purpose, provenance, local state, and acquisition policy |
 | `plan` | proposal | ordered policy and authorization boundaries; `mutated` is always false |
-| `install` | machine write | Windows LibreOffice, the governed official NISR Rwanda component, or a system-provided component (`tippecanoe`, `pandoc`) |
+| `install` | machine write | platform LibreOffice/Pandoc, governed NISR data, or the kernel-pinned shared Linux Tippecanoe/PMTiles pair |
 | `configure` | machine write | existing suitable Git Bash profile selected as VS Code's Windows default only |
 | `verify` | read-only | executable/version, LibreOffice headless conversion, or receipt/file hashes |
 
@@ -28,24 +28,24 @@ paths. All other acquisition and settings paths fail closed.
   simplification and commits source-precision GeoJSON only with source,
   version, license, ownership, and matching SHA-256 receipt.
 
-- `tippecanoe` — Linux/macOS. Local vector-tile generation, so a Linux desktop
-  or server tiles its own project instead of calling the deployed tiler. There
-  is no governed Windows distribution, so Windows skips it and keeps using the
-  deployed tiler.
+- `tippecanoe` — the shared Linux Tippecanoe 2.82.0 and PMTiles 1.20.0 pair.
+  Linux Desktop and Server consume the same host commands. Browser and Windows
+  keep their declared online tiling route.
 - `pandoc` — local document conversion, so report finishing does not depend on a
   network service. Available on Linux, macOS and Windows.
 
-Both install from the platform's own signed package catalog, non-interactively.
-On Linux the first of `apt-get`, `dnf`, `zypper` or `pacman` found on PATH is
-used. When the process is not root, elevation is probed with `sudo -n` first and
-refused with a remedy rather than left waiting on a password no unattended run
-will ever answer. Verification is the installed executable's own version report:
-a package manager that exits zero while the executable stays undiscoverable is a
+Pandoc and Linux LibreOffice install from the platform's own signed package
+catalog. On Linux the first of `apt-get`, `dnf`, `zypper` or `pacman` found on
+PATH is used. The shared tiling installer verifies pinned official source and
+binary digests, builds with at most two workers, and installs both commands for
+the host. When the process is not root, the user must be present for sudo.
+Verification uses each installed executable's own version report; a package
+manager or installer that exits zero while the executable stays unsuitable is a
 failed install.
 
 ```bash
-ds workstation install --component tippecanoe --yes
-ds workstation install --component pandoc --yes
+ds workstation install --component tippecanoe --approval interactive --yes
+ds workstation install --component pandoc --approval interactive --yes
 ```
 
 `DS_WORKSTATION_COMPONENT_ROOT` may point verification at a staged governed

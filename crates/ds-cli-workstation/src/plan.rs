@@ -130,8 +130,11 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         component.plan(platform).to_vec()
     };
     let implemented = (intent == "install"
-        && ((component_id == "libreoffice" && platform == Platform::Windows)
-            || component_id == "rwanda-reference"))
+        && ((component_id == "libreoffice"
+            && matches!(platform, Platform::Windows | Platform::Linux))
+            || component_id == "rwanda-reference"
+            || (component_id == "tippecanoe" && platform == Platform::Linux)
+            || component_id == "pandoc"))
         || (intent == "configure" && target == Some("vscode"));
     Ok(json!({
         "component": component.id,
@@ -151,6 +154,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             "task_owned_cleanup_only": true,
             "rwanda_download_requires_explicit_request_and_receipt": component_id == "rwanda-reference",
             "windows_libreoffice_lifecycle_proven": component_id == "libreoffice" && platform == Platform::Windows,
+            "shared_linux_tiling_toolchain": component_id == "tippecanoe" && platform == Platform::Linux,
             "libreoffice_mcp_required": false,
         },
         "evidence": if component_id == "libreoffice" && platform == Platform::Windows { json!({

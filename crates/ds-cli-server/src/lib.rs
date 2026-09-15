@@ -447,7 +447,7 @@ pub static TILE_SUBMIT: Command = command(
     SUBMIT_REFUSALS,
     &[Example {
         command: "ds server tile submit --input tiles.prepared.json --key tiles-001",
-        note: "Compute uses bundled Tippecanoe on the server; status/result/cancel use the returned job id. The result is local until separately published.",
+        note: "Linux compute uses the kernel-pinned shared host Tippecanoe and PMTiles toolchain; status/result/cancel use the returned job id. The result is local until separately published.",
         runnable: false,
     }],
 );

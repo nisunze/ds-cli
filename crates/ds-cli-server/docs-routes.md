@@ -444,11 +444,16 @@ adapter. The existing job status, input, cancellation and result routes apply.
 The same key under different projects identifies different jobs. A changed
 input under the same project/key is refused. Recovery reads retained input
 bytes, never a client path or an active UI selection. Execution uses the
-kernel-owned `ds-tile-runtime`, the release's `tiling-tools` directory and
-`tile-cache` below the server state directory. Tool versions are kernel-pinned.
+kernel-owned `ds-tile-runtime`, the Linux host's shared Tippecanoe and PMTiles
+commands, and `tile-cache` below the server state directory. Tool versions are
+kernel-pinned and `ds workstation verify --component tippecanoe` proves the
+compatible pair. The Server package does not own or bundle those general host
+tools.
 
 `ds.tiles.result/v1` reports `ready_local` with the verified artifact receipt
 and PMTiles bytes, or `empty_local` for genuinely empty prepared input.
 Publication remains a separate governed operation; local completion never
-claims online synchronization. UI project source acquisition and publication
-must be integrated before changing automatic `tile.generate` placement.
+claims online synchronization. Automatic placement must preserve the host
+split: Linux Server and Linux Desktop use this local path, while browser and
+Windows requests use the online container path. UI project source acquisition
+and publication must be integrated before enabling that automatic routing.
