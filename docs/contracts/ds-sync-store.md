@@ -26,8 +26,8 @@ transition returns and nothing else; no host re-decides a state.
 
 | Row | Key | Fields |
 |---|---|---|
-| `artifact` | scope + identity | `scope {project | personal}`, `engine`, `operation`, `variant`, `sha256`, `size_bytes`, `produced_at_ms`, `base_revision?`, `engine_release`, `engine_build_manifest_sha256?`, `bytes_locator` (host-opaque), `readable`, `state` (`held | uploading | published | conflict | refused`), `state_reason?`, `replay_key` (idempotency across attempts), `updated_at_ms` |
-| `head` | scope + identity | `revision`, `sha256`, `published_at_ms`, `read_at_ms` |
+| `artifact` | scope + identity | `scope {project | personal}`, `engine`, `operation`, `variant`, `sha256`, `size_bytes`, `produced_at_ms`, `base_revision?` (output-head OCC identity), `input_base_fingerprint?` (source-input digest for a derived artifact), `engine_release`, `engine_build_manifest_sha256?`, `bytes_locator` (host-opaque), `readable`, `state` (`held | uploading | published | conflict | refused`), `state_reason?`, `replay_key` (idempotency across attempts), `updated_at_ms` |
+| `head` | scope + identity | `revision` (output-head OCC identity), `head_revision` (monotonic counter), `input_base_fingerprint?` (sealed source-input digest), `sha256`, `published_at_ms`, `read_at_ms` |
 | `grant` | scope + `grant_id` | `install_id`, `engines[{name, release, manifest_sha256?}]`, `expires_at_ms`, `raw` (the signed document, opaque) |
 | `receipt` | `receipt_id` | `action`, identity, `outcome`, `detail?`, `work_id?`, `head_revision?`, `committed_bytes?`, `at_ms` — append-only evidence |
 | `lease` | scope | `worker_id`, `taken_at_ms`, `expires_at_ms` |

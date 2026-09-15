@@ -37,6 +37,9 @@ pub struct LocalRow {
     pub size_bytes: u64,
     pub produced_at_ms: u64,
     pub base_revision: Option<String>,
+    /// Source inputs used by a derived artifact, separate from the output
+    /// head revision in `base_revision`.
+    pub input_base_fingerprint: Option<String>,
     pub readable: bool,
     pub engine_release: String,
     /// The exact `ds.engine-build/v1` manifest digest of the build that
@@ -77,6 +80,7 @@ pub struct RemoteRow {
     /// OCC/head identity, not the monotonic counter beside it.
     pub revision: String,
     pub head_revision: i64,
+    pub input_base_fingerprint: Option<String>,
     pub sha256: String,
     pub published_at_ms: u64,
     pub outputs: Vec<RemoteOutput>,
@@ -301,9 +305,7 @@ pub(crate) fn kernel_local(row: &LocalRow) -> sync::LocalArtifact {
         size_bytes: row.size_bytes,
         produced_at_ms: row.produced_at_ms,
         base_revision: row.base_revision.clone(),
-        input_base_fingerprint: (row.grant_engine == "ds-network-reporter")
-            .then(|| row.base_revision.clone())
-            .flatten(),
+        input_base_fingerprint: row.input_base_fingerprint.clone(),
         readable: row.readable,
         engine_release: row.engine_release.clone(),
     }
@@ -313,6 +315,7 @@ pub(crate) fn kernel_remote(row: &RemoteRow) -> sync::RemoteHead {
     sync::RemoteHead {
         identity: row.identity.clone(),
         revision: row.revision.clone(),
+        input_base_fingerprint: row.input_base_fingerprint.clone(),
         sha256: row.sha256.clone(),
         published_at_ms: row.published_at_ms,
     }
@@ -381,21 +384,16 @@ pub fn remote_row(head: &Value) -> RemoteRow {
         .get("head_revision")
         .and_then(Value::as_i64)
         .unwrap_or_default();
-    let fingerprint = text(head, "input_base_fingerprint");
+    let fingerprint = Some(text(head, "input_base_fingerprint")).filter(|value| !value.is_empty());
     RemoteRow {
         identity: sync::Identity {
             engine: text(head, "engine"),
             operation: text(head, "operation"),
             variant: text(head, "variant"),
         },
-        // The fingerprint is the fence the server checks at publish. A head
-        // that carries none falls back to its own monotonic counter, which is
-        // the only other identity it has.
-        revision: match fingerprint.is_empty() {
-            false => fingerprint,
-            true => format!("head-{head_revision}"),
-        },
+        revision: format!("head-{head_revision}"),
         head_revision,
+        input_base_fingerprint: fingerprint,
         sha256: inventory_digest(&mut pairs),
         published_at_ms: server_time_ms(&text(head, "updated_at")).unwrap_or_default(),
         outputs,
@@ -490,6 +488,7 @@ pub fn store_row(
         size_bytes: row.size_bytes,
         produced_at_ms: row.produced_at_ms,
         base_revision: row.base_revision.clone(),
+        input_base_fingerprint: row.input_base_fingerprint.clone(),
         engine_release: row.engine_release.clone(),
         engine_build_manifest_sha256: Some(row.engine_build_manifest_sha256.clone())
             .filter(|digest| !digest.is_empty()),
@@ -524,6 +523,14 @@ pub fn local_row_from_store(row: &store::ArtifactRow) -> LocalRow {
         size_bytes: row.size_bytes,
         produced_at_ms: row.produced_at_ms,
         base_revision: row.base_revision.clone(),
+        input_base_fingerprint: row.input_base_fingerprint.clone().or_else(|| {
+            // Additive migration for report rows written before the store
+            // gained the explicit source-input field.
+            (row.grant_engine.as_deref() == Some("ds-network-reporter")
+                || row.identity.engine == "network_reporter")
+                .then(|| row.base_revision.clone())
+                .flatten()
+        }),
         readable: row.readable,
         engine_release: row.engine_release.clone(),
         engine_build_manifest_sha256: row.engine_build_manifest_sha256.clone().unwrap_or_default(),
@@ -552,6 +559,7 @@ pub fn remote_row_from_head(head: &store::HeadRow) -> RemoteRow {
         identity: head.identity.clone(),
         revision: head.revision.clone(),
         head_revision: head.head_revision,
+        input_base_fingerprint: head.input_base_fingerprint.clone(),
         sha256: head.sha256.clone(),
         published_at_ms: head.published_at_ms,
         outputs: head
@@ -572,6 +580,7 @@ pub fn head_from_remote(project: &str, head: &RemoteRow) -> store::HeadRow {
         identity: head.identity.clone(),
         revision: head.revision.clone(),
         head_revision: head.head_revision,
+        input_base_fingerprint: head.input_base_fingerprint.clone(),
         sha256: head.sha256.clone(),
         published_at_ms: head.published_at_ms,
         outputs: head

@@ -115,6 +115,7 @@ fn solar_row() -> LocalRow {
         size_bytes: output.size_bytes,
         produced_at_ms: 1_000,
         base_revision: Some(fakes::FINGERPRINT.into()),
+        input_base_fingerprint: None,
         readable: true,
         engine_release: "ds-solar-engine@1.2.3".into(),
         engine_build_manifest_sha256: "a".repeat(64),
@@ -357,6 +358,28 @@ fn open_upload_publish_commits_exactly_once_and_replan_is_in_sync() {
         .find(|receipt| receipt.action == "upload")
         .expect("an upload receipt");
     assert_eq!(upload.head_revision, Some(8));
+    assert_eq!(upload.revision.as_deref(), Some("head-8"));
+    let stored = harness
+        .store
+        .lock()
+        .unwrap()
+        .snapshot(
+            &fence(),
+            &ds_sync_runtime::store::Scope::Project {
+                project: PROJECT.into(),
+            },
+        )
+        .expect("stored publication");
+    assert_eq!(
+        stored.artifacts[0].input_base_fingerprint.as_deref(),
+        Some(fakes::FINGERPRINT)
+    );
+    assert_eq!(stored.artifacts[0].base_revision, None);
+    assert_eq!(stored.heads[0].revision, "head-8");
+    assert_eq!(
+        stored.heads[0].input_base_fingerprint.as_deref(),
+        Some(fakes::FINGERPRINT)
+    );
     assert_eq!(outcome.replanned.summary.in_sync, 1);
     assert_eq!(outcome.replanned.summary.uploads, 0);
 }
@@ -1208,6 +1231,11 @@ fn head_inventory_crosses_the_services_hundred_row_page_without_truncation() {
     assert_eq!(heads.len(), 101);
     assert_eq!(heads.first().unwrap().identity.operation, "export-tx_0");
     assert_eq!(heads.last().unwrap().identity.operation, "export-tx_100");
+    assert_eq!(heads[0].revision, "head-3");
+    assert_eq!(
+        heads[0].input_base_fingerprint.as_deref(),
+        Some(fakes::FINGERPRINT)
+    );
     assert_eq!(fakes::lock(&h.world).head_reads, 2);
 }
 
@@ -1268,7 +1296,7 @@ fn a_changed_source_reopens_a_held_grant_before_publishing_new_reports() {
         .snapshot_base
         .insert("export-tx_1".into(), "new-source".into());
     let mut next = local_row(b"next output");
-    next.base_revision = Some("new-source".into());
+    next.input_base_fingerprint = Some("new-source".into());
     next.client_publish_id = "publish-22222222-2222-4222-8222-222222222222".into();
     let result = h.run(vec![next], sync::Trigger::LocalChange);
     assert_eq!(

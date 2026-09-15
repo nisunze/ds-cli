@@ -62,8 +62,10 @@ pub struct VersionFacts {
     pub unversioned: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reason: Option<String>,
-    /// Has the SAVED state moved since the lead was cut?
-    pub changed_since_version: bool,
+    /// Has the SAVED state moved since the version in force was cut? There is
+    /// no such comparison before the first version, so unversioned rows carry
+    /// `null` rather than a fabricated movement signal.
+    pub changed_since_version: Option<bool>,
     /// May this row carry server-assigned vN versions at all
     /// (`design::row_allows`)?
     pub versionable: bool,
@@ -251,10 +253,10 @@ fn row_name(row: Option<&Value>) -> String {
 
 /// Has this transformer's SAVED state moved since the lead was cut?
 ///
-/// Unversioned ⇒ true (there is nothing to fall back to). Otherwise the save
-/// counter is compared with the one the lead froze; a backend that reports
-/// neither number cannot prove the document is unchanged, so it reports
-/// changed.
+/// This predicate is evaluated only after a version exists. The public facts
+/// return `null` for an unversioned row. Otherwise the save counter is compared
+/// with the one the lead froze; a backend that reports neither number cannot
+/// prove the document is unchanged, so it reports changed.
 pub fn changed_since_version(row: Option<&Value>) -> bool {
     let metadata = version_metadata(row);
     let lead =
@@ -302,7 +304,7 @@ pub fn facts(row: Option<&Value>, name_override: Option<&str>) -> VersionFacts {
         restored: view.restored,
         unversioned: view.unversioned,
         reason: view.reason,
-        changed_since_version: changed_since_version(row),
+        changed_since_version: (!view.unversioned).then(|| changed_since_version(row)),
     }
 }
 
@@ -331,7 +333,7 @@ pub fn prompt(
         PromptDecision::Open {
             reason: OpenReason::Unversionable,
         }
-    } else if !facts.changed_since_version {
+    } else if facts.changed_since_version == Some(false) {
         PromptDecision::Open {
             reason: OpenReason::Unchanged,
         }

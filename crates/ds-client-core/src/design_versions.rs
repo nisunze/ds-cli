@@ -1,7 +1,7 @@
 //! Authenticated transport adapter only. The complete version workflow is kernel-owned.
 use crate::{
     authorized::{self, Authority},
-    AuthorizedTransport, ClientError, ClientProfile, DesignVersionsCall, ErrorKind,
+    AuthorizedTransport, ClientError, ClientProfile, DesignVersionsCall, ErrorKind, ServiceRefusal,
     TransportResponse,
 };
 use ds_command_kernel::design_versions_headless::{self as owner, Source};
@@ -15,6 +15,12 @@ fn decode(response: TransportResponse) -> Result<Value, ClientError> {
         return Err(bad("version response exceeds 64 MiB"));
     }
     if response.status != 200 {
+        if response.status == 404 {
+            return Err(ClientError::new(
+                ErrorKind::ResourceNotFound,
+                "the requested published design version does not exist",
+            ));
+        }
         return Err(authorized::classify_tile_error(response.status));
     }
     let value: Value =
@@ -80,6 +86,28 @@ impl<T: AuthorizedTransport> Source for AuthenticatedSource<'_, T> {
             "server_version":observed.metadata().version(),"content_digest":observed.metadata().content_digest()}),
         )
     }
+    fn create(
+        &mut self,
+        project: &str,
+        transformer: &str,
+        reason: &str,
+        idempotency_key: &str,
+    ) -> Result<Value, ClientError> {
+        let payload = json!({
+            "action": "create_version",
+            "project_id": project,
+            "object": {"kind": "lv_transformer", "id": transformer},
+            "version": {
+                "reason": reason,
+                "idempotency_key": idempotency_key,
+            },
+        });
+        decode(self.transport.design_versions(DesignVersionsCall {
+            profile: self.profile,
+            authority: self.authority.call(),
+            payload,
+        })?)
+    }
 }
 pub(crate) fn run<T: AuthorizedTransport>(
     profile: &ClientProfile,
@@ -107,6 +135,20 @@ pub(crate) fn run<T: AuthorizedTransport>(
     )
     .map_err(|e| match e {
         owner::Error::Source(e) => e,
+        owner::Error::VersionNotFound {
+            transformer,
+            requested,
+            latest,
+        } => {
+            let message = format!(
+                "transformer {transformer} has no published {requested}; latest is v{latest}"
+            );
+            ClientError::with_service_refusal(
+                ErrorKind::ResourceNotFound,
+                "the requested published design version does not exist",
+                ServiceRefusal::new(404, Some("version_not_found"), Some(&message)),
+            )
+        }
         owner::Error::Invalid(message) if message.starts_with("playback_unavailable") => {
             ClientError::new(
                 ErrorKind::InvalidInput,

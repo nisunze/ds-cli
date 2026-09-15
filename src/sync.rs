@@ -135,6 +135,10 @@ pub struct RemoteHead {
     #[serde(flatten)]
     pub identity: Identity,
     pub revision: String,
+    /// The source-input digest sealed by this head. It is not the head's OCC
+    /// revision and must never be used as one.
+    #[serde(default)]
+    pub input_base_fingerprint: Option<String>,
     pub sha256: String,
     pub published_at_ms: u64,
 }
@@ -627,6 +631,7 @@ mod tests {
         RemoteHead {
             identity: ident(op),
             revision: revision.into(),
+            input_base_fingerprint: None,
             sha256: sha.into(),
             published_at_ms: 900,
         }

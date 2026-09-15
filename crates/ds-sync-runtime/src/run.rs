@@ -520,7 +520,7 @@ fn upload(
         // the next trigger never pays for a re-read to learn what this run did.
         let mut receipt = Receipt::new("upload", outcome.state.clone()).about(identity);
         if outcome.state == "published" {
-            receipt.revision = Some(published_revision(row, grant, outcome.head_revision));
+            receipt.revision = Some(published_revision(outcome.head_revision));
         }
         receipt.grant_id = Some(grant.grant_id.clone());
         receipt.work_id = outcome.work_id;
@@ -564,17 +564,10 @@ pub fn declaration(row: &LocalRow, grant: &HeldGrant) -> Value {
     })
 }
 
-/// The head identity that stands after a publish: what the snapshot pinned,
-/// else the base the result was computed on, else the record's own counter.
-/// ds-brain compares the pinned value field for field, so nothing else is
-/// derived locally.
-fn published_revision(row: &LocalRow, grant: &HeldGrant, head_revision: Option<i64>) -> String {
-    grant
-        .snapshot_base
-        .get(&row.identity.operation)
-        .cloned()
-        .or_else(|| row.base_revision.clone())
-        .unwrap_or_else(|| format!("head-{}", head_revision.unwrap_or_default()))
+/// The output head identity that stands after a publish. The source-input
+/// fingerprint remains a separate field on the artifact and head rows.
+fn published_revision(head_revision: Option<i64>) -> String {
+    format!("head-{}", head_revision.unwrap_or_default())
 }
 
 /// Read one head's outputs into the local store. Downloads need no grant.

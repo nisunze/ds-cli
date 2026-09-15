@@ -123,7 +123,11 @@ fn profile_input(lane: DeploymentLane) -> ClientProfileInput {
         ],
         design_versions_method: "POST".into(),
         design_versions_path: "/api/v1/design/versions".into(),
-        design_versions_actions: vec!["list_versions".into(), "get_version".into()],
+        design_versions_actions: vec![
+            "list_versions".into(),
+            "get_version".into(),
+            "create_version".into(),
+        ],
         design_selections_method: "POST".to_owned(),
         design_selections_path: "/api/v1/design/selections".to_owned(),
         design_selections_actions: vec![
@@ -1408,10 +1412,10 @@ fn catalog_profile_is_closed_lane_bound_and_deterministic() {
     // the full profile authority.
     assert_eq!(
         stable.profile_sha256(),
-        "3cc4ef49cfde2f362e0b44d6123b556fc3f34107a7db5742fdd89bb03e10cade"
+        "5773df53261e74ba9b1c8bd3439e75fdbceff31ab6a593d7c06612bd15aded83"
     );
     // A profile is a digest over the closed vocabulary, so adding one route is
-    // Profile v23 adds the closed read-only design-version route.
+    // Profile v24 adds headless creation to the closed design-version route.
     assert_ne!(
         stable.profile_sha256(),
         "13cfb064591901445883a36e920417994766ac4b013090f861038dec10855155"
@@ -1524,7 +1528,11 @@ fn catalog_profile_is_closed_lane_bound_and_deterministic() {
         ],
         design_versions_method: "POST".into(),
         design_versions_path: "/api/v1/design/versions".into(),
-        design_versions_actions: vec!["list_versions".into(), "get_version".into()],
+        design_versions_actions: vec![
+            "list_versions".into(),
+            "get_version".into(),
+            "create_version".into(),
+        ],
         design_selections_method: "POST".to_owned(),
         design_selections_path: "/api/v1/design/selections".to_owned(),
         design_selections_actions: vec![
@@ -7401,6 +7409,10 @@ fn headless_version_comparison_uses_pinned_snapshots_and_has_no_geometry_payload
     let mut client = signed_in(transport.clone(), MemoryStore::default());
     let row = |id: &str| serde_json::json!({"project_id":"project_a","object":{"kind":"lv_transformer","id":"tr"},"version_id":id,"playback_available":true});
     let snapshot = |id: &str, n: i64| serde_json::json!({"version":row(id),"snapshot":{"schema":"ds.transformer-version-snapshot/v1","layers":{"lv_poles":{"type":"FeatureCollection","features":[{"type":"Feature","id":"P1","geometry":{"type":"Point","coordinates":[30,-2]},"properties":{"height":n}}]}}}});
+    transport.push_design_versions(
+        200,
+        &selection_envelope(serde_json::json!({"versions":[row("v2"),row("v1")]})),
+    );
     transport.push_design_versions(200, &selection_envelope(snapshot("v1", 9)));
     transport.push_design_versions(200, &selection_envelope(snapshot("v2", 11)));
     let result = client
@@ -7421,6 +7433,50 @@ fn headless_version_comparison_uses_pinned_snapshots_and_has_no_geometry_payload
         .is_none());
     assert!(result["comparison"]["layers"][0].get("details").is_none());
     assert_ne!(result["from_snapshot_digest"], result["to_snapshot_digest"]);
+    transport.push_design_versions(200, &selection_envelope(serde_json::json!({"versions":[]})));
+    let missing = client
+        .design_versions(
+            "project_a",
+            &Command::Compare {
+                transformer: "tr".into(),
+                from: "v1".into(),
+                to: "head".into(),
+            },
+            NOW + 1,
+        )
+        .unwrap_err();
+    assert_eq!(missing.kind(), ds_client_core::ErrorKind::ResourceNotFound);
+    let refusal = missing.service_refusal().expect("typed version refusal");
+    assert_eq!(refusal.code(), Some("version_not_found"));
+    assert!(refusal.message().is_some_and(|message| {
+        message.contains("transformer tr")
+            && message.contains("published v1")
+            && message.contains("latest is v0")
+    }));
+    let created = serde_json::json!({
+        "project_id":"project_a",
+        "object":{"kind":"lv_transformer","id":"tr"},
+        "version_id":"v1",
+        "version":1,
+        "playback_available":true,
+    });
+    transport.push_design_versions(
+        200,
+        &selection_envelope(serde_json::json!({"version":created})),
+    );
+    let begun = client
+        .design_versions(
+            "project_a",
+            &Command::Begin {
+                transformer: "tr".into(),
+                reason: "before field review".into(),
+                idempotency_key: "version-request-1".into(),
+            },
+            NOW + 1,
+        )
+        .unwrap();
+    assert_eq!(begun["version"]["version_id"], "v1");
+    assert_eq!(begun["mutated"], true);
     transport.push_design_versions(
         200,
         &selection_envelope(serde_json::json!({"versions":[row("v1")]})),

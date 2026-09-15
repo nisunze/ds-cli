@@ -105,6 +105,10 @@ pub struct ArtifactRow {
     pub produced_at_ms: u64,
     #[serde(default)]
     pub base_revision: Option<String>,
+    /// The source-input digest that produced this derived publication. This
+    /// is independent of the output head revision used for OCC.
+    #[serde(default)]
+    pub input_base_fingerprint: Option<String>,
     pub engine_release: String,
     #[serde(default)]
     pub engine_build_manifest_sha256: Option<String>,
@@ -160,6 +164,10 @@ pub struct HeadRow {
     pub revision: String,
     #[serde(default)]
     pub head_revision: i64,
+    /// The source-input digest sealed by this published head, when the engine
+    /// derives outputs from an independently versioned source model.
+    #[serde(default)]
+    pub input_base_fingerprint: Option<String>,
     pub sha256: String,
     pub published_at_ms: u64,
     #[serde(default)]
@@ -618,6 +626,7 @@ pub fn apply(request: &Request) -> Result<Transition, String> {
                                 identity: identity.clone(),
                                 revision: revision.clone(),
                                 head_revision: receipt.head_counter.unwrap_or_default(),
+                                input_base_fingerprint: row.input_base_fingerprint.clone(),
                                 sha256: receipt
                                     .head_sha256
                                     .clone()
@@ -839,7 +848,9 @@ fn handoff_one(snapshot: &Snapshot, handoff: &LegacyHandoff, now: u64, t: &mut T
         sha256: inventory_digest(&pairs),
         size_bytes: outputs.iter().map(|output| output.size_bytes).sum(),
         produced_at_ms: legacy.created_at,
-        base_revision: Some(legacy.input_base_fingerprint.clone()).filter(|v| !v.is_empty()),
+        base_revision: None,
+        input_base_fingerprint: Some(legacy.input_base_fingerprint.clone())
+            .filter(|v| !v.is_empty()),
         engine_release: legacy.engine_version.clone(),
         engine_build_manifest_sha256: legacy.engine_build_manifest_sha256.clone(),
         grant_engine: None,
@@ -933,6 +944,7 @@ mod tests {
             size_bytes: 10,
             produced_at_ms: 1,
             base_revision: None,
+            input_base_fingerprint: None,
             engine_release: "r".into(),
             engine_build_manifest_sha256: None,
             grant_engine: None,
@@ -1109,6 +1121,7 @@ mod tests {
             identity: ident("a"),
             revision: "r1".into(),
             head_revision: 4,
+            input_base_fingerprint: Some("source-1".into()),
             sha256: SHA.into(),
             published_at_ms: 5,
             outputs: vec![],
@@ -1334,7 +1347,8 @@ mod tests {
         );
         assert_eq!(rows[0].bytes_locator, "batch:pub-report-1");
         assert_eq!(rows[0].replay_key, "pub-report-1");
-        assert_eq!(rows[0].base_revision.as_deref(), Some("base-9"));
+        assert_eq!(rows[0].base_revision, None);
+        assert_eq!(rows[0].input_base_fingerprint.as_deref(), Some("base-9"));
         assert_eq!(
             rows[0].sha256,
             inventory_digest(&[("xlsx".into(), SHA.into())])

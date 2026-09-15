@@ -101,10 +101,8 @@ pub fn inventory(root: &Path, project: &str) -> Result<Vec<LocalRow>, String> {
                 sha256: crate::inventory_digest(&mut pairs),
                 size_bytes: outputs.iter().map(|output| output.size_bytes).sum(),
                 produced_at_ms: batch.produced_at_ms,
-                // The durable row retains the computed source fingerprint.
-                // kernel_local projects it as input_base_fingerprint so the
-                // kernel compares it with admission, not an older output head.
-                base_revision: Some(batch.input_base_fingerprint.clone())
+                base_revision: None,
+                input_base_fingerprint: Some(batch.input_base_fingerprint.clone())
                     .filter(|value| !value.is_empty()),
                 readable,
                 engine_release: batch.engine_release.clone(),

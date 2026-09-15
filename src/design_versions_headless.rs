@@ -12,11 +12,23 @@ pub trait Source {
         version: Option<&str>,
     ) -> Result<Value, Self::Error>;
     fn head(&mut self, project: &str, transformer: &str) -> Result<Value, Self::Error>;
+    fn create(
+        &mut self,
+        project: &str,
+        transformer: &str,
+        reason: &str,
+        idempotency_key: &str,
+    ) -> Result<Value, Self::Error>;
 }
 #[derive(Debug)]
 pub enum Error<E> {
     Source(E),
     Invalid(String),
+    VersionNotFound {
+        transformer: String,
+        requested: String,
+        latest: u64,
+    },
 }
 impl<E> From<String> for Error<E> {
     fn from(v: String) -> Self {
@@ -31,6 +43,11 @@ pub enum Command {
         transformer: String,
         from: String,
         to: String,
+    },
+    Begin {
+        transformer: String,
+        reason: String,
+        idempotency_key: String,
     },
 }
 fn invalid(message: &'static str) -> String {
@@ -54,7 +71,9 @@ fn version(s: &str) -> bool {
 impl Command {
     pub fn transformer(&self) -> &str {
         match self {
-            Self::List { transformer } | Self::Compare { transformer, .. } => transformer,
+            Self::List { transformer }
+            | Self::Compare { transformer, .. }
+            | Self::Begin { transformer, .. } => transformer,
         }
     }
     pub fn validate(&self, project: &str) -> Result<(), String> {
@@ -64,6 +83,22 @@ impl Command {
         if let Self::Compare { from, to, .. } = self {
             if !version(from) || (to != "head" && !version(to)) || from == to {
                 return Err(invalid("choose distinct canonical vN versions; --to may be head. Local browser versions must first be published."));
+            }
+        }
+        if let Self::Begin {
+            reason,
+            idempotency_key,
+            ..
+        } = self
+        {
+            if reason.is_empty()
+                || reason.trim() != reason
+                || reason.chars().count() > crate::design_version::VERSION_REASON_MAX
+                || reason.chars().any(char::is_control)
+                || idempotency_key.len() > 128
+                || idempotency_key.chars().any(char::is_control)
+            {
+                return Err(invalid("version reason or idempotency key is invalid"));
             }
         }
         Ok(())
@@ -100,6 +135,25 @@ fn snapshot(data: &Value, project: &str, transformer: &str, id: &str) -> Result<
     }
     Ok(data["snapshot"].clone())
 }
+
+fn listed<'a>(data: &'a Value, project: &str, transformer: &str) -> Result<&'a [Value], String> {
+    let rows = data["versions"]
+        .as_array()
+        .ok_or_else(|| bad("missing versions list"))?;
+    if rows.len() > 200 {
+        return Err(bad("version list exceeds 200 records"));
+    }
+    for row in rows {
+        record(row, project, transformer, None)?;
+    }
+    Ok(rows)
+}
+
+fn ordinal(id: &str) -> u64 {
+    id.strip_prefix('v')
+        .and_then(|value| value.parse().ok())
+        .unwrap_or_default()
+}
 fn kernel(request: Value) -> Result<Value, String> {
     let bytes =
         serde_json::to_vec(&request).map_err(|_| bad("version kernel response is unreadable"))?;
@@ -124,20 +178,43 @@ pub fn run<S: Source>(
             let data = source
                 .versions(project, transformer, None)
                 .map_err(Error::Source)?;
-            let rows = data["versions"]
-                .as_array()
-                .ok_or_else(|| bad("missing versions list"))?;
-            if rows.len() > 200 {
-                return Err(bad("version list exceeds 200 records").into());
-            }
-            for row in rows {
-                record(row, project, transformer, None)?;
-            }
+            let rows = listed(&data, project, transformer)?;
             Ok(
                 json!({"project":project,"transformer":transformer,"versions":rows,"truncated":rows.len()==200,"scope":"published_versions","mutated":false}),
             )
         }
         Command::Compare { from, to, .. } => {
+            // A complete bounded list lets the kernel distinguish a missing
+            // version from authentication before asking for snapshot bytes.
+            // A 200-row page may be truncated, so older identities still go
+            // to the exact read and retain its authoritative answer.
+            let inventory = source
+                .versions(project, transformer, None)
+                .map_err(Error::Source)?;
+            let rows = listed(&inventory, project, transformer)?;
+            if rows.len() < 200 {
+                let present = rows
+                    .iter()
+                    .filter_map(|row| row["version_id"].as_str())
+                    .collect::<std::collections::BTreeSet<_>>();
+                let latest = present
+                    .iter()
+                    .map(|id| ordinal(id))
+                    .max()
+                    .unwrap_or_default();
+                for requested in [Some(from.as_str()), (to != "head").then_some(to.as_str())]
+                    .into_iter()
+                    .flatten()
+                {
+                    if !present.contains(requested) {
+                        return Err(Error::VersionNotFound {
+                            transformer: transformer.to_string(),
+                            requested: requested.to_string(),
+                            latest,
+                        });
+                    }
+                }
+            }
             let left = snapshot(
                 &source
                     .versions(project, transformer, Some(from))
@@ -184,6 +261,22 @@ pub fn run<S: Source>(
                 json!({"project":project,"transformer":transformer,"from":{"kind":"version","version_id":from},"to":descriptor,
                 "from_snapshot_digest":l["manifest"]["id"],"to_snapshot_digest":r["manifest"]["id"],"comparison":result["comparison"],"consistency":result["consistency"],"metadata_comparison":result["metadata_comparison"],"details_included":false,"mutated":false}),
             )
+        }
+        Command::Begin {
+            reason,
+            idempotency_key,
+            ..
+        } => {
+            let data = source
+                .create(project, transformer, reason, idempotency_key)
+                .map_err(Error::Source)?;
+            record(&data["version"], project, transformer, None)?;
+            Ok(json!({
+                "project": project,
+                "transformer": transformer,
+                "version": data["version"],
+                "mutated": true,
+            }))
         }
     }
 }

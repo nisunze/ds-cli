@@ -38,6 +38,7 @@ fn row(op: &str, key: &str) -> ArtifactRow {
         size_bytes: 10,
         produced_at_ms: 1,
         base_revision: Some("base".into()),
+        input_base_fingerprint: Some("source".into()),
         engine_release: "r".into(),
         engine_build_manifest_sha256: None,
         grant_engine: None,

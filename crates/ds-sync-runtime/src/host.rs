@@ -608,6 +608,7 @@ impl SyncHost for StoreHost<'_> {
                 size_bytes,
                 produced_at_ms: head.published_at_ms,
                 base_revision: Some(head.revision),
+                input_base_fingerprint: head.input_base_fingerprint,
                 readable: true,
                 engine_release: String::new(),
                 engine_build_manifest_sha256: String::new(),
@@ -814,6 +815,7 @@ impl SyncHost for StoreHost<'_> {
         let receipt = serde_json::to_vec(&json!({
             "revision": head.revision,
             "head_revision": head.head_revision,
+            "input_base_fingerprint": head.input_base_fingerprint,
             "sha256": head.sha256,
             "published_at_ms": head.published_at_ms,
         }))
