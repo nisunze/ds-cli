@@ -1140,13 +1140,13 @@
       }
     },
     "layers": {
-      "summary": "The assembled layer document, the Style Center catalogue and canonical layer order.",
+      "summary": "The assembled layer document, the Style Center catalogue and governed project presentation defaults.",
       "operations": {
         "action": {
-          "summary": "Read the project's assembled layer document or style catalogue, or save canonical order overrides.",
+          "summary": "Read the project's assembled layer document or style catalogue, or save canonical order and starting-visibility overrides.",
           "transport": "json",
           "action_key": "action",
-          "actions": ["get_config", "get_style_catalog", "refresh", "reorder"],
+          "actions": ["get_config", "get_style_catalog", "refresh", "reorder", "set_default_visibility"],
           "idempotency": "unsafe",
           "retry_class": "none",
           "timeout_s": 120,

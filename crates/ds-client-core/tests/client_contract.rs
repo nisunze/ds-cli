@@ -100,12 +100,7 @@ fn profile_input(lane: DeploymentLane) -> ClientProfileInput {
         printing_actions: ds_client_core::PRINTING_ACTIONS.map(str::to_owned).to_vec(),
         layers_method: "POST".to_owned(),
         layers_path: "/api/v1/layers".to_owned(),
-        layers_actions: vec![
-            "get_config".to_owned(),
-            "get_style_catalog".to_owned(),
-            "refresh".to_owned(),
-            "reorder".to_owned(),
-        ],
+        layers_actions: ds_client_core::LAYERS_ACTIONS.map(str::to_owned).to_vec(),
         tiles_method: "POST".to_owned(),
         tiles_path: "/api/v1/tiles".to_owned(),
         tiles_actions: vec![
@@ -1409,11 +1404,11 @@ fn catalog_profile_is_closed_lane_bound_and_deterministic() {
         stable.profile_sha256(),
         profile(DeploymentLane::Stable).profile_sha256()
     );
-    // Stable vectors pin method + path + first-class create and tile action
-    // vocabularies into the full profile authority.
+    // Stable vectors pin method + path + every closed action vocabulary into
+    // the full profile authority.
     assert_eq!(
         stable.profile_sha256(),
-        "7d546a8768a23e9319d0dfdff8378d55b0db827d238007549389e80d1f6baf36"
+        "3cc4ef49cfde2f362e0b44d6123b556fc3f34107a7db5742fdd89bb03e10cade"
     );
     // A profile is a digest over the closed vocabulary, so adding one route is
     // Profile v23 adds the closed read-only design-version route.
@@ -1506,12 +1501,7 @@ fn catalog_profile_is_closed_lane_bound_and_deterministic() {
         printing_actions: ds_client_core::PRINTING_ACTIONS.map(str::to_owned).to_vec(),
         layers_method: "POST".to_owned(),
         layers_path: "/api/v1/layers".to_owned(),
-        layers_actions: vec![
-            "get_config".to_owned(),
-            "get_style_catalog".to_owned(),
-            "refresh".to_owned(),
-            "reorder".to_owned(),
-        ],
+        layers_actions: ds_client_core::LAYERS_ACTIONS.map(str::to_owned).to_vec(),
         tiles_method: "POST".to_owned(),
         tiles_path: "/api/v1/tiles".to_owned(),
         tiles_actions: vec![
@@ -5482,7 +5472,7 @@ fn push_layers(transport: &FixtureTransport, wire: serde_json::Value) {
 
 #[test]
 fn headless_layers_read_and_reorder_use_canonical_ids_and_same_selected_project() {
-    use ds_client_core::LayerOrder;
+    use ds_client_core::{LayerOrder, LayerVisibilityDefault};
     let transport = FixtureTransport::with_sign_in(SIGN_IN);
     push_layers(&transport, headless_layer_fixture("project_a"));
     push_layers(&transport, headless_layer_fixture("project_a"));
@@ -5506,6 +5496,25 @@ fn headless_layers_read_and_reorder_use_canonical_ids_and_same_selected_project(
     assert_eq!(receipt.reordered, 1);
     assert!(transport.calls().iter().any(|v| v
         .contains("\"layer_order\":[{\"layer_id\":\"roads\",\"order\":42}]")
+        && v.contains("path=/api/v1/layers")));
+    push_layers(&transport, headless_layer_fixture("project_a"));
+    push_layers(
+        &transport,
+        serde_json::json!({"success":true,"data":{"project_id":"project_a","updated":1}}),
+    );
+    let receipt = client
+        .layer_default_visibility(
+            "project_a",
+            &[LayerVisibilityDefault {
+                layer_id: "roads".into(),
+                visible: false,
+            }],
+            NOW + 1,
+        )
+        .unwrap();
+    assert_eq!(receipt.updated, 1);
+    assert!(transport.calls().iter().any(|v| v
+        .contains("\"layer_defaults\":[{\"layer_id\":\"roads\",\"visible\":false}]")
         && v.contains("path=/api/v1/layers")));
     push_layers(&transport, headless_layer_fixture("project_a"));
     assert_eq!(

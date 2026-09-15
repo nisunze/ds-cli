@@ -51,7 +51,13 @@ pub const STYLES_PATH: &str = "/api/v1/styles";
 pub const STYLES_ACTION: &str = "update_style";
 pub const LAYERS_METHOD: &str = "POST";
 pub const LAYERS_PATH: &str = "/api/v1/layers";
-pub const LAYERS_ACTIONS: [&str; 4] = ["get_config", "get_style_catalog", "refresh", "reorder"];
+pub const LAYERS_ACTIONS: [&str; 5] = [
+    "get_config",
+    "get_style_catalog",
+    "refresh",
+    "reorder",
+    "set_default_visibility",
+];
 pub const TILES_METHOD: &str = "POST";
 pub const TILES_PATH: &str = "/api/v1/tiles";
 pub const TILES_ACTIONS: [&str; 6] = ["status", "preflight", "generate", "list", "add", "remove"];
@@ -435,6 +441,7 @@ impl ClientProfile {
             LAYERS_ACTIONS[1],
             LAYERS_ACTIONS[2],
             LAYERS_ACTIONS[3],
+            LAYERS_ACTIONS[4],
             TILES_METHOD,
             TILES_PATH,
             TILES_ACTIONS[0],

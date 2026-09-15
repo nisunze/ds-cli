@@ -901,6 +901,29 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
             orders,
         )
     }
+    pub fn layer_default_visibility(
+        &mut self,
+        ds_project: &str,
+        defaults: &[crate::LayerVisibilityDefault],
+        now_epoch_seconds: u64,
+    ) -> Result<crate::LayerVisibilityDefaultReceipt, ClientError> {
+        crate::authorized::validate_tiles(ds_project)?;
+        crate::layers::validate_visibility_defaults(defaults)?;
+        self.ensure_fresh_session(now_epoch_seconds)?;
+        let session = self.session.as_ref().ok_or_else(signed_out)?;
+        crate::authorized::layer_default_visibility(
+            &self.profile,
+            &mut self.transport,
+            crate::authorized::Authority {
+                bearer_token: &session.id_token,
+                uid: &session.stored.uid,
+                email: &session.stored.email,
+                device_id: None,
+            },
+            ds_project,
+            defaults,
+        )
+    }
     pub fn project_data(
         &mut self,
         project: &str,

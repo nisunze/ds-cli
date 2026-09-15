@@ -3,7 +3,8 @@
 //!
 //! One backend action family serves the layer drawer — `get_config` and
 //! `refresh` (the assembled layer document), `get_style_catalog` (the Style
-//! Center's metadata-only snapshot) and `reorder` (canonical order overrides).
+//! Center's metadata-only snapshot), `reorder` (canonical order overrides),
+//! and `set_default_visibility` (project-wide starting visibility).
 //! The request body for each, the response bound, and every rule an answer
 //! must satisfy before a client may treat it as the project's layer document
 //! are decided here, once, for `ds`, the desktop shell and the browser.
@@ -29,7 +30,13 @@ pub const SCHEMA: &str = "ds.layer-document/v1";
 pub const OPERATION: &str = "domains.layers.action";
 pub const METHOD: &str = "POST";
 pub const PATH: &str = "/api/v1/layers";
-pub const ACTIONS: [&str; 4] = ["get_config", "get_style_catalog", "refresh", "reorder"];
+pub const ACTIONS: [&str; 5] = [
+    "get_config",
+    "get_style_catalog",
+    "refresh",
+    "reorder",
+    "set_default_visibility",
+];
 pub const DOCUMENT_RESPONSE_LIMIT: usize = 32 * 1024 * 1024;
 pub const STYLE_CATALOG_RESPONSE_LIMIT: usize = 16 * 1024 * 1024;
 pub const TIMEOUT_SECONDS: u64 = 120;
@@ -54,6 +61,7 @@ pub enum Action {
     Refresh,
     GetStyleCatalog,
     Reorder,
+    SetDefaultVisibility,
 }
 
 impl Action {
@@ -63,6 +71,7 @@ impl Action {
             Self::Refresh => "refresh",
             Self::GetStyleCatalog => "get_style_catalog",
             Self::Reorder => "reorder",
+            Self::SetDefaultVisibility => "set_default_visibility",
         }
     }
     pub const fn response_limit(self) -> usize {
@@ -71,6 +80,13 @@ impl Action {
             _ => DOCUMENT_RESPONSE_LIMIT,
         }
     }
+}
+
+#[derive(Deserialize, Serialize, Clone, Debug, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct VisibilityDefault {
+    pub layer_id: String,
+    pub visible: bool,
 }
 
 /// The order request's own bounds: 1..=500 rows, trimmed bounded ids without
@@ -93,12 +109,39 @@ pub fn validate_orders(orders: &[Order]) -> Result<(), String> {
     Ok(())
 }
 
+pub fn validate_visibility_defaults(defaults: &[VisibilityDefault]) -> Result<(), String> {
+    let mut seen = HashSet::new();
+    if defaults.is_empty()
+        || defaults.len() > MAX_ORDERS
+        || defaults.iter().any(|row| {
+            row.layer_id.is_empty()
+                || row.layer_id.trim() != row.layer_id
+                || row.layer_id.chars().count() > MAX_STYLE_REF_CHARS
+                || row.layer_id.chars().any(char::is_control)
+                || !seen.insert(row.layer_id.as_str())
+        })
+    {
+        return Err("invalid canonical layer visibility defaults".into());
+    }
+    Ok(())
+}
+
 /// The request body a host sends for `action`. `platform` names the client
 /// kind the assembler tailors for; every current client says `web`.
 pub fn request_body(
     action: Action,
     project: &str,
     orders: &[Order],
+    platform: &str,
+) -> Result<Value, String> {
+    request_body_with_defaults(action, project, orders, &[], platform)
+}
+
+pub fn request_body_with_defaults(
+    action: Action,
+    project: &str,
+    orders: &[Order],
+    defaults: &[VisibilityDefault],
     platform: &str,
 ) -> Result<Value, String> {
     if project.is_empty() || project.trim() != project || project.chars().count() > 500 {
@@ -112,6 +155,10 @@ pub fn request_body(
         Action::Reorder => {
             validate_orders(orders)?;
             json!({"action": action.wire(), "project_id": project, "layer_order": orders})
+        }
+        Action::SetDefaultVisibility => {
+            validate_visibility_defaults(defaults)?;
+            json!({"action": action.wire(), "project_id": project, "layer_defaults": defaults})
         }
     })
 }
@@ -430,6 +477,24 @@ pub fn admit_order_receipt(
     Ok(json!({"project_id": project, "reordered": count}))
 }
 
+pub fn admit_visibility_default_receipt(
+    project: &str,
+    count: usize,
+    response: &Value,
+) -> Result<Value, Refusal> {
+    let data = envelope(response, LAYER_FALLBACK)?;
+    if data.get("project_id").and_then(Value::as_str) != Some(project)
+        || data.get("updated").and_then(Value::as_u64) != Some(count as u64)
+    {
+        return Err(Refusal {
+            code: "unreadable_response",
+            message: "invalid governed layer response".into(),
+            issues: vec![],
+        });
+    }
+    Ok(json!({"project_id": project, "updated": count}))
+}
+
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Request {
@@ -446,6 +511,8 @@ enum Op {
         project: String,
         #[serde(default)]
         orders: Vec<Order>,
+        #[serde(default)]
+        defaults: Vec<VisibilityDefault>,
         #[serde(default = "web")]
         platform: String,
     },
@@ -480,16 +547,17 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
             action,
             project,
             orders,
+            defaults,
             platform,
         } => json!({
             "operation": OPERATION,
             "method": METHOD,
             "path": PATH,
             "action": action.wire(),
-            "body": request_body(action, &project, &orders, &platform)?,
+            "body": request_body_with_defaults(action, &project, &orders, &defaults, &platform)?,
             "response_limit": action.response_limit(),
             "timeout_seconds": TIMEOUT_SECONDS,
-            "count": orders.len(),
+            "count": if action == Action::SetDefaultVisibility { defaults.len() } else { orders.len() },
         }),
         Op::Admit {
             action,
@@ -501,6 +569,9 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
                 Action::GetConfig | Action::Refresh => admit_document(&project, &response),
                 Action::GetStyleCatalog => admit_style_catalog(&project, &response),
                 Action::Reorder => admit_order_receipt(&project, count, &response),
+                Action::SetDefaultVisibility => {
+                    admit_visibility_default_receipt(&project, count, &response)
+                }
             };
             match admitted {
                 Ok(data) => json!({"outcome": "admitted", "data": data}),
@@ -568,6 +639,15 @@ mod tests {
             json!([{"layer_id": "survey/a", "order": 3}])
         );
         assert_eq!(out["count"], 1);
+        let out: Value = serde_json::from_str(
+            &evaluate(&serde_json::to_vec(&json!({"schema": SCHEMA, "op": {"kind": "request", "action": "set_default_visibility", "project": "p1", "defaults": [{"layer_id": "gt/roads", "visible": false}]}})).unwrap()).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(
+            out["body"],
+            json!({"action": "set_default_visibility", "project_id": "p1", "layer_defaults": [{"layer_id": "gt/roads", "visible": false}]})
+        );
+        assert_eq!(out["count"], 1);
         assert!(request_body(Action::Reorder, "p1", &[], "web").is_err());
         assert!(request_body(Action::GetConfig, " p1", &[], "web").is_err());
         let duplicate = [
@@ -585,6 +665,18 @@ mod tests {
             layer_id: "x".into(),
             order: MAX_ORDER + 1
         }])
+        .is_err());
+        assert!(validate_visibility_defaults(&[]).is_err());
+        assert!(validate_visibility_defaults(&[
+            VisibilityDefault {
+                layer_id: "x".into(),
+                visible: false
+            },
+            VisibilityDefault {
+                layer_id: "x".into(),
+                visible: true
+            },
+        ])
         .is_err());
     }
 

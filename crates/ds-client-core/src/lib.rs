@@ -54,7 +54,8 @@ pub use error::{
     SurveyFormReadServiceCode, SurveyQueryServiceCode, TransportError,
 };
 pub use layers::{
-    LayerOrder, LayerOrderReceipt, LayerSnapshot, StyleSnapshot, LAYERS_RESPONSE_LIMIT,
+    LayerOrder, LayerOrderReceipt, LayerSnapshot, LayerVisibilityDefault,
+    LayerVisibilityDefaultReceipt, StyleSnapshot, LAYERS_RESPONSE_LIMIT,
     STYLE_CATALOG_RESPONSE_LIMIT,
 };
 pub use profile::{

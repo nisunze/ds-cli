@@ -31,6 +31,9 @@
 //! recorded member in document order, as the mount always did), then the
 //! authored default (`layout.visibility`). After a mount plan every primary is
 //! recorded; a companion is recorded once its family has a remembered choice.
+//! A governed `metadata.default_visible` value sits between the user's choice
+//! and the authored style. It seeds the drawer without becoming a hard style
+//! hide, so an explicit user toggle can always override it.
 //! Ids that are not in the document — *foreign*: temporary and analysis layers
 //! toggled through the same store — keep their own entry and read as visible
 //! when absent.
@@ -276,6 +279,7 @@ pub enum SourceState {
 #[serde(rename_all = "snake_case")]
 pub enum Reason {
     UserHidden,
+    DefaultHidden,
     AuthoredHidden,
     #[serde(rename = "needs_3d_shapes")]
     Needs3dShapes,
@@ -292,6 +296,7 @@ struct Fact<'a> {
     family: String,
     role: Role,
     companion: bool,
+    default_visible: Option<bool>,
     authored_visible: bool,
     minzoom: f64,
     maxzoom: f64,
@@ -418,6 +423,7 @@ impl<'a> Facts<'a> {
                 family: format!("{source_key}\u{1f}{logical}"),
                 role,
                 companion,
+                default_visible: metadata["default_visible"].as_bool(),
                 authored_visible: row.layout["visibility"] != "none",
                 minzoom: row.minzoom.unwrap_or(DEFAULT_MINZOOM),
                 maxzoom: row.maxzoom.unwrap_or(DEFAULT_MAXZOOM),
@@ -509,7 +515,9 @@ impl<'a> Remembered<'a> {
             .or_else(|| self.families.get(fact.family.as_str()).copied())
     }
     fn desired(&self, fact: &Fact<'_>) -> bool {
-        self.remembered(fact).unwrap_or(fact.authored_visible)
+        self.remembered(fact)
+            .or(fact.default_visible)
+            .unwrap_or(fact.authored_visible)
     }
     fn foreign_desired(&self, id: &str) -> bool {
         self.preferences.get(id).copied().unwrap_or(true)
@@ -522,10 +530,21 @@ impl<'a> Remembered<'a> {
     }
 }
 
-fn runtime_reasons(fact: &Fact<'_>, desired: bool, mode: Mode) -> Vec<Reason> {
+fn runtime_reasons(
+    fact: &Fact<'_>,
+    desired: bool,
+    remembered: Option<bool>,
+    mode: Mode,
+) -> Vec<Reason> {
     let mut reasons = Vec::new();
     if !desired {
-        reasons.push(Reason::UserHidden);
+        reasons.push(if remembered.is_some() {
+            Reason::UserHidden
+        } else if fact.default_visible == Some(false) {
+            Reason::DefaultHidden
+        } else {
+            Reason::UserHidden
+        });
     }
     if !fact.authored_visible {
         reasons.push(Reason::AuthoredHidden);
@@ -557,7 +576,7 @@ fn runtime_word(reasons: &[Reason]) -> &'static str {
 
 fn write(facts: &Facts<'_>, id: &str, desired: bool, mode: Mode) -> Value {
     let reasons = match facts.get(id) {
-        Some(fact) => runtime_reasons(fact, desired, mode),
+        Some(fact) => runtime_reasons(fact, desired, Some(desired), mode),
         None => foreign_reasons(id, desired, mode),
     };
     json!({"id": id, "runtime": runtime_word(&reasons), "reasons": reasons})
@@ -683,8 +702,10 @@ impl<'a> Context<'a> {
         let mut hidden_count = 0;
         for fact in &self.facts.rows {
             let remembered = self.remembered.remembered(fact);
-            let desired = remembered.unwrap_or(fact.authored_visible);
-            let reasons = runtime_reasons(fact, desired, self.mode);
+            let desired = remembered
+                .or(fact.default_visible)
+                .unwrap_or(fact.authored_visible);
+            let reasons = runtime_reasons(fact, desired, remembered, self.mode);
             let hidden_label =
                 fact.role == Role::Label && !fact.authored_visible && remembered.is_none();
             // A layer whose source is absent is neither mounted nor recorded; its
@@ -1503,6 +1524,47 @@ mod tests {
         assert_eq!(label["desired"], true);
         assert_eq!(label["runtime"], "none");
         assert_eq!(label["reasons"], json!(["authored_hidden"]));
+    }
+
+    #[test]
+    fn governed_default_visibility_seeds_but_never_overrides_a_user_choice() {
+        let mut doc = document();
+        doc["layers"][3]["metadata"]["default_visible"] = json!(false);
+        let evaluate_plan = |preferences: Value| {
+            let request = json!({
+                "schema": SCHEMA,
+                "project": "p1",
+                "document": doc.clone(),
+                "preferences": preferences,
+                "op": {"kind": "plan"}
+            });
+            serde_json::from_str::<Value>(
+                &evaluate(&serde_json::to_vec(&request).unwrap()).unwrap(),
+            )
+            .unwrap()
+        };
+
+        let seeded = evaluate_plan(json!({}));
+        let poles = seeded["layers"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|layer| layer["id"] == "poles")
+            .unwrap();
+        assert_eq!(poles["remembered"], Value::Null);
+        assert_eq!(poles["runtime"], "none");
+        assert_eq!(poles["reasons"], json!(["default_hidden"]));
+
+        let overridden = evaluate_plan(json!({"poles": true}));
+        let poles = overridden["layers"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|layer| layer["id"] == "poles")
+            .unwrap();
+        assert_eq!(poles["remembered"], true);
+        assert_eq!(poles["runtime"], "visible");
+        assert_eq!(poles["reasons"], json!([]));
     }
 
     #[test]

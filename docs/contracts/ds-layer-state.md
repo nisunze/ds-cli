@@ -21,16 +21,18 @@ the browser WASM:
 | The layout word each named runtime layer gets right now, forced on when loaded explicitly | `layer_state` op `runtime` | `setLayoutProperty` on repopulate |
 | The canonical catalogue (families, roles, folded visibility, source state, zoom range) and the matrix (by layer, by source, provenance) | `layer_state` ops `catalog`, `matrix` | render rows |
 | Whether an order request is acceptable: unknown, duplicate or unbounded ids, and what a partial order leaves unlisted | `layer_state` op `reorder` | send only an accepted request |
+| Starting visibility below each user's remembered choice | `metadata.default_visible`, folded by `layer_state` | store the project default through `set_default_visibility`; never rewrite user preferences |
 | The request body per layer action, the response bound, and every rule an answer must satisfy (envelope, shape, sources, parents, matrix rows, sidebar groups, dedicated sections) | `layer_document` ops `request`, `admit`; `ds-client-core::layers` delegates | perform the declared operation `domains.layers.action` from the generated manifest; hand the parsed answer back |
 
 Schemas: `ds.layer-state/v1`, `ds.layer-document/v1`. WASM exports
-`layerState`, `layerDocument`. Native: `ds map layer list|show|hide|reorder`.
+`layerState`, `layerDocument`. Native: `ds map layer list|default|show|hide|reorder`.
 
 ## 2. Rules worth stating
 
 - **Preferences** map a runtime layer id to the user's choice. A layer
   without an entry inherits its family's remembered choice (the last recorded
-  member in document order), then the authored default. After a mount plan
+  member in document order), then the governed project default, then the
+  authored default. After a mount plan
   every primary is recorded; a companion is recorded once its family has a
   remembered choice. Foreign ids (temporary and analysis layers toggled
   through the same store) keep their own entry and read as visible when

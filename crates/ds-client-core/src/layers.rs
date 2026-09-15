@@ -55,16 +55,24 @@ impl StyleSnapshot {
 
 /// One canonical layer's requested order; the kernel owns its bounds.
 pub type LayerOrder = wire::Order;
+/// One canonical layer's governed starting visibility.
+pub type LayerVisibilityDefault = wire::VisibilityDefault;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LayerOrderReceipt {
     pub project_id: String,
     pub reordered: usize,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LayerVisibilityDefaultReceipt {
+    pub project_id: String,
+    pub updated: usize,
 }
 
 pub(crate) enum LayerOperation<'a> {
     Read { refresh: bool },
     StyleCatalogRead,
     Reorder(&'a [LayerOrder]),
+    DefaultVisibility(&'a [LayerVisibilityDefault]),
 }
 impl LayerOperation<'_> {
     const fn action(&self) -> Action {
@@ -73,6 +81,7 @@ impl LayerOperation<'_> {
             Self::Read { refresh: false } => Action::GetConfig,
             Self::StyleCatalogRead => Action::GetStyleCatalog,
             Self::Reorder(_) => Action::Reorder,
+            Self::DefaultVisibility(_) => Action::SetDefaultVisibility,
         }
     }
     pub(crate) const fn response_limit(&self) -> usize {
@@ -84,10 +93,26 @@ impl LayerOperation<'_> {
             Self::Reorder(orders) => orders,
             _ => &[],
         };
-        let body = wire::request_body(self.action(), project, orders, "web")
-            .expect("closed layer request: project and orders were validated");
+        let defaults: &[LayerVisibilityDefault] = match self {
+            Self::DefaultVisibility(defaults) => defaults,
+            _ => &[],
+        };
+        let body =
+            wire::request_body_with_defaults(self.action(), project, orders, defaults, "web")
+                .expect("closed layer request: project and orders were validated");
         serde_json::to_vec(&body).expect("closed layer request")
     }
+}
+
+pub(crate) fn validate_visibility_defaults(
+    defaults: &[LayerVisibilityDefault],
+) -> Result<(), ClientError> {
+    wire::validate_visibility_defaults(defaults).map_err(|_| {
+        ClientError::new(
+            ErrorKind::InvalidInput,
+            "invalid canonical layer visibility defaults",
+        )
+    })
 }
 
 pub(crate) fn validate_orders(orders: &[LayerOrder]) -> Result<(), ClientError> {
@@ -151,5 +176,15 @@ pub(crate) fn decode_order(
 ) -> Result<LayerOrderReceipt, ClientError> {
     let wire = wire_value(response, LAYERS_RESPONSE_LIMIT)?;
     let receipt = wire::admit_order_receipt(project, count, &wire).map_err(refused)?;
+    serde_json::from_value(receipt).map_err(|_| bad())
+}
+
+pub(crate) fn decode_visibility_default(
+    response: TransportResponse,
+    project: &str,
+    count: usize,
+) -> Result<LayerVisibilityDefaultReceipt, ClientError> {
+    let wire = wire_value(response, LAYERS_RESPONSE_LIMIT)?;
+    let receipt = wire::admit_visibility_default_receipt(project, count, &wire).map_err(refused)?;
     serde_json::from_value(receipt).map_err(|_| bad())
 }

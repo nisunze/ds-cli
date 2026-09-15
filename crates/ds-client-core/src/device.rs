@@ -1316,6 +1316,24 @@ impl DeviceApiAuthorization<'_> {
             orders,
         )
     }
+    pub fn layer_default_visibility<T: AuthorizedTransport>(
+        &self,
+        transport: &mut T,
+        ds_project: &str,
+        defaults: &[crate::LayerVisibilityDefault],
+        now: u64,
+    ) -> Result<crate::LayerVisibilityDefaultReceipt, ClientError> {
+        crate::authorized::validate_tiles(ds_project)?;
+        crate::layers::validate_visibility_defaults(defaults)?;
+        self.ensure_active(now)?;
+        crate::authorized::layer_default_visibility(
+            self.profile,
+            transport,
+            self.authority(),
+            ds_project,
+            defaults,
+        )
+    }
     pub fn project_data<T: AuthorizedTransport>(
         &self,
         transport: &mut T,

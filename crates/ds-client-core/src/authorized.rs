@@ -1100,6 +1100,38 @@ pub(crate) fn layer_reorder<T: AuthorizedTransport>(
     crate::layers::decode_order(response, ds_project, orders.len())
 }
 
+pub(crate) fn layer_default_visibility<T: AuthorizedTransport>(
+    profile: &ClientProfile,
+    transport: &mut T,
+    authority: Authority<'_>,
+    ds_project: &str,
+    defaults: &[crate::LayerVisibilityDefault],
+) -> Result<crate::LayerVisibilityDefaultReceipt, ClientError> {
+    validate_tiles(ds_project)?;
+    crate::layers::validate_visibility_defaults(defaults)?;
+    let snapshot = layer_config(profile, transport, authority, ds_project, false)?;
+    let known = snapshot.canonical_ids();
+    if defaults
+        .iter()
+        .any(|row| !known.contains(row.layer_id.as_str()))
+    {
+        return Err(ClientError::new(
+            ErrorKind::InvalidInput,
+            "unknown canonical layer identity",
+        ));
+    }
+    let response = transport.layers(crate::LayersCall {
+        profile,
+        ds_project,
+        operation: crate::layers::LayerOperation::DefaultVisibility(defaults),
+        authority: authority.call(),
+    })?;
+    if response.status != 200 {
+        return Err(classify_tile_error(response.status));
+    }
+    crate::layers::decode_visibility_default(response, ds_project, defaults.len())
+}
+
 pub(crate) fn style_edit<T: AuthorizedTransport>(
     profile: &ClientProfile,
     transport: &mut T,
