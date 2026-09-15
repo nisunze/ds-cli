@@ -15,7 +15,7 @@ pub const PROJECT_CONTROL_REPORT_CATALOG_SCHEMA: &str =
     "ds.project-control.local-report-catalog/v1";
 pub const PROJECT_CONTROL_BULK_PLAN_SCHEMA: &str = "ds.project-control.bulk-plan/v1";
 pub const PROJECT_CONTROL_ARTIFACT_DOWNLOAD_SCHEMA: &str =
-    "ds.project-control.artifact-download/v1";
+    "ds.project-control.artifact-download/v2";
 pub const MAX_PROJECT_CONTROL_INPUT_BYTES: usize = 2 * 1024 * 1024;
 pub const MAX_PROJECT_CONTROL_ROOMS: usize = 2_000;
 pub const MAX_PROJECT_CONTROL_OUTBOX_ROWS: usize = 4_096;
@@ -962,6 +962,12 @@ struct DownloadScopeRow {
     in_scope: bool,
     archive_members: Vec<serde_json::Value>,
     download_state: &'static str,
+    /// Source inputs exactly as the kernel admits them for retry/display.
+    #[serde(skip_serializing_if = "SourceFiles::is_empty")]
+    source_files: SourceFiles,
+    /// Downloadable source inputs with their safe ZIP member names.
+    #[serde(skip_serializing_if = "SourceEntries::is_empty")]
+    source_entries: SourceEntries,
 }
 
 #[derive(Debug, Clone, Copy, Serialize)]
@@ -984,6 +990,67 @@ struct SourceUploadSummary {
     downloadable: usize,
 }
 
+impl SourceUploadSummary {
+    fn add(&mut self, other: Self) {
+        self.draft += other.draft;
+        self.sketch += other.sketch;
+        self.process += other.process;
+        self.total += other.total;
+        self.downloadable += other.downloadable;
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Default)]
+struct SourceFiles {
+    draft: Vec<SourceFile>,
+    sketch: Vec<SourceFile>,
+    process: Vec<SourceFile>,
+}
+
+impl SourceFiles {
+    fn is_empty(&self) -> bool {
+        self.draft.is_empty() && self.sketch.is_empty() && self.process.is_empty()
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct SourceFile {
+    filename: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    blob_path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    download_url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    uploaded_at: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    uploaded_by: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct SourceArchiveEntry {
+    url: String,
+    name: String,
+}
+
+#[derive(Debug, Clone, Serialize, Default)]
+struct SourceEntries {
+    draft: Vec<SourceArchiveEntry>,
+    sketch: Vec<SourceArchiveEntry>,
+    process: Vec<SourceArchiveEntry>,
+}
+
+impl SourceEntries {
+    fn is_empty(&self) -> bool {
+        self.draft.is_empty() && self.sketch.is_empty() && self.process.is_empty()
+    }
+
+    fn append_to(&self, target: &mut Vec<SourceArchiveEntry>) {
+        target.extend(self.draft.iter().cloned());
+        target.extend(self.sketch.iter().cloned());
+        target.extend(self.process.iter().cloned());
+    }
+}
+
 #[derive(Debug, Serialize)]
 struct ArtifactDownloadPlan {
     schema: &'static str,
@@ -1000,6 +1067,8 @@ struct ArtifactDownloadPlan {
     placement: Vec<Placement>,
     summary: DownloadSummary,
     source_uploads: SourceUploadSummary,
+    /// Downloadable source inputs across the selected scope, in row/action order.
+    source_entries: Vec<SourceArchiveEntry>,
     /// The precedence the scope was built under.
     scope_precedence: &'static str,
     archives: Vec<serde_json::Value>,
@@ -1083,6 +1152,7 @@ pub fn plan_project_control_artifact_download(
         unknown: 0,
     };
     let mut source_uploads = SourceUploadSummary::default();
+    let mut source_entries = Vec::new();
     let mut placement: Vec<Placement> = Vec::new();
     let mut project_artifacts = Vec::new();
 
@@ -1140,6 +1210,7 @@ pub fn plan_project_control_artifact_download(
             .unwrap_or_default()
             .to_string();
         let has_files = !delivery.is_empty() || !archive_members.is_empty();
+        let (source_files, row_source_entries, row_source_summary) = source_files(map);
         placement.extend(row_placement);
         if !in_scope {
             if crate::design::is_special_row(&canonical) {
@@ -1174,6 +1245,8 @@ pub fn plan_project_control_artifact_download(
                 in_scope,
                 archive_members,
                 download_state,
+                source_files,
+                source_entries: row_source_entries,
             });
             continue;
         }
@@ -1194,7 +1267,8 @@ pub fn plan_project_control_artifact_download(
                 urls.push(url.clone());
             }
         }
-        count_source_uploads(map, &mut source_uploads);
+        source_uploads.add(row_source_summary);
+        row_source_entries.append_to(&mut source_entries);
         rows.push(DownloadScopeRow {
             name: name.clone(),
             report_files: report,
@@ -1203,6 +1277,8 @@ pub fn plan_project_control_artifact_download(
             in_scope,
             archive_members,
             download_state,
+            source_files,
+            source_entries: row_source_entries,
         });
         scope.push(name);
     }
@@ -1253,6 +1329,7 @@ pub fn plan_project_control_artifact_download(
         placement,
         summary,
         source_uploads,
+        source_entries,
         archives,
         project_artifacts,
         archive_discovery,
@@ -1558,12 +1635,14 @@ fn apply_format_filter(urls: &[String], formats: &[String]) -> Vec<String> {
         .collect()
 }
 
-fn count_source_uploads(
+fn source_files(
     row: &serde_json::Map<String, serde_json::Value>,
-    summary: &mut SourceUploadSummary,
-) {
+) -> (SourceFiles, SourceEntries, SourceUploadSummary) {
+    let mut files = SourceFiles::default();
+    let mut entries = SourceEntries::default();
+    let mut summary = SourceUploadSummary::default();
     let Some(uploads) = row.get("uploads").and_then(serde_json::Value::as_object) else {
-        return;
+        return (files, entries, summary);
     };
     for action in ["draft", "sketch", "process"] {
         let sources = uploads
@@ -1571,24 +1650,79 @@ fn count_source_uploads(
             .and_then(serde_json::Value::as_array)
             .map(Vec::as_slice)
             .unwrap_or_default();
-        let downloadable = sources
-            .iter()
-            .filter(|source| {
-                source
-                    .as_object()
-                    .and_then(|source| source.get("download_url"))
-                    .and_then(serde_json::Value::as_str)
-                    .map(str::trim)
-                    .is_some_and(|url| !url.is_empty())
-            })
-            .count();
         match action {
             "draft" => summary.draft += sources.len(),
             "sketch" => summary.sketch += sources.len(),
             _ => summary.process += sources.len(),
         }
         summary.total += sources.len();
-        summary.downloadable += downloadable;
+        let target = match action {
+            "draft" => &mut files.draft,
+            "sketch" => &mut files.sketch,
+            _ => &mut files.process,
+        };
+        let entry_target = match action {
+            "draft" => &mut entries.draft,
+            "sketch" => &mut entries.sketch,
+            _ => &mut entries.process,
+        };
+        for (index, value) in sources.iter().enumerate() {
+            let Some(source) = value.as_object() else {
+                continue;
+            };
+            let string = |key: &str| {
+                source
+                    .get(key)
+                    .and_then(serde_json::Value::as_str)
+                    .map(str::to_owned)
+            };
+            let filename = string("filename").unwrap_or_default();
+            let download_url = string("download_url")
+                .map(|url| url.trim().to_owned())
+                .filter(|url| !url.is_empty());
+            if let Some(url) = &download_url {
+                summary.downloadable += 1;
+                entry_target.push(SourceArchiveEntry {
+                    url: url.clone(),
+                    name: format!(
+                        "{action}/{}",
+                        sanitize_source_zip_segment(
+                            &filename,
+                            &format!("source_{}", index.saturating_add(1))
+                        )
+                    ),
+                });
+            }
+            target.push(SourceFile {
+                filename,
+                blob_path: string("blob_path"),
+                download_url,
+                uploaded_at: string("uploaded_at"),
+                uploaded_by: string("uploaded_by"),
+            });
+        }
+    }
+    (files, entries, summary)
+}
+
+fn sanitize_source_zip_segment(value: &str, fallback: &str) -> String {
+    let cleaned: String = value
+        .trim()
+        .chars()
+        .map(|character| {
+            if character == '/' || character == '\\' {
+                '_'
+            } else {
+                character
+            }
+        })
+        .filter(|character| !character.is_control())
+        .take(160)
+        .collect();
+    if cleaned.is_empty() {
+        fallback.to_owned()
+    } else {
+        cleaned
     }
 }
 
@@ -1770,6 +1904,54 @@ mod tests {
             .as_array()
             .unwrap()
             .contains(&json!("gs://b/combined.xlsx")));
+    }
+
+    #[test]
+    fn source_files_and_safe_archive_names_are_one_kernel_answer() {
+        let input = json!({"rows":[
+            {"name":"tx_1","uploads":{
+                "draft":[
+                    {"filename":" ../draft\\input.gpkg\u{0007}","blob_path":"p/draft.gpkg","download_url":" https://example.test/draft.gpkg ","uploaded_by":"engineer@example.test"},
+                    {"filename":"held-only.gpkg","blob_path":"p/held.gpkg"}
+                ],
+                "sketch":[{"filename":"","download_url":"https://example.test/sketch.gpkg"}],
+                "process":[]
+            }},
+            {"name":"combined_transformer","uploads":{"draft":[{"filename":"hidden.gpkg","download_url":"https://example.test/hidden.gpkg"}]}}
+        ]});
+        let plan: Value = serde_json::from_str(
+            &plan_project_control_artifact_download(&serde_json::to_vec(&input).unwrap()).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(plan["schema"], PROJECT_CONTROL_ARTIFACT_DOWNLOAD_SCHEMA);
+        assert_eq!(
+            plan["source_uploads"],
+            json!({"draft":2,"sketch":1,"process":0,"total":3,"downloadable":2})
+        );
+        assert_eq!(
+            plan["source_entries"],
+            json!([
+                {"url":"https://example.test/draft.gpkg","name":"draft/.._draft_input.gpkg"},
+                {"url":"https://example.test/sketch.gpkg","name":"sketch/source_1"}
+            ])
+        );
+        assert_eq!(
+            plan["rows"][0]["source_files"]["draft"][0]["blob_path"],
+            "p/draft.gpkg"
+        );
+        assert_eq!(
+            plan["rows"][0]["source_files"]["draft"][0]["download_url"],
+            "https://example.test/draft.gpkg"
+        );
+        assert_eq!(
+            plan["rows"][1]["source_entries"]["draft"],
+            json!([{"url":"https://example.test/hidden.gpkg","name":"draft/hidden.gpkg"}])
+        );
+        assert_eq!(
+            plan["source_entries"].as_array().unwrap().len(),
+            2,
+            "special-row sources stay outside the selected download scope"
+        );
     }
 
     #[test]

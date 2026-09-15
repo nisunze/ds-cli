@@ -25,6 +25,7 @@ mod project_report;
 mod projects;
 mod session;
 mod solar_snapshot;
+mod status_processing;
 mod styles;
 mod survey_entries_changes;
 mod survey_entries_select;
@@ -138,7 +139,12 @@ pub use transport::StylesCall;
 
 pub use profile::{PROJECT_DATA_ACTIONS, PROJECT_DATA_METHOD, PROJECT_DATA_PATH};
 pub use project_data::{ProjectDataCommand, ProjectDataReceipt, UploadBytesCall, MAX_UPLOAD_BYTES};
+pub use status_processing::{
+    StatusProcessingCommand, StatusProcessingReceipt, StatusUploadDomain, STATUS_PROCESSING_METHOD,
+    STATUS_PROCESSING_PATH, STATUS_PROCESSING_RESPONSE_LIMIT, STATUS_PROCESSING_TIMEOUT_SECONDS,
+};
 pub use transport::ProjectDataCall;
+pub use transport::StatusProcessingCall;
 
 pub mod survey_control;
 mod survey_control_run;

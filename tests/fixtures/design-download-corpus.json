@@ -332,7 +332,7 @@
 				}
 			},
 			"expected": {
-				"schema": "ds.project-control.artifact-download/v1",
+				"schema": "ds.project-control.artifact-download/v2",
 				"scope": [
 					"artifact_shapes",
 					"batikoti",
@@ -463,7 +463,40 @@
 						"report_status": "success",
 						"in_scope": true,
 						"archive_members": [],
-						"download_state": "available"
+						"download_state": "available",
+						"source_files": {
+							"draft": [
+								{
+									"filename": "d1.zip",
+									"download_url": "https://x/d1.zip"
+								},
+								{
+									"filename": "d2.zip"
+								}
+							],
+							"sketch": [
+								{
+									"filename": "s1.zip",
+									"download_url": "https://x/s1.zip"
+								}
+							],
+							"process": []
+						},
+						"source_entries": {
+							"draft": [
+								{
+									"url": "https://x/d1.zip",
+									"name": "draft/d1.zip"
+								}
+							],
+							"sketch": [
+								{
+									"url": "https://x/s1.zip",
+									"name": "sketch/s1.zip"
+								}
+							],
+							"process": []
+						}
 					},
 					{
 						"name": "mv_data",
@@ -712,15 +745,25 @@
 					"total": 3,
 					"downloadable": 2
 				},
+				"source_entries": [
+					{
+						"url": "https://x/d1.zip",
+						"name": "draft/d1.zip"
+					},
+					{
+						"url": "https://x/s1.zip",
+						"name": "sketch/s1.zip"
+					}
+				],
 				"scope_precedence": "filtered_rows",
-				"archive_discovery": "not_requested",
 				"archives": [],
 				"project_artifacts": [
 					"gs://bucket/reports/mv_data.gpkg",
 					"gs://bucket/reports/combined.xlsx",
 					"gs://bucket/reports/combined.gpkg?token=1",
 					"gs://bucket/reports/collisions.gpkg"
-				]
+				],
+				"archive_discovery": "not_requested"
 			},
 			"why": "Project artifacts remain discoverable outside transformer selection; without archive discovery, absent direct files are unknown rather than proven missing."
 		},
@@ -1033,7 +1076,7 @@
 				}
 			},
 			"expected": {
-				"schema": "ds.project-control.artifact-download/v1",
+				"schema": "ds.project-control.artifact-download/v2",
 				"scope": [
 					"batikoti",
 					"missing"
@@ -1157,7 +1200,40 @@
 						"report_status": "success",
 						"in_scope": false,
 						"archive_members": [],
-						"download_state": "available"
+						"download_state": "available",
+						"source_files": {
+							"draft": [
+								{
+									"filename": "d1.zip",
+									"download_url": "https://x/d1.zip"
+								},
+								{
+									"filename": "d2.zip"
+								}
+							],
+							"sketch": [
+								{
+									"filename": "s1.zip",
+									"download_url": "https://x/s1.zip"
+								}
+							],
+							"process": []
+						},
+						"source_entries": {
+							"draft": [
+								{
+									"url": "https://x/d1.zip",
+									"name": "draft/d1.zip"
+								}
+							],
+							"sketch": [
+								{
+									"url": "https://x/s1.zip",
+									"name": "sketch/s1.zip"
+								}
+							],
+							"process": []
+						}
 					},
 					{
 						"name": "mv_data",
@@ -1388,15 +1464,16 @@
 					"total": 0,
 					"downloadable": 0
 				},
+				"source_entries": [],
 				"scope_precedence": "explicit_selection",
-				"archive_discovery": "not_requested",
 				"archives": [],
 				"project_artifacts": [
 					"gs://bucket/reports/mv_data.gpkg",
 					"gs://bucket/reports/combined.xlsx",
 					"gs://bucket/reports/combined.gpkg?token=1",
 					"gs://bucket/reports/collisions.gpkg"
-				]
+				],
+				"archive_discovery": "not_requested"
 			},
 			"why": "Project artifacts remain discoverable outside transformer selection; without archive discovery, absent direct files are unknown rather than proven missing."
 		},
@@ -1728,7 +1805,7 @@
 				}
 			},
 			"expected": {
-				"schema": "ds.project-control.artifact-download/v1",
+				"schema": "ds.project-control.artifact-download/v2",
 				"scope": [
 					"artifact_shapes",
 					"batikoti",
@@ -1859,7 +1936,40 @@
 						"report_status": "success",
 						"in_scope": true,
 						"archive_members": [],
-						"download_state": "available"
+						"download_state": "available",
+						"source_files": {
+							"draft": [
+								{
+									"filename": "d1.zip",
+									"download_url": "https://x/d1.zip"
+								},
+								{
+									"filename": "d2.zip"
+								}
+							],
+							"sketch": [
+								{
+									"filename": "s1.zip",
+									"download_url": "https://x/s1.zip"
+								}
+							],
+							"process": []
+						},
+						"source_entries": {
+							"draft": [
+								{
+									"url": "https://x/d1.zip",
+									"name": "draft/d1.zip"
+								}
+							],
+							"sketch": [
+								{
+									"url": "https://x/s1.zip",
+									"name": "sketch/s1.zip"
+								}
+							],
+							"process": []
+						}
 					},
 					{
 						"name": "mv_data",
@@ -2100,15 +2210,25 @@
 					"total": 3,
 					"downloadable": 2
 				},
+				"source_entries": [
+					{
+						"url": "https://x/d1.zip",
+						"name": "draft/d1.zip"
+					},
+					{
+						"url": "https://x/s1.zip",
+						"name": "sketch/s1.zip"
+					}
+				],
 				"scope_precedence": "filtered_rows",
-				"archive_discovery": "not_requested",
 				"archives": [],
 				"project_artifacts": [
 					"gs://bucket/reports/mv_data.gpkg",
 					"gs://bucket/reports/combined.xlsx",
 					"gs://bucket/reports/combined.gpkg?token=1",
 					"gs://bucket/reports/collisions.gpkg"
-				]
+				],
+				"archive_discovery": "not_requested"
 			},
 			"why": "Project artifacts remain discoverable outside transformer selection; without archive discovery, absent direct files are unknown rather than proven missing."
 		},
@@ -2215,7 +2335,7 @@
 				}
 			},
 			"expected": {
-				"schema": "ds.project-control.artifact-download/v1",
+				"schema": "ds.project-control.artifact-download/v2",
 				"scope": [
 					"artifact_shapes"
 				],
@@ -2302,10 +2422,11 @@
 					"total": 0,
 					"downloadable": 0
 				},
+				"source_entries": [],
 				"scope_precedence": "filtered_rows",
-				"archive_discovery": "not_requested",
 				"archives": [],
-				"project_artifacts": []
+				"project_artifacts": [],
+				"archive_discovery": "not_requested"
 			}
 		}
 	],

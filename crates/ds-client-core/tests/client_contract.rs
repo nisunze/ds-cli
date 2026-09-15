@@ -220,6 +220,7 @@ struct TransportState {
     survey_entries_changes: VecDeque<TransportResponse>,
     survey_entry_create: VecDeque<TransportResponse>,
     project_data: VecDeque<TransportResponse>,
+    status_processing: VecDeque<TransportResponse>,
     uploads: VecDeque<TransportResponse>,
     survey_control: VecDeque<TransportResponse>,
     styles: VecDeque<TransportResponse>,
@@ -873,6 +874,24 @@ impl Transport for FixtureTransport {
             correlation_valid,
         ));
         Ok(state.project_data.pop_front().unwrap())
+    }
+
+    fn status_processing(
+        &mut self,
+        call: ds_client_core::StatusProcessingCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        let mut state = self.0.lock().unwrap();
+        let body = call.body();
+        state.calls.push(format!(
+            "status_processing method={} path={} body={} limit={} timeout={} correlation={}",
+            call.method(),
+            call.path(),
+            String::from_utf8_lossy(body.as_bytes()),
+            call.response_limit(),
+            call.timeout_seconds(),
+            call.correlation_headers() == ["X-Request-Id", "X-DS-Action-Id"],
+        ));
+        Ok(state.status_processing.pop_front().unwrap())
     }
 
     fn upload_bytes(
@@ -5890,6 +5909,120 @@ fn project_gis_upload_uses_issued_session_and_registers_only_after_complete_tran
             .count(),
         1
     );
+}
+
+fn push_status_processing(transport: &FixtureTransport, data: serde_json::Value) {
+    transport
+        .0
+        .lock()
+        .unwrap()
+        .status_processing
+        .push_back(TransportResponse::new(
+            200,
+            serde_json::to_vec(&serde_json::json!({"success":true,"data":data})).unwrap(),
+        ));
+}
+
+#[test]
+fn status_intake_upload_is_project_fenced_then_processes_one_file() {
+    use ds_client_core::{StatusProcessingCommand, StatusUploadDomain};
+    let transport = FixtureTransport::with_sign_in(SIGN_IN);
+    let mut client = signed_in(transport.clone(), MemoryStore::default());
+    push_status_processing(
+        &transport,
+        serde_json::json!({
+            "session_uri":"https://storage.googleapis.com/upload/storage/v1/b/test-bucket/o?upload_id=private-token",
+            "blob_path":"projects/project_a/process_uploads/v2/lv_process/receipt/a.zip",
+            "upload_domain":"lv_process"
+        }),
+    );
+    transport
+        .0
+        .lock()
+        .unwrap()
+        .uploads
+        .push_back(TransportResponse::new(201, b"{}".as_slice()));
+    let mut bytes = std::io::Cursor::new(b"abc");
+    let uploaded = client
+        .status_processing(
+            "project_a",
+            StatusProcessingCommand::Upload {
+                domain: StatusUploadDomain::LvProcess,
+                file_name: "a.zip",
+                size: 3,
+                content_type: "application/zip",
+                reader: &mut bytes,
+            },
+            NOW + 1,
+        )
+        .unwrap();
+    assert_eq!(
+        uploaded.data()["blob_path"],
+        "projects/project_a/process_uploads/v2/lv_process/receipt/a.zip"
+    );
+    push_status_processing(
+        &transport,
+        serde_json::json!({"results":[{"file_name":"a.zip","submitted":1}]}),
+    );
+    let path = uploaded.data()["blob_path"].as_str().unwrap();
+    let processed = client
+        .status_processing(
+            "project_a",
+            StatusProcessingCommand::Process {
+                action: StatusUploadDomain::LvProcess,
+                file_name: "a.zip",
+                blob_path: path,
+                chain: &[],
+                extra: serde_json::json!({"settings":{}})
+                    .as_object()
+                    .expect("settings object"),
+            },
+            NOW + 1,
+        )
+        .unwrap();
+    assert_eq!(processed.data()["results"][0]["submitted"], 1);
+    let calls = transport.calls();
+    assert!(calls.iter().any(|call| call.contains("path=/process")
+        && call.contains("upload_start")
+        && call.contains("correlation=true")));
+    assert!(calls
+        .iter()
+        .any(|call| call.contains("\"action\":\"lv_process\"")
+            && call.contains("\"eds_project_id\":\"project_a\"")));
+}
+
+#[test]
+fn status_intake_refuses_foreign_storage_target_before_byte_transfer() {
+    use ds_client_core::{StatusProcessingCommand, StatusUploadDomain};
+    let transport = FixtureTransport::with_sign_in(SIGN_IN);
+    let mut client = signed_in(transport.clone(), MemoryStore::default());
+    push_status_processing(
+        &transport,
+        serde_json::json!({
+            "session_uri":"https://storage.googleapis.com/upload/storage/v1/b/test-bucket/o?upload_id=private-token",
+            "blob_path":"projects/other/process_uploads/v2/lv_process/receipt/a.zip",
+            "upload_domain":"lv_process"
+        }),
+    );
+    let mut bytes = std::io::Cursor::new(b"abc");
+    let error = client
+        .status_processing(
+            "project_a",
+            StatusProcessingCommand::Upload {
+                domain: StatusUploadDomain::LvProcess,
+                file_name: "a.zip",
+                size: 3,
+                content_type: "application/zip",
+                reader: &mut bytes,
+            },
+            NOW + 1,
+        )
+        .unwrap_err();
+    assert_eq!(error.kind(), ErrorKind::UnreadableResponse);
+    assert!(!transport
+        .calls()
+        .iter()
+        .any(|call| call.starts_with("upload bytes=")));
 }
 #[test]
 fn project_gis_refuses_untrusted_sessions_and_projects_and_preserves_tiling_failure() {

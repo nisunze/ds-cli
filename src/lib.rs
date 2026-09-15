@@ -59,6 +59,7 @@ pub fn design_health_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue>
 }
 pub mod design_status_query;
 pub mod design_status_row;
+pub mod status_upload;
 pub mod sync;
 pub mod sync_store;
 #[cfg(feature = "wasm")]
@@ -104,6 +105,11 @@ pub fn process_settings_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsVal
 #[wasm_bindgen::prelude::wasm_bindgen(js_name = designStatusRow)]
 pub fn design_status_row_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
     design_status_row::evaluate(input).map_err(|error| wasm_bindgen::JsValue::from_str(&error))
+}
+#[cfg(feature = "wasm")]
+#[wasm_bindgen::prelude::wasm_bindgen(js_name = designStatusUpload)]
+pub fn design_status_upload_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
+    status_upload::evaluate(input).map_err(|error| wasm_bindgen::JsValue::from_str(&error))
 }
 pub mod field_domain;
 pub mod installation;

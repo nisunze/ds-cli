@@ -1346,6 +1346,23 @@ impl DeviceApiAuthorization<'_> {
         self.ensure_active(now)?;
         crate::authorized::project_data(self.profile, transport, self.authority(), project, command)
     }
+    pub fn status_processing<T: AuthorizedTransport>(
+        &self,
+        transport: &mut T,
+        project: &str,
+        command: crate::StatusProcessingCommand<'_>,
+        now: u64,
+    ) -> Result<crate::StatusProcessingReceipt, ClientError> {
+        crate::authorized::validate_tiles(project)?;
+        self.ensure_active(now)?;
+        crate::authorized::status_processing(
+            self.profile,
+            transport,
+            self.authority(),
+            project,
+            command,
+        )
+    }
     pub fn save_transformers<T: AuthorizedTransport>(
         &self,
         transport: &mut T,

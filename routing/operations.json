@@ -1107,6 +1107,27 @@
         }
       }
     },
+    "status_processing": {
+      "summary": "Standard design-intake upload and one-file processing.",
+      "operations": {
+        "action": {
+          "summary": "Issue an upload session or process one uploaded LV design file.",
+          "transport": "json",
+          "action_key": "action",
+          "actions": ["upload_start", "lv_drafting", "sketch_lv", "lv_process"],
+          "idempotency": "unsafe",
+          "retry_class": "none",
+          "timeout_s": 900,
+          "response_cap_bytes": 8388608,
+          "gateway": {
+            "method": "POST",
+            "path": "/process",
+            "backend": "ds_brain_url"
+          },
+          "resolution": { "web": "gateway", "desktop": "gateway" }
+        }
+      }
+    },
     "styles": {
       "summary": "Governed layer styling.",
       "operations": {

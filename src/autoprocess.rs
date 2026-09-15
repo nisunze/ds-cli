@@ -1,7 +1,8 @@
-//! AutoProcess admission: whether a committed edit warrants re-running the LV
-//! network, how wide the next run must be, and when queued work dispatches.
+//! AutoProcess admission: which process mode applies, whether a committed edit
+//! warrants re-running the LV network, how wide the next run must be, and when
+//! queued work dispatches.
 //!
-//! Three decisions live here, and nothing else. The HOST keeps the effects it
+//! Four decisions live here, and nothing else. The HOST keeps the effects it
 //! already owned — the accumulator bookkeeping, the GDF walk that maps changed
 //! features to feeders, the `setTimeout`, and the engine latch. It keeps no
 //! rule: a second copy of "does this field feed the rebuild" is exactly the
@@ -16,7 +17,7 @@ use serde::Deserialize;
 use serde_json::json;
 use std::collections::BTreeSet;
 
-pub const SCHEMA: &str = "ds.design-autoprocess/v1";
+pub const SCHEMA: &str = "ds.design-autoprocess/v2";
 const MAX_INPUT_BYTES: usize = 1024 * 1024;
 
 /// Settle window. A rapid burst coalesces behind it even at the every-edit
@@ -122,6 +123,12 @@ pub struct CadenceRequest {
 #[derive(Deserialize)]
 #[serde(tag = "op", rename_all = "snake_case", deny_unknown_fields)]
 enum Request {
+    /// Which process action the host presents for this editing context.
+    Mode {
+        is_fast_lane: bool,
+        fast_process_active: bool,
+        auto_process_enabled: bool,
+    },
     /// Does this committed edit warrant re-running the LV network?
     Trigger {
         reason: String,
@@ -141,6 +148,11 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
     }
     let request: Request = serde_json::from_slice(input).map_err(|e| e.to_string())?;
     let result = match request {
+        Request::Mode {
+            is_fast_lane,
+            fast_process_active,
+            auto_process_enabled,
+        } => process_mode(is_fast_lane, fast_process_active, auto_process_enabled),
         Request::Trigger {
             reason,
             changed_fields,
@@ -150,6 +162,20 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
         Request::Cadence(request) => cadence(&request)?,
     };
     Ok(json!({"schema": SCHEMA, "result": result}).to_string())
+}
+
+fn process_mode(
+    is_fast_lane: bool,
+    fast_process_active: bool,
+    auto_process_enabled: bool,
+) -> serde_json::Value {
+    if fast_process_active && is_fast_lane && auto_process_enabled {
+        return json!({"mode": "auto", "reason_key": "autoprocess_mode_enabled"});
+    }
+    if is_fast_lane {
+        return json!({"mode": "fast", "reason_key": "autoprocess_mode_fast_lane"});
+    }
+    json!({"mode": "standard", "reason_key": "autoprocess_mode_standard_lane"})
 }
 
 /// Lowercase, then collapse every non-alphanumeric run to one `_` and trim.
@@ -339,6 +365,23 @@ mod tests {
             run(json!({"op":"trigger","reason":"selection-changed","vocabulary":vocabulary()}));
         assert_eq!(out["schedule"], false);
         assert_eq!(out["reason_key"], "autoprocess_trigger_unrelated_reason");
+    }
+
+    #[test]
+    fn process_mode_has_one_answer_for_every_host() {
+        let mode = |is_fast_lane, fast_process_active, auto_process_enabled| {
+            run(json!({
+                "op": "mode",
+                "is_fast_lane": is_fast_lane,
+                "fast_process_active": fast_process_active,
+                "auto_process_enabled": auto_process_enabled,
+            }))
+        };
+        assert_eq!(mode(false, false, false)["mode"], "standard");
+        assert_eq!(mode(true, false, true)["mode"], "fast");
+        assert_eq!(mode(true, true, false)["mode"], "fast");
+        assert_eq!(mode(true, true, true)["mode"], "auto");
+        assert_eq!(mode(false, true, true)["mode"], "standard");
     }
 
     #[test]

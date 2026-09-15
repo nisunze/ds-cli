@@ -803,6 +803,54 @@ pub struct ProjectDataCall<'a> {
     pub(crate) authority: CallAuthority<'a>,
 }
 
+/// One fixed Standard design-intake request. The core supplies the entire body.
+pub struct StatusProcessingCall<'a> {
+    pub(crate) profile: &'a ClientProfile,
+    pub(crate) payload: &'a serde_json::Value,
+    pub(crate) authority: CallAuthority<'a>,
+}
+
+impl StatusProcessingCall<'_> {
+    pub fn gateway_origin(&self) -> &str {
+        self.profile.gateway_origin()
+    }
+    pub const fn path(&self) -> &'static str {
+        crate::STATUS_PROCESSING_PATH
+    }
+    pub const fn method(&self) -> &'static str {
+        crate::STATUS_PROCESSING_METHOD
+    }
+    pub const fn content_type(&self) -> &'static str {
+        "application/json"
+    }
+    pub const fn response_limit(&self) -> usize {
+        crate::STATUS_PROCESSING_RESPONSE_LIMIT
+    }
+    pub const fn timeout_seconds(&self) -> u64 {
+        crate::STATUS_PROCESSING_TIMEOUT_SECONDS
+    }
+    pub const fn correlation_headers(&self) -> [&'static str; 2] {
+        CORRELATION_HEADERS
+    }
+    pub fn gateway_api_key(&self) -> &str {
+        self.profile.gateway_api_key()
+    }
+    pub const fn client_id(&self) -> &'static str {
+        self.profile.client_id()
+    }
+    pub fn bearer_token(&self) -> &str {
+        self.authority.bearer_token
+    }
+    pub fn canonical_email(&self) -> &str {
+        self.authority.canonical_email
+    }
+    pub fn body(&self) -> SecretRequestBody {
+        SecretRequestBody(
+            serde_json::to_vec(self.payload).expect("closed status processing request"),
+        )
+    }
+}
+
 impl ProjectDataCall<'_> {
     pub fn gateway_origin(&self) -> &str {
         self.profile.gateway_origin()
@@ -1988,6 +2036,12 @@ pub trait Transport {
         &mut self,
         call: ProjectDataCall<'_>,
     ) -> Result<TransportResponse, TransportError>;
+    fn status_processing(
+        &mut self,
+        _call: StatusProcessingCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        Err(TransportError::Unreachable)
+    }
     fn upload_bytes(
         &mut self,
         call: crate::UploadBytesCall<'_>,
@@ -2164,6 +2218,12 @@ pub trait AuthorizedTransport {
         &mut self,
         call: ProjectDataCall<'_>,
     ) -> Result<TransportResponse, TransportError>;
+    fn status_processing(
+        &mut self,
+        _call: StatusProcessingCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        Err(TransportError::Unreachable)
+    }
     fn upload_bytes(
         &mut self,
         call: crate::UploadBytesCall<'_>,
@@ -2346,6 +2406,12 @@ impl<T: Transport> AuthorizedTransport for T {
         call: ProjectDataCall<'_>,
     ) -> Result<TransportResponse, TransportError> {
         Transport::project_data(self, call)
+    }
+    fn status_processing(
+        &mut self,
+        call: StatusProcessingCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        Transport::status_processing(self, call)
     }
     fn upload_bytes(
         &mut self,

@@ -1284,6 +1284,16 @@ pub(crate) fn project_data<T: AuthorizedTransport>(
     Ok(crate::ProjectDataReceipt { data })
 }
 
+pub(crate) fn status_processing<T: AuthorizedTransport>(
+    profile: &ClientProfile,
+    transport: &mut T,
+    authority: Authority<'_>,
+    project: &str,
+    command: crate::StatusProcessingCommand<'_>,
+) -> Result<crate::StatusProcessingReceipt, ClientError> {
+    crate::status_processing::run(profile, transport, authority, project, command)
+}
+
 /// One saved-selection operation. Membership, versioning and every capability
 /// check stay ds-brain's; this validates the request grammar and bounds the
 /// answer.
