@@ -1076,6 +1076,33 @@ pub fn verify_result(
                         && warning.omitted_rows == 0
                         && warning.total_rows == 0
                 }
+                // A text cell whose `{key}` had no value in the title block or
+                // the project printed empty. Same shape as the summary: no
+                // element, no rows.
+                "print_text_unbound" => {
+                    placed
+                        && warning.element_id.is_empty()
+                        && warning.omitted_rows == 0
+                        && warning.total_rows == 0
+                }
+                // Cable consistency findings (report_consistency::lv_cables):
+                // one row per pole whose saved cable label disagrees with its
+                // LV line, mirrored on the workbook's Engineering Review
+                // sheet. They ride the xlsx output and name no paper; the
+                // transformer is the saved data label, which differs from the
+                // run's name only by case; the element is the saved line
+                // number. No table rows stand behind them.
+                "lv_pole_line_cable_conflict" => {
+                    warning.transformer.eq_ignore_ascii_case(&plan.transformer)
+                        && warning.output_id == "xlsx"
+                        && plan.formats.contains(&warning.output_id)
+                        && warning.layout_id.is_empty()
+                        && !warning.element_id.is_empty()
+                        && warning.element_id.len() <= 240
+                        && warning.omitted_rows == 0
+                        && warning.total_rows == 0
+                        && warning.message.len() <= 2048
+                }
                 _ => false,
             };
             !valid
@@ -2147,9 +2174,14 @@ mod tests {
                     "code":"print_diagnostics_summary", "transformer":"tx_a", "output_id":format,
                     "layout_id":"detail", "element_id":"", "total_rows":0,
                     "omitted_rows":0, "message":"3 furniture findings; details truncated=false; 2 labels omitted"
+                },
+                {
+                    "code":"print_text_unbound", "transformer":"tx_a", "output_id":format,
+                    "layout_id":"detail", "element_id":"", "total_rows":0,
+                    "omitted_rows":0, "message":"{note} has no value in the title block or the project; the cell printed empty"
                 }
             ]);
-            assert_eq!(verify(&document).unwrap().warnings.len(), 2);
+            assert_eq!(verify(&document).unwrap().warnings.len(), 3);
             for (index, key, invalid) in [
                 (0, "code", json!("print_visual_approval")),
                 (0, "element_id", json!("")),
@@ -2157,6 +2189,9 @@ mod tests {
                 (1, "element_id", json!("legend")),
                 (1, "omitted_rows", json!(1)),
                 (1, "transformer", json!("tx_b")),
+                (2, "element_id", json!("title")),
+                (2, "layout_id", json!("")),
+                (2, "total_rows", json!(1)),
             ] {
                 let mut changed = document.clone();
                 changed["warnings"][index][key] = invalid;
@@ -2165,6 +2200,54 @@ mod tests {
                     "{format}: accepted a diagnostics row with invalid {key}"
                 );
             }
+        }
+    }
+
+    #[test]
+    fn cable_conflict_rows_ride_the_workbook_not_a_paper() {
+        // 2026-09-15: the reporter began mirroring report_consistency findings
+        // as warning rows on the xlsx output, labelled with the saved
+        // transformer name, and 59 of 86 Gisagara reports were refused as
+        // "invalid print warnings".
+        let plan = plan_transformer_export(
+            "proj-1",
+            &simple_receipt("Benin"),
+            "tx_a",
+            7,
+            &layers(),
+            None,
+        )
+        .unwrap();
+        assert!(plan.formats.iter().any(|format| format == "xlsx"));
+        let out_dir = PathBuf::from("/tmp/run/out");
+        let mut document = result_document(&plan, &out_dir);
+        let verify = |document: &Value| {
+            verify_result(&serde_json::to_vec(document).unwrap(), &plan, &out_dir)
+        };
+        document["warnings"] = json!([{
+            "code":"lv_pole_line_cable_conflict", "transformer":"TX_A", "output_id":"xlsx",
+            "layout_id":"", "element_id":"LV_Line_01", "total_rows":0, "omitted_rows":0,
+            "message":"LV_Line_01 P01: saved pole cable '3 x 50 + 54.6mm² ABC' differs from saved LV-line cable(s) '3 x 35 + 54.6mm² ABC'; pending engineering review. Values preserved."
+        }]);
+        let verified = verify(&document).unwrap();
+        assert_eq!(verified.warnings.len(), 1);
+        assert_eq!(verified.warnings[0].transformer, "TX_A");
+        for (key, invalid) in [
+            ("transformer", json!("tx_b")),
+            ("output_id", json!("shp")),
+            ("layout_id", json!("detail")),
+            ("element_id", json!("")),
+            ("element_id", json!("x".repeat(241))),
+            ("total_rows", json!(3)),
+            ("omitted_rows", json!(1)),
+            ("message", json!("m".repeat(2049))),
+        ] {
+            let mut changed = document.clone();
+            changed["warnings"][0][key] = invalid;
+            assert!(
+                verify(&changed).is_err(),
+                "accepted a cable-conflict row with invalid {key}"
+            );
         }
     }
 
