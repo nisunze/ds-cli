@@ -97,6 +97,7 @@ pub fn design_version_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue
 }
 pub mod process_settings;
 pub mod profile_structure_type;
+pub mod profile_supports;
 #[cfg(feature = "wasm")]
 #[wasm_bindgen::prelude::wasm_bindgen(js_name = processSettings)]
 pub fn process_settings_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
@@ -108,6 +109,11 @@ pub fn profile_structure_type_selection_wasm(
     input: &[u8],
 ) -> Result<String, wasm_bindgen::JsValue> {
     profile_structure_type::evaluate(input).map_err(|error| wasm_bindgen::JsValue::from_str(&error))
+}
+#[cfg(feature = "wasm")]
+#[wasm_bindgen::prelude::wasm_bindgen(js_name = profileSupports)]
+pub fn profile_supports_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
+    profile_supports::evaluate(input).map_err(|error| wasm_bindgen::JsValue::from_str(&error))
 }
 #[cfg(feature = "wasm")]
 #[wasm_bindgen::prelude::wasm_bindgen(js_name = designStatusRow)]
