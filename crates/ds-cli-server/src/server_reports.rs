@@ -39,15 +39,7 @@ fn root(database: &Path) -> Result<std::path::PathBuf, String> {
 pub fn projects_with_publications(
     database: &Path,
 ) -> Result<std::collections::BTreeSet<String>, String> {
-    let Some(held) =
-        ds_report_artifacts::confined_fs::HeldDirectory::open_absolute(&root(database)?)?
-    else {
-        return Ok(std::collections::BTreeSet::new());
-    };
-    Ok(ds_report_artifacts::publication::list_committed(&held)?
-        .into_iter()
-        .map(|receipt| receipt.project_id)
-        .collect())
+    ds_sync_runtime::reports::projects(&root(database)?, None)
 }
 
 fn rows(
