@@ -161,11 +161,25 @@
 							"active_edit_dirty": false,
 							"process_status": "",
 							"report_status": "",
-							"phase_lanes": {}
+							"phase_lanes": {},
+							"badges": [
+								{
+									"key": "sync",
+									"label_key": "dsr_badge_saved",
+									"tone": "slate"
+								}
+							]
 						},
 						"phase_ownership": {
 							"owner": "none"
 						},
+						"creation": {
+							"user": "",
+							"when_ms": 0
+						},
+						"phase_bylines": {},
+						"process_settings_used": {},
+						"saved_layer_names": [],
 						"latest_action": {
 							"label_key": "",
 							"when_ms": 0,
@@ -183,6 +197,9 @@
 							"allowed": false,
 							"source": "none",
 							"reason": "no_source"
+						},
+						"fence": {
+							"present": false
 						},
 						"kind": "individual",
 						"allows": {
@@ -339,11 +356,26 @@
 							"active_edit_dirty": false,
 							"process_status": "",
 							"report_status": "",
-							"phase_lanes": {}
+							"phase_lanes": {},
+							"badges": [
+								{
+									"key": "sync",
+									"label_key": "dsr_badge_saved",
+									"tone": "slate"
+								}
+							],
+							"locality_hint_key": "dsr_local_copy"
 						},
 						"phase_ownership": {
 							"owner": "none"
 						},
+						"creation": {
+							"user": "",
+							"when_ms": 0
+						},
+						"phase_bylines": {},
+						"process_settings_used": {},
+						"saved_layer_names": [],
 						"latest_action": {
 							"label_key": "",
 							"when_ms": 0,
@@ -361,6 +393,9 @@
 							"allowed": false,
 							"source": "none",
 							"reason": "no_source"
+						},
+						"fence": {
+							"present": false
 						},
 						"kind": "individual",
 						"allows": {
@@ -536,11 +571,25 @@
 							"active_edit_dirty": false,
 							"process_status": "",
 							"report_status": "",
-							"phase_lanes": {}
+							"phase_lanes": {},
+							"badges": [
+								{
+									"key": "sync",
+									"label_key": "dsr_badge_unsaved",
+									"tone": "amber"
+								}
+							]
 						},
 						"phase_ownership": {
 							"owner": "none"
 						},
+						"creation": {
+							"user": "",
+							"when_ms": 1787743410000
+						},
+						"phase_bylines": {},
+						"process_settings_used": {},
+						"saved_layer_names": [],
 						"latest_action": {
 							"label_key": "dsr_action_browser_edit",
 							"when_ms": 1787743410000,
@@ -560,6 +609,10 @@
 							"allowed": false,
 							"source": "none",
 							"reason": "no_source"
+						},
+						"fence": {
+							"server_version": 4,
+							"present": false
 						},
 						"kind": "individual",
 						"allows": {
@@ -729,11 +782,31 @@
 							"active_edit_dirty": false,
 							"process_status": "",
 							"report_status": "",
-							"phase_lanes": {}
+							"phase_lanes": {},
+							"badges": [
+								{
+									"key": "sync",
+									"label_key": "dsr_badge_saved",
+									"tone": "slate"
+								},
+								{
+									"key": "foreign_room",
+									"label_key": "dsr_badge_foreign_room",
+									"tone": "slate",
+									"user": "aduhireemery@gmail.com"
+								}
+							]
 						},
 						"phase_ownership": {
 							"owner": "none"
 						},
+						"creation": {
+							"user": "",
+							"when_ms": 0
+						},
+						"phase_bylines": {},
+						"process_settings_used": {},
+						"saved_layer_names": [],
 						"latest_action": {
 							"label_key": "",
 							"when_ms": 0,
@@ -751,6 +824,9 @@
 							"allowed": false,
 							"source": "none",
 							"reason": "no_source"
+						},
+						"fence": {
+							"present": false
 						},
 						"kind": "individual",
 						"allows": {
@@ -902,11 +978,25 @@
 							"active_edit_dirty": false,
 							"process_status": "",
 							"report_status": "",
-							"phase_lanes": {}
+							"phase_lanes": {},
+							"badges": [
+								{
+									"key": "sync",
+									"label_key": "dsr_badge_unsaved",
+									"tone": "amber"
+								}
+							]
 						},
 						"phase_ownership": {
 							"owner": "none"
 						},
+						"creation": {
+							"user": "",
+							"when_ms": 1787743350000
+						},
+						"phase_bylines": {},
+						"process_settings_used": {},
+						"saved_layer_names": [],
 						"latest_action": {
 							"label_key": "dsr_action_browser_edit",
 							"when_ms": 1787743350000,
@@ -926,6 +1016,9 @@
 							"allowed": false,
 							"source": "none",
 							"reason": "no_source"
+						},
+						"fence": {
+							"present": false
 						},
 						"kind": "individual",
 						"allows": {
@@ -1084,11 +1177,25 @@
 							"active_edit_dirty": false,
 							"process_status": "",
 							"report_status": "",
-							"phase_lanes": {}
+							"phase_lanes": {},
+							"badges": [
+								{
+									"key": "sync",
+									"label_key": "dsr_badge_unsaved",
+									"tone": "amber"
+								}
+							]
 						},
 						"phase_ownership": {
 							"owner": "none"
 						},
+						"creation": {
+							"user": "",
+							"when_ms": 1787743430000
+						},
+						"phase_bylines": {},
+						"process_settings_used": {},
+						"saved_layer_names": [],
 						"latest_action": {
 							"label_key": "dsr_action_browser_edit",
 							"when_ms": 1787743430000,
@@ -1108,6 +1215,9 @@
 							"allowed": false,
 							"source": "none",
 							"reason": "no_source"
+						},
+						"fence": {
+							"present": false
 						},
 						"kind": "individual",
 						"allows": {
@@ -1263,11 +1373,25 @@
 							"active_edit_dirty": false,
 							"process_status": "",
 							"report_status": "",
-							"phase_lanes": {}
+							"phase_lanes": {},
+							"badges": [
+								{
+									"key": "sync",
+									"label_key": "dsr_badge_saved",
+									"tone": "slate"
+								}
+							]
 						},
 						"phase_ownership": {
 							"owner": "none"
 						},
+						"creation": {
+							"user": "",
+							"when_ms": 0
+						},
+						"phase_bylines": {},
+						"process_settings_used": {},
+						"saved_layer_names": [],
 						"latest_action": {
 							"label_key": "",
 							"when_ms": 0,
@@ -1285,6 +1409,9 @@
 							"allowed": false,
 							"source": "none",
 							"reason": "no_source"
+						},
+						"fence": {
+							"present": false
 						},
 						"kind": "individual",
 						"allows": {
@@ -1452,11 +1579,33 @@
 							"report_status": "",
 							"phase_lanes": {
 								"process": "fast"
-							}
+							},
+							"badges": [
+								{
+									"key": "sync",
+									"label_key": "dsr_badge_unsaved",
+									"tone": "amber"
+								}
+							]
 						},
 						"phase_ownership": {
 							"owner": "none"
 						},
+						"creation": {
+							"user": "nisunze@gmail.com",
+							"when_ms": 1787743435000
+						},
+						"phase_bylines": {
+							"process": {
+								"user": "nisunze@gmail.com",
+								"when_ms": 1787743200000,
+								"lane": "fast"
+							}
+						},
+						"process_settings_used": {},
+						"saved_layer_names": [
+							"lv_poles"
+						],
 						"latest_action": {
 							"label_key": "dsr_action_browser_edit",
 							"when_ms": 1787743435000,
@@ -1476,6 +1625,9 @@
 							"allowed": true,
 							"source": "firestore_replay",
 							"reason": "saved_layers"
+						},
+						"fence": {
+							"present": false
 						},
 						"kind": "individual",
 						"allows": {
@@ -1710,11 +1862,25 @@
 							"active_edit_dirty": false,
 							"process_status": "",
 							"report_status": "",
-							"phase_lanes": {}
+							"phase_lanes": {},
+							"badges": [
+								{
+									"key": "sync",
+									"label_key": "dsr_badge_saved",
+									"tone": "slate"
+								}
+							]
 						},
 						"phase_ownership": {
 							"owner": "none"
 						},
+						"creation": {
+							"user": "",
+							"when_ms": 0
+						},
+						"phase_bylines": {},
+						"process_settings_used": {},
+						"saved_layer_names": [],
 						"latest_action": {
 							"label_key": "",
 							"when_ms": 0,
@@ -1732,6 +1898,9 @@
 							"allowed": false,
 							"source": "none",
 							"reason": "no_source"
+						},
+						"fence": {
+							"present": false
 						},
 						"kind": "individual",
 						"allows": {
@@ -1773,11 +1942,25 @@
 							"active_edit_dirty": false,
 							"process_status": "",
 							"report_status": "",
-							"phase_lanes": {}
+							"phase_lanes": {},
+							"badges": [
+								{
+									"key": "sync",
+									"label_key": "dsr_badge_unsaved",
+									"tone": "amber"
+								}
+							]
 						},
 						"phase_ownership": {
 							"owner": "none"
 						},
+						"creation": {
+							"user": "",
+							"when_ms": 1787743438000
+						},
+						"phase_bylines": {},
+						"process_settings_used": {},
+						"saved_layer_names": [],
 						"latest_action": {
 							"label_key": "dsr_action_browser_edit",
 							"when_ms": 1787743438000,
@@ -1797,6 +1980,9 @@
 							"allowed": false,
 							"source": "none",
 							"reason": "no_source"
+						},
+						"fence": {
+							"present": false
 						},
 						"kind": "individual",
 						"allows": {
@@ -1939,11 +2125,25 @@
 							"active_edit_dirty": true,
 							"process_status": "",
 							"report_status": "",
-							"phase_lanes": {}
+							"phase_lanes": {},
+							"badges": [
+								{
+									"key": "sync",
+									"label_key": "dsr_badge_unsaved",
+									"tone": "amber"
+								}
+							]
 						},
 						"phase_ownership": {
 							"owner": "none"
 						},
+						"creation": {
+							"user": "",
+							"when_ms": 0
+						},
+						"phase_bylines": {},
+						"process_settings_used": {},
+						"saved_layer_names": [],
 						"latest_action": {
 							"label_key": "",
 							"when_ms": 0,
@@ -1961,6 +2161,9 @@
 							"allowed": false,
 							"source": "none",
 							"reason": "no_source"
+						},
+						"fence": {
+							"present": false
 						},
 						"kind": "individual",
 						"allows": {
@@ -2096,11 +2299,25 @@
 							"active_edit_dirty": false,
 							"process_status": "",
 							"report_status": "",
-							"phase_lanes": {}
+							"phase_lanes": {},
+							"badges": [
+								{
+									"key": "sync",
+									"label_key": "dsr_badge_saved",
+									"tone": "slate"
+								}
+							]
 						},
 						"phase_ownership": {
 							"owner": "none"
 						},
+						"creation": {
+							"user": "",
+							"when_ms": 0
+						},
+						"phase_bylines": {},
+						"process_settings_used": {},
+						"saved_layer_names": [],
 						"latest_action": {
 							"label_key": "",
 							"when_ms": 0,
@@ -2118,6 +2335,9 @@
 							"allowed": false,
 							"source": "none",
 							"reason": "no_source"
+						},
+						"fence": {
+							"present": false
 						},
 						"kind": "individual",
 						"allows": {
@@ -2271,11 +2491,25 @@
 							"active_edit_dirty": false,
 							"process_status": "",
 							"report_status": "",
-							"phase_lanes": {}
+							"phase_lanes": {},
+							"badges": [
+								{
+									"key": "sync",
+									"label_key": "dsr_badge_unsaved",
+									"tone": "amber"
+								}
+							]
 						},
 						"phase_ownership": {
 							"owner": "none"
 						},
+						"creation": {
+							"user": "",
+							"when_ms": 1787743440000
+						},
+						"phase_bylines": {},
+						"process_settings_used": {},
+						"saved_layer_names": [],
 						"latest_action": {
 							"label_key": "dsr_action_browser_edit",
 							"when_ms": 1787743440000,
@@ -2295,6 +2529,9 @@
 							"allowed": false,
 							"source": "none",
 							"reason": "no_source"
+						},
+						"fence": {
+							"present": false
 						},
 						"kind": "individual",
 						"allows": {
@@ -2482,11 +2719,31 @@
 							"active_edit_dirty": false,
 							"process_status": "",
 							"report_status": "",
-							"phase_lanes": {}
+							"phase_lanes": {},
+							"badges": [
+								{
+									"key": "sync",
+									"label_key": "dsr_badge_saved",
+									"tone": "slate"
+								},
+								{
+									"key": "presence",
+									"label_key": "dsr_badge_user_editing",
+									"tone": "violet",
+									"user": "aduhireemery@gmail.com"
+								}
+							]
 						},
 						"phase_ownership": {
 							"owner": "none"
 						},
+						"creation": {
+							"user": "",
+							"when_ms": 0
+						},
+						"phase_bylines": {},
+						"process_settings_used": {},
+						"saved_layer_names": [],
 						"latest_action": {
 							"label_key": "",
 							"when_ms": 0,
@@ -2504,6 +2761,9 @@
 							"allowed": false,
 							"source": "none",
 							"reason": "no_source"
+						},
+						"fence": {
+							"present": false
 						},
 						"kind": "individual",
 						"allows": {
@@ -2684,11 +2944,30 @@
 							"active_edit_dirty": false,
 							"process_status": "",
 							"report_status": "",
-							"phase_lanes": {}
+							"phase_lanes": {},
+							"badges": [
+								{
+									"key": "sync",
+									"label_key": "dsr_badge_saved",
+									"tone": "slate"
+								},
+								{
+									"key": "presence",
+									"label_key": "dsr_badge_you_editing_elsewhere",
+									"tone": "amber"
+								}
+							]
 						},
 						"phase_ownership": {
 							"owner": "none"
 						},
+						"creation": {
+							"user": "",
+							"when_ms": 0
+						},
+						"phase_bylines": {},
+						"process_settings_used": {},
+						"saved_layer_names": [],
 						"latest_action": {
 							"label_key": "",
 							"when_ms": 0,
@@ -2706,6 +2985,9 @@
 							"allowed": false,
 							"source": "none",
 							"reason": "no_source"
+						},
+						"fence": {
+							"present": false
 						},
 						"kind": "individual",
 						"allows": {
@@ -2886,11 +3168,25 @@
 							"active_edit_dirty": false,
 							"process_status": "",
 							"report_status": "",
-							"phase_lanes": {}
+							"phase_lanes": {},
+							"badges": [
+								{
+									"key": "sync",
+									"label_key": "dsr_badge_unsaved",
+									"tone": "amber"
+								}
+							]
 						},
 						"phase_ownership": {
 							"owner": "none"
 						},
+						"creation": {
+							"user": "",
+							"when_ms": 0
+						},
+						"phase_bylines": {},
+						"process_settings_used": {},
+						"saved_layer_names": [],
 						"latest_action": {
 							"label_key": "",
 							"when_ms": 0,
@@ -2908,6 +3204,9 @@
 							"allowed": false,
 							"source": "none",
 							"reason": "no_source"
+						},
+						"fence": {
+							"present": false
 						},
 						"kind": "individual",
 						"allows": {
@@ -3072,11 +3371,31 @@
 							"active_edit_dirty": false,
 							"process_status": "",
 							"report_status": "",
-							"phase_lanes": {}
+							"phase_lanes": {},
+							"badges": [
+								{
+									"key": "sync",
+									"label_key": "dsr_badge_saved",
+									"tone": "slate"
+								},
+								{
+									"key": "presence",
+									"label_key": "dsr_badge_user_editing_now",
+									"tone": "violet",
+									"user": "bob@x.com"
+								}
+							]
 						},
 						"phase_ownership": {
 							"owner": "none"
 						},
+						"creation": {
+							"user": "",
+							"when_ms": 0
+						},
+						"phase_bylines": {},
+						"process_settings_used": {},
+						"saved_layer_names": [],
 						"latest_action": {
 							"label_key": "",
 							"when_ms": 0,
@@ -3094,6 +3413,9 @@
 							"allowed": false,
 							"source": "none",
 							"reason": "no_source"
+						},
+						"fence": {
+							"present": false
 						},
 						"kind": "individual",
 						"allows": {
@@ -3233,11 +3555,25 @@
 							"active_edit_dirty": false,
 							"process_status": "",
 							"report_status": "",
-							"phase_lanes": {}
+							"phase_lanes": {},
+							"badges": [
+								{
+									"key": "sync",
+									"label_key": "dsr_badge_saved",
+									"tone": "slate"
+								}
+							]
 						},
 						"phase_ownership": {
 							"owner": "none"
 						},
+						"creation": {
+							"user": "",
+							"when_ms": 0
+						},
+						"phase_bylines": {},
+						"process_settings_used": {},
+						"saved_layer_names": [],
 						"latest_action": {
 							"label_key": "",
 							"when_ms": 0,
@@ -3255,6 +3591,9 @@
 							"allowed": false,
 							"source": "none",
 							"reason": "no_source"
+						},
+						"fence": {
+							"present": false
 						},
 						"kind": "individual",
 						"allows": {
@@ -3411,11 +3750,31 @@
 							"active_edit_dirty": false,
 							"process_status": "",
 							"report_status": "",
-							"phase_lanes": {}
+							"phase_lanes": {},
+							"badges": [
+								{
+									"key": "sync",
+									"label_key": "dsr_badge_saved",
+									"tone": "slate"
+								},
+								{
+									"key": "foreign_room",
+									"label_key": "dsr_badge_foreign_room",
+									"tone": "slate",
+									"user": "aduhireemery@gmail.com"
+								}
+							]
 						},
 						"phase_ownership": {
 							"owner": "none"
 						},
+						"creation": {
+							"user": "",
+							"when_ms": 0
+						},
+						"phase_bylines": {},
+						"process_settings_used": {},
+						"saved_layer_names": [],
 						"latest_action": {
 							"label_key": "",
 							"when_ms": 0,
@@ -3433,6 +3792,9 @@
 							"allowed": false,
 							"source": "none",
 							"reason": "no_source"
+						},
+						"fence": {
+							"present": false
 						},
 						"kind": "individual",
 						"allows": {
@@ -3567,11 +3929,25 @@
 							"active_edit_dirty": false,
 							"process_status": "",
 							"report_status": "",
-							"phase_lanes": {}
+							"phase_lanes": {},
+							"badges": [
+								{
+									"key": "sync",
+									"label_key": "dsr_badge_saved",
+									"tone": "slate"
+								}
+							]
 						},
 						"phase_ownership": {
 							"owner": "none"
 						},
+						"creation": {
+							"user": "",
+							"when_ms": 0
+						},
+						"phase_bylines": {},
+						"process_settings_used": {},
+						"saved_layer_names": [],
 						"latest_action": {
 							"label_key": "",
 							"when_ms": 0,
@@ -3589,6 +3965,9 @@
 							"allowed": false,
 							"source": "none",
 							"reason": "no_source"
+						},
+						"fence": {
+							"present": false
 						},
 						"kind": "individual",
 						"allows": {
@@ -3734,11 +4113,31 @@
 							"report_status": "",
 							"phase_lanes": {
 								"process": "fast"
-							}
+							},
+							"badges": [
+								{
+									"key": "sync",
+									"label_key": "dsr_badge_saved",
+									"tone": "slate"
+								}
+							]
 						},
 						"phase_ownership": {
 							"owner": "none"
 						},
+						"creation": {
+							"user": "ops@x.com",
+							"when_ms": 1787738400000
+						},
+						"phase_bylines": {
+							"process": {
+								"user": "ops@x.com",
+								"when_ms": 1787738400000,
+								"lane": "fast"
+							}
+						},
+						"process_settings_used": {},
+						"saved_layer_names": [],
 						"latest_action": {
 							"label_key": "dsr_action_process",
 							"when_ms": 1787738400000,
@@ -3758,6 +4157,9 @@
 							"allowed": false,
 							"source": "none",
 							"reason": "no_source"
+						},
+						"fence": {
+							"present": false
 						},
 						"kind": "individual",
 						"allows": {
@@ -3906,11 +4308,33 @@
 							"phase_lanes": {
 								"draft": "standard"
 							},
-							"legacy_standard_output": "draft-sketch"
+							"legacy_standard_output": "draft-sketch",
+							"badges": [
+								{
+									"key": "sync",
+									"label_key": "dsr_badge_saved",
+									"tone": "slate"
+								}
+							]
 						},
 						"phase_ownership": {
 							"owner": "none"
 						},
+						"legacy_phase": "draft",
+						"creation": {
+							"user": "",
+							"when_ms": 1787738400000,
+							"lane": "standard"
+						},
+						"phase_bylines": {
+							"draft": {
+								"user": "",
+								"when_ms": 1787738400000,
+								"lane": "standard"
+							}
+						},
+						"process_settings_used": {},
+						"saved_layer_names": [],
 						"latest_action": {
 							"label_key": "dsr_action_draft",
 							"when_ms": 1787738400000,
@@ -3930,6 +4354,9 @@
 							"allowed": false,
 							"source": "none",
 							"reason": "no_source"
+						},
+						"fence": {
+							"present": false
 						},
 						"kind": "individual",
 						"allows": {
@@ -4071,11 +4498,25 @@
 							"active_edit_dirty": false,
 							"process_status": "",
 							"report_status": "",
-							"phase_lanes": {}
+							"phase_lanes": {},
+							"badges": [
+								{
+									"key": "sync",
+									"label_key": "dsr_badge_unsaved",
+									"tone": "amber"
+								}
+							]
 						},
 						"phase_ownership": {
 							"owner": "none"
 						},
+						"creation": {
+							"user": "",
+							"when_ms": 1787738400000
+						},
+						"phase_bylines": {},
+						"process_settings_used": {},
+						"saved_layer_names": [],
 						"latest_action": {
 							"label_key": "dsr_action_browser_edit",
 							"when_ms": 1787738400000,
@@ -4095,6 +4536,9 @@
 							"allowed": false,
 							"source": "none",
 							"reason": "no_source"
+						},
+						"fence": {
+							"present": false
 						},
 						"kind": "individual",
 						"allows": {
@@ -4233,11 +4677,25 @@
 							"active_edit_dirty": false,
 							"process_status": "",
 							"report_status": "",
-							"phase_lanes": {}
+							"phase_lanes": {},
+							"badges": [
+								{
+									"key": "sync",
+									"label_key": "dsr_badge_saved",
+									"tone": "slate"
+								}
+							]
 						},
 						"phase_ownership": {
 							"owner": "none"
 						},
+						"creation": {
+							"user": "ops@x.com",
+							"when_ms": 1787734800000
+						},
+						"phase_bylines": {},
+						"process_settings_used": {},
+						"saved_layer_names": [],
 						"latest_action": {
 							"label_key": "dsr_action_document_update",
 							"when_ms": 1787734800000,
@@ -4257,6 +4715,9 @@
 							"allowed": false,
 							"source": "none",
 							"reason": "no_source"
+						},
+						"fence": {
+							"present": false
 						},
 						"kind": "individual",
 						"allows": {
@@ -4403,11 +4864,33 @@
 							"phase_lanes": {
 								"draft": "standard"
 							},
-							"legacy_standard_output": "draft-sketch"
+							"legacy_standard_output": "draft-sketch",
+							"badges": [
+								{
+									"key": "sync",
+									"label_key": "dsr_badge_saved",
+									"tone": "slate"
+								}
+							]
 						},
 						"phase_ownership": {
 							"owner": "none"
 						},
+						"legacy_phase": "draft",
+						"creation": {
+							"user": "draft@x.com",
+							"when_ms": 1787648400000,
+							"lane": "standard"
+						},
+						"phase_bylines": {
+							"draft": {
+								"user": "draft@x.com",
+								"when_ms": 1787648400000,
+								"lane": "standard"
+							}
+						},
+						"process_settings_used": {},
+						"saved_layer_names": [],
 						"latest_action": {
 							"label_key": "dsr_action_draft",
 							"when_ms": 1787648400000,
@@ -4427,6 +4910,9 @@
 							"allowed": false,
 							"source": "none",
 							"reason": "no_source"
+						},
+						"fence": {
+							"present": false
 						},
 						"kind": "individual",
 						"allows": {
@@ -4574,11 +5060,36 @@
 							"phase_lanes": {
 								"process": "fast",
 								"report": "standard"
-							}
+							},
+							"badges": [
+								{
+									"key": "sync",
+									"label_key": "dsr_badge_saved",
+									"tone": "slate"
+								}
+							]
 						},
 						"phase_ownership": {
 							"owner": "none"
 						},
+						"creation": {
+							"user": "rep@x.com",
+							"when_ms": 1787738400750
+						},
+						"phase_bylines": {
+							"process": {
+								"user": "",
+								"when_ms": 1787738400250,
+								"lane": "fast"
+							},
+							"report": {
+								"user": "rep@x.com",
+								"when_ms": 1787738400750,
+								"lane": "standard"
+							}
+						},
+						"process_settings_used": {},
+						"saved_layer_names": [],
 						"latest_action": {
 							"label_key": "dsr_action_report",
 							"when_ms": 1787738400750,
@@ -4598,6 +5109,9 @@
 							"allowed": false,
 							"source": "none",
 							"reason": "no_source"
+						},
+						"fence": {
+							"present": false
 						},
 						"kind": "individual",
 						"allows": {
@@ -4744,11 +5258,31 @@
 							"phase_lanes": {
 								"process": "standard"
 							},
-							"legacy_standard_output": "standard-process"
+							"legacy_standard_output": "standard-process",
+							"badges": [
+								{
+									"key": "sync",
+									"label_key": "dsr_badge_saved",
+									"tone": "slate"
+								}
+							]
 						},
 						"phase_ownership": {
 							"owner": "none"
 						},
+						"creation": {
+							"user": "ops@x.com",
+							"when_ms": 1787740200000
+						},
+						"phase_bylines": {
+							"process": {
+								"user": "ops@x.com",
+								"when_ms": 1787731200000,
+								"lane": "standard"
+							}
+						},
+						"process_settings_used": {},
+						"saved_layer_names": [],
 						"latest_action": {
 							"label_key": "dsr_action_process_progress",
 							"when_ms": 1787740200000,
@@ -4768,6 +5302,9 @@
 							"allowed": false,
 							"source": "none",
 							"reason": "no_source"
+						},
+						"fence": {
+							"present": false
 						},
 						"kind": "individual",
 						"allows": {
@@ -4928,11 +5465,25 @@
 							"active_edit_dirty": false,
 							"process_status": "",
 							"report_status": "",
-							"phase_lanes": {}
+							"phase_lanes": {},
+							"badges": [
+								{
+									"key": "sync",
+									"label_key": "dsr_badge_saved",
+									"tone": "slate"
+								}
+							]
 						},
 						"phase_ownership": {
 							"owner": "none"
 						},
+						"creation": {
+							"user": "d@x.com",
+							"when_ms": 1787479200000
+						},
+						"phase_bylines": {},
+						"process_settings_used": {},
+						"saved_layer_names": [],
 						"latest_action": {
 							"label_key": "dsr_action_combined_report",
 							"when_ms": 1787479200000,
@@ -4952,6 +5503,9 @@
 							"allowed": false,
 							"source": "none",
 							"reason": "no_source"
+						},
+						"fence": {
+							"present": false
 						},
 						"kind": "individual",
 						"allows": {
@@ -5097,11 +5651,37 @@
 							"phase_lanes": {
 								"draft": "standard"
 							},
-							"legacy_standard_output": "draft-sketch"
+							"legacy_standard_output": "draft-sketch",
+							"badges": [
+								{
+									"key": "sync",
+									"label_key": "dsr_badge_saved",
+									"tone": "slate"
+								}
+							]
 						},
 						"phase_ownership": {
 							"owner": "none"
 						},
+						"legacy_phase": "draft",
+						"creation": {
+							"user": "",
+							"when_ms": 1787738400000,
+							"lane": "standard"
+						},
+						"phase_bylines": {
+							"draft": {
+								"user": "",
+								"when_ms": 1787738400000,
+								"lane": "standard"
+							},
+							"process": {
+								"user": "ops@x.com",
+								"when_ms": 0
+							}
+						},
+						"process_settings_used": {},
+						"saved_layer_names": [],
 						"latest_action": {
 							"label_key": "dsr_action_draft",
 							"when_ms": 1787738400000,
@@ -5121,6 +5701,9 @@
 							"allowed": false,
 							"source": "none",
 							"reason": "no_source"
+						},
+						"fence": {
+							"present": false
 						},
 						"kind": "individual",
 						"allows": {
@@ -5255,11 +5838,25 @@
 							"active_edit_dirty": false,
 							"process_status": "",
 							"report_status": "",
-							"phase_lanes": {}
+							"phase_lanes": {},
+							"badges": [
+								{
+									"key": "sync",
+									"label_key": "dsr_badge_saved",
+									"tone": "slate"
+								}
+							]
 						},
 						"phase_ownership": {
 							"owner": "none"
 						},
+						"creation": {
+							"user": "",
+							"when_ms": 0
+						},
+						"phase_bylines": {},
+						"process_settings_used": {},
+						"saved_layer_names": [],
 						"latest_action": {
 							"label_key": "",
 							"when_ms": 0,
@@ -5277,6 +5874,9 @@
 							"allowed": false,
 							"source": "none",
 							"reason": "no_source"
+						},
+						"fence": {
+							"present": false
 						},
 						"kind": "individual",
 						"allows": {
@@ -5417,11 +6017,25 @@
 							"active_edit_dirty": false,
 							"process_status": "",
 							"report_status": "",
-							"phase_lanes": {}
+							"phase_lanes": {},
+							"badges": [
+								{
+									"key": "sync",
+									"label_key": "dsr_badge_saved",
+									"tone": "slate"
+								}
+							]
 						},
 						"phase_ownership": {
 							"owner": "none"
 						},
+						"creation": {
+							"user": "",
+							"when_ms": 0
+						},
+						"phase_bylines": {},
+						"process_settings_used": {},
+						"saved_layer_names": [],
 						"latest_action": {
 							"label_key": "",
 							"when_ms": 0,
@@ -5439,6 +6053,9 @@
 							"allowed": false,
 							"source": "none",
 							"reason": "no_source"
+						},
+						"fence": {
+							"present": false
 						},
 						"kind": "individual",
 						"allows": {
@@ -5578,11 +6195,25 @@
 							"active_edit_dirty": false,
 							"process_status": "",
 							"report_status": "",
-							"phase_lanes": {}
+							"phase_lanes": {},
+							"badges": [
+								{
+									"key": "sync",
+									"label_key": "dsr_badge_saved",
+									"tone": "slate"
+								}
+							]
 						},
 						"phase_ownership": {
 							"owner": "none"
 						},
+						"creation": {
+							"user": "",
+							"when_ms": 0
+						},
+						"phase_bylines": {},
+						"process_settings_used": {},
+						"saved_layer_names": [],
 						"latest_action": {
 							"label_key": "",
 							"when_ms": 0,
@@ -5600,6 +6231,9 @@
 							"allowed": false,
 							"source": "none",
 							"reason": "no_source"
+						},
+						"fence": {
+							"present": false
 						},
 						"kind": "individual",
 						"allows": {
@@ -5739,11 +6373,25 @@
 							"active_edit_dirty": false,
 							"process_status": "",
 							"report_status": "",
-							"phase_lanes": {}
+							"phase_lanes": {},
+							"badges": [
+								{
+									"key": "sync",
+									"label_key": "dsr_badge_saved",
+									"tone": "slate"
+								}
+							]
 						},
 						"phase_ownership": {
 							"owner": "none"
 						},
+						"creation": {
+							"user": "",
+							"when_ms": 0
+						},
+						"phase_bylines": {},
+						"process_settings_used": {},
+						"saved_layer_names": [],
 						"latest_action": {
 							"label_key": "",
 							"when_ms": 0,
@@ -5761,6 +6409,9 @@
 							"allowed": false,
 							"source": "none",
 							"reason": "no_source"
+						},
+						"fence": {
+							"present": false
 						},
 						"kind": "individual",
 						"allows": {
@@ -5898,11 +6549,25 @@
 							"active_edit_dirty": false,
 							"process_status": "",
 							"report_status": "",
-							"phase_lanes": {}
+							"phase_lanes": {},
+							"badges": [
+								{
+									"key": "sync",
+									"label_key": "dsr_badge_saved",
+									"tone": "slate"
+								}
+							]
 						},
 						"phase_ownership": {
 							"owner": "none"
 						},
+						"creation": {
+							"user": "",
+							"when_ms": 0
+						},
+						"phase_bylines": {},
+						"process_settings_used": {},
+						"saved_layer_names": [],
 						"latest_action": {
 							"label_key": "",
 							"when_ms": 0,
@@ -5920,6 +6585,9 @@
 							"allowed": false,
 							"source": "none",
 							"reason": "no_source"
+						},
+						"fence": {
+							"present": false
 						},
 						"kind": "individual",
 						"allows": {
@@ -6060,11 +6728,25 @@
 							"active_edit_dirty": false,
 							"process_status": "",
 							"report_status": "",
-							"phase_lanes": {}
+							"phase_lanes": {},
+							"badges": [
+								{
+									"key": "sync",
+									"label_key": "dsr_badge_saved",
+									"tone": "slate"
+								}
+							]
 						},
 						"phase_ownership": {
 							"owner": "none"
 						},
+						"creation": {
+							"user": "",
+							"when_ms": 0
+						},
+						"phase_bylines": {},
+						"process_settings_used": {},
+						"saved_layer_names": [],
 						"latest_action": {
 							"label_key": "",
 							"when_ms": 0,
@@ -6082,6 +6764,9 @@
 							"allowed": false,
 							"source": "none",
 							"reason": "no_source"
+						},
+						"fence": {
+							"present": false
 						},
 						"kind": "individual",
 						"allows": {
@@ -6226,11 +6911,25 @@
 							"active_edit_dirty": false,
 							"process_status": "",
 							"report_status": "",
-							"phase_lanes": {}
+							"phase_lanes": {},
+							"badges": [
+								{
+									"key": "sync",
+									"label_key": "dsr_badge_saved",
+									"tone": "slate"
+								}
+							]
 						},
 						"phase_ownership": {
 							"owner": "none"
 						},
+						"creation": {
+							"user": "",
+							"when_ms": 0
+						},
+						"phase_bylines": {},
+						"process_settings_used": {},
+						"saved_layer_names": [],
 						"latest_action": {
 							"label_key": "",
 							"when_ms": 0,
@@ -6248,6 +6947,9 @@
 							"allowed": false,
 							"source": "none",
 							"reason": "no_source"
+						},
+						"fence": {
+							"present": false
 						},
 						"kind": "individual",
 						"allows": {
@@ -6388,11 +7090,25 @@
 							"active_edit_dirty": false,
 							"process_status": "",
 							"report_status": "",
-							"phase_lanes": {}
+							"phase_lanes": {},
+							"badges": [
+								{
+									"key": "sync",
+									"label_key": "dsr_badge_saved",
+									"tone": "slate"
+								}
+							]
 						},
 						"phase_ownership": {
 							"owner": "none"
 						},
+						"creation": {
+							"user": "",
+							"when_ms": 0
+						},
+						"phase_bylines": {},
+						"process_settings_used": {},
+						"saved_layer_names": [],
 						"latest_action": {
 							"label_key": "",
 							"when_ms": 0,
@@ -6410,6 +7126,9 @@
 							"allowed": false,
 							"source": "none",
 							"reason": "no_source"
+						},
+						"fence": {
+							"present": false
 						},
 						"kind": "individual",
 						"allows": {
@@ -6551,11 +7270,25 @@
 							"active_edit_dirty": false,
 							"process_status": "",
 							"report_status": "",
-							"phase_lanes": {}
+							"phase_lanes": {},
+							"badges": [
+								{
+									"key": "sync",
+									"label_key": "dsr_badge_saved",
+									"tone": "slate"
+								}
+							]
 						},
 						"phase_ownership": {
 							"owner": "none"
 						},
+						"creation": {
+							"user": "",
+							"when_ms": 0
+						},
+						"phase_bylines": {},
+						"process_settings_used": {},
+						"saved_layer_names": [],
 						"latest_action": {
 							"label_key": "",
 							"when_ms": 0,
@@ -6573,6 +7306,9 @@
 							"allowed": false,
 							"source": "none",
 							"reason": "no_source"
+						},
+						"fence": {
+							"present": false
 						},
 						"kind": "individual",
 						"allows": {
@@ -6711,11 +7447,25 @@
 							"active_edit_dirty": false,
 							"process_status": "",
 							"report_status": "",
-							"phase_lanes": {}
+							"phase_lanes": {},
+							"badges": [
+								{
+									"key": "sync",
+									"label_key": "dsr_badge_saved",
+									"tone": "slate"
+								}
+							]
 						},
 						"phase_ownership": {
 							"owner": "none"
 						},
+						"creation": {
+							"user": "",
+							"when_ms": 0
+						},
+						"phase_bylines": {},
+						"process_settings_used": {},
+						"saved_layer_names": [],
 						"latest_action": {
 							"label_key": "",
 							"when_ms": 0,
@@ -6733,6 +7483,9 @@
 							"allowed": false,
 							"source": "none",
 							"reason": "no_source"
+						},
+						"fence": {
+							"present": false
 						},
 						"kind": "individual",
 						"allows": {
@@ -6876,11 +7629,27 @@
 							"active_edit_dirty": false,
 							"process_status": "",
 							"report_status": "",
-							"phase_lanes": {}
+							"phase_lanes": {},
+							"badges": [
+								{
+									"key": "sync",
+									"label_key": "dsr_badge_saved",
+									"tone": "slate"
+								}
+							]
 						},
 						"phase_ownership": {
 							"owner": "none"
 						},
+						"creation": {
+							"user": "",
+							"when_ms": 0
+						},
+						"phase_bylines": {},
+						"process_settings_used": {},
+						"saved_layer_names": [
+							"lv_poles"
+						],
 						"latest_action": {
 							"label_key": "",
 							"when_ms": 0,
@@ -6898,6 +7667,9 @@
 							"allowed": false,
 							"source": "none",
 							"reason": "backend_refused"
+						},
+						"fence": {
+							"present": false
 						},
 						"kind": "individual",
 						"allows": {
@@ -7036,11 +7808,27 @@
 							"active_edit_dirty": false,
 							"process_status": "",
 							"report_status": "",
-							"phase_lanes": {}
+							"phase_lanes": {},
+							"badges": [
+								{
+									"key": "sync",
+									"label_key": "dsr_badge_saved",
+									"tone": "slate"
+								}
+							]
 						},
 						"phase_ownership": {
 							"owner": "none"
 						},
+						"creation": {
+							"user": "",
+							"when_ms": 0
+						},
+						"phase_bylines": {},
+						"process_settings_used": {},
+						"saved_layer_names": [
+							"lv_poles"
+						],
 						"latest_action": {
 							"label_key": "",
 							"when_ms": 0,
@@ -7058,6 +7846,9 @@
 							"allowed": true,
 							"source": "firestore_replay",
 							"reason": "saved_layers"
+						},
+						"fence": {
+							"present": false
 						},
 						"kind": "individual",
 						"allows": {
@@ -7198,11 +7989,25 @@
 							"active_edit_dirty": false,
 							"process_status": "",
 							"report_status": "",
-							"phase_lanes": {}
+							"phase_lanes": {},
+							"badges": [
+								{
+									"key": "sync",
+									"label_key": "dsr_badge_saved",
+									"tone": "slate"
+								}
+							]
 						},
 						"phase_ownership": {
 							"owner": "none"
 						},
+						"creation": {
+							"user": "",
+							"when_ms": 0
+						},
+						"phase_bylines": {},
+						"process_settings_used": {},
+						"saved_layer_names": [],
 						"latest_action": {
 							"label_key": "",
 							"when_ms": 0,
@@ -7220,6 +8025,9 @@
 							"allowed": true,
 							"source": "firestore_replay",
 							"reason": "backend_allowed"
+						},
+						"fence": {
+							"present": false
 						},
 						"kind": "individual",
 						"allows": {
@@ -7360,11 +8168,25 @@
 							"active_edit_dirty": false,
 							"process_status": "",
 							"report_status": "",
-							"phase_lanes": {}
+							"phase_lanes": {},
+							"badges": [
+								{
+									"key": "sync",
+									"label_key": "dsr_badge_saved",
+									"tone": "slate"
+								}
+							]
 						},
 						"phase_ownership": {
 							"owner": "none"
 						},
+						"creation": {
+							"user": "",
+							"when_ms": 0
+						},
+						"phase_bylines": {},
+						"process_settings_used": {},
+						"saved_layer_names": [],
 						"latest_action": {
 							"label_key": "",
 							"when_ms": 0,
@@ -7382,6 +8204,9 @@
 							"allowed": false,
 							"source": "none",
 							"reason": "backend_source_unsupported"
+						},
+						"fence": {
+							"present": false
 						},
 						"kind": "individual",
 						"allows": {
@@ -7521,11 +8346,25 @@
 							"active_edit_dirty": false,
 							"process_status": "",
 							"report_status": "",
-							"phase_lanes": {}
+							"phase_lanes": {},
+							"badges": [
+								{
+									"key": "sync",
+									"label_key": "dsr_badge_saved",
+									"tone": "slate"
+								}
+							]
 						},
 						"phase_ownership": {
 							"owner": "none"
 						},
+						"creation": {
+							"user": "",
+							"when_ms": 0
+						},
+						"phase_bylines": {},
+						"process_settings_used": {},
+						"saved_layer_names": [],
 						"latest_action": {
 							"label_key": "",
 							"when_ms": 0,
@@ -7543,6 +8382,9 @@
 							"allowed": true,
 							"source": "firestore_replay",
 							"reason": "backend_source_only"
+						},
+						"fence": {
+							"present": false
 						},
 						"kind": "individual",
 						"allows": {
@@ -7684,11 +8526,32 @@
 							"phase_lanes": {
 								"process": "standard"
 							},
-							"legacy_standard_output": "standard-process"
+							"legacy_standard_output": "standard-process",
+							"badges": [
+								{
+									"key": "sync",
+									"label_key": "dsr_badge_saved",
+									"tone": "slate"
+								}
+							]
 						},
 						"phase_ownership": {
 							"owner": "none"
 						},
+						"creation": {
+							"user": "",
+							"when_ms": 0
+						},
+						"phase_bylines": {
+							"process": {
+								"user": "",
+								"when_ms": 0,
+								"lane": "standard"
+							}
+						},
+						"drafting_source": "ds-web",
+						"process_settings_used": {},
+						"saved_layer_names": [],
 						"latest_action": {
 							"label_key": "",
 							"when_ms": 0,
@@ -7706,6 +8569,9 @@
 							"allowed": true,
 							"source": "firestore_replay",
 							"reason": "drafting_source"
+						},
+						"fence": {
+							"present": false
 						},
 						"kind": "individual",
 						"allows": {
@@ -7843,11 +8709,27 @@
 							"active_edit_dirty": false,
 							"process_status": "",
 							"report_status": "",
-							"phase_lanes": {}
+							"phase_lanes": {},
+							"badges": [
+								{
+									"key": "sync",
+									"label_key": "dsr_badge_saved",
+									"tone": "slate"
+								}
+							]
 						},
 						"phase_ownership": {
 							"owner": "none"
 						},
+						"creation": {
+							"user": "",
+							"when_ms": 0
+						},
+						"phase_bylines": {},
+						"process_settings_used": {},
+						"saved_layer_names": [
+							"lv_poles"
+						],
 						"latest_action": {
 							"label_key": "",
 							"when_ms": 0,
@@ -7865,6 +8747,9 @@
 							"allowed": false,
 							"source": "none",
 							"reason": "no_source"
+						},
+						"fence": {
+							"present": false
 						},
 						"kind": "individual",
 						"allows": {
@@ -8014,7 +8899,14 @@
 							"phase_lanes": {
 								"draft": "standard",
 								"process": "fast"
-							}
+							},
+							"badges": [
+								{
+									"key": "sync",
+									"label_key": "dsr_badge_saved",
+									"tone": "slate"
+								}
+							]
 						},
 						"phase_ownership": {
 							"owner": "none",
@@ -8024,6 +8916,26 @@
 								"retained_error": "Drafting failed on 12 poles."
 							}
 						},
+						"legacy_phase": "draft",
+						"creation": {
+							"user": "a@x.com",
+							"when_ms": 1787220000000,
+							"lane": "standard"
+						},
+						"phase_bylines": {
+							"draft": {
+								"user": "a@x.com",
+								"when_ms": 1787220000000,
+								"lane": "standard"
+							},
+							"process": {
+								"user": "b@x.com",
+								"when_ms": 1787652000000,
+								"lane": "fast"
+							}
+						},
+						"process_settings_used": {},
+						"saved_layer_names": [],
 						"latest_action": {
 							"label_key": "dsr_action_process",
 							"when_ms": 1787652000000,
@@ -8043,6 +8955,9 @@
 							"allowed": false,
 							"source": "none",
 							"reason": "no_source"
+						},
+						"fence": {
+							"present": false
 						},
 						"kind": "individual",
 						"allows": {
@@ -8189,7 +9104,14 @@
 							"phase_lanes": {
 								"draft": "standard",
 								"process": "fast"
-							}
+							},
+							"badges": [
+								{
+									"key": "sync",
+									"label_key": "dsr_badge_saved",
+									"tone": "slate"
+								}
+							]
 						},
 						"phase_ownership": {
 							"owner": "none",
@@ -8198,6 +9120,26 @@
 								"at_ms": 1787652000000
 							}
 						},
+						"legacy_phase": "draft",
+						"creation": {
+							"user": "",
+							"when_ms": 1787220000000,
+							"lane": "standard"
+						},
+						"phase_bylines": {
+							"draft": {
+								"user": "",
+								"when_ms": 1787220000000,
+								"lane": "standard"
+							},
+							"process": {
+								"user": "",
+								"when_ms": 1787652000000,
+								"lane": "fast"
+							}
+						},
+						"process_settings_used": {},
+						"saved_layer_names": [],
 						"latest_action": {
 							"label_key": "dsr_action_process",
 							"when_ms": 1787652000000,
@@ -8217,6 +9159,9 @@
 							"allowed": false,
 							"source": "none",
 							"reason": "no_source"
+						},
+						"fence": {
+							"present": false
 						},
 						"kind": "individual",
 						"allows": {
@@ -8370,7 +9315,14 @@
 								"draft": "standard",
 								"sketch": "standard",
 								"process": "fast"
-							}
+							},
+							"badges": [
+								{
+									"key": "sync",
+									"label_key": "dsr_badge_saved",
+									"tone": "slate"
+								}
+							]
 						},
 						"phase_ownership": {
 							"owner": "none",
@@ -8380,6 +9332,31 @@
 								"retained_error": "Sketch failed."
 							}
 						},
+						"legacy_phase": "sketch",
+						"creation": {
+							"user": "",
+							"when_ms": 1787133600000,
+							"lane": "standard"
+						},
+						"phase_bylines": {
+							"draft": {
+								"user": "",
+								"when_ms": 1787133600000,
+								"lane": "standard"
+							},
+							"sketch": {
+								"user": "",
+								"when_ms": 1787220000000,
+								"lane": "standard"
+							},
+							"process": {
+								"user": "",
+								"when_ms": 1787652000000,
+								"lane": "fast"
+							}
+						},
+						"process_settings_used": {},
+						"saved_layer_names": [],
 						"latest_action": {
 							"label_key": "dsr_action_process",
 							"when_ms": 1787652000000,
@@ -8399,6 +9376,9 @@
 							"allowed": false,
 							"source": "none",
 							"reason": "no_source"
+						},
+						"fence": {
+							"present": false
 						},
 						"kind": "individual",
 						"allows": {
@@ -8546,7 +9526,14 @@
 							"report_status": "",
 							"phase_lanes": {
 								"process": "fast"
-							}
+							},
+							"badges": [
+								{
+									"key": "sync",
+									"label_key": "dsr_badge_saved",
+									"tone": "slate"
+								}
+							]
 						},
 						"phase_ownership": {
 							"owner": "none",
@@ -8556,6 +9543,24 @@
 								"retained_error": "Drafting failed on 12 poles."
 							}
 						},
+						"legacy_phase": "draft",
+						"creation": {
+							"user": "",
+							"when_ms": 1787652000000
+						},
+						"phase_bylines": {
+							"draft": {
+								"user": "",
+								"when_ms": 0
+							},
+							"process": {
+								"user": "",
+								"when_ms": 1787652000000,
+								"lane": "fast"
+							}
+						},
+						"process_settings_used": {},
+						"saved_layer_names": [],
 						"latest_action": {
 							"label_key": "dsr_action_draft_superseded",
 							"when_ms": 1787652000000,
@@ -8575,6 +9580,9 @@
 							"allowed": false,
 							"source": "none",
 							"reason": "no_source"
+						},
+						"fence": {
+							"present": false
 						},
 						"kind": "individual",
 						"allows": {
@@ -8722,11 +9730,38 @@
 								"sketch": "standard",
 								"process": "standard"
 							},
-							"legacy_standard_output": "draft-sketch"
+							"legacy_standard_output": "draft-sketch",
+							"badges": [
+								{
+									"key": "sync",
+									"label_key": "dsr_badge_saved",
+									"tone": "slate"
+								}
+							]
 						},
 						"phase_ownership": {
 							"owner": "legacy"
 						},
+						"legacy_phase": "sketch",
+						"creation": {
+							"user": "",
+							"when_ms": 1787738400000,
+							"lane": "standard"
+						},
+						"phase_bylines": {
+							"sketch": {
+								"user": "",
+								"when_ms": 1787738400000,
+								"lane": "standard"
+							},
+							"process": {
+								"user": "",
+								"when_ms": 1787565600000,
+								"lane": "standard"
+							}
+						},
+						"process_settings_used": {},
+						"saved_layer_names": [],
 						"latest_action": {
 							"label_key": "dsr_action_sketch",
 							"when_ms": 1787738400000,
@@ -8746,6 +9781,9 @@
 							"allowed": false,
 							"source": "none",
 							"reason": "no_source"
+						},
+						"fence": {
+							"present": false
 						},
 						"kind": "individual",
 						"allows": {
@@ -8892,11 +9930,38 @@
 							"phase_lanes": {
 								"draft": "standard",
 								"process": "fast"
-							}
+							},
+							"badges": [
+								{
+									"key": "sync",
+									"label_key": "dsr_badge_saved",
+									"tone": "slate"
+								}
+							]
 						},
 						"phase_ownership": {
 							"owner": "process"
 						},
+						"legacy_phase": "draft",
+						"creation": {
+							"user": "",
+							"when_ms": 1787220000000,
+							"lane": "standard"
+						},
+						"phase_bylines": {
+							"draft": {
+								"user": "",
+								"when_ms": 1787220000000,
+								"lane": "standard"
+							},
+							"process": {
+								"user": "",
+								"when_ms": 1787565600000,
+								"lane": "fast"
+							}
+						},
+						"process_settings_used": {},
+						"saved_layer_names": [],
 						"latest_action": {
 							"label_key": "dsr_action_process",
 							"when_ms": 1787565600000,
@@ -8916,6 +9981,9 @@
 							"allowed": false,
 							"source": "none",
 							"reason": "no_source"
+						},
+						"fence": {
+							"present": false
 						},
 						"kind": "individual",
 						"allows": {
@@ -9063,11 +10131,38 @@
 							"phase_lanes": {
 								"draft": "standard",
 								"process": "fast"
-							}
+							},
+							"badges": [
+								{
+									"key": "sync",
+									"label_key": "dsr_badge_saved",
+									"tone": "slate"
+								}
+							]
 						},
 						"phase_ownership": {
 							"owner": "none"
 						},
+						"legacy_phase": "draft",
+						"creation": {
+							"user": "",
+							"when_ms": 1787738400000,
+							"lane": "standard"
+						},
+						"phase_bylines": {
+							"draft": {
+								"user": "",
+								"when_ms": 1787738400000,
+								"lane": "standard"
+							},
+							"process": {
+								"user": "",
+								"when_ms": 1787565600000,
+								"lane": "fast"
+							}
+						},
+						"process_settings_used": {},
+						"saved_layer_names": [],
 						"latest_action": {
 							"label_key": "dsr_action_draft",
 							"when_ms": 1787738400000,
@@ -9087,6 +10182,9 @@
 							"allowed": false,
 							"source": "none",
 							"reason": "no_source"
+						},
+						"fence": {
+							"present": false
 						},
 						"kind": "individual",
 						"allows": {
@@ -9229,11 +10327,31 @@
 							"phase_lanes": {
 								"process": "standard"
 							},
-							"legacy_standard_output": "standard-process"
+							"legacy_standard_output": "standard-process",
+							"badges": [
+								{
+									"key": "sync",
+									"label_key": "dsr_badge_saved",
+									"tone": "slate"
+								}
+							]
 						},
 						"phase_ownership": {
 							"owner": "none"
 						},
+						"creation": {
+							"user": "",
+							"when_ms": 1787565600000
+						},
+						"phase_bylines": {
+							"process": {
+								"user": "",
+								"when_ms": 1787565600000,
+								"lane": "standard"
+							}
+						},
+						"process_settings_used": {},
+						"saved_layer_names": [],
 						"latest_action": {
 							"label_key": "dsr_action_process",
 							"when_ms": 1787565600000,
@@ -9253,6 +10371,9 @@
 							"allowed": false,
 							"source": "none",
 							"reason": "no_source"
+						},
+						"fence": {
+							"present": false
 						},
 						"kind": "individual",
 						"allows": {
@@ -9394,11 +10515,31 @@
 							"phase_lanes": {
 								"process": "standard"
 							},
-							"legacy_standard_output": "standard-process"
+							"legacy_standard_output": "standard-process",
+							"badges": [
+								{
+									"key": "sync",
+									"label_key": "dsr_badge_saved",
+									"tone": "slate"
+								}
+							]
 						},
 						"phase_ownership": {
 							"owner": "none"
 						},
+						"creation": {
+							"user": "",
+							"when_ms": 1787565600000
+						},
+						"phase_bylines": {
+							"process": {
+								"user": "",
+								"when_ms": 1787565600000,
+								"lane": "standard"
+							}
+						},
+						"process_settings_used": {},
+						"saved_layer_names": [],
 						"latest_action": {
 							"label_key": "dsr_action_process",
 							"when_ms": 1787565600000,
@@ -9418,6 +10559,9 @@
 							"allowed": false,
 							"source": "none",
 							"reason": "no_source"
+						},
+						"fence": {
+							"present": false
 						},
 						"kind": "individual",
 						"allows": {
@@ -9558,11 +10702,34 @@
 							"active_edit_dirty": false,
 							"process_status": "stale",
 							"report_status": "stale",
-							"phase_lanes": {}
+							"phase_lanes": {},
+							"badges": [
+								{
+									"key": "sync",
+									"label_key": "dsr_badge_saved",
+									"tone": "slate"
+								}
+							]
 						},
 						"phase_ownership": {
 							"owner": "none"
 						},
+						"creation": {
+							"user": "",
+							"when_ms": 0
+						},
+						"phase_bylines": {
+							"process": {
+								"user": "",
+								"when_ms": 0
+							},
+							"report": {
+								"user": "",
+								"when_ms": 0
+							}
+						},
+						"process_settings_used": {},
+						"saved_layer_names": [],
 						"latest_action": {
 							"label_key": "",
 							"when_ms": 0,
@@ -9580,6 +10747,9 @@
 							"allowed": false,
 							"source": "none",
 							"reason": "no_source"
+						},
+						"fence": {
+							"present": false
 						},
 						"kind": "individual",
 						"allows": {
@@ -9714,11 +10884,25 @@
 							"active_edit_dirty": false,
 							"process_status": "",
 							"report_status": "",
-							"phase_lanes": {}
+							"phase_lanes": {},
+							"badges": [
+								{
+									"key": "sync",
+									"label_key": "dsr_badge_saved",
+									"tone": "slate"
+								}
+							]
 						},
 						"phase_ownership": {
 							"owner": "none"
 						},
+						"creation": {
+							"user": "",
+							"when_ms": 0
+						},
+						"phase_bylines": {},
+						"process_settings_used": {},
+						"saved_layer_names": [],
 						"latest_action": {
 							"label_key": "",
 							"when_ms": 0,
@@ -9736,6 +10920,9 @@
 							"allowed": false,
 							"source": "none",
 							"reason": "no_source"
+						},
+						"fence": {
+							"present": false
 						},
 						"kind": "individual",
 						"allows": {
@@ -9878,11 +11065,25 @@
 							"active_edit_dirty": false,
 							"process_status": "",
 							"report_status": "",
-							"phase_lanes": {}
+							"phase_lanes": {},
+							"badges": [
+								{
+									"key": "sync",
+									"label_key": "dsr_badge_saved",
+									"tone": "slate"
+								}
+							]
 						},
 						"phase_ownership": {
 							"owner": "none"
 						},
+						"creation": {
+							"user": "",
+							"when_ms": 0
+						},
+						"phase_bylines": {},
+						"process_settings_used": {},
+						"saved_layer_names": [],
 						"latest_action": {
 							"label_key": "",
 							"when_ms": 0,
@@ -9900,6 +11101,9 @@
 							"allowed": false,
 							"source": "none",
 							"reason": "no_source"
+						},
+						"fence": {
+							"present": false
 						},
 						"kind": "individual",
 						"allows": {
@@ -10039,11 +11243,25 @@
 							"active_edit_dirty": false,
 							"process_status": "",
 							"report_status": "",
-							"phase_lanes": {}
+							"phase_lanes": {},
+							"badges": [
+								{
+									"key": "sync",
+									"label_key": "dsr_badge_saved",
+									"tone": "slate"
+								}
+							]
 						},
 						"phase_ownership": {
 							"owner": "none"
 						},
+						"creation": {
+							"user": "",
+							"when_ms": 0
+						},
+						"phase_bylines": {},
+						"process_settings_used": {},
+						"saved_layer_names": [],
 						"latest_action": {
 							"label_key": "",
 							"when_ms": 0,
@@ -10061,6 +11279,9 @@
 							"allowed": false,
 							"source": "none",
 							"reason": "no_source"
+						},
+						"fence": {
+							"present": false
 						},
 						"kind": "individual",
 						"allows": {
@@ -10199,11 +11420,25 @@
 							"active_edit_dirty": false,
 							"process_status": "",
 							"report_status": "",
-							"phase_lanes": {}
+							"phase_lanes": {},
+							"badges": [
+								{
+									"key": "sync",
+									"label_key": "dsr_badge_saved",
+									"tone": "slate"
+								}
+							]
 						},
 						"phase_ownership": {
 							"owner": "none"
 						},
+						"creation": {
+							"user": "",
+							"when_ms": 0
+						},
+						"phase_bylines": {},
+						"process_settings_used": {},
+						"saved_layer_names": [],
 						"latest_action": {
 							"label_key": "",
 							"when_ms": 0,
@@ -10221,6 +11456,9 @@
 							"allowed": false,
 							"source": "none",
 							"reason": "no_source"
+						},
+						"fence": {
+							"present": false
 						},
 						"kind": "individual",
 						"allows": {
@@ -10367,11 +11605,25 @@
 							"report_status": "",
 							"phase_lanes": {
 								"process": "fast"
-							}
+							},
+							"badges": []
 						},
 						"phase_ownership": {
 							"owner": "none"
 						},
+						"creation": {
+							"user": "",
+							"when_ms": 1787565600000
+						},
+						"phase_bylines": {
+							"process": {
+								"user": "",
+								"when_ms": 1787565600000,
+								"lane": "fast"
+							}
+						},
+						"process_settings_used": {},
+						"saved_layer_names": [],
 						"latest_action": {
 							"label_key": "dsr_action_process",
 							"when_ms": 1787565600000,
@@ -10391,6 +11643,9 @@
 							"allowed": false,
 							"source": "none",
 							"reason": "no_source"
+						},
+						"fence": {
+							"present": false
 						},
 						"kind": "project_document",
 						"allows": {
@@ -10528,11 +11783,19 @@
 							"active_edit_dirty": false,
 							"process_status": "",
 							"report_status": "",
-							"phase_lanes": {}
+							"phase_lanes": {},
+							"badges": []
 						},
 						"phase_ownership": {
 							"owner": "none"
 						},
+						"creation": {
+							"user": "",
+							"when_ms": 0
+						},
+						"phase_bylines": {},
+						"process_settings_used": {},
+						"saved_layer_names": [],
 						"latest_action": {
 							"label_key": "",
 							"when_ms": 0,
@@ -10550,6 +11813,9 @@
 							"allowed": false,
 							"source": "none",
 							"reason": "no_source"
+						},
+						"fence": {
+							"present": false
 						},
 						"kind": "aggregate",
 						"allows": {
@@ -10684,11 +11950,19 @@
 							"active_edit_dirty": false,
 							"process_status": "",
 							"report_status": "",
-							"phase_lanes": {}
+							"phase_lanes": {},
+							"badges": []
 						},
 						"phase_ownership": {
 							"owner": "none"
 						},
+						"creation": {
+							"user": "",
+							"when_ms": 0
+						},
+						"phase_bylines": {},
+						"process_settings_used": {},
+						"saved_layer_names": [],
 						"latest_action": {
 							"label_key": "",
 							"when_ms": 0,
@@ -10706,6 +11980,9 @@
 							"allowed": false,
 							"source": "none",
 							"reason": "no_source"
+						},
+						"fence": {
+							"present": false
 						},
 						"kind": "analysis",
 						"allows": {
@@ -10840,11 +12117,19 @@
 							"active_edit_dirty": false,
 							"process_status": "",
 							"report_status": "",
-							"phase_lanes": {}
+							"phase_lanes": {},
+							"badges": []
 						},
 						"phase_ownership": {
 							"owner": "none"
 						},
+						"creation": {
+							"user": "",
+							"when_ms": 0
+						},
+						"phase_bylines": {},
+						"process_settings_used": {},
+						"saved_layer_names": [],
 						"latest_action": {
 							"label_key": "",
 							"when_ms": 0,
@@ -10862,6 +12147,9 @@
 							"allowed": false,
 							"source": "none",
 							"reason": "no_source"
+						},
+						"fence": {
+							"present": false
 						},
 						"kind": "project_document",
 						"allows": {
@@ -10996,11 +12284,19 @@
 							"active_edit_dirty": false,
 							"process_status": "",
 							"report_status": "",
-							"phase_lanes": {}
+							"phase_lanes": {},
+							"badges": []
 						},
 						"phase_ownership": {
 							"owner": "none"
 						},
+						"creation": {
+							"user": "",
+							"when_ms": 0
+						},
+						"phase_bylines": {},
+						"process_settings_used": {},
+						"saved_layer_names": [],
 						"latest_action": {
 							"label_key": "",
 							"when_ms": 0,
@@ -11018,6 +12314,9 @@
 							"allowed": false,
 							"source": "none",
 							"reason": "no_source"
+						},
+						"fence": {
+							"present": false
 						},
 						"kind": "aggregate",
 						"allows": {
@@ -11152,11 +12451,19 @@
 							"active_edit_dirty": false,
 							"process_status": "",
 							"report_status": "",
-							"phase_lanes": {}
+							"phase_lanes": {},
+							"badges": []
 						},
 						"phase_ownership": {
 							"owner": "none"
 						},
+						"creation": {
+							"user": "",
+							"when_ms": 0
+						},
+						"phase_bylines": {},
+						"process_settings_used": {},
+						"saved_layer_names": [],
 						"latest_action": {
 							"label_key": "",
 							"when_ms": 0,
@@ -11174,6 +12481,9 @@
 							"allowed": false,
 							"source": "none",
 							"reason": "no_source"
+						},
+						"fence": {
+							"present": false
 						},
 						"kind": "aggregate",
 						"allows": {

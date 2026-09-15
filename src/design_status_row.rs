@@ -242,6 +242,18 @@ pub struct View {
     pub phase_lanes: PhaseLanes,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub legacy_standard_output: Option<LegacyStandardOutput>,
+    pub badges: Vec<Badge>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub locality_hint_key: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct Badge {
+    pub key: String,
+    pub label_key: String,
+    pub tone: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub user: Option<String>,
 }
 
 /// The legacy phase whose output the newer run overwrote, named explicitly
@@ -280,6 +292,14 @@ pub struct LatestAction {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct Stamp {
+    pub user: String,
+    pub when_ms: i64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lane: Option<Lane>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct Governance {
     pub state: GovernanceState,
     /// ds-brain's own `write_block_code`, echoed.
@@ -299,6 +319,19 @@ pub struct Retry {
     pub reason: RetryReason,
 }
 
+/// The exact optimistic-concurrency fence a headless process can carry back
+/// into the server. `present` is the one admission fact consumers branch on;
+/// the optional members remain visible so diagnostics say which half is
+/// missing without inventing either value.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub struct Fence {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub server_version: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub content_digest: Option<String>,
+    pub present: bool,
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct RowReply {
     pub name: String,
@@ -313,9 +346,18 @@ pub struct RowReply {
     pub client: Client,
     pub view: View,
     pub phase_ownership: PhaseOwnership,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub legacy_phase: Option<LegacyPhase>,
+    pub creation: Stamp,
+    pub phase_bylines: Map<String, Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub drafting_source: Option<String>,
+    pub process_settings_used: Map<String, Value>,
+    pub saved_layer_names: Vec<String>,
     pub latest_action: LatestAction,
     pub governance: Governance,
     pub retry: Retry,
+    pub fence: Fence,
     pub kind: RowKind,
     pub allows: RowAllows,
 }
@@ -930,6 +972,65 @@ fn latest_action(row: &Map<String, Value>, client: &Client, now_ms: i64) -> Late
     }
 }
 
+fn phase_stamp(meta: Option<&Map<String, Value>>) -> Option<Stamp> {
+    let meta = meta?;
+    let when_ms = ["when", "processing_when", "drafted_at", "sketched_at"]
+        .into_iter()
+        .map(|key| timestamp_ms(meta.get(key)))
+        .find(|stamp| *stamp > 0)
+        .unwrap_or(0);
+    Some(Stamp {
+        user: string_at(Some(meta), "user"),
+        when_ms,
+        lane: lane_of(Some(meta)),
+    })
+}
+
+fn phase_bylines(row: &Map<String, Value>) -> Map<String, Value> {
+    let mut out = Map::new();
+    for (name, key) in [
+        ("draft", "draft_metadata"),
+        ("sketch", "sketch_metadata"),
+        ("process", "process_metadata"),
+        ("report", "report_metadata"),
+    ] {
+        if let Some(stamp) = phase_stamp(phase(row, key)) {
+            out.insert(
+                name.into(),
+                serde_json::to_value(stamp).unwrap_or(Value::Null),
+            );
+        }
+    }
+    out
+}
+
+fn drafting_source(row: &Map<String, Value>) -> Option<String> {
+    ["process_metadata", "draft_metadata", "sketch_metadata"]
+        .into_iter()
+        .filter_map(|key| {
+            let meta = phase(row, key)?;
+            let source = string_at(Some(meta), "drafting_source");
+            (!source.is_empty()).then(|| (legacy_stamp(meta), source))
+        })
+        .max_by_key(|(stamp, _)| *stamp)
+        .map(|(_, source)| source)
+}
+
+fn creation(row: &Map<String, Value>, latest: &LatestAction) -> Stamp {
+    for key in ["draft_metadata", "sketch_metadata"] {
+        if let Some(stamp) = phase_stamp(phase(row, key)) {
+            if !stamp.user.is_empty() || stamp.when_ms > 0 {
+                return stamp;
+            }
+        }
+    }
+    Stamp {
+        user: latest.attributed_user.clone(),
+        when_ms: latest.when_ms,
+        lane: None,
+    }
+}
+
 // ── governance: ds-brain's verdict, folded and labelled ─────────────────
 
 const EDIT_LOCK_CODES: [&str; 2] = ["TRANSFORMER_EDIT_LOCKED", "TRANSFORMER_FINAL_LOCKED"];
@@ -1057,6 +1158,27 @@ fn retry(row: &Map<String, Value>) -> Retry {
             source: RetrySource::None,
             reason: RetryReason::NoSource,
         },
+    }
+}
+
+fn fence(row: &Map<String, Value>) -> Fence {
+    let metadata = row.get("metadata").and_then(object);
+    let server_version = finite_ordinal(metadata.and_then(|value| value.get("version")))
+        .filter(|version| *version > 0);
+    let content_digest = metadata
+        .and_then(|value| value.get("content_digest"))
+        .and_then(Value::as_str)
+        .filter(|digest| {
+            digest.len() == 64
+                && digest
+                    .bytes()
+                    .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+        })
+        .map(str::to_owned);
+    Fence {
+        present: server_version.is_some() && content_digest.is_some(),
+        server_version,
+        content_digest,
     }
 }
 
@@ -1348,6 +1470,67 @@ fn row_reply(request: &Request, entry: Entry, current_user: &str) -> RowReply {
         }
         (draft, sketch) => draft.or(sketch),
     };
+    let latest = latest_action(row, &client, request.now_ms);
+    let legacy_phase = latest_legacy_phase(row).map(|(phase, _)| phase);
+    let process_settings_used = phase(row, "process_metadata")
+        .and_then(|meta| meta.get("settings"))
+        .and_then(object)
+        .cloned()
+        .unwrap_or_default();
+    let mut saved_layer_names = row
+        .get("layers")
+        .and_then(object)
+        .map(|layers| layers.keys().cloned().collect::<Vec<_>>())
+        .unwrap_or_default();
+    saved_layer_names.sort();
+    let present = presence(row, current_user);
+    let mut badges = Vec::new();
+    if !is_special_row(&entry.name) {
+        badges.push(Badge {
+            key: "sync".into(),
+            label_key: match sync_state {
+                SyncState::Saved => "dsr_badge_saved",
+                SyncState::Unsaved => "dsr_badge_unsaved",
+            }
+            .into(),
+            tone: match sync_state {
+                SyncState::Saved => "slate",
+                SyncState::Unsaved => "amber",
+            }
+            .into(),
+            user: None,
+        });
+        if let Some(presence) = &present {
+            if !presence.mine {
+                badges.push(Badge {
+                    key: "presence".into(),
+                    label_key: if presence.hold {
+                        "dsr_badge_user_editing"
+                    } else {
+                        "dsr_badge_user_editing_now"
+                    }
+                    .into(),
+                    tone: "violet".into(),
+                    user: Some(presence.user.clone()),
+                });
+            } else if presence.hold && sync_state == SyncState::Saved {
+                badges.push(Badge {
+                    key: "presence".into(),
+                    label_key: "dsr_badge_you_editing_elsewhere".into(),
+                    tone: "amber".into(),
+                    user: None,
+                });
+            }
+        }
+        if let Some(room) = &client.foreign_room {
+            badges.push(Badge {
+                key: "foreign_room".into(),
+                label_key: "dsr_badge_foreign_room".into(),
+                tone: "slate".into(),
+                user: Some(room.owner.clone()),
+            });
+        }
+    }
 
     RowReply {
         origin: entry.origin,
@@ -1375,7 +1558,7 @@ fn row_reply(request: &Request, entry: Entry, current_user: &str) -> RowReply {
             report_has_files: computed.and_then(|c| c.get("report_has_files"))
                 == Some(&Value::Bool(true)),
             version: version_view(row),
-            presence: presence(row, current_user),
+            presence: present,
             foreign_room: client.foreign_room.clone(),
             show_sync_badge: !is_special_row(&entry.name),
             server_known: client.server_known,
@@ -1391,14 +1574,23 @@ fn row_reply(request: &Request, entry: Entry, current_user: &str) -> RowReply {
                 combined: lane_of(phase(row, "combined_inclusion_metadata")),
             },
             legacy_standard_output: legacy_standard_output(row, &supersession),
+            badges,
+            locality_hint_key: (locality == Locality::Local).then(|| "dsr_local_copy".into()),
         },
         phase_ownership: PhaseOwnership {
             owner: supersession.owner,
             superseded,
         },
-        latest_action: latest_action(row, &client, request.now_ms),
+        legacy_phase,
+        creation: creation(row, &latest),
+        phase_bylines: phase_bylines(row),
+        drafting_source: drafting_source(row),
+        process_settings_used,
+        saved_layer_names,
+        latest_action: latest,
         governance: governance(row, locally_locked),
         retry: retry(row),
+        fence: fence(row),
         kind: row_kind(&entry.name),
         allows: row_allows(&entry.name),
         client,
@@ -1599,5 +1791,27 @@ mod tests {
         assert_eq!(row["governance"]["state"], "blocked");
         assert_eq!(row["governance"]["message"], "Project is read-only.");
         assert_eq!(row["governance"]["locally_overridden"], false);
+    }
+
+    #[test]
+    fn a_complete_source_fence_is_explicit_and_malformed_halves_stay_visible() {
+        let digest = "a".repeat(64);
+        let answer = reply(request(json!([
+            {"name":"ready", "metadata":{"version":7,"content_digest":digest}},
+            {"name":"missing_digest", "metadata":{"version":3}},
+            {"name":"bad_digest", "metadata":{"version":4,"content_digest":"SHA256:ABC"}}
+        ])));
+        assert_eq!(
+            answer["rows"][0]["fence"],
+            json!({"server_version":7,"content_digest":"a".repeat(64),"present":true})
+        );
+        assert_eq!(
+            answer["rows"][1]["fence"],
+            json!({"server_version":3,"present":false})
+        );
+        assert_eq!(
+            answer["rows"][2]["fence"],
+            json!({"server_version":4,"present":false})
+        );
     }
 }

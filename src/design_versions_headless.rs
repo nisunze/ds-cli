@@ -1,7 +1,7 @@
 //! Headless transformer version workflow. Hosts supply authenticated reads;
 //! all validation, snapshot preparation and comparison decisions stay here.
 use crate::design_versions::Scope;
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 
 pub trait Source {
     type Error;
@@ -387,15 +387,13 @@ mod tests {
     use super::*;
     #[test]
     fn exact_scope_and_versions_are_required() {
-        assert!(
-            Command::Compare {
-                transformer: "tr".into(),
-                from: "v1".into(),
-                to: "head".into()
-            }
-            .validate("p")
-            .is_ok()
-        );
+        assert!(Command::Compare {
+            transformer: "tr".into(),
+            from: "v1".into(),
+            to: "head".into()
+        }
+        .validate("p")
+        .is_ok());
         for id in ["v0", "v01", "v-1", "local-abc", "v18446744073709551615"] {
             assert!(!version(id));
         }

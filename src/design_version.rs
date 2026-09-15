@@ -69,6 +69,18 @@ pub struct VersionFacts {
     /// May this row carry server-assigned vN versions at all
     /// (`design::row_allows`)?
     pub versionable: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lead: Option<VersionLead>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct VersionLead {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub user: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub when_ms: Option<i64>,
 }
 
 /// Why the pen opened without a stop, in the order the clauses are tested.
@@ -162,6 +174,16 @@ enum Request {
     Partition(PartitionRequest),
     Reason(ReasonRequest),
     UploadOverwrite(Box<UploadOverwriteRequest>),
+    Label(LabelRequest),
+}
+
+#[derive(Deserialize, Debug)]
+#[serde(deny_unknown_fields)]
+struct LabelRequest {
+    #[serde(default)]
+    #[allow(dead_code)]
+    schema: Option<String>,
+    value: String,
 }
 
 #[derive(Deserialize, Debug)]
@@ -237,6 +259,15 @@ fn object(value: &Value) -> Option<&Map<String, Value>> {
     value.as_object()
 }
 
+fn metadata_string(metadata: &Map<String, Value>, key: &str) -> Option<String> {
+    metadata
+        .get(key)
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+}
+
 fn version_metadata(row: Option<&Value>) -> Option<&Map<String, Value>> {
     row.and_then(object)?
         .get("version_metadata")
@@ -293,6 +324,16 @@ pub fn facts(row: Option<&Value>, name_override: Option<&str>) -> VersionFacts {
     let name = name_override
         .map(str::to_string)
         .unwrap_or_else(|| row_name(row));
+    let lead = (!view.unversioned)
+        .then(|| VersionLead {
+            reason: metadata.and_then(|map| metadata_string(map, "lead_reason")),
+            user: metadata.and_then(|map| metadata_string(map, "lead_created_by")),
+            when_ms: metadata.and_then(|map| {
+                let value = crate::design_status_row::timestamp_ms(map.get("lead_created_at"));
+                (value > 0).then_some(value)
+            }),
+        })
+        .filter(|lead| lead.reason.is_some() || lead.user.is_some() || lead.when_ms.is_some());
     VersionFacts {
         versionable: row_allows(&name).versionable,
         name,
@@ -305,6 +346,7 @@ pub fn facts(row: Option<&Value>, name_override: Option<&str>) -> VersionFacts {
         unversioned: view.unversioned,
         reason: view.reason,
         changed_since_version: (!view.unversioned).then(|| changed_since_version(row)),
+        lead,
     }
 }
 
@@ -466,6 +508,16 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
                 reason,
             })
         }
+        Request::Label(request) => serde_json::to_string(&serde_json::json!({
+            "schema": SCHEMA,
+            "op": "label",
+            "valid": request.value.strip_prefix('v').is_some_and(|ordinal| {
+                !ordinal.is_empty()
+                    && ordinal.bytes().all(|byte| byte.is_ascii_digit())
+                    && (ordinal == "0" || !ordinal.starts_with('0'))
+                    && ordinal.parse::<i64>().is_ok()
+            }),
+        })),
     };
     reply.map_err(|error| error.to_string())
 }
@@ -568,6 +620,27 @@ mod tests {
     }
 
     #[test]
+    fn the_version_lead_carries_its_human_reason_and_stamp() {
+        let row = json!({
+            "name": "tx_1",
+            "version_metadata": {
+                "lead_version": 2,
+                "lead_reason": "before site visit",
+                "lead_created_by": "operator@example.com",
+                "lead_created_at": "2026-09-15T10:00:00Z"
+            }
+        });
+        assert_eq!(
+            facts(Some(&row), None).lead,
+            Some(VersionLead {
+                reason: Some("before site visit".into()),
+                user: Some("operator@example.com".into()),
+                when_ms: Some(1_789_466_400_000),
+            })
+        );
+    }
+
+    #[test]
     fn a_latest_below_the_lead_never_lowers_it() {
         let row =
             json!({"name": "tx_1", "version_metadata": {"lead_version": 9, "latest_version": 4}});
@@ -633,6 +706,7 @@ mod tests {
             json!({"op": "partition", "names": ["tx_1"]}),
             json!({"op": "reason", "reason": "baseline"}),
             json!({"op": "upload_overwrite", "name": "tx_1", "merge_mode": "append"}),
+            json!({"op": "label", "value": "v12"}),
         ] {
             let reply = evaluate(&serde_json::to_vec(&request).unwrap()).expect("op answers");
             assert!(reply.contains(SCHEMA), "{reply}");

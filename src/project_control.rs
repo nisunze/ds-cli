@@ -659,6 +659,8 @@ pub enum SkipReason {
     SpecialRow,
     /// ds-brain published `can_retry: false`.
     RetryRefused,
+    /// The saved source has no complete server version/content-digest fence.
+    ContextUnfenced,
     /// Already saved: a bulk save would send nothing.
     AlreadySaved,
     /// The combined mirror UI is off in this project.
@@ -834,9 +836,15 @@ fn bulk_verdict(
             if !truth.retry.allowed {
                 return Err(SkipReason::RetryRefused);
             }
+            if !truth.fence.present {
+                return Err(SkipReason::ContextUnfenced);
+            }
             Ok(false)
         }
         BulkAction::Save => {
+            if truth.kind != crate::design::RowKind::Individual {
+                return Err(SkipReason::SpecialRow);
+            }
             if !unsaved {
                 return Err(SkipReason::AlreadySaved);
             }
@@ -1706,6 +1714,36 @@ mod tests {
         );
         assert_eq!(both["unavailable"], Value::Null);
         assert_eq!(both["fresh"], json!(1));
+    }
+
+    #[test]
+    fn retry_targets_only_rows_with_a_complete_source_fence() {
+        let input = json!({
+            "action": "retry_process",
+            "rows": [
+                {
+                    "name": "ready",
+                    "metadata": {"version": 7, "content_digest": "a".repeat(64)},
+                    "retry_capabilities": {"process": {"can_retry": true, "source": "firestore_replay"}}
+                },
+                {
+                    "name": "legacy_unfenced",
+                    "metadata": {"version": 2},
+                    "retry_capabilities": {"process": {"can_retry": true, "source": "firestore_replay"}}
+                }
+            ],
+            "selection": ["ready", "legacy_unfenced"],
+            "capabilities": ["design.bulk_retry"]
+        });
+        let plan: Value = serde_json::from_str(
+            &plan_project_control_bulk_action(&serde_json::to_vec(&input).unwrap()).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(plan["targets"], json!([{"name":"ready","fresh":false}]));
+        assert_eq!(
+            plan["skipped"],
+            json!([{"name":"legacy_unfenced","reason":"context_unfenced"}])
+        );
     }
 
     #[test]
