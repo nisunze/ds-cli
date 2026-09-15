@@ -23,7 +23,7 @@ use ds_compute_runtime::{Authorizer, digest};
 use std::{
     sync::{
         Arc, Mutex,
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicU64, Ordering},
     },
     thread,
     time::{Duration, Instant},
@@ -36,10 +36,13 @@ use std::{
 pub const OBSERVE_INTERVAL: Duration = Duration::from_secs(15);
 
 /// How often the held credential is refreshed with the gateway, off every
-/// request path. Short enough that a device access token is renewed long
-/// before anything needs it, long enough that a host with no upstream spends
-/// nothing on rediscovering that.
+/// request path while online. A disconnected host uses the shorter recovery
+/// interval below until the gateway answers again.
 pub const REFRESH_INTERVAL: Duration = Duration::from_secs(300);
+/// A disconnected server retries cheaply in the background so a restored
+/// network wakes Sync Center promptly instead of waiting for the normal token
+/// renewal interval.
+const OFFLINE_REFRESH_INTERVAL: Duration = Duration::from_secs(5);
 
 /// What the protected state on this machine says about its owner right now.
 /// Read with no network at all: this is the disk's answer, not the gateway's.
@@ -145,13 +148,21 @@ const CREDENTIAL_CHANGED: &str = "server credential changed; restart the host ex
 /// and stay local — and it defaults to "reachable" so nothing waits on a
 /// refresher that has not run yet.
 static GATEWAY_REACHABLE: AtomicBool = AtomicBool::new(true);
+static GATEWAY_RECONNECT_GENERATION: AtomicU64 = AtomicU64::new(0);
 
 pub fn gateway_reachable() -> bool {
     GATEWAY_REACHABLE.load(Ordering::Acquire)
 }
 
 fn record_reachable(reachable: bool) {
-    GATEWAY_REACHABLE.store(reachable, Ordering::Release);
+    let previous = GATEWAY_REACHABLE.swap(reachable, Ordering::AcqRel);
+    if reachable && !previous {
+        GATEWAY_RECONNECT_GENERATION.fetch_add(1, Ordering::AcqRel);
+    }
+}
+
+pub(crate) fn gateway_reconnect_generation() -> u64 {
+    GATEWAY_RECONNECT_GENERATION.load(Ordering::Acquire)
 }
 
 /// One authenticated owner, observed locally.
@@ -307,14 +318,18 @@ const REFRESH_SLICE: Duration = Duration::from_millis(100);
 
 /// One attempt. The outcome is recorded and, when it failed, said once —
 /// and that is the whole of it: nothing here refuses, fences or stops.
-fn refresh_once(source: &dyn OwnerCredential, log: &mut dyn FnMut(&str)) {
+fn refresh_once(source: &dyn OwnerCredential, log: &mut dyn FnMut(&str)) -> bool {
     match source.refresh() {
-        Ok(()) => record_reachable(true),
+        Ok(()) => {
+            record_reachable(true);
+            true
+        }
         Err(message) => {
             record_reachable(false);
             log(&format!(
                 "credential refresh did not reach the gateway ({message}); the host is unaffected"
             ));
+            false
         }
     }
 }
@@ -325,11 +340,22 @@ fn refresh_loop(
     interval: Duration,
     log: &mut dyn FnMut(&str),
 ) {
+    let mut was_reachable = true;
     while !stop.load(Ordering::Acquire) {
-        refresh_once(source, log);
+        let reachable = refresh_once(source, &mut |message| {
+            if was_reachable {
+                log(message);
+            }
+        });
+        was_reachable = reachable;
+        let next_attempt = if reachable {
+            interval
+        } else {
+            OFFLINE_REFRESH_INTERVAL.min(interval)
+        };
         let mut waited = Duration::ZERO;
-        while waited < interval && !stop.load(Ordering::Acquire) {
-            let slice = REFRESH_SLICE.min(interval - waited);
+        while waited < next_attempt && !stop.load(Ordering::Acquire) {
+            let slice = REFRESH_SLICE.min(next_attempt - waited);
             thread::sleep(slice);
             waited += slice;
         }
@@ -523,6 +549,22 @@ pub(crate) mod tests {
         refresh_once(source.as_ref(), &mut |_| panic!("a success says nothing"));
         assert!(gateway_reachable());
         record_reachable(before);
+    }
+
+    #[test]
+    fn a_proven_network_return_advances_the_sync_wake_generation_once() {
+        let _turn = REACHABILITY.lock().expect("reachability turn");
+        let before_state = gateway_reachable();
+        record_reachable(false);
+        let before = gateway_reconnect_generation();
+        record_reachable(false);
+        assert_eq!(gateway_reconnect_generation(), before);
+        record_reachable(true);
+        let returned = gateway_reconnect_generation();
+        assert!(returned > before);
+        record_reachable(true);
+        assert_eq!(gateway_reconnect_generation(), returned);
+        record_reachable(before_state);
     }
 
     /// The loop attempts, keeps attempting, and stops when it is told to —

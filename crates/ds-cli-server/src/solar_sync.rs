@@ -27,7 +27,7 @@ use ds_sync_runtime::{
     TransferReceipt, VerifiedReads, inventory_digest,
 };
 
-use crate::server_sync::sessions::ServerSessions;
+use crate::{auth, server_sync::sessions::ServerSessions};
 use serde_json::Value;
 
 /// One page of the durable queue, the store's own maximum.
@@ -385,8 +385,13 @@ impl SolarActivity {
             // project's, and it never drains another project's queue.
             let mut reports: std::collections::BTreeMap<String, ReportWake> =
                 std::collections::BTreeMap::new();
+            let mut reconnect_generation = auth::gateway_reconnect_generation();
             while !worker_stop.load(Ordering::Acquire) {
-                let woken = activity.wake.swap(false, Ordering::AcqRel);
+                let observed_generation = auth::gateway_reconnect_generation();
+                let generation_changed = observed_generation != reconnect_generation;
+                reconnect_generation = observed_generation;
+                let network_returned = generation_changed && auth::gateway_reachable();
+                let woken = activity.wake.swap(false, Ordering::AcqRel) || network_returned;
                 let recovery_due = last_recovery.elapsed() >= Duration::from_secs(30);
                 let report_recovery_due = last_report_recovery.elapsed() >= Duration::from_secs(30);
                 let now = now_ms();
@@ -416,6 +421,9 @@ impl SolarActivity {
                     let wake = reports
                         .entry(project.clone())
                         .or_insert_with(ReportWake::at_startup);
+                    if network_returned {
+                        wake.reconnect_pending = true;
+                    }
                     if !wake.needs_observation(now, report_recovery_due) {
                         continue;
                     }
@@ -902,6 +910,23 @@ mod report_wake_tests {
             offline: false,
             wake_at_ms: None,
         });
+        assert_eq!(
+            wake.trigger(&inventory("same"), 10, false),
+            Some(ds_sync_runtime::Trigger::Reconnect)
+        );
+    }
+
+    #[test]
+    fn a_proven_gateway_return_triggers_reconnect_without_waiting_for_recovery() {
+        let wake = ReportWake {
+            startup: false,
+            fingerprint: Some("same".into()),
+            retry_eligible: true,
+            offline: true,
+            reconnect_pending: true,
+            wake_at_ms: None,
+        };
+        assert!(wake.needs_observation(10, false));
         assert_eq!(
             wake.trigger(&inventory("same"), 10, false),
             Some(ds_sync_runtime::Trigger::Reconnect)

@@ -137,23 +137,26 @@ impl ServerSyncSession {
         reads: &dyn Reads,
         f: impl FnOnce(&StoreHost<'_>) -> Result<T, String>,
     ) -> Result<T, String> {
-        require_session_project(project, &self.project)?;
-        // Two separate facts, and the sync pass needs both: this host still
-        // holds its owner's credential (local), and the last gateway refresh
-        // reached the gateway (recorded by the background refresher, never
-        // asked here — a store pass must not turn into a login attempt).
-        let online = || self.authorizer.authorize(&self.owner).is_ok() && auth::gateway_reachable();
-        let host = StoreHost::new(
-            self.store.clone(),
-            self.fence.clone(),
-            self.worker_id.clone(),
-            &self.project,
-            &self.gateway,
-            producer,
-            reads,
-            &online,
-        )?;
-        f(&host)
+        ds_sync_runtime::run_contained("server sync host call", || {
+            require_session_project(project, &self.project)?;
+            // Two separate facts, and the sync pass needs both: this host still
+            // holds its owner's credential (local), and the last gateway refresh
+            // reached the gateway (recorded by the background refresher, never
+            // asked here — a store pass must not turn into a login attempt).
+            let online =
+                || self.authorizer.authorize(&self.owner).is_ok() && auth::gateway_reachable();
+            let host = StoreHost::new(
+                self.store.clone(),
+                self.fence.clone(),
+                self.worker_id.clone(),
+                &self.project,
+                &self.gateway,
+                producer,
+                reads,
+                &online,
+            )?;
+            f(&host)
+        })
     }
 
     pub fn gateway(&self) -> &dyn Gateway {
