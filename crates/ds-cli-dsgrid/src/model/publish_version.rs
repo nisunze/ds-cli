@@ -221,7 +221,7 @@ pub static COMMAND: Command = Command {
         },
         DESCRIPTOR_ARG,
     ],
-    output: "Published project/model/revision, kind, expected and parent heads, digest and byte length. Native publication includes verified=true and upload_skipped after exact readback; the paired flow also reports its local working-copy binding.",
+    output: "Published project/model/revision, kind, expected and parent heads, digest and byte length. Native publication includes verified=true and upload_skipped after exact readback; the paired flow also reports its local working-copy binding. active_model_changed=false confirms publication did not switch a local model.",
     examples: &[Example {
         command: "ds dsgrid publish-version --path /work/route.dsgrid --project <exact-id> --name \"Kamonyi MV\" --kind mv_line --yes",
         note: "Publish a new model through the native server contract without an open map.",

@@ -616,6 +616,7 @@ impl SolarProducer<'_> {
                     .provenance
                     .as_ref()
                     .map(|provenance| provenance.input_base_fingerprint.clone()),
+                input_base_fingerprint: None,
                 readable: true,
                 engine_release: publication.engine_release.clone(),
                 engine_build_manifest_sha256: publication.engine_build_manifest_sha256.clone(),

@@ -314,7 +314,7 @@ pub static VERSION_STATUS: Command = Command {
 was warranted. This reads the selected project's status rows headlessly and \
 answers, per transformer: the version in force, the highest ever assigned, \
 the next ordinal, whether something was restored, whether the SAVED state has \
-moved since the lead was cut, and whether that name may carry versions at \
+moved since the version in force was cut (`null` before v1), and whether that name may carry versions at \
 all. The ordinal itself stays ds-brain's to assign.",
     chapter: Chapter::Design,
     effect: Effect::LocalAuthState,
@@ -327,7 +327,7 @@ Lane and project identity and one row per transformer: `version`, `latest`, \
 `versionable` and the lead's reason.",
     examples: &[Example {
         command: "ds design version status --transformer TX-1 --output json",
-        note: "`.data.versions[0].changed_since_version` says whether a cut is warranted.",
+        note: "`.data.versions[0].changed_since_version` is null before v1, then says whether saved state moved since the version in force.",
         runnable: false,
     }],
     refusals: REFUSALS,

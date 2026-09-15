@@ -3833,6 +3833,14 @@ fn map_service_refusal(
         None => format!("{owner_message} (HTTP {})", refusal.status()),
     };
     match refusal.code() {
+        Some("version_not_found") => Failure::invalid("version_not_found", message)
+            .detail(serde_json::json!({
+                "http_status": refusal.status(),
+                "service_code": "version_not_found",
+                "service_message": refusal.message(),
+            }))
+            .remedy("list published versions and choose one exact version_id that exists")
+            .next("ds design version list --transformer <name> --output json"),
         Some("print_layout_invalid") => Failure::invalid("print_layout_invalid", message)
             .remedy(
                 "correct the layout against ds report layout schema; if the refused field is \

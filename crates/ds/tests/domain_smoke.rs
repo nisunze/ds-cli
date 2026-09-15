@@ -4529,6 +4529,66 @@ fn design_version_status_says_whether_a_cut_is_warranted() {
 }
 
 #[test]
+fn design_version_begin_is_a_confirmed_headless_project_write() {
+    let descriptor = ok(&["capabilities", "design.version.begin", "--output", "json"]);
+    let command = &descriptor["command"];
+    assert_eq!(
+        command["path"],
+        serde_json::json!(["design", "version", "begin"])
+    );
+    assert_eq!(command["authority"], "headless_project");
+    assert_eq!(command["effect"], "global_write");
+    assert_eq!(command["confirmation_required"], true);
+    assert_eq!(
+        command["inputs"]
+            .as_array()
+            .expect("inputs")
+            .iter()
+            .map(|input| input["name"].as_str().expect("input name"))
+            .collect::<BTreeSet<_>>(),
+        BTreeSet::from(["idempotency-key", "lane", "reason", "transformer"])
+    );
+
+    let unconfirmed = native_ds(&[
+        "design",
+        "version",
+        "begin",
+        "--transformer",
+        "tx_a",
+        "--reason",
+        "Issued for construction",
+        "--idempotency-key",
+        "tx-a-ifc-1",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(
+        unconfirmed.envelope["error"]["code"],
+        "confirmation_required"
+    );
+
+    assert_eq!(
+        native_ds(&[
+            "design",
+            "version",
+            "begin",
+            "--transformer",
+            "tx_a",
+            "--reason",
+            "Issued for construction",
+            "--idempotency-key",
+            "tx-a-ifc-1",
+            "--project",
+            "p-1",
+            "--output",
+            "json",
+        ])
+        .envelope["error"]["code"],
+        "unknown_flag"
+    );
+}
+
+#[test]
 fn design_conflict_reads_never_claim_room_state_they_cannot_see() {
     for (id, path) in [
         ("design.conflict.list", vec!["design", "conflict", "list"]),
@@ -5392,7 +5452,7 @@ fn design_lv_project_export_refuses_an_existing_artifact_before_auth_or_desktop(
                 "operation": "create"
             },
             "printing":{"method":"POST","path":"/api/v1/printing","actions":["list","get","create","update","save","delete","copy"]},
-            "layers":{"method":"POST","path":"/api/v1/layers","actions":["get_config","get_style_catalog","refresh","reorder"]},
+            "layers":{"method":"POST","path":"/api/v1/layers","actions":["get_config","get_style_catalog","refresh","reorder","set_default_visibility"]},
             "styles":{"method":"POST","path":"/api/v1/styles","action":"update_style"},
             "survey_control":["POST /api/v1/form-factory: list,get,get_field_types,create,update,duplicate,publish,unpublish,archive,restore,delete", "POST /api/v1/project-forms: activate,settings_editor,bulk_save", "POST /api/v1/projects/templates: list,create,set_public,delete", "GET /api/v1/projects/templates/{slug}", "POST /api/v1/projects: apply_template", "POST /api/v1/projects/from-template"],
             "project_data":{"method":"POST","path":"/api/v1/project_data","actions":["list","upload_start","upload","delete"]},
@@ -5419,7 +5479,7 @@ fn design_lv_project_export_refuses_an_existing_artifact_before_auth_or_desktop(
             "design_versions": {
                 "method": "POST",
                 "path": "/api/v1/design/versions",
-                "actions": ["list_versions", "get_version"]
+                "actions": ["list_versions", "get_version", "create_version"]
             },
             "provenance": { "source_revision": "abc123", "descriptor_sha256": digest }
         })
@@ -5427,7 +5487,7 @@ fn design_lv_project_export_refuses_an_existing_artifact_before_auth_or_desktop(
     std::fs::write(
         &profile_path,
         serde_json::to_vec(&json!({
-            "schema_version": "ds.native-client-profiles/v23",
+            "schema_version": "ds.native-client-profiles/v24",
             "development": true,
             "profiles": {
                 "stable": profile(
@@ -5463,7 +5523,13 @@ fn design_lv_project_export_refuses_an_existing_artifact_before_auth_or_desktop(
         .env("NO_COLOR", "1")
         .output()
         .expect("ds binary runs");
-    assert_eq!(run.status.code(), Some(5));
+    assert_eq!(
+        run.status.code(),
+        Some(5),
+        "stdout={} stderr={}",
+        String::from_utf8_lossy(&run.stdout),
+        String::from_utf8_lossy(&run.stderr)
+    );
     let envelope: Value = serde_json::from_slice(&run.stdout).unwrap();
     assert_eq!(envelope["error"]["code"], "fast_lv_request_output_exists");
     assert_eq!(std::fs::read(&output_path).unwrap(), b"operator-owned");
@@ -6321,7 +6387,7 @@ fn every_design_command_is_discoverable_without_the_desktop_installed() {
     let commands = index["commands"].as_array().expect("commands");
     assert_eq!(
         commands.len(),
-        88, // + design.project.revisions/compare and design.version.list/compare (headless, 2026-09-14).
+        89, // + design.project.revisions/compare and design.version.list/compare/begin (headless, 2026-09-15).
         "the design domain should expose its whole family: {commands:?}"
     );
     for command in commands {
@@ -6364,6 +6430,7 @@ fn every_design_command_is_discoverable_without_the_desktop_installed() {
                     // on 2026-09-14 (no paired desktop): same native spine.
                     | "design.version.list"
                     | "design.version.compare"
+                    | "design.version.begin"
                     | "design.conflict.list"
                     | "design.conflict.check"
                     | "design.presence.status"

@@ -62,6 +62,38 @@ pub static COMPARE: Command = command(
         crate::transformer::LANE_ARG,
     ],
 );
+pub static BEGIN: Command = Command {
+    id: "design.version.begin",
+    path: &["design", "version", "begin"],
+    contract: 1,
+    summary: "Create one deliberate published transformer version (needs --yes).",
+    purpose: "Create an immutable version of the selected project's current saved transformer without a Desktop or open map. ds-brain assigns the next vN ordinal and snapshots the current governed state; Rust validates the exact returned project, transformer and version identity.",
+    chapter: Chapter::Design,
+    effect: Effect::GlobalWrite,
+    authority: Authority::HeadlessProject,
+    execution: Execution::Sync,
+    args: &[
+        TRANSFORMER,
+        Arg::value(
+            "reason",
+            "<text>",
+            "Why this deliberate version is being created.",
+        )
+        .required(),
+        Arg::value(
+            "idempotency-key",
+            "<opaque-key>",
+            "Stable caller key; reuse it when retrying this exact version request.",
+        )
+        .required(),
+        crate::transformer::LANE_ARG,
+    ],
+    output: "Lane, selected project, transformer, the server-assigned vN descriptor, and mutated=true.",
+    examples: &[],
+    refusals: REFUSALS,
+    reference: Some("docs/reference/design.md"),
+    availability: ds_cli_auth::native_availability,
+};
 fn ask(i: &Inputs, request: Request) -> Result<Value, Failure> {
     ds_cli_auth::design_versions(i.require("lane")?, &request).map(|r|r.into_result()).map_err(|e|
         Failure::failed("design_version_refused",e.to_string())
@@ -83,6 +115,18 @@ pub fn compare(i: &Inputs, _: &Context) -> Result<Value, Failure> {
             transformer: i.require("transformer")?.into(),
             from: i.require("from")?.into(),
             to: i.require("to")?.into(),
+        },
+    )
+}
+pub fn begin(i: &Inputs, _: &Context) -> Result<Value, Failure> {
+    let transformer = i.require("transformer")?;
+    let reason = i.require("reason")?;
+    ask(
+        i,
+        Request::Begin {
+            transformer: transformer.into(),
+            reason: reason.into(),
+            idempotency_key: i.require("idempotency-key")?.into(),
         },
     )
 }

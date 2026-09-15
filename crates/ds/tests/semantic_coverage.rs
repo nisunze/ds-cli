@@ -264,6 +264,7 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("design.project.compare", "read_only", "none"),
     ("design.version.list", "read_only", "headless_project"),
     ("design.version.compare", "read_only", "headless_project"),
+    ("design.version.begin", "global_write", "headless_project"),
     ("design.project.status", "read_only", "none"),
     ("design.project.process", "local_file_write", "none"),
     ("design.project.cancel", "local_file_write", "none"),

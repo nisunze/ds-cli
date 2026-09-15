@@ -1167,7 +1167,11 @@ mod tests {
             ],
             design_versions_method: "POST".into(),
             design_versions_path: "/api/v1/design/versions".into(),
-            design_versions_actions: vec!["list_versions".into(), "get_version".into()],
+            design_versions_actions: vec![
+                "list_versions".into(),
+                "get_version".into(),
+                "create_version".into(),
+            ],
             design_selections_method: "POST".to_owned(),
             design_selections_path: "/api/v1/design/selections".to_owned(),
             design_selections_actions: vec![

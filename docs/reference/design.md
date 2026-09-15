@@ -914,6 +914,14 @@ compares immutable snapshots; `--to head` captures the saved server head once.
 Both accept `--lane stable|canary` and `--output json`. Neither opens a map,
 requires a desktop, creates history, or modifies a transformer.
 
+`ds design version begin --transformer <name> --reason <text>
+--idempotency-key <opaque-key> --yes` creates one immutable version from the
+current saved server transformer. The selected project comes from the lane;
+there is no project override and no open-map dependency. Reuse the same
+idempotency key only when retrying the same request, so a lost response cannot
+cut a second version. ds-brain assigns the next ordinal and Rust verifies the
+returned project, transformer and version identity.
+
 The native client captures one authenticated project/owner/lane for the whole
 comparison. It verifies both returned object identities and delegates geometry,
 attribute and consistency decisions to the same Rust kernel used by WASM.
