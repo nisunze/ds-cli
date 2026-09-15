@@ -232,8 +232,10 @@ impl Gateway for FakeGateway {
                     .and_then(Value::as_str)
                     .unwrap_or_default();
                 if world.refuse_open_resource.as_deref() == Some(resource) {
-                    return Err("the authentication or project service is temporarily unreachable"
-                        .to_string());
+                    return Err(
+                        "the authentication or project service is temporarily unreachable"
+                            .to_string(),
+                    );
                 }
                 world.grants_minted += 1;
                 let engine = body["engine"].as_str().unwrap_or_default();

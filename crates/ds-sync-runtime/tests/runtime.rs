@@ -450,7 +450,10 @@ fn one_failed_resource_grant_does_not_refuse_other_uploads_in_the_batch() {
         .iter()
         .find(|receipt| {
             receipt.action == "upload"
-                && receipt.identity.as_ref().is_some_and(|identity| identity.operation == "export-tx_2")
+                && receipt
+                    .identity
+                    .as_ref()
+                    .is_some_and(|identity| identity.operation == "export-tx_2")
         })
         .expect("the uncovered upload receipt");
     assert_eq!(

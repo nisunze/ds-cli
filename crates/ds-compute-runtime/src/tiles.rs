@@ -29,9 +29,7 @@ fn require_local_tiling_route() -> Result<(), String> {
             platform: Some(host_platform()?),
         },
     )?;
-    if placement.compute_route
-        != ds_command_kernel::tiling_placement::ComputeRoute::LocalNative
-    {
+    if placement.compute_route != ds_command_kernel::tiling_placement::ComputeRoute::LocalNative {
         return Err("the kernel routed tiling to the online container on this platform".into());
     }
     Ok(())
