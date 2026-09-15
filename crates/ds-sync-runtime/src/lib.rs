@@ -1,6 +1,6 @@
 //! The shared native sync runtime — the IO half of `ds_command_kernel::sync`,
-//! shared by native hosts. Desktop consumes it today. Live server sync still
-//! needs its authenticated gateway, install registration and producer adapters.
+//! shared by native hosts. Desktop and the Linux server supply their own
+//! authenticated gateway, install registration and producer adapters.
 //!
 //! The decision lives once, in the kernel: given what this machine holds, what
 //! the shared record holds, the credential in hand and the clock, `sync::plan`
@@ -33,6 +33,7 @@
 //! and project before publication.
 
 pub mod gateway;
+mod guard;
 pub mod host;
 mod lease;
 pub mod native_transfer;
@@ -47,6 +48,7 @@ pub mod fakes;
 pub use ds_command_kernel::sync::{self as kernel_sync, Trigger};
 pub use ds_command_kernel::sync_store as store;
 pub use gateway::{BearerGateway, Gateway, UnavailableGateway};
+pub use guard::run_contained;
 pub use host::{
     open_store, projects_of_fence, ActivityRow, Producer, Reads, SharedStore, SolarPublishOutcome,
     SolarPublisher, StoreHost, StoreOnlyProducer, LEASE_TTL_MS,
