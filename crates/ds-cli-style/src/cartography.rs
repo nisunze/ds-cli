@@ -157,6 +157,24 @@ const PATTERN_STROKE_ARG: Arg = Arg {
 /// commands, so the two cannot drift into accepting different flags.
 const ARGS: &[Arg] = &[
     REF_ARG,
+    crate::MIN_ZOOM_ARG,
+    crate::MAX_ZOOM_ARG,
+    Arg::value(
+        "boundary-min-zoom",
+        "<0..24>",
+        "Polygon boundary minimum zoom; fractions allowed.",
+    ),
+    Arg::value(
+        "boundary-max-zoom",
+        "<0..24>",
+        "Polygon boundary maximum zoom; fractions allowed.",
+    ),
+    Arg::value(
+        "boundary-visible",
+        "<on|off>",
+        "Show or hide the polygon boundary independently.",
+    )
+    .choices(&["on", "off"]),
     Arg::value(
         "visible",
         "<on|off>",
@@ -235,12 +253,8 @@ const SET_REFUSALS: &[ds_cli_contract::spec::Refusal] = &[
     crate::INVALID_NUMBER,
 ];
 
-/// A bounded finite number, for the one property that is genuinely fractional.
-///
-/// Casing width is a MapLibre line width, and half-pixel casings are ordinary
-/// practice for a thin line over imagery. Everything else here is a whole
-/// number of pixels because it ends up in a rasterised tile or a marker count.
-fn bounded(raw: &str, flag: &str, min: f64, max: f64) -> Result<f64, Failure> {
+/// Parse a finite numeric option inside its inclusive bounds.
+pub(crate) fn bounded(raw: &str, flag: &str, min: f64, max: f64) -> Result<f64, Failure> {
     let parsed: f64 = raw.trim().parse().map_err(|_| {
         Failure::invalid("invalid_number", format!("`--{flag}` must be a number"))
             .remedy(format!("pass {min}..{max}"))
@@ -371,7 +385,14 @@ fn arguments(inputs: &Inputs, apply: bool) -> Result<Value, Failure> {
     if let Some(v) = inputs.value("visible") {
         arguments.insert("visible".into(), json!(v == "on"));
     }
+    if let Some(v) = inputs.value("boundary-visible") {
+        arguments.insert("boundaryVisible".into(), json!(v == "on"));
+    }
     for (flag, key, max) in [
+        ("min-zoom", "minZoom", 24.),
+        ("max-zoom", "maxZoom", 24.),
+        ("boundary-min-zoom", "boundaryMinZoom", 24.),
+        ("boundary-max-zoom", "boundaryMaxZoom", 24.),
         ("opacity", "opacity", 1.),
         ("boundary-width", "boundaryWidth", 20.),
         ("boundary-opacity", "boundaryOpacity", 1.),
@@ -402,6 +423,19 @@ fn arguments(inputs: &Inputs, apply: bool) -> Result<Value, Failure> {
 fn render_cartography(data: &Value) -> String {
     let requested = &data["requested"];
     let mut changes = Vec::new();
+    for (key, title) in [
+        ("minZoom", "minimum zoom"),
+        ("maxZoom", "maximum zoom"),
+        ("boundaryMinZoom", "boundary minimum zoom"),
+        ("boundaryMaxZoom", "boundary maximum zoom"),
+    ] {
+        if let Some(value) = requested[key].as_f64() {
+            changes.push(format!("{title} {value}"));
+        }
+    }
+    if let Some(value) = requested["boundaryVisible"].as_bool() {
+        changes.push(format!("boundary {}", if value { "on" } else { "off" }));
+    }
     if let Some(value) = requested["boundaryLineType"].as_str() {
         changes.push(format!("boundary {value}"));
     }
@@ -612,6 +646,78 @@ mod tests {
 
     fn argv(parts: &[&str]) -> Vec<String> {
         parts.iter().map(|part| (*part).to_string()).collect()
+    }
+
+    #[test]
+    fn zoom_and_boundary_controls_preserve_omissions_and_explicit_false() {
+        for command in [&plan::COMMAND, &set::COMMAND] {
+            let input = parse(
+                command,
+                &argv(&[
+                    "--ref",
+                    "master/areas",
+                    "--min-zoom",
+                    "0",
+                    "--max-zoom",
+                    "24",
+                    "--boundary-min-zoom",
+                    "10.5",
+                    "--boundary-max-zoom",
+                    "23.5",
+                    "--boundary-visible",
+                    "off",
+                ]),
+            )
+            .unwrap();
+            let args = arguments(&input, false).unwrap();
+            assert_eq!(
+                args,
+                json!({"ref":"master/areas","apply":false,
+                "minZoom":0.,"maxZoom":24.,"boundaryMinZoom":10.5,
+                "boundaryMaxZoom":23.5,"boundaryVisible":false})
+            );
+            let change: ds_command_kernel::style_plan::CartographyChange =
+                serde_json::from_value({
+                    let mut value = args.clone();
+                    value.as_object_mut().unwrap().remove("ref");
+                    value.as_object_mut().unwrap().remove("apply");
+                    value
+                })
+                .unwrap();
+            assert_eq!(change.min_zoom, Some(0.));
+            assert_eq!(change.boundary_visible, Some(false));
+            let input = parse(
+                command,
+                &argv(&["--ref", "master/areas", "--boundary-visible", "on"]),
+            )
+            .unwrap();
+            assert_eq!(
+                arguments(&input, false).unwrap(),
+                json!({"ref":"master/areas","apply":false,"boundaryVisible":true})
+            );
+            for flag in [
+                "--min-zoom",
+                "--max-zoom",
+                "--boundary-min-zoom",
+                "--boundary-max-zoom",
+            ] {
+                for value in ["-0.1", "24.1", "NaN", "inf", "oops"] {
+                    let input =
+                        parse(command, &argv(&["--ref", "master/areas", flag, value])).unwrap();
+                    assert_eq!(
+                        arguments(&input, false).unwrap_err().code(),
+                        "invalid_number"
+                    );
+                }
+            }
+            assert!(
+                parse(
+                    command,
+                    &argv(&["--ref", "master/areas", "--boundary-visible", "maybe"])
+                )
+                .is_err()
+            );
+        }
     }
 
     #[test]

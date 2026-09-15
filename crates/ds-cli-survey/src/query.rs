@@ -89,11 +89,41 @@ const QUERY_REFUSALS: &[Refusal] = &[
     Refusal {
         code: "survey_scope_not_found",
         when: "the selected project or governed form is unavailable to the verified user",
-        remedy: "verify the selected project and pass one exact slug from `ds survey forms list`",
+        remedy: "verify the selected project and its bound forms with `ds survey project-forms read`",
+    },
+    Refusal {
+        code: "survey_view_not_found",
+        when: "the authorized form has no queryable Survey view",
+        remedy: "verify its project binding, then synchronize Survey data to prepare the view",
+    },
+    Refusal {
+        code: "survey_field_unknown",
+        when: "the requested field is not queryable",
+        remedy: "read the governed schema and choose an available non-restricted field",
+    },
+    Refusal {
+        code: "survey_view_stale",
+        when: "the Survey view is out of date",
+        remedy: "refresh Survey data to rebuild the view before retrying",
+    },
+    Refusal {
+        code: "survey_query_too_expensive",
+        when: "the query exceeds the server scan limit",
+        remedy: "narrow the filters or date range",
+    },
+    Refusal {
+        code: "survey_query_sync_failed",
+        when: "Survey synchronization fails before aggregation",
+        remedy: "retry without changing scope; report persistent synchronization failure",
+    },
+    Refusal {
+        code: "survey_query_unavailable",
+        when: "this deployment has no Survey query service",
+        remedy: "use a deployment that provides governed Survey queries",
     },
     Refusal {
         code: "survey_query_refused",
-        when: "the backend refuses the already validated question, including a stale Survey view",
+        when: "the backend refuses the already validated question, without a recognized service code",
         remedy: "retry once, then verify the governed form/view state before changing the question",
     },
     Refusal {
@@ -577,6 +607,16 @@ mod tests {
             .collect::<std::collections::BTreeSet<_>>();
         assert!(refusal_codes.contains("survey_scope_not_found"));
         assert!(refusal_codes.contains("survey_query_refused"));
+        for code in [
+            "survey_view_not_found",
+            "survey_field_unknown",
+            "survey_view_stale",
+            "survey_query_too_expensive",
+            "survey_query_sync_failed",
+            "survey_query_unavailable",
+        ] {
+            assert!(refusal_codes.contains(code), "missing query refusal {code}");
+        }
         assert!(!refusal_codes.contains("survey_form_not_found"));
         assert!(!refusal_codes.contains("auth_input_invalid"));
     }

@@ -433,6 +433,24 @@ pub static SOLAR_SUBMIT: Command = command(
         runnable: false,
     }],
 );
+pub static TILE_SUBMIT: Command = command(
+    "server.tile.submit",
+    &["server", "tile", "submit"],
+    "Queue prepared vector tiles with this host’s verified local cache.",
+    Effect::LocalFileWrite,
+    Execution::Job,
+    &[
+        STATE, LANE, SEALED_PROJECT,
+        Arg::value("input", "<path>", "ds.tiles.prepared/v1 JSON with project, layers (GeoJSON sequence text), options and force; at most 64 MiB.").required(),
+        Arg::value("key", "<idempotency-key>", "Stable caller key within the sealed project; changed bytes refuse.").required(),
+    ],
+    SUBMIT_REFUSALS,
+    &[Example {
+        command: "ds server tile submit --input tiles.prepared.json --key tiles-001",
+        note: "Compute uses bundled Tippecanoe on the server; status/result/cancel use the returned job id. The result is local until separately published.",
+        runnable: false,
+    }],
+);
 pub static STATUS: Command = command(
     "server.status",
     &["server", "status"],
@@ -765,6 +783,7 @@ pub static DOMAIN: Domain = Domain {
         &SERVE,
         &SUBMIT,
         &SOLAR_SUBMIT,
+        &TILE_SUBMIT,
         &STATUS,
         &ACTIVITY,
         &CANCEL,
@@ -1125,6 +1144,28 @@ pub fn submit(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
 /// the PATH. The Server reads those bytes itself and digests what it read; the
 /// client neither copies 64 MiB through a socket nor decides what the bytes
 /// are.
+pub fn tile_submit(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
+    let key = submit_key(inputs)?;
+    let project = named_project(inputs)?;
+    let file = std::fs::File::open(inputs.require("input")?).map_err(failure)?;
+    if !file.metadata().map_err(failure)?.is_file() {
+        return Err(failure("input must be a regular file"));
+    }
+    let mut bytes = Vec::new();
+    file.take(64 * 1024 * 1024 + 1)
+        .read_to_end(&mut bytes)
+        .map_err(failure)?;
+    if bytes.len() > 64 * 1024 * 1024 {
+        return Err(failure("input exceeds 64 MiB"));
+    }
+    json_request(
+        inputs,
+        "POST",
+        &with_known_project(&format!("/v1/tile-processing/{key}"), project.as_deref()),
+        Some(&bytes),
+    )
+}
+
 pub fn solar_submit(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
     let key = submit_key(inputs)?.to_owned();
     let project = named_project(inputs)?;

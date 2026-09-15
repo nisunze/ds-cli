@@ -26,4 +26,6 @@ serde_json = { workspace = true }
 sha2 = { workspace = true }
 
 ds-cli-auth = { workspace = true }
+ds-command-kernel = { workspace = true }
+ds-design-workspace = { workspace = true }
 tempfile = "3"

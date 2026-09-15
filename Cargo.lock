@@ -80,6 +80,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "anyhow"
+version = "1.0.104"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "330a5ed07fa54e4702c9d6c4174f74427fc0ef6e214bbd677ae50a5099946470"
+
+[[package]]
 name = "approx"
 version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -954,6 +960,8 @@ dependencies = [
  "ds-cli-auth",
  "ds-cli-contract",
  "ds-cli-desktop",
+ "ds-command-kernel",
+ "ds-design-workspace",
  "ds-grid-engine",
  "ds-grid-exchange",
  "ds-grid-model",
@@ -1252,6 +1260,7 @@ dependencies = [
 name = "ds-compute-runtime"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "base64 0.22.1",
  "ds-command-kernel",
  "ds-network",
@@ -1259,10 +1268,13 @@ dependencies = [
  "ds-solar-io",
  "ds-solar-runtime",
  "ds-sync-store",
+ "ds-tile-runtime",
  "rayon",
  "serde",
  "serde_json",
  "sha2",
+ "tempfile",
+ "tokio",
 ]
 
 [[package]]
@@ -1270,6 +1282,9 @@ name = "ds-design-workspace"
 version = "0.1.0"
 dependencies = [
  "ds-command-kernel",
+ "ds-grid-engine",
+ "ds-grid-exchange",
+ "ds-grid-model",
  "ds-network",
  "fs2",
  "rayon",
@@ -1629,6 +1644,20 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror",
+]
+
+[[package]]
+name = "ds-tile-runtime"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "fs2",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "tokio",
 ]
 
 [[package]]

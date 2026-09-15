@@ -775,6 +775,28 @@ impl Transport for NativeTransport {
             .map_err(classify)?;
         bounded(response, call.response_limit())
     }
+    fn grid_model_upload(
+        &mut self,
+        call: ds_client_core::grid_models::publication::UploadCall<'_>,
+    ) -> Result<(), TransportError> {
+        use ds_sync_runtime::native_transfer::{NativeTransferOutcome, drive_verified_output};
+        let result = drive_verified_output(
+            call.uri(),
+            call.bytes().len() as u64,
+            call.digest(),
+            std::io::Cursor::new(call.bytes()),
+            None,
+            None,
+            &|| false,
+            &mut |_| {},
+        )
+        .map_err(|_| TransportError::Unreachable)?;
+        if result.outcome == NativeTransferOutcome::Done {
+            Ok(())
+        } else {
+            Err(TransportError::Unreachable)
+        }
+    }
     fn grid_model_bytes(
         &mut self,
         call: ds_client_core::grid_models::DownloadCall<'_>,

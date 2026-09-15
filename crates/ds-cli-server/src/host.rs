@@ -239,6 +239,7 @@ pub fn router(app: App) -> Router {
         .route("/v1/layers/order", post(crate::layers::order))
         .route("/v1/transformer-processing/:key", post(submit))
         .route("/v1/solar-processing/:key", post(submit_solar))
+        .route("/v1/tile-processing/:key", post(submit_tiles))
         .fallback(unserved)
         .layer(DefaultBodyLimit::max(64 * 1024 * 1024))
         .layer(middleware::from_fn_with_state(app.clone(), access))
@@ -451,6 +452,22 @@ fn read_owner_file(path: &str) -> Result<Vec<u8>, Failure> {
 /// The only native Server entry point for a sealed prepared Solar request.
 /// Keeping this separate from legacy transformer processing prevents a failed
 /// Fast LV decode from becoming an alternate engine-dispatch authority.
+async fn submit_tiles(
+    State(app): State<App>,
+    Param(key): Param<String>,
+    query: Option<Query<ProjectQuery>>,
+    body: Bytes,
+) -> Result<(StatusCode, Json<Value>), ApiError> {
+    let project = project_query(query)?;
+    admitting(move || {
+        let job = admitted(&app.sessions, &key, project.as_deref(), |admission| {
+            runtime::tiles::submit(&app.database, admission, &body)
+        })?;
+        Ok((StatusCode::ACCEPTED, Json(json!({"job":job}))))
+    })
+    .await
+}
+
 async fn submit_solar(
     State(app): State<App>,
     _headers: HeaderMap,
@@ -1175,6 +1192,80 @@ pub(crate) mod tests {
         assert_eq!(status, StatusCode::BAD_REQUEST);
         assert_eq!(unknown["code"], "unsupported_operation");
         assert!(unknown["error"].as_str().unwrap().contains("/v1/nothing"));
+    }
+
+    #[tokio::test]
+    async fn tile_jobs_retain_bytes_and_isolate_sealed_projects_across_restart() {
+        let dir = tempfile::tempdir().unwrap();
+        let host = app(dir.path(), true);
+        let prepared = |project: &str| {
+            serde_json::to_vec(&json!({
+            "schema":"ds.tiles.prepared/v1", "project":project,
+            "layers":{"poles":"{\"type\":\"Feature\",\"geometry\":{\"type\":\"Point\",\"coordinates\":[29.8,-2.4]},\"properties\":{}}\n"},
+            "options":{"min_zoom":4,"max_zoom":8,"base_zoom":8,"full_detail":16,"drop_densest_as_needed":true,"no_feature_limit":true,"no_tile_size_limit":true}
+        })).unwrap()
+        };
+        let input_a = prepared(A);
+        let (status, refused) = call(
+            host.clone(),
+            "POST",
+            &format!("/v1/tile-processing/shared?project={B}"),
+            Some(input_a.clone()),
+        )
+        .await;
+        assert_eq!(status, StatusCode::CONFLICT, "{refused}");
+        let (status, first) = call(
+            host.clone(),
+            "POST",
+            "/v1/tile-processing/shared",
+            Some(input_a.clone()),
+        )
+        .await;
+        assert_eq!(status, StatusCode::ACCEPTED, "{first}");
+        assert_eq!(first["job"]["engine"], "tiles_prepared");
+        assert_eq!(first["job"]["context"]["operation"], "tile_processing");
+        let (_, second) = call(
+            host.clone(),
+            "POST",
+            "/v1/tile-processing/shared",
+            Some(prepared(B)),
+        )
+        .await;
+        assert_ne!(first["job"]["id"], second["job"]["id"]);
+        let (_, replay) = call(
+            host.clone(),
+            "POST",
+            "/v1/tile-processing/shared",
+            Some(input_a.clone()),
+        )
+        .await;
+        assert_eq!(first["job"]["id"], replay["job"]["id"]);
+        let id = first["job"]["id"].as_str().unwrap();
+        let restarted = app(dir.path(), true);
+        let (status, bytes) = raw(
+            restarted.clone(),
+            "GET",
+            &format!("/v1/jobs/{id}/input?project={A}"),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(bytes, input_a);
+        let (status, _) = call(
+            restarted.clone(),
+            "POST",
+            &format!("/v1/jobs/{id}/cancel?project={B}"),
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::CONFLICT);
+        let (status, _) = call(
+            restarted,
+            "POST",
+            &format!("/v1/jobs/{id}/cancel?project={A}"),
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
     }
 
     #[tokio::test]

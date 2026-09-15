@@ -51,9 +51,9 @@ visual Style Center (WASM):
 | Command family | Authoring |
 |---|---|
 | `appearance plan/set` | Flat colour, symbol icon and base size |
-| `label plan/set` | Label field, visibility, size, print papers and point placement |
+| `label plan/set` | Label field, visibility, zoom bounds, size, print papers and point placement |
 | `dimension plan/set/clear` | A second field on halo, opacity or size |
-| `cartography plan/set` | Line type, direction, casing and fill hatching |
+| `cartography plan/set` | Visibility, zoom bounds, polygon boundaries, line type, direction, casing and hatching |
 
 `plan` returns the complete proposed document and publishes nothing. `set` and
 `clear` require `--yes`. The publish operation reads a fresh backend snapshot and
@@ -71,6 +71,19 @@ Omitted options preserve existing settings. For example:
 
 ```sh
 ds style label plan --ref master/lv_poles_print --field pole_number --visible on --size 8 --paper A0 --placement auto --host desktop --project PROJECT
+```
+
+Geometry and label zooms are independent. Both `cartography plan/set` and
+`label plan/set` accept `--min-zoom` and `--max-zoom`: finite numbers from 0 to 24,
+including fractions. Omitted bounds preserve existing values. The shared kernel
+checks the resulting minimum against the maximum, including any retained bound.
+Polygon fills also accept `--boundary-min-zoom`, `--boundary-max-zoom` and
+`--boundary-visible on|off` independently of fill visibility and zooms. Boundary
+controls are refused for other geometry types.
+
+```sh
+ds style cartography plan --ref master/service_areas --min-zoom 8.5 --max-zoom 24 --boundary-visible off --output json
+ds style label plan --ref master/lv_poles_print --field pole_number --min-zoom 14 --max-zoom 24 --output json
 ```
 
 After reviewing the plan, use the same arguments with `set --yes`. The live

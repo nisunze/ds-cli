@@ -96,6 +96,14 @@ fn arguments(inputs: &Inputs, apply: bool) -> Result<Value, Failure> {
                 })
         })
         .transpose()?;
+    let min_zoom = inputs
+        .value("min-zoom")
+        .map(|raw| crate::cartography::bounded(raw, "min-zoom", 0., 24.))
+        .transpose()?;
+    let max_zoom = inputs
+        .value("max-zoom")
+        .map(|raw| crate::cartography::bounded(raw, "max-zoom", 0., 24.))
+        .transpose()?;
     let papers = inputs.repeated("paper");
     let mut numerics = serde_json::Map::new();
     for item in inputs.repeated("number") {
@@ -133,6 +141,8 @@ fn arguments(inputs: &Inputs, apply: bool) -> Result<Value, Failure> {
         .any(|key| inputs.value(key).is_some())
         || !numerics.is_empty()
         || size.is_some()
+        || min_zoom.is_some()
+        || max_zoom.is_some()
         || inputs.value("font").is_some()
         || inputs.value("color").is_some()
         || !papers.is_empty()
@@ -146,6 +156,12 @@ fn arguments(inputs: &Inputs, apply: bool) -> Result<Value, Failure> {
             "papers": if papers.is_empty() { None } else { Some(papers) },
             "automatic_placement": inputs.value("placement").map(|v| v == "auto"),
         });
+    }
+    if let Some(value) = min_zoom {
+        result["options"]["min_zoom"] = json!(value);
+    }
+    if let Some(value) = max_zoom {
+        result["options"]["max_zoom"] = json!(value);
     }
     if !numerics.is_empty() {
         result["options"]["numerics"] = json!(numerics);
@@ -195,7 +211,7 @@ pub mod plan {
         path: &["style", "label", "plan"],
         contract: 3,
         summary: "Preview binding a label to one declared data field.",
-        purpose: "Uses the shared Style Center planner to bind a label field and optionally set visibility, size, font, text color, paper scope and automatic point placement. Omitted options preserve existing authorship. A missing label starts from the backend label model; style read includes its live numeric bounds.",
+        purpose: "Uses the shared Style Center planner to bind a label field and optionally set visibility, zoom bounds, size, font, text color, paper scope and automatic point placement. Omitted options preserve existing authorship. A missing label starts from the backend label model; style read includes its live numeric bounds.",
         chapter: Chapter::MapPresentation,
         effect: Effect::LocalAuthState,
         authority: Authority::HeadlessProject,
@@ -204,6 +220,8 @@ pub mod plan {
             REF_ARG,
             FIELD_ARG,
             VISIBLE_ARG,
+            crate::MIN_ZOOM_ARG,
+            crate::MAX_ZOOM_ARG,
             SIZE_ARG,
             Arg {
                 name: "number",
@@ -328,6 +346,8 @@ pub mod set {
             REF_ARG,
             FIELD_ARG,
             VISIBLE_ARG,
+            crate::MIN_ZOOM_ARG,
+            crate::MAX_ZOOM_ARG,
             SIZE_ARG,
             Arg {
                 name: "number",
@@ -449,6 +469,52 @@ mod tests {
             arguments(&set_inputs, true).expect("set"),
             json!({"ref":"gt/roads_print","field":"road_no","apply":true})
         );
+    }
+
+    #[test]
+    fn label_zoom_bounds_are_typed_without_setting_an_omitted_bound() {
+        for command in [&plan::COMMAND, &set::COMMAND] {
+            for (flag, key, absent) in [
+                ("--min-zoom", "min_zoom", "max_zoom"),
+                ("--max-zoom", "max_zoom", "min_zoom"),
+            ] {
+                for value in ["0", "12.5", "24"] {
+                    let tokens = [
+                        "--ref",
+                        "master/poles",
+                        "--field",
+                        "pole_number",
+                        flag,
+                        value,
+                    ]
+                    .map(str::to_string);
+                    let input = parse(command, &tokens).unwrap();
+                    let args = arguments(&input, false).unwrap();
+                    assert_eq!(args["options"][key], value.parse::<f64>().unwrap());
+                    assert!(args["options"].get(absent).is_none());
+                    let options: ds_command_kernel::style_label::LabelOptions =
+                        serde_json::from_value(args["options"].clone()).unwrap();
+                    assert_eq!(options.min_zoom.is_some(), key == "min_zoom");
+                    assert_eq!(options.max_zoom.is_some(), key == "max_zoom");
+                }
+                for value in ["-0.1", "24.1", "NaN", "inf", "oops"] {
+                    let tokens = [
+                        "--ref",
+                        "master/poles",
+                        "--field",
+                        "pole_number",
+                        flag,
+                        value,
+                    ]
+                    .map(str::to_string);
+                    let input = parse(command, &tokens).unwrap();
+                    assert_eq!(
+                        arguments(&input, false).unwrap_err().code(),
+                        "invalid_number"
+                    );
+                }
+            }
+        }
     }
 
     #[test]

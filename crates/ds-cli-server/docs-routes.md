@@ -430,3 +430,25 @@ already in that lock through `ds-sync-store`, so nothing new is compiled.
    this is the pathological case, not the ordinary one — but the honest fix if
    the owner wants none of it is ordering, not a bigger number: publish the
    oldest unpublished first, or bound how much unpublished work may wait.
+
+## Prepared native tiling
+
+`POST /v1/tile-processing/:key` admits `ds.tiles.prepared/v1` JSON through
+`ds-compute-runtime::tiles::submit`. The envelope contains `project`, `layers`
+(a map from layer name to GeoJSON sequence text), `options` and optional `force`.
+The complete input, capped at 64 MiB, is validated and retained before the
+request returns. An optional `?project=` checks the sealed project; it does not
+supply a default. `ds server tile submit --input <file> --key <key>` is the CLI
+adapter. The existing job status, input, cancellation and result routes apply.
+
+The same key under different projects identifies different jobs. A changed
+input under the same project/key is refused. Recovery reads retained input
+bytes, never a client path or an active UI selection. Execution uses the
+kernel-owned `ds-tile-runtime`, the release's `tiling-tools` directory and
+`tile-cache` below the server state directory. Tool versions are kernel-pinned.
+
+`ds.tiles.result/v1` reports `ready_local` with the verified artifact receipt
+and PMTiles bytes, or `empty_local` for genuinely empty prepared input.
+Publication remains a separate governed operation; local completion never
+claims online synchronization. UI project source acquisition and publication
+must be integrated before changing automatic `tile.generate` placement.

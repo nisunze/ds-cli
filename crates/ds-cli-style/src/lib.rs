@@ -25,6 +25,17 @@ pub use ds_cli_desktop::ops::{
     UNSUPPORTED, classify_signed_out, integer, invoke, paired, paired_availability, plural,
 };
 
+pub(crate) const MIN_ZOOM_ARG: Arg = Arg::value(
+    "min-zoom",
+    "<0..24>",
+    "Minimum display zoom; fractions allowed, omission preserves the bound.",
+);
+pub(crate) const MAX_ZOOM_ARG: Arg = Arg::value(
+    "max-zoom",
+    "<0..24>",
+    "Maximum display zoom; fractions allowed, omission preserves the bound.",
+);
+
 pub static DOMAIN: Domain = Domain {
     id: "style",
     summary: "Guided appearance, labels, a second field dimension, and cartography.",

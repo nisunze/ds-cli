@@ -39,7 +39,7 @@ use ds_client_core::{
     SurveyEntriesChangesRequest, SurveyEntriesChangesServiceCode, SurveyEntriesSelectRequest,
     SurveyEntriesSelectServiceCode, SurveyEntriesSelection, SurveyEntryCreateReceipt,
     SurveyEntryCreateRequest, SurveyEntryCreateServiceCode, SurveyFormReadServiceCode,
-    SurveyQueryRequest, SurveyQueryResult, TransformerContext,
+    SurveyQueryRequest, SurveyQueryResult, SurveyQueryServiceCode, TransformerContext,
 };
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -2611,6 +2611,11 @@ pub fn survey_query(
     if let Some((mut device, selected)) = restored_device_project(lane)? {
         let result = device.survey_query(selected.project_id(), query);
         let result = match result {
+            Err(error) if error.survey_query_service_code().is_some() => {
+                return Err(map_survey_query_service_code(
+                    error.survey_query_service_code().unwrap(),
+                ));
+            }
             Err(error) if error.survey_form_read_service_code().is_some() => {
                 return Err(map_survey_form_read_service_code(
                     error.survey_form_read_service_code().unwrap(),
@@ -2653,6 +2658,11 @@ pub fn survey_query(
         })?;
     let result = client.survey_query(selected.project_id(), query, now());
     let result = match result {
+        Err(error) if error.survey_query_service_code().is_some() => {
+            return Err(map_survey_query_service_code(
+                error.survey_query_service_code().unwrap(),
+            ));
+        }
         Err(error) if error.survey_form_read_service_code().is_some() => {
             return Err(map_survey_form_read_service_code(
                 error.survey_form_read_service_code().unwrap(),
@@ -3138,6 +3148,32 @@ fn survey_entries_select_speaks_for(error: &ClientError) -> bool {
     error.survey_form_read_service_code().is_some()
         || error.survey_entries_select_service_code().is_some()
         || survey_entries_select_kind(error.kind()).is_some()
+}
+
+fn map_survey_query_service_code(code: SurveyQueryServiceCode) -> Failure {
+    match code {
+        SurveyQueryServiceCode::FormUnknown => Failure::conflict("survey_view_not_found",
+            "the authorized survey form has no queryable survey view")
+            .remedy("verify the project binding with ds survey project-forms read, then synchronize the project's Survey data to prepare its view"),
+        SurveyQueryServiceCode::FieldUnknown => Failure::invalid("survey_field_unknown",
+            "the requested field is unavailable to the survey aggregate")
+            .remedy("read the governed form schema and use a queryable, non-restricted field"),
+        SurveyQueryServiceCode::ViewStale => Failure::conflict("survey_view_stale",
+            "the survey view is out of date with its governed schema")
+            .remedy("refresh the project's Survey data to rebuild the view before retrying"),
+        SurveyQueryServiceCode::TooExpensive => Failure::invalid("survey_query_too_expensive",
+            "the survey aggregate exceeds the server scan limit")
+            .remedy("narrow the filters or date range before retrying"),
+        SurveyQueryServiceCode::SyncFailed => Failure::unavailable("survey_query_sync_failed",
+            "Survey synchronization failed before the aggregate could run")
+            .remedy("retry without changing project or form; report a persistent synchronization failure"),
+        SurveyQueryServiceCode::Unavailable => Failure::unavailable("survey_query_unavailable",
+            "Survey queries are unavailable on this deployment")
+            .remedy("use a deployment that provides the governed Survey query service"),
+        SurveyQueryServiceCode::ScopeNotFound => Failure::invalid("survey_scope_not_found",
+            "the service refused the project or survey form scope")
+            .remedy("verify the selected project and its bound forms with ds survey project-forms read"),
+    }
 }
 
 fn map_survey_form_read_service_code(code: SurveyFormReadServiceCode) -> Failure {
@@ -4286,6 +4322,41 @@ pub fn grid_models(
         |client, project| client.grid_models(project, command, now()),
     )
 }
+/// One explicit-project model operation. The gateway authorizes the project
+/// on every request; no saved CLI selection is consulted or changed.
+pub fn grid_models_for_project(
+    lane_value: &str,
+    project: &str,
+    command: &ds_client_core::grid_models::Command,
+) -> Result<ds_client_core::grid_models::Receipt, Failure> {
+    let lane = Lane::parse(lane_value)?;
+    let project = bounded_named_project(project)?;
+    command.validate(&project).map_err(map_grid_publication)?;
+    if let Some(mut device) = restored_device_session(lane)? {
+        return device
+            .grid_models(&project, command)
+            .map_err(map_grid_publication);
+    }
+    let profile = profile::load(lane)?;
+    let store = NativeRefreshStore::open()?;
+    let mut client = Client::new(profile, NativeTransport, store);
+    require_restore_before_context(&mut client)?;
+    client
+        .grid_models(&project, command, now())
+        .map_err(map_grid_publication)
+}
+
+fn map_grid_publication(error: ClientError) -> Failure {
+    if error
+        .service_refusal()
+        .is_some_and(|r| r.status() == 409 && r.code() == Some("grid_publication_conflict"))
+    {
+        return Failure::conflict("publish_conflict", "the model publication conflicts with stored state; the request was not changed or retried")
+            .remedy("read the exact model head and stored revision, review the conflict, then publish deliberately");
+    }
+    map_client(error)
+}
+
 pub use ds_client_core::grid_models::Command as GridModelsCommand;
 pub use ds_client_core::report_artifact::Command as ReportArtifactCommand;
 
@@ -4550,6 +4621,45 @@ mod tests {
         // shared mapping, which is what the disposition arm still handles.
         assert!(survey_entries_select_kind(ErrorKind::SignedOut).is_none());
         assert!(survey_entries_changes_kind(ErrorKind::SignedOut).is_none());
+    }
+
+    #[test]
+    fn survey_query_view_failures_do_not_claim_missing_access() {
+        for (service, code) in [
+            (SurveyQueryServiceCode::FormUnknown, "survey_view_not_found"),
+            (SurveyQueryServiceCode::FieldUnknown, "survey_field_unknown"),
+            (SurveyQueryServiceCode::ViewStale, "survey_view_stale"),
+            (
+                SurveyQueryServiceCode::TooExpensive,
+                "survey_query_too_expensive",
+            ),
+            (
+                SurveyQueryServiceCode::SyncFailed,
+                "survey_query_sync_failed",
+            ),
+            (
+                SurveyQueryServiceCode::Unavailable,
+                "survey_query_unavailable",
+            ),
+            (
+                SurveyQueryServiceCode::ScopeNotFound,
+                "survey_scope_not_found",
+            ),
+        ] {
+            let failure = map_survey_query_service_code(service);
+            assert_eq!(failure.code(), code);
+            assert!(failure.remedy_text().is_some());
+            assert_eq!(
+                failure.class().retryable(),
+                matches!(
+                    service,
+                    SurveyQueryServiceCode::SyncFailed
+                        | SurveyQueryServiceCode::Unavailable
+                        | SurveyQueryServiceCode::FormUnknown
+                        | SurveyQueryServiceCode::ViewStale
+                )
+            );
+        }
     }
 
     #[test]

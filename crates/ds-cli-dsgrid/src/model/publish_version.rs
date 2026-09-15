@@ -1,24 +1,5 @@
-//! `ds dsgrid publish-version` — register ONE immutable revision of a local
-//! model in the active project's DS Grid catalogue.
-//!
-//! This is the family's only project act, and it sits outside `ds dsgrid
-//! model` for that reason: everything under that path is local and needs no
-//! project, while this one resolves an exact catalogue revision and therefore
-//! cannot run without the paired session's own selected project.
-//!
-//! Three things it deliberately does not do:
-//!
-//! * **It does not activate anything.** ds-brain's project head means
-//!   non-deleted catalogue membership and many heads coexist; there is no
-//!   durable exclusive "activate this revision for the project" authority in
-//!   this stack. The receipt reports `active_model` and `active_model_changed`
-//!   so "published" is never read as "now current".
-//! * **It does not rename.** Against an existing project model, `--name` is
-//!   refused here, before anything is captured: publishing a revision must not
-//!   quietly become a metadata edit.
-//! * **It does not name a project.** The destination is the project the paired
-//!   application already has selected, re-checked after every await on its
-//!   side and fenced by the invocation identity on this one.
+//! Immutable model publication. An explicit package and project use the
+//! shared native owner; a selected working copy retains Desktop compatibility.
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
@@ -28,10 +9,9 @@ use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
 
 use crate::model::{
-    ABSOLUTE_PATH_REQUIRED, AMBIGUOUS, AUTH_CONTEXT_MISMATCH, DESCRIPTOR_ARG,
-    LOCAL_MODEL_NOT_FOUND, MODEL_ARG, MODEL_KINDS, MODEL_TOO_LARGE, NOT_PAIRED, PAIRING_REJECTED,
-    PROJECT_NOT_OPEN, PUBLISH_TIMEOUT, REFUSED, SIGNED_OUT, UNREACHABLE, UNREADABLE, UNSUPPORTED,
-    UNSUPPORTED_MODEL_SOURCE,
+    ABSOLUTE_PATH_REQUIRED, AMBIGUOUS, DESCRIPTOR_ARG, LOCAL_MODEL_NOT_FOUND, MODEL_ARG,
+    MODEL_KINDS, MODEL_TOO_LARGE, NOT_PAIRED, PAIRING_REJECTED, PROJECT_NOT_OPEN, PUBLISH_TIMEOUT,
+    REFUSED, SIGNED_OUT, UNREACHABLE, UNREADABLE, UNSUPPORTED, UNSUPPORTED_MODEL_SOURCE,
 };
 
 const PATH_ARG: Arg = Arg {
@@ -41,7 +21,7 @@ const PATH_ARG: Arg = Arg {
     required: false,
     default: None,
     choices: &[],
-    summary: "Publish an external .dsgrid instead; it is acquired locally first.",
+    summary: "Exact .dsgrid file for headless publication; requires --project and --kind.",
 };
 
 const PROJECT_MODEL_ARG: Arg = Arg {
@@ -61,7 +41,7 @@ const KIND_ARG: Arg = Arg {
     required: false,
     default: None,
     choices: MODEL_KINDS,
-    summary: "The project model's kind. Required when publishing a new project model.",
+    summary: "The project model's kind. Required for native --path publication and new models.",
 };
 
 const NAME_ARG: Arg = Arg {
@@ -125,20 +105,90 @@ pub const CONFIRMATION_REQUIRED: Refusal = Refusal {
     remedy: "re-run with --yes once you intend to publish",
 };
 
+const LOCAL_REFUSALS: &[Refusal] = &[
+    NOT_PAIRED,
+    PROJECT_NOT_OPEN,
+    AMBIGUOUS,
+    UNREACHABLE,
+    PAIRING_REJECTED,
+    REFUSED,
+    UNSUPPORTED,
+    UNREADABLE,
+    SIGNED_OUT,
+    AMBIGUOUS_SOURCE,
+    ABSOLUTE_PATH_REQUIRED,
+    UNSUPPORTED_MODEL_SOURCE,
+    MODEL_TOO_LARGE,
+    RENAME_UNSUPPORTED,
+    NEW_PROJECT_MODEL_INCOMPLETE,
+    PROJECT_MODEL_NOT_FOUND,
+    HEAD_CONFLICT,
+    Refusal {
+        code: "publish_conflict",
+        when: "native storage or revision authority reports a conflict",
+        remedy: "review the current model head and exact stored revision before retrying",
+    },
+    LOCAL_MODEL_NOT_FOUND,
+    CONFIRMATION_REQUIRED,
+    Refusal {
+        code: "model_invalid",
+        when: "the captured model has validation findings",
+        remedy: "run ds dsgrid validate and resolve its findings",
+    },
+    Refusal {
+        code: "publish_expected_head_required",
+        when: "native publication targets an existing model without its expected head",
+        remedy: "pass --expected-head with the exact reviewed revision",
+    },
+    Refusal {
+        code: "publish_native_path_required",
+        when: "an explicit project is provided without a file",
+        remedy: "provide --path for native publication",
+    },
+    Refusal {
+        code: "model_not_found",
+        when: "the source file does not exist",
+        remedy: "provide an existing .dsgrid path",
+    },
+    Refusal {
+        code: "model_unreadable",
+        when: "the source cannot be read",
+        remedy: "check file permissions",
+    },
+    Refusal {
+        code: "not_a_dsgrid_package",
+        when: "the source is not a valid container",
+        remedy: "convert the source to .dsgrid first",
+    },
+    Refusal {
+        code: "manifest_unreadable",
+        when: "the source manifest is incompatible",
+        remedy: "use a matching Network release",
+    },
+];
+const fn publication_refusals()
+-> [Refusal; LOCAL_REFUSALS.len() + ds_cli_auth::PROJECT_STATUS_COMMAND.refusals.len()] {
+    let mut result = [CONFIRMATION_REQUIRED;
+        LOCAL_REFUSALS.len() + ds_cli_auth::PROJECT_STATUS_COMMAND.refusals.len()];
+    let mut i = 0;
+    while i < LOCAL_REFUSALS.len() {
+        result[i] = LOCAL_REFUSALS[i];
+        i += 1;
+    }
+    let mut j = 0;
+    while j < ds_cli_auth::PROJECT_STATUS_COMMAND.refusals.len() {
+        result[i + j] = ds_cli_auth::PROJECT_STATUS_COMMAND.refusals[j];
+        j += 1;
+    }
+    result
+}
+
 pub static COMMAND: Command = Command {
     id: "dsgrid.publish-version",
     path: &["dsgrid", "publish-version"],
-    contract: 1,
-    summary: "Publish one local model revision to the active project's catalogue.",
-    purpose: "\
-Registers ONE validated immutable revision of a local DS Grid model in the \
-paired session's own selected project, through the same upload and \
-create-version flow the application's Create version dialog uses. The source \
-is one selector: --model, or --path for an external package acquired first, or \
-neither for the model you are already working in. It does not activate \
-anything — there is no durable exclusive project revision activation in this \
-stack — and against an existing project model it refuses --name rather than \
-becoming a rename. The project is never an argument.",
+    contract: 2,
+    summary: "Publish a verified model revision from a file or Desktop.",
+    purpose: "With --path and --project, the Rust owner validates and uploads exact bytes, commits against --expected-head, and verifies the saved revision without Desktop. --kind is required; an existing project model also requires --expected-head. The destination project is authorized by the gateway and never changes saved selection. Without --path, publishes the selected Desktop working copy through the existing paired flow. Publishing a revision never renames an existing model.",
     chapter: Chapter::GridModel,
     effect: Effect::GlobalWrite,
     authority: Authority::Project,
@@ -151,43 +201,35 @@ becoming a rename. The project is never an argument.",
         NAME_ARG,
         EXPECTED_HEAD_ARG,
         REASON_ARG,
+        Arg {
+            name: "project",
+            kind: ArgKind::Value,
+            value: "<project-id>",
+            required: false,
+            default: None,
+            choices: &[],
+            summary: "Explicit project for native --path publication; never changes active selection.",
+        },
+        Arg {
+            name: "lane",
+            kind: ArgKind::Value,
+            value: "<stable|canary>",
+            required: false,
+            default: Some("stable"),
+            choices: &["stable", "canary"],
+            summary: "Native publication deployment lane.",
+        },
         DESCRIPTOR_ARG,
     ],
-    output: "\
-`status: published`, the `project`, `project_model`, `revision`, `version`, \
-`kind`, `expected_head`, `parent_revision`, the uploaded `digest` and \
-`byte_length`, the `local_model` and `local_revision` published from, \
-`binding_recorded`, and `active_model` with `active_model_changed` — which \
-publication never changes.",
+    output: "Published project/model/revision, kind, expected and parent heads, digest and byte length. Native publication includes verified=true and upload_skipped after exact readback; the paired flow also reports its local working-copy binding.",
     examples: &[Example {
-        command: "ds dsgrid publish-version --name \"Kamonyi MV\" --kind mv_line --reason \"Spotted route\" --yes",
-        note: "Without --yes dispatch refuses before the bridge is opened.",
+        command: "ds dsgrid publish-version --path /work/route.dsgrid --project <exact-id> --name \"Kamonyi MV\" --kind mv_line --yes",
+        note: "Publish a new model through the native server contract without an open map.",
         runnable: false,
     }],
-    refusals: &[
-        NOT_PAIRED,
-        PROJECT_NOT_OPEN,
-        AMBIGUOUS,
-        UNREACHABLE,
-        PAIRING_REJECTED,
-        REFUSED,
-        UNSUPPORTED,
-        UNREADABLE,
-        SIGNED_OUT,
-        AUTH_CONTEXT_MISMATCH,
-        AMBIGUOUS_SOURCE,
-        ABSOLUTE_PATH_REQUIRED,
-        UNSUPPORTED_MODEL_SOURCE,
-        MODEL_TOO_LARGE,
-        RENAME_UNSUPPORTED,
-        NEW_PROJECT_MODEL_INCOMPLETE,
-        PROJECT_MODEL_NOT_FOUND,
-        HEAD_CONFLICT,
-        LOCAL_MODEL_NOT_FOUND,
-        CONFIRMATION_REQUIRED,
-    ],
+    refusals: &publication_refusals(),
     reference: Some("docs/reference/dsgrid.md"),
-    availability: crate::model::paired_availability,
+    availability: || ds_cli_contract::spec::Availability::Available,
 };
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
@@ -256,6 +298,16 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         }
     }
 
+    if let Some(path) = path {
+        return super::publish_native::run(inputs, path);
+    }
+    if inputs.value("project").is_some() {
+        return Err(Failure::invalid(
+            "publish_native_path_required",
+            "An explicit project requires --path to a captured .dsgrid package",
+        )
+        .remedy("provide --path for native publication"));
+    }
     let descriptor = crate::model::paired(inputs.value("desktop-descriptor"))?;
     crate::model::invoke(
         &descriptor,
@@ -281,14 +333,17 @@ pub fn render(data: &Value) -> String {
         data["byte_length"].as_u64().unwrap_or(0),
         data["local_model"].as_str().unwrap_or("—"),
     ));
-    // Publication is project state only. Saying so on every receipt is what
-    // stops "published" being read as "now the model I am working in".
-    out.push_str(&format!(
-        "  active     {} (unchanged: {})\n",
-        data["active_model"].as_str().unwrap_or("none"),
-        !data["active_model_changed"].as_bool().unwrap_or(false),
-    ));
-    if !data["binding_recorded"].as_bool().unwrap_or(true) {
+    if data["verified"] == true {
+        out.push_str("  verified   exact published revision read back\n");
+    }
+    if data.get("active_model_changed").is_some() {
+        out.push_str(&format!(
+            "  active     {} (unchanged: {})\n",
+            data["active_model"].as_str().unwrap_or("none"),
+            !data["active_model_changed"].as_bool().unwrap_or(false)
+        ));
+    }
+    if data["binding_recorded"] == false {
         out.push_str("  note       the version is committed; the local binding was not written\n");
     }
     out

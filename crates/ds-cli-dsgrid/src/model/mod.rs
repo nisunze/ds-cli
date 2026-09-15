@@ -51,6 +51,7 @@ pub mod create_local;
 pub mod import_external;
 pub mod list;
 pub mod prepare_project;
+mod publish_native;
 pub mod publish_version;
 pub mod set_active;
 

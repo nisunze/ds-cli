@@ -79,6 +79,15 @@ actual slug. Read the exact one for the selected project with
 the user's form grant, the project binding, or Survey participation must be
 repaired.
 
+Aggregate failures preserve the server's exact class. `survey_view_not_found`
+means the authorized form lacks a queryable view; `survey_view_stale` means that
+view needs rebuilding. Neither establishes a missing membership or form grant.
+`survey_field_unknown` and `survey_query_too_expensive` require a corrected or
+narrower question. `survey_query_sync_failed` identifies synchronization before
+the aggregate, and `survey_query_unavailable` identifies deployment readiness.
+Unknown legacy 404 responses retain `survey_scope_not_found` and do not establish
+which project, form or view condition failed.
+
 The aggregate grammar is deliberately closed:
 
 ```text
