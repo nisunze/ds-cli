@@ -1,6 +1,7 @@
 //! Project-layer ordering and desktop-local remote tile references.
 
 pub mod add;
+pub mod default_visibility;
 pub mod list;
 pub mod native;
 pub mod project_visibility;

@@ -14,7 +14,7 @@ pub static COMMAND: Command = Command {
     path: &["map", "layer", "list"],
     contract: 5,
     summary: "List canonical project layers through the native user client.",
-    purpose: "Reads the named project's assembled layer document without a desktop and projects it through the shared layer kernel: one row per canonical layer with its runtime family and roles (primary, label, boundary, d3), this machine's remembered visibility folded over the family (the same answer the drawer shows), whether its source is present, and — with --zoom — whether it renders at that zoom. Only layers[].id is accepted by map layer reorder/show/hide. Loaded Notes/PM roots belong to their runtime host and are not inferred here. Use --refresh to rebuild canonical metadata and styles at the API boundary.",
+    purpose: "Reads the named project's assembled layer document without a desktop and projects it through the shared layer kernel: one row per canonical layer with its runtime family and roles (primary, label, boundary, d3), the governed project default folded below this machine's remembered visibility (the same answer the drawer shows), whether its source is present, and — with --zoom — whether it renders at that zoom. Only layers[].id is accepted by map layer default/reorder/show/hide. Loaded Notes/PM roots belong to their runtime host and are not inferred here. Use --refresh to rebuild canonical metadata and styles at the API boundary.",
     chapter: Chapter::Survey,
     effect: Effect::LocalAuthState,
     authority: Authority::HeadlessProject,

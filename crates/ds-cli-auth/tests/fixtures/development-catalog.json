@@ -131,7 +131,8 @@
           "get_config",
           "get_style_catalog",
           "refresh",
-          "reorder"
+          "reorder",
+          "set_default_visibility"
         ]
       },
       "styles": {
@@ -308,7 +309,8 @@
           "get_config",
           "get_style_catalog",
           "refresh",
-          "reorder"
+          "reorder",
+          "set_default_visibility"
         ]
       },
       "styles": {

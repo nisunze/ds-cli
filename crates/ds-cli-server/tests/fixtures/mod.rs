@@ -306,6 +306,15 @@ impl LayerDocuments for FixtureDocuments {
             reordered: orders.len(),
         })
     }
+    fn set_default_visibility(
+        &mut self,
+        defaults: &[ds_layer_ops::VisibilityDefault],
+    ) -> Result<ds_layer_ops::DefaultVisibilityReceipt, Failure> {
+        Ok(ds_layer_ops::DefaultVisibilityReceipt {
+            project: self.project.clone(),
+            updated: defaults.len(),
+        })
+    }
 }
 
 impl LayerHost for LayerFixture {

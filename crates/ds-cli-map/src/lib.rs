@@ -60,6 +60,7 @@ pub static DOMAIN: Domain = Domain {
         &data::list::COMMAND,
         &data::remove::COMMAND,
         &layer::list::COMMAND,
+        &layer::default_visibility::COMMAND,
         &layer::reorder::COMMAND,
         &layer::remote_list::COMMAND,
         &layer::add::COMMAND,

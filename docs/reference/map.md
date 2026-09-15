@@ -131,7 +131,7 @@ not be able to reach the project.
 
 ## Layer management without a desktop
 
-Canonical project layers use `map layer list/reorder/show/hide`; take ids only
+Canonical project layers use `map layer list/default/reorder/show/hide`; take ids only
 from `layers[].id`. `list` projects the assembled document through the shared
 layer kernel (`ds-command-kernel::layer_state`): one row per canonical layer
 with its runtime family and roles (primary, label, boundary, d3), this
@@ -141,6 +141,9 @@ shows it, `source_state`, and with `--zoom` whether the family renders there.
 user (lane- and project-fenced, in the native layer store next to the overlay
 registry); the kernel names the runtime layers the family holds, and authored
 `visibility: none` or 3D-only companions stay hidden at runtime and say so.
+`default --visible true|false --yes` saves a project-wide starting value in
+ds-brain. The kernel folds it below this user's remembered choice, so it can
+seed a quiet initial map without preventing any user from showing the layer.
 `reorder` is admitted by the same kernel before anything is sent: unknown ids,
 repeated ids and out-of-bound orders are typed refusals (`unknown_layer`,
 `duplicate_layer`, `invalid_order`); a partial order is accepted and reports
@@ -157,7 +160,7 @@ Session-only GeoJSON still uses `map draw/remove` and needs an open map.
 
 ### One operation, either host: `--target`
 
-`map layer list/show/hide/reorder` are ONE command id each, whichever host
+`map layer list/default/show/hide/reorder` are ONE command id each, whichever host
 executes them. `--target` is the only difference, and it is a routing decision,
 not a second argument shape:
 
@@ -565,7 +568,7 @@ not installed, which is every CI machine.
 
 ## Native layers and project GIS files
 
-`map layer list/reorder` use native sign-in and, by default, the selected
+`map layer list/default/reorder` use native sign-in and, by default, the selected
 project; `--project <exact-id>` reads one named project instead, for that call
 only. Canonical IDs come from list; runtime MapLibre IDs are refused by reorder.
 No desktop is required. Governed tile references use `ds tile list/add/remove` on the same lane.

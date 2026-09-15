@@ -237,6 +237,10 @@ pub fn router(app: App) -> Router {
         .route("/v1/layers", get(crate::layers::list))
         .route("/v1/layers/visibility", post(crate::layers::visibility))
         .route("/v1/layers/order", post(crate::layers::order))
+        .route(
+            "/v1/layers/default-visibility",
+            post(crate::layers::default_visibility),
+        )
         .route("/v1/transformer-processing/:key", post(submit))
         .route("/v1/solar-processing/:key", post(submit_solar))
         .route("/v1/tile-processing/:key", post(submit_tiles))

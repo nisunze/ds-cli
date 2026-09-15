@@ -484,6 +484,7 @@ const EXPECTED: &[(&str, &str, &str)] = &[
         "desktop_pairing",
     ),
     ("map.layer.add", "local_file_write", "none"),
+    ("map.layer.default", "global_write", "headless_project"),
     ("map.layer.hide", "local_file_write", "headless_project"),
     ("map.layer.list", "local_auth_state", "headless_project"),
     ("map.layer.remote-list", "read_only", "none"),

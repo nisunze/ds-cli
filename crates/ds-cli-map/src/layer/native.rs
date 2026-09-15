@@ -16,6 +16,11 @@ pub const INVALID_ORDER: Refusal = Refusal {
     when: "a repeated order is not a unique canonical-id=integer",
     remedy: "copy ids from ds map layer list",
 };
+pub const INVALID_VISIBILITY_DEFAULT: Refusal = Refusal {
+    code: "invalid_visibility_default",
+    when: "a project default omits a canonical id or exceeds the shared bound",
+    remedy: "copy ids from ds map layer list --output json",
+};
 pub const UNKNOWN_LAYER: Refusal = Refusal {
     code: "unknown_layer",
     when: "an id is not a canonical layer of the selected project (runtime ids are never accepted)",
@@ -259,6 +264,7 @@ pub const NATIVE_WRITE_REFUSALS: &[Refusal] = &[
     AUTH_UNREADABLE,
     CONFIRMATION_REQUIRED,
     INVALID_ORDER,
+    INVALID_VISIBILITY_DEFAULT,
     UNKNOWN_LAYER,
     DUPLICATE_LAYER,
     LAYER_STATE_REFUSED,
@@ -386,6 +392,7 @@ pub const LAYER_ORDER_REFUSALS: &[Refusal] = &[
     AUTH_UNREADABLE,
     CONFIRMATION_REQUIRED,
     INVALID_ORDER,
+    INVALID_VISIBILITY_DEFAULT,
     UNKNOWN_LAYER,
     DUPLICATE_LAYER,
     LAYER_STATE_REFUSED,

@@ -33,8 +33,8 @@ use axum::{
 };
 use ds_cli_contract::outcome::{ExitClass, Failure};
 use ds_layer_ops::{
-    DocumentRead, LayerDocuments, ListRequest, Order, OrderReceipt, OrderRequest, Preferences,
-    Scope, VisibilityRequest,
+    DefaultVisibilityReceipt, DefaultVisibilityRequest, DocumentRead, LayerDocuments, ListRequest,
+    Order, OrderReceipt, OrderRequest, Preferences, Scope, VisibilityDefault, VisibilityRequest,
 };
 use serde::Deserialize;
 use serde_json::json;
@@ -91,6 +91,16 @@ impl LayerDocuments for Fenced {
     }
     fn reorder(&mut self, orders: &[Order]) -> Result<OrderReceipt, Failure> {
         let receipt = self.inner.reorder(orders)?;
+        if receipt.project != self.project {
+            return Err(self.refuse(&receipt.project));
+        }
+        Ok(receipt)
+    }
+    fn set_default_visibility(
+        &mut self,
+        defaults: &[VisibilityDefault],
+    ) -> Result<DefaultVisibilityReceipt, Failure> {
+        let receipt = self.inner.set_default_visibility(defaults)?;
         if receipt.project != self.project {
             return Err(self.refuse(&receipt.project));
         }
@@ -351,6 +361,33 @@ pub async fn order(
     }
 }
 
+/// `POST /v1/layers/default-visibility?project=...`.
+pub async fn default_visibility(
+    State(app): State<App>,
+    query: Option<Query<ScopeQuery>>,
+    body: axum::body::Bytes,
+) -> Response {
+    let Some(Query(query)) = query else {
+        return invalid("this route accepts a project query parameter only");
+    };
+    let request: DefaultVisibilityRequest = match serde_json::from_slice(&body) {
+        Ok(request) => request,
+        Err(error) => return invalid(format!("invalid visibility-default request: {error}")),
+    };
+    match run(
+        app,
+        LAYER_WRITE,
+        query.project,
+        body.to_vec(),
+        move |documents, _| ds_layer_ops::set_default_visibility(documents, &request),
+    )
+    .await
+    {
+        Ok(value) => Json(value).into_response(),
+        Err(response) => response,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     #[test]
@@ -380,7 +417,9 @@ mod tests {
     use super::*;
     use crate::host::{Connection, router};
     use ds_compute_runtime::Authorizer;
-    use ds_layer_ops::{DocumentRead, Order, OrderReceipt, Scope};
+    use ds_layer_ops::{
+        DefaultVisibilityReceipt, DocumentRead, Order, OrderReceipt, Scope, VisibilityDefault,
+    };
     use serde_json::Value;
     use std::collections::BTreeMap;
     use std::sync::Mutex;
@@ -462,6 +501,15 @@ mod tests {
             Ok(OrderReceipt {
                 project: self.project.clone(),
                 reordered: orders.len(),
+            })
+        }
+        fn set_default_visibility(
+            &mut self,
+            defaults: &[VisibilityDefault],
+        ) -> Result<DefaultVisibilityReceipt, Failure> {
+            Ok(DefaultVisibilityReceipt {
+                project: self.project.clone(),
+                updated: defaults.len(),
             })
         }
     }
@@ -950,6 +998,20 @@ mod tests {
         assert_eq!(ordered["complete"], false);
         assert_eq!(ordered["unlisted"], json!(["design/lines"]));
         assert_eq!(upstream.reorders.lock().unwrap().len(), 1);
+
+        // project default: the Server transports the same shared request and
+        // the owner admits a canonical id before the governed write.
+        let (status, defaulted) = wire(
+            server.address,
+            "POST",
+            "/v1/layers/default-visibility?project=proj-kigali",
+            Some(json!({"defaults": [{"layer_id": "survey/poles", "visible": false}]})),
+            TOKEN,
+        )
+        .await;
+        assert_eq!(status, 200, "{defaulted}");
+        assert_eq!(defaulted["project"], "proj-kigali");
+        assert_eq!(defaulted["updated"], 1);
 
         // invalid ids: typed refusals, nothing written upstream or locally
         let (status, refused) = wire(

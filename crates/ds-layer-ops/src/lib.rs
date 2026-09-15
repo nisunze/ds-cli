@@ -26,7 +26,7 @@ use serde_json::{Value, json};
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
-pub use ds_command_kernel::layer_document::Order;
+pub use ds_command_kernel::layer_document::{Order, VisibilityDefault};
 
 pub const LOCAL_STORE_REMEDY: &str =
     "check the local data directory; DS_LAYER_HOME may name an absolute shared directory";
@@ -56,6 +56,10 @@ pub struct OrderReceipt {
     pub project: String,
     pub reordered: usize,
 }
+pub struct DefaultVisibilityReceipt {
+    pub project: String,
+    pub updated: usize,
+}
 
 /// What a host supplies: the document and the order write, both fenced by
 /// the identity and selected project the host is bound to.
@@ -66,6 +70,10 @@ pub trait LayerDocuments {
     /// the effect if their native scope changed.
     fn check_scope(&mut self, expected: &Scope) -> Result<(), Failure>;
     fn reorder(&mut self, orders: &[Order]) -> Result<OrderReceipt, Failure>;
+    fn set_default_visibility(
+        &mut self,
+        defaults: &[VisibilityDefault],
+    ) -> Result<DefaultVisibilityReceipt, Failure>;
 }
 
 /// Where this host remembers toggles.
@@ -265,6 +273,23 @@ impl LayerDocuments for Native {
         Ok(OrderReceipt {
             project: receipt.project_id().to_owned(),
             reordered: orders.len(),
+        })
+    }
+    fn set_default_visibility(
+        &mut self,
+        defaults: &[VisibilityDefault],
+    ) -> Result<DefaultVisibilityReceipt, Failure> {
+        let fence = self.read_fence()?;
+        self.authorize(fence)?;
+        let receipt = match &self.project {
+            Some(project) => ds_cli_auth::layer_default_visibility_for_project(
+                &self.lane, project, defaults, fence,
+            )?,
+            None => ds_cli_auth::layer_default_visibility_fenced(&self.lane, defaults, fence)?,
+        };
+        Ok(DefaultVisibilityReceipt {
+            project: receipt.project_id().to_owned(),
+            updated: receipt.result().updated,
         })
     }
 }
@@ -503,6 +528,75 @@ pub fn reorder(
     }))
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DefaultVisibilityRequest {
+    pub defaults: Vec<VisibilityDefault>,
+}
+
+/// Save project-wide starting visibility. A user's explicit local choice is
+/// still stronger; this value only seeds layers the user has never toggled.
+pub fn set_default_visibility(
+    documents: &mut dyn LayerDocuments,
+    request: &DefaultVisibilityRequest,
+) -> Result<Value, Failure> {
+    let mut seen = std::collections::BTreeSet::new();
+    if let Some(duplicate) = request
+        .defaults
+        .iter()
+        .find(|row| !seen.insert(row.layer_id.as_str()))
+    {
+        return Err(Failure::invalid(
+            "duplicate_layer",
+            format!(
+                "canonical layer is listed more than once: {}",
+                duplicate.layer_id
+            ),
+        )
+        .remedy("pass each canonical id once"));
+    }
+    ds_command_kernel::layer_document::validate_visibility_defaults(&request.defaults).map_err(
+        |message| Failure::invalid("invalid_visibility_default", message).remedy(ID_REMEDY),
+    )?;
+    let read = documents.read(false)?;
+    documents.check_scope(&read.scope)?;
+    let known = read.document["layers"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|layer| layer["metadata"]["config_layer_id"].as_str())
+        .collect::<std::collections::BTreeSet<_>>();
+    let unknown = request
+        .defaults
+        .iter()
+        .filter(|row| !known.contains(row.layer_id.as_str()))
+        .map(|row| row.layer_id.as_str())
+        .collect::<Vec<_>>();
+    if !unknown.is_empty() {
+        return Err(Failure::invalid(
+            "unknown_layer",
+            format!("unknown canonical layer identities: {}", unknown.join(", ")),
+        )
+        .remedy(ID_REMEDY));
+    }
+    let receipt = documents.set_default_visibility(&request.defaults)?;
+    if receipt.project != read.scope.project {
+        return Err(Failure::conflict(
+            "project_context_changed",
+            "the visibility-default receipt names another project than the document it was admitted against",
+        )
+        .remedy("run the command again against the current selected project"));
+    }
+    Ok(json!({
+        "lane": read.scope.lane,
+        "project": read.scope.project,
+        "defaults": request.defaults,
+        "applied": true,
+        "persisted": true,
+        "updated": receipt.updated,
+    }))
+}
+
 fn bounded(value: i64, name: &str, min: i64, max: i64) -> Result<i64, Failure> {
     if (min..=max).contains(&value) {
         Ok(value)
@@ -586,6 +680,14 @@ pub fn render_reorder(data: &Value) -> String {
     )
 }
 
+pub fn render_default_visibility(data: &Value) -> String {
+    format!(
+        "saved {} layer visibility defaults for {}\n",
+        data["updated"].as_u64().unwrap_or(0),
+        data["project"].as_str().unwrap_or("?"),
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -595,6 +697,7 @@ mod tests {
         pub scope: Scope,
         pub document: Value,
         pub reorders: Vec<Vec<Order>>,
+        pub defaults: Vec<Vec<VisibilityDefault>>,
         /// The project the order receipt names; defaults to the scope's.
         pub receipt_project: Option<String>,
         /// Test-only context movement after a read, before an effect fence.
@@ -612,6 +715,7 @@ mod tests {
                 },
                 document,
                 reorders: vec![],
+                defaults: vec![],
                 receipt_project: None,
                 scope_after_read: None,
             }
@@ -647,6 +751,19 @@ mod tests {
                     .clone()
                     .unwrap_or_else(|| self.scope.project.clone()),
                 reordered: orders.len(),
+            })
+        }
+        fn set_default_visibility(
+            &mut self,
+            defaults: &[VisibilityDefault],
+        ) -> Result<DefaultVisibilityReceipt, Failure> {
+            self.defaults.push(defaults.to_vec());
+            Ok(DefaultVisibilityReceipt {
+                project: self
+                    .receipt_project
+                    .clone()
+                    .unwrap_or_else(|| self.scope.project.clone()),
+                updated: defaults.len(),
             })
         }
     }
@@ -697,6 +814,12 @@ mod tests {
             }
             fn reorder(&mut self, orders: &[Order]) -> Result<OrderReceipt, Failure> {
                 self.0.reorder(orders)
+            }
+            fn set_default_visibility(
+                &mut self,
+                defaults: &[VisibilityDefault],
+            ) -> Result<DefaultVisibilityReceipt, Failure> {
+                self.0.set_default_visibility(defaults)
             }
         }
         let tmp = tempfile::tempdir().unwrap();
@@ -925,6 +1048,50 @@ mod tests {
             &mut docs,
             &OrderRequest {
                 orders: orders(&[("survey/poles", 5)]),
+            },
+        )
+        .unwrap_err();
+        assert_eq!(refused.code(), "project_context_changed");
+    }
+
+    #[test]
+    fn project_default_visibility_accepts_canonical_ids_and_fences_the_receipt() {
+        let mut docs = Fixture::new("u1", "p1");
+        let saved = set_default_visibility(
+            &mut docs,
+            &DefaultVisibilityRequest {
+                defaults: vec![VisibilityDefault {
+                    layer_id: "survey/poles".into(),
+                    visible: false,
+                }],
+            },
+        )
+        .unwrap();
+        assert_eq!(saved["updated"], 1);
+        assert_eq!(saved["defaults"][0]["visible"], false);
+        assert_eq!(docs.defaults.len(), 1);
+
+        let refused = set_default_visibility(
+            &mut docs,
+            &DefaultVisibilityRequest {
+                defaults: vec![VisibilityDefault {
+                    layer_id: "ds-poles".into(),
+                    visible: false,
+                }],
+            },
+        )
+        .unwrap_err();
+        assert_eq!(refused.code(), "unknown_layer");
+        assert_eq!(docs.defaults.len(), 1);
+
+        docs.receipt_project = Some("p2".into());
+        let refused = set_default_visibility(
+            &mut docs,
+            &DefaultVisibilityRequest {
+                defaults: vec![VisibilityDefault {
+                    layer_id: "survey/poles".into(),
+                    visible: true,
+                }],
             },
         )
         .unwrap_err();

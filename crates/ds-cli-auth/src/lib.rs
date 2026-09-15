@@ -57,14 +57,15 @@ pub use ds_client_core::{
 };
 pub use ds_client_core::{
     CompoundedArchive, CompoundedArchiveLayout, CompoundedReportReceipt, CompoundedReportRequest,
-    CompoundedReportStatus, LayerOrder, LayerOrderReceipt, LayerSnapshot,
-    PROJECT_REPORT_MAX_REASON_CHARS, PROJECT_REPORT_MAX_TRANSFORMER_CHARS,
-    PROJECT_REPORT_MAX_TRANSFORMERS, ReportFileLevel, RetirementAction, RetirementReceipt,
-    RetirementRecord, RetirementRefusal, RetirementRequest, RetirementResult, StyleEditReceipt,
-    StyleInstruction, StyleSnapshot, TileCatalog, TileMutation, TileOperationResult,
-    TileOperationStatus, TilePreflight, TilePreflightLayer, TilePreflightStatus, TileScope,
-    TileType, TransformerInventory, TransformerInventoryRow, TransformerKind, TransformerLifecycle,
-    TransformerSet, TransformerStatusList, TransformerStatusRow,
+    CompoundedReportStatus, LayerOrder, LayerOrderReceipt, LayerSnapshot, LayerVisibilityDefault,
+    LayerVisibilityDefaultReceipt, PROJECT_REPORT_MAX_REASON_CHARS,
+    PROJECT_REPORT_MAX_TRANSFORMER_CHARS, PROJECT_REPORT_MAX_TRANSFORMERS, ReportFileLevel,
+    RetirementAction, RetirementReceipt, RetirementRecord, RetirementRefusal, RetirementRequest,
+    RetirementResult, StyleEditReceipt, StyleInstruction, StyleSnapshot, TileCatalog, TileMutation,
+    TileOperationResult, TileOperationStatus, TilePreflight, TilePreflightLayer,
+    TilePreflightStatus, TileScope, TileType, TransformerInventory, TransformerInventoryRow,
+    TransformerKind, TransformerLifecycle, TransformerSet, TransformerStatusList,
+    TransformerStatusRow,
 };
 pub use ds_client_core::{SolarCalculationArtifactFinalize, SolarCalculationArtifactOpen};
 pub use profile::Lane;
@@ -955,6 +956,23 @@ impl HeadlessLayerOrderReceipt {
         &self.project_status
     }
     pub const fn result(&self) -> &LayerOrderReceipt {
+        &self.result
+    }
+}
+
+pub struct HeadlessLayerVisibilityDefaultReceipt {
+    lane: &'static str,
+    project_id: String,
+    result: LayerVisibilityDefaultReceipt,
+}
+impl HeadlessLayerVisibilityDefaultReceipt {
+    pub const fn lane(&self) -> &'static str {
+        self.lane
+    }
+    pub fn project_id(&self) -> &str {
+        &self.project_id
+    }
+    pub const fn result(&self) -> &LayerVisibilityDefaultReceipt {
         &self.result
     }
 }
@@ -1927,6 +1945,52 @@ pub fn layer_reorder_for_project(
     })
 }
 
+pub fn layer_default_visibility_for_project(
+    lane_value: &str,
+    project: &str,
+    defaults: &[crate::LayerVisibilityDefault],
+    fence: &LayerScopeFence,
+) -> Result<HeadlessLayerVisibilityDefaultReceipt, Failure> {
+    let lane = Lane::parse(lane_value)?;
+    let project = bounded_named_project(project)?;
+    if let Some(mut device) = restored_device_session(lane)? {
+        verify_restored_layer_identity(
+            fence,
+            device.context().uid(),
+            device.profile().credential_audience_sha256(),
+            &project,
+        )?;
+        verify_layer_scope_fence_for_project(lane_value, fence, fence.uid(), &project)?;
+        let result = device
+            .layer_default_visibility(&project, defaults)
+            .map_err(map_client)?;
+        return Ok(HeadlessLayerVisibilityDefaultReceipt {
+            lane: lane.token(),
+            project_id: project,
+            result,
+        });
+    }
+    let profile = profile::load(lane)?;
+    let store = NativeRefreshStore::open()?;
+    let mut client = Client::new(profile, NativeTransport, store);
+    let user = require_restore_before_context(&mut client)?;
+    verify_restored_layer_identity(
+        fence,
+        user.uid(),
+        client.profile().credential_audience_sha256(),
+        &project,
+    )?;
+    verify_layer_scope_fence_for_project(lane_value, fence, fence.uid(), &project)?;
+    let result = client
+        .layer_default_visibility(&project, defaults, now())
+        .map_err(map_client)?;
+    Ok(HeadlessLayerVisibilityDefaultReceipt {
+        lane: lane.token(),
+        project_id: project,
+        result,
+    })
+}
+
 pub fn layer_config_fenced(
     lane_value: &str,
     refresh: bool,
@@ -2082,6 +2146,50 @@ pub fn layer_reorder_fenced(
         project_id: selected.project_id().to_owned(),
         project_name: selected.project_name().to_owned(),
         project_status: selected.status().to_owned(),
+        result,
+    })
+}
+
+pub fn layer_default_visibility_fenced(
+    lane_value: &str,
+    defaults: &[crate::LayerVisibilityDefault],
+    fence: &LayerScopeFence,
+) -> Result<HeadlessLayerVisibilityDefaultReceipt, Failure> {
+    let lane = Lane::parse(lane_value)?;
+    if let Some((mut device, selected)) = restored_device_project(lane)? {
+        verify_restored_layer_identity(
+            fence,
+            device.context().uid(),
+            device.profile().credential_audience_sha256(),
+            selected.project_id(),
+        )?;
+        verify_layer_scope_fence(lane_value, fence, fence.uid(), fence.project())?;
+        let result = device
+            .layer_default_visibility(selected.project_id(), defaults)
+            .map_err(map_client)?;
+        return Ok(HeadlessLayerVisibilityDefaultReceipt {
+            lane: lane.token(),
+            project_id: selected.project_id().to_owned(),
+            result,
+        });
+    }
+    let profile = profile::load(lane)?;
+    let store = NativeRefreshStore::open()?;
+    let mut client = Client::new(profile, NativeTransport, store);
+    let user = require_restore_before_context(&mut client)?;
+    let selected = load_selected_project(client.profile(), &user)?;
+    verify_restored_layer_identity(
+        fence,
+        user.uid(),
+        client.profile().credential_audience_sha256(),
+        selected.project_id(),
+    )?;
+    verify_layer_scope_fence(lane_value, fence, fence.uid(), fence.project())?;
+    let result = client.layer_default_visibility(selected.project_id(), defaults, now());
+    let result = with_released_context_disposition(client.profile(), &selected, result)?;
+    Ok(HeadlessLayerVisibilityDefaultReceipt {
+        lane: lane.token(),
+        project_id: selected.project_id().to_owned(),
         result,
     })
 }

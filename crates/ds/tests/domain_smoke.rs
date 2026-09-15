@@ -167,15 +167,13 @@ fn the_layer_drawer_has_one_command_id_and_it_is_not_the_servers() {
 /// The other half of the same ruling: the surviving id takes a HOST, and the
 /// default host is the one it always ran on.
 ///
-/// "Nothing changed for a caller who does not pass `--target`" is the claim
-/// that makes this argument safe to add to four shipping commands, so it is
-/// asserted rather than assumed: the declared default is the desktop, and an
-/// invocation without the flag still ends exactly where it used to, at the
-/// native authentication boundary.
+/// The declared default is the desktop, and an invocation without the flag
+/// still ends at the native authentication boundary.
 #[test]
 fn the_default_target_is_the_desktop_as_before() {
     for id in [
         "map.layer.list",
+        "map.layer.default",
         "map.layer.show",
         "map.layer.hide",
         "map.layer.reorder",
@@ -3929,6 +3927,9 @@ fn map_layer_management_keeps_project_and_desktop_local_effects_separate() {
     let reorder = ok(&["capabilities", "map.layer.reorder", "--output", "json"])["command"].clone();
     assert_eq!(reorder["authority"], "headless_project");
     assert_eq!(reorder["effect"], "global_write");
+    let default = ok(&["capabilities", "map.layer.default", "--output", "json"])["command"].clone();
+    assert_eq!(default["authority"], "headless_project");
+    assert_eq!(default["effect"], "global_write");
 
     let confirmation = refusal(&[
         "map",
@@ -4847,6 +4848,7 @@ fn every_map_command_is_reachable_without_the_desktop_installed() {
         "map.remove",
         "map.zoom",
         "map.layer.list",
+        "map.layer.default",
         "map.layer.reorder",
         "map.layer.remote-list",
         "map.layer.add",
@@ -4913,6 +4915,7 @@ fn every_map_command_is_reachable_without_the_desktop_installed() {
                 command["id"].as_str(),
                 Some(
                     "map.layer.list"
+                        | "map.layer.default"
                         | "map.layer.reorder"
                         | "map.layer.show"
                         | "map.layer.hide"

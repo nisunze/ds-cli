@@ -768,6 +768,11 @@ static MAP_ENTRIES: &[Entry] = &[
         render: ds_cli_map::layer::list::render,
     },
     Entry {
+        command: &ds_cli_map::layer::default_visibility::COMMAND,
+        handler: ds_cli_map::layer::default_visibility::run,
+        render: ds_cli_map::layer::default_visibility::render,
+    },
+    Entry {
         command: &ds_cli_map::layer::reorder::COMMAND,
         handler: ds_cli_map::layer::reorder::run,
         render: ds_cli_map::layer::reorder::render,

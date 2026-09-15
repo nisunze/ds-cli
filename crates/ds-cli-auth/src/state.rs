@@ -1143,6 +1143,7 @@ mod tests {
                 "get_style_catalog".to_owned(),
                 "refresh".to_owned(),
                 "reorder".to_owned(),
+                "set_default_visibility".to_owned(),
             ],
             tiles_method: "POST".to_owned(),
             tiles_path: "/api/v1/tiles".to_owned(),

@@ -765,6 +765,18 @@ pub fn layers_reorder(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
     let body = serde_json::to_vec(&json!({"orders": orders})).expect("closed request");
     layers_answer(request(inputs, "POST", &path, Some(&body), 1024 * 1024)?)
 }
+/// `map.layer.default` executed on a Server.
+pub fn layers_default_visibility(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
+    let visible = inputs.require("visible")? == "true";
+    let defaults = inputs
+        .repeated("layer")
+        .iter()
+        .map(|layer_id| json!({"layer_id": layer_id, "visible": visible}))
+        .collect::<Vec<_>>();
+    let path = with_project("/v1/layers/default-visibility", &project(inputs)?);
+    let body = serde_json::to_vec(&json!({"defaults": defaults})).expect("closed request");
+    layers_answer(request(inputs, "POST", &path, Some(&body), 1024 * 1024)?)
+}
 pub fn render_layers_list(value: &Value) -> String {
     ds_layer_ops::render_list(value)
 }

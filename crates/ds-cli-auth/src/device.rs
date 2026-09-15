@@ -633,6 +633,13 @@ impl DeviceSession {
     ) -> Result<ds_client_core::LayerOrderReceipt, ClientError> {
         fixed_device_call!(self, layer_reorder, project, orders)
     }
+    pub fn layer_default_visibility(
+        &mut self,
+        project: &str,
+        defaults: &[ds_client_core::LayerVisibilityDefault],
+    ) -> Result<ds_client_core::LayerVisibilityDefaultReceipt, ClientError> {
+        fixed_device_call!(self, layer_default_visibility, project, defaults)
+    }
     pub fn project_data(
         &mut self,
         project: &str,

@@ -205,9 +205,9 @@ because the desktop's own transformer processing takes bytes.
 
 ## Layers on the running Server
 
-`ds server layers list|show|hide|reorder` are **retired**. One operation has
+`ds server layers list|default|show|hide|reorder` are **retired**. One operation has
 one command id whichever host executes it, so the layer drawer's catalogue,
-visibility and order are `ds map layer list|show|hide|reorder` with an explicit
+visibility and order are `ds map layer list|default|show|hide|reorder` with an explicit
 `--target server|desktop[:instance]` (the routing default decides when you pass
 none). A second set of ids that differed only by which host answered was the
 thing to remove: the same request, the same arguments and the same answer
@@ -225,7 +225,8 @@ scope and leaves the previous one untouched.
 
 Routes: `GET /v1/layers?project=&refresh=&limit=&zoom=`,
 `POST /v1/layers/visibility?project=` `{"layers": [canonical ids], "visible": bool}`,
-`POST /v1/layers/order?project=` `{"orders": [{"layer_id", "order"}]}`. The
+`POST /v1/layers/order?project=` `{"orders": [{"layer_id", "order"}]}`,
+`POST /v1/layers/default-visibility?project=` `{"defaults": [{"layer_id", "visible"}]}`. The
 bodies are exactly the shared owner's request types, so nothing about the
 command's shapes changes with the host; `project` is required on all three and
 travels in the query. Refusals are typed on the wire (`class`, `code`, `error`,
