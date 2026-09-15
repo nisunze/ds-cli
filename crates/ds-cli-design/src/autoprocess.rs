@@ -1,5 +1,5 @@
 //! What AutoProcess would do with a set of committed edits — the kernel's
-//! three admission answers, headless.
+//! four admission answers, headless.
 //!
 //! The host half of AutoProcess (the accumulator, the GDF walk that maps
 //! changed features to feeders, the timer and the engine latch) is a browser
@@ -24,13 +24,13 @@ fn local() -> Availability {
 const REFUSALS: &[Refusal] = &[Refusal {
     code: "autoprocess_request_invalid",
     when: "The changes document is malformed, too large, or a section is not a kernel request",
-    remedy: "Pass {trigger?, differential_scope?, cadence?} with the fields `ds capabilities design.autoprocess.plan` names",
+    remedy: "Pass {mode?, trigger?, differential_scope?, cadence?} with the fields `ds capabilities design.autoprocess.plan` names",
 }];
 
 const CHANGES: Arg = Arg::value(
     "changes",
     "<json-file>",
-    "{trigger?, differential_scope?, cadence?}, at most 1 MiB.",
+    "{mode?, trigger?, differential_scope?, cadence?}, at most 1 MiB.",
 )
 .required();
 const NOW_MS: Arg = Arg::value(
@@ -42,15 +42,15 @@ const NOW_MS: Arg = Arg::value(
 pub static COMMAND: Command = Command {
     id: "design.autoprocess.plan",
     path: &["design", "autoprocess", "plan"],
-    contract: 1,
+    contract: 2,
     summary: "Plan what AutoProcess would do with committed edits.",
-    purpose: "Answers the three AutoProcess admission questions from one document: does a committed edit warrant re-running the LV network, must the next run be differential or full, and does queued work dispatch now or wait. The clock is an input, so the same document always plans the same way. AutoProcess is a Fast-lane activity; this plans it without running it.",
+    purpose: "Answers the four AutoProcess admission questions from one document: which process mode applies, whether a committed edit warrants re-running the LV network, whether the next run must be differential or full, and whether queued work dispatches now or waits. The clock is an input, so the same document always plans the same way. AutoProcess is a Fast-lane activity; this plans it without running it.",
     chapter: Chapter::Design,
     effect: Effect::ReadOnly,
     authority: Authority::None,
     execution: Execution::Sync,
     args: &[CHANGES, NOW_MS],
-    output: "The sections present in the request: trigger {schedule, reason_key}, differential_scope {scope, reason_key, pending?} and cadence {decision, wait_ms?, reason_key, waiting_not_executing}.",
+    output: "The sections present in the request: mode {mode, reason_key}, trigger {schedule, reason_key}, differential_scope {scope, reason_key, pending?} and cadence {decision, wait_ms?, reason_key, waiting_not_executing}.",
     examples: &[Example {
         command: "ds design autoprocess plan --changes edits.json --output json",
         note: "`.data.cadence.wait_ms` is when the host should evaluate again.",
@@ -63,7 +63,7 @@ pub static COMMAND: Command = Command {
 
 fn invalid(e: impl std::fmt::Display) -> Failure {
     Failure::invalid("autoprocess_request_invalid", e.to_string()).remedy(
-        "Pass {trigger?, differential_scope?, cadence?} as `ds capabilities design.autoprocess.plan` names them",
+        "Pass {mode?, trigger?, differential_scope?, cadence?} as `ds capabilities design.autoprocess.plan` names them",
     )
 }
 
@@ -81,7 +81,7 @@ fn document(path: &str) -> Result<Value, Failure> {
 }
 
 /// One section through the kernel. `op` is added here so the document stays
-/// the three plain request bodies rather than a tagged union the caller has
+/// the four plain request bodies rather than a tagged union the caller has
 /// to spell.
 fn section(op: &str, mut body: Value) -> Result<Value, Failure> {
     let Some(map) = body.as_object_mut() else {
@@ -123,7 +123,7 @@ pub fn run(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
             cadence.insert("now_ms".into(), json!(host_now_ms()?));
         }
     }
-    let known = ["trigger", "differential_scope", "cadence"];
+    let known = ["mode", "trigger", "differential_scope", "cadence"];
     if let Some(unknown) = sections.keys().find(|key| !known.contains(&key.as_str())) {
         return Err(invalid(format!("unknown section `{unknown}`")));
     }
@@ -142,6 +142,7 @@ pub fn run(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
 pub fn render(data: &Value) -> String {
     let mut out = String::new();
     for (key, label) in [
+        ("mode", "mode"),
         ("trigger", "trigger"),
         ("differential_scope", "scope"),
         ("cadence", "cadence"),
@@ -150,8 +151,9 @@ pub fn render(data: &Value) -> String {
         if section.is_null() {
             continue;
         }
-        let verdict = section["decision"]
+        let verdict = section["mode"]
             .as_str()
+            .or_else(|| section["decision"].as_str())
             .or_else(|| section["scope"].as_str())
             .map(str::to_owned)
             .unwrap_or_else(|| section["schedule"].to_string());
@@ -164,4 +166,25 @@ pub fn render(data: &Value) -> String {
         }
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn mode_is_a_headless_kernel_section_and_renders() {
+        let answer = section(
+            "mode",
+            json!({
+                "is_fast_lane": true,
+                "fast_process_active": true,
+                "auto_process_enabled": true,
+            }),
+        )
+        .unwrap();
+        assert_eq!(answer["mode"], "auto");
+        assert_eq!(answer["reason_key"], "autoprocess_mode_enabled");
+        assert!(render(&json!({"mode": answer})).contains("mode               auto"));
+    }
 }

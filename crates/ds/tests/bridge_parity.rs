@@ -1361,10 +1361,16 @@ fn the_dsgrid_local_family_is_project_independent_on_both_sides() {
         ds_cli_dsgrid::model::prepare_project::COMMAND.authority,
         Authority::Project,
     );
+    let project = publish
+        .arg("project")
+        .expect("headless file publication names its explicit project");
     assert!(
-        publish.arg("project").is_none(),
-        "the destination is the paired session's own selected project; \
-         a project id is never an argument"
+        !project.required,
+        "paired publication still uses the paired session's selected project"
+    );
+    assert!(
+        publish.arg("path").is_some(),
+        "explicit-project publication must remain tied to the native file path"
     );
 }
 

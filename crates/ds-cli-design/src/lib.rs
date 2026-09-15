@@ -72,6 +72,7 @@ pub mod feeder_limits;
 pub mod force_gate;
 pub mod group;
 pub mod grouping;
+pub mod intake_upload;
 pub mod known_columns;
 pub mod lv;
 pub mod materials;

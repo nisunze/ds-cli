@@ -195,11 +195,11 @@ impl Profile {
             // discoverable in the Assets chapter, outside this print workflow.
             Self::Printing => 28,
             // The layer drawer's profile also carries this machine's prepared
-            // local layer catalogue: sixteen leaves plus both bootstrap tools.
+            // local layer catalogue: seventeen leaves plus both bootstrap tools.
             // Preparing, renaming and removing a local layer is the same
             // operator workflow as the local tile references beside it — one
             // host's own layers — so it is not a second profile.
-            Self::Layers => 18,
+            Self::Layers => 19,
             // Fifteen leaves plus both bootstrap tools. The one that raised
             // this from sixteen is `ds desktop list`: with several DS
             // GridDesign instances live on a machine, every instance-targeted
@@ -440,6 +440,7 @@ const SURVEY_MAP_COMMANDS: &[&str] = &[
 
 const LAYER_COMMANDS: &[&str] = &[
     "map.layer.list",
+    "map.layer.default",
     "map.layer.reorder",
     "map.layer.remote-list",
     "map.data.inspect",
@@ -534,6 +535,7 @@ const PROJECT_OPERATIONS_COMMANDS: &[&str] = &[
 ];
 
 const DESIGN_RUN_COMMANDS: &[&str] = &[
+    "design.intake.upload",
     "design.lv.project-export",
     "design.lv.process",
     "map.design.process",
@@ -843,7 +845,7 @@ impl Surface {
     fn call_catalog(
         &self,
         arguments: &Value,
-        executable: &PathBuf,
+        _executable: &PathBuf,
     ) -> Result<Value, (i64, String)> {
         let object = object_with_known_keys(arguments, &["query", "chapter", "command"])?;
         let query = optional_string(&object, "query")?;
@@ -888,7 +890,7 @@ impl Surface {
                 return Err((-32602, format!("unknown command `{command}`")));
             };
             json!({
-                "command": live_command_summary(tool, executable)?,
+                "command": command_summary(tool, &tool.descriptor),
                 "next": { "tool": chapter_tool_name(tool.chapter), "arguments": { "operation": "describe", "command": tool.id } },
             })
         } else if let Some(query) = query {
@@ -920,8 +922,8 @@ impl Surface {
             matches.truncate(10);
             let results = matches
                 .into_iter()
-                .map(|(_, tool)| live_command_summary(tool, executable))
-                .collect::<Result<Vec<_>, _>>()?;
+                .map(|(_, tool)| command_summary(tool, &tool.descriptor))
+                .collect::<Vec<_>>();
             json!({
                 "query": query,
                 "matched": matched,
@@ -930,8 +932,8 @@ impl Surface {
             })
         } else if let Some(chapter) = chapter {
             let commands = visible
-                .map(|tool| live_command_summary(tool, executable))
-                .collect::<Result<Vec<_>, _>>()?;
+                .map(|tool| command_summary(tool, &tool.descriptor))
+                .collect::<Vec<_>>();
             json!({
                 "chapter": chapter.token(),
                 "tool": chapter_tool_name(chapter),
@@ -1046,12 +1048,6 @@ fn command_summary(tool: &Tool, descriptor: &Value) -> Value {
         "availability": descriptor["availability"],
         "next": { "tool": chapter_tool_name(tool.chapter), "operation": "describe" },
     })
-}
-
-fn live_command_summary(tool: &Tool, executable: &PathBuf) -> Result<Value, (i64, String)> {
-    let descriptor = tools::live_command_descriptor(executable, &tool.id)
-        .map_err(|failure| (-32000, failure.to_string()))?;
-    Ok(command_summary(tool, &descriptor))
 }
 
 fn invoke_leaf(

@@ -6434,7 +6434,7 @@ fn every_design_command_is_discoverable_without_the_desktop_installed() {
     let commands = index["commands"].as_array().expect("commands");
     assert_eq!(
         commands.len(),
-        90, // + design.project.revisions/compare and design.version.list/compare/begin/restore (headless, 2026-09-15).
+        91, // + design.intake.upload (headless, 2026-09-15).
         "the design domain should expose its whole family: {commands:?}"
     );
     for command in commands {
@@ -6443,7 +6443,8 @@ fn every_design_command_is_discoverable_without_the_desktop_installed() {
             command["availability"],
             if matches!(
                 id,
-                "design.features.select"
+                "design.intake.upload"
+                    | "design.features.select"
                     | "design.tag.project-list"
                     | "design.group.project-preview"
                     | "design.group.project-apply"
@@ -6659,6 +6660,9 @@ fn design_collaboration_is_a_complete_headless_project_surface() {
                 // decides membership, but `ds` no longer needs a paired
                 // browser to ask it.
                 && !id.starts_with("design.selection.")
+                // Standard intake is a headless Rust upload/process workflow,
+                // not a paired collaboration record operation.
+                && !id.starts_with("design.intake.")
         })
         .collect();
     let expected: BTreeSet<&str> = [
@@ -6758,6 +6762,7 @@ fn design_collaboration_is_a_complete_headless_project_surface() {
             || id.starts_with("design.conflict.")
             || id.starts_with("design.presence.")
             || id.starts_with("design.selection.")
+            || id.starts_with("design.intake.")
         {
             continue;
         }

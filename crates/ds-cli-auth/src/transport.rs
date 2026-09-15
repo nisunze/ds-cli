@@ -6,9 +6,9 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use ds_client_core::{
     ProjectFormEditorCall, ProjectFormsCall, ProjectListCall, ProjectReportCall, RefreshCall,
-    SignInCall, SolarSnapshotCall, SurveyEntriesChangesCall, SurveyEntriesSelectCall,
-    SurveyEntryCreateCall, SurveyQueryCall, SyncGatewayCall, TileCall, TransformerContextCall,
-    Transport, TransportError, TransportResponse,
+    SignInCall, SolarSnapshotCall, StatusProcessingCall, SurveyEntriesChangesCall,
+    SurveyEntriesSelectCall, SurveyEntryCreateCall, SurveyQueryCall, SyncGatewayCall, TileCall,
+    TransformerContextCall, Transport, TransportError, TransportResponse,
 };
 use sha2::{Digest, Sha256};
 use zeroize::{Zeroize, Zeroizing};
@@ -492,6 +492,37 @@ impl Transport for NativeTransport {
         bearer.zeroize();
         let response = result.map_err(classify)?;
         bounded(response, call.response_limit())
+    }
+
+    fn status_processing(
+        &mut self,
+        call: StatusProcessingCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        debug_assert_eq!(call.method(), "POST");
+        debug_assert_eq!(call.path(), "/process");
+        let (request_id, action_id) = correlation_headers();
+        let mut bearer = format!("Bearer {}", call.bearer_token());
+        let body = call.body();
+        let result = ureq::post(format!("{}{}", call.gateway_origin(), call.path()))
+            .header("Accept", call.content_type())
+            .header("Content-Type", call.content_type())
+            .header("X-App-Id", call.client_id())
+            .header("X-Request-Id", &request_id)
+            .header("X-DS-Action-Id", &action_id)
+            .header("X-User-Email", call.canonical_email())
+            .header("x-api-key", call.gateway_api_key())
+            .header("Authorization", &bearer)
+            .header("X-Forwarded-Authorization", &bearer)
+            .header("X-DS-Processing-Lane", "standard")
+            .config()
+            .max_redirects(0)
+            .http_status_as_error(false)
+            .timeout_connect(Some(CONNECT_TIMEOUT))
+            .timeout_global(Some(Duration::from_secs(call.timeout_seconds())))
+            .build()
+            .send(body.as_bytes());
+        bearer.zeroize();
+        bounded(result.map_err(classify)?, call.response_limit())
     }
 
     fn transformer_save(

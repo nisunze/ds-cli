@@ -99,6 +99,11 @@ const REFUSALS: &[Refusal] = &[
         when: "the row is not an eligible retained Network Reporter admission or storage-comparison failure",
         remedy: "follow status guidance: repair exact build admission or install the server storage-comparison fix; stale or integrity failures remain blocked",
     },
+    Refusal {
+        code: "sync_native_store_owned",
+        when: "retry is owned by the shared native sync store on this host",
+        remedy: "inspect status, reconnect, or wake Sync Center without changing retained publication identity",
+    },
 ];
 
 pub static STATUS_COMMAND: Command = Command {

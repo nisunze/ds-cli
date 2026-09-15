@@ -363,6 +363,7 @@ const EXPECTED: &[(&str, &str, &str)] = &[
         "headless_project",
     ),
     ("design.dashboard", "local_auth_state", "headless_project"),
+    ("design.intake.upload", "global_write", "headless_project"),
     ("design.transformer.download", "local_ui", "project"),
     (
         "design.transformer.inventory",

@@ -579,6 +579,7 @@ fn by_command_profiles_still_partition_the_live_registry() {
                         && matches!(
                             id.as_str(),
                             "design.features.select"
+                                | "design.intake.upload"
                                 | "design.lv.project-export"
                                 | "design.lv.process"
                                 | "design.known-columns.list"
@@ -1336,7 +1337,7 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
             // also carries this machine's prepared local layer catalogue,
             // which is the same "one host's own layers" workflow as the local
             // tile references beside it.
-            "layers" => 18,
+            "layers" => 19,
             // Fifteen operations leaves plus bootstrap. The one that raised
             // this from sixteen is `ds desktop list`: every instance-targeted
             // refusal an agent can meet tells it to name an instance, and this
@@ -1481,6 +1482,7 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
                         && matches!(
                             name.as_str(),
                             "design_features_select"
+                                | "design_intake_upload"
                                 | "design_known-columns_list"
                                 | "design_known-columns_set"
                                 | "design_lv_project-export"

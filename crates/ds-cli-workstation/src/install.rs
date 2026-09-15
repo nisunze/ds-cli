@@ -54,28 +54,11 @@ pub static COMMAND: Command = Command {
     execution: Execution::Sync,
     args: &[crate::COMPONENT_ARG, APPROVAL_ARG],
     output: "An idempotent receipt with source, change, verification, and task-ownership evidence.",
-    examples: &[
-        Example {
-            command: "ds workstation install --component libreoffice --approval interactive --yes --output json",
-            note: "Uses the trusted Linux package manager or fixed native Windows package identity; may request sudo or UAC.",
-            runnable: false,
-        },
-        Example {
-            command: "ds workstation install --component tippecanoe --approval interactive --yes --output json",
-            note: "Linux only; installs the kernel-pinned shared Tippecanoe and PMTiles toolchain and may prompt for sudo.",
-            runnable: false,
-        },
-        Example {
-            command: "ds workstation install --component pandoc --approval interactive --yes --output json",
-            note: "Uses the current platform's trusted package manager and may request operating-system approval.",
-            runnable: false,
-        },
-        Example {
-            command: "ds workstation install --component rwanda-reference --yes --output json",
-            note: "Acquires the fixed official 2022 NISR village boundary layer and writes its governed receipt.",
-            runnable: false,
-        },
-    ],
+    examples: &[Example {
+        command: "ds workstation install --component tippecanoe --approval interactive --yes --output json",
+        note: "Install one reviewed component; see the reference for platform-specific routes.",
+        runnable: false,
+    }],
     refusals: &[
         crate::COMPONENT_UNKNOWN,
         crate::MUTATION_UNSUPPORTED,

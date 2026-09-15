@@ -1592,6 +1592,241 @@ pub fn project_data(lane_value: &str, command: ProjectDataCommand<'_>) -> Result
     Ok(data)
 }
 
+pub use ds_client_core::StatusUploadDomain;
+
+/// Run the Rust-owned Standard design-intake state machine against files on
+/// this machine. The selected project is acquired once and remains frozen for
+/// every upload and process effect in the job.
+pub fn status_upload(
+    lane_value: &str,
+    paths: &[String],
+    mode: StatusUploadDomain,
+    settings: &serde_json::Map<String, Value>,
+) -> Result<Value, Failure> {
+    let lane = Lane::parse(lane_value)?;
+    if let Some((mut device, selected)) = restored_device_project(lane)? {
+        let mut result =
+            drive_status_upload(selected.project_id(), paths, mode, settings, |command| {
+                device
+                    .status_processing(selected.project_id(), command)
+                    .map(|receipt| receipt.data().clone())
+                    .map_err(map_client)
+            })?;
+        decorate_status_upload(&mut result, lane.token(), &selected);
+        return Ok(result);
+    }
+    let profile = profile::load(lane)?;
+    let store = NativeRefreshStore::open()?;
+    let mut client = Client::new(profile, NativeTransport, store);
+    let user = require_restore_before_context(&mut client)?;
+    let selected = load_selected_project(client.profile(), &user)?;
+    let mut result =
+        drive_status_upload(selected.project_id(), paths, mode, settings, |command| {
+            let call = client.status_processing(selected.project_id(), command, now());
+            with_released_context_disposition(client.profile(), &selected, call)
+                .map(|receipt| receipt.data().clone())
+        })?;
+    decorate_status_upload(&mut result, lane.token(), &selected);
+    Ok(result)
+}
+
+fn decorate_status_upload(result: &mut Value, lane: &str, selected: &state::ProjectContext) {
+    result["project"] = json!(selected.project_id());
+    result["project_name"] = json!(selected.project_name());
+    result["project_status"] = json!(selected.status());
+    result["lane"] = json!(lane);
+}
+
+fn status_upload_failure(message: impl Into<String>) -> Failure {
+    Failure::invalid("status_upload_invalid", message)
+        .remedy("Pass bounded regular files and keep the selected project unchanged for the run")
+}
+
+fn status_upload_domain(value: &str) -> Result<StatusUploadDomain, Failure> {
+    match value {
+        "lv_drafting" => Ok(StatusUploadDomain::LvDrafting),
+        "sketch_lv" => Ok(StatusUploadDomain::SketchLv),
+        "lv_process" => Ok(StatusUploadDomain::LvProcess),
+        _ => Err(status_upload_failure(
+            "Upload kernel emitted an unknown Standard processing domain.",
+        )),
+    }
+}
+
+fn drive_status_upload<F>(
+    project: &str,
+    paths: &[String],
+    mode: StatusUploadDomain,
+    settings: &serde_json::Map<String, Value>,
+    mut execute: F,
+) -> Result<Value, Failure>
+where
+    F: for<'a> FnMut(ds_client_core::StatusProcessingCommand<'a>) -> Result<Value, Failure>,
+{
+    let declarations = paths
+        .iter()
+        .map(|source| {
+            let path = Path::new(source);
+            let name = path
+                .file_name()
+                .and_then(|value| value.to_str())
+                .unwrap_or("");
+            let size = std::fs::metadata(path)
+                .ok()
+                .filter(|metadata| metadata.is_file())
+                .map_or(0, |metadata| metadata.len());
+            json!({"name":name,"size":size,"content_type":"application/octet-stream"})
+        })
+        .collect::<Vec<_>>();
+    let mut reply: Value = serde_json::from_str(
+        &ds_command_kernel::status_upload::evaluate(
+            json!({
+                "op":"start", "project_id":project, "mode":mode.token(),
+                "files":declarations, "parallel_limit":1,
+                "upload_chain":[], "use_firestore_design_data":false,
+                "process_settings":settings
+            })
+            .to_string()
+            .as_bytes(),
+        )
+        .map_err(status_upload_failure)?,
+    )
+    .map_err(|_| status_upload_failure("Upload kernel returned invalid JSON."))?;
+
+    loop {
+        let phase = reply["state"]["phase"]
+            .as_str()
+            .ok_or_else(|| status_upload_failure("Upload kernel omitted its phase."))?;
+        if matches!(phase, "complete" | "cancelled") {
+            return Ok(json!({
+                "schema":reply["schema"],
+                "phase":phase,
+                "progress":reply["progress"],
+                "results":reply["state"]["results"]
+            }));
+        }
+        let effects = reply["effects"]
+            .as_array()
+            .ok_or_else(|| status_upload_failure("Upload kernel omitted its effects."))?;
+        if effects.len() != 1 {
+            return Err(status_upload_failure(
+                "Single-worker upload kernel did not emit exactly one effect.",
+            ));
+        }
+        let effect = &effects[0];
+        let index = effect["file_index"]
+            .as_u64()
+            .and_then(|value| usize::try_from(value).ok())
+            .ok_or_else(|| status_upload_failure("Upload kernel emitted an invalid file index."))?;
+        let event = if effect["kind"] == "upload" {
+            let outcome = (|| {
+                if effect["project_id"].as_str() != Some(project) {
+                    return Err(status_upload_failure(
+                        "Upload kernel changed the selected project.",
+                    ));
+                }
+                let source = paths.get(index).ok_or_else(|| {
+                    status_upload_failure("Upload kernel named a missing source file.")
+                })?;
+                let mut file = std::fs::File::open(source).map_err(|error| {
+                    status_upload_failure(format!("Cannot open {source}: {error}"))
+                })?;
+                let metadata = file
+                    .metadata()
+                    .map_err(|error| status_upload_failure(error.to_string()))?;
+                let declared_size = effect["size"].as_u64().unwrap_or(0);
+                if !metadata.is_file() || metadata.len() != declared_size {
+                    return Err(status_upload_failure(
+                        "Source file changed after upload admission.",
+                    ));
+                }
+                let name = effect["file_name"]
+                    .as_str()
+                    .ok_or_else(|| status_upload_failure("Upload kernel omitted the file name."))?;
+                let content_type = effect["content_type"].as_str().ok_or_else(|| {
+                    status_upload_failure("Upload kernel omitted the content type.")
+                })?;
+                let domain = status_upload_domain(effect["upload_domain"].as_str().unwrap_or(""))?;
+                execute(ds_client_core::StatusProcessingCommand::Upload {
+                    domain,
+                    file_name: name,
+                    size: metadata.len(),
+                    content_type,
+                    reader: &mut file,
+                })
+            })();
+            match outcome {
+                Ok(receipt) => json!({
+                    "kind":"upload_succeeded", "file_index":index,
+                    "blob_path":receipt["blob_path"]
+                }),
+                Err(error) => json!({
+                    "kind":"upload_failed", "file_index":index,
+                    "error":error.to_string()
+                }),
+            }
+        } else if effect["kind"] == "process" {
+            let outcome = (|| {
+                if effect["project_id"].as_str() != Some(project) {
+                    return Err(status_upload_failure(
+                        "Upload kernel changed the selected project.",
+                    ));
+                }
+                let files = effect["files"]
+                    .as_array()
+                    .filter(|files| files.len() == 1)
+                    .ok_or_else(|| {
+                        status_upload_failure("Upload kernel emitted an invalid process file list.")
+                    })?;
+                let name = files[0]["file_name"].as_str().ok_or_else(|| {
+                    status_upload_failure("Upload kernel omitted the process file name.")
+                })?;
+                let path = files[0]["file_path"].as_str().ok_or_else(|| {
+                    status_upload_failure("Upload kernel omitted the process blob path.")
+                })?;
+                let action = status_upload_domain(effect["action"].as_str().unwrap_or(""))?;
+                let chain: Vec<String> =
+                    serde_json::from_value(effect["chain"].clone()).map_err(|_| {
+                        status_upload_failure("Upload kernel emitted an invalid process chain.")
+                    })?;
+                let extra = effect["extra"].as_object().ok_or_else(|| {
+                    status_upload_failure("Upload kernel emitted invalid process settings.")
+                })?;
+                execute(ds_client_core::StatusProcessingCommand::Process {
+                    action,
+                    file_name: name,
+                    blob_path: path,
+                    chain: &chain,
+                    extra,
+                })
+            })();
+            match outcome {
+                Ok(receipt) => json!({
+                    "kind":"process_succeeded", "file_index":index,
+                    "response":receipt
+                }),
+                Err(error) => json!({
+                    "kind":"process_failed", "file_index":index,
+                    "error":error.to_string()
+                }),
+            }
+        } else {
+            return Err(status_upload_failure(
+                "Upload kernel emitted an unknown effect.",
+            ));
+        };
+        reply = serde_json::from_str(
+            &ds_command_kernel::status_upload::evaluate(
+                json!({"op":"advance","state":reply["state"],"event":event})
+                    .to_string()
+                    .as_bytes(),
+            )
+            .map_err(status_upload_failure)?,
+        )
+        .map_err(|_| status_upload_failure("Upload kernel returned invalid JSON."))?;
+    }
+}
+
 pub fn style_edit(
     lane_value: &str,
     reference: &str,
@@ -5328,5 +5563,85 @@ mod tests {
         );
         assert_eq!(bare.code(), "auth_rejected");
         assert!(bare.message().ends_with("(HTTP 403)"), "{bare:?}");
+    }
+}
+#[cfg(test)]
+mod status_upload_tests {
+    use super::*;
+
+    #[test]
+    fn native_upload_host_drives_kernel_effects_without_redeciding_the_job() {
+        let path =
+            std::env::temp_dir().join(format!("ds-status-upload-{}-a.zip", std::process::id()));
+        std::fs::write(&path, b"abc").unwrap();
+        let sources = vec![path.to_string_lossy().into_owned()];
+        let settings = json!({"assign_earthing":true}).as_object().unwrap().clone();
+        let mut effects = Vec::new();
+        let result = drive_status_upload(
+            "project_a",
+            &sources,
+            StatusUploadDomain::LvProcess,
+            &settings,
+            |command| match command {
+                ds_client_core::StatusProcessingCommand::Upload {
+                    domain,
+                    file_name,
+                    size,
+                    reader,
+                    ..
+                } => {
+                    let mut bytes = Vec::new();
+                    reader.read_to_end(&mut bytes).unwrap();
+                    effects.push("upload");
+                    assert_eq!(domain, StatusUploadDomain::LvProcess);
+                    assert_eq!(file_name, path.file_name().unwrap().to_str().unwrap());
+                    assert_eq!(size, 3);
+                    assert_eq!(bytes, b"abc");
+                    Ok(json!({"blob_path":format!("projects/project_a/process_uploads/v2/lv_process/r/{file_name}")}))
+                }
+                ds_client_core::StatusProcessingCommand::Process {
+                    action,
+                    file_name,
+                    chain,
+                    extra,
+                    ..
+                } => {
+                    effects.push("process");
+                    assert_eq!(action, StatusUploadDomain::LvProcess);
+                    assert!(chain.is_empty());
+                    assert_eq!(extra["settings"]["assign_earthing"], true);
+                    Ok(json!({"results":[{"file_name":file_name,"submitted":1}]}))
+                }
+            },
+        )
+        .unwrap();
+        let _ = std::fs::remove_file(path);
+        assert_eq!(effects, ["upload", "process"]);
+        assert_eq!(result["phase"], "complete");
+        assert_eq!(result["results"][0]["ok"], true);
+    }
+
+    #[test]
+    fn native_upload_host_records_a_missing_file_and_terminates() {
+        let missing = std::env::temp_dir().join(format!(
+            "ds-status-upload-{}-missing.zip",
+            std::process::id()
+        ));
+        let result = drive_status_upload(
+            "project_a",
+            &[missing.to_string_lossy().into_owned()],
+            StatusUploadDomain::LvDrafting,
+            &serde_json::Map::new(),
+            |_| panic!("a missing file must not reach a network effect"),
+        )
+        .unwrap();
+        assert_eq!(result["phase"], "complete");
+        assert_eq!(result["results"][0]["ok"], false);
+        assert!(
+            result["results"][0]["error"]
+                .as_str()
+                .unwrap()
+                .contains("Cannot open")
+        );
     }
 }

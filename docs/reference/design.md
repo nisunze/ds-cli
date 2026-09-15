@@ -12,6 +12,23 @@ Governed collaboration serves
 `ds-brain/docs/contracts/design-collaboration-roadmap.md`. Offline Fast LV
 processing serves the ds-network native batch contract directly.
 
+## Standard design intake
+
+`ds design intake upload` runs the same Rust-owned upload job as Transformer
+Status without an open map or paired Desktop. Repeat `--file` for independent
+`.gpkg`, `.zip`, or `.geojson` sources and choose `--mode lv-drafting`,
+`sketch-lv`, or `lv-process`. For `lv-process`, `--settings` accepts a bounded
+JSON object containing boolean and numeric process settings.
+
+The command freezes the lane's selected project for the job, verifies each
+server-issued resumable target against that project, completes the upload
+phase before it starts one-file process jobs, and returns one result per file.
+
+```bash
+ds design intake upload --file ./T001.zip --mode lv-process \
+  --settings ./process-settings.json --yes --output json
+```
+
 ## Offline Fast LV processing
 
 `ds design lv project-export` is the authenticated, mapless handoff from one
@@ -758,9 +775,11 @@ rule worth knowing: when one artifact NAME appears twice for a row — a cloud
 pointer and a copy already on disk — the LOCAL copy wins, whatever order they
 arrived in, and among two copies of the same kind the later one wins. Each
 entry names the row, the artifact, the copy it resolved to and `why`
-(`only`, `local_wins`, `later_wins`). `source_uploads` counts the draft,
-sketch and process files the scope carries and how many have a URL. The fetch
-itself stays with the caller.
+(`only`, `local_wins`, `later_wins`). Each row's `source_files` is the normalized
+draft/sketch/process input inventory and its `source_entries` gives safe ZIP
+member names by action. The plan-level `source_entries` is the selected scope's
+flat download list. `source_uploads` counts those inputs and how many have a
+URL. The fetch itself stays with the caller.
 
 `ds design version status [--transformer <name>…]` says whether beginning a
 deliberate version is warranted. Per row: `version` in force, `latest` ever
@@ -818,10 +837,12 @@ properties on the engine side, and no longer pretends to here.
 ## AutoProcess, planned without running it
 
 `ds design autoprocess plan --changes edits.json [--now-ms 1789…]` answers the
-three admission questions AutoProcess asks in the browser, from the same kernel
-module (`autoprocess`). The document holds up to three sections and the answer
+four admission questions AutoProcess asks in the browser, from the same kernel
+module (`autoprocess`). The document holds up to four sections and the answer
 carries the ones it found:
 
+- `mode` — `{is_fast_lane, fast_process_active, auto_process_enabled}` →
+  `standard`, `fast`, or `auto`; every host presents the same process action.
 - `trigger` — `{reason, changed_fields[], vocabulary{lockable_cells[],
   status_fields[]}}` → does this committed edit warrant re-running the LV
   network. The two attribute vocabularies are ds-network's and are passed in;

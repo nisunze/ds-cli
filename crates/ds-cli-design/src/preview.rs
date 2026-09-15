@@ -195,7 +195,7 @@ pub fn render_bulk_plan(data: &Value) -> String {
 pub static DOWNLOAD_PLAN: Command = Command {
     id: "design.download.plan",
     path: &["design", "download", "plan"],
-    contract: 2,
+    contract: 3,
     summary: "Preview a download: rows in scope, URLs, and which copy wins.",
     purpose: "Discover direct files, attached prints, combined reports and published bundles headlessly. Source freshness remains separate from artifact availability: stale transformers can have complete A0/A3 PDFs in a bundle. Members name their containing ZIP and require extraction. An unavailable archive index means unknown coverage, not missing files. This command never regenerates reports.",
     chapter: Chapter::Design,
@@ -205,9 +205,9 @@ pub static DOWNLOAD_PLAN: Command = Command {
     args: &[TRANSFORMER_ARG, FORMAT_ARG, LANE_ARG],
     output: "\
 Lane and project identity, the rows in scope, every delivered URL (and the \
-format-filtered list), the fresh/stale/missing/cached summary, the source-\
-upload counts, and one placement row per artifact name with the copy it \
-resolved to and why.",
+format-filtered list), the fresh/stale/missing/cached summary, normalized source \
+files and safe source ZIP entries, source-upload counts, and one placement row \
+per artifact name with the copy it resolved to and why.",
     examples: &[Example {
         command: "ds design download plan --format xlsx --output json",
         note: "`.data.plan.filtered_urls` is what a spreadsheet-only run fetches.",

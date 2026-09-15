@@ -647,6 +647,13 @@ impl DeviceSession {
     ) -> Result<ds_client_core::ProjectDataReceipt, ClientError> {
         fixed_device_call!(self, project_data, project, command)
     }
+    pub fn status_processing(
+        &mut self,
+        project: &str,
+        command: ds_client_core::StatusProcessingCommand<'_>,
+    ) -> Result<ds_client_core::StatusProcessingReceipt, ClientError> {
+        fixed_device_call!(self, status_processing, project, command)
+    }
     pub fn save_transformers(
         &mut self,
         project: &str,

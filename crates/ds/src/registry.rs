@@ -1477,6 +1477,11 @@ static ASSETS_ENTRIES: &[Entry] = &[
 /// state. It is available through a paired desktop without an open map.
 static DESIGN_ENTRIES: &[Entry] = &[
     Entry {
+        command: &ds_cli_design::intake_upload::COMMAND,
+        handler: ds_cli_design::intake_upload::run,
+        render: ds_cli_design::intake_upload::render,
+    },
+    Entry {
         command: &ds_cli_design::native_tags::DEFINITIONS,
         handler: ds_cli_design::native_tags::definitions,
         render: ds_cli_design::native_tags::render,
