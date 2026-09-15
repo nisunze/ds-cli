@@ -413,6 +413,53 @@ fn an_unauthorized_identity_moves_no_byte_and_advances_nothing() {
 }
 
 #[test]
+fn one_failed_resource_grant_does_not_refuse_other_uploads_in_the_batch() {
+    let harness = Harness::new();
+    let first = local_row(b"first report");
+    let mut second = local_row(b"second report");
+    second.identity.operation = "export-tx_2".into();
+    second.resource = "tx_2".into();
+    second.input_base_fingerprint = Some("source-2".into());
+    second.client_publish_id = "publish-22222222-2222-4222-8222-222222222222".into();
+    {
+        let mut world = fakes::lock(&harness.world);
+        world
+            .snapshot_base
+            .insert("export-tx_2".into(), "source-2".into());
+        world.refuse_open_resource = Some("tx_2".into());
+    }
+
+    let outcome = harness.run(vec![first, second], sync::Trigger::Startup);
+
+    assert_eq!(
+        outcomes(&outcome),
+        vec![
+            "open_grant:granted",
+            "open_grant:failed",
+            "upload:published",
+            "upload:failed",
+        ]
+    );
+    let world = fakes::lock(&harness.world);
+    assert_eq!(world.grants_minted, 1);
+    assert_eq!(world.commits, 1, "the covered publication advances");
+    assert_eq!(world.transfers.len(), 1, "only its bytes move");
+    drop(world);
+    let failed = outcome
+        .receipts
+        .iter()
+        .find(|receipt| {
+            receipt.action == "upload"
+                && receipt.identity.as_ref().is_some_and(|identity| identity.operation == "export-tx_2")
+        })
+        .expect("the uncovered upload receipt");
+    assert_eq!(
+        failed.detail.as_deref(),
+        Some("no work grant covers this publication")
+    );
+}
+
+#[test]
 fn a_publication_from_an_unregistered_build_never_moves_bytes() {
     let harness = Harness::new();
     // A release that registers a different build of the same engine release.

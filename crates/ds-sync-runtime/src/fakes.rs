@@ -55,6 +55,9 @@ pub struct FakeWorld {
     /// Refuse `work/open` with this message (an unauthorized identity, a
     /// blocked install, a missing membership).
     pub refuse_open: Option<String>,
+    /// Refuse only the grant for this resource. This exercises independent
+    /// resource authority inside one concurrent project batch.
+    pub refuse_open_resource: Option<String>,
     pub refuse_publish: Option<String>,
     pub refuse_list: Option<String>,
     /// Answer every publish with this state instead of the two-phase flow.
@@ -82,6 +85,7 @@ impl Default for FakeWorld {
             snapshot_base: BTreeMap::from([("export-tx_1".to_string(), FINGERPRINT.to_string())]),
             grant_expires_at: "2100-01-01T00:00:00Z".to_string(),
             refuse_open: None,
+            refuse_open_resource: None,
             refuse_publish: None,
             refuse_list: None,
             publish_state: None,
@@ -221,6 +225,15 @@ impl Gateway for FakeGateway {
             SyncRoute::WorkOpen => {
                 if let Some(reason) = &world.refuse_open {
                     return Err(reason.clone());
+                }
+                let resource = body["resources"]["transformer_names"]
+                    .as_array()
+                    .and_then(|resources| resources.first())
+                    .and_then(Value::as_str)
+                    .unwrap_or_default();
+                if world.refuse_open_resource.as_deref() == Some(resource) {
+                    return Err("the authentication or project service is temporarily unreachable"
+                        .to_string());
                 }
                 world.grants_minted += 1;
                 let engine = body["engine"].as_str().unwrap_or_default();

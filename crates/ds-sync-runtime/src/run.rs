@@ -329,13 +329,12 @@ fn run_leased(
             }
             sync::Action::OpenGrant { .. } => {}
             sync::Action::Upload { identity, .. } => {
-                let receipt = if plan.grant_valid {
-                    upload(host, &local, &grants, identity)
-                } else {
-                    Receipt::new("upload", "failed")
-                        .about(identity)
-                        .detail("no work grant covers this publication")
-                };
+                // Grants are scoped to one resource. A transient failure to
+                // open one grant must hold that publication alone, rather
+                // than poisoning every covered upload in the project plan.
+                // `upload` resolves and validates the exact row scope before
+                // declaring or moving any bytes.
+                let receipt = upload(host, &local, &grants, identity);
                 keep(host, project, &mut receipts, receipt);
             }
             sync::Action::Download { identity, .. } => {
