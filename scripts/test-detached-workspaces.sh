@@ -32,6 +32,7 @@ manifests=(
 	"crates/ds-project-data/Cargo.toml"
 	"crates/ds-report-host/Cargo.toml"
 	"crates/ds-sync-runtime/Cargo.toml"
+	"crates/ds-tile-runtime/Cargo.toml"
 )
 
 # Crates whose manifests reach ../ds-network; the others build without it.

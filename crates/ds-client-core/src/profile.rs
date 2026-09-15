@@ -3,7 +3,7 @@ use std::fmt;
 use sha2::{Digest, Sha256};
 use url::Url;
 
-pub const CLIENT_PROFILE_SCHEMA: &str = "ds.native-client-profiles/v24";
+pub const CLIENT_PROFILE_SCHEMA: &str = "ds.native-client-profiles/v25";
 pub const DEVICE_CREDENTIAL_AUDIENCE_SCHEMA: &str = "ds.native-client-credential-audience/v1";
 pub const NATIVE_CLIENT_ID: &str = "ds-native-client";
 pub const AUTH_LINK_BEGIN_METHOD: &str = "POST";
@@ -45,7 +45,14 @@ pub const SURVEY_ENTRY_CREATE_OPERATION: &str = "create";
 pub const PROJECT_DATA_METHOD: &str = "POST";
 pub const PROJECT_DATA_PATH: &str = "/api/v1/project_data";
 pub const PROJECT_DATA_ACTIONS: [&str; 4] = ["list", "upload_start", "upload", "delete"];
-pub const SURVEY_CONTROL_ROUTES: [&str; 6] = ["POST /api/v1/form-factory: list,get,get_field_types,create,update,duplicate,publish,unpublish,archive,restore,delete", "POST /api/v1/project-forms: activate,settings_editor,bulk_save", "POST /api/v1/projects/templates: list,create,set_public,delete", "GET /api/v1/projects/templates/{slug}", "POST /api/v1/projects: apply_template", "POST /api/v1/projects/from-template"];
+pub const SURVEY_CONTROL_ROUTES: [&str; 6] = [
+    "POST /api/v1/form-factory: list,get,get_field_types,create,update,duplicate,publish,unpublish,archive,restore,delete",
+    "POST /api/v1/project-forms: activate,settings_editor,bulk_save",
+    "POST /api/v1/projects/templates: list,create,set_public,delete",
+    "GET /api/v1/projects/templates/{slug}",
+    "POST /api/v1/projects: apply_template",
+    "POST /api/v1/projects/from-template",
+];
 pub const STYLES_METHOD: &str = "POST";
 pub const STYLES_PATH: &str = "/api/v1/styles";
 pub const STYLES_ACTION: &str = "update_style";
@@ -77,7 +84,13 @@ pub const PROJECT_REPORT_ACTIONS: [&str; 6] = [
 ];
 pub const DESIGN_VERSIONS_METHOD: &str = "POST";
 pub const DESIGN_VERSIONS_PATH: &str = "/api/v1/design/versions";
-pub const DESIGN_VERSIONS_ACTIONS: [&str; 3] = ["list_versions", "get_version", "create_version"];
+pub const DESIGN_VERSIONS_ACTIONS: [&str; 5] = [
+    "list_versions",
+    "get_version",
+    "get_head",
+    "create_version",
+    "restore_version",
+];
 pub const DESIGN_SELECTIONS_METHOD: &str = "POST";
 pub const DESIGN_SELECTIONS_PATH: &str = "/api/v1/design/selections";
 /// The closed `/api/v1/design/selections` action vocabulary the core may send.
@@ -463,6 +476,8 @@ impl ClientProfile {
             DESIGN_VERSIONS_ACTIONS[0],
             DESIGN_VERSIONS_ACTIONS[1],
             DESIGN_VERSIONS_ACTIONS[2],
+            DESIGN_VERSIONS_ACTIONS[3],
+            DESIGN_VERSIONS_ACTIONS[4],
             DESIGN_SELECTIONS_METHOD,
             DESIGN_SELECTIONS_PATH,
             DESIGN_SELECTIONS_ACTIONS[0],

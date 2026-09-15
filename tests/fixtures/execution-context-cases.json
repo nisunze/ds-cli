@@ -659,7 +659,7 @@
         "outcome": "refused",
         "refusal": {
           "code": "context_corrupt",
-          "message": "execution context field operation is not valid: one of transformer_processing, solar_processing, report_export, layer_read, layer_write"
+          "message": "execution context field operation is not valid: one of transformer_processing, solar_processing, tile_processing, report_export, layer_read, layer_write"
         }
       }
     },
@@ -1257,6 +1257,42 @@
           "operation": "transformer_processing",
           "job_id": "2222222222222222222222222222222222222222222222222222222222222222",
           "idempotency_key": "lv-batch-1",
+          "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "admitted_at_ms": 2000
+        }
+      }
+    },
+    {
+      "id": "admit-tile-operation",
+      "why": "Tile generation is a first-class local compute operation, so its durable execution context must be admitted and project-isolated by the same closed vocabulary as every other server job.",
+      "request": {
+        "kind": "admit",
+        "now_ms": 2000,
+        "principal": {
+          "uid": "uid-a",
+          "lane": "canary",
+          "deployment": "https://gateway.example",
+          "install_id": "install-1"
+        },
+        "client": "cli:4711",
+        "operation": "tile_processing",
+        "job_id": "6666666666666666666666666666666666666666666666666666666666666666",
+        "idempotency_key": "tile-key-a",
+        "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "saved_project": "project-a"
+      },
+      "expected": {
+        "outcome": "admitted",
+        "context": {
+          "principal_uid": "uid-a",
+          "lane": "canary",
+          "deployment": "https://gateway.example",
+          "install_id": "install-1",
+          "project": "project-a",
+          "client": "cli:4711",
+          "operation": "tile_processing",
+          "job_id": "6666666666666666666666666666666666666666666666666666666666666666",
+          "idempotency_key": "tile-key-a",
           "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
           "admitted_at_ms": 2000
         }

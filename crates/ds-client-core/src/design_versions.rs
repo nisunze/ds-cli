@@ -108,6 +108,44 @@ impl<T: AuthorizedTransport> Source for AuthenticatedSource<'_, T> {
             payload,
         })?)
     }
+    fn current(&mut self, project: &str, transformer: &str) -> Result<Value, ClientError> {
+        let payload = json!({
+            "action": "get_head",
+            "project_id": project,
+            "object": {"kind": "lv_transformer", "id": transformer},
+        });
+        decode(self.transport.design_versions(DesignVersionsCall {
+            profile: self.profile,
+            authority: self.authority.call(),
+            payload,
+        })?)
+    }
+    fn restore(
+        &mut self,
+        project: &str,
+        transformer: &str,
+        version: &str,
+        reason: &str,
+        expected_source_revision: &str,
+        idempotency_key: &str,
+    ) -> Result<Value, ClientError> {
+        let payload = json!({
+            "action": "restore_version",
+            "project_id": project,
+            "object": {"kind": "lv_transformer", "id": transformer},
+            "version_id": version,
+            "version": {
+                "reason": reason,
+                "expected_source_revision": expected_source_revision,
+                "idempotency_key": idempotency_key,
+            },
+        });
+        decode(self.transport.design_versions(DesignVersionsCall {
+            profile: self.profile,
+            authority: self.authority.call(),
+            payload,
+        })?)
+    }
 }
 pub(crate) fn run<T: AuthorizedTransport>(
     profile: &ClientProfile,

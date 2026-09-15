@@ -126,7 +126,9 @@ fn profile_input(lane: DeploymentLane) -> ClientProfileInput {
         design_versions_actions: vec![
             "list_versions".into(),
             "get_version".into(),
+            "get_head".into(),
             "create_version".into(),
+            "restore_version".into(),
         ],
         design_selections_method: "POST".to_owned(),
         design_selections_path: "/api/v1/design/selections".to_owned(),
@@ -1412,13 +1414,14 @@ fn catalog_profile_is_closed_lane_bound_and_deterministic() {
     // the full profile authority.
     assert_eq!(
         stable.profile_sha256(),
-        "5773df53261e74ba9b1c8bd3439e75fdbceff31ab6a593d7c06612bd15aded83"
+        "b33c8641e1822202a9da3f60fc70c0490234f2dc994d00c4964f576b06d32b3f"
     );
     // A profile is a digest over the closed vocabulary, so adding one route is
-    // Profile v24 adds headless creation to the closed design-version route.
+    // Profile v25 adds exact-head inspection and restore to the closed
+    // design-version route.
     assert_ne!(
         stable.profile_sha256(),
-        "13cfb064591901445883a36e920417994766ac4b013090f861038dec10855155"
+        "5773df53261e74ba9b1c8bd3439e75fdbceff31ab6a593d7c06612bd15aded83"
     );
     // A new profile identity is exactly why the schema moved to v20
     // when `/api/v1/design/selections` was declared, and to v21 when
@@ -1531,7 +1534,9 @@ fn catalog_profile_is_closed_lane_bound_and_deterministic() {
         design_versions_actions: vec![
             "list_versions".into(),
             "get_version".into(),
+            "get_head".into(),
             "create_version".into(),
+            "restore_version".into(),
         ],
         design_selections_method: "POST".to_owned(),
         design_selections_path: "/api/v1/design/selections".to_owned(),
@@ -4561,8 +4566,11 @@ fn project_report_operations_are_six_fixed_selected_project_actions() {
     assert!(calls.iter().any(|call| call.contains(
         "action=list_compounded_reports lane=none content_type=application/json body={\"action\":\"list_compounded_reports\",\"eds_project_id\":\"project_a\",\"include_artifacts\":true} limit=8388608 timeout=120"
     )));
-    assert!(calls.iter().any(|call| call
-        .contains("body={\"action\":\"transformer_inventory\",\"eds_project_id\":\"project_a\"}")));
+    assert!(calls.iter().any(|call| {
+        call.contains(
+            "body={\"action\":\"transformer_inventory\",\"eds_project_id\":\"project_a\"}",
+        )
+    }));
     assert!(calls.iter().any(|call| call.contains(
         "body={\"action\":\"retire_transformer\",\"eds_project_id\":\"project_a\",\"reason\":\"superseded by the 2026 survey\",\"transformers\":[\"tx_a\",\"tx_b\"]}"
     )));
@@ -5502,9 +5510,10 @@ fn headless_layers_read_and_reorder_use_canonical_ids_and_same_selected_project(
         )
         .unwrap();
     assert_eq!(receipt.reordered, 1);
-    assert!(transport.calls().iter().any(|v| v
-        .contains("\"layer_order\":[{\"layer_id\":\"roads\",\"order\":42}]")
-        && v.contains("path=/api/v1/layers")));
+    assert!(transport.calls().iter().any(|v| {
+        v.contains("\"layer_order\":[{\"layer_id\":\"roads\",\"order\":42}]")
+            && v.contains("path=/api/v1/layers")
+    }));
     push_layers(&transport, headless_layer_fixture("project_a"));
     push_layers(
         &transport,
@@ -5521,9 +5530,10 @@ fn headless_layers_read_and_reorder_use_canonical_ids_and_same_selected_project(
         )
         .unwrap();
     assert_eq!(receipt.updated, 1);
-    assert!(transport.calls().iter().any(|v| v
-        .contains("\"layer_defaults\":[{\"layer_id\":\"roads\",\"visible\":false}]")
-        && v.contains("path=/api/v1/layers")));
+    assert!(transport.calls().iter().any(|v| {
+        v.contains("\"layer_defaults\":[{\"layer_id\":\"roads\",\"visible\":false}]")
+            && v.contains("path=/api/v1/layers")
+    }));
     push_layers(&transport, headless_layer_fixture("project_a"));
     assert_eq!(
         client
@@ -7477,6 +7487,46 @@ fn headless_version_comparison_uses_pinned_snapshots_and_has_no_geometry_payload
         .unwrap();
     assert_eq!(begun["version"]["version_id"], "v1");
     assert_eq!(begun["mutated"], true);
+    transport.push_design_versions(
+        200,
+        &selection_envelope(serde_json::json!({"head":{
+            "project_id":"project_a",
+            "object":{"kind":"lv_transformer","id":"tr"},
+            "source_revision":"2026-09-15T12:00:00.123456Z",
+            "source_version":12
+        }})),
+    );
+    transport.push_design_versions(
+        200,
+        &selection_envelope(serde_json::json!({"version":created})),
+    );
+    let restored = client
+        .design_versions(
+            "project_a",
+            &Command::Restore {
+                transformer: "tr".into(),
+                version: "v1".into(),
+                reason: "Return to approved survey".into(),
+                idempotency_key: "restore-tr-v1-1".into(),
+            },
+            NOW + 1,
+        )
+        .unwrap();
+    assert_eq!(restored["version"]["version_id"], "v1");
+    assert_eq!(
+        restored["prepared_source_revision"],
+        "2026-09-15T12:00:00.123456Z"
+    );
+    assert_eq!(restored["mutated"], true);
+    let calls = transport.0.lock().unwrap().calls.clone();
+    let restore = calls
+        .iter()
+        .rev()
+        .find(|call| call.starts_with("design_versions "))
+        .expect("restore call");
+    assert!(restore.contains(r#""action":"restore_version""#));
+    assert!(restore.contains(r#""version_id":"v1""#));
+    assert!(restore.contains(r#""expected_source_revision":"2026-09-15T12:00:00.123456Z""#));
     transport.push_design_versions(
         200,
         &selection_envelope(serde_json::json!({"versions":[row("v1")]})),

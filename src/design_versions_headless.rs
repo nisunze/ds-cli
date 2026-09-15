@@ -1,7 +1,7 @@
 //! Headless transformer version workflow. Hosts supply authenticated reads;
 //! all validation, snapshot preparation and comparison decisions stay here.
 use crate::design_versions::Scope;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 pub trait Source {
     type Error;
@@ -17,6 +17,16 @@ pub trait Source {
         project: &str,
         transformer: &str,
         reason: &str,
+        idempotency_key: &str,
+    ) -> Result<Value, Self::Error>;
+    fn current(&mut self, project: &str, transformer: &str) -> Result<Value, Self::Error>;
+    fn restore(
+        &mut self,
+        project: &str,
+        transformer: &str,
+        version: &str,
+        reason: &str,
+        expected_source_revision: &str,
         idempotency_key: &str,
     ) -> Result<Value, Self::Error>;
 }
@@ -49,6 +59,12 @@ pub enum Command {
         reason: String,
         idempotency_key: String,
     },
+    Restore {
+        transformer: String,
+        version: String,
+        reason: String,
+        idempotency_key: String,
+    },
 }
 fn invalid(message: &'static str) -> String {
     message.into()
@@ -73,7 +89,8 @@ impl Command {
         match self {
             Self::List { transformer }
             | Self::Compare { transformer, .. }
-            | Self::Begin { transformer, .. } => transformer,
+            | Self::Begin { transformer, .. }
+            | Self::Restore { transformer, .. } => transformer,
         }
     }
     pub fn validate(&self, project: &str) -> Result<(), String> {
@@ -82,10 +99,17 @@ impl Command {
         }
         if let Self::Compare { from, to, .. } = self {
             if !version(from) || (to != "head" && !version(to)) || from == to {
-                return Err(invalid("choose distinct canonical vN versions; --to may be head. Local browser versions must first be published."));
+                return Err(invalid(
+                    "choose distinct canonical vN versions; --to may be head. Local browser versions must first be published.",
+                ));
             }
         }
         if let Self::Begin {
+            reason,
+            idempotency_key,
+            ..
+        }
+        | Self::Restore {
             reason,
             idempotency_key,
             ..
@@ -95,10 +119,21 @@ impl Command {
                 || reason.trim() != reason
                 || reason.chars().count() > crate::design_version::VERSION_REASON_MAX
                 || reason.chars().any(char::is_control)
-                || idempotency_key.len() > 128
+                || idempotency_key.is_empty()
+                || idempotency_key.chars().count() > 128
                 || idempotency_key.chars().any(char::is_control)
             {
                 return Err(invalid("version reason or idempotency key is invalid"));
+            }
+        }
+        if let Self::Restore {
+            version: target, ..
+        } = self
+        {
+            if !version(target) {
+                return Err(invalid(
+                    "restore requires one canonical assigned vN version",
+                ));
             }
         }
         Ok(())
@@ -278,6 +313,45 @@ pub fn run<S: Source>(
                 "mutated": true,
             }))
         }
+        Command::Restore {
+            version,
+            reason,
+            idempotency_key,
+            ..
+        } => {
+            let current = source
+                .current(project, transformer)
+                .map_err(Error::Source)?;
+            let head = &current["head"];
+            let expected = head["source_revision"]
+                .as_str()
+                .ok_or_else(|| bad("saved transformer head has no exact source revision"))?;
+            if head["project_id"] != *project
+                || head["object"]["kind"] != "lv_transformer"
+                || head["object"]["id"] != transformer
+                || expected.is_empty()
+            {
+                return Err(bad("saved transformer head scope mismatch").into());
+            }
+            let data = source
+                .restore(
+                    project,
+                    transformer,
+                    version,
+                    reason,
+                    expected,
+                    idempotency_key,
+                )
+                .map_err(Error::Source)?;
+            record(&data["version"], project, transformer, Some(version))?;
+            Ok(json!({
+                "project": project,
+                "transformer": transformer,
+                "version": data["version"],
+                "prepared_source_revision": expected,
+                "mutated": true,
+            }))
+        }
     }
 }
 fn bound_comparison(value: &mut Value) {
@@ -313,13 +387,15 @@ mod tests {
     use super::*;
     #[test]
     fn exact_scope_and_versions_are_required() {
-        assert!(Command::Compare {
-            transformer: "tr".into(),
-            from: "v1".into(),
-            to: "head".into()
-        }
-        .validate("p")
-        .is_ok());
+        assert!(
+            Command::Compare {
+                transformer: "tr".into(),
+                from: "v1".into(),
+                to: "head".into()
+            }
+            .validate("p")
+            .is_ok()
+        );
         for id in ["v0", "v01", "v-1", "local-abc", "v18446744073709551615"] {
             assert!(!version(id));
         }
