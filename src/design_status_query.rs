@@ -68,6 +68,14 @@ const SPECIAL_ORDER: [&str; 5] = [
 enum Request {
     Query(Box<QueryRequest>),
     Picker(PickerRequest),
+    WarningKeys(WarningKeysRequest),
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct WarningKeysRequest {
+    schema: String,
+    value: Value,
 }
 
 /// The register's question: these rows, this operator's selector, this sort.
@@ -1277,6 +1285,29 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
         Request::Picker(picker) => {
             serde_json::to_string(&evaluate_picker(picker)?).map_err(|error| error.to_string())
         }
+        Request::WarningKeys(request) => {
+            if request.schema != SCHEMA {
+                return Err("Unsupported design status query schema.".into());
+            }
+            let warning_types = request
+                .value
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(Value::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(str::to_owned)
+                .collect::<BTreeSet<_>>()
+                .into_iter()
+                .collect::<Vec<_>>();
+            serde_json::to_string(&serde_json::json!({
+                "schema": SCHEMA,
+                "op": "warning_keys",
+                "warning_types": warning_types,
+            }))
+            .map_err(|error| error.to_string())
+        }
     }
 }
 
@@ -1307,6 +1338,22 @@ mod tests {
             "write_blocked": false,
             "edit_locked": false,
         })
+    }
+
+    #[test]
+    fn persisted_warning_keys_are_trimmed_deduplicated_and_sorted_in_rust() {
+        assert_eq!(
+            reply(json!({
+                "op": "warning_keys",
+                "schema": SCHEMA,
+                "value": [" z ", null, 7, "", "alpha", "z"]
+            }))["warning_types"],
+            json!(["alpha", "z"])
+        );
+        assert_eq!(
+            reply(json!({"op": "warning_keys", "schema": SCHEMA, "value": {}}))["warning_types"],
+            json!([])
+        );
     }
 
     fn rows() -> Vec<Value> {
