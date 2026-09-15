@@ -1617,3 +1617,12 @@ pub fn solar_seed_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
 }
 
 pub mod report_consistency;
+
+/// Where vector-tile compute runs for web, Windows Desktop, Linux Desktop and
+/// Linux Server. Source reads and publication remain separate service calls.
+pub mod tiling_placement;
+#[cfg(feature = "wasm")]
+#[wasm_bindgen::prelude::wasm_bindgen(js_name = tilingPlacement)]
+pub fn tiling_placement_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
+    tiling_placement::evaluate(input).map_err(|error| wasm_bindgen::JsValue::from_str(&error))
+}

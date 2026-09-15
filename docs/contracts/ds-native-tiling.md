@@ -5,6 +5,13 @@ Linux Server and Desktop execute the same native owner. Source acquisition and
 verified publication can use online services. Browser code does not compile
 vector tiles or own the native job lifecycle.
 
+`src/tiling_placement.rs` owns the platform decision. Hosted web and Windows
+Desktop select `online_container`; Linux Desktop and Linux Server select
+`local_native`. macOS continues through the online container until a supported
+local toolchain exists. Every route keeps source acquisition and verified
+publication as authenticated online service effects. The local cache is
+content-addressed; the container cache remains service-managed.
+
 ## Owners
 
 - `crates/ds-tile-runtime`: prepared input validation, immutable source
@@ -20,13 +27,13 @@ vector tiles or own the native job lifecycle.
 ## Toolchain and cache
 
 `crates/ds-tile-runtime/toolchain.json` pins the Linux x86_64 Tippecanoe source
-revision/version and PMTiles version/digest. Product resources contain
-`tiling-tools/tippecanoe` and `tiling-tools/pmtiles`. Native execution first uses the administrator-configured absolute
-`DS_TILING_TOOLS_DIR`, then the host PATH, then the convenience bundle. It
-validates the supported versions and never downloads a tool at runtime.
+revision/version and PMTiles version/digest. Native execution first uses the
+administrator-configured absolute `DS_TILING_TOOLS_DIR`, then the host PATH.
+It validates the supported versions and never downloads a tool at runtime.
 Tippecanoe and PMTiles are independent system tools: one shared installation
-can serve DS and other applications. Build systems may compile and bundle a
-reproducible copy for convenience; the server does not own their installation.
+can serve DS and other applications. `ds workstation` may guide an interactive,
+digest-verified installation; Server and Desktop packages do not own or bundle
+the tools.
 
 The cache hashes the captured authority/project, sorted layer names and exact
 source bytes, tiling options, tool binaries, toolchain and runtime source.

@@ -8,6 +8,35 @@ use std::future::Future;
 pub const INPUT_TAG: &str = "ds.tiles.prepared/v1";
 const MAX_BYTES: usize = 64 * 1024 * 1024;
 pub use ds_tile_runtime::Prepared;
+
+fn host_platform() -> Result<ds_command_kernel::tiling_placement::Platform, String> {
+    #[cfg(target_os = "linux")]
+    return Ok(ds_command_kernel::tiling_placement::Platform::Linux);
+    #[cfg(target_os = "windows")]
+    return Ok(ds_command_kernel::tiling_placement::Platform::Windows);
+    #[cfg(target_os = "macos")]
+    return Ok(ds_command_kernel::tiling_placement::Platform::Macos);
+    #[cfg(not(any(target_os = "linux", target_os = "windows", target_os = "macos")))]
+    Err("native tiling has no route for this operating system".into())
+}
+
+fn require_local_tiling_route() -> Result<(), String> {
+    let placement = ds_command_kernel::tiling_placement::resolve(
+        ds_command_kernel::tiling_placement::Request {
+            schema: ds_command_kernel::tiling_placement::SCHEMA.into(),
+            operation: "tiles.build".into(),
+            surface: ds_command_kernel::tiling_placement::Surface::Server,
+            platform: Some(host_platform()?),
+        },
+    )?;
+    if placement.compute_route
+        != ds_command_kernel::tiling_placement::ComputeRoute::LocalNative
+    {
+        return Err("the kernel routed tiling to the online container on this platform".into());
+    }
+    Ok(())
+}
+
 fn isolated_runtime<T, F, Fut>(work: F) -> Result<T, String>
 where
     T: Send,
@@ -52,6 +81,7 @@ pub(crate) fn execute(
     job: &Job,
     cancelled: &CancelToken,
 ) -> Result<Vec<u8>, String> {
+    require_local_tiling_route()?;
     if job.input_tag != INPUT_TAG {
         return Err("durable tile input tag mismatch".into());
     }
@@ -149,6 +179,12 @@ mod tests {
             .block_on(async { isolated_runtime(|| async { Ok(std::thread::current().id()) }) })
             .expect("the isolated runtime completes");
         assert_ne!(caller, worker);
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn linux_native_host_is_admitted_by_the_kernel_placement_rule() {
+        require_local_tiling_route().expect("Linux Server owns local tile compute");
     }
 
     #[test]
