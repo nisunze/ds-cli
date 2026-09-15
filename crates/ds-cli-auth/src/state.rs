@@ -1170,7 +1170,9 @@ mod tests {
             design_versions_actions: vec![
                 "list_versions".into(),
                 "get_version".into(),
+                "get_head".into(),
                 "create_version".into(),
+                "restore_version".into(),
             ],
             design_selections_method: "POST".to_owned(),
             design_selections_path: "/api/v1/design/selections".to_owned(),

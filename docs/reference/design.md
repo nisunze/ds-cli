@@ -922,6 +922,13 @@ idempotency key only when retrying the same request, so a lost response cannot
 cut a second version. ds-brain assigns the next ordinal and Rust verifies the
 returned project, transformer and version identity.
 
+`ds design version restore --transformer <name> --version <vN> --reason
+<text> --idempotency-key <opaque-key> --yes` replaces the current saved
+transformer with that immutable published snapshot. Rust reads the exact server
+head immediately before the write; ds-brain refuses if any concurrent writer
+moves it. The restore advances the save generation, preserves the highest
+assigned version and history count, and records the human actor and reason.
+
 The native client captures one authenticated project/owner/lane for the whole
 comparison. It verifies both returned object identities and delegates geometry,
 attribute and consistency decisions to the same Rust kernel used by WASM.

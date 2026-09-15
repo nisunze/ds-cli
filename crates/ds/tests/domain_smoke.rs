@@ -4589,6 +4589,53 @@ fn design_version_begin_is_a_confirmed_headless_project_write() {
 }
 
 #[test]
+fn design_version_restore_is_a_confirmed_headless_project_write() {
+    let descriptor = ok(&["capabilities", "design.version.restore", "--output", "json"]);
+    let command = &descriptor["command"];
+    assert_eq!(
+        command["path"],
+        serde_json::json!(["design", "version", "restore"])
+    );
+    assert_eq!(command["authority"], "headless_project");
+    assert_eq!(command["effect"], "global_write");
+    assert_eq!(command["confirmation_required"], true);
+    assert_eq!(
+        command["inputs"]
+            .as_array()
+            .expect("inputs")
+            .iter()
+            .map(|input| input["name"].as_str().expect("input name"))
+            .collect::<BTreeSet<_>>(),
+        BTreeSet::from([
+            "idempotency-key",
+            "lane",
+            "reason",
+            "transformer",
+            "version",
+        ])
+    );
+    let unconfirmed = native_ds(&[
+        "design",
+        "version",
+        "restore",
+        "--transformer",
+        "tx_a",
+        "--version",
+        "v1",
+        "--reason",
+        "Return to approved survey",
+        "--idempotency-key",
+        "restore-tx-a-v1-1",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(
+        unconfirmed.envelope["error"]["code"],
+        "confirmation_required"
+    );
+}
+
+#[test]
 fn design_conflict_reads_never_claim_room_state_they_cannot_see() {
     for (id, path) in [
         ("design.conflict.list", vec!["design", "conflict", "list"]),
@@ -5038,7 +5085,7 @@ fn map_design_open_is_the_one_discoverable_visible_context_entry() {
     );
 
     for query in [
-        "open transformer",
+        "map open transformer",
         "transformer edit context",
         "activate design",
     ] {
@@ -5479,7 +5526,7 @@ fn design_lv_project_export_refuses_an_existing_artifact_before_auth_or_desktop(
             "design_versions": {
                 "method": "POST",
                 "path": "/api/v1/design/versions",
-                "actions": ["list_versions", "get_version", "create_version"]
+                "actions": ["list_versions", "get_version", "get_head", "create_version", "restore_version"]
             },
             "provenance": { "source_revision": "abc123", "descriptor_sha256": digest }
         })
@@ -5487,7 +5534,7 @@ fn design_lv_project_export_refuses_an_existing_artifact_before_auth_or_desktop(
     std::fs::write(
         &profile_path,
         serde_json::to_vec(&json!({
-            "schema_version": "ds.native-client-profiles/v24",
+            "schema_version": "ds.native-client-profiles/v25",
             "development": true,
             "profiles": {
                 "stable": profile(
@@ -6387,7 +6434,7 @@ fn every_design_command_is_discoverable_without_the_desktop_installed() {
     let commands = index["commands"].as_array().expect("commands");
     assert_eq!(
         commands.len(),
-        89, // + design.project.revisions/compare and design.version.list/compare/begin (headless, 2026-09-15).
+        90, // + design.project.revisions/compare and design.version.list/compare/begin/restore (headless, 2026-09-15).
         "the design domain should expose its whole family: {commands:?}"
     );
     for command in commands {
@@ -6431,6 +6478,7 @@ fn every_design_command_is_discoverable_without_the_desktop_installed() {
                     | "design.version.list"
                     | "design.version.compare"
                     | "design.version.begin"
+                    | "design.version.restore"
                     | "design.conflict.list"
                     | "design.conflict.check"
                     | "design.presence.status"

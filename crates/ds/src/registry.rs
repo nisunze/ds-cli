@@ -1877,6 +1877,11 @@ static DESIGN_ENTRIES: &[Entry] = &[
         render: ds_cli_design::versions::render,
     },
     Entry {
+        command: &ds_cli_design::versions::RESTORE,
+        handler: ds_cli_design::versions::restore,
+        render: ds_cli_design::versions::render,
+    },
+    Entry {
         command: &ds_cli_design::preview::VERSION_STATUS,
         handler: ds_cli_design::preview::run_version_status,
         render: ds_cli_design::preview::render_version_status,

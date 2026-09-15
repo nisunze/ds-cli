@@ -186,6 +186,7 @@ pub static DOMAIN: Domain = Domain {
         &versions::LIST,
         &versions::COMPARE,
         &versions::BEGIN,
+        &versions::RESTORE,
         &preview::CONFLICT_LIST,
         &preview::CONFLICT_CHECK,
         &preview::PRESENCE_STATUS,
