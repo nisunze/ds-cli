@@ -69,6 +69,12 @@ removal. A delivery gap must be demonstrated before refactoring.
 
 ## CLI-first delivery and project isolation
 
+Solar obeys the owner's 2026-09-16 rule of the land in the
+[headless runtime contract](../ds-command-kernel/docs/contracts/ds-headless-application-runtime.md#2-one-application-authority):
+all capabilities belong to the native Server core, available through CLI/MCP
+without Svelte, browser WASM, Tauri or a paired desktop. CLI adapts the owner;
+it must not implement Solar behavior itself.
+
 Follow the delivery cadence and per-request project context section of
 [`ds-headless-application-runtime.md`](../ds-command-kernel/docs/contracts/ds-headless-application-runtime.md).
 Prove the installed CLI/MCP outcome, repair the smallest demonstrated owner gap,

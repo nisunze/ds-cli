@@ -1,5 +1,69 @@
 # Airport handover: images and Solar Rust ownership
 
+## Latest checkpoint: laptop / WSL, 2026-09-16
+
+The owner authorized committing and pushing this checkpoint to `run` for a
+later pull on ds-server. The Solar migration remains incomplete; no new
+installation, deployment, project mutation or publication was performed.
+The sections below this checkpoint describe the earlier airport session.
+
+**Rule of the land:** all Solar capabilities belong to the native Server core,
+available through CLI/MCP without Svelte, browser WASM, Tauri or paired Desktop.
+Svelte renders server projections and forwards typed intentions. Tauri, if
+retained, supplies shell integration only. This supersedes the old campaign's
+read-only TypeScript restriction. The rule is recorded in the kernel headless
+runtime contract, CLI instructions and web instructions.
+The CLI kernel pin advances to `fed6079` (the rule's documentation commit);
+native kernel inputs are unchanged by that commit. The web instruction commit
+is `f5da4a63`. The existing ds-solar `71fc7b0` requires no new commit.
+
+The first unfinished MCP union change described below is now implemented:
+`solar-dashboard` participates in the union, and only `solar_engine`,
+`solar_results_read` and `solar_project_result` may overlap sibling Solar
+profiles. Execution of the focused regression is pending at this checkpoint.
+
+Confirmed in the laptop session:
+
+- Seven native kernel Solar dashboard tests passed.
+- The isolated WSL source CLI built offline via `run-linux-server.sh --cli`
+  from revision `325ba45f74c13041e82304d1d871a1a6170181cd`.
+- Linux `ds-cli-server` normal/build dependency graph contained 395 packages,
+  with no ds-web source paths or Tauri packages.
+- The isolated WSL development session is signed out; no account credentials
+  were copied, no project is selected, and no server daemon was started.
+- Standalone `ds-solar-cli` could not build offline because the crate cache
+  lacks `openssl-probe v0.2.1`; crate downloads timed out on both Windows and WSL.
+- The attempted, unvalidated native command extraction was removed. There are
+  no new ds-solar implementation changes in this checkpoint.
+
+The source CLI build does not validate the newly changed MCP test. The latest
+Windows CLI was not installed. Live Aderm verification is still pending, using
+exact project `arjgpydw_aderm_loc7`; the sealed run listed below remains the
+verification source on ds-server.
+
+On ds-server, pull `run` in ds-command-kernel, ds-solar, ds-web and ds-cli.
+Run the focused MCP regression and required checks before packaging. Build the
+native Solar sidecar, use the supported authentication flow in the appropriate
+isolated development namespace, then launch the Linux server wrapper and obtain
+actual project receipts. Do not use laptop compilation as live project evidence.
+
+Remaining native ownership work includes Desktop-paired lifecycle, portfolio
+management, final import/submit, report bundle/export, sync and publication in
+the CLI Solar modules and `ds-web/src-tauri/src/solar_native.rs`. Finance cashflow,
+sensitivity and chart composition, comparison selection and other Solar
+decisions still need to leave Svelte/TS/WASM. Prove the complete headless path
+and perform the required blind workflow trial after implementation is ready.
+
+Laptop-only detailed evidence is retained under
+`_shared/solar-server-20260916/`; it is not part of the pushed repositories.
+Registered task worktrees use branch `work/solar-server-20260916` under
+`_worktrees/solar-server-20260916/`. The workspace root checker reports the
+pre-existing `.claude`, `.gitignore`, `ds-cli-skills` and `ds-mcp` entries, which
+were left untouched. Other new local CLI edits in the main checkout were not
+included in this Solar checkpoint.
+
+## Earlier airport checkpoint
+
 Stopped on the user's request for commit/push only, with no further tests or validation.
 The local Linux package build was terminated. No new canary package was installed
 or published. Installed `/usr/bin/ds-canary` is still the older b2843ea build.

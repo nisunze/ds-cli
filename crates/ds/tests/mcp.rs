@@ -1477,6 +1477,7 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
                 "solar-run",
                 "solar-delivery",
                 "solar-portfolio-batch",
+                "solar-dashboard",
             ][..],
         ),
         ("pls_", &["pls", "pls-library", "library-governance"][..]),
@@ -1502,9 +1503,18 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
         let mut union = BTreeSet::new();
         for profile in profiles {
             let current = &published[profile];
+            let overlap = union
+                .intersection(current)
+                .map(String::as_str)
+                .collect::<BTreeSet<_>>();
+            let permitted = if prefix == "solar_" {
+                BTreeSet::from(["solar_engine", "solar_results_read", "solar_project_result"])
+            } else {
+                BTreeSet::new()
+            };
             assert!(
-                union.is_disjoint(current),
-                "{profile} overlaps a sibling profile"
+                overlap.is_subset(&permitted),
+                "{profile} has an undeclared sibling overlap: {overlap:?}"
             );
             union.extend(current.iter().cloned());
         }
