@@ -7997,3 +7997,55 @@ fn photo_rotation_is_headless_pinned_and_retry_does_not_rotate_twice() {
         .iter()
         .all(|v| v["project_id"] == "project_a"));
 }
+
+#[test]
+fn solar_portfolio_catalog_rejects_changed_membership_and_wrong_project_before_transport() {
+    use ds_client_core::{solar_portfolio, solar_project::Command};
+    let t = FixtureTransport::with_sign_in(SIGN_IN);
+    let mut client = signed_in(t.clone(), MemoryStore::default());
+    let membership: serde_json::Value = serde_json::from_str(
+        &ds_command_kernel::solar_portfolio_membership_identity(
+            br#"{"portfolio_id":"pf_1","cities":["a","b"]}"#,
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    let row = serde_json::json!({"id":"pf_1","name":"Two cities","cities":["a","b"],"membership_revision":membership["revision"]});
+    for (data, ok) in [
+        (serde_json::Value::Null, true),
+        (serde_json::json!([row.clone()]), true),
+        (
+            {
+                let mut changed = row.clone();
+                changed["cities"] = serde_json::json!(["b", "a"]);
+                serde_json::json!([changed])
+            },
+            false,
+        ),
+    ] {
+        t.0.lock()
+            .unwrap()
+            .solar_project
+            .push_back(project_response(data));
+        assert_eq!(
+            client
+                .solar_project(
+                    "p-1",
+                    &Command::Portfolio(solar_portfolio::Command::List),
+                    NOW + 1
+                )
+                .is_ok(),
+            ok
+        );
+    }
+    let before = t.0.lock().unwrap().calls.len();
+    assert!(client
+        .solar_project(
+            "../other",
+            &Command::Portfolio(solar_portfolio::Command::List),
+            NOW + 1
+        )
+        .is_err());
+    assert!(client.solar_project("p-1",&Command::Portfolio(solar_portfolio::Command::Mutate {intent:serde_json::json!({"operation":"update","portfolio_id":"pf_1","cities":["a","b"]})}),NOW+1).is_err());
+    assert_eq!(t.0.lock().unwrap().calls.len(), before);
+}

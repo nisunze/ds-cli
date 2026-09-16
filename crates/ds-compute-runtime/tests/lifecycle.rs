@@ -685,6 +685,20 @@ fn server_submission_binds_existing_preparation_claim_to_exact_sealed_input() {
         "snapshot_receipt_id": "550e8400-e29b-51d4-a716-446655440000",
         "snapshot_receipt_expires_at": "2026-09-12T00:00:00Z"
     });
+    let encoded = runtime::encode_solar_server_submission(
+        &serde_json::to_vec(&envelope["prepared"]).unwrap(),
+        &serde_json::to_vec(&envelope["publication_claim"]).unwrap(),
+    )
+    .unwrap();
+    let (_, encoded_provenance) = runtime::decode_solar_server_submission(&encoded).unwrap();
+    assert_eq!(encoded_provenance.project_id, SOLAR_PROJECT);
+    let mut wrong_claim = envelope["publication_claim"].clone();
+    wrong_claim["city_id"] = json!("another_city");
+    assert!(runtime::encode_solar_server_submission(
+        &serde_json::to_vec(&envelope["prepared"]).unwrap(),
+        &serde_json::to_vec(&wrong_claim).unwrap(),
+    )
+    .is_err());
     let (input, provenance) =
         runtime::decode_solar_server_submission(&serde_json::to_vec(&envelope).unwrap()).unwrap();
     let dir = tempfile::tempdir().unwrap();
