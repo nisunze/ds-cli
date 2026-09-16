@@ -9,9 +9,36 @@ metadata:
 
 Use the `ds` skill for installation discovery and live command contracts, and
 use `ds-project-context` when the active project is not already established.
-The paired application owns project identity, governed portfolio membership,
-prepared inputs, native run storage, and publication state. Do not recreate
-any of those from local files, browser storage, APIs, or remembered commands.
+Prefer the installed headless commands when available. Rust owns explicit
+project authorization, governed membership, sealed city inputs, calculation,
+native run storage, and publication state. Do not recreate any of those from
+local files, browser storage, APIs, or remembered commands.
+
+## Headless calculation and publication
+
+Discover `solar.portfolio.list`, `solar.portfolio.calculate`, and
+`solar.portfolio.publish` through live descriptors. The headless catalog uses
+an explicit project and lane without changing the selected project. Retain
+the exact portfolio id, ordered cities, and membership revision it returns.
+
+Calculation consumes an already verified project city-batch directory and
+its exact source run id. Use `ds-solar-workflow` to obtain a closed batch if
+needed. Every source city must match the frozen ordered membership; never
+shorten, reorder, reconstruct, or rerun a successful subset to force acceptance.
+Choose a new output directory and run id using the calculation descriptor.
+The owner derives assumptions from sealed city artifacts and emits the
+portfolio result, French APD draft, charts, and closed batch.
+
+The calculation receipt says `publication: not_requested`. Publish the same
+closed output through the discovered publication command only when authorized.
+It rechecks governed membership and sends the exact sealed result bytes.
+Require a verified online publication receipt before claiming synchronization;
+drafts and chart files remain in the local bundle. A successful local
+calculation is separate from publication and must be reported separately.
+
+Older installed surfaces may offer only the paired lifecycle below. Report
+headless commands absent instead of pairing or changing authority to force
+success on a server.
 
 ## Freeze the portfolio identity
 
@@ -78,8 +105,9 @@ For a file, use the discovered portfolio export command. Export only a result
 or report declared by the same closed batch and choose a new destination;
 never reconstruct an aggregate JSON or draft in the skill.
 
-The application publishes the governed aggregate itself, from the run that
-sealed it. There is no separate publication command to discover or request.
+The paired lifecycle publishes the governed aggregate itself, from the run
+that sealed it. The headless lifecycle uses the explicit publication command
+described above.
 Read the publication state on the run's own result receipt: a successful
 calculation whose publication did not queue stays successful and says so
 explicitly. Report that state with the result and follow its remedy; never
