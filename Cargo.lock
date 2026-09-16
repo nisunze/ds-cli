@@ -1127,6 +1127,8 @@ dependencies = [
  "ds-cli-exec",
  "ds-cli-report",
  "ds-command-kernel",
+ "ds-compute-runtime",
+ "ds-solar-contracts",
  "fs2",
  "libc",
  "serde",
