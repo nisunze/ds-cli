@@ -51,7 +51,7 @@ ds mcp serve --exposure commands --profile pls
 
 Profiles are `auth-context`, `grid`, `grid-native`, `pls`, `pls-library`, `library-governance`, `survey`,
 `form-factory`, `survey-projects`, `survey-migration`, `design-edit`, `design-run`, `map`, `layers`,
-`tiling`, `project`, `solar-input`, `solar-run`, `solar-delivery`, `solar-portfolio-batch`,
+`tiling`, `project`, `solar-input`, `solar-run`, `solar-dashboard`, `solar-delivery`, `solar-portfolio-batch`,
 `operations`, and `project-operations`. `survey`
 retains map/local-data survey work;
 `form-factory` owns global schemas, while `survey-projects` owns governed
@@ -97,6 +97,10 @@ receive a password prompt or approve its own device authorization.
 `solar-input` is the narrow authenticated selected-project capture surface.
 The established `solar-run` profile retains seeding, preparation, execution,
 result inspection, and verification so existing MCP hosts do not lose tools.
+
+`solar-dashboard` exposes headless sealed-source result reads and local JSON/HTML
+composition, with engine identity and local project-result verification. It requires
+explicit source, project, batch run and city attribution and never publishes files.
 
 PLS and its libraries are split by operator workflow: `pls` contains workspace
 backup, closure, terrain and diagnostics; `pls-library` contains local

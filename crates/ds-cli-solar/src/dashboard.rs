@@ -9,7 +9,7 @@ pub static COMMAND: Command = Command {
     path: &["solar", "dashboard", "compose"],
     contract: 1,
     summary: "Compose a Solar dashboard as JSON and standalone HTML headlessly.",
-    purpose: "Verify an exact sealed city report input, compose cards and derived metrics in shared Rust, and write a new private dashboard directory. No TypeScript, browser, paired desktop, network or publication is required. This first slice includes Site cards; plot files are not included.",
+    purpose: "Verify an exact sealed city report input, compose cards, derived metrics and declarative Plant chart options in shared Rust, and write a new private dashboard directory. No TypeScript, browser, paired desktop, network or publication is required. Plot files are not included.",
     chapter: Chapter::Solar,
     effect: Effect::LocalFileWrite,
     authority: Authority::None,
@@ -26,7 +26,13 @@ pub static COMMAND: Command = Command {
         Arg::value("city", "<id>", "Exact city in that batch.").required(),
         Arg::value("section", "<name>", "Dashboard section.")
             .required()
-            .choices(&["site"]),
+            .choices(&["site", "plant"]),
+        Arg::value(
+            "system",
+            "<name>",
+            "Exact Plant scenario; defaults to hybrid.",
+        )
+        .choices(&["hybrid", "solar_battery", "thermal_only"]),
         Arg::value("out", "<dir>", "New private directory; never replaced.").required(),
     ],
     output: "Verified source identity, dashboard.json and index.html; publication not_requested and plots not_included.",
@@ -53,7 +59,7 @@ pub fn execute(i: &Inputs, _: &Context) -> Result<Value, Failure> {
     }
     let source = source(i)?;
     let request: ds_command_kernel::solar_dashboard::Request =
-        serde_json::from_value(json!({"section":i.require("section")?,"report":source["report"]}))
+        serde_json::from_value(json!({"section":i.require("section")?,"system":i.value("system"),"report":source["report"]}))
             .map_err(io)?;
     let dashboard = ds_command_kernel::solar_dashboard::compose(request).map_err(io)?;
     let mut source = source;

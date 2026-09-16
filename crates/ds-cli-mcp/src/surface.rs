@@ -32,6 +32,7 @@ pub const PROFILE_IDS: &[&str] = &[
     "tiling",
     "project",
     "solar-input",
+    "solar-dashboard",
     "solar-run",
     "solar-delivery",
     "solar-portfolio-batch",
@@ -86,6 +87,7 @@ pub enum Profile {
     Tiling,
     Project,
     SolarInput,
+    SolarDashboard,
     SolarRun,
     SolarDelivery,
     SolarPortfolioBatch,
@@ -118,6 +120,7 @@ impl Profile {
             "tiling" => Some(Self::Tiling),
             "project" => Some(Self::Project),
             "solar-input" => Some(Self::SolarInput),
+            "solar-dashboard" => Some(Self::SolarDashboard),
             "solar-run" => Some(Self::SolarRun),
             "solar-delivery" => Some(Self::SolarDelivery),
             "solar-portfolio-batch" => Some(Self::SolarPortfolioBatch),
@@ -151,6 +154,7 @@ impl Profile {
             Self::Tiling => "tiling",
             Self::Project => "project",
             Self::SolarInput => "solar-input",
+            Self::SolarDashboard => "solar-dashboard",
             Self::SolarRun => "solar-run",
             Self::SolarDelivery => "solar-delivery",
             Self::SolarPortfolioBatch => "solar-portfolio-batch",
@@ -260,6 +264,7 @@ impl Profile {
             Self::DesignEdit => DESIGN_EDIT_COMMANDS.contains(&tool.id.as_str()),
             Self::DesignRun => DESIGN_RUN_COMMANDS.contains(&tool.id.as_str()),
             Self::SolarInput => SOLAR_INPUT_COMMANDS.contains(&tool.id.as_str()),
+            Self::SolarDashboard => SOLAR_DASHBOARD_COMMANDS.contains(&tool.id.as_str()),
             Self::SolarRun => SOLAR_RUN_COMMANDS.contains(&tool.id.as_str()),
             Self::SolarDelivery => SOLAR_DELIVERY_COMMANDS.contains(&tool.id.as_str()),
             Self::SolarPortfolioBatch => SOLAR_PORTFOLIO_BATCH_COMMANDS.contains(&tool.id.as_str()),
@@ -291,6 +296,7 @@ impl Profile {
             Self::DesignEdit => DESIGN_EDIT_COMMANDS,
             Self::DesignRun => DESIGN_RUN_COMMANDS,
             Self::SolarInput => SOLAR_INPUT_COMMANDS,
+            Self::SolarDashboard => SOLAR_DASHBOARD_COMMANDS,
             Self::SolarRun => SOLAR_RUN_COMMANDS,
             Self::SolarDelivery => SOLAR_DELIVERY_COMMANDS,
             Self::SolarPortfolioBatch => SOLAR_PORTFOLIO_BATCH_COMMANDS,
@@ -325,9 +331,11 @@ impl Profile {
             Self::Map | Self::Styles | Self::PrintStyles => chapter == Chapter::MapPresentation,
             Self::Tiling => chapter == Chapter::VectorTiles,
             Self::Project => chapter == Chapter::Project,
-            Self::SolarInput | Self::SolarRun | Self::SolarDelivery | Self::SolarPortfolioBatch => {
-                chapter == Chapter::Solar
-            }
+            Self::SolarInput
+            | Self::SolarDashboard
+            | Self::SolarRun
+            | Self::SolarDelivery
+            | Self::SolarPortfolioBatch => chapter == Chapter::Solar,
             Self::Operations => chapter == Chapter::Operations,
             Self::ProjectOperations => matches!(chapter, Chapter::Design | Chapter::Reports),
         }
@@ -553,7 +561,6 @@ const DESIGN_RUN_COMMANDS: &[&str] = &[
 ];
 
 const SOLAR_RUN_COMMANDS: &[&str] = &[
-    "solar.dashboard.compose",
     "solar.engine",
     // Preserve the established end-to-end run profile. Native governed input
     // handoffs get their own narrow profile because adding them here would
@@ -571,6 +578,13 @@ const SOLAR_RUN_COMMANDS: &[&str] = &[
     "solar.results.read",
     "solar.sync.status",
     "solar.verify-weather",
+];
+
+const SOLAR_DASHBOARD_COMMANDS: &[&str] = &[
+    "solar.engine",
+    "solar.results.read",
+    "solar.dashboard.compose",
+    "solar.project.result",
 ];
 
 const SOLAR_INPUT_COMMANDS: &[&str] = &[

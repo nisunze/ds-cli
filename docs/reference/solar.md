@@ -13,7 +13,8 @@ ds solar run start --city <context> ...
 ds solar run progress --run-id <id>
 ds solar run result --run-id <id>
 ds solar result read --run-id <id> --city <context>
-ds solar results read --run-id <id> --city <context> --section <name>
+ds solar results read --source <closed-batch-dir> --project <id> --run-id <id> --city <context> --section <name>
+ds solar dashboard compose --source <closed-batch-dir> --project <id> --run-id <id> --city <context> --section site --out <new-dir>
 ds solar report export --run-id <id> --city <context> \
   --variant apd|draft|network|plant|financial --out <file>
 ds solar report bundle --run-id <id> --city <context> \
@@ -132,9 +133,15 @@ commands call the paired lifecycle operations `solar.run.progress`,
 `solar.run.result`, `solar.run.cancel`, and `solar.result.read`. Result reads
 use `--city` as the user-facing spelling for the operation's `context` field;
 repeated `--path` values are semantic result fields, never filesystem paths.
-`solar results read` is the full-dashboard counterpart: it reads one named
-section from canonical `report_input.json` through the same verified
-ProjectResultReceipt store used by Site, Plant, BOQ, Finance and unified views.
+`solar results read` contract 2 reads a bounded section from a closed local batch.
+Pass `--source`, `--project`, `--run-id` and `--city`; the Rust owner verifies
+batch, report and result digests and their exact identity before any projection.
+No paired desktop is required. Repeated `--path` values descend object keys.
+`solar dashboard compose` writes a new private directory containing the same
+Rust card projection as JSON and standalone script-free HTML. Site and Plant
+are supported; Plant selects `--system` (default hybrid) and includes declarative
+chart options in JSON. HTML contains cards only; existing plot files and online
+publication are separate capabilities.
 
 `solar final import` accepts the explicit externally interpreted Markdown path.
 The native shell performs the bounded UTF-8 read, lints it against that run's
@@ -410,7 +417,8 @@ update it.
 | `solar run cancel` | `solar.run.cancel` | local UI | cancellation receipt |
 | `solar result read` | `solar.result.read` | read only | bounded city result projection |
 | `solar result compare` | fixed native `compare` | read only | sealed-result equality and bounded provenance |
-| `solar results read` | `solar.results.read` | read only | bounded canonical dashboard-section projection |
+| `solar results read` | `solar.results.read` | read only | headless verified sealed-source section projection (contract 2) |
+| `solar dashboard compose` | `solar.dashboard.compose` | local file write | headless Site/Plant cards, derived values and JSON chart options; standalone HTML cards |
 | `solar sync status` | `solar.sync.status` | read only | durable publication rows and state counts |
 | `solar portfolio list` | `solar.portfolio.list` | read only | governed ids, membership revisions and ordered cities |
 | `solar portfolio read` | `solar.portfolio.read` | read only | bounded projection of one sealed aggregate result |

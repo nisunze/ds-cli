@@ -78,6 +78,14 @@ input/result digest, units, and any unavailable markers with reported values.
 Never convert a missing or malformed value to zero, and never compute a
 portfolio total from city reads.
 
+For headless `solar.results.read` contract 2, discover its live descriptor and
+provide the closed batch directory plus explicit project, batch run and city.
+`solar.dashboard.compose` uses the same verified source and writes JSON and
+standalone HTML to a new private directory. Site and Plant are available;
+Plant's exact scenario is selected by `--system`. HTML includes cards only;
+JSON also includes Plant chart options. These files are not publication proof.
+The `solar-dashboard` MCP profile exposes both leaves.
+
 When a user needs a document, export only an artifact declared by that run's
 closed receipt to a new destination. Do not rebuild Markdown, charts, DOCX, or
 JSON in the skill. An operator-interpreted final report is a separate explicit
