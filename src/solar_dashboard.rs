@@ -8,6 +8,7 @@ pub enum Section {
     Site,
     Plant,
     Finance,
+    Boq,
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -58,6 +59,42 @@ pub fn compose(request: Request) -> Result<Dashboard, String> {
         });
     };
     let derived = match request.section {
+        Section::Boq => {
+            let system = system_key(request.system);
+            let costs = &request.report["04_plant_cost"];
+            let plant = &costs[format!("{system}_boq")];
+            let network = &costs["network_costs"];
+            if !plant.is_object() && !network.is_object() {
+                return Err("Selected BOQ is unavailable".into());
+            }
+            let currency = plant["currency"]
+                .as_str()
+                .or_else(|| network["currency"].as_str());
+            if let (Some(a), Some(b)) = (plant["currency"].as_str(), network["currency"].as_str()) {
+                if a != b {
+                    return Err("Plant and network BOQ currencies differ".into());
+                }
+            }
+            let totals = json!({"grand_total":sum(number(plant,"grand_total"),number(network,"grand_total")),
+                "equipment_total":sum(number(plant,"equipment_total"),number(network,"equipment_total")),
+                "markup_total":sum(number(plant,"markup_total"),number(network,"markup_total")),
+                "existing_total":sum(number(plant,"existing_plant_total"),number(network,"existing_network_total"))});
+            for (key, label) in [
+                ("grand_total", "Total CAPEX"),
+                ("equipment_total", "Equipment"),
+                ("markup_total", "Markup"),
+                ("existing_total", "Existing infrastructure"),
+            ] {
+                card(
+                    "Bill of quantities",
+                    key,
+                    label,
+                    totals[key].clone(),
+                    currency.unwrap_or(""),
+                );
+            }
+            json!({"currency":currency,"totals":totals,"network_rows":boq_rows(network)?,"plant_rows":boq_rows(plant)?})
+        }
         Section::Finance => {
             let system = system_key(request.system);
             let d = &request.report["05_financial"][format!("{system}_financial_analysis")];
@@ -96,11 +133,23 @@ pub fn compose(request: Request) -> Result<Dashboard, String> {
                 number(ps, "total_fuel_lifetime"),
                 number(ps, "total_maintenance_lifetime")
             ));
-            values["npv_profitable"]=json!(values["npv"].as_f64().map(|v|v>=0.));
-            values["irr_viable"]=json!(values["irr_pct"].as_f64().zip(values["wacc_pct"].as_f64()).map(|(a,b)|a>b));
-            values["dscr_bankable"]=json!(values["min_dscr"].as_f64().zip(values["dscr_threshold"].as_f64()).map(|(a,b)|a>=b));
-            for (key,source) in [("simple_payback_viable","simple_payback"),("discounted_payback_viable","discounted_payback")] {
-                values[key]=json!(values[source].as_f64().zip(values["lifetime"].as_f64()).map(|(a,b)|a>0. && a<=b));
+            values["npv_profitable"] = json!(values["npv"].as_f64().map(|v| v >= 0.));
+            values["irr_viable"] = json!(values["irr_pct"]
+                .as_f64()
+                .zip(values["wacc_pct"].as_f64())
+                .map(|(a, b)| a > b));
+            values["dscr_bankable"] = json!(values["min_dscr"]
+                .as_f64()
+                .zip(values["dscr_threshold"].as_f64())
+                .map(|(a, b)| a >= b));
+            for (key, source) in [
+                ("simple_payback_viable", "simple_payback"),
+                ("discounted_payback_viable", "discounted_payback"),
+            ] {
+                values[key] = json!(values[source]
+                    .as_f64()
+                    .zip(values["lifetime"].as_f64())
+                    .map(|(a, b)| a > 0. && a <= b));
             }
             for (key, label, unit) in [
                 ("wacc_pct", "WACC", "%"),
@@ -322,6 +371,37 @@ fn system_key(system: Option<ds_solar_contracts::SystemType>) -> &'static str {
         ds_solar_contracts::SystemType::ThermalOnly => "thermal_only",
     }
 }
+fn boq_rows(doc: &Value) -> Result<Value, String> {
+    if doc.is_null() {
+        return Ok(json!([]));
+    }
+    let source = ["display_rows", "rows", "items"]
+        .iter()
+        .find_map(|key| doc.get(*key).filter(|v| !v.is_null()));
+    let Some(source) = source else {
+        return Ok(json!([]));
+    };
+    let rows = source.as_array().ok_or("BOQ rows must be an array")?;
+    let mut n = 0u32;
+    let mut result = Vec::new();
+    for row in rows {
+        let mut row = row.as_object().ok_or("BOQ row must be an object")?.clone();
+        let structural = ["is_header", "is_subtotal", "is_total"].iter().try_fold(
+            false,
+            |structural, key| match row.get(*key) {
+                None | Some(Value::Null) => Ok(structural),
+                Some(Value::Bool(v)) => Ok(structural || *v),
+                _ => Err("BOQ row flags must be booleans"),
+            },
+        )?;
+        if !structural {
+            n += 1;
+        }
+        row.insert("_n".into(), json!(n));
+        result.push(Value::Object(row));
+    }
+    Ok(json!(result))
+}
 fn sum(a: Option<f64>, b: Option<f64>) -> Option<f64> {
     a.zip(b).map(|(a, b)| a + b).filter(|n| n.is_finite())
 }
@@ -418,6 +498,35 @@ pub fn html(dashboard: &Dashboard, title: &str) -> String {
     }
     if !group.is_empty() {
         body.push_str("</div>");
+    }
+    for (key, title) in [("network_rows", "Network BOQ"), ("plant_rows", "Plant BOQ")] {
+        if let Some(rows) = dashboard.derived[key]
+            .as_array()
+            .filter(|rows| !rows.is_empty())
+        {
+            body.push_str(&format!("<h2>{}</h2><table><caption>{}</caption><thead><tr><th>No.</th><th>Designation</th><th>Description</th><th>Unit</th><th>Unit price</th><th>Quantity</th><th>Amount</th></tr></thead><tbody>",escape(title),escape(title)));
+            for row in rows {
+                body.push_str("<tr>");
+                for value in [
+                    row["_n"].clone(),
+                    first(row, &["designation", "type"]),
+                    row["description"].clone(),
+                    row["unit"].clone(),
+                    first(row, &["unit_cost", "unit_price"]),
+                    first(row, &["quantity", "qty"]),
+                    first(row, &["total", "total_cost"]),
+                ] {
+                    let value = match value {
+                        Value::Null => "—".into(),
+                        Value::String(s) => s,
+                        v => v.to_string(),
+                    };
+                    body.push_str(&format!("<td>{}</td>", escape(&value)));
+                }
+                body.push_str("</tr>");
+            }
+            body.push_str("</tbody></table>");
+        }
     }
     format!("<!doctype html><html lang=en><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'><title>{}</title><style>body{{font:16px system-ui;background:#0f172a;color:#e2e8f0;margin:40px}}h2{{font-size:14px;color:#94a3b8}}.cards{{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px}}article{{background:#1e293b;padding:16px;border-left:3px solid #38bdf8;border-radius:6px}}small,strong,span{{display:block}}strong{{font-size:24px;margin:8px 0}}span{{color:#94a3b8}}</style><h1>{}</h1>{}</html>",escape(title),escape(title),body)
 }
@@ -545,5 +654,41 @@ mod tests {
         assert_eq!(d.derived["plant_share_pct"], 30.);
         assert_eq!(d.derived["network_share_pct"], 70.);
         assert!(d.derived["min_dscr"].is_null());
+        assert_eq!(d.derived["npv_profitable"], true);
+        assert_eq!(d.derived["irr_viable"], false);
+        assert!(d.derived["dscr_bankable"].is_null());
+    }
+    #[test]
+    fn boq_preserves_rows_and_refuses_cross_currency_sums() {
+        let report = json!({"04_plant_cost":{"hybrid_boq":{"currency":"XAF","grand_total":0,"display_rows":[{"is_header":true},{"quantity":0,"total":0},{"is_subtotal":true},{"quantity":1}]},"network_costs":{"currency":"XAF","grand_total":10}}});
+        let d = compose(Request {
+            section: Section::Boq,
+            system: None,
+            report: report.clone(),
+        })
+        .unwrap();
+        assert_eq!(d.derived["totals"]["grand_total"], 10.);
+        assert!(d.derived["totals"]["equipment_total"].is_null());
+        assert_eq!(
+            d.derived["plant_rows"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|r| r["_n"].as_u64().unwrap())
+                .collect::<Vec<_>>(),
+            vec![0, 1, 1, 2]
+        );
+        assert_eq!(d.derived["plant_rows"][1]["quantity"], 0);
+        let rendered = html(&d, "BOQ");
+        assert!(rendered.contains("<table>"));
+        assert!(!rendered.contains("<script"));
+        let mut foreign = report;
+        foreign["04_plant_cost"]["network_costs"]["currency"] = json!("USD");
+        assert!(compose(Request {
+            section: Section::Boq,
+            system: None,
+            report: foreign
+        })
+        .is_err());
     }
 }
