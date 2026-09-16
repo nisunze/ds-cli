@@ -607,6 +607,8 @@ const SOLAR_INPUT_COMMANDS: &[&str] = &[
 ];
 
 const SOLAR_PORTFOLIO_BATCH_COMMANDS: &[&str] = &[
+    "solar.portfolio.calculate",
+    "solar.portfolio.publish",
     "solar.portfolio.batch.start",
     "solar.portfolio.batch.status",
     "solar.portfolio.batch.cancel",
@@ -617,8 +619,6 @@ const SOLAR_DELIVERY_COMMANDS: &[&str] = &[
     "solar.project.sync",
     "solar.project.sync.rebase",
     "solar.portfolio.list",
-    "solar.portfolio.calculate",
-    "solar.portfolio.publish",
     "solar.portfolio.create",
     "solar.portfolio.update",
     "solar.portfolio.delete",

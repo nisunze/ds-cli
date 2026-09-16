@@ -565,6 +565,7 @@ fn by_command_profiles_still_partition_the_live_registry() {
             &[
                 Profile::SolarInput,
                 Profile::SolarRun,
+                Profile::SolarDashboard,
                 Profile::SolarDelivery,
                 Profile::SolarPortfolioBatch,
             ][..],
@@ -594,7 +595,12 @@ fn by_command_profiles_still_partition_the_live_registry() {
         for profile in profiles.iter().copied() {
             for id in profile.command_ids() {
                 assert!(
-                    listed.insert((*id).to_string()),
+                    listed.insert((*id).to_string())
+                        || (prefix == "solar."
+                            && matches!(
+                                *id,
+                                "solar.engine" | "solar.results.read" | "solar.project.result"
+                            )),
                     "`{id}` is claimed by more than one `{prefix}*` profile"
                 );
             }

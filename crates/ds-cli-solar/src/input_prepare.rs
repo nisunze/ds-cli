@@ -24,7 +24,7 @@ pub static COMMAND: Command = Command {
     path: &["solar", "input", "prepare"],
     contract: 1,
     summary: "Prepare one governed Solar intake from a verified local cache.",
-    purpose: "Runs the fixed native `ds-solar prepare --governed-intake` contract for one intake and one already populated local reference cache. The output is a fresh private directory containing the prepared city input, its publication handoff claim, and a validated Server submission envelope. Submit the returned server_submission path with server solar submit. This is headless, cache-only preparation: it has no Desktop dependency, project override, provider URL, token, API key, overwrite, fixture, or generic engine argument. A cache miss refuses instead of reaching the network.",
+    purpose: "Runs `ds-solar prepare --governed-intake` for one intake and one populated local reference cache. The fresh private directory contains the prepared city input, its publication handoff claim, and a validated Server submission envelope. Submit the returned server_submission path with server solar submit. This is headless, cache-only preparation: it has no Desktop dependency, project override, provider URL, token, API key, overwrite, fixture, or generic engine argument. A cache miss refuses instead of reaching the network.",
     chapter: Chapter::Solar,
     effect: Effect::LocalFileWrite,
     authority: Authority::None,

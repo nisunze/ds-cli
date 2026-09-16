@@ -16,7 +16,8 @@ local files, browser storage, APIs, or remembered commands.
 
 ## Headless calculation and publication
 
-Discover `solar.portfolio.list`, `solar.portfolio.calculate`, and
+For typed MCP, use `solar-portfolio-batch` for calculation/publication and
+`solar-delivery` for the governed catalog. Discover `solar.portfolio.list`, `solar.portfolio.calculate`, and
 `solar.portfolio.publish` through live descriptors. The headless catalog uses
 an explicit project and lane without changing the selected project. Retain
 the exact portfolio id, ordered cities, and membership revision it returns.

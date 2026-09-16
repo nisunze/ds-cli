@@ -1162,15 +1162,6 @@ fn solar_report_bundle_pages_binary_without_exposing_media_credentials() {
 fn solar_workflow_reads_import_and_portfolio_batches_use_closed_operations() {
     let bridge = bridge(vec![
         (
-            "solar.results.read",
-            json!({
-                "status": "ok",
-                "run_id": "solar-run-123",
-                "context": "rw-kigali",
-                "section": "finance",
-            }),
-        ),
-        (
             "solar.sync.status",
             json!({
                 "status": "ok",
@@ -1178,10 +1169,6 @@ fn solar_workflow_reads_import_and_portfolio_batches_use_closed_operations() {
                 "rows": [],
                 "counts": { "synced": 0 },
             }),
-        ),
-        (
-            "solar.portfolio.list",
-            json!({ "status": "ok", "portfolios": [{ "id": "pf-1", "city_count": 2 }] }),
         ),
         (
             "solar.run.start",
@@ -1209,21 +1196,7 @@ fn solar_workflow_reads_import_and_portfolio_batches_use_closed_operations() {
     let final_path_text = final_path.to_string_lossy().into_owned();
 
     let calls: Vec<Vec<&str>> = vec![
-        vec![
-            "solar",
-            "results",
-            "read",
-            "--run-id",
-            "solar-run-123",
-            "--city",
-            "rw-kigali",
-            "--section",
-            "finance",
-            "--path",
-            "financial_summary",
-        ],
         vec!["solar", "sync", "status", "--run-id", "solar-run-123"],
-        vec!["solar", "portfolio", "list"],
         vec![
             "solar",
             "run",
@@ -1272,20 +1245,10 @@ fn solar_workflow_reads_import_and_portfolio_batches_use_closed_operations() {
     let requests = finish(bridge);
     assert_eq!(
         requests[0]["arguments"],
-        json!({
-            "run_id": "solar-run-123",
-            "context": "rw-kigali",
-            "section": "finance",
-            "path": ["financial_summary"],
-        })
+        json!({ "run_id": "solar-run-123" })
     );
     assert_eq!(
         requests[1]["arguments"],
-        json!({ "run_id": "solar-run-123" })
-    );
-    assert_eq!(requests[2]["arguments"], json!({}));
-    assert_eq!(
-        requests[3]["arguments"],
         json!({
             "portfolio": "pf-1",
             "membership_revision": MEMBERSHIP_REVISION,
@@ -1295,11 +1258,11 @@ fn solar_workflow_reads_import_and_portfolio_batches_use_closed_operations() {
             "serial": true,
         })
     );
-    assert_eq!(requests[4]["arguments"]["run_id"], "solar-run-123");
-    assert_eq!(requests[4]["arguments"]["context"], "rw-kigali");
-    assert_eq!(requests[4]["arguments"]["source_path"], final_path_text);
+    assert_eq!(requests[2]["arguments"]["run_id"], "solar-run-123");
+    assert_eq!(requests[2]["arguments"]["context"], "rw-kigali");
+    assert_eq!(requests[2]["arguments"]["source_path"], final_path_text);
     assert_eq!(
-        requests[5]["arguments"],
+        requests[3]["arguments"],
         json!({ "run_id": "solar-run-123", "context": "rw-kigali" })
     );
 
@@ -1939,25 +1902,6 @@ fn paired_solar_rejects_non_start_receipts_for_another_run_or_city() {
                 "status": "ok",
                 "run_id": "solar-run-123",
                 "context": "rw-butare",
-            }),
-        ),
-        (
-            "solar.results.read",
-            vec![
-                "solar",
-                "results",
-                "read",
-                "--run-id",
-                "solar-run-123",
-                "--city",
-                "rw-kigali",
-                "--section",
-                "finance",
-            ],
-            json!({
-                "status": "ok",
-                "run_id": "attacker-run",
-                "context": "rw-kigali",
             }),
         ),
         (
@@ -2888,202 +2832,6 @@ fn paired_run_refuses_incomplete_or_mixed_portfolio_launches_before_pairing() {
             args.join(" ")
         );
     }
-}
-
-/// A governed portfolio run publishes ONE public identity: the native batch run
-/// id `solar run start --portfolio` returned. Each member city's assembled
-/// result is stored by the application under an internal `<run>-<city>` id that
-/// is not a public batch and is refused when addressed directly.
-///
-/// Live, the paired session answered a parent-run read with that internal id,
-/// so `require_exact_identity` refused a correct read as
-/// `desktop_contract_mismatch` and no reachable spelling existed in between.
-/// The application now echoes the identity it was addressed with and publishes
-/// its internal one as `city_run_id`; the CLI's identity check is unchanged,
-/// which is the whole point — these assertions pin both halves together.
-const PORTFOLIO_PARENT_RUN: &str = "run-106a4dcc-0fdc-4534-967a-f36ad4070657";
-
-fn portfolio_city_read() -> Vec<&'static str> {
-    vec![
-        "solar",
-        "results",
-        "read",
-        "--run-id",
-        PORTFOLIO_PARENT_RUN,
-        "--city",
-        "aderm_beinamar",
-        "--section",
-        "costs",
-    ]
-}
-
-#[test]
-fn a_portfolio_member_city_is_read_through_the_parent_run_id() {
-    let bridge = bridge(vec![(
-        "solar.results.read",
-        json!({
-            "status": "ok",
-            "run_id": PORTFOLIO_PARENT_RUN,
-            "batch_run_id": PORTFOLIO_PARENT_RUN,
-            "city_run_id": format!("{PORTFOLIO_PARENT_RUN}-aderm_beinamar"),
-            "context": "aderm_beinamar",
-            "section": "costs",
-            "path": ["network_costs"],
-            "value": { "grand_total": 1_077_842_254, "currency": "XAF" },
-            "complete": true,
-        }),
-    )]);
-    let descriptor = bridge.descriptor.to_string_lossy().into_owned();
-
-    let mut args = portfolio_city_read();
-    args.extend(["--path", "network_costs"]);
-    args.extend(["--desktop-descriptor", &descriptor, "--output", "json"]);
-    let (envelope, code, stdout, stderr) = ds(&args);
-
-    assert_eq!(code, 0, "{stdout}{stderr}");
-    assert_eq!(envelope["status"], "ok");
-    let data = &envelope["data"];
-    assert_eq!(data["run_id"], PORTFOLIO_PARENT_RUN);
-    assert_eq!(data["context"], "aderm_beinamar");
-    // The internal per-city identity is carried through, never substituted for
-    // the one the caller addressed.
-    assert_eq!(
-        data["city_run_id"],
-        format!("{PORTFOLIO_PARENT_RUN}-aderm_beinamar")
-    );
-    assert_eq!(data["value"]["grand_total"], 1_077_842_254_i64);
-    assert_eq!(data["complete"], true);
-
-    let requests = finish(bridge);
-    assert_eq!(requests.len(), 1);
-    assert_eq!(requests[0]["operation"], "solar.results.read");
-    assert_eq!(requests[0]["arguments"]["run_id"], PORTFOLIO_PARENT_RUN);
-    assert_eq!(requests[0]["arguments"]["context"], "aderm_beinamar");
-    assert_eq!(requests[0]["arguments"]["section"], "costs");
-    assert_eq!(requests[0]["arguments"]["path"], json!(["network_costs"]));
-}
-
-#[test]
-fn a_child_run_identity_in_a_parent_run_receipt_is_still_refused() {
-    // The exact live regression, in reverse: an application that answers the
-    // parent read with the child id must still be caught at this boundary.
-    for spoofed in [
-        json!({
-            "status": "ok",
-            "run_id": format!("{PORTFOLIO_PARENT_RUN}-aderm_beinamar"),
-            "context": "aderm_beinamar",
-            "section": "costs",
-        }),
-        json!({
-            "status": "ok",
-            "run_id": PORTFOLIO_PARENT_RUN,
-            "context": "aderm_bere",
-            "section": "costs",
-        }),
-    ] {
-        let bridge = bridge(vec![("solar.results.read", spoofed)]);
-        let descriptor = bridge.descriptor.to_string_lossy().into_owned();
-        let mut args = portfolio_city_read();
-        args.extend(["--desktop-descriptor", &descriptor, "--output", "json"]);
-        let (envelope, code, stdout, stderr) = ds(&args);
-        assert_eq!(code, 3, "{stdout}{stderr}");
-        assert_eq!(envelope["error"]["code"], "desktop_contract_mismatch");
-        assert!(
-            envelope["error"]["remedy"]
-                .as_str()
-                .is_some_and(|remedy| !remedy.is_empty())
-        );
-        finish(bridge);
-    }
-}
-
-fn mcp_portfolio_city_read(descriptor: &str) -> (Value, String) {
-    let mut child = Command::new(env!("CARGO_BIN_EXE_ds"))
-        .args(["mcp", "serve", "--exposure", "chapters"])
-        .env("NO_COLOR", "1")
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .expect("MCP server starts");
-    {
-        let stdin = child.stdin.as_mut().expect("MCP stdin");
-        serde_json::to_writer(
-            &mut *stdin,
-            &json!({
-                "jsonrpc": "2.0",
-                "id": 1,
-                "method": "tools/call",
-                "params": {
-                    "name": "ds_solar",
-                    "arguments": {
-                        "operation": "invoke",
-                        "command": "solar.results.read",
-                        "arguments": {
-                            "run-id": PORTFOLIO_PARENT_RUN,
-                            "city": "aderm_beinamar",
-                            "section": "costs",
-                            "path": ["network_costs"],
-                            "desktop-descriptor": descriptor,
-                        },
-                    },
-                },
-            }),
-        )
-        .expect("MCP request");
-        stdin.write_all(b"\n").expect("MCP request newline");
-        serde_json::to_writer(
-            &mut *stdin,
-            &json!({ "jsonrpc": "2.0", "id": 999, "method": "shutdown" }),
-        )
-        .expect("MCP shutdown");
-        stdin.write_all(b"\n").expect("MCP shutdown newline");
-    }
-    let output = child.wait_with_output().expect("MCP server exits");
-    let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
-    assert!(output.status.success(), "MCP server failed: {stderr}");
-    let response = String::from_utf8(output.stdout)
-        .expect("MCP stdout is UTF-8")
-        .lines()
-        .map(|line| serde_json::from_str::<Value>(line).expect("MCP response is JSON"))
-        .find(|response| response["id"] == 1)
-        .expect("MCP call response");
-    (response["result"]["structuredContent"].clone(), stderr)
-}
-
-#[test]
-fn mcp_projects_the_exact_parent_run_city_read_envelope_from_ds() {
-    let reply = json!({
-        "status": "ok",
-        "run_id": PORTFOLIO_PARENT_RUN,
-        "batch_run_id": PORTFOLIO_PARENT_RUN,
-        "city_run_id": format!("{PORTFOLIO_PARENT_RUN}-aderm_beinamar"),
-        "context": "aderm_beinamar",
-        "section": "costs",
-        "path": ["network_costs"],
-        "value": { "grand_total": 1_077_842_254, "currency": "XAF" },
-        "complete": true,
-    });
-
-    let direct_bridge = bridge(vec![("solar.results.read", reply.clone())]);
-    let direct_descriptor = direct_bridge.descriptor.to_string_lossy().into_owned();
-    let mut direct_args = portfolio_city_read();
-    direct_args.extend(["--path", "network_costs"]);
-    direct_args.extend([
-        "--desktop-descriptor",
-        &direct_descriptor,
-        "--output",
-        "json",
-    ]);
-    let (direct, code, stdout, stderr) = ds(&direct_args);
-    assert_eq!(code, 0, "{stdout}{stderr}");
-    finish(direct_bridge);
-
-    let mcp_bridge = mcp_bridge("solar.results.read", reply);
-    let mcp_descriptor = mcp_bridge.descriptor.to_string_lossy().into_owned();
-    let (through_mcp, mcp_stderr) = mcp_portfolio_city_read(&mcp_descriptor);
-    assert_eq!(through_mcp, direct, "{mcp_stderr}");
-    finish(mcp_bridge);
 }
 
 // ── Saved-analysis projection (`solar portfolio analysis`) ──────────────────

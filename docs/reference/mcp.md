@@ -102,6 +102,10 @@ result inspection, and verification so existing MCP hosts do not lose tools.
 composition, with engine identity and local project-result verification. It requires
 explicit source, project, batch run and city attribution and never publishes files.
 
+`solar-portfolio-batch` includes headless portfolio calculation and publication
+alongside the paired historical batch lifecycle. These calculation/publication
+leaves moved from `solar-delivery` to keep that profile within its tool budget.
+
 PLS and its libraries are split by operator workflow: `pls` contains workspace
 backup, closure, terrain and diagnostics; `pls-library` contains local
 immutable-library verification, packing, seeding and native resolution; and
