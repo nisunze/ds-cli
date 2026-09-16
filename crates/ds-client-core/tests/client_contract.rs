@@ -221,6 +221,10 @@ struct TransportState {
     survey_entry_create: VecDeque<TransportResponse>,
     project_data: VecDeque<TransportResponse>,
     status_processing: VecDeque<TransportResponse>,
+    survey_photo: VecDeque<TransportResponse>,
+    photo_downloads: VecDeque<TransportResponse>,
+    photo_bodies: Vec<serde_json::Value>,
+    uploaded_bytes: Vec<Vec<u8>>,
     uploads: VecDeque<TransportResponse>,
     survey_control: VecDeque<TransportResponse>,
     styles: VecDeque<TransportResponse>,
@@ -876,6 +880,34 @@ impl Transport for FixtureTransport {
         Ok(state.project_data.pop_front().unwrap())
     }
 
+    fn survey_photo(
+        &mut self,
+        call: ds_client_core::SurveyPhotoCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        assert_eq!(call.path(), "/media");
+        let mut state = self.0.lock().unwrap();
+        state
+            .photo_bodies
+            .push(serde_json::from_slice(call.body().as_bytes()).unwrap());
+        Ok(state
+            .survey_photo
+            .pop_front()
+            .expect("unexpected photo call"))
+    }
+    fn download_survey_photo(
+        &mut self,
+        call: ds_client_core::survey_photo::DownloadCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        assert!(call.url().contains("generation=7"));
+        assert!(call.response_limit() <= 50 * 1024 * 1024);
+        Ok(self
+            .0
+            .lock()
+            .unwrap()
+            .photo_downloads
+            .pop_front()
+            .expect("unexpected photo download"))
+    }
     fn status_processing(
         &mut self,
         call: ds_client_core::StatusProcessingCall<'_>,
@@ -904,6 +936,7 @@ impl Transport for FixtureTransport {
         assert_eq!(bytes.len() as u64, size);
         let mut state = self.0.lock().unwrap();
         state.calls.push(format!("upload bytes={size}"));
+        state.uploaded_bytes.push(bytes);
         Ok(state.uploads.pop_front().expect("unexpected byte upload"))
     }
     fn solar_reference(
@@ -1433,11 +1466,10 @@ fn catalog_profile_is_closed_lane_bound_and_deterministic() {
     // the full profile authority.
     assert_eq!(
         stable.profile_sha256(),
-        "b33c8641e1822202a9da3f60fc70c0490234f2dc994d00c4964f576b06d32b3f"
+        "e59d13eec6c9498579a5f17f909f78d7756c61788209d7f5ff4f22a711e08dcc"
     );
     // A profile is a digest over the closed vocabulary, so adding one route is
-    // Profile v25 adds exact-head inspection and restore to the closed
-    // design-version route.
+    // Profile v26 adds the three governed survey-photo media actions.
     assert_ne!(
         stable.profile_sha256(),
         "5773df53261e74ba9b1c8bd3439e75fdbceff31ab6a593d7c06612bd15aded83"
@@ -7797,4 +7829,171 @@ fn grid_publication_requires_storage_proof_commit_and_exact_readback() {
             usize::from(!matches!(scenario, "denied" | "already_stored"))
         );
     }
+}
+
+fn push_photo(transport: &FixtureTransport, status: u16, data: serde_json::Value) {
+    transport
+        .0
+        .lock()
+        .unwrap()
+        .survey_photo
+        .push_back(TransportResponse::new(
+            status,
+            serde_json::to_vec(&serde_json::json!({"success":status == 200,"data":data})).unwrap(),
+        ));
+}
+
+#[test]
+fn photo_rotation_is_headless_pinned_and_retry_does_not_rotate_twice() {
+    use ds_client_core::survey_photo::{Command, Receipt};
+    use serde_json::json;
+    let transport = FixtureTransport::with_sign_in(SIGN_IN);
+    let mut client = signed_in(transport.clone(), MemoryStore::default());
+    let path = "project_a/forms/poles/entry/photo.png";
+    let thumb = "project_a/forms/poles/entry/photo_thunder.jpeg";
+    push_photo(
+        &transport,
+        200,
+        json!({"bucket":"test-bucket","blob_path":path,"generation":"7","source_url":format!("https://storage.googleapis.com/test-bucket/{path}?generation=7")}),
+    );
+    push_photo(&transport, 404, json!({}));
+    use base64::Engine;
+    let png = base64::engine::general_purpose::STANDARD.decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=").unwrap();
+    transport
+        .0
+        .lock()
+        .unwrap()
+        .photo_downloads
+        .push_back(TransportResponse::new(200, png));
+    let Receipt::Prepared(bundle) = client
+        .survey_photo(
+            "project_a",
+            Command::Prepare {
+                object_path: path,
+                degrees: 90,
+                expected_generation: Some("7"),
+            },
+            NOW + 1,
+        )
+        .unwrap()
+    else {
+        panic!("expected prepared")
+    };
+    assert_eq!(bundle.manifest.thumbnail_path, thumb);
+    assert!(!serde_json::to_string(&bundle.manifest)
+        .unwrap()
+        .contains("source_url"));
+    // Neither another project nor edited local bytes can consume an upload grant.
+    for project in ["project_b", "project_a"] {
+        let original = if project == "project_a" {
+            &b"changed"[..]
+        } else {
+            bundle.original.as_slice()
+        };
+        assert!(client
+            .survey_photo(
+                project,
+                Command::Publish {
+                    manifest: &bundle.manifest,
+                    original,
+                    thumbnail: &bundle.thumbnail
+                },
+                NOW + 1
+            )
+            .is_err());
+    }
+    let mut other_audience = bundle.manifest.clone();
+    other_audience.credential_audience_sha256 = "0".repeat(64);
+    assert!(client
+        .survey_photo(
+            "project_a",
+            Command::Publish {
+                manifest: &other_audience,
+                original: &bundle.original,
+                thumbnail: &bundle.thumbnail
+            },
+            NOW + 1
+        )
+        .is_err());
+    assert_eq!(transport.0.lock().unwrap().photo_bodies.len(), 2);
+    push_photo(
+        &transport,
+        200,
+        json!({"bucket":"test-bucket","blob_path":path,"session_uri":"https://storage.googleapis.com/upload/storage/v1/b/test-bucket/o?uploadType=resumable&upload_id=a"}),
+    );
+    transport
+        .0
+        .lock()
+        .unwrap()
+        .uploads
+        .push_back(TransportResponse::new(200, b"{}".as_slice()));
+    push_photo(
+        &transport,
+        200,
+        json!({"bucket":"test-bucket","blob_path":path,"generation":"8","already_present":true}),
+    );
+    // Fail after the original has published, before the thumbnail gets a grant.
+    push_photo(&transport, 503, json!({}));
+    assert!(client
+        .survey_photo(
+            "project_a",
+            Command::Publish {
+                manifest: &bundle.manifest,
+                original: &bundle.original,
+                thumbnail: &bundle.thumbnail
+            },
+            NOW + 1
+        )
+        .is_err());
+    push_photo(
+        &transport,
+        200,
+        json!({"bucket":"test-bucket","blob_path":path,"generation":"8","already_present":true}),
+    );
+    push_photo(
+        &transport,
+        200,
+        json!({"bucket":"test-bucket","blob_path":thumb,"session_uri":"https://storage.googleapis.com/upload/storage/v1/b/test-bucket/o?uploadType=resumable&upload_id=b"}),
+    );
+    transport
+        .0
+        .lock()
+        .unwrap()
+        .uploads
+        .push_back(TransportResponse::new(200, b"{}".as_slice()));
+    push_photo(
+        &transport,
+        200,
+        json!({"bucket":"test-bucket","blob_path":thumb,"generation":"9","already_present":true}),
+    );
+    let Receipt::Published(done) = client
+        .survey_photo(
+            "project_a",
+            Command::Publish {
+                manifest: &bundle.manifest,
+                original: &bundle.original,
+                thumbnail: &bundle.thumbnail,
+            },
+            NOW + 1,
+        )
+        .unwrap()
+    else {
+        panic!("expected published")
+    };
+    assert_eq!(done["publication"], "published");
+    let state = transport.0.lock().unwrap();
+    assert_eq!(state.uploaded_bytes, [bundle.original, bundle.thumbnail]);
+    for body in state
+        .photo_bodies
+        .iter()
+        .filter(|v| v["file_name"] == "photo_thunder.jpeg" && v["action"] == "survey_upload_start")
+    {
+        assert_eq!(body["source_generation"], "8");
+        assert_eq!(body["source_file_name"], "photo.png");
+        assert!(body.get("expected_generation").is_none());
+    }
+    assert!(state
+        .photo_bodies
+        .iter()
+        .all(|v| v["project_id"] == "project_a"));
 }

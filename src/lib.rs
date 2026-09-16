@@ -1563,6 +1563,14 @@ pub fn survey_photo_outbox_step_wasm(input: &[u8]) -> Result<String, wasm_bindge
 /// separate from the JSON state machines so photo payloads never become base64
 /// command fields.
 pub mod survey_photo_media;
+
+pub mod survey_photo_transport;
+#[cfg(feature = "wasm")]
+#[wasm_bindgen::prelude::wasm_bindgen(js_name = surveyPhotoTransport)]
+pub fn survey_photo_transport_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
+    survey_photo_transport::evaluate(input).map_err(|error| wasm_bindgen::JsValue::from_str(&error))
+}
+
 #[cfg(feature = "wasm")]
 #[wasm_bindgen::prelude::wasm_bindgen(js_name = surveyPhotoMediaProcess)]
 pub fn survey_photo_media_process_wasm(

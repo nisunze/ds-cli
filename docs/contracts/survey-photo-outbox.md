@@ -34,14 +34,35 @@ JPEG and PNG source bytes up to 50 MiB and 50 MP, applies available JPEG EXIF
 orientation plus one net clockwise turn, caps the normalized original at 2048
 px, and creates a white-composited JPEG-quality-85 thumbnail at 320 px. The
 WASM API accepts and returns typed byte arrays, never JSON/base64 photo data.
-`surveyPhotoMediaDetect` lets hosts preserve GIF, WebP, and non-image
-attachments unchanged without creating a thumbnail.
+`surveyPhotoMediaPlan` decides processing versus exact-byte preservation and
+refuses rotations of unsupported images/attachments. Browser workers execute
+that decision. `surveyPhotoNormalizeRotation` and `surveyPhotoAccumulateRotation`
+own draft quarter-turn arithmetic; `surveyPhotoThumbnailPath` owns companion
+names in display bindings as well as durable uploads. There is no TypeScript
+format/rotation/naming fallback.
 
 The optional `expected_generation` is an opaque positive decimal storage
 precondition preserved with a queued replacement. Its authorization and storage
-comparison remain in ds-brain. Photo rotation is frontend image processing by
-explicit owner instruction: encode the whole net turn once, then persist those
+comparison remain in ds-brain. Photo rotation uses the Rust byte API in a browser worker: encode the whole net turn once, then persist those
 exact bytes and the inspected generation. Retry resends the same encoded image.
+
+A gateway inspection advertising `revision_protocol: 1` enables an immutable
+local `revision` (equal to stash `generation`) and a bounded `supersedes` chain
+of at most 32 prior local revisions. `PrepareSupersede` checks scope, gateway
+support and state before hosts use a pending original. `Supersede` retains both
+remote baselines, emits an abort for the old lease, and coalesces the new pair
+for 500 ms. The browser atomically replaces both pinned blobs and the row,
+broadcasts cancellation to another tab, and never rereads mutable cache bytes
+mid-upload. If the old row settled while the next turn encoded, the same
+kernel transition can be admitted as a fresh row retaining its predecessor.
+
+A cancelled transfer can already have committed. The gateway may rebase only
+over a named predecessor belonging to the same authenticated account, object,
+and original generation baseline. Its newly issued PUT still has an exact
+storage-generation condition. A revision-aware storage PUT 412 asks the outbox
+to retry through gateway START; foreign edits remain terminal START conflicts
+and digest/length failures remain terminal. Old gateways keep their existing
+conditional-upload behavior and do not allow pending supersession.
 
 Server transport is documented in ds-brain's
 `docs/contracts/survey-media-upload.md`. It preserves the canonical survey

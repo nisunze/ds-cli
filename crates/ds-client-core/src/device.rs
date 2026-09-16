@@ -1363,6 +1363,17 @@ impl DeviceApiAuthorization<'_> {
             command,
         )
     }
+    pub fn survey_photo<T: AuthorizedTransport>(
+        &self,
+        transport: &mut T,
+        project: &str,
+        command: crate::survey_photo::Command<'_>,
+        now: u64,
+    ) -> Result<crate::survey_photo::Receipt, ClientError> {
+        crate::authorized::validate_tiles(project)?;
+        self.ensure_active(now)?;
+        crate::survey_photo::run(self.profile, transport, self.authority(), project, command)
+    }
     pub fn save_transformers<T: AuthorizedTransport>(
         &self,
         transport: &mut T,

@@ -969,6 +969,28 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
             command,
         )
     }
+    pub fn survey_photo(
+        &mut self,
+        project: &str,
+        command: crate::survey_photo::Command<'_>,
+        now: u64,
+    ) -> Result<crate::survey_photo::Receipt, ClientError> {
+        crate::authorized::validate_tiles(project)?;
+        self.ensure_fresh_session(now)?;
+        let session = self.session.as_ref().ok_or_else(signed_out)?;
+        crate::survey_photo::run(
+            &self.profile,
+            &mut self.transport,
+            crate::authorized::Authority {
+                bearer_token: &session.id_token,
+                uid: &session.stored.uid,
+                email: &session.stored.email,
+                device_id: None,
+            },
+            project,
+            command,
+        )
+    }
     pub fn save_transformers(
         &mut self,
         project: &str,

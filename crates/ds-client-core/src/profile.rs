@@ -3,7 +3,7 @@ use std::fmt;
 use sha2::{Digest, Sha256};
 use url::Url;
 
-pub const CLIENT_PROFILE_SCHEMA: &str = "ds.native-client-profiles/v25";
+pub const CLIENT_PROFILE_SCHEMA: &str = "ds.native-client-profiles/v26";
 pub const DEVICE_CREDENTIAL_AUDIENCE_SCHEMA: &str = "ds.native-client-credential-audience/v1";
 pub const NATIVE_CLIENT_ID: &str = "ds-native-client";
 pub const AUTH_LINK_BEGIN_METHOD: &str = "POST";
@@ -45,13 +45,13 @@ pub const SURVEY_ENTRY_CREATE_OPERATION: &str = "create";
 pub const PROJECT_DATA_METHOD: &str = "POST";
 pub const PROJECT_DATA_PATH: &str = "/api/v1/project_data";
 pub const PROJECT_DATA_ACTIONS: [&str; 4] = ["list", "upload_start", "upload", "delete"];
-pub const SURVEY_CONTROL_ROUTES: [&str; 6] = [
+pub const SURVEY_CONTROL_ROUTES: [&str; 7] = [
     "POST /api/v1/form-factory: list,get,get_field_types,create,update,duplicate,publish,unpublish,archive,restore,delete",
     "POST /api/v1/project-forms: activate,settings_editor,bulk_save",
     "POST /api/v1/projects/templates: list,create,set_public,delete",
     "GET /api/v1/projects/templates/{slug}",
     "POST /api/v1/projects: apply_template",
-    "POST /api/v1/projects/from-template",
+    "POST /api/v1/projects/from-template", "POST /media: survey_upload_inspect,survey_upload_start,survey_upload_complete",
 ];
 pub const STYLES_METHOD: &str = "POST";
 pub const STYLES_PATH: &str = "/api/v1/styles";

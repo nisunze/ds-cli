@@ -13,6 +13,8 @@ use crate::transfer::{Cause, Phase};
 pub const SURVEY_PHOTO_OUTBOX_SCHEMA: &str = "ds.survey-photo-outbox/v1";
 pub const MAX_ATTEMPTS: u32 = 10;
 pub const MAX_CONCURRENT_UPLOADS: u32 = 2;
+pub const MAX_SUPERSEDED_REVISIONS: usize = 32;
+pub const REVISION_COALESCE_MS: u64 = 500;
 const MAX_INPUT_BYTES: usize = 64 * 1024;
 const MISSING_BYTES: &str = "Photo bytes are missing from local storage.";
 const SCOPE_MISMATCH: &str = "Photo upload is fenced to a different account or project.";
@@ -71,6 +73,12 @@ pub struct Row {
     /// one atomic upload plan. It is never an independently retried row.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub companion: Option<Companion>,
+    /// Gateway-advertised revision protocol. Only these rows may supersede a
+    /// transfer whose storage commit could race cancellation.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub revision: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub supersedes: Vec<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -93,6 +101,10 @@ pub struct UploadTarget {
     pub size: u64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub expected_generation: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub revision: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub supersedes: Vec<String>,
 }
 
 /// The canonical server-compatible thumbnail object name for an original
@@ -137,6 +149,8 @@ pub fn upload_plan(row: &Row) -> Result<Vec<UploadTarget>, String> {
         content_type: row.content_type.clone(),
         size: row.size,
         expected_generation: row.expected_generation.clone(),
+        revision: row.revision.clone(),
+        supersedes: row.supersedes.clone(),
     }];
     if let Some(companion) = &row.companion {
         targets.push(UploadTarget {
@@ -144,6 +158,8 @@ pub fn upload_plan(row: &Row) -> Result<Vec<UploadTarget>, String> {
             content_type: companion.content_type.clone(),
             size: companion.size,
             expected_generation: companion.expected_generation.clone(),
+            revision: row.revision.clone(),
+            supersedes: row.supersedes.clone(),
         });
     }
     Ok(targets)
@@ -201,6 +217,18 @@ pub enum Event {
         outcome: TransportOutcome,
     },
     Cancel {
+        scope: Scope,
+    },
+    /// Replace the exact local byte revision, retaining its remote baseline.
+    /// The host atomically swaps both pinned blobs before executing Abort.
+    Supersede {
+        scope: Scope,
+        generation: String,
+        content_type: String,
+        size: u64,
+        companion: Companion,
+    },
+    PrepareSupersede {
         scope: Scope,
     },
     /// Retry after a surfaced failure without silently changing ownership.
@@ -275,6 +303,14 @@ fn valid_expected_generation(value: Option<&str>) -> bool {
     })
 }
 
+fn valid_revision(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 128
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
+}
+
 fn ensure_row(row: Option<Row>) -> Result<Row, String> {
     let row = row.ok_or_else(|| "Survey-photo outbox event needs a row.".to_string())?;
     if row.path.trim().is_empty()
@@ -285,6 +321,20 @@ fn ensure_row(row: Option<Row>) -> Result<Row, String> {
     }
     if !valid_expected_generation(row.expected_generation.as_deref()) {
         return Err("Survey-photo expected generation must be a positive decimal string.".into());
+    }
+    if row
+        .revision
+        .as_ref()
+        .is_some_and(|revision| revision != &row.generation || !valid_revision(revision))
+        || row.supersedes.len() > MAX_SUPERSEDED_REVISIONS
+        || (!row.supersedes.is_empty() && row.revision.is_none())
+        || row.supersedes.iter().enumerate().any(|(index, revision)| {
+            !valid_revision(revision)
+                || row.revision.as_ref() == Some(revision)
+                || row.supersedes[..index].contains(revision)
+        })
+    {
+        return Err("Survey-photo revision chain is invalid.".into());
     }
     if let Some(companion) = &row.companion {
         if companion.path == row.path
@@ -397,6 +447,12 @@ pub fn apply(now: u64, row: Option<Row>, event: Event) -> Result<Reply, String> 
             row.last_error = None;
             row.lease = 0;
             row.updated_at = now;
+            if row.revision.is_some() {
+                row.next_attempt_at = now.saturating_add(REVISION_COALESCE_MS);
+                actions.push(Action::WakeAt {
+                    at: row.next_attempt_at,
+                });
+            }
         }
         Event::Recover => {
             if row.status == Status::Uploading {
@@ -485,13 +541,25 @@ pub fn apply(now: u64, row: Option<Row>, event: Event) -> Result<Reply, String> 
                     message,
                 } => {
                     let supplied_message = message.clone();
-                    let (status, timed_out, error_code, offline_mode) = response_facts_from_cause(
-                        cause.as_ref(),
-                        status,
-                        timed_out,
-                        error_code,
-                        offline_mode,
-                    );
+                    let (mut status, timed_out, mut error_code, offline_mode) =
+                        response_facts_from_cause(
+                            cause.as_ref(),
+                            status,
+                            timed_out,
+                            error_code,
+                            offline_mode,
+                        );
+                    // A revision-aware conditional PUT may race the preceding
+                    // cancelled commit. Retry through START, whose gateway CAS
+                    // rebases only over the proved predecessor. A foreign cloud
+                    // edit is still a terminal 409 from START. Integrity errors
+                    // are never retried by this storage-precondition rule.
+                    if row.revision.is_some()
+                        && matches!(cause, Some(Cause::HttpStatus { status: 412, .. }))
+                    {
+                        status = None;
+                        error_code = Some("NETWORK_ERROR".into());
+                    }
                     let decision = response_policy::classify(Classify {
                         schema: RESPONSE_POLICY_SCHEMA.into(),
                         kind: "classify".into(),
@@ -546,6 +614,65 @@ pub fn apply(now: u64, row: Option<Row>, event: Event) -> Result<Reply, String> 
                 return Ok(reply);
             }
         }
+        Event::PrepareSupersede { scope } => {
+            validate_supersede(&row, &scope)?;
+        }
+        Event::Supersede {
+            scope,
+            generation,
+            content_type,
+            size,
+            mut companion,
+        } => {
+            validate_supersede(&row, &scope)?;
+            if !same_scope(&row, &scope) {
+                return Err(SCOPE_MISMATCH.into());
+            }
+            let revision = row.revision.clone().ok_or_else(|| {
+                "This pending photo needs the revision-aware gateway before another rotation."
+                    .to_string()
+            })?;
+            if !matches!(row.status, Status::Pending | Status::Uploading)
+                || !valid_revision(&generation)
+                || generation == row.generation
+                || row.supersedes.contains(&generation)
+                || row.supersedes.len() >= MAX_SUPERSEDED_REVISIONS
+                || !matches!(content_type.as_str(), "image/jpeg" | "image/png")
+                || size == 0
+                || row.companion.as_ref().map(|old| &old.path) != Some(&companion.path)
+            {
+                return Err("Photo changed or cannot accept another unpublished rotation.".into());
+            }
+            // A later rotation changes bytes, never the storage baseline it
+            // observed. Only the gateway may rebase over a proved predecessor.
+            companion.expected_generation = row
+                .companion
+                .as_ref()
+                .and_then(|old| old.expected_generation.clone());
+            if row.status == Status::Uploading {
+                actions.push(Action::Abort {
+                    path: row.path.clone(),
+                    generation: row.generation.clone(),
+                    lease: row.lease,
+                });
+            }
+            row.supersedes.push(revision);
+            row.generation = generation.clone();
+            row.revision = Some(generation);
+            row.content_type = content_type;
+            row.size = size;
+            row.companion = Some(companion);
+            row.status = Status::Pending;
+            row.attempts = 0;
+            row.lease = 0;
+            row.last_error = None;
+            row.updated_at = now;
+            row.next_attempt_at = now.saturating_add(REVISION_COALESCE_MS);
+            ensure_row(Some(row.clone()))?;
+            actions.push(Action::WakeAt {
+                at: row.next_attempt_at,
+            });
+        }
         Event::ManualRetry { scope } => {
             if same_scope(&row, &scope) && matches!(row.status, Status::Failed | Status::Blocked) {
                 row.status = Status::Pending;
@@ -580,6 +707,24 @@ pub fn apply(now: u64, row: Option<Row>, event: Event) -> Result<Reply, String> 
         row: Some(row),
         actions,
     })
+}
+
+fn validate_supersede(row: &Row, scope: &Scope) -> Result<(), String> {
+    if !same_scope(row, scope) {
+        return Err(SCOPE_MISMATCH.into());
+    }
+    if row.revision.is_none() {
+        return Err(
+            "This pending photo needs the revision-aware gateway before another rotation.".into(),
+        );
+    }
+    if !matches!(row.status, Status::Pending | Status::Uploading)
+        || row.companion.is_none()
+        || row.supersedes.len() >= MAX_SUPERSEDED_REVISIONS
+    {
+        return Err("Photo changed or cannot accept another unpublished rotation.".into());
+    }
+    Ok(())
 }
 
 pub fn evaluate(input: &[u8]) -> Result<String, String> {
@@ -623,7 +768,79 @@ mod tests {
             generation: "stash-a".into(),
             expected_generation: Some("123456".into()),
             companion: None,
+            revision: None,
+            supersedes: Vec::new(),
         }
+    }
+    #[test]
+    fn supersede_retains_remote_baseline_aborts_old_lease_and_fences_late_success() {
+        let mut previous = row();
+        previous.path = "project/forms/form/entry/photo.jpg".into();
+        previous.revision = Some(previous.generation.clone());
+        previous.companion = Some(Companion {
+            path: thumbnail_path_for(&previous.path).unwrap(),
+            content_type: "image/jpeg".into(),
+            size: 3,
+            expected_generation: Some("123457".into()),
+        });
+        let previous = drive(previous, 1000).row.unwrap();
+        let companion = previous.companion.clone().unwrap();
+        let changed = apply(
+            1001,
+            Some(previous.clone()),
+            Event::Supersede {
+                scope: scope(),
+                generation: "stash-b".into(),
+                content_type: "image/png".into(),
+                size: 5,
+                companion: Companion {
+                    expected_generation: Some("999".into()),
+                    ..companion
+                },
+            },
+        )
+        .unwrap();
+        assert!(changed.actions.iter().any(
+            |action| matches!(action, Action::Abort { generation, .. } if generation == "stash-a")
+        ));
+        let current = changed.row.unwrap();
+        assert_eq!(current.expected_generation, previous.expected_generation);
+        assert_eq!(
+            current
+                .companion
+                .as_ref()
+                .unwrap()
+                .expected_generation
+                .as_deref(),
+            Some("123457")
+        );
+        assert_eq!(current.supersedes, vec!["stash-a"]);
+        assert_eq!(current.next_attempt_at, 1501);
+        let late = apply(
+            1002,
+            Some(current.clone()),
+            Event::Result {
+                scope: scope(),
+                generation: previous.generation,
+                lease: previous.lease,
+                outcome: TransportOutcome::Success,
+            },
+        )
+        .unwrap();
+        assert_eq!(late.row, Some(current));
+        assert!(late.actions.is_empty());
+    }
+
+    #[test]
+    fn supersede_preparation_refuses_old_gateway_and_foreign_scope() {
+        assert!(apply(1, Some(row()), Event::PrepareSupersede { scope: scope() }).is_err());
+        let mut r = row();
+        r.revision = Some(r.generation.clone());
+        let mut other = scope();
+        other.account_id = "other-account".into();
+        assert!(apply(1, Some(r), Event::PrepareSupersede { scope: other })
+            .unwrap_err()
+            .contains("different account"));
     }
     fn drive(row: Row, now: u64) -> Reply {
         apply(
@@ -657,6 +874,8 @@ mod tests {
                     content_type: "image/jpeg".into(),
                     size: 4,
                     expected_generation: Some("123456".into()),
+                    revision: None,
+                    supersedes: Vec::new(),
                 }],
             }]
         );
@@ -841,6 +1060,42 @@ mod tests {
             .row
             .unwrap();
         assert_eq!((retried.status, retried.attempts), (Status::Pending, 0));
+    }
+
+    #[test]
+    fn superseding_storage_precondition_retries_but_corrupt_bytes_do_not() {
+        for (cause, expected) in [
+            (Cause::HttpStatus { status: 412 }, Status::Pending),
+            (Cause::DigestMismatch, Status::Failed),
+            (Cause::LengthMismatch, Status::Failed),
+            (Cause::HttpStatus { status: 409 }, Status::Failed),
+        ] {
+            let mut started = drive(row(), 0).row.unwrap();
+            started.revision = Some(started.generation.clone());
+            let result = apply(
+                0,
+                Some(started),
+                Event::Result {
+                    scope: scope(),
+                    generation: "stash-a".into(),
+                    lease: 1,
+                    outcome: TransportOutcome::TransportFailure {
+                        cause: Some(cause),
+                        status: None,
+                        error_code: None,
+                        timed_out: false,
+                        retry_after: None,
+                        has_session: true,
+                        offline_mode: false,
+                        message: None,
+                    },
+                },
+            )
+            .unwrap()
+            .row
+            .unwrap();
+            assert_eq!(result.status, expected);
+        }
     }
 
     #[test]

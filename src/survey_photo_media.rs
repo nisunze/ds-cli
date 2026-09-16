@@ -6,6 +6,7 @@
 //! only; the output stays in that same format. No photo bytes cross this API as
 //! JSON or base64.
 
+use serde::Serialize;
 use std::io::Cursor;
 
 use image::{
@@ -53,6 +54,84 @@ pub enum Rotation {
     Deg90,
     Deg180,
     Deg270,
+}
+
+/// The same quarter-turn normalization for every host, including local drafts.
+/// Half-quarter ties round clockwise, preserving the existing editor behavior.
+pub fn normalize_rotation(degrees: f64) -> Result<u16, String> {
+    if !degrees.is_finite() {
+        return Err("Survey-photo rotation must be finite.".into());
+    }
+    Ok((((degrees.rem_euclid(360.0) / 90.0) + 0.5).floor() as u16 % 4) * 90)
+}
+
+pub fn accumulate_rotation(current: f64, direction: f64) -> Result<u16, String> {
+    exact_rotation(current)?;
+    if !matches!(direction, -90.0 | 90.0) {
+        return Err("Survey-photo rotation direction must be -90 or 90 degrees.".into());
+    }
+    normalize_rotation(current + direction)
+}
+
+fn exact_rotation(degrees: f64) -> Result<Rotation, String> {
+    match degrees {
+        0.0 => Ok(Rotation::Deg0),
+        90.0 => Ok(Rotation::Deg90),
+        180.0 => Ok(Rotation::Deg180),
+        270.0 => Ok(Rotation::Deg270),
+        _ => Err("Survey-photo rotation must be 0, 90, 180, or 270 degrees clockwise.".into()),
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct MediaPlan {
+    pub detection: &'static str,
+    pub action: &'static str,
+    pub rotation: u16,
+}
+
+/// Decide preservation versus pixel processing from bytes, never a host MIME
+/// label. A rotation of an unsupported attachment is refused here in native
+/// and WASM alike; browser workers only execute the returned effect.
+pub fn plan_media(input: &[u8], degrees: f64) -> Result<MediaPlan, String> {
+    let rotation = exact_rotation(degrees)?;
+    let (detection, action) = match detect_media(input) {
+        MediaDetection::ProcessableJpeg => ("jpeg", "process"),
+        MediaDetection::ProcessablePng => ("png", "process"),
+        MediaDetection::UnsupportedImage => ("unsupported_image", "preserve"),
+        MediaDetection::NotImage => ("not_image", "preserve"),
+    };
+    if action == "preserve" && rotation != Rotation::Deg0 {
+        return Err("Survey photo rotation is available only for JPEG and PNG images.".into());
+    }
+    Ok(MediaPlan {
+        detection,
+        action,
+        rotation: degrees as u16,
+    })
+}
+
+#[cfg(feature = "wasm")]
+#[wasm_bindgen::prelude::wasm_bindgen(js_name = surveyPhotoNormalizeRotation)]
+pub fn normalize_rotation_wasm(degrees: f64) -> Result<u16, wasm_bindgen::JsValue> {
+    normalize_rotation(degrees).map_err(|error| wasm_bindgen::JsValue::from_str(&error))
+}
+
+#[cfg(feature = "wasm")]
+#[wasm_bindgen::prelude::wasm_bindgen(js_name = surveyPhotoAccumulateRotation)]
+pub fn accumulate_rotation_wasm(
+    current: f64,
+    direction: f64,
+) -> Result<u16, wasm_bindgen::JsValue> {
+    accumulate_rotation(current, direction).map_err(|error| wasm_bindgen::JsValue::from_str(&error))
+}
+
+#[cfg(feature = "wasm")]
+#[wasm_bindgen::prelude::wasm_bindgen(js_name = surveyPhotoMediaPlan)]
+pub fn plan_media_wasm(input: &[u8], degrees: f64) -> Result<String, wasm_bindgen::JsValue> {
+    plan_media(input, degrees)
+        .and_then(|plan| serde_json::to_string(&plan).map_err(|error| error.to_string()))
+        .map_err(|error| wasm_bindgen::JsValue::from_str(&error))
 }
 
 impl TryFrom<u16> for Rotation {
@@ -319,6 +398,61 @@ pub fn process_wasm(input: &[u8], rotation_degrees: u16) -> Result<SurveyPhotoBu
 mod tests {
     use super::*;
     use image::{ImageBuffer, Rgba};
+
+    #[test]
+    fn quarter_turn_drafts_wrap_and_preserve_clockwise_ties() {
+        for (input, expected) in [
+            (-450.0, 270),
+            (-90.0, 270),
+            (-45.0, 0),
+            (0.0, 0),
+            (44.9, 0),
+            (45.0, 90),
+            (315.0, 0),
+            (450.0, 90),
+        ] {
+            assert_eq!(normalize_rotation(input).unwrap(), expected);
+        }
+        assert_eq!(accumulate_rotation(270.0, 90.0).unwrap(), 0);
+        assert_eq!(accumulate_rotation(0.0, -90.0).unwrap(), 270);
+        for degrees in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+            assert!(normalize_rotation(degrees).is_err());
+        }
+        assert!(accumulate_rotation(45.0, 90.0).is_err());
+        assert!(accumulate_rotation(0.0, 180.0).is_err());
+    }
+
+    #[test]
+    fn attachment_preservation_and_rotation_refusal_are_kernel_decisions() {
+        for (bytes, detection) in [
+            (b"GIF89a".as_slice(), "unsupported_image"),
+            (b"document".as_slice(), "not_image"),
+        ] {
+            assert_eq!(
+                plan_media(bytes, 0.0).unwrap(),
+                MediaPlan {
+                    detection,
+                    action: "preserve",
+                    rotation: 0
+                }
+            );
+            assert!(plan_media(bytes, 90.0)
+                .unwrap_err()
+                .contains("only for JPEG and PNG"));
+        }
+        for degrees in [-90.0, 45.0, 360.0, 65536.0, f64::NAN, f64::INFINITY] {
+            assert!(plan_media(b"GIF89a", degrees).is_err());
+        }
+        let png_signature = b"\x89PNG\r\n\x1a\n";
+        assert_eq!(
+            plan_media(png_signature, 90.0).unwrap(),
+            MediaPlan {
+                detection: "png",
+                action: "process",
+                rotation: 90
+            }
+        );
+    }
 
     fn png(image: ImageBuffer<Rgba<u8>, Vec<u8>>) -> Vec<u8> {
         let mut bytes = Vec::new();
