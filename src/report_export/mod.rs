@@ -17,6 +17,7 @@
 //! admits against.
 
 pub mod jcs;
+pub mod preview;
 pub mod proof;
 
 use std::collections::{BTreeMap, HashSet};
@@ -214,7 +215,7 @@ pub fn input_base_fingerprint(
 /// reporting country, the exact settings sheets the report policy reads (as
 /// the bytes ds-brain serialized, never re-encoded) and the semantic identity
 /// of the Rwanda administrative reference the artifacts are stamped with.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct InputReceipt {
     #[serde(default, skip_serializing_if = "Option::is_none")]

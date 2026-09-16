@@ -62,6 +62,12 @@ pub enum PrintArtifactFormat {
     Pdf,
     Png,
     Jpeg,
+    /// The engine's own page: the vector every delivered format is derived
+    /// from (PDF by conversion, PNG/JPEG by rasterisation). It is the one
+    /// fast preview those formats share — with text flattened to paths, so a
+    /// viewer needs no font — and not a deliverable: ds-brain admits only the
+    /// three above in a stored selection (`network_reporter_individual_policy`).
+    Svg,
 }
 
 impl PrintArtifactFormat {
@@ -70,7 +76,13 @@ impl PrintArtifactFormat {
             Self::Pdf => "pdf",
             Self::Png => "png",
             Self::Jpeg => "jpeg",
+            Self::Svg => "svg",
         }
+    }
+
+    /// May a saved selection or a project's stored policy name this format?
+    pub fn deliverable(self) -> bool {
+        !matches!(self, Self::Svg)
     }
 }
 
@@ -83,6 +95,7 @@ pub fn named_print_output(format: &str) -> Option<(PrintArtifactFormat, &str)> {
         (PrintArtifactFormat::Png, "png__"),
         (PrintArtifactFormat::Jpeg, "jpeg__"),
         (PrintArtifactFormat::Jpeg, "jpg__"),
+        (PrintArtifactFormat::Svg, "svg__"),
     ]
     .into_iter()
     .find_map(|(kind, prefix)| format.strip_prefix(prefix).map(|id| (kind, id)))?;
@@ -174,6 +187,22 @@ pub struct DesignOutputSelection {
 }
 
 impl DesignOutputSelection {
+    /// A selection a project stores, or a host saves, delivers: the shared
+    /// preview page is never among its outputs.
+    pub fn require_deliverable(&self) -> Result<(), String> {
+        if self
+            .prints
+            .iter()
+            .any(|print| print.formats.iter().any(|f| !f.deliverable()))
+        {
+            return Err(
+                "svg is the shared print preview, not a deliverable output; select pdf, png or jpeg"
+                    .into(),
+            );
+        }
+        Ok(())
+    }
+
     /// Which runtimes may produce one output of this selection. Precedence is
     /// ds-brain's: the exact output id, then its class, then `*`, then both.
     /// An entry naming an empty list refuses the output on every lane, as it
@@ -246,7 +275,7 @@ impl DesignOutputSelection {
             if !crate::printing::identifier(&print.layout_id)
                 || !layouts.insert(&print.layout_id)
                 || print.formats.is_empty()
-                || print.formats.len() > 3
+                || print.formats.len() > 4
             {
                 return Err("invalid or duplicate named print selection".into());
             }
@@ -290,6 +319,7 @@ pub fn normalize_output_selection(
             }
         }
         selection.tokens()?;
+        selection.require_deliverable()?;
         return Ok(selection);
     }
     let formats = legacy_formats.ok_or("output selection is required")?;
@@ -335,6 +365,7 @@ pub fn normalize_output_selection(
         execution: execution.unwrap_or_default(),
     };
     selection.tokens()?;
+    selection.require_deliverable()?;
     Ok(selection)
 }
 
@@ -354,6 +385,8 @@ pub fn stored_output_selection(value: &Value) -> Result<DesignOutputSelection, S
     {
         let selection: DesignOutputSelection = serde_json::from_value(value.clone())
             .map_err(|error| format!("Invalid design output selection: {error}"))?;
+        // Read as stored: the engine reads a preview recipe's in-memory
+        // policy through here too. Save paths refuse the preview page.
         selection.tokens()?;
         return Ok(selection);
     }
@@ -466,6 +499,7 @@ pub fn output(format: &str) -> Result<Output, String> {
             PrintArtifactFormat::Pdf => ("application/pdf", format!(".{id}.pdf")),
             PrintArtifactFormat::Png => ("image/png", format!(".{id}.png")),
             PrintArtifactFormat::Jpeg => ("image/jpeg", format!(".{id}.jpg")),
+            PrintArtifactFormat::Svg => ("image/svg+xml", format!(".{id}.svg")),
         };
         return Ok(Output {
             output_id: format!("{}__{id}", kind.prefix()),

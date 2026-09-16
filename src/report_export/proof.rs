@@ -3,11 +3,15 @@
 use super::*;
 use crate::printing::Layout;
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Provenance {
     pub source_sheets_sha256: String,
     pub layouts: BTreeMap<String, String>,
+    /// Present when the recipe is a preview (`super::preview`): one draft
+    /// layout rendered as one review file. A proof carries none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub preview: Option<super::preview::Facts>,
 }
 
 pub fn with_layouts(source: &InputReceipt, layouts: &[Layout]) -> Result<InputReceipt, String> {
@@ -24,6 +28,7 @@ pub fn with_layouts(source: &InputReceipt, layouts: &[Layout]) -> Result<InputRe
     let mut provenance = Provenance {
         source_sheets_sha256: source.sheets_sha256.clone(),
         layouts: BTreeMap::new(),
+        preview: None,
     };
     for layout in layouts {
         crate::printing::validate(layout)?;

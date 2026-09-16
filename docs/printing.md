@@ -223,6 +223,63 @@ Per-transformer `table.heading_mode` overrides the project layout through the
 same existing print-instruction command. Old documents omit the default field
 when serialized, preserving compatibility and their existing presentation.
 
+## The shared preview page
+
+A preview is one transformer rendered through the delivery engine with a
+draft layout — any id, any paper, saved or not — as the engine's own page:
+the SVG every delivered format is derived from (PDF by conversion, PNG and
+JPEG by rasterisation), with text flattened to outlines through the same
+bundled font, so a viewer needs no font and draws the sheet exactly as the
+delivery comes out. One preview therefore serves every format a template may
+later be delivered in, and every host paints the same page: the desktop over
+its Canvas2D sheet, an agent through any SVG viewer.
+
+`report_export::preview::with_layout(receipt, layout)` is the recipe both
+hosts run. It rewrites the governed receipt in memory only: the draft
+replaces (or joins) `printing_setups` under its own digest, the output policy
+becomes exactly one `svg__<id>`, and `local_print_recipe.preview` names the
+run. `publication_facts` reads that recipe as `local_only`; hosts never
+place the page under an artifact root. `PrintArtifactFormat::Svg` is not
+`deliverable()`: `normalize_output_selection`, a legacy token list and
+`project_output_patch` refuse it, while `stored_output_selection` and
+`selected_plan` read it, because the engine reads the in-memory policy through
+them. The host save paths are the boundary; ds-brain admits only pdf, png and
+jpeg in a stored selection.
+
+`printing::preview::plan` answers whether the editor may preview right now,
+from facts: the draft, the chosen transformer as `printable_transformers`
+listed it, the governed print styles the host holds, online and native-engine
+readiness. Refusals are keyed (`printing_preview_no_transformer`,
+`printing_preview_not_a_transformer`, `printing_preview_room_unavailable`,
+`printing_preview_native_unavailable`, `printing_style_unavailable`); a dirty
+held room is a note, not a refusal. The plan also chooses the raster the host
+draws the page at from the screen's pixels per millimetre (`raster`): between
+1.5 px/mm and the 300 dpi delivery raster, within a 40-megapixel budget.
+Re-rasterising at a new zoom never involves the engine. `preview_receipt`
+exposes the recipe to WASM so a host prepares the draft's own context layers
+from the rewritten sheets.
+
+`ds report project export --preview-layout draft.json` runs the recipe
+headlessly; the desktop shell's `network_reporter_preview_transformer_print`
+runs it against the held room and keeps nothing.
+
+## Template pens
+
+`Layout::style_overrides` are the template's pens: colour, size, opacity,
+visibility and label treatment over the governed `_print` document, applied
+at render (`style_overrides::apply`) and read by the legend, so a preview and
+a delivery print the same pens. `printing::pens::pens(layout, documents)`
+lists them for a host's pen panel — one row per bound print layer, design
+layers first in engineering order, base values read from the resolved
+document given as a fact, the effective values after the override, the
+category table of a data-driven colour, the size unit from the document's
+print scaling — and `pens::edit` sets one bounded property (`color`, `size`,
+`opacity`, `visible`, `label_visible`, `label_size_pt`, `label_color`,
+`label_halo_mm`, `label_halo_color`; `null` clears it, an empty override is
+removed). A layer without a bound style refuses `printing_pen_unbound`.
+`print_pens`, `pen_edit` and `set_style_override` are `printingCommand`
+operations; `ds report layout pens` is the same surface headlessly.
+
 ## Printable inventory and preview admission
 
 `printable_transformers` takes status `rows`, optional account-fenced host

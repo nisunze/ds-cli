@@ -8,6 +8,8 @@ pub mod inventory;
 pub mod lifecycle;
 pub mod map;
 pub mod overrides;
+pub mod pens;
+pub mod preview;
 pub mod project_sources;
 pub mod session;
 pub mod sheet_margin;
@@ -1613,6 +1615,42 @@ pub enum Command {
         style_ref: String,
         catalogue: Vec<elements::StyleFacts>,
     },
+    /// Every pen of the layout — each bound print layer with what it prints
+    /// with, from the governed documents the host holds (see `pens`).
+    PrintPens {
+        layout: Layout,
+        #[serde(default)]
+        documents: Vec<pens::PenDocument>,
+    },
+    /// Set, or with `null` clear, one property of a layer's template-local
+    /// pen; an override left with nothing to say is removed.
+    PenEdit {
+        layout: Layout,
+        layer_id: String,
+        property: pens::PenProperty,
+        #[serde(default)]
+        value: serde_json::Value,
+    },
+    /// Replace, or with `null` remove, a layer's whole template-local pen.
+    SetStyleOverride {
+        layout: Layout,
+        layer_id: String,
+        #[serde(default)]
+        change: Option<PrintStyleOverride>,
+    },
+    /// May a live transformer preview be produced right now, and as what
+    /// (see `preview`). Rendering remains a host effect.
+    PreviewPlan {
+        facts: preview::Facts,
+    },
+    /// The receipt a preview run stages (`report_export::preview`): the
+    /// governed project receipt with the draft beside its setups and the one
+    /// output selected. A host prepares the draft's context from it and hands
+    /// the same recipe to its engine.
+    PreviewReceipt {
+        receipt: crate::report_export::InputReceipt,
+        layout: Layout,
+    },
     /// The DPI and paper a local map print may ask for, with the defaults.
     MapRequestChoices {},
     /// The print editor's zero state and its history cap (see `session`).
@@ -1767,6 +1805,7 @@ fn project_output_patch(
     views: &BTreeMap<String, BTreeMap<String, GeographicView>>,
 ) -> Result<Vec<serde_json::Value>, String> {
     let mut rows = current;
+    selection.require_deliverable()?;
     crate::report_formats::apply_output_selection(&mut rows, selection)?;
     if views.is_empty() {
         return Ok(rows);
@@ -1978,6 +2017,28 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
             catalogue,
         } => {
             json!({"layout": elements::set_layer_style_ref(upgrade(layout)?, &layer_id, &style_ref, &catalogue)?})
+        }
+        Command::PrintPens { layout, documents } => {
+            json!({"pens": pens::pens(&upgrade(layout)?, &documents)?})
+        }
+        Command::PenEdit {
+            layout,
+            layer_id,
+            property,
+            value,
+        } => json!({"layout": pens::edit(upgrade(layout)?, &layer_id, property, &value)?}),
+        Command::SetStyleOverride {
+            layout,
+            layer_id,
+            change,
+        } => json!({"layout": pens::set_override(upgrade(layout)?, &layer_id, change)?}),
+        Command::PreviewPlan { facts } => preview::evaluate(preview::Facts {
+            layout: upgrade(facts.layout)?,
+            ..facts
+        })?,
+        Command::PreviewReceipt { receipt, layout } => {
+            let preview = crate::report_export::preview::with_layout(&receipt, &upgrade(layout)?)?;
+            serde_json::to_value(preview).map_err(|e| e.to_string())?
         }
         Command::MapRequestChoices {} => map::request_choices(),
         Command::SessionDefaults {} => json!({
