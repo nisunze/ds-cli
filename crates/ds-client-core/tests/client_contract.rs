@@ -8049,3 +8049,33 @@ fn solar_portfolio_catalog_rejects_changed_membership_and_wrong_project_before_t
     assert!(client.solar_project("p-1",&Command::Portfolio(solar_portfolio::Command::Mutate {intent:serde_json::json!({"operation":"update","portfolio_id":"pf_1","cities":["a","b"]})}),NOW+1).is_err());
     assert_eq!(t.0.lock().unwrap().calls.len(), before);
 }
+
+#[test]
+fn solar_portfolio_mutation_requires_exact_authoritative_readback() {
+    use ds_client_core::{solar_portfolio, solar_project::Command};
+    let membership = |cities: serde_json::Value| -> serde_json::Value {
+        serde_json::from_str(&ds_command_kernel::solar_portfolio_membership_identity(
+            &serde_json::to_vec(&serde_json::json!({"portfolio_id":"pf_1","cities":cities})).unwrap()
+        ).unwrap()).unwrap()
+    };
+    let revision = membership(serde_json::json!(["a","b"]))["revision"].clone();
+    let row = serde_json::json!({"id":"pf_1","name":"Two cities","display_name":"Two cities","cities":["a","b"],"membership_revision":revision});
+    for mismatch in [false,true] {
+        let t = FixtureTransport::with_sign_in(SIGN_IN);
+        let mut client = signed_in(t.clone(),MemoryStore::default());
+        let mut readback = row.clone();
+        if mismatch {
+            readback["cities"] = serde_json::json!(["b","a"]);
+            readback["membership_revision"] = membership(readback["cities"].clone())["revision"].clone();
+        }
+        t.0.lock().unwrap().solar_project.extend([
+            project_response(row.clone()), project_response(serde_json::json!([readback]))
+        ]);
+        let output = client.solar_project("p-1",&Command::Portfolio(solar_portfolio::Command::Mutate {
+            intent:serde_json::json!({"operation":"update","portfolio_id":"pf_1","expected_membership_revision":revision,"cities":["a","b"]})
+        }),NOW+1);
+        assert_eq!(output.is_ok(),!mismatch);
+        assert!(t.0.lock().unwrap().solar_project.is_empty());
+        if let Ok(receipt) = output { assert_eq!(receipt["project_id"],"p-1"); assert_eq!(receipt["portfolios"][0]["cities"],serde_json::json!(["a","b"])); }
+    }
+}

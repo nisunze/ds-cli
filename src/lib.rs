@@ -12,7 +12,17 @@ use serde_json::Value;
 use zeroize::Zeroize;
 
 pub mod assets;
+pub mod solar_portfolio_read;
 pub mod solar_snapshot;
+#[cfg(feature = "wasm")]
+#[wasm_bindgen::prelude::wasm_bindgen(js_name = readBoundSolarPortfolioResult)]
+pub fn read_bound_solar_portfolio_result_wasm(
+    result: &[u8],
+    context: &[u8],
+) -> Result<String, wasm_bindgen::JsValue> {
+    solar_portfolio_read::evaluate(result, context)
+        .map_err(|error| wasm_bindgen::JsValue::from_str(&error))
+}
 #[cfg(feature = "wasm")]
 #[wasm_bindgen::prelude::wasm_bindgen(js_name = solarSnapshot)]
 pub fn solar_snapshot_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
@@ -281,9 +291,9 @@ pub use solar_network_seed::{
 
 pub use solar_portfolio::{
     plan_solar_portfolio_mutation, solar_portfolio_membership_identity,
-    validate_solar_portfolio_catalog, SolarPortfolio, SolarPortfolioError, MAX_SOLAR_PORTFOLIOS,
-    MAX_SOLAR_PORTFOLIO_CATALOG_BYTES, MAX_SOLAR_PORTFOLIO_CITIES,
-    MAX_SOLAR_PORTFOLIO_MUTATION_BYTES, SOLAR_PORTFOLIO_CATALOG_SCHEMA,
+    validate_solar_portfolio_catalog, validate_solar_portfolio_mutation_receipt, SolarPortfolio,
+    SolarPortfolioError, MAX_SOLAR_PORTFOLIOS, MAX_SOLAR_PORTFOLIO_CATALOG_BYTES,
+    MAX_SOLAR_PORTFOLIO_CITIES, MAX_SOLAR_PORTFOLIO_MUTATION_BYTES, SOLAR_PORTFOLIO_CATALOG_SCHEMA,
     SOLAR_PORTFOLIO_MEMBERSHIP_SCHEMA, SOLAR_PORTFOLIO_MUTATION_PLAN_SCHEMA,
 };
 
@@ -762,7 +772,7 @@ mod wasm {
         plan_solar_portfolio_mutation, project_project_control_local_reports,
         solar_portfolio_membership_identity, validate_firebase_id_token,
         validate_firebase_login_response, validate_solar_portfolio_catalog,
-        validate_solar_portfolio_result,
+        validate_solar_portfolio_mutation_receipt, validate_solar_portfolio_result,
     };
 
     #[wasm_bindgen(js_name = solarReportImages)]
@@ -877,6 +887,12 @@ mod wasm {
     #[wasm_bindgen(js_name = solarPortfolioMembershipIdentity)]
     pub fn solar_portfolio_membership(input_json: &[u8]) -> Result<String, JsValue> {
         solar_portfolio_membership_identity(input_json)
+            .map_err(|error| JsValue::from_str(&error.to_string()))
+    }
+
+    #[wasm_bindgen(js_name = validateSolarPortfolioMutationReceipt)]
+    pub fn solar_portfolio_mutation_receipt(input_json: &[u8]) -> Result<String, JsValue> {
+        validate_solar_portfolio_mutation_receipt(input_json)
             .map_err(|error| JsValue::from_str(&error.to_string()))
     }
 

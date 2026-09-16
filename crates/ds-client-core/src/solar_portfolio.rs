@@ -134,26 +134,19 @@ pub(crate) fn run<T: AuthorizedTransport>(
             payload["root"] = json!(root);
             payload["action"] = plan["action"].clone();
             let row = call(profile, transport, authority, false, payload)?;
-            let id = if plan["operation"] == "delete" {
-                if row["deleted"] != true
-                    || row["portfolio_id"] != intent["portfolio_id"]
-                    || row["membership_revision"] != intent["expected_membership_revision"]
-                {
-                    return Err(invalid());
-                }
-                row["portfolio_id"].clone()
-            } else {
-                let row = catalog(json!([row.clone()]))?["portfolios"][0].clone();
-                if (plan["operation"] == "update" && row["id"] != intent["portfolio_id"])
-                    || (intent.get("cities").is_some() && row["cities"] != intent["cities"])
-                {
-                    return Err(invalid());
-                }
-                row["id"].clone()
+            let verify = |catalog: Option<Value>| -> Result<Value, ClientError> {
+                let mut request = json!({"intent":intent,"response":row});
+                if let Some(catalog) = catalog { request["catalog"] = catalog; }
+                serde_json::from_str(&ds_command_kernel::validate_solar_portfolio_mutation_receipt(
+                    &serde_json::to_vec(&request).map_err(|_| invalid())?,
+                ).map_err(|_| invalid())?).map_err(|_| invalid())
             };
-            Ok(
-                json!({"project_id":project,"operation":plan["operation"],"portfolio_id":id,"portfolio":row}),
-            )
+            verify(None)?;
+            let rows = call(profile, transport, authority, false,
+                json!({"action":"list_portfolios","root":root}))?;
+            let mut receipt = verify(Some(rows))?;
+            receipt["project_id"] = json!(project);
+            Ok(receipt)
         }
         Command::Publish { result: bytes } => {
             let result = result(bytes, project)?;

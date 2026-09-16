@@ -297,6 +297,123 @@ pub fn plan_solar_portfolio_mutation(bytes: &[u8]) -> Result<String, SolarPortfo
     .map_err(|_| invalid("the Solar portfolio mutation plan could not be encoded"))
 }
 
+/// Verify both the write acknowledgement and optional authoritative readback.
+/// Browser, CLI and desktop use these same identity and membership fences.
+pub fn validate_solar_portfolio_mutation_receipt(
+    bytes: &[u8],
+) -> Result<String, SolarPortfolioError> {
+    #[derive(Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct Request {
+        intent: Value,
+        response: Value,
+        #[serde(default)]
+        catalog: Option<Value>,
+    }
+    if bytes.is_empty() || bytes.len() > MAX_SOLAR_PORTFOLIO_CATALOG_BYTES * 2 {
+        return Err(invalid("portfolio mutation receipt exceeds 1 MiB"));
+    }
+    let request: Request =
+        serde_json::from_slice(bytes).map_err(|_| invalid("invalid portfolio mutation receipt"))?;
+    let plan: Value = serde_json::from_str(&plan_solar_portfolio_mutation(
+        &serde_json::to_vec(&request.intent).map_err(|_| invalid("invalid mutation intent"))?,
+    )?)
+    .map_err(|_| invalid("invalid mutation plan"))?;
+    let operation = plan["operation"]
+        .as_str()
+        .ok_or_else(|| invalid("invalid mutation operation"))?;
+    let (id, portfolio) = if operation == "delete" {
+        if request.response["deleted"] != true
+            || request.response["portfolio_id"] != request.intent["portfolio_id"]
+            || request.response["membership_revision"]
+                != request.intent["expected_membership_revision"]
+        {
+            return Err(invalid(
+                "portfolio deletion acknowledgement does not match its revision fence",
+            ));
+        }
+        (request.intent["portfolio_id"].clone(), None)
+    } else {
+        let catalog: Value = serde_json::from_str(&validate_solar_portfolio_catalog(
+            &serde_json::to_vec(&json!([request.response]))
+                .map_err(|_| invalid("invalid write acknowledgement"))?,
+        )?)
+        .map_err(|_| invalid("invalid write acknowledgement"))?;
+        let row = catalog["portfolios"][0].clone();
+        if operation == "update" && row["id"] != request.intent["portfolio_id"] {
+            return Err(invalid(
+                "portfolio write acknowledgement names another portfolio",
+            ));
+        }
+        for field in ["name", "display_name", "description", "cities"] {
+            if let Some(expected) = request.intent.get(field) {
+                // Empty descriptions are omitted in the normalized projection.
+                let actual = row.get(field).cloned().unwrap_or_else(|| json!(""));
+                if actual != *expected {
+                    return Err(invalid(format!(
+                        "portfolio write acknowledgement changed {field}"
+                    )));
+                }
+            }
+        }
+        let membership: Value = serde_json::from_str(&solar_portfolio_membership_identity(
+            &serde_json::to_vec(&json!({"portfolio_id":row["id"],"cities":row["cities"]}))
+                .map_err(|_| invalid("invalid portfolio membership"))?,
+        )?)
+        .map_err(|_| invalid("invalid portfolio membership"))?;
+        if row["membership_revision"] != membership["revision"]
+            || (operation == "update"
+                && request.intent.get("cities").is_none()
+                && row["membership_revision"] != request.intent["expected_membership_revision"])
+        {
+            return Err(invalid(
+                "portfolio write acknowledgement changed its ordered membership revision",
+            ));
+        }
+        (row["id"].clone(), Some(row))
+    };
+    let mut output = json!({"operation":operation,"portfolio_id":id,"portfolio":portfolio});
+    if let Some(rows) = request.catalog {
+        let catalog: Value = serde_json::from_str(&validate_solar_portfolio_catalog(
+            &serde_json::to_vec(&rows).map_err(|_| invalid("invalid portfolio readback"))?,
+        )?)
+        .map_err(|_| invalid("invalid portfolio readback"))?;
+        let actual = catalog["portfolios"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|row| row["id"] == id);
+        if operation == "delete" {
+            if actual.is_some() {
+                return Err(invalid(
+                    "authoritative portfolio catalog did not confirm deletion",
+                ));
+            }
+        } else {
+            let actual = actual.ok_or_else(|| {
+                invalid("authoritative portfolio catalog omitted the written portfolio")
+            })?;
+            let expected = portfolio.as_ref().unwrap();
+            for field in [
+                "name",
+                "display_name",
+                "description",
+                "cities",
+                "membership_revision",
+            ] {
+                if actual.get(field) != expected.get(field) {
+                    return Err(invalid(format!(
+                        "authoritative portfolio catalog changed {field} after the write"
+                    )));
+                }
+            }
+        }
+        output["portfolios"] = catalog["portfolios"].clone();
+    }
+    serde_json::to_string(&output)
+        .map_err(|_| invalid("portfolio mutation receipt could not be encoded"))
+}
+
 fn required_identifier(value: Option<&str>) -> Result<&str, SolarPortfolioError> {
     let value = value.ok_or_else(|| invalid("portfolio mutation requires portfolio_id"))?;
     validate_identifier(value, "portfolio id")?;
@@ -387,6 +504,96 @@ mod tests {
 
     fn revision(character: char) -> String {
         format!("sha256:{}", character.to_string().repeat(64))
+    }
+
+    fn mutation_row() -> Value {
+        let identity: Value = serde_json::from_str(
+            &solar_portfolio_membership_identity(
+                &serde_json::to_vec(
+                    &json!({"portfolio_id":"portfolio_1","cities":["city_a","city_c"]}),
+                )
+                .unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        json!({"id":"portfolio_1","name":"Portfolio","display_name":"Portfolio",
+            "cities":["city_a","city_c"],"membership_revision":identity["revision"]})
+    }
+
+    #[test]
+    fn mutation_readback_pins_exact_membership_and_never_accepts_presence_alone() {
+        let row = mutation_row();
+        let mut request = json!({"intent":{"operation":"update","portfolio_id":"portfolio_1",
+            "expected_membership_revision":revision('a'),"cities":["city_a","city_c"]},
+            "response":row,"catalog":[row]});
+        let receipt: Value = serde_json::from_str(
+            &validate_solar_portfolio_mutation_receipt(&serde_json::to_vec(&request).unwrap())
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(receipt["portfolio_id"], "portfolio_1");
+        request["catalog"][0]["cities"] = json!(["city_c", "city_a"]);
+        assert!(
+            validate_solar_portfolio_mutation_receipt(&serde_json::to_vec(&request).unwrap())
+                .is_err()
+        );
+        request["catalog"] = json!([]);
+        assert!(
+            validate_solar_portfolio_mutation_receipt(&serde_json::to_vec(&request).unwrap())
+                .is_err()
+        );
+        request.as_object_mut().unwrap().remove("catalog");
+        request["response"]["membership_revision"] = json!(revision('b'));
+        assert!(
+            validate_solar_portfolio_mutation_receipt(&serde_json::to_vec(&request).unwrap())
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn deletion_requires_matching_acknowledgement_and_authoritative_absence() {
+        let mut request = json!({"intent":{"operation":"delete","portfolio_id":"portfolio_1",
+            "expected_membership_revision":revision('a')},"response":{"deleted":true,
+            "portfolio_id":"portfolio_1","membership_revision":revision('a')},"catalog":[]});
+        assert!(
+            validate_solar_portfolio_mutation_receipt(&serde_json::to_vec(&request).unwrap())
+                .is_ok()
+        );
+        request["catalog"] = json!([mutation_row()]);
+        assert!(
+            validate_solar_portfolio_mutation_receipt(&serde_json::to_vec(&request).unwrap())
+                .is_err()
+        );
+        request["catalog"] = json!([]);
+        request["response"]["portfolio_id"] = json!("portfolio_2");
+        assert!(
+            validate_solar_portfolio_mutation_receipt(&serde_json::to_vec(&request).unwrap())
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn creation_and_metadata_updates_refuse_changed_acknowledged_fields() {
+        let row = mutation_row();
+        let mut request = json!({"intent":{"operation":"create","name":"Portfolio",
+            "cities":["city_a","city_c"]},"response":row});
+        assert!(
+            validate_solar_portfolio_mutation_receipt(&serde_json::to_vec(&request).unwrap())
+                .is_ok()
+        );
+        request["response"]["name"] = json!("Another portfolio");
+        assert!(
+            validate_solar_portfolio_mutation_receipt(&serde_json::to_vec(&request).unwrap())
+                .is_err()
+        );
+        request["response"] = row.clone();
+        request["intent"] = json!({"operation":"update","portfolio_id":"portfolio_1",
+            "expected_membership_revision":row["membership_revision"],"description":""});
+        assert!(
+            validate_solar_portfolio_mutation_receipt(&serde_json::to_vec(&request).unwrap())
+                .is_ok()
+        );
     }
 
     #[test]

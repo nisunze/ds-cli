@@ -121,6 +121,25 @@ pub struct Source {
     pub city_ids: Vec<String>,
     pub status: String,
 }
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NativeGraphSelection {
+    pub representative_strategy: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub representative_city_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub round_robin_start_index: Option<u64>,
+}
+
+fn native_graph_selection(strategy: &str) -> NativeGraphSelection {
+    let city = strategy.strip_prefix("city:");
+    NativeGraphSelection {
+        representative_strategy: if city.is_some() { "explicit" } else { strategy }.into(),
+        representative_city_id: city.map(str::to_owned),
+        round_robin_start_index: (strategy == "round_robin").then_some(0),
+    }
+}
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum Phase {
@@ -162,6 +181,12 @@ pub struct State {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Event {
+    SourceCompleted {
+        index: usize,
+        run_id: String,
+        status: String,
+        detail: Option<String>,
+    },
     SourceSucceeded {
         index: usize,
         run_id: String,
@@ -188,11 +213,27 @@ pub enum Event {
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Effect {
-    Source { index: usize, run_id: String },
-    Portfolio { index: usize, run_id: String },
-    Cloud { index: usize, run_id: String },
-    Cancel { index: usize, run_id: String },
-    Wake { after_ms: u64 },
+    Source {
+        index: usize,
+        run_id: String,
+    },
+    Portfolio {
+        index: usize,
+        run_id: String,
+        selection: NativeGraphSelection,
+    },
+    Cloud {
+        index: usize,
+        run_id: String,
+        graph_selection: String,
+    },
+    Cancel {
+        index: usize,
+        run_id: String,
+    },
+    Wake {
+        after_ms: u64,
+    },
 }
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Output {
@@ -286,7 +327,7 @@ fn active_row<'a>(state: &'a mut State, index: usize, run_id: &str) -> Result<&'
 fn finish(row: &mut Row, phase: Phase, now: u64, detail: Option<String>) {
     row.phase = phase;
     row.completed_at = Some(now);
-    row.detail = detail;
+    row.detail = detail.map(|value| value.chars().take(2000).collect());
 }
 pub fn transition(mut state: State, event: Event, now: u64) -> Result<Output, String> {
     state.request.validate()?;
@@ -296,6 +337,26 @@ pub fn transition(mut state: State, event: Event, now: u64) -> Result<Output, St
     let retry_cancel = matches!(event, Event::Cancel | Event::Tick);
     let cancelled = state.cancelled;
     match event {
+        Event::SourceCompleted {
+            index,
+            run_id,
+            status,
+            detail,
+        } => {
+            return transition(
+                state,
+                if status == "succeeded" {
+                    Event::SourceSucceeded { index, run_id }
+                } else {
+                    Event::Failed {
+                        index,
+                        run_id,
+                        detail: detail.unwrap_or_else(|| "Source city batch failed.".into()),
+                    }
+                },
+                now,
+            );
+        }
         Event::SourceSucceeded { index, run_id } => {
             let row = active_row(&mut state, index, &run_id)?;
             if row.phase == Phase::Cities {
@@ -380,11 +441,18 @@ pub fn transition(mut state: State, event: Event, now: u64) -> Result<Output, St
                     Effect::Cloud {
                         index,
                         run_id: row.run_id.clone(),
+                        graph_selection: state
+                            .request
+                            .graph_strategy
+                            .strip_prefix("city:")
+                            .unwrap_or(&state.request.graph_strategy)
+                            .into(),
                     }
                 } else {
                     Effect::Portfolio {
                         index,
                         run_id: row.run_id.clone(),
+                        selection: native_graph_selection(&state.request.graph_strategy),
                     }
                 });
             } else {
@@ -472,6 +540,44 @@ mod tests {
         assert_eq!(next.effects.len(), 1);
         assert_eq!(next.state.rows[0].phase, Phase::Failed);
         assert_eq!(next.state.rows[2].phase, Phase::Portfolio);
+    }
+
+    #[test]
+    fn effects_carry_owner_resolved_graph_selection_and_failed_sources_never_aggregate() {
+        for (strategy, expected, city, offset) in [
+            ("first", "first", None, None),
+            ("round_robin", "round_robin", None, Some(0)),
+            ("city:b", "explicit", Some("b"), None),
+        ] {
+            let mut request = request();
+            request.graph_strategy = strategy.into();
+            let output = start(request, &sources(), 1).unwrap();
+            match &output.effects[0] {
+                Effect::Portfolio { selection, .. } => {
+                    assert_eq!(selection.representative_strategy, expected);
+                    assert_eq!(selection.representative_city_id.as_deref(), city);
+                    assert_eq!(selection.round_robin_start_index, offset);
+                }
+                _ => panic!("expected portfolio effect"),
+            }
+        }
+        let mut request = request();
+        request.portfolios.truncate(1);
+        let output = start(request, &[], 1).unwrap();
+        let output = transition(
+            output.state,
+            Event::SourceCompleted {
+                index: 0,
+                run_id: "batch-test-0-source".into(),
+                status: "failed".into(),
+                detail: Some("missing city".into()),
+            },
+            2,
+        )
+        .unwrap();
+        assert!(output.effects.is_empty());
+        assert_eq!(output.state.rows[0].phase, Phase::Failed);
+        assert_eq!(output.state.rows[0].detail.as_deref(), Some("missing city"));
     }
     #[test]
     fn source_order_force_and_governed_revision_are_exact() {
