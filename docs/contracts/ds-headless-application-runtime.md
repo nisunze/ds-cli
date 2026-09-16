@@ -43,6 +43,17 @@ support. This direction does not migrate Flutter into this product.
 
 ## 2. One application authority
 
+**Solar rule of the land (owner, 2026-09-16):** every Solar capability lives
+in the native Server core. Input authoring and preparation, city and portfolio
+calculation, result selection, dashboard and chart composition, document
+authoring, delivery and publication must be usable through CLI/MCP with no
+Svelte, browser WASM, Tauri or paired desktop. Svelte may render server
+projections and forward typed intentions. Tauri may provide window and native
+file-dialog integration; it must not own Solar behavior or execution. A new
+Solar capability is incomplete until its headless server outcome is proven.
+This supersedes the earlier Solar adaptation restriction on editing TypeScript.
+Preserve retained inputs and pending work while removing competing owners.
+
 - Every application command and decision passes through the Rust
   application/kernel boundary, regardless of which client initiates it.
 - Rust owns application validation, backend route declarations and resolution,
