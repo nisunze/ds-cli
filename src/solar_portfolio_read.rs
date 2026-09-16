@@ -88,7 +88,7 @@ pub fn evaluate(result: &[u8], context: &[u8]) -> Result<String, String> {
             return Err("The native Solar portfolio result does not match its sealed run receipt or representative-graph strategy.".into());
         }
     } else {
-        d["legacy_projection"] = legacy_projection(&d);
+        d["legacy_projection"] = legacy_projection(&d)?;
     }
     serde_json::to_string(&d).map_err(|_| "Cannot encode portfolio read".into())
 }
@@ -161,7 +161,7 @@ fn legacy_validate(d: &Value) -> Result<(), String> {
     Ok(())
 }
 
-fn legacy_projection(d: &Value) -> Value {
+fn legacy_projection(d: &Value) -> Result<Value, String> {
     let energy = |v: &Value| v["annual_energy_kwh"].as_f64().unwrap();
     let demand: Vec<Value> = d["cities"].as_array().unwrap().iter().map(|c| json!({"city":c["display_name"],"customers":c["total_customers"],"daily_kwh":energy(c)/365.,"annual_mwh":energy(c)/1000.})).collect();
     let systems = d["systems"].as_object().unwrap();
@@ -175,17 +175,25 @@ fn legacy_projection(d: &Value) -> Value {
         .to_string()
     };
     let equipment: Vec<Value> = systems.iter().map(|(name,s)| json!({"city":format!("Portfolio ({})",s["cities"]),"system_type":label(name),"pv_mw":s["pv_capacity_mw"],"storage_mwh":s["battery_capacity_mwh"],"inverters":s["inverter_count"],"generator_config":if s["generator_count"].as_f64().unwrap() > 0. { format!("{} / {:.3} MW",s["generator_count"],s["diesel_capacity_mw"].as_f64().unwrap()) } else { "—".into() }})).collect();
-    let sum = |field: &str| {
-        systems
-            .values()
-            .map(|s| s[field].as_f64().unwrap())
-            .sum::<f64>()
+    let sum = |field: &str| -> Result<f64, String> {
+        systems.values().try_fold(0., |total, s| {
+            let next = total + s[field].as_f64().unwrap();
+            next.is_finite()
+                .then_some(next)
+                .ok_or_else(|| "Legacy portfolio aggregate overflow".into())
+        })
     };
-    json!({
+    let inverters = systems
+        .values()
+        .try_fold(0_u64, |total, s| {
+            total.checked_add(s["inverter_count"].as_u64().unwrap())
+        })
+        .ok_or("Legacy portfolio inverter aggregate overflow")?;
+    Ok(json!({
         "demand":{"table":demand,"aggregations":{"total_customers":d["total_customers"],"total_annual_mwh":energy(d)/1000.,"total_daily_kwh":energy(d)/365.}},
         "scenarios":{"table":systems.iter().map(|(name,s)| json!({"city":"Portfolio","selected_system":label(name),"cities":s["cities"]})).collect::<Vec<_>>()},
-        "performance":{"equipment_table":equipment,"energy_table":demand.iter().map(|c|json!({"city":c["city"],"daily_load_mwh":c["daily_kwh"].as_f64().unwrap()/1000.,"energy_year1_mwh":c["annual_mwh"]})).collect::<Vec<_>>(),"aggregations":{"total_pv_mw":sum("pv_capacity_mw"),"total_storage_mwh":sum("battery_capacity_mwh"),"total_inverters":sum("inverter_count"),"total_energy_year1_mwh":energy(d)/1000.}}
-    })
+        "performance":{"equipment_table":equipment,"energy_table":demand.iter().map(|c|json!({"city":c["city"],"daily_load_mwh":c["daily_kwh"].as_f64().unwrap()/1000.,"energy_year1_mwh":c["annual_mwh"]})).collect::<Vec<_>>(),"aggregations":{"total_pv_mw":sum("pv_capacity_mw")?,"total_storage_mwh":sum("battery_capacity_mwh")?,"total_inverters":inverters,"total_energy_year1_mwh":energy(d)/1000.}}
+    }))
 }
 
 #[cfg(test)]
@@ -234,6 +242,20 @@ mod tests {
         .is_err());
         let (result, _) = fixture();
         context["artifact"]["projectId"] = json!("other");
+        assert!(evaluate(
+            &serde_json::to_vec(&result).unwrap(),
+            &serde_json::to_vec(&context).unwrap()
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn legacy_aggregate_overflow_is_refused_before_projection() {
+        let (mut result, context) = fixture();
+        let mut system = result["systems"]["hybrid"].clone();
+        system["pv_capacity_mw"] = json!(1e308);
+        system["inverter_count"] = json!(u64::MAX);
+        result["systems"] = json!({"hybrid":system,"solar_battery":system});
         assert!(evaluate(
             &serde_json::to_vec(&result).unwrap(),
             &serde_json::to_vec(&context).unwrap()
