@@ -24,6 +24,7 @@ pub mod network_seed;
 pub mod paired;
 pub mod paired_run;
 pub mod portfolio_batch;
+pub mod portfolio_headless;
 pub mod portfolio_management;
 pub mod prepare;
 pub mod project;
@@ -97,6 +98,8 @@ pub static DOMAIN: Domain = Domain {
         &workflow::RESULTS_READ_COMMAND,
         &workflow::SYNC_STATUS_COMMAND,
         &workflow::PORTFOLIO_LIST_COMMAND,
+        &portfolio_headless::CALCULATE,
+        &portfolio_headless::PUBLISH,
         &portfolio_batch::START_COMMAND,
         &portfolio_batch::STATUS_COMMAND,
         &portfolio_batch::CANCEL_COMMAND,

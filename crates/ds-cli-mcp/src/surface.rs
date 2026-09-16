@@ -602,6 +602,8 @@ const SOLAR_DELIVERY_COMMANDS: &[&str] = &[
     "solar.project.sync",
     "solar.project.sync.rebase",
     "solar.portfolio.list",
+    "solar.portfolio.calculate",
+    "solar.portfolio.publish",
     "solar.portfolio.create",
     "solar.portfolio.update",
     "solar.portfolio.delete",

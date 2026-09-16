@@ -645,6 +645,16 @@ static SOLAR_ENTRIES: &[Entry] = &[
         render: ds_cli_solar::workflow::render,
     },
     Entry {
+        command: &ds_cli_solar::portfolio_headless::CALCULATE,
+        handler: ds_cli_solar::portfolio_headless::calculate,
+        render: ds_cli_solar::workflow::render,
+    },
+    Entry {
+        command: &ds_cli_solar::portfolio_headless::PUBLISH,
+        handler: ds_cli_solar::portfolio_headless::publish,
+        render: ds_cli_solar::workflow::render,
+    },
+    Entry {
         command: &ds_cli_solar::portfolio_management::CREATE_COMMAND,
         handler: ds_cli_solar::portfolio_management::create,
         render: ds_cli_solar::workflow::render,

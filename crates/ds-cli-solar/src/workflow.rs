@@ -16,7 +16,6 @@ const READ_TIMEOUT: Duration = Duration::from_secs(30);
 const IMPORT_TIMEOUT: Duration = Duration::from_secs(10 * 60);
 const RESULTS_READ_OPERATION: &str = "solar.results.read";
 const SYNC_STATUS_OPERATION: &str = "solar.sync.status";
-const PORTFOLIO_LIST_OPERATION: &str = "solar.portfolio.list";
 const PORTFOLIO_ANALYSIS_OPERATION: &str = "solar.portfolio.analysis";
 const MAX_PORTFOLIO_ID_CHARS: usize = 128;
 const FINAL_IMPORT_OPERATION: &str = "solar.final.import";
@@ -157,21 +156,24 @@ pub static PORTFOLIO_LIST_COMMAND: Command = Command {
     path: &["solar", "portfolio", "list"],
     contract: 1,
     summary: "List Solar portfolios and their city membership.",
-    purpose: "Reads the active project's governed portfolio catalog through the desktop, refreshing it once when online and retaining the same offline cache used by the Pipeline page.",
+    purpose: "Reads the explicit project's governed portfolio catalog through native authentication without a desktop or a selected-project change.",
     chapter: Chapter::Solar,
     effect: Effect::ReadOnly,
-    authority: Authority::DesktopUser,
+    authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[DESCRIPTOR_ARG],
+    args: &[
+        crate::portfolio_headless::PROJECT,
+        crate::portfolio_headless::LANE,
+    ],
     output: "Portfolio ids, names, display names, membership revisions, city counts and exact ordered member city ids.",
     examples: &[Example {
         command: "ds solar portfolio list --output json",
         note: "Use the selected id and membership revision together with `solar run start --portfolio`.",
         runnable: false,
     }],
-    refusals: paired::REFUSALS,
+    refusals: ds_cli_auth::PROJECT_STATUS_COMMAND.refusals,
     reference: Some("docs/reference/solar.md"),
-    availability: paired::available,
+    availability: ds_cli_auth::native_availability,
 };
 
 static PORTFOLIO_ANALYSIS_REFUSALS: &[Refusal] = &[
@@ -381,7 +383,7 @@ pub fn sync_status(inputs: &Inputs, _context: &Context) -> Result<Value, Failure
 }
 
 pub fn portfolio_list(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
-    paired::invoke(inputs, PORTFOLIO_LIST_OPERATION, json!({}), READ_TIMEOUT)
+    crate::portfolio_headless::execute(inputs, ds_cli_auth::SolarPortfolioCommand::List)
 }
 
 /// Ask the application for one portfolio's saved-analysis projection.

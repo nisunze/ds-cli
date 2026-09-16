@@ -1,7 +1,5 @@
 //! Revision-pinned Solar portfolio catalog mutations shared with browser WASM.
 
-use std::time::Duration;
-
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
     Arg, Authority, Chapter, Command, Effect, Example, Execution, Refusal,
@@ -9,18 +7,11 @@ use ds_cli_contract::spec::{
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
 
-use crate::paired;
+use crate::portfolio_headless::{LANE, PROJECT};
 
-const TIMEOUT: Duration = Duration::from_secs(30);
 const CREATE_OPERATION: &str = "solar.portfolio.create";
 const UPDATE_OPERATION: &str = "solar.portfolio.update";
 const DELETE_OPERATION: &str = "solar.portfolio.delete";
-
-const DESCRIPTOR_ARG: Arg = Arg::value(
-    "desktop-descriptor",
-    "<path>",
-    "Use this bridge descriptor instead of discovering one.",
-);
 
 static REFUSALS: &[Refusal] = &[
     Refusal {
@@ -83,7 +74,7 @@ pub static CREATE_COMMAND: Command = Command {
     purpose: "Creates one named portfolio from an explicit ordered membership through the same Rust mutation contract and project authority used by the Design page. It does not calculate the portfolio.",
     chapter: Chapter::Solar,
     effect: Effect::GlobalWrite,
-    authority: Authority::DesktopUser,
+    authority: Authority::HeadlessProject,
     execution: Execution::Sync,
     args: &[
         Arg::value("name", "<name>", "Human-readable immutable portfolio name.").required(),
@@ -93,7 +84,8 @@ pub static CREATE_COMMAND: Command = Command {
             "Optional description, up to 2,000 characters.",
         ),
         Arg::repeated("city", "<id>", "Member city in order. Repeat 2..200 times.").required(),
-        DESCRIPTOR_ARG,
+        PROJECT,
+        LANE,
     ],
     output: "A confirmed mutation receipt naming the server-created portfolio id.",
     examples: &[Example {
@@ -103,7 +95,7 @@ pub static CREATE_COMMAND: Command = Command {
     }],
     refusals: REFUSALS,
     reference: Some("docs/reference/solar.md"),
-    availability: paired::available,
+    availability: ds_cli_auth::native_availability,
 };
 
 pub static UPDATE_COMMAND: Command = Command {
@@ -114,7 +106,7 @@ pub static UPDATE_COMMAND: Command = Command {
     purpose: "Changes a portfolio display name, description, or complete ordered membership only when the exact membership revision last read by the caller is still current. Repeated --city values replace membership atomically.",
     chapter: Chapter::Solar,
     effect: Effect::GlobalWrite,
-    authority: Authority::DesktopUser,
+    authority: Authority::HeadlessProject,
     execution: Execution::Sync,
     args: &[
         Arg::value("portfolio", "<id>", "Exact portfolio id from list.").required(),
@@ -135,7 +127,8 @@ pub static UPDATE_COMMAND: Command = Command {
             "<id>",
             "Replacement member city in order. Repeat 2..200 times.",
         ),
-        DESCRIPTOR_ARG,
+        PROJECT,
+        LANE,
     ],
     output: "The confirmed updated portfolio and its new membership revision.",
     examples: &[Example {
@@ -145,7 +138,7 @@ pub static UPDATE_COMMAND: Command = Command {
     }],
     refusals: REFUSALS,
     reference: Some("docs/reference/solar.md"),
-    availability: paired::available,
+    availability: ds_cli_auth::native_availability,
 };
 
 pub static DELETE_COMMAND: Command = Command {
@@ -156,7 +149,7 @@ pub static DELETE_COMMAND: Command = Command {
     purpose: "Deletes exactly one portfolio only when its listed membership revision is still current. Existing immutable calculation artifacts remain separately addressed by their run receipts.",
     chapter: Chapter::Solar,
     effect: Effect::GlobalWrite,
-    authority: Authority::DesktopUser,
+    authority: Authority::HeadlessProject,
     execution: Execution::Sync,
     args: &[
         Arg::value("portfolio", "<id>", "Exact portfolio id from list.").required(),
@@ -166,7 +159,8 @@ pub static DELETE_COMMAND: Command = Command {
             "Exact current membership revision from list.",
         )
         .required(),
-        DESCRIPTOR_ARG,
+        PROJECT,
+        LANE,
     ],
     output: "A confirmed deletion receipt naming the removed portfolio id.",
     examples: &[Example {
@@ -176,7 +170,7 @@ pub static DELETE_COMMAND: Command = Command {
     }],
     refusals: REFUSALS,
     reference: Some("docs/reference/solar.md"),
-    availability: paired::available,
+    availability: ds_cli_auth::native_availability,
 };
 
 pub fn create(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
@@ -244,7 +238,12 @@ fn invoke(
             "correct the portfolio fields and use the exact membership revision returned by list",
         )
     })?;
-    let result = paired::invoke(inputs, operation, intent_value, TIMEOUT)?;
+    let result = crate::portfolio_headless::execute(
+        inputs,
+        ds_cli_auth::SolarPortfolioCommand::Mutate {
+            intent: intent_value,
+        },
+    )?;
     if result.get("operation").and_then(Value::as_str)
         != Some(operation.rsplit('.').next().expect("operation has leaf"))
         || expected_id
