@@ -360,6 +360,92 @@ pub static STYLE_REF_COMMAND: Command = Command {
     reference: Some("docs/reference/report.md"),
     availability: local,
 };
+const PENS_ACTION: Arg = Arg::value(
+    "action",
+    "<action>",
+    "list: every pen of the layout with what it prints with; edit: set (or, with --value null, clear) one property of a layer's pen; reset: remove a layer's whole override.",
+)
+.choices(&["list", "edit", "reset"])
+.default("list");
+const PENS_LAYOUT: Arg = Arg::value("layout", "<json-file>", "Held print layout.").required();
+const PENS_DOCUMENTS: Arg = Arg::value(
+    "documents",
+    "<json-file>",
+    "Resolved governed print documents as facts: [{style_ref, document}] (list); base values read from them.",
+);
+const PENS_LAYER: Arg = Arg::value(
+    "layer",
+    "<layer-id>",
+    "Logical print layer id (edit, reset).",
+);
+const PENS_PROPERTY: Arg = Arg::value(
+    "property",
+    "<property>",
+    "Pen property (edit): color, size, opacity, visible, label_visible, label_size_pt, label_color, label_halo_mm, label_halo_color.",
+)
+.choices(&[
+    "color",
+    "size",
+    "opacity",
+    "visible",
+    "label_visible",
+    "label_size_pt",
+    "label_color",
+    "label_halo_mm",
+    "label_halo_color",
+]);
+const PENS_VALUE: Arg = Arg::value(
+    "value",
+    "<json>",
+    "The property's value as JSON (edit): \"#RRGGBB\", a number, true/false, or null to clear it.",
+);
+pub static PENS: Command = Command {
+    id: "report.layout.pens",
+    path: &["report", "layout", "pens"],
+    contract: 1,
+    summary: "A layout's template-local pens: what each print layer prints with; edit one.",
+    purpose: "Every print layer a layout binds to a governed `_print` style, with the base colour, size, opacity, visibility and categories read from the document the host holds and the effective values after the template's own override (printing::pens). Editing sets one bounded property of that override — the same rows and edits the Printing setup page's pen panel shows — and a preview or delivery prints exactly those pens.",
+    chapter: Chapter::Reports,
+    effect: Effect::ReadOnly,
+    authority: Authority::None,
+    execution: Execution::Sync,
+    args: &[
+        PENS_ACTION,
+        PENS_LAYOUT,
+        PENS_DOCUMENTS,
+        PENS_LAYER,
+        PENS_PROPERTY,
+        PENS_VALUE,
+    ],
+    output: "list: {pens: [{layer_id, label, style_ref, group, geometry, held, size_unit, base, effective, override, categorical, category_field, categories, labelled, label_visible}]}; edit, reset: {layout}.",
+    examples: &[
+        Example {
+            command: "ds report layout pens --layout layout.json --documents styles.json --output json",
+            note: "Design pens first, then context; `held: false` rows have no document to read.",
+            runnable: false,
+        },
+        Example {
+            command: "ds report layout pens --action edit --layout layout.json --layer lv_lines --property size --value 0.8 --output json",
+            note: "The layout with lv_lines printed at 0.8 (the document's unit); preview it with report project export --preview-layout.",
+            runnable: false,
+        },
+    ],
+    refusals: PENS_REFUSALS,
+    reference: Some("docs/reference/report.md"),
+    availability: local,
+};
+const PENS_REFUSALS: &[Refusal] = &[
+    Refusal {
+        code: "printing_invalid",
+        when: "The layout, documents, property or value is malformed or out of bounds",
+        remedy: "Use report.layout.schema and correct the reported layout constraint",
+    },
+    Refusal {
+        code: "printing_pen_unbound",
+        when: "The layer is not bound to a governed print style",
+        remedy: "Bind one with report.layout.style-ref first",
+    },
+];
 const STYLE_REFUSALS: &[Refusal] = &[
     Refusal {
         code: "printing_invalid",
@@ -671,6 +757,48 @@ pub fn style_ref(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
         if e.starts_with("printing_style_ref_ineligible") {
             Failure::invalid("printing_style_ref_ineligible", e)
                 .remedy("Create the governed clone with style.print.create, or pick one from --action choices")
+        } else {
+            invalid(e)
+        }
+    })?;
+    serde_json::from_str(&result).map_err(invalid)
+}
+pub fn pens(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
+    let layout = json_file(i, "layout")?;
+    let request = match i.require("action")? {
+        "list" => {
+            let documents = match i.value("documents") {
+                Some(_) => json_file(i, "documents")?,
+                None => json!([]),
+            };
+            json!({"op": "print_pens", "layout": layout, "documents": documents})
+        }
+        "edit" => {
+            let value: Value = match i.value("value") {
+                None => Value::Null,
+                Some(text) => serde_json::from_str(text)
+                    .map_err(|e| invalid(format!("--value is JSON: {e}")))?,
+            };
+            json!({
+                "op": "pen_edit",
+                "layout": layout,
+                "layer_id": i.require("layer")?,
+                "property": i.require("property")?,
+                "value": value,
+            })
+        }
+        _ => json!({
+            "op": "set_style_override",
+            "layout": layout,
+            "layer_id": i.require("layer")?,
+            "change": Value::Null,
+        }),
+    };
+    let input = serde_json::to_vec(&request).map_err(invalid)?;
+    let result = ds_command_kernel::printing::evaluate(&input).map_err(|e| {
+        if e.starts_with("printing_pen_unbound") {
+            Failure::invalid("printing_pen_unbound", e)
+                .remedy("Bind one with report.layout.style-ref first")
         } else {
             invalid(e)
         }

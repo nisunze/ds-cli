@@ -70,6 +70,7 @@ fn the_descriptor_is_a_headless_project_fenced_local_file_write() {
             "concurrency",
             "admin-bounds",
             "print-layout",
+            "preview-layout",
             "context-vectors",
             "seed",
             "publish",

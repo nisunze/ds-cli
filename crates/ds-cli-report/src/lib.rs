@@ -71,6 +71,7 @@ pub static DOMAIN: Domain = Domain {
         &layout::SESSION,
         &layout::ADD,
         &layout::STYLE_REF_COMMAND,
+        &layout::PENS,
         &layout::RENDER,
         &layout::LIST,
         &layout::GET,

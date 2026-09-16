@@ -128,6 +128,20 @@ measured furniture in a rendered preview before queuing the whole project.
   visual QA.
 - A document-only proof · `report.layout.render --request <file>` · proves
   the layout, nothing about seeding, settings or publication.
+- A live look at a draft · `report.project.export --transformer <name>
+  --preview-layout <draft.json> --out-dir <dir>` · one
+  `<transformer>/<transformer>.<id>.svg` page per transformer: the engine's
+  own page every delivered format derives from, text outlined, so any SVG
+  viewer draws it exactly as the PDF or PNG will come out; the draft may
+  carry any id or paper and its pens (`report.layout.pens`) print as they
+  will in the delivery · `.data.preview` and `local_print_recipe.preview` in
+  the run receipt say it was a preview; it changes no recipe, room or output
+  and cannot publish · the desktop Printing setup paints this same page.
+- The template's pens · `report.layout.pens --layout <l.json> --documents
+  <styles.json>` lists what each bound print layer prints with;
+  `--action edit --layer <id> --property size|color|opacity|visible|… --value
+  <json>` changes one, `--action reset --layer <id>` removes the override ·
+  edit, preview, repeat; save the layout once the page reads right.
 
 ## 6. District MV and custom-area maps — *desktop-only today*
 

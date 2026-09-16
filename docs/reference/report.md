@@ -356,6 +356,21 @@ print styles a print layer may bind, from the layers snapshot's style facts
 `ds map print schema --section choices` advertises the DPI and paper a local
 map print may ask for, with their defaults.
 
+`ds report layout pens --layout l.json --documents styles.json` lists the
+template's pens (`printing::pens`): one row per print layer bound to a governed
+`_print` style, design layers first in engineering order, with the base
+colour, size, opacity, visibility, category table and label read from the
+resolved document given as a fact (`[{style_ref, document}]`), the
+template's own override, and the effective values a delivery or preview
+prints. `--action edit --layer ID --property size|color|opacity|visible|
+label_visible|label_size_pt|label_color|label_halo_mm|label_halo_color --value
+JSON` sets one bounded property of that layer's `style_overrides` entry
+(`null` clears it; an override left empty disappears); `--action reset --layer
+ID` removes the whole override. A layer without a bound style refuses
+`printing_pen_unbound`. `report.layout.edit` accepts the same `print_pens`,
+`pen_edit` and `set_style_override` ops as raw requests; the Printing setup
+page's pen panel is these rows and edits.
+
 ## The editor's workflow
 
 `ds report layout session` answers what the Printing setup page's flags
@@ -450,6 +465,24 @@ and exact replacement layout digests. Neither project recipes nor engineering
 rooms are changed. These files are proofs, not publishable project artifacts:
 `--print-layout` and `--publish` are incompatible, even with a release engine.
 This is the route for inspecting a new renderer before deployment.
+
+For a live look at one draft, pass `--preview-layout ./draft.json` instead: any
+layout id and any paper, saved or not. The kernel's preview recipe
+(`report_export::preview`) puts the draft beside the project's setups in
+memory and makes it the only output: one `svg__<id>` page per transformer in
+scope. That page is the engine's own SVG — the one every delivered format is
+derived from (PDF by conversion, PNG and JPEG by rasterisation) — with its
+text flattened to outlines through the same bundled font, so any viewer draws
+the sheet exactly as the delivery comes out and one preview serves every
+format a template may later be delivered in. The template's pens
+(`style_overrides`, edited through `report layout pens` or the `pen_edit` /
+`set_style_override` ops of `report layout edit`) print exactly as they will
+in the delivery, through the same engine, workbook schedules and context.
+`.data.preview` names the layout digest and output id; each run receipt
+carries `local_print_recipe.preview`. A preview is a review file: it changes
+no recipe, room or output, `svg` is never a deliverable selection, and the
+run cannot publish. The desktop Printing setup paints the same page inline
+over its Canvas2D sheet and rasterises it at the zoom it is looked at.
 
 A selected `project_dsgrid_mv` context now reads the native project's complete
 MV catalog and verifies each exact current head through `dsgrid.project`'s

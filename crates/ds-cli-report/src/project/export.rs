@@ -251,7 +251,7 @@ pub static COMMAND: Command = Command {
     path: &["report", "project", "export"],
     contract: 1,
     summary: "Export all transformer reports and maps headlessly in parallel.",
-    purpose: "Export active transformers and named print outputs with project-wide numbering. --print-layout gives same-paper local proofs with pinned digests; proofs cannot publish. --publish queues Server sync, not cloud completion. Setups use held context; --seed acquires missing context. Photos need a media grant. See docs/reference/report.md. --context-vectors accepts verified data.city-vectors output.",
+    purpose: "Export active transformers and named print outputs with project-wide numbering. --print-layout gives same-paper local proofs with pinned digests; proofs cannot publish. --preview-layout renders one draft layout (any id, any paper, saved or not) as the shared preview page — the engine's SVG every delivered format derives from, text outlined — one per transformer, through the same engine, context and pens a delivery uses; nothing governed changes and it cannot publish. --publish queues Server sync, not cloud completion. Setups use held context; --seed acquires missing context. Photos need a media grant. See docs/reference/report.md. --context-vectors accepts verified data.city-vectors output.",
     chapter: Chapter::Reports,
     effect: Effect::LocalFileWrite,
     authority: Authority::HeadlessProject,
@@ -265,6 +265,11 @@ pub static COMMAND: Command = Command {
             "print-layout",
             "<json-file>",
             "Local proof replacement for an existing project layout; preserves engineering inputs and paper identity, records source/recipe digests, and cannot publish.",
+        ),
+        Arg::value(
+            "preview-layout",
+            "<json-file>",
+            "Draft layout to preview: one shared preview page (svg__<id>, text outlined) per transformer in scope, the only output; any id or paper; template pens (style_overrides) apply; cannot publish or combine with --print-layout.",
         ),
         Arg::value(
             "context-vectors",
@@ -296,6 +301,11 @@ code; --publish adds the Server-sync queue identity.",
         Example {
             command: "ds report project export --transformer tx_a --out-dir ./reports --publish --output json",
             note: "Queue one verified report for Server sync; publication is separate.",
+            runnable: false,
+        },
+        Example {
+            command: "ds report project export --transformer tx_a --preview-layout ./draft.json --out-dir ./preview --output json",
+            note: "tx_a's sheet as the draft composes it, with its pens, as one SVG page; `.data.preview` names the output.",
             runnable: false,
         },
     ],
@@ -638,6 +648,50 @@ fn verify_publish_scope(
     })
 }
 
+/// What `--preview-layout` asks for, read and bounded before any state is
+/// touched: the draft.
+struct PreviewRequest {
+    layout: ds_command_kernel::printing::Layout,
+}
+
+fn preview_request(
+    inputs: &Inputs,
+    publish: bool,
+    proofs: bool,
+) -> Result<Option<PreviewRequest>, Failure> {
+    let Some(path) = inputs.value("preview-layout") else {
+        return Ok(None);
+    };
+    if publish {
+        return Err(Failure::invalid(
+            INPUTS_INVALID.code,
+            "A print preview is a review file; it cannot publish",
+        )
+        .remedy("drop --publish, or export the governed recipe without --preview-layout"));
+    }
+    if proofs {
+        return Err(Failure::invalid(
+            INPUTS_INVALID.code,
+            "--preview-layout and --print-layout are different recipes; pass one",
+        ));
+    }
+    let meta = std::fs::metadata(path)
+        .map_err(|e| Failure::invalid(INPUTS_INVALID.code, format!("{path}: {e}")))?;
+    if !meta.is_file() || meta.len() > ds_command_kernel::printing::MAX_LAYOUT_BYTES as u64 {
+        return Err(Failure::invalid(
+            INPUTS_INVALID.code,
+            "Preview layout exceeds its regular-file bound",
+        ));
+    }
+    let bytes = std::fs::read(path)
+        .map_err(|e| Failure::invalid(INPUTS_INVALID.code, format!("{path}: {e}")))?;
+    let layout: ds_command_kernel::printing::Layout = serde_json::from_slice(&bytes)
+        .map_err(|e| Failure::invalid(INPUTS_INVALID.code, format!("{path}: {e}")))?;
+    let layout = ds_command_kernel::printing::upgrade(layout)
+        .map_err(|e| Failure::invalid(INPUTS_INVALID.code, e))?;
+    Ok(Some(PreviewRequest { layout }))
+}
+
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let requested = super::transformer_set(inputs)?;
     let lane = inputs.require("lane")?;
@@ -669,6 +723,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             "Local print-layout proofs cannot publish; save a governed project recipe before publication",
         ));
     }
+    let preview_request = preview_request(inputs, publish, !proof_paths.is_empty())?;
     let publish_scope = publish
         .then(|| ds_cli_auth::capture_layer_scope_fence(lane))
         .transpose()?;
@@ -765,8 +820,28 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         ds_command_kernel::report_export::proof::with_layouts(&receipt, &layouts)
             .map_err(|e| Failure::invalid(INPUTS_INVALID.code, e))?
     };
+    let (receipt, preview) = match preview_request {
+        None => (receipt, None),
+        Some(request) => {
+            let preview =
+                ds_command_kernel::report_export::preview::with_layout(&receipt, &request.layout)
+                    .map_err(|e| {
+                    Failure::invalid(INPUTS_INVALID.code, e).remedy(INPUTS_INVALID.remedy)
+                })?;
+            (preview.receipt.clone(), Some(preview))
+        }
+    };
     output["local_print_recipe"] = serde_json::to_value(&receipt.local_print_recipe)
         .map_err(|e| Failure::invalid(INPUTS_INVALID.code, e.to_string()))?;
+    if let Some(preview) = &preview {
+        output["preview"] = json!({
+            "layout_id": preview.layout_id,
+            "layout_sha256": preview.layout_sha256,
+            "output_id": preview.output_id,
+            "format": preview.facts.format,
+            "note": "the shared preview page (text outlined): the governed recipe, rooms and outputs are unchanged and this run cannot publish",
+        });
+    }
     let admin_bounds = if receipt.requires_admin_bounds() {
         let path = match explicit_asset {
             Some(path) => path,
@@ -1046,7 +1121,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             server_version,
             layers: snapshot.layers().clone(),
             content_digest: snapshot.metadata().content_digest().map(str::to_string),
-            selection: None,
+            selection: preview.as_ref().map(|p| p.selection.clone()),
             print_context,
             sheet,
         })
