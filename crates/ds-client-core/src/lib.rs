@@ -156,6 +156,7 @@ pub use transport::SurveyControlCall;
 pub use profile::SURVEY_CONTROL_ROUTES;
 
 mod solar_media;
+pub mod solar_portfolio;
 pub mod solar_project;
 pub use transport::{SolarProjectCall, SolarReferenceCall};
 

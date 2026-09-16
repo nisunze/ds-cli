@@ -14,6 +14,7 @@ pub struct Output {
 }
 pub enum Command {
     ListCities,
+    Portfolio(crate::solar_portfolio::Command),
     ImportMap {
         city: String,
         role: String,
@@ -82,6 +83,7 @@ impl Command {
         }
         match self {
             Self::ListCities => {}
+            Self::Portfolio(command) => command.validate(project)?,
             Self::ImportMap {
                 city,
                 role,
@@ -217,6 +219,7 @@ pub(crate) fn call<T: AuthorizedTransport>(
     artifacts: bool,
     payload: Value,
 ) -> Result<Value, ClientError> {
+    let catalog = payload["action"] == "list_portfolios";
     let response = transport.solar_project(SolarProjectCall {
         profile,
         authority: authority.call(),
@@ -233,10 +236,17 @@ pub(crate) fn call<T: AuthorizedTransport>(
         return Err(unreadable());
     }
     let value: Value = serde_json::from_slice(&response.body).map_err(|_| unreadable())?;
-    if value["success"] != true || !value["data"].is_object() {
+    if value["success"] != true
+        || !(value["data"].is_object()
+            || (catalog && (value["data"].is_array() || value["data"].is_null())))
+    {
         return Err(unreadable());
     }
-    Ok(value["data"].clone())
+    Ok(if catalog && value["data"].is_null() {
+        json!([])
+    } else {
+        value["data"].clone()
+    })
 }
 pub(crate) fn run<T: AuthorizedTransport>(
     profile: &ClientProfile,
@@ -248,6 +258,9 @@ pub(crate) fn run<T: AuthorizedTransport>(
     command.validate(project)?;
     let root = format!("eds_project/{project}/eds_solar");
     match command {
+        Command::Portfolio(command) => {
+            crate::solar_portfolio::run(profile, transport, authority, project, command)
+        }
         Command::ImportMap {
             city,
             role,
@@ -435,7 +448,7 @@ pub(crate) fn run<T: AuthorizedTransport>(
     }
 }
 #[allow(clippy::too_many_arguments)]
-fn publish<T: AuthorizedTransport>(
+pub(crate) fn publish<T: AuthorizedTransport>(
     profile: &ClientProfile,
     transport: &mut T,
     authority: Authority<'_>,

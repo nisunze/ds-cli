@@ -30,7 +30,7 @@
 //! work while it cannot answer; it can never destroy work already done.
 mod claim;
 pub mod tiles;
-pub use claim::decode_solar_server_submission;
+pub use claim::{decode_solar_server_submission, encode_solar_server_submission};
 
 use base64::Engine;
 use ds_command_kernel::compute_jobs::{self, EngineKind, Event, Job, Phase};

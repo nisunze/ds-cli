@@ -29,6 +29,28 @@ struct PreparedPublicationClaim {
     snapshot_receipt_expires_at: String,
 }
 
+/// Produce the Server envelope from the exact two artifacts emitted by Solar
+/// preparation. Verification reuses the admission decoder before bytes leave
+/// this owner; hosts never assemble or repair publication provenance.
+pub fn encode_solar_server_submission(prepared: &[u8], claim: &[u8]) -> Result<Vec<u8>, String> {
+    if prepared.len().saturating_add(claim.len()) > 64 * 1024 * 1024 {
+        return Err("solar_server_submission_too_large".into());
+    }
+    let prepared: Value = serde_json::from_slice(prepared)
+        .map_err(|_| "solar_server_submission_invalid".to_string())?;
+    let claim: Value =
+        serde_json::from_slice(claim).map_err(|_| "solar_publication_claim_invalid".to_string())?;
+    let bytes = serde_json::to_vec(&serde_json::json!({
+        "schema_version": SUBMISSION_SCHEMA,
+        "prepared": prepared,
+        "publication_claim": claim,
+        "render_charts": true,
+    }))
+    .map_err(|_| "solar_server_submission_invalid".to_string())?;
+    decode_solar_server_submission(&bytes)?;
+    Ok(bytes)
+}
+
 /// Decode the two-document ds-solar handoff into the existing kernel request
 /// bytes and verified provenance. The caller persists only the returned bytes
 /// through `submit_solar_with_provenance`.
