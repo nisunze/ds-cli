@@ -7,6 +7,7 @@ use serde_json::{json, Value};
 pub enum Section {
     Site,
     Plant,
+    Finance,
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -57,6 +58,69 @@ pub fn compose(request: Request) -> Result<Dashboard, String> {
         });
     };
     let derived = match request.section {
+        Section::Finance => {
+            let system = system_key(request.system);
+            let d = &request.report["05_financial"][format!("{system}_financial_analysis")];
+            if !d.is_object() {
+                return Err("Financial analysis is unavailable".into());
+            }
+            let params = &d["parameters"];
+            let npv = &d["npv"];
+            let irr = &d["irr"];
+            let lcoe = &d["lcoe"];
+            let pfa = &d["project_finance_analysis"];
+            let dscr = &pfa["dscr"];
+            let mut values = json!({
+                "currency":params["currency"].as_str().unwrap_or("XAF"),
+                "wacc_pct":number(params,"wacc").map(|v|if v.abs()<1. {v*100.}else{v}),
+                "npv":first_number(npv,&["npv","value"]),
+                "irr_pct":first_number(irr,&["irr","value"]).map(|v|if v.abs()<1. {v*100.}else{v}),
+                "lcoe_cost":first_number(lcoe,&["lcoe_discounted_with_network","breakeven_price_kwh","cost_per_kwh"]),
+                "simple_payback":number(&d["payback"],"simple_payback_years"),
+                "discounted_payback":number(&d["payback"],"discounted_payback_years"),
+                "min_dscr":number(dscr,"min_dscr"), "avg_dscr":number(dscr,"avg_dscr"),
+                "dscr_threshold":number(dscr,"bankability_threshold").or_else(||number(pfa,"min_dscr_target")).unwrap_or(1.2),
+                "base_price":first_number(params,&["sell_price_kwh_base","sell_price_kwh_used","base_price","used_price"]),
+                "lifetime":number(params,"project_lifetime_years").or_else(||number(lcoe,"project_lifetime_years")).unwrap_or(25.)
+            });
+            let ps = &d["project_summary"];
+            let plant = number(ps, "plant_cost");
+            let network = number(ps, "network_cost");
+            let investment = sum(plant, network);
+            values["investment_total"] = json!(investment);
+            values["plant_share_pct"] = ratio(plant, investment, 100.);
+            values["network_share_pct"] = ratio(network, investment, 100.);
+            values["initial_investment"] =
+                json!(first_number(ps, &["initial_investment", "total_capex"]));
+            values["lifetime_opex"] = json!(sum(
+                number(ps, "total_fuel_lifetime"),
+                number(ps, "total_maintenance_lifetime")
+            ));
+            values["npv_profitable"]=json!(values["npv"].as_f64().map(|v|v>=0.));
+            values["irr_viable"]=json!(values["irr_pct"].as_f64().zip(values["wacc_pct"].as_f64()).map(|(a,b)|a>b));
+            values["dscr_bankable"]=json!(values["min_dscr"].as_f64().zip(values["dscr_threshold"].as_f64()).map(|(a,b)|a>=b));
+            for (key,source) in [("simple_payback_viable","simple_payback"),("discounted_payback_viable","discounted_payback")] {
+                values[key]=json!(values[source].as_f64().zip(values["lifetime"].as_f64()).map(|(a,b)|a>0. && a<=b));
+            }
+            for (key, label, unit) in [
+                ("wacc_pct", "WACC", "%"),
+                ("npv", "NPV", values["currency"].as_str().unwrap_or("XAF")),
+                ("irr_pct", "IRR", "%"),
+                ("lcoe_cost", "LCOE", "/kWh"),
+                ("simple_payback", "Simple payback", "years"),
+                ("discounted_payback", "Discounted payback", "years"),
+                ("min_dscr", "Minimum DSCR", ""),
+                ("avg_dscr", "Average DSCR", ""),
+                (
+                    "investment_total",
+                    "Initial investment",
+                    values["currency"].as_str().unwrap_or("XAF"),
+                ),
+            ] {
+                card("Financial analysis", key, label, values[key].clone(), unit);
+            }
+            values
+        }
         Section::Plant => {
             let system = system_key(request.system);
             let d = &request.report["04_plant_cost"][format!("{system}_summary")];
@@ -300,6 +364,9 @@ fn plant_charts(d: &Value, system: &str) -> Value {
 fn number(d: &Value, key: &str) -> Option<f64> {
     d[key].as_f64().filter(|v| v.is_finite())
 }
+fn first_number(d: &Value, keys: &[&str]) -> Option<f64> {
+    keys.iter().find_map(|key| number(d, key))
+}
 fn first(d: &Value, keys: &[&str]) -> Value {
     keys.iter()
         .find_map(|k| d.get(*k).filter(|v| !v.is_null()))
@@ -461,5 +528,22 @@ mod tests {
             report: json!({"04_plant_cost":{"hybrid_summary":{}}})
         })
         .is_err());
+    }
+    #[test]
+    fn finance_preserves_zero_authority_and_normalizes_negative_fractional_irr() {
+        let d=compose(Request{section:Section::Finance,system:None,report:json!({"05_financial":{"hybrid_financial_analysis":{
+            "parameters":{"wacc":0.08,"sell_price_kwh_base":0,"sell_price_kwh_used":300},
+            "npv":{"npv":0,"value":100},"irr":{"irr":-0.05,"value":5},
+            "lcoe":{"lcoe_discounted_with_network":0,"cost_per_kwh":300},
+            "project_summary":{"plant_cost":30,"network_cost":70,"initial_investment":0,"total_capex":100}
+        }}})}).unwrap();
+        assert_eq!(d.derived["wacc_pct"], 8.);
+        assert_eq!(d.derived["irr_pct"], -5.);
+        for key in ["npv", "lcoe_cost", "base_price", "initial_investment"] {
+            assert_eq!(d.derived[key], 0.);
+        }
+        assert_eq!(d.derived["plant_share_pct"], 30.);
+        assert_eq!(d.derived["network_share_pct"], 70.);
+        assert!(d.derived["min_dscr"].is_null());
     }
 }
