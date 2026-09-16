@@ -6,12 +6,15 @@ use serde_json::{json, Value};
 #[serde(rename_all = "snake_case")]
 pub enum Section {
     Site,
+    Plant,
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Request {
     pub section: Section,
     pub report: Value,
+    #[serde(default)]
+    pub system: Option<ds_solar_contracts::SystemType>,
 }
 #[derive(Serialize)]
 pub struct Card {
@@ -27,6 +30,7 @@ pub struct Dashboard {
     pub section: Section,
     pub derived: Value,
     pub cards: Vec<Card>,
+    pub charts: Value,
 }
 
 pub fn evaluate(bytes: &[u8]) -> Result<String, String> {
@@ -42,6 +46,7 @@ pub fn compose(request: Request) -> Result<Dashboard, String> {
         return Err("Dashboard report must be an object".into());
     }
     let mut cards = Vec::new();
+    let mut charts = json!({});
     let mut card = |group: &str, key: &str, label: &str, value: Value, unit: &str| {
         cards.push(Card {
             key: key.into(),
@@ -52,6 +57,80 @@ pub fn compose(request: Request) -> Result<Dashboard, String> {
         });
     };
     let derived = match request.section {
+        Section::Plant => {
+            let system = system_key(request.system);
+            let d = &request.report["04_plant_cost"][format!("{system}_summary")];
+            if !d.is_object() {
+                return Err("Plant metrics are unavailable".into());
+            }
+            let boq = &request.report["04_plant_cost"][format!("{system}_boq")];
+            let energy = &d["energy_production_year_1"];
+            let fraction = ratio(
+                sum(
+                    number(energy, "direct_solar_to_grid_mwh"),
+                    number(energy, "battery_output_mwh"),
+                ),
+                number(energy, "net_energy_to_grid_mwh"),
+                100.,
+            );
+            let fraction = fraction
+                .as_f64()
+                .map(|n| json!(n.min(100.)))
+                .unwrap_or(Value::Null);
+            let total_cost = number(boq, "grand_total")
+                .or_else(|| {
+                    sum(
+                        number(boq, "total_equipment_cost"),
+                        number(boq, "total_markup_cost"),
+                    )
+                })
+                .map_or(Value::Null, |n| json!(n));
+            for (key, label, unit) in [
+                ("solar_power_capacity_mw", "PV capacity", "MW"),
+                ("battery_storage_capacity_mwh", "Storage capacity", "MWh"),
+                ("generator_capacity_mw", "Generator capacity", "MW"),
+            ] {
+                card("Capacity", key, label, d["capacity"][key].clone(), unit);
+            }
+            for (key, label, unit) in [
+                ("net_energy_to_grid_mwh", "Net energy", "MWh"),
+                ("direct_solar_to_grid_mwh", "Direct solar", "MWh"),
+                ("battery_output_mwh", "Battery output", "MWh"),
+                ("generator_output_mwh", "Generator output", "MWh"),
+            ] {
+                card("Year-one energy", key, label, energy[key].clone(), unit);
+            }
+            card(
+                "Year-one energy",
+                "renewable_fraction_pct",
+                "Renewable fraction",
+                fraction.clone(),
+                "%",
+            );
+            card(
+                "Investment",
+                "total_cost",
+                "Plant cost",
+                total_cost.clone(),
+                "",
+            );
+            charts = plant_charts(d, system);
+            let energy_by_year = &d["energy_production_by_year"];
+            let years = ordered_years(energy_by_year, "direct_solar_to_grid_mwh");
+            let rows=years.iter().map(|year|json!({"year":year,"solar":energy_by_year["direct_solar_to_grid_mwh"][year],"battery":energy_by_year["battery_output_mwh"][year],"generator":energy_by_year["generator_output_mwh"][year],"net":energy_by_year["net_energy_to_grid_mwh"][year]})).collect::<Vec<_>>();
+            let final_year = years.last();
+            let final_net =
+                final_year.and_then(|y| energy_by_year["net_energy_to_grid_mwh"][y].as_f64());
+            let first_net = number(energy, "net_energy_to_grid_mwh");
+            let degradation = final_net
+                .zip(first_net)
+                .filter(|(a, b)| *a > 0. && *a < *b)
+                .map(|(a, b)| json!({"year":final_year,"final_net_mwh":a,"loss_pct":(1.-a/b)*100.}))
+                .unwrap_or(Value::Null);
+            json!({"renewable_fraction_pct":fraction,"total_cost":total_cost,"energy_rows":rows,"degradation":degradation,
+                "watts_per_panel":ratio(number(&d["capacity"],"solar_power_capacity_mw"),number(&d["equipment_quantities"],"total_panels"),1_000_000.),
+                "kwh_per_battery":ratio(number(&d["capacity"],"battery_storage_capacity_mwh"),number(&d["equipment_quantities"],"total_batteries"),1000.)})
+        }
         Section::Site => {
             let d = &request.report["02_site_prep"]["site_metrics"];
             if !d.is_object() {
@@ -169,7 +248,54 @@ pub fn compose(request: Request) -> Result<Dashboard, String> {
         section: request.section,
         derived,
         cards,
+        charts,
     })
+}
+fn system_key(system: Option<ds_solar_contracts::SystemType>) -> &'static str {
+    match system.unwrap_or(ds_solar_contracts::SystemType::Hybrid) {
+        ds_solar_contracts::SystemType::Hybrid => "hybrid",
+        ds_solar_contracts::SystemType::SolarBattery => "solar_battery",
+        ds_solar_contracts::SystemType::ThermalOnly => "thermal_only",
+    }
+}
+fn sum(a: Option<f64>, b: Option<f64>) -> Option<f64> {
+    a.zip(b).map(|(a, b)| a + b).filter(|n| n.is_finite())
+}
+fn ordered_years(d: &Value, key: &str) -> Vec<String> {
+    let mut years = d[key]
+        .as_object()
+        .map(|o| {
+            o.keys()
+                .filter_map(|k| k.parse::<u32>().ok().map(|n| (n, k.clone())))
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    years.sort_by_key(|(n, _)| *n);
+    years.into_iter().map(|(_, k)| k).collect()
+}
+fn plant_charts(d: &Value, system: &str) -> Value {
+    let energy = &d["energy_production_by_year"];
+    let years = ordered_years(energy, "direct_solar_to_grid_mwh");
+    let mut series = vec![
+        json!({"name":"Direct Solar","type":"bar","stack":"energy","data":years.iter().map(|y|energy["direct_solar_to_grid_mwh"][y].clone()).collect::<Vec<_>>(),"itemStyle":{"color":"#D4A843"}}),
+        json!({"name":"Battery Output","type":"bar","stack":"energy","data":years.iter().map(|y|energy["battery_output_mwh"][y].clone()).collect::<Vec<_>>(),"itemStyle":{"color":"#1A5276"}}),
+    ];
+    if system != "solar_battery" {
+        series.push(json!({"name":"Generator","type":"bar","stack":"energy","data":years.iter().map(|y|energy["generator_output_mwh"][y].clone()).collect::<Vec<_>>(),"itemStyle":{"color":"#C0392B"}}));
+    }
+    let energy_chart = if years.is_empty() {
+        Value::Null
+    } else {
+        json!({"tooltip":{"trigger":"axis","axisPointer":{"type":"shadow"}},"legend":{"bottom":0},"grid":{"left":60,"right":20,"top":20,"bottom":40},"xAxis":{"type":"category","data":years,"axisLabel":{"interval":4}},"yAxis":{"type":"value","name":"Energy (MWh)","min":0},"series":series})
+    };
+    let env = &d["environmental_by_year"];
+    let years = ordered_years(env, "fuel_consumption_liters");
+    let environment_chart = if years.is_empty() {
+        Value::Null
+    } else {
+        json!({"tooltip":{"trigger":"axis"},"legend":{"bottom":0},"grid":{"left":60,"right":60,"top":20,"bottom":40},"xAxis":{"type":"category","data":years,"axisLabel":{"interval":4}},"yAxis":[{"type":"value","name":"Fuel (KL)","min":0},{"type":"value","name":"CO₂ (tons)","min":0}],"series":[{"name":"Fuel (KL)","type":"bar","yAxisIndex":0,"data":years.iter().map(|y|env["fuel_consumption_liters"][y].as_f64().map(|n|json!(n/1000.)).unwrap_or(Value::Null)).collect::<Vec<_>>(),"itemStyle":{"color":"#E53935"}},{"name":"CO₂ (tons)","type":"line","yAxisIndex":1,"data":years.iter().map(|y|env["co2_emissions_tons"][y].clone()).collect::<Vec<_>>(),"itemStyle":{"color":"#757575"}}]})
+    };
+    json!({"energy":energy_chart,"environment":environment_chart})
 }
 fn number(d: &Value, key: &str) -> Option<f64> {
     d[key].as_f64().filter(|v| v.is_finite())
@@ -280,6 +406,7 @@ mod tests {
         let d = compose(Request {
             section: Section::Site,
             report,
+            system: None,
         })
         .unwrap();
         assert!((d.derived["load_factor_pct"].as_f64().unwrap() - 48.953899).abs() < 0.001);
@@ -290,7 +417,7 @@ mod tests {
     #[test]
     fn missing_and_zero_denominators_are_unavailable() {
         for peak in [Value::Null, json!(0)] {
-            let d=compose(Request{section:Section::Site,report:json!({"02_site_prep":{"site_metrics":{"load_profile":{"daily_energy_kwh":1,"peak_load_kw":peak}}}})}).unwrap();
+            let d=compose(Request{section:Section::Site,system:None,report:json!({"02_site_prep":{"site_metrics":{"load_profile":{"daily_energy_kwh":1,"peak_load_kw":peak}}}})}).unwrap();
             assert!(d.derived["load_factor_pct"].is_null());
         }
     }
@@ -304,5 +431,35 @@ mod tests {
         assert_eq!(read["value"], "A");
         assert!(read_section(&report, "site", &["../../secret".into()]).is_err());
         assert!(read_section(&report, "site", &vec!["city".into(); 9]).is_err());
+    }
+    #[test]
+    fn plant_preserves_zero_totals_and_orders_chart_pairs_with_correct_units() {
+        let d=compose(Request{section:Section::Plant,system:None,report:json!({"04_plant_cost":{
+            "hybrid_summary":{"energy_production_year_1":{"direct_solar_to_grid_mwh":20,"battery_output_mwh":30,"net_energy_to_grid_mwh":100},
+                "energy_production_by_year":{"direct_solar_to_grid_mwh":{"10":10,"2":2},"battery_output_mwh":{"2":3}},
+                "environmental_by_year":{"fuel_consumption_liters":{"10":2000,"2":1000},"co2_emissions_tons":{"2":4}}},
+            "hybrid_boq":{"grand_total":0,"total_equipment_cost":100,"total_markup_cost":50}
+        }})}).unwrap();
+        assert_eq!(d.derived["total_cost"], 0.);
+        assert_eq!(d.derived["renewable_fraction_pct"], 50.);
+        assert_eq!(d.charts["energy"]["xAxis"]["data"], json!(["2", "10"]));
+        assert_eq!(d.charts["energy"]["series"][1]["data"], json!([3, null]));
+        assert_eq!(
+            d.charts["environment"]["series"][0]["data"],
+            json!([1., 2.])
+        );
+        assert_eq!(
+            d.charts["environment"]["series"][1]["data"],
+            json!([4, null])
+        );
+    }
+    #[test]
+    fn plant_selection_never_substitutes_another_system() {
+        assert!(compose(Request {
+            section: Section::Plant,
+            system: Some(ds_solar_contracts::SystemType::SolarBattery),
+            report: json!({"04_plant_cost":{"hybrid_summary":{}}})
+        })
+        .is_err());
     }
 }
