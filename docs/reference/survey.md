@@ -412,3 +412,21 @@ Commands under `ds map` remain reserved for operations that genuinely consume
 map-owned local state, such as Working Area transfer or survey-data migration.
 Form Factory, project-form settings, project templates, and project creation
 are API control-plane operations and stay usable with no map open.
+
+### Headless image rotation
+
+`ds survey photo rotate --project <id> --path <canonical-object-path> --degrees 90 --out ./rotation --lane canary`
+downloads the pinned source and saves a Rust-generated original and thumbnail
+with a digest-bound `manifest.json`. Use `--expected-generation` to bind the
+operation to a previously inspected image. Review the saved images, then run
+`ds survey photo publish --project <id> --bundle ./rotation --lane canary --yes`.
+The receipt reports publication only after both storage generations verify.
+Retry the same bundle after interruption: publication sends the same bytes and
+never rotates them again. Foreign project, account, deployment audience or
+concurrent source edits are refused. Neither command needs a paired desktop or
+changes the selected project. The Survey MCP chapter exposes these same typed
+commands and arguments, including the separate publication confirmation.
+
+For downloaded files, `ds survey photo rotate-local --input ./photo.jpg --degrees 90 --out ./rotated`
+uses the same Rust pixels offline and returns local image and thumbnail paths.
+Its `local_only` receipt cannot be submitted as a governed publication bundle.

@@ -662,6 +662,9 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("survey.form.types", "local_auth_state", "headless_user"),
     ("survey.form.update", "global_write", "headless_user"),
     ("survey.forms.list", "local_auth_state", "headless_user"),
+    ("survey.photo.rotate-local", "local_file_write", "none"),
+    ("survey.photo.rotate", "local_file_write", "headless_user"),
+    ("survey.photo.publish", "global_write", "headless_user"),
     (
         "survey.project.create-from-template",
         "global_write",

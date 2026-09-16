@@ -178,7 +178,8 @@ impl Profile {
             // Query, spatial selection, fenced changes, and governed
             // single-entry create belong to the same selected-project Survey
             // workflow. The count includes both bootstrap tools.
-            Self::SurveyProjects => 18,
+            // Three image leaves add offline rotation and pinned publication.
+            Self::SurveyProjects => 21,
             // Twenty-one governed design-edit leaves plus the two bootstrap
             // tools. Version history and the pinned Working set project the
             // same bounded desktop-owned workflow without transporting
@@ -468,6 +469,9 @@ const FORM_FACTORY_COMMANDS: &[&str] = &[
 ];
 
 const SURVEY_PROJECT_COMMANDS: &[&str] = &[
+    "survey.photo.rotate-local",
+    "survey.photo.rotate",
+    "survey.photo.publish",
     "survey.query",
     "survey.entries.select",
     "survey.entries.changes",

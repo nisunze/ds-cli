@@ -1,5 +1,5 @@
 {
-  "schema_version": "ds.native-client-profiles/v25",
+  "schema_version": "ds.native-client-profiles/v26",
   "development": true,
   "profiles": {
     "stable": {
@@ -156,7 +156,7 @@
         "POST /api/v1/projects/templates: list,create,set_public,delete",
         "GET /api/v1/projects/templates/{slug}",
         "POST /api/v1/projects: apply_template",
-        "POST /api/v1/projects/from-template"
+        "POST /api/v1/projects/from-template", "POST /media: survey_upload_inspect,survey_upload_start,survey_upload_complete"
       ],
       "printing": {
         "method": "POST",
@@ -337,7 +337,7 @@
         "POST /api/v1/projects/templates: list,create,set_public,delete",
         "GET /api/v1/projects/templates/{slug}",
         "POST /api/v1/projects: apply_template",
-        "POST /api/v1/projects/from-template"
+        "POST /api/v1/projects/from-template", "POST /media: survey_upload_inspect,survey_upload_start,survey_upload_complete"
       ],
       "printing": {
         "method": "POST",

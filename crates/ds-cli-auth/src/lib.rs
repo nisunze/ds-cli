@@ -5645,3 +5645,23 @@ mod status_upload_tests {
         );
     }
 }
+
+/// Explicit-project image work never reads or changes the saved selection.
+pub fn survey_photo(
+    lane_value: &str,
+    project: &str,
+    command: ds_client_core::survey_photo::Command<'_>,
+) -> Result<ds_client_core::survey_photo::Receipt, Failure> {
+    let lane = Lane::parse(lane_value)?;
+    let project = bounded_named_project(project)?;
+    if let Some(mut device) = restored_device_session(lane)? {
+        return device.survey_photo(&project, command).map_err(map_client);
+    }
+    let profile = profile::load(lane)?;
+    let store = NativeRefreshStore::open()?;
+    let mut client = Client::new(profile, NativeTransport, store);
+    require_restore_before_context(&mut client)?;
+    client
+        .survey_photo(&project, command, now())
+        .map_err(map_client)
+}

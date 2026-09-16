@@ -654,6 +654,13 @@ impl DeviceSession {
     ) -> Result<ds_client_core::StatusProcessingReceipt, ClientError> {
         fixed_device_call!(self, status_processing, project, command)
     }
+    pub fn survey_photo(
+        &mut self,
+        project: &str,
+        command: ds_client_core::survey_photo::Command<'_>,
+    ) -> Result<ds_client_core::survey_photo::Receipt, ClientError> {
+        fixed_device_call!(self, survey_photo, project, command)
+    }
     pub fn save_transformers(
         &mut self,
         project: &str,

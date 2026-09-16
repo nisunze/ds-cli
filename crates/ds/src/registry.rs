@@ -1056,6 +1056,21 @@ static SURVEY_ENTRIES: &[Entry] = &[
         render: ds_cli_survey::forms::render_lifecycle,
     },
     Entry {
+        command: &ds_cli_survey::photo::LOCAL_COMMAND,
+        handler: ds_cli_survey::photo::rotate_local,
+        render: ds_cli_survey::photo::render,
+    },
+    Entry {
+        command: &ds_cli_survey::photo::ROTATE_COMMAND,
+        handler: ds_cli_survey::photo::rotate,
+        render: ds_cli_survey::photo::render,
+    },
+    Entry {
+        command: &ds_cli_survey::photo::PUBLISH_COMMAND,
+        handler: ds_cli_survey::photo::publish,
+        render: ds_cli_survey::photo::render,
+    },
+    Entry {
         command: &ds_cli_survey::project_forms::READ_COMMAND,
         handler: ds_cli_survey::project_forms::read,
         render: ds_cli_survey::project_forms::render_read,

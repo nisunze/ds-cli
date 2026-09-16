@@ -5501,7 +5501,7 @@ fn design_lv_project_export_refuses_an_existing_artifact_before_auth_or_desktop(
             "printing":{"method":"POST","path":"/api/v1/printing","actions":["list","get","create","update","save","delete","copy"]},
             "layers":{"method":"POST","path":"/api/v1/layers","actions":["get_config","get_style_catalog","refresh","reorder","set_default_visibility"]},
             "styles":{"method":"POST","path":"/api/v1/styles","action":"update_style"},
-            "survey_control":["POST /api/v1/form-factory: list,get,get_field_types,create,update,duplicate,publish,unpublish,archive,restore,delete", "POST /api/v1/project-forms: activate,settings_editor,bulk_save", "POST /api/v1/projects/templates: list,create,set_public,delete", "GET /api/v1/projects/templates/{slug}", "POST /api/v1/projects: apply_template", "POST /api/v1/projects/from-template"],
+            "survey_control":["POST /api/v1/form-factory: list,get,get_field_types,create,update,duplicate,publish,unpublish,archive,restore,delete", "POST /api/v1/project-forms: activate,settings_editor,bulk_save", "POST /api/v1/projects/templates: list,create,set_public,delete", "GET /api/v1/projects/templates/{slug}", "POST /api/v1/projects: apply_template", "POST /api/v1/projects/from-template", "POST /media: survey_upload_inspect,survey_upload_start,survey_upload_complete"],
             "project_data":{"method":"POST","path":"/api/v1/project_data","actions":["list","upload_start","upload","delete"]},
             "tiles": {
                 "method": "POST",
@@ -5534,7 +5534,7 @@ fn design_lv_project_export_refuses_an_existing_artifact_before_auth_or_desktop(
     std::fs::write(
         &profile_path,
         serde_json::to_vec(&json!({
-            "schema_version": "ds.native-client-profiles/v25",
+            "schema_version": "ds.native-client-profiles/v26",
             "development": true,
             "profiles": {
                 "stable": profile(
