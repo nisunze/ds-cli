@@ -14,7 +14,6 @@ use crate::paired;
 
 const READ_TIMEOUT: Duration = Duration::from_secs(30);
 const IMPORT_TIMEOUT: Duration = Duration::from_secs(10 * 60);
-const RESULTS_READ_OPERATION: &str = "solar.results.read";
 const SYNC_STATUS_OPERATION: &str = "solar.sync.status";
 const PORTFOLIO_ANALYSIS_OPERATION: &str = "solar.portfolio.analysis";
 const MAX_PORTFOLIO_ID_CHARS: usize = 128;
@@ -99,31 +98,42 @@ static PORTFOLIO_READ_REFUSALS: &[Refusal] = &[
 pub static RESULTS_READ_COMMAND: Command = Command {
     id: "solar.results.read",
     path: &["solar", "results", "read"],
-    contract: 1,
+    contract: 2,
     summary: "Read one dashboard section from a native Solar result.",
-    purpose: "Reads a bounded semantic projection from the canonical report_input receipt used by the Solar dashboards. It does not read result.json, a workspace path, or a cloud-specific cache.",
+    purpose: "Verifies an exact closed local Solar batch and reads a bounded semantic section of its sealed city report input through shared Rust. No desktop, browser, sign-in or network is required. Explicit local project attribution grants no cloud authority.",
     chapter: Chapter::Solar,
     effect: Effect::ReadOnly,
-    authority: Authority::DesktopUser,
+    authority: Authority::None,
     execution: Execution::Sync,
     args: &[
+        Arg::value(
+            "source",
+            "<dir>",
+            "Closed local Solar city batch directory.",
+        )
+        .required(),
+        Arg::value(
+            "project",
+            "<id>",
+            "Exact project attribution in the sealed batch.",
+        )
+        .required(),
         Arg::value("run-id", "<id>", "Completed native Solar batch id.").required(),
         Arg::value("city", "<id>", "Canonical city context in that batch.").required(),
         Arg::value("section", "<name>", "Dashboard result section to read.")
             .required()
             .choices(RESULT_SECTIONS),
         Arg::repeated("path", "<field>", "Semantic child key. Repeat to descend."),
-        DESCRIPTOR_ARG,
     ],
-    output: "A bounded projection, completeness flag, canonical per-city result id, batch id and city context.",
+    output: "Verified project/run/city and source digests, bounded section projection and explicit completeness flag.",
     examples: &[Example {
-        command: "ds solar results read --run-id run-123 --city kigali --section finance --path financial_summary --output json",
+        command: "ds solar results read --source ./batch --project project-1 --run-id run-123 --city kigali --section finance --path financial_summary --output json",
         note: "Reads the same canonical result section the Finance dashboard uses.",
         runnable: false,
     }],
-    refusals: paired::REFUSALS,
+    refusals: crate::project::RUN.refusals,
     reference: Some("docs/reference/solar.md"),
-    availability: paired::available,
+    availability: crate::project::availability,
 };
 
 pub static SYNC_STATUS_COMMAND: Command = Command {
@@ -352,24 +362,22 @@ pub static FINAL_SUBMIT_COMMAND: Command = Command {
 };
 
 pub fn results_read(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
-    let run_id = inputs.require("run-id")?;
-    let city = inputs.require("city")?;
-    let mut arguments = run_city(inputs)?;
-    arguments.insert("section".into(), json!(inputs.require("section")?));
-    if !inputs.repeated("path").is_empty() {
-        arguments.insert("path".into(), json!(inputs.repeated("path")));
-    }
-    paired::require_exact_identity(
-        paired::invoke(
-            inputs,
-            RESULTS_READ_OPERATION,
-            Value::Object(arguments),
-            READ_TIMEOUT,
-        )?,
-        RESULTS_READ_OPERATION,
-        run_id,
-        Some(city),
+    let mut source = crate::dashboard::source(inputs)?;
+    let projection = ds_command_kernel::solar_dashboard::read_section(
+        &source["report"],
+        inputs.require("section")?,
+        &inputs
+            .repeated("path")
+            .iter()
+            .map(|s| s.to_string())
+            .collect::<Vec<_>>(),
     )
+    .map_err(|e| Failure::invalid("solar_dashboard_path_invalid", e))?;
+    source
+        .as_object_mut()
+        .ok_or_else(|| Failure::invalid("solar_dashboard_invalid", "invalid owner source receipt"))?
+        .remove("report");
+    Ok(json!({"source":source,"projection":projection}))
 }
 
 pub fn sync_status(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {

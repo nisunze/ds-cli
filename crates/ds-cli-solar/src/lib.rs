@@ -14,6 +14,7 @@
 
 pub mod cities;
 pub mod compare;
+pub mod dashboard;
 pub mod engine;
 pub mod exports;
 pub mod input_capture;
@@ -69,6 +70,7 @@ pub static DOMAIN: Domain = Domain {
     id: "solar",
     summary: "Solar preparation, local run lifecycle and artifact execution.",
     commands: &[
+        &dashboard::COMMAND,
         &network_form::COMMAND,
         &network_map::COMMAND,
         &network_form::SAVE,

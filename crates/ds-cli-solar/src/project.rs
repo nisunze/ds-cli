@@ -94,7 +94,7 @@ const fn command(
         availability,
     }
 }
-fn availability() -> Availability {
+pub(crate) fn availability() -> Availability {
     DS_SOLAR.availability()
 }
 pub static INIT: Command = command(

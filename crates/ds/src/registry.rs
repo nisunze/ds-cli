@@ -620,6 +620,11 @@ static SOLAR_ENTRIES: &[Entry] = &[
         render: ds_cli_solar::workflow::render,
     },
     Entry {
+        command: &ds_cli_solar::dashboard::COMMAND,
+        handler: ds_cli_solar::dashboard::execute,
+        render: ds_cli_solar::workflow::render,
+    },
+    Entry {
         command: &ds_cli_solar::workflow::SYNC_STATUS_COMMAND,
         handler: ds_cli_solar::workflow::sync_status,
         render: ds_cli_solar::workflow::render,

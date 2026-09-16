@@ -553,6 +553,7 @@ const DESIGN_RUN_COMMANDS: &[&str] = &[
 ];
 
 const SOLAR_RUN_COMMANDS: &[&str] = &[
+    "solar.dashboard.compose",
     "solar.engine",
     // Preserve the established end-to-end run profile. Native governed input
     // handoffs get their own narrow profile because adding them here would
