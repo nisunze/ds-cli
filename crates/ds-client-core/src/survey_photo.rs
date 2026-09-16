@@ -197,11 +197,7 @@ pub(crate) fn run<T: AuthorizedTransport>(
                     "Photo download failed or exceeded its byte bound",
                 ));
             }
-            let bundle = pixels::process(
-                &downloaded.body,
-                pixels::Rotation::try_from(degrees).map_err(invalid)?,
-            )
-            .map_err(invalid)?;
+            let bundle = rotate_local(&downloaded.body, degrees)?;
             let manifest = Manifest {
                 schema: SCHEMA.into(),
                 project_id: project.into(),
@@ -364,6 +360,14 @@ fn upload<T: AuthorizedTransport>(
         return Err(unreadable("Photo publication was not verified"));
     }
     wire::generation(&complete["generation"]).map_err(unreadable)
+}
+
+/// Local image edits share the native/WASM pixel owner; no authority or upload.
+pub fn rotate_local(bytes: &[u8], degrees: u16) -> Result<pixels::PhotoBundle, ClientError> {
+    if !matches!(degrees, 90 | 180 | 270) {
+        return Err(invalid("Choose 90, 180, or 270 clockwise degrees"));
+    }
+    pixels::process(bytes, pixels::Rotation::try_from(degrees).map_err(invalid)?).map_err(invalid)
 }
 
 /// A core-validated generation-pinned source URL. No user credentials accompany it.
