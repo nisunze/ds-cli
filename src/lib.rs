@@ -12,8 +12,14 @@ use serde_json::Value;
 use zeroize::Zeroize;
 
 pub mod assets;
+pub mod solar_dashboard;
 pub mod solar_portfolio_read;
 pub mod solar_snapshot;
+#[cfg(feature = "wasm")]
+#[wasm_bindgen::prelude::wasm_bindgen(js_name = solarDashboard)]
+pub fn solar_dashboard_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
+    solar_dashboard::evaluate(input).map_err(|error| wasm_bindgen::JsValue::from_str(&error))
+}
 #[cfg(feature = "wasm")]
 #[wasm_bindgen::prelude::wasm_bindgen(js_name = readBoundSolarPortfolioResult)]
 pub fn read_bound_solar_portfolio_result_wasm(
