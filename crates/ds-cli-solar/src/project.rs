@@ -147,7 +147,7 @@ pub static RUN: Command = Command {
                 "Stable identity for restart-safe execution.",
             )
             .required(),
-            Arg::repeated("city", "<id>", "Explicit city selection, 1..64."),
+            Arg::repeated("city", "<id>", "Explicit city selection, 1..64.").required(),
             Arg::value(
                 "concurrency",
                 "<count>",

@@ -18,7 +18,6 @@ use ds_cli_contract::spec::{
 };
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
-use sha2::{Digest, Sha256};
 
 use crate::{DS_SOLAR, RUN_TIMEOUT};
 
@@ -463,19 +462,13 @@ fn validate_batch_receipt(batch: &Value, expected_run_id: Option<&str>) -> Resul
         .filter(|state| ["local_ready", "uploading", "published", "failed"].contains(state))
         .ok_or_else(|| invalid_batch_receipt("batch state is invalid"))?;
 
-    let content = json!({
-        "schema_version": BATCH_SCHEMA,
-        "run": batch["run"],
-        "artifacts": batch["artifacts"],
-    });
-    let canonical_bytes = serde_json::to_vec(&content)
-        .map_err(|_| invalid_batch_receipt("batch content cannot be canonicalised"))?;
-    let computed_digest = format!("sha256:{:x}", Sha256::digest(&canonical_bytes));
-    if computed_digest != batch_digest {
-        return Err(invalid_batch_receipt(
-            "batch_digest does not match the closed batch content",
-        ));
-    }
+    // The engine owns canonical key order and the digest recipe. In particular,
+    // serde_json's preserve_order feature must never change receipt validity.
+    let owner: ds_solar_contracts::SolarArtifactBatch = serde_json::from_value(batch.clone())
+        .map_err(|_| invalid_batch_receipt("batch.json violates the owner's typed contract"))?;
+    owner.validate().map_err(|error| {
+        invalid_batch_receipt(format!("batch_digest or content invalid: {error}"))
+    })?;
     if batch_id != &batch_digest[7..39] {
         return Err(invalid_batch_receipt(
             "batch_id does not match the digest-derived batch identity",
@@ -582,10 +575,7 @@ mod tests {
             "run": run,
             "artifacts": artifacts,
         });
-        let digest = format!(
-            "sha256:{:x}",
-            Sha256::digest(serde_json::to_vec(&content).expect("serialize closed batch content"))
-        );
+        let digest = ds_solar_contracts::digest::canonical_json_digest(&content).unwrap();
         json!({
             "schema_version": BATCH_SCHEMA,
             "batch_id": &digest[7..39],

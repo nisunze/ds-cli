@@ -5665,3 +5665,25 @@ pub fn survey_photo(
         .survey_photo(&project, command, now())
         .map_err(map_client)
 }
+
+/// Execute a closed Solar operation against an explicit project without changing selection.
+pub fn solar_for_project(
+    lane_value: &str,
+    project: &str,
+    command: &SolarProjectCommand,
+) -> Result<Value, Failure> {
+    let lane = Lane::parse(lane_value)?;
+    let project = bounded_named_project(project)?;
+    command.validate(&project).map_err(map_client)?;
+    if let Some(mut device) = restored_device_session(lane)? {
+        return device.solar_project(&project, command).map_err(map_client);
+    }
+    let profile = profile::load(lane)?;
+    let store = NativeRefreshStore::open()?;
+    let mut client = Client::new(profile, NativeTransport, store);
+    require_restore_before_context(&mut client)?;
+    client
+        .solar_project(&project, command, now())
+        .map_err(map_client)
+}
+pub use ds_client_core::solar_portfolio::Command as SolarPortfolioCommand;

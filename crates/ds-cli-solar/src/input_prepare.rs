@@ -2,7 +2,7 @@
 
 use std::ffi::OsString;
 use std::fs::{self, File, OpenOptions};
-use std::io::Read;
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 
 use ds_cli_contract::spec::{
@@ -24,7 +24,7 @@ pub static COMMAND: Command = Command {
     path: &["solar", "input", "prepare"],
     contract: 1,
     summary: "Prepare one governed Solar intake from a verified local cache.",
-    purpose: "Runs the fixed native `ds-solar prepare --governed-intake` contract for one intake and one already populated local reference cache. The output is a fresh private directory containing the prepared city input and its publication handoff claim. This is headless, cache-only preparation: it has no Desktop dependency, project override, provider URL, token, API key, overwrite, fixture, or generic engine argument. A cache miss refuses instead of reaching the network.",
+    purpose: "Runs the fixed native `ds-solar prepare --governed-intake` contract for one intake and one already populated local reference cache. The output is a fresh private directory containing the prepared city input, its publication handoff claim, and a validated Server submission envelope. Submit the returned server_submission path with server solar submit. This is headless, cache-only preparation: it has no Desktop dependency, project override, provider URL, token, API key, overwrite, fixture, or generic engine argument. A cache miss refuses instead of reaching the network.",
     chapter: Chapter::Solar,
     effect: Effect::LocalFileWrite,
     authority: Authority::None,
@@ -49,7 +49,7 @@ pub static COMMAND: Command = Command {
         )
         .required(),
     ],
-    output: "The city id, fresh private output directory, exact prepared-input and publication-claim paths, byte counts and SHA-256 digests, plus the immutable ds-solar build manifest digest. Intake contents, receipt authority, cache records and owner stdout are never emitted.",
+    output: "The city id, fresh private output directory, exact prepared-input, publication-claim and Server-submission paths, byte counts and SHA-256 digests, plus the immutable ds-solar build manifest digest. Intake contents, receipt authority, cache records and owner stdout are never emitted.",
     examples: &[Example {
         command: "ds solar input prepare --intake ./pala.intake.json --cache ./solar-reference-cache --out ./pala-prepared --output json",
         note: "Prepare one captured city without Desktop or a network call.",
@@ -83,7 +83,7 @@ pub static COMMAND: Command = Command {
         },
         Refusal {
             code: "solar_prepare_output_unsafe",
-            when: "the private output directory cannot be created or the owner emits anything except one safe prepared input and one claim",
+            when: "the private output directory cannot be created or the owner emits anything except one safe prepared input, one claim, or a valid generated Server envelope",
             remedy: "choose a safe writable fresh directory and install matching ds and ds-solar releases",
         },
         Refusal {
@@ -142,6 +142,34 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     }
 
     let prepared = verify_output(&out)?;
+    let mut input_bytes = Vec::new();
+    open_no_follow(&prepared.input.path)?
+        .take(MAX_ARTIFACT_BYTES + 1)
+        .read_to_end(&mut input_bytes)
+        .map_err(|_| unsafe_output())?;
+    let mut claim_bytes = Vec::new();
+    open_no_follow(&prepared.claim.path)?
+        .take(MAX_ARTIFACT_BYTES + 1)
+        .read_to_end(&mut claim_bytes)
+        .map_err(|_| unsafe_output())?;
+    let envelope = ds_compute_runtime::encode_solar_server_submission(&input_bytes, &claim_bytes)
+        .map_err(|_| unsafe_output())?;
+    let submission_path = out.join(format!("{}.server-submission.json", prepared.city));
+    let mut options = OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600).custom_flags(libc::O_NOFOLLOW);
+    }
+    let mut submission_file = options
+        .open(&submission_path)
+        .map_err(|_| unsafe_output())?;
+    submission_file
+        .write_all(&envelope)
+        .and_then(|_| submission_file.sync_all())
+        .map_err(|_| unsafe_output())?;
+    let submission = hash_artifact(&submission_path)?;
     Ok(json!({
         "city": prepared.city,
         "out": out,
@@ -157,6 +185,10 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
                 "path": prepared.claim.path,
                 "bytes": prepared.claim.bytes,
                 "sha256": prepared.claim.sha256,
+            },
+            {
+                "role": "server_submission", "path": submission.path,
+                "bytes": submission.bytes, "sha256": submission.sha256,
             }
         ],
         "engine": {
@@ -407,7 +439,7 @@ fn unsafe_output() -> Failure {
 
 pub fn render(value: &Value) -> String {
     format!(
-        "Governed Solar input prepared for {}.\nPrepared directory: {}\nArtifacts: 2\nNetwork: no",
+        "Governed Solar input prepared for {}.\nPrepared directory: {}\nArtifacts: 3\nNetwork: no",
         value["city"].as_str().unwrap_or(""),
         value["out"].as_str().unwrap_or(""),
     )
