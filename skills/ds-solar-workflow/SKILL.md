@@ -81,9 +81,9 @@ portfolio total from city reads.
 For headless `solar.results.read` contract 2, discover its live descriptor and
 provide the closed batch directory plus explicit project, batch run and city.
 `solar.dashboard.compose` uses the same verified source and writes JSON and
-standalone HTML to a new private directory. Site and Plant are available;
-Plant's exact scenario is selected by `--system`. HTML includes cards only;
-JSON also includes Plant chart options. These files are not publication proof.
+standalone HTML to a new private directory. Site, Plant, Finance and BOQ are
+available; `--system` selects the exact scenario. HTML includes cards and BOQ
+tables; JSON also includes Plant chart options. These files are not publication proof.
 The `solar-dashboard` MCP profile exposes both leaves.
 
 When a user needs a document, export only an artifact declared by that run's

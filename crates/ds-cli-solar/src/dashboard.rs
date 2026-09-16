@@ -1,5 +1,5 @@
 //! CLI/MCP host over verified Solar source IO and shared Rust composition.
-use ds_cli_contract::spec::{Arg, Authority, Chapter, Command, Effect, Execution};
+use ds_cli_contract::spec::{Arg, Authority, Chapter, Command, Effect, Execution, Refusal};
 use ds_cli_contract::{Context, Failure, Inputs};
 use serde_json::{Value, json};
 use std::io::Write;
@@ -9,7 +9,7 @@ pub static COMMAND: Command = Command {
     path: &["solar", "dashboard", "compose"],
     contract: 1,
     summary: "Compose a Solar dashboard as JSON and standalone HTML headlessly.",
-    purpose: "Verify an exact sealed city report input, compose cards, derived metrics and declarative Plant chart options in shared Rust, and write a new private dashboard directory. No TypeScript, browser, paired desktop, network or publication is required. Plot files are not included.",
+    purpose: "Verify an exact sealed city report input and compose Site, Plant, Finance or BOQ through shared Rust. Write JSON and standalone HTML cards, plus BOQ tables. Plant JSON includes declarative chart options. No TypeScript, browser, paired desktop, sign-in, network or publication is required. Plot files are not included.",
     chapter: Chapter::Solar,
     effect: Effect::LocalFileWrite,
     authority: Authority::None,
@@ -26,18 +26,39 @@ pub static COMMAND: Command = Command {
         Arg::value("city", "<id>", "Exact city in that batch.").required(),
         Arg::value("section", "<name>", "Dashboard section.")
             .required()
-            .choices(&["site", "plant"]),
+            .choices(&["site", "plant", "finance", "boq"]),
         Arg::value(
             "system",
             "<name>",
-            "Exact Plant scenario; defaults to hybrid.",
+            "Exact Plant/Finance/BOQ scenario; defaults to hybrid.",
         )
         .choices(&["hybrid", "solar_battery", "thermal_only"]),
         Arg::value("out", "<dir>", "New private directory; never replaced.").required(),
     ],
     output: "Verified source identity, dashboard.json and index.html; publication not_requested and plots not_included.",
     examples: &[],
-    refusals: crate::project::RUN.refusals,
+    refusals: &[
+        Refusal {
+            code: "solar_engine_missing",
+            when: "the matching Solar owner is absent",
+            remedy: "install matching ds and ds-solar releases",
+        },
+        Refusal {
+            code: "engine_refused",
+            when: "the sealed source or exact project/run/city identity cannot be verified",
+            remedy: "use an intact closed batch and its exact identity",
+        },
+        Refusal {
+            code: "solar_dashboard_output_exists",
+            when: "the destination already exists",
+            remedy: "choose a new dashboard directory",
+        },
+        Refusal {
+            code: "solar_dashboard_io",
+            when: "composition is unavailable or private output cannot be written",
+            remedy: "verify source section availability, compatible currencies and writable private directories",
+        },
+    ],
     reference: Some("docs/reference/solar.md"),
     availability: crate::project::availability,
 };
