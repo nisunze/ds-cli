@@ -9,6 +9,7 @@ pub mod lifecycle;
 pub mod map;
 pub mod overrides;
 pub mod pens;
+pub mod placement;
 pub mod preview;
 pub mod project_sources;
 pub mod session;
@@ -177,6 +178,26 @@ pub struct Composition {
     /// Smallest permitted schedule type relative to authored font. 1 preserves type; 0.7 permits a 30% reduction.
     #[serde(default = "opaque")]
     pub min_font_scale: f64,
+    /// The paper edge furniture must keep inside of, in millimetres: 0 is
+    /// allowed, 1 is the preferred least (see `diagnostics`). Crossing it is
+    /// a typed warning, never an error.
+    #[serde(default = "one_mm", skip_serializing_if = "is_one_mm")]
+    pub collision_margin_mm: f64,
+}
+fn one_mm() -> f64 {
+    diagnostics::DEFAULT_MARGIN_MM
+}
+fn is_one_mm(value: &f64) -> bool {
+    *value == diagnostics::DEFAULT_MARGIN_MM
+}
+
+impl Layout {
+    /// The collision margin this sheet is assessed with.
+    pub fn collision_margin_mm(&self) -> f64 {
+        self.composition
+            .as_ref()
+            .map_or(diagnostics::DEFAULT_MARGIN_MM, |c| c.collision_margin_mm)
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
@@ -961,6 +982,11 @@ pub fn validate(layout: &Layout) -> Result<(), String> {
             || composition.movable.len() > 4
             || !bounded(composition.gap_mm, 0., 30.)
             || !bounded(composition.min_font_scale, 0.7, 1.)
+            || !bounded(
+                composition.collision_margin_mm,
+                0.,
+                diagnostics::MAX_MARGIN_MM,
+            )
             || composition.movable.iter().any(|id| {
                 !seen.insert(id)
                     || !layout.elements.iter().any(|e| {
@@ -1518,6 +1544,30 @@ pub enum Command {
     AssessFurniture {
         page_mm: [f64; 2],
         occupied: Vec<diagnostics::Occupied>,
+        /// The paper edge furniture keeps inside of; default 1 mm.
+        #[serde(default)]
+        margin_mm: Option<f64>,
+    },
+    /// The collision role of every element of a layout (see `diagnostics`):
+    /// which rectangles are furniture, and how movable each is.
+    FurnitureRoles {
+        layout: Layout,
+    },
+    /// The free surface of the sheet around measured fixed furniture (see
+    /// `placement`): the maximal free rectangles, and the stepping
+    /// rectangles from each corner for panels of `panel_w` mm.
+    PlacementAreas {
+        page_mm: [f64; 2],
+        #[serde(default)]
+        occupied: Vec<diagnostics::Occupied>,
+        #[serde(default)]
+        margin_mm: Option<f64>,
+        #[serde(default)]
+        gap_mm: Option<f64>,
+        #[serde(default)]
+        panel_w: Option<f64>,
+        #[serde(default)]
+        max_panels: Option<usize>,
     },
     ProjectSettings {
         sheets: serde_json::Value,
@@ -2098,9 +2148,67 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
             validate(&layout)?;
             json!({"layout":layout})
         }
-        Command::AssessFurniture { page_mm, occupied } => {
-            serde_json::to_value(diagnostics::assess(page_mm, &occupied)?)
-                .map_err(|e| e.to_string())?
+        Command::AssessFurniture {
+            page_mm,
+            occupied,
+            margin_mm,
+        } => serde_json::to_value(diagnostics::assess_sheet(
+            page_mm,
+            margin_mm.unwrap_or(diagnostics::DEFAULT_MARGIN_MM),
+            &occupied,
+        )?)
+        .map_err(|e| e.to_string())?,
+        Command::PlacementAreas {
+            page_mm,
+            occupied,
+            margin_mm,
+            gap_mm,
+            panel_w,
+            max_panels,
+        } => {
+            let margin = margin_mm.unwrap_or(diagnostics::DEFAULT_MARGIN_MM);
+            if !margin.is_finite() || !(0. ..=diagnostics::MAX_MARGIN_MM).contains(&margin) {
+                return Err(format!(
+                    "the collision margin is 0 through {} mm",
+                    diagnostics::MAX_MARGIN_MM
+                ));
+            }
+            let area = [
+                margin,
+                margin,
+                page_mm[0] - 2. * margin,
+                page_mm[1] - 2. * margin,
+            ];
+            let obstacles: Vec<placement::Rect> = occupied.iter().map(|o| o.rect_mm).collect();
+            let gap = gap_mm.unwrap_or(sheet_margin::MARGIN_MM);
+            let free = placement::free_rectangles(area, &obstacles, gap)?;
+            let mut skylines = serde_json::Map::new();
+            if let Some(panel_w) = panel_w {
+                for corner in placement::CORNERS {
+                    let steps = placement::skyline(
+                        area,
+                        &obstacles,
+                        gap,
+                        corner,
+                        panel_w,
+                        max_panels.unwrap_or(8),
+                    )?;
+                    let key = serde_json::to_value(corner)
+                        .map_err(|e| e.to_string())?
+                        .as_str()
+                        .unwrap_or_default()
+                        .to_owned();
+                    skylines.insert(key, json!(steps));
+                }
+            }
+            json!({"area_mm": area, "margin_mm": margin, "gap_mm": gap, "free": free, "skylines": skylines})
+        }
+        Command::FurnitureRoles { layout } => {
+            let layout = upgrade(layout)?;
+            json!({
+                "margin_mm": layout.collision_margin_mm(),
+                "roles": layout.elements.iter().map(|e| json!({"id": e.id, "kind": e.kind, "role": diagnostics::role_of(e)})).collect::<Vec<_>>(),
+            })
         }
         Command::Validate { layout } => {
             let layout = upgrade(layout)?;
@@ -2336,6 +2444,7 @@ mod tests {
             movable: vec!["schedule".into()],
             gap_mm: 5.,
             min_font_scale: 1.,
+            collision_margin_mm: 1.,
         });
         layout.project_overview = true;
         validate(&layout).unwrap();

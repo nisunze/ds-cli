@@ -372,6 +372,46 @@ optical rule preserves category ratios and legibility; it does not scale text,
 points, paper furniture or engineering geometry. The map and its legend consume
 the same resolved pens. Omission preserves existing fixed physical pens.
 
+### The collision contract
+
+A sheet is a set of rectangles with meaning (`printing::diagnostics`). The
+**furniture** — title block, legend, information table, schedules, scale bar,
+north arrow, logos, texts — must not overlap one another, must stay inside
+the **paper** less the **collision margin** (`composition.collision_margin_mm`:
+0 allowed, 1 mm the preferred least and the default, 20 the most), and must
+not cover the **design area**: the network's fitted footprint on the map,
+which the engine measures from the projection. The map frame around that
+footprint is displayed map, not a hazard — furniture may sit over it without
+a finding — and decorative rectangles are not furniture (`role_of` decides:
+a table bound to `lv_print_info` or presented as `workbook_info` is the
+information table, any other table a schedule). Every violation is a typed
+**warning**, never an error: `print_furniture_overlap`,
+`print_design_overlap`, `print_element_clipped`, each with the overlapping
+region, the roles, the overlap in millimetres, the element the suggestion
+moves (the more movable role — schedules over legends and information
+tables over title blocks; equal roles, the later one) and the smallest
+axis-aligned move that clears it. A person or an agent reads them from
+`print_diagnostics` (per named output in the engine result, the run receipt
+and `report layout render`) and from the run warnings, and improves a
+placement deliberately through `report layout edit`. `assess_furniture`
+takes `margin_mm`; `furniture_roles` lists a layout's roles.
+
+### Placement areas: the free surface as stepping rectangles
+
+What is left of the printable area after the fixed furniture is an irregular
+region (`printing::placement`). Its **maximal free rectangles** are where a
+panel may go; its **skyline** from a corner is a series of stepping
+rectangles, one per adjacent panel column, each as tall as the free space in
+its column touching the anchored edge, skipping the corner furniture and
+ending at the next blocked column, because panels are contiguous. A workbook
+schedule is split across those steps — `panel_rows` gives each panel as many
+rows as its step holds — so the schedule fills the irregular surface instead
+of assuming equal panel heights. The engine offers these skyline splits to its
+packing search beside the balanced and greedy ones, for every corner, so a
+sheet whose title block, legend and information table leave a stepped
+vacancy gets its schedules split to fit it automatically. `placement_areas`
+exposes the free rectangles and the four skylines to CLI/MCP.
+
 ### Headless mechanical diagnostics
 
 The Rust `printing::diagnostics` owner accepts measured occupied furniture

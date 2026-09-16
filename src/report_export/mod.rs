@@ -779,6 +779,11 @@ pub struct AdminBoundsEvidence {
 struct ResultDocument {
     #[serde(default)]
     warnings: Vec<PrintWarning>,
+    /// One measured assessment per named print output (`printing::
+    /// diagnostics`): the typed collision findings behind the warnings,
+    /// with rectangles and suggested moves. Bounded by the engine.
+    #[serde(default)]
+    print_diagnostics: Vec<Value>,
     task: String,
     status: String,
     transformer: String,
@@ -814,6 +819,7 @@ pub struct VerifiedArtifact {
 pub struct VerifiedResult {
     pub artifacts: Vec<VerifiedArtifact>,
     pub warnings: Vec<PrintWarning>,
+    pub print_diagnostics: Vec<Value>,
     pub elapsed_ms: u64,
     pub geometry_changed: bool,
     pub layers_decoded: usize,
@@ -1046,82 +1052,110 @@ pub fn verify_result(
         });
     }
     if result.warnings.len() > MAX_PRINT_WARNINGS
-        || result.warnings.iter().any(|warning| {
-            let placed = warning.transformer == plan.transformer
-                && plan.formats.contains(&warning.output_id)
-                && report_formats::named_print_output(&warning.output_id).map(|(_, id)| id)
-                    == Some(warning.layout_id.as_str())
-                && warning.message.len() <= 2048;
-            let valid = match warning.code.as_str() {
-                // A table that could not show every row names the panel and
-                // the honest counts.
-                "table_truncated" => {
-                    placed
-                        && crate::printing::identifier(&warning.element_id)
-                        && warning.omitted_rows > 0
-                        && warning.omitted_rows < warning.total_rows
-                        && warning.total_rows <= 1_000_000
-                }
-                // Measured furniture diagnostics (printing::diagnostics) and
-                // their bounded summary: mechanical findings in millimetres,
-                // no table rows behind them. The summary names no element.
-                "print_element_clipped" | "print_furniture_overlap" | "print_layout_warning" => {
-                    placed
-                        && crate::printing::identifier(&warning.element_id)
-                        && warning.omitted_rows == 0
-                        && warning.total_rows == 0
-                }
-                "print_diagnostics_summary" => {
-                    placed
-                        && warning.element_id.is_empty()
-                        && warning.omitted_rows == 0
-                        && warning.total_rows == 0
-                }
-                // A text cell whose `{key}` had no value in the title block or
-                // the project printed empty. Same shape as the summary: no
-                // element, no rows.
-                "print_text_unbound" => {
-                    placed
-                        && warning.element_id.is_empty()
-                        && warning.omitted_rows == 0
-                        && warning.total_rows == 0
-                }
-                // Cable consistency findings (report_consistency::lv_cables):
-                // one row per pole whose saved cable label disagrees with its
-                // LV line, mirrored on the workbook's Engineering Review
-                // sheet. They ride the xlsx output and name no paper; the
-                // transformer is the saved data label, which differs from the
-                // run's name only by case; the element is the saved line
-                // number. No table rows stand behind them.
-                "lv_pole_line_cable_conflict" => {
-                    warning.transformer.eq_ignore_ascii_case(&plan.transformer)
-                        && warning.output_id == "xlsx"
-                        && plan.formats.contains(&warning.output_id)
-                        && warning.layout_id.is_empty()
-                        && !warning.element_id.is_empty()
-                        && warning.element_id.len() <= 240
-                        && warning.omitted_rows == 0
-                        && warning.total_rows == 0
-                        && warning.message.len() <= 2048
-                }
-                _ => false,
-            };
-            !valid
-        })
+        || result
+            .warnings
+            .iter()
+            .any(|warning| !valid_print_warning(warning, &plan.transformer, &plan.formats))
     {
         return Err(ResultRefusal::invalid(
             "Network Reporter returned invalid print warnings",
         ));
     }
+    if result.print_diagnostics.len() > 64
+        || result.print_diagnostics.iter().any(|assessment| {
+            !assessment.is_object()
+                || assessment["output_id"]
+                    .as_str()
+                    .is_none_or(|id| !plan.formats.iter().any(|f| f == id))
+                || assessment["findings"]
+                    .as_array()
+                    .is_none_or(|f| f.len() > 200)
+        })
+    {
+        return Err(ResultRefusal::invalid(
+            "Network Reporter returned invalid print diagnostics",
+        ));
+    }
     Ok(VerifiedResult {
         artifacts,
         warnings: result.warnings,
+        print_diagnostics: result.print_diagnostics,
         elapsed_ms: result.elapsed_ms,
         geometry_changed: result.geometry_changed,
         layers_decoded: result.layers_decoded,
         features_decoded: result.features_decoded,
         admin_bounds: result.admin_bounds,
     })
+}
+
+/// Is this one of the print warnings the kernel's own tables and diagnostics
+/// can raise, placed on this run? Every host that reads an engine result
+/// asks here, so the desktop shell and `ds` accept the same warnings.
+pub fn valid_print_warning(warning: &PrintWarning, transformer: &str, formats: &[String]) -> bool {
+    let plan_transformer = transformer;
+    let placed = warning.transformer == plan_transformer
+        && formats.contains(&warning.output_id)
+        && report_formats::named_print_output(&warning.output_id).map(|(_, id)| id)
+            == Some(warning.layout_id.as_str())
+        && warning.message.len() <= 2048;
+    let valid = match warning.code.as_str() {
+        // A table that could not show every row names the panel and
+        // the honest counts.
+        "table_truncated" => {
+            placed
+                && crate::printing::identifier(&warning.element_id)
+                && warning.omitted_rows > 0
+                && warning.omitted_rows < warning.total_rows
+                && warning.total_rows <= 1_000_000
+        }
+        // Measured furniture diagnostics (printing::diagnostics) and
+        // their bounded summary: mechanical findings in millimetres,
+        // no table rows behind them. The summary names no element.
+        "print_element_clipped"
+        | "print_furniture_overlap"
+        | "print_design_overlap"
+        | "print_layout_warning" => {
+            placed
+                && crate::printing::identifier(&warning.element_id)
+                && warning.omitted_rows == 0
+                && warning.total_rows == 0
+        }
+        "print_diagnostics_summary" => {
+            placed
+                && warning.element_id.is_empty()
+                && warning.omitted_rows == 0
+                && warning.total_rows == 0
+        }
+        // A text cell whose `{key}` had no value in the title block or
+        // the project printed empty. Same shape as the summary: no
+        // element, no rows.
+        "print_text_unbound" => {
+            placed
+                && warning.element_id.is_empty()
+                && warning.omitted_rows == 0
+                && warning.total_rows == 0
+        }
+        // Cable consistency findings (report_consistency::lv_cables):
+        // one row per pole whose saved cable label disagrees with its
+        // LV line, mirrored on the workbook's Engineering Review
+        // sheet. They ride the xlsx output and name no paper; the
+        // transformer is the saved data label, which differs from the
+        // run's name only by case; the element is the saved line
+        // number. No table rows stand behind them.
+        "lv_pole_line_cable_conflict" => {
+            warning.transformer.eq_ignore_ascii_case(plan_transformer)
+                && warning.output_id == "xlsx"
+                && formats.contains(&warning.output_id)
+                && warning.layout_id.is_empty()
+                && !warning.element_id.is_empty()
+                && warning.element_id.len() <= 240
+                && warning.omitted_rows == 0
+                && warning.total_rows == 0
+                && warning.message.len() <= 2048
+        }
+        _ => false,
+    };
+    valid
 }
 
 // ---------------------------------------------------------------------------
@@ -1268,6 +1302,7 @@ pub fn run_receipt(facts: &RunReceiptFacts<'_>) -> Result<Value, String> {
         "formats_requested": facts.plan.formats,
         "outputs": outputs,
         "warnings": facts.result.warnings,
+        "print_diagnostics": facts.result.print_diagnostics,
         "admin_bounds": facts.result.admin_bounds,
         "layers_decoded": facts.result.layers_decoded,
         "features_decoded": facts.result.features_decoded,
