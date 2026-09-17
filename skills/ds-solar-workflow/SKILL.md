@@ -13,13 +13,10 @@ The selected native or explicitly paired project owns city authority. Use the
 headless seed, capture, preparation and project lifecycle for server work.
 Never reconstruct project inputs from browser storage, caches, APIs or fixtures.
 
-For native Server jobs, discover `solar.application.schema` and
-`solar.application`; the compact `solar-application` MCP profile exposes both.
-Select one owner operation before constructing its request. The Server owns
-workspace approval, digest-pinned prepared intake, calculation, progress,
-cancellation and artifact inventories without pairing. Retain the captured
-project and workspace handle throughout. A completed progress receipt survives
-restart; an interrupted receipt requires inspection and a new run ID to retry.
+Discover native Server requests through `solar.application.schema`, then execute
+with `solar.application` (MCP profile `solar-application`). Preserve project and
+workspace identity. Completed progress survives restart; inspect interrupted
+work before retrying with a new run ID.
 
 For a governed aggregate with a portfolio id and membership revision, stop and
 use `ds-solar-portfolio`. Repeated city contexts form an explicit city batch;
@@ -27,12 +24,9 @@ they do not become a portfolio merely because more than one city was run.
 
 ## Seed the project's cities first, if they are absent
 
-When the project has no Solar cities yet, or the user asks to add governed
-cities to it — "seed Solar into this project", "copy the standard cities",
-"which cities would be added" — discover the seeding commands rather than
-preparing a city that does not exist. Seeding copies authored city inputs from
-a governed source into the project; preparation caches inputs for cities the
-project already has. They are different requests.
+Discover seeding when cities are absent or the user requests governed cities.
+Seeding copies authored inputs into the project; preparation caches inputs for
+existing cities.
 
 Preview first and inspect every city action, source/destination digest, input
 document and excluded media reference. Echo the returned plan digest to apply.
