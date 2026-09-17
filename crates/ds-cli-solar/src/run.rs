@@ -2,8 +2,8 @@
 //!
 //! The engine guarantees this performs no intake and no network call of any
 //! kind. Its artifact preparation and run phases are deliberately separate:
-//! this adapter exposes the offline run phase only, while product preparation
-//! remains at the paired desktop/cache boundary. A caller reading
+//! this adapter exposes the offline run phase only. Native Server preparation
+//! belongs to the Solar application owner. A caller reading
 //! `authority: none` and `network: no` on this contract is reading something
 //! the engine actually enforces.
 
@@ -47,8 +47,8 @@ pub static COMMAND: Command = Command {
 Executes caller-supplied prepared Solar cities and writes their results, the \
 city batch document and any charts into an output directory. It performs no \
 intake, portfolio aggregation or network call of any kind. This is the \
-headless city-artifact route; for the paired desktop product lifecycle use \
-`ds solar run start` after `ds solar prepare`.",
+headless city-artifact route. For native Server preparation, city/portfolio \
+jobs and delivery, discover `ds solar application schema`.",
     chapter: Chapter::Solar,
     effect: Effect::LocalFileWrite,
     authority: Authority::None,

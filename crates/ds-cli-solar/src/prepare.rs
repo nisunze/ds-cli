@@ -25,13 +25,13 @@ pub static COMMAND: Command = Command {
     // v2 moves preparation to the paired desktop/cache boundary and removes
     // the former caller-owned URL/cache/output arguments.
     contract: 2,
-    summary: "Prepare selected Solar city inputs through DS GridDesign.",
+    summary: "Prepare Solar city inputs through paired Desktop (compatibility).",
     purpose: "\
 Asks the paired DS GridDesign application to prepare the selected city contexts \
-cache-first. The application owns the project, cached weather and PV reference \
-inputs, and any authenticated refresh on a cache miss; `ds` receives only the \
-bounded preparation receipt. It never reads or scrapes IndexedDB and never \
-accepts a URL, credential, cache path, project id, or filesystem root.",
+cache-first under its selected project. This compatibility route requires a \
+paired Desktop. For headless native Server input capture/preparation, discover \
+`ds solar application schema --operation prepare_captured`. This adapter \
+accepts no URL, credential, cache path, project id or filesystem root.",
     chapter: Chapter::Solar,
     effect: Effect::LocalFileWrite,
     authority: Authority::DesktopUser,

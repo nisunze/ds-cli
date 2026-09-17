@@ -1,16 +1,12 @@
-//! `ds solar` — paired product lifecycle plus headless artifact runner.
+//! `ds solar` — native Server application and thin compatibility adapters.
 //!
-//! The paired product route keeps the cache boundary in DS GridDesign:
-//! `prepare` captures selected city input cache-first, and `run start` plus
-//! its lifecycle commands execute and observe native local Solar. The CLI
-//! sends closed semantic operations only; it never reads IndexedDB or carries
-//! cache paths, URLs, or credentials.
+//! `application schema` derives closed requests from the Rust Solar owner;
+//! `application` invokes them with captured native account/project authority.
+//! Preparation, calculation, artifact selection and delivery need no Desktop.
 //!
-//! `run` remains the separately useful headless artifact runner over an
-//! already prepared directory and the external `ds-solar` process contract.
-//! Longest-path dispatch makes `ds solar run start` the paired product launch
-//! while preserving `ds solar run --prepared ... --out ...` for reproducible
-//! offline artifact work.
+//! Paired Desktop commands retain their declared compatibility contracts.
+//! `run --prepared ... --out ...` invokes the separate offline city-artifact
+//! process contract for already prepared inputs. All routes call Rust owners.
 
 pub mod application;
 pub mod cities;

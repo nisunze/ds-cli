@@ -101,9 +101,9 @@ their remaining adapters are migrated. Standalone `results read` and dashboard
 composition already read sealed native sources without pairing or sign-in;
 the supplied project is attribution and grants no cloud authority.
 
-## Product route: paired, cache-first, local compute
+## Desktop compatibility route: cache-first, local compute
 
-The product route is a closed lifecycle through the paired DS GridDesign
+This compatibility route is a closed lifecycle through the paired DS GridDesign
 application:
 
 ```text
