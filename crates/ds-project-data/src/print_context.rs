@@ -99,7 +99,9 @@ fn buffered_area(transformer: &str, layers: &Value, buffer_m: f64) -> Result<Val
     Ok(json!({"type": "Polygon", "coordinates": [[[w, s], [e, s], [e, n], [w, n], [w, s]]]}))
 }
 
-fn buffer_of(source: &PrintContextSource) -> f64 {
+/// The metric buffer one context source is read for: its own when it
+/// declares one, the derived default otherwise.
+pub(crate) fn buffer_of(source: &PrintContextSource) -> f64 {
     match source {
         PrintContextSource::GoogleOpenBuildings { buffer_m, .. }
         | PrintContextSource::ElevationContours { buffer_m, .. }

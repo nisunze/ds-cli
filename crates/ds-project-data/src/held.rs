@@ -11,7 +11,21 @@
 //!
 //! It is the host-neutral form of the CLI's `mv_context::attach`, minus the
 //! model loop: the caller projects and clips, this module merges.
+//!
+//! [`preview_context`] is the one resolver a preview goes through, on every
+//! host: the host reads what its stores hold for the draft's context layers
+//! — captures, retained preparations, rooms — and hands it over as
+//! [`HeldPreviewState`]; every decision over it is a kernel call
+//! (`held_context::admit`, `retained_admission`) or a `Mode::Read` of the
+//! rooms, and nothing is ever acquired for a preview.
 
+use ds_command_kernel::printing::context::{
+    expanded_layer_ids, retained_admission, RetainedContext, RetainedVerdict, RETAINED_SCHEMA,
+};
+use ds_command_kernel::printing::held_context::{admit, HeldCapture};
+use ds_command_kernel::printing::map::MV_PRINT_LAYER_IDS;
+use ds_command_kernel::printing::preview::Refusal;
+use ds_command_kernel::printing::{PrintContextLayer, PrintContextSource};
 use ds_command_kernel::project_dataset_cache::{Scope, REFERENCE_CACHE_PROVIDER};
 use ds_command_kernel::report_export::{print_context_document, sha256_hex};
 use serde_json::{json, Value};
@@ -19,7 +33,10 @@ use std::collections::BTreeMap;
 use std::path::Path;
 
 use crate::catalog::ReferenceResource;
-use crate::print_context::{document_failure, Omission, PrintContext};
+use crate::ensure::Mode;
+use crate::print_context::{
+    buffer_of, document_failure, read_print_context, Omission, PrintContext,
+};
 use crate::Failure;
 
 /// One layer the host holds and wants printed: its document id, its
@@ -39,8 +56,8 @@ fn invalid(message: impl std::fmt::Display) -> Failure {
 }
 
 /// The design's extent buffered by `buffer_m` through the kernel's own metric
-/// buffering, as the coverage polygon a fresh document starts from.
-fn buffered_coverage(transformer: &str, network: &Value, buffer_m: f64) -> Result<Value, Failure> {
+/// buffering, as `[west, south, east, north]`.
+fn buffered_bounds(transformer: &str, network: &Value, buffer_m: f64) -> Result<[f64; 4], Failure> {
     let request = json!({
         "schema": ds_command_kernel::project_design_extent::SCHEMA,
         "action": "extent",
@@ -53,8 +70,14 @@ fn buffered_coverage(transformer: &str, network: &Value, buffer_m: f64) -> Resul
         &ds_command_kernel::project_design_extent::evaluate(&bytes).map_err(crate::store)?,
     )
     .map_err(crate::store)?;
-    let [w, s, e, n]: [f64; 4] = serde_json::from_value(answer["buffered"].clone())
-        .map_err(|_| invalid("the design has no geographic extent"))?;
+    serde_json::from_value(answer["buffered"].clone())
+        .map_err(|_| invalid("the design has no geographic extent"))
+}
+
+/// The buffered design extent as the coverage polygon a fresh document
+/// starts from.
+fn buffered_coverage(transformer: &str, network: &Value, buffer_m: f64) -> Result<Value, Failure> {
+    let [w, s, e, n] = buffered_bounds(transformer, network, buffer_m)?;
     Ok(json!({"type": "Polygon", "coordinates": [[[w, s], [e, s], [e, n], [w, n], [w, s]]]}))
 }
 
@@ -188,6 +211,235 @@ pub fn held_catalog_rooms(root: &Path, scope: &Scope) -> Vec<ReferenceResource> 
         });
     }
     rows
+}
+
+/// What a host holds for a preview's context layers, read from its own
+/// stores without a decision: the survey and local-layer captures, by the
+/// context layer id each answers, and the derived preparations it retained,
+/// keyed by context layer id. A layer with no entry here is simply not held.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct HeldPreviewState {
+    pub captures: Vec<HeldCapture>,
+    pub retained: BTreeMap<String, RetainedContext>,
+}
+
+/// Why a preview's context could not be resolved: a kernel refusal over a
+/// handed capture (its code and message key travel unchanged), or a failure
+/// of the holdings read or the document merge.
+#[derive(Debug, Clone, PartialEq)]
+pub enum PreviewContextRefusal {
+    Kernel(Refusal),
+    Holdings(Failure),
+}
+
+impl PreviewContextRefusal {
+    /// The refusal code a command declares for this refusal.
+    pub fn code(&self) -> &str {
+        match self {
+            PreviewContextRefusal::Kernel(refusal) => &refusal.code,
+            PreviewContextRefusal::Holdings(failure) => failure.code(),
+        }
+    }
+}
+
+impl From<Failure> for PreviewContextRefusal {
+    fn from(failure: Failure) -> Self {
+        PreviewContextRefusal::Holdings(failure)
+    }
+}
+
+/// The reason a layer is omitted when the host hands no capture for it.
+const NOT_CAPTURED: &str = "not captured on this host";
+/// The reason every room-held layer is omitted when the host has no holdings
+/// root to read from.
+const NO_HOLDINGS_ROOT: &str = "no holdings root on this host";
+
+/// The layer ids one wanted layer prints as: what its preparation emits —
+/// the MV projection's three layers, the contour pair, or the layer's own id.
+fn emitted_ids(layer: &PrintContextLayer) -> Vec<String> {
+    match layer.source {
+        PrintContextSource::ProjectDsgridMv { .. } => MV_PRINT_LAYER_IDS
+            .iter()
+            .map(|id| (*id).to_owned())
+            .collect(),
+        _ => expanded_layer_ids(layer),
+    }
+}
+
+fn source_kind(source: &PrintContextSource) -> &'static str {
+    match source {
+        PrintContextSource::Survey { .. } => "survey",
+        PrintContextSource::LocalLayer { .. } => "local_layer",
+        PrintContextSource::Catalog { .. } => "catalog",
+        PrintContextSource::GoogleOpenBuildings { .. } => "google_open_buildings",
+        PrintContextSource::ElevationContours { .. } => "elevation_contours",
+        PrintContextSource::ProjectDsgridMv { .. } => "project_dsgrid_mv",
+    }
+}
+
+/// The source-inventory entry an admitted capture prints under: the source
+/// as the draft spells it (kind and identity) with the capture's declared
+/// count beside it.
+fn capture_source(source: &PrintContextSource, capture: &HeldCapture) -> Result<Value, Failure> {
+    let mut entry = serde_json::to_value(source).map_err(crate::store)?;
+    let fields = entry
+        .as_object_mut()
+        .ok_or_else(|| crate::store("a context source is not an object"))?;
+    fields.insert("declared_count".to_owned(), json!(capture.declared_count));
+    if let Some(project) = capture.source_project.as_deref() {
+        fields.insert("source_project".to_owned(), json!(project));
+    }
+    Ok(entry)
+}
+
+/// Resolve the print context one preview prints with, from what this host
+/// holds and nothing else.
+///
+/// For each wanted layer, by its source kind: a survey or local layer prints
+/// from the capture handed under its id, admitted by
+/// `held_context::admit` — a capture the kernel refuses ends the preview with
+/// that refusal, a layer with no capture is a named omission; an elevation
+/// contours or project MV layer prints from the preparation retained under
+/// its id when `retained_admission` lets it stand in for the design's
+/// buffered extent — otherwise the MV projection is a named omission and
+/// contours fall back to the project's rooms; a catalogue, building or
+/// unretained contours layer is read from the rooms under `root` in
+/// `Mode::Read`, which omits what is not held and never acquires; without a
+/// root every such layer is omitted as unreadable here. What was read and
+/// what was held merge through [`attach_layers`] into one
+/// `ds.print-context/v1` document under one digest.
+///
+/// `Ok(None)` when nothing was wanted, or nothing could be supplied and
+/// nothing needs naming.
+#[allow(clippy::too_many_arguments)]
+pub fn preview_context(
+    root: Option<&Path>,
+    scope: &Scope,
+    project: &str,
+    transformer: &str,
+    layers: &Value,
+    wanted: &[PrintContextLayer],
+    catalog: &[ReferenceResource],
+    held: &HeldPreviewState,
+) -> Result<Option<PrintContext>, PreviewContextRefusal> {
+    if wanted.is_empty() {
+        return Ok(None);
+    }
+    let mut held_layers: Vec<HeldLayer> = Vec::new();
+    let mut to_read: Vec<PrintContextLayer> = Vec::new();
+    let mut omitted: Vec<Omission> = Vec::new();
+    let mut warnings: Vec<String> = Vec::new();
+    let mut widest = 0.0_f64;
+    for layer in wanted {
+        widest = widest.max(buffer_of(&layer.source));
+        match &layer.source {
+            PrintContextSource::Survey { .. } | PrintContextSource::LocalLayer { .. } => {
+                let capture = held
+                    .captures
+                    .iter()
+                    .find(|capture| capture.context_id == layer.id);
+                let Some(capture) = capture else {
+                    omitted.push(Omission {
+                        layer: layer.id.clone(),
+                        reason: NOT_CAPTURED.into(),
+                    });
+                    continue;
+                };
+                let collection = admit(project, &layer.source, capture)
+                    .map_err(PreviewContextRefusal::Kernel)?;
+                held_layers.push(HeldLayer {
+                    id: layer.id.clone(),
+                    collection,
+                    source: capture_source(&layer.source, capture)?,
+                });
+            }
+            PrintContextSource::ElevationContours { .. }
+            | PrintContextSource::ProjectDsgridMv { .. } => {
+                let bounds = buffered_bounds(transformer, layers, buffer_of(&layer.source))?;
+                let retained = held.retained.get(&layer.id);
+                match retained_admission(layer, retained, bounds) {
+                    RetainedVerdict::Use {
+                        layers: prepared,
+                        warnings: retained_warnings,
+                    } => {
+                        let source_version = retained
+                            .map(|entry| entry.source_version.clone())
+                            .unwrap_or_default();
+                        for (id, collection) in prepared {
+                            held_layers.push(HeldLayer {
+                                id,
+                                collection,
+                                source: json!({
+                                    "kind": source_kind(&layer.source),
+                                    "retained": RETAINED_SCHEMA,
+                                    "source_version": source_version,
+                                }),
+                            });
+                        }
+                        warnings.extend(retained_warnings);
+                    }
+                    RetainedVerdict::Omit { reason } => {
+                        if matches!(layer.source, PrintContextSource::ProjectDsgridMv { .. }) {
+                            omitted.extend(emitted_ids(layer).into_iter().map(|id| Omission {
+                                layer: id,
+                                reason: reason.clone(),
+                            }));
+                            continue;
+                        }
+                        if retained.is_some() {
+                            warnings.push(format!("{}: {reason}", layer.label));
+                        }
+                        to_read.push(layer.clone());
+                    }
+                }
+            }
+            PrintContextSource::Catalog { .. } | PrintContextSource::GoogleOpenBuildings { .. } => {
+                to_read.push(layer.clone());
+            }
+        }
+    }
+    let read = match (root, to_read.is_empty()) {
+        (_, true) => None,
+        (Some(root), false) => Some(read_print_context(
+            root,
+            scope,
+            transformer,
+            layers,
+            &to_read,
+            catalog,
+            Mode::Read,
+        )?),
+        (None, false) => {
+            omitted.extend(to_read.iter().flat_map(emitted_ids).map(|id| Omission {
+                layer: id,
+                reason: NO_HOLDINGS_ROOT.into(),
+            }));
+            None
+        }
+    };
+    let read = match read {
+        Some(mut context) => {
+            context.omitted.extend(omitted);
+            context.warnings.extend(warnings);
+            Some(context)
+        }
+        None if omitted.is_empty() && warnings.is_empty() => None,
+        None => Some(PrintContext {
+            document: None,
+            sha256: None,
+            layers: Vec::new(),
+            omitted,
+            warnings,
+            reused: true,
+        }),
+    };
+    Ok(attach_layers(
+        read,
+        held_layers,
+        transformer,
+        layers,
+        widest,
+    )?)
 }
 
 #[cfg(test)]
@@ -445,5 +697,382 @@ mod tests {
         assert!(crate::catalog::find(&rows, "RW", "roads").is_some());
         assert!(rows[0].download_url.is_none());
         assert_eq!(held_catalog_rooms(temp.path(), &other).len(), 1);
+    }
+
+    fn scope() -> Scope {
+        Scope {
+            principal: "uid-1".into(),
+            project: "project-a".into(),
+        }
+    }
+
+    fn survey_layer() -> PrintContextLayer {
+        PrintContextLayer {
+            id: "survey_poles".into(),
+            label: "Poles".into(),
+            source: PrintContextSource::Survey {
+                form: "poles".into(),
+            },
+        }
+    }
+
+    fn local_layer() -> PrintContextLayer {
+        PrintContextLayer {
+            id: "sketch_1".into(),
+            label: "Sketch".into(),
+            source: PrintContextSource::LocalLayer {
+                layer_id: "sketch_1".into(),
+            },
+        }
+    }
+
+    fn mv_layer() -> PrintContextLayer {
+        PrintContextLayer {
+            id: "project_dsgrid_mv".into(),
+            label: "Proposed MV".into(),
+            source: PrintContextSource::ProjectDsgridMv {
+                buffer_m: 200.0,
+                corridor: None,
+            },
+        }
+    }
+
+    fn contours_layer() -> PrintContextLayer {
+        PrintContextLayer {
+            id: "elevation_contours".into(),
+            label: "Contours".into(),
+            source: PrintContextSource::ElevationContours {
+                buffer_m: 200.0,
+                minor_interval_m: 10,
+                index_interval_m: 50,
+                sample_spacing_m: 10.0,
+            },
+        }
+    }
+
+    fn catalog_layer() -> PrintContextLayer {
+        PrintContextLayer {
+            id: "roads".into(),
+            label: "Roads".into(),
+            source: PrintContextSource::Catalog {
+                country: "RW".into(),
+                layer: "roads".into(),
+            },
+        }
+    }
+
+    fn capture(context_id: &str, count: usize) -> HeldCapture {
+        HeldCapture {
+            context_id: context_id.into(),
+            features: collection((0..count).map(|i| feature(&format!("f{i}"))).collect()),
+            declared_count: count as u64,
+            render_mode: Some("rows".into()),
+            source_project: Some("project-a".into()),
+            features_loaded: true,
+        }
+    }
+
+    /// A retained preparation of `layer` over the whole design, as the
+    /// browser's v2 entry spells it.
+    fn retained_for(layer: &PrintContextLayer, layers: Value) -> RetainedContext {
+        RetainedContext {
+            schema: RETAINED_SCHEMA.into(),
+            parameters: ds_command_kernel::printing::context::retained_parameters(&layer.source)
+                .unwrap(),
+            coverage: [29.0, -3.0, 31.0, -1.0],
+            layers,
+            source_version: "mv-rev-7".into(),
+            warnings: vec!["mv: one model skipped".into()],
+        }
+    }
+
+    fn resolve(
+        root: Option<&Path>,
+        wanted: &[PrintContextLayer],
+        held: &HeldPreviewState,
+    ) -> Result<Option<PrintContext>, PreviewContextRefusal> {
+        preview_context(
+            root,
+            &scope(),
+            "project-a",
+            "tx_a",
+            &network(),
+            wanted,
+            &[],
+            held,
+        )
+    }
+
+    fn omission(layer: &str, reason: &str) -> Omission {
+        Omission {
+            layer: layer.into(),
+            reason: reason.into(),
+        }
+    }
+
+    #[test]
+    fn a_capture_the_kernel_refuses_ends_the_preview_with_that_code() {
+        // A survey capture with nothing synchronised.
+        let mut empty = capture("survey_poles", 0);
+        empty.declared_count = 0;
+        let held = HeldPreviewState {
+            captures: vec![empty],
+            ..Default::default()
+        };
+        let refused = resolve(None, &[survey_layer()], &held).unwrap_err();
+        assert_eq!(refused.code(), "print_context_survey_empty");
+        let PreviewContextRefusal::Kernel(refusal) = refused else {
+            panic!("a kernel refusal, not a holdings failure");
+        };
+        assert_eq!(refusal.message_key, "printing_context_survey_empty");
+        assert_eq!(refusal.params["name"], "poles");
+
+        // A local layer held as a display preview is not printable data.
+        let mut preview = capture("sketch_1", 2);
+        preview.render_mode = Some("preview".into());
+        let held = HeldPreviewState {
+            captures: vec![preview],
+            ..Default::default()
+        };
+        let refused = resolve(None, &[local_layer()], &held).unwrap_err();
+        assert_eq!(refused.code(), "print_context_too_large");
+        assert!(matches!(refused, PreviewContextRefusal::Kernel(_)));
+
+        // A capture from another project is refused under its own key.
+        let mut foreign = capture("sketch_1", 2);
+        foreign.source_project = Some("project-b".into());
+        let held = HeldPreviewState {
+            captures: vec![foreign],
+            ..Default::default()
+        };
+        assert_eq!(
+            resolve(None, &[local_layer()], &held).unwrap_err().code(),
+            "print_context_foreign_project"
+        );
+    }
+
+    #[test]
+    fn a_missing_capture_is_an_omission_and_an_admitted_one_prints() {
+        // Nothing handed for the survey: named, never refused.
+        let none = resolve(None, &[survey_layer()], &HeldPreviewState::default())
+            .unwrap()
+            .unwrap();
+        assert!(none.document.is_none());
+        assert_eq!(none.omitted, vec![omission("survey_poles", NOT_CAPTURED)]);
+
+        // The capture handed under the layer's id prints under that id, with
+        // the source spelled as the draft spells it.
+        let held = HeldPreviewState {
+            captures: vec![capture("other", 1), capture("survey_poles", 2)],
+            ..Default::default()
+        };
+        let context = resolve(None, &[survey_layer()], &held).unwrap().unwrap();
+        assert_eq!(context.layers, vec!["survey_poles"]);
+        assert!(context.omitted.is_empty());
+        let document: Value = serde_json::from_slice(context.document.as_ref().unwrap()).unwrap();
+        assert_eq!(
+            document["layers"]["survey_poles"]["features"]
+                .as_array()
+                .unwrap()
+                .len(),
+            2
+        );
+        assert_eq!(
+            document["sources"][0],
+            json!({"layer": "survey_poles", "kind": "survey", "form": "poles", "declared_count": 2, "source_project": "project-a"})
+        );
+        assert_eq!(
+            context.sha256.as_deref(),
+            Some(sha256_hex(context.document.as_ref().unwrap()).as_str())
+        );
+        assert!(context.reused);
+    }
+
+    #[test]
+    fn a_retained_preparation_prints_when_the_kernel_lets_it_stand_in() {
+        let mv = mv_layer();
+        let prepared = json!({
+            "dsgrid_mv_lines": collection(vec![feature("line")]),
+            "dsgrid_mv_structures": collection(vec![feature("pole")]),
+            "dsgrid_mv_angle_points": collection(vec![]),
+        });
+        let held = HeldPreviewState {
+            retained: BTreeMap::from([(mv.id.clone(), retained_for(&mv, prepared))]),
+            ..Default::default()
+        };
+        let context = resolve(None, &[mv.clone()], &held).unwrap().unwrap();
+        // Each emitted id is merged under its own id; the empty one is not
+        // attached and not named — the host held it.
+        assert_eq!(
+            context.layers,
+            vec!["dsgrid_mv_lines", "dsgrid_mv_structures"]
+        );
+        assert!(context.omitted.is_empty());
+        assert_eq!(context.warnings, vec!["mv: one model skipped".to_string()]);
+        let document: Value = serde_json::from_slice(context.document.as_ref().unwrap()).unwrap();
+        assert_eq!(
+            document["layers"]["dsgrid_mv_lines"]["features"][0]["properties"]["name"],
+            "line"
+        );
+        assert_eq!(document["sources"].as_array().unwrap().len(), 2);
+        assert_eq!(
+            document["sources"][0],
+            json!({"layer": "dsgrid_mv_lines", "kind": "project_dsgrid_mv", "retained": RETAINED_SCHEMA, "source_version": "mv-rev-7"})
+        );
+
+        // Retained with other parameters: the MV projection is omitted under
+        // every id it prints as, with the kernel's reason.
+        let mut other = retained_for(&mv, json!({}));
+        other.parameters = "{\"buffer_m\":500,\"kind\":\"project_dsgrid_mv\"}".into();
+        let held = HeldPreviewState {
+            retained: BTreeMap::from([(mv.id.clone(), other)]),
+            ..Default::default()
+        };
+        let context = resolve(None, &[mv.clone()], &held).unwrap().unwrap();
+        assert!(context.document.is_none());
+        assert_eq!(
+            context.omitted,
+            vec![
+                omission("dsgrid_mv_lines", "retained with other parameters"),
+                omission("dsgrid_mv_structures", "retained with other parameters"),
+                omission("dsgrid_mv_angle_points", "retained with other parameters"),
+            ]
+        );
+
+        // Nothing retained for the MV: omitted, never acquired.
+        let context = resolve(None, &[mv], &HeldPreviewState::default())
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            context.omitted[0],
+            omission("dsgrid_mv_lines", "not retained on this computer")
+        );
+        assert_eq!(context.omitted.len(), 3);
+    }
+
+    #[test]
+    fn contours_fall_back_to_the_rooms_and_room_layers_need_a_root() {
+        // Retained contours stand in without a room read.
+        let contours = contours_layer();
+        let prepared = json!({
+            "contours_intermediate": collection(vec![feature("c10")]),
+            "contours_index": collection(vec![feature("c50")]),
+        });
+        let held = HeldPreviewState {
+            retained: BTreeMap::from([(contours.id.clone(), retained_for(&contours, prepared))]),
+            ..Default::default()
+        };
+        let context = resolve(None, &[contours.clone()], &held).unwrap().unwrap();
+        assert_eq!(
+            context.layers,
+            vec!["contours_index", "contours_intermediate"]
+        );
+        assert!(context.omitted.is_empty());
+
+        // Retained under other parameters, contours fall through to the
+        // rooms; with no holdings root on this host they are omitted as
+        // such, and the retained entry's reason is kept as a warning.
+        let mut other = retained_for(&contours, json!({}));
+        other.parameters = "{}".into();
+        let held = HeldPreviewState {
+            retained: BTreeMap::from([(contours.id.clone(), other)]),
+            ..Default::default()
+        };
+        let context = resolve(None, &[contours.clone(), catalog_layer()], &held)
+            .unwrap()
+            .unwrap();
+        assert!(context.document.is_none());
+        assert_eq!(
+            context.omitted,
+            vec![
+                omission("contours_intermediate", NO_HOLDINGS_ROOT),
+                omission("contours_index", NO_HOLDINGS_ROOT),
+                omission("roads", NO_HOLDINGS_ROOT),
+            ]
+        );
+        assert_eq!(
+            context.warnings,
+            vec!["Contours: retained with other parameters".to_string()]
+        );
+        assert!(context.reused);
+
+        // With a root and empty rooms, `Mode::Read` names what is not held
+        // and touches no provider — the resolver has none to touch.
+        let temp = tempfile::tempdir().unwrap();
+        let context = resolve(
+            Some(temp.path()),
+            &[contours, catalog_layer()],
+            &HeldPreviewState::default(),
+        )
+        .unwrap()
+        .unwrap();
+        assert!(context.document.is_none());
+        assert_eq!(context.omitted.len(), 3);
+        assert_eq!(context.omitted[0].layer, "contours_intermediate");
+        assert_eq!(context.omitted[0].reason, "project_dataset_not_held");
+        assert_eq!(
+            context.omitted[2],
+            omission("roads", "this layer is absent from the geographic catalog")
+        );
+        assert!(context.reused);
+
+        // Nothing wanted is no context, whatever the design's extent.
+        assert!(resolve(None, &[], &HeldPreviewState::default())
+            .unwrap()
+            .is_none());
+    }
+
+    #[test]
+    fn held_and_read_layers_merge_into_one_document() {
+        // A survey capture and a retained MV projection, with a catalogue layer
+        // omitted by the read, under one digest with every omission named.
+        let mv = mv_layer();
+        let temp = tempfile::tempdir().unwrap();
+        let held = HeldPreviewState {
+            captures: vec![capture("survey_poles", 1)],
+            retained: BTreeMap::from([(
+                mv.id.clone(),
+                retained_for(
+                    &mv,
+                    json!({"dsgrid_mv_lines": collection(vec![feature("line")])}),
+                ),
+            )]),
+        };
+        let context = resolve(
+            Some(temp.path()),
+            &[survey_layer(), mv, catalog_layer()],
+            &held,
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(context.layers, vec!["dsgrid_mv_lines", "survey_poles"]);
+        assert_eq!(
+            context.omitted,
+            vec![omission(
+                "roads",
+                "this layer is absent from the geographic catalog"
+            )]
+        );
+        let document: Value = serde_json::from_slice(context.document.as_ref().unwrap()).unwrap();
+        assert_eq!(document["schema"], "ds.print-context/v1");
+        assert_eq!(document["sources"].as_array().unwrap().len(), 2);
+        // A holdings failure surfaces as such: a design without an extent
+        // cannot be given a coverage.
+        let unlocated = preview_context(
+            None,
+            &scope(),
+            "project-a",
+            "tx_a",
+            &json!({"tr": {"type": "FeatureCollection", "features": []}}),
+            &[survey_layer()],
+            &[],
+            &held,
+        )
+        .unwrap_err();
+        assert!(matches!(
+            unlocated,
+            PreviewContextRefusal::Holdings(Failure::Unsupported(_))
+        ));
+        assert_eq!(unlocated.code(), "print_context_unsupported");
     }
 }
