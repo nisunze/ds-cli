@@ -4850,7 +4850,9 @@ mod tests {
     #[test]
     fn a_noninteractive_child_cannot_open_the_hidden_prompt() {
         assert_eq!(
-            refuse_noninteractive_prompt(false, true).unwrap_err().code(),
+            refuse_noninteractive_prompt(false, true)
+                .unwrap_err()
+                .code(),
             "password_prompt_forbidden"
         );
         assert!(refuse_noninteractive_prompt(false, false).is_ok());

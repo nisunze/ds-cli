@@ -197,9 +197,8 @@ fn the_protocol_adapter_links_no_domain() {
     // in its graph it *cannot* call one in process, so the only route it has
     // is the one the CLI publishes. That is what makes replacing the protocol
     // a rewrite of one leaf rather than a pass over every domain.
-    let manifest =
-        std::fs::read_to_string(workspace_root().join("crates/ds-cli-mcp/Cargo.toml"))
-            .expect("the ds-cli-mcp manifest");
+    let manifest = std::fs::read_to_string(workspace_root().join("crates/ds-cli-mcp/Cargo.toml"))
+        .expect("the ds-cli-mcp manifest");
     let permitted = ["ds-cli-contract", "ds-cli-skills"];
 
     for (name, _) in manifests() {
@@ -223,7 +222,11 @@ fn no_domain_carries_a_protocol_token() {
     let mut sources = Vec::new();
     for entry in std::fs::read_dir(root.join("crates")).expect("crates/ exists") {
         let path = entry.expect("a crate directory").path();
-        let name = path.file_name().expect("a name").to_string_lossy().into_owned();
+        let name = path
+            .file_name()
+            .expect("a name")
+            .to_string_lossy()
+            .into_owned();
         if PROTOCOL_CRATES.contains(&name.as_str()) {
             continue;
         }
