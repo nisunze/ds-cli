@@ -151,7 +151,7 @@ pub const STATUS_COMMAND: Command = Command {
     contract: 2,
     chapter: Chapter::Project,
     summary: "Read one pending device-link status.",
-    purpose: "Recover this lane/account's pending public device-link receipt and poll its fixed status endpoint. Omit --request to use the exact pending link held in protected native state; a supplied request must match it. Device secrets remain inside native state.",
+    purpose: "Recover this lane's pending public device-link receipt. Omit --request to use the exact protected pending link; a supplied request must match. By default poll its fixed endpoint. Use --local-only to recover public handoff fields without network or status claims. Device secrets remain inside native state.",
     effect: Effect::ReadOnly,
     authority: Authority::None,
     execution: Execution::Sync,
@@ -161,9 +161,13 @@ pub const STATUS_COMMAND: Command = Command {
             "<request-id>",
             "Optional exact pending request assertion.",
         ),
+        Arg::switch(
+            "local-only",
+            "Recover public pending handoff fields without contacting the endpoint; status is unobserved.",
+        ),
         LANE,
     ],
-    output: "Public request id, user code, verification URI, fingerprint, scopes and binding, plus bounded status, expiry and polling interval; no device code, verifier, nonce, private key, signature or token.",
+    output: "Public request id, user code, verification URI, fingerprint, scopes and binding, plus bounded status (unobserved for --local-only), expiry and polling interval; no device code, verifier, nonce, private key, signature or token.",
     examples: &[Example {
         command: "ds auth link status",
         note: "Recover the pending public link; poll no faster than its interval.",
@@ -322,6 +326,12 @@ pub fn run_status(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
     let public = pending.public();
     if let Some(request) = inputs.value("request") {
         exact_request_id(request, &public.request_id)?;
+    }
+    if inputs.switch("local-only") {
+        release(&mut store, &state_key(&profile))?;
+        let mut output = begin_public_json(public);
+        output["status"] = json!("unobserved");
+        return Ok(output);
     }
     let mut transport = NativeDeviceTransport::new(&profile, gateway_key);
     let response = transport
