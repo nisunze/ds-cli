@@ -273,11 +273,10 @@ pub fn run(i: &Inputs, _: &Context) -> Result<Value, Failure> {
                     },
                     role: "transformer_map".into(),
                 },
-            ) {
-                if receipt["resolution"]["status"] == "resolved" {
-                    let asset = &receipt["resolution"]["asset"];
-                    maps.insert(name.into(), json!({"project_id":project,"asset_id":asset["asset_id"],"digest":asset["digest"]}));
-                }
+            ) && receipt["resolution"]["status"] == "resolved"
+            {
+                let asset = &receipt["resolution"]["asset"];
+                maps.insert(name.into(), json!({"project_id":project,"asset_id":asset["asset_id"],"digest":asset["digest"]}));
             }
         }
         document["sources"]["transformer_maps"] = Value::Object(maps);
