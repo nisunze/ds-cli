@@ -631,3 +631,22 @@ informational `label_notes` with counts and plain-language reasons; they concern
 map text. Actual furniture findings and missing schedule rows remain warnings.
 Repeated output assessments do not multiply one sheet's label counts. The raw
 renderer diagnostics and governed warning validation remain unchanged.
+
+## Screen and print identity; context alternatives
+
+Governed print refs have target `print` and the `_print` identity. A screen
+style can seed an independent print copy once; the two documents do not share
+later edits or preview routing. Symbol assets preserve their SVG winding rule
+(default nonzero), intrinsic untintable fills and aspect ratio; foreground paths
+never inherit a line/polygon stroke from their surrounding map layer. Inspect
+symbols and legend entries at physical size in the SVG/PDF.
+
+For Rwanda's initial context selection, prefer HV/MV/LV over `powerlines` and
+primary/secondary schools over `elementary_school` when all detailed alternatives
+are held or downloadable. These are presentation choices, not proofs of equal
+source coverage. Alternate datasets remain selectable, and missing detailed
+classes keep the broad fallback selected. Catalog rows explain omitted defaults.
+Existing saved selections remain authored; use the existing context toggle and
+revision-fenced project save to remove extra representations. Group headings
+are not feature layers. Do not delete source data or modify interactive-map
+styles when cleaning print context.

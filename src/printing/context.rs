@@ -27,6 +27,31 @@ use std::collections::BTreeMap;
 /// clutter an engineering sheet at every scale a network is drawn at.
 pub const DEFAULT_CATALOG_EXCLUSIONS: [&str; 1] = ["rwanda_upi_parcels"];
 
+/// Rwanda's broad alternate representations. Prefer selected detailed classes
+/// by default only when every listed class is held or downloadable. These are
+/// presentation alternatives, not a claim that two sources have equal coverage.
+const DETAILED_ALTERNATIVES: [(&str, &[&str]); 2] = [
+    ("powerlines", &["hv_line", "mv_line", "lv_line"]),
+    (
+        "elementary_school",
+        &["primary_schools", "secondary_schools"],
+    ),
+];
+
+fn default_omission(resource: &CatalogResource, resources: &[CatalogResource]) -> Option<String> {
+    if DEFAULT_CATALOG_EXCLUSIONS.contains(&resource.layer.as_str()) {
+        return Some("Cadastral parcels are not selected by default.".into());
+    }
+    if !resource.country.eq_ignore_ascii_case("Rwanda") {
+        return None;
+    }
+    DETAILED_ALTERNATIVES.iter().find_map(|(broad, detailed)| {
+        (*broad == resource.layer && detailed.iter().all(|id| resources.iter().any(|row|
+            row.layer == *id && row.country.eq_ignore_ascii_case(&resource.country) && selectable(row)
+        ))).then(|| format!("Detailed alternatives selected by default: {}. Enable this alternate representation explicitly if needed.", detailed.join(", ")))
+    })
+}
+
 /// Retained coverage around every printed feature, in metres, for the
 /// derived (per-transformer prepared) context sources.
 pub const DERIVED_BUFFER_M: f64 = 200.;
@@ -253,6 +278,9 @@ pub struct CatalogRow {
     pub selectable: bool,
     /// A new template starts with it on.
     pub default_on: bool,
+    /// Why an available alternate does not start selected; it remains opt-in.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default_omission: Option<String>,
     /// Why it cannot be switched on, when it cannot.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub refusal: Option<String>,
@@ -285,11 +313,12 @@ pub fn catalog(resources: &[CatalogResource]) -> Result<Vec<CatalogRow>, String>
                 return Err("invalid catalogue resource identity".into());
             }
             let selectable = selectable(resource);
+            let default_omission = default_omission(resource, resources);
             Ok(CatalogRow {
                 layer: catalog_layer(resource),
                 selectable,
-                default_on: selectable
-                    && !DEFAULT_CATALOG_EXCLUSIONS.contains(&resource.layer.as_str()),
+                default_on: selectable && default_omission.is_none(),
+                default_omission,
                 refusal: (!selectable).then(|| "printing_context_no_dataset".to_owned()),
             })
         })
@@ -595,6 +624,48 @@ mod tests {
         );
         assert!(!by("districts").selectable);
         assert!(by("rwanda_upi_parcels").selectable && !by("rwanda_upi_parcels").default_on);
+    }
+
+    #[test]
+    fn detailed_rwanda_alternatives_prevent_uninvited_broad_defaults_without_removing_fallbacks() {
+        let ids = [
+            "powerlines",
+            "hv_line",
+            "mv_line",
+            "lv_line",
+            "elementary_school",
+            "primary_schools",
+            "secondary_schools",
+            "universities",
+        ];
+        let resources = ids.map(|id| resource(id, true, false, false));
+        let rows = catalog(&resources).unwrap();
+        for id in ["powerlines", "elementary_school"] {
+            let row = rows.iter().find(|row| row.layer.id == id).unwrap();
+            assert!(row.selectable && !row.default_on);
+            assert!(row.default_omission.is_some());
+        }
+        assert!(rows
+            .iter()
+            .filter(|row| !["powerlines", "elementary_school"].contains(&row.layer.id.as_str()))
+            .all(|row| row.default_on));
+        let incomplete = resources
+            .iter()
+            .filter(|r| !["lv_line", "secondary_schools"].contains(&r.layer.as_str()))
+            .cloned()
+            .collect::<Vec<_>>();
+        assert!(catalog(&incomplete)
+            .unwrap()
+            .iter()
+            .all(|row| row.default_on));
+        let other_country = resources.map(|mut row| {
+            row.country = "Other".into();
+            row
+        });
+        assert!(catalog(&other_country)
+            .unwrap()
+            .iter()
+            .all(|row| row.default_on));
     }
 
     #[test]
