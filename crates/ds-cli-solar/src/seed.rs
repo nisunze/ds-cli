@@ -50,14 +50,13 @@ const SERVER_CODE_DETAIL: &str = "server_code";
 pub const SERVER_ACTIONS: &[&str] = &["seed_preview", "seed_apply"];
 
 /// Every wire key a seeding request can carry, including the destination
-/// `root` the paired application composes from its own selected project.
+/// `root` the native client composes from the explicit authorized project.
 pub const SERVER_REQUEST_KEYS: &[&str] = &["root", "seed_source_root", "cities", "seed_digest"];
 
 /// ds-brain's own refusal codes, verbatim.
 ///
-/// These are matched against what the paired application reports, so the
-/// server's identity for a condition survives the trip rather than being
-/// re-derived from prose. Each maps to the CLI refusal of the same name in
+/// Native service metadata preserves these exact conditions. Historical
+/// paired receipts retain their compatibility translation. Each maps to the CLI refusal of the same name in
 /// snake_case, which is the casing `contract.rs` requires of every code.
 pub const SERVER_CODES: &[(&str, &str)] = &[
     (
@@ -141,11 +140,6 @@ static SEED_REFUSALS: &[Refusal] = &[
         when: "the reply is not a Solar seed plan, or a preview reports that it mutated",
         remedy: "update ds and its native client core to matching releases",
     },
-    Refusal {
-        code: "pairing_rejected",
-        when: "the descriptor's pairing secret is stale",
-        remedy: "restart DS GridDesign to publish a fresh descriptor",
-    },
 ];
 
 /// `apply` adds the two refusals that only exist because it is a confirmation.
@@ -194,11 +188,6 @@ static APPLY_REFUSALS: &[Refusal] = &[
         code: "solar_seed_contract_mismatch",
         when: "the reply is not a seed result, or it does not echo the confirmed digest",
         remedy: "update ds and its native client core to matching releases",
-    },
-    Refusal {
-        code: "pairing_rejected",
-        when: "the descriptor's pairing secret is stale",
-        remedy: "restart DS GridDesign to publish a fresh descriptor",
     },
 ];
 
@@ -347,7 +336,7 @@ and `idempotent`.",
 /// The exact argument object a seeding call sends.
 ///
 /// Pure, and separate from the handlers, so the property that matters is
-/// testable with no paired application: ds-brain decodes the seeding body with
+/// testable without authentication or transport: ds-brain decodes the seeding body with
 /// `DisallowUnknownFields` and treats an ABSENT source as its governed catalog
 /// and an ABSENT city list as every live city. An empty string or an empty
 /// array would therefore mean something different from omission, so an unset
@@ -371,8 +360,8 @@ fn arguments(inputs: &Inputs, seed_digest: Option<&str>) -> Result<Map<String, V
 }
 
 /// The envelope, bounded by the shared kernel. The destination is NOT checked
-/// here: the paired application owns project identity and composes the
-/// destination root from its own session, exactly as the seeding card does.
+/// here: the native session authorizes the explicit project and composes its
+/// destination root before sending the command.
 fn validate_envelope(source: Option<&str>, cities: &[String]) -> Result<(), Failure> {
     let context = ds_command_kernel::solar_seed::Context {
         root: String::new(),
