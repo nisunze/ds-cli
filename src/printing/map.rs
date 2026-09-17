@@ -404,6 +404,16 @@ pub fn model_room(owner: &str, project: &str, model: Model) -> Result<Value, Str
     )))
 }
 
+/// The layers one MV projection prints as, in the order [`mv_layers`] emits
+/// them: alignments, structures, and the canonical angle points with their
+/// roles and numbers. A context retained from this projection carries
+/// exactly these ids.
+pub const MV_PRINT_LAYER_IDS: [&str; 3] = [
+    "dsgrid_mv_lines",
+    "dsgrid_mv_structures",
+    "dsgrid_mv_angle_points",
+];
+
 pub fn mv_layers(projection: Value, model: Model, bounds: [f64; 4]) -> Result<Value, String> {
     let [w, s, e, n] = bounds;
     let area = json!({"type":"Polygon","coordinates":[[[w,s],[e,s],[e,n],[w,n],[w,s]]]});
@@ -449,9 +459,12 @@ pub fn mv_layers(projection: Value, model: Model, bounds: [f64; 4]) -> Result<Va
             angle_points.push(f);
         }
     }
-    Ok(
-        json!({"dsgrid_mv_lines":{"type":"FeatureCollection","features":lines},"dsgrid_mv_structures":{"type":"FeatureCollection","features":poles},"dsgrid_mv_angle_points":{"type":"FeatureCollection","features":angle_points}}),
-    )
+    let [lines_id, structures_id, angle_points_id] = MV_PRINT_LAYER_IDS;
+    Ok(json!({
+        lines_id: {"type": "FeatureCollection", "features": lines},
+        structures_id: {"type": "FeatureCollection", "features": poles},
+        angle_points_id: {"type": "FeatureCollection", "features": angle_points},
+    }))
 }
 
 #[cfg(test)]
@@ -522,6 +535,16 @@ mod tests {
             digest: "a".repeat(64),
         };
         let layers = mv_layers(features.clone(), model, [29., -3., 30., -1.]).unwrap();
+        let emitted: Vec<&str> = layers
+            .as_object()
+            .unwrap()
+            .keys()
+            .map(String::as_str)
+            .collect();
+        assert_eq!(
+            emitted, MV_PRINT_LAYER_IDS,
+            "the projection prints as exactly its named layers"
+        );
         let p = &layers["dsgrid_mv_angle_points"]["features"][0]["properties"];
         for field in ["point_role", "number", "tap_type", "tr_name", "struct_no"] {
             assert_eq!(p[field], features["features"][0]["properties"][field]);

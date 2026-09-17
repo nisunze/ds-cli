@@ -408,6 +408,20 @@ pub fn retained_parameters(source: &PrintContextSource) -> Result<String, String
     String::from_utf8(bytes).map_err(|e| e.to_string())
 }
 
+/// The layer ids a retained preparation of `layer` may carry: what the
+/// source's preparation emits. The project MV projection prints as every
+/// layer `map::mv_layers` writes — its angle points included — not only the
+/// two the template pens by default; contours expand as the template does.
+fn retained_layer_ids(layer: &PrintContextLayer) -> Vec<String> {
+    match layer.source {
+        PrintContextSource::ProjectDsgridMv { .. } => super::map::MV_PRINT_LAYER_IDS
+            .iter()
+            .map(|id| (*id).to_owned())
+            .collect(),
+        _ => expanded_layer_ids(layer),
+    }
+}
+
 /// Whether the source is one a computer retains from a preparation (rather
 /// than reads from a held room or a project holding).
 fn retained_kind(source: &PrintContextSource) -> bool {
@@ -420,7 +434,7 @@ fn retained_kind(source: &PrintContextSource) -> bool {
 /// May `retained` stand in for `layer` over the `wanted` extent? Reused only
 /// when it carries the retained schema, was prepared with exactly this
 /// source's parameters, covers the wanted extent and names only layers the
-/// source expands into, each a `FeatureCollection`. Otherwise — including
+/// source's preparation emits, each a `FeatureCollection`. Otherwise — including
 /// nothing retained, or a source kind no computer retains — the layer is a
 /// named omission.
 pub fn retained_admission(
@@ -450,7 +464,7 @@ pub fn retained_admission(
     let Some(entries) = retained.layers.as_object() else {
         return omit("retained layers are not a map");
     };
-    let own = expanded_layer_ids(layer);
+    let own = retained_layer_ids(layer);
     let mut layers = BTreeMap::new();
     for (id, collection) in entries {
         if !own.contains(id) {
@@ -732,6 +746,52 @@ mod tests {
             retained_admission(&buildings, Some(&held), wanted),
             RetainedVerdict::Omit {
                 reason: "not a retained context kind".into()
+            }
+        );
+    }
+
+    #[test]
+    fn a_retained_mv_projection_carries_every_layer_the_kernel_emits() {
+        // The browser retains exactly what `map_mv_layers` answered: lines,
+        // structures and angle points. Reuse must take all three, and an
+        // empty structures collection with them.
+        let mv = derived_layers().remove(0);
+        let mut held = retained(&mv, &super::super::map::MV_PRINT_LAYER_IDS);
+        held.layers["dsgrid_mv_angle_points"]["features"] = serde_json::json!([{
+            "type": "Feature", "id": "model-a:\"node-a\"",
+            "geometry": {"type": "Point", "coordinates": [30.1, -1.9]},
+            "properties": {"point_role": "angle", "number": "PI-17"}
+        }]);
+        match retained_admission(&mv, Some(&held), [30.05, -1.95, 30.15, -1.85]) {
+            RetainedVerdict::Use { layers, .. } => {
+                assert_eq!(
+                    layers.keys().map(String::as_str).collect::<Vec<_>>(),
+                    [
+                        "dsgrid_mv_angle_points",
+                        "dsgrid_mv_lines",
+                        "dsgrid_mv_structures"
+                    ]
+                );
+                assert_eq!(
+                    layers["dsgrid_mv_angle_points"]["features"][0]["properties"]["number"],
+                    "PI-17"
+                );
+            }
+            other => panic!("{other:?}"),
+        }
+        // Contours still expand as the template does: an MV id is foreign.
+        let contours = derived_layers().remove(2);
+        assert_eq!(
+            retained_admission(
+                &contours,
+                Some(&retained(
+                    &contours,
+                    &["contours_index", "dsgrid_mv_angle_points"]
+                )),
+                [30.05, -1.95, 30.15, -1.85]
+            ),
+            RetainedVerdict::Omit {
+                reason: "retained layers are not this source's".into()
             }
         );
     }

@@ -283,7 +283,8 @@ features); `printing::context::retained_admission` reuses a retained
 elevation-contour or project-MV context only under the retained schema, with
 exactly this source's parameters (`retained_parameters`, the browser's
 `JSON.stringify(source, sortedKeys)` spelling), covering the wanted extent
-and naming only its own expanded layer ids — anything else, including
+and naming only the layers its preparation emits (for the project MV
+projection: lines, structures and angle points) — anything else, including
 nothing retained, is a named omission on the sheet, never an acquisition.
 A preview never downloads a room and never acquires or projects context; a
 delivery or seed still prepares context through its own path. Headlessly the
