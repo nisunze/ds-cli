@@ -252,16 +252,44 @@ listed it, the governed print styles the host holds, online and native-engine
 readiness. Refusals are keyed (`printing_preview_no_transformer`,
 `printing_preview_not_a_transformer`, `printing_preview_room_unavailable`,
 `printing_preview_native_unavailable`, `printing_style_unavailable`); a dirty
-held room is a note, not a refusal. The plan also chooses the raster the host
-draws the page at from the screen's pixels per millimetre (`raster`): between
-1.5 px/mm and the 300 dpi delivery raster, within a 40-megapixel budget.
-Re-rasterising at a new zoom never involves the engine. `preview_receipt`
-exposes the recipe to WASM so a host prepares the draft's own context layers
-from the rewritten sheets.
+held room is a note, not a refusal. A room this device does not hold is
+refused whether or not the host is online: a preview reads held state and
+never downloads a room — holding one is the Design/Status page's download
+action. The plan also chooses the raster the host draws the page at from the
+screen's pixels per millimetre (`raster`): between 1.5 px/mm and the 300 dpi
+delivery raster, within a 40-megapixel budget. Re-rasterising at a new zoom
+never involves the engine.
 
-`ds report project export --preview-layout draft.json` runs the recipe
-headlessly; the desktop shell's `network_reporter_preview_transformer_print`
-runs it against the held room and keeps nothing.
+`ds-report-host::preview::transformer_page` is the one preview entry both
+hosts reach. It takes the governed receipt, the held room, the draft layout
+and a host-supplied print-context closure, applies `with_layout`, decides the
+draft's context layers with the kernel (`report::evaluate`
+`context_preparation`), stages and runs the engine through the same
+`run_transformer_report` the CLI's `report.project.export --preview-layout`
+uses, proves the one `svg__<id>` page (exactly one artifact, at most 96 MiB,
+its sha, UTF-8, `<svg`) and returns page, `print_diagnostics`, warnings and
+the context summary in memory, leaving nothing on disk. The Desktop hands its
+held state — the cached `/config` receipt member, the `design_transformers`
+row, the cached media grant, survey and local-layer captures, the retained
+derived-context entries the draft names — as data; the kernel decides:
+`printing::preview::room_admission` admits a held `lv` room (dirty and
+incomplete → `print_preview_room_incomplete`, absent, foreign or empty →
+`print_preview_room_unavailable`) and reads its server version;
+`printing::held_context::admit` admits a survey or local-layer capture
+(`print_context_survey_empty`, `print_context_too_large`,
+`print_context_capture_changed`, `print_context_foreign_project`,
+`print_context_capture_incomplete`, at most `MAX_HELD_FEATURES` = 50 000
+features); `printing::context::retained_admission` reuses a retained
+elevation-contour or project-MV context only under the retained schema, with
+exactly this source's parameters (`retained_parameters`, the browser's
+`JSON.stringify(source, sortedKeys)` spelling), covering the wanted extent
+and naming only its own expanded layer ids — anything else, including
+nothing retained, is a named omission on the sheet, never an acquisition.
+A preview never downloads a room and never acquires or projects context; a
+delivery or seed still prepares context through its own path. Headlessly the
+same command id `report.project.export --preview-layout draft.json` produces
+the same page on a Server host through the same staging and recipe; no
+`desktop.*` or `server.*` twin exists.
 
 ## Template pens
 

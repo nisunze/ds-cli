@@ -9,10 +9,18 @@
 //! cannot be switched on. The kernel already bounded every parameter; now it
 //! also owns the product values. Hosts pass catalogue facts and receive rows
 //! and documents; they fetch, download and paint.
+//!
+//! `retained_admission` is the last decision: whether a derived context a
+//! computer retained from an earlier preparation (elevation contours, the
+//! project's MV models) may be reused for a print over a given extent. A
+//! preview never acquires or projects context; what is not retained is a
+//! named omission.
 
+use super::preview::Refusal;
 use super::{Layout, PrintContextLayer, PrintContextSource, PrintStyle};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use std::collections::BTreeMap;
 
 /// Catalogue layers a default selection never includes: cadastral parcels
@@ -320,6 +328,157 @@ pub fn toggle(
     Ok(layout)
 }
 
+/// The schema every retained derived context carries.
+pub const RETAINED_SCHEMA: &str = "ds.transformer-print-context/v1";
+
+/// One derived context as a computer retained it from an earlier
+/// preparation, keyed by its source parameters (`transformer-print-context`
+/// v2 entries). The host hands the entry it holds as data; whether it is the
+/// one this print may reuse is decided here.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct RetainedContext {
+    #[serde(default)]
+    pub schema: String,
+    /// The source parameters the context was prepared with, in the canonical
+    /// spelling of [`retained_parameters`].
+    #[serde(default)]
+    pub parameters: String,
+    /// The buffered extent the context covers: `[west, south, east, north]`.
+    #[serde(default)]
+    pub coverage: [f64; 4],
+    /// The prepared layers by expanded print layer id, each a
+    /// `FeatureCollection`.
+    #[serde(default)]
+    pub layers: Value,
+    /// The provider's version of what was prepared.
+    #[serde(default, alias = "sourceVersion")]
+    pub source_version: String,
+    /// Warnings the preparation reported; reused with the layers.
+    #[serde(default)]
+    pub warnings: Vec<String>,
+}
+
+/// Whether a retained context may be reused for one print.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(tag = "verdict", rename_all = "snake_case")]
+pub enum RetainedVerdict {
+    /// The retained layers print, with the warnings retained beside them.
+    Use {
+        layers: BTreeMap<String, Value>,
+        warnings: Vec<String>,
+    },
+    /// The layer is named on the sheet as omitted, with why. Never an error:
+    /// a derived context is optional map context, and a preview never
+    /// acquires it.
+    Omit { reason: String },
+}
+
+/// Whether the retained extent covers the wanted one, both
+/// `[west, south, east, north]`.
+pub fn covers(held: [f64; 4], wanted: [f64; 4]) -> bool {
+    held[0] <= wanted[0] && held[1] <= wanted[1] && held[2] >= wanted[2] && held[3] >= wanted[3]
+}
+
+/// The canonical spelling of a source's parameters, as the retained entries
+/// are keyed: the browser wrote `JSON.stringify(source, sortedKeys)`, which
+/// is the RFC 8785 form of the source with one quirk — the sorted key list
+/// is a replacer, so a nested object keeps only the keys the top level also
+/// has (a `corridor` spells as `{}`). Entries already retained carry that
+/// spelling, so it is the contract.
+pub fn retained_parameters(source: &PrintContextSource) -> Result<String, String> {
+    let value = serde_json::to_value(source).map_err(|e| e.to_string())?;
+    let allowed: Vec<String> = value
+        .as_object()
+        .map(|map| map.keys().cloned().collect())
+        .unwrap_or_default();
+    fn prune(value: &Value, allowed: &[String]) -> Value {
+        match value {
+            Value::Object(map) => Value::Object(
+                map.iter()
+                    .filter(|(key, _)| allowed.contains(key))
+                    .map(|(key, child)| (key.clone(), prune(child, allowed)))
+                    .collect(),
+            ),
+            Value::Array(items) => Value::Array(items.iter().map(|v| prune(v, allowed)).collect()),
+            other => other.clone(),
+        }
+    }
+    let bytes = crate::report_export::jcs::canonicalize(&prune(&value, &allowed))?;
+    String::from_utf8(bytes).map_err(|e| e.to_string())
+}
+
+/// Whether the source is one a computer retains from a preparation (rather
+/// than reads from a held room or a project holding).
+fn retained_kind(source: &PrintContextSource) -> bool {
+    matches!(
+        source,
+        PrintContextSource::ElevationContours { .. } | PrintContextSource::ProjectDsgridMv { .. }
+    )
+}
+
+/// May `retained` stand in for `layer` over the `wanted` extent? Reused only
+/// when it carries the retained schema, was prepared with exactly this
+/// source's parameters, covers the wanted extent and names only layers the
+/// source expands into, each a `FeatureCollection`. Otherwise — including
+/// nothing retained, or a source kind no computer retains — the layer is a
+/// named omission.
+pub fn retained_admission(
+    layer: &PrintContextLayer,
+    retained: Option<&RetainedContext>,
+    wanted: [f64; 4],
+) -> RetainedVerdict {
+    let omit = |reason: &str| RetainedVerdict::Omit {
+        reason: reason.into(),
+    };
+    if !retained_kind(&layer.source) {
+        return omit("not a retained context kind");
+    }
+    let Some(retained) = retained else {
+        return omit("not retained on this computer");
+    };
+    if retained.schema != RETAINED_SCHEMA {
+        return omit("retained under another schema");
+    }
+    match retained_parameters(&layer.source) {
+        Ok(parameters) if parameters == retained.parameters => {}
+        _ => return omit("retained with other parameters"),
+    }
+    if !retained.coverage.iter().all(|v| v.is_finite()) || !covers(retained.coverage, wanted) {
+        return omit("retained for a smaller extent");
+    }
+    let Some(entries) = retained.layers.as_object() else {
+        return omit("retained layers are not a map");
+    };
+    let own = expanded_layer_ids(layer);
+    let mut layers = BTreeMap::new();
+    for (id, collection) in entries {
+        if !own.contains(id) {
+            return omit("retained layers are not this source's");
+        }
+        if collection.get("type").and_then(Value::as_str) != Some("FeatureCollection")
+            || !collection.get("features").is_some_and(Value::is_array)
+        {
+            return omit("retained layer is not a feature collection");
+        }
+        layers.insert(id.clone(), collection.clone());
+    }
+    RetainedVerdict::Use {
+        layers,
+        warnings: retained.warnings.clone(),
+    }
+}
+
+/// One refusal a host may show for an omitted derived layer, keyed like the
+/// other printing decisions: the reason travels as the `reason` parameter.
+pub fn omission_refusal(layer: &PrintContextLayer, reason: &str) -> Refusal {
+    super::preview::refusal(
+        "print_context_omitted",
+        "printing_context_omitted",
+        &[("label", &layer.label), ("reason", reason)],
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -472,5 +631,132 @@ mod tests {
         let again = toggle(out.clone(), contours, true, None).unwrap();
         assert_eq!(again.context_layers.len(), 1);
         assert_eq!(again.styles.len(), out.styles.len());
+    }
+
+    fn collection() -> Value {
+        serde_json::json!({"type": "FeatureCollection", "features": []})
+    }
+
+    fn retained(layer: &PrintContextLayer, ids: &[&str]) -> RetainedContext {
+        RetainedContext {
+            schema: RETAINED_SCHEMA.into(),
+            parameters: retained_parameters(&layer.source).unwrap(),
+            coverage: [30.0, -2.0, 30.2, -1.8],
+            layers: Value::Object(ids.iter().map(|id| ((*id).into(), collection())).collect()),
+            source_version: "v".into(),
+            warnings: vec!["contours clipped".into()],
+        }
+    }
+
+    #[test]
+    fn retained_parameters_spell_the_browsers_replacer_form() {
+        let contours = derived_layers().remove(2);
+        assert_eq!(
+            retained_parameters(&contours.source).unwrap(),
+            r#"{"buffer_m":200,"index_interval_m":50,"kind":"elevation_contours","minor_interval_m":10,"sample_spacing_m":10}"#
+        );
+        let mv = PrintContextLayer {
+            id: "project_dsgrid_mv".into(),
+            label: "MV".into(),
+            source: PrintContextSource::ProjectDsgridMv {
+                buffer_m: 150.5,
+                corridor: Some(super::super::PrintCorridor {
+                    distance_m: 20.,
+                    color: "#ff0000".into(),
+                    width_mm: 0.3,
+                    opacity: 0.5,
+                    dash_mm: vec![],
+                }),
+            },
+        };
+        assert_eq!(
+            retained_parameters(&mv.source).unwrap(),
+            r#"{"buffer_m":150.5,"corridor":{},"kind":"project_dsgrid_mv"}"#
+        );
+    }
+
+    #[test]
+    fn a_retained_context_is_reused_only_with_the_same_parameters_covering_bounds_and_its_own_layer_ids(
+    ) {
+        let contours = derived_layers().remove(2);
+        let wanted = [30.05, -1.95, 30.15, -1.85];
+        let held = retained(&contours, &["contours_intermediate", "contours_index"]);
+        match retained_admission(&contours, Some(&held), wanted) {
+            RetainedVerdict::Use { layers, warnings } => {
+                assert_eq!(layers.len(), 2);
+                assert_eq!(warnings, ["contours clipped"]);
+            }
+            other => panic!("{other:?}"),
+        }
+        let reason = |retained: &RetainedContext, wanted: [f64; 4]| match retained_admission(
+            &contours,
+            Some(retained),
+            wanted,
+        ) {
+            RetainedVerdict::Omit { reason } => reason,
+            other => panic!("{other:?}"),
+        };
+        // The same entry does not cover a wider extent.
+        assert_eq!(
+            reason(&held, [29.9, -1.95, 30.15, -1.85]),
+            "retained for a smaller extent"
+        );
+        let mut other_intervals = held.clone();
+        other_intervals.parameters = other_intervals
+            .parameters
+            .replace("\"index_interval_m\":50", "\"index_interval_m\":100");
+        assert_eq!(
+            reason(&other_intervals, wanted),
+            "retained with other parameters"
+        );
+        let mut v0 = held.clone();
+        v0.schema = "ds.transformer-print-context/v0".into();
+        assert_eq!(reason(&v0, wanted), "retained under another schema");
+        let foreign = retained(&contours, &["contours_index", "dsgrid_mv_lines"]);
+        assert_eq!(
+            reason(&foreign, wanted),
+            "retained layers are not this source's"
+        );
+        let mut broken = held.clone();
+        broken.layers["contours_index"] = serde_json::json!({"type": "Feature"});
+        assert_eq!(
+            reason(&broken, wanted),
+            "retained layer is not a feature collection"
+        );
+        let mut nan = held.clone();
+        nan.coverage[0] = f64::NAN;
+        assert_eq!(reason(&nan, wanted), "retained for a smaller extent");
+        // A source no computer retains is omitted even with an entry offered.
+        let buildings = derived_layers().remove(1);
+        assert_eq!(
+            retained_admission(&buildings, Some(&held), wanted),
+            RetainedVerdict::Omit {
+                reason: "not a retained context kind".into()
+            }
+        );
+    }
+
+    #[test]
+    fn nothing_retained_is_a_named_omission_not_an_error() {
+        let mv = derived_layers().remove(0);
+        let verdict = retained_admission(&mv, None, [30., -2., 30.1, -1.9]);
+        assert_eq!(
+            verdict,
+            RetainedVerdict::Omit {
+                reason: "not retained on this computer".into()
+            }
+        );
+        let refusal = omission_refusal(&mv, "not retained on this computer");
+        assert_eq!(refusal.code, "print_context_omitted");
+        assert_eq!(refusal.message_key, "printing_context_omitted");
+        assert_eq!(refusal.params["label"], mv.label);
+        assert_eq!(refusal.params["reason"], "not retained on this computer");
+        // The retained entry also reads from the browser's own spelling.
+        let entry: RetainedContext = serde_json::from_value(serde_json::json!({
+            "schema": RETAINED_SCHEMA, "parameters": "", "coverage": [0., 0., 1., 1.],
+            "layers": {}, "sourceVersion": "[]"
+        }))
+        .unwrap();
+        assert_eq!(entry.source_version, "[]");
     }
 }

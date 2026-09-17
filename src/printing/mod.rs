@@ -4,6 +4,7 @@ pub mod context;
 pub mod custom;
 pub mod diagnostics;
 pub mod elements;
+pub mod held_context;
 pub mod inventory;
 pub mod lifecycle;
 pub mod map;
@@ -1693,14 +1694,6 @@ pub enum Command {
     PreviewPlan {
         facts: preview::Facts,
     },
-    /// The receipt a preview run stages (`report_export::preview`): the
-    /// governed project receipt with the draft beside its setups and the one
-    /// output selected. A host prepares the draft's context from it and hands
-    /// the same recipe to its engine.
-    PreviewReceipt {
-        receipt: crate::report_export::InputReceipt,
-        layout: Layout,
-    },
     /// The DPI and paper a local map print may ask for, with the defaults.
     MapRequestChoices {},
     /// The print editor's zero state and its history cap (see `session`).
@@ -2086,10 +2079,6 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
             layout: upgrade(facts.layout)?,
             ..facts
         })?,
-        Command::PreviewReceipt { receipt, layout } => {
-            let preview = crate::report_export::preview::with_layout(&receipt, &upgrade(layout)?)?;
-            serde_json::to_value(preview).map_err(|e| e.to_string())?
-        }
         Command::MapRequestChoices {} => map::request_choices(),
         Command::SessionDefaults {} => json!({
             "state": session::State::default(),

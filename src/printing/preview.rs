@@ -10,6 +10,11 @@
 //! itself is the engine's SVG, which the host rasterises for its canvas at
 //! the size decided here and re-rasterises, without the engine, when the
 //! zoom changes.
+//!
+//! `room_admission` is the second decision: whether the held room the host
+//! reads for that transformer is one the engine may print, and which server
+//! version it carries. The host hands the room's facts as it found them;
+//! this module never fetches a missing room.
 use super::Layout;
 use crate::report_formats::PrintArtifactFormat;
 use schemars::JsonSchema;
@@ -109,7 +114,9 @@ pub fn raster(page_mm: [f64; 2], screen_px_per_mm: Option<f64>) -> Raster {
     }
 }
 
-fn refusal(code: &str, key: &str, params: &[(&str, &str)]) -> Refusal {
+/// One keyed refusal with its message parameters, as every printing
+/// decision reports it.
+pub(super) fn refusal(code: &str, key: &str, params: &[(&str, &str)]) -> Refusal {
     Refusal {
         code: code.into(),
         message_key: key.into(),
@@ -153,7 +160,10 @@ pub fn plan(facts: &Facts) -> Result<Plan, String> {
                     &[("name", &transformer.name)],
                 ));
             }
-            if transformer.cached == Some(false) && !facts.online {
+            // A preview reads the room this device holds; it never downloads
+            // one, online or not. Holding a room is the Design/Status page's
+            // download action, so the remedy is to download the design first.
+            if transformer.cached == Some(false) {
                 refusals.push(refusal(
                     "print_preview_room_unavailable",
                     "printing_preview_room_unavailable",
@@ -190,6 +200,95 @@ pub fn plan(facts: &Facts) -> Result<Plan, String> {
 
 pub fn evaluate(facts: Facts) -> Result<Value, String> {
     serde_json::to_value(plan(&facts)?).map_err(|e| e.to_string())
+}
+
+/// What the host found when it read the held room for one transformer:
+/// the row as the local design store keeps it, reduced to the facts the
+/// admission reads. `present: false` means no row at all; the other fields
+/// are then ignored.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct RoomFacts {
+    #[serde(default)]
+    pub present: bool,
+    /// The room's origin; only an `lv` room is a printable design.
+    #[serde(default)]
+    pub source: Option<String>,
+    /// The transformer the row says it holds.
+    #[serde(default)]
+    pub transformer_name: Option<String>,
+    /// How many layers the room carries; an empty room has nothing to print.
+    #[serde(default)]
+    pub layer_count: usize,
+    /// The room carries local edits that are not a complete design.
+    #[serde(default)]
+    pub local_dirty: bool,
+    /// The saved design's version as the row stores it (a JSON number);
+    /// anything but a safe positive integer reads as 0.
+    #[serde(default)]
+    pub server_version: Option<f64>,
+    /// When the row was last written; a room with no finite timestamp was
+    /// never completely stored.
+    #[serde(default)]
+    pub updated_at: Option<f64>,
+}
+
+/// A held room the engine may print, with the version the request names.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct AdmittedRoom {
+    /// The saved design's version, or 0 when the row carries none.
+    pub server_version: i64,
+}
+
+/// The largest integer JavaScript stores exactly; a version beyond it is not
+/// one a browser could have written.
+const MAX_SAFE_INTEGER: f64 = 9_007_199_254_740_991.;
+
+/// A stored server version as the request carries it: a safe positive
+/// integer, else 0.
+fn admitted_server_version(stored: Option<f64>) -> i64 {
+    match stored {
+        Some(v) if v.is_finite() && v > 0. && v.fract() == 0. && v <= MAX_SAFE_INTEGER => v as i64,
+        _ => 0,
+    }
+}
+
+/// Whether the held room is a complete `lv` design for `transformer`: the
+/// row exists, names this transformer, was completely stored and carries at
+/// least one layer.
+fn usable(transformer: &str, facts: &RoomFacts) -> bool {
+    facts.present
+        && facts.source.as_deref() == Some("lv")
+        && facts.transformer_name.as_deref() == Some(transformer)
+        && facts.updated_at.is_some_and(f64::is_finite)
+        && facts.layer_count > 0
+}
+
+/// May the room this device holds for `transformer` be printed? A usable
+/// room is admitted with its server version. A room that is unusable
+/// because it carries unsaved, incomplete edits refuses
+/// `print_preview_room_incomplete` (save or repair it first); any other
+/// unusable or absent room refuses `print_preview_room_unavailable`
+/// (download its design first). Nothing is fetched on either path.
+pub fn room_admission(transformer: &str, facts: &RoomFacts) -> Result<AdmittedRoom, Refusal> {
+    if usable(transformer, facts) {
+        return Ok(AdmittedRoom {
+            server_version: admitted_server_version(facts.server_version),
+        });
+    }
+    let params = [("name", transformer)];
+    if facts.present && facts.local_dirty {
+        return Err(refusal(
+            "print_preview_room_incomplete",
+            "printing_preview_room_incomplete",
+            &params,
+        ));
+    }
+    Err(refusal(
+        "print_preview_room_unavailable",
+        "printing_preview_room_unavailable",
+        &params,
+    ))
 }
 
 #[cfg(test)]
@@ -273,14 +372,9 @@ mod tests {
         assert!(!first.ready);
 
         let mut f = facts();
-        f.transformer.as_mut().unwrap().cached = Some(false);
+        f.transformer.as_mut().unwrap().cached = None;
         f.online = false;
-        assert_eq!(
-            plan(&f).unwrap().refusals[0].code,
-            "print_preview_room_unavailable"
-        );
-        f.online = true;
-        assert!(plan(&f).unwrap().ready);
+        assert!(plan(&f).unwrap().ready, "an unknown hold is not a refusal");
 
         let mut f = facts();
         f.transformer.as_mut().unwrap().kind = "project_document".into();
@@ -300,5 +394,101 @@ mod tests {
         let noted = plan(&f).unwrap();
         assert!(noted.ready);
         assert_eq!(noted.notes[0].code, "print_preview_dirty_room");
+    }
+
+    #[test]
+    fn a_room_this_device_does_not_hold_is_refused_online_or_not() {
+        for online in [false, true] {
+            let mut f = facts();
+            f.transformer.as_mut().unwrap().cached = Some(false);
+            f.online = online;
+            let plan = plan(&f).unwrap();
+            assert!(!plan.ready, "online={online}");
+            assert_eq!(plan.refusals[0].code, "print_preview_room_unavailable");
+            assert_eq!(
+                plan.refusals[0].message_key,
+                "printing_preview_room_unavailable"
+            );
+            assert_eq!(plan.refusals[0].params["name"], "agahehe");
+        }
+    }
+
+    fn room() -> RoomFacts {
+        RoomFacts {
+            present: true,
+            source: Some("lv".into()),
+            transformer_name: Some("agahehe".into()),
+            layer_count: 3,
+            local_dirty: false,
+            server_version: Some(7.),
+            updated_at: Some(1_726_000_000_000.),
+        }
+    }
+
+    #[test]
+    fn room_admission_admits_a_usable_lv_room_with_its_server_version() {
+        let admitted = room_admission("agahehe", &room()).unwrap();
+        assert_eq!(admitted, AdmittedRoom { server_version: 7 });
+        // Unsaved edits over a complete room are still a printable room: the
+        // plan notes them, the admission prints them.
+        let mut dirty = room();
+        dirty.local_dirty = true;
+        assert_eq!(room_admission("agahehe", &dirty).unwrap().server_version, 7);
+    }
+
+    #[test]
+    fn room_admission_refuses_dirty_incomplete_absent_and_foreign_rooms_by_key() {
+        let code = |facts: &RoomFacts| room_admission("agahehe", facts).unwrap_err().code;
+        let mut incomplete = room();
+        incomplete.layer_count = 0;
+        incomplete.local_dirty = true;
+        assert_eq!(code(&incomplete), "print_preview_room_incomplete");
+        let refused = room_admission("agahehe", &incomplete).unwrap_err();
+        assert_eq!(refused.message_key, "printing_preview_room_incomplete");
+        assert_eq!(refused.params["name"], "agahehe");
+
+        let mut empty = room();
+        empty.layer_count = 0;
+        assert_eq!(code(&empty), "print_preview_room_unavailable");
+        let mut unstored = room();
+        unstored.updated_at = None;
+        assert_eq!(code(&unstored), "print_preview_room_unavailable");
+        let mut nan = room();
+        nan.updated_at = Some(f64::NAN);
+        assert_eq!(code(&nan), "print_preview_room_unavailable");
+        assert_eq!(
+            code(&RoomFacts::default()),
+            "print_preview_room_unavailable"
+        );
+        // An absent row is never "incomplete", whatever the dirty flag says.
+        let absent_dirty = RoomFacts {
+            local_dirty: true,
+            ..RoomFacts::default()
+        };
+        assert_eq!(code(&absent_dirty), "print_preview_room_unavailable");
+
+        let mut foreign = room();
+        foreign.transformer_name = Some("kabeza".into());
+        assert_eq!(code(&foreign), "print_preview_room_unavailable");
+        let mut mv = room();
+        mv.source = Some("mv".into());
+        assert_eq!(code(&mv), "print_preview_room_unavailable");
+    }
+
+    #[test]
+    fn a_non_positive_server_version_reads_as_zero() {
+        let version = |stored: Option<f64>| {
+            let mut facts = room();
+            facts.server_version = stored;
+            room_admission("agahehe", &facts).unwrap().server_version
+        };
+        assert_eq!(version(None), 0);
+        assert_eq!(version(Some(0.)), 0);
+        assert_eq!(version(Some(-3.)), 0);
+        assert_eq!(version(Some(2.5)), 0);
+        assert_eq!(version(Some(f64::INFINITY)), 0);
+        assert_eq!(version(Some(9_007_199_254_740_992.)), 0);
+        assert_eq!(version(Some(9_007_199_254_740_991.)), 9_007_199_254_740_991);
+        assert_eq!(version(Some(12.)), 12);
     }
 }
