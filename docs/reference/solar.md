@@ -630,7 +630,7 @@ A completed local draft is distinct from its pending cloud publication.
 
 `solar project sync --project <exact-project> --run-id <closed-run>` publishes that run and pending inputs while retaining other queued draft runs. This is useful after a development run is replaced by a released engine; it never acknowledges or deletes the earlier run. Do not combine it with `--inputs-only` or `--background`.
 
-## Sealed portfolio finance dashboard
+## Sealed portfolio dashboards
 
 `ds solar dashboard compose --source <closed-portfolio-dir> --project <id>
 --run-id <portfolio-run> --section portfolio_finance --portfolio <id>
@@ -642,3 +642,13 @@ exact chart data. Negative IRR values remain negative, unavailable values stay
 unavailable, and DSCR observations align with their actual years. No desktop,
 browser, network or TypeScript is needed. This local export is not proof of
 online publication; external plot files are not included.
+
+`portfolio_site`, `portfolio_plant` and `portfolio_boq` use the same sealed
+portfolio selectors. Rust selects the calculator-owned tables, columns, totals,
+assumptions, representative graph cities and exact unavailable graph slots.
+The server produces JSON and standalone HTML; browser views consume that same
+projection through WASM. BOQ amounts and unit prices retain authoritative zero
+values and take precedence over older per-city aliases. V3's ordered graph rows
+are projected into section groups by Rust. Native graph reads pin source batch,
+city, role, filename, size and digest; fetched PNG bytes are verified in Rust
+before the browser creates an object URL.

@@ -9,7 +9,7 @@ pub static COMMAND: Command = Command {
     path: &["solar", "dashboard", "compose"],
     contract: 2,
     summary: "Compose a Solar dashboard as JSON and standalone HTML headlessly.",
-    purpose: "Verify a sealed city or membership-pinned portfolio and compose cards, tables, declarative charts and script-free SVG through shared Rust. City sections are Site, Plant, Finance and BOQ; portfolio_finance binds its exact portfolio id and membership revision. No TypeScript, browser, paired desktop or network is required. External plot files and online publication are not included.",
+    purpose: "Verify a sealed city or membership-pinned portfolio and compose Site, Plant, Finance or BOQ cards, tables and script-free charts through shared Rust. Portfolio sections bind the exact portfolio id and membership revision. External plot files and online publication are not included.",
     chapter: Chapter::Solar,
     effect: Effect::LocalFileWrite,
     authority: Authority::None,
@@ -41,7 +41,16 @@ pub static COMMAND: Command = Command {
         ),
         Arg::value("section", "<name>", "Dashboard section.")
             .required()
-            .choices(&["site", "plant", "finance", "boq", "portfolio_finance"]),
+            .choices(&[
+                "site",
+                "plant",
+                "finance",
+                "boq",
+                "portfolio_finance",
+                "portfolio_site",
+                "portfolio_plant",
+                "portfolio_boq",
+            ]),
         Arg::value(
             "system",
             "<name>",
@@ -99,7 +108,9 @@ fn selector<'a>(i: &'a Inputs, name: &str) -> Result<&'a str, Failure> {
     })
 }
 pub(crate) fn source(i: &Inputs) -> Result<Value, Failure> {
-    if i.require("section")? == "portfolio_finance" {
+    let section: ds_command_kernel::solar_dashboard::Section =
+        serde_json::from_value(json!(i.require("section")?)).map_err(io)?;
+    if section.is_portfolio() {
         if i.value("city").is_some() || i.value("system").is_some() {
             return Err(Failure::invalid(
                 "solar_dashboard_context_invalid",
