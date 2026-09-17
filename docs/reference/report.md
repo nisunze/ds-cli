@@ -437,6 +437,12 @@ table content. These decisions are shared with the UI through WASM. Rendering
 returns the measured `frame_hierarchy`, `printable_boundary_mm`, and
 `furniture_frames` in each page assessment, after flow and packing.
 
+`table_drafts` returns compact editor schematics in millimetres, using authored
+font and row sizes. Approximate heading widths never expand to a maximum
+container or replace Reporter's measured print geometry. Real label omissions
+travel as scoped `print_label_omissions` warnings; the shared Rust validator
+accepts them while rejecting mismatched run/output/layout identities.
+
 ## Headless transformer reports
 
 `ds report project export` produces individual transformer reports — prints
