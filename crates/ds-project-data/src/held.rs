@@ -19,7 +19,7 @@ use std::collections::BTreeMap;
 use std::path::Path;
 
 use crate::catalog::ReferenceResource;
-use crate::print_context::{Omission, PrintContext};
+use crate::print_context::{document_failure, Omission, PrintContext};
 use crate::Failure;
 
 /// One layer the host holds and wants printed: its document id, its
@@ -139,13 +139,7 @@ pub fn attach_layers(
         });
     }
     let bytes = print_context_document(&document["coverage"], &document["sources"], &layers)
-        .map_err(|error| {
-            if error.contains("over the") {
-                Failure::TooLarge(error)
-            } else {
-                Failure::Store(error)
-            }
-        })?;
+        .map_err(document_failure)?;
     let sha256 = sha256_hex(&bytes);
     Ok(Some(PrintContext {
         layers: layers.into_keys().collect(),
@@ -362,6 +356,20 @@ mod tests {
         )
         .unwrap_err();
         assert_eq!(unlocated.code(), "print_context_unsupported");
+    }
+
+    #[test]
+    fn a_merge_over_the_engines_feature_bound_is_too_large_not_a_defect() {
+        let over = ds_command_kernel::report_export::MAX_PRINT_CONTEXT_FEATURES + 1;
+        let refused = attach_layers(
+            None,
+            vec![held("survey_poles", vec![feature("p"); over], "survey")],
+            "tx_a",
+            &network(),
+            200.0,
+        )
+        .unwrap_err();
+        assert_eq!(refused.code(), "print_context_too_large", "{refused}");
     }
 
     fn open_room(root: &Path, scope: &Scope, dataset: &Dataset, source_version: &str) {

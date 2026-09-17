@@ -41,6 +41,18 @@ pub struct Omission {
     pub reason: String,
 }
 
+/// The failure one `print_context_document` refusal is. The engine's bounds
+/// — layers, sources, features, bytes — are a state a host can act on
+/// (`print_context_too_large`); any other refusal is a defect in what was
+/// assembled (`project_dataset_store_failed`).
+pub(crate) fn document_failure(error: String) -> Failure {
+    if error.contains("over the") || error.contains("more than") {
+        Failure::TooLarge(error)
+    } else {
+        Failure::Store(error)
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct PrintContext {
     /// The exact `ds.print-context/v1` bytes, or `None` when no layer could be
@@ -346,14 +358,8 @@ pub fn read_print_context(
         });
     }
     let coverage = buffered_area(transformer, layers, widest.max(0.0))?;
-    let bytes =
-        print_context_document(&coverage, &json!(sources), &document_layers).map_err(|error| {
-            if error.contains("over the") {
-                Failure::TooLarge(error)
-            } else {
-                Failure::Store(error)
-            }
-        })?;
+    let bytes = print_context_document(&coverage, &json!(sources), &document_layers)
+        .map_err(document_failure)?;
     let sha256 = sha256_hex(&bytes);
     Ok(PrintContext {
         layers: document_layers.keys().cloned().collect(),
