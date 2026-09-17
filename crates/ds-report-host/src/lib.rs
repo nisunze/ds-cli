@@ -38,6 +38,9 @@ pub use ds_command_kernel::report_export::{
     batch_plan, blocker_summary, BatchPlan, DEFAULT_RESIDENT_LIMIT, MAX_RESIDENT_LIMIT,
 };
 
+pub mod preview;
+pub use preview::*;
+
 /// The kernel refused the inputs before any engine ran.
 pub const CODE_INPUTS_INVALID: &str = "report_inputs_invalid";
 /// The staging or output directory could not be prepared.
@@ -76,6 +79,12 @@ const STAGING_OUT_DIRECTORY: &str = "out";
 /// The `ds.print-context/v1` document a host assembled for this transformer,
 /// staged beside its room and named to the engine digest-bound.
 const STAGING_PRINT_CONTEXT_FILE: &str = "print-context.json";
+/// The engine-schema media grant a host holds for this room's photos, staged
+/// beside the room and named to the engine by path.
+const STAGING_MEDIA_GRANT_FILE: &str = "media-grant.json";
+/// The largest media grant document a run stages: one grant, or a bundle of
+/// a few scopes, in the engine's own schema.
+pub const MAX_MEDIA_GRANT_BYTES: u64 = 64 * 1024;
 
 /// A typed failure with a stable code a host can document and match on.
 #[derive(Debug, Clone, PartialEq)]
@@ -185,6 +194,18 @@ pub struct RunSettings<'a> {
     /// The operator-named output root; each run places
     /// `<out_root>/<transformer>/` beside the batch receipt.
     pub out_root: &'a Path,
+}
+
+/// What one run may carry beyond its governed inputs. Every member is
+/// optional and the default carries none, so a caller that has nothing to add
+/// runs exactly as before.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct RunExtras<'a> {
+    /// One media grant in the engine's own schema, covering every photo the
+    /// room can reference. The engine refuses a room whose spatial layers
+    /// carry media references unless a grant is staged, for a print-only
+    /// selection too; a room without photos needs none.
+    pub media_grant: Option<&'a [u8]>,
 }
 
 /// One completed run: the artifacts are on disk under `artifact_dir`, the
@@ -497,6 +518,26 @@ pub fn run_transformer_report(
     settings: &RunSettings<'_>,
     inputs: &TransformerReportInputs,
 ) -> Result<RunOutcome, HostFailure> {
+    run_transformer_report_with(engine, settings, inputs, &RunExtras::default())
+}
+
+/// [`run_transformer_report`] with what the host holds beyond the governed
+/// inputs: a media grant is bounded, staged beside the room and named in the
+/// engine request; the rest of the run is identical.
+pub fn run_transformer_report_with(
+    engine: &dyn ReportEngine,
+    settings: &RunSettings<'_>,
+    inputs: &TransformerReportInputs,
+    extras: &RunExtras<'_>,
+) -> Result<RunOutcome, HostFailure> {
+    if let Some(grant) = extras.media_grant {
+        if grant.is_empty() || grant.len() as u64 > MAX_MEDIA_GRANT_BYTES {
+            return Err(HostFailure::new(
+                CODE_INPUTS_INVALID,
+                format!("a media grant is a document of 1 through {MAX_MEDIA_GRANT_BYTES} bytes"),
+            ));
+        }
+    }
     let plan = plan_transformer_export(
         settings.project_id,
         settings.receipt,
@@ -554,10 +595,14 @@ pub fn run_transformer_report(
     let request_path = staging.path.join(STAGING_REQUEST_FILE);
     let result_path = staging.path.join(STAGING_RESULT_FILE);
     let print_context_path = staging.path.join(STAGING_PRINT_CONTEXT_FILE);
+    let media_grant_path = staging.path.join(STAGING_MEDIA_GRANT_FILE);
     write_new_private(&transformer_path, &transformer_bytes)?;
     write_new_private(&config_path, &config_bytes)?;
     if let Some(context) = &inputs.print_context {
         write_new_private(&print_context_path, &context.bytes)?;
+    }
+    if let Some(grant) = extras.media_grant {
+        write_new_private(&media_grant_path, grant)?;
     }
     let admin_bounds = settings
         .admin_bounds
@@ -566,6 +611,10 @@ pub fn run_transformer_report(
         .print_context
         .as_ref()
         .map(|context| (print_context_path.as_path(), context.sha256.as_str()));
+    let media_grant = extras
+        .media_grant
+        .is_some()
+        .then_some(media_grant_path.as_path());
     let request = engine_request(
         &plan,
         &StagedInputs {
@@ -573,7 +622,7 @@ pub fn run_transformer_report(
             network_config: &config_path,
             out_dir: &out_dir,
             admin_bounds,
-            media_grant: None,
+            media_grant,
             print_context,
             sheet: inputs.sheet,
         },
@@ -1041,14 +1090,14 @@ pub fn verify_admin_bounds_asset(
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use std::sync::atomic::AtomicUsize;
 
     const SHEETS: &str =
         r#"{"project_settings":[{"parameter":"design_export_format","value":["shp","xlsx"]}]}"#;
 
-    fn receipt(country: &str) -> InputReceipt {
+    pub(crate) fn receipt(country: &str) -> InputReceipt {
         InputReceipt {
             local_print_recipe: None,
             schema: 1,
@@ -1092,21 +1141,52 @@ mod tests {
     /// typed request, writes the artifacts it is asked for into `out_dir`, and
     /// writes its result document. Its behaviour is scripted per test.
     #[derive(Default)]
-    struct FakeEngine {
+    pub(crate) struct FakeEngine {
         identities: Mutex<Vec<String>>,
-        calls: AtomicUsize,
+        pub(crate) calls: AtomicUsize,
         concurrent: AtomicUsize,
         peak: AtomicUsize,
-        /// What to do with a transformer: `partial`, `crash`, `tamper`, `extra`, `slow`.
-        behaviour: Mutex<BTreeMap<String, &'static str>>,
+        /// What to do with a transformer: `partial`, `crash`, `tamper`,
+        /// `extra`, `slow`; for a page, `not_svg`, `two_pages`, `oversized`.
+        pub(crate) behaviour: Mutex<BTreeMap<String, &'static str>>,
+        /// The media grant bytes the last request named, read from the
+        /// staged path, or `None` when the request named no grant.
+        pub(crate) media_grant_seen: Mutex<Option<Vec<u8>>>,
     }
 
     impl FakeEngine {
-        fn release() -> Self {
+        pub(crate) fn release() -> Self {
             let engine = Self::default();
             engine.identities.lock().unwrap().push("a".repeat(40));
             engine
         }
+    }
+
+    /// One `svg__<id>` page as the engine writes it, its bytes hashed as they
+    /// go so an oversized page never lives in memory.
+    fn write_page(path: &Path, behaviour: &str) -> (u64, String) {
+        let mut file = File::create(path).unwrap();
+        let mut digest = Sha256::new();
+        let mut total = 0_u64;
+        let mut push = |bytes: &[u8]| {
+            file.write_all(bytes).unwrap();
+            digest.update(bytes);
+            total += bytes.len() as u64;
+            total
+        };
+        match behaviour {
+            "not_svg" => push(b"%PDF-1.7 not a page"),
+            "oversized" => {
+                push(b"<svg xmlns=\"http://www.w3.org/2000/svg\"><!--");
+                let filler = [b'x'; 64 * 1024];
+                while push(&filler) <= preview::MAX_PREVIEW_BYTES {}
+                push(b"--></svg>")
+            }
+            _ => push(
+                b"\n  <svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 420 297\"><path d=\"M0 0h420v297H0z\"/></svg>",
+            ),
+        };
+        (total, format!("{:x}", digest.finalize()))
     }
 
     impl ReportEngine for FakeEngine {
@@ -1160,11 +1240,31 @@ mod tests {
                 "design_export_format"
             );
             assert_eq!(request["input_shape"], "plain_local");
+            *self.media_grant_seen.lock().unwrap() = request["media_grant"]
+                .as_str()
+                .map(|path| fs::read(path).unwrap());
             let out_dir = PathBuf::from(request["out_dir"].as_str().unwrap());
             let country = request["country"].as_str().unwrap();
             let mut artifacts = Vec::new();
+            let mut print_diagnostics = Vec::new();
             for format in request["formats"].as_array().unwrap() {
                 let format = format.as_str().unwrap();
+                if let Some(id) = format.strip_prefix("svg__") {
+                    let filename = format!("{transformer}.{id}.svg");
+                    let path = out_dir.join(&filename);
+                    let (size, sha256) = write_page(&path, behaviour);
+                    artifacts.push(json!({"format": format, "filename": filename, "path": path, "bytes": size, "sha256": sha256}));
+                    if behaviour == "two_pages" {
+                        let twin = format!("{transformer}.{id}.twin.svg");
+                        let path = out_dir.join(&twin);
+                        let (size, sha256) = write_page(&path, "ok");
+                        artifacts.push(json!({"format": format, "filename": twin, "path": path, "bytes": size, "sha256": sha256}));
+                    }
+                    print_diagnostics.push(
+                        json!({"output_id": format, "findings": [{"code": "label_overlap"}]}),
+                    );
+                    continue;
+                }
                 let filename = match format {
                     "shp" => format!("{transformer}.shp.zip"),
                     "xlsx" => format!("{transformer}.xlsx"),
@@ -1205,7 +1305,8 @@ mod tests {
                 "country": country, "layers_decoded": 1, "features_decoded": 1,
                 "admin_bounds": {"configured": request.get("admin_bounds_asset").is_some(), "villages_loaded": if request.get("admin_bounds_asset").is_some() {14920} else {0}, "features_matched": 0, "features_requested": 0},
                 "geometry_changed": false, "formats_requested": request["formats"],
-                "artifacts": artifacts, "blockers": blockers, "elapsed_ms": 5
+                "artifacts": artifacts, "blockers": blockers, "elapsed_ms": 5,
+                "print_diagnostics": print_diagnostics
             });
             fs::write(result, serde_json::to_vec(&document).unwrap()).unwrap();
             self.concurrent.fetch_sub(1, Ordering::SeqCst);
@@ -1279,6 +1380,62 @@ mod tests {
         )
         .unwrap_err();
         assert_eq!(again.code, CODE_OUTPUT_EXISTS);
+    }
+
+    #[test]
+    fn a_media_grant_is_staged_beside_the_room_and_named_in_the_request() {
+        let temp = tempfile::tempdir().unwrap();
+        let out = temp.path().join("out");
+        let staging = temp.path().join("staging");
+        let receipt = receipt("Benin");
+        let engine = FakeEngine::release();
+        let grant = br#"{"schema":"ds.media-grant/v1","bucket":"b","prefix":"p/"}"#;
+        let outcome = run_transformer_report_with(
+            &engine,
+            &settings(&receipt, &out, &staging),
+            &inputs("tx_a"),
+            &RunExtras {
+                media_grant: Some(&grant[..]),
+            },
+        )
+        .unwrap();
+        assert_eq!(outcome.artifacts.len(), 2);
+        assert_eq!(
+            engine.media_grant_seen.lock().unwrap().as_deref(),
+            Some(&grant[..])
+        );
+        // The grant is staging, not delivery: it goes with the scratch.
+        assert!(fs::read_dir(&staging).unwrap().next().is_none());
+        let mut names: Vec<_> = fs::read_dir(out.join("tx_a"))
+            .unwrap()
+            .map(|e| e.unwrap().file_name().into_string().unwrap())
+            .collect();
+        names.sort();
+        assert_eq!(names, ["report-run.json", "tx_a.shp.zip", "tx_a.xlsx"]);
+        // The plain wrapper names no grant.
+        run_transformer_report(
+            &engine,
+            &settings(&receipt, &out, &staging),
+            &inputs("tx_b"),
+        )
+        .unwrap();
+        assert!(engine.media_grant_seen.lock().unwrap().is_none());
+        // An empty or oversized grant is refused before the engine runs.
+        let calls = engine.calls.load(Ordering::SeqCst);
+        for grant in [Vec::new(), vec![b'{'; MAX_MEDIA_GRANT_BYTES as usize + 1]] {
+            let refused = run_transformer_report_with(
+                &engine,
+                &settings(&receipt, &out, &staging),
+                &inputs("tx_c"),
+                &RunExtras {
+                    media_grant: Some(grant.as_slice()),
+                },
+            )
+            .unwrap_err();
+            assert_eq!(refused.code, CODE_INPUTS_INVALID);
+        }
+        assert_eq!(engine.calls.load(Ordering::SeqCst), calls);
+        assert!(!out.join("tx_c").exists());
     }
 
     #[test]
