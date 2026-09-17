@@ -17,8 +17,8 @@ const FORM_REFUSALS: &[Refusal] = &[
     },
     Refusal {
         code: "asset_project",
-        when: "the selected asset project differs from the Solar workspace",
-        remedy: "select the workspace project with auth.project.use",
+        when: "the explicit project differs from the Solar workspace",
+        remedy: "pass --project with the workspace project",
     },
     Refusal {
         code: "city_tag",
@@ -55,7 +55,7 @@ const fn form_refusals() -> [Refusal;
 pub static COMMAND: Command = Command {
     id: "solar.network.resolve",
     path: &["solar", "network", "resolve"],
-    contract: 1,
+    contract: 2,
     summary: "Copy network data into editable independent Solar inputs.",
     purpose: "Resolve the classified sizing table and city map by an exact project tag, then transformer maps by identity. Missing artifacts seed manual entry and never block the city. Copies classified values into Solar and queues normal sync. Map bytes are copied through the verified Solar media service. Source identities record provenance only; future runs use the owned inputs. Repeating this command explicitly refreshes sources while preserving manual overrides. Omit the tag to use the form's saved binding or seed a wholly manual network.",
     chapter: Chapter::Solar,
@@ -63,6 +63,7 @@ pub static COMMAND: Command = Command {
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
     args: &[
+        Arg::value("project", "<id>", "Explicit authorized workspace project.").required(),
         Arg::value("workspace", "<dir>", "Existing local Solar workspace.").required(),
         Arg::value(
             "city",
@@ -95,20 +96,15 @@ pub static COMMAND: Command = Command {
 };
 
 pub fn read_information(lane: &str, project: &str, reference: &Value) -> Result<Value, Failure> {
-    let receipt = ds_cli_auth::shared_assets(
+    let receipt = ds_cli_auth::shared_assets_for_project(
         lane,
+        project,
         &ds_cli_auth::SharedAssetsCommand::Read {
             asset_id: reference["asset_id"].as_str().unwrap_or_default().into(),
             digest: reference["digest"].as_str().unwrap_or_default().into(),
         },
     )?;
-    if receipt.project_id() != project {
-        return Err(Failure::invalid(
-            "asset_project",
-            "Select the Solar workspace's project before resolving its shared assets.",
-        ));
-    }
-    let information = json!({"reference":reference,"base64":receipt.result()["base64"]});
+    let information = json!({"reference":reference,"base64":receipt["base64"]});
     let request = serde_json::to_vec(
         &json!({"operation":"information","project_id":project,"information":information}),
     )
@@ -162,6 +158,12 @@ pub fn run(i: &Inputs, _: &Context) -> Result<Value, Failure> {
     let project = held["project_id"]
         .as_str()
         .ok_or_else(|| Failure::failed("network_form", "Workspace omitted project identity"))?;
+    if project != i.require("project")? {
+        return Err(Failure::invalid(
+            "asset_project",
+            "Explicit project differs from the Solar workspace.",
+        ));
+    }
     let mut document = held["document"].clone();
     match (i.value("tag-definition"), i.value("tag-value")) {
         (Some(definition), Some(value)) => {
@@ -191,16 +193,17 @@ pub fn run(i: &Inputs, _: &Context) -> Result<Value, Failure> {
             ("information", "network_information"),
             ("city_map", "city_map"),
         ] {
-            let result = ds_cli_auth::shared_assets(
+            let result = ds_cli_auth::shared_assets_for_project(
                 lane,
+                project,
                 &ds_cli_auth::SharedAssetsCommand::Resolve {
                     link: link.clone(),
                     role: role.into(),
                 },
             );
             match result {
-                Ok(receipt) if receipt.project_id() == project => {
-                    let resolution = &receipt.result()["resolution"];
+                Ok(receipt) => {
+                    let resolution = &receipt["resolution"];
                     if resolution["status"] == "resolved" {
                         let asset = &resolution["asset"];
                         document["sources"][key] = json!({"project_id":project,"asset_id":asset["asset_id"],"digest":asset["digest"]});
@@ -209,7 +212,6 @@ pub fn run(i: &Inputs, _: &Context) -> Result<Value, Failure> {
                         notices.push(json!({"role":role,"status":resolution["status"],"manual_entry_allowed":true}));
                     }
                 },
-                Ok(_) => return Err(Failure::invalid("asset_project", "Select the Solar workspace's project before resolving its assets.")),
                 Err(error) => notices.push(json!({"role":role,"status":"unavailable","message":error.to_string(),"manual_entry_allowed":true})),
             }
         }
@@ -261,8 +263,9 @@ pub fn run(i: &Inputs, _: &Context) -> Result<Value, Failure> {
             let Some(name) = transformer["name"].as_str() else {
                 continue;
             };
-            if let Ok(receipt) = ds_cli_auth::shared_assets(
+            if let Ok(receipt) = ds_cli_auth::shared_assets_for_project(
                 lane,
+                project,
                 &ds_cli_auth::SharedAssetsCommand::Resolve {
                     link: Link::DsObject {
                         object_type: "transformer".into(),
@@ -271,14 +274,8 @@ pub fn run(i: &Inputs, _: &Context) -> Result<Value, Failure> {
                     role: "transformer_map".into(),
                 },
             ) {
-                if receipt.project_id() != project {
-                    return Err(Failure::invalid(
-                        "asset_project",
-                        "Project changed while resolving maps.",
-                    ));
-                }
-                if receipt.result()["resolution"]["status"] == "resolved" {
-                    let asset = &receipt.result()["resolution"]["asset"];
+                if receipt["resolution"]["status"] == "resolved" {
+                    let asset = &receipt["resolution"]["asset"];
                     maps.insert(name.into(), json!({"project_id":project,"asset_id":asset["asset_id"],"digest":asset["digest"]}));
                 }
             }
@@ -346,26 +343,21 @@ fn copy_map(
     workspace: &str,
 ) -> Result<Value, Failure> {
     use base64::Engine;
-    let receipt = ds_cli_auth::shared_assets(
+    let receipt = ds_cli_auth::shared_assets_for_project(
         lane,
+        project,
         &ds_cli_auth::SharedAssetsCommand::Read {
             asset_id: reference["asset_id"].as_str().unwrap_or_default().into(),
             digest: reference["digest"].as_str().unwrap_or_default().into(),
         },
     )?;
-    if receipt.project_id() != project {
-        return Err(Failure::invalid(
-            "asset_project",
-            "Project changed while copying a map.",
-        ));
-    }
-    let encoded = receipt.result()["base64"]
+    let encoded = receipt["base64"]
         .as_str()
         .ok_or_else(|| Failure::invalid("network_form", "Map read omitted bytes"))?;
     let bytes = base64::engine::general_purpose::STANDARD
         .decode(encoded)
         .map_err(|e| Failure::invalid("network_form", e.to_string()))?;
-    let mut session = ds_cli_auth::solar_project_session(lane)?;
+    let mut session = ds_cli_auth::solar_project_session_for_project(lane, project)?;
     if session.binding()["project"] != project {
         return Err(Failure::invalid(
             "asset_project",

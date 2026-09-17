@@ -7,7 +7,7 @@ use std::io::Read;
 pub static COMMAND: Command = Command {
     id: "solar.network.map",
     path: &["solar", "network", "map"],
-    contract: 1,
+    contract: 2,
     summary: "Copy a map into a Solar city's independent inputs.",
     purpose: "Upload one PNG, JPEG or WebP through Solar's verified media service, then save its immutable Solar-owned identity into the city's editable inputs. Existing project maps remain unchanged. Use network.map:reseau_propose for a city map or network.transformer:<name> for a transformer map. The cloud city must already exist. The expected city digest protects manual edits; a concurrent edit leaves the uploaded media unattached and the form unchanged. Run project sync afterwards to publish the changed inputs. No TypeScript, Desktop or source asset dependency.",
     chapter: Chapter::Solar,
@@ -15,6 +15,7 @@ pub static COMMAND: Command = Command {
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
     args: &[
+        Arg::value("project", "<id>", "Explicit authorized workspace project.").required(),
         Arg::value("workspace", "<dir>", "Existing Solar workspace.").required(),
         Arg::value("city", "<id>", "Existing Solar city.").required(),
         Arg::value(
@@ -43,6 +44,12 @@ pub fn run(i: &Inputs, _: &Context) -> Result<Value, Failure> {
     let held = crate::project::invoke(
         json!({"operation":"network_form_read","workspace":i.require("workspace")?,"city":i.require("city")?}),
     )?;
+    if held["project_id"].as_str() != Some(i.require("project")?) {
+        return Err(Failure::invalid(
+            "asset_project",
+            "Explicit project differs from the Solar workspace.",
+        ));
+    }
     if held["expected"] != i.require("expected")? {
         return Err(Failure::invalid(
             "network_form",
@@ -60,11 +67,14 @@ pub fn run(i: &Inputs, _: &Context) -> Result<Value, Failure> {
         .file_name()
         .and_then(|s| s.to_str())
         .ok_or_else(|| file_error("Map filename is not UTF-8"))?;
-    let mut session = ds_cli_auth::solar_project_session(i.value("lane").unwrap_or("stable"))?;
+    let mut session = ds_cli_auth::solar_project_session_for_project(
+        i.value("lane").unwrap_or("stable"),
+        i.require("project")?,
+    )?;
     if session.binding()["project"] != held["project_id"] {
         return Err(Failure::invalid(
             "asset_project",
-            "Select the Solar workspace project before copying maps.",
+            "Pass the Solar workspace project explicitly before copying maps.",
         ));
     }
     let copy = session.execute(&ds_cli_auth::SolarProjectCommand::ImportMap {

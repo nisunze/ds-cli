@@ -44,6 +44,12 @@ provider may persist this bounded address in IndexedDB; a headless provider
 may persist the equivalent address in protected per-user native state. Neither
 storage location becomes project authority.
 
+Solar and native Server project commands require explicit request project
+context. They never consult this saved address as a CLI default. The web
+injects its active project into requests; the Rust host captures and authorizes
+that context independently of UI state. Remaining older selected-project
+contracts are compatibility boundaries to migrate when touched.
+
 The address is useful only after it was chosen from a fresh visible-project
 directory, remains bound to the canonical principal, lane, profile/audience,
 and (for device sessions) exact device and entitlement revision, and is

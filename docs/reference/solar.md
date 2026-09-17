@@ -400,8 +400,8 @@ This route is intentionally distinct from the paired product lifecycle:
 ds solar prepare --city rw-kigali --output json
 ds solar run start --city rw-kigali --output json
 
-# Headless selected-project capture, cache-hit preparation and artifact run
-ds solar input capture --city rw-kigali --out ./rw-kigali.intake.json --output json
+# Headless explicit-project capture, cache-hit preparation and artifact run
+ds solar input capture --project <exact-id> --city rw-kigali --out ./rw-kigali.intake.json --output json
 ds solar input prepare --intake ./rw-kigali.intake.json \
   --cache ./solar-reference-cache --out ./prepared --output json
 ds solar run --prepared ./prepared --out ./out --output json
@@ -422,8 +422,8 @@ already performs — not a second seed model and not a duplicate city catalog.
 for cities the project already has.
 
 ```text
-ds solar seed preview [--source <root>] [--city <id> ...]
-ds solar seed apply --seed-digest <64-hex> [--source <root>] [--city <id> ...] --yes
+ds solar seed preview --project <exact-id> [--source <root>] [--city <id> ...]
+ds solar seed apply --project <exact-id> --seed-digest <64-hex> [--source <root>] [--city <id> ...] --yes
 ```
 
 ds-brain owns every decision. Its
@@ -468,13 +468,11 @@ the two client copies are now one, in `ds-command-kernel::solar_seed`, and an
 over-large selection is still refused locally under the server's own
 `solar_seed_bounded`.
 
-**What `ds` sends is only the selection.** The destination is the paired
-session's selected project, composed by the application exactly as the card
-does; there is no project or root argument, because a project id is not proof
-of anything. ds-brain decodes the body with `DisallowUnknownFields` and reads
-an absent `--source` as its governed catalog and an absent `--city` list as
-every live source city, so an unset optional is omitted rather than sent as an
-empty value.
+The destination project is supplied explicitly with `--project`. The Rust
+native client authorizes that context without reading saved CLI selection or
+contacting Desktop. The UI injects its active project into its own request.
+Omitted source and city selections still use the server's governed catalog
+and all live source cities.
 
 Legacy city-scoped media references are excluded from city cloning because
 those receipts belong to their original city. The plan reports
@@ -490,15 +488,9 @@ snake_case, with `detail.server_code` carrying the server's spelling verbatim:
 ds-brain's 64-city request bound locally, so an over-large selection is refused
 once with that same code rather than after a round trip.
 
-**One door, both surfaces.** DS GridDesign answers `solar.seed.preview` and
-`solar.seed.apply` from `src/lib/desktop/cli-solar-seed.ts`, which calls the
-same `$lib/api/solar-seed` client the Project Control seeding card uses. So the
-CLI and the card send one governed request through one declared operation and
-read one refusal vocabulary; `crates/ds/tests/bridge_parity.rs` holds that, and
-`ds mcp serve` inherits both commands by their being registered rather than by
-any MCP-specific implementation. An older DS GridDesign build that predates the
-door still refuses with `desktop_operation_unsupported` and the remedy to
-update it.
+Both native CLI and the UI call the same governed seed authority. CLI requests
+carry the explicit project through the closed Rust client operation. Desktop
+bridge seeding is no longer the CLI transport.
 
 ## Authority and typed operations
 
@@ -506,8 +498,8 @@ update it.
 |---|---|---|---|
 | `solar input capture` | fixed native `desktop_snapshot` + governed owner stdin | local file write | verified governed city intake |
 | `solar input prepare` | fixed native cache-only `prepare` | local file write | private prepared input and publication-claim pair |
-| `solar seed preview` | `solar.seed.preview` | read only | ds-brain's SolarSeedPlan, verbatim |
-| `solar seed apply` | `solar.seed.apply` | global write | ds-brain's SolarSeedApplyResult, verbatim |
+| `solar seed preview --project ID` | native `SolarProjectCommand::Seed` | read only | ds-brain's SolarSeedPlan, verbatim |
+| `solar seed apply --project ID` | native `SolarProjectCommand::Seed` | global write | ds-brain's SolarSeedApplyResult, verbatim |
 | `solar prepare` | `solar.prepare` | local file write | completed preparation receipt |
 | `solar run start` | `solar.run.start` | local file write | launch receipt with a run id that outlives the session; the compute itself is owned by the paired application and ends with it |
 | `solar run progress` | `solar.run.progress` | read only | bounded progress receipt |
@@ -535,7 +527,7 @@ set of product actions and never a generic desktop RPC.
 
 | Command | Timeout | Why |
 |---|---:|---|
-| `solar input capture` | 120 s request + 5 min owner intake | bounded selected-project capture and create-new sealing |
+| `solar input capture` | 120 s request + 5 min owner intake | bounded explicit-project capture and create-new sealing |
 | `solar input prepare` | 30 min | cache-only native preparation of one governed intake |
 | `solar seed preview` / `apply` | 60 s | one ds-brain round trip; the card allows the same |
 | `solar prepare` | 30 min | cache capture or authenticated refresh across selected cities |
@@ -581,7 +573,7 @@ project membership nor authorizes publication or mutation.
 ## Related
 
 - `crates/ds-cli-solar/src/seed.rs` — governed project seeding: preview and digest-bound apply
-- `crates/ds-cli-solar/src/input_capture.rs` — selected-project governed intake capture
+- `crates/ds-cli-solar/src/input_capture.rs` — explicit-project governed intake capture
 - `crates/ds-cli-solar/src/input_prepare.rs` — cache-only governed intake preparation
 - `crates/ds-cli-solar/src/prepare.rs` — paired preparation adapter
 - `crates/ds-cli-solar/src/paired_run.rs` — paired run lifecycle adapter
@@ -622,18 +614,18 @@ governed portfolio membership are separate from this explicit local workspace.
 
 ### Headless governed replacement seeds
 
-`solar.seed.preview` and `solar.seed.apply` default to the native selected
-project in the requested lane. They expose the same governed seed service as
+`solar.seed.preview` and `solar.seed.apply` require an explicit
+`--project` in the requested lane. They expose the same governed seed service as
 the application. `--overwrite` must be supplied to both calls to replace
 changed city inputs. The plan enumerates `replace` rows and removed obsolete
 input documents, and binds the mode to its digest. Each replacement rechecks
 the destination inside its transaction; a concurrent edit refuses. Calculated
 results and finalized reports are outside the seed's input collections.
 
-An explicit Desktop descriptor preserves the existing paired path; replacement
-uses the native path. Seeding does not copy source city's media grants.
+Seeding uses native authentication with an explicit project and does not copy
+the source city's media grants.
 
-Discover existing selected-project city ids with `ds solar cities --project <id>`; use those exact ids for capture and preparation.
+Discover an explicit project's city ids with `ds solar cities --project <id>`; use those exact ids for capture and preparation.
 
 Use `solar.reference.acquire` for a fresh headless server after capturing and seeding the local workspace. The owner derives the full PV request; the explicit `--project` supplies captured native authority without changing selection. A successful receipt verifies cache readback before any calculation.
 

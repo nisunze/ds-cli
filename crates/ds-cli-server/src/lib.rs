@@ -41,13 +41,11 @@ const LANE: Arg = Arg::value("lane", "<stable|canary>", "Native authentication l
     .default("stable")
     .choices(&["stable", "canary"]);
 const JOB: Arg = Arg::value("job", "<id>", "Exact job id returned by submit.").required();
-/// The project a call is about. Optional here and never optional on the wire:
-/// absent, the saved selection is read locally and sent anyway, so the Server
-/// records exactly one named project on every call whose subject IS a project.
+/// Explicit project context for each project-scoped call. No saved selection is read.
 const PROJECT: Arg = Arg::value(
     "project",
     "<exact-id>",
-    "Exact ds_project id this call is about; defaults to the saved selection and is always sent.",
+    "Exact ds_project id this call is about; always supplied explicitly.",
 );
 
 /// The same flag on the one submission whose project is already sealed into
@@ -98,8 +96,8 @@ const OWNER_CHANGED: Refusal = Refusal {
 };
 const PROJECT_REQUIRED: Refusal = Refusal {
     code: "project_required",
-    when: "no --project was passed and this account has no saved selection",
-    remedy: "pass --project <exact-id> or run ds auth project use --project <exact-id>",
+    when: "no --project was passed",
+    remedy: "pass --project <exact-id>",
 };
 const CONTEXT_CORRUPT: Refusal = Refusal {
     code: "context_corrupt",
@@ -269,9 +267,9 @@ const fn command(
     Command {
         id,
         path,
-        contract: 1,
+        contract: 2,
         summary,
-        purpose: "Drive native transformer and prepared Solar computation on the shared Rust runtime. Jobs survive UI closure and server restart; request and result bytes are retained under the initiating identity. Every call is about one project: --project names it, else the saved selection (ds auth project use) is sent as this client's DEFAULT and recorded by the Server, which keeps no selection of its own -- one host serves several of its owner's projects at once. The gateway enforces entitlement at publication and sync; a Solar request's sealed input names the project that wins.",
+        purpose: "Drive native transformer and prepared Solar computation on the shared Rust runtime. Jobs survive UI closure and server restart; request and result bytes are retained under the initiating identity. Every call is about one project: --project names it explicitly and neither client nor Server consults a saved selection -- one host serves several of its owner's projects at once. The gateway enforces entitlement at publication and sync; a Solar request's sealed input names the project that wins.",
         chapter: Chapter::Design,
         effect,
         authority: Authority::HeadlessUser,
@@ -817,24 +815,12 @@ fn state(inputs: &Inputs) -> Result<PathBuf, Failure> {
     .map_err(failure)
 }
 
-/// The project this call is about, resolved to an explicit name before
-/// anything is sent.
-///
-/// `--project` wins. Without it the saved selection is read from this
-/// machine's own protected context -- the same probe `ds auth project use`
-/// writes and `ds auth project status` reads -- and sent as if it had been
-/// typed. That is the whole role of a saved selection here: a client-side
-/// default. The Server records whichever name arrives as the job's project
-/// and executes what its owner handed it; whether that project's effects may
-/// leave the machine is the gateway's answer at publication and sync, never
-/// a directory the Server fetched. With neither there is nothing to record
-/// and nothing to guess, so the call refuses here rather than admitting an
-/// unscoped job.
+/// Resolve only the project explicitly captured in this request.
 fn project(inputs: &Inputs) -> Result<String, Failure> {
     known_project(inputs)?.ok_or_else(|| {
         Failure::invalid(
             "project_required",
-            "no project was named and this account has no saved selection to default to",
+            "no project was named; pass the explicit project for this request",
         )
         .remedy(PROJECT_REQUIRED.remedy)
         .next("ds auth project list")
@@ -854,20 +840,9 @@ fn named_project(inputs: &Inputs) -> Result<Option<String>, Failure> {
     inputs.value("project").map(bounded_project).transpose()
 }
 
-/// The project if one can be named at all, without deciding whether the
-/// operation needs one: what the caller named, else this machine's saved
-/// selection. Every call whose subject IS a project resolves through
-/// [`project`], which refuses when neither exists.
+/// Optional reads and sealed submissions also never consult saved selection.
 fn known_project(inputs: &Inputs) -> Result<Option<String>, Failure> {
-    if let Some(named) = inputs.value("project") {
-        return bounded_project(named).map(Some);
-    }
-    match ds_cli_auth::probe_headless_identity(inputs.require("lane")?)?
-        .and_then(|(_, selected)| selected)
-    {
-        Some(selected) => bounded_project(&selected).map(Some),
-        None => Ok(None),
-    }
+    named_project(inputs)
 }
 
 /// The kernel's rule on a project id, ASKED rather than restated, before the
@@ -1591,6 +1566,15 @@ mod tests {
                 .any(|command| command.id == "server.input"),
             "the remedy names a command this domain does not offer"
         );
+    }
+
+    #[test]
+    fn request_context_never_uses_a_saved_project_or_requires_auth_to_resolve() {
+        let unnamed = inputs(&STATUS, &[]);
+        assert_eq!(known_project(&unnamed).unwrap(), None);
+        assert_eq!(project(&unnamed).unwrap_err().code(), "project_required");
+        let named = inputs(&STATUS, &["--project", "arjgpydw_aderm_loc7"]);
+        assert_eq!(project(&named).unwrap(), "arjgpydw_aderm_loc7");
     }
 
     #[test]

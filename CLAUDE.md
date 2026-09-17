@@ -87,11 +87,12 @@ so is a fifth spawn site that has not been added to that test deliberately.
 
 **Use the native user client** for an authenticated public API contract that
 has been extracted from Tauri into `ds-client-core`. The client restores only
-its protected Firebase user credential, loads only the selected project
-context fenced to that UID, canonical email, deployment lane and credential
-audience, and sends one fixed method/path/body contract through a closed
+its protected user or device credential, captures the explicitly requested
+project context fenced to that UID, canonical email, deployment lane and
+credential audience, and sends one fixed method/path/body contract through a closed
 transport trait. It never accepts an arbitrary URL, header, body, bearer token,
-service account, processing lane or project override. Adding a call means
+service account or arbitrary processing lane. Explicit project context is an
+address to authorize, never proof of authority. Adding a call means
 extending the profile schema, transport trait, response decoder and package
 digest together; a generic HTTP client is not a migration path.
 
@@ -121,7 +122,7 @@ into a crate owned by the relevant domain and have both call it.
 `ds` has no hidden privilege. It is comparable to the signed-in desktop or web
 client. It does not read Firestore, does not use ADC or an ambient service
 account to impersonate a user, and does not accept a project id as proof of
-anything. A project id may be selected only from the freshly fetched directory
+anything. A saved project address may be selected only from the freshly fetched directory
 the public API returned for the restored user; the saved selection is
 audience-fenced and the gateway remains membership authority on every call.
 
@@ -130,7 +131,7 @@ Routing order:
 1. Pure local discovery or deterministic computation → the authoritative Rust
    crate directly, no login where the domain contract permits.
 2. Extracted authenticated project API contract → the protected native user,
-   audience-fenced selected project and fixed `ds-client-core` call.
+   audience-fenced explicit request project and fixed `ds-client-core` call.
 3. Desktop state, edit sessions, app-owned workflows and the web app's local
    cache → the paired loopback bridge (`ds-cli-desktop`) until that semantic
    operation has a reviewed headless owner.
@@ -277,8 +278,10 @@ only ever gets relaxed is not protecting anything.
 
 Follow the delivery cadence and per-request project context section of
 [`ds-headless-application-runtime.md`](../ds-command-kernel/docs/contracts/ds-headless-application-runtime.md).
-Prove the installed CLI/MCP outcome, repair the smallest demonstrated owner gap,
+Prove the current CLI/MCP outcome, using the source server launcher when the
+installed release does not contain the current code. Repair the smallest owner gap,
 then bind the UI. The web retains project selection; native requests capture and
 authorize explicit project context, preserving it across concurrent jobs and
-interruptions. Migrate touched boundaries gradually; a saved CLI default must
-never redirect accepted work.
+interruptions. CLI project operations always carry their explicit project and
+never consult active UI state or saved project selection. Migrate touched
+boundaries gradually.

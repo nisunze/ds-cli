@@ -1,35 +1,8 @@
 //! `ds solar seed` — governed project seeding, previewed then confirmed.
 //!
-//! Seeding COPIES authored Solar city inputs from a governed seed source root
-//! into the active project's Solar root. ds-brain owns every decision:
-//! `docs/contracts/solar-project-seeding.md` in that repository is the
-//! authority, and it names exactly two actions on the existing
-//! `POST /api/v1/solar` door — `seed_preview` (read only) and `seed_apply`
-//! (digest bound). This crate composes neither a third action nor a second
-//! seed model.
-//!
-//! Three properties are load bearing here, and each is a thing this module
-//! deliberately does NOT do:
-//!
-//! * **It never derives a digest.** `seed_digest` is echoed from a preview the
-//!   caller actually performed. A locally computed digest would prove nothing
-//!   about what anyone looked at, which is the entire point of propose then
-//!   confirm.
-//! * **It never re-plans.** A row's action, its digests and the counts are the
-//!   server's answer, returned verbatim. `changed`, `missing` and `warnings`
-//!   are the rows a human would have acted on, so summarizing them away would
-//!   be the one edit that makes the plan misleading.
-//! * **It never composes the destination.** The paired application owns
-//!   project identity, exactly as the ds-web seeding card does; `ds` sends the
-//!   optional source and city selection and nothing else. There is no project
-//!   id argument, because a project id is not proof of anything.
-//!
-//! What this module DOES own is the boundary: the exact keys that leave the
-//! process, the local bounds that make a refusal arrive once rather than
-//! twice, and the checks that a reply is the contract's own shape before a
-//! caller is told a governed write happened.
-
-use std::time::Duration;
+//! Seeding copies reviewed inputs and assets into an explicitly named project.
+//! Rust client core and ds-brain own context, bounds, preview and digest-bound
+//! apply. Native calls require no selected project or paired Desktop.
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
@@ -40,11 +13,6 @@ use ds_cli_desktop::ops;
 use serde_json::{Map, Value, json};
 
 use ds_cli_contract::spec::Availability;
-
-/// Preview reads two roots and digests them; apply commits one transaction per
-/// city. Both are ds-brain round trips through the paired application, and the
-/// UI gives the same call sixty seconds.
-const SEED_TIMEOUT: Duration = Duration::from_secs(60);
 
 const PREVIEW_OPERATION: &str = "solar.seed.preview";
 const APPLY_OPERATION: &str = "solar.seed.apply";
@@ -116,6 +84,13 @@ pub const APPLY_OP: ops::BridgeOp = ops::BridgeOp {
     arguments: &["seed_source_root", "cities", "seed_digest"],
 };
 
+const PROJECT_ARG: Arg = Arg::value(
+    "project",
+    "<id>",
+    "Explicit authorized destination project.",
+)
+.required();
+
 const SOURCE_ARG: Arg = Arg::value(
     "source",
     "<root>",
@@ -126,13 +101,7 @@ const CITY_ARG: Arg = Arg::repeated(
     "<id>",
     "Seed only this source city. Repeat, up to 64. Omit for every live source city.",
 );
-const DESCRIPTOR_ARG: Arg = Arg::value(
-    "desktop-descriptor",
-    "<path>",
-    "Use this bridge descriptor instead of discovering one.",
-);
-
-/// Refusals `ds solar seed` raises before or instead of the paired call.
+/// Refusals raised at the native seeding boundary.
 ///
 /// The five server-owned codes appear here because the CLI re-raises them
 /// under ds-brain's own names: a caller branching on `error.code` sees the
@@ -160,8 +129,8 @@ static SEED_REFUSALS: &[Refusal] = &[
     },
     Refusal {
         code: "solar_seed_project_root_required",
-        when: "the paired session's project does not resolve to a project Solar root",
-        remedy: "select a project in DS GridDesign, then retry",
+        when: "the explicit request project does not resolve to a project Solar root",
+        remedy: "pass the exact authorized Solar project, then retry",
     },
     Refusal {
         code: "solar_seed_component_disabled",
@@ -169,44 +138,9 @@ static SEED_REFUSALS: &[Refusal] = &[
         remedy: "enable the Solar component on the project, then retry",
     },
     Refusal {
-        code: "desktop_signed_out",
-        when: "the application is running but signed out, or has no project selected",
-        remedy: "sign in and select a project in DS GridDesign",
-    },
-    Refusal {
-        code: "desktop_not_paired",
-        when: "no DS GridDesign session is running on this machine",
-        remedy: "start DS GridDesign, sign in, and retry",
-    },
-    Refusal {
-        code: "desktop_ambiguous",
-        when: "more than one DS GridDesign session is running",
-        remedy: "name one with --desktop-descriptor <path>",
-    },
-    Refusal {
-        code: "desktop_unreachable",
-        when: "the bridge descriptor names a session that does not answer",
-        remedy: "restart DS GridDesign and retry",
-    },
-    Refusal {
-        code: "desktop_unreadable",
-        when: "the paired session's reply could not be read",
-        remedy: "restart DS GridDesign and retry",
-    },
-    Refusal {
-        code: "desktop_operation_unsupported",
-        when: "this DS GridDesign build does not offer the Solar seeding operation",
-        remedy: "update DS GridDesign and ds to matching releases",
-    },
-    Refusal {
-        code: "desktop_refused",
-        when: "the paired application declined the seeding call",
-        remedy: "read the refusal detail, correct the application state, and retry",
-    },
-    Refusal {
-        code: "desktop_contract_mismatch",
+        code: "solar_seed_contract_mismatch",
         when: "the reply is not a Solar seed plan, or a preview reports that it mutated",
-        remedy: "update DS GridDesign and ds to matching releases",
+        remedy: "update ds and its native client core to matching releases",
     },
     Refusal {
         code: "pairing_rejected",
@@ -220,7 +154,7 @@ static APPLY_REFUSALS: &[Refusal] = &[
     Refusal {
         code: "solar_seed_digest_required",
         when: "--seed-digest is not the exact 64-character lowercase digest a preview returned",
-        remedy: "run `ds solar seed preview` and pass that plan's exact seed_digest",
+        remedy: "run `ds solar seed preview --project <exact-id>` and pass that plan's exact seed_digest",
     },
     Refusal {
         code: "solar_seed_digest_mismatch",
@@ -249,8 +183,8 @@ static APPLY_REFUSALS: &[Refusal] = &[
     },
     Refusal {
         code: "solar_seed_project_root_required",
-        when: "the paired session's project does not resolve to a project Solar root",
-        remedy: "select a project in DS GridDesign, then retry",
+        when: "the explicit request project does not resolve to a project Solar root",
+        remedy: "pass the exact authorized Solar project, then retry",
     },
     Refusal {
         code: "solar_seed_component_disabled",
@@ -258,44 +192,9 @@ static APPLY_REFUSALS: &[Refusal] = &[
         remedy: "enable the Solar component on the project, then retry",
     },
     Refusal {
-        code: "desktop_signed_out",
-        when: "the application is running but signed out, or has no project selected",
-        remedy: "sign in and select a project in DS GridDesign",
-    },
-    Refusal {
-        code: "desktop_not_paired",
-        when: "no DS GridDesign session is running on this machine",
-        remedy: "start DS GridDesign, sign in, and retry",
-    },
-    Refusal {
-        code: "desktop_ambiguous",
-        when: "more than one DS GridDesign session is running",
-        remedy: "name one with --desktop-descriptor <path>",
-    },
-    Refusal {
-        code: "desktop_unreachable",
-        when: "the bridge descriptor names a session that does not answer",
-        remedy: "restart DS GridDesign and retry",
-    },
-    Refusal {
-        code: "desktop_unreadable",
-        when: "the paired session's reply could not be read",
-        remedy: "restart DS GridDesign and retry",
-    },
-    Refusal {
-        code: "desktop_operation_unsupported",
-        when: "this DS GridDesign build does not offer the Solar seeding operation",
-        remedy: "update DS GridDesign and ds to matching releases",
-    },
-    Refusal {
-        code: "desktop_refused",
-        when: "the paired application declined the seeding call",
-        remedy: "read the refusal detail, correct the application state, and retry",
-    },
-    Refusal {
-        code: "desktop_contract_mismatch",
+        code: "solar_seed_contract_mismatch",
         when: "the reply is not a seed result, or it does not echo the confirmed digest",
-        remedy: "update DS GridDesign and ds to matching releases",
+        remedy: "update ds and its native client core to matching releases",
     },
     Refusal {
         code: "pairing_rejected",
@@ -333,7 +232,7 @@ const REFERENCE_LOCAL: &[Refusal] = &[
     Refusal {
         code: "solar_reference_scope_mismatch",
         when: "the workspace belongs to another project",
-        remedy: "select the workspace project with ds auth project use",
+        remedy: "pass the workspace project explicitly with --project",
     },
     Refusal {
         code: "solar_reference_contract_mismatch",
@@ -367,26 +266,20 @@ pub(crate) const REFERENCE_REFUSALS: &[Refusal] =
 pub static PREVIEW_COMMAND: Command = Command {
     id: "solar.seed.preview",
     path: &["solar", "seed", "preview"],
-    contract: 1,
+    contract: 2,
     summary: "Plan which governed Solar cities would seed into this project.",
     purpose: "\
 Asks ds-brain headlessly which cities, input documents \
-and network assets WOULD be copied from a governed seed source into the active \
+and network assets WOULD be copied from a governed seed source into the explicitly named \
 project's Solar root. It writes nothing: the plan carries the server's own \
 `mutated: false`, and every row's action, digest and warning is returned \
-verbatim. The native selected project is the destination. --overwrite plans replacement of changed inputs. Confirm the returned `seed_digest` with \
+verbatim. The explicit project is the destination. --overwrite plans replacement of changed inputs. Confirm the returned `seed_digest` with \
 `ds solar seed apply` to write it.",
     chapter: Chapter::Solar,
     effect: Effect::ReadOnly,
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[
-        SOURCE_ARG,
-        CITY_ARG,
-        OVERWRITE_ARG,
-        LANE_ARG,
-        DESCRIPTOR_ARG,
-    ],
+    args: &[PROJECT_ARG, SOURCE_ARG, CITY_ARG, OVERWRITE_ARG, LANE_ARG],
     output: "\
 ds-brain's SolarSeedPlan verbatim: both resolved roots, the project, the \
 `seed_digest` that binds this plan to its apply, one row per city with its \
@@ -395,12 +288,12 @@ documents including the city root row, reported assets and warnings, plus the \
 class counts, document count, asset counts and `mutated`.",
     examples: &[
         Example {
-            command: "ds solar seed preview --output json",
-            note: "Plans every live governed city into the selected project. Writes nothing.",
+            command: "ds solar seed preview --project project-1 --output json",
+            note: "Plans every live governed city into the explicit project. Writes nothing.",
             runnable: false,
         },
         Example {
-            command: "ds solar seed preview --city huye --city gasabo --output json",
+            command: "ds solar seed preview --project project-1 --city huye --city gasabo --output json",
             note: "Read `create_count` and the `changed` rows before confirming anything.",
             runnable: false,
         },
@@ -413,10 +306,10 @@ class counts, document count, asset counts and `mutated`.",
 pub static APPLY_COMMAND: Command = Command {
     id: "solar.seed.apply",
     path: &["solar", "seed", "apply"],
-    contract: 1,
+    contract: 2,
     summary: "Seed exactly the previewed plan, bound to its digest.",
     purpose: "\
-Confirms one plan `ds solar seed preview` returned. --seed-digest is echoed \
+Confirms one plan `ds solar seed preview --project project-1` returned. --seed-digest is echoed \
 from that plan and is never derived here: it is what proves the set being \
 written is the set someone saw. ds-brain re-plans server-side and refuses with \
 `solar_seed_digest_mismatch` if either end moved. Without --overwrite changed cities are skipped. With it, replacement uses a transaction that rechecks the previewed destination. One city commits atomically.",
@@ -431,11 +324,11 @@ written is the set someone saw. ds-brain re-plans server-side and refuses with \
             "The exact 64-character seed_digest of the previewed plan being confirmed.",
         )
         .required(),
+        PROJECT_ARG,
         SOURCE_ARG,
         CITY_ARG,
         OVERWRITE_ARG,
         LANE_ARG,
-        DESCRIPTOR_ARG,
     ],
     output: "\
 ds-brain's SolarSeedApplyResult verbatim: the re-planned plan, the confirmed \
@@ -443,7 +336,7 @@ ds-brain's SolarSeedApplyResult verbatim: the re-planned plan, the confirmed \
 `documents_written` (city roots included, counted after each commit returns) \
 and `idempotent`.",
     examples: &[Example {
-        command: "ds solar seed apply --seed-digest <64-hex from preview> --city huye --yes --output json",
+        command: "ds solar seed apply --project project-1 --seed-digest <64-hex from preview> --city huye --yes --output json",
         note: "Confirms exactly the previewed plan; a moved source or destination is refused, not re-planned.",
         runnable: false,
     }],
@@ -465,13 +358,6 @@ fn arguments(inputs: &Inputs, seed_digest: Option<&str>) -> Result<Map<String, V
     let mut arguments = Map::new();
     if let Some(digest) = seed_digest {
         arguments.insert("seed_digest".into(), json!(digest));
-    }
-    if inputs.switch("overwrite") && inputs.value("desktop-descriptor").is_some() {
-        return Err(Failure::invalid(
-            "invalid_seed_source",
-            "overwrite seeding uses the native headless project; omit --desktop-descriptor",
-        )
-        .remedy("use the native lane and selected project"));
     }
     let source = inputs.value("source");
     let cities = inputs.repeated("city");
@@ -543,8 +429,8 @@ fn validate_digest(raw: &str) -> Result<&str, Failure> {
             "solar_seed_digest_required",
             "--seed-digest must be the exact 64-character lowercase seed_digest of a previewed plan",
         )
-        .remedy("run `ds solar seed preview` and pass that plan's exact seed_digest")
-        .next("ds solar seed preview --output json"));
+        .remedy("run `ds solar seed preview --project <exact-id>` and pass that plan's exact seed_digest")
+        .next("ds solar seed preview --project <exact-id> --output json"));
     }
     Ok(raw)
 }
@@ -585,18 +471,11 @@ pub fn apply(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
 
 /// Send one seeding operation and translate ds-brain's own refusal codes back
 /// into named CLI refusals.
-fn invoke(inputs: &Inputs, operation: &'static str, arguments: Value) -> Result<Value, Failure> {
-    if inputs.value("desktop-descriptor").is_some() {
-        let op = if operation == PREVIEW_OPERATION {
-            &PREVIEW_OP
-        } else {
-            &APPLY_OP
-        };
-        let descriptor = ops::paired(inputs.value("desktop-descriptor"))?;
-        return ops::invoke(&descriptor, op, arguments, SEED_TIMEOUT)
-            .map_err(classify_seed_failure);
-    }
-    let mut session = ds_cli_auth::solar_project_session(inputs.value("lane").unwrap_or("stable"))?;
+fn invoke(inputs: &Inputs, _operation: &'static str, arguments: Value) -> Result<Value, Failure> {
+    let mut session = ds_cli_auth::solar_project_session_for_project(
+        inputs.value("lane").unwrap_or("stable"),
+        inputs.require("project")?,
+    )?;
     session.execute(&ds_cli_auth::SolarProjectCommand::Seed {
         source: inputs.value("source").map(str::to_owned),
         cities: inputs.repeated("city").to_vec(),
@@ -736,10 +615,10 @@ fn require_plan<'a>(result: &'a Value, operation: &'static str) -> Result<&'a Va
 
 fn mismatch(operation: &'static str, detail: &str) -> Failure {
     Failure::unavailable(
-        "desktop_contract_mismatch",
+        "solar_seed_contract_mismatch",
         format!("the Solar service returned an invalid reply for `{operation}`: {detail}"),
     )
-    .remedy("update DS GridDesign and ds to matching releases")
+    .remedy("update ds and its native client core to matching releases")
 }
 
 /// The human tier. Every class of row is named, because the whole value of a
@@ -803,7 +682,8 @@ mod tests {
     use super::*;
 
     fn inputs(command: &'static Command, tokens: &[&str]) -> Inputs {
-        let tokens: Vec<String> = tokens.iter().map(|token| (*token).to_string()).collect();
+        let mut tokens: Vec<String> = tokens.iter().map(|token| (*token).to_string()).collect();
+        tokens.extend(["--project".to_owned(), "demo".to_owned()]);
         ds_cli_contract::parse(command, &tokens).expect("declared tokens parse")
     }
 
@@ -1007,7 +887,7 @@ mod tests {
             require_plan(&rootless, PREVIEW_OPERATION)
                 .expect_err("a rootless city must be refused")
                 .code(),
-            "desktop_contract_mismatch"
+            "solar_seed_contract_mismatch"
         );
 
         // The undercount itself: rows are right, the total is one short.
@@ -1017,7 +897,7 @@ mod tests {
             require_plan(&undercounted, PREVIEW_OPERATION)
                 .expect_err("a document_count excluding the root must be refused")
                 .code(),
-            "desktop_contract_mismatch"
+            "solar_seed_contract_mismatch"
         );
 
         // A root row belonging to a different city is not this city's root.
@@ -1027,7 +907,7 @@ mod tests {
             require_plan(&foreign_root, PREVIEW_OPERATION)
                 .expect_err("a foreign root row must be refused")
                 .code(),
-            "desktop_contract_mismatch"
+            "solar_seed_contract_mismatch"
         );
     }
 
@@ -1067,7 +947,7 @@ mod tests {
             require_plan(&short, APPLY_OPERATION)
                 .expect_err("a receipt that wrote fewer than it planned must be refused")
                 .code(),
-            "desktop_contract_mismatch"
+            "solar_seed_contract_mismatch"
         );
 
         // A city that lost the create race legitimately writes fewer, and

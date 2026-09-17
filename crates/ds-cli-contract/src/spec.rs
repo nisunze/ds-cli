@@ -238,7 +238,7 @@ impl Authority {
             Self::DesktopUser => "a running DS GridDesign session, signed in",
             Self::Project => "signed in, with a project selected",
             Self::HeadlessUser => "a restored native user session",
-            Self::HeadlessProject => "a restored native user with a fenced project selection",
+            Self::HeadlessProject => "a restored native user with explicit project context",
         }
     }
 }

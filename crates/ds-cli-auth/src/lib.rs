@@ -4660,6 +4660,27 @@ pub fn shared_assets(
         |client, project| client.shared_assets(project, command, now()),
     )
 }
+/// Execute a shared-asset operation using only the caller's explicit project.
+pub fn shared_assets_for_project(
+    lane_value: &str,
+    project: &str,
+    command: &ds_client_core::shared_assets::Command,
+) -> Result<Value, Failure> {
+    let lane = Lane::parse(lane_value)?;
+    let project = bounded_named_project(project)?;
+    command.validate(&project).map_err(map_client)?;
+    if let Some(mut device) = restored_device_session(lane)? {
+        return device.shared_assets(&project, command).map_err(map_client);
+    }
+    let profile = profile::load(lane)?;
+    let store = NativeRefreshStore::open()?;
+    let mut client = Client::new(profile, NativeTransport, store);
+    require_restore_before_context(&mut client)?;
+    client
+        .shared_assets(&project, command, now())
+        .map_err(map_client)
+}
+
 pub fn design_versions(
     lane: &str,
     command: &ds_client_core::design_versions::Command,

@@ -30,14 +30,10 @@ ds server input --job <id> --out request.json
 
 ## One project per call, named by the caller
 
-Every `ds server` command that names or reads a job or a project takes
-`--project <exact-id>`. It is optional, and what makes it optional is the
-saved selection from `ds auth project use`: absent the flag, the client reads
-that selection from its own protected context and sends it as if you had typed
-it. Either way exactly one project name reaches the Server on every request.
-
-A saved selection is therefore a **client default**, never Server state. The
-Server executes what its authenticated owner hands it for the project named;
+Project-scoped `ds server` commands take `--project <exact-id>` explicitly.
+The CLI never reads or changes saved selection to resolve these requests. The
+UI may supply its active project as request context; that is a UI decision.
+The Server executes what its authenticated owner hands it for the project named;
 the gateway enforces entitlement at publication and sync. The Server holds no
 project directory — it fetches none, caches none and refreshes none to admit
 work — and it carries no online/offline conditional: admission, queueing,
@@ -53,13 +49,12 @@ present at all. Three consequences worth stating plainly:
   gateway's answer on that effect, and a refusal there stops that project's
   effect and nothing of another project's.
 
-With neither `--project` nor a saved selection there is nothing to record and
+Without `--project` there is nothing to record and
 nothing worth guessing, so the call refuses `project_required` locally rather
 than admitting a job with no scope. The one exception is `ds server solar
 submit`: the sealed `ds.solar.server-submission/v1` envelope names its own
 project and that name is authoritative, so it can be submitted with nothing
-named: the saved selection is not sent there, because a default that
-contradicted the sealed bytes would refuse a submission you never disputed.
+named. No saved selection is consulted.
 Passing `--project` there is still worth doing — it is how you learn you
 prepared the wrong city, as a differing name refuses `scope_mismatch`.
 
@@ -73,16 +68,15 @@ ds server status --project project-a --output json      # A's jobs only
 ds server status --project project-b --output json      # B's jobs only
 ds server activity --project project-b --output json    # B's publication state only
 
-# Changing the saved selection changes only the DEFAULT, never work in flight.
-ds auth project use --project project-c
-ds server status --output json                          # now defaults to C
+# Another explicit request leaves work in flight unchanged.
+ds server status --project project-c --output json
 ds server status --project project-a --output json      # A's jobs, still running, unchanged
 ```
 
 Nothing about a running job's project can be rewritten after admission —
 retries, worker restarts, host restarts and cancellation all retain the context
-the job was admitted under. `ds auth project use` moves the default for the
-*next* call and nothing else. Asking about another project's job answers
+the job was admitted under. Saved project selection has no effect on these
+CLI requests. Asking about another project's job answers
 `job not found`, identically to an id that never existed.
 
 `ds server activity` answers one envelope,
@@ -126,7 +120,7 @@ operation fails identically whichever host executed it.
 
 | code | when |
 |---|---|
-| `project_required` | no `--project` and no saved selection to default to |
+| `project_required` | no explicit `--project` |
 | `context_corrupt` | a project id that is not one path segment (empty, over-long, or holding a separator, a traversal, whitespace or a control character) |
 | `not_visible` | `job not found` — one answer for an unknown id, a foreign principal, a foreign lane and the wrong project |
 | `principal_mismatch` | the stored job belongs to another account, lane or deployment |
@@ -176,7 +170,7 @@ under, including its project.
 bytes a job was admitted with. It is the same fence as `ds server result` —
 your own jobs, and another project's job answers `job not found` exactly as an
 invented id does — with two differences: the job need not have finished, and
-`--project` here NARROWS the read instead of defaulting to the saved selection.
+`--project` here narrows the read; no saved selection is consulted.
 That last one is deliberate: the row this exists for is a row stored by a
 Server released before per-job context, which names no project at all and is
 therefore visible only to a read that names none either. Such a row never ran,
