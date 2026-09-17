@@ -157,8 +157,8 @@ pub static REPORT_BUNDLE_COMMAND: Command = Command {
     id: "solar.report.bundle",
     path: &["solar", "report", "bundle"],
     contract: 1,
-    summary: "Export one Solar prompting draft with its rendering media.",
-    purpose: "Pages one portable ZIP from the paired desktop. It contains the exact canonical authoring Markdown, a presentation-only Markdown copy with local media links, every referenced verified run figure or governed project image, a media manifest, and a boundary README; export refuses if any image is unavailable. Images are rendering inputs only; every narration block carries its own complete fact packet. The desktop retains credentials and cache paths.",
+    summary: "Export one Solar prompting bundle through a paired Desktop.",
+    purpose: "Paired Desktop compatibility route. For headless Server draft delivery, discover solar.application.schema operation report_bundle and execute it through solar.application with an explicit project and lane; do not pair a Desktop to force a Server export. This paired route pages one portable ZIP containing exact canonical authoring Markdown, a presentation-only copy with local media links, verified run figures or governed project images, a media manifest and a boundary README. Export refuses unavailable images. The desktop retains credentials and cache paths.",
     chapter: Chapter::Solar,
     effect: Effect::LocalFileWrite,
     authority: Authority::DesktopUser,
@@ -196,8 +196,8 @@ pub static PORTFOLIO_EXPORT_COMMAND: Command = Command {
     id: "solar.portfolio.export",
     path: &["solar", "portfolio", "export"],
     contract: 3,
-    summary: "Export one sealed native Solar portfolio artifact.",
-    purpose: "Reads the exact root-level result or requested portfolio report from one completed paired native Solar batch and creates one new local file at --out. Portfolio output is first-class: it is validated against the same closed batch as the city reports, never reconstructed by the CLI.",
+    summary: "Export one sealed portfolio artifact through a paired Desktop.",
+    purpose: "Paired Desktop compatibility route for one exact declared result/report to a new file. For headless Server delivery, discover solar.application.schema operation portfolio_report_bundle or export_portfolio_batch_artifact, then execute through solar.application with explicit project and lane. CLI never reconstructs the artifact.",
     chapter: Chapter::Solar,
     effect: Effect::LocalFileWrite,
     authority: Authority::DesktopUser,
@@ -653,4 +653,23 @@ pub fn render(data: &Value) -> String {
         data["out"].as_str().unwrap_or(""),
         data["bytes"].as_u64().unwrap_or_default(),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn paired_exports_disclose_the_headless_delivery_route() {
+        for (command, operation) in [
+            (&REPORT_BUNDLE_COMMAND, "report_bundle"),
+            (&PORTFOLIO_EXPORT_COMMAND, "portfolio_report_bundle"),
+        ] {
+            assert_eq!(command.authority, Authority::DesktopUser);
+            assert!(command.summary.contains("paired Desktop"));
+            assert!(command.purpose.contains("solar.application.schema"));
+            assert!(command.purpose.contains(operation));
+            assert!(command.purpose.contains("explicit project and lane"));
+        }
+    }
 }

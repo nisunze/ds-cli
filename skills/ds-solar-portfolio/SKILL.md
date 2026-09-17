@@ -56,9 +56,8 @@ Require a verified online publication receipt before claiming synchronization;
 A successful local calculation is separate from publication and must be
 reported separately.
 
-Older installed surfaces may offer only the paired lifecycle below. Report
-headless commands absent instead of pairing or changing authority to force
-success on a server.
+Older surfaces may be paired-only. Report absent headless commands; never
+change authority to force success on a server.
 
 ## Freeze the portfolio identity
 
@@ -126,9 +125,12 @@ truthfully has no single representative city; use each available or unavailable
 graph's declared member id. Never replace that null with the first city or
 attribute every graph to one member.
 
-For a file, use the discovered portfolio export command. Export only a result
-or report declared by the same closed batch and choose a new destination;
-never reconstruct an aggregate JSON or draft in the skill.
+For Server files, discover application operations `portfolio_batch_artifacts`,
+`export_portfolio_batch_artifact`, and `portfolio_report_bundle`: inventory,
+single-artifact export, and portable prompting packages. Discover the workspace;
+retain batch pins and source city batch identity. Read each schema. Paired
+export is not Server delivery; its Desktop refusal does not prove headless
+absence. Export declared artifacts to a new destination, never reconstruct them.
 
 The paired lifecycle publishes the governed aggregate itself, from the run
 that sealed it. The headless lifecycle uses the explicit publication command

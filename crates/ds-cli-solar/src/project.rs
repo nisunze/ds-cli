@@ -147,7 +147,7 @@ pub static RUN: Command = Command {
                 "Stable identity for restart-safe execution.",
             )
             .required(),
-            Arg::repeated("city", "<id>", "Explicit city selection, 1..64."),
+            Arg::repeated("city", "<id>", "Required explicit city selection, 1..64.").required(),
             Arg::value(
                 "concurrency",
                 "<count>",
@@ -468,6 +468,13 @@ pub fn rebase(i: &Inputs, _: &Context) -> Result<Value, Failure> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn run_declares_its_required_city_selection() {
+        let city = RUN.args.iter().find(|arg| arg.name == "city").unwrap();
+        assert!(city.required);
+        assert!(city.summary.contains("Required explicit city selection"));
+    }
     use ds_cli_contract::spec::Command;
     use ds_cli_contract::{ExitClass, Format, Output, parse};
 
@@ -591,10 +598,10 @@ mod tests {
             "--run-id".to_owned(),
             "r1".to_owned(),
         ]);
-        let error = run(&inputs(&RUN, &tokens), &context())
-            .expect_err("a run without an explicit city has nothing to compute");
+        let error = parse(&RUN, &tokens)
+            .expect_err("a run without an explicit city is refused by its declared contract");
         assert_eq!(error.class(), ExitClass::InvalidInput);
-        assert_eq!(error.code(), "solar_project_cities");
+        assert!(error.message().contains("--city"));
     }
 
     #[test]

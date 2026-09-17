@@ -18,8 +18,7 @@ with `solar.application` (MCP profile `solar-application`). Preserve project and
 workspace identity. Completed progress survives restart; inspect interrupted
 work before retrying with a new run ID.
 
-For a governed aggregate with an id and membership revision, use
-`ds-solar-portfolio`. An explicit city batch is not a governed portfolio.
+Use `ds-solar-portfolio` for governed aggregates; a city batch is not one.
 
 ## Seed the project's cities first, if they are absent
 
@@ -65,10 +64,9 @@ options authorized by the user. Omit optional chart, concurrency, language, or
 serial settings unless the live contract and request supply them. Treat the
 launch response as a job receipt and retain its exact run id.
 
-Observe progress and completion through the discovered lifecycle commands for
-that same run id. Do not switch to a newer run, merge receipts, or infer success
-from one city. Cancel only when the user requests cancellation or continuing is
-unsafe, and return the cancellation receipt.
+Observe that exact run through discovered lifecycle commands. Never substitute
+a newer run, merge receipts, or infer batch success from one city. Cancel only
+on the user's request or when unsafe; retain the cancellation receipt.
 
 ## Read calculated evidence
 
@@ -91,16 +89,21 @@ The `solar-dashboard` MCP profile exposes both leaves.
 
 When a user needs a document, export only an artifact declared by that run's
 closed receipt to a new destination. Do not rebuild Markdown, charts, DOCX, or
-JSON in the skill. An operator-interpreted final report is a separate explicit
+JSON in the skill. For an existing Server run, discover application operations
+`documents`, `batch_artifact_read`, and `report_bundle`: inventory, verified
+reads, and portable prompting packages. Discover the workspace and retain
+returned batch pins. Read each schema before execution. Paired exports are
+not Server delivery; their Desktop refusal does not prove headless absence.
+
+An operator-interpreted final report is a separate explicit
 import: use only the exact file the user selected and only the live command's
 required confirmation. Import creates local review state only. Submit it for
 publication only through the separate discovered final-submit command and only
 when the user explicitly asks to submit that exact run and city. Do not present
 a draft as final or claim an imported final is published.
 
-Read Sync Center state through its discovered status command when publication
-matters. A sealed local calculation remains valid while upload is pending or
-failed; never call it published without a successful publication receipt.
+Discover Sync Center status when publication matters. Pending or failed uploads
+do not invalidate sealed calculations; only a published receipt proves sync.
 
 ## Keep the headless route separate
 
@@ -114,15 +117,13 @@ discover reference acquisition. It derives the site/equipment request, uses the
 explicit project authority, and verifies the cache before preparation. Never pass
 provider credentials or substitute fixture bundles.
 
-Keep the captured intake private and pass the resulting prepared directory
-unchanged to the discovered offline artifact runner. Verify engine identity and
-the closed preparation and batch receipts through the live CLI contracts. Never
-combine these artifacts with a paired run receipt, and never describe cache-hit
-preparation as a complete fresh-server route.
+Keep captured intake private; pass its prepared directory unchanged to the
+discovered artifact runner. Verify engine identity and closed receipts through
+live contracts. Never mix paired receipts or claim cache-hit preparation
+proves a fresh server.
 
-When live discovery proves a needed operation is absent, follow the `ds`
-skill's feedback procedure. Do not compensate with direct bridge calls or a
-skill-local program.
+Report proven absent operations through the `ds` skill's feedback procedure;
+never bypass them with bridge calls or skill-local programs.
 
 ## Offline project work
 
