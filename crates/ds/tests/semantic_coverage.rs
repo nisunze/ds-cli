@@ -602,6 +602,9 @@ const EXPECTED: &[(&str, &str, &str)] = &[
         "headless_project",
     ),
     ("solar.engine", "discovery", "none"),
+    ("solar.application", "artifact_write", "headless_project"),
+    ("solar.application.schema", "discovery", "none"),
+    ("solar.dashboard.compose", "local_file_write", "none"),
     ("solar.final.import", "artifact_write", "desktop_user"),
     ("solar.final.submit", "artifact_write", "desktop_user"),
     (
@@ -647,7 +650,7 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("solar.report.bundle", "local_file_write", "desktop_user"),
     ("solar.result.compare", "read_only", "none"),
     ("solar.result.read", "read_only", "desktop_user"),
-    ("solar.results.read", "read_only", "desktop_user"),
+    ("solar.results.read", "read_only", "none"),
     ("solar.run", "local_file_write", "none"),
     ("solar.run.cancel", "local_ui", "desktop_user"),
     ("solar.run.progress", "read_only", "desktop_user"),

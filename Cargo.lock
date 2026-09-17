@@ -1084,6 +1084,7 @@ dependencies = [
  "ds-layer-ops",
  "ds-layer-store",
  "ds-report-artifacts",
+ "ds-solar-native",
  "ds-sync-runtime",
  "ds-sync-store",
  "getrandom 0.2.17",
@@ -1126,6 +1127,7 @@ dependencies = [
  "ds-cli-desktop",
  "ds-cli-exec",
  "ds-cli-report",
+ "ds-cli-server",
  "ds-command-kernel",
  "ds-compute-runtime",
  "ds-solar-contracts",
@@ -1581,6 +1583,22 @@ dependencies = [
  "serde",
  "serde_json",
  "tempfile",
+]
+
+[[package]]
+name = "ds-solar-native"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "ds-solar-contracts",
+ "ds-solar-portfolio",
+ "ds-solar-runtime",
+ "rand 0.9.5",
+ "rayon",
+ "schemars",
+ "serde",
+ "serde_json",
+ "uuid",
 ]
 
 [[package]]

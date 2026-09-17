@@ -27,7 +27,7 @@ pub static CALCULATE: Command = Command {
     id: "solar.portfolio.calculate",
     path: &["solar", "portfolio", "calculate"],
     contract: 1,
-    summary: "Aggregate a verified city batch for pinned governed membership headlessly.",
+    summary: "Aggregate a verified city batch for pinned membership headlessly.",
     purpose: "Fetch exact portfolio membership, verify its revision and ordered source batch, derive assumptions from sealed city results, and produce a closed portfolio result, French APD draft and chart files. Does not publish or rerun cities.",
     chapter: Chapter::Solar,
     effect: Effect::LocalFileWrite,

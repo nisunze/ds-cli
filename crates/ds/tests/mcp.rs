@@ -564,6 +564,7 @@ fn by_command_profiles_still_partition_the_live_registry() {
             "solar.",
             &[
                 Profile::SolarInput,
+                Profile::SolarApplication,
                 Profile::SolarRun,
                 Profile::SolarDashboard,
                 Profile::SolarDelivery,
@@ -1307,9 +1308,11 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
         "tiling",
         "project",
         "solar-input",
+        "solar-application",
         "solar-run",
         "solar-delivery",
         "solar-portfolio-batch",
+        "solar-dashboard",
         "operations",
         "project-operations",
     ] {
@@ -1474,6 +1477,7 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
             "solar_",
             &[
                 "solar-input",
+                "solar-application",
                 "solar-run",
                 "solar-delivery",
                 "solar-portfolio-batch",

@@ -9,6 +9,7 @@ ds-cli-contract.workspace = true
 ds-cli-auth.workspace = true
 ds-design-workspace.workspace = true
 ds-command-kernel.workspace = true
+ds-solar-native = { path = "../../../ds-solar/crates/ds-solar-native" }
 ds-sync-store = { path = "../../../ds-command-kernel/crates/ds-sync-store" }
 ds-sync-runtime = { workspace = true }
 ds-compute-runtime = { path = "../../../ds-command-kernel/crates/ds-compute-runtime" }

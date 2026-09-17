@@ -485,6 +485,16 @@ static REPORT_ENTRIES: &[Entry] = &[
 
 static SOLAR_ENTRIES: &[Entry] = &[
     Entry {
+        command: &ds_cli_solar::application::SCHEMA,
+        handler: ds_cli_solar::application::schema,
+        render: ds_cli_solar::application::render,
+    },
+    Entry {
+        command: &ds_cli_solar::application::COMMAND,
+        handler: ds_cli_solar::application::execute,
+        render: ds_cli_solar::application::render,
+    },
+    Entry {
         command: &ds_cli_solar::network_map::COMMAND,
         handler: ds_cli_solar::network_map::run,
         render: ds_cli_solar::network_form::render,

@@ -609,6 +609,7 @@ mod tests {
             auth: Arc::new(Auth(allowed)),
             requests: Arc::new(crate::host::Door::new(4)),
             activity: None,
+            solar: Arc::new(crate::solar_application::Applications::default()),
             layers: Arc::new(FixtureHost {
                 upstream,
                 root: dir.join("layers"),

@@ -2,6 +2,34 @@
 
 Tier-4 reference. `ds solar <command> --help` is the executable contract.
 
+## Native Server application
+
+`solar application schema` lists the native operations. Select an operation
+to discover its closed request schema, then execute that request with
+`solar application --project <exact-project> --lane <lane> --request <file>`.
+This path needs an authenticated native Server, with no paired Desktop,
+browser, Svelte or WASM. The Server captures the authorized project and keeps
+its workspace authority and jobs separate from other projects and accounts.
+
+The native owner supports workspace approval, prepared-input import with
+digest-pinned replacement, preparation, readiness, annual generation profiles,
+city calculation, progress and cancellation, explicit portfolio calculation,
+closed artifact inventories and reads, and reviewed final Markdown import.
+Use the project lifecycle for city input editing and publication, and the
+portfolio catalog commands for governed membership edits. Discover each exact
+contract before constructing a request; the schemas derive from the Rust DTOs.
+
+A launch receipt is not a completed run. Poll `calculate_progress` until it
+settles. Completed receipts survive a Server restart. Work interrupted before
+settlement is reported explicitly; use a new run ID to retry after inspecting
+any committed artifacts. Closed run IDs cannot silently overwrite earlier work.
+Publication remains a separate operation and requires its online receipt.
+
+The paired commands documented below remain compatibility surfaces while
+their remaining adapters are migrated. Standalone `results read` and dashboard
+composition already read sealed native sources without pairing or sign-in;
+the supplied project is attribution and grants no cloud authority.
+
 ## Product route: paired, cache-first, local compute
 
 The product route is a closed lifecycle through the paired DS GridDesign

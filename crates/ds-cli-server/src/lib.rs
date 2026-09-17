@@ -10,6 +10,7 @@ pub mod host;
 pub mod layers;
 mod server_reports;
 pub mod server_sync;
+pub mod solar_application;
 #[doc(hidden)]
 pub mod solar_sync;
 use ds_cli_contract::{
@@ -1022,6 +1023,7 @@ pub fn serve(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
         auth: layer_auth,
         requests: Arc::new(host::Door::new(request_permits(workers))),
         activity: None,
+        solar: Arc::new(solar_application::Applications::default()),
         sessions,
     };
     // The gateway refresh starts here and runs BESIDE the host: its own
@@ -1093,6 +1095,46 @@ fn json_request(
     body: Option<&[u8]>,
 ) -> Result<Value, Failure> {
     serde_json::from_slice(&request(inputs, method, path, body, 1024 * 1024)?).map_err(failure)
+}
+pub fn solar_application(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
+    let path = PathBuf::from(inputs.require("request")?);
+    let metadata = std::fs::symlink_metadata(&path).map_err(failure)?;
+    if !metadata.is_file() || metadata.file_type().is_symlink() || metadata.len() > 32 * 1024 * 1024
+    {
+        return Err(failure(
+            "Solar application request must be one ordinary file no larger than 32 MiB",
+        ));
+    }
+    let mut bytes = Vec::new();
+    std::fs::File::open(path)
+        .map_err(failure)?
+        .take(32 * 1024 * 1024 + 1)
+        .read_to_end(&mut bytes)
+        .map_err(failure)?;
+    if bytes.len() > 32 * 1024 * 1024 {
+        return Err(failure("Solar application request exceeds 32 MiB"));
+    }
+    serde_json::from_slice::<ds_solar_native::application::Request>(&bytes)
+        .map_err(|_| failure("Invalid closed native Solar application request"))?;
+    let project = project(inputs)?;
+    let response = request(
+        inputs,
+        "POST",
+        &with_project("/v1/solar-application", &project),
+        Some(&bytes),
+        32 * 1024 * 1024,
+    )?;
+    let value: Value = serde_json::from_slice(&response)
+        .map_err(|_| failure("Server returned an invalid Solar application receipt"))?;
+    if value["schema"] != "ds-solar.application-receipt/v1" || value["project_id"] != project {
+        return Err(failure(
+            "Server returned a Solar application receipt for another project",
+        ));
+    }
+    Ok(value)
+}
+pub fn solar_application_schema(operation: Option<&str>) -> Result<Value, String> {
+    ds_solar_native::application::schema(operation)
 }
 fn id(inputs: &Inputs) -> Result<&str, Failure> {
     let id = inputs.require("job")?;

@@ -12,6 +12,7 @@
 //! while preserving `ds solar run --prepared ... --out ...` for reproducible
 //! offline artifact work.
 
+pub mod application;
 pub mod cities;
 pub mod compare;
 pub mod dashboard;
@@ -70,6 +71,8 @@ pub static DOMAIN: Domain = Domain {
     id: "solar",
     summary: "Solar preparation, local run lifecycle and artifact execution.",
     commands: &[
+        &application::COMMAND,
+        &application::SCHEMA,
         &dashboard::COMMAND,
         &network_form::COMMAND,
         &network_map::COMMAND,

@@ -131,7 +131,33 @@ pub static RESULTS_READ_COMMAND: Command = Command {
         note: "Reads the same canonical result section the Finance dashboard uses.",
         runnable: false,
     }],
-    refusals: crate::project::RUN.refusals,
+    refusals: &[
+        Refusal {
+            code: "solar_project_schema_unavailable",
+            when: "the installed Solar owner lacks the sealed workspace contract",
+            remedy: "install matching ds and ds-solar releases",
+        },
+        Refusal {
+            code: "engine_refused",
+            when: "the sealed source or project/run/city identity cannot be verified",
+            remedy: "use an intact closed Solar batch and its exact identity",
+        },
+        Refusal {
+            code: "solar_project_io",
+            when: "the bounded owner request or receipt cannot be handled",
+            remedy: "verify source access and matching ds and ds-solar releases",
+        },
+        Refusal {
+            code: "solar_dashboard_path_invalid",
+            when: "the section or bounded semantic path is unavailable",
+            remedy: "read the section without --path, then select an existing child key",
+        },
+        Refusal {
+            code: "solar_dashboard_invalid",
+            when: "the Solar owner returned an invalid verified source receipt",
+            remedy: "install matching ds and ds-solar releases",
+        },
+    ],
     reference: Some("docs/reference/solar.md"),
     availability: crate::project::availability,
 };

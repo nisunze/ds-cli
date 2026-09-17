@@ -19,6 +19,7 @@ ds-cli-contract = { workspace = true }
 ds-cli-desktop = { workspace = true }
 ds-cli-exec = { workspace = true }
 ds-cli-report = { workspace = true }
+ds-cli-server = { workspace = true }
 ds-command-kernel = { workspace = true }
 ds-solar-contracts = { workspace = true }
 ds-compute-runtime = { path = "../../../ds-command-kernel/crates/ds-compute-runtime" }

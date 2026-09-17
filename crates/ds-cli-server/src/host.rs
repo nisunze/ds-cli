@@ -64,6 +64,7 @@ pub struct App {
     /// One authenticated owner, many of its projects: the admission door and
     /// the per-project sessions. No directory lives here.
     pub sessions: Arc<ServerSessions>,
+    pub solar: Arc<crate::solar_application::Applications>,
 }
 
 type ApiError = (StatusCode, Json<Value>);
@@ -243,6 +244,10 @@ pub fn router(app: App) -> Router {
         )
         .route("/v1/transformer-processing/:key", post(submit))
         .route("/v1/solar-processing/:key", post(submit_solar))
+        .route(
+            "/v1/solar-application",
+            post(crate::solar_application::invoke),
+        )
         .route("/v1/tile-processing/:key", post(submit_tiles))
         .fallback(unserved)
         .layer(DefaultBodyLimit::max(64 * 1024 * 1024))
@@ -322,7 +327,7 @@ async fn blocking<T: Send + 'static>(
         .map_err(|reason| typed(&host_failure(reason)))
 }
 /// The same queue, for work that answers with the kernel's own refusals.
-async fn admitting<T: Send + 'static>(
+pub(crate) async fn admitting<T: Send + 'static>(
     f: impl FnOnce() -> Result<T, Failure> + Send + 'static,
 ) -> Result<T, ApiError> {
     tokio::task::spawn_blocking(f)
@@ -345,7 +350,9 @@ pub struct ProjectQuery {
 /// kernel rule and in the same typed shape the write doors answer with
 /// ([`sessions::narrowing_project`]) — so a read route never turns `..` into
 /// an empty list or `A/../B` into `job not found`.
-fn project_query(query: Option<Query<ProjectQuery>>) -> Result<Option<String>, ApiError> {
+pub(crate) fn project_query(
+    query: Option<Query<ProjectQuery>>,
+) -> Result<Option<String>, ApiError> {
     let Some(Query(query)) = query else {
         return Err(typed(
             &Failure::invalid(
@@ -1043,12 +1050,59 @@ pub(crate) mod tests {
             auth: Arc::new(Auth(authorized)),
             requests: Arc::new(Door::new(4)),
             activity: None,
+            solar: Arc::new(crate::solar_application::Applications::default()),
             layers: crate::layers::NativeLayerHost::fixture_native("stable"),
             sessions,
         }
     }
     fn transformer(name: &str) -> Vec<u8> {
         serde_json::to_vec(&json!({"schema":"ds.fast-lv.request/v1","jobs":[{"transformer_name":name,"gdfs":{"tr":{"type":"FeatureCollection","features":[{"type":"Feature","id":"tr-1","geometry":{"type":"Point","coordinates":[30.0,-2.0]},"properties":{"name":name,"names":name}}]},"lv_lines":{"type":"FeatureCollection","features":[{"type":"Feature","id":"line-1","geometry":{"type":"LineString","coordinates":[[30.0,-2.0],[30.0004,-2.0]]},"properties":{}}]},"customers":{"type":"FeatureCollection","features":[]}},"settings":{}}]})).unwrap()
+    }
+    #[tokio::test]
+    async fn native_solar_application_is_headless_and_project_workspaces_cannot_cross() {
+        let dir = tempfile::tempdir().unwrap();
+        let app = app(dir.path(), true);
+        let body = serde_json::to_vec(&json!({"operation":"workspace_default"})).unwrap();
+        let (status, a) = call(
+            app.clone(),
+            "POST",
+            "/v1/solar-application?project=project-a",
+            Some(body.clone()),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{a}");
+        assert_eq!(a["project_id"], "project-a");
+        let (status, b) = call(
+            app.clone(),
+            "POST",
+            "/v1/solar-application?project=project-b",
+            Some(body),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{b}");
+        assert_ne!(
+            a["value"]["workspace_handle"],
+            b["value"]["workspace_handle"]
+        );
+        assert_ne!(a["value"]["dir"], b["value"]["dir"]);
+        let foreign = serde_json::to_vec(&json!({"operation":"readiness","command":{"workspace_handle":a["value"]["workspace_handle"],"root":"eds_project/project-b/eds_solar","city_ids":["city"]}})).unwrap();
+        let (status, denied) = call(
+            app,
+            "POST",
+            "/v1/solar-application?project=project-b",
+            Some(foreign),
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{denied}");
+        let no_auth = self::app(dir.path(), false);
+        let (status, _) = call(
+            no_auth,
+            "POST",
+            "/v1/solar-application?project=project-a",
+            Some(br#"{"operation":"engine"}"#.to_vec()),
+        )
+        .await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED);
     }
     /// One request straight at the router, with the owner bearer.
     async fn call(app: App, method: &str, uri: &str, body: Option<Vec<u8>>) -> (StatusCode, Value) {

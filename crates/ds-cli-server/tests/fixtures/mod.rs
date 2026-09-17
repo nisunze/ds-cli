@@ -745,6 +745,7 @@ fn build_app_as(
         auth: Arc::new(Allow),
         requests: Arc::new(ds_cli_server::host::Door::new(8)),
         activity: None,
+        solar: Arc::new(ds_cli_server::solar_application::Applications::default()),
         layers,
         sessions,
     }
