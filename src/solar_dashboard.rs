@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 mod finance;
 mod portfolio_finance;
+pub(crate) mod portfolio_views;
 mod static_charts;
 
 #[derive(Clone, Copy, Deserialize, Serialize)]
@@ -13,6 +14,20 @@ pub enum Section {
     Finance,
     Boq,
     PortfolioFinance,
+    PortfolioSite,
+    PortfolioPlant,
+    PortfolioBoq,
+}
+impl Section {
+    pub fn is_portfolio(self) -> bool {
+        matches!(
+            self,
+            Self::PortfolioFinance
+                | Self::PortfolioSite
+                | Self::PortfolioPlant
+                | Self::PortfolioBoq
+        )
+    }
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -53,6 +68,12 @@ pub fn compose(request: Request) -> Result<Dashboard, String> {
     }
     if matches!(request.section, Section::PortfolioFinance) {
         return portfolio_finance::compose(request.report);
+    }
+    if matches!(
+        request.section,
+        Section::PortfolioSite | Section::PortfolioPlant | Section::PortfolioBoq
+    ) {
+        return portfolio_views::compose(request.section, request.report);
     }
     let mut cards = Vec::new();
     let mut charts = json!({});
@@ -252,7 +273,10 @@ pub fn compose(request: Request) -> Result<Dashboard, String> {
                 "watts_per_panel":ratio(number(&d["capacity"],"solar_power_capacity_mw"),number(&d["equipment_quantities"],"total_panels"),1_000_000.),
                 "kwh_per_battery":ratio(number(&d["capacity"],"battery_storage_capacity_mwh"),number(&d["equipment_quantities"],"total_batteries"),1000.)})
         }
-        Section::PortfolioFinance => unreachable!("portfolio composition is handled above"),
+        Section::PortfolioFinance
+        | Section::PortfolioSite
+        | Section::PortfolioPlant
+        | Section::PortfolioBoq => unreachable!("portfolio composition is handled above"),
         Section::Site => {
             let d = &request.report["02_site_prep"]["site_metrics"];
             if !d.is_object() {
@@ -511,6 +535,62 @@ pub fn html(dashboard: &Dashboard, title: &str) -> String {
     if let Some(charts) = dashboard.charts.as_object() {
         for (key, chart) in charts {
             body.push_str(&static_charts::render(key, chart));
+        }
+    }
+    if let Some(tables) = dashboard.derived["tables"].as_array() {
+        for table in tables {
+            let title = table["title"].as_str().unwrap_or("");
+            body.push_str(&format!("<h2>{}</h2>", escape(title)));
+            let Some(rows) = table["rows"].as_array().filter(|r| !r.is_empty()) else {
+                body.push_str("<p>Unavailable in this sealed result</p>");
+                continue;
+            };
+            let columns = table["columns"].as_array().unwrap();
+            body.push_str("<table><thead><tr>");
+            for column in columns {
+                body.push_str(&format!(
+                    "<th>{}</th>",
+                    escape(column["label"].as_str().unwrap_or(""))
+                ));
+            }
+            body.push_str("</tr></thead><tbody>");
+            let mut all_rows = rows.clone();
+            if table["totals"].as_object().is_some_and(|t| !t.is_empty()) {
+                all_rows.push(table["totals"].clone());
+            }
+            for row in all_rows {
+                body.push_str("<tr>");
+                for column in columns {
+                    let value = &row[column["key"].as_str().unwrap()];
+                    let text = match value {
+                        Value::Null => "—".into(),
+                        Value::String(s) => s.clone(),
+                        v => v.to_string(),
+                    };
+                    body.push_str(&format!("<td>{}</td>", escape(&text)));
+                }
+                body.push_str("</tr>");
+            }
+            body.push_str("</tbody></table>");
+        }
+    }
+    if let Some(detail) = dashboard.derived["unavailable_detail"]
+        .as_str()
+        .filter(|v| !v.is_empty())
+    {
+        body.push_str(&format!("<p>{}</p>", escape(detail)));
+    }
+    if let Some(graphs) = dashboard.derived["graphs"].as_array() {
+        for graph in graphs {
+            if let Some(url) = graph["url"].as_str() {
+                body.push_str(&format!(
+                    "<figure><figcaption>{} · {}</figcaption><img src=\"{}\" alt=\"{}\"></figure>",
+                    escape(graph["label"].as_str().unwrap_or("")),
+                    escape(graph["city"].as_str().unwrap_or("")),
+                    escape(url),
+                    escape(graph["key"].as_str().unwrap_or(""))
+                ));
+            }
         }
     }
     if matches!(dashboard.section, Section::PortfolioFinance) {

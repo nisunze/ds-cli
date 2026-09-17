@@ -210,12 +210,63 @@ fn display_projection(
             meta["representative_city_id"] = city["city_id"].clone();
             graphs["_representative_city"] = city["display_name"].clone();
         }
-        projection["representative_graphs"] = graphs;
+        projection["representative_graphs"] = graph_groups(graphs)?;
         native["input_digest"] = d["input_digest"].clone();
     }
     projection["meta"] = meta;
     projection["native_portfolio"] = native;
     Ok(projection)
+}
+
+/// V3's ordered graph rows and legacy grouped slots have one presentation shape.
+pub(crate) fn graph_groups(mut graphs: Value) -> Result<Value, String> {
+    let Some(entries) = graphs.get("graphs").and_then(Value::as_array).cloned() else {
+        return Ok(graphs);
+    };
+    if entries.len() > 1024 {
+        return Err("Excessive portfolio graph slots".into());
+    }
+    let mut seen = BTreeSet::new();
+    for entry in entries {
+        let section = entry["section"]
+            .as_str()
+            .ok_or("Portfolio graph lacks its section")?
+            .to_owned();
+        let key = entry["graph_key"]
+            .as_str()
+            .ok_or("Portfolio graph lacks its key")?
+            .to_owned();
+        if ![
+            "site",
+            "demand",
+            "network",
+            "performance",
+            "investment",
+            "financial_kpis",
+            "lcoe",
+        ]
+        .contains(&section.as_str())
+            || key.is_empty()
+            || key.len() > 160
+            || !key
+                .bytes()
+                .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_')
+            || !seen.insert((section.clone(), key.clone()))
+        {
+            return Err("Invalid or duplicate portfolio graph slot".into());
+        }
+        if graphs[&section].is_null() {
+            graphs[&section] = json!({});
+        }
+        let group = graphs[&section]
+            .as_object_mut()
+            .ok_or("Portfolio graph section must be an object")?;
+        if group.get(&key).is_some_and(|existing| existing != &entry) {
+            return Err("Portfolio graph slot disagrees with its ordered row".into());
+        }
+        group.insert(key, entry);
+    }
+    Ok(graphs)
 }
 
 fn number(v: &Value) -> bool {

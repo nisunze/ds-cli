@@ -40,7 +40,27 @@ pub fn solar_report_bundle_media_name_wasm(
         .map_err(|e| wasm_bindgen::JsValue::from_str(&e))
 }
 
+pub mod solar_portfolio_graphs;
+#[cfg(feature = "wasm")]
+#[wasm_bindgen::prelude::wasm_bindgen(js_name = solarPortfolioGraphAddress)]
+pub fn solar_portfolio_graph_address_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
+    solar_portfolio_graphs::address(input).map_err(|error| wasm_bindgen::JsValue::from_str(&error))
+}
 pub mod solar_portfolio_read;
+#[cfg(feature = "wasm")]
+#[wasm_bindgen::prelude::wasm_bindgen(js_name = solarPortfolioGraphPlan)]
+pub fn solar_portfolio_graph_plan_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
+    solar_portfolio_graphs::evaluate(input).map_err(|error| wasm_bindgen::JsValue::from_str(&error))
+}
+#[cfg(feature = "wasm")]
+#[wasm_bindgen::prelude::wasm_bindgen(js_name = verifySolarPortfolioGraphBytes)]
+pub fn verify_solar_portfolio_graph_bytes_wasm(
+    bytes: &[u8],
+    context: &[u8],
+) -> Result<(), wasm_bindgen::JsValue> {
+    solar_portfolio_graphs::verify_bytes(bytes, context)
+        .map_err(|error| wasm_bindgen::JsValue::from_str(&error))
+}
 pub mod solar_saved_analysis;
 #[cfg(feature = "wasm")]
 #[wasm_bindgen::prelude::wasm_bindgen(js_name = bindSolarHostedPortfolioData)]

@@ -153,22 +153,8 @@ fn sensitivity(
     )
 }
 
-pub(super) fn compose(mut report: Value) -> Result<Dashboard, String> {
-    if report["schema_version"]
-        .as_str()
-        .is_some_and(|s| s.starts_with("ds-solar.portfolio-result/"))
-    {
-        let run = report["run_id"]
-            .as_str()
-            .ok_or("Portfolio run identity is unavailable")?
-            .to_owned();
-        let admitted = ds_solar_contracts::validate_portfolio_result_read(report, &run)
-            .map_err(|e| e.to_string())?;
-        let d = admitted.document;
-        report = d["sections"].clone();
-        report["meta"] = json!({"currency":d["assumptions"]["currency"],"project_years":d["assumptions"]["project_years"],
-            "discount_rate":d["assumptions"]["discount_rate"],"portfolio_id":d["portfolio_id"],"city_ids":d["cities"].as_array().unwrap().iter().map(|c| c["city_id"].clone()).collect::<Vec<_>>()});
-    }
+pub(super) fn compose(report: Value) -> Result<Dashboard, String> {
+    let report = super::portfolio_views::normalize(report)?;
     let k = &report["financial_kpis"];
     if !k.is_object() {
         return Err("Portfolio financial analysis is unavailable".into());
@@ -476,6 +462,20 @@ pub(super) fn compose(mut report: Value) -> Result<Dashboard, String> {
             unit: unit.into(),
         });
     }
+    let representative = report["meta"]["representative_city"]
+        .as_str()
+        .filter(|v| !v.trim().is_empty())
+        .map(str::trim)
+        .or_else(|| {
+            (report["meta"]["graph_strategy"] == "round_robin").then_some("Per graph (round robin)")
+        });
+    let media = super::portfolio_views::media(
+        &report,
+        &["investment", "financial_kpis", "lcoe"],
+        representative,
+    )?;
+    derived["graphs"] = media["graphs"].clone();
+    derived["unavailable_detail"] = media["unavailable_detail"].clone();
     Ok(Dashboard {
         schema: "ds-solar.dashboard/v1",
         section: Section::PortfolioFinance,
