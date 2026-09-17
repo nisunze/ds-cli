@@ -204,8 +204,8 @@ pub(super) fn compose(mut report: Value) -> Result<Dashboard, String> {
         "debt":ratio_pct(number(&params["capital_structure"],"debt_ratio")),"debtCost":ratio_pct(number(&params["debt"],"interest_rate"))});
     let lcoe = &k["portfolio_lcoe"];
     let payback = &k["portfolio_payback"];
-    let cash = ordered(&k["portfolio_cashflow"]["portfolio"])?;
-    let dscr = ordered(&k["portfolio_dscr"]["portfolio"])?;
+    let mut cash = ordered(&k["portfolio_cashflow"]["portfolio"])?;
+    let mut dscr = ordered(&k["portfolio_dscr"]["portfolio"])?;
     let dscr_values: Vec<f64> = dscr
         .iter()
         .filter_map(|r| first_number(r, &["dscr_ratio_of_totals", "min_dscr"]))
@@ -220,6 +220,22 @@ pub(super) fn compose(mut report: Value) -> Result<Dashboard, String> {
         .filter(|v| v.is_finite());
     let threshold =
         first_number(&params["project_finance"], &["minimum_dscr", "min_dscr"]).filter(|v| *v > 0.);
+    let minimum_year = minimum
+        .and_then(|minimum| {
+            dscr.iter()
+                .find(|r| first_number(r, &["dscr_ratio_of_totals", "min_dscr"]) == Some(minimum))
+        })
+        .map(|r| r["year"].clone());
+    for row in &mut dscr {
+        let ratio = first_number(row, &["dscr_ratio_of_totals", "min_dscr"]);
+        row["ratio"] = json!(ratio);
+        row["mean_ratio"] = json!(first_number(row, &["mean_city_dscr", "avg_dscr"]));
+        row["bankable"] = json!(ratio.zip(threshold).map(|(r, t)| r >= t));
+    }
+    for row in &mut cash {
+        row["net_positive"] = json!(number(row, "net_cash_flow").map(|v| v >= 0.));
+        row["has_replacement"] = json!(number(row, "replacement").map(|v| v > 0.));
+    }
     let pb_simple = number(payback, "simple_payback_years");
     let pb_disc = number(payback, "discounted_payback_years");
     let pb_ok = |v: Option<f64>| v.zip(years).map(|(v, years)| v > 0. && v <= years);
@@ -237,10 +253,46 @@ pub(super) fn compose(mut report: Value) -> Result<Dashboard, String> {
         "simple_payback_viable":pb_ok(pb_simple),"discounted_payback_viable":pb_ok(pb_disc),
         "lcoe_capex":capex,"lcoe_opex":opex,"lcoe_replacements":replacements,"lcoe_energy":number(lcoe,"total_energy_kwh"),
         "cashflow_rows":cash,"dscr_rows":dscr,"kpi_rows":table,"finance_aggregations":agg});
+    let npv = number(&derived, "total_npv_millions");
+    let irr = number(&derived, "weighted_irr_percent");
+    derived["npv_profitable"] = json!(npv.map(|v| v > 0.));
+    derived["irr_above_wacc"] = json!(irr.zip(wacc).map(|(i, w)| i > w));
+    derived["lcoe_positive"] = json!(number(&derived, "portfolio_lcoe").map(|v| v > 0.));
+    derived["min_dscr_year"] = json!(minimum_year);
+    let investment_rows = if report["investment"]["investment_table"].is_array() {
+        &report["investment"]["investment_table"]
+    } else {
+        &report["investment"]["table"]
+    };
+    derived["investment_rows"] = json!(rows(investment_rows)?);
+    derived["investment_aggregations"] = report["investment"]["aggregations"].clone();
+    derived["environmental_rows"] = json!(rows(&report["environmental"]["table"])?);
+    derived["breakeven_price"] = json!(number(&k["portfolio_sensitivity"], "breakeven_price"));
+    let viable_count = agg["viable_count"]
+        .as_str()
+        .filter(|s| {
+            s.len() <= 32 && {
+                let p: Vec<_> = s.split('/').collect();
+                p.len() == 2
+                    && p.iter()
+                        .all(|p| !p.is_empty() && p.bytes().all(|b| b.is_ascii_digit()))
+            }
+        })
+        .map(str::to_owned)
+        .or_else(|| {
+            number(agg, "viable_count")
+                .filter(|v| v.fract() == 0. && (0. ..=table.len() as f64).contains(v))
+                .map(|v| format!("{v:.0}/{}", table.len()))
+        })
+        .unwrap_or_else(|| format!("—/{}", table.len()));
+    derived["viable_count_label"] = json!(viable_count);
     if let Some(key) = ["lcoe_simple_with_network", "lcoe_simple_plant"]
         .iter()
         .find(|key| number(lcoe, key).is_some())
     {
+        if derived["finance_aggregations"].is_null() {
+            derived["finance_aggregations"] = json!({});
+        }
         derived["finance_aggregations"][format!("portfolio_{key}")] = lcoe[*key].clone();
     }
     let inv = &report["investment"]["aggregations"];
