@@ -18,8 +18,9 @@ use std::process::Command;
 
 use ds_command_kernel::report_export::InputReceipt;
 use ds_report_host::{
-    run_batch, run_transformer_report, transformer_page, BatchSettings, EngineExit, HeldRoom,
-    HostFailure, PreviewSettings, ReportEngine, RunSettings, TransformerReportInputs,
+    answer, execute, run_batch, run_transformer_report, transformer_page, BatchSettings,
+    EngineExit, HeldContext, HeldRoom, HeldState, HostFailure, PageRef, PreviewRequest,
+    PreviewSettings, ReportEngine, RunSettings, TransformerReportInputs,
 };
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -246,5 +247,64 @@ fn a_preview_page_is_the_engines_svg_over_the_synthetic_room() {
     assert!(page.context_layers.is_empty());
     assert!(page.context_omitted.is_empty());
     // A preview leaves nothing on disk.
+    assert!(!staging.exists() || std::fs::read_dir(&staging).unwrap().next().is_none());
+}
+
+#[test]
+#[ignore = "requires DS_REPORT_BIN and the reporter printing fixtures"]
+fn the_command_execution_answers_the_same_page_over_the_synthetic_room() {
+    let binary = std::env::var_os("DS_REPORT_BIN")
+        .map(PathBuf::from)
+        .expect("DS_REPORT_BIN must name the locally built reporter");
+    let examples = examples().expect("the reporter printing examples must be present");
+    let engine = ProcessEngine { binary };
+    let receipt = receipt_from_example(&examples.join("network-config.a0-a3.example.json"));
+    let temp = tempfile::tempdir().unwrap();
+    let staging = temp.path().join("staging");
+    let inputs = room(&examples.join("rooms/tr_example_a.json"), "tr_example_a");
+    let mut draft = ds_command_kernel::printing::default_layout();
+    draft.id = "preview-draft".into();
+    draft.name = "Preview draft".into();
+    // The default layout names no context, so the held context is empty and
+    // no holdings root is needed: the page is the engine's SVG.
+    let page = execute(
+        &engine,
+        &PreviewSettings {
+            project_id: "example-project",
+            receipt: &receipt,
+            admin_bounds: None,
+            staging_root: &staging,
+        },
+        &PreviewRequest {
+            transformer: "tr_example_a".into(),
+            layout: draft,
+        },
+        &HeldState {
+            room: HeldRoom {
+                transformer: inputs.transformer.clone(),
+                server_version: inputs.server_version,
+                layers: inputs.layers.clone(),
+                content_digest: None,
+                media_grant: None,
+                sheet: None,
+            },
+            context: HeldContext::default(),
+        },
+    )
+    .unwrap_or_else(|refusal| panic!("{refusal:?}"));
+    assert_eq!(page.output_id, "svg__preview-draft");
+    assert_eq!(page.filename, "tr_example_a.preview-draft.svg");
+    assert!(
+        page.page.trim_start().starts_with("<svg"),
+        "not an SVG page"
+    );
+    assert_eq!(page.receipt["transformer"], "tr_example_a");
+    assert!(page.context_layers.is_empty());
+    assert!(page.context_omitted.is_empty());
+    let data = answer("example-project", "stable", &[(&page, PageRef::Inline)]);
+    assert_eq!(data["results"][0]["page"]["svg"], page.page);
+    assert_eq!(data["results"][0]["filename"], page.filename);
+    assert_eq!(data["preview"]["output_id"], "svg__preview-draft");
+    assert_eq!(data["batch"]["completed"], 1);
     assert!(!staging.exists() || std::fs::read_dir(&staging).unwrap().next().is_none());
 }

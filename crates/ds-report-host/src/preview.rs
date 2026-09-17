@@ -24,17 +24,30 @@
 //! The host decides nothing here: what it hands over is data (its receipt,
 //! its held room, its cached grant, the captures it holds), and what it gets
 //! back is the page with the run's diagnostics, warnings and context summary.
+//!
+//! [`execute`] is the command-shaped entry over [`transformer_page`]: the one
+//! execution of `report.project.export --preview-layout` both doors reach —
+//! `registry::dispatch` in the `ds` process and `ds_invoke` in the desktop
+//! process — with the held context resolved once, by
+//! `ds_project_data::held::preview_context`. [`answer`] is the one `data`
+//! projection both doors wrap in the DS envelope (`ds_command_kernel::envelope`);
+//! [`PreviewRefusal`] carries every refusal with its envelope class.
 
 use std::collections::BTreeMap;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
-use ds_command_kernel::printing::context::expanded_layer_ids;
+use ds_command_kernel::envelope::{self, Class};
+use ds_command_kernel::printing::context::{expanded_layer_ids, RetainedContext};
+use ds_command_kernel::printing::held_context::HeldCapture;
 use ds_command_kernel::printing::map::MV_PRINT_LAYER_IDS;
 use ds_command_kernel::printing::table_rows::PrintWarning;
 use ds_command_kernel::printing::{self, PrintContextLayer, PrintContextSource};
+use ds_command_kernel::project_dataset_cache::Scope;
 use ds_command_kernel::report_export::{self, EngineIdentity, InputReceipt};
 use ds_command_kernel::report_formats::PrintArtifactFormat;
+use ds_project_data::held::{preview_context, HeldPreviewState, PreviewContextRefusal};
+use ds_project_data::{PrintContext, ReferenceResource};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 
@@ -46,6 +59,14 @@ use crate::{
 
 /// The largest page a preview hands back in memory.
 pub const MAX_PREVIEW_BYTES: u64 = 96 * 1024 * 1024;
+
+/// The command [`execute`] is the execution of. Its descriptor — arguments,
+/// help, the MCP projection — is declared once in ds-cli; every door that
+/// executes it wraps [`answer`] or a [`PreviewRefusal`] in the DS envelope
+/// under this id.
+pub const COMMAND_ID: &str = "report.project.export";
+/// The command's contract version, as the envelope carries it.
+pub const CONTRACT: u32 = 1;
 
 /// What every preview of one project shares: the governed receipt as the
 /// service minted it (never a local recipe), the Rwanda reference when the
@@ -120,6 +141,12 @@ pub struct PreviewPage {
     pub context_omitted: Vec<ContextOmission>,
     /// Digest of the staged `ds.print-context/v1` document, when one was.
     pub context_sha256: Option<String>,
+    /// The page's filename as the engine named it, so a filesystem host
+    /// places the page under the same name a delivery batch would.
+    pub filename: String,
+    /// The run receipt exactly as the run wrote its `report-run.json`, so a
+    /// filesystem host can place it beside the page under that name.
+    pub receipt: Value,
 }
 
 fn inputs_invalid(message: impl Into<String>) -> HostFailure {
@@ -324,6 +351,387 @@ pub fn transformer_page(
         context_layers,
         context_omitted,
         context_sha256,
+        filename: artifact.filename.clone(),
+        receipt: outcome.receipt,
+    })
+}
+
+/// The preview's argument set, as every door builds it from the command's
+/// declared inputs: `--transformer X` and the `--preview-layout` document.
+/// The CLI names the document by path and reads it; the desktop hands it
+/// inline because the webview has no filesystem. Either way the draft is
+/// taken as held and upgraded inside [`transformer_page`].
+#[derive(Debug, Clone, PartialEq)]
+pub struct PreviewRequest {
+    pub transformer: String,
+    pub layout: printing::Layout,
+}
+
+/// The project's geographic holdings a host can read rooms from for the
+/// catalogue, building and unretained contour layers a draft names: the
+/// shared root, the principal/project scope, and the catalogue rows the
+/// rooms were held under. Reads only; a preview never acquires.
+#[derive(Debug, Clone)]
+pub struct Holdings {
+    pub root: PathBuf,
+    pub scope: Scope,
+    pub catalog: Vec<ReferenceResource>,
+}
+
+/// What a host holds for the draft's context layers, read from its own
+/// stores without a decision: survey and local-layer captures (the browser's
+/// IndexedDB rows, typed by the kernel), the derived preparations it retained
+/// by context layer id, and its holdings root when it has one. A layer with
+/// nothing here is a named omission on the sheet, never a refusal.
+#[derive(Debug, Clone, Default)]
+pub struct HeldContext {
+    pub captures: Vec<HeldCapture>,
+    pub retained: BTreeMap<String, RetainedContext>,
+    pub holdings: Option<Holdings>,
+}
+
+/// Everything a host holds for one preview: the admitted room and the
+/// context. The room was admitted before this — by
+/// `printing::preview::room_admission` over the desktop's row, by the
+/// service answer's own admission in the CLI — and both hand the same shape.
+#[derive(Debug, Clone)]
+pub struct HeldState {
+    pub room: HeldRoom,
+    pub context: HeldContext,
+}
+
+/// Why a preview did not produce its page: a kernel refusal (a room a door
+/// admitted, a capture `held_context::admit` refused — code, message key
+/// and params travel unchanged so a localised surface renders them), or a
+/// host failure of the run itself.
+#[derive(Debug, Clone, PartialEq)]
+pub enum PreviewRefusal {
+    Kernel(printing::preview::Refusal),
+    Host(HostFailure),
+}
+
+/// The envelope class of every refusal code a preview can end with, keyed by
+/// code alone so both doors classify identically and ds-cli's own table can
+/// be proven equal to this one. A code not listed here is a defect in this
+/// table and classifies as `internal`.
+pub const CLASS_TABLE: &[(&str, Class)] = &[
+    // The kernel's room admission, over the row a door holds.
+    ("print_preview_room_unavailable", Class::Unavailable),
+    ("print_preview_room_incomplete", Class::Conflict),
+    // The kernel's capture admission and the omission it may name.
+    ("print_context_capture_invalid", Class::InvalidInput),
+    ("print_context_survey_empty", Class::InvalidInput),
+    ("print_context_too_large", Class::InvalidInput),
+    ("print_context_capture_changed", Class::InvalidInput),
+    ("print_context_foreign_project", Class::InvalidInput),
+    ("print_context_capture_incomplete", Class::InvalidInput),
+    ("print_context_not_held_source", Class::InvalidInput),
+    ("print_context_omitted", Class::InvalidInput),
+    // The host's run, this crate's own codes and the ones its adapters raise.
+    ("report_inputs_invalid", Class::InvalidInput),
+    ("print_context_unsupported", Class::InvalidInput),
+    ("report_output_exists", Class::Conflict),
+    ("admin_bounds_unavailable", Class::Unavailable),
+    ("reporter_engine_missing", Class::Unavailable),
+    ("catalog_unavailable", Class::Unavailable),
+    ("reference_bundle_unavailable", Class::Unavailable),
+    ("report_staging_failed", Class::Failed),
+    ("report_result_invalid", Class::Failed),
+    ("engine_refused", Class::Failed),
+    ("export_blocked", Class::Failed),
+    ("callee_contract_mismatch", Class::Failed),
+    ("callee_timed_out", Class::Failed),
+    ("report_engine_identity_changed", Class::Failed),
+    ("print_context_invalid", Class::Failed),
+    ("project_dataset_store_failed", Class::Failed),
+];
+
+/// One sentence for a kernel refusal, from its code and params; the
+/// localised surface renders `detail.message_key` instead.
+fn kernel_message(refusal: &printing::preview::Refusal) -> String {
+    let param = |key: &str| refusal.params.get(key).cloned().unwrap_or_default();
+    let name = param("name");
+    match refusal.code.as_str() {
+        "print_preview_room_unavailable" => {
+            format!("the design of transformer {name} is not held on this host")
+        }
+        "print_preview_room_incomplete" => {
+            format!("the held design of transformer {name} has unsaved incomplete edits")
+        }
+        "print_context_capture_invalid" => {
+            format!("the capture handed for {name} is not a feature collection")
+        }
+        "print_context_survey_empty" => format!("the survey capture for {name} has no entries"),
+        "print_context_too_large" => format!(
+            "the capture for {name} exceeds {} features or is a display preview",
+            param("bound")
+        ),
+        "print_context_capture_changed" => {
+            format!("the capture for {name} changed while it was handed over")
+        }
+        "print_context_foreign_project" => {
+            format!("the capture for {name} belongs to another project")
+        }
+        "print_context_capture_incomplete" => {
+            format!("the capture for {name} is not completely loaded")
+        }
+        "print_context_not_held_source" => {
+            format!("{name} is not a source a host captures")
+        }
+        "print_context_omitted" => format!("{}: {}", param("label"), param("reason")),
+        other => {
+            let params: Vec<String> = refusal
+                .params
+                .iter()
+                .map(|(key, value)| format!("{key}={value}"))
+                .collect();
+            format!("{other} ({})", params.join(", "))
+        }
+    }
+}
+
+impl PreviewRefusal {
+    /// The stable snake_case code a script branches on.
+    pub fn code(&self) -> &str {
+        match self {
+            PreviewRefusal::Kernel(refusal) => &refusal.code,
+            PreviewRefusal::Host(failure) => &failure.code,
+        }
+    }
+
+    /// One sentence in plain prose.
+    pub fn message(&self) -> String {
+        match self {
+            PreviewRefusal::Kernel(refusal) => kernel_message(refusal),
+            PreviewRefusal::Host(failure) => failure.message.clone(),
+        }
+    }
+
+    /// The envelope class, from [`CLASS_TABLE`].
+    pub fn class(&self) -> Class {
+        let code = self.code();
+        CLASS_TABLE
+            .iter()
+            .find(|(known, _)| *known == code)
+            .map(|(_, class)| *class)
+            .unwrap_or(Class::Internal)
+    }
+
+    /// The envelope `detail`: a kernel refusal's `{message_key, params}` for
+    /// the localised surface; a host failure's own detail when it has one.
+    pub fn detail(&self) -> Option<Value> {
+        match self {
+            PreviewRefusal::Kernel(refusal) => Some(json!({
+                "message_key": refusal.message_key,
+                "params": refusal.params,
+            })),
+            PreviewRefusal::Host(failure) => failure.detail.clone(),
+        }
+    }
+
+    /// The refusal as the envelope carries it, so both doors write the same
+    /// `error` member: `envelope::error(COMMAND_ID, CONTRACT, &refusal)`.
+    pub fn envelope_refusal(&self) -> envelope::Refusal {
+        let refusal = envelope::Refusal::new(self.class(), self.code(), self.message());
+        match self.detail() {
+            Some(detail) => refusal.detail(detail),
+            None => refusal,
+        }
+    }
+}
+
+/// The context document as the run stages it, from what the resolver
+/// assembled: `None` when there is no document (the engine prints without
+/// external context and every draft layer is a named omission).
+fn context_bytes(context: Option<PrintContext>) -> Option<PrintContextBytes> {
+    let context = context?;
+    let bytes = context.document?;
+    Some(PrintContextBytes {
+        bytes,
+        sha256: context.sha256.unwrap_or_default(),
+        layers: context.layers,
+        omitted: context
+            .omitted
+            .iter()
+            .map(|omission| omission.layer.clone())
+            .collect(),
+    })
+}
+
+/// Execute `report.project.export --preview-layout` over what a host holds:
+/// the one place both doors reach, and the only one that runs the engine.
+///
+/// The room must be the requested transformer's (a door hands the room it
+/// admitted for that name; another name is `report_inputs_invalid`). The
+/// held context is resolved by `ds_project_data::held::preview_context` for
+/// exactly the context layers the draft names, as [`transformer_page`]
+/// decides them: a capture the kernel refuses ends the preview with that
+/// refusal unchanged; a layer the host has nothing for is a named omission
+/// with the resolver's reason, never an acquisition; without holdings every
+/// room-read layer is omitted as unreadable here. The page comes back in
+/// memory and nothing is left under the staging root.
+pub fn execute(
+    engine: &dyn crate::ReportEngine,
+    settings: &PreviewSettings<'_>,
+    request: &PreviewRequest,
+    held: &HeldState,
+) -> Result<PreviewPage, PreviewRefusal> {
+    if held.room.transformer != request.transformer {
+        return Err(PreviewRefusal::Host(inputs_invalid(format!(
+            "the held room is {}'s, not {}'s",
+            held.room.transformer, request.transformer
+        ))));
+    }
+    let layers = serde_json::to_value(&held.room.layers)
+        .map_err(|error| PreviewRefusal::Host(inputs_invalid(error.to_string())))?;
+    let state = HeldPreviewState {
+        captures: held.context.captures.clone(),
+        retained: held.context.retained.clone(),
+    };
+    // Without holdings the resolver reads no room, so the scope it is handed
+    // names the project alone and is never used for a read.
+    let unread = Scope {
+        principal: String::new(),
+        project: settings.project_id.to_owned(),
+    };
+    let (root, scope, catalog): (Option<&Path>, &Scope, &[ReferenceResource]) =
+        match &held.context.holdings {
+            Some(holdings) => (
+                Some(holdings.root.as_path()),
+                &holdings.scope,
+                holdings.catalog.as_slice(),
+            ),
+            None => (None, &unread, &[]),
+        };
+    let mut kernel_refusal: Option<printing::preview::Refusal> = None;
+    let mut reasons: Vec<(String, String)> = Vec::new();
+    let mut wanted_layers: Vec<PrintContextLayer> = Vec::new();
+    let outcome = transformer_page(engine, settings, &held.room, &request.layout, |wanted| {
+        wanted_layers = wanted.to_vec();
+        match preview_context(
+            root,
+            scope,
+            settings.project_id,
+            &request.transformer,
+            &layers,
+            wanted,
+            catalog,
+            &state,
+        ) {
+            Ok(context) => {
+                if let Some(context) = &context {
+                    reasons.extend(
+                        context
+                            .omitted
+                            .iter()
+                            .map(|omission| (omission.layer.clone(), omission.reason.clone())),
+                    );
+                }
+                Ok(context_bytes(context))
+            }
+            Err(PreviewContextRefusal::Kernel(refusal)) => {
+                let failure = inputs_invalid(kernel_message(&refusal));
+                kernel_refusal = Some(refusal);
+                Err(failure)
+            }
+            Err(PreviewContextRefusal::Holdings(failure)) => {
+                Err(HostFailure::new(failure.code(), failure.message()))
+            }
+        }
+    });
+    let mut page = match (outcome, kernel_refusal) {
+        (Err(_), Some(refusal)) => return Err(PreviewRefusal::Kernel(refusal)),
+        (Err(failure), None) => return Err(PreviewRefusal::Host(failure)),
+        (Ok(page), _) => page,
+    };
+    // The resolver's reason for a layer it omitted is what the sheet shows
+    // beside it: named by any of the ids the draft layer prints as.
+    for omission in &mut page.context_omitted {
+        let Some(layer) = wanted_layers
+            .iter()
+            .find(|layer| layer.id == omission.layer)
+        else {
+            continue;
+        };
+        let ids = document_layer_ids(layer);
+        if let Some((_, reason)) = reasons.iter().find(|(id, _)| ids.contains(id)) {
+            omission.reason = reason.clone();
+        }
+    }
+    Ok(page)
+}
+
+/// Where a host put one page: on its filesystem, named by path in the
+/// answer, or nowhere, the SVG text inline — the desktop's web limitation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PageRef<'a> {
+    File(&'a Path),
+    Inline,
+}
+
+/// What `data.preview.note` says: a preview is draft state, not an artifact.
+pub const PREVIEW_NOTE: &str =
+    "a preview is draft state rendered from what this host holds; the delivery is the artifact";
+
+/// The one `data` member of a successful preview, for both doors: one row
+/// per page with the page by path or inline, the run's diagnostics,
+/// warnings and context summary, the draft's identity under `preview`, and
+/// a completed batch summary. Every page was rendered for the same draft, so
+/// `preview` is read from the first.
+pub fn answer(project: &str, lane: &str, pages: &[(&PreviewPage, PageRef<'_>)]) -> Value {
+    let first = pages.first().map(|(page, _)| *page);
+    let results: Vec<Value> = pages
+        .iter()
+        .map(|(page, placed)| {
+            let page_ref = match placed {
+                PageRef::File(path) => json!({ "path": path.to_string_lossy() }),
+                PageRef::Inline => json!({ "svg": page.page }),
+            };
+            json!({
+                "transformer": page.transformer,
+                "server_version": page.server_version,
+                "status": "completed",
+                "page": page_ref,
+                "filename": page.filename,
+                "sha256": page.sha256,
+                "size_bytes": page.size_bytes,
+                "content_type": page.content_type,
+                "engine": {
+                    "engine_version": page.engine.engine_version,
+                    "build_manifest_sha256": page.engine.build_manifest_sha256,
+                },
+                "elapsed_ms": page.elapsed_ms,
+                "warnings": page.warnings,
+                "print_diagnostics": page.print_diagnostics,
+                "print_context": {
+                    "sha256": page.context_sha256,
+                    "layers": page.context_layers,
+                    "omitted": page
+                        .context_omitted
+                        .iter()
+                        .map(|omission| json!({ "layer": omission.layer, "reason": omission.reason }))
+                        .collect::<Vec<_>>(),
+                },
+            })
+        })
+        .collect();
+    json!({
+        "lane": lane,
+        "project": project,
+        "preview": {
+            "layout_id": first.map(|page| page.layout_id.as_str()),
+            "layout_sha256": first.map(|page| page.layout_sha256.as_str()),
+            "output_id": first.map(|page| page.output_id.as_str()),
+            "format": "svg",
+            "note": PREVIEW_NOTE,
+        },
+        "results": results,
+        "batch": {
+            "status": "completed",
+            "requested_count": pages.len(),
+            "completed": pages.len(),
+            "failed": 0,
+        },
     })
 }
 
@@ -645,5 +1053,417 @@ mod tests {
         assert!(huge.message.contains("exceeds"), "{}", huge.message);
         assert!(nothing_left(&staging));
         assert_eq!(engine.calls.load(Ordering::SeqCst), 3);
+    }
+
+    fn survey_layer(id: &str, form: &str) -> PrintContextLayer {
+        PrintContextLayer {
+            id: id.into(),
+            label: id.into(),
+            source: PrintContextSource::Survey { form: form.into() },
+        }
+    }
+
+    fn capture(context_id: &str, declared_count: u64) -> HeldCapture {
+        HeldCapture {
+            context_id: context_id.into(),
+            features: json!({"type":"FeatureCollection","features":[{"type":"Feature","properties":{"name":"S1"},"geometry":{"type":"Point","coordinates":[30.0605,-1.9405]}}]}),
+            declared_count,
+            render_mode: None,
+            source_project: None,
+            features_loaded: true,
+        }
+    }
+
+    fn held(name: &str, captures: Vec<HeldCapture>) -> HeldState {
+        HeldState {
+            room: room(name),
+            context: HeldContext {
+                captures,
+                retained: BTreeMap::new(),
+                holdings: None,
+            },
+        }
+    }
+
+    fn request(layout: printing::Layout) -> PreviewRequest {
+        PreviewRequest {
+            transformer: "tx_a".into(),
+            layout,
+        }
+    }
+
+    #[test]
+    fn execute_returns_the_page_for_an_admitted_room_and_names_what_this_host_cannot_read() {
+        let temp = tempfile::tempdir().unwrap();
+        let staging = temp.path().join("staging");
+        let receipt = receipt("Benin");
+        let engine = FakeEngine::release();
+        let page = execute(
+            &engine,
+            &settings(&receipt, &staging),
+            &request(draft()),
+            &held("tx_a", Vec::new()),
+        )
+        .unwrap();
+        assert_eq!(page.transformer, "tx_a");
+        assert_eq!(page.server_version, 7);
+        assert_eq!(page.output_id, "svg__draft-a3");
+        assert!(page.page.trim_start().starts_with("<svg"));
+        // The engine's own names travel so a filesystem host places the page
+        // and its receipt as a delivery would.
+        assert_eq!(page.filename, "tx_a.draft-a3.svg");
+        assert_eq!(page.receipt["elapsed_ms"], 5);
+        assert_eq!(page.receipt["transformer"], "tx_a");
+        // Without holdings the catalogue layers are omitted with the
+        // resolver's reason, not a generic one.
+        assert!(page.context_layers.is_empty());
+        assert_eq!(
+            page.context_omitted,
+            [
+                ContextOmission {
+                    layer: "roads".into(),
+                    reason: "no holdings root on this host".into(),
+                },
+                ContextOmission {
+                    layer: "rivers".into(),
+                    reason: "no holdings root on this host".into(),
+                },
+            ]
+        );
+        assert!(page.context_sha256.is_none());
+        assert_eq!(engine.calls.load(Ordering::SeqCst), 1);
+        assert!(nothing_left(&staging));
+
+        // A room handed for another transformer is refused before anything runs.
+        let other = execute(
+            &engine,
+            &settings(&receipt, &staging),
+            &PreviewRequest {
+                transformer: "tx_b".into(),
+                layout: draft(),
+            },
+            &held("tx_a", Vec::new()),
+        )
+        .unwrap_err();
+        assert_eq!(other.code(), CODE_INPUTS_INVALID);
+        assert_eq!(other.class(), Class::InvalidInput);
+        assert_eq!(engine.calls.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn execute_resolves_exactly_the_drafts_layers_from_the_handed_captures() {
+        let temp = tempfile::tempdir().unwrap();
+        let staging = temp.path().join("staging");
+        // The governed receipt's saved setup names buildings; the draft names
+        // a survey layer and a catalogue layer. Only the draft's list is
+        // resolved: the survey capture is admitted and staged, the catalogue
+        // layer is omitted here, buildings never appear.
+        let governed = governed();
+        let engine = FakeEngine::release();
+        let mut layout = draft();
+        layout.context_layers = vec![
+            survey_layer("survey_x", "F1"),
+            context_layer("roads", "roads"),
+        ];
+        let page = execute(
+            &engine,
+            &settings(&governed, &staging),
+            &request(layout),
+            &held("tx_a", vec![capture("survey_x", 1)]),
+        )
+        .unwrap();
+        assert_eq!(page.context_layers, ["survey_x"]);
+        assert_eq!(
+            page.context_omitted,
+            [ContextOmission {
+                layer: "roads".into(),
+                reason: "no holdings root on this host".into(),
+            }]
+        );
+        assert_eq!(page.context_sha256.as_ref().map(String::len), Some(64));
+        assert_eq!(page.receipt["print_context_layers"], json!(["survey_x"]));
+        assert_eq!(page.receipt["print_context_omitted"], json!(["roads"]));
+        assert_eq!(engine.calls.load(Ordering::SeqCst), 1);
+        assert!(nothing_left(&staging));
+    }
+
+    #[test]
+    fn a_capture_the_kernel_refuses_ends_the_preview_with_that_refusal_unchanged() {
+        let temp = tempfile::tempdir().unwrap();
+        let staging = temp.path().join("staging");
+        let receipt = receipt("Benin");
+        let engine = FakeEngine::release();
+        let mut layout = draft();
+        layout.context_layers = vec![survey_layer("survey_x", "F1")];
+        let refused = execute(
+            &engine,
+            &settings(&receipt, &staging),
+            &request(layout),
+            &held("tx_a", vec![capture("survey_x", 0)]),
+        )
+        .unwrap_err();
+        let PreviewRefusal::Kernel(kernel) = &refused else {
+            panic!("{refused:?}");
+        };
+        assert_eq!(kernel.code, "print_context_survey_empty");
+        assert_eq!(kernel.message_key, "printing_context_survey_empty");
+        assert_eq!(kernel.params["name"], "F1");
+        assert_eq!(refused.code(), "print_context_survey_empty");
+        assert_eq!(refused.class(), Class::InvalidInput);
+        assert_eq!(
+            refused.detail(),
+            Some(
+                json!({"message_key": "printing_context_survey_empty", "params": {"bound": "50000", "name": "F1"}})
+            )
+        );
+        assert!(refused.message().contains("F1"));
+        // The envelope both doors write, from the one refusal.
+        let error = envelope::error(COMMAND_ID, CONTRACT, &refused.envelope_refusal());
+        assert_eq!(error["v"], 1);
+        assert_eq!(error["command"], "report.project.export");
+        assert_eq!(error["contract"], 1);
+        assert_eq!(error["status"], "error");
+        assert_eq!(error["error"]["class"], "invalid_input");
+        assert_eq!(error["error"]["code"], "print_context_survey_empty");
+        assert_eq!(error["error"]["retryable"], false);
+        assert_eq!(
+            error["error"]["detail"]["message_key"],
+            "printing_context_survey_empty"
+        );
+        assert_eq!(engine.calls.load(Ordering::SeqCst), 0);
+        assert!(nothing_left(&staging));
+    }
+
+    #[test]
+    fn a_retained_projection_the_kernel_omits_is_named_on_the_sheet() {
+        let temp = tempfile::tempdir().unwrap();
+        let staging = temp.path().join("staging");
+        let receipt = receipt("Benin");
+        let engine = FakeEngine::release();
+        let mut layout = draft();
+        layout.context_layers = vec![printing::context::derived_layers().swap_remove(0)];
+        assert_eq!(layout.context_layers[0].id, "project_dsgrid_mv");
+        let page = execute(
+            &engine,
+            &settings(&receipt, &staging),
+            &request(layout),
+            &held("tx_a", Vec::new()),
+        )
+        .unwrap();
+        // Nothing retained for the MV projection: the draft layer is a named
+        // omission with the kernel's reason, and the page still renders.
+        assert!(page.context_layers.is_empty());
+        assert_eq!(
+            page.context_omitted,
+            [ContextOmission {
+                layer: "project_dsgrid_mv".into(),
+                reason: "not retained on this computer".into(),
+            }]
+        );
+        assert_eq!(engine.calls.load(Ordering::SeqCst), 1);
+        assert!(nothing_left(&staging));
+    }
+
+    #[test]
+    fn answer_pins_the_one_data_shape_for_both_doors() {
+        let temp = tempfile::tempdir().unwrap();
+        let staging = temp.path().join("staging");
+        let receipt = receipt("Benin");
+        let engine = FakeEngine::release();
+        let page = execute(
+            &engine,
+            &settings(&receipt, &staging),
+            &request(draft()),
+            &held("tx_a", Vec::new()),
+        )
+        .unwrap();
+
+        let inline = answer("proj-1", "stable", &[(&page, PageRef::Inline)]);
+        let keys =
+            |value: &Value| -> Vec<String> { value.as_object().unwrap().keys().cloned().collect() };
+        assert_eq!(
+            keys(&inline),
+            ["lane", "project", "preview", "results", "batch"]
+        );
+        assert_eq!(inline["lane"], "stable");
+        assert_eq!(inline["project"], "proj-1");
+        assert_eq!(
+            keys(&inline["preview"]),
+            ["layout_id", "layout_sha256", "output_id", "format", "note"]
+        );
+        assert_eq!(inline["preview"]["layout_id"], "draft-a3");
+        assert_eq!(inline["preview"]["layout_sha256"], page.layout_sha256);
+        assert_eq!(inline["preview"]["output_id"], "svg__draft-a3");
+        assert_eq!(inline["preview"]["format"], "svg");
+        assert_eq!(inline["preview"]["note"], PREVIEW_NOTE);
+        assert_eq!(
+            inline["batch"],
+            json!({"status": "completed", "requested_count": 1, "completed": 1, "failed": 0})
+        );
+        let row = &inline["results"][0];
+        assert_eq!(
+            keys(row),
+            [
+                "transformer",
+                "server_version",
+                "status",
+                "page",
+                "filename",
+                "sha256",
+                "size_bytes",
+                "content_type",
+                "engine",
+                "elapsed_ms",
+                "warnings",
+                "print_diagnostics",
+                "print_context",
+            ]
+        );
+        assert_eq!(row["transformer"], "tx_a");
+        assert_eq!(row["server_version"], 7);
+        assert_eq!(row["status"], "completed");
+        assert_eq!(row["page"], json!({"svg": page.page}));
+        assert_eq!(row["filename"], "tx_a.draft-a3.svg");
+        assert_eq!(row["sha256"], page.sha256);
+        assert_eq!(row["size_bytes"], page.size_bytes);
+        assert_eq!(row["content_type"], "image/svg+xml");
+        assert_eq!(
+            row["engine"],
+            json!({"engine_version": page.engine.engine_version, "build_manifest_sha256": "f".repeat(64)})
+        );
+        assert_eq!(row["elapsed_ms"], 5);
+        assert_eq!(row["warnings"], json!([]));
+        assert_eq!(row["print_diagnostics"][0]["output_id"], "svg__draft-a3");
+        assert_eq!(
+            row["print_context"],
+            json!({
+                "sha256": null,
+                "layers": [],
+                "omitted": [
+                    {"layer": "roads", "reason": "no holdings root on this host"},
+                    {"layer": "rivers", "reason": "no holdings root on this host"},
+                ],
+            })
+        );
+        let success = envelope::success(COMMAND_ID, CONTRACT, inline);
+        assert_eq!(
+            keys(&success),
+            ["v", "command", "contract", "status", "data"]
+        );
+        assert_eq!(success["status"], "ok");
+
+        // The CLI names the page it placed; every other member is the same.
+        let placed = temp.path().join("out/tx_a/tx_a.draft-a3.svg");
+        let by_path = answer("proj-1", "stable", &[(&page, PageRef::File(&placed))]);
+        assert_eq!(
+            by_path["results"][0]["page"],
+            json!({"path": placed.to_string_lossy()})
+        );
+        let mut same = by_path.clone();
+        same["results"][0]["page"] = json!({"svg": page.page});
+        assert_eq!(
+            same,
+            envelope::success(COMMAND_ID, CONTRACT, same.clone())["data"]
+        );
+        assert_eq!(
+            same,
+            answer("proj-1", "stable", &[(&page, PageRef::Inline)])
+        );
+    }
+
+    #[test]
+    fn every_code_a_preview_can_end_with_has_its_envelope_class() {
+        let kernel_codes = [
+            ("print_preview_room_unavailable", Class::Unavailable),
+            ("print_preview_room_incomplete", Class::Conflict),
+            ("print_context_capture_invalid", Class::InvalidInput),
+            ("print_context_survey_empty", Class::InvalidInput),
+            ("print_context_too_large", Class::InvalidInput),
+            ("print_context_capture_changed", Class::InvalidInput),
+            ("print_context_foreign_project", Class::InvalidInput),
+            ("print_context_capture_incomplete", Class::InvalidInput),
+            ("print_context_not_held_source", Class::InvalidInput),
+            ("print_context_omitted", Class::InvalidInput),
+        ];
+        for (code, class) in kernel_codes {
+            // An omission names a label and a reason; every other kernel
+            // refusal names the thing by `name`.
+            let (key, value) = if code == "print_context_omitted" {
+                ("label", "Proposed MV")
+            } else {
+                ("name", "TX-0421")
+            };
+            let refusal = PreviewRefusal::Kernel(printing::preview::Refusal {
+                code: code.into(),
+                message_key: format!("printing_{}", code.trim_start_matches("print_")),
+                params: BTreeMap::from([(key.to_string(), value.to_string())]),
+            });
+            assert_eq!(refusal.class(), class, "{code}");
+            assert!(
+                refusal.message().contains(value),
+                "{code}: {}",
+                refusal.message()
+            );
+            assert_eq!(refusal.detail().unwrap()["params"][key], value, "{code}");
+        }
+        // Every code this crate raises, and the ones its adapters and the
+        // holdings resolver raise, is classified — and never as internal.
+        let host_codes = [
+            (crate::CODE_INPUTS_INVALID, Class::InvalidInput),
+            ("print_context_unsupported", Class::InvalidInput),
+            ("print_context_too_large", Class::InvalidInput),
+            (crate::CODE_OUTPUT_EXISTS, Class::Conflict),
+            (crate::CODE_ADMIN_BOUNDS_UNAVAILABLE, Class::Unavailable),
+            ("reporter_engine_missing", Class::Unavailable),
+            ("catalog_unavailable", Class::Unavailable),
+            ("reference_bundle_unavailable", Class::Unavailable),
+            (crate::CODE_STAGING_FAILED, Class::Failed),
+            (crate::CODE_RESULT_INVALID, Class::Failed),
+            (crate::CODE_ENGINE_REFUSED, Class::Failed),
+            (crate::CODE_EXPORT_BLOCKED, Class::Failed),
+            (crate::CODE_ENGINE_IDENTITY_INVALID, Class::Failed),
+            ("callee_timed_out", Class::Failed),
+            (crate::CODE_ENGINE_IDENTITY_CHANGED, Class::Failed),
+            ("print_context_invalid", Class::Failed),
+            ("project_dataset_store_failed", Class::Failed),
+        ];
+        for (code, class) in host_codes {
+            let refusal = PreviewRefusal::Host(HostFailure::new(code, "why"));
+            assert_eq!(refusal.class(), class, "{code}");
+            assert_eq!(refusal.message(), "why");
+            assert_eq!(refusal.detail(), None);
+        }
+        let mut listed: Vec<&str> = CLASS_TABLE.iter().map(|(code, _)| *code).collect();
+        let mut expected: Vec<&str> = kernel_codes
+            .iter()
+            .chain(host_codes.iter())
+            .map(|(code, _)| *code)
+            .collect();
+        listed.sort_unstable();
+        listed.dedup();
+        expected.sort_unstable();
+        expected.dedup();
+        assert_eq!(listed, expected, "the table names exactly these codes once");
+        assert_eq!(CLASS_TABLE.len(), listed.len(), "no code is listed twice");
+        assert!(CLASS_TABLE
+            .iter()
+            .all(|(_, class)| *class != Class::Internal));
+        // A code the table does not know is a defect, and says so.
+        assert_eq!(
+            PreviewRefusal::Host(HostFailure::new("something_new", "why")).class(),
+            Class::Internal
+        );
+        // A host detail travels as the envelope detail.
+        let blocked = PreviewRefusal::Host(
+            HostFailure::new(crate::CODE_EXPORT_BLOCKED, "blocked")
+                .with_detail(json!({"blockers": [{"code": "format_build_failed"}]})),
+        );
+        let carried = blocked.envelope_refusal();
+        assert_eq!(carried.class, Class::Failed);
+        assert_eq!(carried.code, "export_blocked");
+        assert_eq!(
+            carried.detail.unwrap()["blockers"][0]["code"],
+            "format_build_failed"
+        );
     }
 }

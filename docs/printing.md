@@ -260,37 +260,81 @@ screen's pixels per millimetre (`raster`): between 1.5 px/mm and the 300 dpi
 delivery raster, within a 40-megapixel budget. Re-rasterising at a new zoom
 never involves the engine.
 
-`ds-report-host::preview::transformer_page` is the one preview entry both
-hosts reach. It takes the governed receipt, the held room, the draft layout
-and a host-supplied print-context closure, applies `with_layout`, decides the
-draft's context layers with the kernel (`report::evaluate`
-`context_preparation`), stages and runs the engine through the same
-`run_transformer_report` the CLI's `report.project.export --preview-layout`
-uses, proves the one `svg__<id>` page (exactly one artifact, at most 96 MiB,
-its sha, UTF-8, `<svg`) and returns page, `print_diagnostics`, warnings and
-the context summary in memory, leaving nothing on disk. The Desktop hands its
-held state — the cached `/config` receipt member, the `design_transformers`
-row, the cached media grant, survey and local-layer captures, the retained
-derived-context entries the draft names — as data; the kernel decides:
-`printing::preview::room_admission` admits a held `lv` room (dirty and
-incomplete → `print_preview_room_incomplete`, absent, foreign or empty →
-`print_preview_room_unavailable`) and reads its server version;
-`printing::held_context::admit` admits a survey or local-layer capture
-(`print_context_survey_empty`, `print_context_too_large`,
-`print_context_capture_changed`, `print_context_foreign_project`,
-`print_context_capture_incomplete`, at most `MAX_HELD_FEATURES` = 50 000
-features); `printing::context::retained_admission` reuses a retained
+`ds-report-host::preview::execute(engine, &PreviewSettings, &PreviewRequest,
+&HeldState) -> Result<PreviewPage, PreviewRefusal>` is the one execution of
+`report.project.export --preview-layout` both hosts reach. The command is
+declared once, by its descriptor in ds-cli (`ds capabilities` and MCP
+project it), and executed by exactly one door per host process: `ds`'s own
+`registry::dispatch` and the desktop's Tauri command `ds_invoke`. Both doors
+are adapters: they build the same `PreviewRequest {transformer, layout}` from
+the same declared argument names (`transformer`, `preview-layout`), hand the
+same kernel-typed held state, call the same `execute`, and wrap the same
+`preview::answer(project, lane, &[(page, PageRef)])` data — or the same
+`PreviewRefusal` — in the same DS envelope v1 from `ds_command_kernel::envelope`
+(`{v, command, contract, status, data | error{class, code, message,
+retryable, remedy?, next?, detail?}}`), under `preview::COMMAND_ID` and
+`preview::CONTRACT`. `PreviewRefusal::class()` reads one table,
+`preview::CLASS_TABLE`, keyed by code alone, so the two doors and ds-cli's own
+refusal table classify identically; a kernel refusal's `{message_key, params}`
+travels as `error.detail` for the localised surface.
+
+Inside, `execute` composes `transformer_page` — which takes the governed
+receipt, the held room, the draft layout and a print-context closure, upgrades
+the draft, applies `with_layout`, decides the draft's context layers with the
+kernel (`report::evaluate` `context_preparation`), stages and runs the engine
+through the same `run_transformer_report_with` a delivery uses, proves the one
+`svg__<id>` page (exactly one artifact, at most 96 MiB, its sha, UTF-8,
+`<svg`) and returns page, filename, run receipt, `print_diagnostics`,
+warnings and the context summary in memory, leaving nothing on disk — with
+the one held-context resolver, `ds_project_data::held::preview_context`.
+
+The held-state vocabulary is the kernel's own structs, `deny_unknown_fields`,
+and every decision over it is a kernel call: `HeldState {room: HeldRoom,
+context: HeldContext {captures: Vec<HeldCapture>, retained:
+BTreeMap<String, RetainedContext>, holdings: Option<Holdings {root, scope,
+catalog}>}}`. The room is admitted before `execute` by
+`printing::preview::room_admission` over `RoomFacts` reduced from the row the
+local design store keeps (dirty and incomplete → `print_preview_room_incomplete`,
+absent, foreign or empty → `print_preview_room_unavailable`, the server
+version read from it); the CLI's room is the service answer, admitted by its
+own export path — both feed the same `HeldRoom`. The resolver then, for
+exactly the draft's context layers: `printing::held_context::admit` admits a
+survey or local-layer capture (`print_context_survey_empty`,
+`print_context_too_large`, `print_context_capture_changed`,
+`print_context_foreign_project`, `print_context_capture_incomplete`, at most
+`MAX_HELD_FEATURES` = 50 000 features) — a refused capture ends the preview
+with that refusal unchanged, a missing one is the omission "not captured on
+this host"; `printing::context::retained_admission` reuses a retained
 elevation-contour or project-MV context only under the retained schema, with
 exactly this source's parameters (`retained_parameters`, the browser's
 `JSON.stringify(source, sortedKeys)` spelling), covering the wanted extent
 and naming only the layers its preparation emits (for the project MV
 projection: lines, structures and angle points) — anything else, including
-nothing retained, is a named omission on the sheet, never an acquisition.
-A preview never downloads a room and never acquires or projects context; a
-delivery or seed still prepares context through its own path. Headlessly the
-same command id `report.project.export --preview-layout draft.json` produces
-the same page on a Server host through the same staging and recipe; no
-`desktop.*` or `server.*` twin exists.
+nothing retained, is a named omission on the sheet with the kernel's reason,
+never an acquisition; catalogue, building and unretained contour layers are
+read from the project's rooms under `holdings` in `Mode::Read`, which omits
+what is not held, and without holdings are omitted as "no holdings root on
+this host". Everything held and read merges through `attach_layers` into one
+`ds.print-context/v1` document under one digest. A preview never downloads
+a room and never acquires or projects context; a delivery or seed still
+prepares context through its own path.
+
+Two web limitations are declared, not designed around. A `<json-file>`
+input is a document: the CLI names the draft by path and reads it, the
+desktop door receives it inline because the webview has no filesystem. The
+page is placed by the host that has a filesystem: the CLI writes
+`<out-dir>/<transformer>/<page.filename>` and `report-run.json` from
+`page.receipt` beside it and answers `page: {path}`; the desktop answers
+`page: {svg}` inline (`PageRef::File` / `PageRef::Inline`). `out-dir`,
+`lane`, `admin-bounds` and `concurrency` are host-owned on the desktop and
+refused as arguments there. The `data` member is otherwise the same on both:
+`results[]` rows with `transformer`, `server_version`, `status`, `page`,
+`filename`, `sha256`, `size_bytes`, `content_type`, `engine`, `elapsed_ms`,
+`warnings`, `print_diagnostics` and `print_context {sha256, layers,
+omitted[{layer, reason}]}`, plus `preview {layout_id, layout_sha256,
+output_id, format, note}` and a completed `batch` summary. Headlessly the
+same command id produces the same page on a Server host through the same
+staging and recipe; no `desktop.*` or `server.*` twin exists.
 
 ## Template pens
 
