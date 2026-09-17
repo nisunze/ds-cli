@@ -427,6 +427,16 @@ preview.json --output json`, using the kernel's `render_plan` operation:
 keys, required print-style references and text. This evaluates admission only;
 PDF rendering still uses the existing renderer.
 
+The same `report layout edit` surface exposes the parent-frame operations:
+`sheet_frames` returns map space → drawn printable border → independent table
+containers → local table origins; `table_container_rect` accepts `element_id`
+and border-relative `rect_mm`, resolves the parent offset in Rust, and clears
+sibling flow for explicitly positioned tables. `furniture_hit` accepts measured
+panel rectangles and `point_mm`; gaps between stepped panels do not count as
+table content. These decisions are shared with the UI through WASM. Rendering
+returns the measured `frame_hierarchy`, `printable_boundary_mm`, and
+`furniture_frames` in each page assessment, after flow and packing.
+
 ## Headless transformer reports
 
 `ds report project export` produces individual transformer reports — prints
