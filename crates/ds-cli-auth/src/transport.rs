@@ -555,6 +555,38 @@ impl Transport for NativeTransport {
         bounded(result.map_err(classify)?, call.response_limit())
     }
 
+    fn download_solar_artifact(
+        &mut self,
+        call: ds_client_core::SolarArtifactDownloadCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        let response = ureq::get(call.url())
+            .config()
+            .max_redirects(0)
+            .http_status_as_error(false)
+            .timeout_connect(Some(CONNECT_TIMEOUT))
+            .timeout_global(Some(Duration::from_secs(120)))
+            .build()
+            .call()
+            .map_err(classify)?;
+        bounded(response, call.response_limit())
+    }
+
+    fn download_solar_media(
+        &mut self,
+        call: ds_client_core::SolarMediaDownloadCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        let response = ureq::get(call.url())
+            .config()
+            .max_redirects(0)
+            .http_status_as_error(false)
+            .timeout_connect(Some(CONNECT_TIMEOUT))
+            .timeout_global(Some(Duration::from_secs(120)))
+            .build()
+            .call()
+            .map_err(classify)?;
+        bounded(response, call.response_limit())
+    }
+
     fn download_survey_photo(
         &mut self,
         call: ds_client_core::survey_photo::DownloadCall<'_>,

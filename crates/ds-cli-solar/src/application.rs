@@ -9,7 +9,7 @@ pub static COMMAND: Command = Command {
     path: &["solar", "application"],
     contract: 1,
     summary: "Execute one closed native Solar application request on Server.",
-    purpose: "The native Server owns workspace approval, preparation, readiness, annual generation profiles, city and portfolio runs, progress, cancellation, inventories, bounded artifact reads and final import. Requests are the closed ds-solar-native application enum, never a generic operation or API escape. The Server captures and authorizes the explicit project; browser, WASM and paired Desktop are unnecessary. Use the local project lifecycle for city editing and its publication outbox; use portfolio governance for catalog editing.",
+    purpose: "The native Server owns workspace approval, governed input capture, durable cancellable preparation, readiness, annual generation profiles, city and portfolio runs, progress, cancellation, inventories, bounded artifact reads, immutable final import/inspection and complete report packages with verified governed images. Requests are the closed ds-solar-native application enum, never a generic operation or API escape. The Server captures and authorizes the explicit project; browser, WASM and paired Desktop are unnecessary. Use the local project lifecycle for city editing and its publication outbox; use portfolio governance for catalog editing.",
     chapter: Chapter::Solar,
     effect: Effect::ArtifactWrite,
     authority: Authority::HeadlessProject,

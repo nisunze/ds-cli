@@ -3918,6 +3918,12 @@ fn map_client(error: ClientError) -> Failure {
         return map_project_report_service_code(code);
     }
     let message = error.to_string();
+    // These are closed, static Core diagnostics, not backend response text.
+    // Preserve the publication step instead of naming authentication as its cause.
+    if error.kind() == ErrorKind::Transient && message.starts_with("Solar publication ") {
+        return Failure::unavailable("auth_transient", message)
+            .remedy("retry the exact sealed publication without changing local state");
+    }
     // A governed route that authored its own bounded refusal has said
     // something the coarse class cannot: which status it used and what is
     // wrong. Collapsing that into `auth_response_unreadable` is what made a

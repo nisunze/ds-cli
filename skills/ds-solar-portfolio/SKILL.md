@@ -30,8 +30,10 @@ the exact portfolio id, ordered cities, and membership revision it returns.
 
 Calculation consumes an already verified project city-batch directory and
 its exact source run id. Use `ds-solar-workflow` to obtain a closed batch if
-needed. Every source city must match the frozen ordered membership; never
-shorten, reorder, reconstruct, or rerun a successful subset to force acceptance.
+needed. Every frozen portfolio member must have its pinned result in that
+source. A source batch may contain additional cities; the Rust owner consumes
+only the governed ordered membership. Never rewrite a source closure or
+silently drop a declared member to force acceptance.
 Choose a new output directory and run id using the calculation descriptor.
 The owner derives assumptions from sealed city artifacts and emits the
 portfolio result, French APD draft, charts, and closed batch.

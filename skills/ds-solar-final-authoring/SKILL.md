@@ -14,8 +14,11 @@ post-authoring document tools, never Solar calculation or factual authorities.
 
 ## Obtain the prompting package
 
-Discover the live `solar.report.bundle` contract, then export one run, city,
-and intent. The ZIP contains:
+On Server, discover `solar.application` and the native application schema's
+`report_bundle` operation. Select one city report or imported reviewed final,
+pin its exact calculation batch identity, and provide a new private ZIP destination.
+On a paired Desktop the live `solar.report.bundle` compatibility contract also
+exports one run, city and intent. The ZIP contains:
 
 - the exact canonical `*-draft-<language>.md` source;
 - a preview copy whose image links point into `media/`;
@@ -49,6 +52,13 @@ tables or comments. Then import and submit through the live contracts:
 ds solar final import --run-id <run> --city <context> --file <final.md> --yes
 ds solar final submit --run-id <run> --city <context> --yes
 ```
+
+Those commands are paired compatibility routes. On Server discover the native
+`final_import` and `final_inspect` schemas through `solar.application`, supply an
+explicit source path, and inspect the immutable final receipt. A native
+`report_bundle` of that imported final produces its governed rendering copy
+with the actual reviewed narration. Do not count local import or export as online
+publication; discover a supported publication contract before claiming delivery.
 
 Import is local review state; submit is the separate publication action. The
 exact reviewed Markdown remains the report authority.

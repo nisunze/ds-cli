@@ -1075,6 +1075,7 @@ name = "ds-cli-server"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "base64 0.22.1",
  "ds-cli-auth",
  "ds-cli-contract",
  "ds-client-core",

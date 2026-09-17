@@ -25,6 +25,31 @@ settlement is reported explicitly; use a new run ID to retry after inspecting
 any committed artifacts. Closed run IDs cannot silently overwrite earlier work.
 Publication remains a separate operation and requires its online receipt.
 
+Use `prepare_captured` on Server to select city IDs without constructing snapshots.
+The captured native authority obtains their governed inputs and references inside
+the worker. Poll `prepare_progress`; completed preparation survives restart and
+unfinished work returns `preparation_interrupted` with committed city states
+preserved. `prepare_cancel` cooperatively stops further acquisition and input
+commit. Discover `prepare` separately for authored snapshots and manual composition.
+
+Final import creates an independent immutable closure, pinning the original
+calculation batch, source APD draft and report input. It never replaces the
+calculation manifest or sync intent. Discover `final_import` and provide an
+explicit Markdown source path on Server. Discover `final_inspect` to recover
+the committed final and its source and final batch identities after restart.
+Artifact reads and verified exports reopen that closure and check its lineage.
+An existing final cannot be overwritten; use a new source run for replacement.
+
+Discover the native `report_bundle` operation for city APD, network, plant or
+financial drafts and reviewed APD finals. It pins the source batch id and digest,
+preserves exact canonical Markdown and emits an independent rendering copy with
+all images. Declared plots are verified against their closed manifest; governed
+map references are downloaded through the captured project's authenticated
+snapshot producer and checked for exact generation, size, digest and image type.
+A missing image refuses the whole package. Provide a new absolute destination
+under an existing private directory; export never overwrites earlier output.
+The package is local and does not imply publication.
+
 The paired commands documented below remain compatibility surfaces while
 their remaining adapters are migrated. Standalone `results read` and dashboard
 composition already read sealed native sources without pairing or sign-in;

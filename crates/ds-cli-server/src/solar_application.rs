@@ -25,6 +25,38 @@ struct NativeReferences {
     auth: Arc<dyn ds_compute_runtime::Authorizer>,
     session: Mutex<Option<ds_cli_auth::NamedSolarProjectSession>>,
 }
+impl NativeReferences {
+    fn execute(&self, command: &ds_cli_auth::SolarProjectCommand) -> Result<Value, String> {
+        self.auth.authorize(&self.owner)?;
+        let mut held = self
+            .session
+            .lock()
+            .map_err(|_| "Solar acquisition state is poisoned")?;
+        if held.is_none() {
+            *held = Some(
+                ds_cli_auth::solar_project_session_for_project(&self.lane, &self.project)
+                    .map_err(|e| e.message().to_owned())?,
+            );
+        }
+        let session = held.as_mut().ok_or("Solar authority is unavailable")?;
+        let binding = session.binding();
+        if crate::auth::fence(
+            binding["uid"].as_str().unwrap_or(""),
+            &self.lane,
+            binding["audience"].as_str().unwrap_or(""),
+        )? != self.owner
+        {
+            return Err("Server owner changed during Solar acquisition".into());
+        }
+        let receipt = session
+            .execute(command)
+            .map_err(|e| e.message().to_owned())?;
+        if crate::auth::owner_fence(&self.lane)? != self.owner {
+            return Err("Server owner changed during Solar acquisition".into());
+        }
+        Ok(receipt)
+    }
+}
 impl ds_solar_native::ReferenceBundleProvider for NativeReferences {
     fn fetch(
         &self,
@@ -36,43 +68,11 @@ impl ds_solar_native::ReferenceBundleProvider for NativeReferences {
                 message,
             )
         };
-        self.auth.authorize(&self.owner).map_err(invalid)?;
-        let mut held = self
-            .session
-            .lock()
-            .map_err(|_| invalid("Solar acquisition state is poisoned".into()))?;
-        if held.is_none() {
-            *held = Some(
-                ds_cli_auth::solar_project_session_for_project(&self.lane, &self.project)
-                    .map_err(|e| invalid(e.message().into()))?,
-            );
-        }
-        let session = held
-            .as_mut()
-            .ok_or_else(|| invalid("Solar authority is unavailable".into()))?;
-        let binding = session.binding();
-        if crate::auth::fence(
-            binding["uid"].as_str().unwrap_or(""),
-            &self.lane,
-            binding["audience"].as_str().unwrap_or(""),
-        )
-        .map_err(invalid)?
-            != self.owner
-        {
-            return Err(invalid(
-                "Server owner changed during Solar acquisition".into(),
-            ));
-        }
-        let receipt = session
+        let receipt = self
             .execute(&ds_cli_auth::SolarProjectCommand::Reference {
                 request: request.clone(),
             })
-            .map_err(|e| invalid(e.message().into()))?;
-        if crate::auth::owner_fence(&self.lane).map_err(invalid)? != self.owner {
-            return Err(invalid(
-                "Server owner changed during Solar acquisition".into(),
-            ));
-        }
+            .map_err(invalid)?;
         if let Some(error) = receipt.get("reference_error") {
             return Err(invalid(
                 error["message"]
@@ -82,6 +82,58 @@ impl ds_solar_native::ReferenceBundleProvider for NativeReferences {
             ));
         }
         ds_solar_native::bundle_from_delivery(&self.project, &receipt)
+    }
+}
+impl ds_solar_native::MediaProvider for NativeReferences {
+    fn fetch(&self, city: &str, reference: &str) -> Result<Vec<u8>, String> {
+        use base64::Engine;
+        let receipt = self.execute(&ds_cli_auth::SolarProjectCommand::ReadMedia {
+            city: city.into(),
+            reference: reference.into(),
+        })?;
+        if receipt["reference"] != reference
+            || receipt["project_id"] != self.project
+            || receipt["city_id"] != city
+        {
+            return Err("The governed image belongs to another Solar context".into());
+        }
+        let encoded = receipt["body_base64"]
+            .as_str()
+            .ok_or("The governed image has no verified bytes")?;
+        if encoded.len() > (16usize << 20).div_ceil(3) * 4 {
+            return Err("The governed image exceeds 16 MiB".into());
+        }
+        let bytes = base64::engine::general_purpose::STANDARD
+            .decode(encoded)
+            .map_err(|_| "The governed image has invalid encoding")?;
+        if receipt["byte_count"].as_u64() != Some(bytes.len() as u64)
+            || receipt["content_digest"] != format!("sha256:{}", ds_compute_runtime::digest(&bytes))
+        {
+            return Err("The governed image differs from its verified digest".into());
+        }
+        Ok(bytes)
+    }
+}
+
+impl ds_solar_native::SnapshotProvider for NativeReferences {
+    fn capture(&self, city: &str) -> Result<ds_solar_native::CapturedCitySnapshot, String> {
+        self.auth.authorize(&self.owner)?;
+        if crate::auth::owner_fence(&self.lane)? != self.owner {
+            return Err("Server owner changed during Solar input capture".into());
+        }
+        let snapshot = ds_cli_auth::solar_snapshot_for_project(&self.lane, &self.project, city)
+            .map_err(|e| e.message().to_owned())?;
+        if snapshot.ds_project() != self.project
+            || snapshot.template_id() != city
+            || crate::auth::owner_fence(&self.lane)? != self.owner
+        {
+            return Err("Server owner or project changed during Solar input capture".into());
+        }
+        Ok(ds_solar_native::CapturedCitySnapshot {
+            snapshot_json: snapshot.document_json().into(),
+            input_base_fingerprint: snapshot.input_base_fingerprint().into(),
+            captured_at: snapshot.firestore_read_time().into(),
+        })
     }
 }
 
@@ -139,16 +191,19 @@ pub(crate) async fn invoke(
         let parent = app.database.parent().ok_or_else(|| {
             Failure::invalid("server_refused", "Server database has no protected parent")
         })?;
+        let producer = Arc::new(NativeReferences {
+            lane: app.connection.lane.clone(),
+            project: context.project.clone(),
+            owner: app.connection.owner.clone(),
+            auth: app.auth.clone(),
+            session: Mutex::new(None),
+        });
         let host = app
             .solar
             .host(parent.join("solar-application").join(identity))?
-            .with_reference_provider(Arc::new(NativeReferences {
-                lane: app.connection.lane.clone(),
-                project: context.project.clone(),
-                owner: app.connection.owner.clone(),
-                auth: app.auth.clone(),
-                session: Mutex::new(None),
-            }));
+            .with_reference_provider(producer.clone())
+            .with_media_provider(producer.clone())
+            .with_snapshot_provider(producer);
         ds_solar_native::application::execute(host, &context.project, &body)
             .map(Json)
             .map_err(|e| Failure::invalid("server_refused", e))
