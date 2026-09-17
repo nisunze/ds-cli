@@ -14,6 +14,20 @@ use zeroize::Zeroize;
 pub mod assets;
 pub mod solar_dashboard;
 pub mod solar_portfolio_read;
+pub mod solar_saved_analysis;
+#[cfg(feature = "wasm")]
+#[wasm_bindgen::prelude::wasm_bindgen(js_name = bindSolarHostedPortfolioData)]
+pub fn bind_solar_hosted_portfolio_data_wasm(
+    input: &[u8],
+) -> Result<String, wasm_bindgen::JsValue> {
+    solar_saved_analysis::bind_hosted(input)
+        .map_err(|error| wasm_bindgen::JsValue::from_str(&error))
+}
+#[cfg(feature = "wasm")]
+#[wasm_bindgen::prelude::wasm_bindgen(js_name = solarSavedAnalysis)]
+pub fn solar_saved_analysis_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
+    solar_saved_analysis::evaluate(input).map_err(|error| wasm_bindgen::JsValue::from_str(&error))
+}
 pub mod solar_snapshot;
 #[cfg(feature = "wasm")]
 #[wasm_bindgen::prelude::wasm_bindgen(js_name = solarDashboard)]

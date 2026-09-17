@@ -9,6 +9,7 @@ use serde_json::{json, Value};
 pub enum Command {
     List,
     Get { portfolio: String },
+    Analysis { portfolio: String },
     Mutate { intent: Value },
     Publish { result: Vec<u8> },
 }
@@ -80,7 +81,7 @@ impl Command {
     pub fn validate(&self, project: &str) -> Result<(), ClientError> {
         match self {
             Self::List => {}
-            Self::Get { portfolio } => {
+            Self::Get { portfolio } | Self::Analysis { portfolio } => {
                 // Use the shared identifier contract without inventing a second grammar.
                 membership(portfolio, &json!(["validation_a", "validation_b"]))?;
             }
@@ -127,6 +128,39 @@ pub(crate) fn run<T: AuthorizedTransport>(
                 return Err(invalid());
             }
             Ok(catalog(json!([row]))?["portfolios"][0].clone())
+        }
+        Command::Analysis { portfolio } => {
+            let command = Command::Get {
+                portfolio: portfolio.clone(),
+            };
+            let before = run(profile, transport, authority, project, &command)?;
+            let saved = call(
+                profile,
+                transport,
+                authority,
+                false,
+                json!({"action":"get_portfolio_data","root":root,"portfolio_id":portfolio}),
+            )?;
+            let after = run(profile, transport, authority, project, &command)?;
+            if before["membership_revision"] != after["membership_revision"]
+                || before["cities"] != after["cities"]
+            {
+                return Err(invalid());
+            }
+            let request = json!({
+                "binding":{"portfolioId":portfolio,"portfolioName":before["display_name"],
+                    "membershipRevision":before["membership_revision"],"cityIds":before["cities"]},
+                "outcome":{"data":saved["portfolio_data"]},"require_binding":true
+            });
+            let mut receipt: Value = serde_json::from_str(
+                &ds_command_kernel::solar_saved_analysis::evaluate(
+                    &serde_json::to_vec(&request).map_err(|_| invalid())?,
+                )
+                .map_err(|_| invalid())?,
+            )
+            .map_err(|_| invalid())?;
+            receipt["project_id"] = json!(project);
+            Ok(receipt)
         }
         Command::Mutate { intent } => {
             let plan = plan(intent)?;

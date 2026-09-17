@@ -8051,6 +8051,55 @@ fn solar_portfolio_catalog_rejects_changed_membership_and_wrong_project_before_t
 }
 
 #[test]
+fn solar_portfolio_analysis_rechecks_membership_and_preserves_absent_analysis() {
+    use ds_client_core::{solar_portfolio, solar_project::Command};
+    let membership: serde_json::Value = serde_json::from_str(
+        &ds_command_kernel::solar_portfolio_membership_identity(
+            br#"{"portfolio_id":"pf_1","cities":["a","b"]}"#,
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    let row = serde_json::json!({"id":"pf_1","name":"Two cities","cities":["a","b"],"membership_revision":membership["revision"]});
+    let changed: serde_json::Value = serde_json::from_str(
+        &ds_command_kernel::solar_portfolio_membership_identity(
+            br#"{"portfolio_id":"pf_1","cities":["b","a"]}"#,
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    for changed_membership in [false, true] {
+        let t = FixtureTransport::with_sign_in(SIGN_IN);
+        let mut client = signed_in(t.clone(), MemoryStore::default());
+        let mut after = row.clone();
+        if changed_membership {
+            after["cities"] = serde_json::json!(["b", "a"]);
+            after["membership_revision"] = changed["revision"].clone();
+        }
+        t.0.lock().unwrap().solar_project.extend([
+            project_response(row.clone()),
+            project_response(serde_json::json!({"portfolio_data":null})),
+            project_response(after),
+        ]);
+        let result = client.solar_project(
+            "p-1",
+            &Command::Portfolio(solar_portfolio::Command::Analysis {
+                portfolio: "pf_1".into(),
+            }),
+            NOW + 1,
+        );
+        if changed_membership {
+            assert!(result.is_err());
+        } else {
+            let result = result.unwrap();
+            assert_eq!(result["saved_analysis"], "none");
+            assert_eq!(result["city_ids"], serde_json::json!(["a", "b"]));
+            assert_eq!(result["project_id"], "p-1");
+        }
+    }
+}
+
+#[test]
 fn solar_portfolio_mutation_requires_exact_authoritative_readback() {
     use ds_client_core::{solar_portfolio, solar_project::Command};
     let membership = |cities: serde_json::Value| -> serde_json::Value {
