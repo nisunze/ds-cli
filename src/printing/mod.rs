@@ -17,6 +17,7 @@ pub mod preview;
 pub mod project_sources;
 pub mod session;
 pub mod sheet_margin;
+pub mod sheet_status;
 pub mod style_overrides;
 pub mod table_columns;
 pub mod table_headings;
@@ -1793,6 +1794,10 @@ pub enum Command {
         view_slot: String,
     },
     /// Map space -> printable border -> independent container -> local table.
+    SheetStatus {
+        assessments: Vec<Value>,
+        warnings: Vec<table_rows::PrintWarning>,
+    },
     TableDrafts {
         layout: Layout,
     },
@@ -2363,6 +2368,11 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
             let layout = upgrade(layout)?;
             json!({"index": frames::hit(&layout, &measured, point_mm)?})
         }
+        Command::SheetStatus {
+            assessments,
+            warnings,
+        } => serde_json::to_value(sheet_status::summarize(&assessments, &warnings)?)
+            .map_err(|e| e.to_string())?,
         Command::TableDrafts { layout } => {
             let layout = upgrade(layout)?;
             json!({"tables": frames::drafts(&layout)?})

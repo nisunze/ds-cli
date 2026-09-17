@@ -572,3 +572,11 @@ sizes. Heading widths are approximate; they never stretch to maximum container
 size or become export geometry. Reporter alone measures real printed content.
 `print_label_omissions` is a scoped zero-row warning, accepted by the shared
 result validator like diagnostics summaries; wrong run/output/layout is refused.
+
+
+`sheet_status` presents verified assessment facts consistently to CLI and UI.
+Polygon-containment, spacing, frame-clipping and collision label omissions are
+informational `label_notes` with counts and plain-language reasons; they concern
+map text. Actual furniture findings and missing schedule rows remain warnings.
+Repeated output assessments do not multiply one sheet's label counts. The raw
+renderer diagnostics and governed warning validation remain unchanged.
