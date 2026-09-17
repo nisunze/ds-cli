@@ -513,6 +513,58 @@ pub fn html(dashboard: &Dashboard, title: &str) -> String {
             body.push_str(&static_charts::render(key, chart));
         }
     }
+    if matches!(dashboard.section, Section::PortfolioFinance) {
+        if let Some(formulas) = dashboard.derived["formulas"].as_object() {
+            body.push_str("<h2>Financial formulas</h2><dl>");
+            for (name, formula) in formulas {
+                if let Some(formula) = formula.as_str() {
+                    body.push_str(&format!(
+                        "<dt>{}</dt><dd><code>{}</code></dd>",
+                        escape(name),
+                        escape(formula)
+                    ));
+                }
+            }
+            body.push_str("</dl>");
+        }
+        for (key, label) in [
+            ("kpi_rows", "Financial comparison"),
+            ("investment_rows", "Initial investment"),
+            ("cashflow_rows", "Annual cash flow"),
+            ("dscr_rows", "Annual DSCR"),
+            ("environmental_rows", "Environment"),
+        ] {
+            if let Some(rows) = dashboard.derived[key].as_array().filter(|r| !r.is_empty()) {
+                let columns: std::collections::BTreeSet<&str> = rows
+                    .iter()
+                    .filter_map(Value::as_object)
+                    .flat_map(|r| r.keys().map(String::as_str))
+                    .collect();
+                body.push_str(&format!(
+                    "<h2>{}</h2><table><caption>{}</caption><thead><tr>",
+                    escape(label),
+                    escape(label)
+                ));
+                for column in &columns {
+                    body.push_str(&format!("<th>{}</th>", escape(column)));
+                }
+                body.push_str("</tr></thead><tbody>");
+                for row in rows {
+                    body.push_str("<tr>");
+                    for column in &columns {
+                        let value = match &row[*column] {
+                            Value::Null => "—".into(),
+                            Value::String(s) => s.clone(),
+                            v => v.to_string(),
+                        };
+                        body.push_str(&format!("<td>{}</td>", escape(&value)));
+                    }
+                    body.push_str("</tr>");
+                }
+                body.push_str("</tbody></table>");
+            }
+        }
+    }
     for (key, title) in [("network_rows", "Network BOQ"), ("plant_rows", "Plant BOQ")] {
         if let Some(rows) = dashboard.derived[key]
             .as_array()

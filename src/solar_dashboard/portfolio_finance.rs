@@ -14,7 +14,17 @@ fn rows(v: &Value) -> Result<&[Value], String> {
         return Ok(&[]);
     }
     v.as_array()
-        .filter(|r| r.len() <= MAX_ROWS && r.iter().all(Value::is_object))
+        .filter(|r| {
+            r.len() <= MAX_ROWS
+                && r.iter()
+                    .all(|r| r.as_object().is_some_and(|r| r.len() <= 128))
+                && r.iter()
+                    .filter_map(Value::as_object)
+                    .flat_map(|r| r.keys())
+                    .collect::<BTreeSet<_>>()
+                    .len()
+                    <= 128
+        })
         .map(Vec::as_slice)
         .ok_or_else(|| "Invalid or excessive portfolio financial rows".into())
 }
@@ -286,6 +296,14 @@ pub(super) fn compose(mut report: Value) -> Result<Dashboard, String> {
         })
         .unwrap_or_else(|| format!("—/{}", table.len()));
     derived["viable_count_label"] = json!(viable_count);
+    derived["formulas"] = json!({
+        "lcoe":r"LCOE_{simple} = \frac{CAPEX + OPEX + Remplacements}{E_{duree\ de\ vie}}",
+        "npv":r"VAN = -I_0 + \sum_{t=1}^{n} \frac{CF_t}{(1+r)^t}",
+        "irr":r"0 = -I_0 + \sum_{t=1}^{n} \frac{CF_t}{(1+TRI)^t}",
+        "payback":r"Payback = min(t) : \sum_{i=1}^{t} CF_i \geq I_0",
+        "discounted_payback":r"Payback_{actualise} = min(t) : \sum_{i=1}^{t} \frac{CF_i}{(1+r)^i} \geq I_0",
+        "dscr":r"DSCR = \frac{EBITDA}{Service\ de\ la\ Dette} = \frac{Revenus - OPEX}{Principal + Interets}"
+    });
     if let Some(key) = ["lcoe_simple_with_network", "lcoe_simple_plant"]
         .iter()
         .find(|key| number(lcoe, key).is_some())
@@ -495,6 +513,9 @@ mod tests {
             rendered.contains("USD") && rendered.contains("20 years") && rendered.contains("<svg")
         );
         assert!(!rendered.contains("<script"));
+        assert!(rendered.contains("Annual cash flow") && rendered.contains("Financial formulas"));
+        assert_eq!(d.derived["cashflow_rows"][0]["net_positive"], true);
+        assert_eq!(d.derived["dscr_rows"][1]["bankable"], Value::Null);
         let mut duplicate = input;
         duplicate["financial_kpis"]["portfolio_cashflow"]["portfolio"][1]["year"] = json!(2);
         assert!(compose(duplicate).err().unwrap().contains("Duplicate"));
