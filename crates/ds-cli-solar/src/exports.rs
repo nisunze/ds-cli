@@ -158,7 +158,7 @@ pub static REPORT_BUNDLE_COMMAND: Command = Command {
     path: &["solar", "report", "bundle"],
     contract: 1,
     summary: "Export one Solar prompting bundle through a paired Desktop.",
-    purpose: "Paired Desktop compatibility route. For headless Server draft delivery, discover solar.application.schema operation report_bundle and execute it through solar.application with an explicit project and lane; do not pair a Desktop to force a Server export. This paired route pages one portable ZIP containing exact canonical authoring Markdown, a presentation-only copy with local media links, verified run figures or governed project images, a media manifest and a boundary README. Export refuses unavailable images. The desktop retains credentials and cache paths.",
+    purpose: "Paired Desktop compatibility route. For headless Server draft delivery, discover solar.application.schema operation report_bundle and execute it through solar.application with an explicit project and lane; do not pair a Desktop to force a Server export. This paired route pages one portable ZIP containing exact canonical authoring Markdown, a presentation-only copy with local media links, verified run figures or governed project images, a media manifest and a boundary README. Export refuses unavailable images. Every narration block retains its complete fact packet. The desktop retains credentials and cache paths.",
     chapter: Chapter::Solar,
     effect: Effect::LocalFileWrite,
     authority: Authority::DesktopUser,
