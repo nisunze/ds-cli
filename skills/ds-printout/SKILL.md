@@ -8,10 +8,8 @@ metadata:
 
 # DS Printout specialist
 
-Deliver a verified print set from current project data, supplied sources or
-reusable outputs. Use `ds` for every live contract and operation; use
-`ds-map-composition` for cartographic judgment. Never bypass a refusal or
-substitute a private parser, API or store. Owners supply facts and rendering.
+Deliver a verified print set from current project data or reusable outputs.
+Use `ds` for live operations and `ds-map-composition` for cartographic judgment.
 
 ## Establish the assignment and host
 
@@ -19,8 +17,7 @@ Recover project, source revision, audience, geography, papers, formats,
 destination and earlier decisions. Build the subject/layout/format matrix.
 “All” requires complete inventory, resolved pagination and explicit exclusions.
 Keep authorization, input/recipe revisions, receipts, QA coverage and next action
-in host task state or the designated deliverables directory. Historical files
-prove neither current identity nor readiness.
+in host task state or the designated deliverables directory.
 
 Default to a signed-in headless server/workstation. Verify executable, lane and
 fenced selected project through `auth.status` and `auth.project.use`. Discover
@@ -75,14 +72,14 @@ not imply rollback: read back ambiguous writes before retrying.
 
 Follow these printing contracts:
 
-- Tables, schedules and legends hug the sheet perimeter with one 5 mm margin.
-  Use measured content edges, never unused frame space. Flow joins adjacent
-  panels; explicit free placement remains available through the schema.
-- Schedules bind the exported workbook table, retaining its relevant columns,
-  headings, order and units. Omit design-only exclusions: meter_type, nid and
-  phone numbers. Never remove a column for width. Excel presentation supplies
-  header bands, row treatment and alignment; generic presentation remains valid
-  where requested. A table-style reference is not a page-composition reference.
+- The drawn printable border owns independent schedule containers. Use measured
+  edges, physical margins and explicit corner anchors. Join schedules with flow
+  only when requested; snapping to information/legend retains the saved gap.
+- Plain pole/customer schedules use selected available source columns and an
+  explicit Design/AsBuilt phase. Preserve requested fields and consultant X/Y;
+  do not invent coordinates or unavailable meter numbers. LV line number is not
+  a default print column. Workbook/Excel presentation is for Network Information
+  unless explicitly requested for schedules.
 - Headings never widen columns. Default indexed headings use order letters with
   a full untruncated key above each panel. Never abbreviate headings by hand.
 - Optimize the full network’s vertical fit. Adjacent split panels may have
@@ -96,15 +93,18 @@ Follow these printing contracts:
   Retain engineering hierarchy, centered transformer names and requested scale
   treatment. Keep geographic context subordinate to the network.
 
-See [transformer sheets](references/transformer-sheets.md) for that delivery
-path and [drawing collections](references/drawing-collections.md) for compounded
+See [transformer sheets](../../ds-map-composition/references/transformer-sheets.md)
+and [outlier adjustments](../../ds-map-composition/references/outlier-transformers.md)
+for individual sheets and exceptions, and [drawing collections](references/drawing-collections.md) for compounded
 A0/A3 sets and project-wide numbering.
 
 ## Render, inspect, refine
 
 Render representative density/geography cases for every layout/format through
 the intended route before batching. Check identity, source/recipe revisions,
-print-context digests, carried/omitted layers and warnings. A local proof does
+print-context digests, carried/omitted layers and warnings. Hidden map labels are
+informational placement notes; actual furniture overflow and missing schedule
+rows remain warnings. A local proof does
 not establish publication or remote renderer parity.
 
 Inspect actual pages and readable crops. Margin first, then title block,

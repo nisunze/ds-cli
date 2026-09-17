@@ -92,12 +92,14 @@ measured furniture in a rendered preview before queuing the whole project.
   revision · the saved revision · a refused save names the field
   (`print_layout_invalid`); if the field is valid the deployed validator is
   older than this client and must be redeployed — never strip a valid field.
-- Styling is global, not per project · the layer's governed style through
+- Governed base styling is shared · the layer's governed style through
   `style.read`, `style.dimension.plan/set` (second field → halo, opacity,
   size; e.g. river `type` → width), `style.cartography.plan/set` (line type,
   casing, hatch), then `style.print.plan/create` for the `_print` clone every
   print template inherits · published style receipts · plan first, set with
-  identical arguments.
+  identical arguments. Template-local print pens layer bounded visibility, colour
+  and label overrides over that base without changing the live map or other
+  projects. Per-transformer exceptions can override the named layout further.
 
 ## 4. Decide what the project produces
 
@@ -110,7 +112,9 @@ measured furniture in a rendered preview before queuing the whole project.
   copy the setup first.
 - *Desktop-only*: `desktop.printing.prepare` does layout + selection +
   per-transformer overrides in one transaction; per-transformer overrides have
-  no headless twin yet.
+  no dedicated headless save command yet. Pure layout-editor intents can apply
+  an exception to a local draft or patch a settings document, but do not publish
+  it. See [outlier adjustments](../../ds-map-composition/references/outlier-transformers.md).
 
 ## 5. Prove one sheet before the batch
 

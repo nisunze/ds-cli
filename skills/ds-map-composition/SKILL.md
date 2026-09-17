@@ -1,6 +1,6 @@
 ---
 name: ds-map-composition
-description: Compose and visually refine DS custom-area, district MV, and project atlas printouts through CLI/MCP, preserving engineering identities and independent print styles.
+description: Compose and refine DS transformer sheets, custom-area maps, district MV and project atlases through CLI/MCP, including per-transformer print exceptions.
 ---
 
 # Compose DS engineering maps
@@ -15,7 +15,9 @@ apply only the requested changes to a project-owned copy. An earlier preview or
 local draft is not a default. Preserve the default furniture arrangement unless
 the user changes it; visual dissatisfaction is a reason to return to that baseline.
 For transformer sheets, read [default-based sheet placement](references/transformer-sheets.md)
-before authoring A0/A3 furniture.
+before authoring A0/A3 furniture. For one crowded or unusually shaped transformer,
+read [outlier adjustments](references/outlier-transformers.md); keep its exception
+separate from the project default.
 
 Read [composition guidance](references/composition.md) when choosing hierarchy,
 relief, landmarks, labels or page furniture. It provides references and review

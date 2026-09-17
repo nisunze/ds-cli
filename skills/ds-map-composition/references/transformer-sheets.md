@@ -15,14 +15,19 @@ stack the legend after the information table using measured content bounds.
 Keep the title block at the lower-right extremity. Check the largest information
 table and richest legend together against that fixed title block.
 
-A0 schedules belong at the opposite, left extremity, using the available page
-height before adding panels. Place the customer schedule directly beside the
-measured pole schedule with a common top edge. Do not position it after the
-unused width of a maximum-size frame. Use horizontal content flow when the
-schema offers it (`flow.placement: right_top`, `gap_mm: 0`) and zero panel gaps
-when the requested arrangement is contiguous. Keep both bindings left aligned.
-As row counts change, the next schedule must follow the actual number of panels.
-Do not let automatic composition move edge-anchored schedules into the map.
+A0 schedules normally use the left extremity, filling available vertical capacity
+before opening the next panel. Pole and customer schedules have independent
+containers; couple them with flow only when the user requests a joined stack.
+Retain a deliberate margin between schedules and between panels. Explicit corner
+anchors remain fixed during automatic composition; a pole schedule anchored at
+the top or bottom left must not migrate to a middle shelf. Other movable schedules
+can snap to measured information/legend edges with the saved gap when useful.
+
+The hierarchy is map space → drawn printable border → table container → table
+at local (0, 0). Use the owner's frame/container controls; do not add paper offsets
+or size tables from unused frame width. The thick border clips content and draws
+last. Intentional flush title/right-column alignment is distinct from schedule
+clearance; assess against the template's authored boundary margin.
 
 For the right-hand stack, the corresponding supported flow is
 `flow.placement: below_right`; choose a small deliberate vertical gap. Discover
@@ -39,7 +44,14 @@ sample fit. User corrections take precedence over earlier drafts.
 Place the transformer name at the top center of the map sheet in a reserved
 band, using actual centered text alignment. The drawing-name field inside the
 title block does not satisfy a top-title request. Keep all schedules below the
-band. Ground the title in the canonical transformer identity.
+band. Ground the title in the canonical transformer identity. Plans display transformer
+and administrative names with `.title()` casing without renaming source keys.
+
+Use plain schedules selected from actual available engineering columns. Keep
+consultant-required X/Y and use source coordinates without guessing a CRS. Show
+meter numbers for as-built only where available; do not invent design values.
+LV line number is not a default print column. Reserve workbook/Excel presentation
+for Network Information unless the user explicitly requests otherwise.
 
 Use predictable physical row heights, readable type and measured columns.
 Inspect actual row counts and capacity, including the densest transformer.
@@ -57,6 +69,10 @@ clearance above the title block and the centered top name. A successful engine
 receipt does not establish those facts. Keep those accepted previews and their
 recipe revisions; only then regenerate the complete project scope and verify
 publication separately. Do not call the old published PDF the new result.
+
+Map-label omissions describe hidden text, not lost features or schedule rows.
+Use the shared status presentation: label placement is informational; furniture
+collisions, frame overflow and omitted schedule rows still need attention.
 
 ## Drawing-set numbering
 

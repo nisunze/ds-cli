@@ -1,54 +1,39 @@
 # Sheet furniture
 
-Where tables, schedules and legends sit on a sheet, and which fields they carry.
-These are standing rules, not per-sheet decisions: they are the reason the same
-placement instruction stopped having to be repeated. The authority is
-`ds-command-kernel/docs/printing.md`; this reference restates it for printing
-work and must not drift from it.
+Use the live Rust layout contract and the published paper/family baseline.
+[Transformer placement](../../ds-map-composition/references/transformer-sheets.md)
+owns the visual reasoning; [outlier adjustments](../../ds-map-composition/references/outlier-transformers.md)
+explains isolated exceptions. Do not substitute a historical workbook recipe.
 
-## Sheet margin
+## Boundary and placement
 
-Tables, schedules and legends hug the sheet border with one small margin — 5 mm,
-the same constant as the measured content gap, so the space between content and
-the page reads as the space between two content frames.
+The drawn thick border is the printable domain and clips all content. Each
+schedule has its own container and local table origin; unused maximum frame
+width is not measured table width. Retain physical gaps between panels and
+schedules. Use available height before continuation. Flow deliberately couples
+containers; independent schedules remain independently adjustable.
 
-A content frame never floats in unused space. The stack starts at the margin and
-grows inward, and an authored frame wider than its measured content still places
-that content against the border: unused frame width is not a position.
+Explicit corner anchors constrain automatic placement and skyline capacity
+profiles. Other movable furniture may snap to measured information/legend edges
+with the saved gap. Keep the title block grounded lower right and information
+above it with a common visible right edge where that is the accepted arrangement.
+Flush alignment at the border and inset schedule clearance are different choices.
 
-This is the default, not a per-sheet judgement. A sheet that floats its schedules
-away from the border is wrong even when nothing overlaps. Placement is a
-maximisation of printed area subject to not obstructing the map — treat it as
-that constraint, not as taste.
+## Fields and headings
 
-See `docs/printing.md`, "Sheet margin" and "What a sheet layout optimises".
+Use selected columns from actual transformer engineering data for plain schedules,
+with Design/AsBuilt phase. Preserve required X/Y using source values and their
+known CRS. Meter number matters for as-built where available; unavailable design
+values stay unavailable. Do not add LV line number by default. Network Information
+can retain workbook presentation; schedules use it only when explicitly requested.
 
-## Headings never widen a column
+Choose the live heading treatment rather than abbreviating engineering names to
+force a fit. Indexed headings can carry a complete key above each panel. Frame,
+panel and type adjustments must preserve required fields and complete rows.
 
-`table.heading_mode` defaults to `auto_index`. When an authored heading is wider
-than the data beneath it, every column takes its order letter (A, B, C...) and
-the full names move to the untruncated key above the panel.
+## Diagnostics
 
-Do not shorten a heading by hand, and do not drop a column to make one fit. A
-long name belongs in the key, not in a squeezed or truncated header cell.
-
-See `docs/printing.md`, "Column headings".
-
-## Schedule fields follow the workbook
-
-A printed schedule carries the fields its workbook carries. Bind the schedule to
-the exported table rather than re-choosing a narrower set per sheet, exactly as
-the information table already works.
-
-The customer / house-connection schedule is: Pole Number, House Number, Names,
-Meter Type, Category, From Tr Distance, Nid, Service Area Length M, Village,
-X, Y.
-
-Omit the as-built-only fields when the project is not as-built — `meter_type`,
-`nid`, any phone number — because a design cannot have them. Print everything
-else.
-
-A column is never dropped for width. If it does not fit, that is a placement,
-panel or font decision, not a reason to lose a field.
-
-See `docs/printing.md`, "Schedule fields follow the workbook".
+Read the shared status output. Label-placement notes count map text hidden to
+avoid overlap or clipping; they do not imply missing source records. Furniture
+findings and schedule row omissions remain problems to resolve. Table schematics
+are compact editing aids, not measured export geometry: inspect a real render.
