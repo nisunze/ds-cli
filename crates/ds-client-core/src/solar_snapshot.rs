@@ -17,9 +17,10 @@ const TEXT_MAX_BYTES: usize = 4 * 1024;
 /// The serialized intake bytes include short-lived signed download URLs and
 /// are therefore private, zeroized on drop, and intended only for immediate
 /// transfer to the fixed ds-solar stdin intake contract. Public accessors
-/// expose provenance, never transport authority.
+/// expose provenance and the canonical city document, never transport authority.
 pub struct SolarSnapshot {
     intake_bytes: Vec<u8>,
+    document_json: String,
     ds_project: String,
     template_id: String,
     snapshot_sha256: String,
@@ -33,6 +34,10 @@ pub struct SolarSnapshot {
 }
 
 impl SolarSnapshot {
+    /// Exact validated canonical city document; excludes signed download descriptors.
+    pub fn document_json(&self) -> &str {
+        &self.document_json
+    }
     pub fn ds_project(&self) -> &str {
         &self.ds_project
     }
@@ -139,6 +144,7 @@ impl SolarSnapshot {
 impl Drop for SolarSnapshot {
     fn drop(&mut self) {
         self.intake_bytes.zeroize();
+        self.document_json.zeroize();
     }
 }
 
@@ -267,6 +273,7 @@ pub(crate) fn decode_snapshot(
     }
     Ok(SolarSnapshot {
         intake_bytes,
+        document_json: data.snapshot_json,
         ds_project: ds_project.to_owned(),
         template_id: template_id.to_owned(),
         snapshot_sha256: data.snapshot_sha256,

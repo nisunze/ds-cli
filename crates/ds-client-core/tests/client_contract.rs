@@ -2688,6 +2688,10 @@ fn solar_snapshot_is_one_fixed_project_root_call_and_bounded_data_handoff() {
     );
     assert_eq!(snapshot.source_document_count(), 4);
     assert_eq!(snapshot.media_download_count(), 0);
+    assert_eq!(
+        snapshot.document_json(),
+        envelope["data"]["snapshot_json"].as_str().unwrap()
+    );
     assert_eq!(snapshot.snapshot_sha256().len(), 64);
     assert_eq!(snapshot.input_base_fingerprint(), "b".repeat(64));
     assert_eq!(
