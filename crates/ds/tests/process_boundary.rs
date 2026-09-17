@@ -25,12 +25,16 @@ use std::path::{Path, PathBuf};
 /// from constants and typed inputs, never from a caller's string.
 const SPAWN_OWNERS: &[(&str, &str)] = &[
     (
+        "crates/ds-cli-server/src/solar_documents.rs",
+        "captured Solar report renderer invokes only installed pandoc and libreoffice with fixed conversion options, private owner-verified resources and fixed report filenames; the caller supplies neither an executable nor argv",
+    ),
+    (
         "crates/ds-cli-exec/src/design_worker.rs",
         "re-invokes only the current ds executable with fixed Design project processing, captured run id, absolute workspace and numeric CPU budget",
     ),
     (
         "crates/ds-cli-exec/src/solar_worker.rs",
-        "re-invokes only the current ds executable with the fixed Solar project sync command, absolute workspace and validated deployment lane after the caller governed-write gate",
+        "re-invokes only the current ds executable with the fixed Solar project sync command, absolute workspace, validated explicit project and deployment lane after the caller governed-write gate",
     ),
     (
         "crates/ds-cli-exec/src/lib.rs",

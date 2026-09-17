@@ -987,6 +987,7 @@ name = "ds-cli-exec"
 version = "0.1.0"
 dependencies = [
  "ds-cli-contract",
+ "ds-command-kernel",
  "serde_json",
 ]
 
@@ -1098,6 +1099,7 @@ dependencies = [
  "tokio",
  "tower",
  "ureq",
+ "zip",
 ]
 
 [[package]]

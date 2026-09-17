@@ -17,6 +17,8 @@ post-authoring document tools, never Solar calculation or factual authorities.
 On Server, discover `solar.application` and the native application schema's
 `report_bundle` operation. Select one city report or imported reviewed final,
 pin its exact calculation batch identity, and provide a new private ZIP destination.
+For a portfolio, discover `portfolio_report_bundle` and pin both its aggregate
+batch and exact city-source batch. Do not substitute a current or same-name run.
 On a paired Desktop the live `solar.report.bundle` compatibility contract also
 exports one run, city and intent. The ZIP contains:
 
@@ -53,7 +55,10 @@ ds solar final import --run-id <run> --city <context> --file <final.md> --yes
 ds solar final submit --run-id <run> --city <context> --yes
 ```
 
-Those commands are paired compatibility routes. On Server discover the native
+Those commands are paired compatibility routes. For a Server portfolio,
+discover `portfolio_final_import` and `portfolio_final_inspect`, pin the source
+portfolio batch and choose its declared source draft. Each reviewed final keeps
+an independent immutable closure. On Server discover the native
 `final_import` and `final_inspect` schemas through `solar.application`, supply an
 explicit source path, and inspect the immutable final receipt. A native
 `report_bundle` of that imported final produces its governed rendering copy
@@ -64,6 +69,15 @@ Import is local review state; submit is the separate publication action. The
 exact reviewed Markdown remains the report authority.
 
 ## Optional document finishing
+
+On Server, prefer the discovered native `report_finish` operation after final
+import. It pins the final's complete image package and original canonical
+bytes, removes the authoring guide and hidden comments only in a presentation
+copy, and invokes fixed installed Pandoc/LibreOffice effects headlessly. Select
+DOCX or PDF and a new private destination. Keep its source pins, content digest
+and `publication: not_requested` with the exported file; local conversion is
+not online delivery. When that installed operation is absent, follow the
+external finishing procedure below.
 
 Only after Markdown passes import lint, discover the governed workstation
 surface with `ds capabilities workstation.status`, then run the returned

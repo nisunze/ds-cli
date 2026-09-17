@@ -19,14 +19,15 @@ use std::{
 pub static COMMAND: Command = Command {
     id: "solar.project.sync",
     path: &["solar", "project", "sync"],
-    contract: 1,
+    contract: 2,
     summary: "Publish queued Solar cities and drafts without Desktop.",
-    purpose: "Restore the native user in the selected lane and bind the workspace to that principal, audience and selected project. Publish the oldest city revision with a cloud revision fence, then verified run artifacts through the existing compute artifact service. Failures preserve local drafts and pending work. --background starts the same fixed worker; --watch keeps retrying transient failures. Use --inputs-only to publish editable inputs and copied maps while leaving draft publication intents untouched (for example a development run awaiting a release build). Only the Solar owner reads the workspace database.",
+    purpose: "Restore the native user in the selected lane and bind the workspace to that principal, audience and explicit project, leaving saved selection unchanged. Publish the oldest city revision with a cloud revision fence, then verified run artifacts through the existing compute artifact service. Failures preserve local drafts and pending work. --background starts the same fixed worker with its captured project; --watch keeps retrying transient failures. Use --inputs-only to publish editable inputs and copied maps while leaving draft publication intents untouched (for example a development run awaiting a release build). Only the Solar owner reads the workspace database.",
     chapter: Chapter::Solar,
     effect: Effect::GlobalWrite,
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
     args: &[
+        crate::portfolio_headless::PROJECT,
         Arg::value("workspace", "<dir>", "Private local Solar workspace.").required(),
         Arg::value("lane", "<lane>", "stable or canary; default stable."),
         Arg::value(
@@ -83,6 +84,13 @@ fn availability() -> Availability {
     crate::DS_SOLAR.availability()
 }
 pub fn run(i: &Inputs, _: &Context) -> Result<Value, Failure> {
+    let project = i.require("project")?;
+    if !ds_command_kernel::execution_context::valid_project(project) {
+        return Err(Failure::invalid(
+            "solar_project_worker_input",
+            "Invalid explicit Solar project identity",
+        ));
+    }
     let workspace = fs::canonicalize(i.require("workspace")?).map_err(io_error)?;
     let lane = i.value("lane").unwrap_or("stable");
     if !matches!(lane, "stable" | "canary") {
@@ -91,7 +99,8 @@ pub fn run(i: &Inputs, _: &Context) -> Result<Value, Failure> {
             "lane must be stable or canary",
         ));
     }
-    invoke(json!({"operation":"status","workspace":workspace}))?;
+    let status = invoke(json!({"operation":"status","workspace":workspace}))?;
+    validate_workspace_project(&status, project)?;
     if (i.switch("background") && (i.switch("inputs-only") || i.value("run-id").is_some()))
         || (i.switch("inputs-only") && i.value("run-id").is_some())
     {
@@ -102,7 +111,7 @@ pub fn run(i: &Inputs, _: &Context) -> Result<Value, Failure> {
     }
     if i.switch("background") {
         return Ok(
-            json!({"worker_pid":ds_cli_exec::start_solar_project_sync(&workspace,lane)?,"workspace":workspace,"publication":"background"}),
+            json!({"worker_pid":ds_cli_exec::start_solar_project_sync(&workspace,lane,project)?,"project_id":project,"workspace":workspace,"publication":"background"}),
         );
     }
     let path = workspace.join("sync.lock");
@@ -129,7 +138,13 @@ pub fn run(i: &Inputs, _: &Context) -> Result<Value, Failure> {
     let mut published = 0;
     let mut delay = 2;
     loop {
-        let outcome = sync_one(&workspace, lane, i.switch("inputs-only"), i.value("run-id"));
+        let outcome = sync_one(
+            &workspace,
+            lane,
+            project,
+            i.switch("inputs-only"),
+            i.value("run-id"),
+        );
         match outcome {
             Ok(true) => {
                 published += 1;
@@ -168,6 +183,7 @@ pub fn run(i: &Inputs, _: &Context) -> Result<Value, Failure> {
 fn sync_one(
     workspace: &Path,
     lane: &str,
+    project: &str,
     inputs_only: bool,
     run_id: Option<&str>,
 ) -> Result<bool, Failure> {
@@ -178,7 +194,7 @@ fn sync_one(
         return Ok(false);
     }
     let outcome = (|| {
-        let mut session = ds_cli_auth::solar_project_session(lane)?;
+        let mut session = ds_cli_auth::solar_project_session_for_project(lane, project)?;
         let b = session.binding();
         invoke(
             json!({"operation":"sync_bind","workspace":workspace,"project":b["project"],"lane":b["lane"],"principal":b["principal"],"audience":b["audience"]}),
@@ -256,6 +272,33 @@ fn sync_one(
         )?;
     }
     outcome
+}
+
+fn validate_workspace_project(status: &Value, project: &str) -> Result<(), Failure> {
+    if status["project"]["project_id"] != project
+        || status["project"]["root"] != format!("eds_project/{project}/eds_solar")
+    {
+        return Err(Failure::invalid(
+            "solar_project_worker_input",
+            "The explicit project differs from the Solar workspace identity",
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod project_context_tests {
+    use super::*;
+    #[test]
+    fn publication_context_cannot_borrow_another_workspace_project() {
+        let status =
+            json!({"project":{"project_id":"project_a","root":"eds_project/project_a/eds_solar"}});
+        assert!(validate_workspace_project(&status, "project_a").is_ok());
+        assert!(validate_workspace_project(&status, "project_b").is_err());
+        let mixed =
+            json!({"project":{"project_id":"project_a","root":"eds_project/project_b/eds_solar"}});
+        assert!(validate_workspace_project(&mixed, "project_a").is_err());
+    }
 }
 #[derive(Deserialize)]
 #[serde(tag = "operation", rename_all = "snake_case", deny_unknown_fields)]

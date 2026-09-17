@@ -11,6 +11,7 @@ pub mod layers;
 mod server_reports;
 pub mod server_sync;
 pub mod solar_application;
+mod solar_documents;
 #[doc(hidden)]
 pub mod solar_sync;
 use ds_cli_contract::{
@@ -1048,6 +1049,16 @@ fn request(
     body: Option<&[u8]>,
     limit: u64,
 ) -> Result<Vec<u8>, Failure> {
+    request_with_timeout(inputs, method, path, body, limit, 60)
+}
+fn request_with_timeout(
+    inputs: &Inputs,
+    method: &str,
+    path: &str,
+    body: Option<&[u8]>,
+    limit: u64,
+    timeout_seconds: u64,
+) -> Result<Vec<u8>, Failure> {
     let connection = host::load_connection(&state(inputs)?).map_err(failure)?;
     if connection.lane != inputs.require("lane")? {
         return Err(failure("server lane differs from the selected lane"));
@@ -1055,7 +1066,7 @@ fn request(
     let url = format!("http://{}{path}", connection.address);
     let authorization = format!("Bearer {}", connection.token);
     let agent = ureq::Agent::config_builder()
-        .timeout_global(Some(std::time::Duration::from_secs(60)))
+        .timeout_global(Some(std::time::Duration::from_secs(timeout_seconds)))
         .http_status_as_error(false)
         .build()
         .new_agent();
@@ -1114,15 +1125,16 @@ pub fn solar_application(inputs: &Inputs, _: &Context) -> Result<Value, Failure>
     if bytes.len() > 32 * 1024 * 1024 {
         return Err(failure("Solar application request exceeds 32 MiB"));
     }
-    serde_json::from_slice::<ds_solar_native::application::Request>(&bytes)
+    let intent = serde_json::from_slice::<ds_solar_native::application::Request>(&bytes)
         .map_err(|_| failure("Invalid closed native Solar application request"))?;
     let project = project(inputs)?;
-    let response = request(
+    let response = request_with_timeout(
         inputs,
         "POST",
         &with_project("/v1/solar-application", &project),
         Some(&bytes),
         32 * 1024 * 1024,
+        intent.response_timeout_seconds(),
     )?;
     let value: Value = serde_json::from_slice(&response)
         .map_err(|_| failure("Server returned an invalid Solar application receipt"))?;

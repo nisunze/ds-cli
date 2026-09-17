@@ -25,6 +25,7 @@ getrandom = "0.2"
 axum = "0.7"
 tokio = { version = "1", features = ["rt-multi-thread", "net", "signal", "macros"] }
 [dev-dependencies]
+zip.workspace = true
 tempfile = "3"
 tower = { version = "0.5", features = ["util"] }
 # Seeding a queue with thousands of durable rows — what a host left running

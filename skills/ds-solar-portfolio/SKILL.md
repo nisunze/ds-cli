@@ -40,10 +40,14 @@ portfolio result, French APD draft, charts, and closed batch.
 
 The calculation receipt says `publication: not_requested`. Publish the same
 closed output through the discovered publication command only when authorized.
-It rechecks governed membership and sends the exact sealed result bytes.
+It rechecks governed membership and sends the exact sealed result, declared
+drafts and chart bytes. For native application runs, discover `portfolio_publish`
+and retain its exact batch id and digest. Require its output count along with
+the published receipt; a historical result-only publication does not prove the
+complete bundle was delivered.
 Require a verified online publication receipt before claiming synchronization;
-drafts and chart files remain in the local bundle. A successful local
-calculation is separate from publication and must be reported separately.
+A successful local calculation is separate from publication and must be
+reported separately.
 
 Older installed surfaces may offer only the paired lifecycle below. Report
 headless commands absent instead of pairing or changing authority to force

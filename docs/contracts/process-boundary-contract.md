@@ -53,6 +53,7 @@ four owner classes, and each is audited where it lives:
 | The platform package manager | `crates/ds-cli-workstation/src/install.rs` | one fixed manager with a `const` package identity |
 | An executable already on this machine, probed | `crates/ds-cli-workstation/src/detect.rs`, `verify.rs` | bounded version probes and the harmless verification smoke test |
 | This same `ds`, and the installed desktop | `crates/ds-cli-mcp/src/tools.rs` | one `ds <path> … --output json` per `tools/call`; for a live-descriptor command that requires desktop authority and has no named descriptor, one fixed no-argument DS GridDesign launch |
+| Installed document tools | `crates/ds-cli-server/src/solar_documents.rs` | fixed Pandoc Markdown-to-DOCX and LibreOffice DOCX-to-PDF conversions, using private resources verified by the captured Solar owner; no caller-supplied executable or argv |
 
 Every one of those sites builds its arguments from a literal array in its own
 source. None accepts an argv, a subcommand string, or a shell fragment from a
@@ -160,7 +161,7 @@ corrupted package. A code that is genuinely unreachable by a caller goes in
 deliberately short.
 
 The fixed Solar background sender may re-invoke the current `ds` executable
-only as `solar project sync --workspace <absolute path> --lane <stable|canary>
+only as `solar project sync --workspace <absolute path> --project <validated project id> --lane <stable|canary>
 --watch --yes --output json`. `ds-cli-exec::start_solar_project_sync` owns this
 closed process boundary after the initiating command's governed-write gate.
 It accepts no arbitrary executable, subcommand, URL or argument vector.

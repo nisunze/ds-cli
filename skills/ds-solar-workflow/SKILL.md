@@ -134,6 +134,7 @@ These use a private local workspace and existing
 verified reference cache; no Desktop or cloud access is required. Inspect
 `solar.project.result` and `solar.project.outbox` before discussing publication.
 Discover `solar.project.sync` for native authenticated background publication;
-follow its exact selected-project and confirmation contract. Never treat a
+pass its explicit project and lane, and follow its confirmation contract.
+Detached workers retain that project and leave saved selection unchanged. Never treat a
 local result as published, substitute current inputs for a captured run, or
 automatically rebase a cloud conflict.

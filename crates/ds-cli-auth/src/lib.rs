@@ -5614,6 +5614,7 @@ pub struct NamedSolarProjectSession {
     lane: &'static str,
     uid: String,
     audience: String,
+    principal_sha256: String,
     provider: SolarProjectProvider,
 }
 pub fn solar_project_session_for_project(
@@ -5628,6 +5629,10 @@ pub fn solar_project_session_for_project(
             lane: lane.token(),
             uid: device.context().uid().to_owned(),
             audience: device.profile().credential_audience_sha256().to_owned(),
+            principal_sha256: solar_principal_binding_sha256(
+                device.context().uid(),
+                device.context().email(),
+            ),
             provider: SolarProjectProvider::Device(Box::new(device)),
         });
     }
@@ -5639,13 +5644,14 @@ pub fn solar_project_session_for_project(
         project,
         lane: lane.token(),
         uid: user.uid().to_owned(),
+        principal_sha256: solar_principal_binding_sha256(user.uid(), user.email()),
         audience: client.profile().credential_audience_sha256().to_owned(),
         provider: SolarProjectProvider::Firebase(Box::new(client)),
     })
 }
 impl NamedSolarProjectSession {
     pub fn binding(&self) -> Value {
-        json!({"project":self.project,"lane":self.lane,"uid":self.uid,"audience":self.audience})
+        json!({"project":self.project,"lane":self.lane,"uid":self.uid,"principal":self.principal_sha256,"audience":self.audience})
     }
     fn verify_authority(&self) -> Result<(), Failure> {
         let identity = probe_headless_identity_for_named_project(self.lane)?.ok_or_else(|| {

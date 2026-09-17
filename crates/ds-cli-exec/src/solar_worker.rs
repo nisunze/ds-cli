@@ -6,8 +6,15 @@ use std::{
 
 /// Start only the fixed, typed Solar publication worker in this exact CLI.
 /// The caller has already passed the governed-write confirmation gate.
-pub fn start_solar_project_sync(workspace: &Path, lane: &str) -> Result<u32, Failure> {
-    if !matches!(lane, "stable" | "canary") || !workspace.is_absolute() {
+pub fn start_solar_project_sync(
+    workspace: &Path,
+    lane: &str,
+    project: &str,
+) -> Result<u32, Failure> {
+    if !matches!(lane, "stable" | "canary")
+        || !workspace.is_absolute()
+        || !ds_command_kernel::execution_context::valid_project(project)
+    {
         return Err(Failure::invalid(
             "solar_project_worker_input",
             "invalid Solar worker identity",
@@ -23,6 +30,7 @@ pub fn start_solar_project_sync(workspace: &Path, lane: &str) -> Result<u32, Fai
     command
         .args(["solar", "project", "sync", "--workspace"])
         .arg(workspace)
+        .args(["--project", project])
         .args(["--lane", lane, "--watch", "--yes", "--output", "json"])
         .stdin(Stdio::null())
         .stdout(Stdio::null())

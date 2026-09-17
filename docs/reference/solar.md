@@ -50,6 +50,31 @@ A missing image refuses the whole package. Provide a new absolute destination
 under an existing private directory; export never overwrites earlier output.
 The package is local and does not imply publication.
 
+Discover `portfolio_report_bundle` to package a declared portfolio draft or
+reviewed final with its aggregate charts, pinned member charts and governed
+maps. It requires both portfolio and city-source batch pins. Portfolio final
+import and inspection use `portfolio_final_import` and `portfolio_final_inspect`;
+each final has an independent immutable closure tied to its source draft,
+portfolio input and result.
+
+Discover `report_finish` for headless DOCX/PDF production from an imported
+reviewed city or portfolio final. The Rust owner verifies its complete image
+package, checks canonical source bytes, creates a separate presentation copy
+without the authoring guide, and delegates fixed local tool effects. Pandoc
+produces DOCX; LibreOffice converts that DOCX to PDF in an isolated headless
+profile. The source and calculation closures remain unchanged. Destinations
+must be new files under a private directory. A finished local document remains
+`publication: not_requested`.
+
+`portfolio_publish` publishes all result, draft and chart outputs declared by
+one selected native portfolio batch. The standalone portfolio publication
+command does the same for a closed project portfolio directory. Current
+governed membership is checked before upload and fenced at finalization.
+An immutable publication identity pins the source run and exact output bytes;
+repeating that plan resumes the same work. An earlier result-only publication
+cannot be mistaken for the complete bundle. Require the published receipt and
+its output count before claiming online delivery.
+
 The paired commands documented below remain compatibility surfaces while
 their remaining adapters are migrated. Standalone `results read` and dashboard
 composition already read sealed native sources without pairing or sign-in;
@@ -562,8 +587,9 @@ drafts are apd, network, plant and financial. The cache must already contain the
 exact reference data. `project result --run-id ID`, `project status` and
 `project outbox` inspect local state without Desktop or authentication.
 
-`project sync --lane stable --background --yes` launches the fixed native
-uploader. It binds to the signed-in selected project, principal and audience;
+`project sync --project <exact-project> --lane stable --background --yes` launches the fixed native
+uploader. It binds to the explicit workspace project, native principal and audience;
+saved selection is unchanged and detached workers retain that project;
 queues survive failure. Omit `--background` to drain once or use `--watch` to
 watch for new work. The worker exits after 12 hours or a permanent refusal.
 A reviewed city conflict can be rebased with `project sync rebase --sequence N
@@ -602,7 +628,7 @@ The owning [shared-network contract](../../../ds-solar/docs/contracts/shared-net
 describes inheritance, source refresh, legacy adoption and calculation storage.
 A completed local draft is distinct from its pending cloud publication.
 
-`solar project sync --run-id <closed-run>` publishes that run and pending inputs while retaining other queued draft runs. This is useful after a development run is replaced by a released engine; it never acknowledges or deletes the earlier run. Do not combine it with `--inputs-only` or `--background`.
+`solar project sync --project <exact-project> --run-id <closed-run>` publishes that run and pending inputs while retaining other queued draft runs. This is useful after a development run is replaced by a released engine; it never acknowledges or deletes the earlier run. Do not combine it with `--inputs-only` or `--background`.
 
 ## Sealed portfolio finance dashboard
 

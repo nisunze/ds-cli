@@ -298,6 +298,11 @@ pub fn outbox(i: &Inputs, _: &Context) -> Result<Value, Failure> {
 }
 
 pub(crate) fn invoke(request: Value) -> Result<Value, Failure> {
+    let result_limit = if request["operation"] == "portfolio_publication" {
+        192 * 1024 * 1024
+    } else {
+        32 * 1024 * 1024
+    };
     let identity = DS_SOLAR.call_json("build-info", &[], DISCOVERY_TIMEOUT)?;
     if !identity["schemas"]
         .as_array()
@@ -346,16 +351,16 @@ pub(crate) fn invoke(request: Value) -> Result<Value, Failure> {
         return Err(DS_SOLAR.failure_from(&result, "project"));
     }
     let meta = std::fs::symlink_metadata(&output).map_err(io_error)?;
-    if !meta.is_file() || meta.file_type().is_symlink() || meta.len() > 32 * 1024 * 1024 {
+    if !meta.is_file() || meta.file_type().is_symlink() || meta.len() > result_limit {
         return Err(io_error("invalid owner result file"));
     }
     let mut bytes = Vec::new();
     std::fs::File::open(output)
         .map_err(io_error)?
-        .take(32 * 1024 * 1024 + 1)
+        .take(result_limit + 1)
         .read_to_end(&mut bytes)
         .map_err(io_error)?;
-    if bytes.len() > 32 * 1024 * 1024 {
+    if bytes.len() as u64 > result_limit {
         return Err(io_error("owner result exceeds bound"));
     }
     serde_json::from_slice(&bytes).map_err(io_error)

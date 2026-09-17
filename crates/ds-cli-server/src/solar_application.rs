@@ -137,6 +137,27 @@ impl ds_solar_native::SnapshotProvider for NativeReferences {
     }
 }
 
+impl ds_solar_native::PortfolioPublicationProvider for NativeReferences {
+    fn publish(
+        &self,
+        result: Vec<u8>,
+        outputs: Vec<ds_solar_native::PortfolioPublicationFile>,
+    ) -> Result<Value, String> {
+        let outputs = outputs
+            .into_iter()
+            .map(|file| ds_cli_auth::SolarProjectOutput {
+                id: file.declaration.output_id,
+                format: file.declaration.format,
+                content_type: file.declaration.content_type,
+                bytes: file.bytes,
+            })
+            .collect();
+        self.execute(&ds_cli_auth::SolarProjectCommand::Portfolio(
+            ds_cli_auth::SolarPortfolioCommand::Publish { result, outputs },
+        ))
+    }
+}
+
 #[derive(Default)]
 pub struct Applications {
     hosts: Mutex<BTreeMap<PathBuf, NativeHost>>,
@@ -198,11 +219,20 @@ pub(crate) async fn invoke(
             auth: app.auth.clone(),
             session: Mutex::new(None),
         });
+        let application_directory = parent.join("solar-application").join(identity);
+        let renderer = Arc::new(crate::solar_documents::NativeDocuments {
+            directory: application_directory.join("document-tools"),
+            owner: app.connection.owner.clone(),
+            lane: app.connection.lane.clone(),
+            auth: app.auth.clone(),
+        });
         let host = app
             .solar
-            .host(parent.join("solar-application").join(identity))?
+            .host(application_directory)?
+            .with_report_renderer(renderer)
             .with_reference_provider(producer.clone())
             .with_media_provider(producer.clone())
+            .with_portfolio_publication_provider(producer.clone())
             .with_snapshot_provider(producer);
         ds_solar_native::application::execute(host, &context.project, &body)
             .map(Json)
