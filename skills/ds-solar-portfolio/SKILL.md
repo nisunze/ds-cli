@@ -22,6 +22,13 @@ them under an explicit project. This route supports portfolio calculation and
 verified artifact inventories and reads without pairing. Discover each selected
 operation rather than copying request schemas or credentials into the skill.
 
+Discover `portfolio_start` for continuing Server work and poll
+`portfolio_progress` until its job settles. `portfolio_cancel` only requests
+cancellation; require the terminal receipt before describing its outcome.
+After restart, an interrupted receipt retains the source and portfolio run
+identities. Inspect any closed artifacts before retrying the same exact intent.
+Calculation and verified online publication remain separate operations.
+
 For typed MCP, use `solar-portfolio-batch` for calculation/publication and
 `solar-delivery` for the governed catalog. Discover `solar.portfolio.list`, `solar.portfolio.calculate`, and
 `solar.portfolio.publish` through live descriptors. The headless catalog uses

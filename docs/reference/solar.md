@@ -25,6 +25,17 @@ settlement is reported explicitly; use a new run ID to retry after inspecting
 any committed artifacts. Closed run IDs cannot silently overwrite earlier work.
 Publication remains a separate operation and requires its online receipt.
 
+Discover `portfolio_start` for a background portfolio calculation, then
+`portfolio_progress` with its returned job ID. Queued and running receipts are
+unfinished; `ready` includes the exact closed result and batch identities.
+`portfolio_cancel` requests cooperative cancellation without claiming that a
+committed result was removed. Jobs are fenced to the captured project. A
+restart preserves terminal receipts and reports unfinished workers as
+`interrupted`, retaining workspace, source run and portfolio run identities.
+Inspect that run before retrying the same exact intent: existing closed bytes
+are verified and preserved. Each context admits 32 active workers and retains
+at most 64 private journals; terminal journal expiration is explicit.
+
 Use `prepare_captured` on Server to select city IDs without constructing snapshots.
 The captured native authority obtains their governed inputs and references inside
 the worker. Poll `prepare_progress`; completed preparation survives restart and
