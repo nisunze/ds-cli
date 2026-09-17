@@ -546,7 +546,7 @@ pub fn html(dashboard: &Dashboard, title: &str) -> String {
                 continue;
             };
             let columns = table["columns"].as_array().unwrap();
-            body.push_str("<table><thead><tr>");
+            body.push_str("<div class=table-scroll tabindex=0><table><thead><tr>");
             for column in columns {
                 body.push_str(&format!(
                     "<th>{}</th>",
@@ -571,7 +571,7 @@ pub fn html(dashboard: &Dashboard, title: &str) -> String {
                 }
                 body.push_str("</tr>");
             }
-            body.push_str("</tbody></table>");
+            body.push_str("</tbody></table></div>");
         }
     }
     if let Some(detail) = dashboard.derived["unavailable_detail"]
@@ -621,7 +621,7 @@ pub fn html(dashboard: &Dashboard, title: &str) -> String {
                     .flat_map(|r| r.keys().map(String::as_str))
                     .collect();
                 body.push_str(&format!(
-                    "<h2>{}</h2><table><caption>{}</caption><thead><tr>",
+                    "<h2>{}</h2><div class=table-scroll tabindex=0><table><caption>{}</caption><thead><tr>",
                     escape(label),
                     escape(label)
                 ));
@@ -641,7 +641,7 @@ pub fn html(dashboard: &Dashboard, title: &str) -> String {
                     }
                     body.push_str("</tr>");
                 }
-                body.push_str("</tbody></table>");
+                body.push_str("</tbody></table></div>");
             }
         }
     }
@@ -650,7 +650,7 @@ pub fn html(dashboard: &Dashboard, title: &str) -> String {
             .as_array()
             .filter(|rows| !rows.is_empty())
         {
-            body.push_str(&format!("<h2>{}</h2><table><caption>{}</caption><thead><tr><th>No.</th><th>Designation</th><th>Description</th><th>Unit</th><th>Unit price</th><th>Quantity</th><th>Amount</th></tr></thead><tbody>",escape(title),escape(title)));
+            body.push_str(&format!("<h2>{}</h2><div class=table-scroll tabindex=0><table><caption>{}</caption><thead><tr><th>No.</th><th>Designation</th><th>Description</th><th>Unit</th><th>Unit price</th><th>Quantity</th><th>Amount</th></tr></thead><tbody>",escape(title),escape(title)));
             for row in rows {
                 body.push_str("<tr>");
                 for value in [
@@ -671,10 +671,11 @@ pub fn html(dashboard: &Dashboard, title: &str) -> String {
                 }
                 body.push_str("</tr>");
             }
-            body.push_str("</tbody></table>");
+            body.push_str("</tbody></table></div>");
         }
     }
-    format!("<!doctype html><html lang=en><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'><title>{}</title><style>body{{font:16px system-ui;background:#0f172a;color:#e2e8f0;margin:40px}}h2{{font-size:14px;color:#94a3b8}}.cards{{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px}}article{{background:#1e293b;padding:16px;border-left:3px solid #38bdf8;border-radius:6px}}small,strong,span{{display:block}}strong{{font-size:24px;margin:8px 0}}span{{color:#94a3b8}}figure{{margin:24px 0;padding:20px;background:#1e293b;border-radius:8px}}figcaption{{font-weight:bold}}svg{{display:block;width:100%;max-width:1000px;height:auto}}.legend{{display:flex;flex-wrap:wrap;gap:16px;list-style:none;padding:0}}.legend span{{display:inline}}details{{overflow:auto}}table{{border-collapse:collapse;width:100%;font-size:13px}}td,th{{padding:8px;border-bottom:1px solid #334155;text-align:left}}summary{{cursor:pointer}}</style><h1>{}</h1>{}</html>",escape(title),escape(title),body)
+    let style = "*{box-sizing:border-box}body{font:16px system-ui;background:#f6f7f8;color:#20262e;margin:24px}h1{font-size:26px;line-height:1.3;overflow-wrap:anywhere}h2{font-size:14px;color:#52606d}.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,200px),1fr));gap:16px}article{min-width:0;background:#fff;padding:16px;border-left:3px solid #0f766e;border-radius:6px;overflow-wrap:anywhere}small,strong,span{display:block}strong{font-size:24px;margin:8px 0}span{color:#52606d}figure{min-width:0;margin:24px 0;padding:20px;background:#fff;border-radius:8px}figcaption{font-weight:bold;overflow-wrap:anywhere}svg,img{display:block;max-width:100%;height:auto}svg{width:100%;max-width:1000px}.legend{display:flex;flex-wrap:wrap;gap:16px;list-style:none;padding:0}.legend span{display:inline}.table-scroll,details{max-width:100%;overflow:auto}table{border-collapse:collapse;min-width:100%;font-size:13px}td,th{padding:8px;border-bottom:1px solid #dce1e5;text-align:left}summary{cursor:pointer}dd{margin-left:16px;overflow-wrap:anywhere}@media(max-width:600px){body{margin:16px}figure{padding:12px}}";
+    format!("<!doctype html><html lang=en><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'><title>{}</title><style>{style}</style><h1>{}</h1>{}</html>",escape(title),escape(title),body)
 }
 
 /// Bounded semantic reads use the same report sections as dashboard hosts.
@@ -735,6 +736,35 @@ mod tests {
         let html = html(&d, "Site");
         assert!(!html.contains("<script"));
         assert!(html.contains("&lt;script&gt;"));
+    }
+    #[test]
+    fn static_dashboard_bounds_long_identities_and_every_table_family() {
+        let mut dashboard = compose(Request {
+            section: Section::Site,
+            report: json!({}),
+            system: None,
+        })
+        .unwrap();
+        dashboard.section = Section::PortfolioFinance;
+        dashboard.derived = json!({
+            "tables":[{"title":"Cities","columns":[{"label":"City","key":"city"}],"rows":[{"city":"long_city_identity"}]}],
+            "kpi_rows":[{"city":"long_city_identity","npv":1}],
+            "network_rows":[{"designation":"line","quantity":1}],
+            "plant_rows":[{"designation":"inverter","quantity":1}]
+        });
+        let html = html(
+            &dashboard,
+            "long_project_identity · long_portfolio_identity",
+        );
+        assert!(html.contains("overflow-wrap:anywhere"));
+        assert!(html.contains(".table-scroll,details{max-width:100%;overflow:auto}"));
+        assert_eq!(html.matches("<table>").count(), 4);
+        assert_eq!(
+            html.matches("<div class=table-scroll tabindex=0><table>")
+                .count(),
+            4
+        );
+        assert_eq!(html.matches("</table></div>").count(), 4);
     }
     #[test]
     fn missing_and_zero_denominators_are_unavailable() {
