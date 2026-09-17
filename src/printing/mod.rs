@@ -1793,6 +1793,9 @@ pub enum Command {
         view_slot: String,
     },
     /// Map space -> printable border -> independent container -> local table.
+    TableDrafts {
+        layout: Layout,
+    },
     SheetFrames {
         layout: Layout,
     },
@@ -2359,6 +2362,10 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
         } => {
             let layout = upgrade(layout)?;
             json!({"index": frames::hit(&layout, &measured, point_mm)?})
+        }
+        Command::TableDrafts { layout } => {
+            let layout = upgrade(layout)?;
+            json!({"tables": frames::drafts(&layout)?})
         }
         Command::SheetFrames { layout } => {
             let layout = upgrade(layout)?;

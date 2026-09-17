@@ -566,3 +566,9 @@ Measured panel footprints remain separate children, not a padded shared region.
 `table_container_rect` edits a table container in border-relative millimetres.
 Rust resolves its parent offset once, retains a local table origin of zero, and
 clears sibling flow for an explicitly positioned independent container.
+
+`table_drafts` returns compact editor schematics at authored physical row/font
+sizes. Heading widths are approximate; they never stretch to maximum container
+size or become export geometry. Reporter alone measures real printed content.
+`print_label_omissions` is a scoped zero-row warning, accepted by the shared
+result validator like diagnostics summaries; wrong run/output/layout is refused.

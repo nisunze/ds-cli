@@ -1120,7 +1120,7 @@ pub fn valid_print_warning(warning: &PrintWarning, transformer: &str, formats: &
                 && warning.omitted_rows == 0
                 && warning.total_rows == 0
         }
-        "print_diagnostics_summary" => {
+        "print_diagnostics_summary" | "print_label_omissions" => {
             placed
                 && warning.element_id.is_empty()
                 && warning.omitted_rows == 0
@@ -2215,9 +2215,14 @@ mod tests {
                     "code":"print_text_unbound", "transformer":"tx_a", "output_id":format,
                     "layout_id":"detail", "element_id":"", "total_rows":0,
                     "omitted_rows":0, "message":"{note} has no value in the title block or the project; the cell printed empty"
+                },
+                {
+                    "code":"print_label_omissions", "transformer":"tx_a", "output_id":format,
+                    "layout_id":"detail", "element_id":"", "total_rows":0,
+                    "omitted_rows":0, "message":"poles labels: 1 skipped by repeat-label spacing"
                 }
             ]);
-            assert_eq!(verify(&document).unwrap().warnings.len(), 3);
+            assert_eq!(verify(&document).unwrap().warnings.len(), 4);
             for (index, key, invalid) in [
                 (0, "code", json!("print_visual_approval")),
                 (0, "element_id", json!("")),
@@ -2228,6 +2233,12 @@ mod tests {
                 (2, "element_id", json!("title")),
                 (2, "layout_id", json!("")),
                 (2, "total_rows", json!(1)),
+                (3, "element_id", json!("poles")),
+                (3, "total_rows", json!(1)),
+                (3, "omitted_rows", json!(1)),
+                (3, "layout_id", json!("another-layout")),
+                (3, "transformer", json!("tx_b")),
+                (3, "output_id", json!("xlsx")),
             ] {
                 let mut changed = document.clone();
                 changed["warnings"][index][key] = invalid;

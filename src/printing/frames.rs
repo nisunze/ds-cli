@@ -57,6 +57,76 @@ pub fn hierarchy(layout: &Layout) -> MapSpace {
     }
 }
 
+/// A compact schematic before the native renderer has measured real rows.
+/// These estimates are never print/export geometry.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct DraftTable {
+    pub rect_mm: [f64; 4],
+    pub column_widths_mm: Vec<f64>,
+    pub row_mm: f64,
+    pub font_mm: f64,
+    pub sample_rows: usize,
+}
+pub fn drafts(layout: &Layout) -> Result<BTreeMap<String, DraftTable>, String> {
+    let mut drafts = BTreeMap::new();
+    for e in &layout.elements {
+        let Some(table) = &e.table else { continue };
+        let font_mm = e.font_pt * 25.4 / 72.;
+        let Ok(rows) = super::table_rows::plan(
+            &e.id,
+            6,
+            e.rect[3],
+            e.font_pt,
+            table.row_mm,
+            table.panels,
+            false,
+            super::TableOverflow::TruncateWarn,
+        ) else {
+            continue;
+        };
+        let widths = table
+            .headings
+            .iter()
+            .enumerate()
+            .map(|(i, heading)| {
+                // Font metrics belong to Reporter. The editor schematic reserves
+                // approximate heading width and never stretches to a max container.
+                let natural = (heading.chars().count() as f64 * font_mm * 0.55 + 2.).max(8.);
+                let min = table.min_widths_mm.get(i).copied().unwrap_or(0.);
+                let max = table
+                    .max_widths_mm
+                    .get(i)
+                    .copied()
+                    .filter(|v| *v > 0.)
+                    .unwrap_or(f64::INFINITY);
+                natural.max(min).min(max)
+            })
+            .collect::<Vec<_>>();
+        let total = widths.iter().sum::<f64>();
+        let factor = (e.rect[2] / total).min(1.);
+        let widths = widths.into_iter().map(|w| w * factor).collect::<Vec<_>>();
+        let height = (rows.visible_rows + 2) as f64 * rows.step_mm;
+        let Ok(rect) = super::sheet_margin::place_in(
+            e,
+            [e.rect[0], e.rect[1], total * factor, height],
+            super::sheet_margin::boundary(layout),
+        ) else {
+            continue;
+        };
+        drafts.insert(
+            e.id.clone(),
+            DraftTable {
+                rect_mm: rect,
+                column_widths_mm: widths,
+                row_mm: rows.step_mm,
+                font_mm,
+                sample_rows: rows.visible_rows,
+            },
+        );
+    }
+    Ok(drafts)
+}
+
 /// Pick real stepped furniture, without making its empty envelope selectable.
 pub fn hit(
     layout: &Layout,
@@ -140,5 +210,26 @@ mod tests {
         assert_eq!(hit(&layout, &measured, [60., 200.]).unwrap(), None);
         assert_eq!(hit(&layout, &BTreeMap::new(), [7., 7.]).unwrap(), None);
         assert!(hit(&layout, &measured, [f64::NAN, 0.]).is_err());
+    }
+    #[test]
+    fn draft_tables_do_not_stretch_to_maximum_container_size() {
+        let mut layout = super::super::default_layout();
+        layout.elements.push(
+            serde_json::from_value(json!({
+                "id":"poles","kind":"table","rect":[15,15,420,811],"font_pt":5.5,
+                "table":{"layer":"poles","columns":["id","x","y"],"headings":["Pole","X","Y"],
+                "widths":[1,1,1],"panels":3,"row_mm":3.5,"align":"left"}
+            }))
+            .unwrap(),
+        );
+        let draft = drafts(&layout).unwrap().remove("poles").unwrap();
+        assert!(draft.rect_mm[2] < 50.);
+        assert_eq!(draft.rect_mm[3], 28.);
+        assert_eq!(draft.row_mm, 3.5);
+        assert_eq!(layout.elements.last().unwrap().rect, [15., 15., 420., 811.]);
+        // A temporarily too-small container remains editable. Only actual
+        // printing refuses unreadable geometry; the schematic is optional.
+        layout.elements.last_mut().unwrap().rect[3] = 1.;
+        assert!(!drafts(&layout).unwrap().contains_key("poles"));
     }
 }
