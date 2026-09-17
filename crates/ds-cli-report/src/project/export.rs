@@ -1027,42 +1027,47 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let staging = out_dir.join(STAGING_DIRECTORY);
     // One transformer's room as the service answers it and this command
     // admits it: an active saved transformer of this project, fetched under
-    // the batch's identity, with a positive saved revision.
+    // the batch's identity, with a positive saved revision. The refusal keeps
+    // the CLI's own class, code and remedy: a preview ends with it as the
+    // command's answer, a delivery records it as one row of the batch.
     let fetch_room =
-        |name: &str| -> Result<(ds_cli_auth::HeadlessTransformerContext, i64), HostFailure> {
+        |name: &str| -> Result<(ds_cli_auth::HeadlessTransformerContext, i64), Failure> {
             match lifecycle.get(name).map(String::as_str) {
                 Some("active") => {}
                 Some(state) => {
-                    return Err(HostFailure::new(
+                    return Err(Failure::conflict(
                         NOT_ACTIVE.code,
                         format!("{name} is {state}, not an active saved transformer"),
-                    ));
+                    )
+                    .remedy(NOT_ACTIVE.remedy));
                 }
                 None => {
-                    return Err(HostFailure::new(
+                    return Err(Failure::conflict(
                         NOT_ACTIVE.code,
                         format!("{name} is not in the project's transformer inventory"),
-                    ));
+                    )
+                    .remedy(NOT_ACTIVE.remedy));
                 }
             }
             // A weak link blinks; a room fetch that was refused by an outage is
             // asked again before the row is written off.
             let context = with_weak_network(WEAK_NETWORK_DELAYS, || {
                 ds_cli_auth::transformer_context(lane, name)
-            })
-            .map_err(failure_to_host)?;
+            })?;
             require_same_context(
                 inventory.identity(),
                 &project_id,
                 context.identity(),
                 context.snapshot().ds_project(),
-            )?;
+            )
+            .map_err(host_failure)?;
             let snapshot = context.snapshot();
             if snapshot.ds_project() != project_id || snapshot.transformer_name() != name {
-                return Err(HostFailure::new(
+                return Err(Failure::invalid(
                     INPUTS_INVALID.code,
                     format!("the service answered for another project or transformer than {name}"),
-                ));
+                )
+                .remedy(INPUTS_INVALID.remedy));
             }
             let server_version = snapshot
                 .metadata()
@@ -1070,12 +1075,13 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
                 .and_then(|version| i64::try_from(version).ok())
                 .filter(|version| *version > 0)
                 .ok_or_else(|| {
-                    HostFailure::new(
+                    Failure::invalid(
                         INPUTS_INVALID.code,
                         format!(
                             "the service reports no saved revision for {name}; save it before reporting"
                         ),
                     )
+                    .remedy(INPUTS_INVALID.remedy)
                 })?;
             Ok((context, server_version))
         };
@@ -1114,7 +1120,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         concurrency: plan.concurrency,
     };
     let fetch = |name: &str| -> Result<TransformerReportInputs, HostFailure> {
-        let (context, server_version) = fetch_room(name)?;
+        let (context, server_version) = fetch_room(name).map_err(failure_to_host)?;
         let snapshot = context.snapshot();
         let print_context = if let Some(context) = &local_context {
             ds_project_data::city_vectors::require_design_coverage(
@@ -1318,7 +1324,7 @@ fn preview_pages(
     holdings_scope: &ds_command_kernel::project_dataset_cache::Scope,
     sheet_positions: &BTreeMap<String, (u32, u32)>,
     out_dir: &Path,
-    fetch_room: impl Fn(&str) -> Result<(ds_cli_auth::HeadlessTransformerContext, i64), HostFailure>,
+    fetch_room: impl Fn(&str) -> Result<(ds_cli_auth::HeadlessTransformerContext, i64), Failure>,
     facts: PreviewFacts<'_>,
 ) -> Result<Value, Failure> {
     // The rooms this machine holds are read, never acquired: without a
@@ -1343,7 +1349,7 @@ fn preview_pages(
             )
             .remedy(OUTPUT_EXISTS.remedy));
         }
-        let (context, server_version) = fetch_room(name).map_err(host_failure)?;
+        let (context, server_version) = fetch_room(name)?;
         let snapshot = context.snapshot();
         let room = HeldRoom {
             transformer: name.clone(),
