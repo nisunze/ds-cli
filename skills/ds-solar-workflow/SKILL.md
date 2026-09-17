@@ -7,11 +7,10 @@ metadata:
 
 # Run the native Solar city lifecycle
 
-Use the `ds` skill for installation discovery and live command contracts, and
-use `ds-project-context` when the active project is not already established.
-The selected native or explicitly paired project owns city authority. Use the
-headless seed, capture, preparation and project lifecycle for server work.
-Never reconstruct project inputs from browser storage, caches, APIs or fixtures.
+Use `ds` for installation and live contracts, and `ds-project-context` if the
+project is unknown. Native or explicitly paired projects own city authority.
+Use headless seed, capture, preparation and project operations on Server.
+Never reconstruct inputs from browser storage, caches, APIs or fixtures.
 
 Discover native Server requests through `solar.application.schema`, then execute
 with `solar.application` (MCP profile `solar-application`). Preserve project and
@@ -107,20 +106,22 @@ do not invalidate sealed calculations; only a published receipt proves sync.
 
 ## Keep the headless route separate
 
-When the user explicitly wants a headless city run, discover the live input
-capture, input preparation and artifact-runner descriptors. Capture pins governed input authority; never substitute a different project
-or root. Preparation may use only an already verified local reference
-cache named through the live command. It must not be given a provider URL,
-weather token, API key, browser cache, fixture input, or invented owner flags.
+For headless city runs, discover capture, preparation and artifact-runner
+contracts. Preserve captured project/root authority. Prepare only from a
+verified local reference cache named by the live command, never provider URLs,
+weather tokens, API keys, browser caches, fixtures or invented flags.
 For a fresh server, seed the captured cities into a local Solar workspace and
 discover reference acquisition. It derives the site/equipment request, uses the
 explicit project authority, and verifies the cache before preparation. Never pass
 provider credentials or substitute fixture bundles.
 
-Keep captured intake private; pass its prepared directory unchanged to the
-discovered artifact runner. Verify engine identity and closed receipts through
-live contracts. Never mix paired receipts or claim cache-hit preparation
-proves a fresh server.
+Preparation also emits a validated `ds.solar.server-submission/v1` envelope.
+For shared runtime work, discover `server.solar.submit` and use that envelope
+unchanged, not the prepared input or publication claim.
+
+Keep intake private; pass prepared directories unchanged to the artifact
+runner. Verify engine identity and closures. Never mix paired receipts or
+claim cache-hit preparation proves a fresh server.
 
 Report proven absent operations through the `ds` skill's feedback procedure;
 never bypass them with bridge calls or skill-local programs.
