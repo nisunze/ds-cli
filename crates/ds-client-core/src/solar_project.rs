@@ -254,6 +254,12 @@ pub(crate) fn call<T: AuthorizedTransport>(
             "The exact Solar artifact head or output has not been published",
         ));
     }
+    let seed_error = matches!(action.as_str(), "seed_preview" | "seed_apply")
+        .then(|| seed_refusal(response.status, &response.body))
+        .flatten();
+    if let Some(error) = seed_error {
+        return Err(error);
+    }
     if response.status == 409 {
         return Err(conflict());
     }
@@ -285,6 +291,77 @@ pub(crate) fn call<T: AuthorizedTransport>(
     } else {
         value["data"].clone()
     })
+}
+
+/// Only the governed seed route's six status/code pairs cross this boundary.
+/// Backend prose, arbitrary codes and oversized bodies remain private.
+fn seed_refusal(status: u16, body: &[u8]) -> Option<ClientError> {
+    if body.len() > 8192 {
+        return None;
+    }
+    let wire: Value = serde_json::from_slice(body).ok()?;
+    if wire["success"] != false {
+        return None;
+    }
+    let code = match (status, wire["error"]["details"]["code"].as_str()?) {
+        (400, "SOLAR_SEED_PROJECT_ROOT_REQUIRED") => "solar_seed_project_root_required",
+        (400, "SOLAR_SEED_SOURCE_INVALID") => "solar_seed_source_invalid",
+        (403, "SOLAR_SEED_COMPONENT_DISABLED") => "solar_seed_component_disabled",
+        (400, "SOLAR_SEED_DIGEST_REQUIRED") => "solar_seed_digest_required",
+        (409, "SOLAR_SEED_DIGEST_MISMATCH") => "solar_seed_digest_mismatch",
+        (400, "SOLAR_SEED_BOUNDED") => "solar_seed_bounded",
+        _ => return None,
+    };
+    Some(ClientError::with_service_refusal(
+        if status == 403 {
+            ErrorKind::AuthenticationRejected
+        } else {
+            ErrorKind::InvalidInput
+        },
+        "The governed Solar seed request was refused",
+        crate::ServiceRefusal::new(status, Some(code), None),
+    ))
+}
+
+#[cfg(test)]
+mod seed_refusal_tests {
+    use super::*;
+
+    #[test]
+    fn exact_seed_codes_survive_without_backend_text() {
+        for (status, code) in [
+            (400, "SOLAR_SEED_PROJECT_ROOT_REQUIRED"),
+            (400, "SOLAR_SEED_SOURCE_INVALID"),
+            (403, "SOLAR_SEED_COMPONENT_DISABLED"),
+            (400, "SOLAR_SEED_DIGEST_REQUIRED"),
+            (409, "SOLAR_SEED_DIGEST_MISMATCH"),
+            (400, "SOLAR_SEED_BOUNDED"),
+        ] {
+            let body = serde_json::to_vec(&json!({"success":false,"error":{"message":"private backend text","details":{"code":code}}})).unwrap();
+            let error = seed_refusal(status, &body).unwrap();
+            let refusal = error.service_refusal().unwrap();
+            assert_eq!(refusal.status(), status);
+            assert_eq!(refusal.code(), Some(code.to_ascii_lowercase().as_str()));
+            assert_eq!(refusal.message(), None);
+            assert!(!error.to_string().contains("private backend text"));
+            assert!(seed_refusal(200, &body).is_none());
+            assert!(seed_refusal(500, &body).is_none());
+        }
+    }
+
+    #[test]
+    fn malformed_unknown_and_inconsistent_refusals_do_not_cross() {
+        for body in [
+            br#"{"success":false,"error":{"details":{"code":"UNKNOWN"}}}"#.as_slice(),
+            br#"{"success":true,"error":{"details":{"code":"SOLAR_SEED_BOUNDED"}}}"#,
+            br#"{"success":false,"error":{"details":{"code":"SOLAR_SEED_COMPONENT_DISABLED"}}}"#,
+            br#"{"success":false,"code":"SOLAR_SEED_BOUNDED"}"#,
+            b"invalid",
+        ] {
+            assert!(seed_refusal(400, body).is_none());
+        }
+        assert!(seed_refusal(400, &vec![b' '; 8193]).is_none());
+    }
 }
 pub(crate) fn run<T: AuthorizedTransport>(
     profile: &ClientProfile,
