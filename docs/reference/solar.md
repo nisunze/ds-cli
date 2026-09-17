@@ -57,7 +57,7 @@ ds solar portfolio delete --portfolio <id> --membership-revision sha256:<digest>
 ds solar run start --portfolio <id> --membership-revision <sha256:digest> \
   --graph-strategy first|round-robin|city:<context>
 ds solar portfolio read --run-id <id> --path <field> ...
-ds solar portfolio analysis --portfolio <id>
+ds solar portfolio analysis --project <id> --lane canary --portfolio <id>
 ds solar portfolio export --run-id <id> \
   --artifact result|apd|network|plant|financial --out <file>
 ds solar run cancel --run-id <id>
@@ -227,14 +227,14 @@ and the sealed city id for each available or unavailable graph. It never
 reconstructs the portfolio from city results.
 
 `solar portfolio analysis` answers a different question and is addressed by
-portfolio id alone: does this governed portfolio have a saved analysis at all?
+explicit project and portfolio id: does this governed portfolio have a saved analysis at all?
 `solar portfolio list` reports membership only and `solar portfolio read`
 requires a completed run id, so neither could say. It returns the SAME typed
 projection the application's own Pipeline panel renders — portfolio identity,
 membership revision, ordered members, a `saved_analysis` state of `ready`,
 `failed` or `none`, the analysis identity when one exists, and the governed
-refusal verbatim when the read failed. `none` is a state, not an error. It
-calculates nothing, selects no run, and does not read a sealed artifact.
+refusal verbatim when the read failed. `none` is a state, not an error. Its native read pins membership before fetching and rechecks it afterward.
+It calculates nothing, selects no run, and needs no paired Desktop.
 `solar portfolio export` pages exactly one of the native `result`, `apd`,
 `network`, `plant`, or `financial` artifacts through the same
 `solar.portfolio.read` operation. The selected name is sent unchanged: `result`
@@ -252,19 +252,18 @@ selection and freshness, performs any authenticated source access under its
 existing identity, and returns a bounded receipt over the loopback pairing
 bridge.
 
-All product lifecycle commands require a paired, signed-in DS GridDesign
-session (`authority: desktop_user`). If no session is running they refuse with
-`desktop_not_paired`; if the desktop does not yet implement an operation they
-refuse with `desktop_operation_unsupported`. Update both sides together rather
-than falling back to an untyped request or a storage scrape.
+Legacy paired aliases retain their declared `desktop_user` authority and
+refuse with `desktop_not_paired` when unavailable. The native Server application
+route and explicit-project portfolio governance do not require pairing. Follow
+the installed command's authority and closed request schema.
 
 ## Headless artifact route
 
-`ds solar input capture --city <canonical-id> --out <fresh-file> [--lane
+`ds solar input capture --project <id> --city <canonical-id> --out <fresh-file> [--lane
 stable|canary]` is the authenticated headless intake route. It restores the
-native user and the audience-fenced selected project, derives
+native user and captures explicit project, account, lane and credential audience, derives
 `eds_project/<project>/eds_solar` internally, and makes exactly the fixed
-`desktop_snapshot` request for that city. There is no project, root, endpoint,
+`desktop_snapshot` request for that city. It rechecks authority after the read, leaves saved selection unchanged and accepts no root, endpoint,
 token, receipt or generic request override.
 
 The bounded response is streamed directly to the pinned `ds-solar intake
@@ -278,7 +277,7 @@ than attempting an unversioned handoff.
 
 The owner creates the output with create-new semantics. `ds` then opens that
 exact regular file without following symlinks, performs a bounded read, and
-verifies its closed v1 envelope against the selected project, city, derived
+verifies its closed v1 envelope against the explicit project, city, derived
 root, snapshot digest, input fingerprint, receipt authority, expiry and source
 counts before reporting success. The command returns only the intake digest,
 bounded provenance and a SHA-256 of the receipt id. The raw actor-bound receipt
@@ -562,9 +561,9 @@ results and finalized reports are outside the seed's input collections.
 An explicit Desktop descriptor preserves the existing paired path; replacement
 uses the native path. Seeding does not copy source city's media grants.
 
-Discover existing selected-project city ids with `ds solar cities`; use those exact ids for capture and preparation.
+Discover existing selected-project city ids with `ds solar cities --project <id>`; use those exact ids for capture and preparation.
 
-Use `solar.reference.acquire` for a fresh headless server after capturing and seeding the local workspace. The owner derives the full PV request; the selected native project supplies authenticated transport. A successful receipt verifies cache readback before any calculation.
+Use `solar.reference.acquire` for a fresh headless server after capturing and seeding the local workspace. The owner derives the full PV request; the explicit `--project` supplies captured native authority without changing selection. A successful receipt verifies cache readback before any calculation.
 
 ## Shared network forms
 

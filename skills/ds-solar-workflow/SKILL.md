@@ -104,14 +104,13 @@ failed; never call it published without a successful publication receipt.
 ## Keep the headless route separate
 
 When the user explicitly wants a headless city run, discover the live input
-capture, input preparation and artifact-runner descriptors. Capture establishes
-the selected headless project's authority; never substitute a caller-supplied
-project or root. Preparation may use only an already verified local reference
+capture, input preparation and artifact-runner descriptors. Capture pins governed input authority; never substitute a different project
+or root. Preparation may use only an already verified local reference
 cache named through the live command. It must not be given a provider URL,
 weather token, API key, browser cache, fixture input, or invented owner flags.
 For a fresh server, seed the captured cities into a local Solar workspace and
 discover reference acquisition. It derives the site/equipment request, uses the
-signed-in native project, and verifies the cache before preparation. Never pass
+explicit project authority, and verifies the cache before preparation. Never pass
 provider credentials or substitute fixture bundles.
 
 Keep the captured intake private and pass the resulting prepared directory

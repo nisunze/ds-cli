@@ -1041,16 +1041,6 @@ pub struct HeadlessProjectFormEditor {
     snapshot: ProjectFormSettingsEditor,
 }
 
-/// One governed Solar snapshot fetched under the restored user and the
-/// audience-fenced selected project. Signed download URLs remain only inside
-/// the zeroizing owner-intake bytes and are never exposed as fields.
-pub struct HeadlessSolarSnapshot {
-    lane: &'static str,
-    project_name: String,
-    project_status: String,
-    snapshot: SolarSnapshot,
-}
-
 /// One bounded Survey aggregate fetched under the restored user and the
 /// audience-fenced selected project.
 pub struct HeadlessSurveyQuery {
@@ -1279,21 +1269,6 @@ impl HeadlessSurveyQuery {
     }
     pub const fn result(&self) -> &SurveyQueryResult {
         &self.result
-    }
-}
-
-impl HeadlessSolarSnapshot {
-    pub const fn lane(&self) -> &'static str {
-        self.lane
-    }
-    pub fn project_name(&self) -> &str {
-        &self.project_name
-    }
-    pub fn project_status(&self) -> &str {
-        &self.project_status
-    }
-    pub const fn snapshot(&self) -> &SolarSnapshot {
-        &self.snapshot
     }
 }
 
@@ -2850,97 +2825,36 @@ pub fn project_form_editor(
     })
 }
 
-/// Restore one native user and capture one governed Solar city snapshot from
-/// only the saved, audience-fenced selected project. There is no project or
-/// Solar-root override.
-pub fn solar_snapshot(
+/// Capture one governed city under immutable named-project authority.
+/// Signed media URLs remain zeroizing owner-intake bytes, never public fields.
+pub fn solar_snapshot_for_project(
     lane_value: &str,
+    project: &str,
     template_id: &str,
-) -> Result<HeadlessSolarSnapshot, Failure> {
-    let lane = Lane::parse(lane_value)?;
-    if let Some((mut device, selected)) = restored_device_project(lane)? {
-        let snapshot = device
-            .solar_snapshot(selected.project_id(), template_id)
-            .map_err(map_client)?;
-        return Ok(HeadlessSolarSnapshot {
-            lane: lane.token(),
-            project_name: selected.project_name().to_owned(),
-            project_status: selected.status().to_owned(),
-            snapshot,
-        });
+) -> Result<SolarSnapshot, Failure> {
+    let mut session = solar_project_session_for_project(lane_value, project)?;
+    session.verify_authority()?;
+    let result = match &mut session.provider {
+        SolarProjectProvider::Firebase(client) => {
+            client.solar_snapshot(&session.project, template_id, now())
+        }
+        SolarProjectProvider::Device(device) => {
+            device.solar_snapshot(&session.project, template_id)
+        }
     }
-    let profile = profile::load(lane)?;
-    let store = NativeRefreshStore::open()?;
-    let mut client = Client::new(profile, NativeTransport, store);
-    // Restore may refresh Firebase. The credential store already serializes
-    // that rotation; do not also hold the selected-project filesystem lease
-    // over a remote identity call.
-    let user = match client.restore(now()) {
-        Ok(Some(user)) => user,
-        Ok(None) => {
-            return Err(Failure::unauthorized(
-                "headless_signed_out",
-                "no native user is signed in for this lane and profile",
-            )
-            .remedy("run ds auth login --email <address>")
-            .next("ds auth status"));
-        }
-        Err(error)
-            if matches!(
-                error.kind(),
-                ErrorKind::PermanentlyRevoked | ErrorKind::IdentityMismatch
-            ) =>
-        {
-            let context = ProjectContextLease::acquire(client.profile())?;
-            context.clear().map_err(|_| cleanup_required())?;
-            return Err(map_client(error));
-        }
-        Err(error) => return Err(map_client(error)),
-    };
-    let context = ProjectContextLease::acquire(client.profile())?;
-    let selected = context
-        .load(client.profile(), user.uid(), user.email())?
-        .ok_or_else(|| {
-            Failure::conflict(
-                "headless_project_not_selected",
-                "no project is selected for this native user, lane, and credential audience",
-            )
-            .remedy("run ds auth project use --project <exact-id>")
-            .next("ds auth project status")
-        })?;
-    // The audience/identity-fenced selected value is now owned and the core
-    // binds the response to it. Do not serialize unrelated headless work over
-    // the network call merely to retain a filesystem lease.
-    drop(context);
-    let snapshot = match client.solar_snapshot(selected.project_id(), template_id, now()) {
-        Ok(snapshot) => snapshot,
-        Err(error)
-            if matches!(
-                error.kind(),
-                ErrorKind::PermanentlyRevoked | ErrorKind::IdentityMismatch
-            ) =>
-        {
-            let context = ProjectContextLease::acquire(client.profile())?;
-            context
-                .clear_if_unchanged(&selected)
-                .map_err(|_| cleanup_required())?;
-            return Err(map_client(error));
-        }
-        Err(error) if error.kind() == ErrorKind::ResourceNotFound => {
-            return Err(Failure::invalid(
+    .map_err(|error| {
+        if error.kind() == ErrorKind::ResourceNotFound {
+            Failure::invalid(
                 "solar_city_not_found",
-                "the Solar city does not exist in the selected project",
+                "the city does not exist in the explicit project",
             )
-            .remedy("pass one exact live city id from the selected project"));
+            .remedy("pass one exact city id from ds solar cities --project <id>")
+        } else {
+            map_client(error)
         }
-        Err(error) => return Err(map_client(error)),
-    };
-    Ok(HeadlessSolarSnapshot {
-        lane: lane.token(),
-        project_name: selected.project_name().to_owned(),
-        project_status: selected.status().to_owned(),
-        snapshot,
-    })
+    });
+    session.verify_authority()?;
+    result
 }
 
 /// Restore one native user and run one typed aggregate against only the saved,
@@ -5687,3 +5601,69 @@ pub fn solar_for_project(
         .map_err(map_client)
 }
 pub use ds_client_core::solar_portfolio::Command as SolarPortfolioCommand;
+
+/// Native Solar authority captured for an explicit project, independent of selection.
+pub struct NamedSolarProjectSession {
+    project: String,
+    lane: &'static str,
+    uid: String,
+    audience: String,
+    provider: SolarProjectProvider,
+}
+pub fn solar_project_session_for_project(
+    lane_value: &str,
+    project: &str,
+) -> Result<NamedSolarProjectSession, Failure> {
+    let lane = Lane::parse(lane_value)?;
+    let project = bounded_named_project(project)?;
+    if let Some(device) = restored_device_session(lane)? {
+        return Ok(NamedSolarProjectSession {
+            project,
+            lane: lane.token(),
+            uid: device.context().uid().to_owned(),
+            audience: device.profile().credential_audience_sha256().to_owned(),
+            provider: SolarProjectProvider::Device(Box::new(device)),
+        });
+    }
+    let profile = profile::load(lane)?;
+    let store = NativeRefreshStore::open()?;
+    let mut client = Client::new(profile, NativeTransport, store);
+    let user = require_restore_before_context(&mut client)?;
+    Ok(NamedSolarProjectSession {
+        project,
+        lane: lane.token(),
+        uid: user.uid().to_owned(),
+        audience: client.profile().credential_audience_sha256().to_owned(),
+        provider: SolarProjectProvider::Firebase(Box::new(client)),
+    })
+}
+impl NamedSolarProjectSession {
+    pub fn binding(&self) -> Value {
+        json!({"project":self.project,"lane":self.lane,"uid":self.uid,"audience":self.audience})
+    }
+    fn verify_authority(&self) -> Result<(), Failure> {
+        let identity = probe_headless_identity_for_named_project(self.lane)?.ok_or_else(|| {
+            Failure::unauthorized("headless_signed_out", "Solar authority signed out")
+        })?;
+        if identity.uid() != self.uid || identity.credential_audience_sha256() != self.audience {
+            return Err(Failure::unauthorized(
+                "auth_rejected",
+                "Solar authority changed; capture a new explicit session",
+            ));
+        }
+        Ok(())
+    }
+    pub fn execute(&mut self, command: &SolarProjectCommand) -> Result<Value, Failure> {
+        command.validate(&self.project).map_err(map_client)?;
+        self.verify_authority()?;
+        let result = match &mut self.provider {
+            SolarProjectProvider::Firebase(client) => {
+                client.solar_project(&self.project, command, now())
+            }
+            SolarProjectProvider::Device(device) => device.solar_project(&self.project, command),
+        }
+        .map_err(map_client);
+        self.verify_authority()?;
+        result
+    }
+}

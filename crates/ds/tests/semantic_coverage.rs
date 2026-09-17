@@ -623,7 +623,7 @@ const EXPECTED: &[(&str, &str, &str)] = &[
         "global_write",
         "headless_project",
     ),
-    ("solar.portfolio.analysis", "read_only", "desktop_user"),
+    ("solar.portfolio.analysis", "read_only", "headless_project"),
     (
         "solar.portfolio.batch.start",
         "local_file_write",

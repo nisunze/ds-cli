@@ -91,7 +91,7 @@ impl OwnerCredential for NativeCredential {
 /// The owner fence: the digest of the held credential's (uid, lane, audience).
 /// The same three fields the durable rows are fenced by, so the host's own
 /// identity and its jobs' identity cannot drift apart.
-fn fence(uid: &str, lane: &str, audience: &str) -> Result<String, String> {
+pub(crate) fn fence(uid: &str, lane: &str, audience: &str) -> Result<String, String> {
     Ok(digest(
         &serde_json::to_vec(&(uid, lane, audience)).map_err(|error| error.to_string())?,
     ))

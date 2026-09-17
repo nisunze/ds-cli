@@ -1,4 +1,4 @@
-//! `ds solar input capture` — selected-project snapshot to native owner intake.
+//! `ds solar input capture` — explicit-project snapshot to native owner intake.
 
 use std::ffi::OsString;
 use std::fs::{self, File, OpenOptions};
@@ -22,7 +22,13 @@ const MAX_INTAKE_BYTES: u64 = 32 * 1024 * 1024;
 const CITY: Arg = Arg::value(
     "city",
     "<canonical-id>",
-    "One exact Solar city in the selected headless project.",
+    "One exact Solar city in the explicit project.",
+)
+.required();
+const PROJECT: Arg = Arg::value(
+    "project",
+    "<id>",
+    "Explicit authorized project; selection remains unchanged.",
 )
 .required();
 const OUT: Arg = Arg::value(
@@ -52,18 +58,18 @@ macro_rules! refusal {
 pub static COMMAND: Command = Command {
     id: "solar.input.capture",
     path: &["solar", "input", "capture"],
-    contract: 1,
+    contract: 2,
     summary: "Capture one governed project Solar city for native preparation.",
-    purpose: "Preflights the installed ds-solar governed-intake schema before any authenticated read, restores the native user, derives eds_project/<selected-project>/eds_solar inside the fixed client call, requests only desktop_snapshot for one canonical city, and streams the exact bounded data object directly to `ds-solar intake --snapshot -`. The owner writes one fresh governed intake. Short-lived media download URLs exist only in private bounded memory and the stdin pipe: they never enter argv, stdout, a temporary file, or the resulting intake. There is no project/root override, generic API call, Desktop dependency, or processing-lane claim.",
+    purpose: "Preflights the installed ds-solar governed-intake schema before any authenticated read, restores the native user, captures the explicit project and derives eds_project/<project>/eds_solar inside the fixed client call, requests only desktop_snapshot for one canonical city, and streams the exact bounded data object directly to `ds-solar intake --snapshot -`. The owner writes one fresh governed intake. Short-lived media download URLs exist only in private bounded memory and the stdin pipe: they never enter argv, stdout, a temporary file, or the resulting intake. Authority is rechecked after the read. There is no root override, generic API call or Desktop dependency.",
     chapter: Chapter::Solar,
     effect: Effect::LocalFileWrite,
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[CITY, OUT, LANE],
-    output: "The fresh governed-intake path and SHA-256; selected lane/project/city; server snapshot/fingerprint and hashed receipt provenance plus expiry; bounded source/media counts; and the verified ds-solar owner schema. No snapshot body, raw receipt id, token, signed URL, or owner stdout is emitted.",
+    args: &[PROJECT, CITY, OUT, LANE],
+    output: "The fresh governed-intake path and SHA-256; explicit lane/project/city; server snapshot/fingerprint and hashed receipt provenance plus expiry; bounded source/media counts; and the verified ds-solar owner schema. No snapshot body, raw receipt id, token, signed URL, or owner stdout is emitted.",
     examples: &[Example {
-        command: "ds solar input capture --city pala --out ./pala.intake.json --output json",
-        note: "Capture one selected-project city for `ds solar input prepare`.",
+        command: "ds solar input capture --project <id> --city pala --out ./pala.intake.json --output json",
+        note: "Capture one explicit-project city for `ds solar input prepare`.",
         runnable: false,
     }],
     refusals: &[
@@ -86,16 +92,6 @@ pub static COMMAND: Command = Command {
             "headless_signed_out",
             "the lane has no restorable native user",
             "run ds auth login --email <address>"
-        ),
-        refusal!(
-            "headless_project_not_selected",
-            "the restored user has no audience-fenced selected project",
-            "run ds auth project use --project <exact-id>"
-        ),
-        refusal!(
-            "project_context_stale",
-            "the project context belongs to another identity or audience",
-            "select the project again with ds auth project use"
         ),
         refusal!(
             "native_state_unsafe",
@@ -130,7 +126,7 @@ pub static COMMAND: Command = Command {
         refusal!(
             "auth_input_invalid",
             "the city id is outside the canonical contract",
-            "pass one exact city id from the selected project"
+            "pass one exact city id from the explicit project"
         ),
         refusal!(
             "auth_rejected",
@@ -159,7 +155,7 @@ pub static COMMAND: Command = Command {
         ),
         refusal!(
             "solar_city_not_found",
-            "the city does not exist in the selected project",
+            "the city does not exist in the explicit project",
             "pass one exact live city id from that project"
         ),
         refusal!(
@@ -229,8 +225,11 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     ensure_absent(&output)?;
     preflight_owner_intake()?;
 
-    let headless = ds_cli_auth::solar_snapshot(inputs.require("lane")?, inputs.require("city")?)?;
-    let snapshot = headless.snapshot();
+    let snapshot = ds_cli_auth::solar_snapshot_for_project(
+        inputs.require("lane")?,
+        inputs.require("project")?,
+        inputs.require("city")?,
+    )?;
     let args = [
         OsString::from("--snapshot"),
         OsString::from("-"),
@@ -267,11 +266,9 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         "intake_bytes": verified.bytes,
         "schema_version": verified.schema_version,
         "city_content_digest": verified.city_content_digest,
-        "lane": headless.lane(),
+        "lane": inputs.require("lane")?,
         "project": {
             "ds_project": snapshot.ds_project(),
-            "project_name": headless.project_name(),
-            "status": headless.project_status(),
         },
         "city": snapshot.template_id(),
         "source": {
@@ -573,11 +570,17 @@ mod tests {
     use super::*;
 
     #[test]
-    fn contract_has_no_project_root_desktop_or_snapshot_file_escape() {
+    fn contract_pins_project_without_root_desktop_or_snapshot_file_escape() {
         assert_eq!(COMMAND.authority, Authority::HeadlessProject);
         assert_eq!(COMMAND.effect, Effect::LocalFileWrite);
         assert_eq!(COMMAND.path, ["solar", "input", "capture"]);
-        for forbidden in ["project", "root", "desktop-descriptor", "snapshot"] {
+        assert!(
+            COMMAND
+                .args
+                .iter()
+                .any(|argument| argument.name == "project")
+        );
+        for forbidden in ["root", "desktop-descriptor", "snapshot"] {
             assert!(
                 COMMAND
                     .args

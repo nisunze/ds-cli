@@ -1591,6 +1591,7 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "ds-solar-contracts",
+ "ds-solar-io",
  "ds-solar-portfolio",
  "ds-solar-runtime",
  "rand 0.9.5",
