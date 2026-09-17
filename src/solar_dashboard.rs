@@ -1,6 +1,7 @@
 //! Deterministic dashboard composition shared by headless and browser hosts.
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+mod finance;
 
 #[derive(Clone, Copy, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -168,6 +169,7 @@ pub fn compose(request: Request) -> Result<Dashboard, String> {
             ] {
                 card("Financial analysis", key, label, values[key].clone(), unit);
             }
+            charts = finance::project(&request.report["05_financial"], system, &mut values)?;
             values
         }
         Section::Plant => {
