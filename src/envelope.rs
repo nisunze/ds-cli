@@ -118,16 +118,19 @@ impl Refusal {
         }
     }
 
+    /// Name the concrete thing that would fix it.
     pub fn remedy(mut self, remedy: impl Into<String>) -> Self {
         self.remedy = Some(remedy.into());
         self
     }
 
+    /// Add one command worth running next, after those already named.
     pub fn next(mut self, command: impl Into<String>) -> Self {
         self.next.push(command.into());
         self
     }
 
+    /// Attach the bounded structured context.
     pub fn detail(mut self, detail: Value) -> Self {
         self.detail = Some(detail);
         self
@@ -237,7 +240,7 @@ mod tests {
         );
         let full = Refusal::new(
             Class::Unavailable,
-            "report_engine_missing",
+            "reporter_engine_missing",
             "the ds-report engine is not installed",
         )
         .remedy("install the native profile")
@@ -246,7 +249,7 @@ mod tests {
         .detail(json!({"engine": "ds-report"}));
         assert_eq!(
             serde_json::to_string(&error("report.project.export", 1, &full)).expect("encodes"),
-            r#"{"v":1,"command":"report.project.export","contract":1,"status":"error","error":{"class":"unavailable","code":"report_engine_missing","message":"the ds-report engine is not installed","retryable":true,"remedy":"install the native profile","next":["ds doctor","ds report project export --transformer T --preview-layout draft.json"],"detail":{"engine":"ds-report"}}}"#
+            r#"{"v":1,"command":"report.project.export","contract":1,"status":"error","error":{"class":"unavailable","code":"reporter_engine_missing","message":"the ds-report engine is not installed","retryable":true,"remedy":"install the native profile","next":["ds doctor","ds report project export --transformer T --preview-layout draft.json"],"detail":{"engine":"ds-report"}}}"#
         );
     }
 

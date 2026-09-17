@@ -225,16 +225,17 @@
         "contract": 1,
         "refusal": {
           "class": "invalid_input",
-          "code": "print_preview_room_incomplete",
-          "message": "the room for TX-0421 is still being stored on this computer",
-          "remedy": "wait for the Design/Status page to finish storing the room",
+          "code": "print_context_survey_empty",
+          "message": "the survey capture for poles has no entries",
+          "remedy": "synchronise the poles form on this computer, then preview again",
           "next": [
-            "ds design status --transformer TX-0421"
+            "ds report project export --transformer TX-0421 --preview-layout draft.json"
           ],
           "detail": {
-            "message_key": "printing_preview_room_incomplete",
+            "message_key": "printing_context_survey_empty",
             "params": {
-              "name": "TX-0421"
+              "bound": "50000",
+              "name": "poles"
             }
           }
         }
@@ -246,17 +247,18 @@
         "status": "error",
         "error": {
           "class": "invalid_input",
-          "code": "print_preview_room_incomplete",
-          "message": "the room for TX-0421 is still being stored on this computer",
+          "code": "print_context_survey_empty",
+          "message": "the survey capture for poles has no entries",
           "retryable": false,
-          "remedy": "wait for the Design/Status page to finish storing the room",
+          "remedy": "synchronise the poles form on this computer, then preview again",
           "next": [
-            "ds design status --transformer TX-0421"
+            "ds report project export --transformer TX-0421 --preview-layout draft.json"
           ],
           "detail": {
-            "message_key": "printing_preview_room_incomplete",
+            "message_key": "printing_context_survey_empty",
             "params": {
-              "name": "TX-0421"
+              "bound": "50000",
+              "name": "poles"
             }
           }
         }
@@ -297,7 +299,7 @@
         "contract": 1,
         "refusal": {
           "class": "unavailable",
-          "code": "report_engine_missing",
+          "code": "reporter_engine_missing",
           "message": "the ds-report engine is not installed beside this executable",
           "next": [
             "ds doctor",
@@ -312,7 +314,7 @@
         "status": "error",
         "error": {
           "class": "unavailable",
-          "code": "report_engine_missing",
+          "code": "reporter_engine_missing",
           "message": "the ds-report engine is not installed beside this executable",
           "retryable": true,
           "next": [
@@ -669,9 +671,9 @@
         "contract": 1,
         "refusal": {
           "class": "failed",
-          "code": "report_output_exists",
-          "message": "TX-0421/sheet.svg already exists under the output directory",
-          "remedy": "choose an empty --out-dir or remove the file",
+          "code": "report_staging_failed",
+          "message": "could not create the staging directory under the output directory",
+          "remedy": "choose a writable --out-dir",
           "next": []
         }
       },
@@ -682,10 +684,10 @@
         "status": "error",
         "error": {
           "class": "failed",
-          "code": "report_output_exists",
-          "message": "TX-0421/sheet.svg already exists under the output directory",
+          "code": "report_staging_failed",
+          "message": "could not create the staging directory under the output directory",
           "retryable": false,
-          "remedy": "choose an empty --out-dir or remove the file"
+          "remedy": "choose a writable --out-dir"
         }
       }
     }
