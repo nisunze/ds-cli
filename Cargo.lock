@@ -1541,6 +1541,7 @@ name = "ds-report-host"
 version = "0.1.0"
 dependencies = [
  "ds-command-kernel",
+ "ds-project-data",
  "rustix",
  "serde_json",
  "sha2",
