@@ -1729,6 +1729,10 @@ pub fn solar_seed_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
 
 pub mod report_consistency;
 
+/// The DS envelope v1, the one answer shape `ds` and the desktop shell give
+/// their external clients. Spoken between processes; no WASM export.
+pub mod envelope;
+
 /// Where vector-tile compute runs for web, Windows Desktop, Linux Desktop and
 /// Linux Server. Source reads and publication remain separate service calls.
 pub mod tiling_placement;
