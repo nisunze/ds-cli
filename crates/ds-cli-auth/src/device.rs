@@ -944,11 +944,13 @@ fn state_key(profile: &ds_client_core::ClientProfile) -> String {
     )
 }
 
+type ReservedDeviceState = (NativeDeviceStore, Option<Zeroizing<Vec<u8>>>);
+
 fn store_reserve(
     key: &str,
     profile: &ds_client_core::ClientProfile,
     now: u64,
-) -> Result<(NativeDeviceStore, Option<Zeroizing<Vec<u8>>>), Failure> {
+) -> Result<ReservedDeviceState, Failure> {
     let mut store = NativeDeviceStore::open()?;
     store.acquire(key).map_err(store_failure)?;
     let current = store.load(key).map_err(store_failure)?.map(Zeroizing::new);
