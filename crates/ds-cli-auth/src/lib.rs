@@ -4016,7 +4016,16 @@ fn map_service_refusal(
         // remedy and next step — several of those arms answer with their own
         // static sentence, so the status and the service's words are carried
         // back over it rather than lost.
-        _ => map_client_kind(kind, message.clone()).with_message(message),
+        _ => {
+            let failure = map_client_kind(kind, message.clone()).with_message(message);
+            match refusal.code() {
+                Some(code) if code.starts_with("solar_seed_") => failure.detail(json!({
+                    "http_status": refusal.status(),
+                    "service_code": code,
+                })),
+                _ => failure,
+            }
+        }
     }
 }
 
@@ -5511,6 +5520,19 @@ mod tests {
         );
         assert_eq!(bare.code(), "auth_rejected");
         assert!(bare.message().ends_with("(HTTP 403)"), "{bare:?}");
+    }
+
+    #[test]
+    fn native_seed_adapter_can_read_the_closed_service_code() {
+        let failure = map_service_refusal(
+            ErrorKind::InvalidInput,
+            &ds_client_core::ServiceRefusal::new(409, Some("solar_seed_digest_mismatch"), None),
+            "The governed Solar seed request was refused",
+        );
+        let detail = failure.detail_value().unwrap();
+        assert_eq!(detail["service_code"], "solar_seed_digest_mismatch");
+        assert_eq!(detail["http_status"], 409);
+        assert!(detail.get("service_message").is_none());
     }
 }
 #[cfg(test)]

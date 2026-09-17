@@ -26,8 +26,7 @@ const LANE_ARG: Arg = Arg::value(
     "Native authentication lane; defaults to stable.",
 );
 fn native_available() -> Availability {
-    // The explicit Desktop route also works in an unpackaged developer build.
-    // Its selected handler owns the backend-specific availability check.
+    // The restored native identity owns backend availability at execution.
     Availability::Available
 }
 
@@ -476,12 +475,14 @@ fn invoke(inputs: &Inputs, _operation: &'static str, arguments: Value) -> Result
         inputs.value("lane").unwrap_or("stable"),
         inputs.require("project")?,
     )?;
-    session.execute(&ds_cli_auth::SolarProjectCommand::Seed {
-        source: inputs.value("source").map(str::to_owned),
-        cities: inputs.repeated("city").to_vec(),
-        overwrite: inputs.switch("overwrite"),
-        digest: arguments["seed_digest"].as_str().map(str::to_owned),
-    })
+    session
+        .execute(&ds_cli_auth::SolarProjectCommand::Seed {
+            source: inputs.value("source").map(str::to_owned),
+            cities: inputs.repeated("city").to_vec(),
+            overwrite: inputs.switch("overwrite"),
+            digest: arguments["seed_digest"].as_str().map(str::to_owned),
+        })
+        .map_err(classify_seed_failure)
 }
 
 /// Name the six conditions ds-brain gives a stable code, so a caller branching
@@ -492,21 +493,22 @@ fn invoke(inputs: &Inputs, _operation: &'static str, arguments: Value) -> Result
 /// would be the wrong thing to key on.
 pub fn classify_seed_failure(failure: Failure) -> Failure {
     let failure = ops::classify_signed_out(failure);
-    if failure.code() != "desktop_refused" {
-        return failure;
-    }
     let Some(detail) = failure.detail_value() else {
         return failure;
     };
-    let reported = format!(
-        "{} {}",
-        detail["code"].as_str().unwrap_or_default(),
-        detail["detail"].as_str().unwrap_or_default(),
-    );
-    let Some((server_code, code)) = SERVER_CODES
-        .iter()
-        .find(|(server_code, _)| reported.contains(server_code))
-    else {
+    let native_code = detail["service_code"].as_str();
+    let reported = if failure.code() == "desktop_refused" {
+        format!(
+            "{} {}",
+            detail["code"].as_str().unwrap_or_default(),
+            detail["detail"].as_str().unwrap_or_default(),
+        )
+    } else {
+        String::new()
+    };
+    let Some((server_code, code)) = SERVER_CODES.iter().find(|(server_code, code)| {
+        native_code == Some(*code) || (!reported.is_empty() && reported.contains(server_code))
+    }) else {
         return failure;
     };
     let refusal = APPLY_REFUSALS
@@ -983,6 +985,29 @@ mod tests {
         let other = Failure::failed("desktop_refused", "refused")
             .detail(json!({ "detail": "the seeding card is busy" }));
         assert_eq!(classify_seed_failure(other).code(), "desktop_refused");
+    }
+
+    #[test]
+    fn exact_native_seed_codes_keep_their_remedies() {
+        for (server_code, expected) in SERVER_CODES {
+            let refused = Failure::invalid("headless_invalid_input", "refused")
+                .detail(json!({"service_code": expected}));
+            let named = classify_seed_failure(refused);
+            assert_eq!(named.code(), *expected);
+            assert_eq!(named.detail_value().unwrap()["server_code"], *server_code);
+            assert!(named.remedy_text().is_some_and(|remedy| remedy.len() > 10));
+        }
+        for detail in [
+            json!({"service_code":"solar_seed_unknown"}),
+            json!({"service_code":"prefix_solar_seed_digest_mismatch_suffix"}),
+            json!({"detail":"SOLAR_SEED_DIGEST_MISMATCH"}),
+        ] {
+            let failure = Failure::invalid("headless_invalid_input", "refused").detail(detail);
+            assert_eq!(
+                classify_seed_failure(failure).code(),
+                "headless_invalid_input"
+            );
+        }
     }
 
     #[test]
