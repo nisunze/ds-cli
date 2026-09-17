@@ -343,6 +343,17 @@ impl DevicePendingAuthorization {
             binding: self.result.binding.clone(),
         }
     }
+    /// A pending link may be replaced only after its captured server deadline.
+    /// Invalid deadlines do not authorize replacement of protected state.
+    pub fn is_expired(&self, now_unix_seconds: u64) -> Result<bool, DeviceError> {
+        let deadline = time::OffsetDateTime::parse(
+            &self.result.expires_at,
+            &time::format_description::well_known::Rfc3339,
+        )
+        .map_err(|_| DeviceError::Response)?;
+        Ok(i128::from(now_unix_seconds) * 1_000_000_000 >= deadline.unix_timestamp_nanos())
+    }
+
     pub fn status_request(&self) -> DeviceStatusRequest<'_> {
         self.result.status_request()
     }
@@ -2037,6 +2048,16 @@ mod tests {
         assert!(!public.contains(&URL_SAFE_NO_PAD.encode([4; 32])));
         let protected = pending.encode_protected().unwrap();
         assert!(String::from_utf8_lossy(protected.as_bytes()).contains("device-code-secret"));
+
+        let mut pending = pending;
+        pending.result.expires_at = "1970-01-01T01:00:10.5+01:00".to_owned();
+        assert_eq!(pending.is_expired(10), Ok(false));
+        assert_eq!(pending.is_expired(11), Ok(true));
+        pending.result.expires_at = "1970-01-01T00:00:10Z".to_owned();
+        assert_eq!(pending.is_expired(9), Ok(false));
+        assert_eq!(pending.is_expired(10), Ok(true));
+        pending.result.expires_at = "not a server deadline".to_owned();
+        assert_eq!(pending.is_expired(u64::MAX), Err(DeviceError::Response));
 
         let wrong_status = TransportResponse::new(200, br#"{"data":{}}"#);
         assert!(parse_device_begin(wrong_status, &binding()).is_err());
