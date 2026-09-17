@@ -2,6 +2,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 mod finance;
+mod portfolio_finance;
 mod static_charts;
 
 #[derive(Clone, Copy, Deserialize, Serialize)]
@@ -11,6 +12,7 @@ pub enum Section {
     Plant,
     Finance,
     Boq,
+    PortfolioFinance,
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -48,6 +50,9 @@ pub fn evaluate(bytes: &[u8]) -> Result<String, String> {
 pub fn compose(request: Request) -> Result<Dashboard, String> {
     if !request.report.is_object() {
         return Err("Dashboard report must be an object".into());
+    }
+    if matches!(request.section, Section::PortfolioFinance) {
+        return portfolio_finance::compose(request.report);
     }
     let mut cards = Vec::new();
     let mut charts = json!({});
@@ -247,6 +252,7 @@ pub fn compose(request: Request) -> Result<Dashboard, String> {
                 "watts_per_panel":ratio(number(&d["capacity"],"solar_power_capacity_mw"),number(&d["equipment_quantities"],"total_panels"),1_000_000.),
                 "kwh_per_battery":ratio(number(&d["capacity"],"battery_storage_capacity_mwh"),number(&d["equipment_quantities"],"total_batteries"),1000.)})
         }
+        Section::PortfolioFinance => unreachable!("portfolio composition is handled above"),
         Section::Site => {
             let d = &request.report["02_site_prep"]["site_metrics"];
             if !d.is_object() {

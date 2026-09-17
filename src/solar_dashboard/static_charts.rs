@@ -184,6 +184,26 @@ pub(super) fn render(key: &str, chart: &Value) -> String {
             }
         }
         sums.clear();
+        let bar_group = |j: usize, s: &Value| {
+            (
+                axis(s),
+                s["stack"]
+                    .as_str()
+                    .map(|v| format!("stack:{v}"))
+                    .unwrap_or_else(|| format!("series:{j}")),
+            )
+        };
+        let mut bar_groups = Vec::new();
+        for (j, s) in series
+            .iter()
+            .enumerate()
+            .filter(|(_, s)| s["type"] == "bar")
+        {
+            let group = bar_group(j, s);
+            if !bar_groups.contains(&group) {
+                bar_groups.push(group);
+            }
+        }
         for (j, s) in series.iter().enumerate() {
             let a = axis(s);
             let c = color(&s["itemStyle"]["color"], j);
@@ -211,8 +231,15 @@ pub(super) fn render(key: &str, chart: &Value) -> String {
                     };
                     let y0 = scale(base, ranges[a]);
                     let y1 = scale(base + v, ranges[a]);
-                    let width = (510. / count as f64 * 0.65).min(30.);
-                    svg.push_str(&format!("<rect x='{:.2}' y='{:.2}' width='{width:.2}' height='{:.2}' fill='{c}'><title>{}: {v}</title></rect>", px - width / 2., y0.min(y1), (y0-y1).abs(), escape(s["name"].as_str().unwrap_or(key))));
+                    let groups = bar_groups.len().max(1);
+                    let position = bar_groups
+                        .iter()
+                        .position(|g| *g == bar_group(j, s))
+                        .unwrap_or(0);
+                    let slot = (510. / count as f64 * 0.65 / groups as f64).min(30.);
+                    let width = slot * if groups > 1 { 0.9 } else { 1. };
+                    let center = px + (position as f64 - (groups - 1) as f64 / 2.) * slot;
+                    svg.push_str(&format!("<rect x='{:.2}' y='{:.2}' width='{width:.2}' height='{:.2}' fill='{c}'><title>{}: {v}</title></rect>", center - width / 2., y0.min(y1), (y0-y1).abs(), escape(s["name"].as_str().unwrap_or(key))));
                 } else {
                     path.push_str(&format!(
                         "{} {px:.2} {py:.2} ",
@@ -231,6 +258,28 @@ pub(super) fn render(key: &str, chart: &Value) -> String {
                     if let Some(v) = number(&mark["yAxis"]) {
                         let y = scale(v, ranges[a]);
                         svg.push_str(&format!("<path d='M80 {y:.2} H590' stroke='{c}' stroke-dasharray='5 4'><title>{}: {v}</title></path>", escape(mark["label"]["formatter"].as_str().unwrap_or("Threshold"))));
+                    }
+                    let px = if let Some(labels) = labels {
+                        if let Some(label) = mark["xAxis"].as_str() {
+                            labels
+                                .iter()
+                                .position(|v| text(v) == label)
+                                .map(|i| x(i, &Value::Null))
+                        } else {
+                            mark["xAxis"]
+                                .as_u64()
+                                .filter(|i| *i < count as u64)
+                                .map(|i| x(i as usize, &Value::Null))
+                        }
+                    } else {
+                        number(&mark["xAxis"])
+                            .filter(|v| *v >= x_range.0 && *v <= x_range.1 && x_range.1 > x_range.0)
+                            .map(|v| 80. + (v - x_range.0) / (x_range.1 - x_range.0) * 510.)
+                    };
+                    if let Some(px) = px {
+                        let label =
+                            escape(mark["label"]["formatter"].as_str().unwrap_or("Baseline"));
+                        svg.push_str(&format!("<path d='M{px:.2} 50 V300' stroke='{c}' stroke-dasharray='5 4'><title>{label}</title></path>"));
                     }
                 }
             }
@@ -285,6 +334,26 @@ mod tests {
         assert!(figure.contains("&lt;script&gt;"));
         assert!(figure.contains("<td>—</td>"));
         assert!(!figure.contains("<script>"));
+    }
+    #[test]
+    fn grouped_bars_stay_separate_while_stacks_and_vertical_markers_align() {
+        let figure = render(
+            "cash",
+            &json!({"xAxis":{"data":["1"]},"series":[
+                {"name":"A","type":"bar","stack":"a","data":[2]},
+                {"name":"B","type":"bar","data":[3],"markLine":{"data":[{"xAxis":"1","label":{"formatter":"Payback"}}]}},
+                {"name":"A2","type":"bar","stack":"a","data":[1]}
+            ]}),
+        );
+        let positions: Vec<f64> = figure
+            .split("<rect x='")
+            .skip(1)
+            .map(|s| s.split('\'').next().unwrap().parse().unwrap())
+            .collect();
+        assert_eq!(positions.len(), 3);
+        assert_eq!(positions[0], positions[2]);
+        assert!(positions[0] + 27. <= positions[1]);
+        assert!(figure.contains("V300") && figure.contains("<title>Payback</title>"));
     }
     #[test]
     fn tiny_pie_values_remain_in_exact_tables_and_svg() {
