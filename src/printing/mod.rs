@@ -16,6 +16,7 @@ pub mod project_sources;
 pub mod session;
 pub mod sheet_margin;
 pub mod style_overrides;
+pub mod table_columns;
 pub mod table_headings;
 pub mod table_rows;
 use schemars::JsonSchema;
@@ -273,6 +274,9 @@ pub enum ElementKind {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct TableBinding {
+    /// Explicit plain-schedule phase; absent preserves legacy layout compatibility.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub phase: Option<table_columns::SchedulePhase>,
     /// Bind the exported workbook's columns, headings and rows, not a hand-picked subset.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub workbook: Option<WorkbookTableBinding>,
@@ -330,6 +334,7 @@ pub struct TableBinding {
 impl Default for TableBinding {
     fn default() -> Self {
         Self {
+            phase: None,
             workbook: None,
             layer: String::new(),
             additional_layers: vec![],
@@ -914,6 +919,18 @@ pub fn validate(layout: &Layout) -> Result<(), String> {
         }
         if element.kind == ElementKind::Table {
             let table = element.table.as_ref().ok_or("table needs a data binding")?;
+            if let Some(phase) = table.phase {
+                if table.workbook.is_some() || table.presentation != TablePresentation::Plain {
+                    return Err("Schedule phase requires a plain engineering table".into());
+                }
+                if table
+                    .columns
+                    .iter()
+                    .any(|key| !table_columns::available_in_phase(key, phase))
+                {
+                    return Err("Installed-connection columns require an as-built schedule".into());
+                }
+            }
             if (!identifier(&table.layer) && table.workbook.is_none())
                 || table.additional_layers.len() > 16
                 || table.additional_layers.iter().enumerate().any(|(i, id)| {
@@ -1618,6 +1635,25 @@ pub enum Command {
         current_user: String,
         limit: usize,
     },
+    /// Available plain-schedule columns from this transformer's actual engineering data.
+    TableColumns {
+        layout: Layout,
+        element_id: String,
+        layers: BTreeMap<String, Value>,
+    },
+    /// Show selected source columns, preserving headings and physical column widths.
+    TableColumnSelection {
+        layout: Layout,
+        element_id: String,
+        columns: Vec<String>,
+        layers: BTreeMap<String, Value>,
+    },
+    /// Author a design/as-built schedule; design removes installed-connection columns.
+    TablePhase {
+        layout: Layout,
+        element_id: String,
+        phase: table_columns::SchedulePhase,
+    },
     /// May a PDF preview of this layout be produced right now, and from what:
     /// every bound print style must be available and there must be map data
     /// to draw. The host assembles the render request from the answer.
@@ -1908,6 +1944,25 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
     let command: Command =
         serde_json::from_slice(input).map_err(|e| format!("invalid printing request: {e}"))?;
     let value = match command {
+        Command::TableColumns {
+            layout,
+            element_id,
+            layers,
+        } => serde_json::to_value(table_columns::catalog(&layout, &element_id, &layers)?)
+            .map_err(|e| e.to_string())?,
+        Command::TableColumnSelection {
+            layout,
+            element_id,
+            columns,
+            layers,
+        } => {
+            json!({ "layout": table_columns::select_columns(&layout, &element_id, &columns, &layers)? })
+        }
+        Command::TablePhase {
+            layout,
+            element_id,
+            phase,
+        } => json!({ "layout": table_columns::set_phase(&layout, &element_id, phase)? }),
         Command::ProjectSettings { sheets, mode } => {
             let mut result = crate::report_formats::inspect_project_settings(&sheets, mode)?;
             result["transformer_instructions"] = sheets["project_settings"]

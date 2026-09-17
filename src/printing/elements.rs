@@ -49,6 +49,7 @@ pub fn new_element(kind: ElementKind, id: String, asset: &str) -> Element {
         fill: super::white(),
         opacity: super::opaque(),
         table: (kind == ElementKind::Table).then(|| TableBinding {
+            phase: None,
             workbook: None,
             layer: NEW_TABLE_LAYER.into(),
             additional_layers: Vec::new(),

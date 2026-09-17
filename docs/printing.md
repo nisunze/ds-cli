@@ -33,6 +33,26 @@ fit the initial composition. `rename` changes only the name; `duplicate`
 requires a different ID and carries the composition into an independent layout.
 CLI `report.layout.edit --request FILE` and web authoring use these same intents.
 
+## Plain engineering schedule visibility
+
+`table_columns` returns column choices from the selected table's source and
+additional source layers. Populated zero and false values count as data; empty
+values do not. Existing template columns remain visible in the choices when
+one transformer has no values, so inspecting it does not silently remove
+columns from the project template.
+
+`table_column_selection` accepts the selected property keys and preserves
+their authored headings and physical width constraints. New columns must have
+data. At least one unique column must remain. `table_phase` authors `design`
+or `as_built`; design removes installed meter/contact fields. Native validation
+enforces the explicit phase too. An absent phase preserves legacy layout
+compatibility. These intents use plain engineering layers rather than Excel
+schedule rows. Network Summary retains `workbook_info` presentation.
+
+Column visibility and print pen overrides belong to the saved template. Saving
+a project template applies them to subsequent sheets using that template; it
+does not change engineering data or silently regenerate existing printouts.
+
 `ds.print-layout/v1` remains an accepted input only. Every evaluated V1 command
 returns V2: standard paper is inferred from exact dimensions, other bounded
 dimensions become custom paper, and the legacy map frame becomes the clipped
@@ -73,7 +93,7 @@ Sheet composition is an optimisation, not a set of placements. The objective is
 to **maximise the usable map area**, subject to hard constraints that are never
 traded against it:
 
-- every table row and field present and readable at the authored type size;
+- every table row and user-selected field present and readable at the authored type size;
 - the 5 mm sheet margin;
 - aligned edges;
 - no overlap, no clipping.
