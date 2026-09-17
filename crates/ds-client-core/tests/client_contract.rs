@@ -8123,7 +8123,6 @@ fn solar_portfolio_analysis_rechecks_membership_and_preserves_absent_analysis() 
         t.0.lock().unwrap().solar_project.extend([
             project_response(row.clone()),
             TransportResponse::new(404, b""),
-            project_response(serde_json::json!({"portfolio_data":null})),
             project_response(after),
         ]);
         let result = client.solar_project(

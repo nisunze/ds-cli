@@ -158,17 +158,9 @@ pub(crate) fn run<T: AuthorizedTransport>(
                     Some(publication),
                 )
             } else {
-                (
-                    call(
-                        profile,
-                        transport,
-                        authority,
-                        false,
-                        json!({"action":"get_portfolio_data","root":root,"portfolio_id":portfolio}),
-                    )?["portfolio_data"]
-                        .clone(),
-                    None,
-                )
+                // Absence of the current contract is an explicit not-yet state.
+                // Historical Firestore projections cannot substitute for its head.
+                (Value::Null, None)
             };
             let after = run(profile, transport, authority, project, &command)?;
             if before["membership_revision"] != after["membership_revision"]
