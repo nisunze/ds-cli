@@ -251,7 +251,7 @@ pub static COMMAND: Command = Command {
     path: &["report", "project", "export"],
     contract: 1,
     summary: "Export all transformer reports and maps headlessly in parallel.",
-    purpose: "Export active transformers and named print outputs with project-wide numbering. --print-layout gives same-paper local proofs with pinned digests; proofs cannot publish. --preview-layout renders one draft layout (any id, any paper, saved or not) as the shared preview page — the engine's SVG every delivered format derives from, text outlined — one per transformer, through the same engine, context and pens a delivery uses; nothing governed changes and it cannot publish. --publish queues Server sync, not cloud completion. Setups use held context; --seed acquires missing context. Photos need a media grant. See docs/reference/report.md. --context-vectors accepts verified data.city-vectors output.",
+    purpose: "Export active transformers with project-wide numbering. Local layout proofs and draft SVG previews cannot publish. --publish queues Server sync; completion requires its publication receipt. Setups use held context; --seed acquires missing context. Photos require a media grant.",
     chapter: Chapter::Reports,
     effect: Effect::LocalFileWrite,
     authority: Authority::HeadlessProject,
@@ -269,7 +269,7 @@ pub static COMMAND: Command = Command {
         Arg::value(
             "preview-layout",
             "<json-file>",
-            "Draft layout to preview: one shared preview page (svg__<id>, text outlined) per transformer in scope, the only output; any id or paper; template pens (style_overrides) apply; cannot publish or combine with --print-layout.",
+            "One SVG preview per transformer, with outlined text and template pens; any draft id or paper. Cannot publish or combine with --print-layout.",
         ),
         Arg::value(
             "context-vectors",
@@ -282,11 +282,9 @@ pub static COMMAND: Command = Command {
         LANE_ARG,
     ],
     output: "\
-Lane, project, scope, engine identity and publication state, the batch (status, \
-counts, concurrency, receipt path), `context` (selected layers, warnings, notes) \
-and one result per transformer in stable order: `ok` with its artifact count, \
-`print_context` and `<transformer>/report-run.json`, or `error` with a typed \
-code; --publish adds the Server-sync queue identity.",
+Lane, project, scope, engine identity, publication state, batch counts and receipt, \
+context diagnostics and ordered transformer results: artifact inventory or typed \
+error. --publish adds the Server-sync queue identity.",
     examples: &[
         Example {
             command: "ds report project export --out-dir ./reports --output json",

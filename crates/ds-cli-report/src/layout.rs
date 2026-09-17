@@ -404,7 +404,7 @@ pub static PENS: Command = Command {
     path: &["report", "layout", "pens"],
     contract: 1,
     summary: "A layout's template-local pens: what each print layer prints with; edit one.",
-    purpose: "Every print layer a layout binds to a governed `_print` style, with the base colour, size, opacity, visibility and categories read from the document the host holds and the effective values after the template's own override (printing::pens). Editing sets one bounded property of that override — the same rows and edits the Printing setup page's pen panel shows — and a preview or delivery prints exactly those pens.",
+    purpose: "Read each layer's governed print pens after layout overrides. Edit sets one bounded property; reset removes a layer's override. The Printing setup panel, preview and delivery use the same projection. Unheld styles are reported explicitly.",
     chapter: Chapter::Reports,
     effect: Effect::ReadOnly,
     authority: Authority::None,
