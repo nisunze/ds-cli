@@ -624,3 +624,11 @@ engineering judgement. Decorative backgrounds and map frames intentionally
 contain other elements and are excluded from furniture-pair collision checks.
 No findings is not visual approval. Inspect representative sheets when needed,
 not every page as a routine production gate.
+
+
+`report layout edit` with `op: "sheet_status"` takes verified `assessments` and
+scoped `warnings`. It returns `warnings` for sheet/data problems and
+`label_notes` for map text omitted by collision, containment, spacing or frame
+clipping. Notes retain layer, reason and count without implying missing data.
+The shared Rust owner deduplicates repeated output assessments; UI displays its
+messages without implementing a separate warning policy.
