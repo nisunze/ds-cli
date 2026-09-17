@@ -251,7 +251,7 @@ pub static COMMAND: Command = Command {
     path: &["report", "project", "export"],
     contract: 1,
     summary: "Export all transformer reports and maps headlessly in parallel.",
-    purpose: "Export active transformers with project-wide numbering. Local layout proofs and draft SVG previews cannot publish. --publish queues Server sync; completion requires its publication receipt. Setups use held context; --seed acquires missing context. Photos require a media grant.",
+    purpose: "Export active transformers and named print outputs with project-wide numbering. Local layout proofs and draft SVG previews cannot publish. --publish queues Server sync; completion requires its publication receipt. Setups use held context; --seed acquires missing context. Photos require a media grant.",
     chapter: Chapter::Reports,
     effect: Effect::LocalFileWrite,
     authority: Authority::HeadlessProject,

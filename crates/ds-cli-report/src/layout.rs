@@ -403,7 +403,7 @@ pub static PENS: Command = Command {
     id: "report.layout.pens",
     path: &["report", "layout", "pens"],
     contract: 1,
-    summary: "A layout's template-local pens: what each print layer prints with; edit one.",
+    summary: "Read or edit the layout's print pens.",
     purpose: "Read each layer's governed print pens after layout overrides. Edit sets one bounded property; reset removes a layer's override. The Printing setup panel, preview and delivery use the same projection. Unheld styles are reported explicitly.",
     chapter: Chapter::Reports,
     effect: Effect::ReadOnly,

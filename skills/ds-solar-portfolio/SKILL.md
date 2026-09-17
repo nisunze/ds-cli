@@ -16,6 +16,12 @@ local files, browser storage, APIs, or remembered commands.
 
 ## Headless calculation and publication
 
+For an approved native Server workspace, discover the closed application
+operations through `solar.application.schema`; `solar.application` executes
+them under an explicit project. This route supports portfolio calculation and
+verified artifact inventories and reads without pairing. Discover each selected
+operation rather than copying request schemas or credentials into the skill.
+
 For typed MCP, use `solar-portfolio-batch` for calculation/publication and
 `solar-delivery` for the governed catalog. Discover `solar.portfolio.list`, `solar.portfolio.calculate`, and
 `solar.portfolio.publish` through live descriptors. The headless catalog uses

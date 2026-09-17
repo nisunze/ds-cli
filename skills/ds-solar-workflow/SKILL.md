@@ -13,6 +13,14 @@ The selected native or explicitly paired project owns city authority. Use the
 headless seed, capture, preparation and project lifecycle for server work.
 Never reconstruct project inputs from browser storage, caches, APIs or fixtures.
 
+For native Server jobs, discover `solar.application.schema` and
+`solar.application`; the compact `solar-application` MCP profile exposes both.
+Select one owner operation before constructing its request. The Server owns
+workspace approval, digest-pinned prepared intake, calculation, progress,
+cancellation and artifact inventories without pairing. Retain the captured
+project and workspace handle throughout. A completed progress receipt survives
+restart; an interrupted receipt requires inspection and a new run ID to retry.
+
 For a governed aggregate with a portfolio id and membership revision, stop and
 use `ds-solar-portfolio`. Repeated city contexts form an explicit city batch;
 they do not become a portfolio merely because more than one city was run.
