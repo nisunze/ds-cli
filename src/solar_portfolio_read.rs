@@ -90,7 +90,132 @@ pub fn evaluate(result: &[u8], context: &[u8]) -> Result<String, String> {
     } else {
         d["legacy_projection"] = legacy_projection(&d)?;
     }
+    d["display_projection"] = display_projection(&d, &a, &b, &r)?;
     serde_json::to_string(&d).map_err(|_| "Cannot encode portfolio read".into())
+}
+
+fn display_projection(
+    d: &Value,
+    artifact: &Value,
+    binding: &Value,
+    receipt: &Value,
+) -> Result<Value, String> {
+    let legacy = d["schema_version"] == "ds-solar.portfolio-result/v1";
+    let strategy = match receipt["representativeStrategy"]
+        .as_str()
+        .unwrap_or("first")
+    {
+        "explicit" if legacy => format!(
+            "city:{}",
+            receipt["representativeCityId"]
+                .as_str()
+                .ok_or("Missing representative city")?
+        ),
+        value => value.to_owned(),
+    };
+    let generated_at = match artifact["completedAt"].as_i64() {
+        Some(ms) => time::OffsetDateTime::from_unix_timestamp_nanos(i128::from(ms) * 1_000_000)
+            .map_err(|_| "Invalid portfolio completion time")?
+            .format(
+                &time::format_description::parse(
+                    "[year]-[month]-[day]T[hour]:[minute]:[second].[subsecond digits:3]Z",
+                )
+                .map_err(|_| "Invalid portfolio time format")?,
+            )
+            .map_err(|_| "Cannot format portfolio completion time")?,
+        None => String::new(),
+    };
+    let cities = d["cities"].as_array().ok_or("Missing portfolio cities")?;
+    let representative = cities
+        .iter()
+        .find(|c| c["city_id"] == d["representative_city_id"]);
+    let mut meta = json!({
+        "cities":cities.iter().map(|c|c["display_name"].clone()).collect::<Vec<_>>(),
+        "city_ids":binding["cityIds"],"city_count":d["city_count"],"generated_at":generated_at,
+        "name":binding["portfolioName"],"portfolio_id":binding["portfolioId"],"portfolio_name":binding["portfolioName"],
+        "graph_strategy":strategy,
+        "engine":format!("{}@{}", d["engine"]["name"].as_str().ok_or("Missing engine name")?, d["engine"]["version"].as_str().ok_or("Missing engine version")?),
+        "native_contract_level":if legacy {"summary-v1"} else if d["schema_version"] == "ds-solar.portfolio-result/v3" {"aggregate-v3"} else {"aggregate-v2"}
+    });
+    let mut identity = json!({"portfolio_id":binding["portfolioId"],"portfolio_name":binding["portfolioName"],"city_ids":binding["cityIds"]});
+    if !binding["membershipRevision"].is_null() {
+        meta["membership_revision"] = binding["membershipRevision"].clone();
+        identity["membership_revision"] = binding["membershipRevision"].clone();
+    }
+    let mut native = json!({"schema_version":d["schema_version"],"portfolio_digest":d["portfolio_digest"],
+        "workspace_handle":artifact["workspaceHandle"],"run_id":artifact["runId"],"binding":identity,"result":artifact["result"]});
+    if !artifact["draft"].is_null() {
+        native["draft"] = artifact["draft"].clone();
+    }
+    let mut projection = if legacy {
+        d["legacy_projection"].clone()
+    } else {
+        json!({})
+    };
+    if legacy {
+        meta["unavailable_sections"] = json!([
+            "assumptions",
+            "site",
+            "network",
+            "investment",
+            "financial_kpis",
+            "risk",
+            "environmental",
+            "institutional",
+            "maps",
+            "representative_graphs"
+        ]);
+    } else {
+        let sections = d["sections"]
+            .as_object()
+            .ok_or("Missing portfolio sections")?;
+        for field in [
+            "assumptions",
+            "site",
+            "network",
+            "demand",
+            "scenarios",
+            "performance",
+            "investment",
+            "financial_kpis",
+            "risk",
+            "environmental",
+            "institutional",
+            "system_rationale",
+            "maps",
+        ] {
+            if let Some(section) = sections.get(field) {
+                projection[field] = section.clone();
+            }
+        }
+        meta["unavailable_sections"] = json!([
+            "network",
+            "institutional",
+            "maps",
+            "representative_graphs",
+            "system_rationale"
+        ]
+        .into_iter()
+        .filter(|field| !sections.contains_key(*field))
+        .collect::<Vec<_>>());
+        for field in ["currency", "project_years", "discount_rate"] {
+            meta[field] = d["assumptions"][field].clone();
+        }
+        let mut graphs = sections
+            .get("representative_graphs")
+            .cloned()
+            .unwrap_or_else(|| json!({}));
+        if let Some(city) = representative {
+            meta["representative_city"] = city["display_name"].clone();
+            meta["representative_city_id"] = city["city_id"].clone();
+            graphs["_representative_city"] = city["display_name"].clone();
+        }
+        projection["representative_graphs"] = graphs;
+        native["input_digest"] = d["input_digest"].clone();
+    }
+    projection["meta"] = meta;
+    projection["native_portfolio"] = native;
+    Ok(projection)
 }
 
 fn number(v: &Value) -> bool {

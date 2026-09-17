@@ -24,6 +24,8 @@ mod project_forms;
 mod project_report;
 mod projects;
 mod session;
+mod solar_artifact;
+pub use solar_artifact::SolarArtifactDownloadCall;
 mod solar_snapshot;
 pub use solar_snapshot::SolarMediaDownloadCall;
 mod status_processing;

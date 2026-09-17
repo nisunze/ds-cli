@@ -248,6 +248,12 @@ pub(crate) fn call<T: AuthorizedTransport>(
                 },
             )
         })?;
+    if artifacts && response.status == 404 && matches!(action.as_str(), "read" | "download") {
+        return Err(ClientError::new(
+            ErrorKind::ResourceNotFound,
+            "The exact Solar artifact head or output has not been published",
+        ));
+    }
     if response.status == 409 {
         return Err(conflict());
     }

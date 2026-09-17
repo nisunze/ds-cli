@@ -134,13 +134,42 @@ pub(crate) fn run<T: AuthorizedTransport>(
                 portfolio: portfolio.clone(),
             };
             let before = run(profile, transport, authority, project, &command)?;
-            let saved = call(
+            let published = crate::solar_artifact::portfolio(
                 profile,
                 transport,
                 authority,
-                false,
-                json!({"action":"get_portfolio_data","root":root,"portfolio_id":portfolio}),
+                project,
+                portfolio,
+                &before["membership_revision"],
             )?;
+            let (data, publication) = if let Some((bytes, publication)) = published {
+                let validated = result(&bytes, project)?;
+                if validated.portfolio_id != *portfolio
+                    || validated.membership_revision != before["membership_revision"]
+                    || publication["engine_version"]
+                        != format!("{}@{}", validated.engine.name, validated.engine.version)
+                    || publication["engine_build_manifest_sha256"]
+                        != validated.engine.build_manifest_sha256
+                {
+                    return Err(invalid());
+                }
+                (
+                    serde_json::from_slice(&bytes).map_err(|_| invalid())?,
+                    Some(publication),
+                )
+            } else {
+                (
+                    call(
+                        profile,
+                        transport,
+                        authority,
+                        false,
+                        json!({"action":"get_portfolio_data","root":root,"portfolio_id":portfolio}),
+                    )?["portfolio_data"]
+                        .clone(),
+                    None,
+                )
+            };
             let after = run(profile, transport, authority, project, &command)?;
             if before["membership_revision"] != after["membership_revision"]
                 || before["cities"] != after["cities"]
@@ -150,7 +179,7 @@ pub(crate) fn run<T: AuthorizedTransport>(
             let request = json!({
                 "binding":{"portfolioId":portfolio,"portfolioName":before["display_name"],
                     "membershipRevision":before["membership_revision"],"cityIds":before["cities"]},
-                "outcome":{"data":saved["portfolio_data"]},"require_binding":true
+                "outcome":{"data":data},"require_binding":true
             });
             let mut receipt: Value = serde_json::from_str(
                 &ds_command_kernel::solar_saved_analysis::evaluate(
@@ -160,6 +189,9 @@ pub(crate) fn run<T: AuthorizedTransport>(
             )
             .map_err(|_| invalid())?;
             receipt["project_id"] = json!(project);
+            if let Some(publication) = publication {
+                receipt["publication"] = publication;
+            }
             Ok(receipt)
         }
         Command::Mutate { intent } => {
@@ -226,7 +258,7 @@ pub(crate) fn run<T: AuthorizedTransport>(
                 &format!("{}@{}", result.engine.name, result.engine.version),
                 &result.engine.build_manifest_sha256,
                 &format!("portfolio-{}", result.portfolio_id),
-                "aggregate-v2",
+                "aggregate-v3",
                 base,
                 None,
                 &[&output],

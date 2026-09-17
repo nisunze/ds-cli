@@ -215,6 +215,7 @@ struct TransportState {
     project_form_editor: VecDeque<TransportResponse>,
     solar_snapshot: VecDeque<TransportResponse>,
     solar_media_download: VecDeque<TransportResponse>,
+    solar_artifact_download: VecDeque<TransportResponse>,
     solar_project: VecDeque<TransportResponse>,
     survey_query: VecDeque<TransportResponse>,
     survey_entries_select: VecDeque<TransportResponse>,
@@ -697,6 +698,25 @@ impl Transport for FixtureTransport {
             correlation_valid,
         ));
         Ok(state.project_form_editor.pop_front().unwrap())
+    }
+
+    fn download_solar_artifact(
+        &mut self,
+        call: ds_client_core::SolarArtifactDownloadCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        assert_eq!(
+            call.url(),
+            "https://storage.googleapis.com/solar-results/result?generation=17&token=private"
+        );
+        let mut state = self.0.lock().unwrap();
+        state.calls.push(format!(
+            "solar_artifact_download limit={}",
+            call.response_limit()
+        ));
+        Ok(state
+            .solar_artifact_download
+            .pop_front()
+            .expect("governed artifact response"))
     }
 
     fn download_solar_media(
@@ -8102,6 +8122,7 @@ fn solar_portfolio_analysis_rechecks_membership_and_preserves_absent_analysis() 
         }
         t.0.lock().unwrap().solar_project.extend([
             project_response(row.clone()),
+            TransportResponse::new(404, b""),
             project_response(serde_json::json!({"portfolio_data":null})),
             project_response(after),
         ]);
@@ -8249,4 +8270,103 @@ fn governed_solar_media_download_verifies_exact_generation_bytes_and_context() {
         .calls()
         .iter()
         .any(|s| s.starts_with("solar_media_download")));
+}
+
+#[test]
+fn published_portfolio_reads_fence_exact_bytes_head_and_membership_before_domain_admission() {
+    use ds_client_core::{solar_portfolio, solar_project::Command};
+    let revision: serde_json::Value = serde_json::from_str(
+        &ds_command_kernel::solar_portfolio_membership_identity(
+            br#"{"portfolio_id":"pf_1","cities":["a","b"]}"#,
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    let row = serde_json::json!({"id":"pf_1","name":"Two cities","cities":["a","b"],"membership_revision":revision["revision"]});
+    // Deliberately not a portfolio: successful transport must proceed to the
+    // separate Rust domain refusal; no transport defect may borrow that admission.
+    let bytes = b"{}";
+    for defect in [
+        "none",
+        "same_length_corrupt",
+        "moved_head",
+        "stale_membership",
+        "wrong_host",
+        "unpinned",
+        "expired",
+    ] {
+        let t = FixtureTransport::with_sign_in(SIGN_IN);
+        let mut client = signed_in(t.clone(), MemoryStore::default());
+        let output = serde_json::json!({"output_id":"portfolio-result","format":"json","content_type":"application/json","size_bytes":bytes.len(),"sha256":format!("{:x}",sha2::Sha256::digest(bytes))});
+        let head = serde_json::json!({"engine":"solar","operation":"portfolio-pf_1","variant":"aggregate-v3","input_base_fingerprint":revision["revision"].as_str().unwrap().trim_start_matches("sha256:"),"head_revision":1,"work_id":"work-1","outputs":[output.clone()]});
+        let mut download = serde_json::json!({"head":head,"output":output,"download_url":"https://storage.googleapis.com/solar-results/result?generation=17&token=private","expires_at":"2099-01-01T00:00:00Z"});
+        match defect {
+            "stale_membership" => {
+                download["head"]["input_base_fingerprint"] = serde_json::json!("e".repeat(64))
+            }
+            "wrong_host" => {
+                download["download_url"] =
+                    serde_json::json!("https://caller.example/result?generation=17")
+            }
+            "unpinned" => {
+                download["download_url"] = serde_json::json!(
+                    "https://storage.googleapis.com/solar-results/result?token=private"
+                )
+            }
+            "expired" => download["expires_at"] = serde_json::json!("2000-01-01T00:00:00Z"),
+            _ => (),
+        }
+        let mut after = head.clone();
+        if defect == "moved_head" {
+            after["head_revision"] = serde_json::json!(2);
+        }
+        {
+            let mut state = t.0.lock().unwrap();
+            state.solar_project.extend([
+                project_response(row.clone()),
+                project_response(download),
+                project_response(after),
+            ]);
+            state
+                .solar_artifact_download
+                .push_back(TransportResponse::new(
+                    200,
+                    if defect == "same_length_corrupt" {
+                        b"[]"
+                    } else {
+                        bytes
+                    },
+                ));
+        }
+        let error = client
+            .solar_project(
+                "p-1",
+                &Command::Portfolio(solar_portfolio::Command::Analysis {
+                    portfolio: "pf_1".into(),
+                }),
+                NOW + 1,
+            )
+            .unwrap_err();
+        assert_eq!(
+            error.kind(),
+            if defect == "none" {
+                ErrorKind::InvalidInput
+            } else {
+                ErrorKind::UnreadableResponse
+            },
+            "{defect}"
+        );
+        assert!(!error.to_string().contains("token=private"));
+        if matches!(
+            defect,
+            "wrong_host" | "unpinned" | "expired" | "stale_membership"
+        ) {
+            assert!(
+                !t.calls()
+                    .iter()
+                    .any(|s| s.starts_with("solar_artifact_download")),
+                "{defect}"
+            );
+        }
+    }
 }

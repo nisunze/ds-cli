@@ -82,6 +82,36 @@ pub fn evaluate(bytes: &[u8]) -> Result<String, String> {
             value["saved_analysis"] = json!("failed");
             value["error"] = json!(error);
         }
+        Outcome::Data { data: Some(data) }
+            if data["schema_version"] == "ds-solar.portfolio-result/v3" =>
+        {
+            let bytes =
+                serde_json::to_vec(&data).map_err(|_| "Cannot encode saved native analysis")?;
+            crate::validate_solar_portfolio_result(&bytes, data["run_id"].as_str().unwrap_or(""))
+                .map_err(|e| e.to_string())?;
+            let ids = Value::Array(
+                data["cities"]
+                    .as_array()
+                    .ok_or("Missing governed cities")?
+                    .iter()
+                    .map(|c| c["city_id"].clone())
+                    .collect(),
+            );
+            if data["portfolio_id"] != value["portfolio_id"]
+                || ids != value["city_ids"]
+                || data["membership_revision"] != revision
+                || data["city_count"] != value["city_count"]
+            {
+                return Err("The saved native portfolio belongs to a different portfolio or membership revision.".into());
+            }
+            value["saved_analysis"] = json!("ready");
+            value["analysis"] = json!({
+                "generated_at":null,"city_count":data["city_count"],
+                "graph_strategy":data["sections"]["representative_graphs"]["_strategy"],
+                "representative_city_id":data["representative_city_id"],
+                "portfolio_digest":data["portfolio_digest"],"run_id":data["run_id"]
+            });
+        }
         Outcome::Data { data: Some(data) } if data["meta"].is_object() => {
             let meta = &data["meta"];
             // A saved response cannot become current by borrowing the selected
