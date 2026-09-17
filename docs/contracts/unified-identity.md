@@ -238,6 +238,15 @@ distinct device link. The MCP child receives only public projections; pending
 secrets, passwords, access tokens, refresh credentials, private keys, and
 protected state paths never enter MCP traffic.
 
+`auth link status` can recover the exact pending link's public receipt without
+a request argument. A supplied request remains an exact identity assertion;
+`--local-only` reports an unobserved receipt without polling or implying approval.
+`auth link begin` may replace a protected pending link only after its captured
+server expiry, interpreted by the native client core. The old bytes remain
+protected until a successful begin response is installed by compare-and-swap.
+Endpoint failures preserve them. Active pending links, durable credentials,
+unreadable state, and malformed deadlines never authorize replacement.
+
 The profile deliberately omits password login, logout, and the Desktop-owned
 `auth link approve` operation. Its tools are generated from the same live command descriptors as the CLI, so
 their authority, arguments, effects, refusals, and result envelopes are

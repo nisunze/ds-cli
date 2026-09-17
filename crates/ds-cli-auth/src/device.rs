@@ -79,7 +79,7 @@ const AUTH_ENDPOINT_UNAVAILABLE: Refusal = Refusal {
 };
 const STATE_EXISTS: Refusal = Refusal {
     code: "device_state_exists",
-    when: "the lane already holds a pending link or durable device credential",
+    when: "the lane holds an active pending link, durable device credential, or unreadable protected state",
     remedy: "complete or revoke the existing device before beginning another link",
 };
 const RNG_UNAVAILABLE: Refusal = Refusal {
@@ -126,10 +126,10 @@ const LINKED_REFUSALS: &[Refusal] = &[
 pub const BEGIN_COMMAND: Command = Command {
     id: "auth.link.begin",
     path: &["auth", "link", "begin"],
-    contract: 1,
+    contract: 2,
     chapter: Chapter::Project,
     summary: "Begin a protected DS device link.",
-    purpose: "Creates a client-only Ed25519 key and PKCE secret, sends only public proof, and stores the pending secret bundle in protected native state.",
+    purpose: "Creates a client-only Ed25519 key and PKCE secret, sends only public proof, and stores the pending secret bundle in protected native state. An expired pending link is replaced atomically after a successful response; active links and durable credentials are preserved.",
     effect: Effect::LocalAuthState,
     authority: Authority::None,
     execution: Execution::Sync,
@@ -270,7 +270,7 @@ pub fn run_begin(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
     let lane = lane(inputs)?;
     let (profile, catalog_digest, gateway_key) = profile::load_device(lane)?;
     let state_key = state_key(&profile);
-    let mut store = store_reserve(&state_key)?;
+    let (mut store, previous) = store_reserve(&state_key, &profile, unix_seconds())?;
     let binding = DeviceBinding::for_profile(&profile, &catalog_digest).map_err(device_failure)?;
     let mut key_bytes = random_bytes::<32>()?;
     let key = DevicePrivateKey::from_secret_bytes(key_bytes);
@@ -298,7 +298,11 @@ pub fn run_begin(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
     let public = pending.public();
     let encoded = pending.encode_protected().map_err(device_failure)?;
     store
-        .compare_and_swap(&state_key, None, Some(encoded.as_bytes()))
+        .compare_and_swap(
+            &state_key,
+            previous.as_deref().map(Vec::as_slice),
+            Some(encoded.as_bytes()),
+        )
         .map_err(store_failure)?;
     release(&mut store, &state_key)?;
     Ok(begin_public_json(public))
@@ -940,19 +944,28 @@ fn state_key(profile: &ds_client_core::ClientProfile) -> String {
     )
 }
 
-fn store_reserve(key: &str) -> Result<NativeDeviceStore, Failure> {
+fn store_reserve(
+    key: &str,
+    profile: &ds_client_core::ClientProfile,
+    now: u64,
+) -> Result<(NativeDeviceStore, Option<Zeroizing<Vec<u8>>>), Failure> {
     let mut store = NativeDeviceStore::open()?;
     store.acquire(key).map_err(store_failure)?;
     let current = store.load(key).map_err(store_failure)?.map(Zeroizing::new);
-    if current.is_some() {
+    let replaceable = current.as_ref().is_some_and(|bytes| {
+        DevicePendingAuthorization::decode_protected(bytes, profile)
+            .and_then(|pending| pending.is_expired(now))
+            == Ok(true)
+    });
+    if current.is_some() && !replaceable {
         let _ = store.release(key);
         return Err(Failure::conflict(
             "device_state_exists",
-            "this lane already has a pending link or durable device credential",
+            "this lane already has an active pending link, durable device credential, or unreadable protected state",
         )
         .remedy("complete or revoke the existing device before beginning another link"));
     }
-    Ok(store)
+    Ok((store, current))
 }
 
 fn store_load(key: &str) -> Result<(NativeDeviceStore, Zeroizing<Vec<u8>>), Failure> {
