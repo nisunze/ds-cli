@@ -14,6 +14,10 @@ pub enum Command {
     Analysis {
         portfolio: String,
     },
+    PublishedRead {
+        portfolio: String,
+        run_id: String,
+    },
     Mutate {
         intent: Value,
     },
@@ -94,6 +98,12 @@ impl Command {
                 // Use the shared identifier contract without inventing a second grammar.
                 membership(portfolio, &json!(["validation_a", "validation_b"]))?;
             }
+            Self::PublishedRead { portfolio, run_id } => {
+                membership(portfolio, &json!(["validation_a", "validation_b"]))?;
+                if !ds_command_kernel::execution_context::valid_project(run_id) {
+                    return Err(invalid());
+                }
+            }
             Self::Mutate { intent } => {
                 plan(intent)?;
             }
@@ -142,11 +152,11 @@ pub(crate) fn run<T: AuthorizedTransport>(
             }
             Ok(catalog(json!([row]))?["portfolios"][0].clone())
         }
-        Command::Analysis { portfolio } => {
-            let command = Command::Get {
+        Command::Analysis { portfolio } | Command::PublishedRead { portfolio, .. } => {
+            let get_command = Command::Get {
                 portfolio: portfolio.clone(),
             };
-            let before = run(profile, transport, authority, project, &command)?;
+            let before = run(profile, transport, authority, project, &get_command)?;
             let published = crate::solar_artifact::portfolio(
                 profile,
                 transport,
@@ -175,11 +185,25 @@ pub(crate) fn run<T: AuthorizedTransport>(
                 // Historical Firestore projections cannot substitute for its head.
                 (Value::Null, None)
             };
-            let after = run(profile, transport, authority, project, &command)?;
+            let after = run(profile, transport, authority, project, &get_command)?;
             if before["membership_revision"] != after["membership_revision"]
                 || before["cities"] != after["cities"]
             {
                 return Err(invalid());
+            }
+            if let Command::PublishedRead { run_id, .. } = command {
+                if data.is_null() {
+                    return Err(ClientError::new(
+                        ErrorKind::InvalidInput,
+                        "No current published Solar portfolio result exists for this membership",
+                    ));
+                }
+                let validated = ds_solar_contracts::validate_portfolio_result_read(data, run_id)
+                    .map_err(|_| invalid())?;
+                return Ok(json!({
+                    "project_id":project,"document":validated.document,
+                    "trace":validated.trace,"publication":publication
+                }));
             }
             let request = json!({
                 "binding":{"portfolioId":portfolio,"portfolioName":before["display_name"],
