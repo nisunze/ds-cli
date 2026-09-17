@@ -152,7 +152,7 @@ pub fn plan(facts: &Facts) -> Result<Plan, String> {
         )),
         Some(transformer) => {
             if crate::report_export::reportable_transformer(&transformer.name).is_err()
-                || (!transformer.kind.is_empty() && transformer.kind != "transformer")
+                || !matches!(transformer.kind.as_str(), "" | "individual" | "transformer")
             {
                 refusals.push(refusal(
                     "print_preview_not_a_transformer",
@@ -326,6 +326,32 @@ mod tests {
         assert_eq!(plan.transformer.as_deref(), Some("agahehe"));
         // A3 landscape at the 96 dpi default: 1587 × 1123.
         assert_eq!((plan.raster.width_px, plan.raster.height_px), (1587, 1123));
+    }
+
+    #[test]
+    fn a_transformer_returned_by_the_printable_inventory_is_admitted_unchanged() {
+        let inventory = super::super::inventory::printable(
+            &[json!({"name":"upgrade_munyinya","kind":"individual","metadata":{"version":7}})],
+            &[super::super::inventory::Room {
+                name: "upgrade_munyinya".into(),
+                owner_email: Some("owner@example.com".into()),
+                local_dirty: false,
+            }],
+            "owner@example.com",
+            1,
+        )
+        .unwrap();
+        let row = &inventory.transformers[0];
+        let mut facts = facts();
+        facts.transformer = Some(Transformer {
+            name: row.name.clone(),
+            kind: row.kind.clone(),
+            cached: Some(row.cached),
+            dirty: Some(row.dirty),
+        });
+        let planned = plan(&facts).unwrap();
+        assert!(planned.ready, "{:?}", planned.refusals);
+        assert_eq!(planned.transformer.as_deref(), Some("upgrade_munyinya"));
     }
 
     #[test]
