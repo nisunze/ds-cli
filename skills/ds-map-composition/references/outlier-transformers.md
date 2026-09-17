@@ -30,6 +30,17 @@ owners. Do not invent flags or a separate MCP control vocabulary.
 
 ## Proof and persistence differ
 
+When the discovered schema offers stepped network fitting and print-scale
+limits, author those through its fit-policy intent. Name all populated required
+engineering sources, use a physical clearance appropriate to symbols/labels,
+and choose project scale bounds from the consultant's readability requirement.
+The closest scale prevents a tiny design filling A0; the farthest bound must
+still admit the complete network. Do not invent limits for an existing project
+or hide a source to make it fit. The native assessment proves the resolved
+scale and footprint. Keep accepted defaults unless the user selects the new
+policy. Explicit cameras and automatic stepped fitting are alternative intents;
+follow the schema's refusal rather than silently overriding the camera.
+
 The layout editor's transformer-override intent applies a validated patch to a
 local layout. Its transformer-instructions intent patches a settings document
 for one transformer/layout and supports removing that exception. These are pure

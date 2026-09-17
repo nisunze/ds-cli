@@ -428,6 +428,27 @@ keys, required print-style references and text. This evaluates admission only;
 PDF rendering still uses the existing renderer.
 
 The same `report layout edit` surface exposes the parent-frame operations:
+`set_fit_policy` accepts a layout plus optional `network_fit` and `scale_limits`
+policies (explicit `null` removes either). `network_fit` names 1..16 required
+engineering `source_layers` and 1..30 mm `clearance_mm`; the native renderer fits
+their conservative stepped footprint around measured furniture using one
+projection. `scale_limits` declares ordered `min_denominator` and
+`max_denominator` within 10..100,000,000. The minimum caps enlargement of a tiny
+design; the maximum refuses an incomplete fit. Existing layouts retain
+rectangular fitting without these policies. Explicit cameras must satisfy scale
+limits and refuse stepped fitting. The actual assessment's `map_fit` contains
+mode, resolved denominator and occupied footprint. This edits a draft; use the
+normal project-template save contract to apply it across transformer sheets.
+
+`preview_context_preparation` accepts a draft layout and `online`; it returns
+only that draft's selected contexts and whether missing inputs may be acquired.
+Prepare these inputs before the read-only native preview. Contour intervals are
+part of the retained context address, so different templates cannot reuse the
+wrong interval set. Acquisition failures and offline omissions remain named.
+`context_status` accepts the render's `omitted` rows (`layer`, `reason`) and
+separates neutral `empty_layers` from `unavailable` sources with their reasons.
+
+The parent-frame operations remain independent:
 `sheet_frames` returns map space → drawn printable border → independent table
 containers → local table origins; `table_container_rect` accepts `element_id`
 and border-relative `rect_mm`, resolves the parent offset in Rust, and clears
