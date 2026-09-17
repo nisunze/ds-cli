@@ -98,7 +98,8 @@ pub fn render_copy(
     .into_iter()
     .collect();
     names.extend(plan.images.iter().map(|image| image.bundle_path.clone()));
-    if archive.len() != names.len() || archive.file_names().any(|name| !names.contains(name)) {
+    let actual: std::collections::BTreeSet<_> = archive.file_names().map(str::to_owned).collect();
+    if archive.len() != names.len() || actual != names {
         return Err("Report archive has undeclared entries".into());
     }
     let start = "<!-- LLM_AUTHORING_GUIDE_START -->";
@@ -117,6 +118,8 @@ pub fn render_copy(
         }
         _ => return Err("Report authoring guide markers are malformed".into()),
     };
+    let markdown = ds_solar_contracts::report_media::presentation_comments(&markdown)
+        .map_err(|e| e.message)?;
     Ok(RenderCopy { markdown, media })
 }
 
