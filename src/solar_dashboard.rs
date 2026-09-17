@@ -741,7 +741,7 @@ mod tests {
     fn static_dashboard_bounds_long_identities_and_every_table_family() {
         let mut dashboard = compose(Request {
             section: Section::Site,
-            report: json!({}),
+            report: json!({"02_site_prep":{"site_metrics":{}}}),
             system: None,
         })
         .unwrap();
