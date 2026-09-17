@@ -29,8 +29,10 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::Path;
 
+use ds_command_kernel::printing::context::expanded_layer_ids;
+use ds_command_kernel::printing::map::MV_PRINT_LAYER_IDS;
 use ds_command_kernel::printing::table_rows::PrintWarning;
-use ds_command_kernel::printing::{self, PrintContextLayer};
+use ds_command_kernel::printing::{self, PrintContextLayer, PrintContextSource};
 use ds_command_kernel::report_export::{self, EngineIdentity, InputReceipt};
 use ds_command_kernel::report_formats::PrintArtifactFormat;
 use serde_json::{json, Value};
@@ -150,8 +152,25 @@ fn draft_context_layers(
         .map_err(|error| inputs_invalid(format!("selected context layers: {error}")))
 }
 
+/// The document layer ids one draft layer prints as: its own id, or what its
+/// preparation emits — contours expand as the template does, the project MV
+/// projection prints as every layer `map::mv_layers` writes.
+fn document_layer_ids(layer: &PrintContextLayer) -> Vec<String> {
+    let mut ids = expanded_layer_ids(layer);
+    if matches!(layer.source, PrintContextSource::ProjectDsgridMv { .. }) {
+        for id in MV_PRINT_LAYER_IDS {
+            if !ids.iter().any(|own| own == id) {
+                ids.push(id.to_owned());
+            }
+        }
+    }
+    ids
+}
+
 /// Which of the draft's layers the staged context carries and which it
-/// omits, each omission with the reason the host or the document gives.
+/// omits. A draft layer is carried when the document holds any of the ids it
+/// prints as (`document_layer_ids`); otherwise it is named, with the reason
+/// the host or the document gives.
 fn context_summary(
     wanted: &[PrintContextLayer],
     context: Option<&PrintContextBytes>,
@@ -168,14 +187,20 @@ fn context_summary(
     };
     let omitted = wanted
         .iter()
-        .filter(|layer| !context.layers.contains(&layer.id))
-        .map(|layer| ContextOmission {
-            layer: layer.id.clone(),
-            reason: if context.omitted.contains(&layer.id) {
-                "not held on this computer".into()
+        .filter_map(|layer| {
+            let ids = document_layer_ids(layer);
+            if ids.iter().any(|id| context.layers.contains(id)) {
+                return None;
+            }
+            let reason = if ids.iter().any(|id| context.omitted.contains(id)) {
+                "not supplied from what this computer holds"
             } else {
-                "not carried by the print context document".into()
-            },
+                "not carried by the print context document"
+            };
+            Some(ContextOmission {
+                layer: layer.id.clone(),
+                reason: reason.into(),
+            })
         })
         .collect();
     (context.layers.clone(), omitted)
@@ -218,6 +243,7 @@ pub fn transformer_page(
             .staging_root
             .join(format!("{}-page", random_run_id())),
     };
+    crate::create_private_dir(&page_root.path)?;
     let inputs = TransformerReportInputs {
         transformer: room.transformer.clone(),
         server_version: room.server_version,
@@ -490,7 +516,7 @@ mod tests {
             page.context_omitted,
             [ContextOmission {
                 layer: "rivers".into(),
-                reason: "not held on this computer".into(),
+                reason: "not supplied from what this computer holds".into(),
             }]
         );
         assert_eq!(page.context_sha256.as_deref(), Some(sha256.as_str()));
@@ -522,6 +548,66 @@ mod tests {
         // The recipe was over the upgraded draft, never the legacy bytes.
         assert_eq!(page.layout_sha256, as_upgraded.layout_sha256);
         assert_eq!(page.output_id, "svg__draft-a3");
+        assert!(nothing_left(&staging));
+    }
+
+    #[test]
+    fn a_draft_layer_that_prints_as_expanded_document_layers_is_carried_not_omitted() {
+        let temp = tempfile::tempdir().unwrap();
+        let staging = temp.path().join("staging");
+        let receipt = receipt("Benin");
+        let engine = FakeEngine::release();
+        // Project MV, buildings and contours, then a catalogue layer: the
+        // document names contours and MV by the ids their preparation emits.
+        let mut layout = draft();
+        layout.context_layers = printing::context::derived_layers();
+        layout.context_layers.push(context_layer("roads", "roads"));
+        let document = br#"{"schema":"ds.print-context/v1","layers":{}}"#.to_vec();
+        let sha256 = format!("{:x}", Sha256::digest(&document));
+        let page = transformer_page(
+            &engine,
+            &settings(&receipt, &staging),
+            &room("tx_a"),
+            &layout,
+            |_| {
+                Ok(Some(PrintContextBytes {
+                    bytes: document.clone(),
+                    sha256: sha256.clone(),
+                    layers: vec![
+                        "contours_index".into(),
+                        "contours_intermediate".into(),
+                        "dsgrid_mv_angle_points".into(),
+                    ],
+                    omitted: vec!["buildings_context".into(), "dsgrid_mv_lines".into()],
+                }))
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            page.context_layers,
+            [
+                "contours_index",
+                "contours_intermediate",
+                "dsgrid_mv_angle_points"
+            ]
+        );
+        // Contours print as two document layers, the MV projection as the
+        // three `map::mv_layers` emits: neither draft layer is omitted. The
+        // buildings the host named as omitted and the catalogue layer the
+        // document does not carry are, each with its own reason.
+        assert_eq!(
+            page.context_omitted,
+            [
+                ContextOmission {
+                    layer: "buildings_context".into(),
+                    reason: "not supplied from what this computer holds".into(),
+                },
+                ContextOmission {
+                    layer: "roads".into(),
+                    reason: "not carried by the print context document".into(),
+                },
+            ]
+        );
         assert!(nothing_left(&staging));
     }
 
