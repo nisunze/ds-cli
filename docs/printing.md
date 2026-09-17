@@ -562,3 +562,7 @@ container owns a table with local origin (0, 0). Existing V2 absolute coordinate
 are converted at this adapter boundary only. Table rendering uses its local
 container coordinates and clip; the parent supplies the single translation.
 Measured panel footprints remain separate children, not a padded shared region.
+
+`table_container_rect` edits a table container in border-relative millimetres.
+Rust resolves its parent offset once, retains a local table origin of zero, and
+clears sibling flow for an explicitly positioned independent container.

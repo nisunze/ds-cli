@@ -1796,6 +1796,11 @@ pub enum Command {
     SheetFrames {
         layout: Layout,
     },
+    TableContainerRect {
+        layout: Layout,
+        element_id: String,
+        rect_mm: [f64; 4],
+    },
     FurnitureHit {
         layout: Layout,
         measured: BTreeMap<String, Vec<[f64; 4]>>,
@@ -2322,6 +2327,30 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
             });
             validate(&layout)?;
             json!({"layout":layout})
+        }
+        Command::TableContainerRect {
+            layout,
+            element_id,
+            rect_mm,
+        } => {
+            let mut layout = upgrade(layout)?;
+            let border = sheet_margin::boundary(&layout);
+            let element = layout
+                .elements
+                .iter_mut()
+                .find(|e| e.id == element_id && e.kind == ElementKind::Table)
+                .ok_or("table container does not exist")?;
+            element.rect = [
+                border[0] + rect_mm[0],
+                border[1] + rect_mm[1],
+                rect_mm[2],
+                rect_mm[3],
+            ];
+            element.sheet_anchor = sheet_margin::SheetAnchor::Authored;
+            // Explicit placement makes this container independent of a sibling.
+            element.flow = None;
+            validate(&layout)?;
+            json!({"layout": layout})
         }
         Command::FurnitureHit {
             layout,
