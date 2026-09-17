@@ -433,7 +433,7 @@ PDF rendering still uses the existing renderer.
 included — with no browser, no room cache and no Desktop. It is the door a
 Linux operator calls. Decisions and fingerprints come from
 `ds-command-kernel::report_export`; the shared native IO host is
-`ds-web/crates/ds-report-host`, and the engine is the installed `ds-report`.
+`ds-command-kernel/crates/ds-report-host`, and the engine is the installed `ds-report`.
 Desktop now uses the kernel's fingerprints, while its existing sidecar and
 publication pipeline still perform the desktop IO. Full IO unification is
 pending.
