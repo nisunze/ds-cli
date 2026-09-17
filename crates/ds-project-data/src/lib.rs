@@ -33,6 +33,7 @@ pub mod datasets;
 pub mod declared;
 pub mod ensure;
 pub mod extents;
+pub mod held;
 pub mod print_context;
 
 pub use bundle::{install_bundle, BundleReceipt};
