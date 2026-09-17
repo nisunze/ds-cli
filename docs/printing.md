@@ -538,3 +538,27 @@ Schedule panels consume their available printable height before continuing into
 the next panel; the last panel may be shorter. Authored gaps remain physical
 millimetres between panels and adjacent schedules. Consultant X/Y columns print
 actual source properties, without inventing or changing their coordinate system.
+
+### Printable border and independent schedule footprints
+
+The canonical `page-border` rectangle is the printable domain, independent of
+map viewport and physical paper. Templates without it retain the page domain.
+Native SVG, PDF and raster output clip every page element to that domain and
+paint the border last; it cannot be hidden beneath furniture. Edge anchors and
+composition use the domain's inset, and diagnostics name clipping against this
+same domain in absolute sheet coordinates.
+
+Each schedule is its own element with independent authored bounds and measured
+panel footprints. Linking two schedules through `flow` explicitly couples their
+placement; independent schedules have no flow link. Automatic placement retains
+stepped footprints, so vacant space below a shorter final panel remains usable.
+At authored type and row spacing, automatic schedules fill available vertical
+capacity before opening another panel; balancing or reversing panel splits is
+not an automatic alternative. An explicit `panel_rows` recipe remains authored.
+
+`sheet_frames` publishes the shared parent-relative hierarchy: map space owns
+its bordered domain, the border owns each independent table container, and the
+container owns a table with local origin (0, 0). Existing V2 absolute coordinates
+are converted at this adapter boundary only. Table rendering uses its local
+container coordinates and clip; the parent supplies the single translation.
+Measured panel footprints remain separate children, not a padded shared region.

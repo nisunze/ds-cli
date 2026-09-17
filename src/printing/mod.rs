@@ -4,6 +4,7 @@ pub mod context;
 pub mod custom;
 pub mod diagnostics;
 pub mod elements;
+pub mod frames;
 pub mod held_context;
 pub mod inventory;
 pub mod lifecycle;
@@ -1791,6 +1792,15 @@ pub enum Command {
         name: String,
         view_slot: String,
     },
+    /// Map space -> printable border -> independent container -> local table.
+    SheetFrames {
+        layout: Layout,
+    },
+    FurnitureHit {
+        layout: Layout,
+        measured: BTreeMap<String, Vec<[f64; 4]>>,
+        point_mm: [f64; 2],
+    },
     SetContextLayers {
         layout: Layout,
         context_layers: Vec<PrintContextLayer>,
@@ -2312,6 +2322,18 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
             });
             validate(&layout)?;
             json!({"layout":layout})
+        }
+        Command::FurnitureHit {
+            layout,
+            measured,
+            point_mm,
+        } => {
+            let layout = upgrade(layout)?;
+            json!({"index": frames::hit(&layout, &measured, point_mm)?})
+        }
+        Command::SheetFrames { layout } => {
+            let layout = upgrade(layout)?;
+            json!({"map_space": frames::hierarchy(&layout)})
         }
         Command::SetContextLayers {
             mut layout,

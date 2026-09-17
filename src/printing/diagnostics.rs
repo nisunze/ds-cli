@@ -151,7 +151,20 @@ pub fn assess_sheet(
     margin_mm: f64,
     occupied: &[Occupied],
 ) -> Result<Assessment, String> {
-    if occupied.len() > 2000 || page_mm.iter().any(|v| !v.is_finite() || *v <= 0.) {
+    assess_boundary([0., 0., page_mm[0], page_mm[1]], margin_mm, occupied)
+}
+
+/// Assess the actual printable border, retaining absolute sheet coordinates.
+pub fn assess_boundary(
+    boundary_mm: [f64; 4],
+    margin_mm: f64,
+    occupied: &[Occupied],
+) -> Result<Assessment, String> {
+    let page_mm = [boundary_mm[2], boundary_mm[3]];
+    if boundary_mm.iter().any(|v| !v.is_finite())
+        || occupied.len() > 2000
+        || page_mm.iter().any(|v| !v.is_finite() || *v <= 0.)
+    {
         return Err("invalid or unbounded print diagnostic input".into());
     }
     if !margin_mm.is_finite() || !(0. ..=MAX_MARGIN_MM).contains(&margin_mm) {
@@ -168,8 +181,8 @@ pub fn assess_sheet(
         }
     };
     let printable = [
-        margin_mm,
-        margin_mm,
+        boundary_mm[0] + margin_mm,
+        boundary_mm[1] + margin_mm,
         page_mm[0] - 2. * margin_mm,
         page_mm[1] - 2. * margin_mm,
     ];

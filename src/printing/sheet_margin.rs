@@ -1,5 +1,5 @@
 //! Measured furniture positioning, shared by print hosts and public schemas.
-use super::{Element, ElementKind, TableAlignment};
+use super::{Element, ElementKind, Layout, TableAlignment};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -24,6 +24,34 @@ pub fn is_auto(anchor: &SheetAnchor) -> bool {
 }
 
 pub fn place(element: &Element, measured: [f64; 4], page: [f64; 2]) -> Result<[f64; 4], String> {
+    place_in(element, measured, [0., 0., page[0], page[1]])
+}
+
+/// The canonical drawn sheet border owns the printable domain. Layouts without
+/// it retain the physical page as their domain (titles outside a map are legal).
+pub fn boundary(layout: &Layout) -> [f64; 4] {
+    layout
+        .elements
+        .iter()
+        .find(|e| e.id == "page-border" && e.kind == ElementKind::Rectangle)
+        .map(|e| e.rect)
+        .unwrap_or([0., 0., layout.page_mm[0], layout.page_mm[1]])
+}
+
+pub fn inset(boundary: [f64; 4], margin: f64) -> [f64; 4] {
+    [
+        boundary[0] + margin,
+        boundary[1] + margin,
+        boundary[2] - 2. * margin,
+        boundary[3] - 2. * margin,
+    ]
+}
+
+pub fn place_in(
+    element: &Element,
+    measured: [f64; 4],
+    boundary: [f64; 4],
+) -> Result<[f64; 4], String> {
     if element.flow.is_some()
         || element.sheet_anchor == SheetAnchor::Authored
         || !matches!(element.kind, ElementKind::Table | ElementKind::Legend)
@@ -31,7 +59,8 @@ pub fn place(element: &Element, measured: [f64; 4], page: [f64; 2]) -> Result<[f
         return Ok(measured);
     }
     let [_, _, width, height] = measured;
-    if width > page[0] - 2. * MARGIN_MM || height > page[1] - 2. * MARGIN_MM {
+    let area = inset(boundary, MARGIN_MM);
+    if width > area[2] || height > area[3] {
         return Err(format!(
             "{} cannot fit inside the 5 mm sheet margin; adjust panels, frame or type size",
             element.id
@@ -51,20 +80,20 @@ pub fn place(element: &Element, measured: [f64; 4], page: [f64; 2]) -> Result<[f
                 .is_none_or(|align| *align == TableAlignment::Right);
             // The authored origin chooses the vertical side. Reshaping or
             // changing row counts cannot flip a tall schedule to the bottom.
-            (right, element.rect[1] >= page[1] / 2.)
+            (right, element.rect[1] >= boundary[1] + boundary[3] / 2.)
         }
         SheetAnchor::Authored => unreachable!(),
     };
     Ok([
         if right {
-            page[0] - MARGIN_MM - width
+            area[0] + area[2] - width
         } else {
-            MARGIN_MM
+            area[0]
         },
         if bottom {
-            page[1] - MARGIN_MM - height
+            area[1] + area[3] - height
         } else {
-            MARGIN_MM
+            area[1]
         },
         width,
         height,
