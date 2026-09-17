@@ -545,6 +545,8 @@ mod tests {
             "r1".to_owned(),
             "--concurrency".to_owned(),
             "0".to_owned(),
+            "--city".to_owned(),
+            "city-000".to_owned(),
         ]);
         let error =
             run(&inputs(&RUN, &tokens), &context()).expect_err("0 is not a concurrency of 1..32");
