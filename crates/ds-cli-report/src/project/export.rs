@@ -18,6 +18,14 @@
 //! rooms are fetched one at a time so the credential and the network stay
 //! serial and memory stays bounded. One transformer's failure is one row of
 //! the batch receipt, never the end of the batch.
+//!
+//! `--preview-layout` is the other state regime: draft state, not an
+//! artifact. Each page is `ds_report_host::preview::execute` — the one
+//! execution the desktop door reaches too — over the room this command
+//! admits from the service answer and the holdings this machine keeps; the
+//! answer is `ds_report_host::preview::answer`, so both doors give the same
+//! `data` under the same envelope. A preview never seeds, never projects MV,
+//! and writes one page with its run receipt per transformer, no batch receipt.
 
 use std::collections::BTreeMap;
 use std::ffi::{OsStr, OsString};
@@ -25,12 +33,13 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use ds_cli_auth::{TransformerKind, TransformerLifecycle};
-use ds_cli_contract::outcome::Failure;
+use ds_cli_contract::outcome::{ExitClass, Failure};
 use ds_cli_contract::spec::{
     Arg, Authority, Availability, Chapter, Command, Effect, Example, Execution, Refusal,
 };
 use ds_cli_contract::{Context, Inputs};
 use ds_command_kernel::{
+    envelope::Class,
     report::PublicationState,
     report_export::{InputReceipt, reportable_transformer},
 };
@@ -38,7 +47,8 @@ use ds_report_artifacts::{
     CommittedAuthorizedPublication, VerifiedSidecarArtifact, confined_fs::HeldDirectory,
 };
 use ds_report_host::{
-    BatchSettings, DEFAULT_RESIDENT_LIMIT, EngineExit, HostFailure, MAX_RESIDENT_LIMIT,
+    BatchSettings, DEFAULT_RESIDENT_LIMIT, EngineExit, HeldContext, HeldRoom, HeldState, Holdings,
+    HostFailure, MAX_RESIDENT_LIMIT, PageRef, PreviewPage, PreviewRefusal, PreviewSettings,
     ReportEngine, RunSettings, TransformerReportInputs, batch_plan, installed_admin_bounds_path,
     run_batch, shared_root, verify_admin_bounds_asset,
 };
@@ -196,6 +206,16 @@ const CONTEXT_ACQUISITION: Refusal = Refusal {
     when: "--seed acquired context the room refused (batch row)",
     remedy: "`ds data project-cache status` shows the last error",
 };
+const CONTEXT_TOO_LARGE: Refusal = Refusal {
+    code: "print_context_too_large",
+    when: "a preview's held context exceeds the engine's bounds",
+    remedy: "narrow the draft's context buffers, or drop a context layer",
+};
+const HOLDINGS_STORE: Refusal = Refusal {
+    code: "project_dataset_store_failed",
+    when: "a preview could not read the geographic holdings this machine keeps",
+    remedy: "`ds data project-cache status`; repair the geographic data root",
+};
 
 pub(super) const REFUSALS: &[Refusal] = &[
     super::NATIVE_PROFILE,
@@ -243,6 +263,8 @@ pub(super) const REFUSALS: &[Refusal] = &[
     CONTEXT_CATALOG,
     CONTEXT_BUNDLE,
     CONTEXT_ACQUISITION,
+    CONTEXT_TOO_LARGE,
+    HOLDINGS_STORE,
     ds_cli_auth::DATA_DISTRIBUTION_UNAVAILABLE_REFUSAL,
 ];
 
@@ -470,6 +492,33 @@ fn host_failure(failure: HostFailure) -> Failure {
     }
 }
 
+/// A preview refusal that ends the command, classified as the desktop door
+/// classifies it: the class is `ds_report_host::CLASS_TABLE`'s, the code and
+/// sentence travel unchanged, the detail is the kernel's `{message_key,
+/// params}` or the host failure's own, and the remedy is the one this command
+/// documents for the code when it documents it. The code is not a literal
+/// here on purpose — it is the kernel's, mapped to a class, never renamed.
+fn preview_failure(refusal: PreviewRefusal) -> Failure {
+    let class = match refusal.class() {
+        Class::Internal => ExitClass::Internal,
+        Class::InvalidInput => ExitClass::InvalidInput,
+        Class::Unavailable => ExitClass::Unavailable,
+        Class::Unauthorized => ExitClass::Unauthorized,
+        Class::Conflict => ExitClass::Conflict,
+        Class::Failed => ExitClass::Failed,
+    };
+    let code = refusal.code().to_string();
+    let failure = Failure::new(class, code.as_str(), refusal.message());
+    let failure = match REFUSALS.iter().find(|documented| documented.code == code) {
+        Some(documented) => failure.remedy(documented.remedy),
+        None => failure,
+    };
+    match refusal.detail() {
+        Some(detail) => failure.detail(detail),
+        None => failure,
+    }
+}
+
 fn concurrency_limit(inputs: &Inputs) -> Result<usize, Failure> {
     let Some(raw) = inputs.value("concurrency") else {
         return Ok(DEFAULT_RESIDENT_LIMIT);
@@ -673,6 +722,13 @@ fn preview_request(
             "--preview-layout and --print-layout are different recipes; pass one",
         ));
     }
+    if inputs.switch("seed") || inputs.value("context-vectors").is_some() {
+        return Err(Failure::invalid(
+            INPUTS_INVALID.code,
+            "a preview reads held context and never acquires; --seed and --context-vectors belong to a delivery export",
+        )
+        .remedy("a preview reads held context; seed or pass city vectors with a delivery export"));
+    }
     let meta = std::fs::metadata(path)
         .map_err(|e| Failure::invalid(INPUTS_INVALID.code, format!("{path}: {e}")))?;
     if !meta.is_file() || meta.len() > ds_command_kernel::printing::MAX_LAYOUT_BYTES as u64 {
@@ -697,6 +753,17 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let resident_limit = concurrency_limit(inputs)?;
     let explicit_asset = inputs.value("admin-bounds").map(PathBuf::from);
     let seed = inputs.switch("seed");
+    let proof_paths = inputs.repeated("print-layout");
+    let publish = inputs.switch("publish");
+    if publish && !proof_paths.is_empty() {
+        return Err(Failure::invalid(
+            "report_inputs_invalid",
+            "Local print-layout proofs cannot publish; save a governed project recipe before publication",
+        ));
+    }
+    // A preview's own refusals are decided before a city-vectors directory
+    // is read, so they are local whatever that directory holds.
+    let preview_request = preview_request(inputs, publish, !proof_paths.is_empty())?;
     let local_context = inputs
         .value("context-vectors")
         .map(|dir| {
@@ -713,15 +780,6 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         )
         .remedy("choose existing verified city vectors or project context seeding"));
     }
-    let proof_paths = inputs.repeated("print-layout");
-    let publish = inputs.switch("publish");
-    if publish && !proof_paths.is_empty() {
-        return Err(Failure::invalid(
-            "report_inputs_invalid",
-            "Local print-layout proofs cannot publish; save a governed project recipe before publication",
-        ));
-    }
-    let preview_request = preview_request(inputs, publish, !proof_paths.is_empty())?;
     let publish_scope = publish
         .then(|| ds_cli_auth::capture_layer_scope_fence(lane))
         .transpose()?;
@@ -818,28 +876,10 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         ds_command_kernel::report_export::proof::with_layouts(&receipt, &layouts)
             .map_err(|e| Failure::invalid(INPUTS_INVALID.code, e))?
     };
-    let (receipt, preview) = match preview_request {
-        None => (receipt, None),
-        Some(request) => {
-            let preview =
-                ds_command_kernel::report_export::preview::with_layout(&receipt, &request.layout)
-                    .map_err(|e| {
-                    Failure::invalid(INPUTS_INVALID.code, e).remedy(INPUTS_INVALID.remedy)
-                })?;
-            (preview.receipt.clone(), Some(preview))
-        }
-    };
+    // A preview hands the governed receipt over as minted: the kernel rewrites
+    // it for the draft inside `ds_report_host::preview::execute`.
     output["local_print_recipe"] = serde_json::to_value(&receipt.local_print_recipe)
         .map_err(|e| Failure::invalid(INPUTS_INVALID.code, e.to_string()))?;
-    if let Some(preview) = &preview {
-        output["preview"] = json!({
-            "layout_id": preview.layout_id,
-            "layout_sha256": preview.layout_sha256,
-            "output_id": preview.output_id,
-            "format": preview.facts.format,
-            "note": "the shared preview page (text outlined): the governed recipe, rooms and outputs are unchanged and this run cannot publish",
-        });
-    }
     let admin_bounds = if receipt.requires_admin_bounds() {
         let path = match explicit_asset {
             Some(path) => path,
@@ -872,7 +912,9 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     // What every print in this batch needs from outside the room: the kernel's
     // one decision over the sealed sheets, with `--seed` as the only way an
     // acquisition may happen. Nothing selected means nothing is read.
-    let contexts = if local_context.is_some() {
+    // A preview's context layers are the draft's own, decided inside
+    // `execute`; nothing is selected, projected or acquired for it here.
+    let contexts = if local_context.is_some() || preview_request.is_some() {
         Vec::new()
     } else {
         selected_contexts(lane, &receipt, seed)?
@@ -983,6 +1025,83 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     })?;
 
     let staging = out_dir.join(STAGING_DIRECTORY);
+    // One transformer's room as the service answers it and this command
+    // admits it: an active saved transformer of this project, fetched under
+    // the batch's identity, with a positive saved revision.
+    let fetch_room =
+        |name: &str| -> Result<(ds_cli_auth::HeadlessTransformerContext, i64), HostFailure> {
+            match lifecycle.get(name).map(String::as_str) {
+                Some("active") => {}
+                Some(state) => {
+                    return Err(HostFailure::new(
+                        NOT_ACTIVE.code,
+                        format!("{name} is {state}, not an active saved transformer"),
+                    ));
+                }
+                None => {
+                    return Err(HostFailure::new(
+                        NOT_ACTIVE.code,
+                        format!("{name} is not in the project's transformer inventory"),
+                    ));
+                }
+            }
+            // A weak link blinks; a room fetch that was refused by an outage is
+            // asked again before the row is written off.
+            let context = with_weak_network(WEAK_NETWORK_DELAYS, || {
+                ds_cli_auth::transformer_context(lane, name)
+            })
+            .map_err(failure_to_host)?;
+            require_same_context(
+                inventory.identity(),
+                &project_id,
+                context.identity(),
+                context.snapshot().ds_project(),
+            )?;
+            let snapshot = context.snapshot();
+            if snapshot.ds_project() != project_id || snapshot.transformer_name() != name {
+                return Err(HostFailure::new(
+                    INPUTS_INVALID.code,
+                    format!("the service answered for another project or transformer than {name}"),
+                ));
+            }
+            let server_version = snapshot
+                .metadata()
+                .version()
+                .and_then(|version| i64::try_from(version).ok())
+                .filter(|version| *version > 0)
+                .ok_or_else(|| {
+                    HostFailure::new(
+                        INPUTS_INVALID.code,
+                        format!(
+                            "the service reports no saved revision for {name}; save it before reporting"
+                        ),
+                    )
+                })?;
+            Ok((context, server_version))
+        };
+
+    if let Some(request) = preview_request {
+        return preview_pages(
+            &request,
+            &plan.names,
+            &PreviewSettings {
+                project_id: &project_id,
+                receipt: &receipt,
+                admin_bounds: admin_bounds.as_ref(),
+                staging_root: &staging,
+            },
+            &holdings_scope,
+            &sheet_positions,
+            &out_dir,
+            fetch_room,
+            PreviewFacts {
+                project: super::project_receipt(&inventory),
+                lane,
+                scope,
+            },
+        );
+    }
+
     let settings = BatchSettings {
         run: RunSettings {
             project_id: &project_id,
@@ -995,53 +1114,8 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         concurrency: plan.concurrency,
     };
     let fetch = |name: &str| -> Result<TransformerReportInputs, HostFailure> {
-        match lifecycle.get(name).map(String::as_str) {
-            Some("active") => {}
-            Some(state) => {
-                return Err(HostFailure::new(
-                    NOT_ACTIVE.code,
-                    format!("{name} is {state}, not an active saved transformer"),
-                ));
-            }
-            None => {
-                return Err(HostFailure::new(
-                    NOT_ACTIVE.code,
-                    format!("{name} is not in the project's transformer inventory"),
-                ));
-            }
-        }
-        // A weak link blinks; a room fetch that was refused by an outage is
-        // asked again before the row is written off.
-        let context = with_weak_network(WEAK_NETWORK_DELAYS, || {
-            ds_cli_auth::transformer_context(lane, name)
-        })
-        .map_err(failure_to_host)?;
-        require_same_context(
-            inventory.identity(),
-            &project_id,
-            context.identity(),
-            context.snapshot().ds_project(),
-        )?;
+        let (context, server_version) = fetch_room(name)?;
         let snapshot = context.snapshot();
-        if snapshot.ds_project() != project_id || snapshot.transformer_name() != name {
-            return Err(HostFailure::new(
-                INPUTS_INVALID.code,
-                format!("the service answered for another project or transformer than {name}"),
-            ));
-        }
-        let server_version = snapshot
-            .metadata()
-            .version()
-            .and_then(|version| i64::try_from(version).ok())
-            .filter(|version| *version > 0)
-            .ok_or_else(|| {
-                HostFailure::new(
-                    INPUTS_INVALID.code,
-                    format!(
-                        "the service reports no saved revision for {name}; save it before reporting"
-                    ),
-                )
-            })?;
         let print_context = if let Some(context) = &local_context {
             ds_project_data::city_vectors::require_design_coverage(
                 context,
@@ -1119,7 +1193,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             server_version,
             layers: snapshot.layers().clone(),
             content_digest: snapshot.metadata().content_digest().map(str::to_string),
-            selection: preview.as_ref().map(|p| p.selection.clone()),
+            selection: None,
             print_context,
             sheet,
         })
@@ -1218,6 +1292,128 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         "notes": transformer_context_notes,
     });
     Ok(output)
+}
+
+/// What this host says about itself beside the preview answer: the project
+/// receipt, the lane and the scope the inventory resolved.
+struct PreviewFacts<'a> {
+    project: Value,
+    lane: &'a str,
+    scope: Value,
+}
+
+/// The preview run: one page per transformer in scope, each through
+/// `ds_report_host::preview::execute` over the room this command admits and
+/// the holdings this machine keeps, written to
+/// `<out-dir>/<transformer>/<filename>` with the run receipt beside it as
+/// `report-run.json`. No batch receipt: a preview is draft state, and the
+/// answer is `ds_report_host::preview::answer` — the same `data` the desktop
+/// door gives — beside this host's own facts. Rooms are fetched one at a
+/// time and pages rendered one at a time; the first refusal ends the run.
+#[allow(clippy::too_many_arguments)]
+fn preview_pages(
+    request: &PreviewRequest,
+    names: &[String],
+    settings: &PreviewSettings<'_>,
+    holdings_scope: &ds_command_kernel::project_dataset_cache::Scope,
+    sheet_positions: &BTreeMap<String, (u32, u32)>,
+    out_dir: &Path,
+    fetch_room: impl Fn(&str) -> Result<(ds_cli_auth::HeadlessTransformerContext, i64), HostFailure>,
+    facts: PreviewFacts<'_>,
+) -> Result<Value, Failure> {
+    // The rooms this machine holds are read, never acquired: without a
+    // geographic data root every room-read layer is a named omission on the
+    // sheet, which is what a preview is for.
+    let holdings = shared_root().ok().map(|root| Holdings {
+        catalog: held_catalog_rooms(&root, holdings_scope),
+        scope: holdings_scope.clone(),
+        root,
+    });
+    let staging_failed = |message: String| {
+        Failure::failed(STAGING_FAILED.code, message).remedy(STAGING_FAILED.remedy)
+    };
+    let mut pages: Vec<(PreviewPage, PathBuf)> = Vec::with_capacity(names.len());
+    for name in names {
+        let folder = out_dir.join(name);
+        let receipt_path = folder.join(ds_command_kernel::report_export::RUN_RECEIPT_FILE);
+        if receipt_path.exists() {
+            return Err(Failure::conflict(
+                OUTPUT_EXISTS.code,
+                format!("{} already holds a report run", folder.display()),
+            )
+            .remedy(OUTPUT_EXISTS.remedy));
+        }
+        let (context, server_version) = fetch_room(name).map_err(host_failure)?;
+        let snapshot = context.snapshot();
+        let room = HeldRoom {
+            transformer: name.clone(),
+            server_version,
+            layers: snapshot.layers().clone(),
+            content_digest: snapshot.metadata().content_digest().map(str::to_string),
+            media_grant: None,
+            sheet: sheet_positions.get(name).copied(),
+        };
+        let held = HeldState {
+            room,
+            context: HeldContext {
+                captures: Vec::new(),
+                retained: BTreeMap::new(),
+                holdings: holdings.clone(),
+            },
+        };
+        let page = ds_report_host::execute(
+            &CliEngine,
+            settings,
+            &ds_report_host::PreviewRequest {
+                transformer: name.clone(),
+                layout: request.layout.clone(),
+            },
+            &held,
+        )
+        .map_err(preview_failure)?;
+        let page_path = folder.join(&page.filename);
+        if page_path.exists() {
+            return Err(Failure::conflict(
+                OUTPUT_EXISTS.code,
+                format!("{} already exists", page_path.display()),
+            )
+            .remedy(OUTPUT_EXISTS.remedy));
+        }
+        std::fs::create_dir_all(&folder).map_err(|error| {
+            staging_failed(format!("could not create {}: {error}", folder.display()))
+        })?;
+        std::fs::write(&page_path, page.page.as_bytes()).map_err(|error| {
+            staging_failed(format!("could not write {}: {error}", page_path.display()))
+        })?;
+        let receipt_bytes = serde_json::to_vec_pretty(&page.receipt)
+            .map_err(|error| staging_failed(error.to_string()))?;
+        std::fs::write(&receipt_path, receipt_bytes).map_err(|error| {
+            staging_failed(format!(
+                "could not write {}: {error}",
+                receipt_path.display()
+            ))
+        })?;
+        pages.push((page, page_path));
+    }
+    // Every run removed its own scratch; the empty staging root goes too.
+    let _ = std::fs::remove_dir(settings.staging_root);
+
+    let placed: Vec<(&PreviewPage, PageRef<'_>)> = pages
+        .iter()
+        .map(|(page, path)| (page, PageRef::File(path.as_path())))
+        .collect();
+    let answer = ds_report_host::answer(settings.project_id, facts.lane, &placed);
+    let mut data = facts.project;
+    data["local_print_recipe"] = pages.first().map_or(Value::Null, |(page, _)| {
+        page.receipt["local_print_recipe"].clone()
+    });
+    data["out_dir"] = json!(out_dir.display().to_string());
+    data["scope"] = facts.scope;
+    data["publication_enqueued"] = json!(false);
+    for member in ["preview", "results", "batch"] {
+        data[member] = answer[member].clone();
+    }
+    Ok(data)
 }
 
 /// The catalogue rows this machine's held rooms stand in for, when the
@@ -1347,23 +1543,40 @@ fn context_failure(error: ds_project_data::Failure) -> HostFailure {
     }
 }
 
+/// The batch as one screen, or the preview's pages: a delivery prints its
+/// concurrency, engine identity and batch receipt; a preview has none of
+/// those and prints its draft's output id and each page's path.
 pub fn render(data: &Value) -> String {
+    let preview = data["preview"].is_object();
     let mut out = format!(
-        "project {} ({}) · {} · batch {} · {} completed · {} failed · {} at once\n  engine {} ({})\n  {}\n",
+        "project {} ({}) · {} · batch {} · {} completed · {} failed",
         data["project"]["project_name"].as_str().unwrap_or("?"),
         data["project"]["ds_project"].as_str().unwrap_or("?"),
         data["lane"].as_str().unwrap_or("?"),
         data["batch"]["status"].as_str().unwrap_or("?"),
         data["batch"]["completed"].as_u64().unwrap_or(0),
         data["batch"]["failed"].as_u64().unwrap_or(0),
-        data["batch"]["concurrency"].as_u64().unwrap_or(0),
-        data["engine"]["engine_version"].as_str().unwrap_or("?"),
-        data["engine"]["publication_state"].as_str().unwrap_or("?"),
-        data["batch"]["receipt"].as_str().unwrap_or(""),
     );
+    if preview {
+        out.push_str(&format!(
+            "\n  preview {} (layout {})\n",
+            data["preview"]["output_id"].as_str().unwrap_or("?"),
+            data["preview"]["layout_id"].as_str().unwrap_or("?"),
+        ));
+    } else {
+        out.push_str(&format!(
+            " · {} at once\n  engine {} ({})\n  {}\n",
+            data["batch"]["concurrency"].as_u64().unwrap_or(0),
+            data["engine"]["engine_version"].as_str().unwrap_or("?"),
+            data["engine"]["publication_state"].as_str().unwrap_or("?"),
+            data["batch"]["receipt"].as_str().unwrap_or(""),
+        ));
+    }
     for row in data["results"].as_array().into_iter().flatten() {
         let name = row["transformer"].as_str().unwrap_or("?");
-        if row["status"] == "ok" {
+        if let Some(path) = row["page"]["path"].as_str() {
+            out.push_str(&format!("  ok     {name:<28} page  {path}\n"));
+        } else if row["status"] == "ok" {
             out.push_str(&format!(
                 "  ok     {name:<28} {} artifact(s)  {}\n",
                 row["artifacts"].as_u64().unwrap_or(0),
@@ -1528,6 +1741,87 @@ mod tests {
             );
             assert!(mapped.remedy_text().is_some());
         }
+    }
+
+    /// The preview classifies as the desktop door does: every code in the
+    /// host crate's class table lands in the same class through
+    /// `preview_failure`, and where this command's own `host_failure` table
+    /// knows the code the two tables agree — one classification, two doors.
+    #[test]
+    fn preview_refusals_classify_as_the_kernel_class_table_does() {
+        for (code, class) in ds_report_host::CLASS_TABLE {
+            let refusal = PreviewRefusal::Host(HostFailure::new(code, "why"));
+            assert_eq!(refusal.class(), *class);
+            let failure = preview_failure(refusal.clone());
+            assert_eq!(failure.code(), *code, "{code} must survive the mapping");
+            assert_eq!(
+                failure.class().token(),
+                class.token(),
+                "{code} classifies differently from the kernel"
+            );
+            assert_eq!(failure.class().retryable(), class.retryable());
+            let own = host_failure(HostFailure::new(code, "why"));
+            if own.code() == *code {
+                assert_eq!(
+                    own.class().token(),
+                    class.token(),
+                    "{code}: host_failure and CLASS_TABLE disagree"
+                );
+            }
+            if REFUSALS.iter().any(|documented| documented.code == *code) {
+                assert!(failure.remedy_text().is_some(), "{code} needs a remedy");
+            }
+        }
+    }
+
+    /// Every preview refusal this host can reach is documented. The kernel's
+    /// room and capture admissions are not reachable here: the CLI admits
+    /// the service's room itself and hands no captures, so those codes stay
+    /// the desktop door's.
+    #[test]
+    fn every_reachable_preview_code_is_documented() {
+        const DESKTOP_ONLY: &[&str] = &[
+            "print_preview_room_unavailable",
+            "print_preview_room_incomplete",
+            "print_context_capture_invalid",
+            "print_context_survey_empty",
+            "print_context_capture_changed",
+            "print_context_foreign_project",
+            "print_context_capture_incomplete",
+            "print_context_not_held_source",
+            "print_context_omitted",
+        ];
+        for (code, _) in ds_report_host::CLASS_TABLE {
+            if DESKTOP_ONLY.contains(code) {
+                continue;
+            }
+            assert!(
+                REFUSALS.iter().any(|documented| documented.code == *code),
+                "{code} is not documented"
+            );
+        }
+        // A kernel refusal keeps its message key and params for a localised
+        // surface, and a host failure keeps its own detail.
+        let kernel = preview_failure(PreviewRefusal::Kernel(
+            ds_command_kernel::printing::preview::Refusal {
+                code: "print_context_survey_empty".into(),
+                message_key: "printing_context_survey_empty".into(),
+                params: BTreeMap::from([("name".to_string(), "poles".to_string())]),
+            },
+        ));
+        assert_eq!(kernel.code(), "print_context_survey_empty");
+        assert_eq!(kernel.class(), ExitClass::InvalidInput);
+        assert_eq!(
+            kernel.detail_value().unwrap()["message_key"],
+            "printing_context_survey_empty"
+        );
+        assert_eq!(kernel.detail_value().unwrap()["params"]["name"], "poles");
+        let host = preview_failure(PreviewRefusal::Host(
+            HostFailure::new("export_blocked", "blocked").with_detail(json!({"blockers": ["x"]})),
+        ));
+        assert_eq!(host.class(), ExitClass::Failed);
+        assert_eq!(host.remedy_text(), Some(EXPORT_BLOCKED.remedy));
+        assert_eq!(host.detail_value().unwrap()["blockers"][0], "x");
     }
 
     #[test]

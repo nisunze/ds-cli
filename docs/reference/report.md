@@ -478,11 +478,31 @@ format a template may later be delivered in. The template's pens
 (`style_overrides`, edited through `report layout pens` or the `pen_edit` /
 `set_style_override` ops of `report layout edit`) print exactly as they will
 in the delivery, through the same engine, workbook schedules and context.
-`.data.preview` names the layout digest and output id; each run receipt
-carries `local_print_recipe.preview`. A preview is a review file: it changes
-no recipe, room or output, `svg` is never a deliverable selection, and the
-run cannot publish. The desktop Printing setup paints the same page inline
-over its Canvas2D sheet and rasterises it at the zoom it is looked at.
+A preview is draft state, not an artifact: the delivery is the artifact. It
+is executed once, in `ds-report-host` (`preview::execute`), for both doors —
+this command and the desktop Printing setup, which obtains the same page
+through the same command id via the desktop door and paints it over its
+Canvas2D sheet. The engine runs over the room this command admits from the
+service answer and the geographic holdings this machine already keeps: a
+preview never seeds, never projects MV, and refuses `--seed` and
+`--context-vectors` (`report_inputs_invalid`, decided before any
+credential). A draft context layer this machine holds nothing for is a named
+omission on the sheet, never a refusal.
+
+What it writes, per transformer in scope: `<out-dir>/<transformer>/
+<transformer>.<id>.svg` and `report-run.json` beside it (its
+`local_print_recipe.preview` says it was a preview); there is no batch
+receipt. `.data.preview` names `layout_id`, `layout_sha256` and the
+`output_id` (`svg__<id>`); `.data.results[]` carries one row per page —
+`page.path`, `filename`, `sha256`, `engine`, `elapsed_ms`, `warnings`,
+`print_diagnostics` and `print_context` (`sha256`, `layers`, and `omitted`
+as `{layer, reason}` rows keyed by the draft's context layer ids) — and
+`.data.batch` counts the pages; `lane`, `project`, `scope`, `out_dir` and
+`local_print_recipe` are this host's own facts. A refusal is classified as
+the desktop door classifies it (`error.class`, `error.code`), with
+`error.detail.message_key` and `params` when the kernel decided it. A
+preview changes no recipe, room or output, `svg` is never a deliverable
+selection, and the run cannot publish.
 
 A selected `project_dsgrid_mv` context now reads the native project's complete
 MV catalog and verifies each exact current head through `dsgrid.project`'s

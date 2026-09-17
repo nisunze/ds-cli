@@ -172,6 +172,51 @@ fn local_refusals_are_decided_before_any_credential_is_restored() {
     );
     assert_ne!(code(&missing), "", "{missing}");
     assert_ne!(code(&missing), "headless_signed_out");
+    // A preview reads held context and never acquires: `--seed` and
+    // `--context-vectors` are refused with `--preview-layout` before any
+    // credential, whatever the city-vectors directory holds.
+    let draft = out.path().join("draft.json");
+    std::fs::write(
+        &draft,
+        serde_json::to_vec(&ds_command_kernel::printing::default_layout()).expect("draft"),
+    )
+    .expect("draft written");
+    let draft = draft.to_str().expect("utf-8");
+    let vectors = tempfile::tempdir().expect("city vectors dir");
+    for acquisition in [
+        vec!["--seed"],
+        vec!["--context-vectors", vectors.path().to_str().expect("utf-8")],
+    ] {
+        let mut args = vec![
+            "report",
+            "project",
+            "export",
+            "--transformer",
+            "tx_a",
+            "--preview-layout",
+            draft,
+            "--out-dir",
+            out_dir,
+        ];
+        args.extend(acquisition.iter().copied());
+        args.extend(["--output", "json"]);
+        let envelope = headless(&args, Some("/bin/true"));
+        assert_eq!(code(&envelope), "report_inputs_invalid", "{acquisition:?}");
+        assert!(
+            envelope["error"]["message"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("preview"),
+            "{envelope}"
+        );
+    }
+    assert!(
+        std::fs::read_dir(out.path())
+            .expect("out dir")
+            .all(|entry| entry.expect("entry").file_name() == "draft.json"),
+        "a refused preview writes nothing"
+    );
+    std::fs::remove_file(out.path().join("draft.json")).expect("draft removed");
     // With valid inputs the credential gate is the first thing that answers,
     // and nothing was written.
     assert_eq!(

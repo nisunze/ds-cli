@@ -124,6 +124,16 @@ const CODE_NOT_A_LITERAL: &[(&str, &str)] = &[
          literal lives with the command that owns the executable",
     ),
     (
+        "ds-cli-report/src/project/export.rs",
+        "the preview refusal code is ds-report-host's `PreviewRefusal::code()` \
+         (a kernel `printing::preview`/`held_context` code or a host code), \
+         mapped to a class through the host crate's `CLASS_TABLE`, never \
+         renamed. That vocabulary is closed and `ds-cli-report`'s own \
+         `every_reachable_preview_code_is_documented` iterates it against the \
+         command's refusal roster, so a code the kernel gains still cannot \
+         ship undeclared",
+    ),
+    (
         "ds-cli-library/src/lib.rs",
         "`engine_failure` is a shared wrapper; each of its call sites passes a \
          literal code",

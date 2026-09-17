@@ -130,13 +130,20 @@ measured furniture in a rendered preview before queuing the whole project.
   the layout, nothing about seeding, settings or publication.
 - A live look at a draft · `report.project.export --transformer <name>
   --preview-layout <draft.json> --out-dir <dir>` · one
-  `<transformer>/<transformer>.<id>.svg` page per transformer: the engine's
-  own page every delivered format derives from, text outlined, so any SVG
-  viewer draws it exactly as the PDF or PNG will come out; the draft may
-  carry any id or paper and its pens (`report.layout.pens`) print as they
-  will in the delivery · `.data.preview` and `local_print_recipe.preview` in
-  the run receipt say it was a preview; it changes no recipe, room or output
-  and cannot publish · the desktop Printing setup paints this same page.
+  `<transformer>/<transformer>.<id>.svg` page per transformer with
+  `report-run.json` beside it and no batch receipt: the engine's own page
+  every delivered format derives from, text outlined, so any SVG viewer
+  draws it exactly as the PDF or PNG will come out; the draft may carry any
+  id or paper and its pens (`report.layout.pens`) print as they will in the
+  delivery · read `.data.results[].page.path` for the page and
+  `.data.results[].print_context.omitted[]` (`{layer, reason}`) for the
+  draft's context layers this host holds nothing for; `.data.preview`
+  (`layout_id`, `layout_sha256`, `output_id`) and `local_print_recipe.preview`
+  in the run receipt say it was a preview · a preview is draft state, not an
+  artifact: it never seeds, never projects MV, refuses `--seed` and
+  `--context-vectors`, changes no recipe, room or output and cannot publish ·
+  the desktop Printing setup obtains this same page through the same command
+  id via the desktop door.
 - The template's pens · `report.layout.pens --layout <l.json> --documents
   <styles.json>` lists what each bound print layer prints with;
   `--action edit --layer <id> --property size|color|opacity|visible|… --value
