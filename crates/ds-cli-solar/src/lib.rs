@@ -105,6 +105,7 @@ pub static DOMAIN: Domain = Domain {
         &workflow::PORTFOLIO_LIST_COMMAND,
         &portfolio_headless::CALCULATE,
         &portfolio_headless::PUBLISH,
+        &portfolio_headless::PUBLISHED_READ,
         &portfolio_batch::START_COMMAND,
         &portfolio_batch::STATUS_COMMAND,
         &portfolio_batch::CANCEL_COMMAND,

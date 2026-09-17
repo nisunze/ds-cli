@@ -25,6 +25,10 @@ settlement is reported explicitly; use a new run ID to retry after inspecting
 any committed artifacts. Closed run IDs cannot silently overwrite earlier work.
 Publication remains a separate operation and requires its online receipt.
 
+Prompting drafts are the delivery endpoint for automated Solar work. A final
+document is deliberately composed under close human supervision; calculation,
+draft export and publication never imply approval to compose or submit one.
+
 Discover `portfolio_start` for a background portfolio calculation, then
 `portfolio_progress` with its returned job ID. Queued and running receipts are
 unfinished; `ready` includes the exact closed result and batch identities.
@@ -85,6 +89,12 @@ An immutable publication identity pins the source run and exact output bytes;
 repeating that plan resumes the same work. An earlier result-only publication
 cannot be mistaken for the complete bundle. Require the published receipt and
 its output count before claiming online delivery.
+
+Use `solar portfolio published read` with an explicit project, portfolio and
+source run to inspect the current published aggregate without Desktop. Native
+authority verifies generation-pinned bytes, the artifact head and current
+membership before returning a bounded semantic projection. A different source
+run or changed membership refuses instead of substituting a newer analysis.
 
 The paired commands documented below remain compatibility surfaces while
 their remaining adapters are migrated. Standalone `results read` and dashboard

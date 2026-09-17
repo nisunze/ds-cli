@@ -23,6 +23,69 @@ pub fn execute(i: &Inputs, command: ds_cli_auth::SolarPortfolioCommand) -> Resul
         &ds_cli_auth::SolarProjectCommand::Portfolio(command),
     )
 }
+pub static PUBLISHED_READ: Command = Command {
+    id: "solar.portfolio.published.read",
+    path: &["solar", "portfolio", "published", "read"],
+    contract: 1,
+    summary: "Read an exact published portfolio result headlessly.",
+    purpose: "Download the generation-pinned aggregate-v3 result, verify its exact size and digest, recheck the artifact head and governed membership, and require the selected run identity before returning a bounded semantic projection. No Desktop, browser or local result directory is required. A different published run is refused; no newer run is silently selected.",
+    chapter: Chapter::Solar,
+    effect: Effect::ReadOnly,
+    authority: Authority::HeadlessProject,
+    execution: Execution::Sync,
+    args: &[
+        PROJECT,
+        LANE,
+        PORTFOLIO,
+        Arg::value("run-id", "<id>", "Exact published portfolio source run.").required(),
+        Arg::repeated(
+            "path",
+            "<key>",
+            "Semantic object key; repeat to descend, at most eight keys.",
+        ),
+    ],
+    output: "Portfolio trace, exact publication work/head/output digest, selected path/value and explicit completeness; private download capabilities never escape.",
+    examples: &[],
+    refusals: PUBLISHED_READ_REFUSALS,
+    reference: Some("docs/reference/solar.md"),
+    availability: ds_cli_auth::native_availability,
+};
+static PUBLISHED_READ_REFUSALS: &[ds_cli_contract::spec::Refusal] = &[
+    ds_cli_contract::spec::Refusal {
+        code: "auth_input_invalid",
+        when: "the selected run, project, portfolio or current membership does not match the published result",
+        remedy: "read current membership and saved analysis, then select the exact published source run",
+    },
+    ds_cli_contract::spec::Refusal {
+        code: "invalid_portfolio_path",
+        when: "the semantic path is empty, too deep or has an overlong key",
+        remedy: "pass at most eight non-empty semantic keys of at most 120 characters",
+    },
+    ds_cli_contract::spec::Refusal {
+        code: "portfolio_path_not_found",
+        when: "the verified portfolio has no value at that semantic path",
+        remedy: "omit path to inspect the bounded root outline, then select declared keys",
+    },
+];
+pub fn published_read(i: &Inputs, _: &Context) -> Result<Value, Failure> {
+    let path = crate::workflow::portfolio_path(i)?;
+    let receipt = execute(
+        i,
+        ds_cli_auth::SolarPortfolioCommand::PublishedRead {
+            portfolio: i.require("portfolio")?.into(),
+            run_id: i.require("run-id")?.into(),
+        },
+    )?;
+    let selected = crate::workflow::select_portfolio_path(&receipt["document"], &path)?;
+    let (value, complete) = crate::workflow::bounded_portfolio_projection(selected);
+    let mut result = json!({"project_id":receipt["project_id"],"trace":receipt["trace"],
+        "publication":receipt["publication"],"path":path,"value":value,"complete":complete});
+    if !complete {
+        result["more"] =
+            json!({"reason":"projection_elided","next":"repeat with a narrower --path"});
+    }
+    Ok(result)
+}
 pub static CALCULATE: Command = Command {
     id: "solar.portfolio.calculate",
     path: &["solar", "portfolio", "calculate"],

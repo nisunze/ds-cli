@@ -478,7 +478,7 @@ fn absolute_path(raw: &str) -> String {
     resolved.to_string_lossy().into_owned()
 }
 
-fn portfolio_path(inputs: &Inputs) -> Result<Vec<&str>, Failure> {
+pub(crate) fn portfolio_path(inputs: &Inputs) -> Result<Vec<&str>, Failure> {
     let path = inputs.repeated("path");
     if path.len() > MAX_PORTFOLIO_PATH_DEPTH
         || path.iter().any(|key| {
@@ -496,7 +496,10 @@ fn portfolio_path(inputs: &Inputs) -> Result<Vec<&str>, Failure> {
     Ok(path.iter().map(String::as_str).collect())
 }
 
-fn select_portfolio_path<'a>(document: &'a Value, path: &[&str]) -> Result<&'a Value, Failure> {
+pub(crate) fn select_portfolio_path<'a>(
+    document: &'a Value,
+    path: &[&str],
+) -> Result<&'a Value, Failure> {
     let mut selected = document;
     for key in path {
         selected = selected.get(*key).ok_or_else(|| {
@@ -548,7 +551,7 @@ fn portfolio_trace(document: &Value, expected_run_id: &str) -> Result<Map<String
             .remedy("update DS GridDesign and ds to matching releases")
         })
 }
-fn bounded_portfolio_projection(value: &Value) -> (Value, bool) {
+pub(crate) fn bounded_portfolio_projection(value: &Value) -> (Value, bool) {
     let (projected, mut complete) = elide_portfolio_value(value);
     if serde_json::to_vec(&projected).is_ok_and(|bytes| bytes.len() <= PORTFOLIO_PROJECTION_BYTES) {
         return (projected, complete);

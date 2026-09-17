@@ -109,6 +109,11 @@ than reading a successful subset.
 
 ## Inspect and export sealed output
 
+Prompting drafts are the automated delivery endpoint. Final composition is a
+separate deliberate task under close human supervision. For a published read,
+discover the headless published-result reader and pin its exact source run;
+never replace an unavailable or different published run with local bytes.
+
 For an on-screen answer, discover the bounded portfolio-result read command
 and request only the sections needed. Keep the result's portfolio id,
 membership revision, ordered members, input digest, result digest, currency,

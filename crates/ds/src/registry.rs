@@ -675,6 +675,11 @@ static SOLAR_ENTRIES: &[Entry] = &[
         render: ds_cli_solar::portfolio_headless::render_publication,
     },
     Entry {
+        command: &ds_cli_solar::portfolio_headless::PUBLISHED_READ,
+        handler: ds_cli_solar::portfolio_headless::published_read,
+        render: ds_cli_solar::portfolio_headless::render_publication,
+    },
+    Entry {
         command: &ds_cli_solar::portfolio_management::CREATE_COMMAND,
         handler: ds_cli_solar::portfolio_management::create,
         render: ds_cli_solar::workflow::render,

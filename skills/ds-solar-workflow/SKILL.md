@@ -18,9 +18,8 @@ with `solar.application` (MCP profile `solar-application`). Preserve project and
 workspace identity. Completed progress survives restart; inspect interrupted
 work before retrying with a new run ID.
 
-For a governed aggregate with a portfolio id and membership revision, stop and
-use `ds-solar-portfolio`. Repeated city contexts form an explicit city batch;
-they do not become a portfolio merely because more than one city was run.
+For a governed aggregate with an id and membership revision, use
+`ds-solar-portfolio`. An explicit city batch is not a governed portfolio.
 
 ## Seed the project's cities first, if they are absent
 
@@ -73,6 +72,9 @@ unsafe, and return the cancellation receipt.
 
 ## Read calculated evidence
 
+The prompting draft is the endpoint of automated delivery. Compose a final
+document only as a separate deliberate task under close human supervision.
+
 Use the bounded result reader for a small semantic field projection. Use the
 named dashboard-section reader when the question needs Site, Plant, BOQ,
 Finance, or another canonical report-input section. Preserve city id, run id,
@@ -84,8 +86,7 @@ For headless `solar.results.read` contract 2, discover its live descriptor and
 provide the closed batch directory plus explicit project, batch run and city.
 `solar.dashboard.compose` uses the same verified source and writes JSON and
 standalone HTML to a new private directory. Site, Plant, Finance and BOQ are
-available; `--system` selects the exact scenario. HTML includes cards and BOQ
-tables; JSON also includes Plant chart options. These files are not publication proof.
+available; `--system` selects the exact scenario. These files are not publication proof.
 The `solar-dashboard` MCP profile exposes both leaves.
 
 When a user needs a document, export only an artifact declared by that run's

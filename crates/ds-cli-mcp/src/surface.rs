@@ -617,6 +617,7 @@ const SOLAR_INPUT_COMMANDS: &[&str] = &[
 const SOLAR_PORTFOLIO_BATCH_COMMANDS: &[&str] = &[
     "solar.portfolio.calculate",
     "solar.portfolio.publish",
+    "solar.portfolio.published.read",
     "solar.portfolio.batch.start",
     "solar.portfolio.batch.status",
     "solar.portfolio.batch.cancel",
