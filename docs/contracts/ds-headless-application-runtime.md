@@ -120,9 +120,10 @@ alone grants no access. Durable jobs and caches remain stateful; request
 routing must not depend on another client's selection.
 
 The web retains its active-project presentation and injects that context into
-requests. A CLI compatibility default may resolve a saved selection once at
-the client boundary; changing that selection must never redirect accepted
-work. Project-scoped queues, locks, idempotency identities, artifact lookups and
+requests. CLI project operations carry their project explicitly and never
+resolve it from saved selection or active UI state. Older compatibility
+commands are migrated as their boundaries are touched. Project-scoped queues,
+locks, idempotency identities, artifact lookups and
 cancellation isolate concurrent projects. Restart recovery preserves the
 original context. Migrate these boundaries as they are touched, proving that
 interleaved requests, selection changes and interruptions cannot cross projects.
