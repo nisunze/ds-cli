@@ -136,14 +136,25 @@ pub(crate) fn run<T: AuthorizedTransport>(
             let row = call(profile, transport, authority, false, payload)?;
             let verify = |catalog: Option<Value>| -> Result<Value, ClientError> {
                 let mut request = json!({"intent":intent,"response":row});
-                if let Some(catalog) = catalog { request["catalog"] = catalog; }
-                serde_json::from_str(&ds_command_kernel::validate_solar_portfolio_mutation_receipt(
-                    &serde_json::to_vec(&request).map_err(|_| invalid())?,
-                ).map_err(|_| invalid())?).map_err(|_| invalid())
+                if let Some(catalog) = catalog {
+                    request["catalog"] = catalog;
+                }
+                serde_json::from_str(
+                    &ds_command_kernel::validate_solar_portfolio_mutation_receipt(
+                        &serde_json::to_vec(&request).map_err(|_| invalid())?,
+                    )
+                    .map_err(|_| invalid())?,
+                )
+                .map_err(|_| invalid())
             };
             verify(None)?;
-            let rows = call(profile, transport, authority, false,
-                json!({"action":"list_portfolios","root":root}))?;
+            let rows = call(
+                profile,
+                transport,
+                authority,
+                false,
+                json!({"action":"list_portfolios","root":root}),
+            )?;
             let mut receipt = verify(Some(rows))?;
             receipt["project_id"] = json!(project);
             Ok(receipt)
