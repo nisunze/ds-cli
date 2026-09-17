@@ -32,7 +32,10 @@ fn text(value: &Value) -> Value {
     }
 }
 fn count(value: &Value) -> Value {
-    value.as_u64().map_or(Value::Null, |n| json!(n))
+    value
+        .as_f64()
+        .filter(|n| n.fract() == 0. && (0. ..=200.).contains(n))
+        .map_or(Value::Null, |n| json!(n as u64))
 }
 fn identifier(s: &str) -> bool {
     !s.is_empty()
@@ -92,7 +95,9 @@ pub fn evaluate(bytes: &[u8]) -> Result<String, String> {
                 || (meta.get("city_ids").is_some() && meta["city_ids"] != value["city_ids"])
                 || (meta.get("membership_revision").is_some()
                     && !revision.is_null()
-                    && text(&meta["membership_revision"]) != revision);
+                    && text(&meta["membership_revision"]) != revision)
+                || (meta.get("city_count").is_some()
+                    && count(&meta["city_count"]) != value["city_count"]);
             if mismatch {
                 value["saved_analysis"] = json!("failed");
                 value["error"] = json!(if meta["portfolio_id"] != value["portfolio_id"]
@@ -174,6 +179,7 @@ mod tests {
             json!({"portfolio_id":"other"}),
             json!({"city_ids":["b","a"]}),
             json!({"membership_revision":8}),
+            json!({"city_count":4}),
         ] {
             assert_eq!(
                 project(json!({"data":{"meta":meta}}))["saved_analysis"],

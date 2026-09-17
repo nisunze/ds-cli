@@ -2,6 +2,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 mod finance;
+mod static_charts;
 
 #[derive(Clone, Copy, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -501,6 +502,11 @@ pub fn html(dashboard: &Dashboard, title: &str) -> String {
     if !group.is_empty() {
         body.push_str("</div>");
     }
+    if let Some(charts) = dashboard.charts.as_object() {
+        for (key, chart) in charts {
+            body.push_str(&static_charts::render(key, chart));
+        }
+    }
     for (key, title) in [("network_rows", "Network BOQ"), ("plant_rows", "Plant BOQ")] {
         if let Some(rows) = dashboard.derived[key]
             .as_array()
@@ -530,7 +536,7 @@ pub fn html(dashboard: &Dashboard, title: &str) -> String {
             body.push_str("</tbody></table>");
         }
     }
-    format!("<!doctype html><html lang=en><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'><title>{}</title><style>body{{font:16px system-ui;background:#0f172a;color:#e2e8f0;margin:40px}}h2{{font-size:14px;color:#94a3b8}}.cards{{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px}}article{{background:#1e293b;padding:16px;border-left:3px solid #38bdf8;border-radius:6px}}small,strong,span{{display:block}}strong{{font-size:24px;margin:8px 0}}span{{color:#94a3b8}}</style><h1>{}</h1>{}</html>",escape(title),escape(title),body)
+    format!("<!doctype html><html lang=en><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'><title>{}</title><style>body{{font:16px system-ui;background:#0f172a;color:#e2e8f0;margin:40px}}h2{{font-size:14px;color:#94a3b8}}.cards{{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px}}article{{background:#1e293b;padding:16px;border-left:3px solid #38bdf8;border-radius:6px}}small,strong,span{{display:block}}strong{{font-size:24px;margin:8px 0}}span{{color:#94a3b8}}figure{{margin:24px 0;padding:20px;background:#1e293b;border-radius:8px}}figcaption{{font-weight:bold}}svg{{display:block;width:100%;max-width:1000px;height:auto}}.legend{{display:flex;flex-wrap:wrap;gap:16px;list-style:none;padding:0}}.legend span{{display:inline}}details{{overflow:auto}}table{{border-collapse:collapse;width:100%;font-size:13px}}td,th{{padding:8px;border-bottom:1px solid #334155;text-align:left}}summary{{cursor:pointer}}</style><h1>{}</h1>{}</html>",escape(title),escape(title),body)
 }
 
 /// Bounded semantic reads use the same report sections as dashboard hosts.
