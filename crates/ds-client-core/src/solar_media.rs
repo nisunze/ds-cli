@@ -15,7 +15,7 @@ fn unreadable() -> ClientError {
         "Solar media receipt does not match the copied map",
     )
 }
-fn media_type(bytes: &[u8]) -> Result<&'static str, ClientError> {
+pub(crate) fn media_type(bytes: &[u8]) -> Result<&'static str, ClientError> {
     if bytes.starts_with(b"\x89PNG\r\n\x1a\n") {
         Ok("image/png")
     } else if bytes.starts_with(&[0xff, 0xd8, 0xff]) {
@@ -121,6 +121,27 @@ fn verify(
         || r.as_object().map(|o| o.len()) != Some(11)
     {
         return Err(unreadable());
+    }
+    Ok(())
+}
+
+pub(crate) fn validate_read(project: &str, city: &str, reference: &str) -> Result<(), ClientError> {
+    crate::solar_snapshot::validate_input(project, city)?;
+    let url = url::Url::parse(reference).map_err(|_| invalid())?;
+    let prefix = format!("/eds_project/{project}/eds_solar/{city}/");
+    let pairs = url.query_pairs().collect::<Vec<_>>();
+    if reference.len() > 8192
+        || url.scheme() != "gs"
+        || url.host_str().is_none()
+        || !url.username().is_empty()
+        || url.password().is_some()
+        || url.fragment().is_some()
+        || !url.path().starts_with(&prefix)
+        || pairs.len() != 1
+        || pairs[0].0 != "generation"
+        || pairs[0].1.parse::<u64>().ok().filter(|g| *g > 0).is_none()
+    {
+        return Err(invalid());
     }
     Ok(())
 }

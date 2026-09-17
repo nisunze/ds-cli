@@ -25,6 +25,7 @@ mod project_report;
 mod projects;
 mod session;
 mod solar_snapshot;
+pub use solar_snapshot::SolarMediaDownloadCall;
 mod status_processing;
 mod styles;
 mod survey_entries_changes;

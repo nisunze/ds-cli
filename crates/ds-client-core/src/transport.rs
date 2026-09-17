@@ -2087,6 +2087,12 @@ pub trait Transport {
     ) -> Result<TransportResponse, TransportError> {
         Err(TransportError::Unreachable)
     }
+    fn download_solar_media(
+        &mut self,
+        _call: crate::SolarMediaDownloadCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        Err(TransportError::Unreachable)
+    }
     fn download_survey_photo(
         &mut self,
         _call: crate::survey_photo::DownloadCall<'_>,
@@ -2278,6 +2284,12 @@ pub trait AuthorizedTransport {
     fn survey_photo(
         &mut self,
         _call: SurveyPhotoCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        Err(TransportError::Unreachable)
+    }
+    fn download_solar_media(
+        &mut self,
+        _call: crate::SolarMediaDownloadCall<'_>,
     ) -> Result<TransportResponse, TransportError> {
         Err(TransportError::Unreachable)
     }
@@ -2481,6 +2493,12 @@ impl<T: Transport> AuthorizedTransport for T {
         call: SurveyPhotoCall<'_>,
     ) -> Result<TransportResponse, TransportError> {
         Transport::survey_photo(self, call)
+    }
+    fn download_solar_media(
+        &mut self,
+        call: crate::SolarMediaDownloadCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        Transport::download_solar_media(self, call)
     }
     fn download_survey_photo(
         &mut self,

@@ -13,6 +13,33 @@ use zeroize::Zeroize;
 
 pub mod assets;
 pub mod solar_dashboard;
+pub mod solar_report_bundle;
+#[cfg(feature = "wasm")]
+#[wasm_bindgen::prelude::wasm_bindgen(js_name = solarPromptBundlePlan)]
+pub fn solar_prompt_bundle_plan_wasm(
+    canonical: &str,
+    markdown: &str,
+) -> Result<String, wasm_bindgen::JsValue> {
+    let plan = solar_report_bundle::plan(canonical, markdown)
+        .map_err(|e| wasm_bindgen::JsValue::from_str(&e))?;
+    serde_json::to_string(&plan).map_err(|e| wasm_bindgen::JsValue::from_str(&e.to_string()))
+}
+#[cfg(feature = "wasm")]
+#[wasm_bindgen::prelude::wasm_bindgen(js_name = buildSolarPromptBundle)]
+pub fn build_solar_prompt_bundle_wasm(input: &[u8]) -> Result<Vec<u8>, wasm_bindgen::JsValue> {
+    solar_report_bundle::build_encoded(input).map_err(|e| wasm_bindgen::JsValue::from_str(&e))
+}
+
+#[cfg(feature = "wasm")]
+#[wasm_bindgen::prelude::wasm_bindgen(js_name = solarReportBundleMediaName)]
+pub fn solar_report_bundle_media_name_wasm(
+    reference: &str,
+    index: usize,
+) -> Result<String, wasm_bindgen::JsValue> {
+    solar_report_bundle::media_name(reference, index)
+        .map_err(|e| wasm_bindgen::JsValue::from_str(&e))
+}
+
 pub mod solar_portfolio_read;
 pub mod solar_saved_analysis;
 #[cfg(feature = "wasm")]

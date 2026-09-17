@@ -14,6 +14,10 @@ pub struct Output {
 }
 pub enum Command {
     ListCities,
+    ReadMedia {
+        city: String,
+        reference: String,
+    },
     Portfolio(crate::solar_portfolio::Command),
     ImportMap {
         city: String,
@@ -83,6 +87,9 @@ impl Command {
         }
         match self {
             Self::ListCities => {}
+            Self::ReadMedia { city, reference } => {
+                crate::solar_media::validate_read(project, city, reference)?
+            }
             Self::Portfolio(command) => command.validate(project)?,
             Self::ImportMap {
                 city,
@@ -220,17 +227,42 @@ pub(crate) fn call<T: AuthorizedTransport>(
     payload: Value,
 ) -> Result<Value, ClientError> {
     let catalog = payload["action"] == "list_portfolios";
-    let response = transport.solar_project(SolarProjectCall {
-        profile,
-        authority: authority.call(),
-        artifacts,
-        payload,
-    })?;
+    let action = payload["action"].as_str().unwrap_or("request").to_owned();
+    let response = transport
+        .solar_project(SolarProjectCall {
+            profile,
+            authority: authority.call(),
+            artifacts,
+            payload,
+        })
+        .map_err(|e| {
+            let e: ClientError = e.into();
+            ClientError::new(
+                e.kind(),
+                match action.as_str() {
+                    "open" => "Solar publication opening transport is temporarily unavailable",
+                    "finalize" => {
+                        "Solar publication finalization transport is temporarily unavailable"
+                    }
+                    _ => "Solar project producer transport is temporarily unavailable",
+                },
+            )
+        })?;
     if response.status == 409 {
         return Err(conflict());
     }
     if response.status != 200 {
-        return Err(classify_tile_error(response.status));
+        let error = classify_tile_error(response.status);
+        return Err(ClientError::new(
+            error.kind(),
+            match (action.as_str(), response.status) {
+                ("open", 500) => "Solar publication opening returned HTTP 500",
+                ("finalize", 500) => "Solar publication finalization returned HTTP 500",
+                ("open", _) => "Solar publication opening was refused by its producer",
+                ("finalize", _) => "Solar publication finalization was refused by its producer",
+                _ => "Solar project producer refused the request",
+            },
+        ));
     }
     if response.body.len() > 8 * 1024 * 1024 {
         return Err(unreadable());
@@ -258,6 +290,11 @@ pub(crate) fn run<T: AuthorizedTransport>(
     command.validate(project)?;
     let root = format!("eds_project/{project}/eds_solar");
     match command {
+        Command::ReadMedia { city, reference } => {
+            let snapshot =
+                crate::authorized::solar_snapshot(profile, transport, authority, project, city)?;
+            snapshot.download_media(transport, reference)
+        }
         Command::Portfolio(command) => {
             crate::solar_portfolio::run(profile, transport, authority, project, command)
         }

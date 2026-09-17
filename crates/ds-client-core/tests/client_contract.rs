@@ -6,14 +6,14 @@ use ds_client_core::{
     DeploymentLane, DeviceAccessSession, DeviceBinding, DeviceCredential, DevicePrivateKey,
     ErrorKind, NativeSyncRequest, ProfileError, ProjectFormEditorCall, ProjectFormsCall,
     ProjectListCall, ProjectReportServiceCode, ProjectStatus, RefreshCall, RefreshTokenStore,
-    SignInCall, SolarSnapshotCall, StoreError, StoreKey, SurveyEntriesChangesCall,
-    SurveyEntriesChangesRequest, SurveyEntriesChangesServiceCode, SurveyEntriesSelectCall,
-    SurveyEntriesSelectRequest, SurveyEntriesSelectServiceCode, SurveyEntryCreateCall,
-    SurveyEntryCreateOrigin, SurveyEntryCreateRequest, SurveyEntryCreateServiceCode,
-    SurveyFormReadServiceCode, SurveyQueryCall, SurveyQueryFilter, SurveyQueryMetric,
-    SurveyQueryOrder, SurveyQueryRequest, SyncGatewayCall, SyncGatewayOperation, TileCall,
-    TileOperationStatus, TilePreflightStatus, TileType, TransformerContextCall, Transport,
-    TransportError, TransportResponse, CLIENT_PROFILE_SCHEMA,
+    SignInCall, SolarMediaDownloadCall, SolarSnapshotCall, StoreError, StoreKey,
+    SurveyEntriesChangesCall, SurveyEntriesChangesRequest, SurveyEntriesChangesServiceCode,
+    SurveyEntriesSelectCall, SurveyEntriesSelectRequest, SurveyEntriesSelectServiceCode,
+    SurveyEntryCreateCall, SurveyEntryCreateOrigin, SurveyEntryCreateRequest,
+    SurveyEntryCreateServiceCode, SurveyFormReadServiceCode, SurveyQueryCall, SurveyQueryFilter,
+    SurveyQueryMetric, SurveyQueryOrder, SurveyQueryRequest, SyncGatewayCall, SyncGatewayOperation,
+    TileCall, TileOperationStatus, TilePreflightStatus, TileType, TransformerContextCall,
+    Transport, TransportError, TransportResponse, CLIENT_PROFILE_SCHEMA,
 };
 use ds_client_core::{
     CompoundedReportRequest, CompoundedReportStatus, ProjectReportCall, ReportFileLevel,
@@ -214,6 +214,7 @@ struct TransportState {
     project_forms: VecDeque<TransportResponse>,
     project_form_editor: VecDeque<TransportResponse>,
     solar_snapshot: VecDeque<TransportResponse>,
+    solar_media_download: VecDeque<TransportResponse>,
     solar_project: VecDeque<TransportResponse>,
     survey_query: VecDeque<TransportResponse>,
     survey_entries_select: VecDeque<TransportResponse>,
@@ -696,6 +697,25 @@ impl Transport for FixtureTransport {
             correlation_valid,
         ));
         Ok(state.project_form_editor.pop_front().unwrap())
+    }
+
+    fn download_solar_media(
+        &mut self,
+        call: SolarMediaDownloadCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        let mut state = self.0.lock().unwrap();
+        assert_eq!(
+            call.url(),
+            "https://storage.googleapis.com/solar-media/signed?token=private"
+        );
+        state.calls.push(format!(
+            "solar_media_download limit={}",
+            call.response_limit()
+        ));
+        Ok(state
+            .solar_media_download
+            .pop_front()
+            .expect("governed media response"))
     }
 
     fn solar_snapshot(
@@ -8140,4 +8160,89 @@ fn solar_portfolio_mutation_requires_exact_authoritative_readback() {
             );
         }
     }
+}
+
+#[test]
+fn governed_solar_media_download_verifies_exact_generation_bytes_and_context() {
+    use ds_client_core::solar_project::Command;
+    let png = b"\x89PNG\r\n\x1a\nverified-image";
+    let reference = "gs://solar-media/eds_project/active-project/eds_solar/city_1/network_plots/_immutable/123e4567-e89b-42d3-a456-426614174001?generation=1";
+    for corrupt in [false, true] {
+        let t = FixtureTransport::with_sign_in(SIGN_IN);
+        let mut envelope =
+            solar_snapshot_envelope("eds_project/active-project/eds_solar", "city_1");
+        envelope["data"]["media_downloads"] = serde_json::json!([{
+            "ref": {"schema":1,"kind":"solar_network_media","media_id":"123e4567-e89b-42d3-a456-426614174001", "logical_role":"network.map:overview", "bucket":"solar-media", "object":"eds_project/active-project/eds_solar/city_1/network_plots/_immutable/123e4567-e89b-42d3-a456-426614174001", "generation":1,"size_bytes":png.len(),"media_type":"image/png","sha256":format!("{:x}",sha2::Sha256::digest(png)),"file_name":"overview.png"},
+            "download_url":"https://storage.googleapis.com/solar-media/signed?token=private"
+        }]);
+        t.push_solar_snapshot(200, &serde_json::to_vec(&envelope).unwrap());
+        let body: &[u8] = if corrupt { b"changed-image" } else { png };
+        t.0.lock()
+            .unwrap()
+            .solar_media_download
+            .push_back(TransportResponse::new(200, body));
+        let mut client = signed_in(t.clone(), MemoryStore::default());
+        let result = client.solar_project(
+            "active-project",
+            &Command::ReadMedia {
+                city: "city_1".into(),
+                reference: reference.into(),
+            },
+            NOW + 1,
+        );
+        if corrupt {
+            assert_eq!(result.unwrap_err().kind(), ErrorKind::UnreadableResponse);
+        } else {
+            let value = result.unwrap();
+            assert_eq!(value["reference"], reference);
+            assert_eq!(value["byte_count"], png.len());
+            assert!(!value.to_string().contains("signed?token"));
+            assert!(!value.to_string().contains("download_url"));
+        }
+        assert!(t
+            .calls()
+            .iter()
+            .any(|s| s.starts_with("solar_media_download")));
+    }
+    let t = FixtureTransport::with_sign_in(SIGN_IN);
+    let mut client = signed_in(t.clone(), MemoryStore::default());
+    assert!(client
+        .solar_project(
+            "another-project",
+            &Command::ReadMedia {
+                city: "city_1".into(),
+                reference: reference.into()
+            },
+            NOW + 1
+        )
+        .is_err());
+    assert!(!t.calls().iter().any(|s| s.starts_with("solar_")));
+    let t = FixtureTransport::with_sign_in(SIGN_IN);
+    t.push_solar_snapshot(
+        200,
+        &serde_json::to_vec(&solar_snapshot_envelope(
+            "eds_project/active-project/eds_solar",
+            "city_1",
+        ))
+        .unwrap(),
+    );
+    let mut client = signed_in(t.clone(), MemoryStore::default());
+    assert_eq!(
+        client
+            .solar_project(
+                "active-project",
+                &Command::ReadMedia {
+                    city: "city_1".into(),
+                    reference: reference.into()
+                },
+                NOW + 1
+            )
+            .unwrap_err()
+            .kind(),
+        ErrorKind::ResourceNotFound
+    );
+    assert!(!t
+        .calls()
+        .iter()
+        .any(|s| s.starts_with("solar_media_download")));
 }

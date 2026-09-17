@@ -71,6 +71,71 @@ impl SolarSnapshot {
     }
 }
 
+/// Transport authority derived only from a validated governed snapshot.
+/// Ordinary callers cannot construct a URL download request.
+pub struct SolarMediaDownloadCall<'a> {
+    url: &'a str,
+    response_limit: usize,
+}
+impl SolarMediaDownloadCall<'_> {
+    pub fn url(&self) -> &str {
+        self.url
+    }
+    pub fn response_limit(&self) -> usize {
+        self.response_limit
+    }
+}
+impl SolarSnapshot {
+    pub(crate) fn download_media<T: crate::AuthorizedTransport>(
+        &self,
+        transport: &mut T,
+        reference: &str,
+    ) -> Result<Value, ClientError> {
+        use base64::Engine;
+        let data: SnapshotWire =
+            serde_json::from_slice(&self.intake_bytes).map_err(|_| unreadable())?;
+        let download = data
+            .media_downloads
+            .iter()
+            .find(|d| {
+                format!(
+                    "gs://{}/{}?generation={}",
+                    d.r#ref.bucket, d.r#ref.object, d.r#ref.generation
+                ) == reference
+            })
+            .ok_or_else(|| {
+                ClientError::new(
+                    ErrorKind::ResourceNotFound,
+                    "The exact immutable map is not present in the governed city snapshot",
+                )
+            })?;
+        let url = Url::parse(&download.download_url).map_err(|_| unreadable())?;
+        let host = url.host_str().ok_or_else(unreadable)?;
+        if !matches!(
+            host,
+            "storage.googleapis.com" | "firebasestorage.googleapis.com"
+        ) && !host.ends_with(".storage.googleapis.com")
+        {
+            return Err(unreadable());
+        }
+        let response = transport.download_solar_media(SolarMediaDownloadCall {
+            url: &download.download_url,
+            response_limit: download.r#ref.size_bytes as usize,
+        })?;
+        let r = &download.r#ref;
+        if response.status != 200
+            || response.body.len() != r.size_bytes as usize
+            || format!("{:x}", Sha256::digest(&response.body)) != r.sha256
+            || crate::solar_media::media_type(&response.body)? != r.media_type
+        {
+            return Err(unreadable());
+        }
+        Ok(
+            serde_json::json!({"reference":reference,"project_id":self.ds_project,"city_id":self.template_id,"media_type":r.media_type,"byte_count":r.size_bytes,"content_digest":format!("sha256:{}",r.sha256),"body_base64":base64::engine::general_purpose::STANDARD.encode(&response.body)}),
+        )
+    }
+}
+
 impl Drop for SolarSnapshot {
     fn drop(&mut self) {
         self.intake_bytes.zeroize();
@@ -109,6 +174,12 @@ struct SnapshotWire {
 struct MediaDownloadWire {
     r#ref: MediaRefWire,
     download_url: String,
+}
+
+impl Drop for MediaDownloadWire {
+    fn drop(&mut self) {
+        self.download_url.zeroize();
+    }
 }
 
 #[derive(Serialize, Deserialize)]
