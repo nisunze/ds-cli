@@ -10,7 +10,10 @@ fn published_portfolio_path_is_validated_before_authentication_or_desktop() {
     let output = Command::new(env!("CARGO_BIN_EXE_ds"))
         .env("DS_NATIVE_CLIENT_PROFILE_BUNDLE", bundle)
         .env("DS_CONFIG_HOME", config.path())
-        .env("DS_DESKTOP_DESCRIPTOR", config.path().join("no-desktop.json"))
+        .env(
+            "DS_DESKTOP_DESCRIPTOR",
+            config.path().join("no-desktop.json"),
+        )
         .args([
             "solar",
             "portfolio",
