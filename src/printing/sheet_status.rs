@@ -1,6 +1,7 @@
 //! Presentation of verified render diagnostics; shared by CLI and UI.
 use super::table_rows::PrintWarning;
-use serde::Serialize;
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -15,6 +16,65 @@ pub struct LabelNote {
 pub struct Status {
     pub warnings: Vec<String>,
     pub label_notes: Vec<LabelNote>,
+}
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ContextOmission {
+    pub layer: String,
+    pub reason: String,
+}
+#[derive(Serialize)]
+pub struct ContextStatus {
+    pub unavailable: Vec<ContextOmission>,
+    pub empty_layers: Vec<String>,
+}
+pub fn context_status(omitted: Vec<ContextOmission>) -> Result<ContextStatus, String> {
+    if omitted.len() > 1000
+        || omitted
+            .iter()
+            .any(|row| row.layer.is_empty() || row.layer.len() > 256 || row.reason.len() > 2048)
+    {
+        return Err("unbounded print context status".into());
+    }
+    let mut unavailable = Vec::new();
+    let mut empty_layers = BTreeSet::new();
+    for row in omitted {
+        if row.reason == "no features in the design's extent" {
+            empty_layers.insert(row.layer);
+        } else {
+            unavailable.push(row);
+        }
+    }
+    Ok(ContextStatus {
+        unavailable,
+        empty_layers: empty_layers.into_iter().collect(),
+    })
+}
+#[cfg(test)]
+mod context_tests {
+    use super::*;
+    #[test]
+    fn empty_extent_is_neutral_while_unheld_sources_remain_visible() {
+        let result = context_status(vec![
+            ContextOmission {
+                layer: "churches".into(),
+                reason: "no features in the design's extent".into(),
+            },
+            ContextOmission {
+                layer: "project_dsgrid_mv".into(),
+                reason: "not retained on this computer".into(),
+            },
+        ])
+        .unwrap();
+        assert_eq!(result.empty_layers, vec!["churches"]);
+        assert_eq!(result.unavailable.len(), 1);
+        assert_eq!(result.unavailable[0].layer, "project_dsgrid_mv");
+        assert!(context_status(vec![ContextOmission {
+            layer: "".into(),
+            reason: "".into()
+        }])
+        .is_err());
+    }
 }
 pub fn summarize(assessments: &[Value], warnings: &[PrintWarning]) -> Result<Status, String> {
     if assessments.len() > 64 || warnings.len() > crate::report_export::MAX_PRINT_WARNINGS {

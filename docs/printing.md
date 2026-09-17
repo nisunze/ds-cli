@@ -105,8 +105,59 @@ optimiser's only freedom. Type size and content are NOT decision variables:
 shrinking text or dropping a column buys area by breaking a constraint, which
 is not a solution.
 
-Read the rest of this document as the constraint set. "It fits" is not the
-standard; "it fits and nothing else would have given the map more room" is.
+The native search is deterministic and bounded; it maximises the fit among
+the candidates it examines, rather than claiming a global optimum.
+
+### Network footprint and project scale limits
+
+`network_fit` opts a layout into stepped network fitting. Its `source_layers`
+explicitly name the engineering layers that must remain visible, rather than
+context such as national roads, buildings or administrative polygons. Missing
+or empty required sources refuse the render. Geometry is never edited.
+
+One continuous projection, with the existing bearing, fits the complete source
+footprint around measured furniture inside the thick printable border. A
+conservative 16-by-16 occupancy grid includes line segments between vertices
+and polygon interiors; contiguous occupied cells form stepping rectangles.
+`clearance_mm` expands those rectangles for symbols and nearby labels. It is
+an explicit physical clearance, not a guarantee that every optional map label
+can be placed. Mandatory engineering values remain in complete schedules.
+The same rectangles drive fitting and furniture collision assessment.
+Fitting retains the named view's padding (4% for an automatic view) and the
+existing 0.0001-degree minimum geographic pad for degenerate sources. A single
+point must not create a zero print denominator. GeometryCollection sources
+retain their component geometry and filled-polygon protection.
+
+Composition still honours explicit corners, perimeter/shelf placement,
+readable type, complete rows, full-height-first panels and the measured gaps.
+Tables never acquire a shared global container. The map may use vacancies
+between them while their independent parent-relative frames remain intact.
+The rectangular fitter remains the default when `network_fit` is absent.
+
+`scale_limits` is a template policy shared by the project's transformer sheets.
+`min_denominator` is the closest allowed view (most zoomed in), and
+`max_denominator` is the farthest allowed view (most zoomed out). Both are
+within 10..100,000,000 and the minimum must not exceed the maximum. No numeric
+limits are invented for existing projects. A small design stops growing at the
+minimum; a design that cannot fit completely before the maximum refuses with
+an actionable scale-limit error. It is never cropped to satisfy that policy.
+Automatic scale rounding happens before the maximum check; an explicit camera
+keeps its exact scale but must satisfy the bounds. It cannot be combined with
+automatic stepped fitting. Omitting both policies preserves existing behavior.
+
+Native assessment records the fit mode, resolved scale denominator, whether
+the closest-scale limit capped enlargement, and the occupied footprint. CLI
+and MCP author these policies through `set_fit_policy`; the UI adapts that
+same operation. A draft proof is not an online publication receipt.
+
+`preview_context_preparation` decides selected draft context and whether
+missing inputs may be prepared online, before the read-only render.
+`context_status` presents omissions: an acquired layer with no features in the
+design extent is neutral; an unheld/unavailable source retains its reason.
+This does not mutate source holdings or the saved project selection. The UI
+invalidates old render diagnostics when a draft changes and can group map-data
+or pen edits before one explicit preview. Project persistence uses the existing
+revision-fenced full-template save, separate from trying a transient draft.
 
 ## Sheet margin
 

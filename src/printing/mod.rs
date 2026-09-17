@@ -10,6 +10,7 @@ pub mod inventory;
 pub mod lifecycle;
 pub mod map;
 pub mod names;
+pub mod network_fit;
 pub mod overrides;
 pub mod pens;
 pub mod placement;
@@ -77,6 +78,12 @@ pub struct Layout {
     /// Round an automatic fit denominator upward to this increment; explicit cameras stay exact.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub scale_rounding: Option<f64>,
+    /// Optional conservative stepped engineering footprint; absence keeps rectangular fitting.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub network_fit: Option<network_fit::NetworkFit>,
+    /// Project template limits on print scale, independent of paper size.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scale_limits: Option<network_fit::ScaleLimits>,
     /// Back-to-front layer IDs. Unlisted layers follow in their input order.
     #[serde(default)]
     pub layer_order: Vec<String>,
@@ -840,6 +847,12 @@ pub fn validate(layout: &Layout) -> Result<(), String> {
             return Err("transformer polygon bounds need 1..16 unique layer IDs, an identity field and a 0..500 metre buffer".into());
         }
     }
+    if let Some(policy) = &layout.network_fit {
+        policy.validate()?;
+    }
+    if let Some(limits) = &layout.scale_limits {
+        limits.validate()?;
+    }
     let mut ids = BTreeSet::new();
     let mut maps = 0;
     for element in &layout.elements {
@@ -1249,6 +1262,8 @@ pub fn default_layout() -> Layout {
         transformer_bounds: None,
         project_overview: false,
         scale_rounding: None,
+        network_fit: None,
+        scale_limits: None,
         layer_order: Vec::new(),
         style_overrides: BTreeMap::new(),
         focus: None,
@@ -1793,10 +1808,24 @@ pub enum Command {
         name: String,
         view_slot: String,
     },
+    /// Set the project template's opt-in footprint and physical print-scale policy.
+    SetFitPolicy {
+        layout: Layout,
+        network_fit: Option<network_fit::NetworkFit>,
+        scale_limits: Option<network_fit::ScaleLimits>,
+    },
+    /// Before rendering a draft preview, prepare its selected context. Rendering itself reads held state.
+    PreviewContextPreparation {
+        layout: Layout,
+        online: bool,
+    },
     /// Map space -> printable border -> independent container -> local table.
     SheetStatus {
         assessments: Vec<Value>,
         warnings: Vec<table_rows::PrintWarning>,
+    },
+    ContextStatus {
+        omitted: Vec<sheet_status::ContextOmission>,
     },
     TableDrafts {
         layout: Layout,
@@ -2333,6 +2362,22 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
                     .as_ref()
                     .and_then(|v| v.graticule.clone()),
             });
+            validate(&layout)?;
+            json!({"layout":layout})
+        }
+        Command::ContextStatus { omitted } => json!(sheet_status::context_status(omitted)?),
+        Command::PreviewContextPreparation { layout, online } => {
+            let layout = upgrade(layout)?;
+            json!({"contexts":layout.context_layers,"acquire_missing":online})
+        }
+        Command::SetFitPolicy {
+            layout,
+            network_fit,
+            scale_limits,
+        } => {
+            let mut layout = upgrade(layout)?;
+            layout.network_fit = network_fit;
+            layout.scale_limits = scale_limits;
             validate(&layout)?;
             json!({"layout":layout})
         }
