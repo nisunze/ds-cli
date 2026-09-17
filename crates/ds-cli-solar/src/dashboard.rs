@@ -7,15 +7,20 @@ use std::io::Write;
 pub static COMMAND: Command = Command {
     id: "solar.dashboard.compose",
     path: &["solar", "dashboard", "compose"],
-    contract: 1,
+    contract: 2,
     summary: "Compose a Solar dashboard as JSON and standalone HTML headlessly.",
-    purpose: "Verify an exact sealed city report input and compose Site, Plant, Finance or BOQ through shared Rust. Write JSON and standalone HTML cards, plus BOQ tables. Plant JSON includes declarative chart options. No TypeScript, browser, paired desktop, sign-in, network or publication is required. Plot files are not included.",
+    purpose: "Verify a sealed city or membership-pinned portfolio and compose cards, tables, declarative charts and script-free SVG through shared Rust. City sections are Site, Plant, Finance and BOQ; portfolio_finance binds its exact portfolio id and membership revision. No TypeScript, browser, paired desktop or network is required. External plot files and online publication are not included.",
     chapter: Chapter::Solar,
     effect: Effect::LocalFileWrite,
     authority: Authority::None,
     execution: Execution::Sync,
     args: &[
-        Arg::value("source", "<dir>", "Closed Solar city batch directory.").required(),
+        Arg::value(
+            "source",
+            "<dir>",
+            "Closed Solar city or portfolio batch directory.",
+        )
+        .required(),
         Arg::value(
             "project",
             "<id>",
@@ -23,10 +28,20 @@ pub static COMMAND: Command = Command {
         )
         .required(),
         Arg::value("run-id", "<id>", "Exact sealed source run.").required(),
-        Arg::value("city", "<id>", "Exact city in that batch.").required(),
+        Arg::value("city", "<id>", "Exact city; required for city sections."),
+        Arg::value(
+            "portfolio",
+            "<id>",
+            "Exact portfolio; required for portfolio sections.",
+        ),
+        Arg::value(
+            "membership-revision",
+            "<sha256:digest>",
+            "Exact sealed membership; required for portfolio sections.",
+        ),
         Arg::value("section", "<name>", "Dashboard section.")
             .required()
-            .choices(&["site", "plant", "finance", "boq"]),
+            .choices(&["site", "plant", "finance", "boq", "portfolio_finance"]),
         Arg::value(
             "system",
             "<name>",
@@ -38,6 +53,16 @@ pub static COMMAND: Command = Command {
     output: "Verified source identity, dashboard.json and index.html; publication not_requested and plots not_included.",
     examples: &[],
     refusals: &[
+        Refusal {
+            code: "missing_input",
+            when: "the selected section lacks its city or portfolio membership selectors",
+            remedy: "supply --city for city sections, or --portfolio and --membership-revision for portfolio sections",
+        },
+        Refusal {
+            code: "solar_dashboard_context_invalid",
+            when: "city and portfolio selectors, or a city scenario and portfolio section, are mixed",
+            remedy: "use city and optional system for city sections; use portfolio and membership-revision for portfolio sections",
+        },
         Refusal {
             code: "solar_engine_missing",
             when: "the matching Solar owner is absent",
@@ -65,9 +90,34 @@ pub static COMMAND: Command = Command {
 fn io(error: impl std::fmt::Display) -> Failure {
     Failure::unavailable("solar_dashboard_io", error.to_string())
 }
+fn selector<'a>(i: &'a Inputs, name: &str) -> Result<&'a str, Failure> {
+    i.value(name).ok_or_else(|| {
+        Failure::invalid(
+            "missing_input",
+            format!("this dashboard section requires --{name}"),
+        )
+    })
+}
 pub(crate) fn source(i: &Inputs) -> Result<Value, Failure> {
+    if i.require("section")? == "portfolio_finance" {
+        if i.value("city").is_some() || i.value("system").is_some() {
+            return Err(Failure::invalid(
+                "solar_dashboard_context_invalid",
+                "portfolio sections cannot take city or system selectors",
+            ));
+        }
+        return crate::project::invoke(json!({"operation":"portfolio_dashboard_source",
+            "source":i.require("source")?,"project":i.require("project")?,"run":i.require("run-id")?,
+            "portfolio":selector(i, "portfolio")?,"membership_revision":selector(i, "membership-revision")?}));
+    }
+    if i.value("portfolio").is_some() || i.value("membership-revision").is_some() {
+        return Err(Failure::invalid(
+            "solar_dashboard_context_invalid",
+            "city sections cannot take portfolio selectors",
+        ));
+    }
     crate::project::invoke(
-        json!({"operation":"dashboard_source","source":i.require("source")?,"project":i.require("project")?,"run":i.require("run-id")?,"city":i.require("city")?}),
+        json!({"operation":"dashboard_source","source":i.require("source")?,"project":i.require("project")?,"run":i.require("run-id")?,"city":selector(i, "city")?}),
     )
 }
 pub fn execute(i: &Inputs, _: &Context) -> Result<Value, Failure> {
@@ -94,7 +144,9 @@ pub fn execute(i: &Inputs, _: &Context) -> Result<Value, Failure> {
         &format!(
             "{} · {} · {}",
             i.require("project")?,
-            i.require("city")?,
+            i.value("city")
+                .or_else(|| i.value("portfolio"))
+                .ok_or_else(|| io("dashboard identity is missing"))?,
             i.require("section")?
         ),
     );

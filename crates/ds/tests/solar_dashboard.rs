@@ -4,6 +4,9 @@ use std::process::Command;
 fn ds(args: &[&str]) -> Value {
     let output = Command::new(env!("CARGO_BIN_EXE_ds"))
         .args(args)
+        // Pass executable availability; selector refusals must happen before
+        // attempting to execute this deliberately incompatible owner.
+        .env("DS_SOLAR_BIN", std::env::current_exe().unwrap())
         .output()
         .unwrap();
     serde_json::from_slice(&output.stdout).expect("public DS envelope")
@@ -50,4 +53,38 @@ fn dashboard_reads_require_explicit_source_identity_and_never_a_desktop() {
     ]);
     assert_eq!(compose["data"]["command"]["authority"], "none");
     assert_eq!(compose["data"]["command"]["effect"], "local_file_write");
+}
+
+#[test]
+fn portfolio_dashboard_requires_membership_and_refuses_mixed_selectors_before_io() {
+    let common = [
+        "solar",
+        "dashboard",
+        "compose",
+        "--source",
+        "absent-source",
+        "--project",
+        "p",
+        "--run-id",
+        "r",
+        "--section",
+        "portfolio_finance",
+        "--out",
+        "unused-dashboard",
+        "--output",
+        "json",
+    ];
+    let missing = ds(&common);
+    assert_eq!(missing["error"]["code"], "missing_input");
+    let mut mixed = common.to_vec();
+    mixed.extend([
+        "--city",
+        "a",
+        "--portfolio",
+        "pf",
+        "--membership-revision",
+        "sha256:invalid",
+    ]);
+    let refused = ds(&mixed);
+    assert_eq!(refused["error"]["code"], "solar_dashboard_context_invalid");
 }

@@ -1590,9 +1590,11 @@ name = "ds-solar-native"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "ds-command-kernel",
  "ds-solar-contracts",
  "ds-solar-io",
  "ds-solar-portfolio",
+ "ds-solar-project",
  "ds-solar-runtime",
  "rand 0.9.5",
  "rayon",
@@ -1611,6 +1613,24 @@ dependencies = [
  "serde_json",
  "sha2",
  "thiserror",
+]
+
+[[package]]
+name = "ds-solar-project"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "base64 0.22.1",
+ "chrono",
+ "ds-solar-contracts",
+ "ds-solar-io",
+ "ds-solar-runtime",
+ "fs2",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
 ]
 
 [[package]]

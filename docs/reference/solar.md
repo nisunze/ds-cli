@@ -578,3 +578,16 @@ describes inheritance, source refresh, legacy adoption and calculation storage.
 A completed local draft is distinct from its pending cloud publication.
 
 `solar project sync --run-id <closed-run>` publishes that run and pending inputs while retaining other queued draft runs. This is useful after a development run is replaced by a released engine; it never acknowledges or deletes the earlier run. Do not combine it with `--inputs-only` or `--background`.
+
+## Sealed portfolio finance dashboard
+
+`ds solar dashboard compose --source <closed-portfolio-dir> --project <id>
+--run-id <portfolio-run> --section portfolio_finance --portfolio <id>
+--membership-revision <sha256:digest> --out <fresh-dir>` verifies the exact
+immutable portfolio closure before presentation. City and scenario selectors
+are refused for this section. Its cards, tables and chart options use the same
+Rust owner as browser WASM. The standalone HTML includes script-free SVG and
+exact chart data. Negative IRR values remain negative, unavailable values stay
+unavailable, and DSCR observations align with their actual years. No desktop,
+browser, network or TypeScript is needed. This local export is not proof of
+online publication; external plot files are not included.
