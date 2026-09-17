@@ -979,7 +979,7 @@ mod tests {
     #[test]
     fn exact_native_seed_codes_keep_their_remedies() {
         for (server_code, expected) in SERVER_CODES {
-            let refused = Failure::invalid("headless_invalid_input", "refused")
+            let refused = Failure::invalid("auth_input_invalid", "refused")
                 .detail(json!({"service_code": expected}));
             let named = classify_seed_failure(refused);
             assert_eq!(named.code(), *expected);
@@ -991,11 +991,8 @@ mod tests {
             json!({"service_code":"prefix_solar_seed_digest_mismatch_suffix"}),
             json!({"detail":"SOLAR_SEED_DIGEST_MISMATCH"}),
         ] {
-            let failure = Failure::invalid("headless_invalid_input", "refused").detail(detail);
-            assert_eq!(
-                classify_seed_failure(failure).code(),
-                "headless_invalid_input"
-            );
+            let failure = Failure::invalid("auth_input_invalid", "refused").detail(detail);
+            assert_eq!(classify_seed_failure(failure).code(), "auth_input_invalid");
         }
     }
 
