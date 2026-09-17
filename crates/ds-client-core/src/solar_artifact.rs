@@ -79,7 +79,7 @@ pub(crate) fn portfolio<T: AuthorizedTransport>(
         }
         let size = output["size_bytes"]
             .as_u64()
-            .filter(|n| (1..=4 * 1024 * 1024).contains(n))
+            .filter(|n| (1..=8 * 1024 * 1024).contains(n))
             .ok_or_else(unreadable)? as usize;
         let digest = output["sha256"]
             .as_str()

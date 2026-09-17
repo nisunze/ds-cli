@@ -4,7 +4,7 @@ use base64::{engine::general_purpose::STANDARD, Engine};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::BTreeMap,
-    io::{Cursor, Write},
+    io::{Cursor, Read, Write},
 };
 use zip::{write::SimpleFileOptions, CompressionMethod, DateTime, ZipWriter};
 
@@ -24,6 +24,100 @@ pub struct Plan {
     pub preview: String,
     pub name: String,
     pub images: Vec<PlannedImage>,
+}
+
+/// A presentation copy from a verified generated archive; canonical bytes stay intact.
+pub struct RenderCopy {
+    pub markdown: String,
+    pub media: BTreeMap<String, Vec<u8>>,
+}
+
+pub fn render_copy(
+    archive: &[u8],
+    canonical: &str,
+    source_digest: &str,
+) -> Result<RenderCopy, String> {
+    if archive.len() > MAX_MEDIA_BYTES + 40 * 1024 * 1024 {
+        return Err("Report archive exceeds its render bound".into());
+    }
+    let mut archive =
+        zip::ZipArchive::new(Cursor::new(archive)).map_err(|_| "Invalid report archive")?;
+    let mut read = |name: &str, limit: usize| -> Result<Vec<u8>, String> {
+        let file = archive
+            .by_name(name)
+            .map_err(|_| "Incomplete report archive")?;
+        if file.size() > limit as u64 {
+            return Err("Report archive entry exceeds its bound".into());
+        }
+        let mut bytes = Vec::new();
+        file.take(limit as u64 + 1)
+            .read_to_end(&mut bytes)
+            .map_err(|_| "Unreadable report archive entry")?;
+        if bytes.len() > limit {
+            return Err("Report archive entry exceeds its bound".into());
+        }
+        Ok(bytes)
+    };
+    let bytes = read(canonical, 16 * 1024 * 1024)?;
+    if ds_solar_contracts::digest::sha256_hex(&bytes) != source_digest {
+        return Err("Report archive differs from its sealed source".into());
+    }
+    let source = std::str::from_utf8(&bytes).map_err(|_| "Report source must be UTF-8")?;
+    if source.contains("[LLM_START:")
+        || source.contains("[LLM_END:")
+        || source.contains("[LLM interpretation will be inserted here]")
+    {
+        return Err("Import a linted reviewed final before producing DOCX or PDF".into());
+    }
+    let plan = plan(canonical, source)?;
+    let mut media = BTreeMap::new();
+    let mut resolved = BTreeMap::new();
+    let mut total = 0usize;
+    for image in &plan.images {
+        let bytes = read(&image.bundle_path, MAX_IMAGE_BYTES)?;
+        total = total
+            .checked_add(bytes.len())
+            .ok_or("Report media size overflow")?;
+        if bytes.is_empty() || total > MAX_MEDIA_BYTES {
+            return Err("Report media exceeds its render bound".into());
+        }
+        resolved.insert(image.reference.clone(), image.bundle_path.clone());
+        media.insert(image.bundle_path.clone(), bytes);
+    }
+    let expected =
+        ds_solar_contracts::report_media::project(source, &resolved).map_err(|e| e.message)?;
+    if read(&plan.preview, 16 * 1024 * 1024)? != expected.as_bytes() {
+        return Err("Report preview differs from its canonical projection".into());
+    }
+    let mut names: std::collections::BTreeSet<_> = [
+        plan.canonical.clone(),
+        plan.preview.clone(),
+        "media-manifest.json".into(),
+        "README.txt".into(),
+    ]
+    .into_iter()
+    .collect();
+    names.extend(plan.images.iter().map(|image| image.bundle_path.clone()));
+    if archive.len() != names.len() || archive.file_names().any(|name| !names.contains(name)) {
+        return Err("Report archive has undeclared entries".into());
+    }
+    let start = "<!-- LLM_AUTHORING_GUIDE_START -->";
+    let end = "<!-- LLM_AUTHORING_GUIDE_END -->";
+    let markdown = match (expected.find(start), expected.find(end)) {
+        (None, None) => expected,
+        (Some(a), Some(b))
+            if a == 0
+                && b > a
+                && expected.matches(start).count() == 1
+                && expected.matches(end).count() == 1 =>
+        {
+            expected[b + end.len()..]
+                .trim_start_matches(['\r', '\n'])
+                .to_owned()
+        }
+        _ => return Err("Report authoring guide markers are malformed".into()),
+    };
+    Ok(RenderCopy { markdown, media })
 }
 
 pub fn media_name(reference: &str, index: usize) -> Result<String, String> {
@@ -210,6 +304,54 @@ pub fn build_encoded(input: &[u8]) -> Result<Vec<u8>, String> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn reviewed_render_copy_keeps_source_and_data_and_rejects_unfinished_or_wrong_source() {
+        let source = "<!-- LLM_AUTHORING_GUIDE_START -->\nInstructions.\n<!-- LLM_AUTHORING_GUIDE_END -->\n\n# Rapport\n\n<!-- FACT_LEDGER: sealed -->\nNarration vérifiée.\n\n| City | kW |\n|---|---|\n| Beinamar | 100 |\n\n![Plant](plots/plant.png)\n";
+        let media = BTreeMap::from([(
+            "plots/plant.png".into(),
+            b"\x89PNG\r\n\x1a\nfixture".to_vec(),
+        )]);
+        let archive = build("apd-final-fr.md", source, &media).unwrap();
+        let copy = render_copy(
+            &archive,
+            "apd-final-fr.md",
+            &ds_solar_contracts::digest::sha256_hex(source.as_bytes()),
+        )
+        .unwrap();
+        assert!(copy.markdown.starts_with("# Rapport"));
+        assert!(
+            copy.markdown.contains("| Beinamar | 100 |")
+                && copy.markdown.contains("Narration vérifiée.")
+        );
+        assert!(copy.markdown.contains("media/001-plant.png"));
+        assert!(!copy.markdown.contains("Instructions."));
+        assert_eq!(copy.media["media/001-plant.png"], media["plots/plant.png"]);
+        let mut original = Vec::new();
+        zip::ZipArchive::new(Cursor::new(&archive))
+            .unwrap()
+            .by_name("apd-final-fr.md")
+            .unwrap()
+            .read_to_end(&mut original)
+            .unwrap();
+        assert_eq!(original, source.as_bytes());
+        assert!(render_copy(
+            &archive,
+            "apd-final-fr.md",
+            &format!("sha256:{}", "a".repeat(64))
+        )
+        .is_err());
+        let unfinished = source.replace(
+            "Narration vérifiée.",
+            "[LLM_START: summary]Instruction[LLM_END: summary]",
+        );
+        let draft = build("apd-final-fr.md", &unfinished, &media).unwrap();
+        assert!(render_copy(
+            &draft,
+            "apd-final-fr.md",
+            &ds_solar_contracts::digest::sha256_hex(unfinished.as_bytes())
+        )
+        .is_err());
+    }
     use super::*;
     use std::io::Read;
     #[test]
