@@ -148,18 +148,25 @@ pub const BEGIN_COMMAND: Command = Command {
 pub const STATUS_COMMAND: Command = Command {
     id: "auth.link.status",
     path: &["auth", "link", "status"],
-    contract: 1,
+    contract: 2,
     chapter: Chapter::Project,
     summary: "Read one pending device-link status.",
-    purpose: "Loads the device code only inside protected state and polls the fixed public status endpoint.",
+    purpose: "Recover this lane/account's pending public device-link receipt and poll its fixed status endpoint. Omit --request to use the exact pending link held in protected native state; a supplied request must match it. Device secrets remain inside native state.",
     effect: Effect::ReadOnly,
     authority: Authority::None,
     execution: Execution::Sync,
-    args: &[REQUEST, LANE],
-    output: "Request id, bounded status, expiry and polling interval; no pending secrets.",
+    args: &[
+        Arg::value(
+            "request",
+            "<request-id>",
+            "Optional exact pending request assertion.",
+        ),
+        LANE,
+    ],
+    output: "Public request id, user code, verification URI, fingerprint, scopes and binding, plus bounded status, expiry and polling interval; no device code, verifier, nonce, private key, signature or token.",
     examples: &[Example {
-        command: "ds auth link status --request <id>",
-        note: "Poll no faster than the returned interval.",
+        command: "ds auth link status",
+        note: "Recover the pending public link; poll no faster than its interval.",
         runnable: false,
     }],
     refusals: PENDING_REFUSALS,
@@ -313,19 +320,30 @@ pub fn run_status(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
     let pending =
         DevicePendingAuthorization::decode_protected(&bytes, &profile).map_err(device_failure)?;
     let public = pending.public();
-    exact_request(inputs, &public.request_id)?;
+    if let Some(request) = inputs.value("request") {
+        exact_request_id(request, &public.request_id)?;
+    }
     let mut transport = NativeDeviceTransport::new(&profile, gateway_key);
     let response = transport
         .status(device_secret_json(&pending.status_request()).map_err(device_failure)?)
         .map_err(transport_failure)?;
     let result = parse_device_status(response).map_err(device_failure)?;
     release(&mut store, &state_key(&profile))?;
-    Ok(json!({
-        "request_id": public.request_id,
-        "status": status_token(result.status),
-        "expires_at": result.expires_at,
-        "poll_interval_seconds": result.poll_interval_seconds,
-    }))
+    let mut output = begin_public_json(public);
+    output
+        .as_object_mut()
+        .expect("public link receipt is an object")
+        .extend(
+            json!({
+                "status": status_token(result.status),
+                "expires_at": result.expires_at,
+                "poll_interval_seconds": result.poll_interval_seconds,
+            })
+            .as_object()
+            .expect("status fields are an object")
+            .clone(),
+        );
+    Ok(output)
 }
 
 pub fn run_complete(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
@@ -890,7 +908,11 @@ pub fn lane_from_token(value: &str) -> Result<Lane, Failure> {
 }
 
 fn exact_request(inputs: &Inputs, stored: &str) -> Result<(), Failure> {
-    if inputs.require("request")? == stored {
+    exact_request_id(inputs.require("request")?, stored)
+}
+
+fn exact_request_id(request: &str, stored: &str) -> Result<(), Failure> {
+    if request == stored {
         Ok(())
     } else {
         Err(Failure::conflict(
@@ -1196,6 +1218,13 @@ pub fn render(value: &Value) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn supplied_request_cannot_redirect_the_protected_pending_link() {
+        assert!(exact_request_id("owned-request", "owned-request").is_ok());
+        let failure = exact_request_id("another-request", "owned-request").unwrap_err();
+        assert_eq!(failure.code(), "device_request_mismatch");
+    }
 
     #[test]
     fn begin_projection_has_only_public_handoff_fields() {
