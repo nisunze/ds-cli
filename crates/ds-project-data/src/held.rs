@@ -20,10 +20,9 @@
 //! rooms, and nothing is ever acquired for a preview.
 
 use ds_command_kernel::printing::context::{
-    expanded_layer_ids, retained_admission, RetainedContext, RetainedVerdict, RETAINED_SCHEMA,
+    printed_layer_ids, retained_admission, RetainedContext, RetainedVerdict, RETAINED_SCHEMA,
 };
 use ds_command_kernel::printing::held_context::{admit, HeldCapture};
-use ds_command_kernel::printing::map::MV_PRINT_LAYER_IDS;
 use ds_command_kernel::printing::preview::Refusal;
 use ds_command_kernel::printing::{PrintContextLayer, PrintContextSource};
 use ds_command_kernel::project_dataset_cache::{Scope, REFERENCE_CACHE_PROVIDER};
@@ -35,7 +34,7 @@ use std::path::Path;
 use crate::catalog::ReferenceResource;
 use crate::ensure::Mode;
 use crate::print_context::{
-    buffer_of, document_failure, read_print_context, Omission, PrintContext,
+    buffer_of, document_failure, read_print_context, Omission, PrintContext, SourceKind,
 };
 use crate::Failure;
 
@@ -254,29 +253,6 @@ const NOT_CAPTURED: &str = "not captured on this host";
 /// root to read from.
 const NO_HOLDINGS_ROOT: &str = "no holdings root on this host";
 
-/// The layer ids one wanted layer prints as: what its preparation emits —
-/// the MV projection's three layers, the contour pair, or the layer's own id.
-fn emitted_ids(layer: &PrintContextLayer) -> Vec<String> {
-    match layer.source {
-        PrintContextSource::ProjectDsgridMv { .. } => MV_PRINT_LAYER_IDS
-            .iter()
-            .map(|id| (*id).to_owned())
-            .collect(),
-        _ => expanded_layer_ids(layer),
-    }
-}
-
-fn source_kind(source: &PrintContextSource) -> &'static str {
-    match source {
-        PrintContextSource::Survey { .. } => "survey",
-        PrintContextSource::LocalLayer { .. } => "local_layer",
-        PrintContextSource::Catalog { .. } => "catalog",
-        PrintContextSource::GoogleOpenBuildings { .. } => "google_open_buildings",
-        PrintContextSource::ElevationContours { .. } => "elevation_contours",
-        PrintContextSource::ProjectDsgridMv { .. } => "project_dsgrid_mv",
-    }
-}
-
 /// The source-inventory entry an admitted capture prints under: the source
 /// as the draft spells it (kind and identity) with the capture's declared
 /// count beside it.
@@ -370,7 +346,7 @@ pub fn preview_context(
                                 id,
                                 collection,
                                 source: json!({
-                                    "kind": source_kind(&layer.source),
+                                    "kind": layer.source_kind(),
                                     "retained": RETAINED_SCHEMA,
                                     "source_version": source_version,
                                 }),
@@ -380,9 +356,11 @@ pub fn preview_context(
                     }
                     RetainedVerdict::Omit { reason } => {
                         if matches!(layer.source, PrintContextSource::ProjectDsgridMv { .. }) {
-                            omitted.extend(emitted_ids(layer).into_iter().map(|id| Omission {
-                                layer: id,
-                                reason: reason.clone(),
+                            omitted.extend(printed_layer_ids(layer).into_iter().map(|id| {
+                                Omission {
+                                    layer: id,
+                                    reason: reason.clone(),
+                                }
                             }));
                             continue;
                         }
@@ -410,10 +388,15 @@ pub fn preview_context(
             Mode::Read,
         )?),
         (None, false) => {
-            omitted.extend(to_read.iter().flat_map(emitted_ids).map(|id| Omission {
-                layer: id,
-                reason: NO_HOLDINGS_ROOT.into(),
-            }));
+            omitted.extend(
+                to_read
+                    .iter()
+                    .flat_map(printed_layer_ids)
+                    .map(|id| Omission {
+                        layer: id,
+                        reason: NO_HOLDINGS_ROOT.into(),
+                    }),
+            );
             None
         }
     };

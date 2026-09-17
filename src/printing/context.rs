@@ -408,11 +408,13 @@ pub fn retained_parameters(source: &PrintContextSource) -> Result<String, String
     String::from_utf8(bytes).map_err(|e| e.to_string())
 }
 
-/// The layer ids a retained preparation of `layer` may carry: what the
-/// source's preparation emits. The project MV projection prints as every
-/// layer `map::mv_layers` writes — its angle points included — not only the
-/// two the template pens by default; contours expand as the template does.
-fn retained_layer_ids(layer: &PrintContextLayer) -> Vec<String> {
+/// The document layer ids one context layer prints as: what its preparation
+/// emits. The project MV projection prints as every layer `map::mv_layers`
+/// writes — its angle points included — not only the two the template pens
+/// by default; contours expand as the template does; any other source prints
+/// as its own id. A retained preparation may carry only these ids, and a
+/// host names an omission of the layer under them.
+pub fn printed_layer_ids(layer: &PrintContextLayer) -> Vec<String> {
     match layer.source {
         PrintContextSource::ProjectDsgridMv { .. } => super::map::MV_PRINT_LAYER_IDS
             .iter()
@@ -464,7 +466,7 @@ pub fn retained_admission(
     let Some(entries) = retained.layers.as_object() else {
         return omit("retained layers are not a map");
     };
-    let own = retained_layer_ids(layer);
+    let own = printed_layer_ids(layer);
     let mut layers = BTreeMap::new();
     for (id, collection) in entries {
         if !own.contains(id) {

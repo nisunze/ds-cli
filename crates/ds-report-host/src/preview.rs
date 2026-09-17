@@ -38,11 +38,10 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use ds_command_kernel::envelope::{self, Class};
-use ds_command_kernel::printing::context::{expanded_layer_ids, RetainedContext};
+use ds_command_kernel::printing::context::{printed_layer_ids, RetainedContext};
 use ds_command_kernel::printing::held_context::HeldCapture;
-use ds_command_kernel::printing::map::MV_PRINT_LAYER_IDS;
 use ds_command_kernel::printing::table_rows::PrintWarning;
-use ds_command_kernel::printing::{self, PrintContextLayer, PrintContextSource};
+use ds_command_kernel::printing::{self, PrintContextLayer};
 use ds_command_kernel::project_dataset_cache::Scope;
 use ds_command_kernel::report_export::{self, EngineIdentity, InputReceipt};
 use ds_command_kernel::report_formats::PrintArtifactFormat;
@@ -179,24 +178,9 @@ fn draft_context_layers(
         .map_err(|error| inputs_invalid(format!("selected context layers: {error}")))
 }
 
-/// The document layer ids one draft layer prints as: its own id, or what its
-/// preparation emits — contours expand as the template does, the project MV
-/// projection prints as every layer `map::mv_layers` writes.
-fn document_layer_ids(layer: &PrintContextLayer) -> Vec<String> {
-    let mut ids = expanded_layer_ids(layer);
-    if matches!(layer.source, PrintContextSource::ProjectDsgridMv { .. }) {
-        for id in MV_PRINT_LAYER_IDS {
-            if !ids.iter().any(|own| own == id) {
-                ids.push(id.to_owned());
-            }
-        }
-    }
-    ids
-}
-
 /// Which of the draft's layers the staged context carries and which it
 /// omits. A draft layer is carried when the document holds any of the ids it
-/// prints as (`document_layer_ids`); otherwise it is named, with the reason
+/// prints as (`printed_layer_ids`); otherwise it is named, with the reason
 /// the host or the document gives.
 fn context_summary(
     wanted: &[PrintContextLayer],
@@ -215,7 +199,7 @@ fn context_summary(
     let omitted = wanted
         .iter()
         .filter_map(|layer| {
-            let ids = document_layer_ids(layer);
+            let ids = printed_layer_ids(layer);
             if ids.iter().any(|id| context.layers.contains(id)) {
                 return None;
             }
@@ -653,7 +637,7 @@ pub fn execute(
         else {
             continue;
         };
-        let ids = document_layer_ids(layer);
+        let ids = printed_layer_ids(layer);
         if let Some((_, reason)) = reasons.iter().find(|(id, _)| ids.contains(id)) {
             omission.reason = reason.clone();
         }
@@ -1464,6 +1448,52 @@ mod tests {
         assert_eq!(
             carried.detail.unwrap()["blockers"][0]["code"],
             "format_build_failed"
+        );
+    }
+
+    /// The envelope corpus ds-cli replays records refusals by code and
+    /// class; a case that names a code of this table under another class
+    /// would teach the other side a class the doors never give it.
+    #[test]
+    fn the_envelope_corpus_never_contradicts_the_class_table() {
+        let corpus: Value = serde_json::from_str(
+            &fs::read_to_string(
+                Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .join("../../tests/fixtures/ds-envelope-cases.json"),
+            )
+            .expect("the kernel's envelope corpus"),
+        )
+        .expect("the corpus parses");
+        let mut checked = 0;
+        for case in corpus["cases"].as_array().expect("cases") {
+            let refusal = &case["request"]["refusal"];
+            let Some(code) = refusal["code"].as_str() else {
+                continue;
+            };
+            let Some((_, class)) = CLASS_TABLE.iter().find(|(known, _)| *known == code) else {
+                continue;
+            };
+            assert_eq!(
+                refusal["class"].as_str(),
+                Some(class.token()),
+                "{}: {code} is recorded under another class than the table gives it",
+                case["id"]
+            );
+            checked += 1;
+            // A localised refusal's detail names the kernel's own key for its
+            // code, never another code's.
+            if let Some(key) = refusal["detail"].get("message_key") {
+                assert_eq!(
+                    key.as_str(),
+                    Some(format!("printing_{}", code.trim_start_matches("print_")).as_str()),
+                    "{}: the message key is the kernel's spelling of the code",
+                    case["id"]
+                );
+            }
+        }
+        assert!(
+            checked >= 3,
+            "the corpus records codes of this table under their classes"
         );
     }
 }

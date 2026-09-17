@@ -373,7 +373,9 @@ pub fn read_print_context(
     })
 }
 
-trait SourceKind {
+/// The `kind` a context layer's source spells in the document's source
+/// inventory: the serde tag of `PrintContextSource`.
+pub(crate) trait SourceKind {
     fn source_kind(&self) -> &'static str;
 }
 
