@@ -18,7 +18,12 @@ table and richest legend together against that fixed title block.
 A0 schedules normally use the left extremity, filling available vertical capacity
 before opening the next panel. Pole and customer schedules have independent
 containers; couple them with flow only when the user requests a joined stack.
-Retain a deliberate margin between schedules and between panels. Explicit corner
+Retain a deliberate margin between schedules and between panels. Under
+space pressure, different schedules may share a vertical column: one panel
+ends and another begins below it with repeated headings and the saved margin.
+Choose row splits and positions from measured widths, heights and free surface;
+never special-case table names, source fields, row values or a fixed panel count.
+Keep rows complete, ordered and readable, and preserve explicit corner anchors. Explicit corner
 anchors remain fixed during automatic composition; a pole schedule anchored at
 the top or bottom left must not migrate to a middle shelf. Other movable schedules
 can snap to measured information/legend edges with the saved gap when useful.

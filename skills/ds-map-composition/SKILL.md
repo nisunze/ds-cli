@@ -37,6 +37,8 @@ headless assembly of designs, the DS Grid model and the holdings' context.
   Never call downloaded bytes a validated model, or a locally produced PDF synced.
 - Author print styles, layer ordering, label priorities, physical dimensions and
   context requests in the supported recipe. Keep live-map styles independent.
+  Verify print refs report `target: print`; a screen style may seed a new
+  independent print copy once, never remain its shared authority.
   Reuse a project recipe, or a per-transformer exception, instead of hardcoding
   a town, paper size or list of landmarks into the engine.
 - Preserve model angle points, transformer roles and canonical numbering. Verify

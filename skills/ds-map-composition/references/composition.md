@@ -13,6 +13,14 @@ scale rather than discarding every point-of-interest layer or naming special
 cases in code. A district overview and an urban four-sector composition need
 different density even on the same paper.
 
+Do not select both an aggregate context representation and its detailed
+classes by habit: broad power lines can repeat HV/MV/LV; broad education can
+repeat primary, secondary, vocational and university landmarks. Inspect exact
+layer identities, source coverage and classes, then choose the detailed
+hierarchy where it satisfies the sheet. A catalog group heading is not itself
+a duplicate feature layer. Preserve a needed fallback where detailed coverage
+is absent; do not delete datasets or alter interactive layers to clean a print.
+
 Choose sheet coverage from network shape and paper aspect ratio. Administrative
 boundaries provide context; they need not impose one page each. An overview may
 combine adjacent districts while retaining their individual boundaries, followed

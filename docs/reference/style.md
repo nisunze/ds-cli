@@ -18,6 +18,14 @@ property bounds, a bounded icon list and supported second-dimension channels.
 `more` reports truncation; runtime feature counts and map visibility are not inferred.
 Only backend-published editor refs can be authored from the headless catalogue.
 
+Screen and print are independent governed documents. For print work, resolve a
+catalog ref ending in `_print` whose target is `print`; the bare and `_vt` refs
+remain interactive-map styles. Creating a print clone is a one-time seed, not
+ongoing synchronization. Subsequent appearance, label and cartography edits
+address the selected ref only. Project pen overrides belong to the print layout.
+Verify both the printed result and the unchanged screen counterpart after a
+print-only repair. The live-map canvas does not preview physical print output.
+
 Renderer-only buildings and contour sources are declared by the backend under the
 closed `print_context/*` family. `ds style seed plan --ref <declared-ref>` returns
 that exact backend document and create-only payload; `ds style seed create

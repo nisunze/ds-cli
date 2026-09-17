@@ -1,6 +1,6 @@
 ---
 name: ds-style-composite
-description: Style a DS map layer through `ds style`: colour/icon/size, a second field on halo/opacity/size, and line type, direction, casing or hatching.
+description: Style independent DS screen or print documents through `ds style`: colour/icon/size, a second field, line type, casing and hatching.
 metadata:
   ds-chapters: map-presentation
   ds-mcp-profile: map
@@ -12,6 +12,24 @@ Everything goes through `ds style`, which reuses the Style Center's own
 authoring and governed save path. Never edit style JSON by hand, never call
 the styles API, never compose a paint expression, dash array or pattern image
 yourself — there is no flag that takes one, by design.
+
+## Pick screen or print before appearance
+
+Determine the output first. For printed sheets, select a returned `_print` ref
+and verify `style read` reports `target: print`. A bare or `_vt` ref styles the
+interactive map; a print request never authorizes changing it. Style Center
+edits the selected document, not an overall style shared by both outputs.
+
+A screen document may seed a new print document through the create-only print
+clone command. This is a one-time independent copy, never a linked style or
+an instruction to overwrite an existing print variant. Later edits address
+only the intended ref. Conversely, a print edit must not propagate to screen.
+Keep template/project pen overrides distinct from the reusable governed style.
+
+For print icons, preserve the landmark's meaning; do not replace a school with
+a generic circle merely to reduce clutter. Read the catalog icon vocabulary,
+check SVG/PDF at physical size and compare the legend. Read back the print ref
+and verify the corresponding screen document stayed unchanged.
 
 ## Pick the axis first
 
@@ -28,7 +46,7 @@ Choosing wrong is the expensive mistake, because two of them cost a field.
 
 1. Find the ref: `ds style list --query <layer> --output json`. Tiled design
    layers are the `_vt` refs (`target: design_vt`); GeoJSON design layers are
-   the bare `master/<layer>` refs. Style the one the user is looking at.
+   the bare `master/<layer>` refs. Select the ref for the requested output; verify its target before planning.
 2. Read it: `ds style read --ref <ref> --output json`. It reports the layer
    type, the fields, the published field domains and the channels this layer offers.
 3. `plan` with the flags you intend, read the result back to the user, then
