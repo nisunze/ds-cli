@@ -357,7 +357,7 @@ fn diagnostics_reuse_the_exact_cli_envelopes_in_a_typed_profile() {
 fn startup_schema_discovery_does_not_resolve_command_availability() {
     let output = Command::new(env!("CARGO_BIN_EXE_ds"))
         .args(["capabilities", "solar.engine", "--output", "json"])
-        .env("DS_MCP_SCHEMA_ONLY", "1")
+        .env("DS_CLI_SCHEMA_ONLY", "1")
         .output()
         .expect("schema discovery runs");
     assert!(output.status.success());

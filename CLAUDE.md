@@ -260,6 +260,17 @@ only ever gets relaxed is not protecting anything.
   `ds mcp serve` is this executable answering JSON-RPC on stdio and `ds mcp
   install` writes a host's own entry for it; `ds` is an ordinary executable and
   stays one. `crates/ds/tests/mcp.rs` is what holds that line.
+- The reverse leak: anything below the adapter knowing a host protocol exists.
+  A domain crate that links `ds-cli-mcp` or `ds-cli-skills`, `ds-cli-mcp`
+  linking a domain, or a domain reading a variable named for a protocol.
+  `DS_MCP_CHILD` inside `ds-cli-auth` was this — the fact auth needed was "no
+  human is at a terminal", which is not about MCP, and the next protocol
+  would have been an edit to auth. Name the fact, not the caller:
+  `DS_CLI_NONINTERACTIVE`, `DS_CLI_SCHEMA_ONLY`. This repository is `ds-cli`;
+  a protocol is one leaf crate written against the `Command` descriptor and
+  `run_cli`, and replacing it must never be a pass over the domains.
+  `crates/ds/tests/protocol_boundary.rs` holds that line; see
+  `docs/contracts/protocol-boundary-contract.md`.
 - Go, anywhere in the shipping or local-development path.
 
 ## CLI-first delivery and project isolation

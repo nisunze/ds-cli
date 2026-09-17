@@ -739,12 +739,19 @@ fn run_cli_with_schema_mode(
     schema_only: bool,
 ) -> Result<(i32, String, String), String> {
     let mut command = Command::new(executable);
+    // Both names are deliberately protocol-free, and stay that way. What the
+    // child has to know is that no human is at a terminal, and that a schema
+    // is enough without resolving live availability. Neither fact is about
+    // MCP. A variable named for this protocol would put this protocol's name
+    // inside the domain that reads it, and the next protocol would arrive as
+    // an edit to that domain rather than to this crate.
+    // `crates/ds/tests/protocol_boundary.rs` holds that line.
     command
         .args(argv)
-        .env("DS_MCP_CHILD", "1")
-        .env_remove("DS_MCP_SCHEMA_ONLY");
+        .env("DS_CLI_NONINTERACTIVE", "1")
+        .env_remove("DS_CLI_SCHEMA_ONLY");
     if schema_only {
-        command.env("DS_MCP_SCHEMA_ONLY", "1");
+        command.env("DS_CLI_SCHEMA_ONLY", "1");
     }
     let output = command
         .output()

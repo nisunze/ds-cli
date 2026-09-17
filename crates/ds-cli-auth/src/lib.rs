@@ -467,7 +467,7 @@ const PASSWORD_INPUT_REFUSAL: Refusal = Refusal {
 };
 const PASSWORD_PROMPT_REFUSAL: Refusal = Refusal {
     code: "password_prompt_forbidden",
-    when: "an MCP child attempts to open a password prompt",
+    when: "a non-interactive child process attempts to open a password prompt",
     remedy: "run auth login directly in a trusted terminal",
 };
 const PASSWORD_TTY_REFUSAL: Refusal = Refusal {
@@ -4098,9 +4098,14 @@ fn cleanup_required() -> Failure {
 }
 
 fn read_password(from_stdin: bool) -> Result<String, Failure> {
-    refuse_mcp_prompt(
+    // The fact this domain needs is "nobody is at a terminal", which is not a
+    // fact about any protocol. `ds mcp serve` sets this variable when it
+    // re-invokes the executable, and so would any other machine host; naming
+    // it for one of them would make every later host either impersonate that
+    // one or edit this file.
+    refuse_noninteractive_prompt(
         from_stdin,
-        std::env::var_os("DS_MCP_CHILD").is_some_and(|value| value == "1"),
+        std::env::var_os("DS_CLI_NONINTERACTIVE").is_some_and(|value| value == "1"),
     )?;
     if from_stdin {
         let mut input = String::new();
@@ -4124,11 +4129,11 @@ fn read_password(from_stdin: bool) -> Result<String, Failure> {
     hidden_tty_password()
 }
 
-fn refuse_mcp_prompt(from_stdin: bool, mcp_child: bool) -> Result<(), Failure> {
-    if !from_stdin && mcp_child {
+fn refuse_noninteractive_prompt(from_stdin: bool, noninteractive: bool) -> Result<(), Failure> {
+    if !from_stdin && noninteractive {
         Err(Failure::unavailable(
             "password_prompt_forbidden",
-            "an MCP child cannot open an interactive password prompt",
+            "a non-interactive child process cannot open an interactive password prompt",
         )
         .remedy("run ds auth login directly in a trusted terminal"))
     } else {
@@ -4843,13 +4848,13 @@ mod tests {
     }
 
     #[test]
-    fn mcp_child_cannot_open_the_hidden_prompt() {
+    fn a_noninteractive_child_cannot_open_the_hidden_prompt() {
         assert_eq!(
-            refuse_mcp_prompt(false, true).unwrap_err().code(),
+            refuse_noninteractive_prompt(false, true).unwrap_err().code(),
             "password_prompt_forbidden"
         );
-        assert!(refuse_mcp_prompt(false, false).is_ok());
-        assert!(refuse_mcp_prompt(true, true).is_ok());
+        assert!(refuse_noninteractive_prompt(false, false).is_ok());
+        assert!(refuse_noninteractive_prompt(true, true).is_ok());
     }
 
     #[test]

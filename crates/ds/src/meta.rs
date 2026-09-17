@@ -114,7 +114,7 @@ availability, inputs, refusals and examples.",
 };
 
 fn capabilities(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
-    let schema_only = std::env::var_os("DS_MCP_SCHEMA_ONLY").is_some_and(|value| !value.is_empty());
+    let schema_only = std::env::var_os("DS_CLI_SCHEMA_ONLY").is_some_and(|value| !value.is_empty());
     if let Some(query) = inputs.value("search") {
         return search(query, inputs.value("limit").unwrap_or("10"));
     }
