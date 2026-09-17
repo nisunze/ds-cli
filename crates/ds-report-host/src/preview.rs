@@ -182,10 +182,11 @@ fn context_summary(
 }
 
 /// Render one transformer's preview page for a draft layout and return it in
-/// memory. `print_context` receives exactly the context layers the draft
-/// names and answers with what the host holds for them, or `None` to print
-/// without external context; it must not acquire anything. Nothing is left
-/// under `settings.staging_root` on any path.
+/// memory. The draft is taken as the host holds it and upgraded to its
+/// current form before the recipe. `print_context` receives exactly the
+/// context layers the draft names and answers with what the host holds for
+/// them, or `None` to print without external context; it must not acquire
+/// anything. Nothing is left under `settings.staging_root` on any path.
 pub fn transformer_page(
     engine: &dyn crate::ReportEngine,
     settings: &PreviewSettings<'_>,
@@ -193,8 +194,12 @@ pub fn transformer_page(
     layout: &printing::Layout,
     print_context: impl FnOnce(&[PrintContextLayer]) -> Result<Option<PrintContextBytes>, HostFailure>,
 ) -> Result<PreviewPage, HostFailure> {
+    // The recipe is over the draft's current form: a draft a host still holds
+    // under the legacy schema, or without its completed bindings, is upgraded
+    // here, so every host stages the same document for the same draft.
+    let layout = printing::upgrade(layout.clone()).map_err(inputs_invalid)?;
     let preview =
-        report_export::preview::with_layout(settings.receipt, layout).map_err(inputs_invalid)?;
+        report_export::preview::with_layout(settings.receipt, &layout).map_err(inputs_invalid)?;
     let contexts = draft_context_layers(&preview)?;
     let context = print_context(&contexts)?;
     let (context_layers, context_omitted) = context_summary(&contexts, context.as_ref());
@@ -489,6 +494,33 @@ mod tests {
             }]
         );
         assert_eq!(page.context_sha256.as_deref(), Some(sha256.as_str()));
+        assert_eq!(page.output_id, "svg__draft-a3");
+        assert!(nothing_left(&staging));
+    }
+
+    #[test]
+    fn a_legacy_draft_is_upgraded_before_the_recipe() {
+        let temp = tempfile::tempdir().unwrap();
+        let staging = temp.path().join("staging");
+        let receipt = receipt("Benin");
+        let engine = FakeEngine::release();
+        let mut legacy = draft();
+        legacy.schema = printing::LEGACY_SCHEMA.into();
+        let upgraded = printing::upgrade(legacy.clone()).unwrap();
+        assert_ne!(upgraded, legacy, "the legacy draft is another document");
+        let as_held = report_export::preview::with_layout(&receipt, &legacy).unwrap();
+        let as_upgraded = report_export::preview::with_layout(&receipt, &upgraded).unwrap();
+        assert_ne!(as_held.layout_sha256, as_upgraded.layout_sha256);
+        let page = transformer_page(
+            &engine,
+            &settings(&receipt, &staging),
+            &room("tx_a"),
+            &legacy,
+            |_| Ok(None),
+        )
+        .unwrap();
+        // The recipe was over the upgraded draft, never the legacy bytes.
+        assert_eq!(page.layout_sha256, as_upgraded.layout_sha256);
         assert_eq!(page.output_id, "svg__draft-a3");
         assert!(nothing_left(&staging));
     }
