@@ -226,14 +226,34 @@ pub fn plan(r: &Request, boundaries: Vec<Boundary>, sheets: &Value) -> Result<Va
     // Default district overviews omit fine context. An authored recipe is
     // authoritative at every paper size, including custom A3 compositions.
     layout.context_layers.retain(|c| {
-        !matches!(c.source, PrintContextSource::ProjectDsgridMv { .. })
-            && (!(r.family == "mv-map" && r.layout.is_none())
-                || !matches!(
-                    c.source,
-                    PrintContextSource::GoogleOpenBuildings { .. }
-                        | PrintContextSource::ElevationContours { .. }
-                ))
+        !(r.family == "mv-map" && r.layout.is_none())
+            || !matches!(
+                c.source,
+                PrintContextSource::GoogleOpenBuildings { .. }
+                    | PrintContextSource::ElevationContours { .. }
+            )
     });
+    if r.layout.is_none()
+        && !layout
+            .context_layers
+            .iter()
+            .any(|c| matches!(c.source, PrintContextSource::ProjectDsgridMv { .. }))
+    {
+        layout
+            .context_layers
+            .push(super::context::derived_layers().remove(0));
+    }
+    // Direct project model capture supplies these layers once. Keep their
+    // authored corridor in the render layout, but exclude duplicate acquisition.
+    for (id, style) in super::context::fallback_styles() {
+        if MV_PRINT_LAYER_IDS.contains(&id.as_str()) {
+            layout.styles.entry(id).or_insert(style);
+        }
+    }
+    let mut context_layout = layout.clone();
+    context_layout
+        .context_layers
+        .retain(|c| !matches!(c.source, PrintContextSource::ProjectDsgridMv { .. }));
     // Village names may remain useful; boundary strokes do not.
     for (id, style) in &mut layout.styles {
         if id.contains("village") {
@@ -280,7 +300,7 @@ pub fn plan(r: &Request, boundaries: Vec<Boundary>, sheets: &Value) -> Result<Va
         })
         .collect::<Result<Vec<_>, String>>()?;
     Ok(
-        json!({"request":r,"layout":layout,"pages":pages,"design_layers":if r.family == "mv-map" {json!(["tr"])} else {Value::Null},"filename":format!("{}.{}-landscape.pdf",r.id,if r.paper==Paper::A0 {"a0"} else {"a3"}),"family":r.family}),
+        json!({"request":r,"layout":layout,"context_layout":context_layout,"pages":pages,"design_layers":if r.family == "mv-map" {json!(["tr"])} else {Value::Null},"filename":format!("{}.{}-landscape.pdf",r.id,if r.paper==Paper::A0 {"a0"} else {"a3"}),"family":r.family}),
     )
 }
 
@@ -587,12 +607,22 @@ mod tests {
                 },
             },
         ];
+        layout
+            .context_layers
+            .push(super::super::context::derived_layers().remove(0));
         r.layout = Some(layout.clone());
         let p = plan(&r, vec![boundary("24", "district", 29.)], &json!({})).unwrap();
         assert_eq!(
             p["layout"]["context_layers"],
             serde_json::to_value(&layout.context_layers).unwrap()
         );
+        let acquisition: Layout = serde_json::from_value(p["context_layout"].clone()).unwrap();
+        assert_eq!(acquisition.context_layers.len(), 2);
+        assert!(acquisition
+            .context_layers
+            .iter()
+            .all(|c| !matches!(c.source, PrintContextSource::ProjectDsgridMv { .. })));
+        assert!(p["layout"]["styles"]["dsgrid_mv_angle_points"].is_object());
     }
     #[test]
     fn dpi_defaults_and_roundtrips_without_changing_output_identity() {

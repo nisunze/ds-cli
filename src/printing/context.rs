@@ -17,7 +17,7 @@
 //! named omission.
 
 use super::preview::Refusal;
-use super::{Layout, PrintContextLayer, PrintContextSource, PrintStyle};
+use super::{Layout, PrintContextLayer, PrintContextSource, PrintCorridor, PrintStyle};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -31,8 +31,18 @@ pub const DEFAULT_CATALOG_EXCLUSIONS: [&str; 1] = ["rwanda_upi_parcels"];
 /// derived (per-transformer prepared) context sources.
 pub const DERIVED_BUFFER_M: f64 = 200.;
 
-/// The context sources a Desktop prepares per transformer, as a new
-/// template starts with them.
+/// Default print-only metric corridor; independent of retained coverage.
+pub fn default_corridor() -> PrintCorridor {
+    PrintCorridor {
+        distance_m: 6.,
+        color: "#957197".into(),
+        width_mm: 0.15,
+        opacity: 0.3,
+        dash_mm: vec![2., 1.],
+    }
+}
+
+/// Context sources prepared per transformer by a new template.
 pub fn derived_layers() -> Vec<PrintContextLayer> {
     vec![
         PrintContextLayer {
@@ -40,7 +50,7 @@ pub fn derived_layers() -> Vec<PrintContextLayer> {
             label: "Proposed MV · project DS Grid models".into(),
             source: PrintContextSource::ProjectDsgridMv {
                 buffer_m: DERIVED_BUFFER_M,
-                corridor: None,
+                corridor: Some(default_corridor()),
             },
         },
         PrintContextLayer {
@@ -136,6 +146,22 @@ pub fn fallback_styles() -> BTreeMap<String, PrintStyle> {
             ),
         ),
         (
+            "dsgrid_mv_angle_points".into(),
+            style(
+                "#7a004c",
+                0.18,
+                1.,
+                "#ffffff",
+                1.,
+                "#ffffff",
+                0.15,
+                &[],
+                0.65,
+                "number",
+                5.5,
+            ),
+        ),
+        (
             "buildings_context".into(),
             style(
                 "#4b5563",
@@ -193,9 +219,10 @@ pub fn expanded_layer_ids(layer: &PrintContextLayer) -> Vec<String> {
         PrintContextSource::ElevationContours { .. } => {
             vec!["contours_intermediate".into(), "contours_index".into()]
         }
-        PrintContextSource::ProjectDsgridMv { .. } => {
-            vec!["dsgrid_mv_lines".into(), "dsgrid_mv_structures".into()]
-        }
+        PrintContextSource::ProjectDsgridMv { .. } => super::map::MV_PRINT_LAYER_IDS
+            .iter()
+            .map(|id| (*id).to_owned())
+            .collect(),
         _ => vec![layer.id.clone()],
     }
 }
@@ -410,8 +437,7 @@ pub fn retained_parameters(source: &PrintContextSource) -> Result<String, String
 
 /// The document layer ids one context layer prints as: what its preparation
 /// emits. The project MV projection prints as every layer `map::mv_layers`
-/// writes — its angle points included — not only the two the template pens
-/// by default; contours expand as the template does; any other source prints
+/// writes — routes, structures and angle points; contours expand as the template does; any other source prints
 /// as its own id. A retained preparation may carry only these ids, and a
 /// host names an omission of the layer under them.
 pub fn printed_layer_ids(layer: &PrintContextLayer) -> Vec<String> {
@@ -541,7 +567,7 @@ mod tests {
                 assert!(fallbacks.contains_key(&id), "{id}");
             }
         }
-        assert_eq!(fallbacks.len(), 5);
+        assert_eq!(fallbacks.len(), 6);
         assert_eq!(
             fallbacks["dsgrid_mv_lines"].dash_mm,
             vec![6., 1.4, 1.2, 1.4]

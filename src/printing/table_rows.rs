@@ -60,7 +60,7 @@ pub fn plan(
     Ok(RowPlan {
         step_mm: step,
         panels,
-        rows_per_panel: visible_rows.max(1).div_ceil(panels),
+        rows_per_panel: capacity.min(visible_rows.max(1)),
         visible_rows,
         omitted_rows: rows - visible_rows,
     })
@@ -134,7 +134,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(p.panels, 2);
-        assert_eq!(p.rows_per_panel, 13);
+        assert_eq!(p.rows_per_panel, 23);
     }
 }
 
@@ -156,7 +156,9 @@ mod truncation_tests {
         .unwrap();
         assert_eq!(p.visible_rows + p.omitted_rows, 100);
         assert!(p.omitted_rows > 0);
-        assert!((p.rows_per_panel + 3) as f64 * p.step_mm <= 99. + 1e-6);
+        assert!((p.rows_per_panel + 2) as f64 * p.step_mm <= 99. + 1e-6);
+        let last_rows = (p.visible_rows - 1) % p.rows_per_panel + 1;
+        assert!((last_rows + 3) as f64 * p.step_mm <= 99. + 1e-6);
     }
 }
 

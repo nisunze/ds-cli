@@ -518,3 +518,23 @@ The native renderer returns these findings with table omissions and suppressed
 label counts in `print_diagnostics`; named report exports retain artifact
 warnings. Cache integrity covers both rendered SVG and diagnostics. These are
 mechanical checks, never a claim of visual or engineering approval.
+
+### Transformer display names and project models
+
+Plan titles and transformer labels use Python `str.title()` casing, owned by
+`printing::names::transformer_title`. Separators are preserved (`upgrade_munyinya`
+prints as `Upgrade_Munyinya`). Transformer text bindings and title/drawing aliases
+containing that same name are normalized; separately authored drawing references
+remain unchanged. This is presentation only: lookup keys, filenames, source
+properties, model IDs, revisions and authorization context retain exact identities.
+Native rendering and the WASM render plan consume this same rule.
+
+Project DS Grid print context carries routes, structures and angle points from
+the exact pinned models, with physical fallback styles for all three. An authored
+metric corridor is derived from those routes at render time; it never replaces
+model geometry. Existing rendered artifacts retain their original model snapshot.
+
+Schedule panels consume their available printable height before continuing into
+the next panel; the last panel may be shorter. Authored gaps remain physical
+millimetres between panels and adjacent schedules. Consultant X/Y columns print
+actual source properties, without inventing or changing their coordinate system.

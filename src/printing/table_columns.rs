@@ -22,6 +22,23 @@ pub fn available_in_phase(key: &str, phase: SchedulePhase) -> bool {
         ) && !key.contains("phone"))
 }
 
+/// Rendering and authoring enforce the same optional schedule phase.
+pub fn validate_phase(binding: &TableBinding) -> Result<(), String> {
+    if let Some(phase) = binding.phase {
+        if binding.workbook.is_some() || binding.presentation != TablePresentation::Plain {
+            return Err("Schedule phase requires a plain engineering table".into());
+        }
+        if binding
+            .columns
+            .iter()
+            .any(|key| !available_in_phase(key, phase))
+        {
+            return Err("Installed-connection columns require an as-built schedule".into());
+        }
+    }
+    Ok(())
+}
+
 #[derive(Debug, Serialize)]
 pub struct Column {
     pub key: String,

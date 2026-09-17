@@ -43,7 +43,7 @@ impl Sources {
         Ok(())
     }
     pub fn mv(&mut self, layers: &Value) -> Result<(), String> {
-        for id in ["dsgrid_mv_lines", "dsgrid_mv_angle_points"] {
+        for id in super::map::MV_PRINT_LAYER_IDS {
             self.add(
                 id,
                 layers[id]["features"]
@@ -101,6 +101,19 @@ impl Sources {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn mv_overview_preserves_routes_structures_and_angle_points() {
+        let feature = json!({"type":"Feature","id":"S-7","properties":{"source_model_id":"model","source_revision":3},"geometry":{"type":"Point","coordinates":[29.7,-2.5]}});
+        let layers: Value = super::super::map::MV_PRINT_LAYER_IDS
+            .into_iter()
+            .map(|id| (id.to_owned(), json!({"features":[feature.clone()]})))
+            .collect();
+        let mut sources = Sources::default();
+        sources.mv(&layers).unwrap();
+        for id in super::super::map::MV_PRINT_LAYER_IDS {
+            assert_eq!(sources.layers()[id]["features"][0], feature);
+        }
+    }
     #[test]
     fn overview_includes_complete_district_but_not_unrelated_national_line_tails() {
         let mut sources = Sources::default();

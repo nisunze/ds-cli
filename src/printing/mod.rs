@@ -8,6 +8,7 @@ pub mod held_context;
 pub mod inventory;
 pub mod lifecycle;
 pub mod map;
+pub mod names;
 pub mod overrides;
 pub mod pens;
 pub mod placement;
@@ -919,18 +920,7 @@ pub fn validate(layout: &Layout) -> Result<(), String> {
         }
         if element.kind == ElementKind::Table {
             let table = element.table.as_ref().ok_or("table needs a data binding")?;
-            if let Some(phase) = table.phase {
-                if table.workbook.is_some() || table.presentation != TablePresentation::Plain {
-                    return Err("Schedule phase requires a plain engineering table".into());
-                }
-                if table
-                    .columns
-                    .iter()
-                    .any(|key| !table_columns::available_in_phase(key, phase))
-                {
-                    return Err("Installed-connection columns require an as-built schedule".into());
-                }
-            }
+            table_columns::validate_phase(table)?;
             if (!identifier(&table.layer) && table.workbook.is_none())
                 || table.additional_layers.len() > 16
                 || table.additional_layers.iter().enumerate().any(|(i, id)| {
@@ -2079,6 +2069,14 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
             }
             let mut composed = text.as_object().cloned().unwrap_or_default();
             composed.insert("date".into(), serde_json::Value::String(date));
+            let mut names: BTreeMap<String, String> = composed
+                .iter()
+                .filter_map(|(key, value)| value.as_str().map(|v| (key.clone(), v.to_owned())))
+                .collect();
+            names::plan_text(&mut names);
+            for (key, value) in names {
+                composed.insert(key, json!(value));
+            }
             json!({
                 "ready": refusals.is_empty(),
                 "refusals": refusals,
@@ -2088,6 +2086,7 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
         }
         Command::ContextDefaults {} => json!({
             "derived": context::derived_layers(),
+            "corridor_default": context::default_corridor(),
             "fallback_styles": context::fallback_styles(),
             "excluded_catalog_layers": context::DEFAULT_CATALOG_EXCLUSIONS,
         }),
