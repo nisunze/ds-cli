@@ -4798,6 +4798,55 @@ fn background_project_operations_are_map_independent_and_use_the_declared_projec
     );
 }
 
+/// A batch of 86 Gisagara transformers lost 59 sheets because one A0 failed
+/// to lay out beside four finished artifacts and the verifier declared the
+/// whole run invalid — finished, correct work discarded, never synced, never
+/// pulled, left on the compute. The shape that fixes it has to be readable
+/// BEFORE the run: a caller must be able to see from the descriptor alone
+/// that a partly-successful export answers rather than refuses, and that the
+/// answer names the format it lost precisely enough to act on.
+#[test]
+fn a_partly_successful_export_is_declared_as_a_result_not_a_refusal() {
+    let descriptor = ok(&["capabilities", "report.project.export", "--output", "json"]);
+    let command = &descriptor["command"];
+    let output = command["output"].as_str().expect("output");
+    for member in [
+        "failed_formats",
+        "output_id",
+        "remedy",
+        "partial_formats",
+        // "the A0 failed" is not actionable; the knob that decides it is.
+        "overflow/panels/row_mm",
+    ] {
+        assert!(
+            output.contains(member),
+            "the declared output no longer names `{member}`, so a caller cannot \
+             tell a partial result from a complete one"
+        );
+    }
+    // And the refusal it is no longer: `export_blocked` now means the engine
+    // produced nothing at all.
+    let blocked = command["refusals"]
+        .as_array()
+        .expect("refusals")
+        .iter()
+        .find(|refusal| refusal["code"] == "export_blocked")
+        .expect("export_blocked stays documented");
+    let when = blocked["when"].as_str().expect("when");
+    assert!(
+        when.contains("NO format"),
+        "export_blocked must say it is the nothing-completed case: {when}"
+    );
+    assert!(
+        !blocked["remedy"]
+            .as_str()
+            .expect("remedy")
+            .trim()
+            .is_empty(),
+        "every refusal keeps a remedy"
+    );
+}
+
 /// The collision read: a report cannot be produced while a collision stands,
 /// so `ds` has to be able to say how many there are. It reads the project-wide
 /// document the report owner wrote; it starts no detection and takes no

@@ -113,7 +113,7 @@ const ENGINE_REFUSED: Refusal = Refusal {
 };
 const EXPORT_BLOCKED: Refusal = Refusal {
     code: "export_blocked",
-    when: "the engine refused a transformer or completed only part of it (a batch row carries its blockers)",
+    when: "the engine produced NO format for a transformer (a batch row carries its blockers)",
     remedy: "read `error.detail.blockers`, fix the named input, and re-run that transformer",
 };
 const INPUTS_INVALID: Refusal = Refusal {
@@ -304,9 +304,11 @@ pub static COMMAND: Command = Command {
         LANE_ARG,
     ],
     output: "\
-Lane, project, scope, engine identity, publication state, batch counts and receipt, \
-context diagnostics and ordered transformer results: artifact inventory or typed \
-error. --publish adds the Server-sync queue identity.",
+Lane, project, scope, engine identity, publication state, batch counts and receipt \
+(partial_formats), context diagnostics and ordered transformer results: artifact \
+inventory, failed_formats (output_id, code, remedy, layout knob: \
+overflow/panels/row_mm), or typed error. --publish seals what completed into the \
+Server-sync queue.",
     examples: &[
         Example {
             command: "ds report project export --out-dir ./reports --output json",
@@ -1268,6 +1270,10 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         "requested_count": outcome.receipt["requested_count"],
         "completed": outcome.receipt["completed"],
         "failed": outcome.receipt["failed"],
+        // Runs that delivered artifacts and still lost a format. They are
+        // counted as completed — their work is on disk and publishable — and
+        // named here so a reader knows to look at `results[].failed_formats`.
+        "partial_formats": outcome.receipt["partial_formats"],
         "concurrency": outcome.receipt["concurrency"],
         "receipt": outcome.receipt_path.display().to_string(),
     });
@@ -1890,6 +1896,18 @@ mod tests {
                 paper_size: None,
                 presentation: None,
             }],
+            // A partial run: the workbook completed, the A0 sheet did not.
+            // `--publish` seals what completed and queues nothing for what
+            // did not — which is the whole reason the completed work is
+            // allowed to leave the machine.
+            failed: vec![ds_command_kernel::report_export::FailedFormat {
+                output_id: "pdf__a0-landscape-gisagara-cjic".into(),
+                format: "pdf__a0-landscape-gisagara-cjic".into(),
+                code: "format_build_failed".into(),
+                message: "table lv_schedule has 212 rows; needs 3 panels at the authored type size (maximum 1)".into(),
+                remedy: "raise `panels` on `lv_schedule`".into(),
+                layout: None,
+            }],
             warnings: vec![],
             engine: ds_command_kernel::report_export::EngineIdentity {
                 engine_version: format!("ds-network-reporter@0.1.0+{}", "c".repeat(40)),
@@ -1909,6 +1927,16 @@ mod tests {
                 .unwrap();
         assert_eq!(rows.len(), 1);
         assert!(ds_report_artifacts::open_batch_output(&queue, &rows[0], "xlsx").is_ok());
+        // Only what completed is queued; the format that failed is not
+        // invented into the publication.
+        assert!(
+            ds_report_artifacts::open_batch_output(
+                &queue,
+                &rows[0],
+                "pdf__a0-landscape-gisagara-cjic"
+            )
+            .is_err()
+        );
 
         let rollback_queue = root.path().join("rollback");
         let error = seal_run_for_server(&run, "owner-a", "project-a", &rollback_queue, &|| {
