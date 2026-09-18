@@ -3,7 +3,7 @@ use std::fmt;
 use sha2::{Digest, Sha256};
 use url::Url;
 
-pub const CLIENT_PROFILE_SCHEMA: &str = "ds.native-client-profiles/v28";
+pub const CLIENT_PROFILE_SCHEMA: &str = "ds.native-client-profiles/v29";
 pub const DEVICE_CREDENTIAL_AUDIENCE_SCHEMA: &str = "ds.native-client-credential-audience/v1";
 pub const NATIVE_CLIENT_ID: &str = "ds-native-client";
 pub const AUTH_LINK_BEGIN_METHOD: &str = "POST";
@@ -74,6 +74,17 @@ pub const ADMIN_BOUNDS_PATH: &str = "/api/v1/admin/rwanda";
 /// them is declared, because each is either an unbounded pull or a second way
 /// to do something a declared operation already does exactly.
 pub const ADMIN_BOUNDS_ACTIONS: [&str; 2] = ["children", "geometry"];
+/// Platform reliability. Both reads are global — no project selects them and
+/// none is sent — and ds-brain gates both behind `platform.admin`.
+pub const SRE_OVERVIEW_METHOD: &str = "GET";
+pub const SRE_OVERVIEW_PATH: &str = "/api/v1/sre/overview";
+/// The event window travels the reusable tabular stream, not an endpoint of its
+/// own: `/api/v1/data` answers many actions and exactly one is declared here.
+/// The table it may name is pinned in `crate::sre`, not carried on the profile,
+/// because a table is a body value and this is a route.
+pub const SRE_EVENTS_METHOD: &str = "POST";
+pub const SRE_EVENTS_PATH: &str = "/api/v1/data";
+pub const SRE_EVENTS_ACTIONS: [&str; 1] = ["query_table"];
 pub const TILES_METHOD: &str = "POST";
 pub const TILES_PATH: &str = "/api/v1/tiles";
 /// The closed `/api/v1/tiles` action vocabulary. The first six curate one
@@ -241,6 +252,11 @@ pub struct ClientProfileInput {
     pub data_distribution_method: String,
     pub data_distribution_path: String,
     pub data_distribution_actions: Vec<String>,
+    pub sre_overview_method: String,
+    pub sre_overview_path: String,
+    pub sre_events_method: String,
+    pub sre_events_path: String,
+    pub sre_events_actions: Vec<String>,
 }
 
 /// One immutable, build-bound native client profile.
@@ -411,6 +427,14 @@ impl ClientProfile {
         {
             return Err(ProfileError::DesignSelectionsRoute);
         }
+        if input.sre_overview_method != SRE_OVERVIEW_METHOD
+            || input.sre_overview_path != SRE_OVERVIEW_PATH
+            || input.sre_events_method != SRE_EVENTS_METHOD
+            || input.sre_events_path != SRE_EVENTS_PATH
+            || input.sre_events_actions != SRE_EVENTS_ACTIONS.map(str::to_owned).to_vec()
+        {
+            return Err(ProfileError::SreRoute);
+        }
         if input.admin_bounds_method != ADMIN_BOUNDS_METHOD
             || input.admin_bounds_path != ADMIN_BOUNDS_PATH
             || input.admin_bounds_actions != ADMIN_BOUNDS_ACTIONS.map(str::to_owned).to_vec()
@@ -556,6 +580,11 @@ impl ClientProfile {
             ADMIN_BOUNDS_PATH,
             ADMIN_BOUNDS_ACTIONS[0],
             ADMIN_BOUNDS_ACTIONS[1],
+            SRE_OVERVIEW_METHOD,
+            SRE_OVERVIEW_PATH,
+            SRE_EVENTS_METHOD,
+            SRE_EVENTS_PATH,
+            SRE_EVENTS_ACTIONS[0],
         ] {
             hasher.update((value.len() as u64).to_be_bytes());
             hasher.update(value.as_bytes());
@@ -682,6 +711,7 @@ pub enum ProfileError {
     DesignSelectionsRoute,
     DataDistributionRoute,
     AdminBoundsRoute,
+    SreRoute,
 }
 
 fn valid_project_id(value: &str) -> bool {

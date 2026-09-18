@@ -18,7 +18,7 @@ pub const SCHEMA_VERSION: &str = "ds-web.gateway-registry/v1";
 
 /// sha256 of the exact `routing/operations.json` bytes these rows came from.
 pub const DESCRIPTOR_SHA256: &str =
-    "8deff1226db2832c946821e31aabf47f9b64ede3e64ecd1f1690680944b50faa";
+    "be470ea062258cc997601e0b109a183be12463d97243836135ed2e7f060ce75e";
 
 /// Every declared operation that has a gateway route, sorted by id.
 pub const OPERATIONS: &[GatewayOperation] = &[
@@ -1136,6 +1136,44 @@ pub const OPERATIONS: &[GatewayOperation] = &[
         retry_class: "none",
         timeout_s: 10,
         response_cap_bytes: 65536,
+        resolution_web: "gateway",
+        resolution_desktop: "gateway",
+        native_command: "",
+    },
+    GatewayOperation {
+        id: "domains.sre.events",
+        method: "POST",
+        path: "/api/v1/data",
+        path_params: &[],
+        action_key: "action",
+        actions: &["query_table"],
+        transport: "ndjson",
+        authority: "gateway",
+        principal: "user",
+        lane_header: false,
+        idempotency: "idempotent",
+        retry_class: "none",
+        timeout_s: 180,
+        response_cap_bytes: 33554432,
+        resolution_web: "gateway",
+        resolution_desktop: "gateway",
+        native_command: "",
+    },
+    GatewayOperation {
+        id: "domains.sre.overview",
+        method: "GET",
+        path: "/api/v1/sre/overview",
+        path_params: &[],
+        action_key: "action",
+        actions: &[],
+        transport: "json",
+        authority: "gateway",
+        principal: "user",
+        lane_header: false,
+        idempotency: "idempotent",
+        retry_class: "transport_and_5xx",
+        timeout_s: 30,
+        response_cap_bytes: 8388608,
         resolution_web: "gateway",
         resolution_desktop: "gateway",
         native_command: "",
