@@ -61,7 +61,6 @@ struct App {
     style_fill_pattern: String,
     style_line_type: String,
     sync_center: String,
-    feedback: String,
     feedback_submit: String,
     solar_seed_client: String,
     solar_seed_pure: String,
@@ -99,7 +98,6 @@ fn app() -> Option<App> {
         style_fill_pattern: read("src/lib/styles/fill-pattern.ts")?,
         style_line_type: read("src/lib/styles/line-type.ts")?,
         sync_center: read("src/lib/desktop/cli-sync-center.ts")?,
-        feedback: read("src/lib/desktop/cli-feedback.ts")?,
         feedback_submit: read("src/lib/feedback/submit.ts")?,
         solar_seed_client: read("src/lib/api/solar-seed.ts")?,
         solar_seed_pure: read("src/lib/solar/seed.ts")?,
@@ -2063,7 +2061,17 @@ fn every_paired_tile_catalogue_command_has_one_closed_operation_owner() {
 }
 
 #[test]
-fn every_feedback_command_has_one_closed_operation_owner() {
+fn the_shared_backlog_no_longer_travels_through_the_window() {
+    // `ds feedback` reached the shared backlog two ways: the native user when
+    // `--target server` was given, and the paired desktop otherwise. Two
+    // routes to one backlog meant two sets of refusals for the same
+    // conditions — the native owner returned `feedback_not_found` typed, while
+    // the desktop returned one `desktop_refused` whose prose this suite had to
+    // keep in parity with a marker list.
+    //
+    // Since 2026-09-18 there is one route. The crate does not depend on
+    // `ds-cli-desktop` (`lens_core_boundary.rs` holds that), the desktop's
+    // three operations are retired, and the adapter is deleted.
     let Some(app) = app() else {
         skip("the ds-web sibling repository is not on disk");
         return;
@@ -2073,65 +2081,20 @@ fn every_feedback_command_has_one_closed_operation_owner() {
         "pub const CLI_OPERATIONS: &[&str] = &[",
         "];",
     );
-    for operation in ds_cli_feedback::BRIDGE_OPS {
+    for retired in ["feedback.submit", "feedback.list", "feedback.close"] {
         assert_eq!(
-            count(allowlist, &format!("\"{}\"", operation.operation)),
-            1,
-            "`{}` must appear exactly once in the desktop allowlist",
-            operation.operation
+            count(allowlist, &format!("\"{retired}\"")),
+            0,
+            "{retired} is still admitted as a CLI bridge operation, but `ds feedback` \
+             no longer sends it"
         );
-        assert_eq!(
-            switch_case_count(&app.frontend, operation.operation),
-            1,
-            "`{}` must have exactly one frontend handler",
-            operation.operation
-        );
-        let contract = operation_contract(&app.feedback, operation.operation);
-        assert!(
-            !contract.is_empty(),
-            "`{}` has no typed feedback-adapter argument contract",
-            operation.operation
-        );
-        for argument in operation.arguments {
-            assert!(
-                contract.contains(&format!("'{argument}'")),
-                "ds feedback sends `{argument}` to `{}`, but the adapter does not accept it",
-                operation.operation
-            );
-        }
     }
+    // The application's own reporting path is untouched: a person filing from
+    // the window still reaches the same endpoint.
     assert!(
         app.feedback_submit.contains("reporter_kind: 'agent'"),
-        "the desktop must pin CLI reports as agent sightings"
+        "the application's own feedback submission lost its reporter kind"
     );
-    assert!(
-        app.feedback.contains("brain('/api/v1/feedback', payload)"),
-        "the CLI adapter must reuse the existing feedback endpoint"
-    );
-    // Closing is the `fb` tab's own triage call, so it inherits that tab's
-    // platform capability gate rather than opening a second one.
-    assert!(
-        app.feedback.contains("updateFeedbackStatus("),
-        "ds feedback close must reuse the application's governed triage call"
-    );
-
-    // Three triage conditions reach `ds feedback` as the adapter's prose and
-    // leave it as codes. Each needs at least one marker still present, or the
-    // command reports `desktop_refused` for something that has a name, a
-    // remedy and a different next step.
-    let lowered = app.feedback.to_ascii_lowercase();
-    for (condition, markers) in [
-        ("not found", ds_cli_feedback::NOT_FOUND_MARKERS),
-        ("version conflict", ds_cli_feedback::CONFLICT_MARKERS),
-        ("not permitted", ds_cli_feedback::NOT_PERMITTED_MARKERS),
-    ] {
-        assert!(
-            markers.iter().any(|marker| lowered.contains(marker)),
-            "no `{condition}` marker remains in the desktop feedback adapter; \
-             `ds feedback close` would report desktop_refused instead of its \
-             named refusal"
-        );
-    }
 }
 
 #[test]

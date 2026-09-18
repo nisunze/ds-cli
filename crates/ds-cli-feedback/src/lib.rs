@@ -30,7 +30,6 @@ pub mod submit;
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{Domain, Refusal};
-use ds_cli_desktop::ops::{self, BridgeOp};
 
 pub static DOMAIN: Domain = Domain {
     id: "feedback",
@@ -41,32 +40,6 @@ pub static DOMAIN: Domain = Domain {
 // ---------------------------------------------------------------------------
 // The declared wire contract
 // ---------------------------------------------------------------------------
-
-pub const SUBMIT: BridgeOp = BridgeOp {
-    operation: "feedback.submit",
-    arguments: &[
-        "title",
-        "detail",
-        "component",
-        "kind",
-        "severity",
-        "agent",
-        "model",
-        "client",
-        "evidence",
-        "context",
-    ],
-};
-pub const LIST: BridgeOp = BridgeOp {
-    operation: "feedback.list",
-    arguments: &["view", "component", "query", "limit", "detail"],
-};
-pub const CLOSE: BridgeOp = BridgeOp {
-    operation: "feedback.close",
-    arguments: &["id", "status", "resolution", "expected_version"],
-};
-
-pub const BRIDGE_OPS: &[&BridgeOp] = &[&SUBMIT, &LIST, &CLOSE];
 
 /// The two statuses the shared backlog counts as addressed. Held here because
 /// the command's choices and the adapter's guard must be the same two words.
@@ -85,9 +58,9 @@ pub const MAX_LIST_LIMIT: i64 = 50;
 // ---------------------------------------------------------------------------
 
 pub const NOT_SIGNED_IN: Refusal = Refusal {
-    code: "desktop_signed_out",
-    when: "DS GridDesign is running but has no signed-in user",
-    remedy: "sign in to DS GridDesign, then run the command again",
+    code: "headless_signed_out",
+    when: "this machine has no restored native user for the selected lane",
+    remedy: "run `ds auth login --email <address>`, or link this machine from a signed-in Desktop",
 };
 pub const INVALID_TEXT: Refusal = Refusal {
     code: "invalid_text",
@@ -110,51 +83,11 @@ pub const NOT_PERMITTED: Refusal = Refusal {
     remedy: "ask an account that holds the platform triage capability to close it",
 };
 
-/// What the application says when the backlog refuses a close. Matched
-/// case-insensitively against its own message; the parity test requires each
-/// marker to still appear in the adapter's source, and an unmatched refusal
-/// stays `desktop_refused` rather than becoming a wrong named one.
-pub const NOT_FOUND_MARKERS: &[&str] = &["was not found"];
-pub const CONFLICT_MARKERS: &[&str] = &["changed since it was read"];
-pub const NOT_PERMITTED_MARKERS: &[&str] = &["not permitted to triage"];
-
-/// Name the three conditions a triage call has that ordinary operation
-/// failures do not. Each has its own next step, so leaving them as
-/// `desktop_refused` would send a caller to read prose for something that has
-/// a code, a remedy and a different command to run.
-pub fn classify_feedback_failure(failure: Failure) -> Failure {
-    let failure = ops::classify_signed_out(failure);
-    if failure.code() != "desktop_refused" {
-        return failure;
-    }
-    let message = failure
-        .detail_value()
-        .and_then(|detail| detail["detail"].as_str())
-        .unwrap_or_default()
-        .to_ascii_lowercase();
-    let hit = |markers: &[&str]| markers.iter().any(|marker| message.contains(marker));
-    if hit(NOT_FOUND_MARKERS) {
-        return Failure::invalid(NOT_FOUND.code, "no feedback report carries this id")
-            .remedy(NOT_FOUND.remedy)
-            .next("ds feedback list --view all");
-    }
-    if hit(CONFLICT_MARKERS) {
-        return Failure::conflict(
-            CONFLICT.code,
-            "the report changed since it was read; the close was not applied",
-        )
-        .remedy(CONFLICT.remedy)
-        .next("ds feedback list --view all");
-    }
-    if hit(NOT_PERMITTED_MARKERS) {
-        return Failure::unauthorized(
-            NOT_PERMITTED.code,
-            "this account may read the shared backlog but not triage it",
-        )
-        .remedy(NOT_PERMITTED.remedy);
-    }
-    failure
-}
+// The three triage conditions arrive typed from the native owner
+// (`ds_cli_auth::feedback`), which maps `feedback_not_found`,
+// `feedback_conflict` and `feedback_not_permitted` itself. Recovering them by
+// matching the desktop's prose — which is what `classify_feedback_failure` and
+// its marker lists did here — is no longer a thing that can be needed.
 
 /// A bounded, trimmed, non-empty text flag.
 pub fn bounded_text<'a>(value: &'a str, flag: &str, max: usize) -> Result<&'a str, Failure> {
@@ -177,16 +110,12 @@ pub fn truncate(text: &str, width: usize) -> String {
     format!("{kept}…")
 }
 
-pub const TARGET_ARG: ds_cli_contract::spec::Arg = ds_cli_contract::spec::Arg::value(
-    "target",
-    "<desktop|desktop:instance|server>",
-    "Native signed-in user by default; Desktop remains an explicit compatibility route.",
-)
-.default("server");
 pub const LANE_ARG: ds_cli_contract::spec::Arg =
     ds_cli_contract::spec::Arg::value("lane", "<stable|canary>", "Native credential lane.")
         .choices(&["stable", "canary"])
         .default("stable");
+/// This domain's own refusals, then the native user's. There is no host to
+/// choose any more, so no target refusal is appended.
 pub const fn native_refusals<const N: usize, const M: usize>(old: [Refusal; N]) -> [Refusal; M] {
     let mut out = [INVALID_TEXT; M];
     let mut i = 0;
@@ -200,22 +129,14 @@ pub const fn native_refusals<const N: usize, const M: usize>(old: [Refusal; N]) 
         i += 1;
         j += 1;
     }
-    out[i] = ops::UNKNOWN_TARGET;
-    out[i + 1] = ops::TARGET_MISMATCH;
     out
 }
+/// The one route: the shared backlog through the restored native user.
 pub fn invoke_native(
     inputs: &ds_cli_contract::Inputs,
     operation: &str,
     mut arguments: serde_json::Map<String, serde_json::Value>,
 ) -> Result<serde_json::Value, Failure> {
-    if inputs.value("desktop-descriptor").is_some() {
-        return Err(Failure::invalid(
-            "invalid_text",
-            "A Desktop descriptor requires --target desktop",
-        )
-        .remedy("Select the intended feedback host explicitly"));
-    }
     arguments.insert("operation".into(), serde_json::json!(operation));
     let command: ds_cli_auth::FeedbackCommand =
         serde_json::from_value(serde_json::Value::Object(arguments)).map_err(|_| {
@@ -228,36 +149,6 @@ pub fn invoke_native(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json::json;
-
-    fn refused(detail: &str) -> Failure {
-        Failure::failed("desktop_refused", "the application refused the operation")
-            .detail(json!({ "detail": detail }))
-    }
-
-    #[test]
-    fn triage_conditions_get_their_own_codes() {
-        assert_eq!(
-            classify_feedback_failure(refused("The feedback report was not found.")).code(),
-            "feedback_not_found"
-        );
-        assert_eq!(
-            classify_feedback_failure(refused("The report changed since it was read.")).code(),
-            "feedback_conflict"
-        );
-        assert_eq!(
-            classify_feedback_failure(refused(
-                "This account is not permitted to triage the shared feedback backlog."
-            ))
-            .code(),
-            "feedback_not_permitted"
-        );
-        // Anything else keeps the application's own refusal.
-        assert_eq!(
-            classify_feedback_failure(refused("the backlog is unavailable")).code(),
-            "desktop_refused"
-        );
-    }
 
     #[test]
     fn closing_names_only_addressed_statuses() {

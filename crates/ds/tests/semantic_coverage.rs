@@ -426,7 +426,11 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("library.catalog", "read_only", "none"),
     ("library.global.read", "read_only", "headless_user"),
     ("library.global.write", "global_write", "headless_user"),
-    ("library.global.fork-example", "global_write", "headless_user"),
+    (
+        "library.global.fork-example",
+        "global_write",
+        "headless_user",
+    ),
     ("library.global.upload", "global_write", "headless_user"),
     (
         "library.global.publish-library",

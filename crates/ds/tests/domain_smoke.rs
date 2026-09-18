@@ -7339,14 +7339,9 @@ fn feedback_is_one_confirmed_shared_write() {
         );
     }
 
-    // An explicit unreachable descriptor makes the test deterministic even
-    // when a production Desktop is open. The previous ambient-discovery form
-    // could submit its synthetic report to the real backlog during a local
-    // test run.
-    let descriptor = temp_root("feedback-smoke-unreachable")
-        .join("session.json")
-        .display()
-        .to_string();
+    // `ds feedback` reaches the shared backlog as the restored native user, so
+    // the fixture profile below is what keeps a synthetic report out of the
+    // real backlog: it authenticates against nothing.
     let base = vec![
         "feedback",
         "submit",
@@ -7358,10 +7353,6 @@ fn feedback_is_one_confirmed_shared_write() {
         "ds-cli",
         "--agent",
         "test-agent",
-        "--target",
-        "desktop",
-        "--desktop-descriptor",
-        &descriptor,
     ];
     let mut unconfirmed = base.to_vec();
     unconfirmed.extend(["--output", "json"]);
@@ -7373,16 +7364,16 @@ fn feedback_is_one_confirmed_shared_write() {
 
     let mut confirmed = base.to_vec();
     confirmed.extend(["--yes", "--output", "json"]);
-    let code = refusal(&confirmed);
+    let code = native_refusal(&confirmed);
     assert!(
-        PAIRING_CODES.contains(&code.as_str()),
-        "a valid feedback report ended in `{code}`, not a pairing outcome"
+        NATIVE_AUTH_CODES.contains(&code.as_str()),
+        "a valid feedback report ended in `{code}`, not a native authentication outcome"
     );
 }
 
 #[test]
-fn feedback_validates_context_before_pairing() {
-    let code = refusal(&[
+fn feedback_validates_context_before_it_is_sent() {
+    let code = native_refusal(&[
         "feedback",
         "submit",
         "--title",
@@ -8436,11 +8427,11 @@ fn shell_status_tells_this_shell_from_a_new_one() {
 /// `ds feedback` is a paired domain, so a machine without DS GridDesign
 /// cannot prove what a close does to the backlog. What it *can* prove — and
 /// what a caller depends on — is that every bound is enforced here, before the
-/// bridge is touched, so a malformed triage call costs one local refusal
-/// rather than a round trip and an application error.
+/// backlog is called, so a malformed triage call costs one local refusal
+/// rather than a round trip and a service error.
 #[test]
-fn feedback_triage_bounds_are_enforced_before_the_bridge() {
-    let over_limit = ds(&["feedback", "list", "--limit", "999", "--output", "json"]);
+fn feedback_triage_bounds_are_enforced_before_the_call() {
+    let over_limit = native_ds(&["feedback", "list", "--limit", "999", "--output", "json"]);
     assert_ne!(over_limit.code, 0);
     assert_eq!(over_limit.envelope["error"]["code"], "invalid_number");
     assert_eq!(over_limit.envelope["error"]["detail"]["max"], 50);
@@ -8448,7 +8439,7 @@ fn feedback_triage_bounds_are_enforced_before_the_bridge() {
     // The resolution is the record a reader sees instead of reopening the
     // investigation; the bound is ds-brain's own, held here by hand.
     let long_resolution = "x".repeat(1_001);
-    let over_resolution = ds(&[
+    let over_resolution = native_ds(&[
         "feedback",
         "close",
         "--id",
@@ -8464,7 +8455,7 @@ fn feedback_triage_bounds_are_enforced_before_the_bridge() {
 
     // Closing names the two addressed statuses only. Reopening a report stays
     // a human triage decision in the application.
-    let reopen = ds(&[
+    let reopen = native_ds(&[
         "feedback",
         "close",
         "--id",
@@ -8498,15 +8489,9 @@ fn feedback_triage_bounds_are_enforced_before_the_bridge() {
         "confirmation_required"
     );
 
-    // Whatever this machine's desktop situation, a well-formed triage call
-    // must reach the bridge and stop there — never an input refusal, and
-    // never `undeclared_bridge_argument`, which would mean a handler built an
-    // argument key its own BridgeOp does not declare. The id below belongs to
-    // no report, so a paired machine refuses it rather than closing anything.
-    let descriptor = temp_root("feedback-triage-unreachable")
-        .join("session.json")
-        .display()
-        .to_string();
+    // A well-formed triage call must reach the backlog and stop at whatever
+    // the identity allows — never an input refusal. The id below belongs to no
+    // report, so a signed-in machine refuses it rather than closing anything.
     for args in [
         vec!["feedback", "list", "--view", "all", "--output", "json"],
         vec![
@@ -8521,18 +8506,16 @@ fn feedback_triage_bounds_are_enforced_before_the_bridge() {
             "json",
         ],
     ] {
-        let mut argv = args.clone();
-        argv.extend(["--target", "desktop", "--desktop-descriptor", &descriptor]);
-        let code = refusal(&argv);
+        let code = native_refusal(&args);
         assert!(
             code.is_empty()
-                || PAIRING_CODES.contains(&code.as_str())
+                || NATIVE_AUTH_CODES.contains(&code.as_str())
                 || matches!(
                     code.as_str(),
                     "feedback_not_found" | "feedback_not_permitted" | "feedback_conflict"
                 ),
-            "`ds {}` failed with `{code}`, which is neither a pairing outcome \
-             nor a named triage refusal",
+            "`ds {}` failed with `{code}`, which is neither a native authentication \
+             outcome nor a named triage refusal",
             args.join(" ")
         );
     }

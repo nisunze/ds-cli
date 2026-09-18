@@ -1,19 +1,15 @@
 //! `ds feedback close` — retire one backlog report the session has addressed.
 
-use std::time::Duration;
-
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
     Arg, Authority, Chapter, Command, Effect, Example, Execution, Refusal,
 };
 use ds_cli_contract::{Context, Inputs};
-use ds_cli_desktop::ops;
 use serde_json::{Map, Value, json};
 
 use crate::{MAX_RESOLUTION_CHARS, bounded_text};
 
 /// One governed ds-brain transaction, read-modify-write over one document.
-const TIMEOUT: Duration = Duration::from_secs(60);
 const MAX_ID_CHARS: usize = 200;
 
 const CONFIRMATION_REQUIRED: Refusal = Refusal {
@@ -59,9 +55,7 @@ can show is addressed; the resolution is the record, not a formality.",
             "<version>",
             "Refuse if the report is no longer at this version; defaults to the version read now.",
         ),
-        crate::TARGET_ARG,
         crate::LANE_ARG,
-        ops::DESCRIPTOR_ARG,
     ],
     output: "\
 `report` in its closed state, with `previous_status` and the new `version`. \
@@ -73,18 +67,10 @@ The report stays in the backlog and remains readable with \
         runnable: false,
     }],
     refusals: &crate::native_refusals::<
-        14,
-        { 14 + ds_cli_auth::PROJECT_STATUS_COMMAND.refusals.len() + 2 },
+        6,
+        { 6 + ds_cli_auth::PROJECT_STATUS_COMMAND.refusals.len() },
     >([
-        ops::NOT_PAIRED,
-        ops::AMBIGUOUS,
-        ops::UNREACHABLE,
-        ops::PAIRING_REJECTED,
-        ops::REFUSED,
-        ops::UNSUPPORTED,
-        ops::UNREADABLE,
         ds_cli_contract::args::INVALID_NUMBER,
-        crate::NOT_SIGNED_IN,
         crate::INVALID_TEXT,
         crate::NOT_FOUND,
         crate::CONFLICT,
@@ -92,7 +78,7 @@ The report stays in the backlog and remains readable with \
         CONFIRMATION_REQUIRED,
     ]),
     reference: Some("docs/reference/feedback.md"),
-    availability: ops::paired_availability,
+    availability: ds_cli_auth::native_availability,
 };
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
@@ -119,17 +105,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             )?),
         );
     }
-    if matches!(ops::host(inputs.value("target"))?, ops::Host::Server) {
-        return crate::invoke_native(inputs, "close", arguments);
-    }
-    let descriptor = ops::paired(inputs.value("desktop-descriptor"))?;
-    ops::invoke(
-        &descriptor,
-        &crate::CLOSE,
-        Value::Object(arguments),
-        TIMEOUT,
-    )
-    .map_err(crate::classify_feedback_failure)
+    crate::invoke_native(inputs, "close", arguments)
 }
 
 pub fn render(data: &Value) -> String {

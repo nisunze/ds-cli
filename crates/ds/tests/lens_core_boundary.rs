@@ -55,7 +55,8 @@ enum Layer {
 /// all that remained was an empty `BRIDGE_OPS` const holding the dependency
 /// open. `ds-cli-library` left the same day too, by the other route: its
 /// thirteen governed global-catalog operations were given the headless owner
-/// they always should have had.
+/// they always should have had, and `ds-cli-feedback` followed by collapsing
+/// its two routes to the native one it already had.
 const INVENTORY: &[(&str, Layer, usize)] = &[
     ("ds", Layer::Host, 1),
     ("ds-cli-map", Layer::Lens, 4),
@@ -71,8 +72,6 @@ const INVENTORY: &[(&str, Layer, usize)] = &[
     ("ds-cli-design", Layer::CorePending, 1),
     // Model preparation reads the application's active project cache.
     ("ds-cli-dsgrid", Layer::CorePending, 1),
-    // Backlog capture attaches what the window can see.
-    ("ds-cli-feedback", Layer::CorePending, 4),
     // Solar runs read the workspace the application holds open.
     ("ds-cli-solar", Layer::CorePending, 2),
     // Diagnostics inspect the live application.

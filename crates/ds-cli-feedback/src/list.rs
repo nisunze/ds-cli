@@ -1,16 +1,12 @@
 //! `ds feedback list` — the shared backlog, as the `fb` tab reads it.
 
-use std::time::Duration;
-
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{Arg, Authority, Chapter, Command, Effect, Example, Execution};
 use ds_cli_contract::{Context, Inputs};
-use ds_cli_desktop::ops;
 use serde_json::{Map, Value, json};
 
 use crate::{MAX_LIST_LIMIT, bounded_text, truncate};
 
-const TIMEOUT: Duration = Duration::from_secs(30);
 const MAX_FILTER_CHARS: usize = 200;
 
 pub static COMMAND: Command = Command {
@@ -55,9 +51,7 @@ original sighting wrote down, and how many times the gap was seen.",
             "<RFC3339>",
             "Keep feedback seen or updated at or after this time; native host only.",
         ),
-        crate::TARGET_ARG,
         crate::LANE_ARG,
-        ops::DESCRIPTOR_ARG,
     ],
     output: "\
 `view`, `total`, `truncated`, and `reports` rows with `id`, `status`, `kind`, \
@@ -70,25 +64,17 @@ original sighting wrote down, and how many times the gap was seen.",
         runnable: false,
     }],
     refusals: &crate::native_refusals::<
-        13,
-        { 13 + ds_cli_auth::PROJECT_STATUS_COMMAND.refusals.len() + 2 },
+        5,
+        { 5 + ds_cli_auth::PROJECT_STATUS_COMMAND.refusals.len() },
     >([
-        ops::NOT_PAIRED,
-        ops::AMBIGUOUS,
-        ops::UNREACHABLE,
-        ops::PAIRING_REJECTED,
-        ops::REFUSED,
-        ops::UNSUPPORTED,
-        ops::UNREADABLE,
         ds_cli_contract::args::INVALID_NUMBER,
-        crate::NOT_SIGNED_IN,
         crate::INVALID_TEXT,
         crate::NOT_FOUND,
         crate::CONFLICT,
         crate::NOT_PERMITTED,
     ]),
     reference: Some("docs/reference/feedback.md"),
-    availability: ops::paired_availability,
+    availability: ds_cli_auth::native_availability,
 };
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
@@ -122,21 +108,12 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     if inputs.switch("detail") {
         arguments.insert("detail".into(), json!(true));
     }
-    if matches!(ops::host(inputs.value("target"))?, ops::Host::Server) {
-        if let Some(since) = inputs.value("since") {
-            arguments.insert("since".into(), json!(since));
-        }
-        return crate::invoke_native(inputs, "list", arguments);
+    // `--since` was refused on the paired route and accepted on the native
+    // one. With one route there is one answer.
+    if let Some(since) = inputs.value("since") {
+        arguments.insert("since".into(), json!(since));
     }
-    if inputs.value("since").is_some() {
-        return Err(
-            Failure::invalid("invalid_text", "--since requires --target server")
-                .remedy("Use the native feedback host"),
-        );
-    }
-    let descriptor = ops::paired(inputs.value("desktop-descriptor"))?;
-    ops::invoke(&descriptor, &crate::LIST, Value::Object(arguments), TIMEOUT)
-        .map_err(crate::classify_feedback_failure)
+    crate::invoke_native(inputs, "list", arguments)
 }
 
 pub fn render(data: &Value) -> String {

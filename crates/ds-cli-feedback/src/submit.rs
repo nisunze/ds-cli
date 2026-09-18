@@ -1,19 +1,16 @@
 //! Submit one agent-authored product observation.
 
 use std::collections::BTreeMap;
-use std::time::Duration;
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
     Arg, Authority, Chapter, Command, Effect, Example, Execution, Refusal,
 };
 use ds_cli_contract::{Context, Inputs};
-use ds_cli_desktop::ops;
 
-use crate::{INVALID_TEXT, NOT_SIGNED_IN, bounded_text};
+use crate::{INVALID_TEXT, bounded_text};
 use serde_json::{Map, Value, json};
 
-const TIMEOUT: Duration = Duration::from_secs(30);
 const MAX_TITLE_CHARS: usize = 200;
 const MAX_DETAIL_BYTES: usize = 16 * 1024;
 const MAX_COMPONENT_CHARS: usize = 200;
@@ -99,9 +96,7 @@ live capability discovery confirms the task is unsupported or materially broken.
             "<key=value>",
             "Bounded triage context; repeat for up to 24 unique keys.",
         ),
-        crate::TARGET_ARG,
         crate::LANE_ARG,
-        ops::DESCRIPTOR_ARG,
     ],
     output: "\
 The shared report, whether this sighting was merged into an existing open \
@@ -112,17 +107,9 @@ report, and the report's current occurrence count.",
         runnable: false,
     }],
     refusals: &crate::native_refusals::<
-        15,
-        { 15 + ds_cli_auth::PROJECT_STATUS_COMMAND.refusals.len() + 2 },
+        7,
+        { 7 + ds_cli_auth::PROJECT_STATUS_COMMAND.refusals.len() },
     >([
-        ops::NOT_PAIRED,
-        ops::AMBIGUOUS,
-        ops::UNREACHABLE,
-        ops::PAIRING_REJECTED,
-        ops::REFUSED,
-        ops::UNSUPPORTED,
-        ops::UNREADABLE,
-        NOT_SIGNED_IN,
         INVALID_TEXT,
         INVALID_EVIDENCE,
         INVALID_CONTEXT,
@@ -136,7 +123,7 @@ report, and the report's current occurrence count.",
         },
     ]),
     reference: Some("docs/reference/feedback.md"),
-    availability: ops::paired_availability,
+    availability: ds_cli_auth::native_availability,
 };
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
@@ -179,17 +166,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         arguments.insert("client".to_string(), Value::String(client.to_string()));
     }
 
-    if matches!(ops::host(inputs.value("target"))?, ops::Host::Server) {
-        return crate::invoke_native(inputs, "submit", arguments);
-    }
-    let descriptor = ops::paired(inputs.value("desktop-descriptor"))?;
-    ops::invoke(
-        &descriptor,
-        &crate::SUBMIT,
-        Value::Object(arguments),
-        TIMEOUT,
-    )
-    .map_err(crate::classify_feedback_failure)
+    crate::invoke_native(inputs, "submit", arguments)
 }
 
 fn optional_text<'a>(
@@ -304,21 +281,35 @@ mod tests {
     }
 
     #[test]
-    fn bridge_contract_contains_only_report_fields() {
-        assert_eq!(
-            crate::SUBMIT.arguments,
-            [
-                "title",
-                "detail",
-                "component",
-                "kind",
-                "severity",
-                "agent",
-                "model",
-                "client",
-                "evidence",
-                "context",
-            ]
-        );
+    fn the_report_carries_only_report_fields() {
+        // What the command sends is now one typed native command rather than a
+        // declared bridge argument list, so the fields are asserted where they
+        // are built: nothing about a host, a window or a descriptor may ride
+        // along with an operator's report.
+        for arg in COMMAND.args {
+            assert!(
+                !["target", "desktop-descriptor"].contains(&arg.name),
+                "`{}` still offers a host flag",
+                arg.name
+            );
+        }
+        let declared: Vec<&str> = COMMAND.args.iter().map(|arg| arg.name).collect();
+        for field in [
+            "title",
+            "detail",
+            "component",
+            "kind",
+            "severity",
+            "agent",
+            "model",
+            "client",
+            "evidence",
+            "context",
+        ] {
+            assert!(
+                declared.contains(&field),
+                "`--{field}` is no longer declared"
+            );
+        }
     }
 }
