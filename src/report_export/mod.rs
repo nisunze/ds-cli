@@ -2406,6 +2406,57 @@ mod tests {
         assert_eq!(batch["partial_formats"], 1);
         assert_eq!(batch["results"][0]["artifacts"], 4);
         assert_eq!(batch["results"][0]["failed_formats"][0]["output_id"], a0);
+
+        // The format that is lost is not always the last one asked for. A gap
+        // in the MIDDLE of the plan is what used to shift every later artifact
+        // onto the wrong output and refuse the whole run as invalid, and it is
+        // the reason a batch reported `report_result_invalid` rather than the
+        // work it was holding. Lose the workbook and the A3 — one early, one
+        // late — and the three that built must still land on their own
+        // outputs, by name, in order.
+        let mut gapped = document.clone();
+        gapped["artifacts"] = json!([
+            document["artifacts"][0].clone(),
+            document["artifacts"][2].clone(),
+            {"format": a0, "filename": "upgrade_ruturo.a0-landscape-gisagara-cjic.pdf", "path": path("upgrade_ruturo.a0-landscape-gisagara-cjic.pdf"), "bytes": 50, "sha256": "5".repeat(64)},
+        ]);
+        gapped["blockers"] = json!([
+            {"code": "format_build_failed", "message": "workbook writer ran out of memory", "format": "xlsx"},
+            {"code": "printing_execution_disabled", "message": "printing is not enabled on this device", "format": "pdf_a3"},
+        ]);
+        let verified =
+            verify_result(&serde_json::to_vec(&gapped).unwrap(), &plan, &out_dir).unwrap();
+        let placed: Vec<(&str, &str, &str)> = verified
+            .artifacts
+            .iter()
+            .map(|artifact| {
+                (
+                    artifact.format.as_str(),
+                    artifact.output_id.as_str(),
+                    artifact.filename.as_str(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            placed,
+            [
+                ("shp", "shp", "upgrade_ruturo.shp.zip"),
+                ("kmz", "kmz", "upgrade_ruturo.kmz"),
+                (a0, a0, "upgrade_ruturo.a0-landscape-gisagara-cjic.pdf"),
+            ]
+        );
+        let lost: Vec<&str> = verified
+            .failed
+            .iter()
+            .map(|failed| failed.output_id.as_str())
+            .collect();
+        assert_eq!(lost, ["xlsx", "pdf_a3"]);
+        // Each one keeps its own code and its own way forward; neither claims
+        // a layout knob, because neither message names one.
+        assert_eq!(verified.failed[0].code, "format_build_failed");
+        assert_eq!(verified.failed[1].code, "printing_execution_disabled");
+        assert!(verified.failed.iter().all(|failed| failed.layout.is_none()));
+        assert!(verified.failed[1].remedy.contains("printing enabled"));
     }
 
     /// Every layout shortfall the kernel's own table planner raises is read
