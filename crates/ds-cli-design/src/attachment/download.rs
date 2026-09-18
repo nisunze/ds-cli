@@ -32,13 +32,7 @@ pub static COMMAND: Command = Command {
     path: &["design", "attachment", "download"],
     contract: 1,
     summary: "Authorize a download of one attachment revision.",
-    purpose: "\
-Returns a time-limited URL that ds-brain minted and signed against the exact \
-storage generation it verified when the revision was published. `ds` never \
-composes a storage URL and never holds a credential; what comes back is an \
-authorization to fetch those exact bytes, and a later object at the same name \
-cannot be served in its place. The digest is returned alongside so the fetched \
-bytes can be checked.",
+    purpose: "Authorize an exact immutable revision for the explicit project. Returns a server-signed, generation-pinned URL and digest for the caller to fetch and verify; native identity credentials are never sent to Storage.",
     chapter: Chapter::Design,
     effect: Effect::ReadOnly,
     authority: Authority::HeadlessProject,

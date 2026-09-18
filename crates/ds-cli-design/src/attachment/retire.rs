@@ -24,14 +24,7 @@ pub static COMMAND: Command = Command {
     path: &["design", "attachment", "retire"],
     contract: 1,
     summary: "Retire an attachment or one of its revisions, reversibly.",
-    purpose: "\
-Soft-deletes the whole logical file, or with --revision just one revision. \
-Nothing is erased: the record and its bytes stay, --restore brings it back, and \
-a retired revision remains downloadable by its exact id. When the retired \
-revision was the current latest, the pointer falls back to the newest remaining \
-ready revision — derived, never invented, and cleared honestly when nothing \
-ready is left. The native client captures the file's current version and retires \
-under it, so a concurrent publish is refused rather than overwritten.",
+    purpose: "Retire or restore a file or one exact revision for the explicit project. Records and bytes remain; latest points to the newest ready revision or clears. The captured pointer fence refuses concurrent changes.",
     chapter: Chapter::Design,
     effect: Effect::GlobalWrite,
     authority: Authority::HeadlessProject,

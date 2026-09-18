@@ -54,15 +54,7 @@ pub static COMMAND: Command = Command {
     path: &["design", "attachment", "publish"],
     contract: 1,
     summary: "Publish one immutable file revision onto a design object.",
-    purpose: "\
-Uploads the file to a server-minted session and registers one immutable \
-revision. Earlier bytes are never touched: each revision owns its own storage \
-object, its own server-verified SHA-256 and its own generation, so a new \
-`.bak` for a later version sits alongside the earlier one rather than \
-replacing it. Use an explicit --project without a desktop. LV --version is an assigned vN; MV --version is its content revision id, never governance vN. Pass --version to bind the revision to one exact object version. \
-Without --attachment this starts a new logical file; with it, the native owner \
-reads that file's current version and adds a revision under it, so a concurrent \
-publish is refused rather than overwritten.",
+    purpose: "Upload exact opaque bytes for the explicit project through a server-granted Storage session, then finalize an immutable digest/generation. LV version pins use vN; MV pins use exact content revisions. Existing files capture a pointer fence, refusing concurrent changes.",
     chapter: Chapter::Design,
     effect: Effect::GlobalWrite,
     authority: Authority::HeadlessProject,
