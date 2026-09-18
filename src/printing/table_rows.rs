@@ -39,9 +39,20 @@ pub fn plan(
     let minimum = font_pt * 25.4 / 72. * 1.25;
     let permitted = if styled { 1 } else { maximum_panels };
     let ideal = (font_pt * 25.4 / 72. * 1.6).max(3.);
-    // Unspecified spacing is automatic. Spend available panel height before
-    // refusing a table that fits perfectly at the same readable type size.
-    let fit = height / (rows.max(1).div_ceil(permitted) + 2) as f64;
+    // Unspecified spacing is automatic, and a panel is filled to its bottom
+    // before the next one is started. Size the rows against the panels the
+    // table ACTUALLY needs at readable type, not against every panel it is
+    // allowed — sizing against `permitted` shrinks the type to spread rows
+    // evenly over all of them, so a first column stops short of its own
+    // bottom while a later one carries the remainder. Shrink only when the
+    // authored size genuinely does not fit, which is what `fit` was for.
+    let at_ideal = ((height / ideal + 1e-9).floor() as usize).saturating_sub(2);
+    let needed = if at_ideal == 0 {
+        permitted
+    } else {
+        rows.max(1).div_ceil(at_ideal).clamp(1, permitted)
+    };
+    let fit = height / (rows.max(1).div_ceil(needed) + 2) as f64;
     let step = row_mm.unwrap_or(ideal.min(fit.max(minimum.max(3.))));
     if !step.is_finite() || step < minimum {
         return Err(format!(
@@ -85,6 +96,54 @@ pub fn plan(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A column is filled to its own bottom before the next is started.
+    ///
+    /// The rows below fit inside ONE panel at the authored type size, and the
+    /// layout permits three. Sizing against the permitted count used to shrink
+    /// the type so the same rows spread across all three, which is what leaves
+    /// a first column stopping short of its own bottom on a printed A0.
+    #[test]
+    fn rows_that_fit_one_column_do_not_spread_across_the_panels_allowed() {
+        let one = plan(
+            "lv_schedule",
+            30,
+            140.,
+            7.,
+            None,
+            3,
+            false,
+            super::super::TableOverflow::Error,
+        )
+        .expect("30 rows fit at readable type");
+        assert_eq!(one.panels, 1, "a table that fits one column must use one");
+        assert_eq!(one.omitted_rows, 0);
+
+        // The authored type size is kept rather than shrunk to spread rows.
+        let ideal = (7. * 25.4 / 72. * 1.6f64).max(3.);
+        assert!(
+            (one.step_mm - ideal).abs() < 1e-9,
+            "step {} should stay the authored {ideal}",
+            one.step_mm
+        );
+
+        // And a table too tall for one column still spills into the next
+        // rather than refusing — at 7pt in 140mm a column holds ~33 rows.
+        let many = plan(
+            "lv_schedule",
+            90,
+            140.,
+            7.,
+            None,
+            3,
+            false,
+            super::super::TableOverflow::Error,
+        )
+        .expect("90 rows still fit within three panels");
+        assert!(many.panels > 1, "90 rows must spill past one column");
+        assert!(many.panels <= 3);
+        assert_eq!(many.omitted_rows, 0);
+    }
     #[test]
     fn a3_agatare_keeps_all_26_rows_and_seven_point_type() {
         let p = plan(
