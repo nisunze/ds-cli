@@ -125,6 +125,11 @@ fn profile_input(lane: DeploymentLane) -> ClientProfileInput {
             "list_datasets".to_owned(),
             "query_print_context".to_owned(),
         ],
+        admin_bounds_method: ds_client_core::ADMIN_BOUNDS_METHOD.to_owned(),
+        admin_bounds_path: ds_client_core::ADMIN_BOUNDS_PATH.to_owned(),
+        admin_bounds_actions: ds_client_core::ADMIN_BOUNDS_ACTIONS
+            .map(str::to_owned)
+            .to_vec(),
     }
 }
 

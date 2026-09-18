@@ -97,8 +97,12 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     // Exact hierarchy and geometry evidence use the signed-in Desktop's
     // national reference authority. The list is read-only; read optionally
     // materializes the same geometry as a Desktop-local map layer.
-    ("data.admin-bounds.list", "read_only", "desktop_user"),
-    ("data.admin-bounds.read", "local_ui", "desktop_user"),
+    ("data.admin-bounds.list", "read_only", "headless_user"),
+    (
+        "data.admin-bounds.read",
+        "local_file_write",
+        "headless_user",
+    ),
     (
         "data.elevation.attach",
         "local_file_write",

@@ -1,5 +1,5 @@
 {
-  "schema_version": "ds.native-client-profiles/v27",
+  "schema_version": "ds.native-client-profiles/v28",
   "development": true,
   "profiles": {
     "stable": {
@@ -110,6 +110,14 @@
         "actions": [
           "list_datasets",
           "query_print_context"
+        ]
+      },
+      "admin_bounds": {
+        "method": "GET",
+        "path": "/api/v1/admin/rwanda",
+        "actions": [
+          "children",
+          "geometry"
         ]
       },
       "project_report": {
@@ -309,6 +317,14 @@
         "actions": [
           "list_datasets",
           "query_print_context"
+        ]
+      },
+      "admin_bounds": {
+        "method": "GET",
+        "path": "/api/v1/admin/rwanda",
+        "actions": [
+          "children",
+          "geometry"
         ]
       },
       "project_report": {

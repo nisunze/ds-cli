@@ -32,37 +32,48 @@ feature geometry. The source is never overwritten.
 ## `admin-bounds list` and `admin-bounds read`
 
 These commands read the authenticated Rwanda administrative-boundary authority
-used by Desktop Search place. They do not infer boundaries from sampled points
-or reconstruct polygons in the CLI.
+that Desktop Search place reads. They do not infer boundaries from sampled
+points or reconstruct polygons in the CLI. They are national reference data: no
+project is selected, none is fenced, and no window is involved — since
+2026-09-18 they call the gateway directly as the restored native user, so they
+answer the same on a server, in CI and beside a desktop.
 
 ```bash
 ds data admin-bounds list --country rwanda --level province --output json
-ds data admin-bounds list --country rwanda --level village --parent-code 110205 --output json
-ds data admin-bounds read --country rwanda --code 11020503 --output json
-ds data admin-bounds read --country rwanda --code 11020503 --to-map --output json
+ds data admin-bounds list --country rwanda --level village --parent-code 110101 --output json
+ds data admin-bounds read --country rwanda --code 11010102 --output json
+ds data admin-bounds read --country rwanda --code 11010102 --geometry-out ./gihanga.geojson --output json
 ```
 
 `list` always returns one bounded hierarchy leg: provinces need no parent;
 districts, sectors, cells and villages require the exact immediate parent code.
-Fresh rows are accepted only when every code has the requested level length
-and parent prefix, every name is non-empty, and no code is duplicated.
+Rows are accepted only when every code has the requested level length and parent
+prefix, every name is non-empty, and no code is duplicated. A leg with no units
+answers `count: 0`, which is a fact about the hierarchy rather than a failure.
 `read` returns code, name, level, geometry type, bounds, coordinate-position
 count and SHA-256 for an exact Polygon or MultiPolygon. Other geometry types,
-malformed coordinates, a response whose code/level does not match the request,
-or a missing name are refused as unreadable authority data. Full coordinate
-arrays remain in the application. `--to-map` passes that exact geometry to the
-normal derived local-layer path, so it is visible, removable and stylable through the
-existing map and Style Center surfaces. Its success receipt is returned only
-after the Desktop has acknowledged the local IndexedDB metadata and feature
-commit. This local layer is Desktop-local reference evidence, not project data;
-the receipt reports national scope and the current project separately.
+malformed coordinates, a response whose code or level does not match the
+request, or a missing name are refused as unreadable authority data.
+
+The coordinates are not printed: a province is half a megabyte of them. Pass
+`--geometry-out <path.geojson>` to keep the exact bytes as a one-feature
+`FeatureCollection` carrying `name`, `code` and `level` — the same three
+properties the Desktop's own admin layer writes, so `ds map local register`
+takes the file as it stands. An existing path is refused before the read, and
+nothing is ever overwritten.
+
+Rendering a boundary in a RUNNING desktop's map is not one of these commands.
+That is presentation state — a local overlay and a camera move — and it belongs
+to the `map.*` surface; Search place inside the application still does it
+directly. `--to-map` was removed with the bridge on 2026-09-18.
 
 The only declared country authority is `rwanda`. A service failure is a hard
 refusal: never substitute a lattice, bounding rectangle or approximate polygon.
-Malformed scope is `invalid_admin_scope`; an authority transport failure is
-`admin_authority_unavailable`; malformed authority data is
-`admin_authority_unreadable`; and an identity race remains
-`auth_context_mismatch` across the Desktop bridge.
+Malformed scope is `invalid_admin_scope`, raised here before anything is sent.
+An authority that cannot answer is `auth_transient`; an answer outside the
+exact hierarchy contract is `auth_response_unreadable`; the native identity
+refusals (`headless_signed_out` and the rest) are the same ones every headless
+command raises.
 
 ## `elevation attach`
 

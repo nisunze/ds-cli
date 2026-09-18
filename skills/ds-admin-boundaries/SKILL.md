@@ -14,16 +14,18 @@ Use the deployed CLI and read the selected command contract before invoking it.
    is the root; each lower level requires its immediate parent code.
 2. Select only a returned code, then use `ds data admin-bounds read --code
    <code>` for bounded geometry evidence.
-3. Add `--to-map` only when the task needs the exact authority polygon in the
-   Desktop. It uses the ordinary derived local-layer and hierarchy Style Center
-   path; it does not send coordinates through the CLI. A successful receipt is
-   returned only after the Desktop-local IndexedDB commit is acknowledged.
+3. Add `--geometry-out <path.geojson>` only when the task needs the polygon
+   itself. The receipt otherwise reports identity, bounds, coordinate count and
+   digest, because a boundary's coordinates are not a terminal answer. The file
+   is one feature carrying `name`, `code` and `level`, which `ds map local
+   register --geometry polygon` takes as it stands. An existing path is
+   refused; nothing is overwritten.
 
-Treat `.data.scope.project: null` as national-reference ownership and
-`.data.desktop_active_project` only as UI context. A materialized boundary is
-Desktop-local evidence, never saved project data. If the authority refuses or
-is unavailable, stop: do not substitute sampled points, a lattice, a bounding
-rectangle, or another approximate geometry.
+These reads need no project and no window: `.data.scope.project` is `null`
+because a country's boundaries belong to the country. A boundary is reference
+evidence, never saved project data. If the authority refuses or is unavailable,
+stop: do not substitute sampled points, a lattice, a bounding rectangle, or
+another approximate geometry.
 
 Use `ds data admin-bounds attach` only when enriching a caller-owned point
 file with province-to-village attributes; it is a separate local-file write.

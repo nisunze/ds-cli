@@ -67,7 +67,11 @@ const INVENTORY: &[(&str, Layer, usize)] = &[
     ("ds-cli-assets", Layer::CorePending, 10),
     // Device pairing discovery reads the running application's descriptor.
     ("ds-cli-auth", Layer::CorePending, 1),
-    // GIS uploads and their tiling status.
+    // Native elevation on a point file or over an area, and attaching the
+    // project's pinned Rwanda hierarchy to one: local file compute whose
+    // engine and component manager live in the desktop shell. The two national
+    // boundary READS left on 2026-09-18 — they are gateway reads with no
+    // project and nothing to render.
     ("ds-cli-data", Layer::CorePending, 4),
     // Immutable attachments on design objects are paired-only (audit item 5).
     ("ds-cli-design", Layer::CorePending, 1),

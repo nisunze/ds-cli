@@ -2782,7 +2782,7 @@ fn every_offline_command_is_available_without_any_engine_binary() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn admin_boundary_scope_is_validated_before_desktop_pairing() {
+fn admin_boundary_scope_is_validated_before_the_authority_is_reached() {
     let cases: &[&[&str]] = &[
         &[
             "data",
@@ -2818,15 +2818,85 @@ fn admin_boundary_scope_is_validated_before_desktop_pairing() {
     for args in cases {
         let mut argv = args.to_vec();
         argv.extend(["--output", "json"]);
-        let run = ds(&argv);
+        let run = native_ds(&argv);
         assert_eq!(run.code, 2, "{}{}", run.stdout, run.stderr);
         assert_eq!(
             run.envelope["error"]["code"],
             "invalid_admin_scope",
-            "`ds {}` reached pairing before exact scope validation",
+            "`ds {}` reached the authority before exact scope validation",
             args.join(" ")
         );
     }
+}
+
+#[test]
+fn the_national_hierarchy_is_read_without_a_window() {
+    // A country's boundaries have no project and nothing to render. Both reads
+    // stop at the native identity boundary, which is the proof they are asking
+    // the gateway rather than looking for a paired application.
+    for descriptor in ["data.admin-bounds.list", "data.admin-bounds.read"] {
+        let command = &ok(&["capabilities", descriptor, "--output", "json"])["command"];
+        assert_eq!(command["authority"], "headless_user");
+        let inputs = command["inputs"]
+            .as_array()
+            .expect("inputs")
+            .iter()
+            .map(|input| input["name"].as_str().expect("input name"))
+            .collect::<BTreeSet<_>>();
+        assert!(inputs.contains("lane"), "{descriptor} cannot choose a lane");
+        assert!(
+            !inputs.contains("desktop-descriptor") && !inputs.contains("to-map"),
+            "{descriptor} still carries a window input: {inputs:?}"
+        );
+    }
+    for argv in [
+        vec![
+            "data",
+            "admin-bounds",
+            "list",
+            "--level",
+            "village",
+            "--parent-code",
+            "110101",
+            "--output",
+            "json",
+        ],
+        vec![
+            "data",
+            "admin-bounds",
+            "read",
+            "--code",
+            "11010102",
+            "--output",
+            "json",
+        ],
+    ] {
+        let code = native_refusal(&argv);
+        assert!(
+            NATIVE_AUTH_CODES.contains(&code.as_str()),
+            "an exact hierarchy read stopped at `{code}`, not at the national authority"
+        );
+    }
+    // `--geometry-out` is settled before anything is read, so an occupied path
+    // is answered without a credential and without a request.
+    let taken = temp_root("admin-bounds-geometry").join("boundary.geojson");
+    std::fs::create_dir_all(taken.parent().expect("parent")).expect("a temporary directory");
+    std::fs::write(&taken, b"{}").expect("a file in the way");
+    assert_eq!(
+        native_refusal(&[
+            "data",
+            "admin-bounds",
+            "read",
+            "--code",
+            "11010102",
+            "--geometry-out",
+            taken.to_str().expect("path"),
+            "--output",
+            "json",
+        ]),
+        "output_refused"
+    );
+    let _ = std::fs::remove_dir_all(taken.parent().expect("parent"));
 }
 
 #[test]
@@ -5675,6 +5745,11 @@ fn design_lv_project_export_refuses_an_existing_artifact_before_auth_or_desktop(
                 "path": "/api/v1/data-distribution",
                 "actions": ["list_datasets", "query_print_context"]
             },
+            "admin_bounds": {
+                "method": "GET",
+                "path": "/api/v1/admin/rwanda",
+                "actions": ["children", "geometry"]
+            },
             "design_attachments": {
                 "method": "POST",
                 "path": "/api/v1/design/attachments",
@@ -5691,7 +5766,7 @@ fn design_lv_project_export_refuses_an_existing_artifact_before_auth_or_desktop(
     std::fs::write(
         &profile_path,
         serde_json::to_vec(&json!({
-            "schema_version": "ds.native-client-profiles/v27",
+            "schema_version": "ds.native-client-profiles/v28",
             "development": true,
             "profiles": {
                 "stable": profile(

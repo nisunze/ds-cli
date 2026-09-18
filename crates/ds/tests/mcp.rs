@@ -1096,11 +1096,14 @@ fn exact_admin_boundaries_are_projected_by_catalog_chapter_and_typed_profile() {
             .iter()
             .map(|refusal| refusal["code"].as_str().expect("refusal code"))
             .collect::<BTreeSet<_>>();
+        // The scope refusal is this domain's own and is raised before anything
+        // is sent; the rest are the national authority's, composed from the
+        // native user path so a new one reaches these reads too.
         for code in [
             "invalid_admin_scope",
-            "admin_authority_unavailable",
-            "admin_authority_unreadable",
-            "auth_context_mismatch",
+            "headless_signed_out",
+            "auth_transient",
+            "auth_response_unreadable",
         ] {
             assert!(
                 codes.contains(code),
@@ -1108,9 +1111,9 @@ fn exact_admin_boundaries_are_projected_by_catalog_chapter_and_typed_profile() {
             );
         }
     }
-    // The static annotation covers every invocation shape. `--to-map` can
-    // mutate Desktop-local state, so the leaf must stay conservatively false
-    // even when this particular call omits that switch.
+    // The static annotation covers every invocation shape. `--geometry-out`
+    // writes a local file, so the leaf must stay conservatively false even
+    // when this particular call omits that path.
     assert_eq!(read["annotations"]["readOnlyHint"], false);
 }
 

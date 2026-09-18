@@ -100,6 +100,8 @@ struct Entry {
     /// The seeding door: the reference catalogue and the derived buildings or
     /// contours acquisition. Bundle bytes are not a route; the core pins them.
     data_distribution: Tiles,
+    /// The national administrative hierarchy: exact children, one polygon.
+    admin_bounds: Tiles,
     provenance: Provenance,
 }
 
@@ -408,6 +410,9 @@ fn load_path(
         data_distribution_method: entry.data_distribution.method,
         data_distribution_path: entry.data_distribution.path,
         data_distribution_actions: entry.data_distribution.actions,
+        admin_bounds_method: entry.admin_bounds.method,
+        admin_bounds_path: entry.admin_bounds.path,
+        admin_bounds_actions: entry.admin_bounds.actions,
     })
     .map_err(|_| unsafe_catalog())
 }
@@ -477,6 +482,7 @@ mod tests {
                     "design_versions": {"method":"POST","path":"/api/v1/design/versions","actions":["list_versions","get_version","get_head","create_version","restore_version"]},
                     "design_selections": {"method":"POST","path":"/api/v1/design/selections","actions":["list","get","save","archive","promote_task"]},
                     "data_distribution": {"method":"POST","path":"/api/v1/data-distribution","actions":["list_datasets","query_print_context"]},
+                    "admin_bounds": {"method":"GET","path":"/api/v1/admin/rwanda","actions":["children","geometry"]},
                     "provenance": { "source_revision": "abc123", "descriptor_sha256": "a".repeat(64) }
                 },
                 "canary": {
@@ -508,6 +514,7 @@ mod tests {
                     "design_versions": {"method":"POST","path":"/api/v1/design/versions","actions":["list_versions","get_version","get_head","create_version","restore_version"]},
                     "design_selections": {"method":"POST","path":"/api/v1/design/selections","actions":["list","get","save","archive","promote_task"]},
                     "data_distribution": {"method":"POST","path":"/api/v1/data-distribution","actions":["list_datasets","query_print_context"]},
+                    "admin_bounds": {"method":"GET","path":"/api/v1/admin/rwanda","actions":["children","geometry"]},
                     "provenance": { "source_revision": "def456", "descriptor_sha256": "b".repeat(64) }
                 }
             }
