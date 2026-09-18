@@ -425,6 +425,14 @@ fn words(text: &str) -> Vec<String> {
 /// direction is capped at two extra characters, which is a plural and little
 /// else. A term the word extends keeps the looser rule: `print` genuinely is
 /// what `printing` is about.
+///
+/// One more rule, and it is about us rather than about English: our own
+/// product prefix must not hide a stranger's word. `dsgrid` is `ds` + `grid`,
+/// and a word-boundary matcher made eleven `dsgrid` commands unreachable by
+/// the one word an outsider would type for them. Only our own two letters
+/// count, so this cannot become the `Link`/`line` coincidence again —
+/// `export` still does not answer to `port`. It scores as the whole word it
+/// is, not as a stem: in our own vocabulary `dsgrid` IS `grid`.
 fn score_term(term: &str, haystack: &[String], field: Field) -> u32 {
     let mut best = 0;
     for word in haystack {
@@ -432,8 +440,9 @@ fn score_term(term: &str, haystack: &[String], field: Field) -> u32 {
             && term.len() > word.len()
             && term.len() - word.len() <= 2
             && term.starts_with(word.as_str());
+        let ours = word.len() > 2 && word.strip_prefix("ds") == Some(term);
         let shares_stem = (term.len() >= 4 && word.starts_with(term)) || inflection;
-        let hit = if word == term {
+        let hit = if word == term || ours {
             field.weight()
         } else if shares_stem {
             field.stem_weight()
@@ -885,6 +894,22 @@ mod tests {
         );
         assert_eq!(
             score_term("shapefile", &words("shape and size"), Field::Summary),
+            0
+        );
+
+        // Our own two letters must not hide a word from a stranger: `dsgrid`
+        // is `ds` + `grid`, and eleven commands were unreachable by the one
+        // word an outsider types for that family.
+        // It scores as the whole word it is: in our vocabulary `dsgrid` IS
+        // `grid`, so a command named for it outranks one that merely says the
+        // word in a sentence.
+        assert_eq!(
+            score_term("grid", &words("dsgrid.model.list"), Field::Name),
+            Field::Name.weight()
+        );
+        // …and only our own two letters, so this is not `Link`/`line` again.
+        assert_eq!(
+            score_term("port", &words("export a file"), Field::Summary),
             0
         );
     }
